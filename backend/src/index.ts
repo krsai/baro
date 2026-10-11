@@ -1,5 +1,6 @@
-import { REQUEST_INCLUDE, loadAppSettings, appSettingsKey, validateVatRate, validateTransactionCode, registerTransactionRequest } from './services/transactionRequest';
-import { costInclude, historicalOutsourcingRows, registerPartnerCost, validateServiceDefinition } from './services/partnerTransactionCost';
+import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
+import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
+import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
 import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion, summarizePriorProduction } from './services/priorProductionCompletion';
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
@@ -175,6 +176,10 @@ function assertGeneratedPrismaClientShape() {
   for (const [model, fields] of Object.entries({
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
+    OutsourcingServiceType: ["systemDefaultId", "isOverridden"],
+    TransactionCode: ["systemDefaultId", "isOverridden"],
+    SettingServiceDefault: ["id", "orderInput", "requiredFields"],
+    SettingTransactionCodeDefault: ["id", "serviceTypeId", "vatEnabled"],
     StyleProcess: ["sourceOrgId"],
     InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt", "revisionOfInvoiceId", "revisionReason"],
     InvoiceDraftOrder: ["id", "draftId", "workOrderId", "sourceOrderId", "sourceUpdatedAt"],
@@ -807,6 +812,12 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "PartnerTransactionCost", columnName: "createdByEmployeeId" },
   { tableName: "PartnerTransactionCost", columnName: "transactionCodeId" },
   { tableName: "TransactionCode", columnName: "vatEnabled" },
+  { tableName: "TransactionCode", columnName: "systemDefaultId" },
+  { tableName: "TransactionCode", columnName: "isOverridden" },
+  { tableName: "OutsourcingServiceType", columnName: "systemDefaultId" },
+  { tableName: "OutsourcingServiceType", columnName: "isOverridden" },
+  { tableName: "SettingServiceDefault", columnName: "orderInput" },
+  { tableName: "SettingTransactionCodeDefault", columnName: "serviceTypeId" },
   { tableName: "OutsourcingServiceType", columnName: "entryMode" },
   { tableName: "OutsourcingServiceType", columnName: "requiredFields" },
   { tableName: "InvoiceDraftLine", columnName: "lineKey" },
@@ -29165,37 +29176,7 @@ const resolvePartnerServiceTypeIds = async (
   return ids;
 };
 
-app.get("/outsourcing-service-types", async (req, res) => {
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
-  const includeInactive = req.query.all === '1';
-  if (includeInactive && !(await requireSystemAdmin(req, res))) return;
-  const rows = await prisma.outsourcingServiceType.findMany({
-    where: { ownerOrgId: organization.id, ...(includeInactive ? {} : { isActive: true }) },
-    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-  });
-  res.json(rows);
-});
-
-app.post("/outsourcing-service-types", async (req, res) => {
-  if (!(await requireSystemAdmin(req, res))) return;
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) return res.status(404).json({ error: 'organization not found' });
-  const data = validateServiceDefinition(req.body);
-  if (await prisma.outsourcingServiceType.findUnique({ where: { ownerOrgId_code: { ownerOrgId: organization.id, code: data.code } } })) return res.status(409).json({ error: 'SERVICE_CODE_EXISTS' });
-  return res.status(201).json(await prisma.outsourcingServiceType.create({ data: { ...data, ownerOrgId: organization.id } }));
-});
-app.put("/outsourcing-service-types/:id", async (req, res) => {
-  if (!(await requireSystemAdmin(req, res))) return;
-  const organization = await getOrganizationByQuery(req);
-  if (!organization) return res.status(404).json({ error: 'organization not found' });
-  const id = toPositiveIntOrNull(req.params.id);
-  const existing = id ? await prisma.outsourcingServiceType.findFirst({ where: { id, ownerOrgId: organization.id } }) : null;
-  if (!existing) return res.status(404).json({ error: 'service not found' });
-  const data = validateServiceDefinition(req.body);
-  if (data.code !== existing.code || data.entryMode !== existing.entryMode) return res.status(409).json({ error: 'SERVICE_ENTRY_MODE_IMMUTABLE' });
-  return res.json(await prisma.outsourcingServiceType.update({ where: { id: existing.id }, data: { ...data, isActive: typeof req.body.isActive === 'boolean' ? req.body.isActive : existing.isActive } }));
-});
+registerTransactionSettingRoutes(app, prisma, { requireOrgRole, requireSystemAdmin, actorId: getCurrentRequestActorEmployeeId });
 
 app.get("/partner-transaction-costs", async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
@@ -29226,45 +29207,6 @@ app.post("/partner-transaction-costs", async (req, res) => {
   if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
   const row = await prisma.$transaction(tx => registerPartnerCost(tx, access.organization.id, actorId, req.body), { isolationLevel: 'Serializable' });
   return res.status(201).json(row);
-});
-app.get('/app-settings', async (req, res) => {
-  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
-  if (!access) return;
-  return res.json(await loadAppSettings(prisma, access.organization.id));
-});
-app.put('/app-settings', async (req, res) => {
-  const access = await requireOrgRole(req, res, { allowedRoles: ['ADMIN'] });
-  if (!access) return;
-  const defaultVatRate = validateVatRate(req.body?.defaultVatRate).toString();
-  const key = appSettingsKey(access.organization.id), actorId = getCurrentRequestActorEmployeeId();
-  await prisma.systemSetting.upsert({ where: { key }, create: { key, value: { defaultVatRate }, updatedByEmployeeId: actorId }, update: { value: { defaultVatRate }, updatedByEmployeeId: actorId } });
-  return res.json({ defaultVatRate });
-});
-app.get('/transaction-codes', async (req, res) => {
-  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
-  if (!access) return;
-  const all = req.query.all === '1';
-  if (all && !(await requireSystemAdmin(req, res))) return;
-  return res.json(await prisma.transactionCode.findMany({ where: { ownerOrgId: access.organization.id, ...(all ? {} : { isActive: true, serviceType: { isActive: true } }) }, include: { serviceType: true }, orderBy: { code: 'asc' } }));
-});
-app.post('/transaction-codes', async (req, res) => {
-  if (!(await requireSystemAdmin(req, res))) return;
-  const org = await getOrganizationByQuery(req);
-  if (!org) return res.status(404).json({ error: 'organization not found' });
-  const data = validateTransactionCode(req.body);
-  if (!await prisma.outsourcingServiceType.findFirst({ where: { id: data.serviceTypeId, ownerOrgId: org.id } })) return res.status(400).json({ error: 'INVALID_SERVICE_TYPE' });
-  return res.status(201).json(await prisma.transactionCode.create({ data: { ...data, ownerOrgId: org.id } }));
-});
-app.put('/transaction-codes/:id', async (req, res) => {
-  if (!(await requireSystemAdmin(req, res))) return;
-  const org = await getOrganizationByQuery(req);
-  const id = toPositiveIntOrNull(req.params.id);
-  if (!org || !id) return res.status(404).json({ error: 'code not found' });
-  const existing = await prisma.transactionCode.findFirst({ where: { id, ownerOrgId: org.id } });
-  if (!existing) return res.status(404).json({ error: 'code not found' });
-  const data = validateTransactionCode(req.body);
-  if (existing.serviceTypeId !== data.serviceTypeId || existing.code !== data.code) return res.status(409).json({ error: 'CODE_IDENTITY_IMMUTABLE' });
-  return res.json(await prisma.transactionCode.update({ where: { id }, data }));
 });
 app.get('/transaction-request-options', async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });

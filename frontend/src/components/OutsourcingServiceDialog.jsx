@@ -1,3 +1,4 @@
+import SettingInheritanceControls from './SettingInheritanceControls';
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
@@ -19,7 +20,8 @@ export const INDUSTRY_OPTION_TEXT = {
   vi: { orderInput: 'Nhập đơn hàng', styleInput: 'Nhập mẫu', processInput: 'Nhập công đoạn', REQUIRED: 'Bắt buộc', OPTIONAL: 'Tùy chọn', HIDDEN: 'Không sử dụng' },
 };
 
-export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId, languageCode }) {
+export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId, languageCode, systemDefaults = false }) {
+  const path = systemDefaults ? '/system-setting-defaults/services' : '/outsourcing-service-types';
   const labels = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const optionLabels = INDUSTRY_OPTION_TEXT[languageCode] || INDUSTRY_OPTION_TEXT.ko;
   const [form, setForm] = useState({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
@@ -29,13 +31,15 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
   const [editingId, setEditingId] = useState('');
   useEffect(() => {
     if (!open) return;
+    setEditingId('');
+    setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
     setError('');
-    requestJSON(`/outsourcing-service-types${buildQueryString({ orgId, all: '1' })}`, { skipCache: true }).then(setServices).catch(() => setError(labels.loadError));
-  }, [open, orgId, labels.loadError]);
+    requestJSON(`${path}${buildQueryString({ orgId, all: '1' })}`, { skipCache: true }).then(setServices).catch(() => setError(labels.loadError));
+  }, [open, orgId, labels.loadError, path]);
   const save = async () => {
     setSaving(true); setError('');
     try {
-      await requestJSON(`/outsourcing-service-types${editingId ? `/${editingId}` : ''}${buildQueryString({ orgId })}`, { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+      await requestJSON(`${path}${editingId ? `/${editingId}` : ''}${buildQueryString({ orgId })}`, { method: editingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       onSaved?.(); onClose();
       setEditingId('');
       setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
@@ -44,7 +48,8 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
   return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="xs"><DialogTitle>{labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
     {error && <Alert severity="error">{error}</Alert>}
     <TextField select label={labels.industry} value={editingId} onChange={event => { const id = event.target.value; setEditingId(id); const service = services.find(item => item.id === id); setForm(service ? { ...service } : { code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] }); }}><MenuItem value="">{labels.addIndustry}</MenuItem>{services.map(service => <MenuItem key={service.id} value={service.id}>{serviceName(service, languageCode)}</MenuItem>)}</TextField>
-    {['code', 'nameKo', 'nameEn', 'nameVi'].map(key => <TextField key={key} required disabled={saving || (key === 'code' && Boolean(editingId))} label={labels[key]} value={form[key]} onChange={event => setForm({ ...form, [key]: key === 'code' ? event.target.value.toUpperCase() : event.target.value })} />)}
+    {!systemDefaults && open && <SettingInheritanceControls kind="services" row={editingId ? form : null} orgId={orgId} languageCode={languageCode} onSaved={() => { onSaved?.(); onClose(); }} />}
+    {['code', 'nameKo', 'nameEn', 'nameVi'].map(key => <TextField key={key} required disabled={saving || (key === 'code' && Boolean(editingId) && systemDefaults)} label={labels[key]} value={form[key]} onChange={event => setForm({ ...form, [key]: key === 'code' ? event.target.value.toUpperCase() : event.target.value })} />)}
     <TextField select disabled={Boolean(editingId) || saving} label={labels.entryMode} value={form.entryMode} onChange={event => setForm({ ...form, entryMode: event.target.value, requiredFields: event.target.value === 'LOGISTICS' ? ['transportDate', 'origin', 'destination'] : [] })}>{['PROCESS', 'LOGISTICS', 'GENERAL'].map(mode => <MenuItem key={mode} value={mode}>{labels[mode]}</MenuItem>)}</TextField>
     {form.entryMode !== 'PROCESS' && <Stack>{labels.requiredFields}{['transportDate', 'origin', 'destination', 'reference'].map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={form.requiredFields.includes(key)} disabled={saving} onChange={event => setForm({ ...form, requiredFields: event.target.checked ? [...form.requiredFields, key] : form.requiredFields.filter(field => field !== key) })} />}/>)}</Stack>}
     {editingId && <FormControlLabel label={languageCode === 'ko' ? '사용 중' : languageCode === 'vi' ? 'Đang sử dụng' : 'Active'} control={<Checkbox checked={form.isActive !== false} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} />}

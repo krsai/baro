@@ -1357,6 +1357,10 @@ model PriorProductionCompletion {
 }
 
 model OutsourcingServiceType {
+  systemDefaultId Int?
+  systemDefault SettingServiceDefault? @relation(fields: [systemDefaultId], references: [id], onDelete: Restrict)
+  isOverridden Boolean @default(true)
+  @@unique([ownerOrgId, systemDefaultId])
   orderInput String @default("OPTIONAL")
   styleInput String @default("HIDDEN")
   processInput String @default("HIDDEN")
@@ -1436,6 +1440,10 @@ model PartnerTransactionCost {
 }
 
 model TransactionCode {
+  systemDefaultId Int?
+  systemDefault SettingTransactionCodeDefault? @relation(fields: [systemDefaultId], references: [id], onDelete: Restrict)
+  isOverridden Boolean @default(true)
+  @@unique([ownerOrgId, systemDefaultId])
   id Int @id @default(autoincrement())
   ownerOrgId Int
   serviceTypeId Int
@@ -2212,4 +2220,34 @@ model InvoiceLine {
   @@index([invoiceOrderId])
   @@index([workOrderItemId])
   @@index([sourceItemId])
+}
+
+model SettingServiceDefault {
+  id Int @id @default(autoincrement())
+  code String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  entryMode String
+  requiredFields String[] @default([])
+  orderInput String @default("OPTIONAL")
+  styleInput String @default("HIDDEN")
+  processInput String @default("HIDDEN")
+  isActive Boolean @default(true)
+  sortOrder Int @default(0)
+  services OutsourcingServiceType[]
+  codes SettingTransactionCodeDefault[]
+}
+
+model SettingTransactionCodeDefault {
+  id Int @id @default(autoincrement())
+  serviceTypeId Int
+  serviceType SettingServiceDefault @relation(fields: [serviceTypeId], references: [id], onDelete: Restrict)
+  code String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  vatEnabled Boolean @default(false)
+  isActive Boolean @default(true)
+  codes TransactionCode[]
 }

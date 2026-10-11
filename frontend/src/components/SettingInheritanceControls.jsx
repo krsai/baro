@@ -1,0 +1,19 @@
+import React, { useEffect, useState } from 'react';
+import { Alert, Button, MenuItem, Stack, TextField } from '@mui/material';
+import { requestJSON, buildQueryString } from '../utils/apiClient';
+const serviceName = (row,language) => row?.[language === 'ko' ? 'nameKo' : language === 'vi' ? 'nameVi' : 'nameEn'] || row?.nameEn || '';
+
+export const SETTING_SCOPE_TEXT = {
+  ko: { defaults: '시스템 기본값', custom: '업체별 설정', inherited: '시스템 기본값 사용 중', reset: '기본값으로 복원', adopt: '선택한 기본값 사용', choose: '시스템 기본값 선택', help: '기본값을 사용하면 이후 시스템 변경도 반영됩니다. 직접 수정해 저장하면 이 항목은 업체별 설정으로 유지됩니다.', error: '설정을 적용하지 못했습니다. 거래 코드의 업종 기본값을 먼저 연결하고 코드 중복 여부를 확인해 주세요.', codes: '거래 코드·입력 옵션', systemTitle: '앱 기본설정', localTitle: '앱설정', localHelp: '업체별 설정이 우선 적용됩니다. 기본값으로 복원하면 시스템 기본값을 따릅니다.' },
+  en: { defaults: 'System defaults', custom: 'Organization setting', inherited: 'Using system default', reset: 'Restore default', adopt: 'Use selected default', choose: 'Select system default', help: 'Inherited settings follow future system changes. Editing and saving keeps this item as an organization override.', error: 'Could not apply settings. Adopt the industry default first and check for duplicate codes.', codes: 'Transaction codes and input options', systemTitle: 'App defaults', localTitle: 'App settings', localHelp: 'Organization overrides take precedence. Restore a default to follow system settings.' },
+  vi: { defaults: 'Mặc định hệ thống', custom: 'Cài đặt riêng của công ty', inherited: 'Đang dùng mặc định hệ thống', reset: 'Khôi phục mặc định', adopt: 'Dùng mặc định đã chọn', choose: 'Chọn mặc định hệ thống', help: 'Cài đặt kế thừa được cập nhật khi hệ thống thay đổi. Chỉnh sửa và lưu sẽ giữ cài đặt riêng cho công ty.', error: 'Không thể áp dụng. Hãy liên kết mặc định ngành trước và kiểm tra mã trùng.', codes: 'Mã giao dịch và tùy chọn nhập', systemTitle: 'Mặc định ứng dụng', localTitle: 'Cài đặt ứng dụng', localHelp: 'Ưu tiên cài đặt riêng của công ty. Khôi phục mặc định để dùng cài đặt hệ thống.' },
+};
+
+export default function SettingInheritanceControls({ kind, row, orgId, languageCode, onSaved }) {
+  const labels = SETTING_SCOPE_TEXT[languageCode] || SETTING_SCOPE_TEXT.ko;
+  const [sources,setSources] = useState([]), [sourceId,setSourceId] = useState(row?.systemDefaultId || ''), [error,setError] = useState(''), [saving,setSaving] = useState(false);
+  const path = kind === 'services' ? '/outsourcing-service-types' : '/transaction-codes';
+  useEffect(() => { let alive = true; setSourceId(row?.systemDefaultId || ''); requestJSON(`/system-setting-defaults/${kind}${buildQueryString({ orgId, catalogue: '1' })}`, { skipCache: true }).then(data => alive && setSources(data)).catch(() => alive && setError(labels.error)); return () => { alive = false; }; }, [kind,orgId,row?.id,row?.systemDefaultId,labels.error]);
+  const apply = async reset => { setSaving(true); setError(''); try { await requestJSON(`${path}${reset ? `/${row.id}/reset-default` : '/adopt-default'}${buildQueryString({ orgId })}`, { method: 'POST',headers: { 'Content-Type': 'application/json' },body: JSON.stringify(reset ? {} : { systemDefaultId: Number(sourceId), ...(row?.id ? { localId: row.id } : {}) }) }); onSaved(); } catch { setError(labels.error); } finally { setSaving(false); } };
+  return <Stack spacing={1}><Alert severity="info">{row?.isOverridden === false ? labels.inherited : labels.custom}. {labels.help}</Alert>{error && <Alert severity="error">{error}</Alert>}<TextField select disabled={saving || Boolean(row?.systemDefaultId)} label={labels.choose} value={sourceId} onChange={event => setSourceId(event.target.value)}><MenuItem value="">—</MenuItem>{sources.map(source => <MenuItem key={source.id} value={source.id}>{source.code} · {serviceName(source,languageCode)}</MenuItem>)}</TextField><Button disabled={saving || !sourceId} onClick={() => apply(Boolean(row?.systemDefaultId))}>{row?.systemDefaultId ? labels.reset : labels.adopt}</Button></Stack>;
+}

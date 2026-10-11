@@ -9,9 +9,9 @@ CREATE TABLE IF NOT EXISTS "TransactionCode" (
  UNIQUE ("ownerOrgId",code), UNIQUE (id,"ownerOrgId","serviceTypeId")
 );
 INSERT INTO "TransactionCode" ("ownerOrgId","serviceTypeId",code,"nameKo","nameEn","nameVi")
- SELECT "ownerOrgId",id,code,"nameKo","nameEn","nameVi" FROM "OutsourcingServiceType" ON CONFLICT ("ownerOrgId",code) DO NOTHING;
+ SELECT "ownerOrgId",id,code,"nameKo","nameEn","nameVi" FROM "OutsourcingServiceType" WHERE to_regclass('"SettingTransactionCodeDefault"') IS NULL ON CONFLICT ("ownerOrgId",code) DO NOTHING;
 INSERT INTO "TransactionCode" ("ownerOrgId","serviceTypeId",code,"nameKo","nameEn","nameVi","vatEnabled")
- SELECT "ownerOrgId",id,'TRKV','트러킹 (VAT)','Trucking (VAT)','Vận chuyển (VAT)',true FROM "OutsourcingServiceType" WHERE code='LOGISTICS'
+ SELECT "ownerOrgId",id,'TRKV','트러킹 (VAT)','Trucking (VAT)','Vận chuyển (VAT)',true FROM "OutsourcingServiceType" WHERE code='LOGISTICS' AND to_regclass('"SettingTransactionCodeDefault"') IS NULL
  ON CONFLICT ("ownerOrgId",code) DO NOTHING;
 ALTER TABLE "PartnerTransactionCost" ADD COLUMN IF NOT EXISTS "transactionCodeId" INTEGER;
 ALTER TABLE "PartnerTransactionCost" ADD COLUMN IF NOT EXISTS "unitPrice" DECIMAL(18,4);

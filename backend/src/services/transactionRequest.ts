@@ -5,16 +5,13 @@ import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assi
 
 export const REQUEST_INCLUDE = { outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: true, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 const invalid = (code: string): never => { throw createHttpError(400, code); };
-export const appSettingsKey = (orgId: number) => `APP_SETTINGS:${orgId}`;
+export { appSettingsKey, loadAppSettings } from './applicationSettings';
+import { loadAppSettings } from './applicationSettings';
 export function validateVatRate(value: unknown) {
   if ((typeof value !== 'string' && typeof value !== 'number') || !/^\d{1,3}(\.\d{1,2})?$/.test(String(value))) return invalid('INVALID_VAT_RATE');
   const rate = new Prisma.Decimal(value);
   if (rate.gt(100)) return invalid('INVALID_VAT_RATE');
   return rate;
-}
-export async function loadAppSettings(db: any, orgId: number) {
-  const row = await db.systemSetting.findUnique({ where: { key: appSettingsKey(orgId) } });
-  return { defaultVatRate: row?.value?.defaultVatRate ?? '10' };
 }
 export function validateTransactionCode(body: any) {
   if (!Number.isSafeInteger(body?.serviceTypeId) || body.serviceTypeId <= 0) return invalid('INVALID_SERVICE_TYPE');

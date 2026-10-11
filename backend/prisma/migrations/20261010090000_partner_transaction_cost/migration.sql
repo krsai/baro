@@ -3,6 +3,7 @@ ALTER TABLE "OutsourcingServiceType" ADD COLUMN IF NOT EXISTS "requiredFields" T
 INSERT INTO "OutsourcingServiceType" ("ownerOrgId", code, "nameKo", "nameEn", "nameVi", "entryMode", "requiredFields", "sortOrder")
 SELECT id, 'LOGISTICS', '물류·운송', 'Logistics', 'Vận chuyển', 'LOGISTICS', ARRAY['transportDate','origin','destination'], 100
 FROM "Organization" WHERE type IN ('MANUFACTURER','BRAND')
+AND to_regclass('"SettingServiceDefault"') IS NULL
 ON CONFLICT ("ownerOrgId",code) DO NOTHING;
 CREATE TABLE IF NOT EXISTS "PartnerTransactionCost" (
   id TEXT PRIMARY KEY, "orgId" INTEGER NOT NULL, "partnerOrgId" INTEGER NOT NULL,

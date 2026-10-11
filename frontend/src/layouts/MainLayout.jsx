@@ -910,7 +910,7 @@ const MainLayout = () => {
             icon: <TuneIcon />,
             path: '/system-setting/access-policy',
           },
-          { label: getUiMessage('menu.transactionCodes', '거래 코드·입력 옵션', languageCode), icon: <TuneIcon />, path: '/system-setting/transaction-codes' },
+          { label: languageCode === 'ko' ? '앱 기본설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
           {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
             icon: <GroupIcon />,

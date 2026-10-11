@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const [
@@ -95,7 +96,10 @@ test('outsourcing services use owner-scoped foreign keys and support multiple se
   assert.match(schema, /fields: \[serviceTypeId, ownerOrgId\]/);
   assert.match(migrationFix, /OrganizationOutsourcingServiceType_partner_owner_fkey/);
   assert.match(migrationFix, /OrganizationHoliday_orgId_fkey/);
-  assert.match(backend, /app\.get\("\/outsourcing-service-types"/);
+  assert.match(backend, /registerTransactionSettingRoutes\(app, prisma/);
+  const settingsRoutes = readFileSync('backend/src/services/transactionSettingRoutes.ts', 'utf8');
+  assert.match(settingsRoutes, /'\/outsourcing-service-types'/);
+  assert.match(settingsRoutes, /app\.get\(localPath/);
   assert.match(partnerDialog, /serviceTypeIds/);
   assert.match(partnerPage, /partner\.serviceTypes/);
 });

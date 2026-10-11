@@ -274,9 +274,12 @@ const router = createBrowserRouter([
             element: <SystemBoard />,
           },
           {
-            path: 'app-settings', element: <ApplicationSettings />,
+            path: 'app-settings/transaction-codes', element: <TransactionCodeSettings />,
           },
-          { path: 'system-setting/transaction-codes', element: <TransactionCodeSettings />,
+          { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
+          { path: 'app-settings', element: <ApplicationSettings />,
+          },
+          { path: 'system-setting/transaction-codes', element: <TransactionCodeSettings systemDefaults />,
           },
           {
             path: 'system-setting/static-options',
