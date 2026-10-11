@@ -168,6 +168,7 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  transactionCodes TransactionCode[] @relation("TransactionCodeOwner")
   transactionCosts PartnerTransactionCost[] @relation("TransactionCostOwner")
   vendorTransactionCosts PartnerTransactionCost[] @relation("TransactionCostVendor")
   /// Data ownership is separate from customer, employer and production scope.
@@ -964,6 +965,7 @@ model AttrProcess {
 }
 
 model Style {
+  transactionCosts PartnerTransactionCost[]
   priorCompletions PriorProductionCompletion[]
   id                     Int      @id @default(autoincrement())
   /// Authoritative data owner; always a manufacturer.
@@ -1044,6 +1046,7 @@ model ManufacturerDataArchive {
 }
 
 model StyleProcess {
+  transactionCosts PartnerTransactionCost[]
   /// Nonzero only for retained historical customer-scoped processes.
   sourceOrgId Int @default(0)
   id                                 Int             @id @default(autoincrement())
@@ -1354,6 +1357,10 @@ model PriorProductionCompletion {
 }
 
 model OutsourcingServiceType {
+  orderInput String @default("OPTIONAL")
+  styleInput String @default("HIDDEN")
+  processInput String @default("HIDDEN")
+  transactionCodes TransactionCode[]
   entryMode   String @default("PROCESS")
   requiredFields String[] @default([])
   transactionCosts PartnerTransactionCost[]
@@ -1391,6 +1398,20 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  @@unique([outsourcedWorkRecordId, orgId])
+  outsourcedWorkRecordId Int? @unique
+  outsourcedWorkRecord OutsourcedWorkRecord? @relation(fields: [outsourcedWorkRecordId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  transactionCodeId Int?
+  unitPrice Decimal? @db.Decimal(18, 4)
+  quantity Decimal? @db.Decimal(18, 4)
+  subtotal Decimal? @db.Decimal(18, 2)
+  vatRate Decimal? @db.Decimal(5, 2)
+  vatAmount Decimal? @db.Decimal(18, 2)
+  styleId Int?
+  styleProcessId Int?
+  transactionCode TransactionCode? @relation(fields: [transactionCodeId, orgId, serviceTypeId], references: [id, ownerOrgId, serviceTypeId], onDelete: Restrict, onUpdate: Restrict)
+  style Style? @relation(fields: [styleId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  styleProcess StyleProcess? @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(uuid())
   orgId Int
   partnerOrgId Int
@@ -1412,6 +1433,23 @@ model PartnerTransactionCost {
   @@unique([orgId, clientKey])
   @@index([orgId, transactionDate])
   @@index([orgId, partnerOrgId])
+}
+
+model TransactionCode {
+  id Int @id @default(autoincrement())
+  ownerOrgId Int
+  serviceTypeId Int
+  code String
+  nameKo String
+  nameEn String
+  nameVi String
+  vatEnabled Boolean @default(false)
+  isActive Boolean @default(true)
+  owner Organization @relation("TransactionCodeOwner", fields: [ownerOrgId], references: [id], onDelete: Restrict)
+  serviceType OutsourcingServiceType @relation(fields: [serviceTypeId, ownerOrgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  costs PartnerTransactionCost[]
+  @@unique([ownerOrgId, code])
+  @@unique([id, ownerOrgId, serviceTypeId])
 }
 
 model WorkOrderItem {
@@ -1771,6 +1809,7 @@ model WorkRecord {
 // must sum this table together with WorkRecord - see
 // loadAssignmentPlanProgressWorkRows in src/index.ts.
 model OutsourcedWorkRecord {
+  transactionCost PartnerTransactionCost?
   id                    Int      @id @default(autoincrement())
   orgId                 Int
   workLogId             Int
@@ -1798,6 +1837,7 @@ model OutsourcedWorkRecord {
   updatedByEmployee Employee? @relation("OutsourcedWorkRecordUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@index([orgId, workLogId])
+  @@unique([id, orgId])
   @@index([orgId, outsourcingPartnerId])
   @@index([orgId, styleId])
   @@index([styleProcessId])

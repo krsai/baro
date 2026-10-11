@@ -81,6 +81,9 @@ const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/Payro
 const RevenueAnalysis = lazyImportWithRetry(() => import('./pages/App/RevenueAnalysis'));
 const RevenueForecast = lazyImportWithRetry(() => import('./pages/App/RevenueForecast'));
 const CustomerProductionReport = lazyImportWithRetry(() => import('./pages/App/CustomerProductionReport'));
+const TransactionRequestEntry = lazyImportWithRetry(() => import('./pages/App/TransactionRequestEntry'));
+const ApplicationSettings = lazyImportWithRetry(() => import('./pages/App/ApplicationSettings'));
+const TransactionCodeSettings = lazyImportWithRetry(() => import('./pages/App/TransactionCodeSettings'));
 const BusinessPartners = lazyImportWithRetry(() => import('./pages/App/BusinessPartners'));
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
@@ -271,6 +274,11 @@ const router = createBrowserRouter([
             element: <SystemBoard />,
           },
           {
+            path: 'app-settings', element: <ApplicationSettings />,
+          },
+          { path: 'system-setting/transaction-codes', element: <TransactionCodeSettings />,
+          },
+          {
             path: 'system-setting/static-options',
             element: <StaticOptionBoard />,
           },
@@ -368,7 +376,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'outsourcing-record/new',
-            element: <WorkEntry recordKind="OUTSOURCING" />,
+            element: <TransactionRequestEntry />,
           },
           {
             path: 'outsourcing-record/:workLogId',

@@ -43,7 +43,14 @@ export function validateServiceDefinition(body: any) {
   const text = (key: string) => typeof body[key] === 'string' && body[key].trim().length <= 100 ? body[key].trim() : '';
   const code = text('code');
   if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(code) || !text('nameKo') || !text('nameEn') || !text('nameVi')) return fail('INVALID_SERVICE_NAME');
-  return { code, nameKo: text('nameKo'), nameEn: text('nameEn'), nameVi: text('nameVi'), entryMode, requiredFields: [...new Set<string>(entryMode === 'LOGISTICS' ? [...fields, 'transportDate', 'origin', 'destination'] : fields)] };
+  const options: Record<string,string> = {};
+  for (const key of ['orderInput','styleInput','processInput']) {
+    const option = entryMode === 'PROCESS' ? 'REQUIRED' : body[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
+    if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(option)) return fail('INVALID_INPUT_OPTION');
+    options[key] = option;
+  }
+  if (options.styleInput !== 'HIDDEN' && options.orderInput === 'HIDDEN' || options.processInput !== 'HIDDEN' && (options.orderInput === 'HIDDEN' || options.styleInput === 'HIDDEN')) return fail('INVALID_INPUT_OPTION');
+  return { code, nameKo: text('nameKo'), nameEn: text('nameEn'), nameVi: text('nameVi'), entryMode, requiredFields: [...new Set<string>(fields)], orderInput: options.orderInput!, styleInput: options.styleInput!, processInput: options.processInput! };
 }
 export function validateCostInput(body: any) {
   const id = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : fail('INVALID_TRANSACTION_REFERENCE');

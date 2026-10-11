@@ -823,6 +823,7 @@ const MainLayout = () => {
             icon: <AccountCircleIcon />,
             path: '/personal-settings',
           },
+          { label: getUiMessage('menu.appSettings', '앱설정', languageCode), icon: <TuneIcon />, path: '/app-settings' },
         ],
       },
       {
@@ -909,6 +910,7 @@ const MainLayout = () => {
             icon: <TuneIcon />,
             path: '/system-setting/access-policy',
           },
+          { label: getUiMessage('menu.transactionCodes', '거래 코드·입력 옵션', languageCode), icon: <TuneIcon />, path: '/system-setting/transaction-codes' },
           {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
             icon: <GroupIcon />,

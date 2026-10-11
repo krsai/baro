@@ -177,6 +177,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/employee')) return FEATURE_KEYS.EMPLOYEE;
   if (path.startsWith('/customer')) return FEATURE_KEYS.CUSTOMER;
   if (path.startsWith('/attribute')) return FEATURE_KEYS.ATTRIBUTE;
+  if (path.startsWith('/app-settings')) return FEATURE_KEYS.PERMISSION;
   if (path.startsWith('/permission')) return FEATURE_KEYS.PERMISSION;
   if (path.startsWith('/holiday')) return FEATURE_KEYS.HOLIDAY;
   if (path === '/system-setting' || path === '/system-setting/') return FEATURE_KEYS.SUBSCRIPTION;

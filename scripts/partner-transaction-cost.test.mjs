@@ -23,9 +23,9 @@ test('cost input rejects invalid dates, foreign identifiers, unsupported currenc
   for (const patch of [{ transactionDate: '2026-02-30' }, { amount: '0' }, { amount: '-1' }, { amount: '1.01' }, { amount: '1e5' }, { currency: 'EUR' }, { partnerOrgId: '11' }, { serviceTypeId: null }, { workOrderId: 'public-order-id' }]) assert.throws(() => validateCostInput({ ...input(), ...patch }));
   assert.equal(validateCostInput({ ...input(), currency: 'USD', amount: '1.25' }).amount.toString(), '1.25');
 });
-test('industry definition forces logistics fields and rejects arbitrary field keys', () => {
+test('industry definition uses configured fields and rejects arbitrary field keys', () => {
   const definition = { code: 'DELIVERY', nameKo: '배송', nameEn: 'Delivery', nameVi: 'Giao hàng', entryMode: 'LOGISTICS', requiredFields: ['reference'] };
-  assert.deepEqual(new Set(validateServiceDefinition(definition).requiredFields), new Set(['reference', 'transportDate', 'origin', 'destination']));
+  assert.deepEqual(new Set(validateServiceDefinition(definition).requiredFields), new Set(['reference']));
   assert.throws(() => validateServiceDefinition({ ...definition, requiredFields: ['employeeEmail'] }));
 });
 test('process outsourcing must continue through process work records', async () => {
@@ -81,5 +81,5 @@ test('partner mutations require system administrator, production input remains r
   assert.match(source, /type === "PROCESS_OUTSOURCING" && !\(await requireSystemAdmin/);
   assert.match(source, /existing\.type === "PROCESS_OUTSOURCING" \|\| type === "PROCESS_OUTSOURCING"/);
   const router = fs.readFileSync('frontend/src/router.jsx','utf8');
-  assert.match(router, /path: 'outsourcing-record\/new',[\s\S]*?WorkEntry recordKind="OUTSOURCING"/);
+  assert.match(router, /path: 'outsourcing-record\/new',[\s\S]*?TransactionRequestEntry/);
 });
