@@ -222,7 +222,7 @@ const ACCESS_PATH_PRIORITY = [
   '/customer',
   '/outsourcing-partner',
   '/material-supplier',
-  '/profile',
+  '/personal-settings',
   '/permission',
   '/holiday',
   '/system-onboarding',

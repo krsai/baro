@@ -90,7 +90,6 @@ const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
 const Invoice = lazyImportWithRetry(() => import('./pages/App/invoice/InvoiceWorkspace.jsx'));
 const Inventory = lazyImportWithRetry(() => import('./pages/App/Inventory'));
-const MyProfile = lazyImportWithRetry(() => import('./pages/App/MyProfile'));
 const PersonalSettings = lazyImportWithRetry(() => import('./pages/App/PersonalSettings'));
 const WorkspaceDashboard = lazyImportWithRetry(() => import('./pages/App/WorkspaceDashboard'));
 
@@ -478,7 +477,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'profile',
-            element: <MyProfile />,
+            element: <Navigate to="/personal-settings" replace />,
           },
           {
             path: 'personal-settings',

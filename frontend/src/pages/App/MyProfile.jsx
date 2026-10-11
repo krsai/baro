@@ -5,10 +5,11 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import AppPageContainer from '../../components/AppPageContainer';
+import PageSectionHeader from '../../components/PageSectionHeader';
 import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import { requestJSON } from '../../utils/apiClient';
 
@@ -45,7 +46,7 @@ const buildProfileInfo = (data = {}, fallbackName = '') => ({
   bankAccountNumber: data.bankAccountNumber ?? '',
 });
 
-const TEXT = {
+const COPY = { ko: {
   title: '\uAC1C\uC778 \uC815\uBCF4',
   email: '\uC774\uBA54\uC77C',
   name: '\uC774\uB984',
@@ -55,7 +56,15 @@ const TEXT = {
   readOnly: '(\uC218\uC815 \uBD88\uAC00)',
   saveSuccess: '\uAC1C\uC778 \uC815\uBCF4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.',
   saveError: '\uC800\uC7A5 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.',
-};
+}, en: {
+  title: 'Personal information', email: 'Email', name: 'Name', phone: 'Phone',
+  bankName: 'Bank', bankAccountNumber: 'Account number', readOnly: '(Read only)',
+  saveSuccess: 'Personal information saved.', saveError: 'Failed to save personal information.',
+}, vi: {
+  title: 'Thông tin cá nhân', email: 'Email', name: 'Họ tên', phone: 'Số điện thoại',
+  bankName: 'Ngân hàng', bankAccountNumber: 'Số tài khoản', readOnly: '(Chỉ đọc)',
+  saveSuccess: 'Đã lưu thông tin cá nhân.', saveError: 'Không thể lưu thông tin cá nhân.',
+} };
 
 const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
   <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
@@ -70,6 +79,7 @@ const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
     <TextField
       fullWidth
       name={name}
+      inputProps={{ 'aria-label': label }}
       value={value}
       onChange={disabled ? undefined : onChange}
       InputProps={{ readOnly: disabled }}
@@ -79,6 +89,8 @@ const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
 );
 
 const MyProfile = () => {
+  const { languageCode } = useLanguage();
+  const TEXT = COPY[languageCode] || COPY.en;
   const { showNotification } = useAppActions();
   const { updateActiveProfile, user, activeProfile } = useAuth();
   const [formData, setFormData] = useState(buildProfileInfo());
@@ -163,17 +175,18 @@ const MyProfile = () => {
   };
 
   return (
-    <AppPageContainer
+    <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
+    <PageSectionHeader
       title={TEXT.title}
-      titleActions={(
+      titleVariant="h6"
+      actions={(
         <SaveButton
           onClick={handleSave}
           disabled={!isDirty || isSaving}
           loading={isSaving}
         />
       )}
-    >
-      <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
+    />
         <InfoRow
           label={TEXT.email}
           value={formData.email}
@@ -209,7 +222,6 @@ const MyProfile = () => {
           readOnlyText={TEXT.readOnly}
         />
       </Paper>
-    </AppPageContainer>
   );
 };
 

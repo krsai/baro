@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { canAccessPath } from '../../utils/accessControl';
 import { readPersonalPreferences, writePersonalPreferences } from '../../utils/personalPreferences';
+import MyProfile from './MyProfile';
 
 const COPY = {
   ko: { title: '개인 설정', startup: '로그인 시작 화면', startupHelp: '이 계정으로 로그인할 때 처음 열 화면을 설정합니다.', dashboard: '로그인 후 대시보드 자동 열기', dashboardHelp: '끄면 빈 작업 공간에서 시작하며 필요한 메뉴를 직접 열 수 있습니다.', dashboardUnavailable: '현재 계정에는 대시보드 접근 권한이 없어 사용할 수 없습니다.', display: '화면 표시', language: '표시 언어', languageHelp: '메뉴와 지원되는 화면의 언어가 즉시 변경됩니다.', saved: '개인 설정을 저장했습니다.' },
@@ -33,6 +34,8 @@ const PersonalSettings = () => {
 
   return (
     <AppPageContainer title={text.title}>
+      <Stack spacing={2} sx={{ width: '100%', maxWidth: 820 }}>
+      <MyProfile />
       <Paper variant="outlined" sx={{ width: '100%', maxWidth: 820, borderRadius: 2 }}>
         <Stack spacing={2} sx={{ p: 3 }}>
           <Box><Typography variant="h6" fontWeight={700}>{text.startup}</Typography><Typography variant="body2" color="text.secondary">{text.startupHelp}</Typography></Box>
@@ -49,6 +52,7 @@ const PersonalSettings = () => {
           </Box>
         </Stack>
       </Paper>
+      </Stack>
     </AppPageContainer>
   );
 };

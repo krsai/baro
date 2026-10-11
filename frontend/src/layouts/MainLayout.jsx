@@ -1153,8 +1153,8 @@ const MainLayout = () => {
       if (path === '/invoices/new') {
         return getUiMessage('menu.invoiceEditor', 'Create invoice', languageCode);
       }
-      if (path === '/profile') {
-        return getUiMessage('menu.profile', 'Profile', languageCode);
+      if (path === '/profile' || path === '/personal-settings') {
+        return getUiMessage('menu.personalSettings', 'Personal Settings', languageCode);
       }
       if (path === '/work-history') {
         return resolveWorkHistoryTabLabel('list');
@@ -1222,8 +1222,8 @@ const MainLayout = () => {
         storedContext ? `${baseLabel}: ${storedContext}` : baseLabel;
       const localizedNewSuffix = languageCode === 'ko' ? '신규' : languageCode === 'vi' ? 'Mới' : 'New';
 
-      if (tabPath === '/profile') {
-        return getUiMessage('menu.profile', 'Profile', languageCode);
+      if (tabPath === '/profile' || tabPath === '/personal-settings') {
+        return getUiMessage('menu.personalSettings', 'Personal Settings', languageCode);
       }
 
       if (tabPath === '/work-history') {
@@ -2179,8 +2179,8 @@ const MainLayout = () => {
           <Button
             color="inherit"
             onClick={() =>
-              handleNavigation('/profile', {
-                label: getUiMessage('menu.profile', '\uAC1C\uC778 \uC815\uBCF4', languageCode),
+              handleNavigation('/personal-settings', {
+                label: getUiMessage('menu.personalSettings', 'Personal Settings', languageCode),
               })
             }
             startIcon={<AccountCircleIcon fontSize="small" />}
