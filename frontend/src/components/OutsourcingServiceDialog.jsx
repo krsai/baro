@@ -10,7 +10,7 @@ export const TRANSACTION_TEXT = {
 };
 export const serviceName = (item, language) => item?.[language === 'ko' ? 'nameKo' : language === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || '';
 export const OUTSOURCING_REQUEST_TEXT = {
-  ko: { costs: '거래 비용 신청', addCost: '신청 등록', process: '공정 작업 대행', historical: '기존 외주 기록', next: '공정·작업 수량 입력', help: '업체와 업종을 선택해 외주 이용을 신청합니다. 공정 작업 대행은 공정과 수량을 연결하고, 물류·일반 서비스는 관련 주문과 비용을 등록합니다. 기존 외주 기록은 그대로 보존됩니다.', processHelp: '공정 작업 대행은 연결된 공정과 실제 작업 수량이 필요합니다.' },
+  ko: { costs: '비용신청', addCost: '신청 등록', process: '공정 작업 대행', historical: '기존 외주 기록', next: '공정·작업 수량 입력', help: '업체와 업종을 선택해 외주 이용을 신청합니다. 공정 작업 대행은 공정과 수량을 연결하고, 물류·일반 서비스는 관련 주문과 비용을 등록합니다. 기존 외주 기록은 그대로 보존됩니다.', processHelp: '공정 작업 대행은 연결된 공정과 실제 작업 수량이 필요합니다.' },
   en: { costs: 'Transaction cost requests', addCost: 'New request', process: 'Process work', historical: 'Existing outsourcing record', next: 'Enter process and quantity', help: 'Select a partner and industry to request outsourcing. Process work requires a process and quantity; logistics and general services link costs to an order. Existing records are preserved.', processHelp: 'Process work requires a linked process and actual work quantity.' },
   vi: { costs: 'Đề nghị chi phí giao dịch', addCost: 'Ghi nhận đề nghị', process: 'Gia công theo công đoạn', historical: 'Hồ sơ gia công hiện có', next: 'Nhập công đoạn và số lượng', help: 'Chọn đối tác và ngành dịch vụ để đề nghị thuê ngoài. Gia công cần liên kết công đoạn và số lượng; vận chuyển và dịch vụ khác ghi nhận chi phí theo đơn hàng. Hồ sơ hiện có được giữ nguyên.', processHelp: 'Gia công cần liên kết công đoạn và số lượng thực tế.' },
 };
