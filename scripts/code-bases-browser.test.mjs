@@ -35,6 +35,9 @@ try{
     const labels=lang==='ko'?{add:'기본 코드 등록',code:'기본 코드',save:'저장',remove:'삭제',industry:'업종·입력 옵션 관리',used:'사용 이력이나 연결 설정이 있어'}:lang==='en'?{add:'Add base code',code:'Base code',save:'Save',remove:'Delete',industry:'Industries & input options',used:'Usage history or linked settings'}:{add:'Thêm mã gốc',code:'Mã gốc',save:'Lưu',remove:'Xóa',industry:'Ngành và tùy chọn nhập',used:'Không thể xóa do có lịch sử sử dụng'};
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
     const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
+    assert.equal(await page.locator('thead th').count(),5);
+    assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).locator('[data-testid="DeleteIcon"]').count(),1);
+    assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);
     await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
     await dialog.getByLabel(labels.code,{exact:false}).fill('air');
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');

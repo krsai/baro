@@ -20,6 +20,7 @@ const DeleteActionButton = ({
       color="error"
       disabled={disabled}
       title={title}
+      aria-label={title || undefined}
       onClick={handleClick}
     >
       <DeleteIcon fontSize="small" />
