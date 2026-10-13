@@ -5,7 +5,7 @@ import { createHttpError } from '../utils/http';
 import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
-export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId'];
+export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
 export const pickSettings = (row: any, keys: string[]) => Object.fromEntries(keys.filter(key => row[key] !== undefined).map(key => [key,row[key]]));
 
 export async function provisionSettingDefaults(tx: any, orgId: number) {
@@ -83,7 +83,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       const access = req.query.all === '1' ? await admin(req,res) : await member(req,res);
       if (!access) return;
       await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id), { isolationLevel: 'ReadCommitted' });
-      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { taxTreatmentId: { not: null }, serviceType: { isActive: true } } : {}) }) }, include: service ? { _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
+      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, serviceType: { isActive: true } } : {}) }) }, include: service ? { _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
       res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));
     });
     for (const global of [true,false]) {
@@ -115,6 +115,14 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
             if (!await target.findFirst({ where: { id: data.serviceTypeId, ...(!global ? { ownerOrgId: orgId } : {}) } })) throw createHttpError(400,'INVALID_SERVICE_TYPE');
           }
           if (!global) data.isOverridden = true;
+          if (!service && !global) {
+            data.baseId = req.body?.baseId || existing?.baseId || null;
+            if (!existing && !Number.isSafeInteger(data.baseId)) throw createHttpError(400,'CODE_BASE_REQUIRED');
+            if (data.baseId != null) {
+              const base = await db.transactionCodeBase.findUnique({ where: { id: data.baseId } });
+              if (!base || data.taxTreatmentId && data.code.slice(0,3) !== base.code) throw createHttpError(400,'INVALID_CODE_BASE');
+            }
+          }
           const saved = await db.$transaction(async (tx: any) => {
             const target = global ? (service ? tx.settingServiceDefault : tx.settingTransactionCodeDefault) : (service ? tx.outsourcingServiceType : tx.transactionCode);
             if (update && !service && !global) {

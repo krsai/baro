@@ -60,9 +60,22 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
 export async function deleteCodeBase(tx: any, id: number) {
   await tx.$queryRawUnsafe('SELECT id FROM "TransactionCodeBase" WHERE id=$1 FOR UPDATE',id);
   if (!await tx.transactionCodeBase.findUnique({ where: { id } })) throw createHttpError(404,'SETTING_NOT_FOUND');
+  // Lock app code identities too: FK writes of new costs serialize with deletion.
+  await tx.$queryRawUnsafe('SELECT id FROM "TransactionCode" WHERE "baseId"=$1 ORDER BY id FOR UPDATE',id);
+  if ((await getCodeBaseUsage(tx,[id])).has(id)) throw createHttpError(409,'SETTING_IN_USE');
+  // Unused application settings do not constitute transaction history.
+  await tx.transactionCode.deleteMany({ where: { baseId: id } });
   const variants = await tx.settingTransactionCodeDefault.findMany({ where: { baseId: id } });
   for (const row of variants) await deleteSetting(tx,'codes',true,row.id);
   await tx.transactionCodeBase.delete({ where: { id } });
+}
+
+export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<number>> {
+  if (!ids.length) return new Set();
+  const rows = await db.$queryRawUnsafe(`SELECT DISTINCT code."baseId" AS id
+    FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id
+    WHERE code."baseId"=ANY($1::int[])`,ids) as { id: number }[];
+  return new Set(rows.map(row=>row.id));
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
@@ -72,15 +85,17 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
     res.json(await db.taxTreatment.findMany({ orderBy: { id: 'asc' } }));
   });
   app.get(path, async (req: any, res: any) => {
-    if (!await gates.requireSystemAdmin(req,res)) return;
+    if (req.query?.catalogue === '1') { if (!await gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] })) return; }
+    else if (!await gates.requireSystemAdmin(req,res)) return;
     const bases = await db.transactionCodeBase.findMany({
       orderBy: { code: 'asc' },
       include: {
         serviceType: true,
-        variants: { include: { taxTreatment: true, codes: { select: { isOverridden: true, _count: { select: { costs: true } } } } } },
+        variants: { include: { taxTreatment: true } },
       },
     });
-    res.json(bases.map((base: any) => ({ ...base, hasUsageHistory: base.variants.some((variant: any) => variant.codes.some((local: any) => local.isOverridden || local._count.costs > 0)), variants: base.variants.map(({ codes, ...variant }: any) => variant) })));
+    const usedIds = await getCodeBaseUsage(db,bases.map((base: any)=>base.id));
+    res.json(bases.map((base: any) => ({ ...base, hasUsageHistory: usedIds.has(base.id) })));
   });
   for (const update of [false,true]) app[update ? 'put' : 'post'](`${path}${update ? '/:id' : ''}`, async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;

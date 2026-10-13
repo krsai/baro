@@ -45,6 +45,19 @@ try{
     await dialog.getByRole('combobox').click();await page.getByRole('option').first().click();
     await dialog.getByRole('checkbox',{name:/^Z/}).uncheck();await dialog.getByRole('button',{name:labels.save,exact:true}).click();
     await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,3]);
+    bases[0].hasUsageHistory=true;
+    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{source:'transaction-request',topics:['orders'],orgId:1}})));
+    await page.waitForFunction(({remove,add})=>{
+      const row=[...document.querySelectorAll('tbody tr')].find(row=>row.textContent.includes('TRK'));
+      const addButton=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()===add);
+      return row?.querySelector(`button[aria-label="${remove}"]`)?.disabled && addButton && !addButton.disabled;
+    },{remove:labels.remove,add:labels.add});
+    bases[0].hasUsageHistory=false;
+    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{source:'transaction-request',topics:['orders'],orgId:1}})));
+    await page.waitForFunction(remove=>{
+      const row=[...document.querySelectorAll('tbody tr')].find(row=>row.textContent.includes('TRK'));
+      return row && !row.querySelector(`button[aria-label="${remove}"]`)?.disabled;
+    },labels.remove);
     await page.locator('tbody tr').filter({hasText:'TRK'}).getByRole('button',{name:labels.remove,exact:true}).click();
     await page.getByRole('dialog').getByRole('button',{name:labels.remove,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
     assert.ok(writes.some(write=>write.path.endsWith('/code-bases/7')));

@@ -7,6 +7,7 @@ import routes from '../backend/dist/services/transactionSettingRoutes.js';
 import requests from '../backend/dist/services/transactionRequest.js';
 const inheritance = fs.readFileSync('backend/prisma/migrations/20261011120000_setting_inheritance/migration.sql','utf8');
 const rollout = fs.readFileSync('backend/prisma/migrations/20261013090000_code_bases_tax/migration.sql','utf8');
+const usageRollout = fs.readFileSync('backend/prisma/migrations/20261013120000_code_base_usage_fk/migration.sql','utf8');
 const q = value => `"${value.replaceAll('"','""')}"`;
 function adapter(db) {
   const result = { $queryRawUnsafe: async (sql,...args) => (await db.query(sql,args)).rows };
@@ -23,11 +24,12 @@ function adapter(db) {
       create: async ({data}) => { const entries=Object.entries(data); return (await db.query(`INSERT INTO ${q(table)} (${entries.map(([key])=>q(key)).join(',')}) VALUES(${entries.map((_,i)=>`$${i+1}`).join(',')}) RETURNING *`, entries.map(([,value])=>value))).rows[0]; },
       update: async options => (await update(options))[0], updateMany: update,
       delete: async ({where: input}) => {const args=[];return db.query(`DELETE FROM ${q(table)} WHERE ${where(input,args)}`,args);},
+      deleteMany: async ({where: input}) => {const args=[];return db.query(`DELETE FROM ${q(table)} WHERE ${where(input,args)}`,args);},
     };
   }
   return result;
 }
-async function fixture() {
+async function fixture(legacyCode = 'OLD_CODE') {
   const db = new PGlite();
   await db.exec(`CREATE TABLE "OutsourcingServiceType"(id SERIAL PRIMARY KEY,"ownerOrgId" INT NOT NULL,code TEXT NOT NULL,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"entryMode" TEXT,"requiredFields" TEXT[] DEFAULT '{}',"orderInput" TEXT DEFAULT 'OPTIONAL',"styleInput" TEXT DEFAULT 'HIDDEN',"processInput" TEXT DEFAULT 'HIDDEN',"isActive" BOOLEAN DEFAULT true,"sortOrder" INT DEFAULT 0,"updatedAt" TIMESTAMP DEFAULT now(),UNIQUE("ownerOrgId",code),UNIQUE(id,"ownerOrgId"));
     CREATE TABLE "TransactionCode"(id SERIAL PRIMARY KEY,"ownerOrgId" INT NOT NULL,"serviceTypeId" INT NOT NULL,code TEXT NOT NULL,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"vatEnabled" BOOLEAN DEFAULT false,"isActive" BOOLEAN DEFAULT true,UNIQUE("ownerOrgId",code),FOREIGN KEY("serviceTypeId","ownerOrgId") REFERENCES "OutsourcingServiceType"(id,"ownerOrgId"));
@@ -36,7 +38,8 @@ async function fixture() {
     INSERT INTO "OutsourcingServiceType"(id,"ownerOrgId",code,"entryMode") VALUES(100,1,'LOGISTICS','LOGISTICS');
     INSERT INTO "TransactionCode"(id,"ownerOrgId","serviceTypeId",code) VALUES(100,1,100,'OLD_CODE');
     INSERT INTO "PartnerTransactionCost"("transactionCodeId","serviceTypeId","vatRate",amount) VALUES(100,100,0,1000);`);
-  await db.exec(inheritance); await db.exec(rollout);
+  await db.query('UPDATE "TransactionCode" SET code=$1,"vatEnabled"=$2 WHERE id=100',[legacyCode,legacyCode==='TRKV']);
+  await db.exec(inheritance); await db.exec(rollout); await db.exec(usageRollout);
   return db;
 }
 test('rollout creates three-letter bases and V/Z/E variants without guessing legacy tax or source FKs', async () => {
@@ -70,7 +73,8 @@ test('deleting a used base rolls back all variants; unused removal survives repe
   const db=await fixture();try {
     const source=(await db.query(`SELECT * FROM "SettingTransactionCodeDefault" WHERE code='TRKV'`)).rows[0];
     await db.query(`UPDATE "OutsourcingServiceType" SET "systemDefaultId"=$1,"isOverridden"=false WHERE id=100`,[source.serviceTypeId]);
-    await db.query(`UPDATE "TransactionCode" SET "systemDefaultId"=$1,"isOverridden"=false WHERE id=100`,[source.id]);
+    await db.query(`INSERT INTO "TransactionCode" (id,"ownerOrgId","serviceTypeId",code,"systemDefaultId","isOverridden") VALUES(101,1,100,'TRKV',$1,false)`,[source.id]);
+    await db.exec(`INSERT INTO "PartnerTransactionCost"("transactionCodeId","serviceTypeId","vatRate",amount) VALUES(101,100,10,1000);`);
     await assert.rejects(db.transaction(tx=>service.deleteCodeBase(adapter(tx),source.baseId)),/SETTING_IN_USE/);
     assert.equal((await db.query('SELECT * FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1',[source.baseId])).rows.length,3);
     const unused=(await db.query(`SELECT id FROM "TransactionCodeBase" WHERE code='LOG'`)).rows[0].id;
@@ -78,8 +82,40 @@ test('deleting a used base rolls back all variants; unused removal survives repe
     await db.exec(inheritance);await db.exec(rollout);
     assert.equal((await db.query(`SELECT * FROM "TransactionCodeBase" WHERE code='LOG'`)).rows.length,0);
     assert.equal((await db.query(`SELECT * FROM "SettingTransactionCodeDefault" WHERE code='LOGISTICS'`)).rows.length,0);
-    assert.equal((await db.query('SELECT * FROM "PartnerTransactionCost"')).rows.length,1);
-    await assert.rejects(db.transaction(tx=>service.deleteSetting(adapter(tx),'codes',false,100,1)),/SETTING_INHERITED/);
+    assert.equal((await db.query('SELECT * FROM "PartnerTransactionCost"')).rows.length,2);
+    await assert.rejects(db.transaction(tx=>service.deleteSetting(adapter(tx),'codes',false,101,1)),/SETTING_INHERITED/);
+  }finally{await db.close();}
+});
+
+test('legacy independent app code usage disables its base without adopting or rewriting tenant settings',async()=>{
+  const db=await fixture('TRKV');try {
+    const base=(await db.query(`SELECT id FROM "TransactionCodeBase" WHERE code='TRK'`)).rows[0];
+    const code=(await db.query('SELECT "baseId","systemDefaultId","isOverridden" FROM "TransactionCode" WHERE id=100')).rows[0];
+    assert.deepEqual(code,{baseId:base.id,systemDefaultId:null,isOverridden:true});
+    assert.equal((await service.getCodeBaseUsage(adapter(db),[base.id])).has(base.id),true);
+    const handlers=new Map(); const app={get:(path,handler)=>handlers.set(path,handler),post:()=>{},put:()=>{},delete:()=>{}};
+    service.registerCodeBaseRoutes(app,adapter(db),{requireSystemAdmin:async()=>true});
+    let listed;await handlers.get('/system-setting-defaults/code-bases')({query:{}},{json:rows=>{listed=rows;}});
+    assert.equal(listed.find(row=>row.code==='TRK').hasUsageHistory,true);
+    assert.equal(listed.find(row=>row.code==='BTH').hasUsageHistory,false);
+    await db.exec('UPDATE "TransactionCode" SET "isActive"=false WHERE id=100; UPDATE "PartnerTransactionCost" SET amount=0;');
+    assert.equal((await service.getCodeBaseUsage(adapter(db),[base.id])).has(base.id),true);
+    await assert.rejects(db.transaction(tx=>service.deleteCodeBase(adapter(tx),base.id)),/SETTING_IN_USE/);
+    await db.exec(usageRollout);
+    assert.equal((await db.query('SELECT "systemDefaultId" FROM "TransactionCode" WHERE id=100')).rows[0].systemDefaultId,null);
+    assert.equal((await db.query('SELECT "vatRate"::text FROM "PartnerTransactionCost"')).rows[0].vatRate,'0');
+  }finally{await db.close();}
+});
+
+test('unused app override is not transaction usage and can be removed with its base',async()=>{
+  const db=await fixture('TRKV');try {
+    const base=(await db.query(`SELECT id FROM "TransactionCodeBase" WHERE code='TRK'`)).rows[0];
+    await db.exec('DELETE FROM "PartnerTransactionCost";');
+    assert.equal((await service.getCodeBaseUsage(adapter(db),[base.id])).has(base.id),false);
+    await db.transaction(tx=>service.deleteCodeBase(adapter(tx),base.id));
+    assert.equal((await db.query('SELECT id FROM "TransactionCode" WHERE id=100')).rows.length,0);
+    await db.exec(inheritance);await db.exec(rollout);await db.exec(usageRollout);
+    assert.equal((await db.query(`SELECT id FROM "TransactionCodeBase" WHERE code='TRK'`)).rows.length,0);
   }finally{await db.close();}
 });
 test('code-base and deletion routes require correct roles before accessing data',async()=>{

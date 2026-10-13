@@ -1440,6 +1440,9 @@ model PartnerTransactionCost {
 }
 
 model TransactionCode {
+  @@index([baseId])
+  baseId Int?
+  base TransactionCodeBase? @relation(fields: [baseId], references: [id], onDelete: Restrict)
   taxTreatmentId Int?
   taxTreatment TaxTreatment? @relation(fields: [taxTreatmentId], references: [id], onDelete: Restrict)
   systemDefaultId Int?
@@ -2262,6 +2265,7 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  appCodes TransactionCode[]
   id Int @id @default(autoincrement())
   code String @unique
   nameKo String

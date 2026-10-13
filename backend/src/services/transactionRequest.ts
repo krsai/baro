@@ -58,7 +58,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     return previous;
   }
   const code = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, serviceType: { isActive: true } }, include: { serviceType: true } });
-  if (!code || !code.taxTreatmentId) return invalid('INVALID_TRANSACTION_CODE');
+  if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
   const service = code.serviceType;
   const partner = await tx.organizationOutsourcingServiceType.findFirst({ where: { ownerOrgId: orgId, partnerOrgId, serviceTypeId: service.id, partner: { isActive: true, type: 'PROCESS_OUTSOURCING' } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
