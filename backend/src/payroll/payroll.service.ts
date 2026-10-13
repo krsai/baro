@@ -467,8 +467,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         productionAllowance: toPayrollAmount(productionAllowance, 0),
         ready:
           expectedDates.length > 0 &&
-          missingWorkDates.length === 0 &&
-          missingAttendance.length === 0 &&
+          workDateKeys.size > 0 &&
           invalidCalculationBasisCount === 0,
       };
     })
@@ -478,7 +477,13 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     (employee) => resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
   );
   const groupsComplete = groups.every((group) => group.ready) && (!hasOutputEmployees || groups.length > 0);
-  const attendanceComplete = relevantPayrollEmployees.length > 0 && missingPayrollAttendance.length === 0 && invalidPayrollAttendance.length === 0;
+  // A date without a punch may be a day off. Missing dates are informational;
+  // only a whole month without the required source records blocks calculation.
+  const attendanceWorkerIds = new Set(requiredAttendance.map(row => row.workerId));
+  const hasAttendanceData = attendanceWorkerIds.size === 0 || attendanceEntries.some(row => attendanceWorkerIds.has(row.workerId));
+  const hasWorkData = !hasOutputEmployees || groups.length > 0 && groups.every(group => group.workRecordedDayCount > 0);
+  const attendanceComplete = relevantPayrollEmployees.length > 0 && hasAttendanceData && invalidPayrollAttendance.length === 0;
+  const hasCoverageGaps = missingPayrollAttendance.length > 0 || groups.some(group => group.missingWorkDates.length > 0);
   const snapshotEmployees = snapshot
     ? ensureArray(snapshot.data).map(normalizePayrollSnapshotEmployee)
     : [];
@@ -557,6 +562,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const needsRecalculation = Boolean(
     snapshot?.recalculationRequested ||
     salaryCalculationChanged ||
+    snapshot && attendanceEntries.some(entry => [entry.createdAt, entry.updatedAt].some(changedAt => new Date(changedAt).getTime() > snapshot.lockedAt.getTime())) ||
     groupsWithRecalculation.some((group) => group.needsRecalculation)
   );
 
@@ -571,6 +577,9 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     missingPayrollAttendance,
     invalidPayrollAttendance,
     ready: completedMonth && groupsComplete && attendanceComplete,
+    hasAttendanceData,
+    hasWorkData,
+    hasCoverageGaps,
     groups: groupsWithRecalculation,
   };
 };
@@ -1278,7 +1287,7 @@ export const savePayrollSnapshot = async ({
   if (readiness.invalidPayrollAttendance.length > 0) {
     throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
   }
-  if (!existingSnapshot && !readiness.ready) {
+  if (!readiness.hasAttendanceData || !readiness.hasWorkData || !existingSnapshot && !readiness.ready) {
     throw createHttpError(409, "attendance and work records are incomplete for this payroll month");
   }
   const monthReady = isPayrollMonthReady(month, { timeZone });
@@ -1571,8 +1580,8 @@ export const lockPayrollSnapshot = async ({
   if (!existing.isProvisional) return { ok: true, month };
 
   // A snapshot already exists here, so - like recalculation (savePayrollSnapshot) -
-  // locking does not re-require full source-data completeness (`readiness.ready`).
-  // That check only gates the *first* calculation of a month. What matters for an
+  // locking preserves the calculated snapshot without requiring records for every date.
+  // What matters for an
   // already-calculated snapshot is that it isn't stale (needsRecalculation) and that
   // no cross-factory attendance integrity error has appeared since it was calculated.
   const readiness = await getPayrollMonthReadiness(orgId, month, factoryId);

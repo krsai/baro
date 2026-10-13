@@ -223,6 +223,7 @@ const PayrollBoard = () => {
     topics: [
       WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS,
       WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS,
+      WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES,
     ],
     onRefresh: () => load({ silent: true }),
   });
@@ -268,7 +269,7 @@ const PayrollBoard = () => {
         const monthReadiness = readinessByKey[key];
         const selected = !selectedMonth || row.month === selectedMonth;
         const calculable = row.snapshot
-          ? row.snapshot.isProvisional === true && monthReadiness?.needsRecalculation === true
+          ? row.snapshot.isProvisional === true && monthReadiness?.needsRecalculation === true && monthReadiness?.hasAttendanceData !== false && monthReadiness?.hasWorkData !== false
           : monthReadiness?.ready === true;
         return Boolean(selected && calculable);
       })
@@ -463,6 +464,8 @@ const PayrollBoard = () => {
                       const groups = readinessByKey[key]?.groups || [];
                       const readiness = readinessByKey[key];
                       const incomplete = !snapshot && readiness?.ready !== true;
+                      const partial = Boolean(readiness?.hasCoverageGaps);
+                      const partialLabel = languageCode === 'ko' ? '계산 가능 · 일부 미기록' : languageCode === 'vi' ? 'Có thể tính · thiếu một phần' : 'Ready · partial records';
                       const workExpected = groups.reduce((sum,group) => sum + Number(group.expectedWorkingDayCount || 0),0);
                       const workRecorded = groups.reduce((sum,group) => sum + Number(group.workRecordedDayCount || 0),0);
                       const readinessDescription = readiness?.error || readiness?.salaryCalculationError || `${resolveText(languageCode, 'workCoverage')}: ${workRecorded}/${workExpected} · ${resolveText(languageCode, 'attendanceCoverage')}: ${readiness?.attendanceRecordedCount ?? 0}/${readiness?.attendanceRequiredCount ?? 0}`;
@@ -496,10 +499,10 @@ const PayrollBoard = () => {
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
                               <Tooltip title={readinessDescription}><Chip
                                 size="small"
-                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
+                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete || partial ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
                                 label={invalidAttendanceCount > 0
                                   ? (languageCode === 'ko' ? `출퇴근 공장 오류 ${invalidAttendanceCount}건` : languageCode === 'vi' ? `Lỗi nhà máy chấm công ${invalidAttendanceCount}` : `Attendance factory errors: ${invalidAttendanceCount}`)
-                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
+                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? partial ? partialLabel : payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
                               /></Tooltip>
                             </Stack>

@@ -11,6 +11,7 @@ export const WORKSPACE_DATA_TOPICS = Object.freeze({
   CUSTOMERS: 'customers',
   PRODUCTION_ALLOWANCE_SETTINGS: 'production-allowance-settings',
   SALARY_SYSTEM_SETTINGS: 'salary-system-settings',
+  PAYROLL_SOURCES: 'payroll-sources',
 });
 
 const toPositiveIntOrNull = (value) => {

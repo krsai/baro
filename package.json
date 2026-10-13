@@ -47,6 +47,7 @@
     "test:code-bases-tax": "npm --prefix backend run build && node --test scripts/code-bases-tax.test.mjs",
     "test:code-bases-browser": "node scripts/code-bases-browser.test.mjs",
     "test:payroll-pending-months-browser": "node scripts/payroll-pending-months-browser.test.mjs",
+    "test:payroll-partial-readiness": "node --test scripts/payroll-partial-readiness.test.mjs",
     "test:salary-system": "npm --prefix backend run build && node --test scripts/salary-system-regression.test.mjs",
     "test:relational-integrity": "node --test scripts/relational-integrity-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",

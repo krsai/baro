@@ -23,20 +23,21 @@ try{
     if(route.request().method()!=='GET')mutations++;
     if(url.pathname.endsWith('/snapshots'))return route.fulfill({headers,json:[{month:'2026-07',factoryId:1,data:[],isProvisional:true}]});
     if(url.pathname.endsWith('/calendar'))return route.fulfill({headers,json:{latestCompletedMonthKey:'2026-09',availableMonthKeys:['2026-10','2026-09','2026-08','2026-07'],factories:[{id:1,name:'Factory',managementStartDateKey:'2026-04-01'}]}});
-    if(url.searchParams.get('month')==='2026-09')return route.fulfill({headers,status:500,json:{error:'Readiness unavailable'}});
-    return route.fulfill({headers,json:{ready:false,completedMonth:true,attendanceRecordedCount:20,attendanceRequiredCount:26,groups:[{workRecordedDayCount:20,expectedWorkingDayCount:26}]}});
+    if(url.searchParams.get('month')==='2026-09')return route.fulfill({headers,json:{ready:false,completedMonth:true,hasAttendanceData:false,hasWorkData:true,hasCoverageGaps:true,attendanceRecordedCount:0,attendanceRequiredCount:26,groups:[{workRecordedDayCount:20,expectedWorkingDayCount:26}]}});
+    return route.fulfill({headers,json:{ready:true,completedMonth:true,hasAttendanceData:true,hasWorkData:true,hasCoverageGaps:true,attendanceRecordedCount:20,attendanceRequiredCount:26,groups:[{workRecordedDayCount:20,expectedWorkingDayCount:26}]}});
   });
   await page.goto(`http://127.0.0.1:${port}/payroll-pending-acceptance.html`);
   const august=page.locator('tbody tr').filter({hasText:'2026-08'});await august.waitFor();
   assert.equal(await page.locator('tbody tr').count(),3);
   assert.equal(await page.locator('tbody tr').filter({hasText:'2026-10'}).count(),0);
-  await august.getByText('자료 미완료',{exact:true}).hover();await page.getByRole('tooltip').waitFor();
+  await august.getByText('계산 가능 · 일부 미기록',{exact:true}).hover();await page.getByRole('tooltip').waitFor();
   assert.match(await page.getByRole('tooltip').textContent(),/20\/26/);
   await page.getByRole('combobox',{name:'계산 월'}).click();await page.getByRole('option',{name:'2026-08',exact:true}).click();
   assert.equal(await page.locator('tbody tr').count(),1);
-  assert.equal(await page.getByRole('button',{name:/급여 계산/}).isDisabled(),true);
+  assert.equal(await page.getByRole('button',{name:/급여 계산/}).isEnabled(),true);
   await page.getByRole('combobox',{name:'계산 월'}).click();await page.getByRole('option',{name:'2026-09',exact:true}).click();
-  await page.locator('tbody tr').getByText('급여 계산 내역을 불러오지 못했습니다.',{exact:true}).waitFor();
+  await page.locator('tbody tr').getByText('자료 미완료',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:/급여 계산/}).isDisabled(),true);
   assert.equal(mutations,0);assert.deepEqual(errors,[]);
-  console.log('Payroll UI passed: incomplete August and failed September readiness stay visible; current month excluded; incomplete calculation remains disabled.');
+  console.log('Payroll UI passed: partial August can calculate; September without attendance remains blocked; current month excluded; no payroll mutations.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

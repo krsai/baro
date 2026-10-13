@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { recordLastUpdaterForCurrentPath } from './lastUpdater';
+import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from './workspaceDataEvents';
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
@@ -30,7 +31,8 @@ const CACHE_INVALIDATION_MAP = {
   '/customers': ['/customers'],
   '/orders': ['/orders', '/order-parties', '/assignment-cards'],
   '/styles': ['/styles', '/assignment-cards'],
-  '/work-logs': ['/work-logs', '/factory-month-capacity', '/assignment-plan-progress', '/styles'],
+  '/work-logs': ['/work-logs', '/factory-month-capacity', '/assignment-plan-progress', '/styles', '/payroll/readiness'],
+  '/attendance-entries': ['/attendance-entries', '/payroll/readiness'],
   '/work-orders': ['/work-orders', '/assignment-cards'],
 };
 
@@ -627,6 +629,9 @@ export const requestJSON = async (path, options = {}) => {
       if (method !== 'GET') {
         // Mutating requests invalidate related cached GET responses.
         invalidateCacheByPath(path);
+        if (/^\/(attendance-entries|work-logs)(\/|\?|$)/.test(path)) {
+          emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES], orgId: new URL(path, 'http://baro.local').searchParams.get('orgId') || requestContext.orgId, source: 'payroll-source' });
+        }
       }
 
       recordLastUpdaterForCurrentPath({

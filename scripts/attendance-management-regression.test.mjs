@@ -46,7 +46,8 @@ test('payroll readiness requires attendance only from managed employees, includi
     assert.equal(result.attendanceRequiredCount, includeNormal ? 2 : 0);
     assert.equal(result.attendanceRecordedCount, includeNormal ? 1 : 0);
     assert.deepEqual(result.missingPayrollAttendance.map(row => row.workerId), includeNormal ? [1] : []);
-    assert.equal(result.ready, !includeNormal);
+    assert.equal(result.ready, true);
+    assert.equal(result.hasCoverageGaps, includeNormal);
   }
 });
 
