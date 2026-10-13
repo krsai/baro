@@ -825,7 +825,7 @@ const MainLayout = () => {
             icon: <AccountBalanceWalletIcon />,
             path: '/salary-system',
           },
-          { label: getUiMessage('menu.appSettings', '앱설정', languageCode), icon: <TuneIcon />, path: '/app-settings' },
+          { label: getUiMessage('menu.appSettings', '앱 설정', languageCode), icon: <TuneIcon />, path: '/app-settings' },
         ],
       },
       {
