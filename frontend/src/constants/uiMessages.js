@@ -94,6 +94,7 @@ export const UI_MESSAGES = {
     profile: { ko: '개인 정보', en: 'Profile', vi: 'Hồ sơ cá nhân' },
     subscription: { ko: '구독 관리', en: 'Subscription', vi: 'Goi dich vu' },
     system: { ko: '시스템 설정', en: 'System', vi: 'Hệ thống' },
+    transactionMasters: { ko: '코드·업종 관리', en: 'Codes & industries', vi: 'Quản lý mã và ngành' },
     accessPolicy: { ko: '접근 권한', en: 'Access Policy', vi: 'Chính sách truy cap' },
     attribute: { ko: '속성 관리', en: 'Attributes', vi: 'Thuoc tinh' },
     attributeColors: { ko: '색상 관리', en: 'Color Management', vi: 'Quản lý mau' },

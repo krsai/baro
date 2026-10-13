@@ -911,6 +911,7 @@ const MainLayout = () => {
             path: '/system-setting/access-policy',
           },
           { label: languageCode === 'ko' ? '앱 기본설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
+          { label: getUiMessage('menu.transactionMasters', 'Codes & industries', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
             icon: <GroupIcon />,
