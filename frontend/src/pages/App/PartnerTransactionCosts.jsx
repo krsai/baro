@@ -23,7 +23,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
     catch { setError(labels.loadError); } finally { setLoading(false); }
   }, [activeOrgId, labels.loadError]);
   useEffect(() => { load(); }, [load]);
-  useEffect(() => subscribeWorkspaceDataChanged(detail => { if (detail?.source === 'transaction-request' && Number(detail.orgId) === Number(activeOrgId)) load(); }), [activeOrgId, load]);
+  useEffect(() => subscribeWorkspaceDataChanged(detail => { if (['transaction-request', 'business-partner'].includes(detail?.source) && Number(detail.orgId) === Number(activeOrgId)) load(); }), [activeOrgId, load]);
   const filtered = useMemo(() => rows.filter(row => row.transactionDate >= dateFrom.format('YYYY-MM-DD') && row.transactionDate <= dateTo.format('YYYY-MM-DD') && [row.partner?.name, serviceName(row.serviceType, languageCode), row.transactionCode?.code, row.description, row.workOrder?.orderNumber].filter(Boolean).join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())), [rows, search, languageCode, dateFrom, dateTo]);
   const changeDate = (setter) => (value, context) => {
     if (!value?.isValid?.() || context?.validationError) return;

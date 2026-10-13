@@ -1,4 +1,5 @@
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
+import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
@@ -29249,7 +29250,8 @@ app.get("/business-partners", async (req, res) => {
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
     include: BUSINESS_PARTNER_SERVICE_INCLUDE,
   });
-  res.json(rows.map(toBusinessPartnerResponse));
+  const usedIds = await getBusinessPartnerUsage(prisma, rows.map(row => row.id));
+  res.json(rows.map(row => ({ ...toBusinessPartnerResponse(row), hasUsageHistory: usedIds.has(row.id) })));
 });
 
 app.post("/business-partners", async (req, res) => {
@@ -29293,7 +29295,7 @@ app.put("/business-partners/:id", async (req, res) => {
   const { organization } = accessContext;
   const id = toPositiveIntOrNull(req.params.id);
   if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
-  const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id } });
+  const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id, type: { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'] } } });
   if (!existing) return res.status(404).json({ ok: false, error: "business partner not found" });
 
   const name = resolveOptionalString(req.body?.name, null);
@@ -29304,10 +29306,6 @@ app.put("/business-partners/:id", async (req, res) => {
   }
   const type = requestedType || existing.type;
   if ((existing.type === "PROCESS_OUTSOURCING" || type === "PROCESS_OUTSOURCING") && !(await requireSystemAdmin(req, res))) return;
-  if (type !== existing.type && existing.type === 'PROCESS_OUTSOURCING') {
-    const [workCount, costCount] = await Promise.all([prisma.outsourcedWorkRecord.count({ where: { outsourcingPartnerId: id } }), prisma.partnerTransactionCost.count({ where: { partnerOrgId: id } })]);
-    if (workCount || costCount) return res.status(409).json({ error: 'PARTNER_HAS_TRANSACTION_HISTORY' });
-  }
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
@@ -29323,6 +29321,9 @@ app.put("/business-partners/:id", async (req, res) => {
   let row: any;
   try {
     row = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRawUnsafe<{ id: number; type: string }[]>('SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, organization.id);
+      if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
+      if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type);
       await tx.organization.update({ where: { id }, data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
       if (type !== "PROCESS_OUTSOURCING" || hasServiceTypeSelection) {
@@ -29332,10 +29333,28 @@ app.put("/business-partners/:id", async (req, res) => {
       return tx.organization.findUniqueOrThrow({ where: { id }, include: BUSINESS_PARTNER_SERVICE_INCLUDE });
     });
   } catch (error) {
+    if (error instanceof Error && ['PARTNER_CHANGED', 'PARTNER_HAS_TRANSACTION_HISTORY'].includes(error.message)) return res.status(409).json({ error: error.message });
     if (error instanceof Error && error.message === "INVALID_OUTSOURCING_SERVICE_TYPE") return res.status(400).json({ ok: false, error: "invalid outsourcing service type" });
     throw error;
   }
   res.json(toBusinessPartnerResponse(row));
+});
+
+app.delete('/business-partners/:id', async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const id = toPositiveIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ error: 'INVALID_PARTNER_ID' });
+  const isSystemAdmin = access.systemUser?.systemRole === 'SYSTEM_ADMIN';
+  try {
+    await prisma.$transaction(tx => deleteUnusedBusinessPartner(tx, access.organization.id, id, isSystemAdmin));
+    return res.json({ ok: true });
+  } catch (error: any) {
+    if (error.message === 'BUSINESS_PARTNER_NOT_FOUND') return res.status(404).json({ error: error.message });
+    if (error.message === 'SYSTEM_ADMIN_REQUIRED') return res.status(403).json({ error: error.message });
+    if (error.message === 'PARTNER_HAS_TRANSACTION_HISTORY' || error.code === 'P2003') return res.status(409).json({ error: 'PARTNER_HAS_TRANSACTION_HISTORY' });
+    throw error;
+  }
 });
 
 app.get("/business-partners/:id/history", async (req, res) => {

@@ -4,6 +4,7 @@ import {
   FormControl, FormControlLabel, InputLabel, ListItemText, MenuItem, Select, Stack, Switch, TextField,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
+import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
 
 export const BUSINESS_PARTNER_TYPES = ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'];
 
@@ -104,6 +105,7 @@ export default function BusinessPartnerDialog({
           body: JSON.stringify(body),
         }
       );
+      emitWorkspaceDataChanged({ topics: ['business-partners'], orgId: activeOrgId, source: 'business-partner' });
       (onSaved || onCreated)?.(savedPartner);
       onClose?.();
     } catch (saveError) {
