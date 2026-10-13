@@ -40,6 +40,7 @@
     "test:work-list-date-range": "node --test scripts/work-list-date-range-regression.test.mjs",
     "test:line-removal-transition": "node --test scripts/line-removal-transition-regression.test.mjs",
     "test:month-selector": "node --test scripts/month-selector-regression.test.mjs",
+    "test:date-range-browser": "node scripts/date-range-browser.test.mjs",
     "test:salary-system": "npm --prefix backend run build && node --test scripts/salary-system-regression.test.mjs",
     "test:relational-integrity": "node --test scripts/relational-integrity-regression.test.mjs",
     "test:time-date": "npm --prefix backend run build && node --test scripts/time-date-regression.test.mjs",
