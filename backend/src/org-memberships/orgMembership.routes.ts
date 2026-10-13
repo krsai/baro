@@ -456,6 +456,9 @@ export const createOrgMembershipRouter = ({
         })
       : null;
 
+    if (existingEmployee && alwaysFullAttendance !== undefined && Boolean(alwaysFullAttendance) !== existingEmployee.alwaysFullAttendance) {
+      return res.status(409).json({ ok: false, error: 'Change attendance management using effective-month payroll settings.' });
+    }
     const accountPatch = await resolveEmployeeAccountPatch({
       orgId: orgIdNum,
       organization,

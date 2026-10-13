@@ -35,6 +35,7 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import PayrollSettingsDialog from './PayrollSettingsDialog';
+import { resolvePayrollManagement } from '../attendance/attendanceEmployment';
 
 const TEXT = {
   ko: {
@@ -158,7 +159,6 @@ const PayrollBoard = () => {
       ? { people: 'Tổng (VP cố định/SX cố định/SX biến đổi)', generalPayroll: 'Lương VP cố định', fixedOutputPayroll: 'Lương SX cố định', outputPayroll: 'Lương SX biến đổi', totalPayroll: 'Tổng lương', lock: 'Khóa', pending: 'Chưa tính' }
       : { people: 'Total (Office Fixed/Production Fixed/Production Variable)', generalPayroll: 'Office (Fixed)', fixedOutputPayroll: 'Production (Fixed)', outputPayroll: 'Production (Variable)', totalPayroll: 'Total Payroll', lock: 'Lock', pending: 'Not calculated' };
   const activeEmployees = useMemo(() => employeeDirectory.filter((employee) =>
-    !employee?.payrollExcluded &&
     !['PENDING', 'REJECTED', 'TERMINATED'].includes(String(employee?.status || '').toUpperCase())
   ), [employeeDirectory]);
 
@@ -473,7 +473,7 @@ const PayrollBoard = () => {
                       const invalidAttendanceCount = Array.isArray(readinessByKey[key]?.invalidPayrollAttendance)
                         ? readinessByKey[key].invalidPayrollAttendance.length : 0;
                       const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
-                      const factoryEmployees = activeEmployees.filter((employee) => Number(employee?.factoryId) === Number(factory.id));
+                      const factoryEmployees = activeEmployees.map(employee => resolvePayrollManagement(employee, month)).filter((employee) => !employee.payrollExcluded && Number(employee?.factoryId) === Number(factory.id));
                       const summaryEmployees = snapshot ? snapshotEmployees : factoryEmployees;
                       const generalEmployees = summaryEmployees.filter((employee) => ['GENERAL', 'FIXED'].includes(String(employee?.payType || '').toUpperCase()));
                       const fixedOutputEmployees = summaryEmployees.filter((employee) => String(employee?.payType || '').toUpperCase() === 'OUTPUT_FIXED');

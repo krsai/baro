@@ -416,7 +416,7 @@ const buildEmployeeResolver = (employees = [], languageCode = 'ko') => {
       error.code = 'ATTENDANCE_EMPLOYEE_CONFLICT';
       throw error;
     }
-    if (isAttendanceManagementExcluded(byId)) {
+    if (isAttendanceManagementExcluded(byId, event.occurredAt.format('YYYY-MM-DD'))) {
       return { employee: null, reason: 'management_excluded' };
     }
     if (!isAttendanceEmployeeVisibleOnDate(byId, event.occurredAt.format('YYYY-MM-DD'))) {

@@ -1,3 +1,4 @@
+import { payrollManagementInclude, resolvePayrollManagement } from "../employees/payrollManagement";
 import { prisma } from "../db";
 import {
   EMPLOYEE_PAY_TYPE,
@@ -269,7 +270,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
 
   const [factories, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
     prisma.factory.findMany({ where: { orgId, id: factoryId }, include: {
-      employees: { include: { role: true } },
+      employees: { include: { role: true, payrollManagementVersions: payrollManagementInclude } },
       productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1, select: { wagePerSecond: true } },
     }}),
     prisma.organizationHoliday.findMany({
@@ -304,14 +305,14 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
             workerId: true, quantity: true, ctSeconds: true,
             createdAt: true, updatedAt: true,
             effectiveCoverageStartDate: true, effectiveCoverageEndDate: true,
-            worker: { include: { role: true } },
+            worker: { include: { role: true, payrollManagementVersions: payrollManagementInclude } },
           },
         },
       },
     }),
     prisma.employee.findMany({
       where: { orgId, factoryId, status: { notIn: ["PENDING", "REJECTED"] } },
-      include: { role: true, factory: { select: { id: true, managementStartDate: true } } },
+      include: { role: true, payrollManagementVersions: payrollManagementInclude, factory: { select: { id: true, managementStartDate: true } } },
     }),
     prisma.factory.findMany({
       where: { orgId, id: factoryId },
@@ -340,7 +341,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   );
   const payrollMonthRange = getPayrollMonthRange(month);
   const soleFactory = payrollFactories.length === 1 ? payrollFactories[0] : null;
-  const relevantPayrollEmployees = payrollEmployees.filter((employee) =>
+  const relevantPayrollEmployees = payrollEmployees.map(employee => resolvePayrollManagement(employee, month)).filter((employee) =>
     isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange)
   );
   const payrollEmployeeById = new Map(relevantPayrollEmployees.map((employee) => [employee.id, employee]));
@@ -383,20 +384,20 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     !attendanceKeys.has(`${row.factoryId}:${row.workerId}:${row.date}`)
   );
   const employeeById = new Map<number, any>();
-  for (const factory of factories) for (const employee of factory.employees) employeeById.set(employee.id, employee);
+  for (const factory of factories) for (const employee of factory.employees) employeeById.set(employee.id, resolvePayrollManagement(employee, month));
   for (const workLog of workLogs) {
     for (const record of workLog.workRecords) {
-      if (record.worker) employeeById.set(record.worker.id, record.worker);
+      if (record.worker) employeeById.set(record.worker.id, resolvePayrollManagement(record.worker, month));
     }
   }
 
   const groups = factories
     .map((factory) => {
-      const employeesForFactory = new Map(factory.employees.map((employee) => [employee.id, employee]));
+      const employeesForFactory = new Map(factory.employees.map((employee) => [employee.id, resolvePayrollManagement(employee, month)]));
       for (const workLog of workLogs) {
         for (const record of workLog.workRecords) {
           if (workLog.factoryId === factory.id && record.worker) {
-            employeesForFactory.set(record.worker.id, record.worker);
+            employeesForFactory.set(record.worker.id, resolvePayrollManagement(record.worker, month));
           }
         }
       }
@@ -598,7 +599,7 @@ const buildIntegratedPayrollEmployees = async (
   const [employees, attendance, holidays, factories, payTypePolicies] = await Promise.all([
     prisma.employee.findMany({
       where: { orgId, factoryId, status: { notIn: ["PENDING", "REJECTED"] } },
-      include: { role: true },
+      include: { role: true, payrollManagementVersions: payrollManagementInclude },
     }),
     // Intentionally org-wide (not scoped to factoryId): the foreignFactoryAttendance
     // check below needs to see attendance recorded under a *different* factory than
@@ -641,6 +642,7 @@ const buildIntegratedPayrollEmployees = async (
   const soleFactory = factories.length === 1 ? factories[0] : null;
 
   return employees
+    .map(employee => resolvePayrollManagement(employee, month))
     .filter((employee) => isPayrollEmployeeRelevantForMonth(employee, range))
     .map((employee) => {
       const payType = resolveEmployeeEffectivePayType(employee);
@@ -863,24 +865,36 @@ export const listPayrollSnapshots = async (orgId: number) => {
   }));
 };
 
-export const getPayrollSettings = async (orgId: number) => ({
-  employees: await prisma.employee.findMany({
+export const getPayrollSettings = async (orgId: number, monthInput?: unknown) => {
+  const month = String(monthInput || resolveCurrentPayrollMonthKey({ timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul" }));
+  assertPayrollMonth(month);
+  const employees = await prisma.employee.findMany({
     where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
-    select: {
-      id: true, employeeNo: true, name: true, email: true, factoryId: true,
-      orgRole: true, status: true, leftAt: true, alwaysFullAttendance: true, payrollExcluded: true,
-      factory: { select: { id: true, name: true, nameKo: true, nameVi: true } },
-      role: { select: { name: true } },
-    },
+    include: { payrollManagementVersions: payrollManagementInclude, factory: { select: { id: true, name: true, nameKo: true, nameVi: true } }, role: { select: { name: true } } },
     orderBy: [{ factoryId: "asc" }, { employeeNo: "asc" }, { name: "asc" }],
-  }),
-});
+  });
+  return {
+    month,
+    revision: employees.map(employee => `${employee.id}:${employee.payrollManagementVersions.map(version => version.id).sort((a,b) => a-b).join(',')}`).sort().join(';'),
+    employees: employees.map(employee => {
+      const resolved = resolvePayrollManagement(employee, month);
+      return { id: employee.id, employeeNo: employee.employeeNo, name: employee.name, email: employee.email, factoryId: employee.factoryId,
+        orgRole: employee.orgRole, status: employee.status, leftAt: employee.leftAt, factory: employee.factory, role: employee.role,
+        alwaysFullAttendance: resolved.alwaysFullAttendance, payrollExcluded: resolved.payrollExcluded,
+        payrollManagementVersions: employee.payrollManagementVersions };
+    }),
+  };
+};
 
 export const updatePayrollSettings = async (
   orgId: number,
   alwaysFullAttendanceEmployeeIds: unknown,
-  payrollExcludedEmployeeIds: unknown
+  payrollExcludedEmployeeIds: unknown,
+  effectiveMonthInput: unknown,
+  revision: unknown
 ) => {
+  const effectiveMonth = String(effectiveMonthInput || '');
+  assertPayrollMonth(effectiveMonth);
   if (!Array.isArray(alwaysFullAttendanceEmployeeIds)) {
     throw createHttpError(400, "alwaysFullAttendanceEmployeeIds must be an array");
   }
@@ -900,29 +914,29 @@ export const updatePayrollSettings = async (
   if (employeeIds.some((id) => payrollExcludedIds.includes(id))) {
     throw createHttpError(400, "an employee cannot be both an attendance exception and a payroll exception");
   }
-  const configuredIds = Array.from(new Set([...employeeIds, ...payrollExcludedIds]));
-  if (await prisma.employee.count({ where: { orgId, id: { in: configuredIds } } }) !== configuredIds.length) {
-    throw createHttpError(400, "employee does not belong to the organization");
-  }
-  await prisma.$transaction([
-    prisma.employee.updateMany({
-      where: { orgId, alwaysFullAttendance: true, id: { notIn: employeeIds } },
-      data: { alwaysFullAttendance: false },
-    }),
-    prisma.employee.updateMany({
-      where: { orgId, alwaysFullAttendance: false, id: { in: employeeIds } },
-      data: { alwaysFullAttendance: true },
-    }),
-    prisma.employee.updateMany({
-      where: { orgId, payrollExcluded: true, id: { notIn: payrollExcludedIds } },
-      data: { payrollExcluded: false },
-    }),
-    prisma.employee.updateMany({
-      where: { orgId, payrollExcluded: false, id: { in: payrollExcludedIds } },
-      data: { payrollExcluded: true },
-    }),
-  ]);
-  return getPayrollSettings(orgId);
+
+  await prisma.$transaction(async tx => {
+    // Serialize full-board edits and reject stale clients instead of silently losing changes.
+    await tx.$queryRaw`SELECT id FROM "Organization" WHERE id=${orgId} FOR UPDATE`;
+    const employees = await tx.employee.findMany({ where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } }, include: { payrollManagementVersions: payrollManagementInclude } });
+    const currentRevision = employees.map(employee => `${employee.id}:${employee.payrollManagementVersions.map(version => version.id).sort((a,b) => a-b).join(',')}`).sort().join(';');
+    if (revision !== currentRevision) throw createHttpError(409, 'Payroll management settings changed. Reload before saving.');
+    const knownIds = new Set(employees.map(employee => employee.id));
+    if ([...employeeIds, ...payrollExcludedIds].some(id => !knownIds.has(id))) throw createHttpError(400, 'employee does not belong to the organization');
+    for (const employee of employees) {
+      const current = resolvePayrollManagement(employee, effectiveMonth);
+      const alwaysFullAttendance = employeeIds.includes(employee.id);
+      const payrollExcluded = payrollExcludedIds.includes(employee.id);
+      if (current.alwaysFullAttendance === alwaysFullAttendance && current.payrollExcluded === payrollExcluded) continue;
+      const nextMonth = employee.payrollManagementVersions.filter(version => version.effectiveMonth > effectiveMonth)
+        .map(version => version.effectiveMonth).sort()[0];
+      const lockedSnapshot = await tx.payrollSnapshot.findFirst({ where: { orgId, ...(employee.factoryId ? { factoryId: employee.factoryId } : {}), isProvisional: false,
+        month: { gte: effectiveMonth, ...(nextMonth ? { lt: nextMonth } : {}) } }, select: { id: true } });
+      if (lockedSnapshot) throw createHttpError(409, 'Unlock affected payroll before changing its management policy.');
+      await tx.employeePayrollManagementVersion.create({ data: { orgId, employeeId: employee.id, effectiveMonth, alwaysFullAttendance, payrollExcluded } });
+    }
+  });
+  return getPayrollSettings(orgId, effectiveMonth);
 };
 
 export const getPayrollByMonth = async (
@@ -1025,10 +1039,12 @@ export const getPayrollByMonth = async (
     },
     include: {
       role: true,
+      payrollManagementVersions: payrollManagementInclude,
     },
   });
-  const employeesById = new Map(employeeRows.map((employee) => [employee.id, employee]));
-  const payrollEmployees = employeeRows.filter(
+  const resolvedEmployeeRows = employeeRows.map(employee => resolvePayrollManagement(employee, month));
+  const employeesById = new Map(resolvedEmployeeRows.map((employee) => [employee.id, employee]));
+  const payrollEmployees = resolvedEmployeeRows.filter(
     (employee) =>
       isPayrollEmployeeRelevantForMonth(employee, payrollMonthRange) &&
       resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT

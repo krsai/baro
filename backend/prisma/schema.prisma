@@ -568,6 +568,8 @@ model Employee {
   updatedSystemSettings              SystemSetting[]                   @relation("SystemSettingUpdatedByEmployee")
   createdEmployees                   Employee[]                        @relation("EmployeeCreatedByEmployee")
   updatedEmployees                   Employee[]                        @relation("EmployeeUpdatedByEmployee")
+  payrollManagementVersions          EmployeePayrollManagementVersion[] @relation("PayrollManagementEmployee")
+  createdPayrollManagementVersions   EmployeePayrollManagementVersion[] @relation("PayrollManagementActor")
 
   @@unique([orgId, email])
   @@unique([orgId, employeeNo])
@@ -579,6 +581,21 @@ model Employee {
   @@index([status])
   @@index([orgId, status])
   @@unique([id, orgId])
+}
+
+model EmployeePayrollManagementVersion {
+  id                   Int @id @default(autoincrement())
+  orgId                Int
+  employeeId           Int
+  effectiveMonth       String
+  alwaysFullAttendance Boolean @default(false)
+  payrollExcluded      Boolean @default(false)
+  createdAt            DateTime @default(now())
+  createdByEmployeeId  Int?
+  employee             Employee @relation("PayrollManagementEmployee", fields: [employeeId, orgId], references: [id, orgId], onDelete: Restrict)
+  createdByEmployee    Employee? @relation("PayrollManagementActor", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, employeeId, effectiveMonth, id])
 }
 
 model EmployeeGradeSet {

@@ -1,6 +1,7 @@
 ﻿import { type OrgUserRole } from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../db";
+import { payrollManagementInclude } from "./payrollManagement";
 import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
 import {
   type EmployeePayType,
@@ -96,6 +97,7 @@ const toEmployeeResponse = (employee: any) => ({
   leaveEndAt: employee?.leaveEndAt ?? null,
   alwaysFullAttendance: Boolean(employee?.alwaysFullAttendance),
   payrollExcluded: Boolean(employee?.payrollExcluded),
+  payrollManagementVersions: employee?.payrollManagementVersions || [],
   createdAt: employee?.createdAt ?? null,
   updatedAt: employee?.updatedAt ?? null,
 });
@@ -470,6 +472,7 @@ export const createEmployeeRouter = ({
       include: {
         role: true,
         grade: true,
+        payrollManagementVersions: payrollManagementInclude,
       },
       orderBy: { id: "asc" },
     });
@@ -709,6 +712,9 @@ export const createEmployeeRouter = ({
       ...(alwaysFullAttendance !== undefined ? { alwaysFullAttendance: Boolean(alwaysFullAttendance) } : {}),
     };
 
+    if (alwaysFullAttendance !== undefined && Boolean(alwaysFullAttendance) !== existingEmployee.alwaysFullAttendance) {
+      return res.status(409).json({ ok: false, error: 'Change attendance management using effective-month payroll settings.' });
+    }
     let employee;
     try {
       employee = await prisma.$transaction(async (tx) => {

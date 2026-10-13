@@ -37,7 +37,7 @@
     "predev": "npm run prisma:prepare-client && npm run prisma:deploy:safe && npm run prisma:fix-entry",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
-    "start": "npm run prisma:remove-line-domain && npm run prisma:apply:payroll-provisional && npm run prisma:apply:at-observation-quality && npm run prisma:apply:at-stable-allocation-audit && npm run prisma:apply:assignment-manual-completion && npm run prisma:apply:restore-manual-completion-at-training && npm run prisma:apply:style-process-at-st-fallback && npm run prisma:apply:backfill-style-process-at-st-fallback && npm run prisma:apply:correct-style-process-at-st-fallback && npm run prisma:apply:style-process-is-active && npm run prisma:apply:style-process-gender-scope && npm run prisma:apply:factory-warehouse-rollout && npm run prisma:apply:factory-production-allowance-rate && npm run prisma:apply:factory-child-org-integrity && node scripts/transfer-manufacturer-ownership.js --apply && npm run prisma:apply:prior-completion && npm run prisma:apply:partner-costs && npm run prisma:apply:transaction-codes && npm run prisma:apply:setting-inheritance && npm run prisma:apply:code-bases && npm run prisma:apply:code-usage && node dist/index.js",
+    "start": "npm run prisma:remove-line-domain && npm run prisma:apply:payroll-provisional && npm run prisma:apply:at-observation-quality && npm run prisma:apply:at-stable-allocation-audit && npm run prisma:apply:assignment-manual-completion && npm run prisma:apply:restore-manual-completion-at-training && npm run prisma:apply:style-process-at-st-fallback && npm run prisma:apply:backfill-style-process-at-st-fallback && npm run prisma:apply:correct-style-process-at-st-fallback && npm run prisma:apply:style-process-is-active && npm run prisma:apply:style-process-gender-scope && npm run prisma:apply:factory-warehouse-rollout && npm run prisma:apply:factory-production-allowance-rate && npm run prisma:apply:factory-child-org-integrity && node scripts/transfer-manufacturer-ownership.js --apply && npm run prisma:apply:prior-completion && npm run prisma:apply:partner-costs && npm run prisma:apply:transaction-codes && npm run prisma:apply:setting-inheritance && npm run prisma:apply:code-bases && npm run prisma:apply:code-usage && npm run prisma:apply:payroll-management-versions && node dist/index.js",
     "start:api": "node dist/index.js",
     "repair:assignment-text": "node scripts/repair-assignment-text.js",
     "repair:assignment-schedule": "node scripts/repair-assignment-schedule.js",
@@ -67,7 +67,8 @@
     "prisma:apply:prior-completion": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20261009180000_prior_production_completion/migration.sql",
     "prisma:apply:setting-inheritance": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20261011120000_setting_inheritance/migration.sql",
     "prisma:apply:code-bases": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20261013090000_code_bases_tax/migration.sql",
-    "prisma:apply:code-usage": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20261013120000_code_base_usage_fk/migration.sql"
+    "prisma:apply:code-usage": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20261013120000_code_base_usage_fk/migration.sql",
+    "prisma:apply:payroll-management-versions": "node scripts/run-prisma.js db execute --schema ./prisma/schema.prisma --file ./prisma/migrations/20261013150000_payroll_management_versions/migration.sql"
   },
   "keywords": [],
   "author": "",

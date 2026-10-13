@@ -20,6 +20,7 @@ async function save(workDate, employee = office) {
     findMany: async () => writes,
   } };
   const dependencies = {
+    ...require('../backend/dist/employees/payrollManagement.js'),
     app: { put: (_path, fn) => { handler = fn; } },
     requireOrgRole: async () => ({ organization: { id: 1 } }),
     ORG_MANAGEMENT_ROLES: ['ADMIN'], BUSINESS_TIME_ZONE: 'Asia/Ho_Chi_Minh',
@@ -77,6 +78,15 @@ test('attendance API refuses manual entry for either exception group', async () 
     assert.equal(result.status, 409);
     assert.equal(result.writes.length, 0);
   }
+});
+
+test('attendance API applies exclusions by work month rather than the latest employee state', async () => {
+  const employee = { ...office, leftAt: null, status: 'ACTIVE', alwaysFullAttendance: false, payrollExcluded: false,
+    payrollManagementVersions: [{ id: 1, effectiveMonth: '2026-11', alwaysFullAttendance: false, payrollExcluded: true }] };
+  assert.equal((await save('2026-10-30', employee)).status, 200);
+  const excluded = await save('2026-11-02', employee);
+  assert.equal(excluded.status, 409);
+  assert.equal(excluded.writes.length, 0);
 });
 
 test('attendance screens load office and retired staff and import errors use a dialog', () => {

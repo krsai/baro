@@ -119,6 +119,7 @@ test('production allowance and ST totals are independent of former line membersh
   const worker={id:1,orgRole:'WORKER',name:'A',payType:'OUTPUT',factoryId:71};
   const records=[{workerId:1,ctSeconds:10,quantity:100,styleProcessId:8,assignmentPlan:{id:11}},{workerId:1,ctSeconds:10,quantity:40,styleProcessId:8,assignmentPlan:{id:12}}];
   const subject=load(payroll,'getPayrollByMonth',{
+    ...require('../backend/dist/employees/payrollManagement.js'),
     ...common,assertPayrollMonth:()=>{},isPayrollMonthReady:()=>true,resolveFactoryManagementStartDateKey:()=> '2026-01-01',
     prisma:{
       workLog:{findMany:async({where})=>{assert.equal(where.factoryId,71);return[{factoryId:71,factory:{id:71,name:'F',wagePerSecond:2},displayDate:'2026-07-31',workRecords:records}];}},

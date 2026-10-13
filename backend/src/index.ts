@@ -1,3 +1,4 @@
+import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
 import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
@@ -869,6 +870,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "Employee", columnName: "approvedAt" },
   { tableName: "Employee", columnName: "alwaysFullAttendance" },
   { tableName: "Employee", columnName: "payrollExcluded" },
+  { tableName: "EmployeePayrollManagementVersion", columnName: "effectiveMonth" },
   { tableName: "AttendanceEntry", columnName: "managementExcluded" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
@@ -3908,6 +3910,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     }
   >();
   const workerEligibilityFailureReasonById = new Map<number, string>();
+  const workerManagementById = new Map<number, any>();
   if (workerIds.length > 0) {
     const workerRows = await db.employee.findMany({
       where: {
@@ -3924,6 +3927,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
         status: true,
         alwaysFullAttendance: true,
         payrollExcluded: true,
+        payrollManagementVersions: payrollManagementInclude,
         role: {
           select: {
             code: true,
@@ -3934,10 +3938,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     workerRows.forEach((worker) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
-      if (worker.alwaysFullAttendance || worker.payrollExcluded) {
-        workerEligibilityFailureReasonById.set(workerId, "ATTENDANCE_MANAGEMENT_EXCLUDED");
-        return;
-      }
+      workerManagementById.set(workerId, worker);
       if (worker.orgRole !== "WORKER") {
         workerEligibilityFailureReasonById.set(workerId, "WORKER_ORG_ROLE_NOT_ELIGIBLE");
         return;
@@ -3968,6 +3969,11 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     if (workerId === null || !normalizedWorkDate) return false;
     const eligibility = eligibleWorkerDateWindowById.get(workerId);
     if (!eligibility) return false;
+    const policy = resolvePayrollManagement(workerManagementById.get(workerId), normalizedWorkDate.slice(0,7));
+    if (policy.alwaysFullAttendance || policy.payrollExcluded) {
+      workerEligibilityFailureReasonById.set(workerId, "ATTENDANCE_MANAGEMENT_EXCLUDED");
+      return false;
+    }
     if (eligibility.joinedDateKey && normalizedWorkDate < eligibility.joinedDateKey) {
       return false;
     }
@@ -25721,6 +25727,7 @@ app.put("/attendance-entries", async (req, res) => {
         status: true,
         alwaysFullAttendance: true,
         payrollExcluded: true,
+        payrollManagementVersions: payrollManagementInclude,
       },
     });
     const workersById = new Map<
@@ -25736,7 +25743,7 @@ app.put("/attendance-entries", async (req, res) => {
       const workerId = toPositiveIntOrNull(worker.id);
       if (workerId === null) return;
       workersById.set(workerId, {
-        managementExcluded: worker.alwaysFullAttendance || worker.payrollExcluded,
+        managementExcluded: (() => { const policy = resolvePayrollManagement(worker, workDate.slice(0,7)); return policy.alwaysFullAttendance || policy.payrollExcluded; })(),
         membershipStatus: String(worker.status ?? "")
           .trim()
           .toUpperCase(),

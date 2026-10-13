@@ -22,6 +22,7 @@ test('payroll readiness requires attendance only from managed employees, includi
     const employees = includeNormal ? [{ id: 1, factoryId: 1 }, ...exceptions] : exceptions;
     const factory = { id: 1, employees };
     const deps = {
+      ...require('../backend/dist/employees/payrollManagement.js'),
       prisma: {
         factory: { findMany: async () => [factory] },
         employee: { findMany: async () => employees },
@@ -116,5 +117,6 @@ test('shared settings preserve hidden former-employee selections and attendance 
   assert.match(route, /managementExcluded: false/);
   assert.match(route, /ATTENDANCE_MANAGEMENT_EXCLUDED/);
   const runtime = readFileSync('backend/migration_fix.sql', 'utf8').replace(/\r\n/g, '\n');
-  assert.ok(runtime.includes(migration.replace(/\r\n/g, '\n')));
+  assert.ok(runtime.includes(migration.replace(/\r\n/g, '\n').split('UPDATE "AttendanceEntry" a')[0]));
+  assert.match(runtime, /to_regclass.*EmployeePayrollManagementVersion/);
 });

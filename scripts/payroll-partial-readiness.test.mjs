@@ -15,6 +15,7 @@ async function readiness({attendance=true,work=true,invalidBasis=false,invalidFa
   const original=JSON.stringify({attendanceRows,logs,saved});
   const numeric=value=>Number(value)||0;
   const deps={
+    ...require('../backend/dist/employees/payrollManagement.js'),
     prisma:{factory:{findMany:async()=>[factory]},employee:{findMany:async()=>[employee]},organizationHoliday:{findMany:async()=>[]},attendanceEntry:{findMany:async()=>attendanceRows},workLog:{findMany:async()=>logs},payrollSnapshot:{findUnique:async()=>saved}},
     assertPayrollMonth:()=>{},toPositiveIntOrNull:Number,resolveCurrentPayrollMonthKey:()=>currentMonth?'2026-08':'2026-10',
     loadEmployeePayTypePolicies:async()=>[],employeePayTypePolicyMap:()=>new Map([['GENERAL',{}],['OUTPUT',{}]]),EMPLOYEE_PAY_TYPE:{GENERAL:'GENERAL',OUTPUT:'OUTPUT'},

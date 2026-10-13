@@ -19,7 +19,7 @@ const PAYROLL_ROLES = ["ADMIN", "OPERATOR", "ACCOUNTANT"] as const;
 export const getPayrollSettingsController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
-  return res.json(await getPayrollSettings(accessContext.organization.id));
+  return res.json(await getPayrollSettings(accessContext.organization.id, req.query.month));
 };
 
 export const updatePayrollSettingsController = async (req: Request, res: Response) => {
@@ -28,7 +28,9 @@ export const updatePayrollSettingsController = async (req: Request, res: Respons
   return res.json(await updatePayrollSettings(
     accessContext.organization.id,
     req.body?.alwaysFullAttendanceEmployeeIds,
-    req.body?.payrollExcludedEmployeeIds
+    req.body?.payrollExcludedEmployeeIds,
+    req.body?.effectiveMonth,
+    req.body?.revision
   ));
 };
 import {
