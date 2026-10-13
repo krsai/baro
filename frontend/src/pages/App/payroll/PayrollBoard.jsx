@@ -18,6 +18,7 @@ import {
   TableRow,
   TextField,
   Typography,
+  Tooltip,
 } from '@mui/material';
 import CalculateIcon from '@mui/icons-material/Calculate';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
@@ -244,8 +245,8 @@ const PayrollBoard = () => {
       for (const factory of factories) {
         const key = rowKey(month, factory.id);
         const snapshot = snapshotsByKey.get(key) || null;
-        const readiness = readinessByKey[key];
-        if (!snapshot && readiness?.ready !== true) continue;
+        const factoryStartMonth = String(factory.managementStartDateKey || '').slice(0,7);
+        if (!snapshot && factoryStartMonth && month < factoryStartMonth) continue;
         rows.push({ month, factory, snapshot });
       }
     }
@@ -460,6 +461,11 @@ const PayrollBoard = () => {
                       const { month, factory, snapshot } = row;
                       const key = rowKey(month, factory.id);
                       const groups = readinessByKey[key]?.groups || [];
+                      const readiness = readinessByKey[key];
+                      const incomplete = !snapshot && readiness?.ready !== true;
+                      const workExpected = groups.reduce((sum,group) => sum + Number(group.expectedWorkingDayCount || 0),0);
+                      const workRecorded = groups.reduce((sum,group) => sum + Number(group.workRecordedDayCount || 0),0);
+                      const readinessDescription = readiness?.error || readiness?.salaryCalculationError || `${resolveText(languageCode, 'workCoverage')}: ${workRecorded}/${workExpected} · ${resolveText(languageCode, 'attendanceCoverage')}: ${readiness?.attendanceRecordedCount ?? 0}/${readiness?.attendanceRequiredCount ?? 0}`;
                       const rowNeedsRecalculation = Boolean(snapshot && readinessByKey[key]?.needsRecalculation);
                       const invalidAttendanceCount = Array.isArray(readinessByKey[key]?.invalidPayrollAttendance)
                         ? readinessByKey[key].invalidPayrollAttendance.length : 0;
@@ -488,14 +494,14 @@ const PayrollBoard = () => {
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
-                              <Chip
+                              <Tooltip title={readinessDescription}><Chip
                                 size="small"
-                                color={invalidAttendanceCount > 0 ? 'error' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
+                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
                                 label={invalidAttendanceCount > 0
                                   ? (languageCode === 'ko' ? `출퇴근 공장 오류 ${invalidAttendanceCount}건` : languageCode === 'vi' ? `Lỗi nhà máy chấm công ${invalidAttendanceCount}` : `Attendance factory errors: ${invalidAttendanceCount}`)
-                                  : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
+                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
-                              />
+                              /></Tooltip>
                             </Stack>
                           </TableCell>
                           <TableCell align="center">
