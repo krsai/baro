@@ -1167,7 +1167,7 @@ const MainLayout = () => {
         return resolveWorkHistoryTabLabel('detail');
       }
       if (path === '/outsourcing-record-compact') {
-        return '비용신청 · UI 미리보기';
+        return '비용 신청 · UI 미리보기';
       }
       if (path === '/outsourcing-record') {
         return resolveOutsourcingRecordTabLabel('list');
@@ -1245,7 +1245,7 @@ const MainLayout = () => {
         return withStoredContext(resolveWorkHistoryTabLabel('detail'));
       }
       if (tabPath === '/outsourcing-record-compact') {
-        return '비용신청 · UI 미리보기';
+        return '비용 신청 · UI 미리보기';
       }
       if (tabPath === '/outsourcing-record') {
         return resolveOutsourcingRecordTabLabel('list');

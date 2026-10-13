@@ -26,7 +26,7 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/src/context/AppContext.jsx*', route => route.fulfill({ contentType: 'application/javascript', body: 'export const useAppActions=()=>({navigateToPath:()=>{}});' }));
   await page.goto(`http://127.0.0.1:${port}/compact-costs-acceptance.html`);
-  await page.getByRole('heading', { name: '비용신청 UI 미리보기' }).waitFor();
+  await page.getByRole('heading', { name: '비용 신청 UI 미리보기' }).waitFor();
   assert.equal(await page.locator('tbody tr').count(), 32);
   await page.screenshot({ path: path.join(os.tmpdir(), 'baro-compact-costs-desktop.png'), fullPage: true });
   await page.getByRole('tab', { name: '업체별 요약' }).click();
