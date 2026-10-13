@@ -1440,6 +1440,8 @@ model PartnerTransactionCost {
 }
 
 model TransactionCode {
+  taxTreatmentId Int?
+  taxTreatment TaxTreatment? @relation(fields: [taxTreatmentId], references: [id], onDelete: Restrict)
   systemDefaultId Int?
   systemDefault SettingTransactionCodeDefault? @relation(fields: [systemDefaultId], references: [id], onDelete: Restrict)
   isOverridden Boolean @default(true)
@@ -2223,6 +2225,7 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  codeBases TransactionCodeBase[]
   id Int @id @default(autoincrement())
   code String @unique
   nameKo String
@@ -2240,6 +2243,12 @@ model SettingServiceDefault {
 }
 
 model SettingTransactionCodeDefault {
+  @@unique([baseId, taxTreatmentId], map: "CodeDefault_base_tax_key")
+  isEnabled Boolean @default(true)
+  baseId Int?
+  base TransactionCodeBase? @relation(fields: [baseId], references: [id], onDelete: Restrict)
+  taxTreatmentId Int?
+  taxTreatment TaxTreatment? @relation(fields: [taxTreatmentId], references: [id], onDelete: Restrict)
   id Int @id @default(autoincrement())
   serviceTypeId Int
   serviceType SettingServiceDefault @relation(fields: [serviceTypeId], references: [id], onDelete: Restrict)
@@ -2249,5 +2258,28 @@ model SettingTransactionCodeDefault {
   nameVi String
   vatEnabled Boolean @default(false)
   isActive Boolean @default(true)
+  codes TransactionCode[]
+}
+
+model TransactionCodeBase {
+  id Int @id @default(autoincrement())
+  code String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  serviceTypeId Int
+  serviceType SettingServiceDefault @relation(fields: [serviceTypeId], references: [id], onDelete: Restrict)
+  isActive Boolean @default(true)
+  variants SettingTransactionCodeDefault[]
+}
+
+model TaxTreatment {
+  id Int @id
+  code String @unique
+  suffix String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  defaults SettingTransactionCodeDefault[]
   codes TransactionCode[]
 }

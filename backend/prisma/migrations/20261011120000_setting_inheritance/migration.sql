@@ -21,6 +21,8 @@ ALTER TABLE "TransactionCode" ADD COLUMN IF NOT EXISTS "isOverridden" BOOLEAN NO
 CREATE UNIQUE INDEX IF NOT EXISTS "OutsourcingServiceType_ownerOrgId_systemDefaultId_key" ON "OutsourcingServiceType"("ownerOrgId","systemDefaultId");
 CREATE UNIQUE INDEX IF NOT EXISTS "TransactionCode_ownerOrgId_systemDefaultId_key" ON "TransactionCode"("ownerOrgId","systemDefaultId");
 -- Seed only the template catalogue. Do not infer relationships for existing tenant rows.
+DO $$ BEGIN
+IF to_regclass('"TransactionCodeBase"') IS NULL THEN
 INSERT INTO "SettingServiceDefault" (code,"nameKo","nameEn","nameVi","entryMode","orderInput","styleInput","processInput","sortOrder") VALUES
  ('BUTTONHOLE','단춧구멍','Buttonhole','Thùa khuy','PROCESS','REQUIRED','REQUIRED','REQUIRED',10),
  ('CUTTING','재단','Cutting','Cắt','PROCESS','REQUIRED','REQUIRED','REQUIRED',20),
@@ -38,6 +40,9 @@ INSERT INTO "SettingTransactionCodeDefault" ("serviceTypeId",code,"nameKo","name
  SELECT id,code,"nameKo","nameEn","nameVi" FROM "SettingServiceDefault" ON CONFLICT(code) DO NOTHING;
 INSERT INTO "SettingTransactionCodeDefault" ("serviceTypeId",code,"nameKo","nameEn","nameVi","vatEnabled")
  SELECT id,'TRKV','트러킹 (VAT)','Trucking (VAT)','Vận chuyển (VAT)',true FROM "SettingServiceDefault" WHERE code='LOGISTICS' ON CONFLICT(code) DO NOTHING;
+
+END IF;
+END $$;
 
 CREATE OR REPLACE FUNCTION baro_inherit_service_setting() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE source "SettingServiceDefault";

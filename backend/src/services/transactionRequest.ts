@@ -13,11 +13,14 @@ export function validateVatRate(value: unknown) {
   if (rate.gt(100)) return invalid('INVALID_VAT_RATE');
   return rate;
 }
-export function validateTransactionCode(body: any) {
+export function validateTransactionCode(body: any, allowLegacy = false) {
   if (!Number.isSafeInteger(body?.serviceTypeId) || body.serviceTypeId <= 0) return invalid('INVALID_SERVICE_TYPE');
   const text = (key: string) => typeof body[key] === 'string' ? body[key].trim() : '';
   if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(text('code')) || ['nameKo','nameEn','nameVi'].some(key => !text(key) || text(key).length > 100) || typeof body.vatEnabled !== 'boolean') return invalid('INVALID_TRANSACTION_CODE');
-  return { serviceTypeId: body.serviceTypeId, code: text('code'), nameKo: text('nameKo'), nameEn: text('nameEn'), nameVi: text('nameVi'), vatEnabled: body.vatEnabled, isActive: body.isActive !== false };
+  const taxTreatmentId = body.taxTreatmentId ?? (body.vatEnabled && /^[A-Z]{3}V$/.test(text('code')) ? 1 : null);
+  if (!allowLegacy && (!/^[A-Z]{3}[VZE]$/.test(text('code')) || ![1,2,3].includes(taxTreatmentId))) return invalid('INVALID_TRANSACTION_CODE');
+  if (taxTreatmentId != null && (![1,2,3].includes(taxTreatmentId) || text('code').slice(-1) !== ({ 1: 'V', 2: 'Z', 3: 'E' } as Record<number,string>)[taxTreatmentId] || body.vatEnabled !== (taxTreatmentId === 1))) return invalid('INVALID_TAX_TREATMENT');
+  return { serviceTypeId: body.serviceTypeId, code: text('code'), nameKo: text('nameKo'), nameEn: text('nameEn'), nameVi: text('nameVi'), vatEnabled: body.vatEnabled, taxTreatmentId, isActive: body.isActive !== false };
 }
 export function calculateRequestAmounts(unitPrice: unknown, quantity: unknown, currency: unknown, vatRate: unknown) {
   const decimal = (value: unknown) => typeof value === 'string' && /^\d{1,12}(\.\d{1,4})?$/.test(value) ? new Prisma.Decimal(value) : invalid('INVALID_PRICE_OR_QUANTITY');
@@ -55,7 +58,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     return previous;
   }
   const code = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, serviceType: { isActive: true } }, include: { serviceType: true } });
-  if (!code) return invalid('INVALID_TRANSACTION_CODE');
+  if (!code || !code.taxTreatmentId) return invalid('INVALID_TRANSACTION_CODE');
   const service = code.serviceType;
   const partner = await tx.organizationOutsourcingServiceType.findFirst({ where: { ownerOrgId: orgId, partnerOrgId, serviceTypeId: service.id, partner: { isActive: true, type: 'PROCESS_OUTSOURCING' } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');

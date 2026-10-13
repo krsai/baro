@@ -1,4 +1,5 @@
 import SettingInheritanceControls from './SettingInheritanceControls';
+import SettingDeleteButton from './SettingDeleteButton';
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
@@ -54,5 +55,5 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
     {form.entryMode !== 'PROCESS' && <Stack>{labels.requiredFields}{['transportDate', 'origin', 'destination', 'reference'].map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={form.requiredFields.includes(key)} disabled={saving} onChange={event => setForm({ ...form, requiredFields: event.target.checked ? [...form.requiredFields, key] : form.requiredFields.filter(field => field !== key) })} />}/>)}</Stack>}
     {editingId && <FormControlLabel label={languageCode === 'ko' ? '사용 중' : languageCode === 'vi' ? 'Đang sử dụng' : 'Active'} control={<Checkbox checked={form.isActive !== false} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} />}
     {['orderInput','styleInput','processInput'].map(key => <TextField select key={key} disabled={saving || form.entryMode === 'PROCESS'} label={optionLabels[key]} value={form.entryMode === 'PROCESS' ? 'REQUIRED' : form[key] || (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN')} onChange={event => setForm({ ...form, [key]: event.target.value })}>{['REQUIRED','OPTIONAL','HIDDEN'].map(value => <MenuItem key={value} value={value}>{optionLabels[value]}</MenuItem>)}</TextField>)}
-  </Stack></DialogContent><DialogActions><Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || ['code', 'nameKo', 'nameEn', 'nameVi'].some(key => !form[key].trim())} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
+  </Stack></DialogContent><DialogActions>{editingId && <SettingDeleteButton path={path} id={editingId} name={form.code} used={form.hasUsageHistory} orgId={orgId} languageCode={languageCode} disabled={saving} onError={setError} onDeleted={() => { onSaved?.(); onClose(); }} />}<Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || ['code', 'nameKo', 'nameEn', 'nameVi'].some(key => !form[key].trim())} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
 }

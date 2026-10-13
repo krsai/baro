@@ -29,7 +29,7 @@ test('VAT follows system defaults, preserves overrides and unrelated settings, a
 
 test('settings endpoints enforce system versus organization permissions before DB access', async () => {
   const handlers = new Map();
-  const app = Object.fromEntries(['get', 'post', 'put'].map(method => [method, (path, fn) => handlers.set(`${method} ${path}`, fn)]));
+  const app = Object.fromEntries(['get', 'post', 'put', 'delete'].map(method => [method, (path, fn) => handlers.set(`${method} ${path}`, fn)]));
   const calls = [];
   routes.registerTransactionSettingRoutes(app, {}, {
     requireSystemAdmin: async () => { calls.push('system'); return null; },

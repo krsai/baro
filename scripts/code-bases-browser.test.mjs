@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import path from 'node:path';
+import { chromium } from 'playwright-core';
+const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium','/usr/bin/google-chrome'].find(existsSync);
+assert.ok(executablePath);
+const fixture=path.resolve('frontend/code-bases-acceptance.html');assert.ok(!existsSync(fixture));
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import Page from '/src/pages/App/CodeBaseSettings.jsx';createRoot(document.getElementById('root')).render(React.createElement(Page));</script></body></html>`);
+const port=43189,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
+let browser;
+try{
+  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/code-bases-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
+  browser=await chromium.launch({executablePath,headless:true});
+  for(const lang of ['ko','en','vi']){
+    const page=await browser.newPage(),errors=[],writes=[];
+    page.on('pageerror',error=>errors.push(error.message));
+    await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
+    await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
+    const industry={id:4,code:'LOGISTICS',nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển',entryMode:'LOGISTICS',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true};
+    const taxes=[{id:1,nameKo:'과세',nameEn:'VAT',nameVi:'Chịu thuế'},{id:2,nameKo:'영세율',nameEn:'Zero-rated',nameVi:'Thuế suất 0%'},{id:3,nameKo:'면세',nameEn:'Exempt',nameVi:'Không chịu thuế'}];
+    let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
+    await page.route('**/system-setting-defaults/**',route=>{
+      const url=new URL(route.request().url()),method=route.request().method();
+      if(method==='OPTIONS')return route.fulfill({headers,status:204});
+      if(method==='DELETE'){
+        writes.push({path:url.pathname});
+        if(url.pathname.includes('/services/'))return route.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});
+        bases=bases.filter(row=>row.id!==7);return route.fulfill({headers,json:{ok:true}});
+      }
+      if(method==='POST'||method==='PUT'){const body=route.request().postDataJSON();writes.push({path:url.pathname,body});return route.fulfill({headers,json:{id:9,...body}});}
+      return route.fulfill({headers,json:url.pathname.endsWith('/code-bases')?bases:[industry]});
+    });
+    const labels=lang==='ko'?{add:'기본 코드 등록',code:'기본 코드',save:'저장',remove:'삭제',industry:'업종·입력 옵션 관리',used:'사용 이력이나 연결 설정이 있어'}:lang==='en'?{add:'Add base code',code:'Base code',save:'Save',remove:'Delete',industry:'Industries & input options',used:'Usage history or linked settings'}:{add:'Thêm mã gốc',code:'Mã gốc',save:'Lưu',remove:'Xóa',industry:'Ngành và tùy chọn nhập',used:'Không thể xóa do có lịch sử sử dụng'};
+    await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
+    const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
+    await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
+    await dialog.getByLabel(labels.code,{exact:false}).fill('air');
+    assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');
+    for(const [label,value] of [['한국어','항공'],['English','Air'],['Tiếng Việt','Hàng không']])await dialog.getByLabel(label,{exact:false}).fill(value);
+    await dialog.getByRole('combobox').click();await page.getByRole('option').first().click();
+    await dialog.getByRole('checkbox',{name:/^Z/}).uncheck();await dialog.getByRole('button',{name:labels.save,exact:true}).click();
+    await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,3]);
+    await page.locator('tbody tr').filter({hasText:'TRK'}).getByRole('button',{name:labels.remove,exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:labels.remove,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
+    assert.ok(writes.some(write=>write.path.endsWith('/code-bases/7')));
+    await page.getByRole('button',{name:labels.industry,exact:true}).click();await page.getByRole('dialog').getByRole('combobox').first().click();
+    await page.getByRole('option',{name:industry[lang==='ko'?'nameKo':lang==='vi'?'nameVi':'nameEn'],exact:true}).click();
+    await page.getByRole('dialog').getByRole('button',{name:labels.remove,exact:true}).click();
+    await page.getByRole('dialog').last().getByRole('button',{name:labels.remove,exact:true}).click();
+    await page.getByRole('alert').filter({hasText:labels.used}).waitFor();assert.ok(writes.some(write=>write.path.endsWith('/services/4')));assert.deepEqual(errors,[]);
+    await page.close();
+  }
+  console.log('Code base UI passed in ko/en/vi: uppercase 3-letter input, selected suffixes, used deletion disabled, unused deletion, industry deletion and server conflict recovery.');
+}finally{await browser?.close();vite.kill();unlinkSync(fixture);}

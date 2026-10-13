@@ -7,7 +7,7 @@ const { calculateRequestAmounts: amounts, registerTransactionRequest: register, 
 const input = () => ({ partnerOrgId: 11, transactionCodeId: 7, transactionDate: '2026-10-11', description: 'Trucking', unitPrice: '100000', quantity: '2', currency: 'VND', vatRate: '10', workOrderId: 30, styleId: null, styleProcessId: null, assignmentPlanId: null, details: {}, clientKey: 'request-001' });
 function store(process = false) {
   const writes = [];
-  const code = { id: 7, vatEnabled: !process, serviceType: { id: 4, entryMode: process ? 'PROCESS' : 'GENERAL', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } };
+  const code = { id: 7, taxTreatmentId: process ? 3 : 1, vatEnabled: !process, serviceType: { id: 4, entryMode: process ? 'PROCESS' : 'GENERAL', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } };
   const snapshot = { processes: [{ styleProcessId: 50 }] };
   const plan = { id: 60, orgId: 1, workOrderId: 30, styleId: 40, factoryId: 1, isCompleted: false, ctReviewRequired: false, assignmentCtSnapshot: snapshot, assignmentStSnapshot: snapshot };
   return { writes, code, plan,

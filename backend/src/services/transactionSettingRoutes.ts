@@ -2,9 +2,10 @@ import { validateServiceDefinition } from './partnerTransactionCost';
 import { validateTransactionCode } from './transactionRequest';
 import { loadAppSettings, saveAppSettings } from './applicationSettings';
 import { createHttpError } from '../utils/http';
+import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
-export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive'];
+export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId'];
 export const pickSettings = (row: any, keys: string[]) => Object.fromEntries(keys.filter(key => row[key] !== undefined).map(key => [key,row[key]]));
 
 export async function provisionSettingDefaults(tx: any, orgId: number) {
@@ -44,6 +45,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 }
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
+  registerCodeBaseRoutes(app,db,gates);
   const admin = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] });
   const member = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] });
   for (const global of [false,true]) {
@@ -65,23 +67,37 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
     const defaultPath = `/system-setting-defaults/${kind}`;
     const defaults = service ? db.settingServiceDefault : db.settingTransactionCodeDefault;
     const locals = service ? db.outsourcingServiceType : db.transactionCode;
-    const include = service ? {} : { include: { serviceType: true } };
     app.get(defaultPath, async (req: any,res: any) => {
       // Organization administrators can read the catalogue to explicitly adopt defaults.
       if (req.query.catalogue === '1') { if (!await admin(req,res)) return; }
       else if (!await gates.requireSystemAdmin(req,res)) return;
-      res.json(await defaults.findMany({ ...include, orderBy: { id: 'asc' } }));
+      const rows = await defaults.findMany({ include: service ? {
+        _count: { select: { codes: true, codeBases: true } },
+        services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
+      } : { serviceType: true, taxTreatment: true, codes: { select: { isOverridden: true, _count: { select: { costs: true } } } } }, orderBy: { id: 'asc' } });
+      res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: service
+        ? row._count.codes > 0 || row._count.codeBases > 0 || row.services.some((local: any) => local.isOverridden || Object.values(local._count).some((count: any) => count > 0))
+        : row.codes.some((local: any) => local.isOverridden || local._count.costs > 0) })));
     });
     app.get(localPath, async (req: any,res: any) => {
       const access = req.query.all === '1' ? await admin(req,res) : await member(req,res);
       if (!access) return;
       await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id), { isolationLevel: 'ReadCommitted' });
-      res.json(await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { serviceType: { isActive: true } } : {}) }) }, ...include, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } }));
+      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { taxTreatmentId: { not: null }, serviceType: { isActive: true } } : {}) }) }, include: service ? { _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
+      res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));
     });
     for (const global of [true,false]) {
       const base = global ? defaultPath : localPath;
       const model = global ? defaults : locals;
-      const validate = service ? validateServiceDefinition : validateTransactionCode;
+      app.delete(`${base}/:id`, async (req: any,res: any) => {
+        const access = global ? await gates.requireSystemAdmin(req,res) : await admin(req,res);
+        if (!access) return;
+        const id = Number(req.params.id);
+        if (!Number.isSafeInteger(id) || id <= 0) throw createHttpError(400,'INVALID_SETTING_REFERENCE');
+        try { await db.$transaction((tx: any) => deleteSetting(tx,kind,global,id,global ? undefined : access.organization.id)); }
+        catch (error: any) { if (error.code === 'P2003') throw createHttpError(409,'SETTING_IN_USE'); throw error; }
+        res.json({ ok: true });
+      });
       for (const update of [false,true]) {
         app[update ? 'put' : 'post'](`${base}${update ? '/:id' : ''}`, async (req: any,res: any) => {
           const access = global ? await gates.requireSystemAdmin(req,res) : await admin(req,res);
@@ -90,7 +106,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
           const id = Number(req.params.id);
           const existing = update && Number.isSafeInteger(id) ? await model.findFirst({ where: { id, ...(!global ? { ownerOrgId: orgId } : {}) } }) : null;
           if (update && !existing) return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
-          const data: any = { ...validate(req.body), isActive: req.body.isActive !== false };
+          const data: any = { ...(service ? validateServiceDefinition(req.body) : validateTransactionCode(req.body, Boolean(existing && existing.code === req.body?.code && !existing.taxTreatmentId))), isActive: req.body.isActive !== false };
           if (service && existing && existing.entryMode !== data.entryMode) throw createHttpError(409,'SERVICE_ENTRY_MODE_IMMUTABLE');
           if (global && existing && existing.code !== data.code) throw createHttpError(409,'DEFAULT_CODE_IMMUTABLE');
           if (!service) {
@@ -99,7 +115,17 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
             if (!await target.findFirst({ where: { id: data.serviceTypeId, ...(!global ? { ownerOrgId: orgId } : {}) } })) throw createHttpError(400,'INVALID_SERVICE_TYPE');
           }
           if (!global) data.isOverridden = true;
-          res.status(update ? 200 : 201).json(update ? await model.update({ where: { id }, data }) : await model.create({ data: { ...data, ...(!global ? { ownerOrgId: orgId } : {}) } }));
+          const saved = await db.$transaction(async (tx: any) => {
+            const target = global ? (service ? tx.settingServiceDefault : tx.settingTransactionCodeDefault) : (service ? tx.outsourcingServiceType : tx.transactionCode);
+            if (update && !service && !global) {
+              await tx.$queryRawUnsafe('SELECT id FROM "TransactionCode" WHERE id=$1 AND "ownerOrgId"=$2 FOR UPDATE',id,orgId);
+              const current = await target.findFirst({ where: { id, ownerOrgId: orgId } });
+              if (!current) throw createHttpError(404,'SETTING_NOT_FOUND');
+              if ((current.code !== data.code || current.taxTreatmentId !== data.taxTreatmentId || current.vatEnabled !== data.vatEnabled) && await tx.partnerTransactionCost.count({ where: { transactionCodeId: id } })) throw createHttpError(409,'SETTING_IN_USE');
+            }
+            return update ? target.update({ where: { id }, data }) : target.create({ data: { ...data, ...(!global ? { ownerOrgId: orgId } : {}) } });
+          });
+          res.status(update ? 200 : 201).json(saved);
         });
       }
     }
