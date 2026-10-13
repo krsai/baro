@@ -11,7 +11,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 
-export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical }) {
+export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical, onPreview }) {
   const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const labels = { ...(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko), ...(OUTSOURCING_REQUEST_TEXT[languageCode] || OUTSOURCING_REQUEST_TEXT.ko) };
   const [rows, setRows] = useState([]), [loading, setLoading] = useState(true), [error, setError] = useState(''), [search, setSearch] = useState('');
@@ -37,7 +37,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
   };
   const locale = languageCode === 'vi' ? 'vi-VN' : languageCode === 'en' ? 'en-US' : 'ko-KR';
   const money = (value, currency) => new Intl.NumberFormat(locale, { style: 'currency', currency }).format(Number(value));
-  return <AppPageContainer title={labels.costs} titleActions={<Button variant="contained" disabled={loading || Boolean(error)} onClick={onNewRequest}>{labels.addCost}</Button>} toolbar={<PageToolbar left={<SearchInput value={search} onChange={event => setSearch(event.target.value)} placeholder={labels.search} />} right={<MonthRangeSelector monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} />} />}>
+  return <AppPageContainer title={labels.costs} titleActions={<Stack direction="row" spacing={1}>{onPreview && <Button variant="outlined" onClick={onPreview}>{languageCode === 'ko' ? 'UI 미리보기' : languageCode === 'vi' ? 'Xem UI' : 'UI preview'}</Button>}<Button variant="contained" disabled={loading || Boolean(error)} onClick={onNewRequest}>{labels.addCost}</Button></Stack>} toolbar={<PageToolbar left={<SearchInput value={search} onChange={event => setSearch(event.target.value)} placeholder={labels.search} />} right={<MonthRangeSelector monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} />} />}>
     <Stack spacing={2}>{error && <Alert severity="error">{error}</Alert>}{loading ? <Box textAlign="center"><CircularProgress /></Box> : <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow>{['date','partner','industry','description','order','amount','creator'].map(key => <TableCell key={key}>{labels[key]}</TableCell>)}</TableRow></TableHead><TableBody>
       {!filtered.length && <TableRow><TableCell colSpan={7} align="center">{labels.empty}</TableCell></TableRow>}
       {filtered.map(row => <TableRow key={row.id} hover={Boolean(row.workLogId)} onClick={() => row.workLogId && onOpenHistorical?.(row.workLogId)} sx={{ cursor: row.workLogId ? 'pointer' : 'default' }}>

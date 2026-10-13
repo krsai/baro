@@ -76,6 +76,7 @@ const Attendance = lazyImportWithRetry(() => import('./pages/App/Attendance'));
 const AttendanceEntry = lazyImportWithRetry(() => import('./pages/App/attendance/AttendanceEntry'));
 const WorkEntry = lazyImportWithRetry(() => import('./pages/App/work/WorkEntry'));
 const OutsourcingRecordList = lazyImportWithRetry(() => import('./pages/App/OutsourcingRecordList'));
+const CompactCostsPreview = lazyImportWithRetry(() => import('./pages/App/CompactCostsPreview'));
 const Payroll = lazyImportWithRetry(() => import('./pages/App/Payroll'));
 const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/PayrollEntry'));
 const RevenueAnalysis = lazyImportWithRetry(() => import('./pages/App/RevenueAnalysis'));
@@ -371,6 +372,10 @@ const router = createBrowserRouter([
           {
             path: 'work-history',
             element: <Work />,
+          },
+          {
+            path: 'outsourcing-record-compact',
+            element: <CompactCostsPreview />,
           },
           {
             path: 'outsourcing-record',
