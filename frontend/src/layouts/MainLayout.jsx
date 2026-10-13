@@ -403,10 +403,12 @@ const MainLayout = () => {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ATTRIBUTE);
       return;
     }
+    if (currentPath.startsWith('/employee-system') || currentPath.startsWith('/salary-system')) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.SETTINGS);
+      return;
+    }
     if (
       currentPath.startsWith('/employee') ||
-      currentPath.startsWith('/employee-system') ||
-      currentPath.startsWith('/salary-system') ||
       currentPath.startsWith('/holiday') ||
       currentPath === '/business' ||
       currentPath.startsWith('/business/')
@@ -770,16 +772,6 @@ const MainLayout = () => {
               ]
             : []),
           {
-            label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode),
-            icon: <GroupIcon />,
-            path: '/employee-system',
-          },
-          {
-            label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
-            icon: <AccountBalanceWalletIcon />,
-            path: '/salary-system',
-          },
-          {
             label: getUiMessage('menu.business', '\uC0AC\uC5C5\uCCB4', languageCode),
             icon: <BusinessIcon />,
             path: '/business',
@@ -822,6 +814,16 @@ const MainLayout = () => {
             label: getUiMessage('menu.personalSettings', 'Personal Settings', languageCode),
             icon: <AccountCircleIcon />,
             path: '/personal-settings',
+          },
+          {
+            label: getUiMessage('menu.employeeSystem', '직원 체계', languageCode),
+            icon: <GroupIcon />,
+            path: '/employee-system',
+          },
+          {
+            label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
+            icon: <AccountBalanceWalletIcon />,
+            path: '/salary-system',
           },
           { label: getUiMessage('menu.appSettings', '앱설정', languageCode), icon: <TuneIcon />, path: '/app-settings' },
         ],
