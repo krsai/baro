@@ -47,7 +47,7 @@ const TEXT = {
     current: '진행 중', confirmed: '확정', empty: '계산된 생산수당 내역이 없습니다.', loading: '불러오는 중...',
     notCalculated: '미계산',
     monthReady: '선택 월 계산 가능', monthIncomplete: '선택 월 자료 미완료', actions: '관리', lock: '잠금', unlockBeforeDelete: '잠금을 해제한 뒤 삭제할 수 있습니다.',
-    factory: '공장', workCoverage: '작업기록', attendanceCoverage: '출퇴근 기록(참고)',
+    factory: '공장', workCoverage: '작업 기록', attendanceCoverage: '출퇴근 기록',
     averageProductionAllowance: '평균 생산수당',
     appliedRate: '적용 초당 단가',
     basisErrors: '계산근거 오류',
@@ -66,7 +66,7 @@ const TEXT = {
     current: 'In Progress', confirmed: 'Confirmed', empty: 'No production allowance results have been calculated.', loading: 'Loading...',
     notCalculated: 'Not Calculated',
     monthReady: 'Selected month is ready', monthIncomplete: 'Selected month data is incomplete', actions: 'Actions', lock: 'Lock', unlockBeforeDelete: 'Unlock this month before deleting it.',
-    factory: 'Factory', workCoverage: 'Work Records', attendanceCoverage: 'Attendance (Reference)',
+    factory: 'Factory', workCoverage: 'Work Records', attendanceCoverage: 'Attendance Records',
     averageProductionAllowance: 'Average Production Allowance',
     appliedRate: 'Applied Rate / sec',
     basisErrors: 'Basis Errors',
@@ -85,7 +85,7 @@ const TEXT = {
     current: 'Đang tiến hành', confirmed: 'Đã xác nhận', empty: 'Chưa có ket qua phu cap san luong.', loading: 'Đang tải...',
     notCalculated: 'Chua tinh',
     monthReady: 'Thang da chon san sang', monthIncomplete: 'Dữ liệu thang chua day du', actions: 'Quản lý', lock: 'Khoa', unlockBeforeDelete: 'Mở khóa thang nay truoc khi xoa.',
-    factory: 'Nhà máy', workCoverage: 'Dữ liệu san xuat', attendanceCoverage: 'Cham cong (tham khao)',
+    factory: 'Nhà máy', workCoverage: 'Dữ liệu sản xuất', attendanceCoverage: 'Dữ liệu chấm công',
     averageProductionAllowance: 'Phụ cấp san luong trung binh',
     appliedRate: 'Đơn giá ap dung/giay',
     basisErrors: 'Loi du lieu tinh',
@@ -461,14 +461,15 @@ const PayrollBoard = () => {
                     : filteredMonthFactoryRows.map((row) => {
                       const { month, factory, snapshot } = row;
                       const key = rowKey(month, factory.id);
-                      const groups = readinessByKey[key]?.groups || [];
                       const readiness = readinessByKey[key];
                       const incomplete = !snapshot && readiness?.ready !== true;
-                      const partial = Boolean(readiness?.hasCoverageGaps);
-                      const partialLabel = languageCode === 'ko' ? '계산 가능 · 일부 미기록' : languageCode === 'vi' ? 'Có thể tính · thiếu một phần' : 'Ready · partial records';
-                      const workExpected = groups.reduce((sum,group) => sum + Number(group.expectedWorkingDayCount || 0),0);
-                      const workRecorded = groups.reduce((sum,group) => sum + Number(group.workRecordedDayCount || 0),0);
-                      const readinessDescription = readiness?.error || readiness?.salaryCalculationError || `${resolveText(languageCode, 'workCoverage')}: ${workRecorded}/${workExpected} · ${resolveText(languageCode, 'attendanceCoverage')}: ${readiness?.attendanceRecordedCount ?? 0}/${readiness?.attendanceRequiredCount ?? 0}`;
+                      const missingSources = [
+                        readiness?.hasAttendanceData === false ? resolveText(languageCode, 'attendanceCoverage') : '',
+                        readiness?.hasWorkData === false ? resolveText(languageCode, 'workCoverage') : '',
+                      ].filter(Boolean);
+                      const readinessDescription = readiness?.error || readiness?.salaryCalculationError || (incomplete && missingSources.length
+                        ? (languageCode === 'ko' ? `해당 월의 ${missingSources.join(' · ')}이 없습니다.` : languageCode === 'vi' ? `Không có dữ liệu trong tháng: ${missingSources.join(' · ')}` : `No records for this month: ${missingSources.join(' · ')}`)
+                        : '');
                       const rowNeedsRecalculation = Boolean(snapshot && readinessByKey[key]?.needsRecalculation);
                       const invalidAttendanceCount = Array.isArray(readinessByKey[key]?.invalidPayrollAttendance)
                         ? readinessByKey[key].invalidPayrollAttendance.length : 0;
@@ -499,10 +500,10 @@ const PayrollBoard = () => {
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
                               <Tooltip title={readinessDescription}><Chip
                                 size="small"
-                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete || partial ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
+                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
                                 label={invalidAttendanceCount > 0
                                   ? (languageCode === 'ko' ? `출퇴근 공장 오류 ${invalidAttendanceCount}건` : languageCode === 'vi' ? `Lỗi nhà máy chấm công ${invalidAttendanceCount}` : `Attendance factory errors: ${invalidAttendanceCount}`)
-                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? partial ? partialLabel : payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
+                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
                                 variant="outlined"
                               /></Tooltip>
                             </Stack>
