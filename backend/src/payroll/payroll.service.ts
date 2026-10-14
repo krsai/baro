@@ -1,3 +1,4 @@
+import { defaultVersionStartMonth } from "../utils/versionApplication";
 import { payrollManagementInclude, resolvePayrollManagement } from "../employees/payrollManagement";
 import { prisma } from "../db";
 import {
@@ -271,7 +272,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const [factories, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
     prisma.factory.findMany({ where: { orgId, id: factoryId }, include: {
       employees: { include: { role: true, payrollManagementVersions: payrollManagementInclude } },
-      productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1, select: { wagePerSecond: true } },
+      productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1, select: { wagePerSecond: true } },
     }}),
     prisma.organizationHoliday.findMany({
       where: { orgId, holidayDate: { gte: monthStart, lte: monthEnd } },
@@ -295,7 +296,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           select: {
             wagePerSecond: true,
             productionAllowanceRates: {
-              where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1,
+              where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1,
               select: { wagePerSecond: true },
             },
           },
@@ -875,6 +876,7 @@ export const getPayrollSettings = async (orgId: number, monthInput?: unknown) =>
   });
   return {
     month,
+    defaultVersionStartMonth: defaultVersionStartMonth(),
     revision: employees.map(employee => `${employee.id}:${employee.payrollManagementVersions.map(version => version.id).sort((a,b) => a-b).join(',')}`).sort().join(';'),
     employees: employees.map(employee => {
       const resolved = resolvePayrollManagement(employee, month);
@@ -982,7 +984,7 @@ export const getPayrollByMonth = async (
           select: {
             id: true, name: true, managementStartDate: true, wagePerSecond: true,
             productionAllowanceRates: {
-              where: { effectiveMonth: { lte: month } }, orderBy: { effectiveMonth: "desc" }, take: 1,
+              where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1,
               select: { wagePerSecond: true },
             },
           },

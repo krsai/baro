@@ -21,6 +21,8 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
+import VersionApplicationStart from '../../components/VersionApplicationStart';
+import { currentVersionMonth, versionTimelineMonths } from '../../utils/versionApplication.mjs';
 import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -267,6 +269,8 @@ const SalarySystem = () => {
   const [versionBoundaries, setVersionBoundaries] = useState({});
   const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
   const [versionBusy, setVersionBusy] = useState(false);
+  const [versionDefaultMonth, setVersionDefaultMonth] = useState(currentVersionMonth);
+  const [newVersionMonth, setNewVersionMonth] = useState(currentVersionMonth);
   const [saving, setSaving] = useState(false);
   const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
   const edit = useEditRevision({ scope: `${activeOrgId}:${factoryId}`, url: `/salary-system/revision${buildQueryString({ orgId: activeOrgId, factoryId })}`, enabled: isRouteActive && Boolean(activeOrgId && factoryId), busy: saving || versionBusy });
@@ -320,6 +324,8 @@ const SalarySystem = () => {
       const loadedCurrencyCode = CURRENCY_CODES.includes(salarySystem?.currencyCode) ? salarySystem.currencyCode : 'VND';
       setCurrencyCode(loadedCurrencyCode);
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
+      setVersionDefaultMonth(salarySystem?.defaultVersionStartMonth || currentVersionMonth());
+      setNewVersionMonth(salarySystem?.defaultVersionStartMonth || currentVersionMonth());
       setRates(next);
       setSavedSnapshot(salaryStateSignature({ currencyCode: loadedCurrencyCode, items: loadedItems, rates: next }));
       return salarySystem;
@@ -393,11 +399,10 @@ const SalarySystem = () => {
         const [payType, gradeId] = key.split(':');
         return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItems.get(String(salaryItemCode))?.payTypes?.includes(payType)).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
       });
-      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, createVersion: true, currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
+      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, createVersion: true, effectiveMonth: newVersionMonth, currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
-      const refreshed = await load();
-      showNotification(t('급여 체계를 저장하고 새 버전을 등록했습니다. 적용 월은 버전 관리에서 지정할 수 있습니다.'), 'success');
-      openVersionDialog(Array.isArray(refreshed?.versions) ? refreshed.versions : versions);
+      await load();
+      showNotification(languageCode === 'ko' ? `급여 체계를 저장했습니다. 새 버전은 ${newVersionMonth}부터 적용됩니다.` : languageCode === 'vi' ? `Đã lưu. Phiên bản mới áp dụng từ ${newVersionMonth}.` : `Saved. The new version applies from ${newVersionMonth}.`, 'success');
     } catch (error) {
       if (isStaleEditError(error)) { edit.markStale(); return; }
       showNotification(error?.message || 'Failed to save salary system.', 'error');
@@ -421,7 +426,7 @@ const SalarySystem = () => {
     () => resolveFactoryManagementStartDateKey(selectedFactory).slice(0, 7),
     [selectedFactory]
   );
-  const managedMonths = useMemo(() => monthRange(managementStartMonth, monthKey()), [managementStartMonth]);
+  const managedMonths = useMemo(() => versionTimelineMonths(monthRange(managementStartMonth, versionDefaultMonth), versionDefaultMonth, versionBoundaries), [managementStartMonth, versionDefaultMonth, versionBoundaries]);
   const colorByVersionId = useMemo(() => new Map([...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version, index) => [version.id, VERSION_GRAPH_COLORS[index % VERSION_GRAPH_COLORS.length]])), [versions]);
   const versionForMonth = useCallback((month) => {
     const applicable = versions.filter((version) => version.versionNumber === 1 || (versionBoundaries[version.id] && versionBoundaries[version.id] <= month));
@@ -431,9 +436,10 @@ const SalarySystem = () => {
     if (version.versionNumber === 1) return;
     setVersionBoundaries((current) => {
       const next = { ...current, [version.id]: month };
+      if (!month) { delete next[version.id]; return next; }
       versions.forEach((other) => {
         if (other.id === version.id || other.versionNumber === 1 || !next[other.id]) return;
-        const conflicts = other.versionNumber < version.versionNumber ? next[other.id] >= month : next[other.id] <= month;
+        const conflicts = other.versionNumber < version.versionNumber ? next[other.id] > month : next[other.id] < month;
         if (conflicts) delete next[other.id];
       });
       return next;
@@ -530,6 +536,7 @@ const SalarySystem = () => {
       </Stack>
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
+    <Box sx={{ mb: 2 }}><VersionApplicationStart languageCode={languageCode} value={newVersionMonth} defaultMonth={versionDefaultMonth} onChange={month => setNewVersionMonth(month || versionDefaultMonth)} disabled={saving || versionBusy} showHelp /></Box>
 
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
       <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 350 }, flexShrink: 0 }}>
@@ -669,18 +676,19 @@ const SalarySystem = () => {
             {[...versions].sort((a, b) => b.versionNumber - a.versionNumber).map((version) => {
               const versionColor = colorByVersionId.get(version.id) || '#9e9e9e';
               const draggable = version.versionNumber > 1;
-              return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ display: 'flex', alignItems: 'center', minHeight: 38, px: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>
+              return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', minHeight: 38, px: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>
                 <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: 0.75, flexShrink: 0 }} />
                 <DragIndicatorIcon sx={{ mr: 0.5, color: draggable ? 'text.secondary' : 'text.disabled', fontSize: 18 }} />
                 <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.confirmedAt} · Ver.{version.versionNumber}</Typography>
                 <Chip size="small" variant="outlined" label={`${version.items?.length || 0}${t('개')}`} sx={{ height: 22, fontSize: '.7rem' }} />
+                {draggable && <Box sx={{ width: '100%', py: 0.75 }} draggable={false} onDragStart={event => event.preventDefault()}><VersionApplicationStart languageCode={languageCode} value={versionBoundaries[version.id]} defaultMonth={versionDefaultMonth} onChange={month => assignVersionToMonth(version, month)} disabled={versionBusy} /></Box>}
               </Box>;
             })}
             {versions.length === 0 && <Typography variant="body2" color="text.secondary">{t('아직 확정된 버전이 없습니다. 저장하면 새 버전으로 기록됩니다.')}</Typography>}
           </Stack>
         </Box>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{managementStartMonth} ~ {monthKey()}</Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{managementStartMonth} ~ {managedMonths.at(-1)}</Typography>
           <Box sx={{ position: 'relative', maxHeight: 340, overflowY: 'auto', pr: 0.5 }}>
             {[...managedMonths].reverse().map((month, index, displayMonths) => {
               const activeVersion = versionForMonth(month);
@@ -703,7 +711,7 @@ const SalarySystem = () => {
           </Box>
         </Box>
       </Stack>
-    </DialogContent><DialogActions><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || saving || edit.stale || !edit.revision || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
+    </DialogContent><DialogActions><Button onClick={() => setVersionDialogOpen(false)} disabled={versionBusy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || saving || edit.stale || !edit.revision || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1.5 }}>

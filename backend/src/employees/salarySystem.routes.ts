@@ -1,3 +1,4 @@
+import { defaultVersionStartMonth, resolveVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { createHttpError } from "../utils/http";
 import { editRevision, assertEditRevision, editTransaction } from "../utils/editRevision";
 import { Router } from "express";
@@ -40,7 +41,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
         return { ...version, confirmedAt: version.confirmedDate.toISOString().slice(0, 10), currencyCode: normalizeCurrencyCode(snapshot.currencyCode) || "VND", items: Array.isArray(snapshot.items) ? snapshot.items : [], rates: Array.isArray(snapshot.rates) ? snapshot.rates : [] };
       }),
     };
-    return { ...result, editRevision: editRevision(result) };
+    return { ...result, defaultVersionStartMonth: defaultVersionStartMonth(), editRevision: editRevision(result) };
   };
   const ensureInitialDraft = async (orgId: number, factoryId: number) => {
     if (await prisma.salaryItem.findFirst({ where: { orgId, factoryId }, select: { id: true } })) return;
@@ -158,7 +159,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       if (rates.length) await tx.salaryItemRate.createMany({ data: rates.map((r) => ({ orgId: org.id, factoryId: factory.id, payType: r.payType, gradeId: Number(r.gradeId), salaryItemId: ids.get(String(r.salaryItemCode))!, amount: Number(r.amount) })) });
       if (req.body?.createVersion === true) {
         const current = await state(org.id, factory.id, tx);
-        await tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+        await tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: resolveVersionStartMonth(req.body?.effectiveMonth), confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
       }
       return state(org.id, factory.id, tx);
     });
@@ -172,7 +173,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const created = await editTransaction(prisma, async (tx) => {
       const current = await state(org.id, factory.id, tx);
       assertEditRevision(req.body?.expectedRevision, current.editRevision);
-      return tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+      return tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: resolveVersionStartMonth(req.body?.effectiveMonth), confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
     });
     res.status(201).json(created);
   });
@@ -187,13 +188,13 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       const versions = await tx.salarySystemVersion.findMany({ where: { orgId: org.id, factoryId: factory.id }, orderBy: { versionNumber: "asc" } });
       const editableVersions = versions.filter((version) => version.versionNumber > 1);
       const versionById = new Map(editableVersions.map((version) => [version.id, version]));
-      const seenVersionIds = new Set<number>(); const seenMonths = new Set<string>();
+      const seenVersionIds = new Set<number>();
       for (const row of boundaries) {
         const versionId = Number(row?.versionId); const startMonth = String(row?.startMonth || "");
-        if (!versionById.has(versionId) || seenVersionIds.has(versionId) || seenMonths.has(startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) throw createHttpError(400, "invalid salary version boundaries");
-        seenVersionIds.add(versionId); seenMonths.add(startMonth);
+        if (!versionById.has(versionId) || seenVersionIds.has(versionId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) throw createHttpError(400, "invalid salary version boundaries");
+        seenVersionIds.add(versionId);
       }
-      const ordered = [...boundaries].sort((a, b) => String(a.startMonth).localeCompare(String(b.startMonth)));
+      const ordered = [...boundaries].sort((a, b) => compareVersionStarts(a, b, versionById));
       for (let index = 1; index < ordered.length; index += 1) {
         if (versionById.get(Number(ordered[index - 1].versionId))!.versionNumber >= versionById.get(Number(ordered[index].versionId))!.versionNumber) throw createHttpError(400, "salary version boundaries must follow version order");
       }

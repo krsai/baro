@@ -427,7 +427,6 @@ model FactoryProductionAllowanceRate {
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade, map: "FactoryProductionAllowanceRate_factory_org_fkey")
 
-  @@unique([factoryId, effectiveMonth])
   @@unique([factoryId, versionNumber])
   @@index([orgId, effectiveMonth])
   @@index([factoryId, effectiveMonth])
@@ -741,8 +740,8 @@ model SalarySystemVersion {
   factory      Factory      @relation(fields: [factoryId, orgId], references: [id, orgId], onDelete: Cascade)
 
   @@unique([factoryId, versionNumber])
-  @@unique([factoryId, effectiveMonth])
   @@index([orgId, effectiveMonth])
+  @@index([factoryId, effectiveMonth])
 }
 
 model AttendanceEntry {

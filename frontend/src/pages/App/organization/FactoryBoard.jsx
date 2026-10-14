@@ -153,6 +153,7 @@ const FactoryList = () => {
       targetMonthlyWage: savedData.targetMonthlyWage,
       wagePerSecond: savedData.wagePerSecond,
       productionAllowanceEffectiveMonth: savedData.productionAllowanceEffectiveMonth,
+      newVersionEffectiveMonth: savedData.newVersionEffectiveMonth,
     };
     const savedManagementStartDate = normalizeFactoryManagementStartDateKey(savedData.managementStartDate);
     const existingManagementStartDate = normalizeFactoryManagementStartDateKey(selectedFactory?.managementStartDate);

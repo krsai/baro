@@ -11,8 +11,7 @@ CREATE TABLE IF NOT EXISTS "FactoryProductionAllowanceRate" (
   CONSTRAINT "FactoryProductionAllowanceRate_pkey" PRIMARY KEY ("id")
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_factoryId_effectiveMonth_key"
-  ON "FactoryProductionAllowanceRate"("factoryId", "effectiveMonth");
+DROP INDEX IF EXISTS "FactoryProductionAllowanceRate_factoryId_effectiveMonth_key";
 CREATE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_orgId_effectiveMonth_idx"
   ON "FactoryProductionAllowanceRate"("orgId", "effectiveMonth");
 CREATE INDEX IF NOT EXISTS "FactoryProductionAllowanceRate_factoryId_effectiveMonth_idx"

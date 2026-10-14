@@ -4841,8 +4841,8 @@ DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_payType_
 DO $$ BEGIN ALTER TABLE "SalaryItemRate" ADD CONSTRAINT "SalaryItemRate_amount_check" CHECK ("amount" >= 0); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 CREATE TABLE IF NOT EXISTS "SalarySystemVersion" ("id" SERIAL PRIMARY KEY,"orgId" INTEGER NOT NULL,"versionNumber" INTEGER NOT NULL,"effectiveMonth" TEXT,"snapshot" JSONB NOT NULL,"confirmedBy" TEXT NOT NULL,"confirmedDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
 ALTER TABLE "SalarySystemVersion" ALTER COLUMN "effectiveMonth" DROP NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_versionNumber_key" ON "SalarySystemVersion"("orgId","versionNumber");
-CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_orgId_effectiveMonth_key" ON "SalarySystemVersion"("orgId","effectiveMonth");
+-- Factory-scoped version uniqueness is established below.
+-- Month starts may overlap; the newest version wins.
 DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalarySystemVersion" ADD CONSTRAINT "SalarySystemVersion_effectiveMonth_check" CHECK ("effectiveMonth" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -4928,7 +4928,8 @@ ALTER TABLE "SalarySystemVersion" ALTER COLUMN "factoryId" SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItem_factoryId_code_key" ON "SalaryItem"("factoryId",code);
 CREATE UNIQUE INDEX IF NOT EXISTS "SalaryItemRate_factoryId_payType_gradeId_salaryItemId_key" ON "SalaryItemRate"("factoryId","payType","gradeId","salaryItemId");
 CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_factoryId_versionNumber_key" ON "SalarySystemVersion"("factoryId","versionNumber");
-CREATE UNIQUE INDEX IF NOT EXISTS "SalarySystemVersion_factoryId_effectiveMonth_key" ON "SalarySystemVersion"("factoryId","effectiveMonth");
+DROP INDEX IF EXISTS "SalarySystemVersion_factoryId_effectiveMonth_key";
+CREATE INDEX IF NOT EXISTS "SalarySystemVersion_factoryId_effectiveMonth_idx" ON "SalarySystemVersion"("factoryId","effectiveMonth");
 CREATE INDEX IF NOT EXISTS "Factory_salaryCurrencyId_idx" ON "Factory"("salaryCurrencyId");
 DO $$ BEGIN ALTER TABLE "Factory" ADD CONSTRAINT "Factory_salaryCurrencyId_fkey" FOREIGN KEY ("salaryCurrencyId") REFERENCES "Currency"("id") ON DELETE RESTRICT; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN ALTER TABLE "SalaryItem" ADD CONSTRAINT "SalaryItem_factoryId_orgId_fkey" FOREIGN KEY ("factoryId","orgId") REFERENCES "Factory"("id","orgId") ON DELETE CASCADE; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -5722,7 +5723,7 @@ ALTER TABLE "TransactionCode" ADD COLUMN IF NOT EXISTS "isOverridden" BOOLEAN NO
 CREATE UNIQUE INDEX IF NOT EXISTS "OutsourcingServiceType_ownerOrgId_systemDefaultId_key" ON "OutsourcingServiceType"("ownerOrgId","systemDefaultId");
 CREATE UNIQUE INDEX IF NOT EXISTS "TransactionCode_ownerOrgId_systemDefaultId_key" ON "TransactionCode"("ownerOrgId","systemDefaultId");
 -- Seed only the template catalogue. Do not infer relationships for existing tenant rows.
-DO $ BEGIN
+DO $$ BEGIN
 IF to_regclass('"TransactionCodeBase"') IS NULL THEN
 INSERT INTO "SettingServiceDefault" (code,"nameKo","nameEn","nameVi","entryMode","orderInput","styleInput","processInput","sortOrder") VALUES
  ('BUTTONHOLE','단춧구멍','Buttonhole','Thùa khuy','PROCESS','REQUIRED','REQUIRED','REQUIRED',10),
@@ -5743,7 +5744,7 @@ INSERT INTO "SettingTransactionCodeDefault" ("serviceTypeId",code,"nameKo","name
  SELECT id,'TRKV','트러킹 (VAT)','Trucking (VAT)','Vận chuyển (VAT)',true FROM "SettingServiceDefault" WHERE code='LOGISTICS' ON CONFLICT(code) DO NOTHING;
 
 END IF;
-END $;
+END $$;
 
 CREATE OR REPLACE FUNCTION baro_inherit_service_setting() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE source "SettingServiceDefault";

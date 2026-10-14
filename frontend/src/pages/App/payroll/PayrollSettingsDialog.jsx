@@ -1,7 +1,8 @@
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Switch, MenuItem, Paper, Stack, TextField, Typography, Tooltip } from '@mui/material';
-import MonthSelector from '../../../components/MonthSelector';
+import VersionApplicationStart from '../../../components/VersionApplicationStart';
+import { currentVersionMonth } from '../../../utils/versionApplication.mjs';
 import { isFormerEmployee } from '../attendance/attendanceEmployment';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -50,6 +51,7 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
   const [showRetired, setShowRetired] = useState(false);
   const [effectiveMonth, setEffectiveMonth] = useState('');
   const [revision, setRevision] = useState('');
+  const [defaultMonth, setDefaultMonth] = useState(currentVersionMonth);
 
   useEffect(() => {
     if (!open || !orgId) return;
@@ -62,6 +64,7 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
         if (cancelled) return;
         if (!effectiveMonth && settings.month) setEffectiveMonth(settings.month);
         setRevision(settings.revision || '');
+        setDefaultMonth(settings.defaultVersionStartMonth || currentVersionMonth());
         const rows = Array.isArray(settings?.employees) ? settings.employees : [];
         const nextSelected = new Set(rows.filter((row) => row.alwaysFullAttendance).map((row) => Number(row.id)));
         const nextPayrollExcluded = new Set(rows.filter((row) => row.payrollExcluded).map((row) => Number(row.id)));
@@ -107,7 +110,7 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
     <DialogContent dividers>
       <Stack spacing={2}>
         <Box><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{text.section}</Typography><Typography variant="body2" color="text.secondary">{text.help}</Typography></Box>
-        <MonthSelector label={text.month} value={effectiveMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} />
+        <VersionApplicationStart label={text.month} languageCode={languageCode} value={effectiveMonth} defaultMonth={defaultMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} showHelp />
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{factories.length > 1 && <TextField select size="small" label={text.factory} value={factoryId} onChange={(event) => setFactoryId(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">{text.all}</MenuItem>{factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{languageCode === 'ko' ? factory.nameKo || factory.name : languageCode === 'vi' ? factory.nameVi || factory.name : factory.name}</MenuItem>)}</TextField>}<TextField size="small" fullWidth placeholder={text.search} value={search} onChange={(event) => setSearch(event.target.value)} /></Stack>
         <FormControlLabel control={<Switch checked={showRetired} onChange={(event) => setShowRetired(event.target.checked)} />} label={text.showRetired} />
         <DragDropContext onDragEnd={move}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><EmployeeList text={text} id="normal" title={text.normal} rows={visible.filter((row) => !attendanceSelected.has(Number(row.id)) && !payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="attendance-exception" title={text.attendance} rows={visible.filter((row) => attendanceSelected.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="payroll-exception" title={text.payroll} rows={visible.filter((row) => payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /></Stack></DragDropContext>

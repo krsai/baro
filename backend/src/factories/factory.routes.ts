@@ -1,4 +1,5 @@
-﻿import { Router } from "express";
+import { defaultVersionStartMonth, resolveVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
+import { Router } from "express";
 import { prisma } from "../db";
 import { normalizeEmployeeNo } from "../employees/employeeNumber";
 import {
@@ -225,6 +226,7 @@ const toFactoryResponse = (factory: any) => {
 
   return {
     ...factoryFields,
+    defaultVersionStartMonth: defaultVersionStartMonth(),
     productionAllowanceVersions: ensureArray(productionAllowanceRates).map((rate) => ({
       ...rate,
       confirmedAt: rate.confirmedAt?.toISOString?.() ?? rate.confirmedAt,
@@ -301,7 +303,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       return res.status(409).json({ ok: false, error: "factoryCode already in use" });
     }
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
-    const effectiveMonth = resolveFactoryRateEffectiveMonth(productionAllowanceEffectiveMonth);
+    const effectiveMonth = resolveFactoryRateEffectiveMonth(req.body?.newVersionEffectiveMonth ?? productionAllowanceEffectiveMonth);
     if (effectiveMonth === null) {
       return res.status(400).json({ ok: false, error: "productionAllowanceEffectiveMonth must be YYYY-MM" });
     }
@@ -461,13 +463,10 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const effectiveMonth = resolveFactoryRateEffectiveMonth(productionAllowanceEffectiveMonth);
     const latestProductionAllowanceRate = ensureArray(existing.productionAllowanceRates)[0] ?? null;
     const productionAllowanceEffectiveMonthChanged = Boolean(
-      effectiveMonth && latestProductionAllowanceRate?.effectiveMonth !== effectiveMonth
+      productionAllowanceEffectiveMonth && effectiveMonth && latestProductionAllowanceRate?.effectiveMonth !== effectiveMonth
     );
     const productionAllowanceChanged =
       productionAllowanceValueChanged || productionAllowanceEffectiveMonthChanged;
-    if (productionAllowanceChanged && effectiveMonth === null) {
-      return res.status(400).json({ ok: false, error: "productionAllowanceEffectiveMonth must be YYYY-MM" });
-    }
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -530,7 +529,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
                 orgId: organization.id,
                 factoryId: id,
                 versionNumber: (latestProductionAllowanceRate?.versionNumber || (existingRateCount === 0 ? 1 : existingRateCount)) + 1,
-                effectiveMonth: null,
+                effectiveMonth: resolveVersionStartMonth(req.body?.newVersionEffectiveMonth),
                 targetMonthlyWage: wageFields.targetMonthlyWage,
                 wagePerSecond: wageFields.wagePerSecond,
               },
@@ -616,13 +615,13 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     const versions = await prisma.factoryProductionAllowanceRate.findMany({ where: { factoryId: id }, orderBy: { versionNumber: "asc" } });
     const byId = new Map(versions.map((version) => [version.id, version]));
     const boundaries: any[] = Array.isArray(req.body?.boundaries) ? req.body.boundaries : [];
-    const seenIds = new Set<number>(); const seenMonths = new Set<string>();
+    const seenIds = new Set<number>();
     for (const boundary of boundaries) {
       const versionId = Number(boundary?.versionId); const startMonth = String(boundary?.startMonth || "");
-      if (!byId.has(versionId) || seenIds.has(versionId) || seenMonths.has(startMonth) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) return res.status(400).json({ ok: false, error: "invalid production allowance version boundaries" });
-      seenIds.add(versionId); seenMonths.add(startMonth);
+      if (!byId.has(versionId) || seenIds.has(versionId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(startMonth)) return res.status(400).json({ ok: false, error: "invalid production allowance version boundaries" });
+      seenIds.add(versionId);
     }
-    const ordered = [...boundaries].sort((a, b) => String(a.startMonth).localeCompare(String(b.startMonth)));
+    const ordered = [...boundaries].sort((a, b) => compareVersionStarts(a, b, byId));
     for (let index = 1; index < ordered.length; index += 1) if (byId.get(Number(ordered[index - 1].versionId))!.versionNumber >= byId.get(Number(ordered[index].versionId))!.versionNumber) return res.status(400).json({ ok: false, error: "version boundaries must follow version order" });
     await prisma.$transaction(async (tx) => {
       await tx.factoryProductionAllowanceRate.updateMany({ where: { factoryId: id }, data: { effectiveMonth: null } });

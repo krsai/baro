@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import VersionApplicationStart from '../../../../components/VersionApplicationStart';
 import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
 import { useLanguage } from '../../../../context/LanguageContext';
 
@@ -150,6 +151,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="md">
       <DialogTitle>{copy.title}</DialogTitle>
       <DialogContent dividers>
+        <VersionApplicationStart mode="future" languageCode={languageCode} versionNumber={Math.max(0, ...versions.map(version => version.versionNumber))} />
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{lockText}</Typography>
         {assignments.some(item => item.needsSnapshotRefresh) && <Alert severity="warning" sx={{ mb: 2 }}>{integrityWarning}</Alert>}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
@@ -277,7 +279,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
           </Box>
         </Stack>
       </DialogContent>
-      <DialogActions><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !hasRefreshableAssignments)}>{copy.save}</Button></DialogActions>
+      <DialogActions><Button onClick={onClose} disabled={busy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !hasRefreshableAssignments)}>{copy.save}</Button></DialogActions>
     </Dialog>
   );
 };
