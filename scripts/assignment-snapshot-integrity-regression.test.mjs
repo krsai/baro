@@ -162,11 +162,12 @@ test('saving process version boundaries can repair assignments its own warning f
     backend.indexOf('app.delete("/styles/:styleId"')
   );
   assert.doesNotMatch(endpoint, /assertAssignmentProcessRefs\(prisma, organization\.id, plans\.map/);
-  assert.match(endpoint, /annotateAssignmentPlanRowsWithPayrollLocks\(organization\.id, rawPlans\)/);
+  assert.match(endpoint, /annotateAssignmentPlanRowsWithPayrollLocks\(organization\.id, rawPlans, tx\)/);
+  assert.match(endpoint, /annotateProcessVersionProtection\(tx, organization\.id/);
   // Completed or payroll-locked assignments stay read-only even when their
   // stored version no longer matches the newly-saved boundary - they are
   // left flagged instead of silently rewritten.
-  assert.match(endpoint, /if \(plan\.isCompleted \|\| plan\.isPayrollLocked\) return \[\];/);
+  assert.match(endpoint, /if \(plan\.isVersionLocked\) return \[\];/);
   // A second, narrower precheck (hasValidAssignmentProcessRefs on the plan's
   // OWN pre-rebuild snapshot) reproduced the exact same deadlock for plans
   // whose stored CT/ST are not even internally self-consistent with each

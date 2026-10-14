@@ -1,3 +1,4 @@
+import { annotateProcessVersionProtection } from "./services/processVersionProtection";
 import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
 import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
@@ -17057,17 +17058,19 @@ const findAssignmentPlansWithSelectFallback = async ({
   orderBy,
   selectAttempts,
   context,
+  db = prisma,
 }: {
   where: Prisma.AssignmentPlanWhereInput;
   orderBy: Prisma.AssignmentPlanOrderByWithRelationInput[];
   selectAttempts: ReadonlyArray<Record<string, any>>;
   context: string;
+  db?: any;
 }): Promise<any[]> => {
   let lastError: any = null;
   for (let index = 0; index < selectAttempts.length; index += 1) {
     const select = selectAttempts[index]!;
     try {
-      return await prisma.assignmentPlan.findMany({
+      return await db.assignmentPlan.findMany({
         where,
         orderBy,
         select: select as any,
@@ -21108,12 +21111,14 @@ const loadAssignmentPlanProgressWorkRows = async ({
   stateAssignmentsByExternalId,
   context,
   includeDiagnostics = false,
+  db = prisma,
 }: {
   orgId: number;
   plans: any[];
   stateAssignmentsByExternalId: Map<string, any>;
   context: string;
   includeDiagnostics?: boolean;
+  db?: Prisma.TransactionClient;
 }) => {
   const normalizedPlans = ensureArray(plans).filter(Boolean);
   const planIds = normalizedPlans
@@ -21121,7 +21126,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
     .filter((planId): planId is number => planId !== null);
   if (planIds.length === 0) return [];
 
-  const employeeRows: any[] = await prisma.workRecord.findMany({
+  const employeeRows: any[] = await db.workRecord.findMany({
       where: {
         orgId,
         assignmentPlanId: { in: planIds },
@@ -21162,7 +21167,7 @@ const loadAssignmentPlanProgressWorkRows = async ({
   // Outsourced production advances progress/completion the same as employee
   // production (Σ both tables per assignmentPlanId+styleProcessId), but has
   // no workerId/ctSeconds/effectiveCoverage at all - see OutsourcedWorkRecord.
-  const outsourcedRows: any[] = await prisma.outsourcedWorkRecord.findMany({
+  const outsourcedRows: any[] = await db.outsourcedWorkRecord.findMany({
       where: {
         orgId,
         assignmentPlanId: { in: planIds },
@@ -23265,7 +23270,7 @@ const buildFactoryMonthCapacityRows = async ({
 const buildAssignmentPlanProgressRows = async (
   orgId: number,
   externalIds: string[] = [],
-  { includeQuantityReviewDetails = false } = {}
+  { includeQuantityReviewDetails = false, db = prisma as Prisma.TransactionClient } = {}
 ) => {
   const normalizedExternalIds = Array.from(
     new Set(
@@ -23291,6 +23296,7 @@ const buildAssignmentPlanProgressRows = async (
       ASSIGNMENT_PLAN_SELECT_LEGACY,
     ],
     context: "buildAssignmentPlanProgressRows",
+    db,
   });
   if (plans.length === 0) return [];
 
@@ -23304,7 +23310,7 @@ const buildAssignmentPlanProgressRows = async (
   );
   const factoryScopeRows =
     factoryIds.length > 0
-      ? await prisma.factory.findMany({
+      ? await db.factory.findMany({
           where: { id: { in: factoryIds } },
           select: { id: true, name: true },
         })
@@ -23313,7 +23319,7 @@ const buildAssignmentPlanProgressRows = async (
     factoryScopeRows.map((factoryScope) => [Number(factoryScope.id), resolveOptionalString(factoryScope.name, "") || ""])
   );
 
-  const holidayModel = (prisma as any).organizationHoliday;
+  const holidayModel = (db as any).organizationHoliday;
   const holidayRows =
     holidayModel && typeof holidayModel.findMany === "function"
       ? await holidayModel
@@ -23334,6 +23340,7 @@ const buildAssignmentPlanProgressRows = async (
     plans,
     stateAssignmentsByExternalId,
     context: "buildAssignmentPlanProgressRows",
+    db,
   });
   const orphanWorkRecordCountByFactoryScope = new Map<number, number>();
   const payrollLockMonthByPlanId = new Map<number, string>();
@@ -23343,7 +23350,7 @@ const buildAssignmentPlanProgressRows = async (
   });
   const payrollLockedMonthSet = await loadLockedPayrollMonthSet(
     orgId,
-    Array.from(payrollLockMonthByPlanId.values())
+    Array.from(payrollLockMonthByPlanId.values()), db
   );
 
   const statsByPlanId = new Map<number, AssignmentPlanWorkStats>();
@@ -23450,10 +23457,10 @@ const buildAssignmentPlanProgressRows = async (
   );
   const workRecordPayrollLockedMonthSet = await loadLockedPayrollMonthSet(
     orgId,
-    allWorkRecordMonths
+    allWorkRecordMonths, db
   );
 
-  const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(prisma, orgId, plans);
+  const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(db, orgId, plans);
   const rows = plans.map((plan) => {
     const planId = Number(plan.id);
     const stats = statsByPlanId.get(planId) || {
@@ -24092,7 +24099,7 @@ const buildAssignmentPlanProgressRows = async (
     });
   });
 
-  const priorRows = await prisma.priorProductionCompletion.findMany({ where: { orgId, canceledAt: null, workOrderId: { in: plans.flatMap(plan => plan.workOrderId ? [plan.workOrderId] : []) } } });
+  const priorRows = await db.priorProductionCompletion.findMany({ where: { orgId, canceledAt: null, workOrderId: { in: plans.flatMap(plan => plan.workOrderId ? [plan.workOrderId] : []) } } });
   return rows.map((row) => {
     const {
       _factualStartDateKey: _factualStartDateKey,
@@ -32014,7 +32021,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
     prisma.styleProcessVersion.findMany({ where: { orgId: accessContext.organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
     prisma.assignmentPlan.findMany({
       where: { orgId: accessContext.organization.id, styleId: style.id },
-      select: { id: true, externalId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, createdAt: true,
+      select: { id: true, externalId: true, assignmentQuantity: true, factoryId: true, workOrderId: true, isCompleted: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, createdAt: true,
         workOrder: { select: { orderNumber: true } }, workRecords: { select: { id: true } } },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     }),
@@ -32022,6 +32029,8 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
       processOrgId: accessContext.organization.id,
     }),
   ]);
+  const protectedAssignments = await annotateProcessVersionProtection(prisma, accessContext.organization.id, assignments,
+    (db, plans) => buildAssignmentPlanProgressRows(accessContext.organization.id, plans.map(plan => plan.externalId), { db }));
   const invalidReferencePlanIds = await invalidAssignmentProcessRefIds(prisma, accessContext.organization.id, assignments.map(plan => ({ ...plan, styleId: style.id })));
   const liveProcesses = normalizeStyleProcesses(processMirror.get(style.id) ?? []);
   const latestVersion = versions[versions.length - 1];
@@ -32032,7 +32041,7 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
     : liveProcesses.length > 0;
   res.json({
     versions: versions.map((version) => ({ ...version, name: `Ver.${version.versionNumber} · ${version.confirmedDate}`, processCount: ensureArray(version.processSnapshot).length })),
-    assignments: assignments.map((plan) => ({ assignmentPlanId: plan.id, externalId: plan.externalId,
+    assignments: protectedAssignments.map((plan) => ({ assignmentPlanId: plan.id, externalId: plan.externalId, isVersionLocked: plan.isVersionLocked, versionLockReason: plan.versionLockReason,
       orderNo: plan.workOrder?.orderNumber ?? "", assignmentQuantity: plan.assignmentQuantity ?? 0,
       assignedAt: plan.createdAt, workRecordCount: plan.workRecords.length, versionId: plan.styleProcessVersionId,
       needsSnapshotRefresh: invalidReferencePlanIds.has(plan.id) || !assignmentCtSnapshotMatchesProcessVersion(
@@ -32087,10 +32096,16 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   const { organization, employee } = accessContext;
   const style = await resolveStyleByIdForAccess({ organization, styleId: String(req.params.styleId || "").trim(), ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId) });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
-  await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id });
+  await prisma.$transaction(async (tx) => {
+  await tx.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE id IN (SELECT "workOrderId" FROM "AssignmentPlan" WHERE "orgId"=$1 AND "styleId"=$2) ORDER BY id FOR UPDATE', organization.id, style.id);
+  await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 AND "orgId"=$2 FOR NO KEY UPDATE', style.id, organization.id);
+  await tx.$queryRawUnsafe('SELECT id FROM "AssignmentPlan" WHERE "orgId"=$1 AND "styleId"=$2 ORDER BY id FOR UPDATE', organization.id, style.id);
+  await tx.$queryRawUnsafe('SELECT id FROM "WorkRecord" WHERE "orgId"=$1 AND "assignmentPlanId" IN (SELECT id FROM "AssignmentPlan" WHERE "orgId"=$1 AND "styleId"=$2) ORDER BY id FOR UPDATE', organization.id, style.id);
+  await tx.$queryRawUnsafe('SELECT id FROM "OutsourcedWorkRecord" WHERE "orgId"=$1 AND "assignmentPlanId" IN (SELECT id FROM "AssignmentPlan" WHERE "orgId"=$1 AND "styleId"=$2) ORDER BY id FOR UPDATE', organization.id, style.id);
+  await ensureInitialStyleProcessVersion({ orgId: organization.id, styleId: style.id, db: tx });
   const [versions, rawPlans] = await Promise.all([
-    prisma.styleProcessVersion.findMany({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
-    prisma.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, externalId: true, workOrderId: true, assignmentQuantity: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, isCompleted: true, productionCompletedAt: true, completedAt: true, closedAt: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    tx.styleProcessVersion.findMany({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "asc" } }),
+    tx.assignmentPlan.findMany({ where: { orgId: organization.id, styleId: style.id }, select: { id: true, externalId: true, workOrderId: true, assignmentQuantity: true, factoryId: true, styleProcessVersionId: true, assignmentCtSnapshot: true, assignmentStSnapshot: true, isCompleted: true, productionCompletedAt: true, completedAt: true, closedAt: true, workRecords: { select: { id: true } } }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
   // No pre-check against the CURRENT (pre-rebuild) state here: this endpoint
   // is the intended repair path for exactly the assignments its own
@@ -32102,7 +32117,9 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   // unable to ever fix the thing it exists to fix. Each plan's rebuilt
   // result is validated below instead (hasValidAssignmentProcessRefs on the
   // freshly-built snapshot), which is the state that actually matters.
-  const plans = await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, rawPlans);
+  const plans = await annotateProcessVersionProtection(tx, organization.id,
+    await annotateAssignmentPlanRowsWithPayrollLocks(organization.id, rawPlans, tx),
+    (db, rows) => buildAssignmentPlanProgressRows(organization.id, rows.map(row => row.externalId), { db }));
   const starts = new Map<number | null, number | null>(ensureArray(req.body?.boundaries).map((row) => [toPositiveIntOrNull(row?.versionId), toPositiveIntOrNull(row?.startAssignmentPlanId)]));
   const firstVersion = versions[0];
   if (!firstVersion) throw createHttpError(409, "style has no confirmed process version");
@@ -32156,7 +32173,7 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
   );
   const styleGenderQuantityMap =
     workOrderIdsForGenderQuantities.length > 0
-      ? await loadStyleGenderQuantityMapForWorkOrderIds(workOrderIdsForGenderQuantities, prisma)
+      ? await loadStyleGenderQuantityMapForWorkOrderIds(workOrderIdsForGenderQuantities, tx)
       : new Map<string, StyleProcessGenderQuantities>();
   const updatedAt = new Date().toISOString();
   const updatedBy = resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM";
@@ -32179,7 +32196,7 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
     // that would move one of these to a different version is left flagged
     // (needsSnapshotRefresh keeps showing it) rather than silently rewritten
     // or silently blocking every OTHER assignment in this same save.
-    if (plan.isCompleted || plan.isPayrollLocked) return [];
+    if (plan.isVersionLocked) return [];
     const versionProcesses = normalizeStyleProcesses(version.processSnapshot);
     const needsGenderQuantities = versionProcesses.some(
       (process: any) => normalizeProcessGenderScope(process?.genderScope) !== "UNISEX"
@@ -32231,9 +32248,10 @@ app.put("/styles/:styleId/process-version-boundaries", async (req, res) => {
       (sum, process) => sum + Number(process.stSeconds) * Number(process.applicableQuantity),
       0
     );
-    return [prisma.assignmentPlan.update({ where: { id: plan.id }, data: { styleProcessVersionId: version.id, assignmentCtSnapshot: ct as Prisma.InputJsonValue, assignmentCtTotalSeconds: ct?.assignmentCtTotalSeconds ?? null, assignmentStSnapshot: { styleProcessVersionId: version.id, revision: version.versionNumber, confirmedDate: version.confirmedDate, processes: stProcesses } as Prisma.InputJsonValue, assignmentStTotalSeconds, updatedByEmployeeId: employee?.id ?? null } })];
+    return [tx.assignmentPlan.update({ where: { id: plan.id }, data: { styleProcessVersionId: version.id, assignmentCtSnapshot: ct as Prisma.InputJsonValue, assignmentCtTotalSeconds: ct?.assignmentCtTotalSeconds ?? null, assignmentStSnapshot: { styleProcessVersionId: version.id, revision: version.versionNumber, confirmedDate: version.confirmedDate, processes: stProcesses } as Prisma.InputJsonValue, assignmentStTotalSeconds, updatedByEmployeeId: employee?.id ?? null } })];
   });
-  await prisma.$transaction(updates);
+  await Promise.all(updates);
+  }, { timeout: 60000 });
   res.json({ ok: true });
 });
 

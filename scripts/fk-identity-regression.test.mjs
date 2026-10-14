@@ -410,7 +410,7 @@ test('import refuses ambiguous processes inside one assignment instead of choosi
 });
 
 test('assignment progress reads current outsourced vendor through the relation', () => {
-  const query = backend.slice(backend.indexOf('const outsourcedRows: any[] = await prisma.outsourcedWorkRecord.findMany'), backend.indexOf('const outsourcedRows: any[] = await prisma.outsourcedWorkRecord.findMany') + 2000);
+  const query = backend.slice(backend.indexOf('const outsourcedRows: any[] = await db.outsourcedWorkRecord.findMany'), backend.indexOf('const outsourcedRows: any[] = await db.outsourcedWorkRecord.findMany') + 2000);
   assert.match(query, /outsourcingPartner: \{ select: \{ name: true \} \}/);
   assert.match(backend, /resolveOptionalString\(record\?\.outsourcingPartner\?\.name, "외주"\)/);
 });

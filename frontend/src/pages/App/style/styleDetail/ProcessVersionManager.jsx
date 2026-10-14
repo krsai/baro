@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
 import { useLanguage } from '../../../../context/LanguageContext';
 
@@ -36,6 +37,19 @@ const translateVersionBoundaryError = (message, languageCode = 'en') => {
   return null;
 };
 
+export const deriveEditableVersionBoundaries = (versions, assignments) => {
+  const next = {};
+  versions.forEach(version => {
+    const first = assignments.find(assignment => !assignment.isVersionLocked && assignment.versionId === version.id);
+    if (first) next[version.id] = first.assignmentPlanId;
+  });
+  const firstEditable = assignments.find(assignment => !assignment.isVersionLocked);
+  // Locked rows retain their own version independently of editable ranges.
+  // Anchor the first editable range at the oldest row to retain the existing API contract.
+  if (firstEditable && assignments.length) next[firstEditable.versionId] = assignments[0].assignmentPlanId;
+  return next;
+};
+
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const { languageCode } = useLanguage();
   const copy = COPY[languageCode] || COPY.en;
@@ -49,6 +63,10 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const [boundaries, setBoundaries] = useState({});
   const [savedBoundaries, setSavedBoundaries] = useState({});
   const [busy, setBusy] = useState(false);
+  const lockText = languageCode === 'ko' ? '생산 완료·잠금 배정은 현재 공정 버전을 유지합니다. 새 버전의 적용 구간에 포함되어도 변경되지 않습니다.'
+    : languageCode === 'vi' ? 'Phân công hoàn thành sản xuất hoặc đã khóa giữ nguyên phiên bản, kể cả khi nằm trong phạm vi phiên bản mới.'
+    : 'Production-completed and locked assignments retain their current version, even inside a new version range.';
+  const lockedLabel = languageCode === 'ko' ? '버전 변경 불가' : languageCode === 'vi' ? 'Không thể đổi phiên bản' : 'Version locked';
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -56,11 +74,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       const data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
       setVersions(data.versions);
       setAssignments(data.assignments);
-      const next = {};
-      data.versions.forEach((version) => {
-        const first = data.assignments.find((assignment) => assignment.versionId === version.id);
-        if (first) next[version.id] = first.assignmentPlanId;
-      });
+      const next = deriveEditableVersionBoundaries(data.versions, data.assignments);
       setBoundaries(next);
       setSavedBoundaries(next);
     } catch (error) {
@@ -77,7 +91,9 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       const startIndex = assignments.findIndex((item) => item.assignmentPlanId === startId);
       return startIndex >= 0 && startIndex <= index;
     });
-    const active = matchingVersions[matchingVersions.length - 1];
+    const active = assignment.isVersionLocked
+      ? versions.find(version => version.id === assignment.versionId)
+      : matchingVersions[matchingVersions.length - 1];
     return { ...assignment, activeVersion: active };
   }), [assignments, boundaries, versions]);
 
@@ -117,7 +133,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   // can repair an assignment whose stored CT/ST no longer matches its own
   // already-assigned version (needsSnapshotRefresh). Also allow Save when
   // there is something to repair, independent of any drag having happened.
-  const hasRefreshableAssignments = assignments.some((item) => item.needsSnapshotRefresh);
+  const hasRefreshableAssignments = assignments.some((item) => item.needsSnapshotRefresh && !item.isVersionLocked);
   const save = async () => {
     setBusy(true);
     try {
@@ -134,6 +150,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="md">
       <DialogTitle>{copy.title}</DialogTitle>
       <DialogContent dividers>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{lockText}</Typography>
         {assignments.some(item => item.needsSnapshotRefresh) && <Alert severity="warning" sx={{ mb: 2 }}>{integrityWarning}</Alert>}
         <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
           <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
@@ -175,8 +192,9 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                   ? resolveVersionColor(displayAssignments[index + 1]?.activeVersion)
                   : null;
                 return (
-                  <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
+                  <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { if (assignment.isVersionLocked) return; event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { if (assignment.isVersionLocked) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
                     delete event.currentTarget.dataset.dragover;
+                    if (assignment.isVersionLocked) { notify(lockedLabel, 'warning'); return; }
                     const versionId = Number(event.dataTransfer.getData('text/plain'));
                     const version = versions.find((item) => item.id === versionId);
                     if (!version) return;
@@ -240,6 +258,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
                       boxShadow: isNewest || isBoundary ? `0 0 0 3px ${dotColor}26` : 'none',
                     }} />
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
+                      {assignment.isVersionLocked && <LockOutlinedIcon fontSize="small" color="disabled" titleAccess={lockedLabel} />}
                       <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
                       {assignment.needsSnapshotRefresh && <Chip size="small" color="warning" label={languageCode === 'en' ? 'Review references' : languageCode === 'vi' ? 'Kiểm tra liên kết' : '공정 연결 확인'} />}
                       <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>{copy.assignment} {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>

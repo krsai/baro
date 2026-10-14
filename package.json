@@ -76,7 +76,9 @@
     "test:partner-transaction-cost": "npm --prefix backend run build && node --test scripts/partner-transaction-cost.test.mjs",
     "test:prior-completion-browser": "node scripts/prior-completion-browser.test.mjs",
     "test:payroll-management-versions": "npm --prefix backend run build && node --test scripts/payroll-management-versions.test.mjs",
-    "test:payroll-management-browser": "node scripts/payroll-management-browser.test.mjs"
+    "test:payroll-management-browser": "node scripts/payroll-management-browser.test.mjs",
+    "test:process-version-protection": "npm --prefix backend run build && node --test scripts/process-version-protection.test.mjs",
+    "test:process-version-protection-browser": "node scripts/process-version-protection-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",
