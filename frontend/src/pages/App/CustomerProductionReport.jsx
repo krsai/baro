@@ -155,9 +155,9 @@ const groupRowsByOrder = (styleRows) => {
   });
 };
 
-const ReportStatusChip = ({ status: statusKey, languageCode }) => {
+const ReportStatusChip = ({ status: statusKey, languageCode, onClick }) => {
   const status = STATUS[statusKey] || STATUS.UNASSIGNED;
-  return <Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={statusKey === 'COMPLETED' ? 'filled' : 'outlined'} />;
+  return <Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={statusKey === 'COMPLETED' ? 'filled' : 'outlined'} onClick={onClick} sx={{ fontWeight: 400 }} />;
 };
 
 const ReportProgressCell = ({ percent }) => (
@@ -413,7 +413,7 @@ const CustomerProductionReport = () => {
                   <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                   <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}{styleRow.priorQuantity > 0 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이전 완료' : languageCode === 'vi' ? 'Hoàn thành trước' : 'Previous completion'} {fmt(styleRow.priorQuantity)}</Typography>}</TableCell>
                   <TableCell><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
-                  <TableCell>{['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole) ? <Button size="small" onClick={() => setPriorCompletionRow(styleRow)}><ReportStatusChip status={styleRow.status} languageCode={languageCode} /></Button> : <ReportStatusChip status={styleRow.status} languageCode={languageCode} />}</TableCell>
+                  <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} onClick={['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole) ? () => setPriorCompletionRow(styleRow) : undefined} /></TableCell>
                 </TableRow>)}
               </TableBody>
             </Table>
