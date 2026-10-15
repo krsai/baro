@@ -1,3 +1,4 @@
+import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
 import { annotateProcessVersionProtection } from "./services/processVersionProtection";
 import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
@@ -7713,25 +7714,26 @@ const collectStyleQuantityRequirementsFromOrders = ({
 const ensureStyleStandardsForQuantities = async ({
   styles,
   quantityByStyleId,
+  preparedProcessMirror,
   processOrgId = null,
   db = prisma,
 }: {
   styles: any[];
   quantityByStyleId: Map<number, Set<number>>;
+  preparedProcessMirror?: Map<number, any[]>;
   processOrgId?: number | null;
   db?: StyleStorageClient;
 }) => {
+  const mirror = preparedProcessMirror ?? await ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
   const styleIds = Array.from(quantityByStyleId.keys());
   if (styleIds.length === 0) {
-    return ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
+    return mirror;
   }
 
-  await ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
   const rowsByStyleId = await loadStyleProcessRowsByStyleId(styleIds, {
     processOrgId,
     db,
   });
-  const touchedStyleIds = new Set<number>();
 
   for (const styleId of styleIds) {
     const requiredQuantities = Array.from(quantityByStyleId.get(styleId) || []);
@@ -7755,14 +7757,8 @@ const ensureStyleStandardsForQuantities = async ({
     }
   }
 
-  if (touchedStyleIds.size > 0) {
-    await refreshStyleProcessMirrorForStyleIds(Array.from(touchedStyleIds), {
-      processOrgId,
-      db,
-    });
-  }
 
-  return ensureStyleProcessStorageForStyles(styles, { processOrgId, db });
+  return mirror;
 };
 
 const toStyleResponse = (
@@ -8242,7 +8238,7 @@ const createOrReuseSharedOrder = async ({
           const finish = async (order: any, created: boolean, previousOrgId?: number) => {
             await rebuildOrderPartyCardsTx(tx, [
               previousOrgId, order.orgId, order.buyerOrgId, order.sellerOrgId,
-            ]);
+            ], [order.id]);
             return { order, created };
           };
           const existing = await tx.workOrder.findFirst({
@@ -13297,9 +13293,17 @@ const syncAssignmentCardsForOrg = async ({
         : {}),
     },
   });
+  const existingById = new Map<string, any>();
+  if (preserveAssignedCards && normalizedCards.length) {
+    const existing = await db.assignmentCard.findMany({ where: { orgId },
+      select: { cardId: true, sortOrder: true, payload: true, styleId: true, workOrderId: true, buyerOrgId: true } });
+    existing.forEach(row => existingById.set(row.cardId, row));
+  }
   for (const [index, entry] of normalizedCards.entries()) {
     const { payload, styleId, workOrderId, buyerOrgId } = entry;
     const cardId = String(payload.id);
+    if (preserveAssignedCards && !assignmentCardNeedsWrite(existingById.get(cardId),
+      { sortOrder: index, payload, styleId, workOrderId, buyerOrgId })) continue;
     await db.assignmentCard.upsert({
       where: {
         orgId_cardId: {
@@ -13394,7 +13398,8 @@ type AssignmentCardRebuildOptions = {
 const rebuildAssignmentCardsForOrgTx = async (
   orgId: number,
   db: Prisma.TransactionClient,
-  preserveAssignedCards = false
+  preserveAssignedCards = false,
+  sourceOrderIds?: number[]
 ) => {
   const diagPrefix = `[rebuildAssignmentCardsForOrg] orgId=${orgId}`;
   const organization = await db.organization.findUnique({
@@ -13409,7 +13414,7 @@ const rebuildAssignmentCardsForOrgTx = async (
   if (!isManufacturerOrg(organization)) return null;
   const [styles, orders, savedCards] = await Promise.all([
     db.style.findMany({
-      where: styleAccessWhere(organization),
+      where: { AND: [styleAccessWhere(organization), ...(sourceOrderIds ? [{ workOrderItems: { some: { workOrderId: { in: sourceOrderIds } } } }] : [])] },
       orderBy: { id: "asc" },
       select: {
         id: true,
@@ -13434,7 +13439,7 @@ const rebuildAssignmentCardsForOrgTx = async (
       },
     }),
     db.workOrder.findMany({
-      where: { OR: getOrderAccessWhere(orgId) },
+      where: { OR: getOrderAccessWhere(orgId), ...(sourceOrderIds ? { id: { in: sourceOrderIds } } : {}) },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       select: {
         id: true,
@@ -13497,6 +13502,7 @@ const rebuildAssignmentCardsForOrgTx = async (
         db,
         styles: relationshipStyles,
         quantityByStyleId,
+        preparedProcessMirror: initialProcessMirrorMap,
         processOrgId: orgId,
       });
     } catch (error) {
@@ -13525,7 +13531,7 @@ const rebuildAssignmentCardsForOrgTx = async (
       assignmentCard: { select: { cardId: true } } },
   });
   const cards = reconcileAssignmentCards({ baseCards, savedCards: savedCards as any[], plans,
-    sourceOrderIds: orders.map(order => order.id) });
+    sourceOrderIds: sourceOrderIds ?? orders.map(order => order.id) });
   const syncedCards = await syncAssignmentCardsForOrg({ orgId, cards, db, preserveAssignedCards });
   return { syncedCards, hydratedStyles, manufacturerScope };
 };
@@ -13571,7 +13577,8 @@ const rebuildAssignmentCardsForOrg = async (
 // avoids independent commits and reduces lock-order inversions between requests.
 const rebuildOrderPartyCardsTx = async (
   db: Prisma.TransactionClient,
-  orgIds: Array<number | null | undefined>
+  orgIds: Array<number | null | undefined>,
+  sourceOrderIds?: number[]
 ) => {
   const ids = [...new Set(orgIds.map(toPositiveIntOrNull)
     .filter((id): id is number => id !== null))].sort((a, b) => a - b);
@@ -13583,7 +13590,7 @@ const rebuildOrderPartyCardsTx = async (
     if (!organization) throw createHttpError(409, "order organization no longer exists");
     // Customers remain order parties, but only manufacturers own production cards.
     if (!isManufacturerOrg(organization)) continue;
-    const result = await rebuildAssignmentCardsForOrgTx(orgId, db, true);
+    const result = await rebuildAssignmentCardsForOrgTx(orgId, db, true, sourceOrderIds);
     if (!result) throw createHttpError(409, "order organization no longer exists");
   }
 };
@@ -30941,7 +30948,7 @@ app.put("/orders/:orderId", async (req, res) => {
       }
     }
     await rebuildOrderPartyCardsTx(tx, [current.orgId, current.buyerOrgId, current.sellerOrgId,
-      buyer.id, seller.id]);
+      buyer.id, seller.id], [updatedOrder.id]);
     const saved = await tx.workOrder.findUnique({ where: { id: updatedOrder.id }, include: WORK_ORDER_RESPONSE_INCLUDE });
     return { ...saved!, quantityReview };
   });
@@ -31134,7 +31141,7 @@ app.delete("/orders/:orderId", async (req, res) => {
     // The assignment guard above and this cleanup share the Serializable Tx.
     await tx.assignmentCard.deleteMany({ where: { workOrderId: current.id } });
     await tx.workOrder.delete({ where: { id: current.id } });
-    await rebuildOrderPartyCardsTx(tx, [current.buyerOrgId, current.sellerOrgId]);
+    await rebuildOrderPartyCardsTx(tx, [current.buyerOrgId, current.sellerOrgId], [current.id]);
   });
   res.status(204).send();
 });

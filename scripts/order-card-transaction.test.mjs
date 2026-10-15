@@ -42,8 +42,10 @@ function harness({ existing = null, failOrg = null, conflict = null, alwaysConfl
     ORDER_CREATE_SERIALIZABLE_RETRIES: 2, WORK_ORDER_RESPONSE_INCLUDE: {},
     normalizeOrderItems: items => items, normalizeWorkOrderItemGender: value => value,
     toNonNegativeInt: value => value,
-    rebuildAssignmentCardsForOrgTx: async (orgId, tx) => {
+    rebuildAssignmentCardsForOrgTx: async (orgId, tx, preserveAssignedCards, sourceOrderIds) => {
       assert.ok(tx.draft.order, 'order must be saved before card rebuild');
+      assert.equal(preserveAssignedCards, true);
+      assert.deepEqual(Array.from(sourceOrderIds), [tx.draft.order.id]);
       seen.push(orgId);
       tx.draft.cards[orgId] = { workOrderId: tx.draft.order.id };
       if (orgId === failOrg) throw new Error('second organization failed');
