@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 ﻿import React, { useEffect, useState } from 'react';
 import {
   Button,
@@ -31,6 +32,7 @@ import {
 } from '../../../utils/workspaceDataEvents';
 
 const FactoryList = () => {
+  const pageDialogs = usePageDialogs();
   const [queryFailed, setQueryFailed] = useState(false);
   const [factories, setFactories] = useState([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -200,7 +202,7 @@ const FactoryList = () => {
   const handleDeleteFactory = async (factory, event) => {
     event?.stopPropagation?.();
     if (!factory?.id || deletingFactoryId) return;
-    const confirmed = window.confirm(
+    const confirmed = await pageDialogs.confirm(
       formatWithParams(text.deleteConfirm, {
         name: factory.name || text.title,
       })

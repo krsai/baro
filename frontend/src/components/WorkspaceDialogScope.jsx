@@ -1,5 +1,6 @@
 import React, { createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Modal, ThemeProvider, useTheme } from '@mui/material';
+import PageDialogProvider from './PageDialogProvider';
 
 const DialogScope = createContext(null);
 
@@ -57,11 +58,17 @@ export default function WorkspaceDialogScope({ active = true, viewportRef, child
       ...parentTheme.components?.MuiDialog?.defaultProps,
       slots: { ...parentTheme.components?.MuiDialog?.defaultProps?.slots, root: WorkspaceDialogRoot },
     } },
+    MuiDrawer: { ...parentTheme.components?.MuiDrawer, defaultProps: {
+      ...parentTheme.components?.MuiDrawer?.defaultProps,
+      slots: { ...parentTheme.components?.MuiDrawer?.defaultProps?.slots, root: WorkspaceDialogRoot },
+    }, styleOverrides: { ...parentTheme.components?.MuiDrawer?.styleOverrides,
+      paper: { ...parentTheme.components?.MuiDrawer?.styleOverrides?.paper, position: 'absolute', boxSizing: 'border-box' },
+    } },
   } }), [parentTheme]);
   const scope = useMemo(() => ({ active, host, register }), [active, register]);
-  return <DialogScope.Provider value={scope}><ThemeProvider theme={theme}>
+  return <DialogScope.Provider value={scope}><ThemeProvider theme={theme}><PageDialogProvider>
     <Box sx={{ display: 'contents' }} inert={active && openDialogs.size > 0 ? true : undefined}>{children}</Box>
     <Box ref={host} data-workspace-dialog-host sx={{ position: 'fixed', ...bounds,
-      display: active && bounds ? 'block' : 'none', pointerEvents: 'none', zIndex: parentTheme.zIndex.modal }} />
-  </ThemeProvider></DialogScope.Provider>;
+      display: active && bounds ? 'block' : 'none', overflow: 'hidden', pointerEvents: 'none', zIndex: parentTheme.zIndex.modal }} />
+  </PageDialogProvider></ThemeProvider></DialogScope.Provider>;
 }

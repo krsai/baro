@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { getOrderWorkflowLabel, orderWorkflowOptions } from '../../../constants/orderWorkflow.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -793,6 +794,7 @@ const formatStyleSummary = (items = [], languageCode = 'ko') => {
 };
 
 const OrderList = () => {
+  const pageDialogs = usePageDialogs();
   const location = useLocation();
   const { orderId } = useParams();
   const isDetailMode = Boolean(orderId);
@@ -2220,7 +2222,7 @@ const OrderList = () => {
     const orderLabel = order.orderNumber
       ? `${orderPageText.deleteTargetOrder} ${order.orderNumber}`
       : orderPageText.deleteTargetFallback;
-    if (!window.confirm(`${orderLabel} ${orderPageText.deleteConfirm}`)) {
+    if (!await pageDialogs.confirm(`${orderLabel} ${orderPageText.deleteConfirm}`)) {
       return;
     }
 
@@ -3401,7 +3403,7 @@ const OrderList = () => {
             {!isNewOrder && <Button onClick={async () => {
               try {
                 const result = await requestJSON(`/orders/${encodeURIComponent(orderId)}/quantity-changes${buildQueryString({ orgId: activeOrgId })}`, { skipCache: true });
-                window.alert(result.rows.length ? result.rows.map(row => formatQuantityReview(row, languageCode)).join('\n\n')
+                await pageDialogs.alert(result.rows.length ? result.rows.map(row => formatQuantityReview(row, languageCode)).join('\n\n')
                   : languageCode === 'ko' ? '감량 이력이 없습니다.' : languageCode === 'vi' ? 'Chưa có lịch sử giảm.' : 'No reduction history.');
               } catch (error) { showNotification(error.message, 'error'); }
             }}>{languageCode === 'ko' ? '감량 이력' : languageCode === 'vi' ? 'Lịch sử giảm' : 'Reduction history'}</Button>}

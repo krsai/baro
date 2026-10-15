@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
@@ -218,6 +219,7 @@ const getPayrollLockButtonSx = (locked) => (theme) => ({
 });
 
 const PayrollEntry = () => {
+  const pageDialogs = usePageDialogs();
   const { payrollId } = useParams();
   const [searchParams] = useSearchParams();
   const { showNotification } = useAppActions();
@@ -637,7 +639,7 @@ const PayrollEntry = () => {
   const handleLockToggle = async () => {
     if (!data || togglingLock) return;
     const lockText = LOCK_TEXT[languageCode] || LOCK_TEXT.en;
-    if (locked && !window.confirm(lockText.unlockConfirm)) return;
+    if (locked && !await pageDialogs.confirm(lockText.unlockConfirm)) return;
     setTogglingLock(true);
     try {
       const updated = await requestJSON(

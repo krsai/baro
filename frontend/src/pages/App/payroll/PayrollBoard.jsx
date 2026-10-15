@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -125,6 +126,7 @@ const resolveFactoryDisplayName = (factory, languageCode) => {
 const rowKey = (month, factoryId) => `${month}:${factoryId}`;
 
 const PayrollBoard = () => {
+  const pageDialogs = usePageDialogs();
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
@@ -379,7 +381,7 @@ const PayrollBoard = () => {
 
   const handleUnlock = async (month, factory, snapshot) => {
     if (!snapshot || snapshot.isProvisional) return;
-    if (!window.confirm(resolveText(languageCode, 'unlockConfirm', { month }))) return;
+    if (!await pageDialogs.confirm(resolveText(languageCode, 'unlockConfirm', { month }))) return;
     setMutating(`lock:${rowKey(month, factory.id)}`);
     try {
       const updatedSnapshot = await requestJSON(

@@ -15,6 +15,7 @@ const port=43195,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/workspace-dialog-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});const page=await browser.newPage({viewport:{width:1200,height:800}}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.log(e.message)});page.on('console',m=>{if(m.type()==='error')console.log(m.text())});
+  await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:"en"});'}));
   await page.goto(`http://127.0.0.1:${port}/workspace-dialog-acceptance.html`);
   await page.getByRole('button',{name:'Open A',exact:true}).click();await page.getByLabel('Value A').fill('unsaved A');
   const backdrop=page.locator('[data-workspace-dialog-host]:visible .MuiBackdrop-root');

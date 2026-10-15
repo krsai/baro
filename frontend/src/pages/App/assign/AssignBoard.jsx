@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
 import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
 import StaleEditNotice from '../../../components/StaleEditNotice';
@@ -2999,6 +3000,7 @@ const rebuildFactoryScopeWithReplace = ({
 };
 
 const AssignBoard = () => {
+  const pageDialogs = usePageDialogs();
   const { showNotification, navigateToPath, setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
@@ -6516,9 +6518,9 @@ const AssignBoard = () => {
     }
   };
 
-  const promptSplitQuantity = useCallback((quantity) => {
+  const promptSplitQuantity = useCallback(async (quantity) => {
     if (!quantity || quantity <= 1) return null;
-    const input = window.prompt(
+    const input = await pageDialogs.prompt(
       getUiMessage(
         'assign.splitQuantityPrompt',
         'Enter the quantity to split (1 to {max})',
@@ -6543,11 +6545,11 @@ const AssignBoard = () => {
     }, quantity);
   }, [rebuildCardTimeTotalsForQuantity]);
 
-  const handleSplitCard = useCallback((cardId) => {
+  const handleSplitCard = useCallback(async (cardId) => {
     const card = cardById.get(cardId);
     if (!card) return;
     const quantity = Number(card.quantity);
-    const splitQty = promptSplitQuantity(quantity);
+    const splitQty = await promptSplitQuantity(quantity);
     if (!splitQty) return;
     const remainQty = quantity - splitQty;
     const newId = `${card.id}-S${splitCounterRef.current++}`;
@@ -6625,7 +6627,7 @@ const AssignBoard = () => {
       !assignment.isCompleted ||
       hasExactRecordedCompletion(assignmentWithProgress)
     ) return;
-    const confirmed = window.confirm(
+    const confirmed = await pageDialogs.confirm(
       languageCode === 'ko'
         ? '이 배정을 완료 상태에서 되돌립니다. 기존 작업기록과 AT 학습 데이터는 그대로 유지되며, 이후 다시 작업기록을 추가하거나 완료 처리를 할 수 있습니다. 계속할까요?'
         : languageCode === 'vi'
@@ -6774,9 +6776,9 @@ const AssignBoard = () => {
     return true;
   };
 
-  const handleResetAssignments = useCallback(() => {
+  const handleResetAssignments = useCallback(async () => {
     if (!persistReady || !isDirty) return;
-    const confirmed = window.confirm(
+    const confirmed = await pageDialogs.confirm(
       getUiMessage(
         'assign.resetConfirm',
         'Restore unsaved assignment changes to the last saved state?',

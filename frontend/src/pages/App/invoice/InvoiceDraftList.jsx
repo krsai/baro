@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, CircularProgress, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
@@ -11,6 +12,7 @@ import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEven
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 export default function InvoiceDraftList({ orgId, languageCode }) {
+  const pageDialogs = usePageDialogs();
   const t = invoiceDraftStorageMessages[languageCode] || invoiceDraftStorageMessages.en;
   const common = invoiceMessages[languageCode] || invoiceMessages.en;
   const [result, setResult] = useState({ rows: [], hasMore: false });
@@ -35,7 +37,7 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
     return () => { cancelled = true; };
   }, [orgId, page, reload, t.failed]);
   const remove = async row => {
-    if (!window.confirm(t.confirmDelete)) return;
+    if (!await pageDialogs.confirm(t.confirmDelete)) return;
     setRemoving(true); setError('');
     try {
       await requestJSON(`/invoices/drafts/${encodeURIComponent(row.id)}${buildQueryString({ orgId })}`, {
@@ -63,8 +65,8 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
     const policy = languageCode === 'ko' ? '취소하면 이 회차의 채권은 제거되지만 이전 개정본이 다시 활성화되지는 않습니다. 기록된 입금은 보존되어 고객 예수금/환급 검토에 계속 표시됩니다.'
       : languageCode === 'vi' ? 'Hủy sẽ xóa khoản phải thu của đợt này nhưng không khôi phục bản sửa đổi trước. Khoản đã thu vẫn được giữ để kiểm tra số dư hoặc hoàn tiền.'
       : 'Cancellation removes this installment debt but does not reactivate an earlier revision. Recorded receipts remain as customer credit/refund review.';
-    if (!window.confirm(policy)) return;
-    const reason = window.prompt(languageCode === 'ko' ? '취소 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do hủy.' : 'Enter a cancellation reason.');
+    if (!await pageDialogs.confirm(policy)) return;
+    const reason = await pageDialogs.prompt(languageCode === 'ko' ? '취소 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do hủy.' : 'Enter a cancellation reason.');
     if (!reason?.trim()) return;
     try { await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/cancel${buildQueryString({ orgId })}`, { method: 'POST', body: JSON.stringify({ reason }) });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1);
@@ -72,19 +74,19 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
   };
   const addPayment = async row => {
     let recorded = false;
-    const amount = window.prompt(languageCode === 'ko' ? `실입금액을 입력하세요. (${row.currencyCode})` : `Enter received amount (${row.currencyCode}).`);
+    const amount = await pageDialogs.prompt(languageCode === 'ko' ? `실입금액을 입력하세요. (${row.currencyCode})` : `Enter received amount (${row.currencyCode}).`);
     if (!amount?.trim()) return;
-    const reference = window.prompt(languageCode === 'ko' ? '입금 참고번호를 입력하세요. (선택)' : 'Payment reference (optional).') || '';
+    const reference = await pageDialogs.prompt(languageCode === 'ko' ? '입금 참고번호를 입력하세요. (선택)' : 'Payment reference (optional).') || '';
     try { const payment = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/payments${buildQueryString({ orgId })}`, {
       method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), amount: amount.trim(),
         receivedAt: new Date().toISOString(), reference, note: '', kind: 'RECEIPT' }),
     });
       recorded = true;
-      window.alert(languageCode === 'ko' ? '입금이 저장되었습니다. 다음 배분 입력을 취소해도 입금은 유지됩니다. 배분 버튼에서 이어서 처리할 수 있습니다.' : languageCode === 'vi' ? 'Đã lưu khoản thu. Hủy nhập phân bổ không hủy khoản thu. Có thể tiếp tục bằng nút phân bổ.' : 'Receipt saved. Cancelling allocation will keep this receipt. Use Allocate to resume.');
+      await pageDialogs.alert(languageCode === 'ko' ? '입금이 저장되었습니다. 다음 배분 입력을 취소해도 입금은 유지됩니다. 배분 버튼에서 이어서 처리할 수 있습니다.' : languageCode === 'vi' ? 'Đã lưu khoản thu. Hủy nhập phân bổ không hủy khoản thu. Có thể tiếp tục bằng nút phân bổ.' : 'Receipt saved. Cancelling allocation will keep this receipt. Use Allocate to resume.');
       if (row.orders.length > 1) {
         const allocations = [];
         for (const order of row.orders) {
-          const allocated = window.prompt(languageCode === 'ko'
+          const allocated = await pageDialogs.prompt(languageCode === 'ko'
             ? `${order.sourceOrderNumber} 주문에 배분할 금액을 입력하세요. (배분하지 않으면 0)`
             : `Amount allocated to order ${order.sourceOrderNumber} (0 for none).`, '0');
           if (allocated === null) return;
@@ -100,20 +102,20 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
   };
   const refundPayment = async row => {
     let recorded = false;
-    const amount = window.prompt(`Refund amount (${row.currencyCode}).`);
+    const amount = await pageDialogs.prompt(`Refund amount (${row.currencyCode}).`);
     if (!amount?.trim()) return;
-    const reference = window.prompt('Refund reference (optional).') || '';
+    const reference = await pageDialogs.prompt('Refund reference (optional).') || '';
     try {
       const payment = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/payments${buildQueryString({ orgId })}`, {
         method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), amount: amount.trim(),
           receivedAt: new Date().toISOString(), reference, note: '', kind: 'REFUND' }),
       });
       recorded = true;
-      window.alert(languageCode === 'ko' ? '환불이 저장되었습니다. 배분 입력을 취소해도 환불은 유지됩니다. 배분 버튼에서 이어서 처리할 수 있습니다.' : languageCode === 'vi' ? 'Đã lưu hoàn tiền. Hủy phân bổ không hủy hoàn tiền. Có thể tiếp tục bằng nút phân bổ.' : 'Refund saved. Cancelling allocation will keep this refund. Use Allocate to resume.');
+      await pageDialogs.alert(languageCode === 'ko' ? '환불이 저장되었습니다. 배분 입력을 취소해도 환불은 유지됩니다. 배분 버튼에서 이어서 처리할 수 있습니다.' : languageCode === 'vi' ? 'Đã lưu hoàn tiền. Hủy phân bổ không hủy hoàn tiền. Có thể tiếp tục bằng nút phân bổ.' : 'Refund saved. Cancelling allocation will keep this refund. Use Allocate to resume.');
       if (row.orders.length > 1) {
         const allocations = [];
         for (const order of row.orders) {
-          const allocated = window.prompt(`Refund allocated to order ${order.sourceOrderNumber} (0 for none).`, '0');
+          const allocated = await pageDialogs.prompt(`Refund allocated to order ${order.sourceOrderNumber} (0 for none).`, '0');
           if (allocated === null) return;
           if (Number(allocated) > 0) allocations.push({ invoiceOrderId: order.id, amount: allocated.trim() });
         }
@@ -127,7 +129,7 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
     finally { if (recorded) { emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId }); setReload(value => value + 1); } }
   };
   const reviseIssued = async row => {
-    const reason = window.prompt(languageCode === 'ko' ? '개정 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do sửa đổi.' : 'Enter a revision reason.');
+    const reason = await pageDialogs.prompt(languageCode === 'ko' ? '개정 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do sửa đổi.' : 'Enter a revision reason.');
     if (!reason?.trim()) return;
     try {
       const draft = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/revision-draft${buildQueryString({ orgId })}`, {
@@ -143,18 +145,18 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
       const payments = (invoice.payments || []).filter(payment => !payment.voidedAt);
       if (!payments.length) return;
       const options = payments.map((payment, index) => `${index + 1}. ${payment.receivedAt} · ${invoice.currencyCode} ${payment.amount} · ${payment.reference || '-'}`).join('\n');
-      const selectedIndex = Number(window.prompt(`${options}\n\n${languageCode === 'ko' ? '배분할 입금 번호를 선택하세요.' : 'Select the payment number to allocate.'}`, '1')) - 1;
+      const selectedIndex = Number(await pageDialogs.prompt(`${options}\n\n${languageCode === 'ko' ? '배분할 입금 번호를 선택하세요.' : 'Select the payment number to allocate.'}`, '1')) - 1;
       const payment = payments[selectedIndex]; if (!payment) return;
       const allocations = [];
       for (const order of invoice.orders || []) {
         const current = (payment.allocations || []).find(item => !item.voidedAt && item.invoiceOrderId === order.id);
-        const amount = window.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 주문 배분액` : `Allocation for ${order.sourceOrderNumber}`, current?.amount || '0');
+        const amount = await pageDialogs.prompt(languageCode === 'ko' ? `${order.sourceOrderNumber} 주문 배분액` : `Allocation for ${order.sourceOrderNumber}`, current?.amount || '0');
         if (amount === null) return;
         if (Number(amount) > 0) allocations.push({ invoiceOrderId: order.id, amount: amount.trim() });
       }
       if (!allocations.length) return;
       const hasCurrent = (payment.allocations || []).some(item => !item.voidedAt);
-      const reason = hasCurrent ? window.prompt(languageCode === 'ko' ? '기존 배분을 바꾸는 사유를 입력하세요.' : 'Reason for changing the allocation.') : '';
+      const reason = hasCurrent ? await pageDialogs.prompt(languageCode === 'ko' ? '기존 배분을 바꾸는 사유를 입력하세요.' : 'Reason for changing the allocation.') : '';
       if (hasCurrent && !reason?.trim()) return;
       await requestJSON(`/invoices/payments/${encodeURIComponent(payment.id)}/allocations${buildQueryString({ orgId })}`, {
         method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), reason: reason?.trim() || '', allocations }),
@@ -172,12 +174,12 @@ export default function InvoiceDraftList({ orgId, languageCode }) {
         ...(invoice.finalLockEvents || []).map(event => `[${event.action}] ${event.createdAt} · ${event.actor} · ${event.recognizedQuantity ?? '-'} · ${event.reason}`),
         ...(invoice.payments || []).map(payment => `${payment.voidedAt ? '[VOID] ' : ''}${payment.kind === 'REFUND' ? '[REFUND] ' : ''}${payment.receivedAt} ${invoice.currencyCode} ${payment.amount}${payment.allocations?.filter(item => !item.voidedAt).map(item => ` · #${item.invoiceOrderId} ${item.amount}`).join('') || ''}`),
       ].filter(Boolean);
-      window.alert(lines.join('\n'));
+      await pageDialogs.alert(lines.join('\n'));
     } catch { setError(t.failed); }
   };
   const approveFinalLock = row => setFinalReviewId(row.id);
   const unlockFinalLock = async row => {
-    const reason = window.prompt(languageCode === 'ko' ? '최종 정산 잠금 해제 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do mở khóa quyết toán cuối cùng.' : 'Enter a reason for unlocking the final settlement.');
+    const reason = await pageDialogs.prompt(languageCode === 'ko' ? '최종 정산 잠금 해제 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do mở khóa quyết toán cuối cùng.' : 'Enter a reason for unlocking the final settlement.');
     if (!reason?.trim()) return;
     try {
       await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/final-unlock${buildQueryString({ orgId })}`, {

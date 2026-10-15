@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -357,6 +358,7 @@ const resolveAverageCtSecondsPerWorker = (log) => {
 const quantityReviewDrafts = new Map();
 
 const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
+  const pageDialogs = usePageDialogs();
   const isOutsourcingMode = recordKind === 'OUTSOURCING';
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId, user } = useAuth();
@@ -624,7 +626,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     async (event, log) => {
       event.stopPropagation();
       if (!log?.id) return;
-      const confirmed = window.confirm(
+      const confirmed = await pageDialogs.confirm(
         resolveText(TEXT.deleteConfirm, languageCode, '이 기록을 삭제하시겠습니까?')
       );
       if (!confirmed) return;

@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Button, Dialog, DialogTitle, DialogContent, DialogActions, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
@@ -9,6 +10,7 @@ const messages = {
   vi: { title: 'Giảm công nợ', info: 'Giảm công nợ, giữ nguyên hóa đơn, số lượng và tiền thu. Mở khóa trước. Hủy các đợt sau trước khi giảm công nợ đợt trước.', order: 'Đơn hàng', amount: 'Số tiền giảm', reason: 'Lý do (bắt buộc)', save: 'Phát hành chứng từ giảm', close: 'Đóng', void: 'Hủy giảm', error: 'Không thể lưu. Kiểm tra số tiền, lý do, khóa và các đợt sau.', empty: 'Chưa có chứng từ giảm', cancelled: 'Đã hủy', confirm: 'Giảm khoản phải thu? Hoàn tiền được ghi riêng.' },
 };
 export default function InvoiceCreditDialog({ invoiceId, orgId, languageCode, onClose, onChanged }) {
+  const pageDialogs = usePageDialogs();
   const t = messages[languageCode] || messages.en;
   const [invoice, setInvoice] = useState(null), [orderId, setOrderId] = useState('');
   const [amount, setAmount] = useState(''), [reason, setReason] = useState('');
@@ -22,8 +24,8 @@ export default function InvoiceCreditDialog({ invoiceId, orgId, languageCode, on
     return () => { active = false; };
   }, [invoiceId, orgId, t.error]);
   const save = async credit => {
-    const why = credit ? window.prompt(t.reason) : reason;
-    if (!why?.trim() || (!credit && !window.confirm(t.confirm))) return;
+    const why = credit ? await pageDialogs.prompt(t.reason) : reason;
+    if (!why?.trim() || (!credit && !await pageDialogs.confirm(t.confirm))) return;
     const input = { invoiceOrderId: Number(orderId), amount, reason: why.trim() };
     const signature = JSON.stringify(input);
     if (!credit && retry.current?.signature !== signature) retry.current = { signature, key: crypto.randomUUID() };

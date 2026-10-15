@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead,
@@ -28,6 +29,7 @@ const messages = {
 };
 
 export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, orgId, buyerOrgId, draftId, languageCode = 'ko' }) {
+  const pageDialogs = usePageDialogs();
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
   const storageText = invoiceDraftStorageMessages[languageCode] || invoiceDraftStorageMessages.en;
@@ -107,11 +109,11 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     if (saving) return;
     setLines((rows) => rows.map((row) => row.key === key ? { ...row, [property]: value } : row)); setReviewed(false); setDirty(true);
   };
-  const close = () => {
+  const close = async () => {
     if (saving) return;
     const message = languageCode === 'ko' ? '초안이 저장되지 않습니다. 입력 내용을 버리고 닫을까요?'
       : languageCode === 'vi' ? 'Bản nháp chưa được lưu. Bỏ thay đổi và đóng?' : 'This draft is not saved. Discard changes and close?';
-    if (!dirty || window.confirm(message)) { setDirty(false); onClose(); }
+    if (!dirty || await pageDialogs.confirm(message)) { setDirty(false); onClose(); }
   };
   const save = async () => {
     if (!source || saving) return;
@@ -142,14 +144,14 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   const issue = async () => {
     const current = draftRef.current;
     if (!current || dirty || saving || !reviewed || calculation?.issues.length) return;
-    if (!window.confirm(storageText.confirmIssue)) return;
+    if (!await pageDialogs.confirm(storageText.confirmIssue)) return;
     setSaving(true); setError('');
     try {
       await requestJSON(`/invoices/drafts/${encodeURIComponent(current.id)}/issue${buildQueryString({ orgId })}`, {
         method: 'POST', body: JSON.stringify({ revision: current.revision }),
       });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId });
-      setDirty(false); window.alert(storageText.issued); onClose();
+      setDirty(false); await pageDialogs.alert(storageText.issued); onClose();
     } catch (e) {
       setError(String(e.message).includes('INVOICE_CREDIT_') ? storageText.creditReview : String(e.message).includes('STALE_EDIT') || String(e.message).includes('SOURCE_CHANGED')
         ? storageText.conflict : storageText.failed);
@@ -163,7 +165,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
         {savedDraft && source && <Alert severity="info">{storageText.review}</Alert>}
         {saveNotice && <Alert severity="success">{saveNotice}</Alert>}
         {loading && <CircularProgress />}
-        {error && <Alert severity="error" action={<Button disabled={saving} onClick={() => { if (!dirty || window.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
+        {error && <Alert severity="error" action={<Button disabled={saving} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {!source && savedDraft && <Box><Typography>{storageText.stored}</Typography><Typography>{savedDraft.content.fields.number} · {savedDraft.content.fields.notes}</Typography>
           <Table size="small"><TableBody>{savedDraft.content.lines.map((row, index) => <TableRow key={row.key}><TableCell>{row.label || `#${index + 1}`}</TableCell><TableCell>{row.quantity}</TableCell><TableCell>{row.remark}</TableCell></TableRow>)}</TableBody></Table>
         </Box>}

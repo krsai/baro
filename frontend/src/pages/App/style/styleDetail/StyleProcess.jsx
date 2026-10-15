@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../../components/PageDialogProvider';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCallback, useDeferredValue } from 'react';
@@ -1301,6 +1302,7 @@ const StyleProcess = ({
   optionsReloadKey = 0,
   bucketQuantities = ST_STANDARD_BUCKETS,
 }) => {
+  const pageDialogs = usePageDialogs();
   const { languageCode } = useLanguage();
   const safeProcesses = useMemo(() => normalizeProcesses(processes), [processes]);
   const [timeRefQuantity, setTimeRefQuantity] = useState(DEFAULT_TIME_REF_QUANTITY);
@@ -2575,14 +2577,14 @@ const StyleProcess = ({
     }
   };
 
-  const handleRemoveProcess = useCallback((instanceId) => {
+  const handleRemoveProcess = useCallback(async (instanceId) => {
     const target = safeProcesses.find((process) => process.instanceId === instanceId);
     // A process with linked work records can never be hard-deleted (the
     // history it feeds - AT training, payroll CT - would be orphaned), so
     // removing it here deactivates it on save instead of erasing it. Confirm
     // first since that is a less obvious outcome than a plain delete.
     if (target && hasProcessWorkRecords(target)) {
-      const confirmed = window.confirm(
+      const confirmed = await pageDialogs.confirm(
         getStyleProcessMessage(languageCode, 'deactivateConfirm')
       );
       if (!confirmed) return;

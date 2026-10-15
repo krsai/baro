@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import PayrollSettingsDialog from '../payroll/PayrollSettingsDialog';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -287,6 +288,7 @@ const buildWorkTypeText = ({ isSunday, isHoliday, hasEntries, languageCode }) =>
 };
 
 const AttendanceList = () => {
+  const pageDialogs = usePageDialogs();
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
@@ -581,7 +583,7 @@ const AttendanceList = () => {
       const workDate = String(row?.workDate || '').trim();
       if (!selectedFactoryId || !workDate) return;
 
-      const confirmed = window.confirm(
+      const confirmed = await pageDialogs.confirm(
         resolveText(
           TEXT.deleteConfirm,
           languageCode,

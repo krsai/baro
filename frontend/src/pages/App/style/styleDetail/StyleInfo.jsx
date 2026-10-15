@@ -1,3 +1,4 @@
+import { usePageDialogs } from '../../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -103,6 +104,7 @@ const StyleInfo = ({
   isBrandOrg = false,
   defaultCustomerName = '',
 }) => {
+  const pageDialogs = usePageDialogs();
   const { languageCode } = useLanguage();
   const { imageUrls = [] } = formData;
   const [mainImageIndex, setMainImageIndex] = useState(0);
@@ -286,8 +288,8 @@ const StyleInfo = ({
     setMainImageIndex(index);
   };
 
-  const handleImageDelete = (indexToDelete) => {
-    if (window.confirm('이 이미지를 삭제하시겠습니까?')) {
+  const handleImageDelete = async (indexToDelete) => {
+    if (await pageDialogs.confirm('이 이미지를 삭제하시겠습니까?')) {
       const newImageUrls = imageUrls.filter((_, index) => index !== indexToDelete);
       updateImageUrls(newImageUrls);
 
