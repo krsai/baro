@@ -1,3 +1,4 @@
+import TabStateIndicators from '../components/TabStateIndicators';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -224,17 +225,6 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                   bgcolor: 'white',
                   fontWeight: 'bold',
                 },
-                ...(tab.hasExternalChanges
-                  ? {
-                      color: '#d97706',
-                      fontWeight: 700,
-                      '&.Mui-selected': {
-                        bgcolor: 'white',
-                        color: 'primary.main',
-                        fontWeight: 'bold',
-                      },
-                    }
-                  : {}),
                 '&:not(.Mui-selected)': {
                   bgcolor: '#f4f6f8',
                 },
@@ -247,17 +237,8 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
               label={
                 <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
                   <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                    {tab.hasExternalChanges && (
-                      <Box component="span" sx={{ display: 'inline-flex', mr: 0.75 }}>
-                        <NotificationIndicator />
-                      </Box>
-                    )}
                     {resolveRenderedTabLabel(tab)}
-                    {tab.isEditing && (
-                      <Box component="span" sx={{ ml: 0.75, color: 'warning.dark', fontSize: '0.75rem', fontWeight: 700 }}>
-                        {languageCode === 'vi' ? 'Đang sửa' : languageCode === 'en' ? 'Editing' : '수정 중'}
-                      </Box>
-                    )}
+                    <TabStateIndicators editing={tab.isEditing} refreshed={tab.hasExternalChanges} languageCode={languageCode} />
                   </Box>
                   {isTabLoading && (
                     <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>

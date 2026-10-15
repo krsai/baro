@@ -75,7 +75,8 @@ const useWorkspaceRefreshOnEvent = ({
 
   useEffect(() => {
     isTabVisibleRef.current = location.pathname === tabPathRef.current;
-  }, [location.pathname]);
+    if (isTabVisibleRef.current && !pendingRefreshRef.current && !refreshInFlightRef.current) clearTabChanged(tabPathRef.current);
+  }, [location.pathname, clearTabChanged]);
 
   useEffect(() => {
     if (normalizedOrgId == null || normalizedTopics.length === 0) {
@@ -97,7 +98,8 @@ const useWorkspaceRefreshOnEvent = ({
 
       try {
         await onRefreshRef.current();
-        clearTabChanged(tabPathRef.current);
+        if (isTabVisibleRef.current) clearTabChanged(tabPathRef.current);
+        else markTabChanged(tabPathRef.current);
       } catch (_error) {
         pendingRefreshRef.current = true;
       } finally {
@@ -116,9 +118,6 @@ const useWorkspaceRefreshOnEvent = ({
 
       pendingRefreshRef.current = true;
 
-      if (!isTabVisibleRef.current) {
-        markTabChanged(tabPathRef.current);
-      }
 
       if (isBlockedRef.current) {
         if (!blockedNoticeShownRef.current && typeof onBlockedRef.current === 'function') {
@@ -164,7 +163,8 @@ const useWorkspaceRefreshOnEvent = ({
 
       try {
         await onRefreshRef.current();
-        clearTabChanged(tabPathRef.current);
+        if (isTabVisibleRef.current) clearTabChanged(tabPathRef.current);
+        else markTabChanged(tabPathRef.current);
       } catch (_error) {
         pendingRefreshRef.current = true;
       } finally {
@@ -185,7 +185,7 @@ const useWorkspaceRefreshOnEvent = ({
     return () => {
       cancelled = true;
     };
-  }, [clearTabChanged, isActive, isBlocked]);
+  }, [clearTabChanged, markTabChanged, isActive, isBlocked]);
 };
 
 export default useWorkspaceRefreshOnEvent;

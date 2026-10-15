@@ -21,3 +21,32 @@ test('tab editing aggregates all guards and clears only after every form is save
   context.clear('order');
   assert.ok(tabs.every(tab => !tab.isEditing));
 });
+
+test('background refresh marks completion; foreground refresh clears the notice', async () => {
+  const source = fs.readFileSync(new URL('../frontend/src/hooks/useWorkspaceRefreshOnEvent.js', import.meta.url), 'utf8');
+  const section = source.slice(source.indexOf('    const runRefresh = async'), source.indexOf('    const unsubscribe'));
+  for (const visible of [false, true]) {
+    const events = [];
+    const context = vm.createContext({
+      cancelled: false,
+      pendingRefreshRef: { current: true }, isActiveRef: { current: true },
+      isBlockedRef: { current: false }, refreshInFlightRef: { current: false },
+      blockedNoticeShownRef: { current: false }, isTabVisibleRef: { current: visible },
+      tabPathRef: { current: '/order' }, onRefreshRef: { current: async () => events.push('loaded') },
+      clearTabChanged: path => events.push(`clear:${path}`), markTabChanged: path => events.push(`mark:${path}`),
+    });
+    await vm.runInContext(section + '\nrunRefresh();', context);
+    assert.deepEqual(events, ['loaded', `${visible ? 'clear' : 'mark'}:/order`]);
+  }
+});
+
+test('tab states use compact separate indicators without recoloring the title', () => {
+  const layout = fs.readFileSync(new URL('../frontend/src/layouts/MainLayout.jsx', import.meta.url), 'utf8');
+  const indicators = fs.readFileSync(new URL('../frontend/src/components/TabStateIndicators.jsx', import.meta.url), 'utf8');
+  assert.match(layout, /<TabStateIndicators editing=\{tab.isEditing\} refreshed=\{tab.hasExternalChanges\}/);
+  assert.doesNotMatch(layout, /\.\.\.\(tab.hasExternalChanges/);
+  assert.doesNotMatch(layout, /'수정 중'|'Editing'|'Đang sửa'/);
+  assert.match(indicators, /●/); assert.match(indicators, /↻/);
+  assert.match(indicators, /저장하지 않은 변경사항/);
+  assert.match(indicators, /자료가 갱신되었습니다/);
+});
