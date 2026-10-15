@@ -54,7 +54,7 @@ export const UI_MESSAGES = {
     sales: { ko: '영업 관리', en: 'Sales', vi: 'Kinh doanh' },
     customerPricing: { ko: '단가', en: 'Pricing', vi: 'Đơn giá' },
     order: { ko: '주문', en: 'Orders', vi: 'Đơn hàng' },
-    customerProductionReport: { ko: '보고서', en: 'Report', vi: 'Báo cáo' },
+    customerProductionReport: { ko: '현황판', en: 'Status Board', vi: 'Bảng tình hình' },
     businessPartner: { ko: '거래처', en: 'Partners', vi: 'Đối tác' },
     businessPartnerManagement: { ko: '거래처 관리', en: 'Business Partners', vi: 'Quản lý đối tác' },
     outsourcingPartner: { ko: '외주 업체', en: 'Outsourcing Partner', vi: 'Đối tác gia công' },

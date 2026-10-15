@@ -20,18 +20,18 @@ import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/wor
 const TEXT = {
   ko: {
     copy: '이미지 복사', copying: '복사 중…', copied: '이미지가 클립보드에 복사되었습니다. 붙여넣기로 공유하세요.', copyError: '이미지를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.',
-    title: '보고서', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색', orderTotal: '주문 전체',
+    title: '현황판', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색', orderTotal: '주문 전체',
     generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
-    empty: '조건에 맞는 보고서 항목이 없습니다.',
-    loadError: '생산 진행 보고서를 불러오지 못했습니다.',
+    empty: '조건에 맞는 현황판 항목이 없습니다.',
+    loadError: '생산 현황판을 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
     completedCount: (count, total) => `완료 ${count}/${total}`,
     dailyProduced: '일일 내역', dailyProducedTitle: '일일 완성품 수량', close: '닫기', noDailyProduced: '등록된 일일 완성품 내역이 없습니다.',
   },
   en: {
     copy: 'Copy image', copying: 'Copying…', copied: 'Image copied to clipboard. Paste it to share.', copyError: 'Unable to copy the image. Check your browser clipboard permissions.',
-    title: 'Report', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style', orderTotal: 'Order total',
+    title: 'Status Board', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style', orderTotal: 'Order total',
     generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
     empty: 'No report rows match the filters.',
@@ -42,7 +42,7 @@ const TEXT = {
   },
   vi: {
     copy: 'Sao chép ảnh', copying: 'Đang sao chép…', copied: 'Đã sao chép ảnh vào bộ nhớ tạm. Dán để chia sẻ.', copyError: 'Không thể sao chép ảnh. Vui lòng kiểm tra quyền truy cập bộ nhớ tạm của trình duyệt.',
-    title: 'Báo cáo', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng', orderTotal: 'Toàn bộ đơn hàng',
+    title: 'Bảng tình hình', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng', orderTotal: 'Toàn bộ đơn hàng',
     generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
     empty: 'Không có dữ liệu phù hợp.',

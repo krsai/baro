@@ -644,7 +644,7 @@ const MainLayout = () => {
             path: '/invoices',
           },
           {
-            label: getUiMessage('menu.customerProductionReport', '보고서', languageCode),
+            label: getUiMessage('menu.customerProductionReport', '현황판', languageCode),
             icon: <AssessmentIcon />,
             path: '/customer-production-report',
           },
