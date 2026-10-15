@@ -9,7 +9,7 @@ export async function recordOrderQuantityReduction(tx: any, order: any, items: a
   const reductions = before.filter((item: any) => Number(next.get(item.itemId)?.totalQuantity || 0) < item.totalQuantity);
   if (!reductions.length) return null;
   const reason = String(rawReason || '').trim();
-  if (!reason || reason.length > 1000) throw createHttpError(409, 'ORDER_REDUCTION_REASON_REQUIRED');
+  if (reason.length > 1000) throw createHttpError(400, 'ORDER_REDUCTION_REASON_TOO_LONG');
   const plans = await tx.assignmentPlan.findMany({ where: { workOrderId: order.id },
     include: { workRecords: { select: { styleProcessId: true, quantity: true } },
       outsourcedWorkRecords: { select: { styleProcessId: true, quantity: true } } } });

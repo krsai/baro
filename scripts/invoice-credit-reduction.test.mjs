@@ -22,13 +22,15 @@ test('credit output preserves escaping and explicitly distinguishes cash refunds
   } });
   assert.ok(!html.includes('<script>')); assert.match(html, /&lt;script&gt;/); assert.match(html, /not cash refund/);
 });
-test('every item reduction requires a reason even when style totals cancel out', async () => {
+test('item reductions preserve audit facts without requiring a reason, even when style totals cancel out', async () => {
   let written = null;
   const db = { workOrderItem: { findMany: async () => [{ itemId: 'a', styleId: 1, totalQuantity: 10 }, { itemId: 'b', styleId: 1, totalQuantity: 10 }] },
     assignmentPlan: { findMany: async () => [] }, orderQuantityChange: { create: async ({ data }) => { written = data; return data; } } };
   const order = { id: 1, updatedAt: new Date() }, items = [{ id: 'a', styleId: 1, totalQuantity: 5 }, { id: 'b', styleId: 1, totalQuantity: 15 }];
-  await assert.rejects(recordOrderQuantityReduction(db, order, items, '', 'actor', () => []), /REASON_REQUIRED/);
-  assert.equal(written, null);
+  await recordOrderQuantityReduction(db, order, items, undefined, 'actor', () => []);
+  assert.equal(written.reason, '');
+  assert.equal(written.snapshot.before[0].totalQuantity, 10);
+  assert.equal(written.snapshot.after[0].totalQuantity, 5);
   await recordOrderQuantityReduction(db, order, items, 'fabric shortage; preserve excess', 'actor', () => [
     { orgId: 1, styleId: 1, assignedQuantity: 15, producedQuantity: 14 },
     { orgId: 1, styleId: 1, assignedQuantity: 15, producedQuantity: 12 },
