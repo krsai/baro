@@ -1,3 +1,4 @@
+import QueryFeedback from '../../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -139,6 +140,7 @@ const WorkMonthlyBoard = () => {
   const { languageCode } = useLanguage();
 
   const [factories, setFactories] = useState([]);
+  const [factoryError, setFactoryError] = useState(false);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const selectedFactory = useMemo(
     () => factories.find((factory) => String(factory?.id) === String(selectedFactoryId)) || null,
@@ -160,6 +162,7 @@ const WorkMonthlyBoard = () => {
   );
   const [rows, setRows] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [retryToken, setRetryToken] = useState(0);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -179,9 +182,10 @@ const WorkMonthlyBoard = () => {
     let cancelled = false;
     const loadFactories = async () => {
       setLoadingFactories(true);
+      setFactoryError(false);
       try {
         const query = buildQueryString({ orgId: activeOrgId });
-        const fetched = await requestJSON('/factories' + query).catch(() => []);
+        const fetched = await requestJSON('/factories' + query);
         if (cancelled) return;
 
         const list = Array.isArray(fetched) ? fetched : [];
@@ -204,6 +208,8 @@ const WorkMonthlyBoard = () => {
           const hasPrev = list.some((factory) => String(factory?.id) === String(prev));
           return hasPrev ? prev : String(list[0]?.id || '');
         });
+      } catch (error) {
+        if (!cancelled) setFactoryError(true);
       } finally {
         if (!cancelled) {
           setLoadingFactories(false);
@@ -215,7 +221,7 @@ const WorkMonthlyBoard = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFactoryId, activeOrgId]);
+  }, [activeFactoryId, activeOrgId, retryToken]);
 
   useEffect(() => {
     setSelectedMonth((current) => normalizeProductionAnalysisMonth(current, productionAnalysisMinMonth));
@@ -250,7 +256,7 @@ const WorkMonthlyBoard = () => {
               skipGlobalLoading: true,
               signal: abortController.signal,
             }
-          ).catch(() => []),
+          ),
           loadWorkLogs({
             orgId: activeOrgId,
             factoryId: selectedFactoryIdNumber,
@@ -270,7 +276,7 @@ const WorkMonthlyBoard = () => {
               skipGlobalLoading: true,
               signal: abortController.signal,
             }
-          ).catch(() => []),
+          ),
         ]);
 
         if (cancelled) return;
@@ -307,6 +313,7 @@ const WorkMonthlyBoard = () => {
       abortController.abort();
     };
   }, [
+    retryToken,
     activeOrgId,
     holidayKeys,
     languageCode,
@@ -418,10 +425,8 @@ const WorkMonthlyBoard = () => {
             <Typography variant="body2" color="text.secondary" sx={emptyStateSx}>
               {resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
             </Typography>
-          ) : filteredRows.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={emptyStateSx}>
-              {emptyStateMessage}
-            </Typography>
+          ) : loadError || factoryError || filteredRows.length === 0 ? (
+            <><QueryFeedback error={loadError || factoryError} onRetry={() => setRetryToken(value => value + 1)} />{!loadError && !factoryError && <Typography variant="body2" color="text.secondary">{emptyStateMessage}</Typography>}</>
           ) : (
             <Stack spacing={1}>
               {filteredRows.map((row) => (
@@ -499,12 +504,12 @@ const WorkMonthlyBoard = () => {
               {loadingRows || loadingFactories ? (
                 <TableStatusRow
                   colSpan={tableColumnCount}
-                  message={resolveText(TEXT.loading, languageCode, '월간 기록을 불러오는 중입니다.')}
+                  state="loading"
                 />
-              ) : filteredRows.length === 0 ? (
+              ) : loadError || factoryError || filteredRows.length === 0 ? (
                 <TableStatusRow
                   colSpan={tableColumnCount}
-                  message={emptyStateMessage}
+                  state={loadError || factoryError ? 'error' : 'empty'} onRetry={() => setRetryToken(value => value + 1)}
                   sx={emptyStateSx}
                 />
               ) : (

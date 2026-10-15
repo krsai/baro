@@ -34,6 +34,7 @@ const CustomerList = () => {
   const { languageCode } = useLanguage();
   const location = useLocation();
 
+  const [queryFailed, setQueryFailed] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,10 +73,12 @@ const CustomerList = () => {
       return;
     }
     setLoading(true);
+    setQueryFailed(false);
     try {
       const data = await requestJSON(`/customers${customerQuery}`);
       setCustomers(Array.isArray(data) ? data : []);
     } catch (error) {
+      setQueryFailed(true);
       showNotification(error?.message || customerText.fetchError, 'error');
     } finally {
       setLoading(false);
@@ -186,12 +189,12 @@ const CustomerList = () => {
             </TableHead>
             <TableBody>
               {loading && (
-                <TableStatusRow colSpan={8} message={customerText.loadingMessage} sx={{ py: 2 }} />
+                <TableStatusRow colSpan={8} state="loading" sx={{ py: 2 }} />
               )}
-              {!loading && filteredCustomers.length === 0 && (
-                <TableStatusRow colSpan={8} message={customerText.emptyMessage} sx={{ py: 2 }} />
+              {!loading && (queryFailed || filteredCustomers.length === 0) && (
+                <TableStatusRow colSpan={8} state={queryFailed ? 'error' : 'empty'} onRetry={fetchCustomers} sx={{ py: 2 }} />
               )}
-              {filteredCustomers.map((customer) => {
+              {!loading && !queryFailed && filteredCustomers.map((customer) => {
                 const countryCodeForDisplay = resolveCountryForDisplay(customer);
                 const countryLabel = countryCodeForDisplay
                   ? getStaticOptionLabel('country', countryCodeForDisplay, countryCodeForDisplay, languageCode)

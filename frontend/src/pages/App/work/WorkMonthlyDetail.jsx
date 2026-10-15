@@ -113,6 +113,7 @@ const WorkMonthlyDetail = () => {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [retryToken, setRetryToken] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [summary, setSummary] = useState(null);
   const [rows, setRows] = useState([]);
@@ -157,7 +158,7 @@ const WorkMonthlyDetail = () => {
           requestJSON(`/factories${buildQueryString({ orgId: activeOrgId })}`, {
             skipGlobalLoading: true,
             signal: abortController.signal,
-          }).catch(() => []),
+          }),
           requestJSON(
             `/employees${buildQueryString({
               orgId: activeOrgId,
@@ -168,7 +169,7 @@ const WorkMonthlyDetail = () => {
               skipGlobalLoading: true,
               signal: abortController.signal,
             }
-          ).catch(() => []),
+          ),
           loadWorkLogs({
             orgId: activeOrgId,
             factoryId: normalizedFactoryId,
@@ -188,7 +189,7 @@ const WorkMonthlyDetail = () => {
               skipGlobalLoading: true,
               signal: abortController.signal,
             }
-          ).catch(() => []),
+          ),
         ]);
 
         if (cancelled) return;
@@ -238,6 +239,7 @@ const WorkMonthlyDetail = () => {
       abortController.abort();
     };
   }, [
+    retryToken,
     activeOrgId,
     holidayKeys,
     languageCode,
@@ -368,12 +370,12 @@ const WorkMonthlyDetail = () => {
                   {loading ? (
                     <TableStatusRow
                       colSpan={6}
-                      message={resolveText(TEXT.loading, languageCode, '월간 기록 상세를 불러오는 중입니다.')}
+                      state="loading"
                     />
                   ) : filteredRows.length === 0 ? (
                     <TableStatusRow
                       colSpan={6}
-                      message={emptyStateMessage}
+                      state={loadError ? 'error' : 'empty'} onRetry={() => setRetryToken(value => value + 1)}
                       sx={emptyStateSx}
                     />
                   ) : (

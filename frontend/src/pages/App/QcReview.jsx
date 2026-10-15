@@ -1,3 +1,4 @@
+import QueryFeedback from '../../components/QueryFeedback';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -375,6 +376,8 @@ const QcReview = () => {
   const copy = QC_COPY[languageCode] || QC_COPY.en;
   const todayKey = useMemo(() => todayDateKey(), []);
 
+  const [queryError, setQueryError] = useState(false);
+  const [queryRetry, setQueryRetry] = useState(0);
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState(toPositiveIntOrNull(activeFactoryId));
   const [rows, setRows] = useState([]);
@@ -394,13 +397,15 @@ const QcReview = () => {
 
   const loadFactories = useCallback(async () => {
     const query = buildQueryString({ orgId: activeOrgId });
-    const response = await requestJSON(`/factories${query}`, { skipGlobalLoading: true }).catch(() => []);
+    try {
+    const response = await requestJSON(`/factories${query}`, { skipGlobalLoading: true });
     const safeRows = Array.isArray(response) ? response : [];
     setFactories(safeRows);
     if (!toPositiveIntOrNull(selectedFactoryId) && safeRows.length > 0) {
       setSelectedFactoryId(toPositiveIntOrNull(safeRows[0]?.id));
     }
-  }, [activeOrgId, selectedFactoryId]);
+    } catch (error) { setQueryError(true); }
+  }, [activeOrgId, selectedFactoryId, queryRetry]);
 
   const loadRows = useCallback(
     async ({ forceRefresh = false } = {}) => {
@@ -433,7 +438,7 @@ const QcReview = () => {
                     ids: ids.join(','),
                   }),
                 { skipGlobalLoading: true, forceRefresh }
-              ).catch(() => [])
+              )
             : [];
         const progressById = new Map(
           (Array.isArray(progressRows) ? progressRows : [])
@@ -968,8 +973,8 @@ const QcReview = () => {
         <Alert severity="info">
           {copy.description}
         </Alert>
-        {!loading && loadError ? <Alert severity="error">{languageCode === 'ko' ? loadError : copy.dataError}</Alert> : null}
-        {!loading && !loadError && visibleRows.length === 0 ? (
+        {!loading && loadError ? <QueryFeedback error={loadError} onRetry={() => loadRows({ forceRefresh: true })} /> : null}
+        {!loading && !loadError && !queryError && visibleRows.length === 0 ? (
           <Alert severity="info">{languageCode === 'ko' ? emptyStateMessage : copy.noHistory}</Alert>
         ) : null}
 
@@ -988,7 +993,7 @@ const QcReview = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {!loading && visibleRows.length === 0 ? (
+                {!loading && !loadError && !queryError && visibleRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
                       <Typography variant="body2" color="text.secondary">
@@ -1335,6 +1340,7 @@ const QcReview = () => {
           </TableContainer>
         </Paper>
       </Stack>
+      <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); setQueryRetry(value => value + 1); loadRows({ forceRefresh: true }); }} />
     </AppPageContainer>
   );
 };

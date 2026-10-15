@@ -1360,6 +1360,7 @@ const OrderList = () => {
   );
   const canCreateColorAttribute =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
+  const [queryFailed, setQueryFailed] = useState(false);
   const [orders, setOrders] = useState([]);
   const [styles, setStyles] = useState([]);
   const [colorOptions, setColorOptions] = useState([]);
@@ -1442,6 +1443,7 @@ const OrderList = () => {
     if (!cancelledRef?.current) {
       setOrdersLoaded(false);
     }
+    setQueryFailed(false);
     try {
       const items = await fetchOrdersFromApi({ orgId: activeOrgId, forceRefresh });
       if (!cancelledRef?.current) {
@@ -1449,6 +1451,7 @@ const OrderList = () => {
       }
     } catch (error) {
       if (!cancelledRef?.current) {
+        setQueryFailed(true);
         setOrders([]);
         showNotification(error?.message || orderPageText.ordersLoadError, 'error');
       }
@@ -3176,9 +3179,9 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {!ordersLoaded ? (
-                  <TableStatusRow colSpan={10} message={orderPageText.loadingOrders} />
-                ) : filteredOrders.length === 0 ? (
-                  <TableStatusRow colSpan={10} message={orderPageText.emptyOrders} />
+                  <TableStatusRow colSpan={10} state="loading" />
+                ) : queryFailed || filteredOrders.length === 0 ? (
+                  <TableStatusRow colSpan={10} state={queryFailed ? 'error' : 'empty'} onRetry={() => loadOrdersFromDb({ forceRefresh: true })} />
                 ) : (
                   filteredOrders.map((order) => {
                     const deletable = !order?.isModificationLocked && !order.hasProductionRecords && !order.hasAssignments;

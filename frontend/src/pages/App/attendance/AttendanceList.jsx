@@ -294,8 +294,12 @@ const AttendanceList = () => {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [availableMonths, setAvailableMonths] = useState([]);
   const [factories, setFactories] = useState([]);
+  const [factoryError, setFactoryError] = useState(false);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [rows, setRows] = useState([]);
+  const [loadError, setLoadError] = useState(false);
+  const [monthsError, setMonthsError] = useState(false);
+  const [loadingMonths, setLoadingMonths] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
@@ -320,9 +324,10 @@ const AttendanceList = () => {
     let cancelled = false;
     const loadFactories = async () => {
       setLoadingFactories(true);
+      setFactoryError(false);
       try {
         const query = buildQueryString({ orgId: activeOrgId });
-        const fetched = await requestJSON('/factories' + query).catch(() => []);
+        const fetched = await requestJSON('/factories' + query);
         if (cancelled) return;
         const list = Array.isArray(fetched) ? fetched : [];
         setFactories(list);
@@ -344,6 +349,8 @@ const AttendanceList = () => {
           const hasPrev = list.some((factory) => String(factory?.id) === String(prev));
           return hasPrev ? prev : String(list[0]?.id || '');
         });
+      } catch (error) {
+        if (!cancelled) setFactoryError(true);
       } finally {
         if (!cancelled) setLoadingFactories(false);
       }
@@ -353,19 +360,24 @@ const AttendanceList = () => {
     return () => {
       cancelled = true;
     };
-  }, [activeFactoryId, activeOrgId]);
+  }, [activeFactoryId, activeOrgId, reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
 
     if (!selectedFactoryId) {
+      setLoadingMonths(false);
+      setMonthsError(false);
+      setLoadError(false);
       setAvailableMonths([]);
       setSelectedMonth('');
       return () => controller.abort();
     }
 
     const loadAvailableMonths = async () => {
+      setLoadingMonths(true); setMonthsError(false);
+      try {
       const query = buildQueryString({
         orgId: activeOrgId,
         factoryId: selectedFactoryId,
@@ -373,7 +385,7 @@ const AttendanceList = () => {
       });
       const fetched = await requestJSON('/attendance-entries' + query, {
         signal: controller.signal,
-      }).catch(() => []);
+      });
       if (cancelled || controller.signal.aborted) return;
       const months = (Array.isArray(fetched) ? fetched : []).filter((value) =>
         /^\d{4}-\d{2}$/.test(String(value || ''))
@@ -382,6 +394,9 @@ const AttendanceList = () => {
       setSelectedMonth((previous) =>
         months.includes(previous) ? previous : String([...months].sort().at(-1) || '')
       );
+      } catch (error) {
+        if (!cancelled && !controller.signal.aborted) setMonthsError(true);
+      } finally { if (!cancelled) setLoadingMonths(false); }
     };
 
     loadAvailableMonths();
@@ -407,6 +422,7 @@ const AttendanceList = () => {
 
     const loadRows = async () => {
       setLoadingRows(true);
+      setLoadError(false);
       try {
         const employeeQuery = buildQueryString({
           orgId: activeOrgId,
@@ -429,6 +445,7 @@ const AttendanceList = () => {
         if (cancelled || controller.signal.aborted) return;
         setRows([]);
         setEmployees([]);
+        setLoadError(true);
         showNotification(
           resolveText(TEXT.fetchError, languageCode, '출퇴근 기록을 불러오지 못했습니다.'),
           'error'
@@ -828,15 +845,15 @@ const AttendanceList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loadingRows || loadingFactories ? (
+              {loadingRows || loadingFactories || loadingMonths ? (
                 <TableStatusRow
                   colSpan={6}
-                  message={resolveText(TEXT.loading, languageCode, 'Loading attendance...')}
+                  state="loading"
                 />
-              ) : !selectedFactoryId || filteredRows.length === 0 ? (
+              ) : loadError || factoryError || monthsError || !selectedFactoryId || filteredRows.length === 0 ? (
                 <TableStatusRow
                   colSpan={6}
-                  message={resolveText(TEXT.empty, languageCode, 'No attendance records found.')}
+                  state={loadError || factoryError || monthsError ? 'error' : 'empty'} onRetry={() => setReloadToken(value => value + 1)}
                 />
               ) : (
                 filteredRows.map((row) => {

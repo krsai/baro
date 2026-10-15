@@ -1,3 +1,4 @@
+import QueryFeedback from '../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -548,6 +549,8 @@ const WorkspaceDashboard = () => {
     activeOrgId,
     activeProfile,
   } = useAuth();
+  const [queryError, setQueryError] = useState(false);
+  const [queryRetry, setQueryRetry] = useState(0);
   const [summaryData, setSummaryData] = useState(() => createEmptySummary());
   const [systemSummaryData, setSystemSummaryData] = useState(() =>
     createEmptySystemSummary()
@@ -572,6 +575,7 @@ const WorkspaceDashboard = () => {
       if (isSystemProfile) {
         if (!cancelledRef?.current) {
           setSummaryLoading(true);
+          setQueryError(false);
         }
 
         try {
@@ -590,6 +594,7 @@ const WorkspaceDashboard = () => {
         } catch (error) {
           if (!cancelledRef?.current) {
             setSystemSummaryData(createEmptySystemSummary());
+            setQueryError(true);
             showNotification(
               error?.message || resolveText(DASHBOARD_TEXT.summaryLoadError, languageCode),
               'error'
@@ -606,6 +611,7 @@ const WorkspaceDashboard = () => {
       if (!activeOrgId) {
         if (!cancelledRef?.current) {
           setSummaryData(createEmptySummary());
+          setQueryError(false);
           setSummaryLoading(false);
         }
         return;
@@ -613,6 +619,7 @@ const WorkspaceDashboard = () => {
 
       if (!cancelledRef?.current) {
         setSummaryLoading(true);
+          setQueryError(false);
       }
 
       try {
@@ -626,8 +633,8 @@ const WorkspaceDashboard = () => {
             forceRefresh,
             skipGlobalLoading: true,
           }),
-          canViewEmployee ? requestJSON(`/org-memberships${buildQueryString({ status: 'PENDING', orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
-          canViewCustomer ? requestJSON(`/customers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }).catch(() => []) : [],
+          canViewEmployee ? requestJSON(`/org-memberships${buildQueryString({ status: 'PENDING', orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }) : [],
+          canViewCustomer ? requestJSON(`/customers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }) : [],
         ]);
         if (!cancelledRef?.current) {
           const nextSummary = buildSummaryData({
@@ -643,6 +650,7 @@ const WorkspaceDashboard = () => {
       } catch (error) {
         if (!cancelledRef?.current) {
           setSummaryData(createEmptySummary());
+          setQueryError(true);
           showNotification(
             error?.message ||
               resolveText(DASHBOARD_TEXT.summaryLoadError, languageCode),
@@ -655,7 +663,7 @@ const WorkspaceDashboard = () => {
         }
       }
     },
-    [activeOrgId, canViewCustomer, canViewEmployee, isSystemProfile, languageCode, showNotification]
+    [activeOrgId, canViewCustomer, canViewEmployee, isSystemProfile, languageCode, showNotification, queryRetry]
   );
 
   useEffect(() => {
@@ -741,7 +749,7 @@ const WorkspaceDashboard = () => {
               gap: 1.5,
             }}
           >
-            {summaryCards.map((card) => (
+            {!queryError && summaryCards.map((card) => (
               <Paper
                 key={card.key}
                 variant="outlined"
@@ -849,6 +857,7 @@ const WorkspaceDashboard = () => {
         </Paper>
 
       </Stack>
+      <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
     </AppPageContainer>
   );
 };

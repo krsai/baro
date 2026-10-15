@@ -1,3 +1,4 @@
+import QueryFeedback from '../../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
@@ -374,8 +375,10 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   );
 
   const [logs, setLogs] = useState([]);
+  const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [factories, setFactories] = useState([]);
+  const [factoryError, setFactoryError] = useState(false);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [selectedFactoryId, setSelectedFactoryId] = useState(() =>
     activeFactoryId ? String(activeFactoryId) : storedFilters?.selectedFactoryId || ''
@@ -458,12 +461,13 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
 
     const loadFactories = async () => {
       setLoadingFactories(true);
+      setFactoryError(false);
       try {
         const query = buildQueryString({ orgId: activeOrgId });
         const rows = await requestJSON(`/factories${query}`, {
           skipGlobalLoading: true,
           signal: abortController.signal,
-        }).catch(() => []);
+        });
 
         if (cancelled) return;
 
@@ -481,6 +485,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           }
           return '';
         });
+      } catch (error) {
+        if (!cancelled) setFactoryError(true);
       } finally {
         if (!cancelled) {
           setLoadingFactories(false);
@@ -493,7 +499,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
       cancelled = true;
       abortController.abort();
     };
-  }, [activeFactoryId, activeOrgId]);
+  }, [activeFactoryId, activeOrgId, reloadNonce]);
 
   useEffect(() => {
     const operationStartMonth = workHistoryOperationStartDay.startOf('month');
@@ -521,6 +527,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
 
     const load = async () => {
       setLoading(true);
+      setLoadError(false);
       try {
         const rows = await loadWorkLogs({
           orgId: activeOrgId,
@@ -539,6 +546,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
       } catch (_error) {
         if (!cancelled) {
           setLogs([]);
+          setLoadError(true);
           showNotification(
             resolveText(TEXT.fetchError, languageCode, '기록을 불러오지 못했습니다.'),
             'error'
@@ -852,14 +860,12 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
       </Paper> : null}
       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ display: { xs: 'block', sm: 'none' }, p: 1.25 }}>
-          {loading ? (
+          {loading || loadingFactories ? (
             <Typography variant="body2" color="text.secondary">
               {resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')}
             </Typography>
-          ) : filteredLogs.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')}
-            </Typography>
+          ) : loadError || factoryError || filteredLogs.length === 0 ? (
+            <><QueryFeedback error={loadError || factoryError} onRetry={() => setReloadNonce(value => value + 1)} />{!loadError && !factoryError && <Typography variant="body2">{resolveText(TEXT.empty, languageCode)}</Typography>}</>
           ) : (
             <Stack spacing={1}>
               {filteredLogs.map((log) => (
@@ -972,12 +978,12 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               {loading ? (
                 <TableStatusRow
                   colSpan={7}
-                  message={resolveText(TEXT.loading, languageCode, '기록을 불러오는 중입니다.')}
+                  state="loading"
                 />
-              ) : filteredLogs.length === 0 ? (
+              ) : loadError || factoryError || filteredLogs.length === 0 ? (
                 <TableStatusRow
                   colSpan={7}
-                  message={resolveText(TEXT.empty, languageCode, '해당 기간에 기록이 없습니다.')}
+                  state={loadError || factoryError ? 'error' : 'empty'} onRetry={() => setReloadNonce(value => value + 1)}
                 />
               ) : (
                 filteredLogs.map((log) => (

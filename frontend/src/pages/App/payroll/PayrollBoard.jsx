@@ -128,6 +128,7 @@ const PayrollBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const [queryFailed, setQueryFailed] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
   const [calendar, setCalendar] = useState(null);
   const [readinessByKey, setReadinessByKey] = useState({});
@@ -165,6 +166,7 @@ const PayrollBoard = () => {
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!activeOrgId) return;
     if (!silent) setLoading(true);
+    setQueryFailed(false);
     try {
       const query = buildQueryString({ orgId: activeOrgId });
       const [snapshotRows, calendarPayload, employeeRows] = await Promise.all([
@@ -210,6 +212,7 @@ const PayrollBoard = () => {
       setCalendar(calendarPayload || null);
       setReadinessByKey(Object.fromEntries(readinessEntries));
     } catch (error) {
+      setQueryFailed(true);
       if (!silent) setSnapshots([]);
       showNotification(error?.message || resolveText(languageCode, 'fetchError'), 'error');
     } finally {
@@ -456,8 +459,8 @@ const PayrollBoard = () => {
                 <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'loading')} />
-                  : filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={9} message={resolveText(languageCode, 'empty')} />
+                {loading ? <TableStatusRow colSpan={9} state="loading" />
+                  : queryFailed || filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={9} state={queryFailed ? 'error' : 'empty'} onRetry={() => load()} />
                     : filteredMonthFactoryRows.map((row) => {
                       const { month, factory, snapshot } = row;
                       const key = rowKey(month, factory.id);

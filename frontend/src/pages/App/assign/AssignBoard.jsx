@@ -1,3 +1,4 @@
+import QueryFeedback from '../../../components/QueryFeedback';
 import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
 import StaleEditNotice from '../../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -3002,6 +3003,7 @@ const AssignBoard = () => {
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
   const location = useLocation();
+  const [queryError, setQueryError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [selectedCardId, setSelectedCardId] = useState(null);
@@ -3812,6 +3814,7 @@ const AssignBoard = () => {
     let cancelled = false;
 
     const loadSourceData = async () => {
+      setQueryError(false);
       setPersistReady(false);
       setLoading(true);
       detailStyleFetchAttemptRef.current = new Set();
@@ -3870,8 +3873,8 @@ const AssignBoard = () => {
         };
 
         const [factories, factoryScopeHeadcounts, boardState] = await Promise.all([
-          requestJSON('/factories' + orgQuery).catch(() => []),
-          requestJSON('/factory-workers' + factoryScopeHeadcountQuery).catch(() => []),
+          requestJSON('/factories' + orgQuery),
+          requestJSON('/factory-workers' + factoryScopeHeadcountQuery),
           requestJSON('/assignment-board-view' + boardViewQuery, {
             forceRefresh: true,
           }).catch(() => null),
@@ -3963,6 +3966,7 @@ const AssignBoard = () => {
         loadedSuccessfully = true;
       } catch (_error) {
         if (!cancelled) {
+          setQueryError(true);
           showNotification(
             getUiMessage(
               'assign.boardLoadError',
@@ -7754,6 +7758,7 @@ const AssignBoard = () => {
           </Box>
         ) : null}
       </DndContext>
+      <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); requestExternalBoardReload(); }} />
     </AppPageContainer>
   );
 };

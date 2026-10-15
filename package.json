@@ -80,7 +80,8 @@
     "test:process-version-protection": "npm --prefix backend run build && node --test scripts/process-version-protection.test.mjs",
     "test:process-version-protection-browser": "node scripts/process-version-protection-browser.test.mjs",
     "test:version-application": "npm --prefix backend run build && node --test scripts/version-application.test.mjs",
-    "test:version-application-browser": "node scripts/version-application-browser.test.mjs"
+    "test:version-application-browser": "node scripts/version-application-browser.test.mjs",
+    "test:query-feedback-browser": "node scripts/query-feedback-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

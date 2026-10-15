@@ -1,3 +1,4 @@
+import QueryFeedback from '../../../components/QueryFeedback';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1008,6 +1009,8 @@ const WorkDetail = ({
     : LABELS.worker;
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [queryError, setQueryError] = useState(false);
+  const [queryRetry, setQueryRetry] = useState(0);
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
   const [factoryScopeDataLoading, setFactoryScopeDataLoading] = useState(false);
   const [factoryScopeContextReady, setFactoryScopeContextReady] = useState(false);
@@ -1163,7 +1166,7 @@ const WorkDetail = ({
         const factoryRows = await requestJSON(`/factories${query}`, {
           skipGlobalLoading: true,
           signal: abortController.signal,
-        }).catch(() => []);
+        });
         if (cancelled) return;
         const safeFactories = Array.isArray(factoryRows) ? factoryRows : [];
         const visibleFactories = sortByLabel(activeOrgRole === 'ADMIN' || !activeFactoryId ? safeFactories : safeFactories.filter((factory) => Number(factory?.id) === Number(activeFactoryId)), (factory) => factory?.name || '');
@@ -1171,6 +1174,7 @@ const WorkDetail = ({
           const merged = visibleFactories.length > 0 ? visibleFactories : currentFactories;
           return ensureOptionIncluded(merged, initialFactoryOption, (item) => item?.id || item?.name);
         });
+      } catch (error) { if (!cancelled && !abortController.signal.aborted) setQueryError(true);
       } finally {
         if (!cancelled) setBaseLoading(false);
       }
@@ -1180,7 +1184,7 @@ const WorkDetail = ({
       cancelled = true;
       abortController.abort();
     };
-  }, [activeFactoryId, activeOrgId, activeOrgRole, initialFactoryOption, initialLog?.id]);
+  }, [activeFactoryId, activeOrgId, activeOrgRole, initialFactoryOption, initialLog?.id, queryRetry]);
   useEffect(() => {
     if (!isOutsourcingMode) return undefined;
     const abortController = new AbortController();
@@ -2873,12 +2877,14 @@ const WorkDetail = ({
             <Typography variant="body2" color="text.secondary">{messages.loading}</Typography>
           </Stack>
         </Paper>
-      </AppPageContainer>
+        <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); setQueryRetry(value => value + 1); }} />
+    </AppPageContainer>
     );
   }
 
   return (
     <AppPageContainer header={detailHeader}>
+      <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); setQueryRetry(value => value + 1); }} />
       <Stack spacing={2}>
         <Paper
           variant="outlined"

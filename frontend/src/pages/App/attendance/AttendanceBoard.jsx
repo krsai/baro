@@ -1,3 +1,4 @@
+import QueryFeedback from '../../../components/QueryFeedback';
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
@@ -249,6 +250,7 @@ const AttendanceBoard = ({
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
   const nativeInputLocale = resolveNativeInputLocale(languageCode);
+  const [queryError, setQueryError] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => resolveInitialDate(initialWorkDate));
   const [factories, setFactories] = useState([]);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
@@ -312,7 +314,7 @@ const AttendanceBoard = ({
       setLoadingFactories(true);
       try {
         const query = buildQueryString({ orgId: activeOrgId });
-        const rows = await requestJSON('/factories' + query).catch(() => []);
+        const rows = await requestJSON('/factories' + query);
         if (cancelled) return;
         const list = Array.isArray(rows) ? rows : [];
         setFactories(list);
@@ -341,6 +343,7 @@ const AttendanceBoard = ({
           const hasPrev = list.some((factory) => String(factory?.id) === String(prev));
           return hasPrev ? prev : String(list[0]?.id || '');
         });
+      } catch (error) { if (!cancelled) setQueryError(true);
       } finally {
         if (!cancelled) setLoadingFactories(false);
       }
@@ -349,7 +352,7 @@ const AttendanceBoard = ({
     return () => {
       cancelled = true;
     };
-  }, [activeFactoryId, activeOrgId, initialFactoryId]);
+  }, [activeFactoryId, activeOrgId, initialFactoryId, reloadToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,7 +367,7 @@ const AttendanceBoard = ({
           orgId: activeOrgId,
           factoryId: selectedFactoryId,
         });
-        const rows = await requestJSON('/employees' + query).catch(() => []);
+        const rows = await requestJSON('/employees' + query);
         if (cancelled) return;
         const list = Array.isArray(rows) ? rows : [];
         const workerNameTemplate = resolveText(
@@ -382,6 +385,7 @@ const AttendanceBoard = ({
             }))
             .sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)))
         );
+      } catch (error) { if (!cancelled) setQueryError(true);
       } finally {
         if (!cancelled) setLoadingEmployees(false);
       }
@@ -430,6 +434,7 @@ const AttendanceBoard = ({
         setSavedEntriesSignature(buildAttendanceEntriesSignature(nextEntriesByWorker));
       } catch (_error) {
         if (cancelled || controller.signal.aborted) return;
+        setQueryError(true);
         setEntriesByWorker({});
         setSavedEntriesSignature('[]');
         showNotification(
@@ -462,7 +467,7 @@ const AttendanceBoard = ({
   };
 
   const handleSaveEntries = async () => {
-    if (!selectedFactoryId) return;
+    if (!selectedFactoryId || queryError || loadingFactories || loadingEmployees || loadingEntries) return;
     setSavingEntries(true);
     try {
       const entries = buildAttendanceEntryRows(entriesByWorker);
@@ -533,7 +538,7 @@ const AttendanceBoard = ({
         <Stack direction="row" spacing={1}>
           <SaveButton
             onClick={handleSaveEntries}
-            disabled={!selectedFactoryId || savingEntries || !hasUnsavedEntryChanges}
+            disabled={queryError || loadingFactories || loadingEmployees || loadingEntries || !selectedFactoryId || savingEntries || !hasUnsavedEntryChanges}
             loading={savingEntries}
           />
         </Stack>
@@ -607,6 +612,8 @@ const AttendanceBoard = ({
             <TableBody>
               <TableStatusRow
                 colSpan={5}
+                state={loadingFactories || loadingEmployees || loadingEntries ? "loading" : queryError ? "error" : undefined}
+                onRetry={() => { setQueryError(false); setReloadToken(value => value + 1); }}
                 message={
                   loadingEmployees
                     ? resolveText(TEXT.loadingWorkers, languageCode, 'Loading workers...')
@@ -622,11 +629,11 @@ const AttendanceBoard = ({
                 }
                 sx={{
                   py:
-                    loadingEmployees || loadingEntries || !selectedFactoryId || filteredEmployees.length === 0
+                    loadingFactories || loadingEmployees || loadingEntries || queryError || !selectedFactoryId || filteredEmployees.length === 0
                       ? 3
                       : 0,
                   display:
-                    loadingEmployees || loadingEntries || !selectedFactoryId || filteredEmployees.length === 0
+                    loadingFactories || loadingEmployees || loadingEntries || queryError || !selectedFactoryId || filteredEmployees.length === 0
                       ? 'table-cell'
                       : 'none',
                 }}
@@ -722,6 +729,7 @@ const AttendanceBoard = ({
           )}
         />
       </Stack>
+      <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); setReloadToken(value => value + 1); }} />
     </AppPageContainer>
   );
 };

@@ -31,6 +31,7 @@ import {
 } from '../../../utils/workspaceDataEvents';
 
 const FactoryList = () => {
+  const [queryFailed, setQueryFailed] = useState(false);
   const [factories, setFactories] = useState([]);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedFactory, setSelectedFactory] = useState(null);
@@ -98,12 +99,14 @@ const FactoryList = () => {
   const fetchFactories = async (options = {}) => {
     const isActive = options.isActive ?? (() => true);
     setLoading(true);
+    setQueryFailed(false);
     try {
       const data = await requestJSON('/factories', {
       });
       if (!isActive()) return;
       setFactories(Array.isArray(data) ? data : []);
     } catch (_error) {
+      setQueryFailed(true);
       if (!isActive()) return;
       showNotification(text.fetchError, 'error');
     } finally {
@@ -284,9 +287,9 @@ const FactoryList = () => {
             </TableHead>
             <TableBody>
               {loading ? (
-                <TableStatusRow colSpan={8} message={text.loading} />
-              ) : factories.length === 0 ? (
-                <TableStatusRow colSpan={8} message={text.empty} />
+                <TableStatusRow colSpan={8} state="loading" />
+              ) : queryFailed || factories.length === 0 ? (
+                <TableStatusRow colSpan={8} state={queryFailed ? 'error' : 'empty'} onRetry={fetchFactories} />
               ) : (
                 factories.map((factory) => {
                   const rawWage = factory.wagePerSecond;
