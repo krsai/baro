@@ -1,3 +1,4 @@
+import WorkspaceDialogScope from '../components/WorkspaceDialogScope';
 import TabStateIndicators from '../components/TabStateIndicators';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useOutlet } from 'react-router-dom';
@@ -2321,13 +2322,13 @@ const MainLayout = () => {
                       minWidth: 0,
                     }}
                   >
-                    {element}
+                    <WorkspaceDialogScope viewportRef={workspaceScrollRef} active={currentPath === path}>{element}</WorkspaceDialogScope>
                   </Box>
                 </RequestScopeBoundary>
               ))}
               {shouldRenderLiveOutlet && isCurrentPathKeepAlive ? (
                 <RequestScopeBoundary scopeId={currentPath} active>
-                  {routeOutlet}
+                  <WorkspaceDialogScope viewportRef={workspaceScrollRef} active>{routeOutlet}</WorkspaceDialogScope>
                 </RequestScopeBoundary>
               ) : null}
               {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? routeOutlet : null}
