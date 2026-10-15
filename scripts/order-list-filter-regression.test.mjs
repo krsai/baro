@@ -17,6 +17,7 @@ test('order deletion flags include employee, outsourced and card-linked history 
   const orders = [1, 2, 3, 4, 5].map(id => ({ id, orderId: String(id) }));
   let handler, response;
   const deps = {
+    orderWorkflowStatus: require('../backend/dist/services/orderWorkflow.js').orderWorkflowStatus,
     app: { get: (_path, callback) => { handler = callback; } },
     getOrganizationByQuery: async () => ({ id: 99 }),
     getOrderAccessWhere: () => [], WORK_ORDER_RESPONSE_INCLUDE: {},
@@ -81,13 +82,10 @@ test('order row style search matches style code/name only, not the shared custom
   });
 });
 
-test('order list exposes only all, in-progress, and completed filters', () => {
-  assert.match(page, /ORDER_FILTER_ALL/);
-  assert.match(page, /ORDER_FILTER_IN_PROGRESS/);
-  assert.match(page, /ORDER_FILTER_COMPLETED/);
-  assert.match(statuses, /filterInProgressLabel/);
-  assert.match(statuses, /filterCompletedLabel/);
-  assert.doesNotMatch(page, /ORDER_FILTER_EXCEPT_DONE|ORDER_STATUS_OPTIONS\.map\(\(option\) => \(\{/);
+test('order list filters use the same derived workflow status as row labels', () => {
+  assert.match(page, /order.workflowStatus === progressFilter/);
+  assert.match(page, /orderWorkflowOptions\(languageCode\)/);
+  assert.match(page, /getOrderWorkflowLabel\(order.workflowStatus, languageCode\)/);
 });
 
 test('order list does not filter by a date or month range', () => {

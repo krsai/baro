@@ -1,3 +1,4 @@
+import { getOrderWorkflowLabel, orderWorkflowOptions } from '../../../constants/orderWorkflow.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useParams } from 'react-router-dom';
@@ -72,9 +73,7 @@ import {
 import { collectAttributeTextCandidates, resolveLocalizedAttributeName, resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import {
   ORDER_STATUS_KEYS,
-  ORDER_STATUS_OPTIONS,
   ORDER_STATUS_TEXT,
-  getOrderStatusLabel as getOrderStatusLabelFromConst,
   normalizeOrderStatus as normalizeOrderStatusFromConst,
 } from '../../../constants/orderStatus';
 import {
@@ -101,11 +100,8 @@ import {
 const { useDeferredValue } = React;
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_PROGRESS_STAGES = ORDER_STATUS_OPTIONS.map((option) => option.value);
-const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_PROGRESS_STAGES[0] || '';
+const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_STATUS_KEYS.ORDER_RECEIVED;
 const ORDER_FILTER_ALL = 'ALL';
-const ORDER_FILTER_IN_PROGRESS = 'IN_PROGRESS_GROUP';
-const ORDER_FILTER_COMPLETED = 'COMPLETED_GROUP';
 const ORDER_DETAIL_VIEW_MODES = {
   VERTICAL: 'vertical',
   HORIZONTAL: 'horizontal',
@@ -215,11 +211,6 @@ const getStyleGroupPastelStyle = (index) => {
   return STYLE_GROUP_PASTEL_STYLES[safeIndex % STYLE_GROUP_PASTEL_STYLES.length];
 };
 const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
-const getOrderProgressStageLabel = (
-  status,
-  fallback = String(status || '').trim() || '-',
-  languageCode
-) => getOrderStatusLabelFromConst(status, fallback, languageCode);
 const buildOrderTabLabel = (order, baseLabel = 'Order') => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
   return orderNumber ? `${baseLabel}: ${orderNumber}` : baseLabel;
@@ -1645,18 +1636,7 @@ const OrderList = () => {
   const filteredOrders = useMemo(() => {
     const lowerTerm = deferredSearchTerm.toLowerCase();
     return orders.filter((order) => {
-      const normalizedProgressStage = normalizeOrderProgressStage(order.status);
-      const isCompleted = [
-        ORDER_STATUS_KEYS.PRODUCTION_DONE,
-        ORDER_STATUS_KEYS.SHIPPED,
-        ORDER_STATUS_KEYS.SETTLED,
-      ].includes(normalizedProgressStage);
-      const matchesProgress =
-        progressFilter === ORDER_FILTER_ALL
-          ? true
-          : progressFilter === ORDER_FILTER_COMPLETED
-            ? isCompleted
-            : !isCompleted;
+      const matchesProgress = progressFilter === ORDER_FILTER_ALL || order.workflowStatus === progressFilter;
       if (!matchesProgress) return false;
 
       if (!deferredSearchTerm) return true;
@@ -1797,23 +1777,10 @@ const OrderList = () => {
   }, []);
   const currentSizeColumnWidth = getOrderDetailSizeColumnWidth(currentSizeColumns);
   const currentLastSizeColumn = currentSizeColumns[currentSizeColumns.length - 1] || '';
-  const orderProgressFilterOptions = useMemo(
-    () => [
-      {
-        value: ORDER_FILTER_ALL,
-        label: ORDER_STATUS_TEXT.filterAllLabel,
-      },
-      {
-        value: ORDER_FILTER_IN_PROGRESS,
-        label: ORDER_STATUS_TEXT.filterInProgressLabel,
-      },
-      {
-        value: ORDER_FILTER_COMPLETED,
-        label: ORDER_STATUS_TEXT.filterCompletedLabel,
-      },
-    ],
-    [languageCode]
-  );
+  const orderProgressFilterOptions = useMemo(() => [
+    { value: ORDER_FILTER_ALL, label: ORDER_STATUS_TEXT.filterAllLabel },
+    ...orderWorkflowOptions(languageCode),
+  ], [languageCode]);
   const genderOptionByCode = useMemo(
     () => new Map(genderSelectOptions.map((item) => [item.code, item])),
     [genderSelectOptions]
@@ -3171,11 +3138,7 @@ const OrderList = () => {
                     const deleteDisabledReason = order.hasProductionRecords
                       ? orderPageText.deleteProductionBlocked
                       : order.hasAssignments ? orderPageText.deleteAssignmentBlocked : orderPageText.modificationLocked;
-                    const progressStageLabel = getOrderProgressStageLabel(
-                      order.status,
-                      ORDER_STATUS_TEXT.noneLabel,
-                      languageCode
-                    );
+                    const progressStageLabel = getOrderWorkflowLabel(order.workflowStatus, languageCode);
                     return (
                       <TableRow
                         key={order.id}

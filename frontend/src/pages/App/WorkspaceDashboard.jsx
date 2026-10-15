@@ -1,3 +1,4 @@
+import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
 import QueryFeedback from '../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -24,10 +25,6 @@ import {
   countStaticOptionItems,
 } from '../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../constants/uiMessages';
-import {
-  ORDER_STATUS_KEYS,
-  getOrderStatusLabel,
-} from '../../constants/orderStatus';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -109,20 +106,10 @@ const DASHBOARD_TEXT = {
   },
 };
 
-const ORDER_STATUS_SUMMARY_KEYS = [
-  ORDER_STATUS_KEYS.EDITING,
-  ORDER_STATUS_KEYS.ORDER_RECEIVED,
-  ORDER_STATUS_KEYS.IN_PROGRESS,
-  ORDER_STATUS_KEYS.PRODUCTION_DONE,
-];
+const ORDER_STATUS_SUMMARY_KEYS = ORDER_WORKFLOW_KEYS;
 
 const EMPTY_SUMMARY = Object.freeze({
-  orderCounts: {
-    [ORDER_STATUS_KEYS.EDITING]: 0,
-    [ORDER_STATUS_KEYS.ORDER_RECEIVED]: 0,
-    [ORDER_STATUS_KEYS.IN_PROGRESS]: 0,
-    [ORDER_STATUS_KEYS.PRODUCTION_DONE]: 0,
-  },
+  orderCounts: Object.fromEntries(ORDER_WORKFLOW_KEYS.map(key => [key, 0])),
   monthlyAssignedOrderCount: 0,
   monthlyAssignedQuantity: 0,
   materialStockRate: null,
@@ -283,7 +270,7 @@ const buildSummaryData = ({ orders, assignments }) => {
   const summary = createEmptySummary();
 
   (Array.isArray(orders) ? orders : []).forEach((order) => {
-    const statusKey = String(order?.status || '').trim().toUpperCase();
+    const statusKey = String(order?.workflowStatus || '').trim().toUpperCase();
     if (!(statusKey in summary.orderCounts)) return;
     summary.orderCounts[statusKey] += 1;
   });
@@ -327,9 +314,9 @@ const buildSummaryCards = ({ languageCode, summaryData, summaryLoading }) => [
     statusItems: ORDER_STATUS_SUMMARY_KEYS.map((statusKey) => ({
       key: statusKey,
       label: {
-        ko: getOrderStatusLabel(statusKey, statusKey, 'ko'),
-        en: getOrderStatusLabel(statusKey, statusKey, 'en'),
-        vi: getOrderStatusLabel(statusKey, statusKey, 'vi'),
+        ko: getOrderWorkflowLabel(statusKey, 'ko'),
+        en: getOrderWorkflowLabel(statusKey, 'en'),
+        vi: getOrderWorkflowLabel(statusKey, 'vi'),
       },
       value: formatCountValue(
         summaryData?.orderCounts?.[statusKey],
