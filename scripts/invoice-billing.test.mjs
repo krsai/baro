@@ -141,10 +141,12 @@ test('list queries are paginated and preserve seller scope when searching', asyn
 test('invoice order list scopes and batches assignment progress for only its visible orders', async () => {
   const orders = Array.from({ length: 51 }, (_, i) => ({ id: i + 1, orderId: `o${i}`, totalQuantity: 100 }));
   const { routes, response, queries } = createRoutes({ orders,
-    plans: [{ workOrderId: 1, externalId: 'a' }], progress: [{ id: 'a', producedQuantity: 30, displayProgressPercent: 60 }] });
+    plans: [{ workOrderId: 1, externalId: 'a' }], progress: [{ id: 'a', plannedQuantity: 50, producedQuantity: 30, displayProgressPercent: 60 }] });
   await routes.get('/invoices/orders')({ query: { buyerOrgId: '8' } }, response);
   assert.equal(queries[1].where.orgId, 7);
-  assert.equal(queries[1].where.workOrderId.in.length, 50);
+  assert.equal(queries[1].where.OR[0].workOrderId.in.length, 50);
+  assert.equal(queries[1].where.OR[1].workOrderId, null);
+  assert.equal(queries[1].where.OR[1].assignmentCard.is.workOrderId.in.length, 50);
   assert.equal(response.body.rows[0].progressPercent, 30);
   assert.equal(response.body.rows[0].assignments[0].progressPercent, 60);
   assert.equal(response.body.hasMore, true);

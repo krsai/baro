@@ -2245,7 +2245,7 @@ const resolveAssignmentProgressState = ({
     progressRow?.progressImbalanceGapRatio != null
       ? Math.max(0, Number(progressRow.progressImbalanceGapRatio) || 0)
       : Math.max(0, Number(assignment?.progressImbalanceGapRatio) || 0);
-  const rawWorkProgressPercent = toRawPercentValue(
+  const rawWorkProgressPercent = isProgressUnknown && !isCompleted ? null : toRawPercentValue(
     progressRow?.displayProgressPercent ??
       progressRow?.operationalProgressPercent ??
       assignment?.displayProgressPercent ??
@@ -2292,7 +2292,7 @@ const resolveAssignmentProgressState = ({
     hasOrphanWorkRecords: Boolean(
       progressRow?.hasOrphanWorkRecords ?? assignment?.hasOrphanWorkRecords
     ),
-    progressPercent: clampPercentValue(rawWorkProgressPercent),
+    progressPercent: rawWorkProgressPercent == null ? null : clampPercentValue(rawWorkProgressPercent),
     workProgressPercent: rawWorkProgressPercent,
     producedQuantity: progressRow?.producedQuantity ?? assignment?.producedQuantity ?? null,
     priorStyleCompletionQuantity: progressRow?.priorStyleCompletionQuantity ?? 0,
@@ -4737,7 +4737,7 @@ const AssignBoard = () => {
       .map((item) => {
         const plannedQuantity = Number(item?.plannedQuantity ?? item?.quantity ?? 0);
         const qcDisplayQuantity = 0;
-        const workProgressPercent = toRawPercentValue(
+        const workProgressPercent = item?.isProgressUnknown && !item?.isCompleted ? null : toRawPercentValue(
           item?.workProgressPercent ?? item?.progressPercent ?? 0
         );
         const renderStartDateKey =
@@ -4790,7 +4790,7 @@ const AssignBoard = () => {
           endIndex: defaultEndIndex,
           renderStartIndex,
           renderEndIndex,
-          progressPercent: clampPercentValue(workProgressPercent),
+          progressPercent: workProgressPercent == null ? null : clampPercentValue(workProgressPercent),
           workProgressPercent,
           qcPassedTotal: qcDisplayQuantity || 0,
           qcProgressPercent: 0,

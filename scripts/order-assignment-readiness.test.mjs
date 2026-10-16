@@ -70,25 +70,11 @@ test('board write gate uses transaction-scoped authorized orders and rejects mis
   await assert.rejects(run(), /missing workOrderId/);
 });
 
-test('manual lock timestamps cannot reset production status or block guarded order editing', () => {
-  const deps = {
-    resolveWorkOrderStatus: (value, fallback) => value || fallback,
-    AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES: new Set(['EDITING', 'ORDER_RECEIVED', 'IN_PROGRESS']),
-  };
-  const canonical = execute(section('const resolveCanonicalWorkOrderProgressStatus', 'const resolveWorkOrderConfirmationStatus') +
-    '\nreturn resolveCanonicalWorkOrderProgressStatus;', deps);
-  const auto = execute(section('const resolveAutoOrderProgressStatus =', 'const syncOrderProgressStatusesForOrg =') +
-    '\nreturn resolveAutoOrderProgressStatus;', {});
+test('manual lock timestamps do not control workflow and retired status synchronization is absent', () => {
   const lock = execute(section('const buildOrderModificationLockState =', 'const loadOrderAssignmentModificationLockMap =') +
     '\nreturn buildOrderModificationLockState;', {});
-  for (const isManualLocked of [true, false]) {
-    for (const status of ['IN_PROGRESS', 'PRODUCTION_DONE', 'SHIPPED', 'SETTLED']) {
-      assert.equal(canonical({ status, isManualLocked }), status);
-    }
-    assert.equal(auto({ isManualLocked, coverage: { hasAssignments: true, hasUnassignedCards: false } }), 'IN_PROGRESS');
-    assert.equal(auto({ isManualLocked, coverage: { hasAssignments: true, hasUnassignedCards: true } }), 'ORDER_RECEIVED');
-  }
   assert.equal(lock({ order: { modificationLockedAt: new Date() }, isAssignmentLocked: true }).isLocked, false);
+  assert.doesNotMatch(source, /syncOrderProgressStatusesForOrg|resolveAutoOrderProgressStatus|trySyncConfirmedOrdersToInProgressFromWorkRecords/);
 });
 
 test('retired manual lock endpoint never invokes the old assignment quantity/ST sync', async () => {
@@ -109,6 +95,7 @@ function deletion({ assigned = false, historical = false, stale = false, failCar
     assignmentCard: { deleteMany: async ({ where }) => {
       assert.deepEqual(where, { workOrderId: 1 }); assert.equal(deleted, false);
     } }, priorProductionCompletion: { count: async () => historical ? 1 : 0 },
+    partnerTransactionCost: { count: async ({ where }) => { assert.deepEqual(where, { workOrderId: 1 }); return 0; } },
     workOrder: {
       findFirst: async () => ({ ...existing, updatedAt: stale ? new Date(0) : existing.updatedAt }),
       delete: async () => { deleted = true; },

@@ -1,4 +1,5 @@
-import { loadOrderWorkflowStatuses, orderWorkflowStatus } from "./services/orderWorkflow";
+import { displayProductionProgress } from './services/productionProgress';
+import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
 import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
 import { annotateProcessVersionProtection } from "./services/processVersionProtection";
 import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
@@ -7,7 +8,7 @@ import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services
 import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
-import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion, summarizePriorProduction } from './services/priorProductionCompletion';
+import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion } from './services/priorProductionCompletion';
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
@@ -503,30 +504,9 @@ const WORK_ORDER_CONFIRMATION_STATUS_CODES = new Set([
   "PLANNED",
   "CONFIRMED",
 ]);
-const AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES = new Set([
-  "EDITING",
-  "ORDER_RECEIVED",
-  "IN_PROGRESS",
-]);
 let supportsWorkOrderEditingStatus = false;
-const resolveUnlockedWorkOrderStatus = (): "EDITING" | "ORDER_RECEIVED" =>
-  supportsWorkOrderEditingStatus ? "EDITING" : "ORDER_RECEIVED";
 const ORDER_MODIFICATION_LOCK_ERROR =
   "order modification is locked";
-const WORK_ORDER_STATUS_LEGACY_CODE_MAP = new Map<string, string>([
-  ["수정", "EDITING"],
-  ["주문접수", "ORDER_RECEIVED"],
-  ["접수", "ORDER_RECEIVED"],
-  ["작업중", "IN_PROGRESS"],
-  ["제작", "IN_PROGRESS"],
-  ["생산", "IN_PROGRESS"],
-  ["완료", "PRODUCTION_DONE"],
-  ["생산완료", "PRODUCTION_DONE"],
-  ["출고완료", "SHIPPED"],
-  ["출고", "SHIPPED"],
-  ["정산완료", "SETTLED"],
-  ["정산", "SETTLED"],
-]);
 const DEFAULT_EMPLOYEE_ROLE_CODE_SEWING = "WORKER_SEWING";
 const DEFAULT_EMPLOYEE_ROLES = [
   {
@@ -657,61 +637,6 @@ const normalizeWorkOrderItemGender = (
     return "U";
   }
   return fallback;
-};
-const resolveWorkOrderStatus = (
-  value: unknown,
-  fallback:
-    | "EDITING"
-    | "ORDER_RECEIVED"
-    | "IN_PROGRESS"
-    | "PRODUCTION_DONE"
-    | "SHIPPED"
-    | "SETTLED" = "EDITING"
-): "EDITING" | "ORDER_RECEIVED" | "IN_PROGRESS" | "PRODUCTION_DONE" | "SHIPPED" | "SETTLED" => {
-  if (value === "" || value === null || value === undefined) return fallback;
-  const normalized = String(value).replace(/\s+/g, "").trim();
-  if (!normalized) return fallback;
-  const upper = normalized.toUpperCase();
-  if (WORK_ORDER_STATUS_CODES.has(upper)) {
-    return upper as
-      | "EDITING"
-      | "ORDER_RECEIVED"
-      | "IN_PROGRESS"
-      | "PRODUCTION_DONE"
-      | "SHIPPED"
-      | "SETTLED";
-  }
-  return (WORK_ORDER_STATUS_LEGACY_CODE_MAP.get(normalized) ??
-    fallback) as
-    | "EDITING"
-    | "ORDER_RECEIVED"
-    | "IN_PROGRESS"
-    | "PRODUCTION_DONE"
-    | "SHIPPED"
-    | "SETTLED";
-};
-const resolveCanonicalWorkOrderProgressStatus = ({
-  status,
-}: {
-  status: unknown;
-}):
-  | "EDITING"
-  | "ORDER_RECEIVED"
-  | "IN_PROGRESS"
-  | "PRODUCTION_DONE"
-  | "SHIPPED"
-  | "SETTLED" => {
-  const rawStatus = resolveWorkOrderStatus(
-    status,
-    "ORDER_RECEIVED"
-  );
-  if (!AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES.has(rawStatus)) {
-    return rawStatus;
-  }
-  if (rawStatus === "EDITING") {
-    return "ORDER_RECEIVED";
-  }
-  return rawStatus;
 };
 const resolveWorkOrderConfirmationStatus = (
   value: unknown,
@@ -8111,9 +8036,8 @@ const normalizeOrderPayload = (payload: any = {}, fallback: any = null): any => 
     fallback?.confirmationStatus ?? payload?.confirmationStatus,
     "PLANNED"
   );
-  const status = resolveCanonicalWorkOrderProgressStatus({
-    status: payload?.status ?? fallback?.status,
-  });
+  // Legacy storage is preserved, never client-editable or a workflow input.
+  const status = fallback?.status ?? "ORDER_RECEIVED";
 
   return {
     orderId,
@@ -8346,9 +8270,7 @@ const toOrderResponse = (
   const isManualModificationLocked = Boolean(order?.invoiceFinalLockedAt);
   const isAssignmentModificationLocked = Boolean(options.isAssignmentModificationLocked);
   const isModificationLocked = isManualModificationLocked;
-  const status = resolveCanonicalWorkOrderProgressStatus({
-    status: order.status,
-  });
+  const status = order.status; // Compatibility field; workflowStatus is authoritative.
   return {
     id: order.orderId,
     dbId: toPositiveIntOrNull(order.id),
@@ -9442,189 +9364,6 @@ const collectWorkRecordAssignmentPlanIds = (records: any): number[] =>
   );
 const resolveWorkOrderIdFromAssignmentBoardItem = (item: any): number | null =>
   toPositiveIntOrNull(item?.workOrderId);
-const buildOrderProgressCoverageByWorkOrderId = ({
-  cards,
-  assignments,
-}: {
-  cards: any;
-  assignments: any;
-}) => {
-  const coverageByWorkOrderId = new Map<
-    number,
-    { hasUnassignedCards: boolean; hasAssignments: boolean }
-  >();
-  const ensureCoverage = (workOrderId: number) => {
-    const current = coverageByWorkOrderId.get(workOrderId);
-    if (current) return current;
-    const next = { hasUnassignedCards: false, hasAssignments: false };
-    coverageByWorkOrderId.set(workOrderId, next);
-    return next;
-  };
-
-  ensureArray(cards).forEach((card) => {
-    if ((resolveOptionalString(card?.type, "") ?? "").toUpperCase() === "DELTA") {
-      return;
-    }
-    const workOrderId = resolveWorkOrderIdFromAssignmentBoardItem(card);
-    if (workOrderId === null) return;
-    ensureCoverage(workOrderId).hasUnassignedCards = true;
-  });
-
-  normalizeStateAssignments(assignments).forEach((assignment) => {
-    const workOrderId = resolveWorkOrderIdFromAssignmentBoardItem(assignment);
-    if (workOrderId === null) return;
-    ensureCoverage(workOrderId).hasAssignments = true;
-  });
-
-  return coverageByWorkOrderId;
-};
-const resolveAutoOrderProgressStatus = ({
-  coverage,
-}: {
-  coverage?: { hasUnassignedCards: boolean; hasAssignments: boolean } | null;
-}): "EDITING" | "ORDER_RECEIVED" | "IN_PROGRESS" => {
-  if (!coverage) {
-    return "ORDER_RECEIVED";
-  }
-  if (coverage.hasAssignments && !coverage.hasUnassignedCards) {
-    return "IN_PROGRESS";
-  }
-  return "ORDER_RECEIVED";
-};
-const syncOrderProgressStatusesForOrg = async ({
-  orgId,
-  orderIds = null,
-  cards = null,
-  assignments = null,
-  includeTerminalStages = false,
-}: {
-  orgId: number;
-  orderIds?: string[] | null;
-  cards?: any;
-  assignments?: any;
-  includeTerminalStages?: boolean;
-}) => {
-  void includeTerminalStages;
-  const normalizedOrderIds = Array.from(
-    new Set(
-      ensureArray(orderIds)
-        .map((orderId) => resolveOptionalString(orderId, null))
-        .filter((orderId): orderId is string => Boolean(orderId))
-    )
-  );
-  const shouldLoadCards = cards == null;
-  const shouldLoadAssignments = assignments == null;
-  const [resolvedCards, resolvedAssignments] = await Promise.all([
-    shouldLoadCards ? loadAssignmentCardsForOrg({ orgId }) : Promise.resolve(cards),
-    shouldLoadAssignments
-      ? loadAssignmentPlansForBoardState(orgId).then((plans) => ({
-          assignments: ensureArray(plans).map((plan) => toAssignmentPlanResponse(plan)),
-        }))
-      : Promise.resolve({ assignments }),
-  ]);
-  const coverageByWorkOrderId = buildOrderProgressCoverageByWorkOrderId({
-    cards: resolvedCards,
-    assignments: resolvedAssignments?.assignments ?? assignments,
-  });
-  const orders = await prisma.workOrder.findMany({
-    where: {
-      OR: getOrderAccessWhere(orgId),
-      ...(normalizedOrderIds.length > 0 ? { orderId: { in: normalizedOrderIds } } : {}),
-    },
-    select: {
-      id: true,
-      orderId: true,
-      status: true,
-    },
-  });
-  const updates = orders.flatMap((order) => {
-    const currentStatus = resolveCanonicalWorkOrderProgressStatus({
-      status: order?.status,
-    });
-    if (
-      !includeTerminalStages &&
-      !AUTO_MANAGED_WORK_ORDER_PROGRESS_STATUSES.has(currentStatus)
-    ) {
-      return [];
-    }
-    const nextStatus = resolveAutoOrderProgressStatus({
-      coverage:
-        coverageByWorkOrderId.get(toPositiveIntOrNull(order?.id) ?? -1) ?? null,
-    });
-    if (currentStatus === nextStatus) return [];
-    return [{ id: order.id, status: nextStatus }];
-  });
-  if (updates.length === 0) return;
-
-  await prisma.$transaction(
-    updates.map((item) =>
-      prisma.workOrder.update({
-        where: { id: item.id },
-        data: { status: item.status },
-      })
-    )
-  );
-};
-const syncConfirmedOrdersToInProgressFromWorkRecords = async ({
-  orgId,
-  records,
-}: {
-  orgId: number;
-  records: any;
-}) => {
-  const assignmentPlanIds = collectWorkRecordAssignmentPlanIds(records);
-  if (assignmentPlanIds.length === 0) return;
-
-  const plans = await prisma.assignmentPlan.findMany({
-    where: { orgId, id: { in: assignmentPlanIds } },
-    select: {
-      workOrderId: true,
-    },
-  });
-  const workOrderIds = collectPositiveIntSet(...plans.map((plan) => plan?.workOrderId));
-  const linkedOrders =
-    workOrderIds.length > 0
-      ? await prisma.workOrder.findMany({
-          where: { id: { in: workOrderIds } },
-          select: { orderId: true },
-        })
-      : [];
-  const orderIds = Array.from(
-    new Set(
-      linkedOrders
-        .map((order) => resolveOptionalString(order?.orderId, null))
-        .filter((orderId): orderId is string => Boolean(orderId))
-    )
-  );
-  if (orderIds.length === 0) return;
-  await syncOrderProgressStatusesForOrg({
-    orgId,
-    orderIds,
-  });
-};
-const trySyncConfirmedOrdersToInProgressFromWorkRecords = async ({
-  orgId,
-  records,
-  mode,
-}: {
-  orgId: number;
-  records: any;
-  mode: "create" | "update";
-}) => {
-  try {
-    await syncConfirmedOrdersToInProgressFromWorkRecords({
-      orgId,
-      records,
-    });
-  } catch (error) {
-    console.warn(
-      `[order-progress-sync] orgId=${orgId} mode=${mode} failed: ${getErrorMessage(
-        error,
-        "failed to sync order progress after work-log save"
-      )}`
-    );
-  }
-};
 const summarizeWorkLogRecordsForDebug = (records: any) =>
   ensureArray(records).slice(0, 5).map((record, index) => ({
     index,
@@ -13556,10 +13295,6 @@ const rebuildAssignmentCardsForOrg = async (
   if (!rebuilt) return [];
   const { syncedCards, hydratedStyles, manufacturerScope } = rebuilt;
   try {
-    await syncOrderProgressStatusesForOrg({
-      orgId,
-      cards: syncedCards,
-    });
     if (
       manufacturerScope &&
       options.refreshExistingAssignmentSnapshots !== false
@@ -13572,7 +13307,7 @@ const rebuildAssignmentCardsForOrg = async (
     }
   } catch (error) {
     console.error(
-      `${diagPrefix} post-sync step (syncOrderProgressStatusesForOrg/refreshUnlinkedAssignmentPlanSnapshotsForOrg) threw`,
+      `${diagPrefix} post-sync step (refreshUnlinkedAssignmentPlanSnapshotsForOrg) threw`,
       error
     );
     throw error;
@@ -23827,12 +23562,9 @@ const buildAssignmentPlanProgressRows = async (
       : hasWorkProgressReachedCompletion
         ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
         : ASSIGNMENT_STATUS_IN_PROGRESS;
-    // Display the factual aggregate production ratio even while quantity review
-    // is required. REVIEW_REQUIRED already communicates a process mismatch; it
-    // must not fabricate a 99% ceiling when every process met its own target.
-    // Overproduction is intentionally visible above 100% here, while scheduler
-    // and remaining-load ratios stay capped independently below.
-    const displayProgressPercent = operationalProgressPercent;
+    // Reserve 100% for completion; factual excess remains visible.
+    // Scheduler and remaining-load ratios keep their independent caps.
+    const displayProgressPercent = displayProductionProgress(operationalProgressPercent, scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED);
 
     const stateAssignment = stateAssignmentsByExternalId.get(plan.externalId) || null;
     const snapshotSchedule = resolveNormalizedAssignmentCtSnapshot(plan)?.schedule || null;
@@ -24620,7 +24352,7 @@ const completeAssignmentPlanProduction = async ({
     orgId,
     assignmentPlanIds: [updatedPlan.id],
   });
-  await syncOrderProgressStatusesForOrg({ orgId });
+
 
   return {
     ok: true as const,
@@ -25388,7 +25120,7 @@ app.patch([
     orgId: organization.id,
     assignmentPlanIds: [plan.id],
   });
-  await syncOrderProgressStatusesForOrg({ orgId: organization.id });
+
   return res.json({
     ok: true,
     plan: buildAssignmentPlanCloseResponse(updatedPlan),
@@ -25497,7 +25229,7 @@ app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
     });
   }
 
-  await syncOrderProgressStatusesForOrg({ orgId: organization.id });
+
   return res.json({
     ok: true,
     plan: buildAssignmentPlanCloseResponse(updatedPlan),
@@ -26994,11 +26726,7 @@ app.post("/work-logs/import", async (req, res) => {
   }
 
   const importedRecords = validatedGroups.flatMap((group) => ensureArray(group.normalized.records));
-  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
-    orgId: organization.id,
-    records: importedRecords,
-    mode: "create",
-  });
+
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
     orgId: organization.id,
     assignmentPlanIds: collectWorkRecordAssignmentPlanIds(importedRecords),
@@ -27165,11 +26893,7 @@ const handleCreateOutsourcedWorkLog = async ({
     recordRelationName: "outsourcedWorkRecords",
     warnLabel: "work-logs:create-outsourced:readback",
   });
-  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
-    orgId: organization.id,
-    records: normalized.records,
-    mode: "create",
-  });
+
   const createdPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
     orgId: organization.id,
@@ -27351,11 +27075,7 @@ const handleUpdateOutsourcedWorkLog = async ({
     recordRelationName: "outsourcedWorkRecords",
     warnLabel: "work-logs:update-outsourced:readback",
   });
-  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
-    orgId: organization.id,
-    records: normalized.records,
-    mode: "update",
-  });
+
   const nextPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   const touchedPlanIds = normalizePlanIdList([...previousPlanIds, ...nextPlanIds]);
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
@@ -27639,11 +27359,7 @@ app.post("/work-logs", async (req, res) => {
     workLogId: created.id,
     hasReadback: Boolean(createdWithRecords),
   });
-  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
-    orgId: organization.id,
-    records: normalized.records,
-    mode: "create",
-  });
+
   updateWorkLogMutationTrace(trace, "order-sync-finished");
   const createdPlanIds = collectWorkRecordAssignmentPlanIds(normalized.records);
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
@@ -27972,11 +27688,7 @@ app.put("/work-logs/:id", async (req, res) => {
     workLogId: updated.id,
     hasReadback: Boolean(updatedWithRecords),
   });
-  await trySyncConfirmedOrdersToInProgressFromWorkRecords({
-    orgId: organization.id,
-    records: normalized.records,
-    mode: "update",
-  });
+
   updateWorkLogMutationTrace(trace, "order-sync-finished");
   const touchedPlanIds = normalizePlanIdList([...previousPlanIds, ...nextPlanIds]);
   await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({
@@ -28326,10 +28038,7 @@ app.delete("/assignment-board-state/assignment/:assignmentId", async (req, res) 
   });
 
   // 해당 assignment의 plan 레코드 제거
-  await syncOrderProgressStatusesForOrg({
-    orgId: organization.id,
-    cards: currentCards,
-  });
+
 
   res.json({
     ok: true,
@@ -28375,11 +28084,7 @@ app.delete("/assignment-board-state", async (req, res) => {
       db: tx,
     });
   });
-  await syncOrderProgressStatusesForOrg({
-    orgId: organization.id,
-    cards: [],
-    assignments: [],
-  });
+
 
   res.json({ ok: true });
 });
@@ -29179,11 +28884,7 @@ app.put("/assignment-board-state", async (req, res) => {
   const stDraftWarnings = ensureArray(updated?.stDraftWarnings);
   // Board save ST reverse propagation is driven only by explicit write-only stDrafts.
   // assignmentCtSnapshot is CT-only and must not be used as an ST source.
-  await syncOrderProgressStatusesForOrg({
-    orgId: organization.id,
-    cards: updatedCards,
-    assignments: updatedAssignmentPlans.map((plan) => toAssignmentPlanResponse(plan)),
-  });
+
   res.json({
     ...toAssignmentBoardStateResponse(updatedState, updatedAssignmentPlans, updatedCards),
     warnings: stDraftWarnings,
@@ -29297,7 +28998,7 @@ app.post('/outsourcing-requests', async (req, res) => {
   const row = await prisma.$transaction(tx => registerTransactionRequest(tx, orgId, actorId, req.body, appendWorkLogQuantityRemark), { isolationLevel: 'Serializable', timeout: 30000 });
   if (row.outsourcedWorkRecord) {
     const planId = row.outsourcedWorkRecord.assignmentPlanId;
-    await trySyncConfirmedOrdersToInProgressFromWorkRecords({ orgId, records: [{ assignmentPlanId: planId }], mode: 'create' });
+
     await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({ orgId, assignmentPlanIds: [planId], mode: 'create' });
   }
   return res.status(201).json(row);
@@ -30544,8 +30245,11 @@ app.get("/orders", async (req, res) => {
     }
   }
   const orderPlans = orders.length ? await prisma.assignmentPlan.findMany({
-    where: { orgId: organization.id, workOrderId: { in: orders.map((order) => order.id) } },
-    select: { externalId: true, workOrderId: true, styleId: true, style: { select: { name: true } } },
+    where: { orgId: organization.id, OR: [
+      { workOrderId: { in: orders.map(order => order.id) } },
+      { workOrderId: null, assignmentCard: { is: { workOrderId: { in: orders.map(order => order.id) } } } },
+    ] },
+    select: { externalId: true, workOrderId: true, styleId: true, assignmentCard: { select: { workOrderId: true } }, style: { select: { name: true } } },
   }) : [];
   const orderProgressRows = orderPlans.length
     ? await buildAssignmentPlanProgressRows(organization.id, orderPlans.map((plan) => plan.externalId))
@@ -30589,12 +30293,16 @@ app.get("/customer-production-reports", async (req, res) => {
 
   const orderIds = orders.map((order) => order.id);
   const plans = await prisma.assignmentPlan.findMany({
-    where: { orgId: organization.id, workOrderId: { in: orderIds } },
+    where: { orgId: organization.id, OR: [
+      { workOrderId: { in: orderIds } },
+      { workOrderId: null, assignmentCard: { is: { workOrderId: { in: orderIds } } } },
+    ] },
     select: {
       id: true,
       externalId: true,
       workOrderId: true,
       styleId: true,
+      assignmentCard: { select: { workOrderId: true } },
     },
     orderBy: [{ workOrderId: "asc" }, { styleId: "asc" }, { id: "asc" }],
   });
@@ -30607,7 +30315,7 @@ app.get("/customer-production-reports", async (req, res) => {
   );
   const plansByOrderStyle = new Map<string, any[]>();
   plans.forEach((plan) => {
-    const key = `${plan.workOrderId}:${plan.styleId ?? "none"}`;
+    const key = `${plan.workOrderId ?? plan.assignmentCard?.workOrderId}:${plan.styleId ?? "none"}`;
     const bucket = plansByOrderStyle.get(key) || [];
     bucket.push({
       ...plan,
@@ -30616,8 +30324,14 @@ app.get("/customer-production-reports", async (req, res) => {
     plansByOrderStyle.set(key, bucket);
   });
 
+  const reportWorkflowPlans = await prisma.assignmentPlan.findMany({
+    where: { OR: [{ workOrderId: { in: orderIds } }, { assignmentCard: { is: { workOrderId: { in: orderIds } } } }] },
+    select: { workOrderId: true, styleId: true, assignmentQuantity: true, isCompleted: true,
+      assignmentCard: { select: { workOrderId: true } }, _count: { select: { workRecords: true, outsourcedWorkRecords: true } } },
+  });
   const rows: any[] = [];
   orders.forEach((order) => {
+    const production = invoiceOrderProgress(order, plans, progressRows);
     const itemsByStyle = new Map<string, any>();
     ensureArray(order.workOrderItems).forEach((item) => {
       const key = String(item?.styleId ?? `item:${item?.id}`);
@@ -30632,6 +30346,7 @@ app.get("/customer-production-reports", async (req, res) => {
     });
 
     itemsByStyle.forEach((item) => {
+      const styleProduction = production.styles.find(row => row.styleId === item.styleId)!;
       const relatedPlans = plansByOrderStyle.get(`${order.id}:${item.styleId ?? "none"}`) || [];
       const progress = relatedPlans.map((plan) => plan.progress).filter(Boolean);
       const assignedQuantity = progress.reduce(
@@ -30664,30 +30379,14 @@ app.get("/customer-production-reports", async (req, res) => {
         },
         { weight: 0, value: 0 }
       );
-      const progressPercent = weightedProgress.weight > 0
-        ? Math.round(Math.min(1, weightedProgress.value / Math.max(item.orderedQuantity, weightedProgress.weight)) * 100)
-        : assignedQuantity > 0
-          ? Math.round(Math.min(1, producedQuantity / assignedQuantity) * 100)
-          : 0;
-      const hasWorkRecords = progress.some((row) =>
-        Boolean(row?.firstWorkDate || row?.lastWorkDate || Number(row?.producedQuantity) > 0)
+      const hasWorkRecords = orderAssignmentPlans(order.id, reportWorkflowPlans).some(plan =>
+        plan.styleId === item.styleId && (plan._count?.workRecords > 0 || plan._count?.outsourcedWorkRecords > 0)
       );
-      const isCompleted =
-        item.orderedQuantity > 0 &&
-        assignedQuantity >= item.orderedQuantity &&
-        relatedPlans.length > 0 &&
-        progress.length === relatedPlans.length &&
-        progress.every((row) => row?.isCompleted === true);
+      const isCompleted = styleProduction.isCompleted;
       const reviewRequired = progress.some(
         (row) => row?.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
       );
-      // A customer-facing report must never display 100% while the canonical
-      // assignment completion state is still open. Weighted progress can round
-      // 99.5%+ to 100 even though one or more processes have not met their exact
-      // quantity requirement, so reserve 100% for completed rows only.
-      const reportedProgressPercent = isCompleted
-        ? 100
-        : Math.min(99, Math.max(0, progressPercent));
+      const reportedProgressPercent = styleProduction.progressPercent;
       const scheduledCompletionCandidates = progress
         .map((row) => normalizeDateKey(row?.renderEndDate))
         .filter((value): value is string => Boolean(value));
@@ -30748,7 +30447,7 @@ app.get("/customer-production-reports", async (req, res) => {
                 : "SCHEDULED";
 
       const priorCompletions = order.priorCompletions.filter((entry) => entry.styleId === item.styleId);
-      const historical = summarizePriorProduction(item.orderedQuantity, progress, priorCompletions);
+      const historical = styleProduction;
 
       rows.push({
         customerId: order.buyerOrgId ?? order.customerId ?? null,
@@ -30761,7 +30460,10 @@ app.get("/customer-production-reports", async (req, res) => {
         orderId: order.orderId,
         workOrderId: order.id,
         orderNumber: order.orderNumber,
-        orderStatus: order.status,
+        orderStatus: orderWorkflowStatus(order, reportWorkflowPlans),
+        orderProgressPercent: production.progressPercent,
+        orderProductionCompleted: production.isCompleted,
+        orderProducedQuantity: production.producedQuantity,
         dueDate: normalizeDateKey(order.dueDate),
         styleId: item.styleId,
         styleCode: item.styleCode,
@@ -30769,11 +30471,12 @@ app.get("/customer-production-reports", async (req, res) => {
         orderedQuantity: item.orderedQuantity,
         assignedQuantity,
         unassignedQuantity: Math.max(0, item.orderedQuantity - assignedQuantity),
-        producedQuantity: historical.priorQuantity > 0 ? historical.producedQuantity : producedQuantity,
+        producedQuantity: styleProduction.producedQuantity,
+        isProgressUnknown: styleProduction.isProgressUnknown,
         priorQuantity: historical.priorQuantity,
         priorCompletions,
         dailyProducedQuantities,
-        progressPercent: historical.priorQuantity > 0 ? historical.progressPercent : reportedProgressPercent,
+        progressPercent: reportedProgressPercent,
         status: historical.priorQuantity > 0 ? historical.isCompleted ? 'COMPLETED' : 'IN_PROGRESS' : status,
         firstWorkDate,
         lastWorkDate,
@@ -31065,8 +30768,11 @@ app.get("/invoices/orders", async (req, res) => {
   res.setHeader("Cache-Control", "no-store");
   const visible = orders.slice(0, 50);
   const plans = visible.length ? await prisma.assignmentPlan.findMany({
-    where: { orgId: access.organization.id, workOrderId: { in: visible.map(order => order.id) } },
-    select: { externalId: true, workOrderId: true, styleId: true, style: { select: { name: true } } },
+      where: { orgId: access.organization.id, OR: [
+        { workOrderId: { in: visible.map(order => order.id) } },
+        { workOrderId: null, assignmentCard: { is: { workOrderId: { in: visible.map(order => order.id) } } } },
+      ] },
+      select: { externalId: true, workOrderId: true, styleId: true, assignmentCard: { select: { workOrderId: true } }, style: { select: { name: true } } },
   }) : [];
   const progress = plans.length ? await buildAssignmentPlanProgressRows(access.organization.id, plans.map(plan => plan.externalId)) : [];
   const issuedRows = visible.length ? await prisma.invoiceOrder.findMany({ where: { workOrderId: { in: visible.map(order => order.id) },

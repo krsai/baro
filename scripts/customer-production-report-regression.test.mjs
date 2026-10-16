@@ -3,24 +3,21 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { loadSourceBindings } from './helpers/source-bindings.mjs';
 
-test('unfinished production displays 99 instead of 100 while preserving overproduction', () => {
-  const { resolveDisplayedProgress } = loadSourceBindings('frontend/src/pages/App/CustomerProductionReport.jsx', ['resolveDisplayedProgress']);
-  assert.equal(resolveDisplayedProgress(100, 'IN_PROGRESS'), 99);
-  assert.equal(resolveDisplayedProgress(99.6, 'IN_PROGRESS'), 99);
-  assert.equal(resolveDisplayedProgress(100, 'COMPLETED'), 100);
-  assert.equal(resolveDisplayedProgress(105, 'IN_PROGRESS'), 105);
-  assert.equal(resolveDisplayedProgress(91, 'IN_PROGRESS'), 91);
-});
-
-test('report includes unassigned quantity and credits confirmed completion', async () => {
-  const calculate = progress => loadSourceBindings('backend/src/index.ts', ['weightedProgress'], {
-    progress, ASSIGNMENT_STATUS_REVIEW_REQUIRED: 'REVIEW_REQUIRED',
-  }).weightedProgress;
-  const result = calculate([{ plannedQuantity: 30, operationalProgressRatio: 1 }]);
-  assert.equal(result.value / Math.max(60, result.weight) * 100, 50);
-  assert.equal(calculate([{ plannedQuantity: 60, isCompleted: true, operationalProgressRatio: 0 }]).value, 60);
-  assert.equal(calculate([{ plannedQuantity: 60, isProgressUnknown: true, operationalProgressRatio: 1 }]).value, 0);
-  assert.match(await readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'), /weightedProgress\.value \/ Math\.max\(item\.orderedQuantity, weightedProgress\.weight\)/);
+test('report renders canonical server order progress without reweighting rounded style percentages', () => {
+  const source = loadSourceBindings('frontend/src/pages/App/CustomerProductionReport.jsx', ['groupRowsByOrder'], {
+    resolveOrderStatus: () => 'IN_PROGRESS',
+  });
+  const rows = [{ customerId: 1, orderId: 'L17-1', styleId: 7, orderedQuantity: 99, assignedQuantity: 99,
+    progressPercent: 100, status: 'COMPLETED', producedQuantity: 99, orderProgressPercent: 99, orderProducedQuantity: 99 },
+    { customerId: 1, orderId: 'L17-1', styleId: 8, orderedQuantity: 1, progressPercent: 99, status: 'IN_PROGRESS',
+      orderProgressPercent: 99, orderProducedQuantity: 99 }];
+  const [result] = source.groupRowsByOrder(rows);
+  assert.equal(result.progressPercent, 99);
+  assert.equal(result.producedQuantity, 99);
+  assert.equal(result.completedStyleCount, 1);
+  rows[0].orderProgressPercent = null; rows[0].orderProducedQuantity = null;
+  assert.equal(source.groupRowsByOrder(rows)[0].progressPercent, null);
+  assert.equal(source.groupRowsByOrder(rows)[0].producedQuantity, null);
 });
 
 const [server, page, router, layout, access, pageToolbar] = await Promise.all([
@@ -35,11 +32,10 @@ const messages = await readFile(new URL('../frontend/src/constants/uiMessages.js
 
 test('report aggregates customer production by relational order and style', () => {
   assert.match(server, /app\.get\("\/customer-production-reports"/);
-  assert.match(server, /const key = `\$\{plan\.workOrderId\}:\$\{plan\.styleId/);
+  assert.match(server, /const key = `\$\{plan\.workOrderId \?\? plan\.assignmentCard\?\.workOrderId\}:\$\{plan\.styleId/);
   assert.match(server, /ensureArray\(order\.workOrderItems\)/);
   assert.match(server, /operationalProgressRatio/);
-  assert.match(server, /const reportedProgressPercent = isCompleted/);
-  assert.match(server, /Math\.min\(99, Math\.max\(0, progressPercent\)\)/);
+  assert.match(server, /const reportedProgressPercent = styleProduction\.progressPercent/);
   assert.match(server, /row\?\.scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED[\s\S]*row\?\.displayProgressPercent/);
   assert.match(server, /reviewRequired[\s\S]*\? "REVIEW_REQUIRED"/);
   assert.match(page, /styleName \|\| \w+\??\.?styleCode/);
@@ -63,7 +59,7 @@ test('forecast is withheld until the full order-style quantity is assigned', () 
     server.slice(server.indexOf('const buildAssignmentPlanProgressRows'), server.indexOf('const isAutoWorklogCompletedPlan')),
     /plannedDurationDays:\s*durationDays/
   );
-  assert.match(server, /const reportedProgressPercent = isCompleted\s*\? 100\s*:\s*Math\.min\(99,/);
+  assert.match(server, /const reportedProgressPercent = styleProduction\.progressPercent/);
 });
 
 test('assignment progress does not hide missing outsource columns with a legacy query', () => {

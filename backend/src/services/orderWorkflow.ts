@@ -1,8 +1,12 @@
 export type OrderWorkflowStatus = 'RECEIVED' | 'PRODUCTION' | 'BILLING' | 'COMPLETED';
 
+// Prefer the direct order FK; the card FK only fills an absent link.
+export const orderAssignmentPlans = (orderId: number, plans: any[]) => plans.filter(plan =>
+  (plan.workOrderId ?? plan.assignmentCard?.workOrderId) === orderId);
+
 // A production percentage is never evidence of an approved completion.
 export function orderWorkflowStatus(order: any, plans: any[]): OrderWorkflowStatus {
-  const related = plans.filter(plan => plan.workOrderId === order.id || plan.assignmentCard?.workOrderId === order.id);
+  const related = orderAssignmentPlans(order.id, plans);
   const prior = (order.priorCompletions || []).filter((entry: any) => !entry.canceledAt);
   const history = prior.length > 0 || related.some(plan => plan._count?.workRecords > 0 || plan._count?.outsourcedWorkRecords > 0 || plan.isCompleted);
   const required = new Map<number, number>();

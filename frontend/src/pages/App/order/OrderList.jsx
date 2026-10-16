@@ -73,9 +73,7 @@ import {
 } from '../../../constants/productAttributes';
 import { collectAttributeTextCandidates, resolveLocalizedAttributeName, resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import {
-  ORDER_STATUS_KEYS,
   ORDER_STATUS_TEXT,
-  normalizeOrderStatus as normalizeOrderStatusFromConst,
 } from '../../../constants/orderStatus';
 import {
   getOrderPartyRoleLabel,
@@ -101,7 +99,6 @@ import {
 const { useDeferredValue } = React;
 
 const createId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const ORDER_PROGRESS_STAGE_DEFAULT = ORDER_STATUS_KEYS.ORDER_RECEIVED;
 const ORDER_FILTER_ALL = 'ALL';
 const ORDER_DETAIL_VIEW_MODES = {
   VERTICAL: 'vertical',
@@ -211,7 +208,6 @@ const getStyleGroupPastelStyle = (index) => {
   const safeIndex = Number.isFinite(index) ? Math.abs(index) : 0;
   return STYLE_GROUP_PASTEL_STYLES[safeIndex % STYLE_GROUP_PASTEL_STYLES.length];
 };
-const normalizeOrderProgressStage = (status) => normalizeOrderStatusFromConst(status);
 const buildOrderTabLabel = (order, baseLabel = 'Order') => {
   const orderNumber = String(order?.orderNumber || order?.id || '').trim();
   return orderNumber ? `${baseLabel}: ${orderNumber}` : baseLabel;
@@ -663,13 +659,13 @@ const buildInitialFormData = () => ({
   customerName: '',
   sizeSetCode: DEFAULT_SIZE_SET_CODE,
   dueDate: '',
-  status: ORDER_PROGRESS_STAGE_DEFAULT,
   items: [createOrderItem()],
 });
 
 const normalizeOrderForm = (order) => {
   const base = buildInitialFormData();
   if (!order) return base;
+  const { status: _legacyStatus, workflowStatus: _workflowStatus, ...editableOrder } = order;
   const items = Array.isArray(order.items) && order.items.length > 0 ? order.items : base.items;
   const fallbackSizeSetCode = getDefaultSizeSetCodeForCustomer(
     {
@@ -682,7 +678,7 @@ const normalizeOrderForm = (order) => {
   const sizeSetCode = resolveOrderSizeSetCodeFromItems(items, fallbackSizeSetCode);
   return {
     ...base,
-    ...order,
+    ...editableOrder,
     buyerOrgId: order.buyerOrgId || order.customerId || base.buyerOrgId,
     buyerOrgName:
       order.buyerOrgName || order.customerName || order.customer || base.buyerOrgName,
@@ -693,7 +689,6 @@ const normalizeOrderForm = (order) => {
       order.customerName || order.buyerOrgName || order.customer || base.customerName,
     sizeSetCode,
     items: items.map((item) => normalizeOrderItem(item, sizeSetCode)),
-    status: normalizeOrderProgressStage(order.status) || base.status,
   };
 };
 const toStableJsonText = (value) => {
@@ -744,7 +739,6 @@ const toComparableOrderSnapshot = (source, fixedSellerOrg = null) => {
     sellerOrgId: resolvedSellerOrgId,
     sellerOrgName: resolvedSellerOrgId ? '' : resolvedSellerOrgName,
     dueDate: String(source?.dueDate || '').trim(),
-    status: normalizeOrderProgressStage(source?.status) || ORDER_PROGRESS_STAGE_DEFAULT,
     sizeSetCode: orderSizeSetCode,
     items: normalizedItems,
   };
@@ -2963,7 +2957,6 @@ const OrderList = () => {
       customerId: toOrgId(formData.buyerOrgId),
       customerName: formData.buyerOrgName,
       customer: formData.buyerOrgName,
-      status: normalizeOrderProgressStage(formData.status) || ORDER_PROGRESS_STAGE_DEFAULT,
       items: sanitizedItems,
       totalQuantity,
       updatedAt: new Date().toISOString(),

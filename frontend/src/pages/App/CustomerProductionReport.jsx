@@ -62,7 +62,7 @@ const STATUS = {
   SCHEDULED: { ko: '배정 완료', en: 'Assigned', vi: 'Đã phân công', color: 'info' },
   UNASSIGNED: { ko: '미배정', en: 'Unassigned', vi: 'Chưa phân công', color: 'default' },
 };
-const fmt = (value) => Math.max(0, Number(value) || 0).toLocaleString();
+const fmt = (value) => value == null ? '—' : Math.max(0, Number(value) || 0).toLocaleString();
 const reportLocale = (languageCode) => languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US';
 const isReportDateKey = (date) => /^\d{4}-\d{2}-\d{2}$/.test(String(date || ''));
 const toDateKey = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
@@ -118,13 +118,7 @@ const groupRowsByOrder = (styleRows) => {
   return Array.from(groups.entries()).map(([key, styles]) => {
     const first = styles[0];
     const orderedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.orderedQuantity) || 0), 0);
-    const progressWeight = styles.reduce((sum, row) => sum + Math.max(0, Number(row.orderedQuantity) || 0), 0);
-    const weightedProgress = styles.reduce(
-      (sum, row) => sum + Math.max(0, Number(row.orderedQuantity) || 0) * Math.max(0, Number(row.progressPercent) || 0),
-      0
-    );
     const assignedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.assignedQuantity) || 0), 0);
-    const producedQuantity = styles.reduce((sum, row) => sum + Math.max(0, Number(row.producedQuantity) || 0), 0);
     const dailyProducedByDate = new Map();
     styles.forEach((row) => (Array.isArray(row.dailyProducedQuantities) ? row.dailyProducedQuantities : []).forEach((daily) => {
       const date = String(daily?.date || '');
@@ -137,11 +131,7 @@ const groupRowsByOrder = (styleRows) => {
       bucket.styles.set(styleKey, { label: styleLabel, quantity: (bucket.styles.get(styleKey)?.quantity || 0) + quantity });
       dailyProducedByDate.set(date, bucket);
     }));
-    const status = assignedQuantity <= 0
-      ? 'UNASSIGNED'
-      : assignedQuantity < orderedQuantity
-        ? 'UNASSIGNED'
-        : resolveOrderStatus(styles);
+    const status = first.orderProductionCompleted ? 'COMPLETED' : resolveOrderStatus(styles);
     return {
       ...first,
       key,
@@ -149,10 +139,10 @@ const groupRowsByOrder = (styleRows) => {
       status,
       orderedQuantity,
       assignedQuantity,
-      producedQuantity,
+      producedQuantity: first.orderProducedQuantity,
       dailyProducedQuantities: Array.from(dailyProducedByDate.entries()).sort(([left], [right]) => left.localeCompare(right)).map(([date, bucket]) => ({ date, quantity: bucket.quantity, styles: Array.from(bucket.styles.values()) })),
       unassignedQuantity: styles.reduce((sum, row) => sum + Math.max(0, Number(row.unassignedQuantity) || 0), 0),
-      progressPercent: progressWeight > 0 ? Math.round(weightedProgress / progressWeight) : 0,
+      progressPercent: first.orderProgressPercent,
       completedStyleCount: styles.filter((row) => row.status === 'COMPLETED').length,
     };
   });
@@ -163,20 +153,12 @@ const ReportStatusChip = ({ status: statusKey, languageCode, onClick }) => {
   return <Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={statusKey === 'COMPLETED' ? 'filled' : 'outlined'} onClick={onClick} sx={{ fontWeight: 400 }} />;
 };
 
-const resolveDisplayedProgress = (percent, status) => {
-  const rounded = Math.round(Math.max(0, Number(percent) || 0));
-  return rounded === 100 && status !== 'COMPLETED' ? 99 : rounded;
-};
-
-const ReportProgressCell = ({ percent, status }) => {
-  const displayedPercent = resolveDisplayedProgress(percent, status);
-  return (
+const ReportProgressCell = ({ percent }) => (
   <Stack spacing={0.5}>
-    <LinearProgress variant="determinate" value={Math.min(100, displayedPercent)} />
-    <Typography variant="caption">{displayedPercent}%</Typography>
+    <LinearProgress variant="determinate" value={Math.min(100, Number(percent) || 0)} />
+    <Typography variant="caption">{percent == null ? '—' : `${percent}%`}</Typography>
   </Stack>
-  );
-};
+);
 
 const CustomerProductionReport = () => {
   const { activeOrgId, activeOrgRole } = useAuth();
@@ -418,7 +400,7 @@ const CustomerProductionReport = () => {
                 <TableRow sx={{ bgcolor: 'action.hover' }}>
                   <TableCell sx={{ fontWeight: 700 }}>{text.orderTotal}</TableCell>
                   <TableCell align="right">{fmt(dailyProducedRow?.producedQuantity)}/{fmt(dailyProducedRow?.orderedQuantity)}</TableCell>
-                  <TableCell><ReportProgressCell percent={dailyProducedRow?.progressPercent || 0} status={dailyProducedRow?.status} /></TableCell>
+                  <TableCell><ReportProgressCell percent={dailyProducedRow?.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={dailyProducedRow?.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
                 {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>

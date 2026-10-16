@@ -40,7 +40,7 @@ const CompactBoardCard = ({
   showOrderNo = true,
   styleName = '',
   quantity = null,
-  progressPercent = 0,
+  progressPercent = null,
   showProgress = true,
   chips = [],
   footer = '',
@@ -94,10 +94,10 @@ const CompactBoardCard = ({
   };
 
   const parsedProgress = Number(progressPercent);
-  const displayProgress = Number.isFinite(parsedProgress)
+  const displayProgress = progressPercent != null && Number.isFinite(parsedProgress)
     ? Math.max(0, Math.round(parsedProgress * 10) / 10)
-    : 0;
-  const progressBarValue = Math.min(100, displayProgress);
+    : null;
+  const progressBarValue = Math.min(100, displayProgress ?? 0);
   const quantityLabel =
     quantity == null || !Number.isFinite(Number(quantity))
       ? '-'
@@ -256,7 +256,7 @@ const CompactBoardCard = ({
           >
             <Stack spacing={0.25}>
               <Typography variant="body2" sx={{ fontWeight: 700 }}>
-                {displayProgress}%
+                {displayProgress == null ? '—' : `${displayProgress}%`}
               </Typography>
               <LinearProgress
                 variant="determinate"

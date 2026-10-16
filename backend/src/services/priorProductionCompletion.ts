@@ -1,3 +1,4 @@
+import { summarizeStyleProduction } from './productionProgress';
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
 
@@ -17,27 +18,9 @@ export function validatePriorPeriod(value: unknown) {
 // Ledger completion is independent of process observations and never creates
 // worker records, payroll, AT samples or an invented daily completion date.
 export function summarizePriorProduction(ordered: number, progress: any[], prior: any[]) {
-  const entries = prior.filter(row => !row.canceledAt);
-  const priorQuantity = entries.reduce((sum, row) => sum + row.quantity, 0);
-  let unallocated = priorQuantity;
-  let produced = priorQuantity, completedWork = 0, planned = 0;
-  let allComplete = true;
-  for (const row of progress) {
-    const quantity = Math.max(0, Number(row.plannedQuantity) || 0);
-    const credit = Math.min(unallocated, quantity);
-    unallocated -= credit;
-    const recorded = Math.max(0, Number(row.producedQuantity) || 0);
-    const recognized = row.isCompleted ? Math.max(recorded, Math.max(0, Number(row.completionTargetQuantity ?? quantity) - credit)) : recorded;
-    produced += recognized;
-    const ratio = row.isCompleted ? 1 : row.isProgressUnknown ? 0 : Math.max(0, Math.min(1, Number(row.operationalProgressRatio ?? Number(row.displayProgressPercent || 0) / 100) || 0));
-    completedWork += Math.min(quantity, ratio * quantity + credit);
-    planned += quantity;
-    allComplete &&= row.isCompleted || (ratio * quantity + credit >= quantity && recognized + credit >= quantity);
-  }
-  completedWork += unallocated;
-  const isCompleted = ordered > 0 && produced >= ordered && (priorQuantity >= ordered || (allComplete && planned + unallocated >= ordered));
-  const progressPercent = isCompleted ? 100 : Math.min(99, Math.round(100 * completedWork / Math.max(1, ordered, planned)));
-  return { priorQuantity, producedQuantity: produced, progressPercent, isCompleted };
+  const result = summarizeStyleProduction(ordered, progress, prior);
+  return { priorQuantity: result.priorQuantity, producedQuantity: result.producedQuantity,
+    progressPercent: result.progressPercent, isCompleted: result.isCompleted };
 }
 
 export async function registerPriorCompletion(db: any, orgId: number, employeeId: number, input: any) {

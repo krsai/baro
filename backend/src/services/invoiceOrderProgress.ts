@@ -1,62 +1,43 @@
-// Compact, read-only projection of the existing assignment progress calculation.
-import { summarizePriorProduction } from './priorProductionCompletion';
-export function invoiceProducedQuantity(row: any): number | null {
-  const completed = Boolean(row?.isCompleted);
-  const known = row && (completed || (!row.isProgressUnknown && !row.hasInvalidProcessReferences));
-  if (!known) return null;
-  const recordedQuantity = Math.max(0, Number(row?.producedQuantity) || 0);
-  const completionQuantity = Number(row?.completionTargetQuantity);
-  return completed && Number.isFinite(completionQuantity) && completionQuantity >= 0
-    ? Math.max(recordedQuantity, completionQuantity)
-    : recordedQuantity;
-}
+import { assignmentProgressRatio, displayProductionProgress, productionProducedQuantity, summarizeStyleProduction } from './productionProgress';
+import { orderAssignmentPlans } from './orderWorkflow';
+export { productionProducedQuantity as invoiceProducedQuantity } from './productionProgress';
 
+// Shared by orders, invoice selection, and the customer production report.
 export function invoiceOrderProgress(order: any, plans: any[], progress: any[]) {
   const byId = new Map(progress.map(row => [row.id, row]));
-  const assignments = plans.filter(plan => plan.workOrderId === order.id).map(plan => {
+  const related = orderAssignmentPlans(order.id, plans);
+  const assignments = related.map(plan => {
     const row = byId.get(plan.externalId);
-    const completed = Boolean(row?.isCompleted);
-    const producedQuantity = invoiceProducedQuantity(row);
-    const known = producedQuantity != null;
-    const rawRecordedQuantity = Math.max(0, Number(row?.producedQuantity) || 0);
-    const recordedQuantity = known ? rawRecordedQuantity : null;
-    // A confirmed completion/short-close quantity is the public production
-    // quantity even when an old CT snapshot cannot reconstruct process totals.
-    // Keep the raw recorded value alongside it for internal diagnosis.
-    const plannedQuantity = row?.plannedQuantity ?? null;
+    const completed = row?.isCompleted === true;
+    const producedQuantity = productionProducedQuantity(row);
+    const ratio = assignmentProgressRatio(row);
     return { id: plan.externalId, style: row?.label || plan.style?.name || '',
-      factory: row?.factoryName || '', plannedQuantity,
-      producedQuantity, recordedQuantity, completed,
-      progressPercent: known ? (completed ? 100 : row.displayProgressPercent ?? row.progressPercent ?? null) : null,
-      progressQuantity: known
-        ? completed && Number(plannedQuantity) > 0 ? Number(plannedQuantity) : producedQuantity
-        : null };
+      factory: row?.factoryName || '', plannedQuantity: row?.plannedQuantity ?? null,
+      producedQuantity, recordedQuantity: producedQuantity == null ? null : Math.max(0, Number(row?.producedQuantity) || 0), completed,
+      progressPercent: displayProductionProgress(ratio == null ? null : ratio * 100, completed),
+      progressQuantity: ratio == null ? null : Math.max(0, Number(row?.plannedQuantity) || 0) * ratio };
   });
-  const known = assignments.length > 0 && assignments.every(row => row.producedQuantity != null);
-  const producedQuantity = known ? assignments.reduce((sum, row) => sum + (row.producedQuantity ?? 0), 0) : null;
-  const progressQuantity = known ? assignments.reduce((sum, row) => sum + (row.progressQuantity ?? 0), 0) : null;
-  const activePrior = (order.priorCompletions || []).filter((entry: any) => !entry.canceledAt);
-  if (activePrior.length && Array.isArray(order.workOrderItems)) {
-    const styles = new Map<number, number>();
-    order.workOrderItems.forEach((item: any) => styles.set(item.styleId, (styles.get(item.styleId) || 0) + item.totalQuantity));
-    let totalProduced = 0, totalProgress = 0, productionKnown = true;
-    for (const [styleId, quantity] of styles) {
-      const matchingPlans = plans.filter(plan => plan.workOrderId === order.id && plan.styleId === styleId);
-      const matchingProgress = matchingPlans.map(plan => byId.get(plan.externalId)).filter(Boolean);
-      const result = summarizePriorProduction(quantity, matchingProgress, activePrior.filter((entry: any) => entry.styleId === styleId));
-      if (result.priorQuantity < quantity && (matchingProgress.length !== matchingPlans.length || matchingProgress.some(row => invoiceProducedQuantity(row) == null))) productionKnown = false;
-      totalProduced += result.producedQuantity;
-      totalProgress += quantity * result.progressPercent / 100;
-    }
-    return { orderId: order.orderId, orderNumber: order.orderNumber, dueDate: order.dueDate,
-      totalQuantity: order.totalQuantity, assignments, producedQuantity: productionKnown ? totalProduced : null,
-      priorQuantity: activePrior.reduce((sum: number, entry: any) => sum + entry.quantity, 0),
-      progressPercent: productionKnown && order.totalQuantity > 0 ? Math.min(100, totalProgress / order.totalQuantity * 100) : null };
-  }
+  const required = new Map<number, number>();
+  for (const item of order.workOrderItems || []) required.set(item.styleId, (required.get(item.styleId) || 0) + item.totalQuantity);
+  // Compatibility for source projections that carry only the order total.
+  if (!required.size) required.set(-1, Number(order.totalQuantity) || 0);
+  const styles = [...required].map(([styleId, orderedQuantity]) => {
+    const stylePlans = styleId === -1 ? related : related.filter(plan => plan.styleId === styleId);
+    const rows = stylePlans.map(plan => byId.get(plan.externalId)).filter(Boolean);
+    const prior = (order.priorCompletions || []).filter((entry: any) => entry.styleId === styleId);
+    const summary = summarizeStyleProduction(orderedQuantity, rows, prior, stylePlans.length);
+    return { styleId, orderedQuantity, ...summary };
+  });
+  const positiveStyles = styles.filter(style => style.orderedQuantity > 0);
+  const hasSource = related.length > 0 || styles.some(style => style.priorQuantity > 0);
+  const known = hasSource && positiveStyles.length > 0 && positiveStyles.every(style => !style.isProgressUnknown);
+  const isCompleted = positiveStyles.length > 0 && positiveStyles.every(style => style.isCompleted);
+  const totalQuantity = positiveStyles.reduce((sum, style) => sum + style.orderedQuantity, 0);
+  const raw = known && totalQuantity > 0
+    ? positiveStyles.reduce((sum, style) => sum + style.orderedQuantity * (style.rawProgressPercent ?? 0), 0) / totalQuantity : null;
   return { orderId: order.orderId, orderNumber: order.orderNumber, dueDate: order.dueDate,
-    totalQuantity: order.totalQuantity, assignments, producedQuantity,
-    // Order progress includes unassigned quantity in its denominator. It is not
-    // an average of assignment percentages or a declaration of completion.
-    progressPercent: progressQuantity != null && order.totalQuantity > 0
-      ? Math.min(100, progressQuantity / order.totalQuantity * 100) : null };
+    totalQuantity: order.totalQuantity, assignments, styles, isCompleted, isProgressUnknown: !known,
+    producedQuantity: known ? styles.reduce((sum, style) => sum + (style.producedQuantity ?? 0), 0) : null,
+    priorQuantity: styles.reduce((sum, style) => sum + style.priorQuantity, 0),
+    progressPercent: displayProductionProgress(raw, isCompleted) };
 }

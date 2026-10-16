@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { loadSourceBindings } from './helpers/source-bindings.mjs';
+import { createRequire } from 'node:module';
+const { displayProductionProgress } = createRequire(import.meta.url)('../backend/dist/services/productionProgress.js');
 
 const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const backend = read('backend/src/index.ts');
@@ -62,7 +64,7 @@ test('linked records close the drawer before opening their source work log', () 
 
 test('display progress remains uncapped while scheduler progress is bounded and unknown stays unknown', () => {
   for (const [operationalProgressPercent, progressForRemainingRatio, expected] of [[196, 1.96, 100], [60, 0.4, 40], [null, null, null]]) {
-    const actual = loadSourceBindings('backend/src/index.ts', ['schedulerProgressPercent', 'displayProgressPercent'], { operationalProgressPercent, progressForRemainingRatio });
+    const actual = loadSourceBindings('backend/src/index.ts', ['schedulerProgressPercent', 'displayProgressPercent'], { operationalProgressPercent, progressForRemainingRatio, displayProductionProgress, scheduleStatus: 'IN_PROGRESS', ASSIGNMENT_STATUS_PRODUCTION_COMPLETED: 'PRODUCTION_COMPLETED' });
     assert.equal(actual.displayProgressPercent, operationalProgressPercent);
     assert.equal(actual.schedulerProgressPercent, expected);
   }
