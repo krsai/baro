@@ -29,6 +29,12 @@ const TITLE_BY_TYPE = {
   MATERIAL_SUPPLIER: { ko: '공급 업체', en: 'Material Supplier', vi: 'Nhà cung cấp vật tư' },
 };
 
+const LIST_TEXT = {
+  ko: { viewHistory: '내역보기', costHistory: '비용 신청 내역' },
+  en: { viewHistory: 'View history', costHistory: 'Cost request history' },
+  vi: { viewHistory: 'Xem lịch sử', costHistory: 'Lịch sử đề nghị chi phí' },
+};
+
 const DELETE_TEXT = {
   ko: { remove: '삭제', blocked: '사용 이력이 있는 거래처는 삭제할 수 없습니다. 수정하거나 사용 중지할 수 있습니다.', confirm: '이 거래처를 삭제하시겠습니까?', cancel: '취소', error: '거래처를 삭제하지 못했습니다.', help: '수정한 업체명·담당자·연락처는 연결된 내역 조회에 반영됩니다. 저장 당시 감사 정보와 발행 문서는 보존됩니다.' },
   en: { remove: 'Delete', blocked: 'Partners with usage history cannot be deleted. You can edit or deactivate them.', confirm: 'Delete this partner?', cancel: 'Cancel', error: 'Could not delete the partner.', help: 'Updated partner details appear in linked records. Original audit information and issued documents are preserved.' },
@@ -42,6 +48,7 @@ export default function BusinessPartners({ type }) {
   const [serviceOpen, setServiceOpen] = useState(false);
   const { languageCode } = useLanguage();
   const labels = TEXT[languageCode] || TEXT.ko;
+  const listLabels = LIST_TEXT[languageCode] || LIST_TEXT.ko;
   const deleteLabels = DELETE_TEXT[languageCode] || DELETE_TEXT.ko;
   const [deletingPartner, setDeletingPartner] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -93,9 +100,27 @@ export default function BusinessPartners({ type }) {
   };
   return (
     <AppPageContainer title={pageTitle} titleActions={canManage ? <Stack direction="row" spacing={1}>{type === 'PROCESS_OUTSOURCING' && <Button onClick={() => setServiceOpen(true)}>{(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko).addIndustry}</Button>}<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>{labels.add}</Button></Stack> : null} toolbar={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={labels.search} sx={{ width: 360 }} />}>
-      <Stack spacing={2}><Alert severity="info">{deleteLabels.help}</Alert>{error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}<Paper variant="outlined"><TableContainer><Table>
-        <TableHead><TableRow><TableCell>{labels.name}</TableCell>{type ? null : <TableCell width={190}>{labels.type}</TableCell>}<TableCell width={160}>{labels.contact}</TableCell><TableCell width={180}>{labels.phone}</TableCell><TableCell width={120}>{labels.status}</TableCell><TableCell width={100} align="center">&nbsp;</TableCell></TableRow></TableHead>
-        <TableBody>{loading ? <TableRow><TableCell colSpan={type ? 5 : 6} align="center"><CircularProgress size={24} /></TableCell></TableRow> : null}{!loading && filteredPartners.length === 0 ? <TableRow><TableCell colSpan={type ? 5 : 6} align="center">{labels.empty}</TableCell></TableRow> : null}{filteredPartners.map((partner) => <TableRow key={partner.id} hover onClick={() => openHistory(partner)} sx={{ cursor: 'pointer' }}><TableCell><Typography fontWeight={600}>{partner.name}</Typography>{partner.type === 'PROCESS_OUTSOURCING' && partner.serviceTypes?.length ? <Stack direction="row" spacing={0.5} mt={0.5} flexWrap="wrap" useFlexGap>{partner.serviceTypes.map((item) => <Chip key={item.id} size="small" label={serviceName(item)} variant="outlined" />)}</Stack> : null}</TableCell>{type ? null : <TableCell>{getBusinessPartnerTypeLabel(partner.type, languageCode)}</TableCell>}<TableCell>{partner.contactName || '-'}</TableCell><TableCell>{partner.contactPhone || '-'}</TableCell><TableCell><Chip size="small" color={partner.isActive ? 'success' : 'default'} label={partner.isActive ? labels.active : labels.inactive} variant="outlined" /></TableCell><TableCell align="center"><Tooltip title={labels.edit}><IconButton aria-label={labels.edit} disabled={partner.type === 'PROCESS_OUTSOURCING' && !isSystemAdmin} size="small" onClick={(event) => { event.stopPropagation(); setEditingPartner(partner); }}><EditIcon fontSize="small" /></IconButton></Tooltip><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><IconButton aria-label={deleteLabels.remove} color="error" size="small" disabled={deleting || partner.hasUsageHistory !== false || (partner.type === "PROCESS_OUTSOURCING" && !isSystemAdmin)} onClick={event => { event.stopPropagation(); setDeletingPartner(partner); }}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell></TableRow>)}</TableBody>
+      <Stack spacing={2}>{error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}<Paper variant="outlined"><TableContainer><Table size="small">
+        <TableHead><TableRow>
+          <TableCell width={180}>{costLabels.industry}</TableCell><TableCell>{labels.name}</TableCell>
+          {!type && <TableCell width={150}>{labels.type}</TableCell>}
+          <TableCell width={160}>{labels.contact}</TableCell><TableCell width={180}>{labels.phone}</TableCell><TableCell width={120}>{labels.status}</TableCell>
+          <TableCell width={100} align="center">{listLabels.viewHistory}</TableCell><TableCell width={64} align="center">{labels.edit}</TableCell><TableCell width={64} align="center">{deleteLabels.remove}</TableCell>
+        </TableRow></TableHead>
+        <TableBody>
+          {loading && <TableRow><TableCell colSpan={type ? 8 : 9} align="center"><CircularProgress size={24} /></TableCell></TableRow>}
+          {!loading && filteredPartners.length === 0 && <TableRow><TableCell colSpan={type ? 8 : 9} align="center">{labels.empty}</TableCell></TableRow>}
+          {filteredPartners.map(partner => <TableRow key={partner.id} hover>
+            <TableCell>{partner.serviceTypes?.map(serviceName).filter(Boolean).join(', ') || '-'}</TableCell>
+            <TableCell>{partner.name}</TableCell>
+            {!type && <TableCell>{getBusinessPartnerTypeLabel(partner.type, languageCode)}</TableCell>}
+            <TableCell>{partner.contactName || '-'}</TableCell><TableCell>{partner.contactPhone || '-'}</TableCell>
+            <TableCell><Chip size="small" color={partner.isActive ? 'success' : 'default'} label={partner.isActive ? labels.active : labels.inactive} variant="outlined" /></TableCell>
+            <TableCell align="center"><Button size="small" onClick={() => openHistory(partner)} sx={{ whiteSpace: 'nowrap' }}>{listLabels.viewHistory}</Button></TableCell>
+            <TableCell align="center"><Tooltip title={labels.edit}><span><IconButton aria-label={labels.edit} color="primary" disabled={partner.type === 'PROCESS_OUTSOURCING' && !isSystemAdmin} size="small" onClick={() => setEditingPartner(partner)}><EditIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
+            <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><IconButton aria-label={deleteLabels.remove} color="error" size="small" disabled={deleting || partner.hasUsageHistory !== false || (partner.type === 'PROCESS_OUTSOURCING' && !isSystemAdmin)} onClick={() => setDeletingPartner(partner)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
+          </TableRow>)}
+        </TableBody>
       </Table></TableContainer></Paper></Stack>
       <OutsourcingServiceDialog open={serviceOpen} onClose={() => setServiceOpen(false)} onSaved={loadPartners} orgId={activeOrgId} languageCode={languageCode} />
       <BusinessPartnerDialog
@@ -112,8 +137,8 @@ export default function BusinessPartners({ type }) {
       <Drawer anchor="right" open={Boolean(selected)} onClose={() => setSelected(null)} PaperProps={{ sx: { width: { xs: '100%', md: 760 }, p: 2 } }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}><Box><Typography variant="h6">{labels.history}</Typography><Typography color="text.secondary">{selected?.name} · {selected ? getBusinessPartnerTypeLabel(selected.type, languageCode) : ''}</Typography></Box><IconButton onClick={() => setSelected(null)}><CloseIcon /></IconButton></Stack>
         <Typography variant="subtitle1" fontWeight={700} mb={1}>{labels.workHistory}</Typography><TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{labels.date}</TableCell><TableCell>{labels.style}</TableCell><TableCell>{labels.process}</TableCell><TableCell align="right">{labels.unitPrice}</TableCell><TableCell align="right">{labels.quantity}</TableCell><TableCell align="right">{labels.amount}</TableCell></TableRow></TableHead><TableBody>{historyLoading ? <TableRow><TableCell colSpan={6} align="center"><CircularProgress size={24} /></TableCell></TableRow> : null}{!historyLoading && history.length === 0 ? <TableRow><TableCell colSpan={6} align="center">{labels.noHistory}</TableCell></TableRow> : null}{history.map((record) => <TableRow key={record.id}><TableCell>{record.workDate || '-'}</TableCell><TableCell>{record.styleCode || record.styleName || '-'}</TableCell><TableCell>{[record.processCode, record.processName].filter(Boolean).join(' · ') || '-'}</TableCell><TableCell align="right">{formatNumberWithCommas(record.unitPrice || 0)}</TableCell><TableCell align="right">{formatNumberWithCommas(record.quantity || 0)}</TableCell><TableCell align="right">{formatNumberWithCommas(record.amount || 0)}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
-        <Typography variant="subtitle1" fontWeight={700} mt={3} mb={1}>{costLabels.costs}</Typography>
-        <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{costLabels.date}</TableCell><TableCell>{costLabels.industry}</TableCell><TableCell>{costLabels.description}</TableCell><TableCell>{costLabels.amount}</TableCell></TableRow></TableHead><TableBody>{!historyLoading && !costs.length && <TableRow><TableCell colSpan={4}>{costLabels.empty}</TableCell></TableRow>}{costs.map(cost => <TableRow key={cost.id}><TableCell>{cost.transactionDate}</TableCell><TableCell>{serviceName(cost.serviceType)}</TableCell><TableCell>{cost.description}</TableCell><TableCell>{formatNumberWithCommas(cost.amount)} {cost.currency}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
+        {costs.length > 0 && <Box mt={3}><Typography variant="subtitle1" fontWeight={700} mb={1}>{listLabels.costHistory}</Typography>
+        <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{costLabels.date}</TableCell><TableCell>{costLabels.industry}</TableCell><TableCell>{costLabels.description}</TableCell><TableCell>{costLabels.amount}</TableCell></TableRow></TableHead><TableBody>{!historyLoading && !costs.length && <TableRow><TableCell colSpan={4}>{costLabels.empty}</TableCell></TableRow>}{costs.map(cost => <TableRow key={cost.id}><TableCell>{cost.transactionDate}</TableCell><TableCell>{serviceName(cost.serviceType)}</TableCell><TableCell>{cost.description}</TableCell><TableCell>{formatNumberWithCommas(cost.amount)} {cost.currency}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Box>}
       </Drawer>
     </AppPageContainer>
   );

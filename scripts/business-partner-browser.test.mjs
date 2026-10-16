@@ -22,6 +22,7 @@ try {
   let partners = [{ id: 11, name: 'Used Partner', type: 'MATERIAL_SUPPLIER', isActive: true, hasUsageHistory: true }, { id: 12, name: 'Unused Partner', type: 'MATERIAL_SUPPLIER', isActive: true, hasUsageHistory: false }, { id: 13, name: 'Concurrent Partner', type: 'MATERIAL_SUPPLIER', isActive: true, hasUsageHistory: false }];
   await page.route('**/business-partners**', async route => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ headers, status: 204 });
+    if (new URL(route.request().url()).pathname.endsWith('/history')) return route.fulfill({ headers, json: { records: [{ id: 1, workDate: '2026-10-10', styleCode: 'TEST', processName: 'Buttonhole', quantity: 10, unitPrice: 100, amount: 1000 }], costs: [] } });
     if (route.request().method() === 'PUT') { partners[0] = { ...partners[0], ...route.request().postDataJSON() }; return route.fulfill({ headers, json: partners[0] }); }
     if (route.request().method() === 'DELETE') {
       if (new URL(route.request().url()).pathname.endsWith('/13')) { partners.find(row => row.id === 13).hasUsageHistory = true; return route.fulfill({ headers, status: 409, json: { error: 'PARTNER_HAS_TRANSACTION_HISTORY' } }); }
@@ -35,6 +36,14 @@ try {
   const used = page.locator('#partners tbody tr').filter({ has: page.getByText('Used Partner', { exact: true }) });
   const unused = page.locator('#partners tbody tr').filter({ hasText: 'Unused Partner' });
   await used.waitFor();
+  assert.deepEqual(await page.locator('#partners thead th').allTextContents(), ['업종', '업체명', '담당자', '연락처', '상태', '내역보기', '수정', '삭제']);
+  await used.getByText('Used Partner', { exact: true }).click();
+  assert.equal(await page.getByText('외주 작업 내역', { exact: true }).count(), 0);
+  await used.getByRole('button', { name: '내역보기', exact: true }).click();
+  await page.getByText('Buttonhole', { exact: true }).waitFor();
+  assert.equal(await page.getByText('거래 비용', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('비용 신청 내역', { exact: true }).count(), 0);
+  await page.keyboard.press('Escape');
   assert.equal(await used.getByRole('button', { name: '삭제', exact: true }).isDisabled(), true);
   assert.equal(await used.getByRole('button', { name: '수정', exact: true }).isEnabled(), true);
   await unused.getByRole('button', { name: '삭제', exact: true }).click();
