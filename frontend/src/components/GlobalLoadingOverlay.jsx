@@ -7,7 +7,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { getCurrentLanguageCode } from '../utils/appLanguage';
+import { useLanguage } from '../context/LanguageContext';
 
 const LOADING_TEXT = {
   title: {
@@ -32,8 +32,7 @@ const LOADING_TEXT = {
   },
 };
 
-const getLocalizedText = (key, params = null) => {
-  const languageCode = getCurrentLanguageCode();
+const getLocalizedText = (languageCode, key, params = null) => {
   const bundle = LOADING_TEXT[key] || {};
   const template = bundle[languageCode] || bundle.en || '';
   if (!params || typeof params !== 'object') return template;
@@ -61,10 +60,11 @@ const GlobalLoadingOverlay = ({
   open = false,
   startedAt = null,
   activeRequestCount = 0,
-  title = getLocalizedText('title'),
-  subtitle = getLocalizedText('subtitle'),
+  title,
+  subtitle,
   fullscreen = false,
 }) => {
+  const { languageCode } = useLanguage();
   const [now, setNow] = useState(() => Date.now());
   const [visible, setVisible] = useState(open);
 
@@ -94,10 +94,10 @@ const GlobalLoadingOverlay = ({
 
   if (!visible) return null;
 
-  const requestStatusText = getLocalizedText('requests', {
+  const requestStatusText = getLocalizedText(languageCode, 'requests', {
     count: activeRequestCount,
   });
-  const elapsedText = getLocalizedText('elapsed', {
+  const elapsedText = getLocalizedText(languageCode, 'elapsed', {
     time: formatElapsed(elapsedMs),
   });
 
@@ -173,10 +173,10 @@ const GlobalLoadingOverlay = ({
 
               <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  {title}
+                  {title ?? getLocalizedText(languageCode, 'title')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {subtitle}
+                  {subtitle ?? getLocalizedText(languageCode, 'subtitle')}
                 </Typography>
               </Box>
             </Box>

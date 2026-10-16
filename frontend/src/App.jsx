@@ -101,15 +101,15 @@ const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <AppProvider>
-        <AuthProvider>
-          <LanguageProvider>
+      <LanguageProvider>
+        <AppProvider>
+          <AuthProvider>
             <Suspense fallback={<RouteLoadingFallback />}>
               <RouterProvider router={router} />
             </Suspense>
-          </LanguageProvider>
-        </AuthProvider>
-      </AppProvider>
+          </AuthProvider>
+        </AppProvider>
+      </LanguageProvider>
     </ThemeProvider>
   );
 };

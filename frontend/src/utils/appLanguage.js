@@ -2,7 +2,7 @@ const SUPPORTED_LANGUAGE_CODES = ['ko', 'en', 'vi'];
 const DEFAULT_LANGUAGE_CODE = 'en';
 const LANGUAGE_OVERRIDE_STORAGE_KEY = 'baro_language_override';
 
-let currentLanguageCode = DEFAULT_LANGUAGE_CODE;
+let currentLanguageCode = null;
 
 const getStorage = () => {
   if (typeof window === 'undefined') return null;
@@ -116,7 +116,10 @@ export const clearLanguageOverride = () => {
   storage.removeItem(LANGUAGE_OVERRIDE_STORAGE_KEY);
 };
 
-export const getCurrentLanguageCode = () => currentLanguageCode;
+export const getCurrentLanguageCode = () => {
+  if (!currentLanguageCode) currentLanguageCode = normalizeLanguageCode(readLanguageOverride() || DEFAULT_LANGUAGE_CODE);
+  return currentLanguageCode;
+};
 
 export const setCurrentLanguageCode = (value) => {
   currentLanguageCode = normalizeLanguageCode(value);
@@ -128,7 +131,7 @@ const toTrimmedText = (value) => {
   return text || '';
 };
 
-export const resolveLocalizedAttributeName = (item, languageCode = currentLanguageCode) => {
+export const resolveLocalizedAttributeName = (item, languageCode = getCurrentLanguageCode()) => {
   const code = normalizeLanguageCode(languageCode);
   const name = toTrimmedText(item?.name);
   const nameKo = toTrimmedText(item?.nameKo);
@@ -142,7 +145,7 @@ export const resolveLocalizedAttributeName = (item, languageCode = currentLangua
   return nameEn || name || nameKo || nameVi || attributeCode;
 };
 
-export const resolveCustomerDisplayName = (customer, languageCode = currentLanguageCode) => {
+export const resolveCustomerDisplayName = (customer, languageCode = getCurrentLanguageCode()) => {
   const code = normalizeLanguageCode(languageCode);
   const name = toTrimmedText(customer?.name);
   const nameKo = toTrimmedText(customer?.nameKo);
@@ -152,7 +155,7 @@ export const resolveCustomerDisplayName = (customer, languageCode = currentLangu
   return name || nameKo || nameVi || '';
 };
 
-export const collectAttributeTextCandidates = (item, languageCode = currentLanguageCode) =>
+export const collectAttributeTextCandidates = (item, languageCode = getCurrentLanguageCode()) =>
   Array.from(
     new Set(
       [
@@ -166,10 +169,10 @@ export const collectAttributeTextCandidates = (item, languageCode = currentLangu
     )
   );
 
-export const buildAttributeSearchText = (item, languageCode = currentLanguageCode) =>
+export const buildAttributeSearchText = (item, languageCode = getCurrentLanguageCode()) =>
   collectAttributeTextCandidates(item, languageCode).join(' ');
 
-export const matchesAttributeText = (item, value, languageCode = currentLanguageCode) => {
+export const matchesAttributeText = (item, value, languageCode = getCurrentLanguageCode()) => {
   const target = toTrimmedText(value).toLowerCase();
   if (!target) return false;
   return collectAttributeTextCandidates(item, languageCode).some(
