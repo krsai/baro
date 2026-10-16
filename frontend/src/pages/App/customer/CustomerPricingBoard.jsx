@@ -236,6 +236,7 @@ const PricingRow = memo(function PricingRow({
   scopePrefix,
   draftPrices,
   focusedPriceKey,
+  focusedPriceValue,
   currencyCode,
   languageCode,
   unitPriceLabel,
@@ -279,11 +280,11 @@ const PricingRow = memo(function PricingRow({
             <TextField
               value={
                 focusedPriceKey === key
-                  ? price
+                  ? focusedPriceValue
                   : formatPriceForDisplay(price, currencyCode, languageCode)
               }
               onChange={(event) => onPriceChange(key, event.target.value)}
-              onFocus={() => onPriceFocus(key)}
+              onFocus={() => onPriceFocus(key, price, currencyCode)}
               onBlur={onPriceBlur}
               size="small"
               disabled={disabled}
@@ -352,6 +353,7 @@ const CustomerPricingBoard = () => {
   const [draftPrices, setDraftPrices] = useState({});
   const [savedPrices, setSavedPrices] = useState({});
   const [focusedPriceKey, setFocusedPriceKey] = useState('');
+  const [focusedPriceValue, setFocusedPriceValue] = useState('');
   const [bucketTarget, setBucketTarget] = useState('customer');
   const [customerBuckets, setCustomerBuckets] = useState({});
   const [savedCustomerBuckets, setSavedCustomerBuckets] = useState({});
@@ -766,11 +768,19 @@ const CustomerPricingBoard = () => {
 
   const handlePriceChange = useCallback(
     (key, value) => {
-      setDraftPrices((previous) => ({ ...previous, [key]: normalizePriceInput(value) }));
+      const normalized = normalizePriceInput(value);
+      setFocusedPriceValue(normalized);
+      setDraftPrices((previous) => ({ ...previous, [key]: normalized }));
     },
     []
   );
-  const handlePriceFocus = useCallback((key) => setFocusedPriceKey(key), []);
+  const handlePriceFocus = useCallback((key, price, currencyCode) => {
+    // Formatting on focus must not change the saved value or mark the cell dirty.
+    setFocusedPriceValue(price !== '' && currencyCode === 'USD' && Number.isFinite(Number(price))
+      ? Number(price).toFixed(2)
+      : price);
+    setFocusedPriceKey(key);
+  }, []);
   const handlePriceBlur = useCallback(() => setFocusedPriceKey(''), []);
   const dirtyPriceChanges = useMemo(
     () => displayedStyles.flatMap((style) =>
@@ -1223,6 +1233,7 @@ const CustomerPricingBoard = () => {
                       scopePrefix={`${selectedCustomerId}:${SALES_PRICING_BASIS}:${resolveStyleCurrencyCode(style.id)}:`}
                       draftPrices={draftPrices}
                       focusedPriceKey={focusedPriceKey}
+                      focusedPriceValue={focusedPriceValue}
                       currencyCode={resolveStyleCurrencyCode(style.id)}
                       languageCode={languageCode}
                       unitPriceLabel={text.unitPrice}
