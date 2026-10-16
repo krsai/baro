@@ -76,10 +76,16 @@ test('SQL is repeatable, protects organization FKs and prevents process bypass a
   } finally { await db.close(); }
 });
 
-test('partner mutations require system administrator, production input remains registered', () => {
+test('partner creation requires system administrator; edits and deletion use organization management roles', () => {
   const source = fs.readFileSync('backend/src/index.ts','utf8');
   assert.match(source, /type === "PROCESS_OUTSOURCING" && !\(await requireSystemAdmin/);
-  assert.match(source, /existing\.type === "PROCESS_OUTSOURCING" \|\| type === "PROCESS_OUTSOURCING"/);
+  for (const method of ['put', 'delete']) {
+    const start = source.indexOf(`app.${method}(` + (method === 'put' ? '"' : "'") + '/business-partners/:id');
+    const body = source.slice(start, source.indexOf('\napp.', start + 1));
+    assert.ok(start >= 0);
+    assert.match(body, /requireOrgRole[\s\S]*allowedRoles: ORG_MANAGEMENT_ROLES/);
+    assert.doesNotMatch(body, /requireSystemAdmin|SYSTEM_ADMIN_REQUIRED/);
+  }
   const router = fs.readFileSync('frontend/src/router.jsx','utf8');
   assert.match(router, /path: 'outsourcing-record\/new',[\s\S]*?TransactionRequestEntry/);
 });

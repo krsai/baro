@@ -27,13 +27,12 @@ export async function getBusinessPartnerUsage(db: any, ids: number[]): Promise<S
   return new Set(rows.map(row => row.id));
 }
 
-export async function deleteUnusedBusinessPartner(tx: any, orgId: number, id: number, isSystemAdmin: boolean) {
+export async function deleteUnusedBusinessPartner(tx: any, orgId: number, id: number) {
   // FK inserts acquire a key-share lock; deletion locks the referenced row first.
   const [partner] = await tx.$queryRawUnsafe(
     'SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, orgId,
   );
   if (!partner || !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(partner.type)) throw new Error('BUSINESS_PARTNER_NOT_FOUND');
-  if (partner.type === 'PROCESS_OUTSOURCING' && !isSystemAdmin) throw new Error('SYSTEM_ADMIN_REQUIRED');
   if ((await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
   await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
   await tx.organization.delete({ where: { id } });

@@ -29333,7 +29333,6 @@ app.put("/business-partners/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const type = requestedType || existing.type;
-  if ((existing.type === "PROCESS_OUTSOURCING" || type === "PROCESS_OUTSOURCING") && !(await requireSystemAdmin(req, res))) return;
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
@@ -29373,13 +29372,11 @@ app.delete('/business-partners/:id', async (req, res) => {
   if (!access) return;
   const id = toPositiveIntOrNull(req.params.id);
   if (!id) return res.status(400).json({ error: 'INVALID_PARTNER_ID' });
-  const isSystemAdmin = access.systemUser?.systemRole === 'SYSTEM_ADMIN';
   try {
-    await prisma.$transaction(tx => deleteUnusedBusinessPartner(tx, access.organization.id, id, isSystemAdmin));
+    await prisma.$transaction(tx => deleteUnusedBusinessPartner(tx, access.organization.id, id));
     return res.json({ ok: true });
   } catch (error: any) {
     if (error.message === 'BUSINESS_PARTNER_NOT_FOUND') return res.status(404).json({ error: error.message });
-    if (error.message === 'SYSTEM_ADMIN_REQUIRED') return res.status(403).json({ error: error.message });
     if (error.message === 'PARTNER_HAS_TRANSACTION_HISTORY' || error.code === 'P2003') return res.status(409).json({ error: 'PARTNER_HAS_TRANSACTION_HISTORY' });
     throw error;
   }

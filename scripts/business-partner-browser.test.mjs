@@ -7,7 +7,7 @@ const executablePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe',
 assert.ok(executablePath);
 const fixture = path.resolve('frontend/business-partner-acceptance.html');
 assert.ok(!existsSync(fixture));
-writeFileSync(fixture, `<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Partners from '/src/pages/App/BusinessPartners.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement('div',{id:'partners'},React.createElement(Partners,{type:'MATERIAL_SUPPLIER'})),React.createElement('div',{id:'costs'},React.createElement(Costs))));</script></body></html>`);
+writeFileSync(fixture, `<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Partners from '/src/pages/App/BusinessPartners.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement('div',{id:'partners'},React.createElement(Partners,{type:'PROCESS_OUTSOURCING'})),React.createElement('div',{id:'costs'},React.createElement(Costs))));</script></body></html>`);
 const port = 43188, vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: path.resolve('frontend'), stdio: 'ignore' });
 let browser;
 try {
@@ -16,10 +16,10 @@ try {
   const page = await browser.newPage(); const errors = []; let deletes = 0;
   page.on('pageerror', error => errors.push(error.message));
   await page.clock.install({ time: new Date('2026-10-13T12:00:00+07:00') });
-  await page.route('**/src/context/AuthContext.jsx*', route => route.fulfill({ contentType: 'application/javascript', body: 'export const useAuth=()=>({activeOrgId:1,accessProfile:{systemRole:"SYSTEM_ADMIN"}});' }));
+  await page.route('**/src/context/AuthContext.jsx*', route => route.fulfill({ contentType: 'application/javascript', body: 'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN",accessProfile:{systemRole:"USER"}});' }));
   await page.route('**/src/context/LanguageContext.jsx*', route => route.fulfill({ contentType: 'application/javascript', body: 'export const useLanguage=()=>({languageCode:"ko"});' }));
   const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' };
-  let partners = [{ id: 11, name: 'Used Partner', type: 'MATERIAL_SUPPLIER', isActive: true, hasUsageHistory: true }, { id: 12, name: 'Unused Partner', type: 'MATERIAL_SUPPLIER', isActive: true, hasUsageHistory: false }, { id: 13, name: 'Concurrent Partner', type: 'MATERIAL_SUPPLIER', isActive: true, hasUsageHistory: false }];
+  let partners = [{ id: 11, name: 'Used Partner', type: 'PROCESS_OUTSOURCING', isActive: true, hasUsageHistory: true }, { id: 12, name: 'Unused Partner', type: 'PROCESS_OUTSOURCING', isActive: true, hasUsageHistory: false }, { id: 13, name: 'Concurrent Partner', type: 'PROCESS_OUTSOURCING', isActive: true, hasUsageHistory: false }];
   await page.route('**/business-partners**', async route => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ headers, status: 204 });
     if (new URL(route.request().url()).pathname.endsWith('/history')) return route.fulfill({ headers, json: { records: [{ id: 1, workDate: '2026-10-10', styleCode: 'TEST', processName: 'Buttonhole', quantity: 10, unitPrice: 100, amount: 1000 }], costs: [] } });

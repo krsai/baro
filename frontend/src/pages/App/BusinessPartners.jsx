@@ -42,8 +42,9 @@ const DELETE_TEXT = {
 };
 
 export default function BusinessPartners({ type }) {
-  const { activeOrgId, accessProfile } = useAuth();
+  const { activeOrgId, activeOrgRole, accessProfile } = useAuth();
   const isSystemAdmin = accessProfile?.systemRole === 'SYSTEM_ADMIN';
+  const canEdit = isSystemAdmin || ['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole);
   const canManage = type === 'MATERIAL_SUPPLIER' || isSystemAdmin;
   const [serviceOpen, setServiceOpen] = useState(false);
   const { languageCode } = useLanguage();
@@ -117,8 +118,8 @@ export default function BusinessPartners({ type }) {
             <TableCell>{partner.contactName || '-'}</TableCell><TableCell>{partner.contactPhone || '-'}</TableCell>
             <TableCell><Chip size="small" color={partner.isActive ? 'success' : 'default'} label={partner.isActive ? labels.active : labels.inactive} variant="outlined" /></TableCell>
             <TableCell align="center"><Button size="small" onClick={() => openHistory(partner)} sx={{ whiteSpace: 'nowrap' }}>{listLabels.viewHistory}</Button></TableCell>
-            <TableCell align="center"><Tooltip title={labels.edit}><span><IconButton aria-label={labels.edit} color="primary" disabled={partner.type === 'PROCESS_OUTSOURCING' && !isSystemAdmin} size="small" onClick={() => setEditingPartner(partner)}><EditIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
-            <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><IconButton aria-label={deleteLabels.remove} color="error" size="small" disabled={deleting || partner.hasUsageHistory !== false || (partner.type === 'PROCESS_OUTSOURCING' && !isSystemAdmin)} onClick={() => setDeletingPartner(partner)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
+            <TableCell align="center"><Tooltip title={labels.edit}><span><IconButton aria-label={labels.edit} color="primary" disabled={!canEdit} size="small" onClick={() => setEditingPartner(partner)}><EditIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
+            <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><IconButton aria-label={deleteLabels.remove} color="error" size="small" disabled={!canEdit || deleting || partner.hasUsageHistory !== false} onClick={() => setDeletingPartner(partner)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
           </TableRow>)}
         </TableBody>
       </Table></TableContainer></Paper></Stack>
