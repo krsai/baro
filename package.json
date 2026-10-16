@@ -86,7 +86,8 @@
     "test:order-workflow": "npm --prefix backend run build && node --test scripts/order-workflow.test.mjs",
     "test:workspace-dialog-browser": "node scripts/workspace-dialog-browser.test.mjs",
     "test:workspace-page-prompts-browser": "node scripts/workspace-page-prompts-browser.test.mjs",
-    "test:workspace-modal-audit": "node --test scripts/workspace-modal-audit.test.mjs"
+    "test:workspace-modal-audit": "node --test scripts/workspace-modal-audit.test.mjs",
+    "test:expense-masters-browser": "node scripts/expense-masters-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

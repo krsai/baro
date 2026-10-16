@@ -11,7 +11,7 @@ const usageRollout = fs.readFileSync('backend/prisma/migrations/20261013120000_c
 const q = value => `"${value.replaceAll('"','""')}"`;
 function adapter(db) {
   const result = { $queryRawUnsafe: async (sql,...args) => (await db.query(sql,args)).rows };
-  for (const [name,table] of Object.entries({ transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
+  for (const [name,table] of Object.entries({ expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
     const where = (input, args) => Object.entries(input || {}).map(([key,value]) => {
       if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; throw Error('unsupported condition'); }
       args.push(value); return `${q(key)}=$${args.length}`;
@@ -39,9 +39,25 @@ async function fixture(legacyCode = 'OLD_CODE') {
     INSERT INTO "TransactionCode"(id,"ownerOrgId","serviceTypeId",code) VALUES(100,1,100,'OLD_CODE');
     INSERT INTO "PartnerTransactionCost"("transactionCodeId","serviceTypeId","vatRate",amount) VALUES(100,100,0,1000);`);
   await db.query('UPDATE "TransactionCode" SET code=$1,"vatEnabled"=$2 WHERE id=100',[legacyCode,legacyCode==='TRKV']);
+  await db.exec('CREATE TABLE "Organization"(id INT PRIMARY KEY,type TEXT,"ownerOrgId" INT,"isActive" BOOLEAN DEFAULT true)');
   await db.exec(inheritance); await db.exec(rollout); await db.exec(usageRollout);
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
   return db;
 }
+test('expense input settings copy once by FK and stay independent of partner industry edits', async () => {
+  const db=await fixture();try {
+    const before=(await db.query(`SELECT * FROM "TransactionCodeBase" ORDER BY id`)).rows;
+    await db.exec(`UPDATE "SettingServiceDefault" SET "requiredFields"=ARRAY['reference'];`);
+    await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
+    assert.deepEqual((await db.query(`SELECT * FROM "TransactionCodeBase" ORDER BY id`)).rows,before);
+    assert.equal((await db.query('SELECT count(*)::int n FROM "ExpenseType"')).rows[0].n,4);
+    const [purchase]=(await db.query(`SELECT id FROM "ExpenseType" WHERE code='MATERIAL'`)).rows;
+    const [industry]=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='GENERAL'`)).rows;
+    const base=await db.transaction(tx=>service.saveCodeBase(adapter(tx),{code:'FAB',nameKo:'원단',nameEn:'Fabric',nameVi:'Vải',serviceTypeId:industry.id,expenseTypeId:purchase.id,requiredFields:[],taxTreatmentIds:[1,2,3]}));
+    assert.equal(base.entryMode,'PURCHASE');assert.equal(base.expenseTypeId,purchase.id);
+  }finally{await db.close();}
+});
+
 test('rollout creates three-letter bases and V/Z/E variants without guessing legacy tax or source FKs', async () => {
   const db=await fixture();try {
     assert.equal((await db.query('SELECT * FROM "TransactionCodeBase"')).rows.length,11);

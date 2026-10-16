@@ -57,10 +57,10 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     return previous;
   }
-  const code = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, serviceType: { isActive: true } }, include: { serviceType: true } });
+  const code = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: { serviceType: true, base: { include: { expenseType: true } } } });
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
-  const service = code.serviceType;
-  const partner = await tx.organizationOutsourcingServiceType.findFirst({ where: { ownerOrgId: orgId, partnerOrgId, serviceTypeId: service.id, partner: { isActive: true, type: 'PROCESS_OUTSOURCING' } } });
+  const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
+  const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'] } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
   if (process && body.currency !== 'VND') return invalid('PROCESS_CURRENCY_MUST_BE_VND');

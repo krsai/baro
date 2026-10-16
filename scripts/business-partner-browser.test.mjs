@@ -31,12 +31,13 @@ try {
     return route.fulfill({ headers, json: partners });
   });
   await page.route('**/outsourcing-service-types?*', route => route.fulfill({ headers, json: [] }));
+  await page.route('**/expense-types', route => route.fulfill({ headers, json: [{ id: 1, nameKo: '제작 외주', entryMode: 'PROCESS', isActive: true }] }));
   await page.route('**/outsourcing-requests?*', route => route.fulfill({ headers, json: [{ id: 1, partner: { id: 11, name: partners[0].name }, transactionDate: '2026-10-10', description: 'Existing cost', amount: '100', currency: 'VND' }] }));
   await page.goto(`http://127.0.0.1:${port}/business-partner-acceptance.html`);
   const used = page.locator('#partners tbody tr').filter({ has: page.getByText('Used Partner', { exact: true }) });
   const unused = page.locator('#partners tbody tr').filter({ hasText: 'Unused Partner' });
   await used.waitFor();
-  assert.deepEqual(await page.locator('#partners thead th').allTextContents(), ['업종', '업체명', '담당자', '연락처', '상태', '내역보기', '수정', '삭제']);
+  assert.deepEqual(await page.locator('#partners thead th').allTextContents(), ['거래처 구분', '세부 업종', '업체명', '담당자', '연락처', '상태', '내역보기', '수정', '삭제']);
   await used.getByText('Used Partner', { exact: true }).click();
   assert.equal(await page.getByText('외주 작업 내역', { exact: true }).count(), 0);
   await used.getByRole('button', { name: '내역보기', exact: true }).click();

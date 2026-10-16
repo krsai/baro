@@ -21,7 +21,7 @@ export const INDUSTRY_OPTION_TEXT = {
   vi: { orderInput: 'Nhập đơn hàng', styleInput: 'Nhập mẫu', processInput: 'Nhập công đoạn', REQUIRED: 'Bắt buộc', OPTIONAL: 'Tùy chọn', HIDDEN: 'Không sử dụng' },
 };
 
-export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId, languageCode, systemDefaults = false }) {
+export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId, languageCode, systemDefaults = false, partnerIndustryOnly = false, initialServiceId = null }) {
   const path = systemDefaults ? '/system-setting-defaults/services' : '/outsourcing-service-types';
   const labels = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const optionLabels = INDUSTRY_OPTION_TEXT[languageCode] || INDUSTRY_OPTION_TEXT.ko;
@@ -35,8 +35,8 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
     setEditingId('');
     setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
     setError('');
-    requestJSON(`${path}${buildQueryString({ orgId, all: '1' })}`, { skipCache: true }).then(setServices).catch(() => setError(labels.loadError));
-  }, [open, orgId, labels.loadError, path]);
+    requestJSON(`${path}${buildQueryString({ orgId, all: '1' })}`, { skipCache: true }).then(rows => { setServices(rows); if (initialServiceId) { const initial = rows.find(row => row.id === initialServiceId); if (initial) { setEditingId(initial.id); setForm(initial); } } }).catch(() => setError(labels.loadError));
+  }, [open, orgId, labels.loadError, path, initialServiceId]);
   const save = async () => {
     setSaving(true); setError('');
     try {
@@ -51,9 +51,10 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
     <TextField select label={labels.industry} value={editingId} onChange={event => { const id = event.target.value; setEditingId(id); const service = services.find(item => item.id === id); setForm(service ? { ...service } : { code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] }); }}><MenuItem value="">{labels.addIndustry}</MenuItem>{services.map(service => <MenuItem key={service.id} value={service.id}>{serviceName(service, languageCode)}</MenuItem>)}</TextField>
     {!systemDefaults && open && <SettingInheritanceControls kind="services" row={editingId ? form : null} orgId={orgId} languageCode={languageCode} onSaved={() => { onSaved?.(); onClose(); }} />}
     {['code', 'nameKo', 'nameEn', 'nameVi'].map(key => <TextField key={key} required disabled={saving || (key === 'code' && Boolean(editingId) && systemDefaults)} label={labels[key]} value={form[key]} onChange={event => setForm({ ...form, [key]: key === 'code' ? event.target.value.toUpperCase() : event.target.value })} />)}
-    <TextField select disabled={Boolean(editingId) || saving} label={labels.entryMode} value={form.entryMode} onChange={event => setForm({ ...form, entryMode: event.target.value, requiredFields: event.target.value === 'LOGISTICS' ? ['transportDate', 'origin', 'destination'] : [] })}>{['PROCESS', 'LOGISTICS', 'GENERAL'].map(mode => <MenuItem key={mode} value={mode}>{labels[mode]}</MenuItem>)}</TextField>
+    {!partnerIndustryOnly && <><TextField select disabled={Boolean(editingId) || saving} label={labels.entryMode} value={form.entryMode} onChange={event => setForm({ ...form, entryMode: event.target.value, requiredFields: event.target.value === 'LOGISTICS' ? ['transportDate', 'origin', 'destination'] : [] })}>{['PROCESS', 'LOGISTICS', 'GENERAL'].map(mode => <MenuItem key={mode} value={mode}>{labels[mode]}</MenuItem>)}</TextField>
     {form.entryMode !== 'PROCESS' && <Stack>{labels.requiredFields}{['transportDate', 'origin', 'destination', 'reference'].map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={form.requiredFields.includes(key)} disabled={saving} onChange={event => setForm({ ...form, requiredFields: event.target.checked ? [...form.requiredFields, key] : form.requiredFields.filter(field => field !== key) })} />}/>)}</Stack>}
+    </>}
     {editingId && <FormControlLabel label={languageCode === 'ko' ? '사용 중' : languageCode === 'vi' ? 'Đang sử dụng' : 'Active'} control={<Checkbox checked={form.isActive !== false} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} />}
-    {['orderInput','styleInput','processInput'].map(key => <TextField select key={key} disabled={saving || form.entryMode === 'PROCESS'} label={optionLabels[key]} value={form.entryMode === 'PROCESS' ? 'REQUIRED' : form[key] || (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN')} onChange={event => setForm({ ...form, [key]: event.target.value })}>{['REQUIRED','OPTIONAL','HIDDEN'].map(value => <MenuItem key={value} value={value}>{optionLabels[value]}</MenuItem>)}</TextField>)}
+    {!partnerIndustryOnly && ['orderInput','styleInput','processInput'].map(key => <TextField select key={key} disabled={saving || form.entryMode === 'PROCESS'} label={optionLabels[key]} value={form.entryMode === 'PROCESS' ? 'REQUIRED' : form[key] || (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN')} onChange={event => setForm({ ...form, [key]: event.target.value })}>{['REQUIRED','OPTIONAL','HIDDEN'].map(value => <MenuItem key={value} value={value}>{optionLabels[value]}</MenuItem>)}</TextField>)}
   </Stack></DialogContent><DialogActions>{editingId && <SettingDeleteButton path={path} id={editingId} name={form.code} used={form.hasUsageHistory} orgId={orgId} languageCode={languageCode} disabled={saving} onError={setError} onDeleted={() => { onSaved?.(); onClose(); }} />}<Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || ['code', 'nameKo', 'nameEn', 'nameVi'].some(key => !form[key].trim())} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
 }

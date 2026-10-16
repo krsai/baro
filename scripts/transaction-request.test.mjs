@@ -8,6 +8,7 @@ const input = () => ({ partnerOrgId: 11, transactionCodeId: 7, transactionDate: 
 function store(process = false) {
   const writes = [];
   const code = { id: 7, baseId: 1, taxTreatmentId: process ? 3 : 1, vatEnabled: !process, serviceType: { id: 4, entryMode: process ? 'PROCESS' : 'GENERAL', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } };
+  code.base = { ...code.serviceType, expenseTypeId: 1 };
   const snapshot = { processes: [{ styleProcessId: 50 }] };
   const plan = { id: 60, orgId: 1, workOrderId: 30, styleId: 40, factoryId: 1, isCompleted: false, ctReviewRequired: false, assignmentCtSnapshot: snapshot, assignmentStSnapshot: snapshot };
   return { writes, code, plan,
@@ -16,7 +17,7 @@ function store(process = false) {
     partnerTransactionCost: { findUnique: async () => null, create: async ({ data }) => { writes.push(['cost',data]); return data; } },
     transactionCode: { findFirst: async () => code },
     organizationOutsourcingServiceType: { findFirst: async () => ({}) },
-    organization: { findUnique: async () => ({ name: 'QQ' }) },
+    organization: { findFirst: async () => ({ id: 11 }), findUnique: async () => ({ name: 'QQ' }) },
     workOrder: { findFirst: async () => ({ id: 30, invoiceFinalLockedAt: null }) },
     workOrderItem: { findFirst: async () => ({ id: 1 }) },
     styleProcess: { findFirst: async () => ({ id: 50 }) },
@@ -57,7 +58,7 @@ test('process rejects missing references, fractional quantities, completed/ambig
 });
 test('code scope, industry options and order/style/process membership are enforced', async () => {
   const missing = store(); missing.transactionCode.findFirst = async () => null; await assert.rejects(register(missing,1,20,input()),/INVALID_TRANSACTION_CODE/);
-  const vendor = store(); vendor.organizationOutsourcingServiceType.findFirst = async () => null; await assert.rejects(register(vendor,1,20,input()),/INVALID_PARTNER_SERVICE/);
+  const vendor = store(); vendor.organization.findFirst = async () => null; await assert.rejects(register(vendor,1,20,input()),/INVALID_PARTNER_SERVICE/);
   const hidden = store(); await assert.rejects(register(hidden,1,20,{ ...input(),styleId:40 }),/UNEXPECTED_REQUEST_STYLE/);
   const taxable = store(); taxable.code.vatEnabled = false; await assert.rejects(register(taxable,1,20,input()),/VAT_NOT_ENABLED/);
   const mismatch = store(true); mismatch.workOrderItem.findFirst = async () => null; await assert.rejects(register(mismatch,1,20,{ ...input(),vatRate:'0',styleId:40,styleProcessId:50 }),/INVALID_REQUEST_STYLE/);
@@ -108,5 +109,18 @@ test('repeatable SQL preserves old records and enforces production linkage, tota
     await assert.rejects(db.exec('UPDATE "OutsourcedWorkRecord" SET quantity=1 WHERE id=101'));
     await assert.rejects(db.exec('DELETE FROM "OutsourcedWorkRecord" WHERE id=101'));
     assert.equal((await db.query('SELECT count(*)::int AS n FROM "PartnerTransactionCost"')).rows[0].n,2);
+    const preserved = (await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+    for (const file of ['20261011120000_setting_inheritance','20261013090000_code_bases_tax','20261013120000_code_base_usage_fk','20261016090000_expense_code_separation']) await db.exec(fs.readFileSync(`backend/prisma/migrations/${file}/migration.sql`,'utf8'));
+    const separation = fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8');
+    await db.exec(separation);
+    assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,preserved);
+    // No partner industry membership is required. Accounting and FK checks remain.
+    await db.exec(`DELETE FROM "OrganizationOutsourcingServiceType"; UPDATE "TransactionCodeBase" SET "requiredFields"='{}' WHERE code='TRK'; UPDATE "Organization" SET type='MATERIAL_SUPPLIER' WHERE id=11;`);
+    await insert('independent-payee',trucking,220);
+    await assert.rejects(insert('invalid-independent-total',trucking,999));
+    await db.exec(`UPDATE "OutsourcingServiceType" SET "requiredFields"=ARRAY['reference'];`);
+    await insert('independent-inputs',trucking,220);
+    await assert.rejects(db.exec(`UPDATE "PartnerTransactionCost" SET amount=0 WHERE id='independent-payee'`));
+    assert.equal((await db.query('SELECT count(*)::int AS n FROM "PartnerTransactionCost"')).rows[0].n,4);
   } finally { await db.close(); }
 });

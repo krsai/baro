@@ -1,6 +1,8 @@
 import { createHttpError } from '../utils/http';
+import { COST_DETAIL_FIELDS } from './partnerTransactionCost';
 
 export function validateCodeBase(body: any) {
+  if (body?.expenseTypeId != null && (!Number.isSafeInteger(body.expenseTypeId) || body.expenseTypeId <= 0)) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
   if (!/^[A-Z]{3}$/.test(body?.code || '') || ['nameKo','nameEn','nameVi'].some(key => typeof body[key] !== 'string' || !body[key].trim() || body[key].length > 100)) throw createHttpError(400,'INVALID_CODE_BASE');
   if (!Number.isSafeInteger(body.serviceTypeId) || body.serviceTypeId <= 0) throw createHttpError(400,'INVALID_SERVICE_TYPE');
   if (!Array.isArray(body.taxTreatmentIds) || !body.taxTreatmentIds.length || body.taxTreatmentIds.some((id: any) => ![1,2,3].includes(id)) || new Set(body.taxTreatmentIds).size !== body.taxTreatmentIds.length) throw createHttpError(400,'INVALID_TAX_TREATMENT');
@@ -8,7 +10,7 @@ export function validateCodeBase(body: any) {
 }
 
 export async function saveCodeBase(tx: any, body: any, id?: number) {
-  const data = validateCodeBase(body);
+  const data: any = validateCodeBase(body);
   await tx.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=$1 FOR UPDATE', data.serviceTypeId);
   if (!await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } })) throw createHttpError(400,'INVALID_SERVICE_TYPE');
   if (id) {
@@ -17,6 +19,22 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
     if (!previous) throw createHttpError(404,'SETTING_NOT_FOUND');
     if (previous.code !== data.code || previous.serviceTypeId !== data.serviceTypeId) throw createHttpError(409,'CODE_BASE_IDENTITY_IMMUTABLE');
   }
+  const source = await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } });
+  const previous = id ? await tx.transactionCodeBase.findUnique({ where: { id } }) : null;
+  const expenseType = body.expenseTypeId
+    ? await tx.expenseType.findUnique({ where: { id: body.expenseTypeId } })
+    : await tx.expenseType.findUnique({ where: { code: source.entryMode === 'PROCESS' ? 'PRODUCTION' : source.entryMode === 'LOGISTICS' ? 'LOGISTICS' : 'GENERAL' } });
+  if (!expenseType || !expenseType.isActive && expenseType.id !== previous?.expenseTypeId) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
+  if (previous?.entryMode && previous.entryMode !== expenseType.entryMode && (await getCodeBaseUsage(tx,[id!])).has(id!)) throw createHttpError(409,'USED_CODE_ENTRY_MODE_IMMUTABLE');
+  data.expenseTypeId = expenseType.id;
+  data.entryMode = expenseType.entryMode;
+  data.requiredFields = body.requiredFields ?? previous?.requiredFields ?? source.requiredFields;
+  if (!Array.isArray(data.requiredFields) || data.requiredFields.some((field: any) => !COST_DETAIL_FIELDS.includes(field))) throw createHttpError(400,'INVALID_REQUIRED_FIELDS');
+  for (const key of ['orderInput','styleInput','processInput']) {
+    data[key] = data.entryMode === 'PROCESS' ? 'REQUIRED' : body[key] ?? previous?.[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
+    if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(data[key])) throw createHttpError(400,'INVALID_INPUT_OPTION');
+  }
+  if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
   const base = id ? await tx.transactionCodeBase.update({ where: { id }, data }) : await tx.transactionCodeBase.create({ data });
   const taxes = await tx.taxTreatment.findMany({ where: { id: { in: body.taxTreatmentIds } } });
   if (taxes.length !== body.taxTreatmentIds.length) throw createHttpError(400,'INVALID_TAX_TREATMENT');
@@ -29,7 +47,7 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
     if (existing) await tx.settingTransactionCodeDefault.update({ where: { id: existing.id }, data: variant });
     else await tx.settingTransactionCodeDefault.create({ data: variant });
   }
-  return tx.transactionCodeBase.findUnique({ where: { id: base.id }, include: { serviceType: true, variants: { include: { taxTreatment: true } } } });
+  return tx.transactionCodeBase.findUnique({ where: { id: base.id }, include: { serviceType: true, expenseType: true, variants: { include: { taxTreatment: true } } } });
 }
 
 // Pure inherited copies are configuration; manual overrides and business use block deletion.
@@ -79,6 +97,16 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
+  app.get('/expense-types', async (req: any,res: any) => {
+    if (!await gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] })) return;
+    res.json(await db.expenseType.findMany({ orderBy: { id: 'asc' } }));
+  });
+  app.put('/expense-types/:id', async (req: any,res: any) => {
+    if (!await gates.requireSystemAdmin(req,res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || ['nameKo','nameEn','nameVi'].some(key => typeof req.body?.[key] !== 'string' || !req.body[key].trim() || req.body[key].length > 100)) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
+    res.json(await db.expenseType.update({ where: { id }, data: { nameKo: req.body.nameKo.trim(), nameEn: req.body.nameEn.trim(), nameVi: req.body.nameVi.trim(), isActive: req.body.isActive !== false } }));
+  });
   const path = '/system-setting-defaults/code-bases';
   app.get('/tax-treatments', async (req: any, res: any) => {
     if (!await gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] })) return;
@@ -91,6 +119,7 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
       orderBy: { code: 'asc' },
       include: {
         serviceType: true,
+        expenseType: true,
         variants: { include: { taxTreatment: true } },
       },
     });

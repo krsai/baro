@@ -1,3 +1,4 @@
+import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Autocomplete, Box, Button, Checkbox, FormControlLabel, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -21,6 +22,7 @@ export default function TransactionRequestEntry() {
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
   const labels = REQUEST_FORM_TEXT[languageCode] || REQUEST_FORM_TEXT.ko;
+  const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const [form, setForm] = useState(initialForm), [partners, setPartners] = useState([]), [codes, setCodes] = useState([]), [orders, setOrders] = useState([]);
   const [settings, setSettings] = useState({ defaultVatRate: '10' }), [options, setOptions] = useState({ styles: [], plans: [] });
@@ -29,15 +31,17 @@ export default function TransactionRequestEntry() {
   useEffect(() => {
     let alive = true; setLoading(true); setError(''); setForm(initialForm());
     const query = buildQueryString({ orgId: activeOrgId });
-    Promise.all([requestJSON(`/business-partners${buildQueryString({ orgId: activeOrgId, type: 'PROCESS_OUTSOURCING' })}`, { skipCache: true }), requestJSON(`/transaction-codes${query}`, { skipCache: true }), requestJSON(`/app-settings${query}`, { skipCache: true }), requestJSON(`/orders${query}`, { skipCache: true })])
+    Promise.all([requestJSON(`/business-partners${buildQueryString({ orgId: activeOrgId })}`, { skipCache: true }), requestJSON(`/transaction-codes${query}`, { skipCache: true }), requestJSON(`/app-settings${query}`, { skipCache: true }), requestJSON(`/orders${query}`, { skipCache: true })])
       .then(([vendors, descriptions, defaults, orderRows]) => { if (alive) { setPartners(vendors); setCodes(descriptions); setSettings(defaults); setOrders(orderRows.filter(order => order.ownerOrgId === Number(activeOrgId))); } })
       .catch(() => alive && setError(common.loadError)).finally(() => alive && setLoading(false));
     return () => { alive = false; };
   }, [activeOrgId, common.loadError]);
   const partner = partners.find(row => row.id === form.partnerOrgId);
-  const codeOptions = codes.filter(row => partner?.serviceTypes?.some(service => service.id === row.serviceTypeId));
+  const codeOptions = codes;
   const code = codeOptions.find(row => row.id === form.transactionCodeId) || null;
-  const service = code?.serviceType, isProcess = service?.entryMode === 'PROCESS';
+  const service = code?.base, isProcess = service?.entryMode === 'PROCESS';
+  const typeMismatch = code && partner && partner.partnerExpenseTypeId !== code.base?.expenseTypeId;
+  const industryMismatch = code && partner && !partner.serviceTypes?.some(row => row.id === code.serviceTypeId);
   const mode = key => isProcess ? 'REQUIRED' : service?.[`${key}Input`] || (key === 'order' ? 'OPTIONAL' : 'HIDDEN');
   const visible = key => mode(key) === 'REQUIRED' || mode(key) === 'OPTIONAL' && enabled[key];
   const selectedStyle = options.styles.find(row => row.id === form.styleId);
@@ -52,12 +56,12 @@ export default function TransactionRequestEntry() {
   }, [form.workOrderId, activeOrgId, common.loadError]);
   useEffect(() => { setForm(current => ({ ...current, assignmentPlanId: plans.length === 1 ? plans[0].id : plans.some(plan => plan.id === current.assignmentPlanId) ? current.assignmentPlanId : '' })); }, [plans]);
   const chooseCode = selected => {
-    setForm(current => ({ ...current, transactionCodeId: selected?.id || '', description: serviceName(selected, languageCode), vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0', currency: selected?.serviceType?.entryMode === 'PROCESS' ? 'VND' : current.currency, workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '', details: {} }));
+    setForm(current => ({ ...current, transactionCodeId: selected?.id || '', description: serviceName(selected, languageCode), vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0', currency: selected?.base?.entryMode === 'PROCESS' ? 'VND' : current.currency, workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '', details: {} }));
     setEnabled({ order: false, style: false, process: false });
   };
   const update = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   const requiredFields = service?.requiredFields || [];
-  const valid = code && form.transactionDate && form.description.trim() && [form.unitPrice,form.quantity].every(value => /^\d{1,12}(\.\d{1,4})?$/.test(value) && Number(value) > 0) && /^\d{1,3}(\.\d{1,2})?$/.test(form.vatRate) && Number(form.vatRate) <= 100 && (!isProcess || Number.isInteger(Number(form.quantity)) && form.assignmentPlanId) && ['order','style','process'].every(key => mode(key) !== 'REQUIRED' || form[{ order: 'workOrderId', style: 'styleId', process: 'styleProcessId' }[key]]) && requiredFields.every(key => form.details[key]?.trim());
+  const valid = partner?.isActive && code && form.transactionDate && form.description.trim() && [form.unitPrice,form.quantity].every(value => /^\d{1,12}(\.\d{1,4})?$/.test(value) && Number(value) > 0) && /^\d{1,3}(\.\d{1,2})?$/.test(form.vatRate) && Number(form.vatRate) <= 100 && (!isProcess || Number.isInteger(Number(form.quantity)) && form.assignmentPlanId) && ['order','style','process'].every(key => mode(key) !== 'REQUIRED' || form[{ order: 'workOrderId', style: 'styleId', process: 'styleProcessId' }[key]]) && requiredFields.every(key => form.details[key]?.trim());
   const factor = form.currency === 'USD' ? 100 : 1;
   const subtotal = Math.round(Number(form.unitPrice || 0) * Number(form.quantity || 0) * factor) / factor;
   const tax = Math.round(subtotal * Number(form.vatRate || 0) / 100 * factor) / factor;
@@ -75,8 +79,11 @@ export default function TransactionRequestEntry() {
   return <AppPageContainer title={labels.title}><Paper variant="outlined" sx={{ p: 3, maxWidth: 960 }}><Stack spacing={2} component="fieldset" disabled={loading || saving} sx={{ border: 0, p: 0, m: 0 }}>
     {error && <Alert severity="error">{error}</Alert>}
     <TextField required type="date" label={labels.date} value={form.transactionDate} onChange={update('transactionDate')} slotProps={{ inputLabel: { shrink: true } }} />
-    <TextField select required label={common.partner} value={form.partnerOrgId} onChange={event => { setForm({ ...initialForm(), transactionDate: form.transactionDate, partnerOrgId: event.target.value }); setEnabled({ order: false, style: false, process: false }); }}>{partners.filter(row => row.isActive).map(row => <MenuItem key={row.id} value={row.id}>{row.name}</MenuItem>)}</TextField>
-    <Autocomplete options={codeOptions} value={code} disabled={!partner || saving} autoHighlight autoSelect getOptionLabel={row => `${row.code} · ${serviceName(row, languageCode)}${row.taxTreatment ? ` · ${serviceName(row.taxTreatment, languageCode)}` : ""}`} isOptionEqualToValue={(a,b) => a.id === b.id} filterOptions={(rows, state) => rows.filter(row => `${row.code} ${serviceName(row, languageCode)}`.toLocaleLowerCase().includes(state.inputValue.toLocaleLowerCase()))} onChange={(_, row) => chooseCode(row)} onInputChange={(_, text, reason) => { if (reason === 'input') { const match = codeOptions.find(row => row.code.toUpperCase() === text.trim().toUpperCase()); if (match && match.id !== code?.id) chooseCode(match); } }} renderInput={params => <TextField {...params} required label={labels.code} helperText={labels.codeHint} />} />
+    <Autocomplete options={codeOptions} value={code} disabled={loading || saving} autoHighlight autoSelect getOptionLabel={row => `${row.code} · ${serviceName(row, languageCode)}${row.taxTreatment ? ` · ${serviceName(row.taxTreatment, languageCode)}` : ""}`} isOptionEqualToValue={(a,b) => a.id === b.id} filterOptions={(rows, state) => rows.filter(row => `${row.code} ${serviceName(row, languageCode)}`.toLocaleLowerCase().includes(state.inputValue.toLocaleLowerCase()))} onChange={(_, row) => chooseCode(row)} onInputChange={(_, text, reason) => { if (reason === 'input') { const match = codeOptions.find(row => row.code.toUpperCase() === text.trim().toUpperCase()); if (match && match.id !== code?.id) chooseCode(match); } }} renderInput={params => <TextField {...params} required label={labels.code} helperText={labels.codeHint} />} />
+    {code && <Typography color="text.secondary">{expenseLabels.type}: {serviceName(code.base?.expenseType,languageCode)} ? {expenseLabels.industry}: {serviceName(code.serviceType,languageCode)}</Typography>}
+    <TextField select required label={common.partner} value={form.partnerOrgId} onChange={update('partnerOrgId')}>{partners.filter(row => row.isActive).map(row => <MenuItem key={row.id} value={row.id}>{row.name}</MenuItem>)}</TextField>
+    {typeMismatch && <Alert severity="warning">{expenseLabels.mismatch}</Alert>}
+    {!typeMismatch && industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
     <TextField label={common.description} required value={form.description} onChange={update('description')} />
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}><TextField required label={labels.price} value={form.unitPrice} onChange={update('unitPrice')} inputProps={{ inputMode: 'decimal' }} /><TextField required label={labels.quantity} value={form.quantity} onChange={update('quantity')} inputProps={{ inputMode: 'decimal' }} /><TextField select disabled={isProcess} label={common.currency} value={form.currency} onChange={update('currency')}>{['VND','USD','KRW'].map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField><TextField label={labels.vat} disabled={!code?.vatEnabled} value={form.vatRate} onChange={update('vatRate')} inputProps={{ inputMode: 'decimal' }} /></Stack>
     {code && <><Typography fontWeight={700}>{labels.options}</Typography><Stack direction="row">{['order','style','process'].filter(key => mode(key) === 'OPTIONAL').map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={enabled[key]} disabled={key === 'style' && !visible('order') || key === 'process' && !visible('style')} onChange={event => { const checked = event.target.checked; setEnabled(current => ({ ...current, [key]: checked, ...(key === 'order' && !checked ? { style: false, process: false } : key === 'style' && !checked ? { process: false } : {}) })); setForm(current => ({ ...current, ...(key === 'order' ? { workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '' } : key === 'style' ? { styleId: '', styleProcessId: '', assignmentPlanId: '' } : { styleProcessId: '', assignmentPlanId: '' }) })); }} />} />)}</Stack></>}

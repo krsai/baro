@@ -1,3 +1,4 @@
+import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import React, { useEffect, useState } from 'react';
 import {
   Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
@@ -46,6 +47,7 @@ const buildFormFromPartner = (partner, initialType) => ({
   contactName: partner?.contactName || '',
   contactPhone: partner?.contactPhone || '',
   isActive: partner?.isActive !== false,
+  partnerExpenseTypeId: partner?.partnerExpenseTypeId || '',
   serviceTypeIds: (partner?.serviceTypes || []).map((item) => item.id),
 });
 
@@ -61,6 +63,8 @@ export default function BusinessPartnerDialog({
   partner = null,
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
+  const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
+  const [expenseTypes,setExpenseTypes] = useState([]);
   const isEdit = Boolean(partner?.id);
   const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
   const [saving, setSaving] = useState(false);
@@ -76,6 +80,7 @@ export default function BusinessPartnerDialog({
 
   useEffect(() => {
     if (!open || !activeOrgId) return;
+    requestJSON('/expense-types', { skipGlobalLoading: true }).then(setExpenseTypes).catch(() => setError(labels.error));
     requestJSON(`/outsourcing-service-types${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true })
       .then((rows) => setServiceTypes(Array.isArray(rows) ? rows : []))
       .catch(() => setServiceTypes([]));
@@ -84,7 +89,6 @@ export default function BusinessPartnerDialog({
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const save = async () => {
     if (!form.name.trim()) return setError(labels.required);
-    if (!isEdit && form.type === 'PROCESS_OUTSOURCING' && !form.serviceTypeIds.length) return setError(languageCode === 'ko' ? '업종을 선택해 주세요.' : languageCode === 'vi' ? 'Vui lòng chọn ngành dịch vụ.' : 'Select an industry.');
     setSaving(true);
     setError('');
     try {
@@ -92,7 +96,8 @@ export default function BusinessPartnerDialog({
         name: form.name.trim(), type: form.type,
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
-        serviceTypeIds: form.type === 'PROCESS_OUTSOURCING' ? form.serviceTypeIds : [],
+        serviceTypeIds: form.serviceTypeIds,
+        partnerExpenseTypeId: form.partnerExpenseTypeId || expenseTypes.find(row => row.entryMode === (form.type === 'MATERIAL_SUPPLIER' ? 'PURCHASE' : 'PROCESS'))?.id,
         ...(isEdit ? { isActive: Boolean(form.isActive) } : {}),
       };
       const savedPartner = await requestJSON(
@@ -121,13 +126,10 @@ export default function BusinessPartnerDialog({
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <FormControl fullWidth disabled={lockType}>
-            <InputLabel>{labels.type}</InputLabel>
-            <Select value={form.type} label={labels.type} onChange={update('type')}>
-              {BUSINESS_PARTNER_TYPES.map((type) => <MenuItem key={type} value={type}>{getBusinessPartnerTypeLabel(type, languageCode)}</MenuItem>)}
-            </Select>
-          </FormControl>
-          {form.type === 'PROCESS_OUTSOURCING' ? (
+          <TextField select label={expenseLabels.partnerType} value={form.partnerExpenseTypeId || expenseTypes.find(row => row.entryMode === (form.type === 'MATERIAL_SUPPLIER' ? 'PURCHASE' : 'PROCESS'))?.id || ''} onChange={event => setForm({ ...form, partnerExpenseTypeId: event.target.value })}>
+            {expenseTypes.filter(row => row.isActive || row.id === form.partnerExpenseTypeId).map(row => <MenuItem key={row.id} value={row.id}>{row[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn']}</MenuItem>)}
+          </TextField>
+          {true ? (
             <FormControl fullWidth>
               <InputLabel>{languageCode === 'ko' ? '외주 업종' : languageCode === 'vi' ? 'Ngành dịch vụ' : 'Outsourcing industries'}</InputLabel>
               <Select

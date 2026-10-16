@@ -29165,6 +29165,7 @@ app.put("/assignment-board-state", async (req, res) => {
 // DTO shape so the frontend needs no changes: contactName/contactPhone map
 // to Organization.representative/phone.
 const BUSINESS_PARTNER_SERVICE_INCLUDE = {
+  partnerExpenseType: true,
   outsourcingServiceAssignments: {
     include: { serviceType: true },
     orderBy: { serviceType: { sortOrder: "asc" as const } },
@@ -29175,6 +29176,8 @@ const toBusinessPartnerResponse = (organizationRow: any) => ({
   id: organizationRow.id,
   name: organizationRow.name,
   type: organizationRow.type,
+  partnerExpenseTypeId: organizationRow.partnerExpenseTypeId,
+  partnerExpenseType: organizationRow.partnerExpenseType,
   contactName: organizationRow.representative ?? null,
   contactPhone: organizationRow.phone ?? null,
   isActive: organizationRow.isActive,
@@ -29190,9 +29193,9 @@ const resolvePartnerServiceTypeIds = async (
   tx: any,
   ownerOrgId: number,
   rawIds: unknown,
-  partnerType: string
+  _partnerType: string
 ) => {
-  if (partnerType !== "PROCESS_OUTSOURCING") return [];
+
   if (rawIds == null) return [];
   if (!Array.isArray(rawIds) || rawIds.some(id => typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0)) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
   const ids = Array.from(new Set(rawIds)) as number[];
@@ -29289,6 +29292,10 @@ app.post("/business-partners", async (req, res) => {
   const name = resolveOptionalString(req.body?.name, null);
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
   if (type === "PROCESS_OUTSOURCING" && !(await requireSystemAdmin(req, res))) return;
+  if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
+  const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
+  const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, isActive: true } }) : await prisma.expenseType.findUnique({ where: { code: type === 'MATERIAL_SUPPLIER' ? 'MATERIAL' : 'PRODUCTION' } });
+  if (req.body?.partnerExpenseTypeId != null && !expenseType) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
@@ -29300,11 +29307,11 @@ app.post("/business-partners", async (req, res) => {
   try {
     row = await prisma.$transaction(async (tx) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
-      if (type === 'PROCESS_OUTSOURCING' && serviceTypeIds.length === 0) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
+
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
-        update: { isActive: true, representative: contactName, phone: contactPhone },
+        create: { ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor, partnerExpenseTypeId: expenseType?.id ?? null },
+        update: { isActive: true, representative: contactName, phone: contactPhone, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) },
       });
       await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
       if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: partner.id, serviceTypeId, ownerOrgId: organization.id })) });
@@ -29333,6 +29340,10 @@ app.put("/business-partners/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const type = requestedType || existing.type;
+  if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
+  const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
+  const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, ...(partnerExpenseTypeId === existing.partnerExpenseTypeId ? {} : { isActive: true }) } }) : null;
+  if (req.body?.partnerExpenseTypeId != null && !expenseType) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
@@ -29352,8 +29363,8 @@ app.put("/business-partners/:id", async (req, res) => {
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type);
-      await tx.organization.update({ where: { id }, data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
-      if (type !== "PROCESS_OUTSOURCING" || hasServiceTypeSelection) {
+      await tx.organization.update({ where: { id }, data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) } });
+      if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
         if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: id, serviceTypeId, ownerOrgId: organization.id })) });
       }

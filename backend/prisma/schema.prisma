@@ -168,6 +168,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  partnerExpenseTypeId Int?
+  partnerExpenseType ExpenseType? @relation("PartnerExpenseType", fields: [partnerExpenseTypeId], references: [id], onDelete: Restrict)
   transactionCodes TransactionCode[] @relation("TransactionCodeOwner")
   transactionCosts PartnerTransactionCost[] @relation("TransactionCostOwner")
   vendorTransactionCosts PartnerTransactionCost[] @relation("TransactionCostVendor")
@@ -2281,6 +2283,13 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  expenseTypeId Int
+  expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+  entryMode String
+  requiredFields String[] @default([])
+  orderInput String @default("OPTIONAL")
+  styleInput String @default("HIDDEN")
+  processInput String @default("HIDDEN")
   appCodes TransactionCode[]
   id Int @id @default(autoincrement())
   code String @unique
@@ -2291,6 +2300,18 @@ model TransactionCodeBase {
   serviceType SettingServiceDefault @relation(fields: [serviceTypeId], references: [id], onDelete: Restrict)
   isActive Boolean @default(true)
   variants SettingTransactionCodeDefault[]
+}
+
+model ExpenseType {
+  id Int @id @default(autoincrement())
+  code String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  entryMode String
+  isActive Boolean @default(true)
+  bases TransactionCodeBase[]
+  partners Organization[] @relation("PartnerExpenseType")
 }
 
 model TaxTreatment {

@@ -21,18 +21,20 @@ try {
     await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>document.documentElement.dataset.saved="true",showNotification:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const service={id:4,entryMode:kind,orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[],isActive:true};
-    await page.route('**/business-partners?*',route=>route.fulfill({headers,json:[{id:11,name:kind==='PROCESS'?'QQ':'Trucking Partner',isActive:true,serviceTypes:[service]}]}));
-    await page.route('**/transaction-codes?*',route=>route.fulfill({headers,json:[{id:7,code:kind==='PROCESS'?'BTH':'TRKV',nameKo:'서비스',nameEn:'Service',nameVi:'Dịch vụ',serviceTypeId:4,serviceType:service,vatEnabled:kind!=='PROCESS'}]}));
+    await page.route('**/business-partners?*',route=>route.fulfill({headers,json:[{id:11,name:kind==='PROCESS'?'QQ':'Trucking Partner',isActive:true,partnerExpenseTypeId:1,serviceTypes:[]}]}));
+    await page.route('**/transaction-codes?*',route=>route.fulfill({headers,json:[{id:7,code:kind==='PROCESS'?'BTH':'TRKV',nameKo:'서비스',nameEn:'Service',nameVi:'Dịch vụ',serviceTypeId:4,base:{...service,expenseTypeId:2,expenseType:{id:2,nameKo:"Logistics",nameEn:"Logistics",nameVi:"Logistics"}},serviceType:service,vatEnabled:kind!=='PROCESS'}]}));
     await page.route('**/app-settings?*',route=>route.fulfill({headers,json:{defaultVatRate:'10'}}));
     await page.route('**/orders?*',route=>route.fulfill({headers,json:[{id:'PUBLIC',dbId:30,ownerOrgId:1,orderNumber:'L18-1'}]}));
     await page.route('**/transaction-request-options?*',route=>route.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'S40',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]}],plans:[{id:60,styleId:40,factoryName:'Factory A',processIds:[50]},{id:61,styleId:40,factoryName:'Factory B',processIds:[50]}]}}));
     await page.route('**/outsourcing-requests?*',route=>{if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});payload=route.request().postDataJSON();return route.fulfill({headers,json:{id:'saved'}});});
     await page.goto(`http://127.0.0.1:${port}/transaction-request-acceptance.html`);
     const labels=lang==='ko'?{partner:'업체',code:'내역 코드',price:'단가',qty:'수량',order:'주문',style:'스타일',process:'공정',assignment:'생산 배정',submit:'신청 등록'}:lang==='en'?{partner:'Partner',code:'Transaction code',price:'Unit price',qty:'Quantity',order:'Order',style:'Style',process:'Process',assignment:'Production assignment',submit:'Register request'}:{partner:'Đối tác',code:'Mã nội dung',price:'Đơn giá',qty:'Số lượng',order:'Đơn hàng',style:'Mẫu',process:'Công đoạn',assignment:'Phân công sản xuất',submit:'Ghi nhận đề nghị'};
-    await page.getByRole('combobox',{name:labels.partner,exact:false}).click();await page.getByRole('option').first().click();
+
     assert.match(await page.locator('input[type="date"]').inputValue(),/^\d{4}-\d{2}-\d{2}$/);
     await page.getByRole('combobox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BTH':'TRKV');
     await page.getByRole('combobox',{name:labels.code,exact:false}).press('Tab');
+    await page.getByRole('combobox',{name:labels.partner,exact:false}).click();await page.getByRole('option').first().click();
+    await page.getByRole('alert').filter({hasText:lang==='ko'?'지급 대상':lang==='en'?'payee':'đối tác'}).waitFor();
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).isDisabled(),kind==='PROCESS');
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).inputValue(),kind==='PROCESS'?'0':'10');
     await page.getByLabel(labels.price,{exact:false}).fill('100000');await page.getByLabel(labels.qty,{exact:false}).fill('2');
