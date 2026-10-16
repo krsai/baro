@@ -67,6 +67,7 @@ for (const file of files) {
   visit(ast);
   if (file === 'backend/src/index.ts') {
     for (const statement of ast.statements) {
+      if (statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
       const declarations = ts.isVariableStatement(statement) ? statement.declarationList.declarations
         : ts.isFunctionDeclaration(statement) ? [statement] : [];
       for (const declaration of declarations) {

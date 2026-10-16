@@ -177,17 +177,6 @@ const scheduleScopedRequest = ({
   });
 };
 
-export const setActiveRequestScope = (
-  groupId = DEFAULT_REQUEST_SCOPE_GROUP,
-  scopeId = '',
-) => {
-  activateRequestScope(groupId, '__legacy__', scopeId, 0);
-};
-
-export const clearActiveRequestScope = (groupId = DEFAULT_REQUEST_SCOPE_GROUP) => {
-  deactivateRequestScope(groupId, '__legacy__');
-};
-
 export const activateRequestScope = (
   groupId = DEFAULT_REQUEST_SCOPE_GROUP,
   token,

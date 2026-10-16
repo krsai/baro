@@ -240,31 +240,7 @@ const resolveAtParams = (process) => {
 const resolveAtParamsMeta = (process) => {
   if (!process || typeof process !== 'object') return null;
   const raw = process.atParams;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    const legacyParams = resolveAtParams(process);
-    if (!legacyParams) return null;
-    return {
-      ...legacyParams,
-      version: 1,
-      trainedPeriod: null,
-      attendanceCoverage: null,
-      attendanceFallbackShare: null,
-      observationCount: null,
-      fitStatus: null,
-      isProvisional: false,
-      fallbackReason: null,
-      weightedPointCount: null,
-      distinctQuantityCount: null,
-      distinctEventCount: null,
-      distinctSourceGroupCount: null,
-      minQuantity: null,
-      maxQuantity: null,
-      minEventCount: null,
-      maxEventCount: null,
-      quantitySamples: [],
-      eventCountSamples: [],
-    };
-  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const params = resolveAtParams(process);
   if (!params) return null;
 

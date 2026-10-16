@@ -1,5 +1,19 @@
 # BARO 남은 작업
 
+## 2026-10-16 레거시 후속 1·3·5·7 정리
+
+- 사용자 지정 범위만 구현했다. 4번 공통 헬퍼 중복과 6번 구 급여 정책은 설명 및 후속 검토 대상으로 남긴다. 아래 최초 감사의 삭제 후보·시작 절차 기록은 조사 당시 상태이며 이 절의 결과를 우선한다.
+- 구 `POST /assignment-plans/:externalId/close`, `PATCH /assignment-plans/:externalId/production-complete`는 기존 조직 관리 권한 검사 후 410과 현재 수동 완료 URL/필수 사유를 반환한다. 구 경로로 완료·수량 변경을 하지 않는다. 현재 수동 완료·기록 누락 완료·재개·QC 경로와 기존 완료 이력은 유지한다.
+- 실행 연결이 없는 화면/모듈 8개와 서버·클라이언트의 미참조 선언을 제거했다. 삭제된 구 주문 배정 동기화/자동 AT 갱신 함수의 오래된 주석도 정리했다. 수동 AT 갱신은 유지한다. import 감사 결과 남은 미연결 소스는 테스트 전용 `invoiceBilling.mjs`이며 선언 전용 private 후보는 0개다. 이 결과는 앱 전체 중복 제거 완료를 의미하지 않는다.
+- 휴일·역할 접근 정책 조회에서 브라우저 레거시 값을 서버에 자동 저장하던 경로를 제거했다. 서버의 빈 값은 빈 값으로, 조회 오류는 오류로 처리한다. 명시적 저장은 유지하고 옛 브라우저 키는 읽거나 삭제하지 않는다.
+- 일반 `npm --prefix backend start`는 API 시작과 읽기 전용 필수 스키마 검사만 수행한다. 누락 시 준비 명령을 안내하고 트래픽 수신 전에 실패한다. 개발 시작도 Prisma client 생성만 수행하며 DB push를 자동 실행하지 않는다.
+- DB 명령은 backend 기준으로 분리했다. `database:prepare`는 현재 스키마 준비와 기본 시스템 관리자 보장, `database:upgrade:legacy`는 기존 설치의 과거 이전 체인, `database:initialize`는 빈 public schema 확인 후 최초 준비, `database:refresh:historical-cards`는 과거 특정 카드 보정이다. 어느 명령도 이번 세션에서 운영 DB에 실행하지 않았다. 준비 단계 실패 시 후속 단계는 중단하며 자동 reset/data-loss 허용 옵션은 없다. 준비/이전 명령은 업무 데이터를 변경할 수 있으므로 일반 API 시작과 구분한다.
+- 저장소 Railway predeploy는 `database:prepare`, healthcheck는 `/ready`로 설정했다. 실제 Railway 설정이 저장소 predeploy를 실행하는지와 최신 배포 결과는 별도 확인이 필요하다. 과거 운영 설정에서 predeploy가 생략된 이력이 있으므로 배포 성공을 로컬 빌드로 대체하지 않는다.
+- 검증: 관련 7개 파일 101건 회귀, 양쪽 빌드, 번역·인코딩·diff 검사 통과. 전체 80개 스위트 회귀 결과는 아래 최종 검증 기록을 따른다. 테스트 모듈의 누락된 버전 적용 의존성, 구 삭제 함수에 대한 소스 검사, SQL 함수 본문을 익명 블록으로 오인하던 검사도 현재 계약으로 수정했다. 운영 로그인/업무 조작과 실제 DB 준비 실행은 미검증이다.
+- 최종 회귀: 전체 실행 중 확인한 검사 문제 4개 스위트(assignment-st-snapshot, at-training, relational-integrity, edit-revision)는 수정 후 별도 재실행하여 모두 통과했다. 전체 실행 및 재실행을 합친 최종 결과는 77/80개 스위트 통과이며 나머지 style-identity-postgres, relationship-bucket-integration, invoice-postgres는 전용 로컬 PostgreSQL URL 미설정으로 실행하지 못했다. 운영 DB URL로 대체하지 않았다.
+- 4번: 날짜/진행 차이/문구 포맷/SQL 삽입 등의 중복은 호출 인자·트랜잭션 경계와 계산 계약을 확인한 후 공통화해야 한다. 이번에는 수정하지 않았다.
+- 6번: `EmployeeCompensationPolicy`는 새 공장 급여 설정의 `SalaryItem/SalaryItemRate` 초기 생성에 아직 사용된다. API·테이블을 바로 삭제하면 초기화가 달라질 수 있으므로 기존 데이터와 소비자 확인 및 명시적 이전 설계가 먼저다. 기존 확정 급여 스냅샷은 재계산하지 않는다.
+
 ## 2026-10-16 진행률 공통화·주문 상태 단일화
 
 - 사용자 요청으로 레거시 조사 후속 중 진행률과 주문 상태만 수정했다. 비용 API·급여 마스터·시안 화면·시작/배포 이전 경로 등의 다른 정리 과제는 진행하지 않았다.

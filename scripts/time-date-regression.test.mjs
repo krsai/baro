@@ -164,8 +164,8 @@ test('payroll save rejects current month, missing factory and locked snapshots b
   }
 });
 
-test('production startup applies safe database schema synchronization before serving requests', () => {
-  assert.match(backendPackage.scripts.start, /prisma:apply:payroll-provisional/);
+test('production startup checks schema without replaying historical payroll synchronization', () => {
+  assert.equal(backendPackage.scripts.start, 'node dist/index.js');
   assert.doesNotMatch(backendPackage.scripts.start, /prisma:apply:migration-fix/);
   assert.doesNotMatch(backendPackage.scripts.start, /prisma:deploy:safe/);
 });

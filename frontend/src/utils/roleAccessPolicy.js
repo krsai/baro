@@ -16,24 +16,6 @@ export {
   sanitizeRoleAccessPolicy,
 } from './roleAccessPolicyCore.mjs';
 
-export const ACCESS_POLICY_STORAGE_KEY = 'baro:role-access-policy:v1';
-
-export const loadLegacyRoleAccessPolicy = () => {
-  if (typeof window === 'undefined') return null;
-  const raw = window.localStorage.getItem(ACCESS_POLICY_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return sanitizeRoleAccessPolicy(JSON.parse(raw));
-  } catch (_error) {
-    return null;
-  }
-};
-
-export const clearLegacyRoleAccessPolicy = () => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.removeItem(ACCESS_POLICY_STORAGE_KEY);
-};
-
 export const fetchRoleAccessPolicy = async () => {
   const response = await requestJSON('/system/access-policy', {
     skipGlobalLoading: true,
@@ -55,6 +37,5 @@ export const saveRoleAccessPolicy = async (policy) => {
     body: JSON.stringify({ policy: serializeRoleAccessPolicy(sanitized) }),
   });
   const saved = sanitizeRoleAccessPolicy(response?.policy);
-  clearLegacyRoleAccessPolicy();
   return saved;
 };

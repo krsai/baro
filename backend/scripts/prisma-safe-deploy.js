@@ -45,18 +45,6 @@ const runPrisma = (args, label) => {
   return result;
 };
 
-const factoryMigration = runPrisma(
-  ["db", "execute", "--schema", "./prisma/schema.prisma", "--file", "./scripts/remove-line-domain.sql"],
-  "Validating historical factory ownership and removing the retired Line domain"
-);
-if (factoryMigration.status !== 0) process.exit(factoryMigration.status || 1);
-
-// Transfer existing ownership before Prisma makes Style.customerOrgId required.
-const ownershipMigration = spawnSync(process.execPath, [require.resolve('./transfer-manufacturer-ownership'), '--apply'], {
-  env: commandEnv, encoding: 'utf8', stdio: 'inherit',
-});
-if (ownershipMigration.status !== 0) process.exit(ownershipMigration.status || 1);
-
 const pushAttempt = runPrisma(
   ["db", "push", "--skip-generate"],
   "Running prisma db push --skip-generate"

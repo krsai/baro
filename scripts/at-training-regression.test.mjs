@@ -76,7 +76,7 @@ test('backend AT mirrors constrained fitting, safe interpolation, and nearest-po
     'const resolveStyleProcessAtTotalSecondsForOrderQuantity'
   );
   const resolveEnd = backendSource.indexOf(
-    'const resolveStyleProcessAtPerPieceSecondsForOrderQuantity',
+    'const isSameStyleAtParams',
     resolveStart
   );
   const resolveSource = backendSource.slice(resolveStart, resolveEnd);
@@ -97,7 +97,7 @@ test('backend AT mirrors constrained fitting, safe interpolation, and nearest-po
   );
 });
 
-test('production start applies AT observation quality columns before launching the API', () => {
+test('AT quality schema is prepared explicitly and normal startup does not replay migrations', () => {
   const packageJson = JSON.parse(
     fs.readFileSync('backend/package.json', 'utf8')
   );
@@ -105,10 +105,12 @@ test('production start applies AT observation quality columns before launching t
     packageJson.scripts['prisma:apply:at-observation-quality'],
     /20260805153000_add_at_observation_quality\/migration\.sql/
   );
-  assert.match(
-    packageJson.scripts.start,
-    /prisma:apply:at-observation-quality[\s\S]*node dist\/index\.js/
-  );
+  assert.equal(packageJson.scripts.start, 'node dist/index.js');
+  const legacy = JSON.parse(fs.readFileSync('backend/scripts/database-legacy-steps.json', 'utf8'));
+  assert.ok(legacy.some(step => step.script === 'prisma:apply:at-observation-quality'));
+  const migration = fs.readFileSync('backend/migration_fix.sql', 'utf8');
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "attendanceCoverage"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "singleProcessLaborShare"/);
 });
 
 test('AT reset clears legacy JSON for manufacturer-owned and related brand styles', () => {

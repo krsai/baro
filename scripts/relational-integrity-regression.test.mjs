@@ -81,30 +81,17 @@ test('every application employee-create path supplies the organization default g
   assert.match(routes, /joinedAt: now,\s+gradeId: defaultGradeId!/);
 });
 
-test('runtime migration has balanced, non-nested anonymous PostgreSQL blocks', async () => {
+test('runtime migration has balanced PostgreSQL dollar-quoted blocks', async () => {
   const migration = await read('backend/migration_fix.sql');
-  let anonymousBlockOpen = false;
-
+  let blockOpen = false;
   migration.split(/\r?\n/).forEach((line, index) => {
-    if (/\bDO \$\$/.test(line)) {
-      assert.equal(
-        anonymousBlockOpen,
-        false,
-        `nested DO $$ block starts at migration_fix.sql:${index + 1}`
-      );
-      anonymousBlockOpen = true;
+    const sql = line.replace(/--.*$/, '');
+    if (/\bDO \$\$/.test(sql)) {
+      assert.equal(blockOpen, false, 'nested DO block at line ' + (index + 1));
     }
-    if (/\bEND \$\$;/.test(line)) {
-      assert.equal(
-        anonymousBlockOpen,
-        true,
-        `unmatched END $$ at migration_fix.sql:${index + 1}`
-      );
-      anonymousBlockOpen = false;
-    }
+    for (const delimiter of sql.matchAll(/\$\$/g)) blockOpen = !blockOpen;
   });
-
-  assert.equal(anonymousBlockOpen, false, 'migration_fix.sql has an unclosed DO $$ block');
+  assert.equal(blockOpen, false, 'migration_fix.sql has an unclosed dollar-quoted block');
 });
 
 test('factory deletion never detaches WorkRecords and the line router is removed', async () => {
@@ -137,27 +124,15 @@ test('WorkRecord normalization loads customer-owned Styles by canonical PK', asy
   assert.doesNotMatch(helper, /planStyleMeta\?\.styleId \?\? recordStyleId/);
 });
 
-test('AssignmentPlan timestamps are automatic and split quantity drift is rejected', async () => {
-  const [schema, backend] = await Promise.all([
-    read('backend/prisma/schema.prisma'),
-    read('backend/src/index.ts'),
-  ]);
+test('AssignmentPlan timestamps are automatic and order edits preserve placed plans', async () => {
+  const schema = await read('backend/prisma/schema.prisma');
   const model = schema.match(/model AssignmentPlan \{[\s\S]*?\n\}/)?.[0];
   assert.ok(model);
   assert.match(model, /updatedAt\s+DateTime\s+@updatedAt/);
-  assert.doesNotMatch(backend, /if \(group\.length > 1\) return/);
-  assert.match(backend, /split across multiple assignment plans/);
-  const start = backend.indexOf('const syncAssignmentPlansForOrderLock = async (');
-  const end = backend.indexOf('const buildOrderModificationLockState', start);
-  assert.ok(start >= 0 && end > start);
-  const helper = backend.slice(start, end);
-  assert.doesNotMatch(
-    helper,
-    /if \(annotatedPlan\.isCompleted === true \|\| annotatedPlan\.isPayrollLocked\) return;/
-  );
-  assert.doesNotMatch(helper, /resolveAssignmentQuantity\(row\) \?\? 0/);
-  assert.match(helper, /missing assignmentQuantity/);
-  assert.match(helper, /completed or payroll-locked assignment/);
+  const guard = await read('backend/src/services/orderSaveAssignmentGuard.ts');
+  assert.match(guard, /plan\.assignmentQuantity == null/);
+  assert.match(guard, /if \(impact\.styleRemoved\)/);
+  assert.doesNotMatch(guard, /assignmentPlan\.(?:update|delete|create)/);
 });
 
 test('WorkRecord canonical style display never falls back to request text', async () => {

@@ -18,9 +18,6 @@ import { assignmentBoardRevision, assertEditRevision, editTransaction, commitAss
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import compression from "compression";
-import { existsSync } from "node:fs";
-import { resolve as resolvePath } from "node:path";
-import { spawnSync } from "node:child_process";
 import "./config/env";
 import { Prisma, type OrgUserRole, type SalesPricingBasis } from "@prisma/client";
 import {
@@ -660,7 +657,7 @@ const isWorkerEmployeeRoleCode = (value: unknown): boolean =>
 const FACTORY_WORK_HOURS_PER_DAY = 8;
 const ATTENDANCE_DEFAULT_WORK_SECONDS = FACTORY_WORK_HOURS_PER_DAY * 60 * 60;
 const AT_TRAINING_CUTOFF_DAY = 5;
-const AT_AUTO_SYNC_ENABLED = false;
+
 const DEFAULT_TIME_REF_QUANTITY = 1000;
 const DEFAULT_ST_BUCKET_QUANTITY = 1;
 const ST_STANDARD_BUCKETS = Object.freeze([
@@ -702,14 +699,7 @@ const STARTUP_DB_RETRY_DELAY_MS = toPositiveInt(
   process.env.STARTUP_DB_RETRY_DELAY_MS,
   1500
 );
-const STARTUP_BOOTSTRAP_RETRY_DELAY_MS = toPositiveInt(
-  process.env.STARTUP_BOOTSTRAP_RETRY_DELAY_MS,
-  5000
-);
-const STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT =
-  String(process.env.STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT ?? "true")
-    .trim()
-    .toLowerCase() !== "false";
+
 const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
   "20261007_style_identity_fk_v1",
@@ -2386,29 +2376,6 @@ const resolveStyleProcessAtTotalSecondsForOrderQuantity = (
     : null;
 };
 
-const resolveStyleProcessAtPerPieceSecondsForOrderQuantity = (
-  process: any,
-  orderQuantity = 1
-) => {
-  const resolvedOrderQuantity = toPositiveInt(orderQuantity, 1);
-  const totalAt = resolveStyleProcessAtTotalSecondsForOrderQuantity(
-    process,
-    resolvedOrderQuantity
-  );
-  if (totalAt == null || !Number.isFinite(totalAt) || totalAt <= 0) return null;
-  return totalAt / resolvedOrderQuantity;
-};
-
-const resolveStyleProcessAtPerPieceSecondsForReferenceQuantity = (process: any) => {
-  const referenceQuantity = toPositiveInt(
-    (process as any)?.timeRefQuantity ?? (process as any)?.referenceQuantity,
-    DEFAULT_TIME_REF_QUANTITY
-  );
-  return resolveStyleProcessAtPerPieceSecondsForOrderQuantity(
-    process,
-    referenceQuantity
-  );
-};
 
 const isSameStyleAtParams = (
   left: StyleAtParams | null,
@@ -3271,11 +3238,7 @@ const normalizeProcessNameKey = (value: any) =>
   String(value ?? "")
     .trim()
     .toLowerCase();
-const toStyleProcessMetricKey = (
-  styleKey: string,
-  type: "code" | "name",
-  value: string
-) => `${styleKey}::${type}:${value}`;
+
 
 const collectPositiveIntSet = (...values: any[]) =>
   Array.from(
@@ -5524,51 +5487,6 @@ const replaceStyleProcessAtObservations = async ({
   return { observationCount: rows.length };
 };
 
-const clearUnfittedStyleProcessAtParams = async ({
-  orgId,
-  retainedStyleProcessIds = [],
-}: {
-  orgId: number;
-  retainedStyleProcessIds?: number[];
-}) => {
-  const normalizedRetainedIds = Array.from(
-    new Set(
-      retainedStyleProcessIds
-        .map((value) => toPositiveIntOrNull(value))
-        .filter((value): value is number => value !== null)
-    )
-  );
-  const clearedRows =
-    normalizedRetainedIds.length > 0
-      ? await prisma.$queryRaw<Array<{ styleId: number }>>(Prisma.sql`
-          UPDATE "StyleProcess"
-          SET "atParams" = NULL,
-              "updatedAt" = NOW()
-          WHERE "orgId" = ${orgId}
-            AND "atParams" IS NOT NULL
-            AND "id" NOT IN (${Prisma.join(normalizedRetainedIds)})
-          RETURNING "styleId"
-        `)
-      : await prisma.$queryRaw<Array<{ styleId: number }>>(Prisma.sql`
-          UPDATE "StyleProcess"
-          SET "atParams" = NULL,
-              "updatedAt" = NOW()
-          WHERE "orgId" = ${orgId}
-            AND "atParams" IS NOT NULL
-          RETURNING "styleId"
-        `);
-  const clearedStyleIds = Array.from(
-    new Set(
-      clearedRows
-        .map((row) => toPositiveIntOrNull(row.styleId))
-        .filter((value): value is number => value !== null)
-    )
-  );
-  return {
-    clearedProcesses: clearedRows.length,
-    clearedStyleIds,
-  };
-};
 
 const applyAtTrainingResultsToStyleProcesses = async ({
   orgId,
@@ -8376,51 +8294,7 @@ const toDateKeyInTimeZone = (input: any, timeZone = BUSINESS_TIME_ZONE) => {
   }
 };
 const todayDateKey = () => toDateKeyInTimeZone(new Date()) || new Date().toISOString().slice(0, 10);
-const evaluateWorkerEmploymentOnDateKey = ({
-  joinedAt,
-  leftAt,
-  targetDateKey,
-}: {
-  joinedAt?: unknown;
-  leftAt?: unknown;
-  targetDateKey?: string | null;
-}) => {
-  const normalizedTargetDateKey = normalizeDateKey(targetDateKey);
-  const joinedDateKey = toDateKeyInTimeZone(joinedAt, BUSINESS_TIME_ZONE);
-  const leftDateKey = toDateKeyInTimeZone(leftAt, BUSINESS_TIME_ZONE);
 
-  if (!normalizedTargetDateKey) {
-    return {
-      passed: false,
-      reason: "invalid_workDate",
-      joinedDateKey,
-      leftDateKey,
-    } as const;
-  }
-  if (joinedDateKey && normalizedTargetDateKey < joinedDateKey) {
-    return {
-      passed: false,
-      reason: "workDate_before_joinedAt",
-      joinedDateKey,
-      leftDateKey,
-    } as const;
-  }
-  // leftAt is inclusive: worker is treated as employed on leftAt date.
-  if (leftDateKey && normalizedTargetDateKey > leftDateKey) {
-    return {
-      passed: false,
-      reason: "workDate_after_leftAt",
-      joinedDateKey,
-      leftDateKey,
-    } as const;
-  }
-  return {
-    passed: true,
-    reason: "pass",
-    joinedDateKey,
-    leftDateKey,
-  } as const;
-};
 const evaluateWorkerEmploymentInDateRange = ({
   joinedAt,
   leftAt,
@@ -8500,11 +8374,7 @@ const calculateWorkedSeconds = (clockIn: any, clockOut: any): number | null => {
       : 24 * 60 - inMinutes + outMinutes;
   return Math.max(0, Math.round(diffMinutes * 60));
 };
-const toAttendanceWorkerDateKey = (
-  workDate: string,
-  workerId: number,
-  factoryId: number
-) => `${workDate}::${workerId}::${factoryId}`;
+
 const normalizeAttendanceEntryPayloadList = (entries: any) => {
   const rows: Array<{
     workerId: number;
@@ -9362,8 +9232,7 @@ const collectWorkRecordAssignmentPlanIds = (records: any): number[] =>
         .filter((planId): planId is number => planId !== null)
     )
   );
-const resolveWorkOrderIdFromAssignmentBoardItem = (item: any): number | null =>
-  toPositiveIntOrNull(item?.workOrderId);
+
 const summarizeWorkLogRecordsForDebug = (records: any) =>
   ensureArray(records).slice(0, 5).map((record, index) => ({
     index,
@@ -10347,47 +10216,8 @@ const syncAssignmentSchedulesFromWorkRecordPlans = async ({
     updatedAssignmentCount: changedExternalIds.size,
   };
 };
-const syncAssignmentSchedulesFromWorkRecords = async ({
-  orgId,
-  records,
-}: {
-  orgId: number;
-  records: any;
-}): Promise<{ updatedAssignmentCount: number }> =>
-  syncAssignmentSchedulesFromWorkRecordPlans({
-    orgId,
-    assignmentPlanIds: collectWorkRecordAssignmentPlanIds(records),
-  });
-const normalizeAssignmentScheduleRepairPayload = (
-  value: any,
-  fallback: any = null
-): {
-  startIndex: number;
-  endIndex: number;
-  startDayOffsetPercent: number | null;
-  startDayPercent: number | null;
-  endDayPercent: number | null;
-  startDateKey: string | null;
-  endDateKey: string | null;
-} | null => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
-  const fallbackStartIndex = toSignedInt(fallback?.startIndex, 0);
-  const startIndex = toSignedInt(value?.startIndex, fallbackStartIndex);
-  const endIndex = Math.max(startIndex, toSignedInt(value?.endIndex, startIndex));
-  const startDateKey = normalizeDateKey(value?.startDateKey) || null;
-  const endDateKey = normalizeDateKey(value?.endDateKey) || startDateKey;
 
-  return {
-    startIndex,
-    endIndex,
-    startDayOffsetPercent: toOptionalFloat(value?.startDayOffsetPercent, null),
-    startDayPercent: toOptionalFloat(value?.startDayPercent, null),
-    endDayPercent: toOptionalFloat(value?.endDayPercent, null),
-    startDateKey,
-    endDateKey,
-  };
-};
 const resolveWorkRecordProcessMetricFromRecord = (record: any) =>
   (() => {
     const styleProcessId = toPositiveIntOrNull(record?.styleProcessId);
@@ -11524,22 +11354,6 @@ const normalizeImportedWorkLogRows = (rows: any) =>
       };
     });
 
-const buildWorkLogImportFactoryScopeLookup = (factoryScopes: any[]) =>
-  ensureArray(factoryScopes).reduce((map, factoryScope) => {
-    const factoryId = toPositiveIntOrNull(factoryScope?.factoryId);
-    const nameKey = normalizeComparableText(factoryScope?.name);
-    if (!factoryId || !nameKey) return map;
-    const key = `${factoryId}:${nameKey}`;
-    const current = map.get(key) || [];
-    current.push({
-      id: toPositiveIntOrNull(factoryScope?.id),
-      factoryId,
-      name: resolveOptionalString(factoryScope?.name, "") ?? "",
-    });
-    map.set(key, current);
-    return map;
-  }, new Map<string, Array<{ id: number | null; factoryId: number; name: string }>>());
-
 
 const resolveWorkLogImportFactoryScopeForEmployee = ({ employee }: { employee: any; coverageStartDate?: string; coverageEndDate?: string }) => {
   const factory = employee?.factory;
@@ -12420,13 +12234,7 @@ const normalizeStateAssignmentItem = (item: any): any => {
 };
 const normalizeStateAssignments = (items: any): any[] =>
   ensureArray(items).map((item) => normalizeStateAssignmentItem(item));
-const buildAssignmentVersionMap = (items: any[]): Map<string, number> =>
-  ensureArray(items).reduce((map, item) => {
-    const externalId = resolveAssignmentExternalId(item);
-    if (!externalId || map.has(externalId)) return map;
-    map.set(externalId, toNonNegativeInt(item?.version, 0));
-    return map;
-  }, new Map<string, number>());
+
 const toStableJsonText = (value: any): string => {
   if (value === null || value === undefined) {
     return JSON.stringify(value);
@@ -12511,74 +12319,8 @@ const buildAssignmentByExternalId = (items: any[]) =>
     map.set(externalId, item);
     return map;
   }, new Map<string, any>());
-const normalizeAssignmentDisplayKey = (value: any) =>
-  String(value ?? "")
-    .trim()
-    .toUpperCase();
-const normalizeAssignmentCardColorKey = (value: any): string =>
-  normalizeAssignmentDisplayKey(value);
-const normalizeAssignmentCardGender = (value: any): string => {
-  const key = normalizeAssignmentDisplayKey(value);
-  if (key === "M" || key === "MEN" || key === "MALE" || key === "남성") return "M";
-  if (key === "W" || key === "WOMEN" || key === "FEMALE" || key === "여성") return "W";
-  if (key === "U" || key === "UNISEX" || key === "공용") return "U";
-  return "U";
-};
-const resolveAssignmentCardLegacyColorKey = (row: any): string => {
-  const fromCode = normalizeAssignmentCardColorKey(
-    row?.colorCode ?? row?.color ?? row?.colorName
-  );
-  if (fromCode) return fromCode;
-  const fromId = normalizeAssignmentCardColorKey(row?.colorId);
-  if (!fromId || fromId === "M" || fromId === "W" || fromId === "U") return "UNSPEC";
-  return fromId;
-};
-const resolveAssignmentCardVariantBucketsFromLegacyRows = (
-  rows: any[] = [],
-  itemGender = "U"
-) => {
-  const bucket = new Map<string, { colorId: string; gender: string; quantity: number }>();
-  ensureArray(rows).forEach((row) => {
-    const quantity = Number(row?.quantity) || 0;
-    if (quantity <= 0) return;
-    const colorId = resolveAssignmentCardLegacyColorKey(row);
-    const rawGender = normalizeAssignmentDisplayKey(row?.gender ?? "");
-    const gender =
-      rawGender === "M" || rawGender === "W" || rawGender === "U"
-        ? rawGender
-        : itemGender;
-    const bucketKey = `${colorId}::${gender}`;
-    const existing = bucket.get(bucketKey);
-    if (!existing) {
-      bucket.set(bucketKey, { colorId, gender, quantity });
-      return;
-    }
-    existing.quantity += quantity;
-  });
-  return Array.from(bucket.values());
-};
-const resolveAssignmentCardVariantBuckets = (item: any) => {
-  const itemGender = normalizeAssignmentCardGender(item?.gender);
-  const fromLegacyRows = resolveAssignmentCardVariantBucketsFromLegacyRows(
-    ensureArray(item?.quantities),
-    itemGender
-  );
-  if (fromLegacyRows.length > 0) return fromLegacyRows;
 
-  const fallbackQuantity = sumOrderItemQuantity(item);
-  if (fallbackQuantity <= 0) return [];
 
-  const fallbackColor = normalizeAssignmentCardColorKey(
-    item?.colorCode ?? item?.colorId ?? item?.color ?? "UNSPEC"
-  );
-  return [
-    {
-      colorId: fallbackColor || "UNSPEC",
-      gender: normalizeAssignmentCardGender(item?.gender),
-      quantity: fallbackQuantity,
-    },
-  ];
-};
 const resolveAssignmentCardAtTotalSecondsForOrderQuantity = (
   process: any,
   orderQuantity = 1
@@ -12586,15 +12328,7 @@ const resolveAssignmentCardAtTotalSecondsForOrderQuantity = (
   const normalized = normalizeStyleProcess(process);
   return resolveStyleProcessAtTotalSecondsForOrderQuantity(normalized, orderQuantity);
 };
-const resolveAssignmentCardAtPerPieceSeconds = (process: any, orderQuantity = 1) => {
-  const normalized = normalizeStyleProcess(process);
-  const totalAt = resolveAssignmentCardAtTotalSecondsForOrderQuantity(
-    normalized,
-    orderQuantity
-  );
-  if (totalAt == null || !Number.isFinite(totalAt) || totalAt <= 0) return null;
-  return resolveStyleProcessAtPerPieceSecondsForOrderQuantity(normalized, orderQuantity);
-};
+
 const resolveAssignmentCardStSeedSeconds = ({
   process,
   orderQuantity = 1,
@@ -13415,38 +13149,7 @@ const getOrderRelatedOrgIds = (order: any): number[] =>
         .filter((value): value is number => value !== null)
     )
   );
-const loadAccessibleWorkOrderIdsForAssignmentOrder = async ({
-  orderId,
-  orgIds,
-  db = prisma,
-}: {
-  orderId: string;
-  orgIds: number[];
-  db?: any;
-}): Promise<number[]> => {
-  const normalizedOrderId = resolveOptionalString(orderId, null);
-  const normalizedOrgIds = Array.from(
-    new Set(
-      ensureArray(orgIds)
-        .map((value) => toPositiveIntOrNull(value))
-        .filter((value): value is number => value !== null)
-    )
-  );
-  if (!normalizedOrderId || normalizedOrgIds.length === 0) return [];
 
-  const rows = await db.workOrder.findMany({
-    where: {
-      orderId: normalizedOrderId,
-      OR: [
-        { orgId: { in: normalizedOrgIds } },
-        { buyerOrgId: { in: normalizedOrgIds } },
-        { sellerOrgId: { in: normalizedOrgIds } },
-      ],
-    },
-    select: { id: true },
-  });
-  return collectPositiveIntSet(...rows.map((row: any) => row?.id));
-};
 const resolveAssignmentStartDateKey = (assignment: any): string | null => {
   const direct = normalizeDateKey(assignment?.startDateKey);
   if (direct) return direct;
@@ -14560,23 +14263,6 @@ type OrderStyleRemovalIssue = {
   code: string;
   message: string;
 };
-// STYLE_HAS_WORK_RECORDS hard-block on style removal was retired in favor of
-// the zero-quantity overflow handling in syncAssignmentPlansForOrderLock
-// (AGENTS.md 40번). DELETE /orders/:orderId keeps its own separate hard block
-// (see the ORDER_HAS_WORK_RECORDS guard below) since deleting the whole order
-// leaves no order left to reopen for later re-billing.
-const resolveOrderStyleQuantityMap = (order: any): Map<number, number> => {
-  const map = new Map<number, number>();
-  ensureArray(order?.workOrderItems).forEach((row: any) => {
-    const item = workOrderItemToItemShape(row);
-    const styleId = toPositiveIntOrNull(item?.styleId);
-    if (styleId === null) return;
-    const quantity = Math.max(0, Math.round(Number(sumOrderItemQuantity(item)) || 0));
-    map.set(styleId, (map.get(styleId) ?? 0) + quantity);
-  });
-  return map;
-};
-
 const accumulateStyleProcessGenderQuantity = (
   bucket: StyleProcessGenderQuantities,
   rawGender: "M" | "W" | "U" | null,
@@ -14589,35 +14275,7 @@ const accumulateStyleProcessGenderQuantity = (
   else bucket.unspecified += quantity;
 };
 
-// Same source rows as resolveOrderStyleQuantityMap, but split by gender - used
-// only when a style actually has a MALE_ONLY/FEMALE_ONLY StyleProcess (see
-// findStyleProcessGenderScopeAmbiguity). Deliberately does NOT default a
-// blank gender to "M" the way workOrderItemToItemShape's display shape does -
-// that default is fine for display, but silently attributing ungendered
-// quantity to a MALE_ONLY process here would misstate ST/CT.
-const resolveOrderStyleGenderQuantityMap = (
-  order: any
-): Map<number, StyleProcessGenderQuantities> => {
-  const map = new Map<number, StyleProcessGenderQuantities>();
-  ensureArray(order?.workOrderItems).forEach((row: any) => {
-    const item = workOrderItemToItemShape(row);
-    const styleId = toPositiveIntOrNull(item?.styleId);
-    if (styleId === null) return;
-    const quantity = Math.max(0, Math.round(Number(sumOrderItemQuantity(item)) || 0));
-    if (quantity <= 0) return;
-    const bucket =
-      map.get(styleId) ?? { total: 0, male: 0, female: 0, unspecified: 0 };
-    accumulateStyleProcessGenderQuantity(
-      bucket,
-      normalizeWorkOrderItemGender(row?.gender, null),
-      quantity
-    );
-    map.set(styleId, bucket);
-  });
-  return map;
-};
-
-// Same as resolveOrderStyleGenderQuantityMap but fetches WorkOrderItem rows
+// Fetch WorkOrderItem rows
 // directly for a set of workOrderIds (board-save paths don't have a loaded
 // `order` object with workOrderItems attached). Keyed by "workOrderId:styleId"
 // since the same style can appear in multiple orders with different splits.
@@ -14664,381 +14322,6 @@ const loadStyleGenderQuantityMapForWorkOrderIds = async (
   return map;
 };
 
-// Runs once, when an order transitions to locked (AGENTS.md 40번). Reconciles
-// existing AssignmentPlan rows for this order against the current
-// WorkOrderItem quantities:
-//  - quantity unchanged -> untouched
-//  - quantity changed, style still on the order -> assignmentQuantity/ST
-//    recalculated from the latest StyleProcessStandard buckets (same
-//    structural-change math the board save path uses)
-//  - style removed from the order entirely:
-//      - no linked WorkRecord -> safe to delete, same as the old save-time
-//        guard used to do
-//      - has a linked WorkRecord -> kept, forced to 0 quantity/0 ST instead of
-//        deleted, so the already-produced amount becomes pure overflow
-//        instead of silently disappearing
-// Completed and payroll-locked plans are never touched. Plans split across
-// more than one factory (several AssignmentPlan rows sharing the same cardId)
-// are also left untouched - redistributing a changed total across existing
-// splits is ambiguous and was not decided, see AGENTS.md 40번 known limitation.
-const syncAssignmentPlansForOrderLock = async ({
-  orgId,
-  order,
-  db = prisma,
-}: {
-  orgId: number;
-  order: any;
-  db?: any;
-}): Promise<{ zeroedStyles: OrderStyleRemovalIssue[] }> => {
-  const orderId = resolveOptionalString(order?.orderId, null);
-  if (!orderId) return { zeroedStyles: [] };
-
-  const styleQuantityMap = resolveOrderStyleQuantityMap(order);
-  const styleGenderQuantityMap = resolveOrderStyleGenderQuantityMap(order);
-  const workOrderIds = collectPositiveIntSet(order?.id);
-  if (workOrderIds.length === 0) {
-    throw createHttpError(409, "order is missing WorkOrder.id; cannot sync assignment plans accurately");
-  }
-  const plans = await db.assignmentPlan.findMany({
-    where: {
-      orgId,
-      OR: [
-        { workOrderId: { in: workOrderIds } },
-        { assignmentCard: { is: { workOrderId: { in: workOrderIds } } } },
-      ],
-    },
-    select: {
-      id: true,
-      externalId: true,
-      cardId: true,
-      workOrderId: true,
-      styleId: true,
-      isCompleted: true,
-      assignmentQuantity: true,
-      assignmentStTotalSeconds: true,
-      productionCompletedAt: true,
-      closedAt: true,
-      completedAt: true,
-    },
-  });
-  if (plans.length === 0) return { zeroedStyles: [] };
-
-  const annotatedPlans = await annotateAssignmentPlanRowsWithPayrollLocks(orgId, plans);
-  const planById = new Map<number, any>(
-    annotatedPlans.map((plan) => [Number(plan.id), plan])
-  );
-
-  const plansByStyleId = new Map<number, any[]>();
-  const workOrderIdSet = new Set(workOrderIds);
-  const missingWorkOrderFkPlanIds: string[] = [];
-  const missingStyleFkPlanIds: string[] = [];
-  plans.forEach((plan: any) => {
-    const annotatedPlan = planById.get(Number(plan.id)) ?? plan;
-    const planWorkOrderId = toPositiveIntOrNull(annotatedPlan?.workOrderId ?? plan?.workOrderId);
-    if (planWorkOrderId === null || !workOrderIdSet.has(planWorkOrderId)) {
-      missingWorkOrderFkPlanIds.push(
-        resolveOptionalString(annotatedPlan?.externalId ?? plan?.externalId, null) ??
-          String(annotatedPlan?.id ?? plan?.id ?? "")
-      );
-      return;
-    }
-    const styleId = toPositiveIntOrNull(annotatedPlan?.styleId ?? plan?.styleId);
-    if (styleId === null) {
-      missingStyleFkPlanIds.push(
-        resolveOptionalString(annotatedPlan?.externalId ?? plan?.externalId, null) ??
-          String(annotatedPlan?.id ?? plan?.id ?? "")
-      );
-      return;
-    }
-    const bucket = plansByStyleId.get(styleId) ?? [];
-    bucket.push(annotatedPlan);
-    plansByStyleId.set(styleId, bucket);
-  });
-  if (missingWorkOrderFkPlanIds.length > 0) {
-    throw createHttpError(
-      409,
-      `assignment plan is missing workOrderId FK; cannot sync order lock accurately (${missingWorkOrderFkPlanIds.join(", ")})`
-    );
-  }
-  if (missingStyleFkPlanIds.length > 0) {
-    throw createHttpError(
-      409,
-      `assignment plan is missing styleId FK; cannot sync order lock accurately (${missingStyleFkPlanIds.join(", ")})`
-    );
-  }
-
-  const linkedPlanIdSet = new Set(
-    await loadLinkedWorkRecordPlanIds({
-      planIds: plans.map((plan: any) => plan.id),
-      db,
-    })
-  );
-
-  const pendingZero: { plan: any; styleId: number; linked: boolean }[] = [];
-  const pendingRecalc: { plan: any; styleId: number; targetQuantity: number }[] = [];
-
-  plansByStyleId.forEach((group, styleId) => {
-    const invalidQuantityPlans = group.filter(
-      (row) => resolveAssignmentQuantity(row) === null
-    );
-    if (invalidQuantityPlans.length > 0) {
-      const planIds = invalidQuantityPlans.map(
-        (row) =>
-          resolveOptionalString(row?.externalId, null) ??
-          String(row?.id ?? "")
-      );
-      throw createHttpError(
-        409,
-        `style ${styleId} has assignment plans with missing assignmentQuantity (${planIds.join(", ")})`
-      );
-    }
-
-    const targetQuantity = styleQuantityMap.get(styleId) ?? 0;
-    const currentQuantity = group.reduce(
-      (sum, row) => sum + Number(resolveAssignmentQuantity(row)),
-      0
-    );
-    if (group.length > 1) {
-      if (targetQuantity !== currentQuantity) {
-        throw createHttpError(
-          409,
-          `style ${styleId} is split across multiple assignment plans; adjust assignment quantities explicitly before changing the order quantity`
-        );
-      }
-      return;
-    }
-    const plan = group[0];
-    if (targetQuantity === currentQuantity) return;
-    if (plan.isCompleted === true || plan.isPayrollLocked) {
-      throw createHttpError(
-        409,
-        `style ${styleId} quantity differs from its completed or payroll-locked assignment; unlock or correct the assignment explicitly`
-      );
-    }
-
-    if (targetQuantity === 0) {
-      pendingZero.push({ plan, styleId, linked: linkedPlanIdSet.has(Number(plan.id)) });
-      return;
-    }
-    pendingRecalc.push({ plan, styleId, targetQuantity });
-  });
-
-  const zeroedStyles: OrderStyleRemovalIssue[] = [];
-
-  if (pendingZero.length > 0) {
-    const cardIds = pendingZero
-      .map((item) => resolveOptionalString(item.plan.cardId, null))
-      .filter((value): value is string => Boolean(value));
-    const existingCardRows =
-      cardIds.length > 0
-        ? await db.assignmentCard.findMany({
-            where: { orgId, cardId: { in: cardIds } },
-            select: { cardId: true, payload: true },
-          })
-        : [];
-    const cardPayloadByCardId = new Map<string, any>(
-      existingCardRows.map((row: any) => [row.cardId, row.payload])
-    );
-
-    const notLinked = pendingZero.filter((item) => !item.linked);
-    if (notLinked.length > 0) {
-      const notLinkedCardIds = notLinked
-        .map((item) => resolveOptionalString(item.plan.cardId, null))
-        .filter((value): value is string => Boolean(value));
-      if (notLinkedCardIds.length > 0) {
-        await db.assignmentCard.deleteMany({
-          where: { orgId, cardId: { in: notLinkedCardIds } },
-        });
-      }
-      await detachWorkRecordsAndDeleteAssignmentPlans({
-        planIds: notLinked.map((item) => item.plan.id),
-        db,
-      });
-    }
-
-    for (const item of pendingZero) {
-      if (!item.linked) continue;
-      const cardId = resolveOptionalString(item.plan.cardId, null);
-      await db.assignmentPlan.update({
-        where: { id: item.plan.id },
-        data: { assignmentQuantity: 0, assignmentStTotalSeconds: 0 },
-      });
-      const existingPayload = cardId ? cardPayloadByCardId.get(cardId) ?? {} : {};
-      const styleName =
-        resolveOptionalString(existingPayload?.styleName, null) ?? `Style ${item.styleId}`;
-      if (cardId) {
-        const nextPayload = {
-          ...existingPayload,
-          id: cardId,
-          originOrderId: resolveOptionalString(existingPayload?.originOrderId, null) ?? cardId,
-          cardQuantity: 0,
-          type: "DELTA",
-        };
-        await db.assignmentCard.upsert({
-          where: { orgId_cardId: { orgId, cardId } },
-          // update: style/order identity didn't change here, only quantity -
-          // the real FK columns from whenever this card was first created
-          // stay as they were.
-          update: { payload: nextPayload },
-          // Repair path for a zero-quantity overflow card row that is missing
-          // entirely. The FK columns come from the already-validated
-          // WorkOrder/AssignmentPlan scope, never from payload parsing.
-          create: {
-            orgId,
-            cardId,
-            sortOrder: 0,
-            payload: nextPayload,
-            styleId: item.styleId,
-            workOrderId: toPositiveIntOrNull(order?.id),
-            buyerOrgId: toPositiveIntOrNull(order?.buyerOrgId ?? order?.customerId),
-          },
-        });
-      }
-      zeroedStyles.push({
-        styleId: item.styleId,
-        styleCode: resolveOptionalString(existingPayload?.styleCode, null) ?? "",
-        styleName,
-        code: "STYLE_ZEROED_HAS_WORK_RECORDS",
-        message: `${styleName}: removed from the order but kept as a zero-quantity overflow assignment because it already has work records.`,
-      });
-    }
-  }
-
-  if (pendingRecalc.length > 0) {
-    const styleIds = Array.from(new Set(pendingRecalc.map((item) => item.styleId)));
-    let styles = await db.style.findMany({
-      where: { id: { in: styleIds } },
-      select: {
-        id: true,
-        customerOrgId: true, orgId: true,
-        processes: true,
-        timeBucketSetVersionId: true,
-        timeBucketSetVersion: {
-          select: {
-            entries: {
-              orderBy: { bucketQuantity: "asc" },
-              select: { id: true, bucketQuantity: true },
-            },
-          },
-        },
-      },
-    });
-    styles = applyRelationshipTimeBucketContexts({
-      styles,
-      contextByStyleId: await loadRelationshipTimeBucketContextByStyleId({
-        db,
-        manufacturerOrgId: orgId,
-        styles,
-      }),
-    });
-    const styleById = new Map<number, any>(
-      styles.map((style: any) => [Number(style.id), style])
-    );
-    const quantityByStyleId = new Map<number, Set<number>>();
-    pendingRecalc.forEach((item) => {
-      const style = styleById.get(item.styleId);
-      const bucketQuantity = resolveStBucketQuantityFromValues(
-        item.targetQuantity,
-        ensureArray(style?.timeBucketSetVersion?.entries).map(
-          (entry) => entry.bucketQuantity
-        )
-      );
-      const current = quantityByStyleId.get(item.styleId) ?? new Set<number>();
-      current.add(bucketQuantity);
-      quantityByStyleId.set(item.styleId, current);
-    });
-    await ensureStyleStandardsForQuantities({
-      styles,
-      quantityByStyleId,
-      processOrgId: orgId,
-      db,
-    });
-    const styleProcessRowsByStyleId = await loadStyleProcessRowsByStyleId(styleIds, {
-      processOrgId: orgId,
-      db,
-    });
-
-    for (const item of pendingRecalc) {
-      const style = styleById.get(item.styleId);
-      const bucketQuantity = resolveStBucketQuantityFromValues(
-        item.targetQuantity,
-        ensureArray(style?.timeBucketSetVersion?.entries).map(
-          (entry) => entry.bucketQuantity
-        )
-      );
-      const styleProcessRows = styleProcessRowsByStyleId.get(item.styleId) ?? [];
-      const quantityBucketEntryId = toPositiveInt(
-        ensureArray(style?.timeBucketSetVersion?.entries).find(
-          (entry) => entry.bucketQuantity === bucketQuantity
-        )?.id,
-        0
-      );
-      const quantityBucketSetVersionId = toPositiveInt(
-        style?.timeBucketSetVersionId,
-        0
-      );
-      const needsGenderQuantities = styleProcessRows.some(
-        (row: any) => normalizeProcessGenderScope(row?.genderScope) !== "UNISEX"
-      );
-      const genderQuantities = needsGenderQuantities
-        ? styleGenderQuantityMap.get(item.styleId) ?? null
-        : null;
-      if (needsGenderQuantities && !genderQuantities) {
-        throw createHttpError(
-          409,
-          `style ${item.styleId} has a male-only/female-only process but no order line quantity could be resolved for it`
-        );
-      }
-      if (findStyleProcessGenderScopeAmbiguity(styleProcessRows, genderQuantities)) {
-        throw createHttpError(
-          409,
-          `style ${item.styleId} has a male-only/female-only process but its order lines include ${genderQuantities?.unspecified} unit(s) without an explicit gender - specify M/W gender for every order line of this style`
-        );
-      }
-      const assignmentStTotalSeconds = calculateAssignmentStTotalSecondsFromStyleRows({
-        styleProcessRows,
-        assignmentQuantity: item.targetQuantity,
-        quantityBucketEntryId,
-        quantityBucketSetVersionId,
-        genderQuantities,
-      });
-      await db.assignmentPlan.update({
-        where: { id: item.plan.id },
-        data: {
-          assignmentQuantity: item.targetQuantity,
-          ...(assignmentStTotalSeconds !== null ? { assignmentStTotalSeconds } : {}),
-          assignmentStSnapshot: buildAssignmentStSnapshot({
-            styleProcessRows,
-            assignmentQuantity: item.targetQuantity,
-            bucketQuantity,
-            quantityBucketEntryId,
-            quantityBucketSetVersionId,
-            actor: getCurrentRequestActor(),
-            genderQuantities,
-          }),
-        },
-      });
-    }
-  }
-
-  return { zeroedStyles };
-};
-
-const assertOrderItemsReadyForLock = async ({
-  orderId,
-  db,
-}: {
-  orderId: number;
-  db: Prisma.TransactionClient;
-}) => {
-  const items = await db.workOrderItem.findMany({
-    where: { workOrderId: orderId },
-    select: { id: true, styleId: true },
-  });
-  if (items.length === 0 || items.some((item) => toPositiveIntOrNull(item.styleId) === null)) {
-    throw createHttpError(409, "every order item must have a style before locking");
-  }
-};
 const buildOrderModificationLockState = ({
   order,
   isAssignmentLocked = false,
@@ -15541,25 +14824,7 @@ const assertFiniteAssignmentScheduleIndices = (items: any[]) => {
     }
   });
 };
-const resolveAssignmentSnapshotProcessCodeCandidates = (process: any): string[] => {
-  const bucket = new Set<string>();
-  const pushCode = (value: any) => {
-    const key = normalizeProcessCodeKey(value);
-    if (key) bucket.add(key);
-  };
 
-  pushCode(process?.processCode);
-  pushCode(process?.code);
-  const processKey = resolveOptionalString(process?.processKey, null);
-  if (processKey) {
-    pushCode(processKey);
-    const instancePatternMatch = processKey.match(/^(.*)-\d+-\d+$/);
-    if (instancePatternMatch?.[1]) {
-      pushCode(instancePatternMatch[1]);
-    }
-  }
-  return Array.from(bucket.values());
-};
 // syncAssignmentPlanColorRefs was retired in Phase D
 // (AssignmentCard/AssignmentPlan FK+join redesign) along with
 // AssignmentPlan.colorId/colorName - color/gender were never tracked at the
@@ -15648,81 +14913,7 @@ const toAssignmentPlanWriteData = (
 // mirror and then blocks if a usable CT snapshot still cannot be built, so
 // this helper should not be the final safety gate. It remains useful for
 // surfacing process-code coverage drift after a create.
-const validateNewAssignmentPlanCtSnapshotProcesses = async ({
-  createPlanRows,
-  cardIdToAssignmentCardId,
-  db,
-}: {
-  createPlanRows: any[];
-  cardIdToAssignmentCardId: Map<
-    string,
-    { id: number; styleId: number | null; workOrderId: number | null; buyerOrgId: number | null; orgRelationshipId: number | null }
-  >;
-  db: any;
-}) => {
-  if (createPlanRows.length === 0) return;
 
-  const styleIdByExternalId = new Map<string, number>();
-  const styleIdsToCheck = new Set<number>();
-  createPlanRows.forEach((item) => {
-    const externalId = resolveAssignmentExternalId(item);
-    const cardId = resolveOptionalString(item?.cardId, null);
-    const styleId = cardId ? cardIdToAssignmentCardId.get(cardId)?.styleId ?? null : null;
-    if (externalId && styleId !== null) {
-      styleIdByExternalId.set(externalId, styleId);
-      styleIdsToCheck.add(styleId);
-    }
-  });
-  if (styleIdsToCheck.size === 0) return;
-
-  const styleProcessRowsByStyleId = await loadStyleProcessRowsByStyleId(
-    Array.from(styleIdsToCheck),
-    { db }
-  );
-
-  const issues: { externalId: string; styleId: number; missingProcessCodes: string[] }[] = [];
-  createPlanRows.forEach((item) => {
-    const externalId = resolveAssignmentExternalId(item);
-    if (!externalId) return;
-    const styleId = styleIdByExternalId.get(externalId);
-    if (styleId === undefined) return;
-    const liveProcessRows = styleProcessRowsByStyleId.get(styleId) ?? [];
-    if (liveProcessRows.length === 0) return;
-
-    const snapshot = resolveNormalizedAssignmentCtSnapshot(item);
-    const snapshotCodes = new Set<string>();
-    ensureArray(snapshot?.processes).forEach((process: any) => {
-      resolveAssignmentSnapshotProcessCodeCandidates(process).forEach((code) =>
-        snapshotCodes.add(code)
-      );
-    });
-
-    const missingProcessCodes = liveProcessRows
-      .filter((row: any) => {
-        const key = normalizeProcessCodeKey(row?.processCode);
-        return key && !snapshotCodes.has(key);
-      })
-      .map((row: any) => row.processCode);
-
-    if (missingProcessCodes.length > 0) {
-      issues.push({ externalId, styleId, missingProcessCodes });
-    }
-  });
-
-  if (issues.length > 0) {
-    // Non-blocking diagnostic only. The final save gate runs earlier in the
-    // PUT flow after the server has attempted a live style-process refresh;
-    // if CT is still unusable there, the save has already been rejected.
-    console.warn(
-      `[assignment-board-state] new assignment CT snapshot missing current style processes (not blocking save): ${issues
-        .map(
-          (issue) =>
-            `${issue.externalId} (style ${issue.styleId}: ${issue.missingProcessCodes.join(", ")})`
-        )
-        .join("; ")}`
-    );
-  }
-};
 const COMPLETED_ASSIGNMENT_PLAN_WRITE_SELECT = {
   id: true,
   externalId: true,
@@ -17071,16 +16262,7 @@ const PROCESS_MASTER_GROUP_BY_TYPE: Record<
   ACTION: "actions",
   ACTION_SPEC: "actionSpecs",
 };
-const PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE: Record<
-  ProcessMasterOptionType,
-  ProcessMasterOptionGroupKey
-> = {
-  LOCATION: "locations",
-  TARGET: "targets",
-  ACTION: "actions",
-  TARGET_SPEC: "targetSpecs",
-  ACTION_SPEC: "actionSpecs",
-};
+
 
 const PROCESS_MASTER_FALLBACK_CODE_BY_TYPE: Record<ProcessMasterOptionType, string> = {
   LOCATION: "LOCATION",
@@ -17127,54 +16309,6 @@ type ProcessMasterSeedItem = {
   vi: string;
 };
 
-const PROCESS_MASTER_DEFAULT_OPTIONS: Record<
-  ProcessMasterOptionType,
-  ProcessMasterSeedItem[]
-> = {
-  LOCATION: [
-    { ko: "앞여밈", en: "Front opening", vi: "Nep truoc" },
-    { ko: "앞목", en: "Front neckline", vi: "Co truoc" },
-    { ko: "앞판", en: "Front panel", vi: "Than truoc" },
-    { ko: "뒤목", en: "Back neckline", vi: "Co sau" },
-    { ko: "뒤판", en: "Back panel", vi: "Than sau" },
-    { ko: "소매", en: "Sleeve", vi: "Tay" },
-    { ko: "어깨", en: "Shoulder", vi: "Vai" },
-    { ko: "옆선", en: "Side seam", vi: "Suon" },
-    { ko: "허리", en: "Waist", vi: "Eo" },
-    { ko: "밑단", en: "Hem", vi: "Lai" },
-    { ko: "칼라", en: "Collar", vi: "Co ao" },
-  ],
-  TARGET: [
-    { ko: "주머니", en: "Pocket", vi: "Tui" },
-    { ko: "지퍼", en: "Zipper", vi: "Day keo" },
-    { ko: "페이싱", en: "Facing", vi: "Nep lot" },
-    { ko: "요크", en: "Yoke", vi: "Cau vai" },
-    { ko: "테이프", en: "Tape", vi: "Bang" },
-    { ko: "바이어스", en: "Bias", vi: "Vien xeo" },
-    { ko: "고무줄", en: "Elastic", vi: "Thun" },
-    { ko: "시보리", en: "Rib", vi: "Cua bo" },
-    { ko: "안감", en: "Lining", vi: "Lot trong" },
-    { ko: "겉감", en: "Outer fabric", vi: "Lot ngoai" },
-    { ko: "단추", en: "Button", vi: "Nut" },
-    { ko: "스냅", en: "Snap", vi: "Nut bam" },
-  ],
-  ACTION: [
-    { ko: "부착", en: "Attach", vi: "Gan" },
-    { ko: "상침", en: "Topstitch", vi: "Di top" },
-    { ko: "봉제", en: "Sew", vi: "May" },
-    { ko: "연결", en: "Join", vi: "Noi" },
-    { ko: "접기", en: "Fold", vi: "Gap" },
-    { ko: "뒤집어 박기", en: "Turn-and-stitch", vi: "Lat va may" },
-    { ko: "오버록", en: "Overlock", vi: "Vat so" },
-    { ko: "시접정리", en: "Seam finish", vi: "Hoan tat duong may" },
-    { ko: "검사", en: "Inspect", vi: "Kiem tra" },
-    { ko: "다림", en: "Press", vi: "Ui" },
-  ],
-  TARGET_SPEC: [
-  ],
-  ACTION_SPEC: [
-  ],
-};
 
 const normalizeProcessMasterType = (value: any): ProcessMasterOptionType | null => {
   const normalized = String(value ?? "")
@@ -17409,13 +16543,6 @@ const listProcessMasterOptionsWithDb = async (
 const listProcessMasterOptions = async (db: ProcessMasterStoreClient = prisma): Promise<ProcessMasterOptionRow[]> =>
   listProcessMasterOptionsWithDb(db);
 
-const countProcessMasterOptions = async () => {
-  const rows = await prisma.$queryRaw<Array<{ count: bigint | number }>>(Prisma.sql`
-    SELECT COUNT(*)::bigint AS "count"
-    FROM "ProcessMasterOption"
-  `);
-  return Number(rows[0]?.count ?? 0);
-};
 
 const insertProcessMasterOptions = async (
   rows: Array<{
@@ -17560,161 +16687,6 @@ const insertProcessMasterOptionRelationsWithDb = async (
   );
 };
 
-const insertProcessMasterOptionRelations = async (
-  rows: Array<{
-    type: ProcessMasterRelationType;
-    parentOptionId: number;
-    childOptionId: number;
-  }>
-) => insertProcessMasterOptionRelationsWithDb(prisma, rows);
-
-const normalizeProcessMasterMatchToken = (value: any): string =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-
-const buildProcessMasterMatchTokenSet = (row: Partial<ProcessMasterOptionRow>) => {
-  const tokens = new Set<string>();
-  [
-    row?.code,
-    row?.label,
-    row?.nameKo,
-    row?.nameEn,
-    row?.nameVi,
-  ].forEach((value) => {
-    const token = normalizeProcessMasterMatchToken(value);
-    if (token) tokens.add(token);
-  });
-  return tokens;
-};
-
-const PROCESS_MASTER_TYPE_CORRECTIONS: Array<{
-  expectedType: ProcessMasterOptionType;
-  aliases: string[];
-}> = [
-  {
-    expectedType: "TARGET",
-    aliases: ["주머니", "Pocket", "Tui", "POCKET"],
-  },
-];
-
-const rowMatchesAliases = (row: Partial<ProcessMasterOptionRow>, aliases: Set<string>) => {
-  const rowTokens = buildProcessMasterMatchTokenSet(row);
-  for (const token of rowTokens) {
-    if (aliases.has(token)) return true;
-  }
-  return false;
-};
-
-const applyProcessMasterTypeCorrections = async () => {
-  const existing = await listProcessMasterOptions();
-  if (existing.length === 0) return existing;
-
-  let workingRows = [...existing];
-  let hasChanges = false;
-
-  for (const correction of PROCESS_MASTER_TYPE_CORRECTIONS) {
-    const aliasSet = new Set(
-      correction.aliases
-        .map((alias) => normalizeProcessMasterMatchToken(alias))
-        .filter(Boolean)
-    );
-    if (aliasSet.size === 0) continue;
-
-    const misplacedRows = workingRows.filter(
-      (row) =>
-        row.type !== correction.expectedType &&
-        rowMatchesAliases(row, aliasSet)
-    );
-
-    for (const row of misplacedRows) {
-      const normalizedCode = normalizeProcessMasterCode(row.code);
-      const duplicateInExpectedType = workingRows.find(
-        (candidate) =>
-          candidate.id !== row.id &&
-          candidate.type === correction.expectedType &&
-          (rowMatchesAliases(candidate, aliasSet) ||
-            (normalizedCode &&
-              normalizeProcessMasterCode(candidate.code) === normalizedCode))
-      );
-
-      if (duplicateInExpectedType) {
-        await deleteProcessMasterOptionsByIds([row.id]);
-        workingRows = workingRows.filter((candidate) => candidate.id !== row.id);
-      } else {
-        await updateProcessMasterOptionRow({
-          id: row.id,
-          type: correction.expectedType,
-          code: row.code,
-          label: row.label,
-          nameKo: row.nameKo || "",
-          nameEn: row.nameEn || "",
-          nameVi: row.nameVi || "",
-          sortOrder: row.sortOrder,
-        });
-        workingRows = workingRows.map((candidate) =>
-          candidate.id === row.id
-            ? { ...candidate, type: correction.expectedType }
-            : candidate
-        );
-      }
-
-      hasChanges = true;
-    }
-  }
-
-  if (!hasChanges) return existing;
-  return listProcessMasterOptions();
-};
-
-const ensureDefaultProcessMasterOptions = async () => {
-  const existingCount = await countProcessMasterOptions();
-  if (existingCount === 0) {
-    const seedRows: Array<{
-      type: ProcessMasterOptionType;
-      code: string;
-      label: string;
-      nameKo: string;
-      nameEn: string;
-      nameVi: string;
-      sortOrder: number;
-    }> = [];
-
-    PROCESS_MASTER_TYPE_KEYS.forEach((typeKey) => {
-      const type = typeKey as ProcessMasterOptionType;
-      const usedCodes = new Set<string>();
-      PROCESS_MASTER_DEFAULT_OPTIONS[type].forEach((item, index) => {
-        const nameKo = normalizeProcessMasterLabel(item?.ko);
-        const nameEn = normalizeProcessMasterLabel(item?.en);
-        const nameVi = normalizeProcessMasterLabel(item?.vi);
-        const label = nameKo || nameEn || nameVi;
-        const codeSeedLabel = nameEn || nameKo || nameVi || label;
-        const code = generateUniqueProcessMasterCode({
-          type,
-          label: codeSeedLabel,
-          usedCodes,
-        });
-        usedCodes.add(code);
-        seedRows.push({
-          type,
-          code,
-          label,
-          nameKo,
-          nameEn,
-          nameVi,
-          sortOrder: index + 1,
-        });
-      });
-    });
-
-    if (seedRows.length > 0) {
-      await insertProcessMasterOptions(seedRows);
-    }
-  }
-
-  return applyProcessMasterTypeCorrections();
-};
 
 const flattenProcessMasterPayloadItems = (payload: any) => {
   const pushItems = (
@@ -18240,37 +17212,6 @@ type ProcessCompositionKind =
   | "part"
   | "spec";
 
-const toCanonicalProcessCompositionKind = (
-  kind: ProcessCompositionKind
-): "location" | "target" | "targetSpec" | "action" | "actionSpec" => {
-  if (kind === "part") return "location";
-  if (kind === "spec") return "targetSpec";
-  return kind;
-};
-
-const listProcessMasterOptionsByType = async (
-  db: ProcessMasterStoreClient,
-  type: ProcessMasterOptionType
-): Promise<ProcessMasterOptionRow[]> =>
-  db.$queryRaw<ProcessMasterOptionRow[]>(Prisma.sql`
-    SELECT
-      "id",
-      "type",
-      "code",
-      "label",
-      "nameKo",
-      "nameEn",
-      "nameVi",
-      "sortOrder"
-    FROM "ProcessMasterOption"
-    WHERE "type" = ${type}::"ProcessMasterOptionType"
-    ORDER BY "sortOrder" ASC, "id" ASC
-  `);
-
-const listActionProcessMasterOptions = async (
-  db: ProcessMasterStoreClient
-): Promise<ProcessMasterOptionRow[]> =>
-  listProcessMasterOptionsByType(db, "ACTION");
 
 const insertProcessMasterOptionsWithDb = async (
   db: ProcessMasterStoreClient,
@@ -18317,209 +17258,6 @@ const insertProcessMasterOptionsWithDb = async (
   `);
 };
 
-const PROCESS_MASTER_TYPE_BY_COMPOSITION_KIND: Record<
-  ProcessCompositionKind,
-  ProcessMasterOptionType
-> = {
-  location: "LOCATION",
-  part: "LOCATION",
-  target: "TARGET",
-  targetSpec: "TARGET_SPEC",
-  action: "ACTION",
-  actionSpec: "ACTION_SPEC",
-  spec: "TARGET_SPEC",
-};
-
-const collectStyleProcessMasterCandidatesByKind = (
-  processes: any,
-  kind: ProcessCompositionKind
-) => {
-  const canonicalKind = toCanonicalProcessCompositionKind(kind);
-  const candidates: Array<{
-    label: string;
-    nameKo: string;
-    nameEn: string;
-    nameVi: string;
-  }> = [];
-
-  normalizeStyleProcesses(processes).forEach((process) => {
-    const composition = normalizeStyleProcessComposition(
-      (process as any)?.processComposition
-    );
-    const targetPairs = ensureArray((composition as any)?.targetPairs);
-    const actionPairs = ensureArray((composition as any)?.actionPairs);
-    const entries =
-      canonicalKind === "location"
-        ? ensureArray((composition as any)?.locations)
-        : canonicalKind === "target"
-          ? targetPairs.map((pair: any) => (pair as any)?.target).filter(Boolean)
-          : canonicalKind === "targetSpec"
-            ? targetPairs
-                .map((pair: any) => (pair as any)?.targetSpec)
-                .filter(Boolean)
-            : canonicalKind === "actionSpec"
-              ? actionPairs
-                  .map((pair: any) => (pair as any)?.actionSpec)
-                  .filter(Boolean)
-              : actionPairs.map((pair: any) => (pair as any)?.action).filter(Boolean);
-    entries.forEach((entry) => {
-      const label = normalizeProcessMasterLabel(
-        (entry as any)?.label ??
-          (entry as any)?.nameKo ??
-          (entry as any)?.nameEn ??
-          (entry as any)?.nameVi
-      );
-      if (!label) return;
-
-      if (canonicalKind === "action") {
-        const token = normalizeProcessMasterMatchToken(label);
-        if (
-          token.includes("작업 누락") ||
-          token.includes("action missing") ||
-          token.includes("thieu thao tac")
-        ) {
-          return;
-        }
-      }
-
-      const nameKo = normalizeProcessMasterLabel((entry as any)?.nameKo || label);
-      const nameEn = normalizeProcessMasterLabel((entry as any)?.nameEn || label);
-      const nameVi = normalizeProcessMasterLabel((entry as any)?.nameVi || label);
-
-      candidates.push({
-        label,
-        nameKo: nameKo || label,
-        nameEn: nameEn || label,
-        nameVi: nameVi || label,
-      });
-    });
-  });
-
-  const seen = new Set<string>();
-  return candidates.filter((candidate) => {
-    const tokenKey = [
-      normalizeProcessMasterMatchToken(candidate.label),
-      normalizeProcessMasterMatchToken(candidate.nameKo),
-      normalizeProcessMasterMatchToken(candidate.nameEn),
-      normalizeProcessMasterMatchToken(candidate.nameVi),
-    ]
-      .filter(Boolean)
-      .sort()
-      .join("|");
-    if (!tokenKey || seen.has(tokenKey)) return false;
-    seen.add(tokenKey);
-    return true;
-  });
-};
-
-const ensureProcessMasterOptionsFromStyleProcesses = async ({
-  processes,
-  kinds = [
-    "location",
-    "target",
-    "targetSpec",
-    "action",
-    "actionSpec",
-  ] as ProcessCompositionKind[],
-  db,
-}: {
-  processes: any;
-  kinds?: ProcessCompositionKind[];
-  db: ProcessMasterStoreClient;
-}) => {
-  for (const kind of kinds) {
-    const type = PROCESS_MASTER_TYPE_BY_COMPOSITION_KIND[kind];
-    if (!type) continue;
-    const candidates = collectStyleProcessMasterCandidatesByKind(processes, kind);
-    if (candidates.length === 0) continue;
-
-    const existingRows = await listProcessMasterOptionsByType(db, type);
-    const usedCodes = existingRows.reduce((set, row) => {
-      const normalizedCode = normalizeProcessMasterCode(row.code);
-      if (normalizedCode) set.add(normalizedCode);
-      return set;
-    }, new Set<string>());
-    const existingTokens = existingRows.reduce((set, row) => {
-      buildProcessMasterMatchTokenSet(row).forEach((token) => set.add(token));
-      return set;
-    }, new Set<string>());
-    let nextSortOrder = existingRows.reduce(
-      (maxValue, row) => Math.max(maxValue, toPositiveIntOrNull(row?.sortOrder) ?? 0),
-      0
-    );
-
-    const creates: Array<{
-      type: ProcessMasterOptionType;
-      code: string;
-      label: string;
-      nameKo: string;
-      nameEn: string;
-      nameVi: string;
-      sortOrder: number;
-    }> = [];
-
-    candidates.forEach((candidate) => {
-      const candidateTokens = new Set<string>();
-      [
-        candidate.label,
-        candidate.nameKo,
-        candidate.nameEn,
-        candidate.nameVi,
-      ].forEach((value) => {
-        const token = normalizeProcessMasterMatchToken(value);
-        if (token) candidateTokens.add(token);
-      });
-
-      const isAlreadyExists = Array.from(candidateTokens).some((token) =>
-        existingTokens.has(token)
-      );
-      if (isAlreadyExists) return;
-
-      const codeSeedLabel =
-        normalizeProcessMasterLabel(candidate.nameEn) ||
-        normalizeProcessMasterLabel(candidate.label) ||
-        normalizeProcessMasterLabel(candidate.nameKo) ||
-        normalizeProcessMasterLabel(candidate.nameVi);
-      const code = generateUniqueProcessMasterCode({
-        type,
-        label: codeSeedLabel,
-        usedCodes,
-      });
-      usedCodes.add(code);
-      nextSortOrder += 1;
-
-      creates.push({
-        type,
-        code,
-        label: candidate.label,
-        nameKo: candidate.nameKo || candidate.label,
-        nameEn: candidate.nameEn || candidate.label,
-        nameVi: candidate.nameVi || candidate.label,
-        sortOrder: nextSortOrder,
-      });
-
-      existingTokens.add(normalizeProcessMasterMatchToken(code));
-      candidateTokens.forEach((token) => existingTokens.add(token));
-    });
-
-    if (creates.length > 0) {
-      await insertProcessMasterOptionsWithDb(db, creates);
-    }
-  }
-};
-
-const ensureActionProcessMasterOptionsFromStyleProcesses = async ({
-  processes,
-  db,
-}: {
-  processes: any;
-  db: ProcessMasterStoreClient;
-}) =>
-  ensureProcessMasterOptionsFromStyleProcesses({
-    processes,
-    kinds: ["action"],
-    db,
-  });
 
 type ProcessMasterResolverState = {
   rowsByType: Map<ProcessMasterOptionType, ProcessMasterOptionRow[]>;
@@ -18599,13 +17337,6 @@ const appendProcessMasterResolverRow = (
   }
 };
 
-const listProcessMasterEntryLabelTokens = (entry: any) =>
-  [
-    normalizeProcessMasterMatchToken(entry?.label),
-    normalizeProcessMasterMatchToken(entry?.nameKo),
-    normalizeProcessMasterMatchToken(entry?.nameEn),
-    normalizeProcessMasterMatchToken(entry?.nameVi),
-  ].filter(Boolean);
 
 const findMatchingProcessMasterOptionRow = ({ rows, entry }: { rows: ProcessMasterOptionRow[]; entry: any }): ProcessMasterOptionRow | null => {
   const id = toPositiveIntOrNull(entry?.masterOptionId);
@@ -23859,9 +22590,6 @@ const buildAssignmentPlanProgressRows = async (
   });
 };
 
-const isAutoWorklogCompletedPlan = (plan: any) =>
-  plan?.isCompleted === true &&
-  resolveOptionalString(plan?.closedBy, null) === AUTO_WORKLOG_COMPLETED_BY;
 
 const resolveAutoWorklogCompletionDate = (row: any) => {
   const preferredDateKey =
@@ -24167,201 +22895,6 @@ const buildAssignmentPlanCloseResponse = (plan: any) => {
   };
 };
 
-const resolveLegacyCompletionQtyInput = ({
-  body,
-  keys,
-}: {
-  body: any;
-  keys: string[];
-}): { provided: boolean; value: number | null } => {
-  const payload = body && typeof body === "object" ? body : {};
-  for (const key of keys) {
-    if (!Object.prototype.hasOwnProperty.call(payload, key)) continue;
-    return {
-      provided: true,
-      value: toOptionalNonNegativeInt(payload[key], null),
-    };
-  }
-  return { provided: false, value: null };
-};
-
-const completeAssignmentPlanProduction = async ({
-  orgId,
-  externalId,
-  confirmedQty,
-  completedAt,
-  closeBasis = "MANUAL",
-}: {
-  orgId: number;
-  externalId: string;
-  confirmedQty: number | null;
-  completedAt: Date;
-  closeBasis?: "QC_BASED" | "MANUAL";
-}) => {
-  const plan = await prisma.assignmentPlan.findFirst({
-    where: { orgId, externalId },
-    select: {
-      id: true,
-      externalId: true,
-      factoryId: true,
-      assignmentQuantity: true,
-      finalQuantity: true,
-      isCompleted: true,
-      completedAt: true,
-      closedAt: true,
-      closedQty: true,
-      closeMode: true,
-      closeBasis: true,
-      closedBy: true,
-      productionCompletedAt: true,
-      updatedAt: true,
-      // orderNo/label dropped in Phase E - see ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE.
-      ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
-    },
-  });
-  if (!plan) {
-    return { ok: false as const, status: 404, error: "assignment plan not found" };
-  }
-  const payrollLockValidation = await validateAssignmentPlanPayrollLock({
-    orgId,
-    assignmentPlanIds: [plan.id],
-  });
-  if (payrollLockValidation.error) {
-    return {
-      ok: false as const,
-      status: payrollLockValidation.status,
-      error: payrollLockValidation.error,
-    };
-  }
-  if (plan.isCompleted === true) {
-    return {
-      ok: false as const,
-      status: 409,
-      error: "assignment plan already completed",
-    };
-  }
-  const currentProgressRows = await buildAssignmentPlanProgressRows(orgId, [externalId]);
-  if (currentProgressRows[0]?.hasInvalidProcessReferences) return { ok: false as const, status: 409, error: SNAPSHOT_REFERENCE_ERROR };
-  const currentScheduleStatus =
-    resolveOptionalString(currentProgressRows[0]?.scheduleStatus, null) ??
-    ASSIGNMENT_STATUS_IN_PROGRESS;
-  if (currentScheduleStatus !== ASSIGNMENT_STATUS_REVIEW_REQUIRED) {
-    return {
-      ok: false as const,
-      status: 409,
-      error: "assignment plan must be review-required before manual work-done confirmation",
-    };
-  }
-
-  const plannedQuantity = resolveAssignmentQuantity(plan);
-  const baselineQuantity =
-    plannedQuantity != null && plannedQuantity > 0 ? plannedQuantity : null;
-  const producedQuantity = await resolveAssignmentPlanProducedQuantity({
-    orgId,
-    planId: plan.id,
-    baselineQuantity,
-  });
-  const resolvedClosedQtyRaw =
-    confirmedQty ??
-    toOptionalNonNegativeInt(plan.closedQty, null) ??
-    toOptionalNonNegativeInt(plan.finalQuantity, null) ??
-    producedQuantity;
-  const resolvedClosedQty = Math.max(0, Math.round(Number(resolvedClosedQtyRaw) || 0));
-  const closeMode =
-    resolveAssignmentPlanCloseMode({
-      closedQty: resolvedClosedQty,
-      targetQty: plannedQuantity,
-    }) ?? "FULL";
-  const completionDateKey = toDateKeyInTimeZone(completedAt, BUSINESS_TIME_ZONE);
-  const prospectivePayrollLockMonth =
-    completionDateKey && /^\d{4}-\d{2}-\d{2}$/.test(completionDateKey)
-      ? completionDateKey.slice(0, 7)
-      : null;
-  if (prospectivePayrollLockMonth) {
-    const lockedMonthSet = await loadLockedPayrollMonthSet(orgId, [
-      prospectivePayrollLockMonth,
-    ]);
-    if (lockedMonthSet.has(prospectivePayrollLockMonth)) {
-      return {
-        ok: false as const,
-        status: 409,
-        error: `assignment plan payroll locked (${formatAssignmentPlanLabel(plan)} [${prospectivePayrollLockMonth}])`,
-      };
-    }
-  }
-  const completionDate =
-    toDateValueFromDateKeyForAssignmentSchedule(completionDateKey) || completedAt;
-  const actor = getCurrentRequestActor();
-
-  const updatedPlan = await prisma.$transaction(async (tx) => {
-    const updateResult = await tx.assignmentPlan.updateMany({
-      where: {
-        id: plan.id,
-        orgId,
-        isCompleted: false,
-        productionCompletedAt: null,
-        completedAt: null,
-        closedAt: null,
-        updatedAt: plan.updatedAt,
-      },
-      data: {
-        productionCompletedAt: completedAt,
-        isCompleted: true,
-        completedAt,
-        finalQuantity: resolvedClosedQty,
-        closedQty: resolvedClosedQty,
-        closedAt: completedAt,
-        closedBy: actor,
-        closeMode,
-        closeBasis,
-        candidateEndDate: completionDate,
-        renderEndDate: completionDate,
-        scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
-        forecastCompletedAt: null,
-        forecastBasis: ASSIGNMENT_FORECAST_BASIS_UNAVAILABLE,
-        updatedAt: new Date(),
-      },
-    });
-    if (updateResult.count !== 1) return null;
-    return tx.assignmentPlan.findUnique({
-      where: { id: plan.id },
-      // orderNo/customer/label/previewUrl are no longer stored columns
-      // (Phase E) - buildAssignmentPlanCloseResponse needs these joins to
-      // resolve them at all.
-      include: ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE,
-    });
-  });
-  if (!updatedPlan) {
-    return {
-      ok: false as const,
-      status: 409,
-      error: "assignment plan already completed or modified; reload and retry",
-    };
-  }
-
-  const shouldMutateScheduleFromProductionComplete =
-    resolveOptionalString(process.env.ENABLE_PRODUCTION_COMPLETE_SCHEDULE_SYNC, "")?.toLowerCase?.() ===
-    "true";
-  if (shouldMutateScheduleFromProductionComplete) {
-    await syncAssignmentSchedulesFromWorkRecordPlans({
-      orgId,
-      assignmentPlanIds: [updatedPlan.id],
-    });
-  }
-  await persistAssignmentPlanProgressSnapshot({
-    orgId,
-    assignmentPlanIds: [updatedPlan.id],
-  });
-
-
-  return {
-    ok: true as const,
-    status: 200,
-    updatedPlan,
-    producedQuantity,
-    resolvedClosedQty,
-  };
-};
 
 app.get("/assignment-plan-progress", async (req, res) => {
   try {
@@ -24844,110 +23377,19 @@ app.patch("/assignment-plans/:externalId/final-quantity", async (req, res) => {
 });
 
 app.post("/assignment-plans/:externalId/close", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-
-  const externalId = resolveOptionalString(req.params.externalId, null);
-  if (!externalId) {
-    return res.status(400).json({ ok: false, error: "invalid externalId" });
-  }
-
-  const qtyInput = resolveLegacyCompletionQtyInput({
-    body: req.body,
-    keys: ["closedQty", "finalQuantity", "confirmedQty"],
-  });
-  if (!qtyInput.provided || qtyInput.value === null) {
-    return res.status(400).json({ ok: false, error: "closedQty is required" });
-  }
-
-  const requestedBasis = resolveOptionalString(req.body?.closeBasis, null);
-  const closeBasis =
-    requestedBasis === "QC_BASED" || requestedBasis === "MANUAL"
-      ? requestedBasis
-      : "MANUAL";
-  const closedAt = toOptionalDateValue(req.body?.closedAt, null) ?? new Date();
-  const completion = await completeAssignmentPlanProduction({
-    orgId: organization.id,
-    externalId,
-    confirmedQty: qtyInput.value,
-    completedAt: closedAt,
-    closeBasis,
-  });
-  if (!completion.ok) {
-    return res.status(completion.status).json({ ok: false, error: completion.error });
-  }
-
-  console.warn(
-    `[deprecated-endpoint] POST /assignment-plans/:externalId/close used (orgId=${organization.id}, externalId=${externalId})`
-  );
-  res.set("Deprecation", "true");
-  res.set("Link", '</assignment-plans/{externalId}/production-complete>; rel="successor-version"');
-
-  return res.json({
-    ok: true,
-    plan: {
-      ...buildAssignmentPlanCloseResponse(completion.updatedPlan),
-      producedQuantity: completion.producedQuantity,
-      productionConfirmedQty: completion.resolvedClosedQty,
-    },
-    reorderedAssignments: 0,
-    deprecated: true,
-  });
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  res.set("Link", '</assignment-plans/{externalId}/manual-production-complete>; rel="successor-version"');
+  return res.status(410).json({ ok: false, error: "PRODUCTION_COMPLETION_ENDPOINT_RETIRED",
+    replacement: "/assignment-plans/:externalId/manual-production-complete", requiredFields: ["reason"] });
 });
 
 app.patch("/assignment-plans/:externalId/production-complete", async (req, res) => {
-  const MAX_CONFIRMED_QTY = 100_000;
-  const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-
-  const externalId = resolveOptionalString(req.params.externalId, null);
-  if (!externalId) {
-    return res.status(400).json({ ok: false, error: "invalid externalId" });
-  }
-
-  const qtyInput = resolveLegacyCompletionQtyInput({
-    body: req.body,
-    keys: ["confirmedQty", "closedQty", "finalQuantity"],
-  });
-  if (qtyInput.provided && qtyInput.value === null) {
-    return res.status(400).json({
-      ok: false,
-      error: "confirmedQty must be a non-negative integer",
-    });
-  }
-  if (qtyInput.provided && qtyInput.value !== null && qtyInput.value > MAX_CONFIRMED_QTY) {
-    return res.status(400).json({
-      ok: false,
-      error: `confirmedQty exceeds maximum allowed value (${MAX_CONFIRMED_QTY})`,
-    });
-  }
-  const completedAt = toOptionalDateValue(req.body?.completedAt, null) ?? new Date();
-  const completion = await completeAssignmentPlanProduction({
-    orgId: organization.id,
-    externalId,
-    confirmedQty: qtyInput.value,
-    completedAt,
-    closeBasis: "MANUAL",
-  });
-  if (!completion.ok) {
-    return res.status(completion.status).json({ ok: false, error: completion.error });
-  }
-
-  return res.json({
-    ok: true,
-    plan: {
-      ...buildAssignmentPlanCloseResponse(completion.updatedPlan),
-      producedQuantity: completion.producedQuantity,
-      productionConfirmedQty: completion.resolvedClosedQty,
-      productionCompletedAt: toIsoDateStringOrNull(
-        completion.updatedPlan.productionCompletedAt
-      ),
-      scheduleStatus: ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
-    },
-    reorderedAssignments: 0,
-  });
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  res.set("Link", '</assignment-plans/{externalId}/manual-production-complete>; rel="successor-version"');
+  return res.status(410).json({ ok: false, error: "PRODUCTION_COMPLETION_ENDPOINT_RETIRED",
+    replacement: "/assignment-plans/:externalId/manual-production-complete", requiredFields: ["reason"] });
 });
 
 app.patch([
@@ -33037,15 +31479,8 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
 
 const port = Number(process.env.PORT) || 4000;
 const host = String(process.env.HOST || "0.0.0.0").trim() || "0.0.0.0";
-const AT_AUTO_SYNC_INTERVAL_MS = 60 * 1000;
-const AT_AUTO_SYNC_DB_LOCK_NAMESPACE = 20260223;
-const AT_AUTO_SYNC_DB_LOCK_TIMEOUT_MS = 10 * 60 * 1000;
-const AT_AUTO_SYNC_JOB_KEY = "AT_SYNC";
-let atAutoSyncTimer: NodeJS.Timeout | null = null;
-let atAutoSyncInProgress = false;
-let atAutoSyncLastTrainingMonthKey: string | null = null;
-let atAutoSyncRunHistoryTableReady = false;
-let atAutoSyncRunHistoryTableUnsupported = false;
+
+
 let workRecordCanonicalSchemaReady = false;
 let organizationLocalizationColumnsReady = false;
 let workOrderLocalizationColumnsReady = false;
@@ -33124,194 +31559,6 @@ const ensureWorkRecordCanonicalSchemaReady = async () => {
   workRecordCanonicalSchemaReady = true;
 };
 
-const ensureAtAutoSyncRunHistoryTable = async () => {
-  if (atAutoSyncRunHistoryTableReady) return true;
-  if (atAutoSyncRunHistoryTableUnsupported) return false;
-  try {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "SchedulerRunHistory" (
-        "jobKey" TEXT NOT NULL,
-        "monthKey" TEXT NOT NULL,
-        "completedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        PRIMARY KEY ("jobKey", "monthKey")
-      )
-    `);
-    atAutoSyncRunHistoryTableReady = true;
-    return true;
-  } catch (error: unknown) {
-    atAutoSyncRunHistoryTableUnsupported = true;
-    console.warn(
-      `[AT sync][scheduler] db run-history disabled: ${getErrorMessage(error, String(error))}`
-    );
-    return false;
-  }
-};
-
-const toAtAutoSyncLockKey = (trainingMonthKey: string) => {
-  const normalized = String(trainingMonthKey || "").trim();
-  if (!/^\d{4}-\d{2}$/.test(normalized)) return null;
-  const [yearText, monthText] = normalized.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-  if (!Number.isSafeInteger(year) || !Number.isSafeInteger(month)) return null;
-  if (month < 1 || month > 12) return null;
-  return year * 100 + month;
-};
-
-const runAutoAtSyncAcrossManufacturers = async (): Promise<AutoAtSyncSummary> => {
-  const manufacturerRows = await prisma.organization.findMany({
-    where: { type: "MANUFACTURER" },
-    select: { id: true },
-    orderBy: { id: "asc" },
-  });
-
-  let totalUpdatedStyles = 0;
-  let totalUpdatedProcesses = 0;
-  for (const row of manufacturerRows) {
-    const result = await syncStyleProcessActualTimesFromWorkRecords(row.id);
-    totalUpdatedStyles += Number(result?.updatedStyles || 0);
-    totalUpdatedProcesses += Number(result?.updatedProcesses || 0);
-  }
-
-  return {
-    manufacturerCount: manufacturerRows.length,
-    totalUpdatedStyles,
-    totalUpdatedProcesses,
-  };
-};
-
-const runAutoAtSyncWithDbLock = async (
-  trainingMonthKey: string
-): Promise<AutoAtSyncExecutionResult> => {
-  const lockKey = toAtAutoSyncLockKey(trainingMonthKey);
-  if (lockKey === null) {
-    const summary = await runAutoAtSyncAcrossManufacturers();
-    return { executed: true, reason: "done", summary };
-  }
-
-  const result = await prisma.$transaction(
-    async (tx) => {
-      const lockRows = await tx.$queryRaw<Array<{ acquired: boolean }>>(
-        Prisma.sql`SELECT pg_try_advisory_xact_lock(CAST(${AT_AUTO_SYNC_DB_LOCK_NAMESPACE} AS integer), CAST(${lockKey} AS integer)) AS acquired`
-      );
-      if (lockRows[0]?.acquired !== true) {
-        return {
-          executed: false,
-          reason: "locked_by_other_instance" as const,
-          summary: {
-            manufacturerCount: 0,
-            totalUpdatedStyles: 0,
-            totalUpdatedProcesses: 0,
-          },
-        };
-      }
-
-      const completedRows = await tx.$queryRaw<Array<{ completed: boolean }>>(
-        Prisma.sql`SELECT TRUE AS completed FROM "SchedulerRunHistory" WHERE "jobKey" = ${AT_AUTO_SYNC_JOB_KEY} AND "monthKey" = ${trainingMonthKey} LIMIT 1`
-      );
-      if (completedRows[0]?.completed === true) {
-        return {
-          executed: false,
-          reason: "already_completed" as const,
-          summary: {
-            manufacturerCount: 0,
-            totalUpdatedStyles: 0,
-            totalUpdatedProcesses: 0,
-          },
-        };
-      }
-
-      const summary = await runAutoAtSyncAcrossManufacturers();
-      await tx.$executeRaw(
-        Prisma.sql`INSERT INTO "SchedulerRunHistory" ("jobKey", "monthKey", "completedAt") VALUES (${AT_AUTO_SYNC_JOB_KEY}, ${trainingMonthKey}, NOW()) ON CONFLICT ("jobKey", "monthKey") DO NOTHING`
-      );
-
-      return { executed: true, reason: "done" as const, summary };
-    },
-    { timeout: AT_AUTO_SYNC_DB_LOCK_TIMEOUT_MS }
-  );
-
-  return result;
-};
-
-const runAutoAtSyncIfDue = async (trigger: "startup" | "interval") => {
-  if (atAutoSyncInProgress) return;
-
-  const now = new Date();
-  const todayKey = toDateKeyInTimeZone(now, BUSINESS_TIME_ZONE);
-  const todayParts = todayKey ? parseDateKeyParts(todayKey) : null;
-  if (!todayParts) return;
-  if (todayParts.day < AT_TRAINING_CUTOFF_DAY) return;
-
-  const trainingMonthKey = resolveAtTrainingMonthKey({
-    now,
-    timeZone: BUSINESS_TIME_ZONE,
-    cutoffDay: AT_TRAINING_CUTOFF_DAY,
-  });
-  if (!trainingMonthKey) return;
-  if (atAutoSyncLastTrainingMonthKey === trainingMonthKey) return;
-
-  atAutoSyncInProgress = true;
-  try {
-    const canUseDbLock = await ensureAtAutoSyncRunHistoryTable();
-    if (!canUseDbLock) {
-      const summary = await runAutoAtSyncAcrossManufacturers();
-      atAutoSyncLastTrainingMonthKey = trainingMonthKey;
-      console.log(
-        `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} mode=in_memory manufacturers=${summary.manufacturerCount} updatedStyles=${summary.totalUpdatedStyles} updatedProcesses=${summary.totalUpdatedProcesses}`
-      );
-      return;
-    }
-
-    const result = await runAutoAtSyncWithDbLock(trainingMonthKey);
-    if (!result.executed) {
-      if (result.reason === "already_completed") {
-        atAutoSyncLastTrainingMonthKey = trainingMonthKey;
-      }
-      console.log(
-        `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} skipped=${result.reason}`
-      );
-      return;
-    }
-
-    atAutoSyncLastTrainingMonthKey = trainingMonthKey;
-    console.log(
-      `[AT sync][scheduler:${trigger}] month=${trainingMonthKey} mode=db_lock manufacturers=${result.summary.manufacturerCount} updatedStyles=${result.summary.totalUpdatedStyles} updatedProcesses=${result.summary.totalUpdatedProcesses}`
-    );
-  } catch (error: unknown) {
-    console.error(
-      `[AT sync][scheduler:${trigger}] failed:`,
-      getErrorMessage(error, String(error))
-    );
-  } finally {
-    atAutoSyncInProgress = false;
-  }
-};
-
-const startAutoAtSyncScheduler = () => {
-  if (!AT_AUTO_SYNC_ENABLED) {
-    console.log("[AT sync][scheduler] disabled (manual trigger only)");
-    return;
-  }
-  if (atAutoSyncTimer) return;
-  runAutoAtSyncIfDue("startup").catch((error: unknown) => {
-    console.error(
-      "[AT sync][scheduler:startup] failed:",
-      getErrorMessage(error, String(error))
-    );
-  });
-  atAutoSyncTimer = setInterval(() => {
-    runAutoAtSyncIfDue("interval").catch((error: unknown) => {
-      console.error(
-        "[AT sync][scheduler:interval] failed:",
-        getErrorMessage(error, String(error))
-      );
-    });
-  }, AT_AUTO_SYNC_INTERVAL_MS);
-  if (typeof atAutoSyncTimer.unref === "function") {
-    atAutoSyncTimer.unref();
-  }
-};
 
 const resolveDatabaseEndpoint = (): string => {
   const databaseUrl = process.env.DATABASE_URL;
@@ -33510,85 +31757,12 @@ const findRuntimeSchemaDriftReasons = async (): Promise<string[]> => {
   return driftReasons;
 };
 
-const applyMigrationFixForRuntimeSchemaDrift = async (driftReasons: string[]) => {
-  if (!STARTUP_APPLY_MIGRATION_FIX_ON_SCHEMA_DRIFT) {
-    throw new Error(
-      `[startup] Required DB schema updates are missing and automatic migration is disabled: ${driftReasons.join(
-        ", "
-      )}`
-    );
-  }
-
-  const backendRoot = resolvePath(__dirname, "..");
-  const migrationFile = resolvePath(backendRoot, "migration_fix.sql");
-  const prismaRunner = resolvePath(backendRoot, "scripts", "run-prisma.js");
-  if (!existsSync(migrationFile) || !existsSync(prismaRunner)) {
-    throw new Error(
-      `[startup] Cannot apply migration_fix.sql automatically; missing file(s): ${migrationFile}, ${prismaRunner}`
-    );
-  }
-
-  console.warn(
-    `[startup] Runtime DB schema drift detected (${driftReasons.join(
-      ", "
-    )}). Applying migration_fix.sql before accepting traffic.`
-  );
-  const result = spawnSync(
-    process.execPath,
-    [
-      prismaRunner,
-      "db",
-      "execute",
-      "--schema",
-      "./prisma/schema.prisma",
-      "--file",
-      "./migration_fix.sql",
-    ],
-    {
-      cwd: backendRoot,
-      encoding: "utf8",
-      env: process.env,
-      stdio: "pipe",
-      timeout: 120_000,
-    }
-  );
-
-  if (result.stdout) console.log(result.stdout.trim());
-  if (result.stderr) console.error(result.stderr.trim());
-  if (result.error) {
-    throw new Error(
-      `[startup] migration_fix.sql failed to execute: ${getErrorMessage(
-        result.error,
-        "unknown spawn error"
-      )}`
-    );
-  }
-  if (result.signal) {
-    throw new Error(
-      `[startup] migration_fix.sql terminated by signal ${result.signal}`
-    );
-  }
-  if (result.status !== 0) {
-    throw new Error(
-      `[startup] migration_fix.sql failed with exit code ${result.status ?? "unknown"}`
-    );
-  }
-
-  const remainingDriftReasons = await findRuntimeSchemaDriftReasons();
-  if (remainingDriftReasons.length > 0) {
-    throw new Error(
-      `[startup] migration_fix.sql completed but required DB schema updates are still missing: ${remainingDriftReasons.join(
-        ", "
-      )}`
-    );
-  }
-  console.log("[startup] migration_fix.sql completed and required DB schema updates are present.");
-};
-
 const ensureRuntimeSchemaReady = async () => {
   const driftReasons = await findRuntimeSchemaDriftReasons();
-  if (driftReasons.length === 0) return;
-  await applyMigrationFixForRuntimeSchemaDrift(driftReasons);
+  if (driftReasons.length) throw new Error(
+    '[startup] Required DB schema updates are missing: ' + driftReasons.join(', ') +
+    '. Run npm run database:prepare before starting the API. Older installations may require npm run database:upgrade:legacy.'
+  );
 };
 
 const ensureWorkOrderStatusSchemaReady = async () => {
@@ -33835,65 +32009,40 @@ const refreshAj1867UnassignedCardOnce = async () => {
 };
 
 let startupLifecycleState: StartupLifecycleState = "booting";
-let startupBootstrapAttempt = 0;
-let startupBootstrapRetryTimer: NodeJS.Timeout | null = null;
 
-const scheduleStartupBootstrapRetry = () => {
-  if (startupBootstrapRetryTimer) return;
-  startupBootstrapRetryTimer = setTimeout(() => {
-    startupBootstrapRetryTimer = null;
-    void bootstrapApplicationServices();
-  }, STARTUP_BOOTSTRAP_RETRY_DELAY_MS);
-  if (typeof startupBootstrapRetryTimer.unref === "function") {
-    startupBootstrapRetryTimer.unref();
-  }
-};
-
-const bootstrapApplicationServices = async () => {
-  startupBootstrapAttempt += 1;
-  startupLifecycleState = "booting";
-
+// Explicit operator/deploy entrypoint. Normal API startup never calls this.
+export const runDatabaseMaintenance = async (mode: "prepare" | "legacy" | "historical-cards") => {
   try {
     await ensureDatabaseReady();
+    if (mode === "legacy") {
+      await ensureBusinessPartnerMergedIntoOrganization();
+      return;
+    }
+    if (mode === "historical-cards") {
+      await refreshAj1867UnassignedCardOnce();
+      return;
+    }
     await ensureOrganizationLocalizationColumnsReady();
     await ensureWorkOrderLocalizationColumnsReady();
     await ensureStyleLocalizationColumnsReady();
     await ensureWorkRecordCanonicalSchemaReady();
     await ensureWorkOrderStatusSchemaReady();
-    await ensureBusinessPartnerMergedIntoOrganization();
     await ensureProcessMasterOptionTypeSchemaReady();
     await ensureProcessMasterOptionRelationSchemaReady();
     await ensureHardcodedSystemAdmin();
-    await refreshAj1867UnassignedCardOnce();
-    startupLifecycleState = "ready";
-    console.log(
-      `[startup] Background bootstrap completed on attempt ${startupBootstrapAttempt}.`
-    );
-  } catch (error) {
-    startupLifecycleState = "error";
-    supportsWorkOrderEditingStatus = false;
-
-    if (error instanceof Prisma.PrismaClientInitializationError) {
-      console.error(
-        `[startup] Unable to connect to database at ${resolveDatabaseEndpoint()}. Check DATABASE_URL/network access and retry.`
-      );
-    }
-
-    console.error(
-      `[startup] Background bootstrap attempt ${startupBootstrapAttempt} failed. Retrying in ${STARTUP_BOOTSTRAP_RETRY_DELAY_MS}ms.`
-    );
-    console.error(error);
-    scheduleStartupBootstrapRetry();
+    await ensureRuntimeSchemaReady();
+  } finally {
+    await prisma.$disconnect();
   }
 };
 
 const startServer = async () => {
   await ensureDatabaseReady();
   await ensureRuntimeSchemaReady();
+  startupLifecycleState = "ready";
   app.listen(port, host, () => {
     console.log(`API running on http://${host}:${port}`);
   });
-  void bootstrapApplicationServices();
 };
 
 if (process.env.BARO_SKIP_API_START !== "1") {

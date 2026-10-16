@@ -26,7 +26,6 @@ import { resolveFeatureByPath } from '../../../utils/accessControl';
 import {
   fetchRoleAccessPolicy,
   getDefaultRoleAccessPolicy,
-  loadLegacyRoleAccessPolicy,
   ORG_ROLE_KEYS,
   ORG_TYPE_KEYS,
   ROLE_ACCESS_POLICY_SCHEMA_VERSION,
@@ -252,11 +251,7 @@ const AccessPolicyBoard = () => {
       setLoadingPolicy(true);
       try {
         const response = await fetchRoleAccessPolicy();
-        let nextPolicy = response.policy;
-        const legacyPolicy = !response.stored ? loadLegacyRoleAccessPolicy() : null;
-        if (legacyPolicy) {
-          nextPolicy = await saveRoleAccessPolicy(legacyPolicy);
-        }
+        const nextPolicy = response.policy;
         if (cancelled) return;
         const editable = toEditablePolicy(nextPolicy);
         setSavedPolicy(editable);

@@ -1,0 +1,74 @@
+[
+  {
+    "script": "prisma:remove-line-domain"
+  },
+  {
+    "script": "prisma:apply:payroll-provisional"
+  },
+  {
+    "script": "prisma:apply:at-observation-quality"
+  },
+  {
+    "script": "prisma:apply:at-stable-allocation-audit"
+  },
+  {
+    "script": "prisma:apply:assignment-manual-completion"
+  },
+  {
+    "script": "prisma:apply:restore-manual-completion-at-training"
+  },
+  {
+    "script": "prisma:apply:style-process-at-st-fallback"
+  },
+  {
+    "script": "prisma:apply:backfill-style-process-at-st-fallback"
+  },
+  {
+    "script": "prisma:apply:correct-style-process-at-st-fallback"
+  },
+  {
+    "script": "prisma:apply:style-process-is-active"
+  },
+  {
+    "script": "prisma:apply:style-process-gender-scope"
+  },
+  {
+    "script": "prisma:apply:factory-warehouse-rollout"
+  },
+  {
+    "script": "prisma:apply:factory-production-allowance-rate"
+  },
+  {
+    "script": "prisma:apply:factory-child-org-integrity"
+  },
+  {
+    "node": "scripts/transfer-manufacturer-ownership.js",
+    "args": [
+      "--apply"
+    ]
+  },
+  {
+    "script": "prisma:apply:prior-completion"
+  },
+  {
+    "script": "prisma:apply:partner-costs"
+  },
+  {
+    "script": "prisma:apply:transaction-codes"
+  },
+  {
+    "script": "prisma:apply:setting-inheritance"
+  },
+  {
+    "script": "prisma:apply:code-bases"
+  },
+  {
+    "script": "prisma:apply:code-usage"
+  },
+  {
+    "script": "prisma:apply:payroll-management-versions"
+  },
+  {
+    "script": "prisma:apply:version-default-application"
+  }
+]

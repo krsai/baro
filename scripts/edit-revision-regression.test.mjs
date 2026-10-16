@@ -146,6 +146,7 @@ function salaryHarness() {
   const router = Object.fromEntries(['get', 'put', 'post'].map(method => [method, (path, fn) => routes.set(`${method} ${path}`, fn)]));
   const exports = {};
   const dependencies = {
+    '../utils/versionApplication': require('../backend/dist/utils/versionApplication.js'),
     express: { Router: () => router }, '../db': { prisma: db },
     '../middleware/access': { getOrganizationByQuery: async () => ({ id: 1 }), getRequesterEmail: () => 'tester' },
     '../utils/editRevision': revision,

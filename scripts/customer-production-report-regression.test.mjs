@@ -56,7 +56,7 @@ test('forecast is withheld until the full order-style quantity is assigned', () 
   assert.match(server, /Math\.ceil\(observedElapsedDays \/ observedProgressRatio\) - 1/);
   assert.match(server, /canForecast && scheduledCompletionCandidates\.length === progress\.length/);
   assert.doesNotMatch(
-    server.slice(server.indexOf('const buildAssignmentPlanProgressRows'), server.indexOf('const isAutoWorklogCompletedPlan')),
+    server.slice(server.indexOf('const buildAssignmentPlanProgressRows'), server.indexOf('const resolveAutoWorklogCompletionDate')),
     /plannedDurationDays:\s*durationDays/
   );
   assert.match(server, /const reportedProgressPercent = styleProduction\.progressPercent/);
