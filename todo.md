@@ -1,5 +1,152 @@
 # BARO 남은 작업
 
+## 2026-10-16 앱 전체 레거시·중복 구현 재검토
+
+조사 기준: `beb6b9c6`. 이전 2026-10-11의 동일 제목 조사 두 절보다 이번 재검토를 우선한다. 이번 변경은 조사 기록과 읽기 전용 소스 분석 도구뿐이다. 앱 기능 제거·DB 접속·운영 로그 조회·업무 데이터 수정은 수행하지 않았다. 소스에 경로가 있다는 사실과 운영에서 실제 이용 중이라는 사실은 구분한다.
+
+### 조사 범위와 확인 수준
+
+- `frontend/src` 207개와 `backend/src` 73개, JS/TS 계열 280개 파일·116,289줄을 AST/import 그래프로 스캔했다. CSS·SQL·HTML은 이 줄 수에 포함하지 않는다.
+- 라우터·메뉴·권한 매핑, 서비스/컨트롤러 등록, Prisma 79개 모델·21개 enum, 시작/배포 npm 명령·이전 SQL/스크립트, 기존 회귀의 호출 대상을 대조했다. 업무 영역별 결과는 아래 표에 적었다.
+- 문자열 또는 문자열 배열로 선언된 API 경로 169개에서 같은 method/path 중복 선언은 발견하지 못했다. 루프 안의 template literal과 동적 prefix로 만드는 설정 API는 이 수치에서 제외한다. 따라서 이 결과로 모든 런타임 라우트의 충돌 부재를 보장하지 않는다.
+- 100자 초과 함수 본문의 토큰이 일치하는 그룹 104개, 그중 파일 간 그룹 48개를 찾았다. 주석/공백만 무시하며 이름 변경이나 의미상 유사한 로직은 탐지하지 않는다. 익명 UI 콜백·단순 변환·프론트/서버의 의도된 재검증도 포함하므로 **104개 결함 또는 104개 삭제 대상으로 해석하지 않는다.** 아래는 실제 읽고 분류한 결과다.
+- 재현: `node scripts/audit-legacy-duplicates.cjs`; 전체 위치/그룹/API 목록: `node scripts/audit-legacy-duplicates.cjs --json`. 도구는 앱 모듈을 실행하지 않고 .env/DB를 읽지 않는다. backend의 설치된 TypeScript를 사용하며 저장소 루트에서 실행한다. 테스트·유지보수 진입점은 별도 검색으로 확인해야 한다.
+
+### 우선 처리해야 할 기능 중복과 정책 분산
+
+| ID | 판정·우선순위 | 현재 근거 | 영향과 정리 방향 |
+| --- | --- | --- | --- |
+| F01 | 실제 구/신 입력 경로 공존·높음 | `backend/src/index.ts:29272`의 POST `/partner-transaction-costs` → `registerPartnerCost`; `:29291`의 POST `/outsourcing-requests` → `registerTransactionRequest`. 두 함수 모두 `PartnerTransactionCost`를 생성한다. 현행 새 입력 화면은 후자다. | 구 경로는 serviceType/직접 금액, 신 경로는 거래 코드/단가/수량/VAT 및 선택적 외주 실적을 검증한다. 같은 비용 테이블을 서로 다른 계약으로 쓸 수 있다. 외부 이용 확인 후 구 생성 API를 폐지하거나 별도 명시적 계약으로 격리한다. 기존 금액을 신 수량·단가로 추측 변환하지 않는다. |
+| F02 | 조회 경로 중첩·중간 | `index.ts:29246` GET `/partner-transaction-costs`는 비용만, `:29253` GET `/outsourcing-requests`는 비용+아직 비용과 연결되지 않은 과거 외주 실적을 반환한다. `PartnerTransactionCosts.jsx:22`는 후자 사용. | 같은 비용의 include/범위/응답 처리가 별도다. 공통 조회를 추출하되 과거 실적은 `transactionCost: null`로 걸러져 있어 현재 이 코드만으로 이중 계상이라고 단정할 수 없다. 과거 내역과 비용 원장은 구분한다. |
+| F03 | 구/신 생산 완료 API 공존·높음 | `index.ts:25114` `/close`, `:25167` `/production-complete`, `:25221` `/manual-production-complete` 및 `/record-omission-complete`. close는 deprecated 헤더를 보내면서 실제 완료 함수를 호출한다. | 구 두 경로는 수량/날짜 중심이고 신 수동 경로는 사유 필수·조정 근거를 저장한다. 외부 이용과 각 경로의 감사 계약을 확인해 하나의 완료 서비스로 모은다. 단순 alias를 하나 지우는 작업으로 취급하지 않는다. QC 기록과 재개 API는 별도 목적이다. |
+| F04 | 주문 상태의 이중 정책·높음 | `services/orderWorkflow.ts:4`의 파생 `RECEIVED/PRODUCTION/BILLING/COMPLETED`; `index.ts:494,661,9568`의 저장 status enum/정규화/작업기록 후 IN_PROGRESS 동기화; `OrderList.jsx:696,1641,3143`은 구 status도 읽고 목록은 workflowStatus 사용. | 새 목록 상태와 옛 저장 상태가 같이 유지된다. 읽기/쓰기 소비자를 목록화하고 표시·필터는 파생 정책으로 통일한 뒤 구 상태 쓰기를 종료한다. 진행률만으로 완료를 판정하지 않는다. workflow의 COMPLETED 자동 전환이 아직 없는 것은 명시적 후속 과제다. |
+| F05 | 진행률 집계·표시 정책 분산·높음 | `services/invoiceOrderProgress.ts:18`은 주문/청구 공통 집계, `index.ts:30654`는 현황판 스타일 집계, `CustomerProductionReport.jsx:120,166`은 주문 재집계/미완료 99 표시, `AssignBoard.jsx:1782,2238`은 별도 clamp/표시값 선택. | 같은 주문이 서로 다른 분모·완료 인정·반올림·미확인 처리를 받을 수 있다. 최근 L17-1 수정은 현황판 주문 표시 방어다. 주문/스타일/배정 집계는 역할이 다르므로 그대로 합치지 말고 완료 여부와 표시 반올림 규칙부터 공통화한다. 서버 여러 경로가 100으로 clamp하므로 UI에서 초과를 허용해도 서버가 보낸 초과값이 없을 수 있다. |
+| F06 | 과거 생산 인정과 완료 판정의 중첩·높음 | `priorProductionCompletion.ts:19`의 `summarizePriorProduction`, `invoiceOrderProgress.ts:39`의 과거 인정 통합, `index.ts:30751`의 현황판 적용. | 생산 인정 수량과 배정 완료 승인, workflow의 청구 가능 상태는 서로 다른 목적이다. 공통 과거 인정 함수를 유지하되 이를 세 상태의 동일한 완료 판정으로 취급하지 않는다. 과거 인정+신규 실적의 중복 공제/인정 경계 회귀가 필요하다. |
+| F07 | 구/신 급여 마스터 공존·높음 | `employees/employee.routes.ts:178,186`의 compensation-policy GET/PUT; `employees/salarySystem.routes.ts:48`에서 구 `EmployeeCompensationPolicy`를 새 SalaryItem/SalaryItemRate 초기값으로 읽는다. 현행 프론트에 구 API 호출 없음. | 조직별 구 정책과 공장별 항목/버전은 동일 모델이 아니다. 이미 초기화한 공장과 새 공장을 구분해 seed 의존을 해소한 뒤 API·테이블 폐지를 나눈다. 구 테이블을 먼저 지우면 신규 급여 초기화가 바뀐다. |
+| F08 | 권한 정책 정의 복제·높음 | `backend/src/index.ts:1203` 이후 정책 버전/기능 목록/기본값/sanitize, `frontend/src/utils/roleAccessPolicyCore.mjs:1` 이후 동등 역할의 정책 엔진. 프론트 `accessControl.js:18`에는 기능 키를 다시 선언한다. | 현재 버전은 양쪽 11이지만 이후 한쪽만 바뀔 수 있다. 공통 순수 정책 스키마/기본값과 일치 검사를 마련한다. API의 실제 서버 역할 검사는 유지한다. 서버 인증 경계를 프론트 메뉴 필터로 대체하지 않는다. |
+| F09 | 브라우저 설정 자동 이전·높음 | `holidayApi.js:108`은 서버 휴일이 비면 구 localStorage를 PUT하고 실패 시에도 구 값을 반환; `AccessPolicyBoard.jsx:256`은 stored=false일 때 구 브라우저 권한을 저장. | 빈 서버 목록이 의도적 초기화인지 이전 전 상태인지 구분이 약하다. 휴일 구 키는 orgId별로 만들어지지 않는다. 운영의 구 키/이전 여부를 확인해 명시적 이전으로 바꾸고 정상 조회에서 자동 쓰기를 없앤다. 언어 이전은 표시 설정이므로 같은 위험도로 취급하지 않는다. |
+| F10 | 공정 마스터 두 체계 잔존·중간 | `AttrProcess` 및 `/attributes` processes, `ProcessMasterOption/Relation` 및 `/process-master-options`; `Attribute.jsx:49`와 `featureFlags.js:2`는 일반 사용자 구 화면을 비활성화하지만 코드/서버 경로는 남긴다. | 명칭만 비슷한 색상·카테고리 마스터까지 합치지 않는다. `AttrProcess`의 실제 사용/과거 데이터와 공정 옵션의 ACTION/TARGET/SPEC 역할을 대조한 뒤 구 경로의 폐지 범위를 확정한다. 기능 플래그 false는 코드 삭제 완료가 아니다. |
+| F11 | 설정 UI 일부 편집 중첩·중간 | `CodeBaseSettings.jsx:20`은 기본 코드+세금 variant, `TransactionCodeSettings.jsx:16` 이후는 조직별 4자리 코드/상속, `ExpenseMasterSettings.jsx:14`와 `OutsourcingServiceDialog.jsx:25`는 같은 service 마스터를 목록/대화상자로 편집한다. | 시스템 기본값과 업체 재정의는 의도된 분리다. 두 메뉴 전체를 병합할 필요는 없다. 업종 편집 필드/검증/삭제/갱신 로직을 공통 폼으로 묶고 세금 상수를 재사용한다. 오래된 코드·업종 문구도 최종 비용 분류에 맞춘다. |
+| F12 | 재고 시안 두 벌·중간 | 미연결 `inventory/InventoryBoard.jsx` 880줄과 연결된 `InventoryWorkspace.jsx:37` 이후 MATERIALS/MOVEMENTS/SETTINGS; 후자의 EmptyAction은 `onClick={() => {}}`. | 구 목업은 삭제 후보. 새 재고 화면도 시안 안내를 표시하고 서버 저장이 없다. 두 화면을 모두 완성 기능으로 간주하거나 새 재고 기능을 세 번째로 만들지 않는다. Warehouse 실테이블/공장 창고 설정은 별도 운영 기능이다. |
+| F13 | 수익 분석이 운영 집계처럼 보이는 시안·중간 | `RevenueAnalysis.jsx:13`의 고정 metrics/orders/assignments; 라우터 및 MainLayout 회계 메뉴에 연결; 화면은 예시 데이터 안내를 표시. | 중복 원장 구현이 아니라 미연결 화면이다. 실제 개발 시 Invoice 현금/채권, 비용 신청, 급여 스냅샷을 재사용하는 집계 계층을 설계한다. 같은 매출/비용을 독립 계산하는 새 원장을 만들지 않는다. |
+| F14 | 예가의 독립 샘플 마스터·중간 | `RevenueForecast.jsx:14,15,20,26`에 카테고리·유사 스타일·구매 이력·공장을 하드코딩; `:30,75,113`의 단일 localStorage 키로 저장. | 실제 마스터 FK와 무관한 브라우저 계산기다. org/user별 키가 아니어서 같은 브라우저의 계정/조직 전환에도 같은 예가 목록을 읽는다. 서버 예가 개발 시 FK로 전환하고, 기존 브라우저 기록은 명시적 가져오기/스냅샷으로 다룬다. 샘플 스타일 이름을 FK로 자동 매핑하지 않는다. |
+| F15 | 빈 권한 화면 잔존·낮음 | `pages/App/Permission.jsx:4`는 제목만 렌더링. `/permission` 라우트와 accessControl의 기능 키/첫 접근 후보는 존재한다. | 실제 역할별 접근 설정은 AccessPolicyBoard, 직원 권한은 orgMembership에서 다룬다. 빈 화면을 신규 권한 엔진 개발 근거로 삼지 말고 라우트/기능 키의 폐지 또는 현행 화면 연결을 검토한다. 메뉴 노출 여부와 URL 도달 가능성은 다르다. |
+| F16 | 사용하지 않는 청구 계산을 검증하는 테스트·중간 | `utils/invoiceBilling.mjs:24`의 calculateMonetaryInstallment는 앱 진입점에서 미연결이며 `scripts/invoice-billing.test.mjs:5`만 import. 현행 작성은 invoiceDraft.mjs/InvoiceDraftDialog, 발행은 invoiceIssueStore. | 테스트가 있다는 이유로 이 계산을 운영 기능 구현 완료로 판단하면 안 된다. 회차 정산/비율 청구 테스트와 구 분기형 계산기의 목적을 분리하고, 실제 UI→서버 계약으로 커버를 옮긴 후 불필요 모듈/테스트를 함께 정리한다. 테스트 전용이므로 미사용 앱 파일과 함께 즉시 삭제하지 않는다. |
+
+### 실행 연결이 없는 파일과 선언
+
+import 그래프의 미연결 파일은 9개다. 이 중 invoiceBilling.mjs는 위 F16의 테스트 전용으로 분리하며 나머지 **8개 소스 파일, 약 1,125줄**은 우선 정리 후보다. 줄 수는 마지막 개행을 포함한 도구 기준이다. 경로·export의 저장소 검색에서도 자기 선언 외 실행 참조를 찾지 못했다. 외부 배포 스크립트가 파일을 직접 읽는 경우는 별도 확인해야 한다.
+
+| 파일 | 현행 대체/근거 |
+| --- | --- |
+| `frontend/src/components/AvailableMonthRangeSelector.jsx` | 현재 월/기간 선택은 MonthSelector·MonthRangeSelector 등이 담당. |
+| `frontend/src/hooks/useCustomers.ts` | 타이머로 고정 샘플 고객을 반환하고 브라우저 state만 수정. 실제 고객은 CustomerList/CustomerDetail와 `/customers`. |
+| `frontend/src/pages/App/assign/utils/schedule.js` | calculateCardLoad/calculateRemainingCapacity 선언만 있음. 현행 공장 capacity 함수와 연결 없음. |
+| `frontend/src/pages/App/assign/utils/simulateAssign.js` | 배정 샘플 함수 선언만 있음. |
+| `frontend/src/pages/App/inventory/InventoryBoard.jsx` | 라우트는 Inventory → InventoryWorkspace. |
+| `frontend/src/pages/App/Users.jsx` | 과거 시스템 안내 화면이며 컴포넌트 이름도 Organization으로 남음. 현행 systemBoard는 OrgMembership. |
+| `frontend/src/pages/Auth/AuthCallback.jsx` | 현재 `/auth/callback`은 router.jsx의 OAuthCallbackRedirect가 처리. |
+| `backend/src/employees/employeeAccount.ts` | normalizeEmployeeOrgRole/Status 등의 보조 모듈에 import 연결 없음. 현행 employee.routes.ts와 비교 후 정리. |
+
+`backend/src/index.ts`에서 AST identifier가 선언 1회만 등장한 24개는 이전 조사와 일치한다. 이는 타입 검사 기반 참조 검색이 아니므로 삭제 후 빌드가 필요하다. 특히 초기화 표현식의 side effect 여부도 제거 직전에 확인한다.
+
+| 영역 | 이름과 현재 선언 행 |
+| --- | --- |
+| 주문 | resolveUnlockedWorkOrderStatus:512, loadAccessibleWorkOrderIdsForAssignmentOrder:13683, syncAssignmentPlansForOrderLock:14949, assertOrderItemsReadyForLock:15292 |
+| AT | resolveStyleProcessAtPerPieceSecondsForReferenceQuantity:2477, toStyleProcessMetricKey:3349, clearUnfittedStyleProcessAtParams:5602, startAutoAtSyncScheduler:33585 |
+| 직원/근태/import | evaluateWorkerEmploymentOnDateKey:8457, toAttendanceWorkerDateKey:8581, buildWorkLogImportFactoryScopeLookup:11788 |
+| 배정/일정 | syncAssignmentSchedulesFromWorkRecords:10611, normalizeAssignmentScheduleRepairPayload:10622, buildAssignmentVersionMap:12684, resolveAssignmentCardVariantBuckets:12821, resolveAssignmentCardAtPerPieceSeconds:12850, validateNewAssignmentPlanCtSnapshotProcesses:15916, isAutoWorklogCompletedPlan:24130 |
+| 공정 마스터 | PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE:17339, insertProcessMasterOptionRelations:17828, ensureDefaultProcessMasterOptions:17936, listActionProcessMasterOptions:18535, ensureActionProcessMasterOptionsFromStyleProcesses:18776, listProcessMasterEntryLabelTokens:18867 |
+
+추가 미참조/도달 불가 후보:
+
+- `frontend/src/utils/apiClient.js:180,187`의 setActiveRequestScope/clearActiveRequestScope는 저장소 호출이 없다. 현행 activateRequestScope/deactivateRequestScope는 RequestScopeContext에서 사용하므로 유지한다.
+- `frontend/src/utils/processTime.js:240`의 resolveAtParamsMeta는 raw가 객체가 아닌 분기에서 resolveAtParams를 다시 호출하지만 그 함수도 객체가 아니면 null을 반환한다. 해당 version:1 반환 분기는 도달 불가다. AT v2 계산이나 현재 meta 전체를 제거하는 것은 아니다.
+- `tmp_assignment_plans.json`은 추적된 과거 배정 덤프 후보다. 실제 DB/필수 픽스처와 구분한다. 업무 이력 JSON을 별도 근거 없이 삭제하지 않는다.
+
+### 직접 확인한 코드 복제와 공통화 후보
+
+같은 파일의 두 배치와 서로 다른 파일의 복제가 함께 있다. 같은 함수 본문이어도 인자 순서·기본값·호출 문맥을 비교해야 한다. 작은 정규화 함수까지 한 번에 이동하는 대규모 리팩터링은 피한다.
+
+| ID | 위치/함수 | 판정·권장 방향 |
+| --- | --- | --- |
+| C01 | `index.ts:17685` insertProcessMasterOptions / `:18540` insertProcessMasterOptionsWithDb | SQL INSERT 본문 토큰 동일. 전자는 rows,db=prisma, 후자는 db,rows이므로 호출부 인자를 보존해 하나로 통합. 트랜잭션 클라이언트를 전역 prisma로 바꾸면 안 됨. |
+| C02 | `index.ts:1656` / `organizations/organization.routes.ts:27` hasSubscriptionPayload | 동일 구독 입력 검출. 공통 검증으로 옮기되 시스템 관리자 검사 유지. |
+| C03 | `index.ts:8424,8429` / `utils/atTrainingMonthKey.ts:1,7` normalizeDateKey/normalizeMonthKey | 모듈이 이미 있는데 index에 동일 구현 재선언. 순수 날짜 정규화부터 재사용. |
+| C04 | `work-records/workLogCoverage.ts:4` / `workRecordEmployment.ts:21` normalizeDateKey | 동일 형식 검사. 유효한 달력 날짜 검사까지 한다고 오해하지 말고 공통 계약을 명시. |
+| C05 | `AssignBoard.jsx:628` / `utils/timeDivergence.js:15` 편차 계산 | 공통 편차 함수와 동일 본문. AssignBoard의 별도 이름 대신 공통 함수 사용 후보. |
+| C06 | `AttrBoard.jsx:107` / `ProcessMasterBoard.jsx:123` collectDuplicateCodeSet | 코드 중복 집합 계산 동일. 공정 폼 공통 유틸 후보. |
+| C07 | `AttrBoard.jsx:121` / `attributeApi.js:26` 기본 이름 선택 | 동일 구현이 UI와 API에 복제. 표시 이름 선택 함수 재사용 후보. |
+| C08 | `AttrBoard.jsx:246`, `ProcessMasterBoard.jsx:60`, `StyleProcess.jsx:546`, `attributeApi.js:112` | 공정 코드 정규화 동일. FK 식별과 코드 표시를 구분한 단일 정규화 함수 후보. |
+| C09 | `WorkMonthlyBoard.jsx:94,102,110` / `WorkMonthlyDetail.jsx:66,74,82` | CT 시간·일 수·일 비율 표시 3개 동일. workMonthlyUtils에 모을 후보. 목록과 상세의 데이터 집계 자체는 다른 역할. |
+| C10 | `LastUpdaterLabel.jsx:12` / `utils/lastUpdater.js:22` sanitizeUpdaterName | 동일 이름 표시 정규화. audit FK 식별을 이메일 local-part로 대체하지 않고 표시 함수만 공유. |
+| C11 | `uiMessages.js:1124` / `AttendanceBoard.jsx:233` / `AttendanceList.jsx:171` 템플릿 치환 | 공통 formatMessage와 같은 본문. 공통 번역 포맷터 재사용 후보. |
+| C12 | `constants/orderPartyRole.js:3`, `organizationAccess.js:5`, `orderStatus.js:3`, `payType.js:45`, `productAttributes.js:75` | localized text 선택 복제. 그룹 간 마지막 fallback 표현은 다를 수 있어 한 함수의 옵션으로 보존. |
+| C13 | `OrganizationDetail.jsx:57` / `factoryDetail/FactoryDetail.jsx:96` buildEmployeeOptionLabel | 직원 선택 label 동일. 조직·공장의 FK 범위 검증은 별도로 유지. |
+| C14 | `AuthContext.jsx:29` / `index.jsx:80` resolveCanonicalOrigin | 동일 정식 origin 계산. OAuth redirect와 앱 시작 정규화를 같은 순수 함수로 통일 후보. |
+| C15 | `AssignBoard.jsx:623` / `StyleProcess.jsx:538` AT 신뢰도 표시 | 동일 퍼센트 포맷. 신뢰도 계산과 표시 clamp를 구분해 공통화. |
+| C16 | `AssignBoard.jsx:1782` / `utils/reliabilityColor.js:1` clamp | 동일 0~100 제한. 생산 초과율 표시에는 재사용하지 말고 용도를 신뢰도 등으로 제한. |
+| C17 | `attendanceEmployment.js:7` / `backend/src/employees/payrollManagement.ts:2` resolvePayrollManagement | 월 이하 최신 버전·동월 id 우선·기본 Employee flag fallback 정책이 이중 구현. 프론트 표시/서버 재검증은 필요하지만 공통 순수 정책 또는 동일 fixture 계약 검사를 마련. |
+| C18 | `frontend/src/utils/factoryManagementStart.js:14` / `backend/src/factories/factoryManagementStart.ts:32` | 공장 시작일 상속 함수 본문 동일. 서버를 권한/조회 하한의 기준으로 유지하고 공통 순수 날짜 계약 후보. |
+| C19 | `frontend/src/utils/processTime.js`, `backend/src/index.ts:1913` 이후, `services/atTraining.ts:144` 이후 | 공정 시간/관측/정규화가 프론트·index·학습 서비스에 분산. 일부 본문 동일하지만 학습·표시·스냅샷 생성은 목적이 달라 전체 병합 금지. 공통 입력 스키마와 순수 구간 선택/예측 평가부터 검증. |
+| C20 | `AssignBoard.jsx:4496,4505` 및 `:4709,4718` | resolveDateKey/resolveIndexFromDateKey가 같은 파일의 일정 처리 두 곳에 복제. 공장일 달력·경계 처리 공통화 후보. |
+| C21 | `OrderList.jsx:3777,3784` 및 `:4213,4220`; `WorkDetail.jsx:3219,3230` 및 `:3707,3718` | 가로/세로 수량 폼과 작업기록 표시 분기에 동일 콜백 반복. UI 배치를 없애기보다 입력 옵션/검증을 공유하고 수정 시 두 분기의 동작 일치 확인. |
+| C22 | `PartnerTransactionCosts.jsx:39`, `CustomerPricingBoard.jsx:227`, `RevenueForecast.jsx:66`, `RevenueAnalysis.jsx:12` | 공통 currencyFormat 외 독립 통화 표시가 남음. 실제 비용/단가는 지원 통화·소수 정책에 맞춰 공통화하고 VND 샘플 화면 포맷은 시안 분리와 함께 정리. 다른 단위 숫자 포맷까지 합치지 않음. |
+| C23 | `orderSyncEvents.js`, `workspaceDataEvents.js`, `useWorkspaceRefreshOnEvent.js` | 서로 다른 이벤트와 구독 경로, 양쪽에 동일 ID 정규화가 존재. 삭제/잠금 이벤트는 즉시 로컬 상태 반영, workspace 토픽은 목록 재조회 목적이므로 이벤트 전체를 단순 중복으로 삭제하지 않는다. 한 mutation이 양쪽 재조회를 중복 발생시키는지는 네트워크 측정 후 통합. |
+| C24 | `frontend/package.json`, AssignBoard/SalarySystem/StyleProcess/WorkDetail | dnd-kit과 hello-pangea/dnd 두 라이브러리를 실제 사용. 배정 보드와 행 정렬의 다른 구현이므로 미사용 의존성은 아니다. 장기적으로 공통 접근성/센서/정렬 컴포넌트를 검토하되 현재 정리 첫 단계에 두지 않는다. |
+
+### DB·시작 경로의 레거시: 삭제 전 운영 확인 필요
+
+| ID | 근거 | 확인 후 조치 |
+| --- | --- | --- |
+| L01 | `schema.prisma:1001` Style.processes deprecated JSON; `index.ts:7475` ensureStyleProcessStorageForStyles와 스타일 GET에도 연결된 mirror/자가 이전 | relational StyleProcess/Standard가 기준. 모든 환경의 verify-style-process-backfill 결과·신규 DB 초기화 경로 확보 후 구 JSON seed를 분리. ST·AT·확정 스냅샷 재계산 금지. |
+| L02 | `schema.prisma:1314` WorkOrder.items, `index.ts:8275,30968`의 현재 저장은 JsonNull; `OrderList.jsx:597` legacyRows | WorkOrderItem FK가 현재 기준. DB 잔여 JSON/오래된 소비자 확인 후 구 읽기를 정리. 이름/색상 문자열로 FK를 재구축하지 않는다. |
+| L03 | `schema.prisma:1930` AssignmentBoardState.cards/assignments deprecated mirror, `index.ts:29154` 이후 JsonNull 기록 | AssignmentCard/Plan의 실제 관계형 저장과 board revision은 필요. deprecated JSON 컬럼 폐지와 AssignmentBoardState 테이블/동시성 제어 폐지를 구분. |
+| L04 | `index.ts:17028,17053,17110`의 ASSIGNMENT_PLAN_SELECT_LEGACY와 여러 단계 SELECT 재시도 | 스키마 필수 검사를 하면서 조회는 구 스키마를 허용하는 이중 계약. 배포 대상 스키마 통일 후 실패를 숨기는 fallback 정리. 구 SELECT에서 빠지는 CT/ST·완료 근거 필드 확인. |
+| L05 | `backend/package.json:railway:predeploy,railway:startup,start`, `prisma-safe-deploy.js:48` 이후 | migration_fix/공장 무결성/safe deploy와 start의 개별 SQL·소유권 이전이 겹친다. safe deploy도 Line 제거·소유권 이전·db push 실행. 신규 DB 구축, 일회성 데이터 이전, 매 시작 검사로 분리. 완료 표식/멱등성을 유지하며 필수 보호 트리거를 제거하지 않는다. |
+| L06 | `index.ts:33954,34157` ensureBusinessPartnerMergedIntoOrganization, `:8663` 휴일 storage 준비, 시작 시 enum/마스터 DDL | 이전 도구가 있어도 API 시작/휴일 조회 안의 스키마 준비 경로가 남아 있다. 적용 상태 확인 후 migration으로 이동하고 런타임은 검사로 좁힌다. 이전 환경 대응을 이유 없이 지우지 않는다. |
+| L07 | `WorkDetail.jsx:547` 이후 legacy process/assignment/worker, `factory.routes.ts:224` legacyManagerName | 과거 기록의 표시·읽기 전용 경로와 현재 FK 입력이 섞임. FK 누락 건수와 표시 요구를 확인해 읽기 어댑터로 분리. manager 이름 fallback을 새 관계 저장에 사용하지 않는다. |
+| L08 | router의 `/profile`, `/work-history-monthly`, `/business-partner`, `/invoices/list`, `/payroll/new` 리다이렉트; MainLayout 옛 URL 처리 | 대부분 동일 기능 재구현이 아닌 북마크 호환. 폐지할 경우 route·권한 매핑·탭 제목·keepalive 경로를 함께 정리. MyProfile은 PersonalSettings에서 실제 쓰므로 삭제 제외. |
+| L09 | todo.md에 `## 2026-10-11 레거시 삭제 후보와 작업 순서`가 두 번 존재 | 같은 후보의 다른 버전이 반복 관리되고 최신 FK 상태도 과거 문구와 다름. 이번 절을 기준으로 후속 실행을 추적하고 과거 중복 목록을 재확인 없이 신규 과제로 복제하지 않는다. 과거 기록 통합은 별도 소규모 문서 작업 후보. |
+
+### 과거 조사 정정과 제거에서 제외할 구조
+
+- **카테고리·공정 구성요소 FK를 다시 처음부터 구현할 상태는 아니다.** 현재 schema에 `Style.categoryId`의 제조사 복합 FK와 `StyleProcessComponent.masterOptionId/type` FK가 있다. `services/styleIdentity.ts`는 category FK 범위를 검사하며 `backend/scripts/style-identity-fk.sql:116,132,148,155`는 구성요소 동기화/카테고리 표시 동기화 트리거를 정의한다. 소스 구현 존재를 확인한 것이며 운영 적용/잔여 데이터 0건까지 이번 조사로 인증한 것은 아니다.
+- processComposition JSON과 StyleProcessComponent 테이블은 현재 편집 구조+FK 검증 인덱스 역할이다. SQL 트리거가 JSON에서 관계를 동기화한다. 같은 내용을 담는다는 이유만으로 둘 중 하나를 삭제하면 현재 FK 보호/삭제 사용 이력 검사가 깨질 수 있다.
+- EmployeeSystem은 직급, SalarySystem은 급여 항목/단가/버전, PayTypeScheduleSettings는 근무 기준, PayrollSettings는 급여 계산 설정이다. 같은 직원 데이터가 보여도 전체 화면이 기능 중복인 것은 아니다.
+- ShipmentReview의 QuantitySettlementSnapshot과 InvoiceFinalReview/FinalLock는 각각 월별 수량 정산과 발행 문서별 최종 인정/잠금이다. 이름이 유사해도 동일 원장으로 합치지 않는다.
+- QcPassEvent 검사 통과 수량, 작업기록 생산량, 수동 생산 완료 조정, 과거 생산 인정, InvoiceLine 청구 수량은 서로 다른 근거다. 공정 수량을 출고 수량으로 간주하지 않는다.
+- OrgMembership/OnboardingBoard/Onboarding은 기존 조직 가입·신규 회사 신청·관리자 승인이라는 다른 단계다. 공통 폼은 추출 가능하지만 업무 엔티티/API 전체를 중복으로 제거하지 않는다.
+- WorkspaceDialogScope/보존 outlet은 탭 입력 상태를 보존하는 현재 기능이다. MainLayout의 메뉴·탭 제목 분기와 router 등록은 경로 메타데이터 공통화 후보지만, 페이지가 이중 실행된다는 근거는 아니다.
+- invoiceDraft의 브라우저 미리보기와 서버 issue 재계산은 무결성에 필요한 이중 검증이다. 발행/급여/CT/ST 버전 스냅샷 및 Archive는 원본 변경·삭제 후 이력 보존 계약이며 중복 데이터 정리 대상에서 제외한다.
+- Supabase 클라이언트/토큰 검증은 인증, Prisma는 업무 DB다. 두 DB SDK가 있다는 이유로 동일 데이터 저장 중복으로 판단하지 않는다.
+
+### 영역별 결론과 후속 실행 순서
+
+| 영역 | 이번 검토 결론 |
+| --- | --- |
+| 인증·개인 설정·가입 | 구 callback 미연결; origin 계산 복제; profile/monthly URL 호환; 가입/회사 신청 단계는 별개. |
+| 조직·공장·직원·권한 | 미사용 employeeAccount/Users, 빈 Permission; 구 manager 표시; 구독 검출·정책 엔진 복제. |
+| 고객·단가·기초 마스터 | 실제 Customer CRUD와 샘플 hook 중복; 설정 폼 일부 중첩; 카테고리/구성요소 FK는 소스에 구현돼 있음. |
+| 스타일·공정·ST/AT | 구 JSON seed/미참조 선언, 시간/편차 표시 복제; 공정 FK와 확정 스냅샷은 보존. 기존 AT/ST 외삽·누락 문제는 앞선 조사 과제를 계속 적용. |
+| 주문·생산 현황 | 저장/파생 상태 공존, 다른 수준 진행률 집계와 반올림, 구 items JSON; 가로/세로 폼의 공통 입력 로직 후보. |
+| 배정·일정·QC·생산 완료 | 구/신 완료 API, 구 SELECT, board JSON mirror; 일정 변환 복제. QC/생산 완료/과거 인정은 구분. |
+| 직원 작업·외주·비용 | 구/신 비용 생성 API 공존, 통합 조회와 구 비용 조회 중첩; 레거시 기록 어댑터 및 반복 UI 콜백. |
+| 출퇴근·월간 분석·급여 | 표시 helper·월별 관리 정책 복제, 구 compensation seed. 실제 근태·작업 기간·급여 기준을 무리하게 하나로 합치지 않음. |
+| 청구·입금·감액·수량 정산 | 현재 원장/불변 발행본은 보존; 앱에서 쓰지 않는 청구 계산 테스트 분리 필요. 월별 수량 정산은 별도 목적. |
+| 재고·예가·수익 분석 | 미사용 구 재고+실행 중 새 재고 시안, 예가 샘플 마스터/공용 localStorage, 수익 분석 샘플; 실제 기능 신규 개발 시 기존 원장/FK 재사용. |
+| 공통 UI·캐시·이벤트·라이브러리 | 미참조 scope wrapper, 포맷/정규화/편차 복제. 캐시 무효화·화면 이벤트·네트워크 scheduler는 목적이 다르며 실행 횟수 측정 후 중복 요청 판정. DnD 양쪽 모두 사용. |
+| DB·배포·검증·문서 | 중복 시작 이전 경로, 런타임 DDL/seed, 구 스키마 fallback, 중복 todo 절. 운영 잔여/로그 확인 없는 삭제 금지. |
+
+- [ ] 1차: 위 8개 미연결 파일, index 선언 24개, 미참조 scope wrapper, 도달 불가 AT 분기를 정리한다. build/권한/AT/배정/요청 범위 회귀로 현재 기능 보존 확인. 테스트 전용 invoiceBilling은 별도.
+- [ ] 2차: F01/F03/F04/F07/F09의 운영 이용·잔여 건수를 읽기 전용으로 확인하고 폐지할 입력 경로/정책을 확정한다. 이름 기반 자동 이전 금지.
+- [ ] 3차: C01~C18 중 이미 공통 모듈이 있는 함수부터 작은 변경으로 통합한다. 인자·fallback·트랜잭션·권한·월 경계를 보존한다.
+- [ ] 4차: 진행률의 집계 수준·완료 승인·미확인·100%/초과율 표시 계약을 정하고 주문/현황판/청구/배정의 실제 데이터를 나란히 검증한다. 모든 진행률을 동일 숫자로 강제하지 않는다.
+- [ ] 5차: 시안 화면의 제품 범위를 정하고 재고/예가/수익 실제 구현이 기존 FK·원장·급여·청구 데이터를 재사용하도록 설계한다. 미연결 샘플을 완료 기능으로 인수하지 않는다.
+- [ ] 6차: 일회성 이전·신규 DB 구축·정상 시작을 분리하고 전체 대상 환경 검증 후 구 JSON/SELECT/DDL 경로를 제거한다. 불변 이력/아카이브는 유지한다.
+
+검증 범위: 읽기 전용 AST 도구 실행·구문 검사, 소스/참조/호출 계약 대조, diff/인코딩 검사. 앱 로직을 변경하지 않아 전체 앱 빌드/회귀 재실행은 이번 조사에 포함하지 않는다. 운영 데이터·외부 클라이언트·인증된 브라우저 검증은 미실행이며 위 후속 항목으로 남긴다.
+
 ## 2026-10-16 법인·공장 관리 시작일 조회 제한
 
 - 법인 소속 공장 중 가장 이른 지정일을 법인 관리 시작일로 계산하는 서버 공통 정책과 /management-period를 추가했다. 미지정 공장은 법인 기준을 상속하고 공장 자체 지정일은 유지한다. 날짜를 별도 복제 저장하지 않아 공장 수정·추가·삭제 후 기준이 다시 계산된다.
