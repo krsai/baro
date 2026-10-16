@@ -23,6 +23,7 @@ const TEXT = {
     title: '현황판', customer: '고객', allCustomers: '전체 고객', search: '주문번호·스타일 검색', orderTotal: '주문 전체',
     generated: '기준 시각', order: '주문번호', style: '스타일', due: '납기',
     quantity: '완성품/주문', produced: '완성품 수량', progress: '공정 진행률', status: '상태', schedule: '스케줄',
+    scheduleNote: '본 스케줄은 생산 완료 일정이며, 출고 일자와는 다릅니다.',
     empty: '조건에 맞는 현황판 항목이 없습니다.',
     loadError: '생산 현황판을 불러오지 못했습니다.',
     includeCompleted: '완료 포함',
@@ -34,6 +35,7 @@ const TEXT = {
     title: 'Status Board', customer: 'Customer', allCustomers: 'All customers', search: 'Search order or style', orderTotal: 'Order total',
     generated: 'As of', order: 'Order', style: 'Style', due: 'Due', quantity: 'Finished/Order',
     produced: 'Finished qty', progress: 'Process progress', status: 'Status', schedule: 'Schedule',
+    scheduleNote: 'This schedule shows production completion dates, which differ from shipment dates.',
     empty: 'No report rows match the filters.',
     loadError: 'Failed to load the production progress report.',
     includeCompleted: 'Include completed',
@@ -45,6 +47,7 @@ const TEXT = {
     title: 'Bảng tình hình', customer: 'Khách hàng', allCustomers: 'Tất cả khách hàng', search: 'Tìm đơn hàng hoặc kiểu dáng', orderTotal: 'Toàn bộ đơn hàng',
     generated: 'Thời điểm', order: 'Đơn hàng', style: 'Kiểu dáng', due: 'Hạn giao', quantity: 'Thành phẩm/Đơn hàng',
     produced: 'Số lượng thành phẩm', progress: 'Tiến độ công đoạn', status: 'Trạng thái', schedule: 'Lịch',
+    scheduleNote: 'Lịch này thể hiện thời gian hoàn thành sản xuất, khác với ngày xuất hàng.',
     empty: 'Không có dữ liệu phù hợp.',
     loadError: 'Không thể tải báo cáo tiến độ sản xuất.',
     includeCompleted: 'Bao gồm đã hoàn thành',
@@ -160,12 +163,20 @@ const ReportStatusChip = ({ status: statusKey, languageCode, onClick }) => {
   return <Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={statusKey === 'COMPLETED' ? 'filled' : 'outlined'} onClick={onClick} sx={{ fontWeight: 400 }} />;
 };
 
-const ReportProgressCell = ({ percent }) => (
+const resolveDisplayedProgress = (percent, status) => {
+  const rounded = Math.round(Math.max(0, Number(percent) || 0));
+  return rounded === 100 && status !== 'COMPLETED' ? 99 : rounded;
+};
+
+const ReportProgressCell = ({ percent, status }) => {
+  const displayedPercent = resolveDisplayedProgress(percent, status);
+  return (
   <Stack spacing={0.5}>
-    <LinearProgress variant="determinate" value={percent} />
-    <Typography variant="caption">{percent}%</Typography>
+    <LinearProgress variant="determinate" value={Math.min(100, displayedPercent)} />
+    <Typography variant="caption">{displayedPercent}%</Typography>
   </Stack>
-);
+  );
+};
 
 const CustomerProductionReport = () => {
   const { activeOrgId, activeOrgRole } = useAuth();
@@ -308,7 +319,7 @@ const CustomerProductionReport = () => {
                   </TableCell>
                   <TableCell>{row.dueDate || '-'}</TableCell>
                   <TableCell align="right">{fmt(row.producedQuantity)}/{fmt(row.orderedQuantity)}</TableCell>
-                  <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} /></TableCell>
+                  <TableCell sx={{ minWidth: 150 }}><ReportProgressCell percent={row.progressPercent} status={row.status} /></TableCell>
                   <TableCell><ReportStatusChip status={row.status} languageCode={languageCode} /></TableCell>
                   <TableCell align="center"><Tooltip title={text.schedule}><IconButton size="small" color="primary" aria-label={text.schedule} onClick={() => openDailyProducedCalendar(row)}><CalendarMonthIcon fontSize="small" /></IconButton></Tooltip></TableCell>
                 </TableRow>
@@ -354,6 +365,7 @@ const CustomerProductionReport = () => {
           <Typography variant="body2" color="text.secondary">{dailyProducedRow?.styles ? resolveStyleSummaryLabel(dailyProducedRow.styles, languageCode) : dailyProducedRow?.styleName || dailyProducedRow?.styleCode || '-'}</Typography>
         </Stack>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>{text.dailyProducedTitle}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{text.scheduleNote}</Typography>
         {(dailyProducedRow?.dailyProducedQuantities || []).length === 0
           ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
           : (() => {
@@ -406,13 +418,13 @@ const CustomerProductionReport = () => {
                 <TableRow sx={{ bgcolor: 'action.hover' }}>
                   <TableCell sx={{ fontWeight: 700 }}>{text.orderTotal}</TableCell>
                   <TableCell align="right">{fmt(dailyProducedRow?.producedQuantity)}/{fmt(dailyProducedRow?.orderedQuantity)}</TableCell>
-                  <TableCell><ReportProgressCell percent={dailyProducedRow?.progressPercent || 0} /></TableCell>
+                  <TableCell><ReportProgressCell percent={dailyProducedRow?.progressPercent || 0} status={dailyProducedRow?.status} /></TableCell>
                   <TableCell><ReportStatusChip status={dailyProducedRow?.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
                 {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>
                   <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                   <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}{styleRow.priorQuantity > 0 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이전 완료' : languageCode === 'vi' ? 'Hoàn thành trước' : 'Previous completion'} {fmt(styleRow.priorQuantity)}</Typography>}</TableCell>
-                  <TableCell><ReportProgressCell percent={styleRow.progressPercent} /></TableCell>
+                  <TableCell><ReportProgressCell percent={styleRow.progressPercent} status={styleRow.status} /></TableCell>
                   <TableCell><ReportStatusChip status={styleRow.status} languageCode={languageCode} onClick={['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole) ? () => setPriorCompletionRow(styleRow) : undefined} /></TableCell>
                 </TableRow>)}
               </TableBody>

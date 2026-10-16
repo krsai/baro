@@ -3,6 +3,15 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { loadSourceBindings } from './helpers/source-bindings.mjs';
 
+test('unfinished production displays 99 instead of 100 while preserving overproduction', () => {
+  const { resolveDisplayedProgress } = loadSourceBindings('frontend/src/pages/App/CustomerProductionReport.jsx', ['resolveDisplayedProgress']);
+  assert.equal(resolveDisplayedProgress(100, 'IN_PROGRESS'), 99);
+  assert.equal(resolveDisplayedProgress(99.6, 'IN_PROGRESS'), 99);
+  assert.equal(resolveDisplayedProgress(100, 'COMPLETED'), 100);
+  assert.equal(resolveDisplayedProgress(105, 'IN_PROGRESS'), 105);
+  assert.equal(resolveDisplayedProgress(91, 'IN_PROGRESS'), 91);
+});
+
 test('report includes unassigned quantity and credits confirmed completion', async () => {
   const calculate = progress => loadSourceBindings('backend/src/index.ts', ['weightedProgress'], {
     progress, ASSIGNMENT_STATUS_REVIEW_REQUIRED: 'REVIEW_REQUIRED',
@@ -115,10 +124,10 @@ test('sales report is routed and permissioned', () => {
   assert.match(page, /includeCompleted: '완료 포함'/);
   assert.match(page, /includeCompleted: 'Include completed'/);
   assert.match(page, /includeCompleted: 'Bao gồm đã hoàn thành'/);
-  assert.match(messages, /customerProductionReport:\s*\{ ko: '보고서', en: 'Report', vi: 'Báo cáo' \}/);
-  assert.match(page, /title: '보고서'/);
-  assert.match(page, /title: 'Report'/);
-  assert.match(page, /title: 'Báo cáo'/);
+  assert.match(messages, /customerProductionReport:\s*\{ ko: '현황판', en: 'Status Board', vi: 'Bảng tình hình' \}/);
+  assert.match(page, /title: '현황판'/);
+  assert.match(page, /title: 'Status Board'/);
+  assert.match(page, /title: 'Bảng tình hình'/);
   assert.match(page, /displayEmpty/);
   assert.match(page, /renderValue=.*text\.allCustomers/);
   assert.match(page, /selectedCustomer \? customerLabel\(selectedCustomer, languageCode\) : text\.allCustomers/);
