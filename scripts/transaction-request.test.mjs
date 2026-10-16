@@ -12,6 +12,7 @@ function store(process = false) {
   const snapshot = { processes: [{ styleProcessId: 50 }] };
   const plan = { id: 60, orgId: 1, workOrderId: 30, styleId: 40, factoryId: 1, isCompleted: false, ctReviewRequired: false, assignmentCtSnapshot: snapshot, assignmentStSnapshot: snapshot };
   return { writes, code, plan,
+    factory: { findMany: async () => [{id:1,managementStartDate:"2026-04-01"}] },
     $queryRaw: async () => [],
     systemSetting: { findUnique: async () => ({ value: { defaultVatRate: '10' } }) },
     partnerTransactionCost: { findUnique: async () => null, create: async ({ data }) => { writes.push(['cost',data]); return data; } },

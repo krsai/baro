@@ -88,7 +88,9 @@
     "test:workspace-page-prompts-browser": "node scripts/workspace-page-prompts-browser.test.mjs",
     "test:workspace-modal-audit": "node --test scripts/workspace-modal-audit.test.mjs",
     "test:expense-masters-browser": "node scripts/expense-masters-browser.test.mjs",
-    "test:loading-language-browser": "node scripts/loading-language-browser.test.mjs"
+    "test:loading-language-browser": "node scripts/loading-language-browser.test.mjs",
+    "test:management-period": "npm --prefix backend run build && node --test scripts/management-period.test.mjs",
+    "test:management-period-browser": "node scripts/management-period-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

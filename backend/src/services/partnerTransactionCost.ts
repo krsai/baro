@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
+import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 
 export const COST_DETAIL_FIELDS = ['transportDate', 'origin', 'destination', 'reference'] as const;
 export const costInclude = { partner: { select: { id: true, name: true } }, serviceType: true, workOrder: { select: { id: true, orderNumber: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
@@ -76,6 +77,8 @@ export function validateCostInput(body: any) {
   return { partnerOrgId, serviceTypeId, workOrderId, transactionDate, description, amount, currency, clientKey: body.clientKey, details };
 }
 export async function registerPartnerCost(tx: any, orgId: number, actorId: number, body: any) {
+  const period = await loadManagementPeriod(tx,orgId);
+  assertManagedDate(body?.transactionDate,period.startDate);
   const input = validateCostInput(body);
   const existing = await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: input.clientKey } }, include: costInclude });
   if (existing) {

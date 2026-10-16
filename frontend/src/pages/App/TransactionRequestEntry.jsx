@@ -1,3 +1,4 @@
+import { useManagementPeriod } from '../../context/ManagementPeriodContext';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Autocomplete, Box, Button, Checkbox, FormControlLabel, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
@@ -19,6 +20,7 @@ const initialForm = () => ({ transactionDate: today(), partnerOrgId: '', transac
 
 export default function TransactionRequestEntry() {
   const { activeOrgId } = useAuth();
+  const period = useManagementPeriod();
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
   const labels = REQUEST_FORM_TEXT[languageCode] || REQUEST_FORM_TEXT.ko;
@@ -61,7 +63,7 @@ export default function TransactionRequestEntry() {
   };
   const update = key => event => setForm(current => ({ ...current, [key]: event.target.value }));
   const requiredFields = service?.requiredFields || [];
-  const valid = partner?.isActive && code && form.transactionDate && form.description.trim() && [form.unitPrice,form.quantity].every(value => /^\d{1,12}(\.\d{1,4})?$/.test(value) && Number(value) > 0) && /^\d{1,3}(\.\d{1,2})?$/.test(form.vatRate) && Number(form.vatRate) <= 100 && (!isProcess || Number.isInteger(Number(form.quantity)) && form.assignmentPlanId) && ['order','style','process'].every(key => mode(key) !== 'REQUIRED' || form[{ order: 'workOrderId', style: 'styleId', process: 'styleProcessId' }[key]]) && requiredFields.every(key => form.details[key]?.trim());
+  const valid = !period.loading && !period.error && (!period.startDate || form.transactionDate >= period.startDate) && partner?.isActive && code && form.transactionDate && form.description.trim() && [form.unitPrice,form.quantity].every(value => /^\d{1,12}(\.\d{1,4})?$/.test(value) && Number(value) > 0) && /^\d{1,3}(\.\d{1,2})?$/.test(form.vatRate) && Number(form.vatRate) <= 100 && (!isProcess || Number.isInteger(Number(form.quantity)) && form.assignmentPlanId) && ['order','style','process'].every(key => mode(key) !== 'REQUIRED' || form[{ order: 'workOrderId', style: 'styleId', process: 'styleProcessId' }[key]]) && requiredFields.every(key => form.details[key]?.trim());
   const factor = form.currency === 'USD' ? 100 : 1;
   const subtotal = Math.round(Number(form.unitPrice || 0) * Number(form.quantity || 0) * factor) / factor;
   const tax = Math.round(subtotal * Number(form.vatRate || 0) / 100 * factor) / factor;
@@ -78,7 +80,7 @@ export default function TransactionRequestEntry() {
   };
   return <AppPageContainer title={labels.title}><Paper variant="outlined" sx={{ p: 3, maxWidth: 960 }}><Stack spacing={2} component="fieldset" disabled={loading || saving} sx={{ border: 0, p: 0, m: 0 }}>
     {error && <Alert severity="error">{error}</Alert>}
-    <TextField required type="date" label={labels.date} value={form.transactionDate} onChange={update('transactionDate')} slotProps={{ inputLabel: { shrink: true } }} />
+    <TextField required type="date" label={labels.date} value={form.transactionDate} onChange={update('transactionDate')} slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: period.startDate || undefined } }} />
     <Autocomplete options={codeOptions} value={code} disabled={loading || saving} autoHighlight autoSelect getOptionLabel={row => `${row.code} · ${serviceName(row, languageCode)}${row.taxTreatment ? ` · ${serviceName(row.taxTreatment, languageCode)}` : ""}`} isOptionEqualToValue={(a,b) => a.id === b.id} filterOptions={(rows, state) => rows.filter(row => `${row.code} ${serviceName(row, languageCode)}`.toLocaleLowerCase().includes(state.inputValue.toLocaleLowerCase()))} onChange={(_, row) => chooseCode(row)} onInputChange={(_, text, reason) => { if (reason === 'input') { const match = codeOptions.find(row => row.code.toUpperCase() === text.trim().toUpperCase()); if (match && match.id !== code?.id) chooseCode(match); } }} renderInput={params => <TextField {...params} required label={labels.code} helperText={labels.codeHint} />} />
     {code && <Typography color="text.secondary">{expenseLabels.type}: {serviceName(code.base?.expenseType,languageCode)} ? {expenseLabels.industry}: {serviceName(code.serviceType,languageCode)}</Typography>}
     <TextField select required label={common.partner} value={form.partnerOrgId} onChange={update('partnerOrgId')}>{partners.filter(row => row.isActive).map(row => <MenuItem key={row.id} value={row.id}>{row.name}</MenuItem>)}</TextField>

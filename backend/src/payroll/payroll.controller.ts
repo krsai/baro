@@ -39,8 +39,9 @@ import {
 } from "../utils/payrollMonth";
 import { prisma } from "../db";
 import {
-  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
-  resolveFactoryManagementStartDateKey,
+  resolveOrganizationManagementPeriod,
+  loadManagementPeriod,
+  assertManagedDate,
 } from "../factories/factoryManagementStart";
 
 export const getPayrollCalendarController = async (req: Request, res: Response) => {
@@ -54,11 +55,8 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
     select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true },
     orderBy: { id: "asc" },
   });
-  const managementStartDateKey = factories.length > 0
-    ? factories
-        .map(resolveFactoryManagementStartDateKey)
-        .sort((a, b) => a.localeCompare(b))[0] ?? DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY
-    : DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY;
+  const period = resolveOrganizationManagementPeriod(factories);
+  const managementStartDateKey = period.startDate;
   const currentMonthKey = resolveCurrentPayrollMonthKey({ timeZone });
   const availableMonthKeys: string[] = [];
   const startMonthKey = managementStartDateKey.slice(0, 7);
@@ -84,7 +82,7 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
       name: factory.name,
       nameKo: factory.nameKo,
       nameVi: factory.nameVi,
-      managementStartDateKey: resolveFactoryManagementStartDateKey(factory),
+      managementStartDateKey: period.factories.find(row => row.id === factory.id)!.startDate,
     })),
   });
 };
@@ -126,6 +124,8 @@ export const getPayrollReadinessController = async (req: Request, res: Response)
 export const savePayrollSnapshotController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
+  const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
+  assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
 
   const snapshot = await savePayrollSnapshot({
     orgId: accessContext.organization.id,
@@ -145,6 +145,8 @@ export const savePayrollSnapshotController = async (req: Request, res: Response)
 export const deletePayrollSnapshotController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
+  const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
+  assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
 
   const result = await deletePayrollSnapshot(
     accessContext.organization.id,
@@ -157,6 +159,8 @@ export const deletePayrollSnapshotController = async (req: Request, res: Respons
 export const updatePayrollEmployeeRatesController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
+  const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
+  assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
   const result = await updatePayrollEmployeeRates({
     orgId: accessContext.organization.id,
     month: String(req.params.month || ""),
@@ -170,6 +174,8 @@ export const updatePayrollEmployeeRatesController = async (req: Request, res: Re
 export const unlockPayrollSnapshotController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
+  const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
+  assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
 
   const result = await unlockPayrollSnapshot(
     accessContext.organization.id,
@@ -182,6 +188,8 @@ export const unlockPayrollSnapshotController = async (req: Request, res: Respons
 export const lockPayrollSnapshotController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
+  const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
+  assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
   const result = await lockPayrollSnapshot({
     orgId: accessContext.organization.id,
     month: String(req.params.month || ""),

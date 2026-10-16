@@ -15,6 +15,7 @@ test('unified history preserves original process FKs, quantities and exact unit 
 });
 const input = () => ({ partnerOrgId: 11, serviceTypeId: 4, workOrderId: 30, transactionDate: '2026-10-10', description: 'Delivery', amount: '250000', currency: 'VND', details: { transportDate: '2026-10-10', origin: 'Factory', destination: 'Port' }, clientKey: 'delivery-001' });
 const tx = (mode = 'LOGISTICS') => ({
+  factory: { findMany: async () => [{id:1,managementStartDate:'2026-04-01'}] },
   partnerTransactionCost: { findUnique: async () => null, create: async ({ data }) => data },
   organizationOutsourcingServiceType: { findFirst: async () => ({ serviceType: { entryMode: mode, requiredFields: mode === 'LOGISTICS' ? ['transportDate', 'origin', 'destination'] : [] } }) },
   workOrder: { findFirst: async () => ({ id: 30 }) },

@@ -26,7 +26,7 @@ import {
   resolveWorkRecordStyleRefId,
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
-import { resolveFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
+import { loadManagementPeriod, assertManagedDate, normalizeFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 import { evaluateSalaryFormula } from "../employees/salaryFormula";
 import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendanceParameters";
 import { employeePayTypePolicyMap, isPolicyWorkday, loadEmployeePayTypePolicies } from "../employees/employeePayTypePolicy";
@@ -262,10 +262,12 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   if (factoryId === null) {
     throw createHttpError(400, "factoryId is required");
   }
+  const period = await loadManagementPeriod(prisma,orgId,factoryId);
+  assertManagedDate(month,period.startDate,true);
   const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
   const completedMonth = month < currentMonth;
-  const monthStart = `${month}-01`;
+  const monthStart = [`${month}-01`,period.startDate].sort().at(-1)!;
   const monthEnd = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0))
     .toISOString().slice(0, 10);
 
@@ -283,7 +285,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       select: { workerId: true, factoryId: true, workDate: true, createdAt: true, updatedAt: true },
     }),
     prisma.workLog.findMany({
-      where: { orgId, factoryId, displayDate: { startsWith: month } },
+      where: { orgId, factoryId, displayDate: { startsWith: month, gte: period.startDate } },
       select: {
         displayDate: true,
         createdAt: true,
@@ -366,7 +368,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     if (!payrollFactoryId || !payrollFactory) return [];
     const payType = resolveEmployeeEffectivePayType(employee);
     const payTypePolicy = payTypePolicyByType.get(payType)!;
-    const factoryStart = resolveFactoryManagementStartDateKey(payrollFactory);
+    const factoryStart = normalizeFactoryManagementStartDateKey(payrollFactory?.managementStartDate) || period.startDate;
     return allMonthDates
       .filter((dateKey) =>
         dateKey >= factoryStart &&
@@ -408,7 +410,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
       );
       if (employees.length === 0) return null;
-      const factoryStart = resolveFactoryManagementStartDateKey(factory);
+      const factoryStart = normalizeFactoryManagementStartDateKey(factory?.managementStartDate) || period.startDate;
       const expectedDates = monthWorkingDates.filter((dateKey) => dateKey >= factoryStart);
       const workDateKeys = new Set<string>();
       let productionAllowance = 0;
@@ -592,10 +594,11 @@ const buildIntegratedPayrollEmployees = async (
   productionEmployeesInput: any[],
   factoryId: number
 ) => {
+  const period = await loadManagementPeriod(prisma,orgId,factoryId);
   const range = getPayrollMonthRange(month);
   const monthEndDate = new Date(range.endExclusive.getTime() - 1);
   const monthNumber = Number(month.slice(5, 7));
-  const monthStartKey = `${month}-01`;
+  const monthStartKey = [`${month}-01`,period.startDate].sort().at(-1)!;
   const monthEndKey = monthEndDate.toISOString().slice(0, 10);
   const [employees, attendance, holidays, factories, payTypePolicies] = await Promise.all([
     prisma.employee.findMany({
@@ -846,8 +849,9 @@ const buildIntegratedPayrollEmployees = async (
 };
 
 export const listPayrollSnapshots = async (orgId: number) => {
+  const period = await loadManagementPeriod(prisma,orgId);
   const snapshots = await prisma.payrollSnapshot.findMany({
-    where: { orgId },
+    where: { orgId, month: { gte: period.startDate.slice(0,7) }, OR: period.factories.map(factory => ({ factoryId: factory.id, month: { gte: factory.startDate.slice(0,7) } })) },
     orderBy: { month: "desc" },
     select: {
       id: true,
@@ -953,6 +957,8 @@ export const getPayrollByMonth = async (
   if (factoryId === null) {
     throw createHttpError(400, "factoryId is required");
   }
+  const period = await loadManagementPeriod(prisma,orgId,factoryId);
+  assertManagedDate(month,period.startDate,true);
   const monthReady = isPayrollMonthReady(month, {
     timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
   });
@@ -978,7 +984,7 @@ export const getPayrollByMonth = async (
 
   const workLogRows = await prisma.workLog.findMany(
     {
-      where: { orgId, factoryId, displayDate: { startsWith: month } },
+      where: { orgId, factoryId, displayDate: { startsWith: month, gte: period.startDate } },
       include: {
         factory: {
           select: {
@@ -994,7 +1000,7 @@ export const getPayrollByMonth = async (
     });
   const workLogs = workLogRows.filter(
     (workLog) =>
-      String(workLog.displayDate || "") >= resolveFactoryManagementStartDateKey(workLog.factory)
+      String(workLog.displayDate || "") >= period.startDate
   );
   // Assignment ST snapshots are fetched separately (not via WORK_RECORD_WITH_REFS_INCLUDE,
   // which is shared with plain work-record listing screens) because they are only needed

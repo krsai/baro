@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useManagementPeriod } from '../context/ManagementPeriodContext';
 import { Button, Stack, TextField } from '@mui/material';
 
 const normalizeMonthKey = (value) => {
@@ -26,16 +27,21 @@ const MonthSelector = ({
   ariaLabel,
   inputSx,
   sx,
+  factoryId,
 }) => {
   const monthKey = normalizeMonthKey(value);
-  const minMonth = normalizeMonthKey(min);
+  const period = useManagementPeriod();
+  const scopedStart = period.factories.find(factory => String(factory.id) === String(factoryId))?.startDate || period.startDate;
+  const minMonth = [normalizeMonthKey(min),normalizeMonthKey(scopedStart)].filter(Boolean).sort().at(-1) || '';
+  disabled = disabled || period.loading || Boolean(period.error);
+  useEffect(() => { if (!disabled && minMonth && monthKey < minMonth) onChange?.(minMonth); }, [minMonth,monthKey,disabled]);
   const maxMonth = normalizeMonthKey(max);
   const cannotMovePrevious = previousDisabled || Boolean(minMonth && monthKey <= minMonth);
   const cannotMoveNext = nextDisabled || Boolean(maxMonth && monthKey >= maxMonth);
 
   const shift = (amount) => {
     const nextValue = shiftMonthKey(monthKey, amount);
-    if (nextValue) onChange?.(nextValue);
+    if (nextValue && (!minMonth || nextValue >= minMonth) && (!maxMonth || nextValue <= maxMonth)) onChange?.(nextValue);
   };
 
   return (
@@ -44,7 +50,7 @@ const MonthSelector = ({
         type="month"
         label={label}
         value={monthKey}
-        onChange={(event) => onChange?.(event.target.value)}
+        onChange={(event) => { const value = event.target.value; if ((!minMonth || value >= minMonth) && (!maxMonth || value <= maxMonth)) onChange?.(value); }}
         disabled={disabled}
         InputLabelProps={label ? { shrink: true } : undefined}
         slotProps={{

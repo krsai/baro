@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import dayjs from '../frontend/node_modules/dayjs/dayjs.min.js';
+import managementPeriod from '../backend/dist/factories/factoryManagementStart.js';
 import { buildAttendanceImportPlan } from '../frontend/src/pages/App/attendance/attendanceFileImport.js';
 import { isAttendanceEmployeeVisibleOnDate, isFormerEmployee } from '../frontend/src/pages/App/attendance/attendanceEmployment.js';
 
@@ -22,6 +23,7 @@ test('payroll readiness requires attendance only from managed employees, includi
     const employees = includeNormal ? [{ id: 1, factoryId: 1 }, ...exceptions] : exceptions;
     const factory = { id: 1, employees };
     const deps = {
+      ...managementPeriod,
       ...require('../backend/dist/employees/payrollManagement.js'),
       prisma: {
         factory: { findMany: async () => [factory] },

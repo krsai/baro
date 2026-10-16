@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useManagementPeriod } from '../context/ManagementPeriodContext';
 import { Button, Stack, Typography } from '@mui/material';
 import CustomDatePicker from './CustomDatePicker';
 import dayjs from 'dayjs';
@@ -23,7 +24,23 @@ const MonthRangeSelector = ({
   maxDate,
   disabled = false,
   slotProps,
+  factoryId,
 }) => {
+  const period = useManagementPeriod();
+  const scopedStart = period.factories.find(factory => String(factory.id) === String(factoryId))?.startDate || period.startDate;
+  const minimum = [minDate && dayjs(minDate).format('YYYY-MM-DD'),scopedStart].filter(Boolean).sort().at(-1);
+  minDate = minimum ? dayjs(minimum) : minDate;
+  disabled = disabled || period.loading || Boolean(period.error);
+  const floor = minDate && (monthOnly ? dayjs(minDate).startOf('month') : dayjs(minDate).startOf('day'));
+  useEffect(() => {
+    if (!floor || disabled) return;
+    if (startValue && dayjs(startValue).isBefore(floor, monthOnly ? 'month' : 'day')) onStartChange?.(floor);
+    if (endValue && dayjs(endValue).isBefore(floor, monthOnly ? 'month' : 'day')) onEndChange?.(monthOnly ? floor : floor.endOf('month').startOf('day'));
+  }, [minimum, monthOnly, disabled, startValue, endValue]);
+  const change = handler => (value, context) => {
+    if (floor && value?.isValid?.() && value.isBefore(floor, monthOnly ? 'month' : 'day')) return;
+    handler?.(value, context);
+  };
   const labels = TEXT[languageCode] || TEXT.ko;
   const start = dayjs(startValue);
   const end = dayjs(endValue);
@@ -33,14 +50,14 @@ const MonthRangeSelector = ({
   return (
   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
     <Button type="button" variant="outlined" size="small" aria-label={labels.previous} title={labels.previous}
-      disabled={disabled || !startValue || !start.isValid() || Boolean(minDate && previous.isBefore(dayjs(minDate), 'day'))}
+      disabled={disabled || !startValue || !start.isValid() || Boolean(minDate && previous.isBefore(dayjs(minDate), monthOnly ? 'month' : 'day'))}
       onClick={() => onStartChange?.(previous)} sx={buttonSx}>◀</Button>
     <CustomDatePicker
       monthOnly={monthOnly}
       label={startLabel || (monthOnly ? labels.startMonth : labels.start)}
       adapterLocale={languageCode}
       value={startValue}
-      onChange={onStartChange}
+      onChange={change(onStartChange)}
       minDate={minDate}
       maxDate={endValue || maxDate}
       disabled={disabled}
@@ -52,7 +69,7 @@ const MonthRangeSelector = ({
       label={endLabel || (monthOnly ? labels.endMonth : labels.end)}
       adapterLocale={languageCode}
       value={endValue}
-      onChange={onEndChange}
+      onChange={change(onEndChange)}
       minDate={startValue || minDate}
       maxDate={maxDate}
       disabled={disabled}
@@ -66,7 +83,7 @@ const MonthRangeSelector = ({
         size="small"
         variant="outlined"
         onClick={() => onShift?.(1)}
-        disabled={disabled}
+        disabled={disabled || Boolean(maxDate && end.add(1,'month').endOf('month').isAfter(dayjs(maxDate),'day'))}
         sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
       >
         M+
@@ -75,7 +92,7 @@ const MonthRangeSelector = ({
         size="small"
         variant="outlined"
         onClick={() => onShift?.(-1)}
-        disabled={disabled}
+        disabled={disabled || Boolean(floor && start.subtract(1,'month').startOf('month').isBefore(floor, monthOnly ? 'month' : 'day'))}
         sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
       >
         M-

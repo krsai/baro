@@ -25,7 +25,7 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON } from '../../../utils/apiClient';
-import { normalizeFactoryManagementStartDateKey, resolveFactoryManagementStartDateKey } from '../../../utils/factoryManagementStart';
+import { normalizeFactoryManagementStartDateKey, resolveScopedFactoryManagementStartDateKey } from '../../../utils/factoryManagementStart';
 import {
   emitWorkspaceDataChanged,
   WORKSPACE_DATA_TOPICS,
@@ -324,7 +324,7 @@ const FactoryList = () => {
                       <TableCell>{factory.address || '-'}</TableCell>
                       <TableCell>{formatFactoryContact(factory)}</TableCell>
                       <TableCell>{resolveFactoryManagerLabel(factory)}</TableCell>
-                      <TableCell>{resolveFactoryManagementStartDateKey(factory)}</TableCell>
+                      <TableCell>{resolveScopedFactoryManagementStartDateKey({ factory, factories })}</TableCell>
                       <TableCell>{Number.isFinite(wage) ? wage.toFixed(2) : '-'}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
                         <Tooltip title={text.deleteFactory}>

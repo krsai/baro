@@ -830,6 +830,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               </Select>
             </FormControl>
             <MonthSelector
+                  factoryId={selectedFactoryId}
                   value={dayjs(dateFilterStart).format('YYYY-MM')}
                   onChange={handleFilterMonthChange}
                   min={workHistoryOperationStartDay.format('YYYY-MM')}

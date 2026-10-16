@@ -28,7 +28,7 @@ export const resolveScopedFactoryManagementStartDateKey = ({
   factories = [],
 } = {}) =>
   factory
-    ? resolveFactoryManagementStartDateKey(factory)
+    ? normalizeFactoryManagementStartDateKey(factory.managementStartDate) || resolveEarliestFactoryManagementStartDateKey(factories)
     : resolveEarliestFactoryManagementStartDateKey(factories);
 
 export const resolveScopedFactoryManagementStartDay = (params) =>

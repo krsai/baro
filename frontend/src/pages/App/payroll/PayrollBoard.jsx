@@ -252,7 +252,7 @@ const PayrollBoard = () => {
         const key = rowKey(month, factory.id);
         const snapshot = snapshotsByKey.get(key) || null;
         const factoryStartMonth = String(factory.managementStartDateKey || '').slice(0,7);
-        if (!snapshot && factoryStartMonth && month < factoryStartMonth) continue;
+        if (factoryStartMonth && month < factoryStartMonth) continue;
         rows.push({ month, factory, snapshot });
       }
     }

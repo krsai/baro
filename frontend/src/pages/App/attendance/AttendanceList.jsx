@@ -1,3 +1,4 @@
+import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import PayrollSettingsDialog from '../payroll/PayrollSettingsDialog';
@@ -506,7 +507,8 @@ const AttendanceList = () => {
     const selectedStartDate = dayjs(`${selectedMonth}-01`);
     const selectedEndDate = dayjs(`${selectedMonth}-01`).endOf('month');
     if (!selectedMonth || !selectedStartDate.isValid() || !selectedEndDate.isValid()) return [];
-    let cursor = selectedStartDate.startOf('month');
+    const minDay = resolveScopedFactoryManagementStartDay({ factories, factory: factories.find(row => String(row.id) === String(selectedFactoryId)) });
+    let cursor = selectedStartDate.isBefore(minDay,'day') ? minDay : selectedStartDate.startOf('month');
 
     while (!cursor.isAfter(selectedEndDate, 'day')) {
       const workDate = cursor.format('YYYY-MM-DD');
@@ -535,7 +537,7 @@ const AttendanceList = () => {
       (left, right) =>
         dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
     );
-  }, [employees, rows, selectedMonth]);
+  }, [employees, rows, selectedMonth, factories, selectedFactoryId]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();

@@ -42,7 +42,10 @@ import { createFactoryRouter } from "./factories/factory.routes";
 import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
   normalizeFactoryManagementStartDateKey,
-  resolveFactoryManagementStartDateKey,
+  loadManagementPeriod,
+  managedWorkLogWhere,
+  managedDateRange,
+  assertManagedDate,
 } from "./factories/factoryManagementStart";
 import { createOrgMembershipRouter } from "./org-memberships/orgMembership.routes";
 import { createOrganizationRouter } from "./organizations/organization.routes";
@@ -12360,7 +12363,10 @@ const buildWorkLogContextResponse = async ({ orgId, factoryId, workDate, coverag
   const factory = factoryId ? await prisma.factory.findFirst({ where: { id: factoryId, orgId }, select: { id: true, name: true } }) : null;
   if (!factory || !date) return { factory, workers: [], assignments: [], previousCoverageEndDate: null, suggestedCoverageStartDate: null, isFirstFactoryWorkLog: true };
   const previous = await findPreviousWorkLogCoverageForFactoryScope({ orgId, factoryId: factory.id, beforeWorkDate: date });
-  const previousCoverageEndDate = resolveWorkLogCoverageEndDate(previous, previous?.displayDate) || null;
+  const period = await loadManagementPeriod(prisma,orgId,factory.id);
+  assertManagedDate(date,period.startDate);
+  const previousEnd = resolveWorkLogCoverageEndDate(previous, previous?.displayDate) || null;
+  const previousCoverageEndDate = previousEnd && previousEnd >= period.startDate ? previousEnd : null;
   const suggestedCoverageStartDate = previousCoverageEndDate ? shiftDateKeyByDays(previousCoverageEndDate, 1) : null;
   const start = normalizeDateKey(coverageStartDate) || suggestedCoverageStartDate || date;
   const [employees, rawPlans, vendors] = await Promise.all([
@@ -24708,7 +24714,13 @@ app.get("/factory-month-capacity", async (req, res) => {
       });
     }
 
+    const period = await loadManagementPeriod(prisma,organization.id);
+    assertManagedDate(monthFrom,period.startDate,true); assertManagedDate(monthTo,period.startDate,true);
     const factoryIds = parseFactoryIdsForFactoryMonthCapacity(req.query.factoryIds);
+    if (factoryIds.length === 1) {
+      const scoped = await loadManagementPeriod(prisma,organization.id,factoryIds[0]);
+      assertManagedDate(monthFrom,scoped.startDate,true); assertManagedDate(monthTo,scoped.startDate,true);
+    }
     const debugMode = resolveOptionalString(req.query.debug, null);
     const includeActualOutputDebug =
       debugMode === "actual-output" || debugMode === "1" || debugMode === "true";
@@ -24720,6 +24732,7 @@ app.get("/factory-month-capacity", async (req, res) => {
       factoryIds,
       includeActualOutputDebug,
     });
+    payload.rows = payload.rows.filter((row: any) => row.monthKey >= (period.factories.find(factory => factory.id === row.factoryId)?.startDate || period.startDate).slice(0,7));
     res.json(payload);
   } catch (error) {
     console.error("[factory-month-capacity] request failed", {
@@ -25610,6 +25623,12 @@ app.put("/holidays", async (req, res) => {
   return res.json(toHolidayDateKeyResponse(savedRows));
 });
 
+app.get('/management-period', async (req,res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ error: 'organization not found' });
+  res.json(await loadManagementPeriod(prisma,organization.id));
+});
+
 app.get("/attendance-entries", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -25642,12 +25661,16 @@ app.get("/attendance-entries", async (req, res) => {
     return res.status(404).json({ ok: false, error: "factory not found" });
   }
 
+  const period = await loadManagementPeriod(prisma,organization.id,factoryId);
+  assertManagedDate(workDate,period.startDate);
+  assertManagedDate(month,period.startDate,true);
   if (monthsOnly) {
     const rows = await prisma.attendanceEntry.findMany({
       where: {
         managementExcluded: false,
         orgId: organization.id,
         factoryId,
+        workDate: { gte: period.startDate },
       },
       select: { workDate: true },
       distinct: ["workDate"],
@@ -25668,7 +25691,7 @@ app.get("/attendance-entries", async (req, res) => {
       managementExcluded: false,
       orgId: organization.id,
       factoryId,
-      ...(workDate ? { workDate } : { workDate: { startsWith: month } }),
+      ...(workDate ? { workDate } : { workDate: { startsWith: month, gte: period.startDate } }),
     },
     orderBy: [{ workDate: "asc" }, { workerId: "asc" }, { id: "asc" }],
   });
@@ -25692,6 +25715,8 @@ app.put("/attendance-entries", async (req, res) => {
     return res.status(400).json({ ok: false, error: "workDate is required (YYYY-MM-DD)" });
   }
 
+  const period = await loadManagementPeriod(prisma,organization.id,factoryId);
+  assertManagedDate(workDate,period.startDate);
   const factory = await prisma.factory.findFirst({
     where: { id: factoryId, orgId: organization.id },
     select: { id: true },
@@ -25880,8 +25905,11 @@ app.get("/work-logs", async (req, res) => {
   if (hasWorkDateFilter && !workDate) {
     return res.status(400).json({ ok: false, error: "invalid workDate" });
   }
-  const dateFrom = normalizeDateKey(req.query.dateFrom);
-  const dateTo = normalizeDateKey(req.query.dateTo);
+  const period = await loadManagementPeriod(prisma,organization.id,hasFactoryFilter ? factoryId : null);
+  assertManagedDate(workDate,period.startDate);
+  const range = managedDateRange(period,req.query);
+  const dateFrom = range.gte;
+  const dateTo = range.lte;
   if (hasFactoryFilter) {
     const factory = await prisma.factory.findFirst({
       where: { id: factoryId, orgId: organization.id },
@@ -25921,7 +25949,7 @@ app.get("/work-logs", async (req, res) => {
         orgId: organization.id,
         recordKind,
         ...(hasFactoryFilter ? { factoryId } : {}),
-        ...workDateFilter,
+        AND: [managedWorkLogWhere(period),workDateFilter],
       },
       select: buildWorkLogSelectWithOptionalCoverage({
         includeCoverage: true,
@@ -25936,7 +25964,7 @@ app.get("/work-logs", async (req, res) => {
         orgId: organization.id,
         recordKind,
         ...(hasFactoryFilter ? { factoryId } : {}),
-        ...workDateFilter,
+        AND: [managedWorkLogWhere(period),workDateFilter],
       },
       select: buildWorkLogSelectWithOptionalCoverage({
         includeCoverage: false,
@@ -25977,6 +26005,8 @@ app.get("/work-log-context", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid workDate" });
   }
 
+  const period = await loadManagementPeriod(prisma,organization.id,factoryId);
+  assertManagedDate(workDate,period.startDate); assertManagedDate(coverageStartDate,period.startDate);
   const context = await buildWorkLogContextResponse({
     orgId: organization.id,
     recordKind,
@@ -26004,10 +26034,11 @@ app.get("/work-logs/:id", async (req, res) => {
   const includeContext =
     req.query.includeContext === "1" || req.query.includeContext === "true";
 
+  const period = await loadManagementPeriod(prisma,organization.id);
   let baseWorkLog: any = null;
   try {
     baseWorkLog = await prisma.workLog.findFirst({
-      where: { id, orgId: organization.id },
+      where: { id, orgId: organization.id, AND: [managedWorkLogWhere(period)] },
       select: {
         ...buildWorkLogSelectWithOptionalCoverage({
           includeCoverage: true,
@@ -26020,7 +26051,7 @@ app.get("/work-logs/:id", async (req, res) => {
   } catch (error) {
     if (!isWorkLogCoverageMissingColumnError(error)) throw error;
     baseWorkLog = await prisma.workLog.findFirst({
-      where: { id, orgId: organization.id },
+      where: { id, orgId: organization.id, AND: [managedWorkLogWhere(period)] },
       select: {
         ...buildWorkLogSelectWithOptionalCoverage({
           includeCoverage: false,
@@ -26071,6 +26102,8 @@ app.post("/work-logs/import", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const { organization } = accessContext;
+  const managementPeriod = await loadManagementPeriod(prisma,organization.id);
+  const managementStartForFactory = (id: number) => managementPeriod.factories.find(factory => factory.id === id)?.startDate || managementPeriod.startDate;
 
   const importedRows = normalizeImportedWorkLogRows(req.body?.rows);
   if (importedRows.length === 0) {
@@ -26552,7 +26585,7 @@ app.post("/work-logs/import", async (req, res) => {
     const operationStartError = validateWorkLogOperationStartDateRange({
       coverageStartDate: normalized.coverageStartDate,
       coverageEndDate: normalized.coverageEndDate,
-      operationStartDateKey: resolveFactoryManagementStartDateKey(group.factory),
+      operationStartDateKey: managementStartForFactory(group.factory.id),
     });
     if (operationStartError) {
       issues.push(
@@ -27029,7 +27062,7 @@ const handleCreateOutsourcedWorkLog = async ({
   const operationStartError = validateWorkLogOperationStartDateRange({
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
-    operationStartDateKey: resolveFactoryManagementStartDateKey(validatedFactory),
+    operationStartDateKey: (await loadManagementPeriod(prisma,organization.id,validatedFactory.id)).startDate,
   });
   if (operationStartError) {
     return res.status(400).json({ ok: false, error: operationStartError });
@@ -27208,7 +27241,7 @@ const handleUpdateOutsourcedWorkLog = async ({
   const operationStartError = validateWorkLogOperationStartDateRange({
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
-    operationStartDateKey: resolveFactoryManagementStartDateKey(validatedFactory),
+    operationStartDateKey: (await loadManagementPeriod(prisma,organization.id,validatedFactory.id)).startDate,
   });
   if (operationStartError) {
     return res.status(400).json({ ok: false, error: operationStartError });
@@ -27383,7 +27416,7 @@ app.post("/work-logs", async (req, res) => {
   const operationStartError = validateWorkLogOperationStartDateRange({
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
-    operationStartDateKey: resolveFactoryManagementStartDateKey(validatedFactory),
+    operationStartDateKey: (await loadManagementPeriod(prisma,organization.id,validatedFactory.id)).startDate,
   });
   if (operationStartError) {
     return res.status(400).json({
@@ -27705,7 +27738,7 @@ app.put("/work-logs/:id", async (req, res) => {
   const operationStartError = validateWorkLogOperationStartDateRange({
     coverageStartDate: normalized.coverageStartDate,
     coverageEndDate: normalized.coverageEndDate,
-    operationStartDateKey: resolveFactoryManagementStartDateKey(validatedFactory),
+    operationStartDateKey: (await loadManagementPeriod(prisma,organization.id,validatedFactory.id)).startDate,
   });
   if (operationStartError) {
     return res.status(400).json({
@@ -29213,15 +29246,19 @@ registerTransactionSettingRoutes(app, prisma, { requireOrgRole, requireSystemAdm
 app.get("/partner-transaction-costs", async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!access) return;
-  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
+  const period = await loadManagementPeriod(prisma,access.organization.id);
+  const transactionDate = managedDateRange(period,req.query);
+  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
 app.get("/outsourcing-requests", async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!access) return;
   const orgId = access.organization.id;
+  const period = await loadManagementPeriod(prisma,orgId);
+  const transactionDate = managedDateRange(period,req.query);
   const [costs, records] = await Promise.all([
-    prisma.partnerTransactionCost.findMany({ where: { orgId }, include: REQUEST_INCLUDE }),
-    prisma.outsourcedWorkRecord.findMany({ where: { orgId, transactionCost: null }, include: {
+    prisma.partnerTransactionCost.findMany({ where: { orgId, transactionDate }, include: REQUEST_INCLUDE }),
+    prisma.outsourcedWorkRecord.findMany({ where: { orgId, transactionCost: null, workLog: { AND: [managedWorkLogWhere(period),{ displayDate: transactionDate }] } }, include: {
       outsourcingPartner: { select: { id: true, name: true } },
       workLog: { select: { displayDate: true } },
       assignmentPlan: { select: { workOrderId: true, workOrder: { select: { id: true, orderNumber: true } } } },
@@ -29400,8 +29437,9 @@ app.get("/business-partners/:id/history", async (req, res) => {
   if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
   const partner = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id } });
   if (!partner) return res.status(404).json({ ok: false, error: "business partner not found" });
+  const period = await loadManagementPeriod(prisma,organization.id);
   const records = await prisma.outsourcedWorkRecord.findMany({
-    where: { orgId: organization.id, outsourcingPartnerId: id },
+    where: { orgId: organization.id, outsourcingPartnerId: id, workLog: managedWorkLogWhere(period) },
     orderBy: [{ workLog: { displayDate: "desc" } }, { id: "desc" }],
     include: {
       workLog: { select: { displayDate: true } },
@@ -29411,7 +29449,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
   });
   res.json({
     partner: toBusinessPartnerResponse(partner),
-    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
+    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id, transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
     records: records.map((record) => ({
       id: record.id,
       workDate: record.workLog?.displayDate || null,

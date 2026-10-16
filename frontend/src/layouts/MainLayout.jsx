@@ -1,3 +1,4 @@
+import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
 import WorkspaceDialogScope from '../components/WorkspaceDialogScope';
 import TabStateIndicators from '../components/TabStateIndicators';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -2093,7 +2094,7 @@ const MainLayout = () => {
   );
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
+    <ManagementPeriodProvider><Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
       {/* Header */}
       <AppBar ref={appBarRef} position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
         <Toolbar
@@ -2338,7 +2339,7 @@ const MainLayout = () => {
           )}
         </Box>
       </Box>
-    </Box>
+    </Box></ManagementPeriodProvider>
   );
 };
 

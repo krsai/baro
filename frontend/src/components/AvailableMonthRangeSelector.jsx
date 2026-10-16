@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useManagementPeriod } from '../context/ManagementPeriodContext';
 import { Button, FormControl, InputLabel, MenuItem, Select, Stack, Typography } from '@mui/material';
 
 const AvailableMonthRangeSelector = ({
@@ -11,7 +12,15 @@ const AvailableMonthRangeSelector = ({
   endLabel = '종료 월',
   disabled = false,
 }) => {
-  const orderedMonths = [...months].sort();
+  const period = useManagementPeriod();
+  const minimum = period.startDate?.slice(0,7);
+  const orderedMonths = months.filter(month => !minimum || month >= minimum).sort();
+  disabled = disabled || period.loading || Boolean(period.error);
+  useEffect(() => {
+    if (!minimum || disabled || !orderedMonths.length) return;
+    if (startMonth < minimum) onStartChange?.(orderedMonths[0]);
+    if (endMonth < minimum) onEndChange?.(orderedMonths[0]);
+  }, [minimum,startMonth,endMonth,disabled,orderedMonths[0]]);
   const shift = (amount) => {
     const startIndex = orderedMonths.indexOf(startMonth);
     const endIndex = orderedMonths.indexOf(endMonth);

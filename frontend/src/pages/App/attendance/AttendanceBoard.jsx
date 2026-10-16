@@ -1,3 +1,4 @@
+import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
 import QueryFeedback from '../../../components/QueryFeedback';
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -264,7 +265,10 @@ const AttendanceBoard = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [reloadToken, setReloadToken] = useState(0);
 
-  const dateKey = useMemo(() => toDateKey(selectedDate), [selectedDate]);
+  const operationStartDay = useMemo(() => resolveScopedFactoryManagementStartDay({ factories, factory: factories.find(row => String(row.id) === String(selectedFactoryId)) }), [factories,selectedFactoryId]);
+  const managedDate = selectedDate.isBefore(operationStartDay,'day') ? operationStartDay : selectedDate;
+  const dateKey = toDateKey(managedDate);
+  useEffect(() => { if (factories.length && selectedDate.isBefore(operationStartDay,'day')) setSelectedDate(operationStartDay); }, [operationStartDay,selectedDate]);
   const hasUnsavedEntryChanges = useMemo(
     () => buildAttendanceEntriesSignature(entriesByWorker) !== savedEntriesSignature,
     [entriesByWorker, savedEntriesSignature]
@@ -577,10 +581,12 @@ const AttendanceBoard = ({
               </FormControl>
               <CustomDatePicker
                 label={resolveText(TEXT.workDate, languageCode, 'Work date')}
-                value={selectedDate}
+                value={managedDate}
+                minDate={operationStartDay}
+                disabled={loadingFactories || !selectedFactoryId}
                 onChange={(value) => {
                   if (!value || !value.isValid?.()) return;
-                  setSelectedDate(value.startOf('day'));
+                  if (!value.isBefore(operationStartDay,'day')) setSelectedDate(value.startOf('day'));
                 }}
                 slotProps={{ textField: { sx: { minWidth: 160 } } }}
               />

@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
 import { validateCostDate, COST_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
+import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 
 export const REQUEST_INCLUDE = { outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: true, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 const invalid = (code: string): never => { throw createHttpError(400, code); };
@@ -40,6 +41,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
   const assignmentPlanId = id(body?.assignmentPlanId, true);
   const transactionDate = validateCostDate(body?.transactionDate);
+  const period = await loadManagementPeriod(tx,orgId);
+  assertManagedDate(transactionDate,period.startDate);
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,100}$/.test(body.clientKey)) return invalid('INVALID_TRANSACTION_KEY');
   const description = typeof body.description === 'string' ? body.description.trim() : '';
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
@@ -90,6 +93,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     const eligible = plans.filter((plan: any) => !plan.isCompleted && !plan.ctReviewRequired && hasValidAssignmentProcessRefs(plan, false) && snapshotProcessIds(plan.assignmentCtSnapshot)?.includes(styleProcessId!));
     if (eligible.length !== 1) throw createHttpError(409, eligible.length ? 'SELECT_ASSIGNMENT_PLAN' : 'ELIGIBLE_ASSIGNMENT_REQUIRED');
     const plan = eligible[0];
+    const factoryPeriod = await loadManagementPeriod(tx,orgId,plan.factoryId);
+    assertManagedDate(transactionDate,factoryPeriod.startDate);
     await tx.$queryRaw`SELECT id FROM "AssignmentPlan" WHERE id=${plan.id} AND "orgId"=${orgId} FOR UPDATE`;
     const vendor = await tx.organization.findUnique({ where: { id: partnerOrgId }, select: { name: true } });
     const record = { orgId, outsourcingPartnerId: partnerOrgId, outsourceVendorName: vendor.name, outsourceUnitPrice: amounts.unitPrice, styleId, styleProcessId, assignmentPlanId: plan.id, quantity: amounts.quantity.toNumber(), createdByEmployeeId: actorId };

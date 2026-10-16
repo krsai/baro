@@ -403,6 +403,7 @@ const WorkMonthlyBoard = () => {
               </Select>
             </FormControl>,
             <MonthSelector
+              factoryId={selectedFactoryId}
               key="month-picker"
               value={selectedMonth.format('YYYY-MM')}
               onChange={(monthKey) =>

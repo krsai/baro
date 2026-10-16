@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import managementPeriod from '../backend/dist/factories/factoryManagementStart.js';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
 const ts = require('typescript');
@@ -95,9 +96,10 @@ test('work context uses direct factory employment and does not perform database 
   const employees=[{id:1,factoryId:71,name:'A',joinedAt:'2026-01-01',leftAt:null},{id:2,factoryId:71,name:'B',joinedAt:'2026-09-01',leftAt:null}];
   const calls=[];
   const context=load(backend,'buildWorkLogContextResponse',{
+    ...managementPeriod,
     ...common,
     prisma:{
-      factory:{findFirst:async args=>{calls.push(args);return{id:71,name:'F'};}},
+      factory:{findMany:async()=>[{id:71,managementStartDate:'2026-01-01'}],findFirst:async args=>{calls.push(args);return{id:71,name:'F'};}},
       employee:{findMany:async args=>{calls.push(args);return employees;}},
       assignmentPlan:{findMany:async args=>{calls.push(args);return[{id:11,factoryId:71}];}},
     },
@@ -119,9 +121,11 @@ test('production allowance and ST totals are independent of former line membersh
   const worker={id:1,orgRole:'WORKER',name:'A',payType:'OUTPUT',factoryId:71};
   const records=[{workerId:1,ctSeconds:10,quantity:100,styleProcessId:8,assignmentPlan:{id:11}},{workerId:1,ctSeconds:10,quantity:40,styleProcessId:8,assignmentPlan:{id:12}}];
   const subject=load(payroll,'getPayrollByMonth',{
+    ...managementPeriod,
     ...require('../backend/dist/employees/payrollManagement.js'),
     ...common,assertPayrollMonth:()=>{},isPayrollMonthReady:()=>true,resolveFactoryManagementStartDateKey:()=> '2026-01-01',
     prisma:{
+      factory:{findMany:async()=>[{id:71,managementStartDate:'2026-01-01'}]},
       workLog:{findMany:async({where})=>{assert.equal(where.factoryId,71);return[{factoryId:71,factory:{id:71,name:'F',wagePerSecond:2},displayDate:'2026-07-31',workRecords:records}];}},
       employee:{findMany:async()=>[worker]},
       assignmentPlan:{findMany:async()=>[11,12].map(id=>({id,assignmentStSnapshot:{processes:[{styleProcessId:8,stSeconds:20}]}}))},

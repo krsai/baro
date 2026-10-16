@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import managementPeriod from '../backend/dist/factories/factoryManagementStart.js';
 const require=createRequire(import.meta.url),ts=require('../backend/node_modules/typescript');
 const source=readFileSync('backend/src/payroll/payroll.service.ts','utf8');
 const start=source.indexOf('export const getPayrollMonthReadiness =');
@@ -14,7 +15,7 @@ async function readiness({attendance=true,work=true,invalidBasis=false,invalidFa
   const saved=snapshot?{isProvisional:true,lockedAt:new Date('2026-09-01T00:00:00Z'),data:[]}:null;
   const original=JSON.stringify({attendanceRows,logs,saved});
   const numeric=value=>Number(value)||0;
-  const deps={
+  const deps={ ...managementPeriod,
     ...require('../backend/dist/employees/payrollManagement.js'),
     prisma:{factory:{findMany:async()=>[factory]},employee:{findMany:async()=>[employee]},organizationHoliday:{findMany:async()=>[]},attendanceEntry:{findMany:async()=>attendanceRows},workLog:{findMany:async()=>logs},payrollSnapshot:{findUnique:async()=>saved}},
     assertPayrollMonth:()=>{},toPositiveIntOrNull:Number,resolveCurrentPayrollMonthKey:()=>currentMonth?'2026-08':'2026-10',

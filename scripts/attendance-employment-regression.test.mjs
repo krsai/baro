@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { isAttendanceEmployeeVisibleOnDate } from '../frontend/src/pages/App/attendance/attendanceEmployment.js';
+import managementPeriod from '../backend/dist/factories/factoryManagementStart.js';
 
 const require = createRequire(import.meta.url);
 const ts = require('../backend/node_modules/typescript');
@@ -20,12 +21,13 @@ async function save(workDate, employee = office) {
     findMany: async () => writes,
   } };
   const dependencies = {
+    ...managementPeriod,
     ...require('../backend/dist/employees/payrollManagement.js'),
     app: { put: (_path, fn) => { handler = fn; } },
     requireOrgRole: async () => ({ organization: { id: 1 } }),
     ORG_MANAGEMENT_ROLES: ['ADMIN'], BUSINESS_TIME_ZONE: 'Asia/Ho_Chi_Minh',
     prisma: {
-      factory: { findFirst: async () => ({ id: 3 }) },
+      factory: { findMany: async () => [{ id: 3, managementStartDate: '2025-01-01' }], findFirst: async () => ({ id: 3 }) },
       employee: { findMany: async ({ where, select }) => {
         assert.deepEqual(where, { orgId: 1, factoryId: 3, id: { in: [2] } });
         assert.equal(select.joinedAt, true);
