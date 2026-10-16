@@ -178,6 +178,196 @@
 - [ ] 급여 목록의 별도 월 드롭다운은 전체/실제 데이터가 있는 월만 선택하는 계약을 유지 중이다. 공용 선택기에 전체 및 허용 월 목록 지원을 추가한 뒤 통일한다. 앱 전체 날짜 필터 통일 완료로 기록하지 않는다.
 - 검증: Chrome 모의 API에서 독립 시작/종료 확장, 연도 전환, 비용신청 양 끝 날짜 포함/범위 밖 제외와 검색어 결합을 확인했다. 인증된 운영 화면 검증은 별도다.
 
+## 2026-10-11 SAN102·AM02058 운영 AT/ST 편차 리뷰
+
+사용자가 지목한 두 스타일을 Railway 운영 DB의 READ ONLY 트랜잭션으로 조회했다. 업무 데이터 DML·AT 갱신·ST 변경은 하지 않았다. 아래 값은 현재 운영 데이터에 로컬의 현행 프론트 계산 함수와 shared prior 함수를 적용한 결과이며 인증된 화면 직접 조작과 구분한다. 앞선 일반 리뷰의 운영 미확인 상태는 이 두 스타일에 한해 이번 확인으로 대체한다.
+
+| 스타일 | 스타일 FK | 공정 수 | ST 초/장 (1,000장 기준) | 표시 AT 초/장 (1,000장 기준) | (ST-AT)/AT |
+| --- | --- | --- | --- | --- | --- |
+| SAN102 | 55 | 22 | 2,740 | 868.487 | +215.491% |
+| AM02058 (저장 코드 S-GBWZBD) | 34 | 31 | 2,814 | 1,228.766 | +129.010% |
+
+**핵심 원인은 작은 수량의 자체 관측에 다른 스타일의 준비시간 b를 붙여 큰 수량으로 외삽하는 것이다.** 두 스타일의 1,000장 ST는 누락 0개이며 실제 스타일 구간과 기본 구간 조회도 일치한다. 따라서 이 두 가지 일반 표시 결함은 위 1,000장 편차의 원인이 아니다.
+
+### SAN102
+
+- 전 공정의 자체 관측은 assignmentPlanId=418, 수량 70장 한 건뿐이다. 서로 다른 수량의 관측이 없어 자체 a+b/q 곡선을 식별할 수 없다. 전 공정의 source는 OBSERVATION_ANCHORED이며 ownWeight=0이다. 자체 관측은 앵커로 사용하지만 곡선의 준비시간은 타 스타일에서 빌린다.
+- 근태 실측 coverage는 전부 0이다. 이는 작업시간이 0이라는 뜻이 아니라 근무시간 대체값으로 만든 배분 관측이라는 뜻이다. 자체 관측 개당 시간의 전체 공정 합은 1,837.456초다. 1,000장 표시 AT는 그 절반 이하인 868.487초까지 낮아진다.
+- C05 (공정 FK 1534): ST=200초, 자체 70장 관측=142.051초/장. 빌린 b=8,530.174초를 70장 관측 총시간에서 빼면 a=20.192초가 남는다. 표시 AT(1,000)=20.192+8,530.174/1,000=28.722초로, ST 편차는 +596.336%다. 자체 관측이 1,000장에서 이 속도로 개선된다는 증거는 없다.
+- TS02 (공정 FK 1526): ST=300초, 70장 관측=239.878초, AT(1,000)=69.884초, 편차 +329.285%.
+- 추가 실제 표시 문제: SAN102 수량 구간은 [1,10,50,100,200,500,1000,3000,10000]이다. 300장 조회에서 기본 ST 구간 300을 찾으면 22개 ST가 모두 누락된다. 실제 구간 200을 써야 한다. 이때 합계가 0으로 계산돼도 현재 hasST가 false라 실제 편차 칩은 숨겨진다는 점을 구분한다.
+
+### AM02058
+
+- 자체 관측 수량은 8·100·170장이다. 30개 공정은 OBSERVATION_ANCHORED이고 C04 (FK 1325)는 관측 없이 CATEGORY_PRIOR다. 자체 관측 공정도 현재 제약(a>0, b>=0 등)에 맞는 자체 곡선이 성립하지 않아 타 스타일의 b를 가져온다. 다른 스타일 9개, 같은 카테고리 3개를 이용한다.
+- 자체 관측이 있는 30개 공정의 ST 합은 2,784초, 각 공정의 수량 가중 관측 평균을 합하면 약 2,848.589초다. 같은 공정들의 표시 AT(1,000)는 1,203.002초다. 이 관측 평균은 1,000장 실측값이 아니지만, 큰 편차가 관측 그대로의 차이가 아니라 외삽에서 커졌음을 보여준다.
+- VS501 (공정 FK 1314): ST=110초. 자체 관측은 8장 89.861초, 100장 110.560초, 170장 79.683초다. 타 스타일 b=6,584.508초를 적용한 AT(1,000)는 26.611초로 편차 +313.361%다. 1,000장 자체 관측은 없다.
+- 스타일 전체 AT는 100장 기준 2,744.759초로 ST 대비 편차 +2.523%지만, 1,000장에서는 1,228.766초로 +129.010%가 된다. 수량 증가에 따른 큰 절감의 근거를 검토해야 한다.
+
+### 판단과 남은 작업
+
+- 합계와 편차의 산술은 재현된다. 하지만 이 두 스타일에서 ST가 2~7배 과대하다는 판단은 뒷받침되지 않는다. 식별되지 않은 준비시간을 빌린 잠정 외삽값으로 ST 조정을 권하는 경로부터 고쳐야 한다.
+- [ ] OBSERVATION_ANCHORED의 borrowed b가 자체 근거 없이 관측 시간 대부분을 준비시간으로 설명하는 사례를 제한/보류하는 정책을 정하고 홀드아웃 검증을 추가한다. b를 무조건 0으로 만들거나 ST에 맞춰 AT를 조작하지 않는다.
+- [ ] 관측 수량·실측 근태 비중·빌린 준비시간·예상 출처를 ST 검토 판단에 반영한다. 실제 1,000장 생산성으로 단정하는 경고를 막는다.
+- [ ] SAN102 실제 수량 구간을 ST 합계/존재 검사에 전달한다. 일반 리뷰의 부분합 비교도 함께 수정한다.
+- [ ] 학습 원본의 기간/작업량·근태 대체값과 실제 공정 시간을 확인한다. 확정 ST·급여·CT·배정 스냅샷은 보존한다.
+
+재현 도구: `scripts/at-st-gap-review.cjs`. .env를 자동 로드하지 않고 명시한 세션 DB URL만 사용하며 DB 트랜잭션에 READ ONLY를 설정한다. 실행 예: `node scripts/at-st-gap-review.cjs SAN102 AM02058` (먼저 backend 빌드 필요). 운영 조회 실행 및 도구 구문 검사를 통과했다. 원본 보고서는 OS 임시 폴더에만 저장했고 연결 비밀번호를 소스/보고서에 기록하지 않았다.
+
+## 2026-10-11 AT/ST 큰 편차 계산 리뷰
+
+운영의 큰 편차 스타일 순위는 아직 미확인이다. 현재 세션에 Railway DATABASE_URL/DIRECT_URL이 없고 로컬 backend/.env는 앱 DB 사용 금지 대상인 Supabase를 가리켜 조회하지 않았다. 아래 수치는 운영 사례가 아니라 현재 계산 함수를 실행한 재현 입력이다. 앱 계산 코드·ST·AT 학습 데이터는 수정하지 않았다.
+
+### 우선 수정 검토
+
+1. **ST 부분합을 전체 AT와 비교한다.** StyleBoard.jsx:504 및 StyleProcess.jsx:1894 부근은 ST 누락을 합계에서 건너뛰고, hasST는 some으로 검사한다. AT는 모든 공정의 값이 있어야 합산한다. 예: 공정 1 ST/AT=100/100초, 공정 2 ST 없음/AT=900초이면 ST=100, AT=1,000, 편차=-90%로 표시된다. 비교 공정 집합이 다르므로 유효한 전체 편차가 아니다.
+2. **ST 합계 조회가 스타일별 수량 구간을 전달하지 않는다.** resolveProcessStPerPieceSeconds 기본값은 고정 ST_STANDARD_BUCKETS다. StyleBoard와 StyleProcess의 ST 합계/존재 검사에 실제 timeBucketQuantities/bucketQuantities 전달이 빠져 있다. 재현: 750장 구간 ST=80초는 기본 조회에서 null, [750]을 전달하면 80초다. AT에는 스타일 구간이 전달된다. 사용자 정의 구간에서 ST 누락·잘못된 구간 선택이 발생할 수 있다.
+3. **실측 없는 예상 AT도 ST 조정 경고의 기준이 된다.** atSharedPrior.ts는 자체 관측·공통 모델이 없어도 PT를 우선한 PT_ST_PRIOR를 반환한다. 프론트는 shared prediction을 먼저 표시하므로 atStFallbackApproved 검사까지 가지 않는다. 재현: PT=10초, ST=100초, 관측 0개에서 화면 AT=10초, 편차=+900%. 산술은 맞지만 실제 작업이 ST보다 10배 빠르다는 증거가 아니다. 관측 유무·예상 출처·검증 오차에 따라 ST 조정 경고를 구분해야 한다.
+
+### 모델 영향 — 계산 오류와 구분
+
+- 자체 관측이 있어도 공통 모델 비중이 크다. 자체 모델을 식별할 수 있고 공통 donor가 있으면 ownWeight=배정 수/(배정 수+5)다. 자체 배정 3개면 자체 37.5%, 공통 62.5%다.
+- 실제 함수 재현: 자체 100/500/1,000장 배정이 모두 10초/장이고 ST=10초, 동일 조직·단계·성별·카테고리의 다른 스타일 3개가 PT 대비 5배인 50초 모델이면 화면 AT=35초, ST 편차=-71.4%다. 자체 기록과 ST가 일치해도 큰 편차가 생긴다. donor의 a/PT=5는 현재 허용 범위에 들어간다. 운영에서 이 경로가 원인인지는 실제 donor/ownWeight를 조회해야 한다.
+- 공통 모델은 공정 FK가 같은 관측만 빌리는 구조가 아니다. 조직·생산 단계·성별 범위에서 다른 스타일을 모으고 카테고리 FK와 PT 비율로 보정한다. 서로 다른 작업 난이도가 남아 있을 수 있다.
+- 학습 관측도 공정별 스톱워치 시간이 아니다. 작업자 기간의 근무시간을 ST×수량 비중으로 한 번 배분하고 기본 ST 작업량의 2배까지만 인정한다. 남는 시간은 unexplained로 보존한다. 누락 작업·근태 대체·작업량 구간 차이가 관측에 영향을 줄 수 있으므로 공정별 실제 생산성으로 단정하지 않는다.
+- 편차 공식은 (ST-AT)/AT×100이다. ST=100, AT=10이면 +900%; ST 대비 AT 감소율은 -90%다. 분모 차이이며 산술 버그가 아니다. 목록은 1,000장 기준, 상세는 선택 수량 기준이므로 같은 수량끼리 비교해야 한다.
+
+### 후속 작업
+
+- [ ] ST/AT가 같은 공정 집합·같은 스타일 수량 구간으로 완전하게 계산될 때만 전체 편차를 표시한다. 누락은 0초로 취급하지 않고 검토 대상으로 표시한다.
+- [ ] 관측 없는 PT/ST 잠정값·타 스타일 예상값과 자체 관측 기반 값을 구분하고, 근거 없는 ST 자동 조정 권고를 막는다. 확정 ST·급여·CT 스냅샷은 재계산하지 않는다.
+- [ ] 운영 읽기 전용 조사에서 스타일/공정 FK별 ST, 표시 AT, 수량, ownWeight, source, donor 수, 관측량/기간, 근태 coverage, unexplained 시간, 모델 버전/갱신 시각을 비교해 큰 편차 원인을 분류한다.
+- [ ] 공통 비중 조정은 실제 홀드아웃 오차로 검토한다. 큰 편차를 줄이려고 ST나 AT에 임의 상한을 추가하지 않는다.
+
+검증: 백엔드 TypeScript 빌드 통과. AT 신뢰도·외삽·배분 관련 61개와 shared prior 18개, 총 79개 기존 테스트 통과. 기존 테스트 통과는 위 표시/모델 문제의 부재를 보장하지 않는다. 프론트 실제 계산 함수 및 빌드한 shared prior로 10→35초, 무관측 +900%, 사용자 정의 구간 누락을 재현했다.
+
+## 2026-10-11 레거시 삭제 후보와 작업 순서
+
+기준 HEAD: `a02e2143`. 이번 작업은 목록 작성이며 앱 코드·업무 DB는 변경하지 않았다. 운영 API 호출 로그와 DB 잔여 데이터는 확인하지 않았다.
+
+Changes의 `legacy-scan.tmp`는 Git 미추적 키워드 검색 결과다(51,456바이트, 비어 있지 않은 줄 202개). 실행 코드·테스트·이전 도구가 섞여 있으므로 검색 결과 전체를 삭제 대상으로 삼지 않는다. 임시 파일은 이번에 보존했다.
+
+### 1차: 실행 연결이 없는 파일
+
+기존 조사 목록의 주요 export와 파일명 참조를 저장소 검색으로 대조했다. 삭제할 때 import 그래프를 다시 검사하고 양쪽 빌드·관련 회귀를 확인한다.
+
+| 삭제 후보 | 근거 |
+| --- | --- |
+| `frontend/src/pages/App/Users.jsx` | 미연결 과거 시스템 관리 안내 화면. |
+| `frontend/src/pages/Auth/AuthCallback.jsx` | 미연결 콜백 화면. 실제 `/auth/callback`은 router.jsx의 OAuthCallbackRedirect가 처리한다. |
+| `frontend/src/hooks/useCustomers.ts` | 고정 샘플 고객을 반환하는 미사용 CRUD 훅. |
+| `frontend/src/pages/App/assign/utils/simulateAssign.js` | 외부 호출 없는 배정 샘플 함수. |
+| `frontend/src/pages/App/assign/utils/schedule.js` | calculateCardLoad/calculateRemainingCapacity 외부 참조 없음. |
+| `frontend/src/components/AvailableMonthRangeSelector.jsx` | 미사용 기간 선택 컴포넌트. |
+| `frontend/src/pages/App/inventory/InventoryBoard.jsx` | 미연결 재고 목업. 실제 Inventory.jsx는 InventoryWorkspace를 사용한다. 관련 목업 참고 문구도 정리한다. |
+| `backend/src/employees/employeeAccount.ts` | 미사용 직원 계정 보조 모듈. 현행 API는 employee.routes.ts다. |
+| `tmp_assignment_plans.json` | 참조 없는 과거 배정 덤프. 제거된 lineId 포함. 업무 DB 원본과 구분한다. |
+
+- [ ] 위 9개 파일 삭제 후 양쪽 빌드와 권한·직원·배정·기간 선택 회귀 확인.
+
+### 2차: 미참조 선언과 도달 불가능한 분기
+
+`backend/src/index.ts`의 다음 24개 식별자는 TypeScript AST 재확인에서 각각 선언 위치 1회만 등장했다. 선언 제거 후 새로 미사용이 된 import/보조 함수도 검사한다. 사용 중인 수동 AT·주문 잠금·공장 일정·FK 마스터 경로를 함께 제거하지 않는다.
+
+| 영역 | 미참조 선언 |
+| --- | --- |
+| 주문 | resolveUnlockedWorkOrderStatus, loadAccessibleWorkOrderIdsForAssignmentOrder, syncAssignmentPlansForOrderLock, assertOrderItemsReadyForLock |
+| AT·공정 계산 | resolveStyleProcessAtPerPieceSecondsForReferenceQuantity, toStyleProcessMetricKey, clearUnfittedStyleProcessAtParams, startAutoAtSyncScheduler |
+| 직원·근태·가져오기 | evaluateWorkerEmploymentOnDateKey, toAttendanceWorkerDateKey, buildWorkLogImportFactoryScopeLookup |
+| 배정·일정 | syncAssignmentSchedulesFromWorkRecords, normalizeAssignmentScheduleRepairPayload, buildAssignmentVersionMap, resolveAssignmentCardVariantBuckets, resolveAssignmentCardAtPerPieceSeconds, validateNewAssignmentPlanCtSnapshotProcesses, isAutoWorklogCompletedPlan |
+| 공정 마스터 | PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE, insertProcessMasterOptionRelations, ensureDefaultProcessMasterOptions, listActionProcessMasterOptions, ensureActionProcessMasterOptionsFromStyleProcesses, listProcessMasterEntryLabelTokens |
+
+- [ ] 위 24개 선언 제거. 자동 AT 타이머 등 연쇄 제거 범위는 수동 갱신 경로와 구분해 재확인.
+- [ ] `frontend/src/utils/processTime.js:242`의 resolveAtParamsMeta 내 도달 불가능한 구형 분기를 정리한다. raw atParams가 object가 아닐 때 호출하는 resolveAtParams도 같은 raw를 검사해 반드시 null을 반환하므로 이후 version:1 객체 반환에 도달할 수 없다. 함수 본체와 정상 AT 계산은 유지한다.
+
+### C. 삭제 전 이전/이용 확인이 필요한 후보
+
+| 후보 | 현황과 삭제 전 확인 |
+| --- | --- |
+| `backend/src/index.ts:25073` POST `/assignment-plans/:externalId/close` | deprecated 응답과 후속 URL이 명시된 구 API다. 현재 프론트 호출은 없다. 운영 로그/외부 이용 여부 확인 후 삭제하고 security-boundaries 테스트의 구 경로 검사도 정리한다. |
+| `backend/src/index.ts:25126` PATCH `/assignment-plans/:externalId/production-complete` | 현재 프론트 호출이 없고 수동 완료는 manual-production-complete를 사용한다. 외부 이용 확인 후 정리한다. resolveLegacyCompletionQtyInput은 이 API에서도 사용하므로 close만 지우면서 함께 지우면 안 된다. |
+| `backend/src/employees/employee.routes.ts:176` GET/PUT `/employee-compensation-policies` | 현재 프론트 호출이 없는 과거 급여 마스터 API다. 하지만 EmployeeCompensationPolicy는 salarySystem.routes.ts:47의 급여 초기화가 아직 읽는다. 구 API 제거와 DB 테이블 제거는 구분하고 모든 공장의 급여 항목/버전 이전을 먼저 확인한다. |
+| `frontend/src/utils/roleAccessPolicy.js:21` 및 `pages/App/system/AccessPolicyBoard.jsx:256` | localStorage의 과거 권한 설정을 읽어 서버 미저장 상태이면 PUT한다. 오래된 브라우저 설정이 서버에 반영될 여지가 있다. 서버 저장 상태 확인 후 이 이전 경로와 구 키 처리를 제거한다. 현재 역할별 권한 검사는 유지한다. |
+| `backend/src/index.ts:16998` 부근 ASSIGNMENT_PLAN_SELECT_LEGACY 계열 | DB 컬럼이 없으면 필드가 적은 SELECT로 재시도한다. 대상 환경 스키마 확인 후 경로를 통일한다. 구 SELECT에 CT/ST와 완료 사유 등 일부 필드가 없어 불일치를 숨길 수 있다. |
+| `backend/package.json:40`의 start 이전 체인, prisma-safe-deploy.js, migration_fix.sql | Line 제거·소유권 이전·AT backfill·구 seed 등이 시작/배포 시 남아 있다. 이전 완료 근거와 신규 DB 구축 경로를 확보해 일회성 이전과 정상 시작을 분리한다. 필수 스키마 적용과 검사를 통째로 지우지 않는다. |
+| 주문/작업기록/공장의 구형 데이터 읽기 | OrderList.jsx:605의 legacyRows, WorkDetail.jsx:546 이후 legacy-process/assignment, factory.routes.ts:223의 manager 문자열 폴백 등. 운영의 구형 데이터/누락 FK 건수를 먼저 조사하고 필요하면 명시적인 FK 이전을 완료한다. |
+| `/profile` 리다이렉트 | 이번 개인 설정 통합 전 주소의 북마크 호환이다. 내부 이동은 이미 제거했다. URL 호환을 끝내기로 하면 삭제할 수 있다. PROFILE 권한 키는 개인 설정에 사용 중이므로 함께 삭제하지 않는다. |
+
+- [ ] C 후보는 운영 로그와 DB 읽기 전용 조사로 판정하고 필요한 이전을 완료한 뒤 호환 코드를 삭제한다.
+
+### 삭제 목록에서 제외한 항목
+
+- `frontend/src/theme/index.js`는 App.jsx의 `./theme` import에서 실제 사용된다. 단순 파일명 검색으로 삭제하면 안 된다.
+- `frontend/src/index.jsx`, invoiceAcceptance.jsx, search-select-acceptance.jsx와 대응 HTML은 앱/브라우저 검증 진입점이다. `frontend/src/utils/invoiceBilling.mjs`도 테스트에서 사용한다.
+- `MyProfile.jsx`는 PersonalSettings.jsx가 가져오는 현재 개인 정보 영역이다.
+- 발행·급여·CT/ST 불변 스냅샷, 원본 삭제 후 유지하는 Invoice ID, ManufacturerDataArchive·StyleIdentityArchive, 과거 비활성 공정은 보존 계약이 있다. 호환 코드 제거와 업무 이력 삭제를 구분한다.
+- 과거 migration/감사 스크립트는 존재만으로 미사용으로 판정하지 않는다. package.json·CI·신규 DB 구축·유지보수에서 사용되는지 확인하고 우선 정상 시작 경로에서 분리할 대상을 정한다.
+
+
+
+## 2026-10-11 레거시 삭제 후보와 작업 순서
+
+기준 HEAD: `a02e2143`. 이번 작업은 목록 작성이며 앱 코드·업무 DB는 변경하지 않았다. 운영 API 호출 로그와 DB 잔여 데이터는 확인하지 않았다.
+
+Changes의 `legacy-scan.tmp`는 Git 미추적 키워드 검색 결과다(51,456바이트, 비어 있지 않은 줄 202개). 실행 코드·테스트·이전 도구가 섞여 있으므로 검색 결과 전체를 삭제 대상으로 삼지 않는다. 임시 파일은 이번에 보존했다.
+
+### 1차: 실행 연결이 없는 파일
+
+기존 조사 목록의 주요 export와 파일명 참조를 저장소 검색으로 대조했다. 삭제할 때 import 그래프를 다시 검사하고 양쪽 빌드·관련 회귀를 확인한다.
+
+| 삭제 후보 | 근거 |
+| --- | --- |
+| `frontend/src/pages/App/Users.jsx` | 미연결 과거 시스템 관리 안내 화면. |
+| `frontend/src/pages/Auth/AuthCallback.jsx` | 미연결 콜백 화면. 실제 `/auth/callback`은 router.jsx의 OAuthCallbackRedirect가 처리한다. |
+| `frontend/src/hooks/useCustomers.ts` | 고정 샘플 고객을 반환하는 미사용 CRUD 훅. |
+| `frontend/src/pages/App/assign/utils/simulateAssign.js` | 외부 호출 없는 배정 샘플 함수. |
+| `frontend/src/pages/App/assign/utils/schedule.js` | calculateCardLoad/calculateRemainingCapacity 외부 참조 없음. |
+| `frontend/src/components/AvailableMonthRangeSelector.jsx` | 미사용 기간 선택 컴포넌트. |
+| `frontend/src/pages/App/inventory/InventoryBoard.jsx` | 미연결 재고 목업. 실제 Inventory.jsx는 InventoryWorkspace를 사용한다. 관련 목업 참고 문구도 정리한다. |
+| `backend/src/employees/employeeAccount.ts` | 미사용 직원 계정 보조 모듈. 현행 API는 employee.routes.ts다. |
+| `tmp_assignment_plans.json` | 참조 없는 과거 배정 덤프. 제거된 lineId 포함. 업무 DB 원본과 구분한다. |
+
+- [ ] 위 9개 파일 삭제 후 양쪽 빌드와 권한·직원·배정·기간 선택 회귀 확인.
+
+### 2차: 미참조 선언과 도달 불가능한 분기
+
+`backend/src/index.ts`의 다음 24개 식별자는 TypeScript AST 재확인에서 각각 선언 위치 1회만 등장했다. 선언 제거 후 새로 미사용이 된 import/보조 함수도 검사한다. 사용 중인 수동 AT·주문 잠금·공장 일정·FK 마스터 경로를 함께 제거하지 않는다.
+
+| 영역 | 미참조 선언 |
+| --- | --- |
+| 주문 | resolveUnlockedWorkOrderStatus, loadAccessibleWorkOrderIdsForAssignmentOrder, syncAssignmentPlansForOrderLock, assertOrderItemsReadyForLock |
+| AT·공정 계산 | resolveStyleProcessAtPerPieceSecondsForReferenceQuantity, toStyleProcessMetricKey, clearUnfittedStyleProcessAtParams, startAutoAtSyncScheduler |
+| 직원·근태·가져오기 | evaluateWorkerEmploymentOnDateKey, toAttendanceWorkerDateKey, buildWorkLogImportFactoryScopeLookup |
+| 배정·일정 | syncAssignmentSchedulesFromWorkRecords, normalizeAssignmentScheduleRepairPayload, buildAssignmentVersionMap, resolveAssignmentCardVariantBuckets, resolveAssignmentCardAtPerPieceSeconds, validateNewAssignmentPlanCtSnapshotProcesses, isAutoWorklogCompletedPlan |
+| 공정 마스터 | PROCESS_MASTER_COMPOSITION_GROUP_BY_TYPE, insertProcessMasterOptionRelations, ensureDefaultProcessMasterOptions, listActionProcessMasterOptions, ensureActionProcessMasterOptionsFromStyleProcesses, listProcessMasterEntryLabelTokens |
+
+- [ ] 위 24개 선언 제거. 자동 AT 타이머 등 연쇄 제거 범위는 수동 갱신 경로와 구분해 재확인.
+- [ ] `frontend/src/utils/processTime.js:242`의 resolveAtParamsMeta 내부 구형 분기 정리. atParams가 객체가 아닌 분기에서 resolveAtParams도 같은 객체 검사를 하므로 반드시 null을 반환한다. 뒤의 version:1 객체 반환은 도달 불가능하다. 함수 본체와 유효한 AT 계산은 유지한다.
+- [ ] `frontend/src/utils/apiClient.js:178`의 setActiveRequestScope/clearActiveRequestScope 제거. 저장소 전체에서 선언 외 호출이 없다. RequestScopeContext는 activateRequestScope/deactivateRequestScope를 직접 사용하므로 현행 두 함수와 스케줄러는 유지한다.
+- [ ] 양쪽 빌드와 AT·배정·잠금·마스터·요청 범위 회귀 확인.
+- [ ] 근거 정리가 끝나면 `legacy-scan.tmp` 삭제.
+
+### 선행 확인이 필요한 레거시
+
+| 후보 | 삭제 전 확인 |
+| --- | --- |
+| POST `/assignment-plans/:externalId/close` | deprecated API이며 현행 프론트 호출 없음. 운영 로그·외부 클라이언트 이용 확인 후 security-boundaries 검사와 함께 정리. |
+| PATCH `/assignment-plans/:externalId/production-complete` | 현행 프론트는 manual-production-complete 사용. 외부 이용 확인 필요. resolveLegacyCompletionQtyInput은 close만 제거할 때 함께 삭제하지 않는다. |
+| GET/PUT `/employee-compensation-policies` | 새 급여 초기화가 EmployeeCompensationPolicy를 아직 읽는다. 전체 공장 이전 확인 후 API 폐지와 테이블 제거를 분리. |
+| localStorage 권한·휴일·언어 이전 | 과거 브라우저 설정의 이용/서버 이전 여부 확인. 현행 권한 검사는 유지. |
+| ASSIGNMENT_PLAN_SELECT_LEGACY·findAssignmentPlansWithSelectFallback | 모든 대상 환경의 필수 스키마 확인 후 구형 SELECT 재시도를 제거. |
+| start의 과거 이전 체인·migration_fix.sql | 이전 완료 증거와 신규 DB 구성 절차 확보 후 일회성 이전과 정상 시작 분리. 필수 스키마 검사는 유지. |
+| OrderList legacyRows·WorkDetail 구형 기록·공장 manager 문자열 폴백 | 운영 구형 데이터·누락 FK 건수 확인 및 명시적 FK 이전 선행. 이름으로 관계를 추측 복원하지 않는다. |
+| `/profile` 리다이렉트 | 과거 북마크 호환 폐지 여부 결정 필요. PROFILE 권한 키는 개인 설정에서 사용하므로 유지. |
+
+- [ ] 위 항목은 운영 로그·DB 읽기 전용 조사로 판정하고 필요한 이전 완료 후 삭제.
+
+### 보존 대상
+
+- theme/index.js, 앱·브라우저 인수 진입점, 테스트에서 사용하는 invoiceBilling.mjs, PersonalSettings가 사용하는 MyProfile.jsx.
+- 발행·급여·CT/ST 불변 스냅샷, 원본 삭제 후 보존하는 Invoice 식별자, ManufacturerDataArchive·StyleIdentityArchive, 과거 비활성 공정.
+- CI·신규 DB 구성·보수에서 사용하는 migration·감사·검증 스크립트. legacy 키워드만으로 제거하지 않는다.
+
 ## 2026-10-11 개인 설정·개인 정보 통합
 
 - 우상단 이름 클릭은 `개인 설정`(`/personal-settings`)을 연다. 이메일·이름·연락처·은행·계좌번호와 기존 시작 화면·표시 언어 설정을 한 화면에 모았다. 개인 정보 저장과 미저장 경고를 유지하고, 개인 정보 영역도 한/영/베 표시 언어를 따른다. 과거 `/profile` 주소는 통합 화면으로 이동한다.
