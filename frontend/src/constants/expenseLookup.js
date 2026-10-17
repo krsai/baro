@@ -1,0 +1,5 @@
+export const EXPENSE_LOOKUP_TEXT = {
+  ko: { basic:'기본 내역', details:'상세 내역', author:'작성자', issuer:'작성 법인', search:'검색', keyword:'코드·이름·내용 검색', select:'선택', close:'닫기', empty:'검색 결과가 없습니다.', codeHint:'코드 입력 · F2 검색', partnerHint:'거래처 검색', tax:'세금 구분', noVat:'VAT 없음', unknown:'코드를 검색해 선택해 주세요.' },
+  en: { basic:'Basic information', details:'Expense details', author:'Prepared by', issuer:'Organization', search:'Search', keyword:'Search code, name or description', select:'Select', close:'Close', empty:'No matching results.', codeHint:'Enter code · F2 to search', partnerHint:'Find a partner', tax:'Tax treatment', noVat:'No VAT', unknown:'Search and select a code.' },
+  vi: { basic:'Thông tin cơ bản', details:'Chi tiết chi phí', author:'Người lập', issuer:'Pháp nhân', search:'Tìm kiếm', keyword:'Tìm mã, tên hoặc nội dung', select:'Chọn', close:'Đóng', empty:'Không có kết quả phù hợp.', codeHint:'Nhập mã · F2 để tìm', partnerHint:'Tìm đối tác', tax:'Loại thuế', noVat:'Không VAT', unknown:'Tìm và chọn mã.' },
+};

@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
+import { EXPENSE_LOOKUP_TEXT } from '../frontend/src/constants/expenseLookup.js';
 import { EXPENSE_REQUEST_TEXT } from '../frontend/src/constants/expenseRequest.js';
 const executablePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
 if(!executablePath)throw Error('Chrome required');
@@ -16,6 +17,7 @@ try {
   browser=await chromium.launch({executablePath,headless:true});
   for(const lang of ['ko','en','vi'])for(const kind of ['LOGISTICS','PROCESS']) {
     const page=await browser.newPage({viewport:{width:1920,height:1080}}),errors=[];let payload;const attempts=[];
+    page.setDefaultTimeout(15000);console.log('Checking',lang,kind);
     page.on('pageerror',error=>errors.push(error.message));
     await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN"});'}));
     await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
@@ -31,9 +33,11 @@ try {
     await page.goto(`http://127.0.0.1:${port}/transaction-request-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],labels={partner:l.payee,code:l.code,price:l.price,qty:l.quantity,order:l.order,style:l.style,process:l.process,assignment:l.assignment,submit:l.save};
     await page.getByLabel(l.title,{exact:false}).fill('Factory expenses');
-    await page.getByRole('combobox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BTH':'TRKV');
-    await page.getByRole('combobox',{name:labels.code,exact:false}).press('Tab');
-    await page.getByRole('combobox',{name:labels.partner,exact:false}).click();await page.getByRole('option',{name:kind==='PROCESS'?'QQ':'Trucking Partner',exact:true}).click();
+    assert.equal(await page.getByRole('columnheader',{name:l.useDate,exact:true}).count(),0);
+    await page.getByRole('textbox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BT':'TRK');
+    await page.getByRole('textbox',{name:labels.code,exact:false}).press('Enter');
+    await page.getByRole('dialog').getByRole('button',{name:EXPENSE_LOOKUP_TEXT[lang].select,exact:true}).click();
+    await page.getByRole('textbox',{name:labels.partner,exact:false}).click();await page.getByRole('dialog').getByRole('button',{name:EXPENSE_LOOKUP_TEXT[lang].select,exact:true}).click();
     await page.getByRole('alert').filter({hasText:lang==='ko'?'지급 대상':lang==='en'?'payee':'đối tác'}).waitFor();
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).isDisabled(),kind==='PROCESS');
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).inputValue(),kind==='PROCESS'?'0':'10');
@@ -50,16 +54,16 @@ try {
     if(kind==='LOGISTICS') {
       await page.getByRole('button',{name:l.add,exact:true}).click();
       const second=page.getByTestId('expense-line').nth(1);
-      await second.getByRole('combobox',{name:labels.code,exact:false}).fill('TRKV');await second.getByRole('combobox',{name:labels.code,exact:false}).press('Tab');
+      await second.getByRole('textbox',{name:labels.code,exact:false}).fill('TRKV');await second.getByRole('textbox',{name:labels.code,exact:false}).press('Tab');
       await second.getByLabel(labels.price,{exact:false}).fill('50000');await second.getByLabel(labels.qty,{exact:false}).fill('1');
       await page.getByRole('button',{name:l.add,exact:true}).click();await page.getByTestId('expense-line').nth(2).getByRole('button',{name:l.remove,exact:true}).click();
       assert.equal(await page.getByTestId('expense-line').count(),2);
       assert.match(await page.getByTestId('expense-totals').textContent(),/275/);
       if(lang==='ko'){await page.evaluate(()=>{window.scrollTo(0,0);document.querySelector('.MuiTableContainer-root').scrollLeft=0;});await page.screenshot({path:path.join(process.env.TEMP||'/tmp','baro-expense-request.png'),fullPage:true});}
     }
-    await page.getByRole('button',{name:labels.submit,exact:true}).click();if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
+    console.log('Submitting',lang,kind);await page.getByRole('button',{name:labels.submit,exact:true}).click();if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
     assert.equal(payload.items.length,kind==='LOGISTICS'?2:1);assert.equal(payload.partnerOrgId,11);assert.match(payload.requestDate,/^\d{4}-\d{2}-\d{2}$/);payload=payload.items[0];
-    assert.equal(payload.transactionCodeId,7);assert.equal(payload.workOrderId,30);assert.equal(payload.unitPrice,'100000');assert.equal(payload.quantity,'2');
+    assert.ok(!('transactionDate' in payload));assert.equal(payload.transactionCodeId,7);assert.equal(payload.workOrderId,30);assert.equal(payload.unitPrice,'100000');assert.equal(payload.quantity,'2');
     assert.equal(payload.styleProcessId,kind==='PROCESS'?50:null);assert.equal(payload.assignmentPlanId,kind==='PROCESS'?61:null);
     assert.equal(payload.vatRate,kind==='PROCESS'?'0':'10');assert.ok(!('coverageStartDate'in payload));assert.ok(!('createdByEmployeeId'in payload));assert.deepEqual(errors,[]);
     await page.close();

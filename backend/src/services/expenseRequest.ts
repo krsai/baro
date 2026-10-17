@@ -37,7 +37,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     if (!item || typeof item !== 'object' || Array.isArray(item)) fail('INVALID_EXPENSE_REQUEST_ITEM');
     // A document has exactly one payee and currency. Reject conflicting line input.
     if (item.partnerOrgId != null && item.partnerOrgId !== body.partnerOrgId || item.currency != null && item.currency !== body.currency) fail('EXPENSE_REQUEST_HEADER_MISMATCH');
-    return { transactionDate: item.transactionDate, transactionCodeId: item.transactionCodeId,
+    if (item.transactionDate != null && item.transactionDate !== requestDate) fail('EXPENSE_REQUEST_DATE_MISMATCH');
+    return { transactionDate: requestDate, transactionCodeId: item.transactionCodeId,
       description: item.description, unitPrice: item.unitPrice, quantity: item.quantity, vatRate: item.vatRate,
       workOrderId: item.workOrderId ?? null, styleId: item.styleId ?? null, styleProcessId: item.styleProcessId ?? null,
       assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,

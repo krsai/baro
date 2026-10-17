@@ -13,3 +13,11 @@
 @media(max-width:600px){.compact-costs .cc-dates>.MuiStack-root{flex-wrap:nowrap}.compact-costs .cc-dates .MuiFormControl-root{min-width:112px!important;width:112px!important}.compact-costs .cc-dates .MuiPickersInputBase-root{font-size:13px}.compact-costs .cc-dates .MuiPickersSectionList-root{padding:7px 0}.compact-costs .cc-dates .MuiButton-root{min-width:20px;padding-left:2px;padding-right:2px}.compact-costs .cc-dates .MuiStack-root{column-gap:4px}}
 
 .cc-live .cc-heading{gap:12px;flex-wrap:wrap}.cc-actions{display:flex;gap:8px;flex-wrap:wrap}.cc-live .cc-primary{background:#146889;color:#fff;border-color:#146889}.cc-live button:disabled{opacity:.5;cursor:default}.cc-live .cc-total-amount{flex-wrap:wrap;justify-content:flex-end;gap:8px 16px}.cc-live .cc-totals{flex-wrap:wrap}.cc-live .cc-tabs{height:auto;min-height:36px;flex-wrap:wrap}.cc-live .cc-tabs button{min-height:34px}.cc-live .cc-tabs>span{align-self:center}.cc-loading{min-height:220px;display:flex;align-items:center;justify-content:center}.cc-document-link{display:block;border:0;background:transparent;padding:0;color:#527386;font-size:12px}.cc-status.historical{color:#6f7f8a}.cc-status.historical:before{background:#8b9ba5}.cc-live .cc-table-scroll tbody tr{cursor:pointer}.cc-live .cc-summary tbody tr{cursor:default}
+.cc-entry .MuiInputBase-input { font-size: 14px; }
+.cc-entry .MuiInputLabel-root { font-size: 15px; }
+.cc-entry .MuiTableCell-root { font-size: 14px; }
+.cc-entry .MuiTableContainer-root { overflow-x: auto; }
+.cc-entry { min-width: 0; }
+.cc-lookup { padding: 16px; }
+.cc-lookup .cc-table-scroll { margin-top: 16px; max-height: 50vh; overflow: auto; }
+.cc-lookup .MuiInputBase-input { font-size: 14px; }

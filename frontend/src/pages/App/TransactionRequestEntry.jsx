@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { Add } from '@mui/icons-material';
-import AppPageContainer from '../../components/AppPageContainer';
+import ExpenseLookupField from '../../components/ExpenseLookupField';
+import { EXPENSE_LOOKUP_TEXT } from '../../constants/expenseLookup';
+import './compactCostsPreview.css';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import ExpenseRequestLine from '../../components/ExpenseRequestLine';
 import { useManagementPeriod } from '../../context/ManagementPeriodContext';
@@ -17,12 +19,13 @@ import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/wor
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { title: '', requestDate: date, partnerOrgId: '', currency: 'VND', clientKey: crypto.randomUUID(), items: [newExpenseLine(date)] }; };
+const newDocument = () => { const date = today(); return { title: '', requestDate: date, partnerOrgId: '', currency: 'VND', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
 
 export default function TransactionRequestEntry() {
-  const { activeOrgId, user } = useAuth(), { languageCode } = useLanguage();
+  const { activeOrgId, user, accessProfile } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
+  const lookup = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const organizationRef = useRef(activeOrgId);
   organizationRef.current = activeOrgId;
   const [form, setForm] = useState(newDocument), [data, setData] = useState({ partners: [], codes: [], orders: [], settings: { defaultVatRate: '10' } });
@@ -43,7 +46,7 @@ export default function TransactionRequestEntry() {
   const update = patch => { setDirty(true); setForm(current => ({ ...current, ...patch })); };
   const changeLine = useCallback((key, patch) => { setDirty(true); setForm(current => ({ ...current, items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) })); }, []);
   const lineStatus = useCallback((key, valid) => setStatuses(current => current[key] === valid ? current : { ...current, [key]: valid }), []);
-  const removeLine = key => { setDirty(true); setForm(current => ({ ...current, items: current.items.length === 1 ? [newExpenseLine(current.requestDate)] : current.items.filter(line => line.key !== key) })); };
+  const removeLine = key => { setDirty(true); setForm(current => ({ ...current, items: current.items.length === 1 ? [newExpenseLine()] : current.items.filter(line => line.key !== key) })); };
   const totals = useMemo(() => expenseDocumentTotals(form.items, form.currency), [form.items, form.currency]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
   const disabled = loading || loadError || saving || Boolean(submission);
@@ -66,28 +69,31 @@ export default function TransactionRequestEntry() {
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId) setSaving(false); }
   };
-  return <AppPageContainer title={labels.document}>
+  return <main className="compact-costs cc-entry">
     <Stack spacing={2}>
       {loadError && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{labels.retryLoad}</Button>}>{labels.loadError}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
-      <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
-        <Box sx={{ px: { xs: 2, md: 3 }, py: 2.5, borderBottom: 1, borderColor: 'divider' }}>
+      <Paper variant="outlined" className="cc-panel" sx={{ overflow: 'hidden' }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          <div className="cc-section-bar">BASIC / {lookup.basic}</div><Box sx={{p:2}}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}><Box><Typography variant="h6" fontWeight={700}>{labels.document}</Typography><Typography variant="body2" color="text.secondary">{labels.hint}</Typography></Box><Chip size="small" variant="outlined" label={labels.draft} /></Stack>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 2fr) minmax(180px, 1.3fr) 180px 120px' }, gap: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 2fr) minmax(220px, 1.5fr) 180px 120px' }, gap: 2 }}>
             <TextField size="small" required label={labels.title} disabled={disabled} value={form.title} inputProps={{ maxLength: 200 }} onChange={event => update({ title: event.target.value })} />
-            <TextField size="small" required select label={labels.payee} disabled={disabled} value={form.partnerOrgId} onChange={event => update({ partnerOrgId: event.target.value })}><MenuItem value="">—</MenuItem>{data.partners.filter(row => row.isActive).map(row => <MenuItem key={row.id} value={row.id}>{row.name}</MenuItem>)}</TextField>
+            <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled} required />
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <TextField size="small" select label={labels.currency} disabled={disabled} value={form.currency} onChange={event => update({ currency: event.target.value })}>{['VND','USD','KRW'].map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
           </Box>
-          {user?.employeeName && <Typography variant="body2" color="text.secondary" mt={1.5}>{labels.applicant}: {user.employeeName}</Typography>}
+          <Stack direction="row" spacing={2} mt={2}><TextField size="small" label={lookup.issuer} value={accessProfile?.orgName || '\u2014'} InputProps={{readOnly:true}} /><TextField size="small" label={lookup.author} value={accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '\u2014'} InputProps={{readOnly:true}} /></Stack></Box>
         </Box>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 3, py: 1.5 }}><Typography variant="subtitle2">{labels.items} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
-        <TableContainer><Table size="small" sx={{ minWidth: 1430, '& th': { bgcolor: 'grey.50', whiteSpace: 'nowrap', fontWeight: 700, px: 1 }, '& .MuiInputBase-input': { fontSize: 13 } }}>
-          <TableHead><TableRow>{[['#',36],[labels.useDate,150],[labels.code,210],[labels.description,230],[labels.quantity,90],[labels.price,120],[labels.vat,85],[labels.subtotal,130],[labels.tax,120],[labels.total,140],['',100]].map(([label,width],index) => <TableCell key={index} sx={{ minWidth: width }} align={index >= 7 && index <= 9 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
-          <TableBody>{form.items.map((line,index) => <ExpenseRequestLine key={line.key} line={line} index={index} {...data} partner={partner} currency={form.currency} orgId={activeOrgId} startDate={period.startDate} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />)}</TableBody>
+      </Paper>
+      <Paper variant="outlined" className="cc-panel" sx={{overflow:'hidden'}}>
+        <Stack className="cc-section-bar" direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 3, py: 1.5 }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
+        <TableContainer><Table size="small" sx={{ minWidth: 1430, '& th': { bgcolor: 'grey.50', whiteSpace: 'nowrap', fontWeight: 700, px: 1 }, '& .MuiInputBase-input': { fontSize: 14 } }}>
+          <TableHead><TableRow>{[['#',36],[labels.code,210],[labels.description,230],[labels.quantity,90],[labels.price,120],[labels.vat,85],[labels.subtotal,130],[labels.tax,120],[labels.total,140],['',100]].map(([label,width],index) => <TableCell key={index} sx={{ minWidth: width }} align={index >= 6 && index <= 8 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
+          <TableBody>{form.items.map((line,index) => <ExpenseRequestLine key={line.key} line={line} index={index} {...data} partner={partner} currency={form.currency} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />)}</TableBody>
         </Table></TableContainer>
-        <Box sx={{ px: 3, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Button startIcon={<Add />} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine(form.requestDate)] })}>{labels.add}</Button><Typography component="span" variant="caption" color="text.secondary" ml={2}>{labels.limit}</Typography></Box>
+        <Box sx={{ px: 3, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Button startIcon={<Add />} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button><Typography component="span" variant="caption" color="text.secondary" ml={2}>{labels.limit}</Typography></Box>
         <Stack alignItems="flex-end" spacing={1} sx={{ p: 3, bgcolor: 'grey.50' }} data-testid="expense-totals">
           <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.subtotal}</Typography><Typography>{money(totals.subtotal)}</Typography></Stack>
           <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.tax}</Typography><Typography>{money(totals.vatAmount)}</Typography></Stack>
@@ -97,5 +103,5 @@ export default function TransactionRequestEntry() {
       {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
       <Paper variant="outlined" sx={{ position: 'sticky', bottom: 0, zIndex: 2, p: 2 }}><Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}><Typography variant="body2" color="text.secondary">{labels.required}</Typography><Stack direction="row" spacing={1}><Button disabled={saving} onClick={close}>{labels.cancel}</Button><Button variant="contained" disabled={saving || loading || loadError || !submission && !valid} onClick={save}>{submission ? labels.retry : labels.save}</Button></Stack></Stack></Paper>
     </Stack>
-  </AppPageContainer>;
+  </main>;
 }

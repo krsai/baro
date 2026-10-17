@@ -1,6 +1,6 @@
 import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 
-export const newExpenseLine = (date) => ({ key: crypto.randomUUID(), transactionDate: date, transactionCodeId: '',
+export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
   description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '',
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const inputMode = (code, key) => code?.base?.entryMode === 'PROCESS' ? 'REQUIRED' : code?.base?.[`${key}Input`] || (key === 'order' ? 'OPTIONAL' : 'HIDDEN');
@@ -23,15 +23,15 @@ export function expenseDocumentTotals(lines, currency) {
   const sum = key => formatDecimalUnits(amounts.reduce((total, item) => total + (item ? BigInt(item[key].replace('.', '')) : 0n), 0n), digits);
   return { subtotal: sum('subtotal'), vatAmount: sum('vatAmount'), amount: sum('amount'), incomplete: amounts.some(item => !item) };
 }
-export function validExpenseLine(line, code, currency, startDate) {
-  if (!code || !/^\d{4}-\d{2}-\d{2}$/.test(line.transactionDate) || startDate && line.transactionDate < startDate ||
+export function validExpenseLine(line, code, currency) {
+  if (!code ||
     !line.description.trim() || line.description.trim().length > 2000 || !expenseLineAmounts(line, currency)) return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]])) &&
     (code.base?.requiredFields || []).every(key => line.details[key]?.trim());
 }
-export const expenseLinePayload = line => ({ transactionDate: line.transactionDate, transactionCodeId: line.transactionCodeId,
+export const expenseLinePayload = line => ({ transactionCodeId: line.transactionCodeId,
   description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });

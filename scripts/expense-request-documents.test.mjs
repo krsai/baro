@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import { expenseLineAmounts, expenseDocumentTotals } from '../frontend/src/utils/expenseRequest.mjs';
+import { exactLookupCode, normalizeLookupText } from '../frontend/src/utils/expenseLookup.mjs';
 const require = createRequire(import.meta.url);
 const { registerExpenseRequest } = require('../backend/dist/services/expenseRequest.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
@@ -53,6 +54,14 @@ function postRoute(dependencies) {
   return handler;
 }
 const response = () => ({ status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
+test('lookup only resolves unique exact codes and supports Vietnamese search', () => {
+  const options = [{id:1,code:'ABC',name:'Same'},{id:2,code:'XYZ',name:'Same'}];
+  assert.equal(exactLookupCode(options,' abc ').id,1);
+  assert.equal(exactLookupCode(options,'Same'),null);
+  assert.equal(exactLookupCode(options,'AB'),null);
+  assert.equal(exactLookupCode([...options,{id:3,code:'abc'}],'ABC'),null);
+  assert.equal(normalizeLookupText('Đối tác'), 'doi tac');
+});
 function routeHarness() {
   const db = harness(), effects = [];
   return { db, effects, route: postRoute({ prisma: db, requireOrgRole: async () => ({ organization: { id: 1 } }), ORG_MANAGEMENT_ROLES: ['ADMIN'],
@@ -78,6 +87,18 @@ test('a bad later row rolls back the header, preceding costs and process product
   body.items[1].unitPrice = '50000'; await route({ body },response());
   assert.equal(db.state().production.length,1); assert.deepEqual(effects[0].assignmentPlanIds,[60]);
   await route({ body },response()); assert.equal(db.state().production.length,1);
+});
+
+test('one header date applies to all new costs and conflicting item dates are rejected atomically', async () => {
+  const { route, db } = routeHarness(), body = input();
+  body.requestDate = '2026-10-18';
+  for (const item of body.items) delete item.transactionDate;
+  await route({ body }, response());
+  assert.deepEqual(db.state().costs.map(row => row.transactionDate), ['2026-10-18','2026-10-18']);
+  const other = routeHarness();
+  body.items[1].transactionDate = '2026-10-17';
+  await assert.rejects(other.route({ body }, response()), /EXPENSE_REQUEST_DATE_MISMATCH/);
+  assert.deepEqual(other.db.state(), { documents: [], costs: [], logs: [], production: [] });
 });
 test('documents reject conflicting payees/currencies, empty or excessive lines and unauthorized access', async () => {
   const { route,db } = routeHarness();

@@ -1,20 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Autocomplete, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
 import { DeleteOutline, ExpandLess, ExpandMore } from '@mui/icons-material';
-import CustomDatePicker from './CustomDatePicker';
+import ExpenseLookupField from './ExpenseLookupField';
+import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { serviceName, TRANSACTION_TEXT } from './OutsourcingServiceDialog';
 import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
 import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, partner, currency, settings, orgId, startDate, labels, languageCode, disabled, onChange, onRemove, onStatus }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, partner, currency, settings, orgId, labels, languageCode, disabled, onChange, onRemove, onStatus }) {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
   const [optionsLoading, setOptionsLoading] = useState(false), [optionsError, setOptionsError] = useState(false), [reload, setReload] = useState(0);
   const code = codes.find(row => row.id === line.transactionCodeId) || null;
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
+  const lookupText = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const isProcess = code?.base?.entryMode === 'PROCESS';
   const mode = key => inputMode(code, key), visible = key => visibleInput(line, code, key);
   const selectedStyle = options.orderId === line.workOrderId ? options.styles.find(row => row.id === line.styleId) : null;
@@ -37,7 +39,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const refsValid = (!line.workOrderId || orders.some(row => row.dbId === line.workOrderId)) &&
     (!line.styleId || Boolean(selectedStyle)) && (!line.styleProcessId || selectedStyle?.styleProcesses?.some(row => row.id === line.styleProcessId)) &&
     (!isProcess || plans.some(plan => plan.id === line.assignmentPlanId));
-  const valid = validExpenseLine(line, code, currency, startDate) && refsValid && !optionsLoading && !optionsError;
+  const valid = validExpenseLine(line, code, currency) && refsValid && !optionsLoading && !optionsError;
   useEffect(() => { onStatus(line.key, Boolean(valid)); }, [line.key, valid, onStatus]);
   const change = key => event => onChange(line.key, { [key]: event.target.value });
   const chooseCode = selected => {
@@ -59,13 +61,13 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   return <>
     <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
       <TableCell sx={{ color: 'text.secondary', pt: '20px !important' }}>{index + 1}</TableCell>
-      <TableCell><CustomDatePicker label={labels.useDate} value={line.transactionDate} minDate={startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) onChange(line.key, { transactionDate: date.format('YYYY-MM-DD') }); }} /></TableCell>
-      <TableCell><Autocomplete size="small" options={codes} value={code} disabled={disabled} autoHighlight autoSelect
-        getOptionLabel={row => `${row.code} · ${serviceName(row,languageCode)}`} isOptionEqualToValue={(a,b) => a.id === b.id}
-        filterOptions={(rows,state) => rows.filter(row => `${row.code} ${serviceName(row,languageCode)}`.toLocaleLowerCase().includes(state.inputValue.toLocaleLowerCase()))}
-        onChange={(_, selected) => chooseCode(selected)} onInputChange={(_,text,reason) => { if (reason === 'input') { const found = codes.find(row => row.code.toUpperCase() === text.trim().toUpperCase()); if (found && found.id !== code?.id) chooseCode(found); } }}
-        renderInput={params => <TextField {...params} required label={labels.code} />} />
-        {code && <Typography variant="caption" color="text.secondary">{serviceName(code.base?.expenseType,languageCode)}</Typography>}
+      <TableCell><ExpenseLookupField directCode required label={labels.code} options={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false)} value={code} disabled={disabled} languageCode={languageCode} onChange={chooseCode} columns={[
+        {key:'code',label:common.code,value:row=>row.code},
+        {key:'name',label:labels.description,value:row=>serviceName(row,languageCode)},
+        {key:'type',label:expenseLabels.type,value:row=>serviceName(row.base?.expenseType,languageCode)},
+        {key:'tax',label:lookupText.tax,value:row=>serviceName(row.taxTreatment,languageCode)||(row.vatEnabled?'VAT':lookupText.noVat)},
+      ]} />
+        {code && <Typography variant="caption" color="text.secondary">{serviceName(code,languageCode)} · {serviceName(code.base?.expenseType,languageCode)}</Typography>}
       </TableCell>
       <TableCell><TextField {...field} required label={labels.description} value={line.description} onChange={change('description')} inputProps={{ maxLength: 2000 }} /></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
@@ -76,7 +78,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><IconButton aria-label={labels.remove} disabled={disabled} onClick={() => onRemove(line.key)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
     </TableRow>
-    {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
+    {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={10} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {typeMismatch && <Alert severity="warning">{expenseLabels.mismatch}</Alert>}{!typeMismatch && industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>
