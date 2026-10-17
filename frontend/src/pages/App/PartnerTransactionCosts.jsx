@@ -14,7 +14,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 
-export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical }) {
+export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical, onPreview, previewLabel }) {
   const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const labels = { ...(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko), ...(OUTSOURCING_REQUEST_TEXT[languageCode] || OUTSOURCING_REQUEST_TEXT.ko) };
   const documentLabels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
@@ -49,7 +49,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
     setDateTo(current => current.add(amount, 'month').endOf('month').startOf('day'));
   };
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
-  return <AppPageContainer title={labels.costs} titleActions={<Button variant="contained" disabled={loading || Boolean(error)} onClick={onNewRequest}>{labels.addCost}</Button>} toolbar={<PageToolbar left={<SearchInput value={search} onChange={event => setSearch(event.target.value)} placeholder={labels.search} />} right={<MonthRangeSelector monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} />} />}>
+  return <AppPageContainer title={labels.costs} titleActions={<Stack direction="row" spacing={1}>{onPreview && <Button variant="outlined" onClick={onPreview}>{previewLabel}</Button>}<Button variant="contained" disabled={loading || Boolean(error)} onClick={onNewRequest}>{labels.addCost}</Button></Stack>} toolbar={<PageToolbar left={<SearchInput value={search} onChange={event => setSearch(event.target.value)} placeholder={labels.search} />} right={<MonthRangeSelector monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} />} />}>
     <Stack spacing={2}><Tabs value={view} onChange={(_,value) => setView(value)}><Tab value="documents" label={documentLabels.documentList} /><Tab value="items" label={documentLabels.all} /></Tabs><ExpenseRequestView document={selected} languageCode={languageCode} onClose={() => setSelected(null)} />{error && <Alert severity="error" action={<Button onClick={load}>{documentLabels.retryLoad}</Button>}>{error}</Alert>}{loading ? <Box textAlign="center"><CircularProgress /></Box> : error ? null : view === 'documents' ? <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow>{[documentLabels.numbering,documentLabels.title,documentLabels.payee,documentLabels.date,documentLabels.applicant,documentLabels.items,documentLabels.total].map(label => <TableCell key={label} sx={{ fontWeight: 700 }}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
       {!filteredDocuments.length && <TableRow><TableCell colSpan={7} align="center">{documentLabels.empty}</TableCell></TableRow>}
       {filteredDocuments.map(document => <TableRow key={document.id} hover>
