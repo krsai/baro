@@ -29,12 +29,23 @@ try {
   await page.locator('#month input').fill('2026-07');
   assert.equal(await page.locator('#month output').textContent(),'2026-08');
   await page.clock.install({time:new Date('2026-10-16T12:00:00+07:00')});
-  await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[]}));
-  await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:[{id:1,transactionDate:'2026-05-31',description:'Old cost',currency:'VND',amount:'1'},{id:2,transactionDate:'2026-06-01',description:'Boundary cost',currency:'VND',amount:'1'}]}));
+  await page.route('**/expense-requests?*',route=>route.fulfill({headers,status:503,json:{error:'document service unavailable'}}));
+  await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:[{id:1,transactionDate:'2026-05-31',description:'Old cost',currency:'VND',amount:'1'},{id:2,transactionDate:'2026-06-01',description:'Boundary cost',currency:'VND',amount:'1'},{id:3,transactionDate:'2026-09-20',description:'Archived delivery',style:{id:40,name:'Historical shirt',code:'AJ-OLD'},createdByEmployee:{name:'Former Applicant'},currency:'VND',amount:'100'}]}));
   await page.goto(`http://127.0.0.1:${port}/management-period-acceptance.html?costs`);
   await page.getByRole('tab',{name:'전체 내역',exact:true}).click();
-  for(let i=0;i<4;i++)await page.getByRole('button',{name:'시작일을 이전 달 1일로',exact:true}).click();
   await page.getByText('Boundary cost',{exact:true}).waitFor();
+  assert.equal(await page.getByRole('tab',{name:'전체 내역',exact:true}).getAttribute('aria-selected'),'true');
+  await page.getByRole('cell').filter({hasText:'Archived delivery'}).waitFor();
+  for(const search of ['AJ-OLD','Former Applicant','Archived delivery']) {
+    await page.getByRole('textbox').fill(search);
+    await page.getByRole('cell').filter({hasText:'Archived delivery'}).waitFor();
+    assert.equal(await page.getByText('Boundary cost',{exact:true}).count(),0);
+  }
+  await page.getByRole('textbox').fill('');
+  await page.getByRole('tab',{name:'신청서',exact:true}).click();
+  await page.getByRole('alert').waitFor();
+  await page.getByRole('tab',{name:'전체 내역',exact:true}).click();
+  await page.getByRole('cell').filter({hasText:'Archived delivery'}).waitFor();
   assert.equal(await page.getByText('Old cost',{exact:true}).count(),0);
   assert.equal(await page.getByRole('button',{name:'시작일을 이전 달 1일로',exact:true}).isDisabled(),true);
   assert.deepEqual(errors,[]);console.log('Management period UI passed: restored dates clamped, organization and factory floors, previous buttons disabled, manual month blocked and costs stop at the boundary.');

@@ -5,12 +5,13 @@ import { PGlite } from '@electric-sql/pglite';
 import service from '../backend/dist/services/partnerTransactionCost.js';
 const { validateCostInput, validateServiceDefinition, registerPartnerCost } = service;
 test('unified history preserves original process FKs, quantities and exact unit price without approving or mutating data', () => {
-  const original = [{ id: 77, workLogId: 12, outsourcingPartnerId: 11, outsourcingPartner: { id: 11, name: 'QQ' }, styleProcessId: 901, quantity: 3, outsourceUnitPrice: '1.2345', workLog: { displayDate: '2026-09-20' }, assignmentPlan: { workOrderId: 30, workOrder: { id: 30, orderNumber: 'L18-1' } }, style: { name: 'Style' }, styleProcess: { id: 901, processName: 'Sewing' } }];
+  const original = [{ id: 77, workLogId: 12, outsourcingPartnerId: 11, outsourcingPartner: { id: 11, name: 'QQ' }, styleProcessId: 901, quantity: 3, outsourceUnitPrice: '1.2345', workLog: { displayDate: '2026-09-20' }, assignmentPlan: { workOrderId: 30, workOrder: { id: 30, orderNumber: 'L18-1' } }, style: { id: 40, name: 'Style', code: 'AJ-OLD' }, styleProcess: { id: 901, processName: 'Sewing' } }];
   const before = structuredClone(original);
   const [row] = service.historicalOutsourcingRows(original);
   assert.deepEqual(original, before);
   assert.equal(row.outsourcedWorkRecordId,77); assert.equal(row.styleProcessId,901); assert.equal(row.quantity,3);
   assert.equal(row.workOrderId,30); assert.equal(row.amount,'3.7035');
+  assert.deepEqual(row.style,original[0].style);
   assert.equal(row.sourceKind,'HISTORICAL_WORK_RECORD'); assert.ok(!('approvedAt' in row));
 });
 const input = () => ({ partnerOrgId: 11, serviceTypeId: 4, workOrderId: 30, transactionDate: '2026-10-10', description: 'Delivery', amount: '250000', currency: 'VND', details: { transportDate: '2026-10-10', origin: 'Factory', destination: 'Port' }, clientKey: 'delivery-001' });

@@ -73,6 +73,7 @@ try {
   await list.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,title:'Factory expenses',requestDate:date,partner:{name:'Trucking Partner'},createdByEmployee:{name:'Applicant'},currency:'VND',subtotal:'250000',vatAmount:'25000',amount:'275000',items}]}));
   await list.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:[{id:'old',transactionDate:date,description:'Legacy cost',currency:'VND',amount:'100'}]}));
   await list.goto('http://127.0.0.1:'+port+'/transaction-request-acceptance.html?list');
+  await list.getByRole('tab',{name:EXPENSE_REQUEST_TEXT.ko.documentList,exact:true}).click();
   await list.getByRole('button',{name:'EXP-000001',exact:true}).click();
   const dialog=list.getByRole('dialog');await dialog.getByText('Packing',{exact:true}).waitFor();
   assert.match(await dialog.innerText(),/275,000/);await dialog.getByRole('button',{name:EXPENSE_REQUEST_TEXT.ko.close,exact:true}).click();

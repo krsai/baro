@@ -27448,8 +27448,8 @@ app.get("/outsourcing-requests", async (req, res) => {
       outsourcingPartner: { select: { id: true, name: true } },
       workLog: { select: { displayDate: true } },
       assignmentPlan: { select: { workOrderId: true, workOrder: { select: { id: true, orderNumber: true } } } },
-      style: { select: { id: true, name: true } },
-      styleProcess: { select: { id: true, processName: true } },
+      style: { select: { id: true, name: true, code: true } },
+      styleProcess: { select: { id: true, processName: true, processCode: true } },
       createdByEmployee: { select: { id: true, name: true } },
     } }),
   ]);

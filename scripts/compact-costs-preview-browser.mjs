@@ -28,6 +28,8 @@ try {
   await page.goto(`http://127.0.0.1:${port}/compact-costs-acceptance.html`);
   await page.getByRole('heading', { name: '비용 신청 UI 미리보기' }).waitFor();
   assert.equal(await page.locator('tbody tr').count(), 32);
+  assert.ok(await page.locator('tbody td').first().evaluate(element => parseFloat(getComputedStyle(element).fontSize) >= 14));
+  assert.ok(await page.locator('.cc-status').first().evaluate(element => parseFloat(getComputedStyle(element).fontSize) >= 12));
   await page.screenshot({ path: path.join(os.tmpdir(), 'baro-compact-costs-desktop.png'), fullPage: true });
   await page.getByRole('tab', { name: '업체별 요약' }).click();
   assert.equal(await page.locator('tbody tr').count(), 6);

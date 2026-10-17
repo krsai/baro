@@ -18,6 +18,7 @@ export function historicalOutsourcingRows(records: any[]) {
     workOrderId: record.assignmentPlan?.workOrderId ?? null,
     workOrder: record.assignmentPlan?.workOrder ?? null,
     styleProcessId: record.styleProcessId,
+    style: record.style,
     styleProcess: record.styleProcess,
     quantity: record.quantity,
     transactionDate: record.workLog?.displayDate || '',
