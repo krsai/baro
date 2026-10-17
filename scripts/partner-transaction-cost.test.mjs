@@ -11,6 +11,7 @@ test('unified history preserves original process FKs, quantities and exact unit 
   assert.deepEqual(original, before);
   assert.equal(row.outsourcedWorkRecordId,77); assert.equal(row.styleProcessId,901); assert.equal(row.quantity,3);
   assert.equal(row.workOrderId,30); assert.equal(row.amount,'3.7035');
+  assert.equal(row.unitPrice,'1.2345');
   assert.deepEqual(row.style,original[0].style);
   assert.equal(row.sourceKind,'HISTORICAL_WORK_RECORD'); assert.ok(!('approvedAt' in row));
 });

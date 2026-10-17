@@ -21,6 +21,7 @@ export function historicalOutsourcingRows(records: any[]) {
     style: record.style,
     styleProcess: record.styleProcess,
     quantity: record.quantity,
+    unitPrice: new Prisma.Decimal(record.outsourceUnitPrice).toString(),
     transactionDate: record.workLog?.displayDate || '',
     description: [record.style?.name, record.styleProcess?.processName].filter(Boolean).join(' · '),
     amount: new Prisma.Decimal(record.outsourceUnitPrice).mul(record.quantity).toString(),
