@@ -93,7 +93,8 @@
     "test:management-period-browser": "node scripts/management-period-browser.test.mjs",
     "test:production-progress": "npm --prefix backend run build && node --test scripts/production-progress.test.mjs",
     "test:legacy-retirement": "npm --prefix backend run build && node --test scripts/legacy-retirement.test.mjs",
-    "test:expense-request-documents": "npm --prefix backend run build && node --test scripts/expense-request-documents.test.mjs"
+    "test:expense-request-documents": "npm --prefix backend run build && node --test scripts/expense-request-documents.test.mjs",
+    "test:railway-schema-preflight": "node --test scripts/railway-schema-preflight.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

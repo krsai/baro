@@ -73,7 +73,8 @@
     "database:prepare": "node scripts/prepare-database.js",
     "database:upgrade:legacy": "node scripts/prepare-database.js --legacy",
     "database:initialize": "node scripts/prepare-database.js --initialize",
-    "database:refresh:historical-cards": "node scripts/application-database-maintenance.js historical-cards"
+    "database:refresh:historical-cards": "node scripts/application-database-maintenance.js historical-cards",
+    "prestart": "node scripts/railway-schema-preflight.js"
   },
   "keywords": [],
   "author": "",
