@@ -8,7 +8,7 @@ const OutsourcingRecordList = () => {
   const { languageCode } = useLanguage();
   const { navigateToPath } = useAppActions();
   const labels = OUTSOURCING_REQUEST_TEXT[languageCode] || OUTSOURCING_REQUEST_TEXT.ko;
-  return <PartnerTransactionCosts onPreview={() => navigateToPath('/outsourcing-record-compact', { label: '비용 신청 · UI 미리보기' })} onNewRequest={() => navigateToPath('/outsourcing-record/new', { label: labels.addCost })} onOpenHistorical={id => navigateToPath(`/outsourcing-record/${id}`, { label: labels.historical })} />;
+  return <PartnerTransactionCosts onNewRequest={() => navigateToPath('/outsourcing-record/new', { label: labels.addCost })} onOpenHistorical={id => navigateToPath(`/outsourcing-record/${id}`, { label: labels.historical })} />;
 };
 
 export default OutsourcingRecordList;

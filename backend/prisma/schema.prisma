@@ -168,6 +168,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  expenseRequests ExpenseRequest[] @relation("ExpenseRequestOwner")
+  payableExpenseRequests ExpenseRequest[] @relation("ExpenseRequestPayee")
   partnerExpenseTypeId Int?
   partnerExpenseType ExpenseType? @relation("PartnerExpenseType", fields: [partnerExpenseTypeId], references: [id], onDelete: Restrict)
   transactionCodes TransactionCode[] @relation("TransactionCodeOwner")
@@ -461,6 +463,7 @@ model Warehouse {
 
 
 model Employee {
+  expenseRequests ExpenseRequest[] @relation("ExpenseRequestCreator")
   transactionCosts PartnerTransactionCost[] @relation("TransactionCostCreator")
   priorCompletions PriorProductionCompletion[] @relation("PriorCompletionCreator")
   canceledPriorCompletions PriorProductionCompletion[] @relation("PriorCompletionCanceler")
@@ -1420,6 +1423,10 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  expenseRequestId Int?
+  expenseRequestLine Int?
+  expenseRequest ExpenseRequest? @relation(map: "PartnerTransactionCost_expense_request_fkey", fields: [expenseRequestId, orgId, partnerOrgId, currency], references: [id, orgId, partnerOrgId, currency], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([expenseRequestId, expenseRequestLine])
   @@unique([outsourcedWorkRecordId, orgId])
   outsourcedWorkRecordId Int? @unique
   outsourcedWorkRecord OutsourcedWorkRecord? @relation(fields: [outsourcedWorkRecordId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
@@ -1455,6 +1462,26 @@ model PartnerTransactionCost {
   @@unique([orgId, clientKey])
   @@index([orgId, transactionDate])
   @@index([orgId, partnerOrgId])
+}
+
+model ExpenseRequest {
+  id Int @id @default(autoincrement())
+  orgId Int
+  partnerOrgId Int
+  createdByEmployeeId Int
+  requestDate String
+  title String
+  currency String
+  clientKey String
+  submissionHash String
+  createdAt DateTime @default(now())
+  organization Organization @relation("ExpenseRequestOwner", fields: [orgId], references: [id], onDelete: Restrict)
+  partner Organization @relation("ExpenseRequestPayee", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  createdByEmployee Employee @relation("ExpenseRequestCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  items PartnerTransactionCost[]
+  @@unique([orgId, clientKey])
+  @@unique([id, orgId, partnerOrgId, currency])
+  @@index([orgId, requestDate])
 }
 
 model TransactionCode {

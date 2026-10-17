@@ -6,6 +6,7 @@ import { payrollManagementInclude, resolvePayrollManagement } from "./employees/
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
 import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
+import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
 import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion } from './services/priorProductionCompletion';
@@ -180,6 +181,8 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
+    ExpenseRequest: ['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','title','currency','clientKey','submissionHash'],
+    PartnerTransactionCost: ['expenseRequestId','expenseRequestLine'],
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
     OutsourcingServiceType: ["systemDefaultId", "isOverridden"],
@@ -736,6 +739,18 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "PriorProductionCompletion", columnName: "reasonId" },
   { tableName: "PartnerTransactionCost", columnName: "createdByEmployeeId" },
   { tableName: "PartnerTransactionCost", columnName: "transactionCodeId" },
+  { tableName: "PartnerTransactionCost", columnName: "expenseRequestId" },
+  { tableName: "PartnerTransactionCost", columnName: "expenseRequestLine" },
+  { tableName: "ExpenseRequest", columnName: "id" },
+  { tableName: "ExpenseRequest", columnName: "orgId" },
+  { tableName: "ExpenseRequest", columnName: "partnerOrgId" },
+  { tableName: "ExpenseRequest", columnName: "createdByEmployeeId" },
+  { tableName: "ExpenseRequest", columnName: "requestDate" },
+  { tableName: "ExpenseRequest", columnName: "title" },
+  { tableName: "ExpenseRequest", columnName: "currency" },
+  { tableName: "ExpenseRequest", columnName: "clientKey" },
+  { tableName: "ExpenseRequest", columnName: "submissionHash" },
+  { tableName: "ExpenseRequest", columnName: "createdAt" },
   { tableName: "TransactionCode", columnName: "vatEnabled" },
   { tableName: "TransactionCode", columnName: "systemDefaultId" },
   { tableName: "TransactionCode", columnName: "isOverridden" },
@@ -978,6 +993,13 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'ExpenseRequest_orgId_clientKey_key',
+  'ExpenseRequest_orgId_fkey',
+  'ExpenseRequest_partnerOrgId_orgId_fkey',
+  'ExpenseRequest_createdByEmployeeId_orgId_fkey',
+  'PartnerTransactionCost_expense_request_fkey',
+  'PartnerTransactionCost_expenseRequestId_expenseRequestLine_key',
+  'ExpenseRequestLine_pair_check',
   "Style_category_manufacturer_fkey",
   "StyleProcessComponent_master_fkey",
   "StyleProcessComponent_pkey",
@@ -27392,6 +27414,27 @@ app.get("/partner-transaction-costs", async (req, res) => {
   const period = await loadManagementPeriod(prisma,access.organization.id);
   const transactionDate = managedDateRange(period,req.query);
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
+});
+app.get('/expense-requests', async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const orgId = access.organization.id;
+  const period = await loadManagementPeriod(prisma, orgId);
+  const requestDate = managedDateRange(period, req.query);
+  const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate }, include: EXPENSE_REQUEST_INCLUDE,
+    orderBy: [{ requestDate: 'desc' }, { id: 'desc' }] });
+  return res.json(rows.map(row => ({ ...row, ...expenseRequestTotals(row.items) })));
+});
+app.post('/expense-requests', async (req, res) => {
+  const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
+  if (!access) return;
+  const actorId = getCurrentRequestActorEmployeeId();
+  if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
+  const orgId = access.organization.id;
+  const document = await prisma.$transaction(tx => registerExpenseRequest(tx, orgId, actorId, req.body, appendWorkLogQuantityRemark), { isolationLevel: 'Serializable', timeout: 60000 });
+  const assignmentPlanIds = [...new Set(document.items.flatMap((item: any) => item.outsourcedWorkRecord ? [item.outsourcedWorkRecord.assignmentPlanId] : []))] as number[];
+  if (assignmentPlanIds.length) await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({ orgId, assignmentPlanIds, mode: 'create' });
+  return res.status(201).json(document);
 });
 app.get("/outsourcing-requests", async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
