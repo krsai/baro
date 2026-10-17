@@ -18,6 +18,7 @@
 .cc-entry .MuiTableCell-root { font-size: 14px; }
 .cc-entry .MuiTableContainer-root { overflow-x: auto; }
 .cc-entry { min-width: 0; }
+.cc-entry-detail-heading { background: #f5f8fa; color: #365a6d; }
 .cc-lookup { padding: 16px; }
 .cc-lookup .cc-table-scroll { margin-top: 16px; max-height: 50vh; overflow: auto; }
 .cc-lookup .MuiInputBase-input { font-size: 14px; }

@@ -76,7 +76,7 @@ export default function TransactionRequestEntry() {
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       <Paper variant="outlined" className="cc-panel" sx={{ overflow: 'hidden' }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <div className="cc-section-bar">BASIC / {lookup.basic}</div><Box sx={{p:2}}>
+          <Box sx={{p:2}}>
           <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}><Box><Typography variant="h6" fontWeight={700}>{labels.document}</Typography><Typography variant="body2" color="text.secondary">{labels.hint}</Typography></Box><Chip size="small" variant="outlined" label={labels.draft} /></Stack>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 2fr) minmax(220px, 1.5fr) 180px 120px' }, gap: 2 }}>
             <TextField size="small" required label={labels.title} disabled={disabled} value={form.title} inputProps={{ maxLength: 200 }} onChange={event => update({ title: event.target.value })} />
@@ -86,9 +86,7 @@ export default function TransactionRequestEntry() {
           </Box>
           <Stack direction="row" spacing={2} mt={2}><TextField size="small" label={lookup.issuer} value={accessProfile?.orgName || '\u2014'} InputProps={{readOnly:true}} /><TextField size="small" label={lookup.author} value={accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '\u2014'} InputProps={{readOnly:true}} /></Stack></Box>
         </Box>
-      </Paper>
-      <Paper variant="outlined" className="cc-panel" sx={{overflow:'hidden'}}>
-        <Stack className="cc-section-bar" direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 3, py: 1.5 }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
+        <Stack className="cc-entry-detail-heading" direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 3, py: 1.5 }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
         <TableContainer><Table size="small" sx={{ minWidth: 1430, '& th': { bgcolor: 'grey.50', whiteSpace: 'nowrap', fontWeight: 700, px: 1 }, '& .MuiInputBase-input': { fontSize: 14 } }}>
           <TableHead><TableRow>{[['#',36],[labels.code,210],[labels.description,230],[labels.quantity,90],[labels.price,120],[labels.vat,85],[labels.subtotal,130],[labels.tax,120],[labels.total,140],['',100]].map(([label,width],index) => <TableCell key={index} sx={{ minWidth: width }} align={index >= 6 && index <= 8 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
           <TableBody>{form.items.map((line,index) => <ExpenseRequestLine key={line.key} line={line} index={index} {...data} partner={partner} currency={form.currency} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />)}</TableBody>
@@ -99,9 +97,9 @@ export default function TransactionRequestEntry() {
           <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.tax}</Typography><Typography>{money(totals.vatAmount)}</Typography></Stack>
           <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 }, pt: 1.5, borderTop: 1, borderColor: 'divider' }}><Typography fontWeight={700}>{labels.total}</Typography><Typography variant="h6" fontWeight={700} color="primary">{money(totals.amount)}</Typography></Stack>
         </Stack>
-      </Paper>
       {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
-      <Paper variant="outlined" sx={{ position: 'sticky', bottom: 0, zIndex: 2, p: 2 }}><Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}><Typography variant="body2" color="text.secondary">{labels.required}</Typography><Stack direction="row" spacing={1}><Button disabled={saving} onClick={close}>{labels.cancel}</Button><Button variant="contained" disabled={saving || loading || loadError || !submission && !valid} onClick={save}>{submission ? labels.retry : labels.save}</Button></Stack></Stack></Paper>
+      <Box sx={{ position: 'sticky', bottom: 0, zIndex: 2, p: 2, bgcolor: 'background.paper', borderTop: 1, borderColor: 'divider' }}><Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}><Typography variant="body2" color="text.secondary">{labels.required}</Typography><Stack direction="row" spacing={1}><Button disabled={saving} onClick={close}>{labels.cancel}</Button><Button variant="contained" disabled={saving || loading || loadError || !submission && !valid} onClick={save}>{submission ? labels.retry : labels.save}</Button></Stack></Stack></Box>
+      </Paper>
     </Stack>
   </main>;
 }
