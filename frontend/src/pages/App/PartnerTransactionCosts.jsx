@@ -29,6 +29,8 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
   const [selected,setSelected] = useState(null), [selectedItem,setSelectedItem] = useState(null);
   const [dateFrom,setDateFrom] = useState(() => dayjs().startOf('month')), [dateTo,setDateTo] = useState(() => dayjs().endOf('month').startOf('day'));
   const loadSequence = useRef(0), rangeOrganization = useRef(null);
+  const rowClickTimer = useRef(null);
+  useEffect(() => () => clearTimeout(rowClickTimer.current), []);
   const error = errors[view === 'documents' ? 'documents' : 'items'];
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
@@ -96,6 +98,18 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
   };
   const shiftRange = amount => {setDateFrom(value=>value.add(amount,'month').startOf('month'));setDateTo(value=>value.add(amount,'month').endOf('month').startOf('day'));};
   const openRow = row => {const document=documentsById.get(row.expenseRequestId);if(document)setSelected(document);else setSelectedItem(row);};
+  const editRow = row => {
+    clearTimeout(rowClickTimer.current);
+    const id = row.workLogId || row.outsourcedWorkRecord?.workLogId;
+    setSelected(null); setSelectedItem(null);
+    if (id && onOpenHistorical) onOpenHistorical(id);
+    else openRow(row);
+  };
+  const openRowOnClick = (event, row) => {
+    event.stopPropagation();
+    clearTimeout(rowClickTimer.current);
+    if (event.detail < 2) rowClickTimer.current = setTimeout(() => openRow(row), 250);
+  };
   const workLogId = selectedItem?.workLogId || selectedItem?.outsourcedWorkRecord?.workLogId;
   const recordKind = row => row.sourceKind === 'HISTORICAL_WORK_RECORD' ? text.historical : text.recorded;
   return <main className="compact-costs cc-live">
@@ -109,8 +123,8 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
         <button className="cc-button" disabled={loading} onClick={reset}>↺ {text.reset}</button>
       </div>
       {expanded && <div className="cc-filter-grid">
-        <label><span>{labels.partner}</span><select value={partner} onChange={event=>setPartner(event.target.value)}><option value="">{text.allPartners}</option>{partnerOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         <label><span>{labels.industry}</span><select value={industry} onChange={event=>setIndustry(event.target.value)}><option value="">{text.allIndustries}</option>{industryOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
+        <label><span>{labels.partner}</span><select value={partner} onChange={event=>setPartner(event.target.value)}><option value="">{text.allPartners}</option>{partnerOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         <label><span>{text.kind}</span><select value={kind} onChange={event=>setKind(event.target.value)}><option value="">{text.allKinds}</option><option value="recorded">{text.recorded}</option><option value="historical">{text.historical}</option></select></label>
         <label><span>{labels.currency}</span><select value={currency} onChange={event=>setCurrency(event.target.value)}><option value="">{text.allCurrencies}</option>{currencies.map(code=><option key={code}>{code}</option>)}</select></label>
       </div>}
@@ -122,13 +136,13 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
       <div className="cc-tabs" role="tablist">{[['items',text.detail],['partner',text.partnerSummary],['industry',text.industrySummary],['documents',text.documents]].map(([key,label])=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{label}</button>)}<span>{text.basis}: {view==='documents' ? docText.date : labels.date}</span></div>
       <div className="cc-grid-tools"><span>{view==='items' ? `${text.selected} ${selectedCount} ${text.items}` : text.summaryHint}<span className="cc-muted"> · {view==='items' ? text.openHint : text.fullRange}</span></span><label><input type="checkbox" checked={dense} onChange={event=>setDense(event.target.checked)} />{text.dense}</label></div>
       {loading ? <div className="cc-loading"><CircularProgress size={24} /></div> : error ? <Alert severity="error" action={<button className="cc-button" onClick={load}>{text.retry}</button>}>{error}</Alert> : <div className={`cc-table-scroll ${dense?'is-dense':''}`}>
-        {view==='items' ? <table><thead><tr><th className="cc-check"><input type="checkbox" aria-label={text.selectAll} checked={allChecked} onChange={()=>setChecked(current=>allChecked ? current.filter(id=>!filtered.some(row=>row.id===id)) : [...new Set([...current,...filtered.map(row=>row.id)])])} /></th><th>No.</th><th><button className="cc-sort" onClick={()=>setAscending(value=>!value)}>{labels.date} {ascending?'↑':'↓'}</button></th>{[labels.partner,labels.industry,labels.code,labels.description,text.order,text.style,text.quantity,text.unitPrice,labels.amount,labels.creator,text.state].map((label,index)=><th key={index} className={index>=6&&index<=8?'cc-number':''}>{label}</th>)}</tr></thead><tbody>
-          {filtered.map((row,index)=><tr key={row.id} onClick={()=>openRow(row)} className={checked.includes(row.id)?'is-selected':''}>
-            <td className="cc-check" onClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(row.id)} onChange={()=>toggle(row.id)} /></td><td className="cc-row-no">{index+1}</td><td>{row.transactionDate}</td>
-            <td><button className="cc-cell-link" onClick={event=>{event.stopPropagation();openRow(row);}}>{row.partner?.name || '—'}</button></td><td>{industryLabel(row)}</td><td><span className="cc-code">{row.transactionCode?.code || '—'}</span></td>
-            <td><button className="cc-cell-link" onClick={event=>{event.stopPropagation();openRow(row);}}>{row.description}</button>{documentsById.has(row.expenseRequestId) && <button className="cc-document-link" onClick={event=>{event.stopPropagation();setSelected(documentsById.get(row.expenseRequestId));}}>{expenseRequestNumber(row.expenseRequestId)}</button>}</td>
-            <td>{row.workOrder?.orderNumber || '—'}</td><td title={row.style?.name}>{row.style?.code || row.style?.name || '—'}</td><td className="cc-number">{number(row.quantity)}</td><td className="cc-number">{number(row.unitPrice)}</td><td className="cc-number cc-amount">{money(row.amount,row.currency)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><StatusLabel label={recordKind(row)} tone={row.sourceKind==='HISTORICAL_WORK_RECORD'?'gray':'blue'} /></td>
-          </tr>)}{!filtered.length && <tr><td colSpan={14} className="cc-empty">{text.empty}</td></tr>}
+        {view==='items' ? <table><thead><tr><th className="cc-check"><input type="checkbox" aria-label={text.selectAll} checked={allChecked} onChange={()=>setChecked(current=>allChecked ? current.filter(id=>!filtered.some(row=>row.id===id)) : [...new Set([...current,...filtered.map(row=>row.id)])])} /></th><th>No.</th><th><button className="cc-sort" onClick={()=>setAscending(value=>!value)}>{labels.date} {ascending?'↑':'↓'}</button></th>{[labels.industry,labels.partner,labels.code,text.order,labels.description,text.quantity,text.unitPrice,labels.amount,labels.creator,text.state].map((label,index)=><th key={index} className={index>=5&&index<=7?'cc-number':''}>{label}</th>)}</tr></thead><tbody>
+          {filtered.map((row,index)=><tr key={row.id} onDoubleClick={()=>editRow(row)} className={checked.includes(row.id)?'is-selected':''}>
+            <td className="cc-check" onDoubleClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(row.id)} onChange={()=>toggle(row.id)} /></td><td className="cc-row-no">{index+1}</td><td>{row.transactionDate}</td>
+            <td>{industryLabel(row)}</td><td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.partner?.name || '—'}</button></td><td><span className="cc-code">{row.transactionCode?.code || '—'}</span></td><td>{row.workOrder?.orderNumber || '—'}</td>
+            <td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.description}</button>{documentsById.has(row.expenseRequestId) && <button className="cc-document-link" onClick={event=>{event.stopPropagation();setSelected(documentsById.get(row.expenseRequestId));}} onDoubleClick={event=>event.stopPropagation()}>{expenseRequestNumber(row.expenseRequestId)}</button>}</td>
+            <td className="cc-number">{number(row.quantity)}</td><td className="cc-number">{number(row.unitPrice)}</td><td className="cc-number cc-amount">{money(row.amount,row.currency)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><StatusLabel label={recordKind(row)} tone={row.sourceKind==='HISTORICAL_WORK_RECORD'?'gray':'blue'} /></td>
+          </tr>)}{!filtered.length && <tr><td colSpan={13} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : view==='documents' ? <table><thead><tr>{[docText.numbering,docText.title,docText.payee,docText.date,docText.applicant,docText.items,docText.total].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>
           {filteredDocuments.map(document=><tr key={document.id} onClick={()=>setSelected(document)}><td><button className="cc-cell-link" onClick={()=>setSelected(document)}>{expenseRequestNumber(document.id)}</button></td><td><button className="cc-cell-link" onClick={()=>setSelected(document)}>{document.title}</button></td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
           {!filteredDocuments.length && <tr><td colSpan={7} className="cc-empty">{text.empty}</td></tr>}
