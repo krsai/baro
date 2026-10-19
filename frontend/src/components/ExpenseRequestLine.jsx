@@ -9,7 +9,8 @@ import { requestJSON, buildQueryString } from '../utils/apiClient';
 import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, partner, currency, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus }) {
+  const currency = line.currency;
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
   const [optionsLoading, setOptionsLoading] = useState(false), [optionsError, setOptionsError] = useState(false), [reload, setReload] = useState(0);
@@ -70,6 +71,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
         {code && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>{serviceName(code,languageCode)} · {serviceName(code.base?.expenseType,languageCode)}</Typography>}
       </TableCell>
       <TableCell><TextField {...field} required label={labels.description} value={line.description} onChange={change('description')} inputProps={{ maxLength: 2000 }} /></TableCell>
+      <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell><TextField {...field} required label={labels.price} value={line.unitPrice} onChange={change('unitPrice')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell><TextField {...field} label={labels.vat} disabled={disabled || !code?.vatEnabled} value={line.vatRate} onChange={change('vatRate')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
@@ -78,7 +80,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><IconButton aria-label={labels.remove} disabled={disabled} onClick={() => onRemove(line.key)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
     </TableRow>
-    {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={10} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
+    {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {typeMismatch && <Alert severity="warning">{expenseLabels.mismatch}</Alert>}{!typeMismatch && industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>

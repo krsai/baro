@@ -18,14 +18,14 @@ import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import { EXPENSE_REQUEST_TEXT } from '../../constants/expenseRequest';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
-import { expenseDocumentTotals, expenseLinePayload, newExpenseLine } from '../../utils/expenseRequest.mjs';
+import { expenseTotalsByCurrency, expenseLinePayload, newExpenseLine } from '../../utils/expenseRequest.mjs';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New expense request', vi: 'Tạo đề nghị chi phí' };
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { title: '', requestDate: date, partnerOrgId: '', currency: 'VND', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const newDocument = () => { const date = today(); return { title: '', requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
 
 export default function TransactionRequestEntry() {
   const { activeOrgId, user, accessProfile } = useAuth(), { languageCode } = useLanguage();
@@ -64,16 +64,16 @@ export default function TransactionRequestEntry() {
     });
   };
   const removeLine = key => { setDirty(true); setForm(current => ({ ...current, items: current.items.length === 1 ? [newExpenseLine()] : current.items.filter(line => line.key !== key) })); };
-  const totals = useMemo(() => expenseDocumentTotals(form.items, form.currency), [form.items, form.currency]);
+  const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
   const disabled = loading || loadError || saving || Boolean(submission);
   const valid = !period.loading && !period.error && form.title.trim() && form.title.trim().length <= 200 && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
-  const money = value => formatCurrency(value, { currencyCode: form.currency, languageCode });
+  const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: '/outsourcing-record/new' });
   const save = async () => {
     if (saving || !submission && !valid) return;
-    const body = submission || { title: form.title, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, currency: form.currency, clientKey: form.clientKey, items: form.items.map(expenseLinePayload) };
+    const body = submission || { title: form.title, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`/expense-requests${buildQueryString({ orgId: activeOrgId })}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -103,25 +103,28 @@ export default function TransactionRequestEntry() {
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{labels.hint}</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 2fr) minmax(220px, 1.5fr) 180px 120px' }, gap: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 2fr) minmax(220px, 1.5fr) 160px' }, gap: 2 }}>
             <TextField size="small" required label={labels.title} disabled={disabled} value={form.title} inputProps={{ maxLength: 200 }} onChange={event => update({ title: event.target.value })} />
             <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled} required />
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
-            <TextField size="small" select label={labels.currency} disabled={disabled} value={form.currency} onChange={event => update({ currency: event.target.value })}>{['VND','USD','KRW'].map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>
           </Box>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mt={2}><TextField size="small" label={lookup.issuer} value={accessProfile?.orgName || '\u2014'} InputProps={{readOnly:true}} /><TextField size="small" label={lookup.author} value={accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '\u2014'} InputProps={{readOnly:true}} /></Stack></Box>
+          <Stack direction="row" useFlexGap flexWrap="wrap" spacing={3} mt={2}>
+            <Typography variant="caption" color="text.secondary">{lookup.issuer}: {accessProfile?.orgName || '—'}</Typography>
+            <Typography variant="caption" color="text.secondary">{lookup.author}: {accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '—'}</Typography>
+            <Typography variant="caption" color="text.secondary">{labels.vatDefault}: {data.settings.defaultVatRate}%</Typography>
+          </Stack></Box>
         </Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
         <DragDropContext onBeforeCapture={() => {
           dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);
         }} onDragEnd={reorderLines}>
           <Droppable droppableId="expense-items" isDropDisabled={disabled}>{provided => (
-            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1200, tableLayout: 'fixed' }}>
-              <colgroup>{[64,128,null,96,112,96,112,112,128,88].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
-              <TableHead><TableRow>{['#',labels.code,labels.description,labels.quantity,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 6 && index <= 8 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
+            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1280, tableLayout: 'fixed' }}>
+              <colgroup>{[64,128,null,88,96,112,96,112,112,128,88].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
+              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 7 && index <= 9 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
-                  <ExpenseRequestLine line={line} index={index} {...data} dragHandleProps={drag.dragHandleProps} partner={partner} currency={form.currency} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />
+                  <ExpenseRequestLine line={line} index={index} {...data} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />
                 </TableBody>
               )}</Draggable>)}
               {provided.placeholder}
@@ -133,9 +136,13 @@ export default function TransactionRequestEntry() {
           <Button startIcon={<Add />} sx={{ flexShrink:0 }} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button>
         </Stack>
         <Stack alignItems="flex-end" spacing={1} sx={{ p: 3, bgcolor: 'grey.50' }} data-testid="expense-totals">
-          <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.subtotal}</Typography><Typography>{money(totals.subtotal)}</Typography></Stack>
-          <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.tax}</Typography><Typography>{money(totals.vatAmount)}</Typography></Stack>
-          <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 }, pt: 1.5, borderTop: 1, borderColor: 'divider' }}><Typography fontWeight={700}>{labels.total}</Typography><Typography variant="h6" fontWeight={700} color="primary">{money(totals.amount)}</Typography></Stack>
+          {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: { xs: '100%', sm: 360 } }}>
+            <Typography variant="subtitle2">{total.currency}</Typography>
+            <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">{labels.subtotal}</Typography><Typography>{money(total.subtotal,total.currency)}</Typography></Stack>
+            <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">{labels.tax}</Typography><Typography>{money(total.vatAmount,total.currency)}</Typography></Stack>
+            <Stack direction="row" justifyContent="space-between" sx={{pt:1,borderTop:1,borderColor:'divider'}}><Typography fontWeight={700}>{labels.total}</Typography><Typography fontWeight={700} color="primary">{money(total.amount,total.currency)}</Typography></Stack>
+          </Stack>)}
+
         </Stack>
       {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
       </Paper>

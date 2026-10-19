@@ -6080,6 +6080,8 @@ CREATE TABLE IF NOT EXISTS "ExpenseRequest" (
   CONSTRAINT "ExpenseRequest_partnerOrgId_orgId_fkey" FOREIGN KEY ("partnerOrgId","orgId") REFERENCES "Organization"(id,"ownerOrgId") ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT "ExpenseRequest_createdByEmployeeId_orgId_fkey" FOREIGN KEY ("createdByEmployeeId","orgId") REFERENCES "Employee"(id,"orgId") ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+ALTER TABLE "ExpenseRequest" ALTER COLUMN currency DROP NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "ExpenseRequest_id_orgId_partnerOrgId_key" ON "ExpenseRequest"(id,"orgId","partnerOrgId");
 CREATE UNIQUE INDEX IF NOT EXISTS "ExpenseRequest_orgId_clientKey_key" ON "ExpenseRequest"("orgId","clientKey");
 CREATE UNIQUE INDEX IF NOT EXISTS "ExpenseRequest_id_orgId_partnerOrgId_currency_key" ON "ExpenseRequest"(id,"orgId","partnerOrgId",currency);
 CREATE INDEX IF NOT EXISTS "ExpenseRequest_orgId_requestDate_idx" ON "ExpenseRequest"("orgId","requestDate");
@@ -6087,9 +6089,12 @@ ALTER TABLE "PartnerTransactionCost" ADD COLUMN IF NOT EXISTS "expenseRequestId"
 ALTER TABLE "PartnerTransactionCost" ADD COLUMN IF NOT EXISTS "expenseRequestLine" INTEGER;
 CREATE UNIQUE INDEX IF NOT EXISTS "PartnerTransactionCost_expenseRequestId_expenseRequestLine_key" ON "PartnerTransactionCost"("expenseRequestId","expenseRequestLine");
 DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname='PartnerTransactionCost_expense_request_fkey' AND array_length(conkey,1)=4) THEN
+    ALTER TABLE "PartnerTransactionCost" DROP CONSTRAINT "PartnerTransactionCost_expense_request_fkey";
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='PartnerTransactionCost_expense_request_fkey') THEN
     ALTER TABLE "PartnerTransactionCost" ADD CONSTRAINT "PartnerTransactionCost_expense_request_fkey"
-    FOREIGN KEY ("expenseRequestId","orgId","partnerOrgId",currency) REFERENCES "ExpenseRequest"(id,"orgId","partnerOrgId",currency) ON DELETE RESTRICT ON UPDATE RESTRICT;
+    FOREIGN KEY ("expenseRequestId","orgId","partnerOrgId") REFERENCES "ExpenseRequest"(id,"orgId","partnerOrgId") ON DELETE RESTRICT ON UPDATE RESTRICT;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='ExpenseRequestLine_pair_check') THEN
     ALTER TABLE "PartnerTransactionCost" ADD CONSTRAINT "ExpenseRequestLine_pair_check"

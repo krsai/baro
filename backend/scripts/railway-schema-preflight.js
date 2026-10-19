@@ -9,19 +9,21 @@ const columns = [
   ...['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','title','currency','clientKey','submissionHash','createdAt'].map(column => ['ExpenseRequest',column]),
   ['PartnerTransactionCost','expenseRequestId'], ['PartnerTransactionCost','expenseRequestLine'],
 ];
-const constraints = ['ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
+const constraints = ['ExpenseRequest_id_orgId_partnerOrgId_key','ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
   'ExpenseRequest_partnerOrgId_orgId_fkey','ExpenseRequest_createdByEmployeeId_orgId_fkey',
   'PartnerTransactionCost_expense_request_fkey','PartnerTransactionCost_expenseRequestId_expenseRequestLine_key','ExpenseRequestLine_pair_check'];
 
 async function missingSchema(db) {
-  const existingColumns = await db.$queryRawUnsafe(`SELECT table_name,column_name FROM information_schema.columns
+  const existingColumns = await db.$queryRawUnsafe(`SELECT table_name,column_name,is_nullable FROM information_schema.columns
     WHERE table_schema='public' AND table_name IN ('ExpenseRequest','PartnerTransactionCost')`);
-  const existingConstraints = await db.$queryRawUnsafe(`SELECT conname AS name FROM pg_constraint WHERE connamespace='public'::regnamespace
-    UNION SELECT indexname AS name FROM pg_indexes WHERE schemaname='public'`);
+  const existingConstraints = await db.$queryRawUnsafe(`SELECT conname AS name,array_length(conkey,1) AS column_count FROM pg_constraint WHERE connamespace='public'::regnamespace
+    UNION SELECT indexname AS name,NULL::integer AS column_count FROM pg_indexes WHERE schemaname='public'`);
   const columnSet = new Set(existingColumns.map(row => `${row.table_name}.${row.column_name}`));
   const constraintSet = new Set(existingConstraints.map(row => row.name));
   return [...columns.filter(([table,column]) => !columnSet.has(`${table}.${column}`)).map(([table,column]) => `${table}.${column}`),
-    ...constraints.filter(name => !constraintSet.has(name))];
+    ...constraints.filter(name => !constraintSet.has(name)),
+    ...existingColumns.filter(row=>row.table_name==='ExpenseRequest'&&row.column_name==='currency'&&row.is_nullable==='NO').map(()=> 'ExpenseRequest.currency:nullable'),
+    ...existingConstraints.filter(row=>row.name==='PartnerTransactionCost_expense_request_fkey'&&row.column_count===4).map(()=> 'PartnerTransactionCost.expenseRequest:line-currency')];
 }
 
 async function runRailwayPreflight({ env = process.env, run = spawnSync, createClient, log = console.log } = {}) {

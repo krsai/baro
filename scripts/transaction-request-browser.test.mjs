@@ -26,7 +26,7 @@ try {
     const service={id:4,entryMode:kind,orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[],isActive:true};
     await page.route('**/business-partners?*',route=>route.fulfill({headers,json:[{id:11,name:kind==='PROCESS'?'QQ':'Trucking Partner',isActive:true,partnerExpenseTypeId:1,serviceTypes:[]}]}));
     await page.route('**/transaction-codes?*',route=>route.fulfill({headers,json:[{id:7,code:kind==='PROCESS'?'BTH':'TRKV',nameKo:'서비스',nameEn:'Service',nameVi:'Dịch vụ',serviceTypeId:4,base:{...service,expenseTypeId:2,expenseType:{id:2,nameKo:"Logistics",nameEn:"Logistics",nameVi:"Logistics"}},serviceType:service,vatEnabled:kind!=='PROCESS'}]}));
-    await page.route('**/app-settings?*',route=>route.fulfill({headers,json:{defaultVatRate:'10'}}));
+    await page.route('**/app-settings?*',route=>route.fulfill({headers,json:{defaultVatRate:'8'}}));
     await page.route('**/orders?*',route=>route.fulfill({headers,json:[{id:'PUBLIC',dbId:30,ownerOrgId:1,orderNumber:'L18-1'}]}));
     await page.route('**/transaction-request-options?*',route=>route.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'S40',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]}],plans:[{id:60,styleId:40,factoryName:'Factory A',processIds:[50]},{id:61,styleId:40,factoryName:'Factory B',processIds:[50]}]}}));
     await page.route('**/expense-requests?*',route=>{if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});payload=route.request().postDataJSON();attempts.push(payload);if(attempts.length===1&&kind==='LOGISTICS')return route.fulfill({headers,status:503,json:{error:'unavailable'}});return route.fulfill({headers,json:{id:1}});});
@@ -51,7 +51,7 @@ try {
     await page.getByRole('textbox',{name:labels.partner,exact:false}).click();await page.getByRole('dialog').getByRole('button',{name:EXPENSE_LOOKUP_TEXT[lang].select,exact:true}).click();
     await page.getByRole('alert').filter({hasText:lang==='ko'?'지급 대상':lang==='en'?'payee':'đối tác'}).waitFor();
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).isDisabled(),kind==='PROCESS');
-    assert.equal(await page.getByLabel('VAT (%)',{exact:true}).inputValue(),kind==='PROCESS'?'0':'10');
+    assert.equal(await page.getByLabel('VAT (%)',{exact:true}).inputValue(),kind==='PROCESS'?'0':'8');
     await page.getByLabel(labels.price,{exact:false}).fill('100000');await page.getByLabel(labels.qty,{exact:false}).fill('2');
     if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.detail,exact:true}).click();await page.getByRole('checkbox',{name:labels.order,exact:true}).check();}
     await page.getByRole('combobox',{name:labels.order,exact:false}).click();await page.getByRole('option',{name:'L18-1',exact:true}).click();
@@ -69,7 +69,7 @@ try {
       await second.getByLabel(labels.price,{exact:false}).fill('50000');await second.getByLabel(labels.qty,{exact:false}).fill('1');
       await page.getByRole('button',{name:l.add,exact:true}).click();await page.getByTestId('expense-line').nth(2).getByRole('button',{name:l.remove,exact:true}).click();
       assert.equal(await page.getByTestId('expense-line').count(),2);
-      assert.match(await page.getByTestId('expense-totals').textContent(),/275/);
+      assert.match(await page.getByTestId('expense-totals').textContent(),/270/);
       const first=page.getByTestId('expense-line').nth(0);
       await first.getByLabel(l.description,{exact:false}).fill('First expense');
       await second.getByLabel(l.description,{exact:false}).fill('Second expense');
@@ -89,15 +89,21 @@ try {
         const restore=page.getByTestId('expense-line').nth(1).getByRole('button',{name:l.reorder+' 2',exact:true});
         await restore.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowUp');await page.keyboard.press('Space');
       }
-      assert.match(await page.getByTestId('expense-totals').textContent(),/275/);
+      assert.match(await page.getByTestId('expense-totals').textContent(),/270/);
+    }
+    if(kind==='LOGISTICS') {
+      const mixed=page.getByTestId('expense-line').first();
+      await mixed.getByRole('combobox',{name:l.currency,exact:false}).click();await page.getByRole('option',{name:'USD',exact:true}).click();
+      await mixed.getByLabel(labels.price,{exact:false}).fill('1.25');
+      const totalText=await page.getByTestId('expense-totals').innerText();assert.match(totalText,/USD/);assert.match(totalText,/VND/);assert.match(totalText,/1[.,]35/);
     }
     console.log('Submitting',lang,kind);await page.getByRole('button',{name:labels.submit,exact:true}).click();if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
     assert.equal(payload.items.length,kind==='LOGISTICS'?2:1);assert.equal(payload.partnerOrgId,11);assert.match(payload.requestDate,/^\d{4}-\d{2}-\d{2}$/);
-    if(kind==='LOGISTICS')assert.deepEqual(payload.items.map(row=>row.description),['Second expense','First expense']);
+    if(kind==='LOGISTICS'){assert.deepEqual(payload.items.map(row=>row.description),['Second expense','First expense']);assert.deepEqual(payload.items.map(row=>row.currency),['USD','VND']);}assert.ok(!('currency' in payload));
     payload=payload.items[kind==='LOGISTICS'?1:0];
     assert.ok(!('transactionDate' in payload));assert.equal(payload.transactionCodeId,7);assert.equal(payload.workOrderId,30);assert.equal(payload.unitPrice,'100000');assert.equal(payload.quantity,'2');
     assert.equal(payload.styleProcessId,kind==='PROCESS'?50:null);assert.equal(payload.assignmentPlanId,kind==='PROCESS'?61:null);
-    assert.equal(payload.vatRate,kind==='PROCESS'?'0':'10');assert.ok(!('coverageStartDate'in payload));assert.ok(!('createdByEmployeeId'in payload));assert.deepEqual(errors,[]);
+    assert.equal(payload.vatRate,kind==='PROCESS'?'0':'8');assert.ok(!('coverageStartDate'in payload));assert.ok(!('createdByEmployeeId'in payload));assert.deepEqual(errors,[]);
     await page.close();
   }
   const list=await browser.newPage({viewport:{width:1440,height:1000}}),listErrors=[];

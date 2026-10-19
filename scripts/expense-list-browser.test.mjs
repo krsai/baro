@@ -29,7 +29,7 @@ try {
       {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV'},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
-    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25',items:[rows[2]]}]}));
+    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.getByRole('button',{name:'Legacy work',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),3);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
@@ -58,6 +58,9 @@ try {
     await page.locator('.cc-filter-grid select').nth(2).selectOption('historical');assert.equal(await page.locator('tbody tr').count(),1);
     await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();
     await page.getByRole('tab',{name:text.documents,exact:true}).click();await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
+    assert.equal(await page.locator('.cc-total-amount strong').count(),2);
+    await page.locator('.cc-filter-grid select').nth(3).selectOption('USD');
+    assert.equal(await page.locator('.cc-total-amount strong').count(),1);
     await page.getByRole('button',{name:'EXP-000001',exact:true}).click();await page.getByRole('dialog').getByText('Document title',{exact:true}).waitFor();
     await page.getByRole('dialog').getByRole('button',{name:doc.close,exact:true}).click();
     await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();await page.getByRole('tab',{name:text.detail,exact:true}).click();

@@ -1,7 +1,7 @@
 import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 
 export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
-  description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '',
+  currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '',
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const inputMode = (code, key) => code?.base?.entryMode === 'PROCESS' ? 'REQUIRED' : code?.base?.[`${key}Input`] || (key === 'order' ? 'OPTIONAL' : 'HIDDEN');
 export const visibleInput = (line, code, key) => inputMode(code, key) === 'REQUIRED' || inputMode(code, key) === 'OPTIONAL' && line.enabled[key];
@@ -31,7 +31,9 @@ export function validExpenseLine(line, code, currency) {
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]])) &&
     (code.base?.requiredFields || []).every(key => line.details[key]?.trim());
 }
-export const expenseLinePayload = line => ({ transactionCodeId: line.transactionCodeId,
+export const expenseLinePayload = line => ({ transactionCodeId: line.transactionCodeId, currency: line.currency,
   description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });
+
+export const expenseTotalsByCurrency = lines => [...new Set(lines.map(line => line.currency))].sort().map(currency => ({ currency, ...expenseDocumentTotals(lines.filter(line => line.currency === currency), currency) }));

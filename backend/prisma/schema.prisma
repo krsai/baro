@@ -1425,7 +1425,7 @@ model OrganizationOutsourcingServiceType {
 model PartnerTransactionCost {
   expenseRequestId Int?
   expenseRequestLine Int?
-  expenseRequest ExpenseRequest? @relation(map: "PartnerTransactionCost_expense_request_fkey", fields: [expenseRequestId, orgId, partnerOrgId, currency], references: [id, orgId, partnerOrgId, currency], onDelete: Restrict, onUpdate: Restrict)
+  expenseRequest ExpenseRequest? @relation(map: "PartnerTransactionCost_expense_request_fkey", fields: [expenseRequestId, orgId, partnerOrgId], references: [id, orgId, partnerOrgId], onDelete: Restrict, onUpdate: Restrict)
   @@unique([expenseRequestId, expenseRequestLine])
   @@unique([outsourcedWorkRecordId, orgId])
   outsourcedWorkRecordId Int? @unique
@@ -1471,7 +1471,7 @@ model ExpenseRequest {
   createdByEmployeeId Int
   requestDate String
   title String
-  currency String
+  currency String?
   clientKey String
   submissionHash String
   createdAt DateTime @default(now())
@@ -1480,6 +1480,7 @@ model ExpenseRequest {
   createdByEmployee Employee @relation("ExpenseRequestCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
   items PartnerTransactionCost[]
   @@unique([orgId, clientKey])
+  @@unique([id, orgId, partnerOrgId])
   @@unique([id, orgId, partnerOrgId, currency])
   @@index([orgId, requestDate])
 }

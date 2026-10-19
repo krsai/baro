@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 import { expenseLineAmounts, expenseDocumentTotals } from '../frontend/src/utils/expenseRequest.mjs';
 import { exactLookupCode, normalizeLookupText } from '../frontend/src/utils/expenseLookup.mjs';
+import { expenseTotalsByCurrency } from '../frontend/src/utils/expenseRequest.mjs';
 const require = createRequire(import.meta.url);
 const { registerExpenseRequest } = require('../backend/dist/services/expenseRequest.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
@@ -100,9 +101,9 @@ test('one header date applies to all new costs and conflicting item dates are re
   await assert.rejects(other.route({ body }, response()), /EXPENSE_REQUEST_DATE_MISMATCH/);
   assert.deepEqual(other.db.state(), { documents: [], costs: [], logs: [], production: [] });
 });
-test('documents reject conflicting payees/currencies, empty or excessive lines and unauthorized access', async () => {
+test('documents reject conflicting payees, invalid currencies, empty or excessive lines and unauthorized access', async () => {
   const { route,db } = routeHarness();
-  for (const patch of [{ title: '' },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'USD' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] },{ requestDate: '2026-03-31' }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
+  for (const patch of [{ title: '' },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] },{ requestDate: '2026-03-31' }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
   assert.equal(db.state().documents.length,0);
   const forbidden = postRoute({ requireOrgRole: async () => null, ORG_MANAGEMENT_ROLES: ['ADMIN'] });
   await forbidden({ body: input() },response());
@@ -119,7 +120,7 @@ test('frontend row rounding and document sums match the server for fractional pr
     assert.ok(expenseDocumentTotals([line,line],currency).amount);
   }
 });
-test('document SQL is repeatable, preserves old costs and enforces tenant/payee/currency and line pairing FKs', async () => {
+test('document SQL is repeatable, preserves old costs and enforces tenant/payee and line pairing FKs while allowing per-line currencies', async () => {
   const db = new PGlite();
   try {
     await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,UNIQUE(id,"ownerOrgId"));
@@ -130,9 +131,40 @@ test('document SQL is repeatable, preserves old costs and enforces tenant/payee/
     const sql = fs.readFileSync('backend/scripts/apply-expense-request-documents.sql','utf8');
     await db.exec(sql); await db.exec(sql);
     await db.exec(`INSERT INTO "ExpenseRequest" (id,"orgId","partnerOrgId","createdByEmployeeId","requestDate",title,currency,"clientKey","submissionHash") VALUES(1,1,11,20,'2026-10-17','Expenses','VND','key','hash');`);
-    for (const [org,payee,currency,line] of [[2,11,'VND',1],[1,12,'VND',1],[1,11,'USD',1],[1,11,'VND','NULL'],[1,11,'VND',0]]) await assert.rejects(db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('bad',${org},${payee},'${currency}',1,1,${line})`));
+    for (const [org,payee,currency,line] of [[2,11,'VND',1],[1,12,'VND',1],[1,11,'VND','NULL'],[1,11,'VND',0]]) await assert.rejects(db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('bad',${org},${payee},'${currency}',1,1,${line})`));
     await db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('item',1,11,'VND',100,1,1)`);
+    await db.exec('ALTER TABLE "PartnerTransactionCost" DROP CONSTRAINT "PartnerTransactionCost_expense_request_fkey"; ALTER TABLE "PartnerTransactionCost" ADD CONSTRAINT "PartnerTransactionCost_expense_request_fkey" FOREIGN KEY ("expenseRequestId","orgId","partnerOrgId",currency) REFERENCES "ExpenseRequest"(id,"orgId","partnerOrgId",currency)');
+    await db.exec(sql);await db.exec(sql);
+    await db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('usd-item',1,11,'USD',10,1,2)`);
     await assert.rejects(db.exec(`DELETE FROM "ExpenseRequest" WHERE id=1`));
     assert.deepEqual((await db.query(`SELECT amount::text,"expenseRequestId","expenseRequestLine" FROM "PartnerTransactionCost" WHERE id='legacy'`)).rows,[{ amount:'123',expenseRequestId:null,expenseRequestLine:null }]);
   } finally { await db.close(); }
+});
+
+test('mixed currencies are persisted per line and returned as separate totals without a cross-currency sum', async () => {
+  const { route, db } = routeHarness(), body=input();
+  delete body.currency;
+  body.items[0].currency='VND'; body.items[1].currency='USD';body.items[1].unitPrice='1.25';body.items[1].vatRate='8';
+  const result=response();await route({body},result);
+  assert.equal(result.body.currency,null);assert.equal(result.body.amount,null);
+  assert.deepEqual(result.body.currencyTotals.map(row=>[row.currency,row.amount]),[['USD','1.35'],['VND','220000']]);
+  assert.deepEqual(db.state().costs.map(row=>row.currency),['VND','USD']);
+  assert.deepEqual(expenseTotalsByCurrency(body.items).map(row=>[row.currency,row.amount]),[['USD','1.35'],['VND','220000']]);
+  await route({body},response());assert.equal(db.state().costs.length,2);
+  await assert.rejects(route({body:{...body,items:body.items.map((row,index)=>index?{...row,currency:'KRW'}:row)}},response()),/RETRY_MISMATCH/);
+});
+
+test('a non-VND process line rolls the whole mixed request back', async () => {
+  const {route,db}=routeHarness(),body=input();
+  body.items[1]={...body.items[1],transactionCodeId:8,currency:'USD',vatRate:'0',workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60};
+  await assert.rejects(route({body},response()));
+  assert.equal(db.state().costs.length,0);assert.equal(db.state().documents.length,0);assert.equal(db.state().production.length,0);
+});
+
+test('VAT defaults inherit from system settings and organization overrides take precedence', async () => {
+  const {loadAppSettings}=require('../backend/dist/services/applicationSettings.js');
+  const db={systemSetting:{findUnique:async({where})=>({value:where.key==='APP_SETTINGS:DEFAULT'?{defaultVatRate:'10'}:{defaultVatRate:'8'}})}};
+  assert.equal((await loadAppSettings(db,1)).defaultVatRate,'8');
+  db.systemSetting.findUnique=async({where})=>where.key==='APP_SETTINGS:DEFAULT'?{value:{defaultVatRate:'10'}}:null;
+  assert.equal((await loadAppSettings(db,1)).defaultVatRate,'10');
 });

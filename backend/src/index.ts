@@ -993,6 +993,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'ExpenseRequest_id_orgId_partnerOrgId_key',
   'ExpenseRequest_orgId_clientKey_key',
   'ExpenseRequest_orgId_fkey',
   'ExpenseRequest_partnerOrgId_orgId_fkey',
