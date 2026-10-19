@@ -10,6 +10,7 @@ import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
 import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
+import { expenseCodeDescription, expenseIndustryMismatch } from '../utils/expenseCodePresentation.mjs';
 
 export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus }) {
   const currency = line.currency;
@@ -52,17 +53,17 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const change = key => event => onChange(line.key, { [key]: event.target.value });
   const chooseCode = selected => {
     if (line.productionLinked) {
-      onChange(line.key,{transactionCodeId:selected?.id || '',vatRate:selected?.vatEnabled ? String(settings.defaultVatRate) : '0'});
+      onChange(line.key,{transactionCodeId:selected?.id || '',...(selected ? {description:expenseCodeDescription(selected,languageCode)} : {}),vatRate:selected?.vatEnabled ? String(settings.defaultVatRate) : '0'});
       setExpanded(true);return;
     }
-    onChange(line.key, { transactionCodeId: selected?.id || '', description: selected ? serviceName(selected, languageCode) : '', vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
+    onChange(line.key, { transactionCodeId: selected?.id || '', description: expenseCodeDescription(selected,languageCode), vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
       workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
     if (selected?.base?.entryMode === 'PROCESS' || selected?.base?.requiredFields?.length || ['order','style','process'].some(key => inputMode(selected,key) === 'REQUIRED')) setExpanded(true);
   };
   const amount = expenseLineAmounts(line, currency);
   const money = value => value == null ? '—' : formatCurrency(value, { currencyCode: currency, languageCode });
-  const typeMismatch = code && partner && partner.partnerExpenseTypeId !== code.base?.expenseTypeId;
-  const industryMismatch = code && partner && !partner.serviceTypes?.some(row => row.id === code.serviceTypeId);
+  const typeMismatch = code && partner?.partnerExpenseTypeId && code.base?.expenseTypeId && partner.partnerExpenseTypeId !== code.base.expenseTypeId;
+  const industryMismatch = expenseIndustryMismatch(code,partner);
   const toggle = key => event => {
     const checked = event.target.checked;
     onChange(line.key, { enabled: { ...line.enabled, [key]: checked, ...(key === 'order' && !checked ? { style: false, process: false } : key === 'style' && !checked ? { process: false } : {}) },

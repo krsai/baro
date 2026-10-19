@@ -5,6 +5,7 @@ import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { EXPENSE_REQUEST_TEXT } from '../frontend/src/constants/expenseRequest.js';
 import { EXPENSE_LOOKUP_TEXT } from '../frontend/src/constants/expenseLookup.js';
+import { expenseCodeDescription } from '../frontend/src/utils/expenseCodePresentation.mjs';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
 assert.ok(executablePath);
 const fixture=path.resolve('frontend/expense-editor-acceptance.html');assert.ok(!existsSync(fixture));
@@ -24,8 +25,8 @@ try {
     await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false});'}));
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>document.documentElement.dataset.saved="true",showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-    const service={isActive:true,entryMode:'GENERAL',requiredFields:[],expenseTypeId:1};
-    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:4}]}],
+    const service={isActive:true,entryMode:'GENERAL',requiredFields:[],expenseTypeId:1,serviceTypeId:4};
+    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4}]}],
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[], 'app-settings':{defaultVatRate:'10'} };
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
@@ -59,6 +60,8 @@ try {
       await code.fill('BTHE');await code.press('Enter');
       // A unique exact code resolves directly; no legacy work group is requested.
       if(await page.getByRole('dialog').count())await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
+      assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
+      assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
       await page.getByLabel(l.title,{exact:false}).fill('Updated request');
       await page.getByLabel(l.price,{exact:false}).fill('5000');
       assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
@@ -66,7 +69,7 @@ try {
       await save.click();await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
       assert.equal(submitted.title,'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,'5000');
-      assert.equal(submitted.items[0].description,'Original buttonhole expense');
+      assert.equal(submitted.items[0].description,expenseCodeDescription(mocks['transaction-codes'][0],lang));
     }
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();
   }
