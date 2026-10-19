@@ -1,7 +1,7 @@
 import DeleteActionButton from './DeleteActionButton';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
-import { DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
+import { Add, DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
 import ExpenseLookupField from './ExpenseLookupField';
 import DecimalAmountField from './DecimalAmountField';
 import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
@@ -12,9 +12,9 @@ import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '.
 import { formatCurrency } from '../utils/currencyFormat';
 import { expenseCodeDescription, expenseIndustryMismatch } from '../utils/expenseCodePresentation.mjs';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess }) {
   const currency = line.currency;
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(line.expandLinks));
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
   const [optionsLoading, setOptionsLoading] = useState(false), [optionsError, setOptionsError] = useState(false), [reload, setReload] = useState(0);
   const code = codes.find(row => row.id === line.transactionCodeId) || null;
@@ -52,6 +52,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   useEffect(() => { onStatus(line.key, Boolean(valid)); }, [line.key, valid, onStatus]);
   const change = key => event => onChange(line.key, { [key]: event.target.value });
   const chooseCode = selected => {
+    if(selected?.id === line.transactionCodeId)return;
     if (line.productionLinked) {
       onChange(line.key,{transactionCodeId:selected?.id || '',...(selected ? {description:expenseCodeDescription(selected,languageCode)} : {}),vatRate:selected?.vatEnabled ? String(settings.defaultVatRate) : '0'});
       setExpanded(true);return;
@@ -94,7 +95,9 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
     {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {typeMismatch && <Alert severity="warning">{expenseLabels.mismatch}</Alert>}{!typeMismatch && industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
-      {expanded && <><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>
+      {expanded && <><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>
+        {code?.base?.entryMode==='PROCESS' && <Button startIcon={<Add />} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}>{labels.addProcess}</Button>}
+      </Stack>
         <Stack direction="row" flexWrap="wrap">{['order','style','process'].filter(key => mode(key) === 'OPTIONAL').map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={line.enabled[key]} disabled={disabled || key === 'style' && !visible('order') || key === 'process' && !visible('style')} onChange={toggle(key)} />} />)}</Stack>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
           {visible('order') && <TextField {...field} required={mode('order') === 'REQUIRED'} disabled={disabled || line.productionLinked} select label={labels.order} value={line.workOrderId} onChange={event => onChange(line.key, { workOrderId: event.target.value, styleId: '', styleProcessId: '', assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{availableOrders.map(row => <MenuItem key={row.dbId} value={row.dbId}>{row.orderNumber}</MenuItem>)}</TextField>}

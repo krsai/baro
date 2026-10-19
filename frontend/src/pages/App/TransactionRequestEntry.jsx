@@ -30,6 +30,7 @@ const LOCKED_TEXT = { ko: '최종 마감된 주문의 비용 신청은 수정할
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 const newDocument = () => { const date = today(); return { title: '', requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const documentSnapshot = form => JSON.stringify({title:form.title,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -45,11 +46,13 @@ export default function TransactionRequestEntry() {
   organizationRef.current = activeOrgId;
   const [form, setForm] = useState(newDocument), [data, setData] = useState({ partners: [], codes: [], orders: [], settings: { defaultVatRate: '10' } });
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
-  const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [dirty, setDirty] = useState(false), [statuses, setStatuses] = useState({});
+  const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [statuses, setStatuses] = useState({});
+  const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
+  const dirty = documentSnapshot(form) !== initialSnapshot;
   const [saved,setSaved] = useState(false);
   useUnsavedChanges(dirty);
   useEffect(() => { if (saved) navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: pathname }); }, [saved,navigateToPath,labels.document,pathname]);
-  useEffect(() => { setForm(newDocument()); setDirty(false); setStatuses({}); setSubmission(null); setError(''); setSaving(false); setSaved(false); }, [activeOrgId,sourceKind,sourceId]);
+  useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setSubmission(null); setError(''); setSaving(false); setSaved(false); }, [activeOrgId,sourceKind,sourceId]);
   useEffect(() => {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
@@ -60,17 +63,20 @@ export default function TransactionRequestEntry() {
       .then(([partners,codes,settings,orders,loaded]) => { if (alive) {
         if (loaded?.partner && !partners.some(row=>row.id===loaded.partner.id)) partners=[...partners,{...loaded.partner,isActive:false}];
         setData({ partners, codes, settings, orders: orders.filter(row => row.ownerOrgId === Number(activeOrgId)) });
-        if (loaded) setForm({...loaded,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))});
+        if (loaded) {const draft={...loaded,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};setForm(draft);setInitialSnapshot(documentSnapshot(draft));}
       } })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [activeOrgId, reload,editing,editorPath]);
-  const update = patch => { setDirty(true); setForm(current => ({ ...current, ...patch })); };
-  const changeLine = useCallback((key, patch) => { setDirty(true); setForm(current => ({ ...current, items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) })); }, []);
+  const update = patch => setForm(current => ({ ...current, ...patch }));
+  const changeLine = useCallback((key, patch) => setForm(current => ({ ...current,
+    // Historical production never had a request title. Propose one when its
+    // first explicit expense code is selected, instead of silently blocking save.
+    ...(current.canonicalSource?.kind==='legacy' && !current.title.trim() && patch.transactionCodeId && patch.description ? {title:patch.description.slice(0,200)} : {}),
+    items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) })), []);
   const lineStatus = useCallback((key, valid) => setStatuses(current => current[key] === valid ? current : { ...current, [key]: valid }), []);
   const reorderLines = ({ source, destination }) => {
     if (disabled || !destination || source.index === destination.index) return;
-    setDirty(true);
     setForm(current => {
       const items = [...current.items];
       const [moved] = items.splice(source.index, 1);
@@ -81,7 +87,6 @@ export default function TransactionRequestEntry() {
   const removeLine = key => {
     const target = form.items.find(line=>line.key===key);
     if (disabled || form.items[0]?.key === key || target?.sourceRecordId && !target.itemId) return;
-    setDirty(true);
     setForm(current => current.items[0]?.key === key ? current : { ...current, items: current.items.filter(line => line.key !== key) });
   };
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
@@ -91,15 +96,25 @@ export default function TransactionRequestEntry() {
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: pathname });
+  const addProcess = sourceKey => {
+    if(disabled || form.items.length>=50)return;
+    setForm(current=>{
+      const index=current.items.findIndex(line=>line.key===sourceKey),source=current.items[index];
+      if(!source || data.codes.find(code=>code.id===source.transactionCodeId)?.base?.entryMode!=='PROCESS')return current;
+      const next={...newExpenseLine(),transactionCodeId:source.transactionCodeId,description:source.description,currency:source.currency,vatRate:source.vatRate,
+        workOrderId:data.orders.some(order=>order.dbId===source.workOrderId)?source.workOrderId:'',expandLinks:true};
+      return {...current,items:[...current.items.slice(0,index+1),next,...current.items.slice(index+1)]};
+    });
+  };
   const save = async () => {
-    if (saving || !submission && !valid) return;
+    if (disabled && !submission || saving || !submission && (!valid || editing && !dirty)) return;
     const body = submission || { title: form.title, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       emitWorkspaceDataChanged({ orgId: activeOrgId, topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], source: 'transaction-request' });
       if (organizationRef.current !== activeOrgId) return;
-      setDirty(false); setSaved(true); showNotification(labels.saved, 'success');
+      setInitialSnapshot(documentSnapshot(form)); setSaved(true); showNotification(labels.saved, 'success');
     } catch (failure) {
       if (organizationRef.current !== activeOrgId) return;
       if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError(labels.invalid); }
@@ -110,7 +125,7 @@ export default function TransactionRequestEntry() {
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
     titleActions={<Stack direction="row" spacing={1}>
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
-      <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && !valid} onClick={save}>
+      <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && (!valid || editing && !dirty)} onClick={save}>
         {submission ? labels.retry : getUiMessage('common.save', 'Save', languageCode)}
       </SaveButton>
     </Stack>}
@@ -144,7 +159,7 @@ export default function TransactionRequestEntry() {
               <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 7 && index <= 9 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
-                  <ExpenseRequestLine line={line} index={index} {...data} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />
+                  <ExpenseRequestLine line={line} index={index} {...data} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAddProcess={addProcess} canAddProcess={form.items.length<50} />
                 </TableBody>
               )}</Draggable>)}
               {provided.placeholder}

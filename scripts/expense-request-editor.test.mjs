@@ -5,14 +5,14 @@ const require = createRequire(import.meta.url);
 const { loadExpenseEditorSource, expenseEditorForm, saveExpenseEditor } = require('../backend/dist/services/expenseRequestEditor.js');
 
 function harness() {
-  let state = { documents: [], costs: [], audits: [], records: [
+  let state = { documents: [], costs: [], audits: [], extraLogs: [], records: [
     { id: 78, orgId: 1, workLogId: 77, outsourcingPartnerId: 11, quantity: 170, outsourceUnitPrice: '3000', styleId: 40, styleProcessId: 50, assignmentPlanId: 60, createdByEmployeeId: 21 },
     { id: 79, orgId: 1, workLogId: 77, outsourcingPartnerId: 12, quantity: 850, outsourceUnitPrice: '3000', styleId: 40, styleProcessId: 50, assignmentPlanId: 60, createdByEmployeeId: 22 },
   ], log: { id: 77, displayDate: '2026-07-31', coverageStartDate: '2026-07-01', coverageEndDate: '2026-07-31' },
     plan: { id: 60, orgId: 1, styleId: 40, workOrderId: 30, factoryId: 1, isCompleted: false }, finalLocked: false, payrollLocked: false };
   const client = s => {
     const order = () => ({ id: 30, orderNumber: 'L17-1', invoiceFinalLockedAt: s.finalLocked ? new Date() : null });
-    const record = r => r && ({ ...r, workLog: s.log, style: { id: 40, name: 'Shirt', code: 'AM02058' }, styleProcess: { id: 50, processName: 'Buttonhole' }, outsourcingPartner: { id: r.outsourcingPartnerId, name: 'Vendor' }, assignmentPlan: { ...s.plan, workOrder: order() } });
+    const record = r => r && ({ ...r, workLog: r.workLogId===77?s.log:s.extraLogs.find(log=>log.id===r.workLogId), style: { id: 40, name: 'Shirt', code: 'AM02058' }, styleProcess: { id: 50, processName: 'Buttonhole' }, outsourcingPartner: { id: r.outsourcingPartnerId, name: 'Vendor' }, assignmentPlan: { ...s.plan, workOrder: order() } });
     const cost = r => r && ({ ...r, outsourcedWorkRecord: record(s.records.find(x=>x.id===r.outsourcedWorkRecordId)), workOrder: r.workOrderId ? order() : null, partner: { id: r.partnerOrgId, name: 'Vendor' } });
     const document = r => r && ({ ...r, partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
@@ -31,14 +31,16 @@ function harness() {
         updateMany: async({where,data})=>{s.costs.filter(r=>matches(r,where)).forEach(r=>Object.assign(r,data));},
         delete: async({where})=>{s.costs=s.costs.filter(r=>r.id!==where.id);},
       },
-      outsourcedWorkRecord: { findFirst: async({where})=>record(s.records.find(r=>matches(r,where))), update: async({where,data})=>Object.assign(s.records.find(r=>r.id===where.id),JSON.parse(JSON.stringify(data))) },
+      outsourcedWorkRecord: { findFirst: async({where})=>record(s.records.find(r=>matches(r,where))), update: async({where,data})=>Object.assign(s.records.find(r=>r.id===where.id),JSON.parse(JSON.stringify(data))),
+        create:async({data})=>{const row={id:Math.max(...s.records.map(r=>r.id))+1,...JSON.parse(JSON.stringify(data))};s.records.push(row);return row;} },
+      workLog: {create:async({data})=>{const row={id:100+s.extraLogs.length,...data};s.extraLogs.push(row);return row;}},
       transactionCode: { findFirst: async({where})=>({id:where.id,isActive:true,baseId:1,serviceTypeId:4,taxTreatmentId:3,vatEnabled:false,taxTreatment:{code:'EXEMPT',suffix:'E'},serviceType:{id:4},
         base:{isActive:true,code:'BTH',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:3,isActive:true,isEnabled:true}],entryMode:where.id===8?'PROCESS':'LOGISTICS',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:'OPTIONAL',requiredFields:[]}}) },
-      organization: { findFirst: async()=>({id:11,name:'Vendor'}) },
+      organization: { findFirst: async()=>({id:11,name:'Vendor'}),findUnique:async()=>({id:11,name:'Vendor'}) },
       workOrder: { findFirst: async({where})=>where.invoiceFinalLockedAt ? (s.finalLocked?order():null) : order() },
       styleProcess: { findFirst: async()=>({id:50}) },
       workOrderItem: { findFirst: async()=>({id:1}) },
-      assignmentPlan: { findFirst: async()=>s.plan },
+      assignmentPlan: { findFirst: async()=>s.plan,findMany:async()=>[{...s.plan,id:61,isCompleted:false,ctReviewRequired:false,assignmentCtSnapshot:{processes:[{styleProcessId:50}]},assignmentStSnapshot:{processes:[{styleProcessId:50}]}}] },
       payrollSnapshot: { findFirst: async()=>s.payrollLocked?{id:1}:null },
       $queryRaw: async()=>[], $queryRawUnsafe: async()=>[],
     };
@@ -106,4 +108,15 @@ test('a legacy production source can select a general expense code without delet
   await db.save(body);
   assert.equal(db.state().costs[0].transactionCodeId,7);assert.equal(db.state().costs[0].outsourcedWorkRecordId,78);
   assert.deepEqual(db.state().records,before);
+});
+test('a completed legacy process can acquire its first code and share one request with another new process',async()=>{
+  const db=harness();db.state().plan.isCompleted=true;
+  const before=structuredClone(db.state().records),body=await input(db);
+  body.items.push({transactionCodeId:8,currency:'VND',description:'Second process',quantity:'200',unitPrice:'2500',vatRate:'0',workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:61,details:{}});
+  const result=await db.save(body);
+  assert.equal(result.requestId,1);assert.equal(db.state().documents.length,1);assert.equal(db.state().costs.length,2);
+  assert.deepEqual(db.state().records.slice(0,2),before);assert.equal(db.state().records[2].id,80);assert.equal(db.state().records[2].assignmentPlanId,61);
+  assert.equal(db.state().records[2].quantity,200);assert.equal(db.state().extraLogs.length,1);
+  assert.deepEqual(db.state().costs.map(row=>row.expenseRequestId),[1,1]);assert.deepEqual(db.state().costs.map(row=>row.outsourcedWorkRecordId),[78,80]);
+  await db.save(body);assert.equal(db.state().records.length,3);assert.equal(db.state().extraLogs.length,1);
 });

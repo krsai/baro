@@ -16,7 +16,7 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const lang of ['ko','en','vi'])for(const locked of [false,true]) {
+  for(const mode of ['GENERAL','PROCESS','SAVED'])for(const lang of ['ko','en','vi'])for(const locked of mode==='SAVED'?[false]:[false,true]) {
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[];let submitted;
     page.on('pageerror',e=>errors.push(e.message));
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
@@ -25,27 +25,35 @@ try {
     await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false});'}));
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>document.documentElement.dataset.saved="true",showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-    const service={isActive:true,entryMode:'GENERAL',requiredFields:[],expenseTypeId:1,serviceTypeId:4};
+    const service={isActive:true,entryMode:mode==='SAVED'?'GENERAL':mode,requiredFields:[],expenseTypeId:1,serviceTypeId:4};
     const mocks={ 'business-partners':[{id:11,name:'Selected vendor',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4}]}],
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
-      'orders':[], 'app-settings':{defaultVatRate:'10'} };
+      'orders':[{id:'public-30',dbId:30,ownerOrgId:1,orderNumber:'L17-1'}], 'app-settings':{defaultVatRate:'10'} };
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
     await page.route('**/expense-request-editor/legacy/78?*',r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){submitted=r.request().postDataJSON();return r.fulfill({headers,json:{requestId:1}});}
-      return r.fulfill({headers,json:{title:'Original request',requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',readOnly:locked,
-        items:[{sourceRecordId:78,itemId:null,transactionCodeId:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:false,enabled:{order:true,style:true,process:true},
+      return r.fulfill({headers,json:{title:mode==='PROCESS'?'':'Original request',canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',readOnly:locked,
+        items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
+    await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel(l.title,{exact:false}).waitFor();
-    await page.waitForFunction(()=>document.querySelector('input')?.value==='Original request');
+    await page.getByTestId('expense-author-context').getByText(/Original author/).waitFor();
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
     assert.equal(await page.getByLabel(l.quantity,{exact:false}).inputValue(),'170');
     assert.match(await page.getByTestId('expense-author-context').innerText(),/Original author/);
     assert.equal(await page.getByRole('button',{name:l.remove,exact:true}).isDisabled(),true);
+    if(mode==='SAVED'){
+      const save=page.locator('button.MuiButton-contained').first(),description=page.getByLabel(l.description,{exact:false});
+      assert.equal(await save.isDisabled(),true);
+      await description.fill('Reviewed expense');await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
+      await description.fill('Original buttonhole expense');assert.equal(await save.isDisabled(),true);
+      assert.deepEqual(errors,[]);await page.close();continue;
+    }
     if(locked){assert.equal(await page.getByLabel(l.title,{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
     else {
       const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});
@@ -62,14 +70,29 @@ try {
       if(await page.getByRole('dialog').count())await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
       assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
       assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
-      await page.getByLabel(l.title,{exact:false}).fill('Updated request');
-      await page.getByLabel(l.price,{exact:false}).fill('5000');
-      assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
       const save=page.locator('button.MuiButton-contained').first();
+      if(mode==='PROCESS'){
+        assert.equal(await page.getByLabel(l.title,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
+        assert.equal(await page.getByTestId('expense-line').first().getByLabel(l.price,{exact:false}).isDisabled(),true);
+        await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
+        if(lang==='ko'){
+          await page.getByRole('button',{name:l.addProcess,exact:true}).click();
+          assert.equal(await page.getByTestId('expense-line').count(),2);
+          const second=page.getByTestId('expense-line').nth(1);
+          await second.getByLabel(l.quantity,{exact:false}).fill('200');await second.getByLabel(l.price,{exact:false}).fill('2500');
+          const details=page.locator('tbody[data-rfd-draggable-id]').nth(1);
+          await details.getByRole('combobox',{name:l.style,exact:false}).click();await page.getByRole('option',{name:'Shirt (AM02058)',exact:true}).click();
+          await details.getByRole('combobox',{name:l.process,exact:false}).click();await page.getByRole('option',{name:'Buttonhole second (BH2)',exact:true}).click();
+        }
+      }else{
+        await page.getByLabel(l.title,{exact:false}).fill('Updated request');
+        await page.getByLabel(l.price,{exact:false}).fill('5000');assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
+      }
       await save.click();await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
-      assert.equal(submitted.title,'Updated request');assert.equal(submitted.revision,'server-revision');
-      assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,'5000');
+      assert.equal(submitted.title,mode==='PROCESS'?expenseCodeDescription(mocks['transaction-codes'][0],lang):'Updated request');assert.equal(submitted.revision,'server-revision');
+      assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,expenseCodeDescription(mocks['transaction-codes'][0],lang));
+      if(mode==='PROCESS'&&lang==='ko'){assert.equal(submitted.items.length,2);assert.equal(submitted.items[1].sourceRecordId,undefined);assert.equal(submitted.items[1].assignmentPlanId,61);assert.equal(submitted.items[1].quantity,'200');}
     }
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();
   }
