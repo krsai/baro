@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 ﻿import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -999,7 +1000,7 @@ const AttrBoard = ({
           코드가 중복된 행이 있습니다. 코드명은 섹션 내에서 유일해야 합니다.
         </Alert>
       ) : null}
-      <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
+      <PageContentStack  sx={{ flex: 1, minHeight: 0 }}>
         {visibleSectionConfigs.map((config) => (
           <Box
             key={config.key}
@@ -1030,7 +1031,7 @@ const AttrBoard = ({
             />
           </Box>
         ))}
-      </Stack>
+      </PageContentStack>
       <ProcessNamingGuideDialog
         open={isProcessGuideOpen}
         onClose={() => setIsProcessGuideOpen(false)}

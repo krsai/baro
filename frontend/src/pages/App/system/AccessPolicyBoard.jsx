@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
 import {
@@ -380,7 +381,7 @@ const AccessPolicyBoard = () => {
 
   return (
     <AppPageContainer title={pageTitle}>
-      <Stack spacing={2}>
+      <PageContentStack>
         <Alert severity="info">
           {getUiMessage(
             'accessPolicy.autoLinked',
@@ -568,7 +569,7 @@ const AccessPolicyBoard = () => {
             </Table>
           </TableContainer>
         </Paper>
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

@@ -393,6 +393,8 @@ const theme = createTheme(baseTheme, {
         '--ui-body-font-size': ui.typography.bodyFontSize,
         '--ui-caption-font-size': ui.typography.captionFontSize,
         '--ui-title-font-size': ui.typography.titleFontSize,
+        '--ui-section-gap': ui.layout.sectionGap,
+        '--ui-panel-padding': ui.layout.panelPadding,
         '--ui-total-font-size': ui.typography.totalFontSize,
         '--ui-control-font-size': ui.control.fontSize,
         '--ui-control-line-height': ui.control.lineHeight,

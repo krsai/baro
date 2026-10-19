@@ -3,7 +3,7 @@ import { Alert, CircularProgress } from '@mui/material';
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import StatusLabel from '../../components/StatusLabel';
-import PageSectionHeader from '../../components/PageSectionHeader';
+import AppPageContainer from '../../components/AppPageContainer';
 import MonthRangeSelector from '../../components/MonthRangeSelector';
 import { TRANSACTION_TEXT, OUTSOURCING_REQUEST_TEXT, serviceName } from '../../components/OutsourcingServiceDialog';
 import { EXPENSE_REQUEST_TEXT } from '../../constants/expenseRequest';
@@ -114,10 +114,9 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   };
   const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   const recordKind = row => row.sourceKind === 'HISTORICAL_WORK_RECORD' ? text.historical : text.recorded;
-  return <main className="compact-costs cc-live">
-    <PageSectionHeader title={labels.costs} titleComponent="h1" sx={{mb:2.5}} actions={<div className="cc-actions">
+  return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
       <button className="cc-button cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</button>
-    </div>} />
+    </div>}><div className="compact-costs cc-live">
     <section className="cc-panel" aria-label={text.query}>
       <div className="cc-section-bar"><span><b>SEARCH</b><span className="cc-bar-divider">/</span>{text.query}</span><button aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded ? text.collapse : text.expand}</button></div>
       <div className="cc-search-line"><div className="cc-search"><span aria-hidden="true">⌕</span><input aria-label={text.search} placeholder={text.search} value={search} onChange={event=>setSearch(event.target.value)} /></div>
@@ -154,5 +153,5 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
       </div>}
       <div className="cc-footer"><span>{text.results}: {loading || error ? '—' : view==='items'?filtered.length:view==='documents'?filteredDocuments.length:groups.length} · {text.fullRange}</span><span>BARO GARMENT</span></div>
     </section>
-  </main>;
+  </div></AppPageContainer>;
 }

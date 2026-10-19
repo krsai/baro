@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -335,7 +336,7 @@ const OrganizationDetail = () => {
         />
       )}
     >
-      <Stack spacing={2} sx={{ maxWidth: 1180 }}>
+      <PageContentStack  sx={{ maxWidth: 1180 }}>
       <FormGroup icon={<BusinessRoundedIcon />} title={localText.identityTitle} help={localText.identityHelp}>
         <Grid container spacing={2}>
           <Grid item xs={12} md={3}>
@@ -484,7 +485,7 @@ const OrganizationDetail = () => {
             />
           </Grid></Grid>
       </FormGroup>
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

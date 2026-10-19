@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -1016,7 +1017,7 @@ const CustomerPricingBoard = () => {
         />
       }
     >
-      <Stack spacing={2}>
+      <PageContentStack>
         <Stack
           direction={{ xs: 'column', md: 'row' }}
           spacing={1}
@@ -1248,7 +1249,7 @@ const CustomerPricingBoard = () => {
             </TableContainer>
           )}
         </Paper>
-      </Stack>
+      </PageContentStack>
       <Dialog
         open={Boolean(bucketConfirmation)}
         onClose={() => closeBucketConfirmation(false)}

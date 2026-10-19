@@ -1,9 +1,10 @@
 import React from 'react';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, Stack, Typography } from '@mui/material';
 import { ui } from '../theme/ui';
 
 const PageSectionHeader = ({
   title,
+  description,
   actions = null,
   actionLabel,
   onAction,
@@ -33,21 +34,24 @@ const PageSectionHeader = ({
         justifyContent: 'space-between',
         alignItems: { xs: 'flex-start', sm: 'center' },
         flexDirection: { xs: 'column', sm: 'row' },
-        gap: 1.25,
+        gap: ui.layout.headerGap,
         minWidth: 0,
         ...sx,
       }}
     >
-      <Typography component={titleComponent} variant={titleVariant} sx={{ fontWeight: ui.typography.titleFontWeight, color: ui.color.heading, letterSpacing: ui.typography.titleLetterSpacing, lineHeight: 1.4 }}>
+      <Stack spacing={0.5} sx={{minWidth:0}}>
+      <Typography component={titleComponent} variant={titleVariant} sx={{ fontWeight: ui.typography.titleFontWeight, color: ui.color.heading, letterSpacing: ui.typography.titleLetterSpacing, lineHeight: 1.4, overflowWrap:'anywhere' }}>
         {title}
       </Typography>
+      {description && <Typography variant="body2" color="text.secondary">{description}</Typography>}
+      </Stack>
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
           flexWrap: 'wrap',
-          gap: 1,
+          gap: ui.layout.actionGap,
         }}
       >
         {resolvedActions}

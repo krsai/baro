@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   Dialog,
   DialogActions,
   DialogContent,
@@ -533,7 +532,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
           </IconButton>
         </Box>
 
-        <Divider sx={{ mb: 3 }} />
+
 
         <Stack spacing={2}>
           <SectionBlock

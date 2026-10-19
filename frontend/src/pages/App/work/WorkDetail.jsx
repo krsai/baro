@@ -1,3 +1,5 @@
+import PageContentStack from '../../../components/PageContentStack';
+import PageSectionHeader from '../../../components/PageSectionHeader';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import QueryFeedback from '../../../components/QueryFeedback';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -2846,10 +2848,7 @@ const WorkDetail = ({
   }, [editingRowId, isMobile]);
 
   const detailHeader = (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'flex-start', md: 'center' }, flexDirection: { xs: 'column', md: 'row' }, gap: 1.5 }}>
-      <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-        <Typography variant="h5" sx={{ fontWeight: 700 }}>{`${LABELS.title}: ${workDateRangeLabel}`}</Typography>
-      </Stack>
+    <PageSectionHeader title={`${LABELS.title}: ${workDateRangeLabel}`} titleComponent="h1" actions={
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <SaveButton
@@ -2857,8 +2856,8 @@ const WorkDetail = ({
           disabled={loading || baseLoading || factoryScopeDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
           loading={saving}
         />
-      </Stack>
-    </Box>
+      </Stack>}
+    />
   );
 
   if (loading || baseLoading) {
@@ -2878,10 +2877,10 @@ const WorkDetail = ({
   return (
     <AppPageContainer header={detailHeader}>
       <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); setQueryRetry(value => value + 1); }} />
-      <Stack spacing={2}>
+      <PageContentStack>
         <Paper
           variant="outlined"
-          sx={{ p: 2, borderRadius: 2.5, backgroundColor: '#fbfcff' }}
+          sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2.5, backgroundColor: '#fbfcff' }}
         >
           <Stack spacing={1.5}>
             <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
@@ -2938,7 +2937,7 @@ const WorkDetail = ({
         <Paper
           variant="outlined"
           sx={{
-            p: 2,
+            p: 'var(--ui-panel-padding, 16px)',
             borderRadius: 2.5,
             display: 'flex',
             flexDirection: 'column',
@@ -3814,7 +3813,7 @@ const WorkDetail = ({
           )}
           </Box>
         </Paper>
-      </Stack>
+      </PageContentStack>
       <BusinessPartnerDialog
         open={Boolean(outsourcePartnerRowId)}
         onClose={() => setOutsourcePartnerRowId(null)}

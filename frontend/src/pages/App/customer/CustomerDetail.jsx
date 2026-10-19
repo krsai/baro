@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Stack } from '@mui/material';
 import { useLocation, useParams } from 'react-router-dom';
@@ -270,7 +271,7 @@ const CustomerDetail = () => {
         </SaveButton>
       }
     >
-      <Stack spacing={2.5}>
+      <PageContentStack>
         <CustomerBasicInfoPanel
           customerFormData={customerFormData}
           countryOptions={countryOptions}
@@ -280,7 +281,7 @@ const CustomerDetail = () => {
           onCountryChange={handleCountryChange}
           t={t}
         />
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

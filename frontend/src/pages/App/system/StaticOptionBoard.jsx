@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 ﻿import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
@@ -70,7 +71,7 @@ const StaticOptionBoard = () => {
         />
       )}
     >
-      <Stack spacing={3}>
+      <PageContentStack>
         {STATIC_OPTION_GROUPS.map((group) => (
           <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
             <Box
@@ -149,7 +150,7 @@ const StaticOptionBoard = () => {
             </TableContainer>
           </Paper>
         ))}
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

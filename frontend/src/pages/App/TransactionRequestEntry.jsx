@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
@@ -114,7 +115,7 @@ export default function TransactionRequestEntry() {
       </SaveButton>
     </Stack>}
   >
-    <Stack spacing={2}>
+    <PageContentStack>
       {loadError && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{labels.retryLoad}</Button>}>{labels.loadError}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
@@ -165,6 +166,6 @@ export default function TransactionRequestEntry() {
         </Stack>
       {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
       </Paper>
-    </Stack>
+    </PageContentStack>
   </AppPageContainer>;
 }

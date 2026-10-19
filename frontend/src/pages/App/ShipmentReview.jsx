@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -569,19 +570,10 @@ const ShipmentReview = () => {
 
   return (
     <AppPageContainer
-      header={
-        <Stack spacing={0.5}>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            {text('title')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {text('subtitle')}
-          </Typography>
-        </Stack>
-      }
+      title={text('title')} description={text('subtitle')}
     >
-      <Stack spacing={2.5}>
-        <Paper variant="outlined" sx={{ p: 2.25, borderRadius: 2 }}>
+      <PageContentStack>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2 }}>
           <Stack
             direction={{ xs: 'column', lg: 'row' }}
             spacing={1.5}
@@ -820,7 +812,7 @@ const ShipmentReview = () => {
             </Typography>
           </Box>
         )}
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

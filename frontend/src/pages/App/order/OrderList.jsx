@@ -21,7 +21,6 @@ import {
   FormControl,
   Typography,
   IconButton,
-  Divider,
   Alert,
   Autocomplete,
   Stack,
@@ -3537,7 +3536,7 @@ const OrderList = () => {
             </Box>
           </Box>
 
-          <Divider sx={{ my: 3 }} />
+          <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
 
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>

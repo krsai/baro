@@ -133,16 +133,12 @@ const EmployeeSystem = () => {
   };
 
   return (
-    <AppPageContainer>
-      <Box sx={{ p: 2, width: "100%" }}>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 1 }}>
-          <Typography variant="h5" fontWeight={700}>
-            직원 체계
-          </Typography>
-          <Button variant="contained" sx={{ ml: "auto" }} disabled={!canSave || saving} onClick={save}>
+    <AppPageContainer title="직원 체계" titleActions={
+          <Button variant="contained" disabled={!canSave || saving} onClick={save}>
             {saving ? "저장 중" : "저장"}
           </Button>
-        </Box>
+    }>
+      <Box sx={{ width: "100%" }}>
         {message && (
           <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>
             {message.text}

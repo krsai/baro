@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import QueryFeedback from '../../components/QueryFeedback';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -915,19 +916,10 @@ const QcReview = () => {
 
   return (
     <AppPageContainer
-      header={
-        <Stack spacing={0.5}>
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            {copy.title}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {copy.description}
-          </Typography>
-        </Stack>
-      }
+      title={copy.title} description={copy.description}
     >
-      <Stack spacing={2}>
-        <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+      <PageContentStack>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2 }}>
           <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} justifyContent="space-between">
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
               <TextField
@@ -1338,7 +1330,7 @@ const QcReview = () => {
             </Table>
           </TableContainer>
         </Paper>
-      </Stack>
+      </PageContentStack>
       <QueryFeedback error={queryError} onRetry={() => { setQueryError(false); setQueryRetry(value => value + 1); loadRows({ forceRefresh: true }); }} />
     </AppPageContainer>
   );

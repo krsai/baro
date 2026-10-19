@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Checkbox, CircularProgress, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Typography } from '@mui/material';
@@ -25,13 +26,13 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
   }
   return <AppPageContainer title={t.title}>
-    <Stack spacing={3}>
+    <PageContentStack>
       <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
         <Typography variant="h6">{t.issuedInvoices}</Typography>
         <Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>
       </Stack>
       <InvoiceDraftList orgId={activeOrgId} languageCode={languageCode} />
-    </Stack>
+    </PageContentStack>
   </AppPageContainer>;
 }
 
@@ -78,7 +79,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   useWorkspaceRefreshOnEvent({ orgId: activeOrgId, topics: ['orders', 'customers'],
     isBlocked: Boolean(selected), onRefresh: () => setRevision((v) => v + 1) });
   return <AppPageContainer title={t.newInvoice}>
-    <Stack spacing={2}>
+    <PageContentStack>
       <Box><Button onClick={onBack} disabled={Boolean(selected)}>{t.backToInvoices}</Button></Box>
       <Alert severity="info">{t.notice}</Alert>
       <Typography variant="body2" color="text.secondary">{t.workflow}</Typography>
@@ -143,7 +144,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
         <Button disabled={loading || !result.hasMore} onClick={() => setPage((v) => v + 1)}>{t.next}</Button>
       </Stack>
       </>}
-    </Stack>
+    </PageContentStack>
     <InvoiceDraftDialog open={Boolean(selected)} orderIds={selected} orgId={activeOrgId} buyerOrgId={customer?.id} languageCode={languageCode} onClose={() => setSelected(null)} />
   </AppPageContainer>;
 }

@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -337,9 +338,9 @@ const OrganizationSubscriptionBoard = () => {
         </Button>
       }
     >
-      <Stack spacing={2.5}>
+      <PageContentStack>
         <Alert severity="info">{getPageMessage('summary', languageCode)}</Alert>
-        <Paper variant="outlined" sx={{ p: 0 }}>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)' }}>
           <Box sx={{ px: 3, py: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
             <Typography variant="h6">{getPageMessage('companyList', languageCode)}</Typography>
           </Box>
@@ -727,7 +728,7 @@ const OrganizationSubscriptionBoard = () => {
             </Stack>
           </Paper>
         </Collapse>
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

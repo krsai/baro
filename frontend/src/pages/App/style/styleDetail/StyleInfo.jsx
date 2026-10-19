@@ -7,7 +7,6 @@ import {
   CardMedia,
   Button,
   Stack,
-  Divider,
   Paper,
   IconButton,
   Chip,
@@ -748,7 +747,7 @@ const StyleInfo = ({
             </Box>
           </Stack>
 
-          <Divider sx={{ my: 4 }} />
+          <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
 
           <Typography variant="h6" gutterBottom>{getUiMessage('styleInfo.detailsSection', '세부 정보', languageCode)}</Typography>
           <Stack spacing={2} mt={2.5}>
@@ -803,7 +802,7 @@ const StyleInfo = ({
           </Stack>
           {showStyleAnalysis ? (
             <>
-              <Divider sx={{ my: 4 }} />
+              <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
               <StyleAnalysis
                 processes={processes}
                 bucketQuantities={formData.timeBucketQuantities}

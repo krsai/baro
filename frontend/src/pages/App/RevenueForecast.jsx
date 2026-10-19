@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import React, { useMemo, useState } from 'react';
 import {
@@ -156,7 +157,7 @@ const RevenueForecast = () => {
     return { qty, laborSeconds, workerDays, durationDays, tradeCosts, otherDirect, labor, fixed, total, unitCost: total / qty, unitPrice: revenue / qty, revenue, profit: revenue - total };
   }, [draft, factory, accessoryTotal]);
 
-  return <AppPageContainer title={text.title}><Stack spacing={2.5}>
+  return <AppPageContainer title={text.title}><PageContentStack>
     <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(380px, .95fr) minmax(420px, 1.05fr)' }, gap: 2.5, alignItems: 'start' }}>
       <Stack spacing={2}>
         <FieldCard title={text.target}>
@@ -220,7 +221,7 @@ const RevenueForecast = () => {
         <Alert severity="warning" sx={{ mt: 2 }}>{text.assumption}</Alert>
       </Paper>
     </Box>
-  </Stack></AppPageContainer>;
+  </PageContentStack></AppPageContainer>;
 };
 
 export default RevenueForecast;

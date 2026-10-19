@@ -184,7 +184,8 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
       <AppPageContainer
         title={title}
         titleActions={titleActions}
-        header={description ? <Stack spacing={1.5}><Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 1 }}><Box><Typography variant="h5" fontWeight={700}>{title}</Typography><Typography variant="body2" color="text.secondary">{description}</Typography></Box>{titleActions}</Box>{toolbar}</Stack> : null}
+        description={description}
+        toolbar={toolbar}
       >
         {content}
       </AppPageContainer>

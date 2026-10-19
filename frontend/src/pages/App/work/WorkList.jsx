@@ -35,6 +35,7 @@ import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import MonthSelector from '../../../components/MonthSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
+import { ui } from '../../../theme/ui';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -771,8 +772,9 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   return (
     <AppPageContainer
       header={
-        <Stack spacing={1}>
+        <Stack spacing={ui.layout.headerGap}>
           <PageSectionHeader
+            titleComponent="h1"
             title={getUiMessage(
               'menu.workHistory',
               '\uC791\uC5C5 \uAE30\uB85D',

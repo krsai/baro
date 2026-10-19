@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -1803,8 +1804,8 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
       sx={{ height: '100%', minHeight: 0 }}
       contentSx={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}
     >
-      <Stack spacing={2} sx={{ flex: 1, minHeight: 0 }}>
-        <Paper variant="outlined" sx={{ p: 2, flexShrink: 0 }}>
+      <PageContentStack  sx={{ flex: 1, minHeight: 0 }}>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', flexShrink: 0 }}>
           <Stack spacing={0.5}>
             <Typography variant="subtitle2" fontWeight={700}>
               {pageIntroTitle}
@@ -1954,7 +1955,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
             </Box>
           )}
         </Stack>
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

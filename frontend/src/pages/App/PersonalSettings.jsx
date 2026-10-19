@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Divider, FormControl, FormControlLabel, InputLabel, MenuItem, Paper, Select, Stack, Switch, Typography } from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -34,7 +35,7 @@ const PersonalSettings = () => {
 
   return (
     <AppPageContainer title={text.title}>
-      <Stack spacing={2} sx={{ width: '100%', maxWidth: 820 }}>
+      <PageContentStack  sx={{ width: '100%', maxWidth: 820 }}>
       <MyProfile />
       <Paper variant="outlined" sx={{ width: '100%', maxWidth: 820, borderRadius: 2 }}>
         <Stack spacing={2} sx={{ p: 3 }}>
@@ -52,7 +53,7 @@ const PersonalSettings = () => {
           </Box>
         </Stack>
       </Paper>
-      </Stack>
+      </PageContentStack>
     </AppPageContainer>
   );
 };

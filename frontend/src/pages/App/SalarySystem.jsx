@@ -520,12 +520,8 @@ const SalarySystem = () => {
     <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', optionalMoney(e.target.value))} placeholder={t('계산 결과 최대 금액')} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} />
   </>;
 
-  return <AppPageContainer><Box sx={{ p: 2, width: '100%' }}>
+  return <AppPageContainer title={t('급여 체계')} titleActions={<Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>}><Box sx={{ width: '100%' }}>
     <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
-    <Stack direction="row" flexWrap="wrap" justifyContent="space-between" alignItems="center" rowGap={1.5} sx={{ mb: 2, width: '100%' }}>
-      <Typography variant="h5" fontWeight={700}>{t('급여 체계')}</Typography>
-      <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>
-    </Stack>
     {factories.length > 0 && <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
       <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ flex: 1, minWidth: 0 }}>
         {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}

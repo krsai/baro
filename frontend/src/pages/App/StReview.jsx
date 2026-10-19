@@ -28,8 +28,8 @@ const StReview = () => {
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.ko;
   return (
-    <AppPageContainer header={<Stack spacing={0.5}><Typography variant="h5" sx={{ fontWeight: 700 }}>{text.title}</Typography><Typography variant="body2" color="text.secondary">{text.description}</Typography></Stack>}>
-      <Paper variant="outlined" sx={{ p: 3, borderRadius: 2 }}><Stack spacing={2}>
+    <AppPageContainer title={text.title} description={text.description}>
+      <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2 }}><Stack spacing={2}>
         <Alert severity="info">{text.notice}</Alert>
         <Typography variant="body2" color="text.secondary">{text.planned}</Typography>
         <Typography variant="body2" color="text.secondary">{text.item1}</Typography>

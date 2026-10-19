@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
 import { ui } from '../../theme/ui';
 import QueryFeedback from '../../components/QueryFeedback';
@@ -719,8 +720,8 @@ const WorkspaceDashboard = () => {
 
   return (
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
-      <Stack spacing={2}>
-        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: `${ui.radius.panel}px` }}>
+      <PageContentStack>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(
               isSystemProfile
@@ -800,7 +801,7 @@ const WorkspaceDashboard = () => {
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: `${ui.radius.panel}px` }}>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <NotificationsNoneIcon color="primary" />
             <Typography variant="h6">{resolveText(DASHBOARD_TEXT.notificationTitle, languageCode)}</Typography>
@@ -828,7 +829,7 @@ const WorkspaceDashboard = () => {
           )}
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: `${ui.radius.panel}px` }}>
+        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(DASHBOARD_TEXT.quickActionTitle, languageCode)}
           </Typography>
@@ -846,7 +847,7 @@ const WorkspaceDashboard = () => {
           </Stack>
         </Paper>
 
-      </Stack>
+      </PageContentStack>
       <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
     </AppPageContainer>
   );

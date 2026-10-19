@@ -1,12 +1,11 @@
 import React from 'react';
-import { Box, Stack, Divider } from '@mui/material';
+import { Box, Stack } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
-
-const PAGE_PADDING = { xs: 2, md: 3 };
-const NEGATIVE_PAGE_PADDING = { xs: -2, md: -3 };
+import { ui } from '../theme/ui';
 
 const AppPageContainer = ({
   title,
+  description,
   titleActions = null,
   toolbar = null,
   header,
@@ -16,15 +15,17 @@ const AppPageContainer = ({
   contentSx = {},
 }) => {
   const resolvedHeader = header ? (
-    <Stack spacing={2} sx={{ minWidth: 0 }}>
+    <Stack spacing={ui.layout.headerGap} sx={{ minWidth: 0 }}>
       {header}
       {toolbar}
     </Stack>
   ) : title || titleActions || toolbar ? (
-    <Stack spacing={2} sx={{ minWidth: 0 }}>
+    <Stack spacing={ui.layout.headerGap} sx={{ minWidth: 0 }}>
       {(title || titleActions) ? (
         <PageSectionHeader
           title={title}
+          titleComponent="h1"
+          description={description}
           actions={titleActions}
         />
       ) : null}
@@ -36,6 +37,7 @@ const AppPageContainer = ({
   return (
     <Box
       component="main"
+      className="app-page"
       sx={{
         flexGrow: 1,
         p: 0,
@@ -46,13 +48,13 @@ const AppPageContainer = ({
       }}
     >
       <Stack
-        spacing={2}
+        spacing={ui.layout.pageGap}
         sx={{
           flexGrow: 1,
           minHeight: '100%',
-          px: PAGE_PADDING,
-          pb: PAGE_PADDING,
-          pt: hasHeader ? 0 : PAGE_PADDING,
+          px: ui.layout.pagePadding,
+          pb: ui.layout.pagePadding,
+          pt: hasHeader ? 0 : ui.layout.pagePadding,
           minWidth: 0,
           ...sx,
         }}
@@ -60,18 +62,15 @@ const AppPageContainer = ({
         {/* Page Header */}
         {resolvedHeader && (
           <Box
+            className="app-page-header"
             sx={{
               position: 'sticky',
               top: 0,
               zIndex: 10,
-              mx: NEGATIVE_PAGE_PADDING,
-              px: PAGE_PADDING,
-              pt: 2.5,
-              pb: 2,
+              pt: ui.layout.pagePadding,
+              pb: 0,
               minWidth: 0,
               bgcolor: 'background.default',
-              borderBottom: '1px solid',
-              borderColor: 'divider',
             }}
           >
             {resolvedHeader}
@@ -79,18 +78,15 @@ const AppPageContainer = ({
         )}
 
         {/* Page Content */}
-        <Box sx={{ flexGrow: 1, minWidth: 0, ...contentSx }}>
+        <Box className="app-page-content" sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: ui.layout.sectionGap, ...contentSx }}>
           {children}
         </Box>
 
         {/* Page Footer (Optional) */}
         {footer && (
-          <>
-            <Divider sx={{ mt: 3 }} />
-            <Box sx={{ pt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
+            <Box className="app-page-footer" sx={{ display: 'flex', justifyContent: 'flex-end', gap: ui.layout.actionGap }}>
               {footer}
             </Box>
-          </>
         )}
       </Stack>
     </Box>

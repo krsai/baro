@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Stack } from '@mui/material';
 import LastUpdaterLabel from './LastUpdaterLabel';
+import { ui } from '../theme/ui';
 
 const PageToolbar = ({
   left = null,
@@ -19,7 +20,7 @@ const PageToolbar = ({
         flexDirection: { xs: 'column', lg: 'row' },
         alignItems: { xs: 'stretch', lg: 'center' },
         justifyContent: 'space-between',
-        gap: 1.25,
+        gap: ui.layout.headerGap,
         minWidth: 0,
         ...sx,
       }}
@@ -30,7 +31,7 @@ const PageToolbar = ({
       {right ? (
         <Stack
           direction="row"
-          spacing={1}
+          spacing={ui.layout.actionGap}
           sx={{
             alignItems: 'center',
             justifyContent: { xs: 'flex-start', lg: 'flex-end' },

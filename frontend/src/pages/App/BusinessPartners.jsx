@@ -1,3 +1,4 @@
+import PageContentStack from '../../components/PageContentStack';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -103,7 +104,7 @@ export default function BusinessPartners({ type }) {
   };
   return (
     <AppPageContainer title={pageTitle} titleActions={canManage ? <Stack direction="row" spacing={1}>{type === 'PROCESS_OUTSOURCING' && <Button onClick={() => setServiceOpen(true)}>{(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko).addIndustry}</Button>}<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>{labels.add}</Button></Stack> : null} toolbar={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={labels.search} sx={{ width: 360 }} />}>
-      <Stack spacing={2}>{error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}<Paper variant="outlined"><TableContainer><Table size="small">
+      <PageContentStack>{error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}<Paper variant="outlined"><TableContainer><Table size="small">
         <TableHead><TableRow>
           <TableCell width={150}>{expenseLabels.partnerType}</TableCell><TableCell width={180}>{expenseLabels.industry}</TableCell><TableCell>{labels.name}</TableCell>
 
@@ -124,7 +125,7 @@ export default function BusinessPartners({ type }) {
             <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} color="error" size="small" disabled={!canEdit || deleting || partner.hasUsageHistory !== false} onClick={() => setDeletingPartner(partner)} /></span></Tooltip></TableCell>
           </TableRow>)}
         </TableBody>
-      </Table></TableContainer></Paper></Stack>
+      </Table></TableContainer></Paper></PageContentStack>
       <OutsourcingServiceDialog partnerIndustryOnly open={serviceOpen} onClose={() => setServiceOpen(false)} onSaved={loadPartners} orgId={activeOrgId} languageCode={languageCode} />
       <BusinessPartnerDialog
         open={createOpen || Boolean(editingPartner)}
