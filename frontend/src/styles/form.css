@@ -141,30 +141,9 @@
 
 /* ─── Compact Date Picker ────────────────────────────────────────────────── */
 /* .compact-date-picker 클래스는 CustomDatePicker에서 자동으로 적용됨 */
-.compact-date-picker {
-  width: 125px !important;
-}
-.compact-date-picker .MuiInputBase-input {
-  font-size: 0.8125rem !important; /* 13px — Button size="small"과 동일 */
-  padding-top: 5px !important;
-  padding-bottom: 5px !important;
-}
 .compact-date-picker .MuiInputAdornment-root .MuiIconButton-root {
-  padding: 2px !important;
+  padding: 2px;
 }
 .compact-date-picker .MuiSvgIcon-root {
-  font-size: 1.1rem !important;
-}
-.compact-date-picker .MuiPickersInputBase-root,
-.compact-date-picker .MuiPickersInputBase-input,
-.compact-date-picker .MuiPickersInputBase-sectionContent,
-.compact-date-picker .MuiPickersSectionList-root,
-.compact-date-picker .MuiPickersSectionList-section,
-.compact-date-picker .MuiPickersSectionList-sectionContent {
-  font-size: 0.8125rem !important;
-  line-height: 1.2 !important;
-}
-.compact-date-picker .MuiPickersInputBase-sectionsContainer {
-  padding-top: 5px !important;
-  padding-bottom: 5px !important;
+  font-size: 1.1rem;
 }

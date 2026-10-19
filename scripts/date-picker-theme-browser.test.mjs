@@ -11,7 +11,7 @@ assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Stack,Box} from '@mui/material';import theme from '/src/theme';import Picker from '/src/components/CustomDatePicker.jsx';import Month from '/src/components/MonthSelector.jsx';import Range from '/src/components/MonthRangeSelector.jsx';import '/src/styles/form.css';
 const h=React.createElement,lang=new URLSearchParams(location.search).get('lang');
-function App(){const[day,setDay]=React.useState('2026-10-15'),[month,setMonth]=React.useState('2026-10-01'),[native,setNative]=React.useState('2026-10'),[start,setStart]=React.useState('2026-10-15'),[end,setEnd]=React.useState('2026-10-20');return h(ThemeProvider,{theme},h(CssBaseline),h(Stack,{spacing:3,sx:{p:3}},h(Box,{'data-testid':'date'},h(Picker,{label:'Date',adapterLocale:lang,value:day,minDate:'2026-10-10',maxDate:'2026-10-20',onChange:v=>setDay(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'month'},h(Picker,{label:'Month',monthOnly:true,adapterLocale:lang,value:month,minDate:'2026-04-01',maxDate:'2027-12-31',onChange:v=>setMonth(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'native'},h(Month,{value:native,onChange:setNative,min:'2026-04',max:'2026-11',label:'Native month'})),h(Box,{'data-testid':'range'},h(Range,{languageCode:lang,monthOnly:false,startValue:start,endValue:end,onStartChange:v=>setStart(v.format('YYYY-MM-DD')),onEndChange:v=>setEnd(v.format('YYYY-MM-DD'))})),h('output',null,JSON.stringify({day,month,native,start,end}))));}createRoot(document.getElementById('root')).render(h(App));
+function App(){const[day,setDay]=React.useState('2026-10-15'),[month,setMonth]=React.useState('2026-10-01'),[native,setNative]=React.useState('2026-10'),[start,setStart]=React.useState('2026-10-15'),[end,setEnd]=React.useState('2026-10-20');return h(ThemeProvider,{theme},h(CssBaseline),h(Stack,{spacing:3,sx:{p:3}},h(Box,{'data-testid':'date'},h(Picker,{label:'Date',adapterLocale:lang,value:day,minDate:'2026-10-10',maxDate:'2026-10-20',onChange:v=>setDay(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'month'},h(Picker,{label:'Month',monthOnly:true,adapterLocale:lang,value:month,minDate:'2026-04-01',maxDate:'2027-12-31',onChange:v=>setMonth(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'native'},h(Month,{value:native,onChange:setNative,min:'2026-04',max:'2026-11',label:'Native month'})),h(Box,{'data-testid':'range'},h(Range,{languageCode:lang,onShift:()=>{},monthOnly:false,startValue:start,endValue:end,onStartChange:v=>setStart(v.format('YYYY-MM-DD')),onEndChange:v=>setEnd(v.format('YYYY-MM-DD'))})),h('output',null,JSON.stringify({day,month,native,start,end}))));}createRoot(document.getElementById('root')).render(h(App));
 </script></body></html>`);
 const port=43219,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
@@ -24,6 +24,17 @@ try{
     await page.route('**/src/context/ManagementPeriodContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false,factories:[]});'}));
     await page.goto(`http://127.0.0.1:${port}/date-picker-theme-acceptance.html?lang=${lang}`);
     const state=async()=>JSON.parse(await page.locator('output').textContent());
+    await page.getByTestId('date').locator('button').waitFor();
+    for(const id of ['date','month','native']) {
+      const height=await page.getByTestId(id).locator('.MuiInputBase-root, .MuiPickersInputBase-root').first().evaluate(el=>el.getBoundingClientRect().height);
+      assert.equal(height,36,id+' field height');
+    }
+    const range=page.getByTestId('range');
+    assert.equal((await range.getByRole('button').first().boundingBox()).height,36);
+    assert.equal((await range.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
+    assert.equal((await range.getByRole('button',{name:'M-',exact:true}).boundingBox()).height,17);
+    const fields=await range.locator('.MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height));
+    assert.deepEqual(fields,[36,36]);
     await page.getByTestId('date').locator('button').click();
     const selected=page.locator('.MuiPickersDay-root.Mui-selected');
     await selected.waitFor();

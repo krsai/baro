@@ -33,6 +33,8 @@ try {
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.getByRole('button',{name:'Legacy work',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),3);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
+    assert.deepEqual(await page.locator('.cc-dates .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
+    assert.equal((await page.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
     // Exercise the real HTML table's token bridge, not just an isolated MUI preview.
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(248, 250, 252)');
     assert.equal(await page.locator('tbody .MuiChip-root').count(),3);

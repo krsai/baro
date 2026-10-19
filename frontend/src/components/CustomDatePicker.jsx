@@ -1,3 +1,4 @@
+import { ui } from '../theme/ui';
 import React from 'react';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -33,6 +34,7 @@ const CustomDatePicker = ({
       ...slotProps?.textField,
       sx: {
         minWidth: monthOnly ? 110 : 140,
+        '& .MuiPickersInputBase-root, & .MuiInputBase-root': { height: ui.control.height },
         ...slotProps?.textField?.sx,
       },
       className: `compact-date-picker${slotProps?.textField?.className ? ` ${slotProps.textField.className}` : ''}`,

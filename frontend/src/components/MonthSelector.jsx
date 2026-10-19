@@ -1,3 +1,4 @@
+import { ui } from '../theme/ui';
 import React, { useEffect } from 'react';
 import { useManagementPeriod } from '../context/ManagementPeriodContext';
 import { Button, Stack, TextField } from '@mui/material';
@@ -61,16 +62,16 @@ const MonthSelector = ({
           },
         }}
         size="small"
-        sx={{ width: 132, ...inputSx }}
+        sx={{ width: 132, '& .MuiInputBase-root': { height: ui.control.height }, ...inputSx }}
       />
-      <Stack sx={{ gap: '2px' }}>
+      <Stack sx={{ gap: `${ui.control.shiftGap}px` }}>
         <Button
           type="button"
           size="small"
           variant="outlined"
           onClick={() => shift(1)}
           disabled={disabled || cannotMoveNext}
-          sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+          sx={{ minWidth: 32, height: ui.control.shiftHeight, minHeight: ui.control.shiftHeight, px: 0.5, py: 0, fontSize: 11, lineHeight: 1 }}
         >
           M+
         </Button>
@@ -80,7 +81,7 @@ const MonthSelector = ({
           variant="outlined"
           onClick={() => shift(-1)}
           disabled={disabled || cannotMovePrevious}
-          sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+          sx={{ minWidth: 32, height: ui.control.shiftHeight, minHeight: ui.control.shiftHeight, px: 0.5, py: 0, fontSize: 11, lineHeight: 1 }}
         >
           M-
         </Button>

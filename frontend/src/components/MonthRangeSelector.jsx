@@ -1,3 +1,4 @@
+import { ui } from '../theme/ui';
 import React, { useEffect } from 'react';
 import { useManagementPeriod } from '../context/ManagementPeriodContext';
 import { Button, Stack, Typography } from '@mui/material';
@@ -46,7 +47,7 @@ const MonthRangeSelector = ({
   const end = dayjs(endValue);
   const previous = start.subtract(1, 'month').startOf('month');
   const next = end.add(1, 'month').endOf('month').startOf('day');
-  const buttonSx = { minWidth: 24, px: 0.25, alignSelf: 'stretch' };
+  const buttonSx = { minWidth: 28, height: ui.control.height, minHeight: ui.control.height, px: 0.25, py: 0, alignSelf: 'center' };
   return (
   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
     <Button type="button" variant="outlined" size="small" aria-label={labels.previous} title={labels.previous}
@@ -78,13 +79,13 @@ const MonthRangeSelector = ({
     <Button type="button" variant="outlined" size="small" aria-label={labels.next} title={labels.next}
       disabled={disabled || !endValue || !end.isValid() || Boolean(maxDate && next.isAfter(dayjs(maxDate), 'day'))}
       onClick={() => onEndChange?.(monthOnly ? next.startOf('month') : next)} sx={buttonSx}>▶</Button>
-    {onShift && <Stack sx={{ gap: '2px' }}>
+    {onShift && <Stack sx={{ gap: `${ui.control.shiftGap}px` }}>
       <Button
         size="small"
         variant="outlined"
         onClick={() => onShift?.(1)}
         disabled={disabled || Boolean(maxDate && end.add(1,'month').endOf('month').isAfter(dayjs(maxDate),'day'))}
-        sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+        sx={{ minWidth: 32, height: ui.control.shiftHeight, minHeight: ui.control.shiftHeight, px: 0.5, py: 0, fontSize: 11, lineHeight: 1 }}
       >
         M+
       </Button>
@@ -93,7 +94,7 @@ const MonthRangeSelector = ({
         variant="outlined"
         onClick={() => onShift?.(-1)}
         disabled={disabled || Boolean(floor && start.subtract(1,'month').startOf('month').isBefore(floor, monthOnly ? 'month' : 'day'))}
-        sx={{ minWidth: 32, px: 0.5, py: 0, fontSize: 11, lineHeight: 1.6 }}
+        sx={{ minWidth: 32, height: ui.control.shiftHeight, minHeight: ui.control.shiftHeight, px: 0.5, py: 0, fontSize: 11, lineHeight: 1 }}
       >
         M-
       </Button>
