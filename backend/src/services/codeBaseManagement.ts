@@ -2,7 +2,8 @@ import { createHttpError } from '../utils/http';
 import { COST_DETAIL_FIELDS } from './partnerTransactionCost';
 
 export async function initializeOtherExpenseDefaults(tx: any, actorId?: number | null) {
-  await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)');
+  // Prisma cannot deserialize PostgreSQL's void result from advisory locks.
+  await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)::text AS lock');
   const key = 'EXPENSE_OTHER_DEFAULTS:2026-10-19';
   const previous = await tx.systemSetting.findUnique({ where: { key } });
   if (previous) return previous.value;

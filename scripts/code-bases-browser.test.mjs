@@ -32,13 +32,14 @@ try{
         if(url.pathname.includes('/services/'))return route.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});
         bases=bases.filter(row=>row.id!==7);return route.fulfill({headers,json:{ok:true}});
       }
-      if(url.pathname.endsWith('/other-expense-defaults'))return route.fulfill({headers,json:{expenseTypeId:5,baseId:9}});
+      if(url.pathname.endsWith('/other-expense-defaults'))return route.fulfill(lang==='ko'?{headers,status:500,json:{error:'INITIALIZATION_FAILED'}}:{headers,json:{expenseTypeId:5,baseId:9}});
       if(method==='POST'||method==='PUT'){const body=route.request().postDataJSON();writes.push({path:url.pathname,body});return route.fulfill({headers,json:{id:9,...body}});}
       return route.fulfill({headers,json:url.pathname.endsWith('/code-bases')?bases:[industry]});
     });
     const labels=lang==='ko'?{add:'기본 코드 등록',code:'기본 코드',save:'저장',remove:'삭제',industry:'업종·입력 옵션 관리',used:'사용 이력이나 연결 설정이 있어'}:lang==='en'?{add:'Add base code',code:'Base code',save:'Save',remove:'Delete',industry:'Industries & input options',used:'Usage history or linked settings'}:{add:'Thêm mã gốc',code:'Mã gốc',save:'Lưu',remove:'Xóa',industry:'Ngành và tùy chọn nhập',used:'Không thể xóa do có lịch sử sử dụng'};
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
     const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
+    if(lang==='ko') assert.equal(await page.getByRole('alert').filter({hasText:'설정을 불러오거나 저장하지 못했습니다'}).count(),1,'Initialization failure must remain visible while existing codes load');
     assert.equal(await page.locator('thead th').count(),6);
     assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).locator('[data-testid="DeleteOutlineIcon"]').count(),1);
     assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);

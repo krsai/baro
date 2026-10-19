@@ -10,7 +10,12 @@ const rollout = fs.readFileSync('backend/prisma/migrations/20261013090000_code_b
 const usageRollout = fs.readFileSync('backend/prisma/migrations/20261013120000_code_base_usage_fk/migration.sql','utf8');
 const q = value => `"${value.replaceAll('"','""')}"`;
 function adapter(db) {
-  const result = { $queryRawUnsafe: async (sql,...args) => (await db.query(sql,args)).rows };
+  const result = { $queryRawUnsafe: async (sql,...args) => {
+    const result=await db.query(sql,args);
+    // Match Prisma's unsupported-type boundary rather than silently accepting void.
+    assert.ok(!result.fields.some(field=>field.dataTypeID===2278),'Prisma cannot deserialize void columns');
+    return result.rows;
+  } };
   for (const [name,table] of Object.entries({ expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
     const where = (input, args) => Object.entries(input || {}).map(([key,value]) => {
       if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; throw Error('unsupported condition'); }
@@ -151,6 +156,7 @@ test('new codes require four English letters and explicit zero versus exempt cla
 
 test('OTHER and OTH defaults are linked by FK, initialized once and never recreate deleted codes',async()=>{
   const db=await fixture();try{
+    await assert.rejects(db.transaction(sql=>adapter(sql).$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)')),/cannot deserialize void/);
     await db.exec('CREATE TABLE IF NOT EXISTS "SystemSetting" (key TEXT PRIMARY KEY,value JSONB NOT NULL,"updatedByEmployeeId" INT)');
     const bootstrap=()=>db.transaction(async sql=>{
       const tx=adapter(sql);

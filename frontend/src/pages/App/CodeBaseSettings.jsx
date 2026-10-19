@@ -30,7 +30,12 @@ export default function CodeBaseSettings() {
   const [rows, setRows] = useState([]), [services, setServices] = useState([]), [error, setError] = useState(''), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [form, setForm] = useState(null);
   const load = useCallback(async () => {
     setLoading(true); setError('');
-    try { await requestJSON('/system-setting-defaults/other-expense-defaults', {method:'POST',body:JSON.stringify({})}); const [bases, industries, types] = await Promise.all([requestJSON(path, { skipCache: true }), requestJSON('/system-setting-defaults/services', { skipCache: true }), requestJSON('/expense-types', { skipCache: true })]); setRows(bases); setServices(industries); setExpenseTypes(types); }
+    try {
+      try { await requestJSON('/system-setting-defaults/other-expense-defaults', {method:'POST',body:JSON.stringify({})}); }
+      catch { setError(labels.error); }
+      const [bases, industries, types] = await Promise.all([requestJSON(path, { skipCache: true }), requestJSON('/system-setting-defaults/services', { skipCache: true }), requestJSON('/expense-types', { skipCache: true })]);
+      setRows(bases); setServices(industries); setExpenseTypes(types);
+    }
     catch { setError(labels.error); } finally { setLoading(false); }
   }, [labels.error]);
   useEffect(() => { load(); }, [load]);
