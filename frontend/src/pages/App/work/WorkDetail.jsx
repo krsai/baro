@@ -1116,13 +1116,6 @@ const WorkDetail = ({
     () => (coverageStartDateKey === workDateKey ? 'daily' : 'period_summary'),
     [coverageStartDateKey, workDateKey]
   );
-  const entryModeLabel = useMemo(
-    () =>
-      entryMode === 'period_summary'
-        ? LABELS.entryModePeriodSummary
-        : LABELS.entryModeDaily,
-    [entryMode]
-  );
   const workDateRangeLabel = useMemo(
     () =>
       coverageStartDateKey && coverageStartDateKey !== workDateKey
@@ -2900,12 +2893,6 @@ const WorkDetail = ({
               </LocalizationProvider>
               <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
             </Box>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ alignItems: { xs: 'stretch', sm: 'center' } }}>
-              <Chip size="small" color={entryMode === 'period_summary' ? 'secondary' : 'default'} label={`${LABELS.entryMode}: ${entryModeLabel}`} />
-              <Typography variant="caption" color="text.secondary">
-                {messages.entryModeHelp}
-              </Typography>
-            </Stack>
             <TextField
               label={LABELS.note}
               value={buildCombinedNote({
