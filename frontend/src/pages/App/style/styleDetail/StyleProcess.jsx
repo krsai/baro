@@ -1,4 +1,5 @@
 import DeleteActionButton from '../../../../components/DeleteActionButton';
+import { getLabelPalette, labelChipSx } from '../../../../theme/labelPalette';
 import { usePageDialogs } from '../../../../components/PageDialogProvider';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -3191,9 +3192,8 @@ const StyleProcess = ({
                                         sx={
                                           isCustom
                                             ? {
-                                                bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                                color: '#5b4300',
-                                                border: '1px solid rgba(231, 184, 78, 0.9)',
+                                                ...labelChipSx('yellow'),
+                                                border: `1px solid ${getLabelPalette('yellow').border}`,
                                                 '& .MuiChip-label': {
                                                   fontWeight: 700,
                                                 },
@@ -3208,9 +3208,9 @@ const StyleProcess = ({
                                                 height: 18,
                                                 fontSize: '0.68rem',
                                                 fontWeight: 800,
-                                                bgcolor: '#ffd98a',
-                                                color: '#4d3600',
-                                                border: '1px solid rgba(173, 121, 0, 0.45)',
+                                                bgcolor: getLabelPalette('yellow').background,
+                                                color: getLabelPalette('yellow').text,
+                                                border: `1px solid ${getLabelPalette('yellow').border}`,
                                               }}
                                             >
                                               N
@@ -3243,9 +3243,9 @@ const StyleProcess = ({
                                               height: 18,
                                               fontSize: '0.68rem',
                                               fontWeight: 800,
-                                              bgcolor: '#ffd98a',
-                                              color: '#4d3600',
-                                              border: '1px solid rgba(173, 121, 0, 0.45)',
+                                              bgcolor: getLabelPalette('yellow').background,
+                                              color: getLabelPalette('yellow').text,
+                                              border: `1px solid ${getLabelPalette('yellow').border}`,
                                             }}
                                           >
                                             N
@@ -3333,9 +3333,8 @@ const StyleProcess = ({
                                         sx={
                                           isCustom
                                             ? {
-                                                bgcolor: 'rgba(255, 236, 179, 0.55)',
-                                                color: '#5b4300',
-                                                border: '1px solid rgba(231, 184, 78, 0.9)',
+                                                ...labelChipSx('yellow'),
+                                                border: `1px solid ${getLabelPalette('yellow').border}`,
                                                 '& .MuiChip-label': {
                                                   fontWeight: 700,
                                                 },
@@ -3350,9 +3349,9 @@ const StyleProcess = ({
                                                 height: 18,
                                                 fontSize: '0.68rem',
                                                 fontWeight: 800,
-                                                bgcolor: '#ffd98a',
-                                                color: '#4d3600',
-                                                border: '1px solid rgba(173, 121, 0, 0.45)',
+                                                bgcolor: getLabelPalette('yellow').background,
+                                                color: getLabelPalette('yellow').text,
+                                                border: `1px solid ${getLabelPalette('yellow').border}`,
                                               }}
                                             >
                                               N
@@ -3385,9 +3384,9 @@ const StyleProcess = ({
                                               height: 18,
                                               fontSize: '0.68rem',
                                               fontWeight: 800,
-                                              bgcolor: '#ffd98a',
-                                              color: '#4d3600',
-                                              border: '1px solid rgba(173, 121, 0, 0.45)',
+                                              bgcolor: getLabelPalette('yellow').background,
+                                              color: getLabelPalette('yellow').text,
+                                              border: `1px solid ${getLabelPalette('yellow').border}`,
                                             }}
                                           >
                                             N

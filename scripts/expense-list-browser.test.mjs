@@ -66,6 +66,14 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     assert.deepEqual(await page.locator('.cc-dates .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
     assert.equal((await page.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
+    assert.equal(await page.getByRole('button',{name:'M+',exact:true}).evaluate(el=>getComputedStyle(el).fontSize),'11px');
+    for(const selector of ['.cc-primary','.cc-search input','.cc-filter-grid select','tbody td']) {
+      assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).fontSize),'13px',selector+' uses global text size');
+    }
+    assert.equal((await page.locator('.cc-dates [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
+    await page.evaluate(()=>document.documentElement.style.setProperty('--ui-control-font-size','15px'));
+    assert.equal(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).fontSize),'15px','Native buttons follow shared token');
+    await page.evaluate(()=>document.documentElement.style.removeProperty('--ui-control-font-size'));
     // Exercise the real HTML table's token bridge, not just an isolated MUI preview.
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(248, 250, 252)');
     assert.equal(await page.locator('tbody .MuiChip-root').count(),3);

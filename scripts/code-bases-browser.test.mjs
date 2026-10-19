@@ -45,6 +45,8 @@ try{
     assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);
     await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
     const modalSize=await dialog.boundingBox();assert.ok(modalSize.height<=952);
+    assert.equal(await dialog.getByRole('button',{name:labels.save,exact:true}).evaluate(el=>getComputedStyle(el).borderRadius),'8px');
+    assert.equal(await dialog.locator('.MuiDialogTitle-root').evaluate(el=>getComputedStyle(el).borderBottomColor),'rgb(231, 236, 242)');
     const savePosition=await dialog.getByRole('button',{name:labels.save,exact:true}).boundingBox();assert.ok(savePosition.y+savePosition.height<1000);
     await dialog.getByLabel(labels.code,{exact:false}).fill('air');
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');

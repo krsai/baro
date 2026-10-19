@@ -23,7 +23,6 @@ const SaveButton = ({
         minWidth: 88,
         height: ui.control.height,
         px: 1.75,
-        borderRadius: 1.5,
         textTransform: 'none',
         fontWeight: 700,
         ...sx,

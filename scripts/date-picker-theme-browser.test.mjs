@@ -30,6 +30,8 @@ try{
       assert.equal(height,36,id+' field height');
     }
     const controls=page.getByTestId('controls');
+    assert.equal(await page.locator('body').evaluate(el=>getComputedStyle(el).fontSize),'13px');
+    assert.equal(await controls.getByRole('button',{name:'Action',exact:true}).evaluate(el=>getComputedStyle(el).fontSize),'13px');
     const controlRoots=controls.locator('.MuiOutlinedInput-root');
     for(const index of [0,1,2]) assert.equal((await controlRoots.nth(index).boundingBox()).height,36,'Standard control '+index);
     assert.ok((await controlRoots.nth(3).boundingBox()).height>36,'Multiline grows');
