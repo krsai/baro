@@ -69,13 +69,13 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'] } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
-  if (edit?.record && (!process || edit.record.orgId !== orgId ||
+  if (edit?.record && (edit.record.orgId !== orgId ||
     edit.record.styleId !== styleId || edit.record.styleProcessId !== styleProcessId || edit.record.assignmentPlanId !== assignmentPlanId ||
     edit.record.assignmentPlan.workOrderId !== workOrderId)) return invalid('EXISTING_PRODUCTION_IDENTITY_IMMUTABLE');
-  if (process && body.currency !== 'VND') return invalid('PROCESS_CURRENCY_MUST_BE_VND');
+  if ((process || edit?.record) && body.currency !== 'VND') return invalid('PROCESS_CURRENCY_MUST_BE_VND');
   const selections = { order: workOrderId, style: styleId, process: styleProcessId };
   for (const key of ['order','style','process'] as const) {
-    const option = process ? 'REQUIRED' : service[`${key}Input`];
+    const option = process || edit?.record ? 'REQUIRED' : service[`${key}Input`];
     if (option === 'REQUIRED' && !selections[key]) return invalid(`REQUIRED_REQUEST_${key.toUpperCase()}`);
     if (option === 'HIDDEN' && selections[key]) return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
   }
@@ -88,9 +88,9 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
   if (!code.vatEnabled && body.vatRate != null && !validateVatRate(body.vatRate).isZero()) return invalid('VAT_NOT_ENABLED');
   const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, rate);
-  if (process && !amounts.quantity.isInteger()) return invalid('PROCESS_QUANTITY_MUST_BE_INTEGER');
+  if ((process || edit?.record) && !amounts.quantity.isInteger()) return invalid('PROCESS_QUANTITY_MUST_BE_INTEGER');
   let outsourcedWorkRecordId: number | null = edit?.record?.id ?? null;
-  if (process) {
+  if (process || edit?.record) {
     if (amounts.quantity.gt(2147483647)) return invalid('INVALID_PROCESS_QUANTITY');
     await tx.$queryRaw`SELECT id FROM "WorkOrder" WHERE id=${workOrderId} AND "orgId"=${orgId} FOR UPDATE`;
     const order = await tx.workOrder.findFirst({ where: { id: workOrderId, orgId } });

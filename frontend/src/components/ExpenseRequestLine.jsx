@@ -47,7 +47,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const refsValid = (!line.workOrderId || availableOrders.some(row => row.dbId === line.workOrderId)) &&
     (!line.styleId || Boolean(selectedStyle)) && (!line.styleProcessId || selectedStyle?.styleProcesses?.some(row => row.id === line.styleProcessId)) &&
     (!isProcess || plans.some(plan => plan.id === line.assignmentPlanId));
-  const valid = validExpenseLine(line, code, currency) && refsValid && !optionsLoading && !optionsError;
+  const valid = validExpenseLine(line, code, currency) && (!line.productionLinked || currency === 'VND' && Number.isInteger(Number(line.quantity)) && Number(line.quantity) <= 2147483647) && refsValid && !optionsLoading && !optionsError;
   useEffect(() => { onStatus(line.key, Boolean(valid)); }, [line.key, valid, onStatus]);
   const change = key => event => onChange(line.key, { [key]: event.target.value });
   const chooseCode = selected => {
@@ -73,7 +73,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   return <>
     <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
       <TableCell sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center"><IconButton {...dragHandleProps} size="small" disabled={disabled} aria-label={labels.reorder + ' ' + (index + 1)} sx={{ cursor: disabled ? 'default' : 'grab', touchAction: 'none' }}><DragIndicator fontSize="small" /></IconButton>{index + 1}</Stack></TableCell>
-      <TableCell><ExpenseLookupField directCode required label={labels.code} options={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false&&(!line.productionLinked || row.base?.entryMode==='PROCESS'))} value={code} disabled={disabled} languageCode={languageCode} onChange={chooseCode} columns={[
+      <TableCell><ExpenseLookupField directCode required label={labels.code} options={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false)} value={code} disabled={disabled} languageCode={languageCode} onChange={chooseCode} columns={[
         {key:'code',label:common.code,value:row=>row.code},
         {key:'name',label:labels.description,value:row=>serviceName(row,languageCode)},
         {key:'type',label:expenseLabels.type,value:row=>serviceName(row.base?.expenseType,languageCode)},

@@ -100,3 +100,10 @@ test('document and standalone-cost entry points resolve the saved form; item edi
   assert.equal(db.state().documents[0].id,1);assert.equal(db.state().documents[0].currency,'USD');
   assert.equal(db.state().audits.at(-1).value.before.costs[0].id,firstId);
 });
+test('a legacy production source can select a general expense code without deleting or duplicating production',async()=>{
+  const db=harness(),body=await input(db),before=structuredClone(db.state().records);
+  body.items[0].transactionCodeId=7;
+  await db.save(body);
+  assert.equal(db.state().costs[0].transactionCodeId,7);assert.equal(db.state().costs[0].outsourcedWorkRecordId,78);
+  assert.deepEqual(db.state().records,before);
+});

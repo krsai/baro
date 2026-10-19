@@ -24,7 +24,7 @@ try {
     await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false});'}));
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>document.documentElement.dataset.saved="true",showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-    const service={isActive:true,entryMode:'PROCESS',requiredFields:[],expenseTypeId:1};
+    const service={isActive:true,entryMode:'GENERAL',requiredFields:[],expenseTypeId:1};
     const mocks={ 'business-partners':[{id:11,name:'Selected vendor',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:4}]}],
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[], 'app-settings':{defaultVatRate:'10'} };
@@ -48,6 +48,14 @@ try {
     if(locked){assert.equal(await page.getByLabel(l.title,{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
     else {
       const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});
+      await code.locator('..').getByRole('button').click();
+      const keyword=page.getByRole('dialog').getByLabel(lookup.keyword,{exact:false});
+      await keyword.fill('Buttonhole');
+      assert.equal(await page.getByRole('dialog').locator('tbody tr').count(),1);
+      assert.match(await page.getByRole('dialog').locator('tbody').innerText(),/BTHE/);
+      await keyword.focus();await page.keyboard.press('Tab');await page.keyboard.press('Shift+Tab');
+      assert.equal(await keyword.evaluate(el=>getComputedStyle(el).outlineStyle),'none');
+      await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
       await code.fill('BTHE');await code.press('Enter');
       // A unique exact code resolves directly; no legacy work group is requested.
       if(await page.getByRole('dialog').count())await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
