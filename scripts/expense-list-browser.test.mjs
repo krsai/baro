@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync,writeFileSync,unlinkSync } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { chromium } from 'playwright-core';
 import { EXPENSE_LIST_TEXT } from '../frontend/src/constants/expenseList.js';
 import { EXPENSE_REQUEST_TEXT } from '../frontend/src/constants/expenseRequest.js';
@@ -11,7 +10,7 @@ assert.ok(executablePath,'Chrome required');
 const fixture=path.resolve('frontend/expense-list-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"><style>body{margin:0}</style></head><body><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {CssBaseline} from '@mui/material';import {ThemeProvider} from '@mui/material/styles';import theme from '/src/theme';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Costs,{onNewRequest:()=>document.documentElement.dataset.new='true',onPreview:()=>document.documentElement.dataset.preview='true',previewLabel:'Design sample',onOpenHistorical:id=>document.documentElement.dataset.history=String(id)}))));</script></body></html>`);
+createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Costs,{onNewRequest:()=>document.documentElement.dataset.new='true',onOpenHistorical:id=>document.documentElement.dataset.history=String(id)}))));</script></body></html>`);
 const port=43203,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-list-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
@@ -40,7 +39,6 @@ try {
     await page.evaluate(()=>document.documentElement.style.setProperty('--color-background-dark','#f1f2f3'));
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(241, 242, 243)');
     await page.evaluate(()=>document.documentElement.style.removeProperty('--color-background-dark'));
-    if(lang==='ko')await page.screenshot({path:path.join(os.tmpdir(),'baro-costs-live-desktop.png'),fullPage:true});
     await page.getByRole('textbox',{name:text.search}).fill('OLD-40');assert.equal(await page.locator('tbody tr').count(),1);
     await page.getByRole('button',{name:'Legacy work',exact:true}).click();await page.getByRole('dialog').waitFor();
     await page.getByRole('dialog').getByRole('button',{name:text.historical,exact:true}).click();
@@ -63,7 +61,6 @@ try {
     await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();await page.getByRole('tab',{name:text.detail,exact:true}).click();
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
-    if(lang==='ko')await page.screenshot({path:path.join(os.tmpdir(),'baro-costs-live-mobile.png'),fullPage:true});
     assert.deepEqual(errors,[]);await page.close();
   }
   console.log('Live expense UI passed: ko/en/vi, historical search, FK filters, separate currency totals, grouping, selection, real record/document details and mobile layout.');

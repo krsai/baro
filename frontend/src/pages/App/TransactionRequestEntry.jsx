@@ -3,7 +3,7 @@ import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, Stack, Tab
 import { Add } from '@mui/icons-material';
 import ExpenseLookupField from '../../components/ExpenseLookupField';
 import { EXPENSE_LOOKUP_TEXT } from '../../constants/expenseLookup';
-import './compactCostsPreview.css';
+import './expenseRequests.css';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import ExpenseRequestLine from '../../components/ExpenseRequestLine';
 import { useManagementPeriod } from '../../context/ManagementPeriodContext';

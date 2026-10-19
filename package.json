@@ -41,7 +41,6 @@
     "test:line-removal-transition": "node --test scripts/line-removal-transition-regression.test.mjs",
     "test:month-selector": "node --test scripts/month-selector-regression.test.mjs",
     "test:date-range-browser": "node scripts/date-range-browser.test.mjs",
-    "test:compact-costs-browser": "node scripts/compact-costs-preview-browser.mjs",
     "test:business-partner-deletion": "npm --prefix backend run build && node --test scripts/business-partner-deletion.test.mjs",
     "test:business-partner-browser": "node scripts/business-partner-browser.test.mjs",
     "test:code-bases-tax": "npm --prefix backend run build && node --test scripts/code-bases-tax.test.mjs",

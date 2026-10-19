@@ -14,9 +14,9 @@ import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
 import { expenseCurrencyTotals, expenseIndustryKey, groupExpenseRows } from '../../utils/expenseList.mjs';
 import { subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
-import './compactCostsPreview.css';
+import './expenseRequests.css';
 
-export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical, onPreview, previewLabel }) {
+export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical }) {
   const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod();
   const labels = { ...(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko), ...(OUTSOURCING_REQUEST_TEXT[languageCode] || OUTSOURCING_REQUEST_TEXT.ko) };
@@ -100,7 +100,6 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
   const recordKind = row => row.sourceKind === 'HISTORICAL_WORK_RECORD' ? text.historical : text.recorded;
   return <main className="compact-costs cc-live">
     <div className="cc-heading"><div><span className="cc-kicker">BARO GARMENT / COST REQUESTS</span><h1>{labels.costs}</h1></div><div className="cc-actions">
-      {onPreview && <button className="cc-button" onClick={onPreview}>{previewLabel}</button>}
       <button className="cc-button cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</button>
     </div></div>
     <section className="cc-panel" aria-label={text.query}>
