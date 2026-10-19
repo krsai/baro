@@ -1,10 +1,10 @@
+import DeleteActionButton from '../../components/DeleteActionButton';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Drawer, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
 import EditIcon from '@mui/icons-material/Edit';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -121,7 +121,7 @@ export default function BusinessPartners({ type }) {
             <TableCell><Chip size="small" color={partner.isActive ? 'success' : 'default'} label={partner.isActive ? labels.active : labels.inactive} variant="outlined" /></TableCell>
             <TableCell align="center"><Button size="small" onClick={() => openHistory(partner)} sx={{ whiteSpace: 'nowrap' }}>{listLabels.viewHistory}</Button></TableCell>
             <TableCell align="center"><Tooltip title={labels.edit}><span><IconButton aria-label={labels.edit} color="primary" disabled={!canEdit} size="small" onClick={() => setEditingPartner(partner)}><EditIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
-            <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><IconButton aria-label={deleteLabels.remove} color="error" size="small" disabled={!canEdit || deleting || partner.hasUsageHistory !== false} onClick={() => setDeletingPartner(partner)}><DeleteOutlineIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
+            <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} color="error" size="small" disabled={!canEdit || deleting || partner.hasUsageHistory !== false} onClick={() => setDeletingPartner(partner)} /></span></Tooltip></TableCell>
           </TableRow>)}
         </TableBody>
       </Table></TableContainer></Paper></Stack>

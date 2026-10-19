@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../components/DeleteActionButton';
 import QueryFeedback from '../../../components/QueryFeedback';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,7 +23,6 @@ import {
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import dayjs from 'dayjs';
@@ -3296,7 +3296,7 @@ const WorkDetail = ({
                                 </IconButton>
                               </span>
                               <span title={LABELS.remove}>
-                                <IconButton
+                                <DeleteActionButton
                                   size="small"
                                   color="error"
                                   onClick={(event) => {
@@ -3305,9 +3305,7 @@ const WorkDetail = ({
                                   }}
                                   disabled={isAggregateLegacyLog || rows.length <= 1}
                                   aria-label={LABELS.remove}
-                                >
-                                  <DeleteOutlineIcon fontSize="small" />
-                                </IconButton>
+                                 />
                               </span>
                           </Stack>
                         </Stack>
@@ -3782,7 +3780,7 @@ const WorkDetail = ({
                                   </IconButton>
                                 </span>
                                 <span title={LABELS.remove}>
-                                  <IconButton
+                                  <DeleteActionButton
                                     size="small"
                                     color="error"
                                     onClick={(event) => {
@@ -3791,9 +3789,7 @@ const WorkDetail = ({
                                     }}
                                     disabled={isAggregateLegacyLog || rows.length <= 1}
                                     aria-label={LABELS.remove}
-                                  >
-                                    <DeleteOutlineIcon fontSize="small" />
-                                  </IconButton>
+                                   />
                                 </span>
                             </Stack>
                           </TableCell>

@@ -38,7 +38,6 @@ import {
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -3900,9 +3899,7 @@ const OrderList = () => {
                           {isFirstRow ? formatQuantityDisplay(groupSubtotalQuantity) : ''}
                         </TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
-                          <IconButton size="small" onClick={() => handleRemoveItem(item.id)}>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          <DeleteActionButton size="small" onClick={() => handleRemoveItem(item.id)} />
                         </TableCell>
                       </TableRow>
                     );
@@ -4341,13 +4338,11 @@ const OrderList = () => {
                                 : ''}
                             </TableCell>
                             <TableCell sx={{ textAlign: 'center' }}>
-                              <IconButton
+                              <DeleteActionButton
                                 size="small"
                                 onClick={() => handleRemoveItem(colorTargetIds)}
                                 disabled={!colorTargetIds.length}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
+                               />
                             </TableCell>
                           </TableRow>
                         );

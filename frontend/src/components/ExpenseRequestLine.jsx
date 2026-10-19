@@ -1,6 +1,7 @@
+import DeleteActionButton from './DeleteActionButton';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
-import { DeleteOutline, DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
+import { DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
 import ExpenseLookupField from './ExpenseLookupField';
 import DecimalAmountField from './DecimalAmountField';
 import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
@@ -78,7 +79,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.subtotal)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.vatAmount)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
-      <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><IconButton aria-label={labels.remove} disabled={disabled} onClick={() => onRemove(line.key)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
     </TableRow>
     {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {typeMismatch && <Alert severity="warning">{expenseLabels.mismatch}</Alert>}{!typeMismatch && industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}

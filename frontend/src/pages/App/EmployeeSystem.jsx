@@ -1,6 +1,6 @@
+import DeleteActionButton from '../../components/DeleteActionButton';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Box, Button, IconButton, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import AppPageContainer from "../../components/AppPageContainer";
 import { useAuth } from "../../context/AuthContext";
 import { buildQueryString, requestJSON } from "../../utils/apiClient";
@@ -170,9 +170,7 @@ const EmployeeSystem = () => {
                       <TextField size="small" label="Grade name (English)" value={grades[grade.id]?.nameEn || ""} onChange={(e) => editGrade(grade.id, "nameEn", e.target.value)} />
                       <TextField size="small" label="Tên cấp bậc (Tiếng Việt)" value={grades[grade.id]?.nameVi || ""} onChange={(e) => editGrade(grade.id, "nameVi", e.target.value)} />
                       <TextField size="small" label="순서" type="number" value={grades[grade.id]?.sortOrder || ""} onChange={(e) => editGrade(grade.id, "sortOrder", e.target.value)} />
-                      <IconButton color="error" disabled={grade.isDefault || saving || gradesChanged} onClick={() => removeGrade(grade)}>
-                        <DeleteOutlineIcon />
-                      </IconButton>
+                      <DeleteActionButton color="error" disabled={grade.isDefault || saving || gradesChanged} onClick={() => removeGrade(grade)} />
                     </Box>
                   ))}
                 </Stack>

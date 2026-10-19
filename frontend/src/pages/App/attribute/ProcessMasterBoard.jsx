@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../components/DeleteActionButton';
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Autocomplete,
@@ -20,7 +21,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
@@ -598,21 +598,17 @@ const ProcessMasterSection = ({
                       {usageConflict ? (
                         <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
                           <span>
-                            <IconButton size="small" disabled>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                            <DeleteActionButton size="small" disabled />
                           </span>
                         </Tooltip>
                       ) : (
-                        <IconButton
+                        <DeleteActionButton
                           size="small"
                           onClick={(event) => {
                             event.stopPropagation();
                             onDeleteRow(sectionKey, row.id);
                           }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                         />
                       )}
                     </TableCell>
                   </TableRow>
@@ -1141,21 +1137,17 @@ const ProcessMasterLinkedSpecSection = ({
                     {usageConflict ? (
                       <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
                         <span>
-                          <IconButton size="small" disabled>
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                          <DeleteActionButton size="small" disabled />
                         </span>
                       </Tooltip>
                     ) : (
-                      <IconButton
+                      <DeleteActionButton
                         size="small"
                         onClick={(event) => {
                           event.stopPropagation();
                           onDeleteRow(sectionKey, row.id);
                         }}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                       />
                     )}
                   </TableCell>
                 </TableRow>

@@ -38,6 +38,7 @@ try {
     const headerPosition=await headerSave.boundingBox();
     assert.ok(headerPosition.y<120,'Save belongs in the common top header');
     assert.equal(await page.locator('.cc-entry').count(),0,'Entry uses the shared page layout');
+    assert.equal(await page.getByTestId('expense-line').first().getByRole('button',{name:l.remove,exact:true}).isDisabled(),true);
     await page.getByLabel(l.title,{exact:false}).fill('Factory expenses');
     const fieldSizes=await page.locator('.MuiOutlinedInput-root:not(.MuiInputBase-multiline), .MuiPickersOutlinedInput-root').evaluateAll(els=>els.map(el=>({height:el.getBoundingClientRect().height,font:getComputedStyle(el).fontSize})));
     assert.ok(fieldSizes.length>=8);
@@ -72,6 +73,10 @@ try {
     if(kind==='LOGISTICS') {
       await page.getByRole('button',{name:l.add,exact:true}).click();
       const second=page.getByTestId('expense-line').nth(1);
+      const firstDelete=page.getByTestId('expense-line').first().getByRole('button',{name:l.remove,exact:true}),secondDelete=second.getByRole('button',{name:l.remove,exact:true});
+      assert.equal(await firstDelete.isDisabled(),true);assert.equal(await secondDelete.isEnabled(),true);
+      assert.equal(await secondDelete.evaluate(el=>getComputedStyle(el).color),'rgb(196, 50, 50)');
+      assert.notEqual(await firstDelete.evaluate(el=>getComputedStyle(el).color),await secondDelete.evaluate(el=>getComputedStyle(el).color));
       await second.getByRole('textbox',{name:labels.code,exact:false}).fill('TRKV');await second.getByRole('textbox',{name:labels.code,exact:false}).press('Tab');
       await second.getByLabel(labels.price,{exact:false}).fill('50000');await second.getByLabel(labels.qty,{exact:false}).fill('1');
       await page.getByRole('button',{name:l.add,exact:true}).click();await page.getByTestId('expense-line').nth(2).getByRole('button',{name:l.remove,exact:true}).click();

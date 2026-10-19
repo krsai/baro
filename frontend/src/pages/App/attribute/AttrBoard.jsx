@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../components/DeleteActionButton';
 ﻿import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -24,7 +25,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
@@ -365,9 +365,7 @@ const AttributeRow = memo(function AttributeRow({
         );
       })}
       <TableCell sx={{ textAlign: 'center' }}>
-        <IconButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)}>
-          <DeleteIcon fontSize="small" />
-        </IconButton>
+        <DeleteActionButton size="small" onClick={() => onDeleteRow(sectionKey, row.id)} />
       </TableCell>
     </TableRow>
   );

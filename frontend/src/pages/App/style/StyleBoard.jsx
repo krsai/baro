@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../components/DeleteActionButton';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
@@ -19,7 +20,6 @@ import {
   DialogTitle,
   Tooltip,
 } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -759,7 +759,7 @@ const StyleBoard = () => {
                           onDoubleClick={(event) => event.stopPropagation()}
                           style={{ display: 'inline-flex' }}
                         >
-                          <IconButton
+                          <DeleteActionButton
                             aria-label="delete"
                             size="small"
                             color={deleteBlocked ? 'default' : 'error'}
@@ -771,9 +771,7 @@ const StyleBoard = () => {
                                 color: 'action.disabled',
                               },
                             }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                           />
                         </span>
                       </Tooltip>
                     </TableCell>

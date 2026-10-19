@@ -63,7 +63,11 @@ export default function TransactionRequestEntry() {
       return { ...current, items };
     });
   };
-  const removeLine = key => { setDirty(true); setForm(current => ({ ...current, items: current.items.length === 1 ? [newExpenseLine()] : current.items.filter(line => line.key !== key) })); };
+  const removeLine = key => {
+    if (disabled || form.items[0]?.key === key) return;
+    setDirty(true);
+    setForm(current => current.items[0]?.key === key ? current : { ...current, items: current.items.filter(line => line.key !== key) });
+  };
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
   const disabled = loading || loadError || saving || Boolean(submission);

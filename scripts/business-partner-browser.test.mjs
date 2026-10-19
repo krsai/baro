@@ -58,7 +58,7 @@ try {
   await used.getByRole('button', { name: '수정', exact: true }).click();
   await page.getByRole('dialog').getByLabel('업체명', { exact: false }).fill('Renamed Partner');
   await page.getByRole('dialog').getByRole('button', { name: '저장', exact: true }).click();
-  await page.locator('#costs').getByText('Renamed Partner', { exact: true }).waitFor();
+  await page.locator('#costs').getByRole('button', { name: 'Renamed Partner', exact: true }).waitFor();
   assert.equal(partners[0].id, 11); assert.deepEqual(errors, []);
   console.log('Partner browser checks passed: used deletion disabled, unused deletion confirmed, used partner editable, existing costs refresh with current FK name.');
 } finally { await browser?.close(); vite.kill(); unlinkSync(fixture); }

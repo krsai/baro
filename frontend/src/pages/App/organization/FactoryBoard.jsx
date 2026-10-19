@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 ﻿import React, { useEffect, useState } from 'react';
 import {
@@ -16,7 +17,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageToolbar from '../../../components/PageToolbar';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -329,14 +329,12 @@ const FactoryList = () => {
                       <TableCell sx={{ textAlign: 'center' }}>
                         <Tooltip title={text.deleteFactory}>
                           <span>
-                            <IconButton
+                            <DeleteActionButton
                               size="small"
                               color="error"
                               onClick={(event) => handleDeleteFactory(factory, event)}
                               disabled={deletingFactoryId === factory.id}
-                            >
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
+                             />
                           </span>
                         </Tooltip>
                       </TableCell>

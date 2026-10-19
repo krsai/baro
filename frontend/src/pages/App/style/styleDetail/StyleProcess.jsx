@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../../components/PageDialogProvider';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -27,7 +28,6 @@ import {
 } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
@@ -2625,13 +2625,11 @@ const StyleProcess = ({
           }
         >
           <span>
-            <IconButton
+            <DeleteActionButton
               size="small"
               onClick={() => handleRemoveProcess(process.instanceId)}
               disabled={deleteDisabled}
-            >
-              <DeleteIcon fontSize="small" />
-            </IconButton>
+             />
           </span>
         </Tooltip>
       </Stack>

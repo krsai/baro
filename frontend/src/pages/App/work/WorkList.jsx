@@ -1,3 +1,4 @@
+import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -26,7 +27,6 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
@@ -896,15 +896,13 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                       </Typography>
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                         <span>
-                          <IconButton
+                          <DeleteActionButton
                             size="small"
                             color="error"
                             onClick={(event) => handleDelete(event, log)}
                             onDoubleClick={(event) => event.stopPropagation()}
                             disabled={deletingId === String(log.id)}
-                          >
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
+                           />
                         </span>
                       </Tooltip>
                     </Box>
@@ -1020,15 +1018,13 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                     <TableCell align="right">
                       <Tooltip title={getUiMessage('common.delete', '삭제', languageCode)}>
                         <span>
-                          <IconButton
+                          <DeleteActionButton
                             size="small"
                             color="error"
                             onClick={(event) => handleDelete(event, log)}
                             onDoubleClick={(event) => event.stopPropagation()}
                             disabled={deletingId === String(log.id)}
-                          >
-                            <DeleteOutlineIcon fontSize="small" />
-                          </IconButton>
+                           />
                         </span>
                       </Tooltip>
                     </TableCell>
