@@ -16,6 +16,12 @@ import { expenseCurrencyTotals, expenseIndustryKey, groupExpenseRows } from '../
 import { subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import './expenseRequests.css';
 
+const currentMonthRange = managementStart => {
+  const month = dayjs().startOf('month');
+  const start = managementStart && dayjs(managementStart).isAfter(month, 'day') ? dayjs(managementStart).startOf('day') : month;
+  return [start, start.endOf('month').startOf('day')];
+};
+
 export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical }) {
   const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod();
@@ -53,12 +59,12 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
     if (['transaction-request','business-partner'].includes(detail?.source) && Number(detail.orgId) === Number(activeOrgId)) load();
   }),[activeOrgId,load]);
   useEffect(() => {setPartner('');setIndustry('');setCurrency('');setKind('');setChecked([]);},[activeOrgId]);
-  const firstDate = period.startDate || [...rows.map(row=>row.transactionDate),...documents.map(row=>row.requestDate)].filter(Boolean).sort()[0];
   useEffect(() => {
     if (loading || period.loading || period.error || rangeOrganization.current === activeOrgId) return;
-    setDateFrom(firstDate ? dayjs(firstDate).startOf('day') : dayjs().startOf('month')); setDateTo(dayjs().endOf('month').startOf('day'));
+    const [start,end] = currentMonthRange(period.startDate);
+    setDateFrom(start); setDateTo(end);
     rangeOrganization.current = activeOrgId;
-  },[activeOrgId,loading,period.loading,period.error,firstDate]);
+  },[activeOrgId,loading,period.loading,period.error,period.startDate]);
   const documentsById = useMemo(()=>new Map(documents.map(row=>[row.id,row])),[documents]);
   const industryLabel = row => serviceName(row.serviceType,languageCode) || (row.sourceKind === 'HISTORICAL_WORK_RECORD' ? labels.process : text.unclassified);
   const searchValues = row => [row.partner?.name,industryLabel(row),row.transactionCode?.code,row.description,row.workOrder?.orderNumber,row.style?.name,row.style?.code,row.styleProcess?.processName,row.styleProcess?.processCode,row.createdByEmployee?.name,...Object.values(row.details||{})];
@@ -90,13 +96,19 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
   const toggle = id => setChecked(current=>current.includes(id) ? current.filter(key=>key!==id) : [...current,id]);
   const reset = () => {
     setSearch('');setPartner('');setIndustry('');setCurrency('');setKind('');setChecked([]);setAscending(false);
-    setDateFrom(firstDate ? dayjs(firstDate).startOf('day') : dayjs().startOf('month'));setDateTo(dayjs().endOf('month').startOf('day'));
+    const [start,end] = currentMonthRange(period.startDate);
+    setDateFrom(start);setDateTo(end);
   };
   const changeDate = setter => (value,context) => {
     if (!value?.isValid?.() || context?.validationError || setter === setDateFrom && value.isAfter(dateTo,'day') || setter === setDateTo && value.isBefore(dateFrom,'day')) return;
     setter(value.startOf('day'));
   };
-  const shiftRange = amount => {setDateFrom(value=>value.add(amount,'month').startOf('month'));setDateTo(value=>value.add(amount,'month').endOf('month').startOf('day'));};
+  const shiftRange = amount => {
+    const month = (amount > 0 ? dateTo : dateFrom).add(amount,'month');
+    const start = month.startOf('month');
+    setDateFrom(period.startDate && start.isBefore(dayjs(period.startDate),'day') ? dayjs(period.startDate) : start);
+    setDateTo(month.endOf('month').startOf('day'));
+  };
   const openRow = row => {const document=documentsById.get(row.expenseRequestId);if(document)setSelected(document);else setSelectedItem(row);};
   const editRow = row => {
     clearTimeout(rowClickTimer.current);
