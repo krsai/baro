@@ -1,5 +1,6 @@
 import React from 'react';
 import { Box, Button, Typography } from '@mui/material';
+import { ui } from '../theme/ui';
 
 const PageSectionHeader = ({
   title,
@@ -10,6 +11,7 @@ const PageSectionHeader = ({
   actionDisabled = false,
   sx = {},
   titleVariant = 'h5',
+  titleComponent,
 }) => {
   const resolvedActions =
     actions ||
@@ -36,7 +38,7 @@ const PageSectionHeader = ({
         ...sx,
       }}
     >
-      <Typography variant={titleVariant} sx={{ fontWeight: 700, lineHeight: 1.4 }}>
+      <Typography component={titleComponent} variant={titleVariant} sx={{ fontWeight: ui.typography.titleFontWeight, color: ui.color.heading, letterSpacing: ui.typography.titleLetterSpacing, lineHeight: 1.4 }}>
         {title}
       </Typography>
       <Box

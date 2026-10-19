@@ -32,6 +32,10 @@ try {
     await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.getByRole('button',{name:'Transport cost',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),2);
+    assert.equal(await page.locator('.cc-kicker').count(),0);
+    assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontSize),'20px');
+    assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontWeight),'600');
+    assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).color),'rgb(52, 64, 84)');
     const dates=()=>page.locator('.cc-dates input').evaluateAll(els=>els.map(el=>el.value));
     const left=page.locator('.cc-dates [data-testid="ChevronLeftIcon"]').locator('..');
     const right=page.locator('.cc-dates [data-testid="ChevronRightIcon"]').locator('..');

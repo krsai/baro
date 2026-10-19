@@ -377,7 +377,7 @@ const theme = createTheme(baseTheme, {
     body1: { fontSize: ui.typography.bodyFontSize, lineHeight: 1.5 },
     body2: { fontSize: ui.typography.bodyFontSize, lineHeight: 1.5 },
     caption: { fontSize: ui.typography.captionFontSize },
-    h5: { fontSize: ui.typography.titleFontSize, fontWeight: 700, letterSpacing: '-0.035em' },
+    h5: { fontSize: ui.typography.titleFontSize, fontWeight: ui.typography.titleFontWeight, letterSpacing: ui.typography.titleLetterSpacing },
     h6: { fontSize: '1rem', fontWeight: 650, letterSpacing: '-0.02em' },
   },
   components: {
