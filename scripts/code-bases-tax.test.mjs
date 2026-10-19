@@ -24,7 +24,8 @@ function adapter(db) {
     const find = async ({ where: input } = {}) => { const args=[]; return (await db.query(`SELECT * FROM ${q(table)} WHERE ${where(input,args)} ORDER BY id`,args)).rows; };
     const update = async ({ where: input,data }) => { const args=[];const sets=Object.entries(data).map(([key,value])=>{args.push(value);return `${q(key)}=$${args.length}`;}).join(',');return (await db.query(`UPDATE ${q(table)} SET ${sets} WHERE ${where(input,args)} RETURNING *`,args)).rows; };
     result[name] = {
-      findMany: find, findUnique: async options => (await find(options))[0] || null,
+      findMany: find, findUnique: async options => (await find(options))[0] || null, findFirst: async options => (await find(options))[0] || null,
+      createMany: async ({data}) => { for(const row of data) { const entries=Object.entries(row);await db.query(`INSERT INTO ${q(table)} (${entries.map(([key])=>q(key)).join(',')}) VALUES(${entries.map((_,i)=>`$${i+1}`).join(',')}) ON CONFLICT DO NOTHING`,entries.map(([,value])=>value)); } },
       count: async options => (await find(options)).length,
       create: async ({data}) => { const entries=Object.entries(data); return (await db.query(`INSERT INTO ${q(table)} (${entries.map(([key])=>q(key)).join(',')}) VALUES(${entries.map((_,i)=>`$${i+1}`).join(',')}) RETURNING *`, entries.map(([,value])=>value))).rows[0]; },
       update: async options => (await update(options))[0], updateMany: update,
@@ -49,6 +50,31 @@ async function fixture(legacyCode = 'OLD_CODE') {
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
   return db;
 }
+
+test('expense catalogue provisions all system variants despite legacy industry-code collisions, preserving existing FKs',async()=>{
+  const db=await fixture();try {
+    await db.exec(`INSERT INTO "Organization"(id,type) VALUES(1,'MANUFACTURER');
+      INSERT INTO "OutsourcingServiceType"(id,"ownerOrgId",code,"nameKo","entryMode") VALUES(101,1,'BUTTONHOLE','Legacy buttonhole','PROCESS');`);
+    const legacy=(await db.query('SELECT * FROM "OutsourcingServiceType" WHERE id IN (100,101) ORDER BY id')).rows;
+    const saved=(await db.query('SELECT * FROM "PartnerTransactionCost"')).rows;
+    const tx=adapter(db);tx.$queryRaw=async()=>[];
+    await routes.provisionSettingDefaults(tx,1,true);
+    const source=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='BUTTONHOLE'`)).rows[0];
+    const bridge=(await db.query('SELECT * FROM "OutsourcingServiceType" WHERE "ownerOrgId"=1 AND "systemDefaultId"=$1',[source.id])).rows[0];
+    assert.ok(bridge);assert.notEqual(bridge.id,101);assert.match(bridge.code,/^SYSTEM_/);
+    const expected=(await db.query(`SELECT id FROM "SettingTransactionCodeDefault" WHERE "baseId" IS NOT NULL AND "taxTreatmentId" IS NOT NULL AND "isActive" AND "isEnabled" ORDER BY id`)).rows.map(row=>row.id);
+    const actual=(await db.query(`SELECT "systemDefaultId" FROM "TransactionCode" WHERE "ownerOrgId"=1 AND "baseId" IS NOT NULL AND "taxTreatmentId" IS NOT NULL ORDER BY "systemDefaultId"`)).rows.map(row=>row.systemDefaultId);
+    assert.deepEqual(actual,expected);
+    const before=(await db.query('SELECT * FROM "TransactionCode" ORDER BY id')).rows;
+    await routes.provisionSettingDefaults(tx,1,true);
+    assert.deepEqual((await db.query('SELECT * FROM "TransactionCode" ORDER BY id')).rows,before);
+    assert.deepEqual((await db.query('SELECT * FROM "OutsourcingServiceType" WHERE id IN (100,101) ORDER BY id')).rows,legacy);
+    assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost"')).rows,saved);
+    await db.exec(`UPDATE "TransactionCodeBase" SET "nameEn"='Updated system name' WHERE code='BTH'`);
+    // Newly created local IDs remain attached to the exact source variant and tax FKs.
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM "TransactionCode" c JOIN "SettingTransactionCodeDefault" s ON s.id=c."systemDefaultId" WHERE c."serviceTypeId"=$1 AND c."baseId"=s."baseId" AND c."taxTreatmentId"=s."taxTreatmentId"`,[bridge.id])).rows[0].n,3);
+  }finally{await db.close();}
+});
 test('expense input settings copy once by FK and stay independent of partner industry edits', async () => {
   const db=await fixture();try {
     const before=(await db.query(`SELECT * FROM "TransactionCodeBase" ORDER BY id`)).rows;

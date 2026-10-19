@@ -9,12 +9,24 @@ export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','req
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
 export const pickSettings = (row: any, keys: string[]) => Object.fromEntries(keys.filter(key => row[key] !== undefined).map(key => [key,row[key]]));
 
-export async function provisionSettingDefaults(tx: any, orgId: number) {
+export async function provisionSettingDefaults(tx: any, orgId: number, completeExpenseCatalogue = false) {
   await tx.$queryRaw`SELECT id FROM "Organization" WHERE id=${orgId} FOR UPDATE`;
   const services = await tx.settingServiceDefault.findMany();
   // A code collision preserves the existing tenant row, without guessing a source FK.
   await tx.outsourcingServiceType.createMany({ data: services.map((row: any) => ({ ...pickSettings(row,serviceFields), ownerOrgId: orgId, systemDefaultId: row.id, isOverridden: false })), skipDuplicates: true });
-  const locals = await tx.outsourcingServiceType.findMany({ where: { ownerOrgId: orgId, systemDefaultId: { not: null } } });
+  let locals = await tx.outsourcingServiceType.findMany({ where: { ownerOrgId: orgId, systemDefaultId: { not: null } } });
+  if (completeExpenseCatalogue) {
+    // Legacy tenant industries may already own the source's code. Do not adopt
+    // those unrelated rows by text or rewrite their business FKs. Create a new
+    // explicitly source-linked bridge with a distinct local technical code.
+    const linked = new Set(locals.map((row: any)=>row.systemDefaultId));
+    for (const source of services.filter((row: any)=>!linked.has(row.id))) {
+      let code = `SYSTEM_${source.id}_${source.code}`, suffix = 0;
+      while (await tx.outsourcingServiceType.findFirst({where:{ownerOrgId:orgId,code}})) code=`SYSTEM_${source.id}_${source.code}_${++suffix}`;
+      await tx.outsourcingServiceType.create({data:{...pickSettings(source,serviceFields),code,ownerOrgId:orgId,systemDefaultId:source.id,isOverridden:true}});
+    }
+    locals = await tx.outsourcingServiceType.findMany({ where: { ownerOrgId: orgId, systemDefaultId: { not: null } } });
+  }
   const bySource = new Map(locals.map((row: any) => [row.systemDefaultId,row.id]));
   const codes = await tx.settingTransactionCodeDefault.findMany();
   await tx.transactionCode.createMany({ data: codes.filter((row: any) => bySource.has(row.serviceTypeId)).map((row: any) => ({ ...pickSettings(row,codeFields), ownerOrgId: orgId, serviceTypeId: bySource.get(row.serviceTypeId), systemDefaultId: row.id, isOverridden: false })), skipDuplicates: true });
@@ -83,7 +95,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
     app.get(localPath, async (req: any,res: any) => {
       const access = req.query.all === '1' ? await admin(req,res) : await member(req,res);
       if (!access) return;
-      await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id), { isolationLevel: 'ReadCommitted' });
+      await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id,!service && req.query.forExpenseRequest === '1'), { isolationLevel: 'ReadCommitted' });
       if (!service && req.query.forExpenseRequest === '1') {
         const candidates = await locals.findMany({ where: {ownerOrgId:access.organization.id,isActive:true}, include: SYSTEM_EXPENSE_CODE_INCLUDE, orderBy: {code:'asc'} });
         return res.json(candidates.map(resolveSystemExpenseCode).filter(Boolean));
