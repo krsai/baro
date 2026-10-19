@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
 import { DeleteOutline, DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
 import ExpenseLookupField from './ExpenseLookupField';
+import DecimalAmountField from './DecimalAmountField';
 import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { serviceName, TRANSACTION_TEXT } from './OutsourcingServiceDialog';
 import { EXPENSE_TEXT } from '../constants/expenseTypes';
@@ -68,12 +69,11 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
         {key:'type',label:expenseLabels.type,value:row=>serviceName(row.base?.expenseType,languageCode)},
         {key:'tax',label:lookupText.tax,value:row=>serviceName(row.taxTreatment,languageCode)||(row.vatEnabled?'VAT':lookupText.noVat)},
       ]} />
-        {code && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>{serviceName(code,languageCode)} · {serviceName(code.base?.expenseType,languageCode)}</Typography>}
       </TableCell>
       <TableCell><TextField {...field} required label={labels.description} value={line.description} onChange={change('description')} inputProps={{ maxLength: 2000 }} /></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
-      <TableCell><TextField {...field} required label={labels.price} value={line.unitPrice} onChange={change('unitPrice')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
+      <TableCell><DecimalAmountField {...field} required label={labels.price} value={line.unitPrice} onValueChange={unitPrice => onChange(line.key, { unitPrice })} /></TableCell>
       <TableCell><TextField {...field} label={labels.vat} disabled={disabled || !code?.vatEnabled} value={line.vatRate} onChange={change('vatRate')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.subtotal)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.vatAmount)}</TableCell>

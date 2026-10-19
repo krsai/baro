@@ -45,7 +45,7 @@ export default function TransactionRequestEntry() {
   useEffect(() => {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
-    Promise.all(['business-partners','transaction-codes','app-settings','orders'].map(path => requestJSON(`/${path}${query}`, { skipCache: true })))
+    Promise.all(['business-partners','transaction-codes','app-settings','orders'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })))
       .then(([partners,codes,settings,orders]) => { if (alive) setData({ partners, codes, settings, orders: orders.filter(row => row.ownerOrgId === Number(activeOrgId)) }); })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -102,13 +102,12 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{labels.hint}</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(240px, 2fr) minmax(220px, 1.5fr) 160px' }, gap: 2 }}>
-            <TextField size="small" required label={labels.title} disabled={disabled} value={form.title} inputProps={{ maxLength: 200 }} onChange={event => update({ title: event.target.value })} />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 180px' }, gap: 2 }}>
+            <TextField size="small" required label={labels.title} disabled={disabled} value={form.title} sx={{gridColumn:'1 / -1'}} inputProps={{ maxLength: 200 }} onChange={event => update({ title: event.target.value })} />
             <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled} required />
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
           </Box>
-          <Stack direction="row" useFlexGap flexWrap="wrap" spacing={3} mt={2}>
+          <Stack data-testid="expense-author-context" direction="row" useFlexGap flexWrap="wrap" spacing={3} sx={{mt:2,pt:2,borderTop:1,borderColor:'divider'}}>
             <Typography variant="caption" color="text.secondary">{lookup.issuer}: {accessProfile?.orgName || '—'}</Typography>
             <Typography variant="caption" color="text.secondary">{lookup.author}: {accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '—'}</Typography>
             <Typography variant="caption" color="text.secondary">{labels.vatDefault}: {data.settings.defaultVatRate}%</Typography>

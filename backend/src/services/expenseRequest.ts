@@ -63,7 +63,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     requestDate, title, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
-    const cost = await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark);
+    const cost = await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true);
     if (cost.expenseRequestId != null) throw createHttpError(409, 'EXPENSE_REQUEST_ITEM_ALREADY_LINKED');
     await tx.partnerTransactionCost.update({ where: { id: cost.id }, data: { expenseRequestId: document.id, expenseRequestLine: index + 1 } });
   }

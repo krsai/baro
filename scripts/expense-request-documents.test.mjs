@@ -6,6 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { expenseLineAmounts, expenseDocumentTotals } from '../frontend/src/utils/expenseRequest.mjs';
 import { exactLookupCode, normalizeLookupText } from '../frontend/src/utils/expenseLookup.mjs';
 import { expenseTotalsByCurrency } from '../frontend/src/utils/expenseRequest.mjs';
+import { formatEditableDecimal } from '../frontend/src/utils/editableDecimal.mjs';
 const require = createRequire(import.meta.url);
 const { registerExpenseRequest } = require('../backend/dist/services/expenseRequest.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
@@ -14,7 +15,7 @@ const input = () => ({ title: 'Factory expenses', requestDate: '2026-10-17', par
   { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Transport', quantity: '2', unitPrice: '100000', vatRate: '10', details: {} },
   { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {} },
 ] });
-function harness() {
+function harness({sourceEnabled=true}={}) {
   let state = { documents: [], costs: [], logs: [], production: [] };
   const client = data => {
     const readDocument = where => {
@@ -29,8 +30,9 @@ function harness() {
         create: async ({ data: row }) => { const cost = { id: `cost-${data.costs.length + 1}`, ...JSON.parse(JSON.stringify(row)) }; data.costs.push(cost); return cost; },
         update: async ({ where, data: patch }) => Object.assign(data.costs.find(row => row.id === where.id), patch),
       },
-      transactionCode: { findFirst: async ({ where }) => ({ id: where.id, baseId: 1, serviceTypeId: 4, taxTreatmentId: where.id === 8 ? 3 : 1, vatEnabled: where.id !== 8,
-        serviceType: { id: 4 }, base: { entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
+      transactionCode: { findFirst: async ({ where }) => ({ id: where.id, isActive:true, baseId: 1, serviceTypeId: 4, taxTreatmentId: where.id === 8 ? 3 : 1, vatEnabled: where.id !== 8,
+        taxTreatment:{code:where.id===8?'EXEMPT':'VAT',suffix:where.id===8?'E':'V'},
+        serviceType: { id: 4 }, base: {isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
       systemSetting: { findUnique: async () => ({ value: { defaultVatRate: '10' } }) },
       organization: { findFirst: async () => ({ id: 11 }), findUnique: async () => ({ name: 'Vendor' }) },
       workOrder: { findFirst: async () => ({ id: 30 }) }, workOrderItem: { findFirst: async () => ({ id: 1 }) }, styleProcess: { findFirst: async () => ({ id: 50 }) },
@@ -63,8 +65,15 @@ test('lookup only resolves unique exact codes and supports Vietnamese search', (
   assert.equal(exactLookupCode([...options,{id:3,code:'abc'}],'ABC'),null);
   assert.equal(normalizeLookupText('Đối tác'), 'doi tac');
 });
-function routeHarness() {
-  const db = harness(), effects = [];
+
+test('editable price formatting retains exact precision and unfinished decimals', () => {
+  assert.equal(formatEditableDecimal('5000'),'5,000');
+  assert.equal(formatEditableDecimal('999999999999.0001'),'999,999,999,999.0001');
+  assert.equal(formatEditableDecimal('5000.2500'),'5,000.2500');
+  assert.equal(formatEditableDecimal('0.'),'0.');assert.equal(formatEditableDecimal(''),'');
+});
+function routeHarness(options) {
+  const db = harness(options), effects = [];
   return { db, effects, route: postRoute({ prisma: db, requireOrgRole: async () => ({ organization: { id: 1 } }), ORG_MANAGEMENT_ROLES: ['ADMIN'],
     getCurrentRequestActorEmployeeId: () => 20, registerExpenseRequest, appendWorkLogQuantityRemark: undefined,
     trySyncAssignmentPlanSideEffectsAfterWorkLogMutation: async value => effects.push(value) }) };
@@ -167,4 +176,26 @@ test('VAT defaults inherit from system settings and organization overrides take 
   assert.equal((await loadAppSettings(db,1)).defaultVatRate,'8');
   db.systemSetting.findUnique=async({where})=>where.key==='APP_SETTINGS:DEFAULT'?{value:{defaultVatRate:'10'}}:null;
   assert.equal((await loadAppSettings(db,1)).defaultVatRate,'10');
+});
+
+test('expense inputs resolve SaaS masters by base and tax FKs without rewriting tenant identities', () => {
+  const {resolveSystemExpenseCode}=require('../backend/dist/services/systemExpenseCode.js');
+  const row={id:7,isActive:true,baseId:40,taxTreatmentId:1,code:'LEGACY',nameEn:'Local',taxTreatment:{code:'VAT',suffix:'V'},base:{id:40,code:'TRK',nameEn:'Master trucking',isActive:true,expenseType:{isActive:true},variants:[{id:22,taxTreatmentId:1,isActive:true,isEnabled:true}]}};
+  const result=resolveSystemExpenseCode(row);
+  assert.equal(result.id,7);assert.equal(result.systemSourceId,22);assert.equal(result.code,'TRKV');assert.equal(result.nameEn,'Master trucking');assert.equal(row.code,'LEGACY');
+  assert.equal(resolveSystemExpenseCode({...row,taxTreatmentId:2}),null);
+  assert.equal(resolveSystemExpenseCode({...row,base:{...row.base,variants:[]}}),null);
+});
+
+test('disabled SaaS variants cannot be submitted and the transaction leaves no costs behind', async () => {
+  const {route,db}=routeHarness({sourceEnabled:false});
+  await assert.rejects(route({body:input()},response()),/INVALID_TRANSACTION_CODE/);
+  assert.equal(db.state().documents.length,0);assert.equal(db.state().costs.length,0);
+});
+
+test('issuer and author come from authorized server context rather than request fields', async () => {
+  const {route,db}=routeHarness();
+  await route({body:{...input(),orgId:999,createdByEmployeeId:999}},response());
+  assert.equal(db.state().documents[0].orgId,1);assert.equal(db.state().documents[0].createdByEmployeeId,20);
+  assert.ok(db.state().costs.every(row=>row.orgId===1&&row.createdByEmployeeId===20));
 });

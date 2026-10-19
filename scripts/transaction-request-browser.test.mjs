@@ -52,7 +52,14 @@ try {
     await page.getByRole('alert').filter({hasText:lang==='ko'?'지급 대상':lang==='en'?'payee':'đối tác'}).waitFor();
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).isDisabled(),kind==='PROCESS');
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).inputValue(),kind==='PROCESS'?'0':'8');
-    await page.getByLabel(labels.price,{exact:false}).fill('100000');await page.getByLabel(labels.qty,{exact:false}).fill('2');
+    const priceInput=page.getByLabel(labels.price,{exact:false});
+    await priceInput.fill('5000');assert.equal(await priceInput.inputValue(),'5,000');
+    await priceInput.fill('5000.2500');assert.equal(await priceInput.inputValue(),'5,000.2500');
+    await priceInput.evaluate(el=>el.setSelectionRange(1,1));await page.keyboard.insertText('9');
+    assert.equal(await priceInput.inputValue(),'59,000.2500');
+    await priceInput.fill('100000');await page.getByLabel(labels.qty,{exact:false}).fill('2');
+    assert.equal(await page.getByLabel(labels.price,{exact:false}).inputValue(),'100,000');
+    assert.equal(await page.getByText(l.hint,{exact:true}).count(),0);
     if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.detail,exact:true}).click();await page.getByRole('checkbox',{name:labels.order,exact:true}).check();}
     await page.getByRole('combobox',{name:labels.order,exact:false}).click();await page.getByRole('option',{name:'L18-1',exact:true}).click();
     if(kind==='PROCESS') {
