@@ -31,7 +31,7 @@ export function validExpenseLine(line, code, currency) {
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]])) &&
     (code.base?.requiredFields || []).every(key => line.details[key]?.trim());
 }
-export const expenseLinePayload = line => ({ transactionCodeId: line.transactionCodeId, currency: line.currency,
+export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency,
   description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });

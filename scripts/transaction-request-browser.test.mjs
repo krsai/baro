@@ -9,7 +9,7 @@ const executablePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe',
 if(!executablePath)throw Error('Chrome required');
 const fixture=path.resolve('frontend/transaction-request-acceptance.html');
 if(existsSync(fixture))throw Error('Fixture already exists');
-writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Entry from '/src/pages/App/TransactionRequestEntry.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(location.search?Costs:Entry))));</script></body></html>`);
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Entry from '/src/pages/App/TransactionRequestEntry.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(location.search?Costs:Entry,location.search?{onOpenRequest:(kind,id)=>document.documentElement.dataset.destination=kind+':'+id}:null))));</script></body></html>`);
 const port=43185,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
 try {
@@ -129,8 +129,7 @@ try {
   await list.goto('http://127.0.0.1:'+port+'/transaction-request-acceptance.html?list');
   await list.getByRole('tab',{name:EXPENSE_REQUEST_TEXT.ko.documentList,exact:true}).click();
   await list.getByRole('button',{name:'EXP-000001',exact:true}).click();
-  const dialog=list.getByRole('dialog');await dialog.getByText('Packing',{exact:true}).waitFor();
-  assert.match(await dialog.innerText(),/275,000/);await dialog.getByRole('button',{name:EXPENSE_REQUEST_TEXT.ko.close,exact:true}).click();
+  assert.equal(await list.evaluate(()=>document.documentElement.dataset.destination),'request:1');
   await list.getByRole('tab',{name:EXPENSE_REQUEST_TEXT.ko.all,exact:true}).click();await list.getByText('Legacy cost',{exact:true}).waitFor();
   assert.deepEqual(listErrors,[]);await list.close();
   console.log('Expense document UI passed: ko/en/vi, multiple rows, add/remove, totals, same-body retry, code defaults and process FK payloads.');

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
 import { validateCostDate, COST_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
@@ -36,7 +37,7 @@ export function calculateRequestAmounts(unitPrice: unknown, quantity: unknown, c
   if (subtotal.lte(0) || amount.gte('10000000000000000')) return invalid('INVALID_TRANSACTION_AMOUNT');
   return { unitPrice: price, quantity: qty, subtotal, vatRate: rate, vatAmount, amount };
 }
-export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false) {
+export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any }) {
   const id = (value: unknown, optional = false): number | null => optional && (value == null || value === '') ? null : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : invalid('INVALID_REQUEST_REFERENCE');
   const partnerOrgId = id(body?.partnerOrgId)!, transactionCodeId = id(body?.transactionCodeId)!;
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
@@ -54,7 +55,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     details[key] = value.trim();
   }
   if (details.transportDate) validateCostDate(details.transportDate);
-  const previous = await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: REQUEST_INCLUDE });
+  const previous = edit ? null : await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: REQUEST_INCLUDE });
   if (previous) {
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
     if (previous.transactionCodeId !== transactionCodeId || previous.partnerOrgId !== partnerOrgId || previous.workOrderId !== workOrderId || previous.styleId !== styleId || previous.styleProcessId !== styleProcessId || previous.transactionDate !== transactionDate || previous.description !== description || previous.currency !== body.currency || previous.createdByEmployeeId !== actorId || !previous.unitPrice.equals(amounts.unitPrice) || !previous.quantity.equals(amounts.quantity) || !previous.vatRate.equals(amounts.vatRate) || COST_DETAIL_FIELDS.some(key => (previous.details?.[key] || '') !== (details[key] || ''))) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
@@ -68,6 +69,9 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'] } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
+  if (edit?.record && (!process || edit.record.orgId !== orgId ||
+    edit.record.styleId !== styleId || edit.record.styleProcessId !== styleProcessId || edit.record.assignmentPlanId !== assignmentPlanId ||
+    edit.record.assignmentPlan.workOrderId !== workOrderId)) return invalid('EXISTING_PRODUCTION_IDENTITY_IMMUTABLE');
   if (process && body.currency !== 'VND') return invalid('PROCESS_CURRENCY_MUST_BE_VND');
   const selections = { order: workOrderId, style: styleId, process: styleProcessId };
   for (const key of ['order','style','process'] as const) {
@@ -77,20 +81,37 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   }
   if (styleId && !workOrderId || styleProcessId && !styleId) return invalid('INVALID_REQUEST_REFERENCE');
   if (workOrderId && !await tx.workOrder.findFirst({ where: { id: workOrderId, orgId }, select: { id: true } })) return invalid('INVALID_TRANSACTION_ORDER');
-  if (styleId && !await tx.workOrderItem.findFirst({ where: { workOrderId, styleId, workOrder: { orgId }, style: { orgId } }, select: { id: true } })) return invalid('INVALID_REQUEST_STYLE');
-  if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, isActive: true }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
+  if (!edit?.record && styleId && !await tx.workOrderItem.findFirst({ where: { workOrderId, styleId, workOrder: { orgId }, style: { orgId } }, select: { id: true } })) return invalid('INVALID_REQUEST_STYLE');
+  if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
   for (const field of service.requiredFields) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
   const settings = await loadAppSettings(tx, orgId);
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
   if (!code.vatEnabled && body.vatRate != null && !validateVatRate(body.vatRate).isZero()) return invalid('VAT_NOT_ENABLED');
   const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, rate);
   if (process && !amounts.quantity.isInteger()) return invalid('PROCESS_QUANTITY_MUST_BE_INTEGER');
-  let outsourcedWorkRecordId: number | null = null;
+  let outsourcedWorkRecordId: number | null = edit?.record?.id ?? null;
   if (process) {
     if (amounts.quantity.gt(2147483647)) return invalid('INVALID_PROCESS_QUANTITY');
     await tx.$queryRaw`SELECT id FROM "WorkOrder" WHERE id=${workOrderId} AND "orgId"=${orgId} FOR UPDATE`;
     const order = await tx.workOrder.findFirst({ where: { id: workOrderId, orgId } });
     if (order?.invoiceFinalLockedAt) throw createHttpError(409,'ORDER_FINALLY_LOCKED');
+    if (edit?.record) {
+      const original = edit.record;
+      await tx.$queryRaw`SELECT id FROM "AssignmentPlan" WHERE id=${original.assignmentPlanId} AND "orgId"=${orgId} FOR UPDATE`;
+      const plan = await tx.assignmentPlan.findFirst({ where: { id: original.assignmentPlanId, orgId } });
+      if (!plan || plan.styleId !== styleId || plan.workOrderId !== workOrderId) return invalid('INVALID_REQUEST_REFERENCE');
+      const changed = original.outsourcingPartnerId !== partnerOrgId || original.quantity !== amounts.quantity.toNumber() || !new Prisma.Decimal(original.outsourceUnitPrice).equals(amounts.unitPrice);
+      if (changed) {
+        if (plan.isCompleted || plan.ctReviewRequired) throw createHttpError(409,'PRODUCTION_COMPLETED_OR_REVIEW_REQUIRED');
+        const period = await loadManagementPeriod(tx,orgId,plan.factoryId);
+        assertManagedDate(original.workLog.coverageStartDate || original.workLog.displayDate,period.startDate);
+        const months = [...new Set([original.workLog.displayDate.slice(0,7), ...[plan.closedAt,plan.productionCompletedAt,plan.completedAt].filter(Boolean).map(date => new Intl.DateTimeFormat('sv-SE',{timeZone:env.BUSINESS_TIME_ZONE || 'Asia/Seoul',year:'numeric',month:'2-digit'}).format(new Date(date)))])];
+        const locked = await tx.payrollSnapshot.findFirst({ where: { orgId, factoryId: plan.factoryId, month: { in: months }, isProvisional: false }, select: { id: true } });
+        if (locked) throw createHttpError(409,'PAYROLL_LOCKED');
+        await tx.outsourcedWorkRecord.update({ where: { id: original.id }, data: { outsourcingPartnerId: partnerOrgId, outsourceVendorName: partner.name,
+          quantity: amounts.quantity.toNumber(), outsourceUnitPrice: amounts.unitPrice, updatedByEmployeeId: actorId } });
+      }
+    } else {
     const plans = await tx.assignmentPlan.findMany({ where: { orgId, workOrderId, styleId, ...(assignmentPlanId ? { id: assignmentPlanId } : {}) } });
     const eligible = plans.filter((plan: any) => !plan.isCompleted && !plan.ctReviewRequired && hasValidAssignmentProcessRefs(plan, false) && snapshotProcessIds(plan.assignmentCtSnapshot)?.includes(styleProcessId!));
     if (eligible.length !== 1) throw createHttpError(409, eligible.length ? 'SELECT_ASSIGNMENT_PLAN' : 'ELIGIBLE_ASSIGNMENT_REQUIRED');
@@ -103,7 +124,10 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     const note = appendQuantityRemark ? await appendQuantityRemark({ db: tx, orgId, records: [record], note: description }) : description;
     const log = await tx.workLog.create({ data: { orgId, displayDate: transactionDate, coverageStartDate: transactionDate, coverageEndDate: transactionDate, entryMode: 'DAILY', recordKind: 'OUTSOURCING', factoryId: plan.factoryId, workerCount: 1, itemCount: 1, note, createdByEmployeeId: actorId } });
     outsourcedWorkRecordId = (await tx.outsourcedWorkRecord.create({ data: { ...record, workLogId: log.id } })).id;
+    }
   } else if (assignmentPlanId) return invalid('UNEXPECTED_ASSIGNMENT_PLAN');
   // Production is recorded only in the vendor table, never employee work or AT.
-  return tx.partnerTransactionCost.create({ data: { orgId, partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, clientKey: body.clientKey, createdByEmployeeId: actorId, ...amounts }, include: REQUEST_INCLUDE });
+  const data = { partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts };
+  return edit?.cost ? tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data, include: REQUEST_INCLUDE }) :
+    tx.partnerTransactionCost.create({ data: { ...data, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
 }

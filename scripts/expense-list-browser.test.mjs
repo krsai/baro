@@ -10,7 +10,7 @@ assert.ok(executablePath,'Chrome required');
 const fixture=path.resolve('frontend/expense-list-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"><style>body{margin:0}</style></head><body><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {CssBaseline} from '@mui/material';import {ThemeProvider} from '@mui/material/styles';import theme from '/src/theme';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Costs,{onNewRequest:()=>document.documentElement.dataset.new='true',onOpenHistorical:id=>document.documentElement.dataset.history=String(id)}))));</script></body></html>`);
+createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Costs,{onNewRequest:()=>document.documentElement.dataset.new='true',onOpenRequest:(kind,id)=>document.documentElement.dataset.destination=kind+':'+id}))));</script></body></html>`);
 const port=43203,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-list-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
@@ -24,7 +24,7 @@ try {
     await page.route('**/src/context/ManagementPeriodContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false,factories:[]});'}));
     const headers={'Access-Control-Allow-Origin':'*'},service={id:4,nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển'};
     const rows=[
-      {id:'old',sourceKind:'HISTORICAL_WORK_RECORD',partnerOrgId:11,partner:{id:11,name:'Old Vendor'},workLogId:77,transactionDate:'2026-09-20',description:'Legacy work',style:{id:40,name:'Legacy shirt',code:'OLD-40'},styleProcess:{id:50,processName:'Buttonhole'},createdByEmployee:{name:'Former Worker'},quantity:3,unitPrice:'1.2345',amount:'3.7035',currency:'VND'},
+      {id:'old',sourceKind:'HISTORICAL_WORK_RECORD',partnerOrgId:11,partner:{id:11,name:'Old Vendor'},workLogId:77,outsourcedWorkRecordId:78,transactionDate:'2026-09-20',description:'Legacy work',style:{id:40,name:'Legacy shirt',code:'OLD-40'},styleProcess:{id:50,processName:'Buttonhole'},createdByEmployee:{name:'Former Worker'},quantity:3,unitPrice:'1.2345',amount:'3.7035',currency:'VND'},
       {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV'},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
       {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV'},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
@@ -57,11 +57,11 @@ try {
     assert.equal(await page.locator('.cc-filter-grid select').nth(1).locator('option').first().textContent(),text.allPartners);
     const historicalRow=page.locator('tbody tr').filter({hasText:'Legacy work'});
     await historicalRow.locator('td').nth(2).dblclick();
-    assert.equal(await page.evaluate(()=>document.documentElement.dataset.history),'77');
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
-    await page.evaluate(()=>delete document.documentElement.dataset.history);
+    await page.evaluate(()=>delete document.documentElement.dataset.destination);
     await page.getByRole('button',{name:'Legacy work',exact:true}).dblclick();
-    assert.equal(await page.evaluate(()=>document.documentElement.dataset.history),'77');
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     assert.deepEqual(await page.locator('.cc-dates .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
@@ -81,9 +81,8 @@ try {
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(241, 242, 243)');
     await page.evaluate(()=>document.documentElement.style.removeProperty('--color-background-dark'));
     await page.getByRole('textbox',{name:text.search}).fill('OLD-40');assert.equal(await page.locator('tbody tr').count(),1);
-    await page.getByRole('button',{name:'Legacy work',exact:true}).click();await page.getByRole('dialog').waitFor();
-    await page.getByRole('dialog').getByRole('button',{name:text.historical,exact:true}).click();
-    assert.equal(await page.evaluate(()=>document.documentElement.dataset.history),'77');
+    await page.getByRole('button',{name:'Legacy work',exact:true}).click();
+    assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     await resetToAll();
     await page.getByRole('checkbox',{name:text.selectAll,exact:true}).check();assert.equal(await page.locator('tbody tr.is-selected').count(),3);
     await page.getByRole('tab',{name:text.partnerSummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
@@ -91,8 +90,7 @@ try {
     await page.getByRole('tab',{name:text.detail,exact:true}).click();
     await page.locator('.cc-filter-grid select').nth(1).selectOption('12');assert.equal(await page.locator('tbody tr').count(),2);
     await page.locator('.cc-filter-grid select').nth(3).selectOption('USD');assert.equal(await page.locator('tbody tr').count(),1);
-    await page.getByRole('button',{name:'Document cost',exact:true}).click();await page.getByRole('dialog').getByText('Document title',{exact:true}).waitFor();
-    await page.getByRole('dialog').getByRole('button',{name:doc.close,exact:true}).click();
+    await page.getByRole('button',{name:'Document cost',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
     await page.locator('.cc-filter-grid select').nth(2).selectOption('historical');assert.equal(await page.locator('tbody tr').count(),1);
     await resetToAll();
@@ -100,8 +98,7 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await page.locator('.cc-filter-grid select').nth(3).selectOption('USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
-    await page.getByRole('button',{name:'EXP-000001',exact:true}).click();await page.getByRole('dialog').getByText('Document title',{exact:true}).waitFor();
-    await page.getByRole('dialog').getByRole('button',{name:doc.close,exact:true}).click();
+    await page.getByRole('button',{name:'EXP-000001',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);

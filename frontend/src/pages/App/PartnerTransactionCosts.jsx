@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
+import { Alert, CircularProgress } from '@mui/material';
 import dayjs from 'dayjs';
-import ExpenseRequestView, { expenseRequestNumber } from '../../components/ExpenseRequestView';
+import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import StatusLabel from '../../components/StatusLabel';
 import MonthRangeSelector from '../../components/MonthRangeSelector';
 import { TRANSACTION_TEXT, OUTSOURCING_REQUEST_TEXT, serviceName } from '../../components/OutsourcingServiceDialog';
@@ -22,7 +22,7 @@ const currentMonthRange = managementStart => {
   return [start, start.endOf('month').startOf('day')];
 };
 
-export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical }) {
+export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest }) {
   const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod();
   const labels = { ...(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko), ...(OUTSOURCING_REQUEST_TEXT[languageCode] || OUTSOURCING_REQUEST_TEXT.ko) };
@@ -32,15 +32,12 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
   const [loading,setLoading] = useState(true), [errors,setErrors] = useState({ items:'',documents:'' });
   const [search,setSearch] = useState(''), [partner,setPartner] = useState(''), [industry,setIndustry] = useState(''), [currency,setCurrency] = useState(''), [kind,setKind] = useState('');
   const [expanded,setExpanded] = useState(true), [dense,setDense] = useState(true), [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
-  const [selected,setSelected] = useState(null), [selectedItem,setSelectedItem] = useState(null);
   const [dateFrom,setDateFrom] = useState(() => dayjs().startOf('month')), [dateTo,setDateTo] = useState(() => dayjs().endOf('month').startOf('day'));
   const loadSequence = useRef(0), rangeOrganization = useRef(null);
-  const rowClickTimer = useRef(null);
-  useEffect(() => () => clearTimeout(rowClickTimer.current), []);
   const error = errors[view === 'documents' ? 'documents' : 'items'];
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
-    setRows([]); setDocuments([]); setSelected(null); setSelectedItem(null); setLoading(true); setErrors({items:'',documents:''});
+    setRows([]); setDocuments([]); setLoading(true); setErrors({items:'',documents:''});
     try {
       const query = buildQueryString({orgId:activeOrgId});
       const [items,requests] = await Promise.allSettled([
@@ -109,20 +106,12 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
     setDateFrom(period.startDate && start.isBefore(dayjs(period.startDate),'day') ? dayjs(period.startDate) : start);
     setDateTo(month.endOf('month').startOf('day'));
   };
-  const openRow = row => {const document=documentsById.get(row.expenseRequestId);if(document)setSelected(document);else setSelectedItem(row);};
   const editRow = row => {
-    clearTimeout(rowClickTimer.current);
-    const id = row.workLogId || row.outsourcedWorkRecord?.workLogId;
-    setSelected(null); setSelectedItem(null);
-    if (id && onOpenHistorical) onOpenHistorical(id);
-    else openRow(row);
+    if (row.expenseRequestId) return onOpenRequest?.('request',String(row.expenseRequestId));
+    if (row.sourceKind === 'HISTORICAL_WORK_RECORD') return onOpenRequest?.('legacy',String(row.outsourcedWorkRecordId));
+    return onOpenRequest?.('cost',String(row.id));
   };
-  const openRowOnClick = (event, row) => {
-    event.stopPropagation();
-    clearTimeout(rowClickTimer.current);
-    if (event.detail < 2) rowClickTimer.current = setTimeout(() => openRow(row), 250);
-  };
-  const workLogId = selectedItem?.workLogId || selectedItem?.outsourcedWorkRecord?.workLogId;
+  const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   const recordKind = row => row.sourceKind === 'HISTORICAL_WORK_RECORD' ? text.historical : text.recorded;
   return <main className="compact-costs cc-live">
     <div className="cc-heading"><div><span className="cc-kicker">BARO GARMENT / COST REQUESTS</span><h1>{labels.costs}</h1></div><div className="cc-actions">
@@ -152,11 +141,11 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
           {filtered.map((row,index)=><tr key={row.id} onDoubleClick={()=>editRow(row)} className={checked.includes(row.id)?'is-selected':''}>
             <td className="cc-check" onDoubleClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(row.id)} onChange={()=>toggle(row.id)} /></td><td className="cc-row-no">{index+1}</td><td>{row.transactionDate}</td>
             <td>{industryLabel(row)}</td><td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.partner?.name || '—'}</button></td><td><span className="cc-code">{row.transactionCode?.code || '—'}</span></td><td>{row.workOrder?.orderNumber || '—'}</td>
-            <td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.description}</button>{documentsById.has(row.expenseRequestId) && <button className="cc-document-link" onClick={event=>{event.stopPropagation();setSelected(documentsById.get(row.expenseRequestId));}} onDoubleClick={event=>event.stopPropagation()}>{expenseRequestNumber(row.expenseRequestId)}</button>}</td>
+            <td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.description}</button>{documentsById.has(row.expenseRequestId) && <button className="cc-document-link" onClick={event=>{event.stopPropagation();onOpenRequest?.('request',String(row.expenseRequestId));}} onDoubleClick={event=>event.stopPropagation()}>{expenseRequestNumber(row.expenseRequestId)}</button>}</td>
             <td className="cc-number">{number(row.quantity)}</td><td className="cc-number">{number(row.unitPrice)}</td><td className="cc-number cc-amount">{money(row.amount,row.currency)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><StatusLabel label={recordKind(row)} tone={row.sourceKind==='HISTORICAL_WORK_RECORD'?'gray':'blue'} /></td>
           </tr>)}{!filtered.length && <tr><td colSpan={13} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : view==='documents' ? <table><thead><tr>{[docText.numbering,docText.title,docText.payee,docText.date,docText.applicant,docText.items,docText.total].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>
-          {filteredDocuments.map(document=><tr key={document.id} onClick={()=>setSelected(document)}><td><button className="cc-cell-link" onClick={()=>setSelected(document)}>{expenseRequestNumber(document.id)}</button></td><td><button className="cc-cell-link" onClick={()=>setSelected(document)}>{document.title}</button></td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
+          {filteredDocuments.map(document=><tr key={document.id} onClick={()=>onOpenRequest?.('request',String(document.id))}><td><button className="cc-cell-link" onClick={()=>onOpenRequest?.('request',String(document.id))}>{expenseRequestNumber(document.id)}</button></td><td><button className="cc-cell-link" onClick={()=>onOpenRequest?.('request',String(document.id))}>{document.title}</button></td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
           {!filteredDocuments.length && <tr><td colSpan={7} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : <table className="cc-summary"><thead><tr><th>{view==='partner'?labels.partner:labels.industry}</th><th>{labels.currency}</th><th className="cc-number">{text.count}</th><th className="cc-number">{labels.amount}</th><th>{text.share}</th></tr></thead><tbody>
           {groups.map(group=><tr key={group.key}><td>{group.name}</td><td>{group.currency}</td><td className="cc-number">{group.count}</td><td className="cc-number cc-amount">{money(group.amount,group.currency)}</td><td><div className="cc-share"><span><i style={{width:`${group.share}%`}} /></span>{group.share.toFixed(1)}%</div></td></tr>)}{!groups.length && <tr><td colSpan={5} className="cc-empty">{text.empty}</td></tr>}
@@ -164,15 +153,5 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenHistorical
       </div>}
       <div className="cc-footer"><span>{text.results}: {loading || error ? '—' : view==='items'?filtered.length:view==='documents'?filteredDocuments.length:groups.length} · {text.fullRange}</span><span>BARO GARMENT</span></div>
     </section>
-    <ExpenseRequestView document={selected} languageCode={languageCode} onClose={()=>setSelected(null)} />
-    <Dialog open={Boolean(selectedItem)} onClose={()=>setSelectedItem(null)} fullWidth maxWidth="sm"><DialogTitle>{text.details}</DialogTitle><DialogContent>{selectedItem && <dl className="cc-detail">{[
-      [labels.date,selectedItem.transactionDate],[labels.partner,selectedItem.partner?.name],[labels.industry,industryLabel(selectedItem)],[labels.code,selectedItem.transactionCode?.code],[labels.description,selectedItem.description],
-      [text.order,selectedItem.workOrder?.orderNumber],[text.style,[selectedItem.style?.name,selectedItem.style?.code].filter(Boolean).join(' · ')],[docText.process,selectedItem.styleProcess?.processName],
-      [text.quantity,number(selectedItem.quantity)],[text.unitPrice,number(selectedItem.unitPrice)],[labels.amount,money(selectedItem.amount,selectedItem.currency)],[labels.creator,selectedItem.createdByEmployee?.name],
-      ...(selectedItem.subtotal == null ? [] : [[docText.subtotal,money(selectedItem.subtotal,selectedItem.currency)]]),
-      ...(selectedItem.vatRate == null ? [] : [[docText.vat,String(selectedItem.vatRate)]]),
-      ...(selectedItem.vatAmount == null ? [] : [[docText.tax,money(selectedItem.vatAmount,selectedItem.currency)]]),
-      ...Object.entries(selectedItem.details||{}).filter(([,value])=>value).map(([key,value])=>[labels[key]||key,value]),
-    ].map(([label,value],index)=><div key={index}><dt>{label}</dt><dd>{value || '—'}</dd></div>)}</dl>}</DialogContent><DialogActions>{workLogId && onOpenHistorical && <button className="cc-button" onClick={()=>{onOpenHistorical(workLogId);setSelectedItem(null);}}>{text.historical}</button>}<button className="cc-button" onClick={()=>setSelectedItem(null)}>{docText.close}</button></DialogActions></Dialog>
   </main>;
 }

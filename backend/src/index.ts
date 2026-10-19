@@ -7,6 +7,7 @@ import { registerTransactionSettingRoutes } from './services/transactionSettingR
 import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
+import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
 import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion } from './services/priorProductionCompletion';
@@ -27442,6 +27443,10 @@ app.get("/partner-transaction-costs", async (req, res) => {
   const period = await loadManagementPeriod(prisma,access.organization.id);
   const transactionDate = managedDateRange(period,req.query);
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
+});
+registerExpenseEditorRoutes(app,prisma,{
+  requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,
+  syncProduction:async(orgId: number,assignmentPlanIds: number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'}),
 });
 app.get('/expense-requests', async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });

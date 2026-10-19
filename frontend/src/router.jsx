@@ -385,8 +385,12 @@ const router = createBrowserRouter([
             element: <TransactionRequestEntry />,
           },
           {
+            path: 'outsourcing-record/edit/:sourceKind/:sourceId',
+            element: <TransactionRequestEntry />,
+          },
+          {
             path: 'outsourcing-record/:workLogId',
-            element: <WorkEntry recordKind="OUTSOURCING" />,
+            element: <Navigate to="/outsourcing-record" replace />,
           },
           {
             path: 'production-analysis',

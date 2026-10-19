@@ -98,7 +98,9 @@
     "test:expense-request-documents": "npm --prefix backend run build && node --test scripts/expense-request-documents.test.mjs",
     "test:railway-schema-preflight": "node --test scripts/railway-schema-preflight.test.mjs",
     "test:expense-list": "node --test scripts/expense-list.test.mjs",
-    "test:expense-list-browser": "node scripts/expense-list-browser.test.mjs"
+    "test:expense-list-browser": "node scripts/expense-list-browser.test.mjs",
+    "test:expense-request-editor": "npm --prefix backend run build && node --test scripts/expense-request-editor.test.mjs",
+    "test:expense-editor-browser": "node scripts/expense-editor-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",
