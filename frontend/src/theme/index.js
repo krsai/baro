@@ -352,6 +352,18 @@ const inputSurface = {
   '&:hover': { backgroundColor: ui.color.surface },
   '&.Mui-focused': { backgroundColor: ui.color.surface },
 };
+// Tone only: retain the pickers' dimensions, circular days and navigation layout.
+const calendarChoice = {
+  color: ui.color.text,
+  '&:hover': { backgroundColor: getLabelPalette('blue').background },
+  '&.Mui-focusVisible': { backgroundColor: getLabelPalette('blue').background },
+  '&.Mui-selected': {
+    backgroundColor: getLabelPalette('blue').background,
+    color: getLabelPalette('blue').text,
+    '&:hover, &:focus': { backgroundColor: getLabelPalette('blue').border },
+  },
+  '&.Mui-disabled': { color: baseTheme.palette.text.disabled },
+};
 const theme = createTheme(baseTheme, {
   palette: {
     primary: { main: ui.color.primary },
@@ -440,11 +452,32 @@ const theme = createTheme(baseTheme, {
     } } },
     MuiPickersOutlinedInput: { styleOverrides: { root: {
       ...inputSurface,
+      color: ui.color.text,
+      '& .MuiIconButton-root': { color: ui.color.muted, '&:hover': { backgroundColor: getLabelPalette('blue').background } },
       '& .MuiPickersOutlinedInput-notchedOutline': { border: '1px solid #dfe5ed' },
       '&.Mui-focused .MuiPickersOutlinedInput-notchedOutline': { border: '2px solid ' + ui.color.primary },
       '&.Mui-error .MuiPickersOutlinedInput-notchedOutline': { borderColor: baseTheme.palette.error.main },
       '&.Mui-disabled': { backgroundColor: ui.color.header },
     } } },
+    MuiPickerPopper: { styleOverrides: { paper: {
+      backgroundColor: ui.color.surface,
+      backgroundImage: 'none',
+      border: `1px solid ${ui.color.border}`,
+      boxShadow: '0 8px 24px rgba(16, 24, 40, 0.08)',
+    } } },
+    MuiPickersLayout: { styleOverrides: { root: { backgroundColor: ui.color.surface, color: ui.color.text } } },
+    MuiPickersCalendarHeader: { styleOverrides: {
+      label: { color: ui.color.text },
+      switchViewButton: { color: ui.color.muted },
+    } },
+    MuiPickersArrowSwitcher: { styleOverrides: { button: { color: ui.color.muted } } },
+    MuiDayCalendar: { styleOverrides: { weekDayLabel: { color: ui.color.muted } } },
+    MuiPickersDay: { styleOverrides: { root: {
+      ...calendarChoice,
+      '&.MuiPickersDay-today:not(.Mui-selected)': { borderColor: getLabelPalette('blue').border, color: getLabelPalette('blue').text },
+    } } },
+    MuiMonthCalendar: { styleOverrides: { button: calendarChoice } },
+    MuiYearCalendar: { styleOverrides: { button: calendarChoice } },
     MuiDialog: { styleOverrides: { paper: { borderRadius: ui.radius.panel } } },
     MuiTab: { styleOverrides: { root: { color: ui.color.muted, backgroundColor: ui.color.canvas, '&.Mui-selected': { color: ui.color.primary } } } },
   },
