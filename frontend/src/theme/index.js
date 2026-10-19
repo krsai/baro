@@ -1,5 +1,5 @@
 import { ui } from './ui';
-import { getLabelPalette } from './labelPalette';
+import { getLabelPalette, LABEL_PALETTE } from './labelPalette';
 import { createTheme } from '@mui/material/styles';
 import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
 
@@ -368,6 +368,15 @@ const theme = createTheme(baseTheme, {
   components: {
     MuiCssBaseline: { styleOverrides: {
       ':root': {
+        ...Object.fromEntries(Object.entries(LABEL_PALETTE).flatMap(([tone, colors]) =>
+          Object.entries(colors).map(([role, value]) => [`--label-${tone}-${role}`, value]))),
+        '--color-text-muted': ui.color.muted,
+        '--color-surface': ui.color.surface,
+        '--ui-panel-radius': `${ui.radius.panel}px`,
+        '--ui-control-radius': `${ui.radius.control}px`,
+        '--ui-table-font-size': ui.table.fontSize,
+        '--ui-table-padding': ui.table.cellPadding,
+        '--ui-table-compact-padding': ui.table.compactPadding,
         '--color-primary': ui.color.primary,
         '--color-text-dark': ui.color.text,
         '--color-background-light': ui.color.canvas,
