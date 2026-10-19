@@ -22,8 +22,8 @@ import { formatCurrency } from '../../utils/currencyFormat';
 import { expenseTotalsByCurrency, expenseLinePayload, newExpenseLine } from '../../utils/expenseRequest.mjs';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
-const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New expense request', vi: 'Tạo đề nghị chi phí' };
-const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit expense request', vi: 'Sửa đề nghị chi phí' };
+const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New Payment Request', vi: 'Tạo đề nghị thanh toán' };
+const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit Payment Request', vi: 'Sửa đề nghị thanh toán' };
 const LOCKED_TEXT = { ko: '최종 마감된 주문의 비용 신청은 수정할 수 없습니다.', en: 'This request is read-only because its order is finally locked.', vi: 'Không thể sửa đề nghị vì đơn hàng đã khóa quyết toán.' };
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;

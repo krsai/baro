@@ -65,7 +65,7 @@ export const UI_MESSAGES = {
     productionPlan: { ko: '작업 계획 현황', en: 'Production Plan', vi: 'Kế hoạch sản xuất' },
     standardReview: { ko: '표준 공임 검토', en: 'Standard Review', vi: 'Xem xet cong chuan' },
     workHistory: { ko: '작업 기록', en: 'Work Logs', vi: 'Nhật ký công việc' },
-    outsourcingRecord: { ko: '비용 신청', en: 'Transaction cost requests', vi: 'Đề nghị chi phí giao dịch' },
+    outsourcingRecord: { ko: '비용 신청', en: 'Payment Request', vi: 'Đề nghị thanh toán' },
     appSettings: { ko: '앱 설정', en: 'App settings', vi: 'Cài đặt ứng dụng' },
     transactionCodes: { ko: '거래 코드·입력 옵션', en: 'Transaction codes and inputs', vi: 'Mã giao dịch và thông tin nhập' },
     shipmentReview: { ko: '수량 정산', en: 'Quantity Settlement', vi: 'Đối chiếu số lượng' },

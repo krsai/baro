@@ -32,8 +32,8 @@ const TITLE_BY_TYPE = {
 
 const LIST_TEXT = {
   ko: { viewHistory: '내역보기', costHistory: '비용 신청 내역' },
-  en: { viewHistory: 'View history', costHistory: 'Cost request history' },
-  vi: { viewHistory: 'Xem lịch sử', costHistory: 'Lịch sử đề nghị chi phí' },
+  en: { viewHistory: 'View history', costHistory: 'Payment request history' },
+  vi: { viewHistory: 'Xem lịch sử', costHistory: 'Lịch sử đề nghị thanh toán' },
 };
 
 const DELETE_TEXT = {
