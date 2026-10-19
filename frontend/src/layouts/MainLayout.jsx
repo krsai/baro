@@ -34,7 +34,8 @@ import BusinessIcon from '@mui/icons-material/Business';
 import GroupIcon from '@mui/icons-material/Group';
 import TuneIcon from '@mui/icons-material/Tune';
 import LogoutIcon from '@mui/icons-material/Logout';
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import HandshakeOutlinedIcon from '@mui/icons-material/HandshakeOutlined';
+import FactoryOutlinedIcon from '@mui/icons-material/FactoryOutlined';
 import PeopleIcon from '@mui/icons-material/People';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import StyleIcon from '@mui/icons-material/Style';
@@ -624,7 +625,7 @@ const MainLayout = () => {
       },
       {
         label: getUiMessage('menu.sales', '\uC601\uC5C5 \uAD00\uB9AC', languageCode),
-        icon: <ShoppingCartIcon />,
+        icon: <HandshakeOutlinedIcon />,
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.ORDER,
         isOpen: orderOpen,
@@ -653,7 +654,7 @@ const MainLayout = () => {
       },
       {
         label: getUiMessage('menu.production', 'Production', languageCode),
-        icon: <HistoryIcon />,
+        icon: <FactoryOutlinedIcon />,
         isParent: true,
         menuGroupKey: MENU_GROUP_KEYS.RECORDS,
         isOpen: recordsOpen,
