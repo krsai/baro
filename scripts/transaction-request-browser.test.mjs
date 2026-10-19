@@ -70,9 +70,31 @@ try {
       await page.getByRole('button',{name:l.add,exact:true}).click();await page.getByTestId('expense-line').nth(2).getByRole('button',{name:l.remove,exact:true}).click();
       assert.equal(await page.getByTestId('expense-line').count(),2);
       assert.match(await page.getByTestId('expense-totals').textContent(),/275/);
+      const first=page.getByTestId('expense-line').nth(0);
+      await first.getByLabel(l.description,{exact:false}).fill('First expense');
+      await second.getByLabel(l.description,{exact:false}).fill('Second expense');
+      assert.ok((await first.getByRole('textbox',{name:labels.code,exact:false}).boundingBox()).width<=128);
+      const secondHandle=second.getByRole('button',{name:l.reorder+' 2',exact:true});
+      await secondHandle.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowUp');await page.keyboard.press('Space');
+      await page.waitForFunction(()=>document.querySelector('[data-testid="expense-line"] input')!=null);
+      assert.equal(await page.getByTestId('expense-line').first().getByLabel(l.description,{exact:false}).inputValue(),'Second expense');
+      if(lang==='ko') {
+        const source=await page.getByTestId('expense-line').first().getByRole('button',{name:l.reorder+' 1',exact:true}).boundingBox();
+        const target=await page.locator('tbody[data-rfd-draggable-id]').nth(1).boundingBox();
+        await page.mouse.move(source.x+source.width/2,source.y+source.height/2);await page.mouse.down();
+        await page.mouse.move(source.x+source.width/2,source.y+source.height/2+10,{steps:5});
+        await page.mouse.move(source.x+source.width/2,target.y+target.height-10,{steps:20});
+        await page.mouse.up();
+        await page.waitForFunction(()=>Array.from(document.querySelectorAll('[data-testid="expense-line"]')).at(0).querySelectorAll('input')[1].value==='First expense');
+        const restore=page.getByTestId('expense-line').nth(1).getByRole('button',{name:l.reorder+' 2',exact:true});
+        await restore.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowUp');await page.keyboard.press('Space');
+      }
+      assert.match(await page.getByTestId('expense-totals').textContent(),/275/);
     }
     console.log('Submitting',lang,kind);await page.getByRole('button',{name:labels.submit,exact:true}).click();if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
-    assert.equal(payload.items.length,kind==='LOGISTICS'?2:1);assert.equal(payload.partnerOrgId,11);assert.match(payload.requestDate,/^\d{4}-\d{2}-\d{2}$/);payload=payload.items[0];
+    assert.equal(payload.items.length,kind==='LOGISTICS'?2:1);assert.equal(payload.partnerOrgId,11);assert.match(payload.requestDate,/^\d{4}-\d{2}-\d{2}$/);
+    if(kind==='LOGISTICS')assert.deepEqual(payload.items.map(row=>row.description),['Second expense','First expense']);
+    payload=payload.items[kind==='LOGISTICS'?1:0];
     assert.ok(!('transactionDate' in payload));assert.equal(payload.transactionCodeId,7);assert.equal(payload.workOrderId,30);assert.equal(payload.unitPrice,'100000');assert.equal(payload.quantity,'2');
     assert.equal(payload.styleProcessId,kind==='PROCESS'?50:null);assert.equal(payload.assignmentPlanId,kind==='PROCESS'?61:null);
     assert.equal(payload.vatRate,kind==='PROCESS'?'0':'10');assert.ok(!('coverageStartDate'in payload));assert.ok(!('createdByEmployeeId'in payload));assert.deepEqual(errors,[]);

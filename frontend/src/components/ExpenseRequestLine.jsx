@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
-import { DeleteOutline, ExpandLess, ExpandMore } from '@mui/icons-material';
+import { DeleteOutline, DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
 import ExpenseLookupField from './ExpenseLookupField';
 import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { serviceName, TRANSACTION_TEXT } from './OutsourcingServiceDialog';
@@ -9,7 +9,7 @@ import { requestJSON, buildQueryString } from '../utils/apiClient';
 import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, partner, currency, settings, orgId, labels, languageCode, disabled, onChange, onRemove, onStatus }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, partner, currency, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus }) {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
   const [optionsLoading, setOptionsLoading] = useState(false), [optionsError, setOptionsError] = useState(false), [reload, setReload] = useState(0);
@@ -60,14 +60,14 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const field = { size: 'small', fullWidth: true, disabled };
   return <>
     <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
-      <TableCell sx={{ color: 'text.secondary', pt: '20px !important' }}>{index + 1}</TableCell>
+      <TableCell sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center"><IconButton {...dragHandleProps} size="small" disabled={disabled} aria-label={labels.reorder + ' ' + (index + 1)} sx={{ cursor: disabled ? 'default' : 'grab', touchAction: 'none' }}><DragIndicator fontSize="small" /></IconButton>{index + 1}</Stack></TableCell>
       <TableCell><ExpenseLookupField directCode required label={labels.code} options={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false)} value={code} disabled={disabled} languageCode={languageCode} onChange={chooseCode} columns={[
         {key:'code',label:common.code,value:row=>row.code},
         {key:'name',label:labels.description,value:row=>serviceName(row,languageCode)},
         {key:'type',label:expenseLabels.type,value:row=>serviceName(row.base?.expenseType,languageCode)},
         {key:'tax',label:lookupText.tax,value:row=>serviceName(row.taxTreatment,languageCode)||(row.vatEnabled?'VAT':lookupText.noVat)},
       ]} />
-        {code && <Typography variant="caption" color="text.secondary">{serviceName(code,languageCode)} · {serviceName(code.base?.expenseType,languageCode)}</Typography>}
+        {code && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflowWrap: 'anywhere' }}>{serviceName(code,languageCode)} · {serviceName(code.base?.expenseType,languageCode)}</Typography>}
       </TableCell>
       <TableCell><TextField {...field} required label={labels.description} value={line.description} onChange={change('description')} inputProps={{ maxLength: 2000 }} /></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { Add } from '@mui/icons-material';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
@@ -32,6 +33,7 @@ export default function TransactionRequestEntry() {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const lookup = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const organizationRef = useRef(activeOrgId);
+  const tableContainerRef = useRef(null), dragColumnWidths = useRef([]);
   organizationRef.current = activeOrgId;
   const [form, setForm] = useState(newDocument), [data, setData] = useState({ partners: [], codes: [], orders: [], settings: { defaultVatRate: '10' } });
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
@@ -51,6 +53,16 @@ export default function TransactionRequestEntry() {
   const update = patch => { setDirty(true); setForm(current => ({ ...current, ...patch })); };
   const changeLine = useCallback((key, patch) => { setDirty(true); setForm(current => ({ ...current, items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) })); }, []);
   const lineStatus = useCallback((key, valid) => setStatuses(current => current[key] === valid ? current : { ...current, [key]: valid }), []);
+  const reorderLines = ({ source, destination }) => {
+    if (disabled || !destination || source.index === destination.index) return;
+    setDirty(true);
+    setForm(current => {
+      const items = [...current.items];
+      const [moved] = items.splice(source.index, 1);
+      items.splice(destination.index, 0, moved);
+      return { ...current, items };
+    });
+  };
   const removeLine = key => { setDirty(true); setForm(current => ({ ...current, items: current.items.length === 1 ? [newExpenseLine()] : current.items.filter(line => line.key !== key) })); };
   const totals = useMemo(() => expenseDocumentTotals(form.items, form.currency), [form.items, form.currency]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
@@ -100,11 +112,26 @@ export default function TransactionRequestEntry() {
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mt={2}><TextField size="small" label={lookup.issuer} value={accessProfile?.orgName || '\u2014'} InputProps={{readOnly:true}} /><TextField size="small" label={lookup.author} value={accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '\u2014'} InputProps={{readOnly:true}} /></Stack></Box>
         </Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
-        <TableContainer><Table size="small" sx={{ minWidth: 1430 }}>
-          <TableHead><TableRow>{[['#',36],[labels.code,210],[labels.description,230],[labels.quantity,90],[labels.price,120],[labels.vat,85],[labels.subtotal,130],[labels.tax,120],[labels.total,140],['',100]].map(([label,width],index) => <TableCell key={index} sx={{ minWidth: width }} align={index >= 6 && index <= 8 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
-          <TableBody>{form.items.map((line,index) => <ExpenseRequestLine key={line.key} line={line} index={index} {...data} partner={partner} currency={form.currency} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />)}</TableBody>
-        </Table></TableContainer>
-        <Box sx={{ px: 3, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Button startIcon={<Add />} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button><Typography component="span" variant="caption" color="text.secondary" ml={2}>{labels.limit}</Typography></Box>
+        <DragDropContext onBeforeCapture={() => {
+          dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);
+        }} onDragEnd={reorderLines}>
+          <Droppable droppableId="expense-items" isDropDisabled={disabled}>{provided => (
+            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1200, tableLayout: 'fixed' }}>
+              <colgroup>{[64,128,null,96,112,96,112,112,128,88].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
+              <TableHead><TableRow>{['#',labels.code,labels.description,labels.quantity,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 6 && index <= 8 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
+              {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
+                <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
+                  <ExpenseRequestLine line={line} index={index} {...data} dragHandleProps={drag.dragHandleProps} partner={partner} currency={form.currency} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} />
+                </TableBody>
+              )}</Draggable>)}
+              {provided.placeholder}
+            </Table></TableContainer>
+          )}</Droppable>
+        </DragDropContext>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Typography variant="caption" color="text.secondary">{labels.limit}</Typography>
+          <Button startIcon={<Add />} sx={{ flexShrink:0 }} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button>
+        </Stack>
         <Stack alignItems="flex-end" spacing={1} sx={{ p: 3, bgcolor: 'grey.50' }} data-testid="expense-totals">
           <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.subtotal}</Typography><Typography>{money(totals.subtotal)}</Typography></Stack>
           <Stack direction="row" justifyContent="space-between" sx={{ width: { xs: '100%', sm: 360 } }}><Typography color="text.secondary">{labels.tax}</Typography><Typography>{money(totals.vatAmount)}</Typography></Stack>
