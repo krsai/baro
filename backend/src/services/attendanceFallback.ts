@@ -64,12 +64,6 @@ export const resolveAtAttendanceDay = ({
   if (!isEligibleWorker || isOnLeave || !isWorkingDay) {
     return { seconds: 0, source: "NONE" };
   }
-  const fallbackSeconds = Number(fallbackWorkSeconds);
-  return {
-    seconds:
-      Number.isFinite(fallbackSeconds) && fallbackSeconds > 0
-        ? Math.round(fallbackSeconds)
-        : 0,
-    source: "FALLBACK",
-  };
+  // Missing rows can be non-attendance. Never manufacture labor for AT training.
+  return { seconds: 0, source: "NONE" };
 };

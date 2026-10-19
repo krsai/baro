@@ -54,6 +54,8 @@ const normalizeStyle = (value = {}) => ({
   timeBucketQuantities: normalizeBucketQuantities(value.timeBucketQuantities),
   workRecordCount: Math.max(0, Number(value.workRecordCount) || 0),
   hasWorkRecords: Boolean(value.hasWorkRecords) || (Number(value.workRecordCount) || 0) > 0,
+  canDelete: value.canDelete === true,
+  deleteBlockedReason: value.deleteBlockedReason || null,
   createdAt: value.createdAt || null,
   updatedAt: value.updatedAt || null,
 });

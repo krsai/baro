@@ -1,4 +1,5 @@
 import DeleteActionButton from '../../../components/DeleteActionButton';
+import { waitForAtSyncJob } from '../../../utils/atSyncJob.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
 import {
@@ -84,12 +85,12 @@ const formatAtReliabilityBadgeLabel = (reliability, languageCode) => {
 };
 const resolveStyleDeleteBlockedByWorkRecordsMessage = (languageCode) => {
   if (languageCode === 'en') {
-    return 'Work records exist, so this style cannot be deleted.';
+    return 'Linked production, orders, assignments or source history prevent deletion.';
   }
   if (languageCode === 'vi') {
-    return 'Style nay da co nhat ky san xuat nen khong the xoa.';
+    return 'Không thể xóa style có hồ sơ sản xuất, đơn hàng, phân công hoặc dữ liệu nguồn liên kết.';
   }
-  return '작업기록이 존재해서 삭제할 수 없습니다.';
+  return '작업·주문·배정 등 연결된 이력이 있어 삭제할 수 없습니다.';
 };
 const resolveStAtGapPalette = resolveDivergenceColor;
 const toTimestamp = (value) => {
@@ -161,6 +162,10 @@ const resolveAtSyncNonSuccessMessage = (languageCode, result) => {
   const monthKey =
     String(result?.trainingMonthKey || result?.diagnostics?.trainingMonthKey || '').trim() || '-';
   const reason = String(result?.reason || '').trim() || 'unknown';
+  if (reason === 'no_completed_factory_months') return languageCode === 'ko'
+    ? 'AT 학습에 사용할 월말까지 입력된 작업·출퇴근 기록이 없습니다.'
+    : languageCode === 'vi' ? 'Chưa có tháng có dữ liệu công việc và chấm công đến cuối tháng để học AT.'
+    : 'No completed factory months have both work and attendance entered through month-end.';
   if (languageCode === 'ko') {
     if (reason === 'no_fitted_metrics') {
       return `AT 갱신 미완료 (회귀식 생성 실패, 기준월 ${monthKey})`;
@@ -224,6 +229,11 @@ const StyleBoard = () => {
   const [isAtSyncRunning, setAtSyncRunning] = useState(false);
   const [isAtResetRunning, setAtResetRunning] = useState(false);
   const [atSyncStatus, setAtSyncStatus] = useState(null);
+  const mountedRef = useRef(true);
+  const currentOrgRef = useRef(activeOrgId);
+  currentOrgRef.current = activeOrgId;
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
+  useEffect(() => { setAtSyncRunning(false); setAtSyncStatus(null); }, [activeOrgId]);
   const [isAtSyncStatusLoading, setAtSyncStatusLoading] = useState(false);
   const [isAtResetConfirmOpen, setAtResetConfirmOpen] = useState(false);
   const [isConfirmOpen, setConfirmOpen] = useState(false);
@@ -236,9 +246,11 @@ const StyleBoard = () => {
     setLoading(true);
     try {
       const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh });
+      if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return items;
       setStyles(items);
       return items;
     } catch (error) {
+      if (!mountedRef.current || currentOrgRef.current !== activeOrgId || error?.status === 499) return [];
       setStyles([]);
       if (notifyOnError) {
         showNotification(
@@ -250,7 +262,7 @@ const StyleBoard = () => {
       if (throwOnError) throw error;
       return [];
     } finally {
-      setLoading(false);
+      if (mountedRef.current && currentOrgRef.current === activeOrgId) setLoading(false);
     }
   }, [activeOrgId, languageCode, showNotification]);
 
@@ -266,16 +278,17 @@ const StyleBoard = () => {
     setAtSyncStatusLoading(true);
     try {
       const status = await requestJSON(
-        `/at-sync/status${buildQueryString({ orgId: activeOrgId, mode: 'previous' })}`
+        `/at-sync/status${buildQueryString({ orgId: activeOrgId, mode: 'previous' })}`, {skipCache:true,skipGlobalLoading:true}
       );
+      if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return null;
       setAtSyncStatus(status);
       return status;
     } catch (error) {
-      setAtSyncStatus(null);
+      if (mountedRef.current && currentOrgRef.current === activeOrgId) setAtSyncStatus(null);
       if (throwOnError) throw error;
       return null;
     } finally {
-      setAtSyncStatusLoading(false);
+      if (mountedRef.current && currentOrgRef.current === activeOrgId) setAtSyncStatusLoading(false);
     }
   }, [activeOrgId, canViewProcessSummary]);
 
@@ -309,14 +322,16 @@ const StyleBoard = () => {
     if (!activeOrgId || isAtSyncRunning || atSyncStatus?.needsUpdate !== true) return;
     setAtSyncRunning(true);
     try {
-      const result = await requestJSON(
+      const job = await requestJSON(
         `/at-sync/run-now${buildQueryString({ orgId: activeOrgId })}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'previous' }),
+          body: JSON.stringify({ mode: 'previous', background: true }),
         }
       );
+      const result = await waitForAtSyncJob(job,jobId=>requestJSON(`/at-sync/jobs/${jobId}${buildQueryString({orgId:activeOrgId})}`,{skipCache:true,skipGlobalLoading:true,requestTimeoutMs:15000}));
+      if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return;
       await refreshStyles({ forceRefresh: true });
       await refreshAtSyncStatus();
       if (isAtSyncSuccessReason(result?.reason)) {
@@ -332,8 +347,9 @@ const StyleBoard = () => {
         showNotification(resolveAtSyncNonSuccessMessage(languageCode, result), 'warning');
       }
     } catch (error) {
+      if (!mountedRef.current || currentOrgRef.current !== activeOrgId || error?.status === 499) return;
       showNotification(
-        error?.message ||
+        (String(error?.message || '').startsWith('AT_SYNC_') ? getUiMessage('styleBoard.atSyncError','AT 갱신에 실패했습니다. 다시 시도해 주세요.',languageCode) : error?.message) ||
           getUiMessage(
             'styleBoard.atSyncError',
             'AT 갱신에 실패했습니다.',
@@ -342,7 +358,7 @@ const StyleBoard = () => {
         'error'
       );
     } finally {
-      setAtSyncRunning(false);
+      if (mountedRef.current && currentOrgRef.current === activeOrgId) setAtSyncRunning(false);
     }
   }, [
     activeOrgId,
@@ -424,7 +440,7 @@ const StyleBoard = () => {
 
   const handleDeleteClick = (style, event) => {
     event.stopPropagation();
-    if (style?.hasWorkRecords) {
+    if (style?.canDelete === false || style?.hasWorkRecords) {
       showNotification(resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode), 'warning');
       return;
     }
@@ -439,7 +455,7 @@ const StyleBoard = () => {
 
   const handleDeleteConfirm = async () => {
     if (!styleToDelete) return;
-    if (styleToDelete.hasWorkRecords) {
+    if (styleToDelete.canDelete === false || styleToDelete.hasWorkRecords) {
       showNotification(resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode), 'warning');
       handleConfirmClose();
       return;
@@ -681,7 +697,7 @@ const StyleBoard = () => {
                 </TableRow>
               )}
               {rows.map((style) => {
-                const deleteBlocked = Boolean(style.hasWorkRecords);
+                const deleteBlocked = style.canDelete !== true || Boolean(style.hasWorkRecords);
                 const deleteTooltipTitle = deleteBlocked
                   ? resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode)
                   : getUiMessage('common.delete', '삭제', languageCode);
@@ -762,15 +778,8 @@ const StyleBoard = () => {
                           <DeleteActionButton
                             aria-label="delete"
                             size="small"
-                            color={deleteBlocked ? 'default' : 'error'}
                             disabled={deleteBlocked}
                             onClick={(event) => handleDeleteClick(style, event)}
-                            sx={{
-                              color: deleteBlocked ? 'action.disabled' : 'error.main',
-                              '&.Mui-disabled': {
-                                color: 'action.disabled',
-                              },
-                            }}
                            />
                         </span>
                       </Tooltip>

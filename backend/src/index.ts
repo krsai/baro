@@ -138,6 +138,9 @@ import {
   type AtTrainingDayBucket,
   type AtTrainingDayProcessRow,
 } from "./services/atTraining";
+import { AT_SOURCE_POLICY_VERSION, loadCompletedAtFactoryMonths, completedAtBucketSql, completedAtSourceSql, atSourceSignature } from './services/atTrainingEligibility';
+import { STYLE_DELETION_COUNTS, styleDeletionState } from './services/styleDeletion';
+import { startAtSyncJob, getAtSyncJob, assertNoAtSyncJob } from './services/atSyncJob';
 import {
   isAtAttendanceFallbackWorkday,
   resolveAtAttendanceDay,
@@ -3522,7 +3525,7 @@ const toAtTrainingSourceGroupKey = ({
   return "missingAssignmentPlan";
 };
 
-const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-07-23-1";
+const AT_SYNC_RUNTIME_MARKER = "at-sync-runtime-2026-10-19-completed-months";
 
 const loadAtTrainingSourceWorkLogs = async ({
   orgId,
@@ -3547,6 +3550,10 @@ const loadAtTrainingSourceWorkLogs = async ({
     )
   );
   const where: Prisma.WorkLogWhereInput = { orgId };
+  const sourceScopes = await loadCompletedAtFactoryMonths(db, orgId, normalizeMonthKey(trainingMonthKey) || resolveAtSyncTrainingMonthKey());
+  if (!sourceScopes.length) return [];
+  where.AND = [{ recordKind: 'EMPLOYEE', OR: sourceScopes.map(scope => ({ factoryId: scope.factoryId,
+    displayDate: { startsWith: scope.monthKey, gte: scope.startDate } })) }];
   if (normalizedWorkLogIds.length > 0) {
     where.id = { in: normalizedWorkLogIds };
   } else {
@@ -4065,9 +4072,6 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
     normalizedWorkDate: string,
     workerId: number | null
   ) => {
-    if (!USE_ATTENDANCE_INPUT_FOR_AT) {
-      return { seconds: ATTENDANCE_DEFAULT_WORK_SECONDS, source: "FALLBACK" as const };
-    }
     if (workerId === null) {
       return { seconds: 0, source: "NONE" as const };
     }
@@ -4888,6 +4892,13 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
 }) => {
   const normalizedMaxMonthKey = normalizeMonthKey(maxMonthKey);
   if (!normalizedMaxMonthKey) return [] as string[];
+  const [scopes, sourcePolicy] = await Promise.all([
+    loadCompletedAtFactoryMonths(prisma,orgId,normalizedMaxMonthKey),
+    prisma.systemSetting.findUnique({ where: { key: `AT_SOURCE_POLICY:${orgId}` } }),
+  ]);
+  const eligibleMonths = new Set(scopes.map(scope => scope.monthKey));
+  const rebuildForPolicy = (sourcePolicy?.value as any)?.version !== AT_SOURCE_POLICY_VERSION ||
+    (sourcePolicy?.value as any)?.sourceSignature !== atSourceSignature(scopes);
 
   const [rawMonthKeys, storedMonthKeys, staleStoredMonthKeys] = await Promise.all([
     collectRawAtTrainingMonthKeysForOrg(orgId),
@@ -4906,7 +4917,7 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
   const missingMonthKeys = rawMonthKeys.filter(
     (monthKey) =>
       monthKey <= normalizedMaxMonthKey &&
-      !storedMonthKeySet.has(monthKey) &&
+      (!storedMonthKeySet.has(monthKey) || rebuildForPolicy) &&
       !excludeMonthKeySet.has(monthKey)
   );
   // A month can already have AtTrainingBucket rows yet still be stale if its
@@ -4921,7 +4932,7 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
   );
   const monthKeysToResync = Array.from(
     new Set([...missingMonthKeys, ...staleMonthKeys])
-  ).sort();
+  ).filter(monthKey => eligibleMonths.has(monthKey)).sort();
 
   for (const monthKey of monthKeysToResync) {
     await prisma.$transaction(
@@ -4932,7 +4943,7 @@ const ensureHistoricalAtTrainingBucketsForOrg = async ({
           db: tx,
         });
       },
-      { timeout: 30000 }
+      { timeout: 120000 }
     );
   }
 
@@ -4972,6 +4983,7 @@ const loadAtTrainingDataFromBuckets = async ({
     eventCount: number | null;
   };
 
+  const scopes = await loadCompletedAtFactoryMonths(prisma, orgId, normalizedUpToMonthKey);
   const bucketRows = await prisma.$queryRaw<StoredAtTrainingBucketRow[]>(Prisma.sql`
     SELECT
       "id",
@@ -4981,7 +4993,7 @@ const loadAtTrainingDataFromBuckets = async ({
       "laborInputSeconds",
       "attendanceCoverage"
     FROM "AtTrainingBucket"
-    WHERE "orgId" = ${orgId} AND "monthKey" <= ${normalizedUpToMonthKey}
+    WHERE "orgId" = ${orgId} AND "monthKey" <= ${normalizedUpToMonthKey} AND ${completedAtBucketSql(scopes)}
     ORDER BY "workDate" ASC, "id" ASC
   `);
   if (bucketRows.length === 0) {
@@ -5505,7 +5517,7 @@ const replaceStyleProcessAtObservations = async ({
         `);
       }
     },
-    { timeout: 30000 }
+    { timeout: 120000 }
   );
   return { observationCount: rows.length };
 };
@@ -5669,6 +5681,7 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
   options: AtSyncRunOptions = {}
 ) => {
   const trainingMonthKey = resolveAtSyncTrainingMonthKey(options);
+  const sourceSignature = atSourceSignature(await loadCompletedAtFactoryMonths(prisma,orgId,trainingMonthKey));
   const includeDebugDiagnostics = options.debug === true;
   const startedAt = Date.now();
   const finish = (
@@ -5710,6 +5723,9 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
     diagnostics: Record<string, any> | null
   ) => {
     const clearedAtV2Observations = await clearStyleProcessAtObservations(orgId);
+    await prisma.systemSetting.upsert({ where: { key: `AT_SOURCE_POLICY:${orgId}` },
+      create: { key: `AT_SOURCE_POLICY:${orgId}`, value: { version: AT_SOURCE_POLICY_VERSION, sourceSignature, reason } },
+      update: { value: { version: AT_SOURCE_POLICY_VERSION, sourceSignature, reason } } });
     const staleCleanup = { clearedProcesses: 0, clearedStyleIds: [] as number[] };
     const nextDiagnostics =
       diagnostics === null
@@ -5729,6 +5745,7 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
   console.log(
     `[AT sync] marker=${AT_SYNC_RUNTIME_MARKER} start orgId=${orgId} month=${trainingMonthKey}`
   );
+  if (sourceSignature === '[]') return finishWithoutFittedMetrics('no_completed_factory_months',null);
   {
     const backfilledMonthKeys = await ensureHistoricalAtTrainingBucketsForOrg({
       orgId,
@@ -5781,7 +5798,7 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
           db: tx,
         });
       },
-      { timeout: 30000 }
+      { timeout: 120000 }
     );
 
     const bucketTrainingData = await loadAtTrainingDataFromBuckets({
@@ -5882,6 +5899,9 @@ export const syncStyleProcessActualTimesFromWorkRecords = async (
             clearedUnfittedProcesses: applyResult.clearedProcesses,
             clampAdjustedProcesses: applyResult.clampAdjustedProcesses,
           };
+    await prisma.systemSetting.upsert({ where: { key: `AT_SOURCE_POLICY:${orgId}` },
+      create: { key: `AT_SOURCE_POLICY:${orgId}`, value: { version: AT_SOURCE_POLICY_VERSION, sourceSignature, reason: 'done' } },
+      update: { value: { version: AT_SOURCE_POLICY_VERSION, sourceSignature, reason: 'done' } } });
 
     return finish(
       applyResult.updatedStyles,
@@ -5899,6 +5919,10 @@ const buildAtSyncStatusForOrg = async (
   options: AtSyncRunOptions = {}
 ) => {
   const trainingMonthKey = resolveAtSyncTrainingMonthKey(options);
+  const [sourceScopes, sourcePolicy] = await Promise.all([
+    loadCompletedAtFactoryMonths(prisma,orgId,trainingMonthKey),
+    prisma.systemSetting.findUnique({ where: { key: `AT_SOURCE_POLICY:${orgId}` } }),
+  ]);
   if (!trainingMonthKey) {
     return {
       trainingMonthKey: "",
@@ -5934,6 +5958,7 @@ const buildAtSyncStatusForOrg = async (
       FROM "WorkLog" wl
       WHERE wl."orgId" = ${orgId}
         AND LEFT(wl."workDate", 7) <= ${trainingMonthKey}
+        AND wl."recordKind"='EMPLOYEE' AND ${completedAtSourceSql(sourceScopes,'wl')}
       GROUP BY LEFT(wl."workDate", 7)
     ),
     work_record_months AS (
@@ -5945,6 +5970,7 @@ const buildAtSyncStatusForOrg = async (
       JOIN "WorkRecord" wr ON wr."workLogId" = wl.id
       WHERE wl."orgId" = ${orgId}
         AND LEFT(wl."workDate", 7) <= ${trainingMonthKey}
+        AND wl."recordKind"='EMPLOYEE' AND ${completedAtSourceSql(sourceScopes,'wl')}
       GROUP BY LEFT(wl."workDate", 7)
     ),
     attendance_months AS (
@@ -5954,6 +5980,7 @@ const buildAtSyncStatusForOrg = async (
       FROM "AttendanceEntry" a
       WHERE a."orgId" = ${orgId}
         AND LEFT(a."workDate", 7) <= ${trainingMonthKey}
+        AND a."managementExcluded"=false AND ${completedAtSourceSql(sourceScopes,'a')}
       GROUP BY LEFT(a."workDate", 7)
     ),
     source_months AS (
@@ -5978,6 +6005,7 @@ const buildAtSyncStatusForOrg = async (
       FROM "AtTrainingBucket" b
       WHERE b."orgId" = ${orgId}
         AND b."monthKey" <= ${trainingMonthKey}
+        AND ${completedAtBucketSql(sourceScopes,'b')}
       GROUP BY b."monthKey"
     )
     SELECT
@@ -6014,7 +6042,8 @@ const buildAtSyncStatusForOrg = async (
     ? new Date(row.latest_bucket_updated_at).toISOString()
     : null;
   const resettableItemCount = Number(row?.resettable_item_count ?? 0);
-  const needsUpdate = sourceMonthCount > 0 && staleMonthCount > 0;
+  const needsUpdate = sourceMonthCount > 0 && (staleMonthCount > 0 || (sourcePolicy?.value as any)?.reason !== 'done') ||
+    ((sourcePolicy?.value as any)?.version !== AT_SOURCE_POLICY_VERSION || (sourcePolicy?.value as any)?.sourceSignature !== atSourceSignature(sourceScopes)) && (sourceMonthCount > 0 || resettableItemCount > 0);
   const reason =
     sourceMonthCount <= 0
       ? "no_source_work_logs"
@@ -6267,6 +6296,7 @@ const resolveStyleByIdForAccess = async ({
       ...styleAccessWhere(organization, ownerOrgId),
     },
     include: {
+      _count: { select: STYLE_DELETION_COUNTS },
       organization: { select: { id: true, name: true } },
       customerOrganization: {
         select: { id: true, name: true, nameKo: true, nameVi: true },
@@ -7672,10 +7702,7 @@ const toStyleResponse = (
     ),
     createdAt: style.createdAt,
     updatedAt: style.updatedAt,
-    workRecordCount:
-      Number(style._count?.workRecords ?? 0) + Number(style._count?.outsourcedWorkRecords ?? 0),
-    hasWorkRecords:
-      Number(style._count?.workRecords ?? 0) + Number(style._count?.outsourcedWorkRecords ?? 0) > 0,
+    ...styleDeletionState(style._count),
   };
 };
 
@@ -29783,7 +29810,7 @@ app.get("/styles", async (req, res) => {
           },
           createdAt: true,
           updatedAt: true,
-          _count: { select: { workRecords: true, outsourcedWorkRecords: true } },
+          _count: { select: STYLE_DELETION_COUNTS },
         },
       })
     : await prisma.style.findMany({
@@ -29799,7 +29826,7 @@ app.get("/styles", async (req, res) => {
               entries: { orderBy: { bucketQuantity: "asc" } },
             },
           },
-          _count: { select: { workRecords: true, outsourcedWorkRecords: true } },
+          _count: { select: STYLE_DELETION_COUNTS },
         },
       });
   if (includeProcesses && styles.length > 0) {
@@ -30508,6 +30535,8 @@ const deleteUnusedStyle = async (db: any, styleId: number) => {
     // Serialize deletion with FK writes before inspecting live references.
     await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 FOR UPDATE', styleId);
     if (await tx.priorProductionCompletion.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_PRIOR_COMPLETION_HISTORY');
+    if (await tx.atTrainingBucketProcess.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_TRAINING_SOURCE_HISTORY');
+    if (await tx.partnerTransactionCost.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_COST_HISTORY');
     const work = await tx.workRecord.findFirst({ where: { styleId }, select: { id: true } });
     const outsourced = await tx.outsourcedWorkRecord.findFirst({ where: { styleId }, select: { id: true } });
     if (work || outsourced) throw createHttpError(409, "작업기록이 존재해서 삭제할 수 없습니다.");
@@ -31144,6 +31173,11 @@ app.get("/at-sync/status", async (req, res) => {
   });
 });
 
+app.get('/at-sync/jobs/:jobId', async (req,res) => {
+  const access=await requireOrgRole(req,res,{allowedRoles:ORG_MANAGEMENT_ROLES});
+  if(!access)return;
+  return res.json(await getAtSyncJob(prisma,access.organization.id,req.params.jobId));
+});
 app.post("/at-sync/run-now", async (req, res) => {
   const access = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -31189,6 +31223,13 @@ app.post("/at-sync/run-now", async (req, res) => {
   const resolvedTrainingMonthKey = resolveAtSyncTrainingMonthKey({
     trainingMonthKey: overrideTrainingMonthKey,
   });
+  if(req.body?.background===true){
+    const job=await startAtSyncJob(prisma,access.organization.id,async()=>({
+      ...await syncStyleProcessActualTimesFromWorkRecords(access.organization.id,{trainingMonthKey:overrideTrainingMonthKey,debug}),trainingMonthKey:resolvedTrainingMonthKey
+    }));
+    return res.status(202).json(job);
+  }
+  await assertNoAtSyncJob(prisma,access.organization.id);
   const startedAt = Date.now();
   const result = await syncStyleProcessActualTimesFromWorkRecords(access.organization.id, {
     trainingMonthKey: overrideTrainingMonthKey,
@@ -31217,6 +31258,7 @@ app.post("/at-sync/reset", async (req, res) => {
     allowedRoles: ORG_MANAGEMENT_ROLES,
   });
   if (!access) return;
+  await assertNoAtSyncJob(prisma,access.organization.id);
 
   const startedAt = Date.now();
   const result = await resetAtTrainingStateForOrg(access.organization.id);

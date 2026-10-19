@@ -1829,7 +1829,8 @@ const MainLayout = () => {
 
     // If we are closing the currently active tab, route using recent tab history.
     if (currentPath === tabIdToClose) {
-      cancelAllTrackedRequests('close_active_tab');
+      // Keep reads for preserved/background pages and cache fills alive when closing a tab.
+      // Logout still cancels all authenticated requests.
       if (remainingTabs.length === 0) {
         skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
         pendingCloseTabRef.current = tabIdToClose;
