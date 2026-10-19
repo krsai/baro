@@ -463,7 +463,12 @@ const theme = createTheme(baseTheme, {
     } },
     MuiInputLabel: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiInputBase: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
-    MuiMenuItem: { styleOverrides: { root: { fontSize: ui.control.fontSize } } },
+    MuiMenu: { styleOverrides: { paper: { border: `1px solid ${ui.color.border}`, boxShadow: '0 8px 24px rgba(16, 24, 40, 0.08)' } } },
+    MuiMenuItem: { styleOverrides: { root: {
+      fontSize: ui.control.fontSize,
+      '&.Mui-selected': { backgroundColor: getLabelPalette('blue').background, color: getLabelPalette('blue').text },
+      '&.Mui-selected:hover': { backgroundColor: getLabelPalette('blue').border },
+    } } },
     MuiAutocomplete: { styleOverrides: {
       inputRoot: {
         '&.MuiOutlinedInput-root': { height: 'auto', minHeight: ui.control.height, padding: '2px 8px' },

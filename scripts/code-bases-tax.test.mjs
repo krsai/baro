@@ -148,3 +148,23 @@ test('new codes require four English letters and explicit zero versus exempt cla
   for(const patch of [{code:'LOGISTICS'},{code:'TRKZ'},{code:'TRKE',taxTreatmentId:2},{code:'TRKV',taxTreatmentId:1}])assert.throws(()=>requests.validateTransactionCode({...row,...patch}));
   assert.equal(requests.validateTransactionCode({...row,code:'LOGISTICS'},true).taxTreatmentId,null);
 });
+
+test('OTHER and OTH defaults are linked by FK, initialized once and never recreate deleted codes',async()=>{
+  const db=await fixture();try{
+    await db.exec('CREATE TABLE IF NOT EXISTS "SystemSetting" (key TEXT PRIMARY KEY,value JSONB NOT NULL,"updatedByEmployeeId" INT)');
+    const bootstrap=()=>db.transaction(async sql=>{
+      const tx=adapter(sql);
+      tx.systemSetting={findUnique:async({where})=>(await sql.query('SELECT * FROM "SystemSetting" WHERE key=$1',[where.key])).rows[0],create:async({data})=>sql.query('INSERT INTO "SystemSetting" (key,value,"updatedByEmployeeId") VALUES($1,$2::jsonb,$3)',[data.key,JSON.stringify(data.value),data.updatedByEmployeeId])};
+      return service.initializeOtherExpenseDefaults(tx,20);
+    });
+    const first=await bootstrap();await bootstrap();
+    const type=(await db.query('SELECT * FROM "ExpenseType" WHERE code=$1',['OTHER'])).rows[0];
+    const base=(await db.query('SELECT * FROM "TransactionCodeBase" WHERE code=$1',['OTH'])).rows[0];
+    assert.equal(base.expenseTypeId,type.id);assert.equal(type.entryMode,'GENERAL');
+    assert.deepEqual((await db.query('SELECT code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows.map(row=>row.code),['OTHE','OTHV','OTHZ']);
+    await db.query('UPDATE "TransactionCodeBase" SET "nameEn"=$1 WHERE id=$2',['Custom other',base.id]);await bootstrap();
+    assert.equal((await db.query('SELECT "nameEn" FROM "TransactionCodeBase" WHERE id=$1',[base.id])).rows[0].nameEn,'Custom other');
+    await db.transaction(sql=>service.deleteCodeBase(adapter(sql),base.id));await bootstrap();
+    assert.equal((await db.query('SELECT * FROM "TransactionCodeBase" WHERE id=$1',[first.baseId])).rows.length,0);
+  }finally{await db.close();}
+});

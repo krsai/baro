@@ -1,6 +1,27 @@
 import { createHttpError } from '../utils/http';
 import { COST_DETAIL_FIELDS } from './partnerTransactionCost';
 
+export async function initializeOtherExpenseDefaults(tx: any, actorId?: number | null) {
+  await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)');
+  const key = 'EXPENSE_OTHER_DEFAULTS:2026-10-19';
+  const previous = await tx.systemSetting.findUnique({ where: { key } });
+  if (previous) return previous.value;
+  const type = await tx.expenseType.findUnique({ where: { code: 'OTHER' } }) || await tx.expenseType.create({ data: {
+    code: 'OTHER', nameKo: '기타', nameEn: 'Other', nameVi: 'Khác', entryMode: 'GENERAL', isActive: true,
+  } });
+  let base = await tx.transactionCodeBase.findUnique({ where: { code: 'OTH' } });
+  if (!base) {
+    const industry = await tx.settingServiceDefault.findUnique({ where: { code: 'GENERAL' } });
+    if (!industry) throw createHttpError(409, 'DEFAULT_GENERAL_SERVICE_REQUIRED');
+    base = await saveCodeBase(tx, { code: 'OTH', nameKo: '기타 비용', nameEn: 'Other expenses', nameVi: 'Chi phí khác',
+      expenseTypeId: type.id, serviceTypeId: industry.id, taxTreatmentIds: [1,2,3], requiredFields: [],
+      orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', isActive: true });
+  }
+  const value = { expenseTypeId: type.id, baseId: base.id };
+  await tx.systemSetting.create({ data: { key, value, updatedByEmployeeId: actorId ?? null } });
+  return value;
+}
+
 export function validateCodeBase(body: any) {
   if (body?.expenseTypeId != null && (!Number.isSafeInteger(body.expenseTypeId) || body.expenseTypeId <= 0)) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
   if (!/^[A-Z]{3}$/.test(body?.code || '') || ['nameKo','nameEn','nameVi'].some(key => typeof body[key] !== 'string' || !body[key].trim() || body[key].length > 100)) throw createHttpError(400,'INVALID_CODE_BASE');
@@ -97,6 +118,10 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
+  app.post('/system-setting-defaults/other-expense-defaults', async (req: any, res: any) => {
+    if (!await gates.requireSystemAdmin(req,res)) return;
+    res.json(await db.$transaction((tx: any) => initializeOtherExpenseDefaults(tx,gates.actorId?.()), { isolationLevel: 'Serializable' }));
+  });
   app.get('/expense-types', async (req: any,res: any) => {
     if (!await gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] })) return;
     res.json(await db.expenseType.findMany({ orderBy: { id: 'asc' } }));
