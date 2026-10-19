@@ -2,8 +2,8 @@ import React from 'react';
 import { Box, Stack, Divider } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
 
-const PAGE_PADDING = 2;
-const NEGATIVE_PAGE_PADDING = -2;
+const PAGE_PADDING = { xs: 2, md: 3 };
+const NEGATIVE_PAGE_PADDING = { xs: -2, md: -3 };
 
 const AppPageContainer = ({
   title,
@@ -66,10 +66,10 @@ const AppPageContainer = ({
               zIndex: 10,
               mx: NEGATIVE_PAGE_PADDING,
               px: PAGE_PADDING,
-              pt: 1.5,
+              pt: 2.5,
               pb: 2,
               minWidth: 0,
-              bgcolor: 'background.paper',
+              bgcolor: 'background.default',
               borderBottom: '1px solid',
               borderColor: 'divider',
             }}

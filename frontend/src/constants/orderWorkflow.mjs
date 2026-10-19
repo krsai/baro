@@ -1,4 +1,7 @@
 export const ORDER_WORKFLOW_KEYS = ['RECEIVED', 'PRODUCTION', 'BILLING', 'COMPLETED'];
+export const ORDER_WORKFLOW_TONES = {
+  RECEIVED: 'gray', PRODUCTION: 'blue', BILLING: 'purple', COMPLETED: 'green',
+};
 const LABELS = {
   ko: ['접수', '생산', '청구', '완료'],
   en: ['Received', 'Production', 'Billing', 'Completed'],

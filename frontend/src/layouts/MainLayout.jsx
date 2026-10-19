@@ -67,7 +67,7 @@ import {
   subscribeWorkspaceDataChanged,
 } from '../utils/workspaceDataEvents';
 
-const DRAWER_WIDTH = 260;
+const DRAWER_WIDTH = 240;
 const TAB_BAR_HEIGHT = 41;
 const EMPTY_WORKSPACE_PATH = '/workspace';
 const EMPTY_WORKSPACE_HINT = {
@@ -185,7 +185,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
         sx={{
           borderBottom: 1,
           borderColor: 'divider',
-          bgcolor: '#f4f6f8',
+          bgcolor: 'background.default',
           minHeight: `${TAB_BAR_HEIGHT}px`,
           height: `${TAB_BAR_HEIGHT}px`,
         }}
@@ -194,7 +194,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   }
 
   return (
-    <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#f4f6f8' }}>
+    <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
       <Tabs
         value={activeTabValue}
         onChange={onTabChange}
@@ -228,7 +228,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                   fontWeight: 'bold',
                 },
                 '&:not(.Mui-selected)': {
-                  bgcolor: '#f4f6f8',
+                  bgcolor: 'background.default',
                 },
                 '& .MuiTab-wrapper': {
                   flexDirection: 'row',
@@ -1914,7 +1914,13 @@ const MainLayout = () => {
   );
   const getMenuItemSx = React.useCallback(
     ({ selected = false, nestedLevel = 0, disabled = false } = {}) => {
-      const baseSx = nestedLevel > 0 ? { pl: 2 + nestedLevel * 2 } : {};
+      const baseSx = {
+        mx: 1.25, my: 0.35, width: 'auto', borderRadius: '8px', minHeight: 42,
+        cursor: disabled ? 'default' : 'pointer', color: 'text.secondary',
+        '& .MuiListItemText-primary': { fontSize: '0.8125rem', fontWeight: selected ? 650 : 500 },
+        '& .MuiSvgIcon-root': { fontSize: 20 },
+        ...(nestedLevel > 0 ? { pl: 2 + nestedLevel * 1.5 } : {}),
+      };
 
       if (disabled) {
         return {
@@ -2094,9 +2100,9 @@ const MainLayout = () => {
   );
 
   return (
-    <ManagementPeriodProvider><Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'grey.100' }}>
+    <ManagementPeriodProvider><Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
       {/* Header */}
-      <AppBar ref={appBarRef} position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'black' }}>
+      <AppBar ref={appBarRef} position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'text.primary' }}>
         <Toolbar
           sx={{
             position: 'relative',
@@ -2215,7 +2221,7 @@ const MainLayout = () => {
             boxSizing: 'border-box',
             top: headerOffset,
             height: `calc(100% - ${headerOffset})`,
-            borderRight: '1px solid #ddd',
+            borderRight: '1px solid #e7ecf2',
             overflowX: 'hidden',
           },
         }}
@@ -2271,7 +2277,7 @@ const MainLayout = () => {
             minHeight: 0,
             overflowY: 'auto',
             overflowX: 'hidden',
-            bgcolor: 'white',
+            bgcolor: 'background.default',
             position: 'relative',
           }}
         >

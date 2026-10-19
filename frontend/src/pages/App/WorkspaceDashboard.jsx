@@ -1,4 +1,5 @@
 import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
+import { ui } from '../../theme/ui';
 import QueryFeedback from '../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -227,7 +228,9 @@ const SUMMARY_CARD_SX = {
   p: 1.5,
   borderRadius: 1,
   borderColor: 'divider',
-  bgcolor: '#fcfcfd',
+  bgcolor: ui.color.surface,
+  boxShadow: ui.shadow,
+  minHeight: 150,
 };
 
 const SUMMARY_TITLE_SX = {
@@ -717,7 +720,7 @@ const WorkspaceDashboard = () => {
   return (
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <Stack spacing={2}>
-        <Paper variant="outlined" sx={{ p: 2.25 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(
               isSystemProfile
@@ -797,7 +800,7 @@ const WorkspaceDashboard = () => {
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 2.25 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: `${ui.radius.panel}px` }}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <NotificationsNoneIcon color="primary" />
             <Typography variant="h6">{resolveText(DASHBOARD_TEXT.notificationTitle, languageCode)}</Typography>
@@ -825,7 +828,7 @@ const WorkspaceDashboard = () => {
           )}
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 2.25 }}>
+        <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 }, borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(DASHBOARD_TEXT.quickActionTitle, languageCode)}
           </Typography>

@@ -4,7 +4,7 @@
   width: 100%;
   border-collapse: collapse;
   margin-bottom: var(--spacing-md);
-  background-color: var(--color-background-light);
+  background-color: #ffffff;
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-md);
   overflow: hidden; /* Ensures rounded corners apply to children */
@@ -19,8 +19,8 @@
 
 .data-table th {
   background-color: var(--color-background-dark);
-  color: var(--color-text-dark);
-  font-weight: bold;
+  color: #667085;
+  font-weight: 600;
   font-size: var(--font-size-sm);
   white-space: nowrap; /* Prevent header text wrapping */
 }

@@ -1,5 +1,6 @@
 import { usePageDialogs } from '../../../components/PageDialogProvider';
-import { getOrderWorkflowLabel, orderWorkflowOptions } from '../../../constants/orderWorkflow.mjs';
+import { getOrderWorkflowLabel, orderWorkflowOptions, ORDER_WORKFLOW_TONES } from '../../../constants/orderWorkflow.mjs';
+import StatusLabel from '../../../components/StatusLabel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useParams } from 'react-router-dom';
@@ -3142,7 +3143,7 @@ const OrderList = () => {
                         sx={{ cursor: 'pointer' }}
                       >
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
-                          {progressStageLabel}
+                          <StatusLabel label={progressStageLabel} tone={ORDER_WORKFLOW_TONES[order.workflowStatus]} />
                         </TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>{order.orderNumber}</TableCell>
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>

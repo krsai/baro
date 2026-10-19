@@ -1,7 +1,9 @@
+import { ui } from './ui';
+import { getLabelPalette } from './labelPalette';
 import { createTheme } from '@mui/material/styles';
 import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
 
-const theme = createTheme({
+const baseTheme = createTheme({
   palette: {
     mode: 'light',
     primary: {
@@ -340,6 +342,102 @@ const theme = createTheme({
         }),
       },
     },
+  },
+});
+
+// Global component defaults: every business list inherits the same design.
+const inputSurface = {
+  backgroundColor: ui.color.surface,
+  borderRadius: ui.radius.control,
+  '&:hover': { backgroundColor: ui.color.surface },
+  '&.Mui-focused': { backgroundColor: ui.color.surface },
+};
+const theme = createTheme(baseTheme, {
+  palette: {
+    primary: { main: ui.color.primary },
+    secondary: { main: '#475569' },
+    background: { default: ui.color.canvas, paper: ui.color.surface },
+    text: { primary: ui.color.text, secondary: ui.color.muted },
+    divider: ui.color.border,
+  },
+  shape: { borderRadius: ui.radius.control },
+  typography: {
+    h5: { fontSize: '1.4rem', fontWeight: 700, letterSpacing: '-0.035em' },
+    h6: { fontSize: '1rem', fontWeight: 650, letterSpacing: '-0.02em' },
+  },
+  components: {
+    MuiCssBaseline: { styleOverrides: {
+      ':root': {
+        '--color-primary': ui.color.primary,
+        '--color-text-dark': ui.color.text,
+        '--color-background-light': ui.color.canvas,
+        '--color-background-dark': ui.color.header,
+        '--color-border': ui.color.border,
+        '--color-table-hover': ui.color.hover,
+      },
+      body: { WebkitFontSmoothing: 'antialiased' },
+      '*': { scrollbarWidth: 'thin', scrollbarColor: '#cdd5df transparent' },
+      '*:focus-visible': { outline: '2px solid #2878f0', outlineOffset: 3 },
+      '@media (prefers-reduced-motion: reduce)': {
+        '*, *::before, *::after': { animationDuration: '0.01ms !important', transitionDuration: '0.01ms !important' },
+      },
+    } },
+    MuiChip: { styleOverrides: {
+      root: ({ ownerState, theme }) => {
+        const palette = getLabelPalette(ownerState.color);
+        return {
+          backgroundColor: palette.background,
+          color: palette.text,
+          borderColor: palette.border,
+          borderRadius: 999,
+          fontWeight: 600,
+          fontSize: '0.75rem',
+          '&:hover': { backgroundColor: palette.background },
+          '&.MuiChip-clickable:hover, &.Mui-focusVisible': {
+            backgroundColor: palette.background,
+            boxShadow: `inset 0 0 0 1px ${palette.border}`,
+          },
+          '& .MuiChip-icon': { color: 'inherit' },
+          '& .MuiChip-deleteIcon': { color: palette.text, opacity: 0.65, '&:hover': { color: palette.text, opacity: 1 } },
+          '&.Mui-disabled': { backgroundColor: getLabelPalette('default').background, color: theme.palette.text.disabled, opacity: 0.6 },
+        };
+      },
+      sizeSmall: { height: 22 },
+      labelSmall: { paddingLeft: 9, paddingRight: 9 },
+    } },
+    MuiPaper: { styleOverrides: { outlined: { borderColor: ui.color.border } } },
+    MuiAppBar: { styleOverrides: { root: { boxShadow: 'none', borderColor: ui.color.border } } },
+    MuiDrawer: { styleOverrides: { paper: { borderColor: ui.color.border } } },
+    MuiCard: { styleOverrides: { root: { border: '1px solid ' + ui.color.border, borderRadius: ui.radius.panel, boxShadow: ui.shadow } } },
+    MuiButton: { styleOverrides: {
+      root: { borderRadius: ui.radius.control, padding: '7px 15px', fontSize: '0.8125rem' },
+      outlined: { borderColor: '#dfe5ed' },
+    } },
+    MuiTableContainer: { styleOverrides: { root: { backgroundColor: ui.color.surface, borderRadius: ui.radius.control } } },
+    MuiTableCell: { styleOverrides: {
+      root: { padding: ui.table.cellPadding, borderBottom: '1px solid ' + ui.color.border, fontSize: ui.table.fontSize, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums' },
+      sizeSmall: { padding: ui.table.compactPadding },
+      head: { backgroundColor: ui.color.header, color: ui.color.muted, fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' },
+      stickyHeader: { backgroundColor: ui.color.header },
+    } },
+    MuiTableRow: { styleOverrides: { root: { '&.MuiTableRow-hover:hover': { backgroundColor: ui.color.hover } } } },
+    MuiTablePagination: { styleOverrides: { root: { color: ui.color.muted }, toolbar: { minHeight: 52 } } },
+    MuiOutlinedInput: { styleOverrides: { root: {
+      ...inputSurface,
+      '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #dfe5ed' },
+      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { border: '2px solid ' + ui.color.primary },
+      '&.Mui-error .MuiOutlinedInput-notchedOutline': { borderColor: baseTheme.palette.error.main },
+      '&.Mui-disabled': { backgroundColor: ui.color.header },
+    } } },
+    MuiPickersOutlinedInput: { styleOverrides: { root: {
+      ...inputSurface,
+      '& .MuiPickersOutlinedInput-notchedOutline': { border: '1px solid #dfe5ed' },
+      '&.Mui-focused .MuiPickersOutlinedInput-notchedOutline': { border: '2px solid ' + ui.color.primary },
+      '&.Mui-error .MuiPickersOutlinedInput-notchedOutline': { borderColor: baseTheme.palette.error.main },
+      '&.Mui-disabled': { backgroundColor: ui.color.header },
+    } } },
+    MuiDialog: { styleOverrides: { paper: { borderRadius: ui.radius.panel } } },
+    MuiTab: { styleOverrides: { root: { color: ui.color.muted, backgroundColor: ui.color.canvas, '&.Mui-selected': { color: ui.color.primary } } } },
   },
 });
 
