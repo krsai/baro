@@ -102,7 +102,8 @@
     "test:expense-request-editor": "npm --prefix backend run build && node --test scripts/expense-request-editor.test.mjs",
     "test:expense-editor-browser": "node scripts/expense-editor-browser.test.mjs",
     "test:expense-code-presentation": "node --test scripts/expense-code-presentation.test.mjs",
-    "test:page-layout-browser": "node scripts/page-layout-browser.test.mjs"
+    "test:page-layout-browser": "node scripts/page-layout-browser.test.mjs",
+    "test:expense-editor-postgres": "npm --prefix backend run build && node scripts/expense-editor-postgres.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

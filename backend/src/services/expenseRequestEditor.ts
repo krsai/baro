@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { validateCostDate } from './partnerTransactionCost';
@@ -94,6 +95,9 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   for (const record of records) await tx.$queryRawUnsafe('SELECT id FROM "OutsourcedWorkRecord" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',record.id,orgId);
   source = await loadExpenseEditorSource(tx,orgId,kind,id);
   if (expenseEditorRevision(source) !== body.revision) return fail(409,'EXPENSE_REQUEST_CHANGED');
+  // Transaction-local capability, verified by database guards and a deferred
+  // check that the matching audit event was saved before commit.
+  await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const before = snapshot(source);
   const requestDate = validateCostDate(body.requestDate), title = typeof body.title==='string' ? body.title.trim() : '';
   assertManagedDate(requestDate,(await loadManagementPeriod(tx,orgId)).startDate);
@@ -117,8 +121,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
     const cost: any = item.itemId ? byId.get(item.itemId) : null;
     const record = cost?.outsourcedWorkRecord || (source.record && item.sourceRecordId===source.record.id ? source.record : null);
     const input = { ...item, transactionDate: requestDate, partnerOrgId: body.partnerOrgId, clientKey: `${body.clientKey}-${index+1}` };
-    const saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record});
-    await tx.partnerTransactionCost.update({ where: { id: saved.id }, data: { expenseRequestId: document.id, expenseRequestLine: index+1 } });
+    const saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}});
     if (saved.outsourcedWorkRecord) assignmentPlanIds.push(saved.outsourcedWorkRecord.assignmentPlanId);
   }
   const removed = source.costs.filter((cost: any)=>!itemIds.includes(cost.id));

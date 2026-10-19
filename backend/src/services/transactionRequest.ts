@@ -37,7 +37,7 @@ export function calculateRequestAmounts(unitPrice: unknown, quantity: unknown, c
   if (subtotal.lte(0) || amount.gte('10000000000000000')) return invalid('INVALID_TRANSACTION_AMOUNT');
   return { unitPrice: price, quantity: qty, subtotal, vatRate: rate, vatAmount, amount };
 }
-export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any }) {
+export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any; request?: { id: number; line: number } }) {
   const id = (value: unknown, optional = false): number | null => optional && (value == null || value === '') ? null : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : invalid('INVALID_REQUEST_REFERENCE');
   const partnerOrgId = id(body?.partnerOrgId)!, transactionCodeId = id(body?.transactionCodeId)!;
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
@@ -127,7 +127,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
   } else if (assignmentPlanId) return invalid('UNEXPECTED_ASSIGNMENT_PLAN');
   // Production is recorded only in the vendor table, never employee work or AT.
-  const data = { partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts };
+  const data = { partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
+    ...(edit?.request ? {expenseRequestId:edit.request.id,expenseRequestLine:edit.request.line} : {}) };
   return edit?.cost ? tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data, include: REQUEST_INCLUDE }) :
     tx.partnerTransactionCost.create({ data: { ...data, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
 }

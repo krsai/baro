@@ -11,7 +11,8 @@ const columns = [
 ];
 const constraints = ['ExpenseRequest_id_orgId_partnerOrgId_key','ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
   'ExpenseRequest_partnerOrgId_orgId_fkey','ExpenseRequest_createdByEmployeeId_orgId_fkey',
-  'PartnerTransactionCost_expense_request_fkey','PartnerTransactionCost_expenseRequestId_expenseRequestLine_key','ExpenseRequestLine_pair_check'];
+  'PartnerTransactionCost_expense_request_fkey','PartnerTransactionCost_expenseRequestId_expenseRequestLine_key','ExpenseRequestLine_pair_check',
+  'ExpenseRequestEdit_cost_audit','ExpenseRequestEdit_production_audit'];
 
 async function missingSchema(db) {
   const existingColumns = await db.$queryRawUnsafe(`SELECT table_name,column_name,is_nullable FROM information_schema.columns
@@ -41,7 +42,7 @@ async function runRailwayPreflight({ env = process.env, run = spawnSync, createC
       return;
     }
     log('[railway-schema] Preparing missing expense document schema. Existing cost and production values are preserved.');
-    const sql = fs.readFileSync(path.join(__dirname,'apply-expense-request-documents.sql'),'utf8');
+    const sql = ['apply-expense-request-documents.sql','apply-expense-request-editor.sql'].map(file=>fs.readFileSync(path.join(__dirname,file),'utf8')).join('\n');
     const result = await run(process.execPath, [require.resolve('prisma/build/index.js'), 'db','execute','--stdin','--schema',path.join(__dirname,'../prisma/schema.prisma')], {
       cwd: path.resolve(__dirname,'..'), env: { ...env, DATABASE_URL: url, DIRECT_URL: url },
       encoding: 'utf8', stdio: 'pipe', timeout: 90000,

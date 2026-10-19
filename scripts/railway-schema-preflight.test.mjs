@@ -28,9 +28,10 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
   const db=new PGlite();let runs=0,closed=0;
   try {
     await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,UNIQUE(id,"ownerOrgId"));
-      CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,UNIQUE(id,"orgId"));
+      CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
+      CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
       CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,currency TEXT,amount NUMERIC);
-      INSERT INTO "Organization" VALUES(1,NULL),(11,1); INSERT INTO "Employee" VALUES(20,1);
+      INSERT INTO "Organization" VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
       INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,'VND',123);`);
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);

@@ -17,7 +17,7 @@ try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
   for(const mode of ['GENERAL','PROCESS','SAVED'])for(const lang of ['ko','en','vi'])for(const locked of mode==='SAVED'?[false]:[false,true]) {
-    const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[];let submitted;
+    const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted;
     page.on('pageerror',e=>errors.push(e.message));
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
     await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,accessProfile:{orgName:"BARO",employeeName:"Current editor"}});'}));
@@ -32,7 +32,7 @@ try {
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
     await page.route('**/expense-request-editor/legacy/78?*',r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
-      if(r.request().method()==='PUT'){submitted=r.request().postDataJSON();return r.fulfill({headers,json:{requestId:1}});}
+      if(r.request().method()==='PUT'){submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
       return r.fulfill({headers,json:{title:mode==='PROCESS'?'':'Original request',canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
@@ -88,7 +88,9 @@ try {
         await page.getByLabel(l.title,{exact:false}).fill('Updated request');
         await page.getByLabel(l.price,{exact:false}).fill('5000');assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
       }
-      await save.click();await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
+      await save.click();
+      if(mode==='PROCESS'&&lang==='ko'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}
+      await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
       assert.equal(submitted.title,mode==='PROCESS'?expenseCodeDescription(mocks['transaction-codes'][0],lang):'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,expenseCodeDescription(mocks['transaction-codes'][0],lang));
