@@ -9,7 +9,7 @@ const executablePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe',
 if(!executablePath)throw Error('Chrome required');
 const fixture=path.resolve('frontend/transaction-request-acceptance.html');
 if(existsSync(fixture))throw Error('Fixture already exists');
-writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Entry from '/src/pages/App/TransactionRequestEntry.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(location.search?Costs:Entry)));</script></body></html>`);
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Entry from '/src/pages/App/TransactionRequestEntry.jsx';import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(location.search?Costs:Entry))));</script></body></html>`);
 const port=43185,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
 try {
@@ -31,7 +31,13 @@ try {
     await page.route('**/transaction-request-options?*',route=>route.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'S40',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]}],plans:[{id:60,styleId:40,factoryName:'Factory A',processIds:[50]},{id:61,styleId:40,factoryName:'Factory B',processIds:[50]}]}}));
     await page.route('**/expense-requests?*',route=>{if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});payload=route.request().postDataJSON();attempts.push(payload);if(attempts.length===1&&kind==='LOGISTICS')return route.fulfill({headers,status:503,json:{error:'unavailable'}});return route.fulfill({headers,json:{id:1}});});
     await page.goto(`http://127.0.0.1:${port}/transaction-request-acceptance.html`);
-    const l=EXPENSE_REQUEST_TEXT[lang],labels={partner:l.payee,code:l.code,price:l.price,qty:l.quantity,order:l.order,style:l.style,process:l.process,assignment:l.assignment,submit:l.save};
+    const l=EXPENSE_REQUEST_TEXT[lang],labels={partner:l.payee,code:l.code,price:l.price,qty:l.quantity,order:l.order,style:l.style,process:l.process,assignment:l.assignment,submit:await page.evaluate(async language=>(await import('/src/constants/uiMessages.js')).getUiMessage('common.save','Save',language),lang)};
+    const headerSave=page.getByRole('button',{name:labels.submit,exact:true});
+    await headerSave.waitFor();
+    assert.equal(await headerSave.count(),1);
+    const headerPosition=await headerSave.boundingBox();
+    assert.ok(headerPosition.y<120,'Save belongs in the common top header');
+    assert.equal(await page.locator('.cc-entry').count(),0,'Entry uses the shared page layout');
     await page.getByLabel(l.title,{exact:false}).fill('Factory expenses');
     assert.equal(await page.getByRole('columnheader',{name:l.useDate,exact:true}).count(),0);
     await page.getByRole('textbox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BT':'TRK');
@@ -59,7 +65,6 @@ try {
       await page.getByRole('button',{name:l.add,exact:true}).click();await page.getByTestId('expense-line').nth(2).getByRole('button',{name:l.remove,exact:true}).click();
       assert.equal(await page.getByTestId('expense-line').count(),2);
       assert.match(await page.getByTestId('expense-totals').textContent(),/275/);
-      if(lang==='ko'){await page.evaluate(()=>{window.scrollTo(0,0);document.querySelector('.MuiTableContainer-root').scrollLeft=0;});await page.screenshot({path:path.join(process.env.TEMP||'/tmp','baro-expense-request.png'),fullPage:true});}
     }
     console.log('Submitting',lang,kind);await page.getByRole('button',{name:labels.submit,exact:true}).click();if(kind==='LOGISTICS'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
     assert.equal(payload.items.length,kind==='LOGISTICS'?2:1);assert.equal(payload.partnerOrgId,11);assert.match(payload.requestDate,/^\d{4}-\d{2}-\d{2}$/);payload=payload.items[0];

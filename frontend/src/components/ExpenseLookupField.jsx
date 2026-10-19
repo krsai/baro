@@ -34,7 +34,7 @@ export default function ExpenseLookupField({ label, options, value, onChange, co
       InputProps={{readOnly:!directCode,endAdornment:<InputAdornment position="end"><Tooltip title={`${title} (F2)`}><span><IconButton size="small" aria-label={title} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={event=>{event.stopPropagation();showSearch();}}><SearchIcon fontSize="small" /></IconButton></span></Tooltip></InputAdornment>}}
     />
     <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="md" aria-label={title}>
-      <DialogTitle sx={{bgcolor:'#e5f0f6',color:'#235e77',borderBottom:'1px solid #bfd2dc',fontSize:18}}>{title}</DialogTitle>
+      <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider' }}>{title}</DialogTitle>
       <DialogContent sx={{p:0}}><div className="compact-costs cc-lookup">
         <TextField size="small" fullWidth autoFocus label={text.keyword} value={query} onChange={event=>setQuery(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'&&filtered.length===1){event.preventDefault();choose(filtered[0]);}}} />
         <div className="cc-table-scroll"><table><thead><tr>{columns.map(column=><th key={column.key}>{column.label}</th>)}<th>{text.select}</th></tr></thead><tbody>
