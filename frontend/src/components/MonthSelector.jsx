@@ -62,7 +62,7 @@ const MonthSelector = ({
           },
         }}
         size="small"
-        sx={{ width: 132, '& .MuiInputBase-root': { height: ui.control.height }, ...inputSx }}
+        sx={{ width: 132, ...inputSx }}
       />
       <Stack sx={{ gap: `${ui.control.shiftGap}px` }}>
         <Button

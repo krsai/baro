@@ -110,9 +110,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                                     onClick={() => onOpenWorkLog?.(record)}
                                     sx={{
                                       minWidth: 0,
-                                      height: 26,
                                       px: 0.75,
-                                      fontSize: '0.72rem',
                                       whiteSpace: 'nowrap',
                                       '& .MuiButton-endIcon': { ml: 0.35, mr: 0 },
                                       '& .MuiSvgIcon-root': { fontSize: 14 },

@@ -1306,7 +1306,6 @@ const QcReview = () => {
                                                       loading={cancellingEventId === eventRow.id}
                                                       sx={{
                                                         minWidth: 84,
-                                                        height: 30,
                                                         bgcolor: 'grey.700',
                                                         '&:hover': { bgcolor: 'grey.800' },
                                                       }}

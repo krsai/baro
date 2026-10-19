@@ -39,6 +39,11 @@ try {
     assert.ok(headerPosition.y<120,'Save belongs in the common top header');
     assert.equal(await page.locator('.cc-entry').count(),0,'Entry uses the shared page layout');
     await page.getByLabel(l.title,{exact:false}).fill('Factory expenses');
+    const fieldSizes=await page.locator('.MuiOutlinedInput-root:not(.MuiInputBase-multiline), .MuiPickersOutlinedInput-root').evaluateAll(els=>els.map(el=>({height:el.getBoundingClientRect().height,font:getComputedStyle(el).fontSize})));
+    assert.ok(fieldSizes.length>=8);
+    assert.ok(fieldSizes.every(size=>size.height===36&&size.font==='13px'),JSON.stringify(fieldSizes));
+    const outlineSizes=await page.locator('.MuiOutlinedInput-root fieldset, .MuiPickersOutlinedInput-root fieldset').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height));
+    assert.ok(Math.max(...outlineSizes)-Math.min(...outlineSizes)<=1,'Visible field borders share the same height: '+JSON.stringify(outlineSizes));
     assert.equal(await page.getByRole('columnheader',{name:l.useDate,exact:true}).count(),0);
     await page.getByRole('textbox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BT':'TRK');
     await page.getByRole('textbox',{name:labels.code,exact:false}).press('Enter');

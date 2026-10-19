@@ -9,9 +9,9 @@ assert.ok(executablePath,'Chrome required');
 const fixture=path.resolve('frontend/date-picker-theme-acceptance.html');
 assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Stack,Box} from '@mui/material';import theme from '/src/theme';import Picker from '/src/components/CustomDatePicker.jsx';import Month from '/src/components/MonthSelector.jsx';import Range from '/src/components/MonthRangeSelector.jsx';import '/src/styles/form.css';
+import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Stack,Box,TextField,Autocomplete,MenuItem,Button} from '@mui/material';import theme from '/src/theme';import Picker from '/src/components/CustomDatePicker.jsx';import Month from '/src/components/MonthSelector.jsx';import Range from '/src/components/MonthRangeSelector.jsx';import '/src/styles/form.css';
 const h=React.createElement,lang=new URLSearchParams(location.search).get('lang');
-function App(){const[day,setDay]=React.useState('2026-10-15'),[month,setMonth]=React.useState('2026-10-01'),[native,setNative]=React.useState('2026-10'),[start,setStart]=React.useState('2026-10-15'),[end,setEnd]=React.useState('2026-10-20');return h(ThemeProvider,{theme},h(CssBaseline),h(Stack,{spacing:3,sx:{p:3}},h(Box,{'data-testid':'date'},h(Picker,{label:'Date',adapterLocale:lang,value:day,minDate:'2026-10-10',maxDate:'2026-10-20',onChange:v=>setDay(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'month'},h(Picker,{label:'Month',monthOnly:true,adapterLocale:lang,value:month,minDate:'2026-04-01',maxDate:'2027-12-31',onChange:v=>setMonth(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'native'},h(Month,{value:native,onChange:setNative,min:'2026-04',max:'2026-11',label:'Native month'})),h(Box,{'data-testid':'range'},h(Range,{languageCode:lang,onShift:()=>{},monthOnly:false,startValue:start,endValue:end,onStartChange:v=>setStart(v.format('YYYY-MM-DD')),onEndChange:v=>setEnd(v.format('YYYY-MM-DD'))})),h('output',null,JSON.stringify({day,month,native,start,end}))));}createRoot(document.getElementById('root')).render(h(App));
+function App(){const[day,setDay]=React.useState('2026-10-15'),[month,setMonth]=React.useState('2026-10-01'),[native,setNative]=React.useState('2026-10'),[start,setStart]=React.useState('2026-10-15'),[end,setEnd]=React.useState('2026-10-20');return h(ThemeProvider,{theme},h(CssBaseline),h(Stack,{spacing:3,sx:{p:3}},h(Box,{'data-testid':'date'},h(Picker,{label:'Date',adapterLocale:lang,value:day,minDate:'2026-10-10',maxDate:'2026-10-20',onChange:v=>setDay(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'month'},h(Picker,{label:'Month',monthOnly:true,adapterLocale:lang,value:month,minDate:'2026-04-01',maxDate:'2027-12-31',onChange:v=>setMonth(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'native'},h(Month,{value:native,onChange:setNative,min:'2026-04',max:'2026-11',label:'Native month'})),h(Box,{'data-testid':'range'},h(Range,{languageCode:lang,onShift:()=>{},monthOnly:false,startValue:start,endValue:end,onStartChange:v=>setStart(v.format('YYYY-MM-DD')),onEndChange:v=>setEnd(v.format('YYYY-MM-DD'))})),h(Box,{'data-testid':'controls'},h(TextField,{label:'Text'}),h(TextField,{label:'Select',select:true,defaultValue:'one'},h(MenuItem,{value:'one'},'One')),h(Autocomplete,{options:['Alpha','Beta'],renderInput:params=>h(TextField,{...params,label:'Autocomplete'})}),h(TextField,{label:'Notes',multiline:true,minRows:3}),h(Autocomplete,{multiple:true,options:['Long selected item A','Long selected item B','Long selected item C'],defaultValue:['Long selected item A','Long selected item B','Long selected item C'],sx:{width:200},renderInput:params=>h(TextField,{...params,label:'Multiple'})}),h(Button,{},'Action')),h('output',null,JSON.stringify({day,month,native,start,end}))));}createRoot(document.getElementById('root')).render(h(App));
 </script></body></html>`);
 const port=43219,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
@@ -20,7 +20,7 @@ try{
   browser=await chromium.launch({executablePath,headless:true});
   for(const lang of ['ko','en','vi']){
     const page=await browser.newPage({viewport:{width:1100,height:850}}),errors=[];
-    page.on('pageerror',e=>errors.push(e.message));
+    page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
     await page.route('**/src/context/ManagementPeriodContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false,factories:[]});'}));
     await page.goto(`http://127.0.0.1:${port}/date-picker-theme-acceptance.html?lang=${lang}`);
     const state=async()=>JSON.parse(await page.locator('output').textContent());
@@ -29,6 +29,12 @@ try{
       const height=await page.getByTestId(id).locator('.MuiInputBase-root, .MuiPickersInputBase-root').first().evaluate(el=>el.getBoundingClientRect().height);
       assert.equal(height,36,id+' field height');
     }
+    const controls=page.getByTestId('controls');
+    const controlRoots=controls.locator('.MuiOutlinedInput-root');
+    for(const index of [0,1,2]) assert.equal((await controlRoots.nth(index).boundingBox()).height,36,'Standard control '+index);
+    assert.ok((await controlRoots.nth(3).boundingBox()).height>36,'Multiline grows');
+    assert.ok((await controlRoots.nth(4).boundingBox()).height>36,'Multiple selection grows');
+    assert.equal((await controls.getByRole('button',{name:'Action',exact:true}).boundingBox()).height,36);
     const range=page.getByTestId('range');
     assert.equal((await range.getByRole('button').first().boundingBox()).height,36);
     assert.equal((await range.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);

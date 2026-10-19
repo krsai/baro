@@ -386,6 +386,9 @@ const theme = createTheme(baseTheme, {
         '--color-surface': ui.color.surface,
         '--ui-panel-radius': `${ui.radius.panel}px`,
         '--ui-control-radius': `${ui.radius.control}px`,
+        '--ui-control-height': `${ui.control.height}px`,
+        '--ui-control-font-size': ui.control.fontSize,
+        '--ui-control-line-height': ui.control.lineHeight,
         '--ui-table-font-size': ui.table.fontSize,
         '--ui-table-padding': ui.table.cellPadding,
         '--ui-table-compact-padding': ui.table.compactPadding,
@@ -431,8 +434,13 @@ const theme = createTheme(baseTheme, {
     MuiDrawer: { styleOverrides: { paper: { borderColor: ui.color.border } } },
     MuiCard: { styleOverrides: { root: { border: '1px solid ' + ui.color.border, borderRadius: ui.radius.panel, boxShadow: ui.shadow } } },
     MuiButton: { styleOverrides: {
-      root: { borderRadius: ui.radius.control, padding: '7px 15px', fontSize: '0.8125rem' },
+      root: { borderRadius: ui.radius.control, height: ui.control.height, minHeight: ui.control.height, padding: '0 15px', fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight },
       outlined: { borderColor: '#dfe5ed' },
+    } },
+    MuiIconButton: { styleOverrides: {
+      sizeSmall: { width: ui.control.iconSmallHeight, height: ui.control.iconSmallHeight, padding: 4 },
+      sizeMedium: { width: ui.control.height, height: ui.control.height, padding: 6 },
+      sizeLarge: { width: ui.control.iconLargeHeight, height: ui.control.iconLargeHeight, padding: 8 },
     } },
     MuiTableContainer: { styleOverrides: { root: { backgroundColor: ui.color.surface, borderRadius: ui.radius.control } } },
     MuiTableCell: { styleOverrides: {
@@ -445,13 +453,26 @@ const theme = createTheme(baseTheme, {
     MuiTablePagination: { styleOverrides: { root: { color: ui.color.muted }, toolbar: { minHeight: 52 } } },
     MuiOutlinedInput: { styleOverrides: { root: {
       ...inputSurface,
+      minHeight: ui.control.height,
+      '&:not(.MuiInputBase-multiline):not(.MuiAutocomplete-inputRoot)': { height: ui.control.height },
       '& .MuiOutlinedInput-notchedOutline': { border: '1px solid #dfe5ed' },
       '&.Mui-focused .MuiOutlinedInput-notchedOutline': { border: '2px solid ' + ui.color.primary },
       '&.Mui-error .MuiOutlinedInput-notchedOutline': { borderColor: baseTheme.palette.error.main },
       '&.Mui-disabled': { backgroundColor: ui.color.header },
-    } } },
+    }, input: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight, padding: ui.control.inputPadding, '&.MuiInputBase-inputMultiline': { padding: 0 } },
+    } },
+    MuiInputLabel: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
+    MuiInputBase: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
+    MuiMenuItem: { styleOverrides: { root: { fontSize: ui.control.fontSize } } },
+    MuiAutocomplete: { styleOverrides: {
+      inputRoot: {
+        '&.MuiOutlinedInput-root': { height: 'auto', minHeight: ui.control.height, padding: '2px 8px' },
+        '& .MuiAutocomplete-input': { padding: '6px 4px', lineHeight: ui.control.lineHeight },
+      },
+    } },
     MuiPickersOutlinedInput: { styleOverrides: { root: {
       ...inputSurface,
+      height: ui.control.height,
       color: ui.color.text,
       '& .MuiIconButton-root': { color: ui.color.muted, '&:hover': { backgroundColor: getLabelPalette('blue').background } },
       '& .MuiPickersOutlinedInput-notchedOutline': { border: '1px solid #dfe5ed' },
@@ -459,6 +480,8 @@ const theme = createTheme(baseTheme, {
       '&.Mui-error .MuiPickersOutlinedInput-notchedOutline': { borderColor: baseTheme.palette.error.main },
       '&.Mui-disabled': { backgroundColor: ui.color.header },
     } } },
+    MuiPickersInputBase: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
+    MuiPickersSectionList: { styleOverrides: { root: { padding: '8px 0', fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiPickerPopper: { styleOverrides: { paper: {
       backgroundColor: ui.color.surface,
       backgroundImage: 'none',
