@@ -2,6 +2,8 @@ import { ui } from '../theme/ui';
 import React, { useEffect } from 'react';
 import { useManagementPeriod } from '../context/ManagementPeriodContext';
 import { Button, Stack, Typography } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CustomDatePicker from './CustomDatePicker';
 import dayjs from 'dayjs';
 
@@ -47,12 +49,12 @@ const MonthRangeSelector = ({
   const end = dayjs(endValue);
   const previous = start.subtract(1, 'month').startOf('month');
   const next = end.add(1, 'month').endOf('month').startOf('day');
-  const buttonSx = { minWidth: 28, height: ui.control.height, minHeight: ui.control.height, px: 0.25, py: 0, alignSelf: 'center' };
+  const buttonSx = { minWidth: ui.control.dateNavigationWidth, width: ui.control.dateNavigationWidth, height: ui.control.height, minHeight: ui.control.height, p: 0, flexShrink: 0, alignSelf: 'center' };
   return (
   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
     <Button type="button" variant="outlined" size="small" aria-label={labels.previous} title={labels.previous}
       disabled={disabled || !startValue || !start.isValid() || Boolean(minDate && previous.isBefore(dayjs(minDate), monthOnly ? 'month' : 'day'))}
-      onClick={() => onStartChange?.(previous)} sx={buttonSx}>◀</Button>
+      onClick={() => onStartChange?.(previous)} sx={buttonSx}><ChevronLeftIcon sx={{ fontSize: ui.control.dateNavigationIconSize }} /></Button>
     <CustomDatePicker
       monthOnly={monthOnly}
       label={startLabel || (monthOnly ? labels.startMonth : labels.start)}
@@ -78,7 +80,7 @@ const MonthRangeSelector = ({
     />
     <Button type="button" variant="outlined" size="small" aria-label={labels.next} title={labels.next}
       disabled={disabled || !endValue || !end.isValid() || Boolean(maxDate && next.isAfter(dayjs(maxDate), 'day'))}
-      onClick={() => onEndChange?.(monthOnly ? next.startOf('month') : next)} sx={buttonSx}>▶</Button>
+      onClick={() => onEndChange?.(monthOnly ? next.startOf('month') : next)} sx={buttonSx}><ChevronRightIcon sx={{ fontSize: ui.control.dateNavigationIconSize }} /></Button>
     {onShift && <Stack sx={{ gap: `${ui.control.shiftGap}px` }}>
       <Button
         size="small"

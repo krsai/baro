@@ -37,6 +37,11 @@ try{
     assert.equal((await controls.getByRole('button',{name:'Action',exact:true}).boundingBox()).height,36);
     const range=page.getByTestId('range');
     assert.equal((await range.getByRole('button').first().boundingBox()).height,36);
+    for (const icon of ['ChevronLeftIcon','ChevronRightIcon']) {
+      const arrow=range.getByTestId(icon);
+      assert.equal((await arrow.boundingBox()).width,16);
+      assert.equal((await arrow.locator('..').boundingBox()).width,20);
+    }
     assert.equal((await range.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
     assert.equal((await range.getByRole('button',{name:'M-',exact:true}).boundingBox()).height,17);
     const fields=await range.locator('.MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height));
