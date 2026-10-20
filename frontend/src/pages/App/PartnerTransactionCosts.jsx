@@ -32,7 +32,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const [rows,setRows] = useState([]), [documents,setDocuments] = useState([]), [view,setView] = useState('items');
   const [loading,setLoading] = useState(true), [errors,setErrors] = useState({ items:'',documents:'' });
   const [search,setSearch] = useState(''), [partner,setPartner] = useState(''), [industry,setIndustry] = useState(''), [currency,setCurrency] = useState(''), [kind,setKind] = useState('');
-  const [expanded,setExpanded] = useState(true), [dense,setDense] = useState(true), [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
+  const [expanded,setExpanded] = useState(true), [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
   const [dateFrom,setDateFrom] = useState(() => dayjs().startOf('month')), [dateTo,setDateTo] = useState(() => dayjs().endOf('month').startOf('day'));
   const loadSequence = useRef(0), rangeOrganization = useRef(null);
   const error = errors[view === 'documents' ? 'documents' : 'items'];
@@ -130,13 +130,12 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
         <label><span>{labels.currency}</span><select value={currency} onChange={event=>setCurrency(event.target.value)}><option value="">{text.allCurrencies}</option>{currencies.map(code=><option key={code}>{code}</option>)}</select></label>
       </div>}
     </section>
-    <div className="cc-totals"><span>{text.results} <b>{loading || error ? '—' : visibleRows.length}</b> {text.items}</span><i /><span>{text.partners} <b>{loading || error ? '—' : partnerCount}</b> {text.companies}</span>
-      <div className="cc-total-amount"><span>{text.total}</span>{loading || error || !totals.length ? <strong>—</strong> : totals.map(total=><strong key={total.currency}>{money(total.amount,total.currency)}</strong>)}</div>
-    </div>
     <section className="cc-panel cc-results">
       <div className="cc-tabs" role="tablist">{[['items',text.detail],['partner',text.partnerSummary],['industry',text.industrySummary],['documents',text.documents]].map(([key,label])=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{label}</button>)}<span>{text.basis}: {view==='documents' ? docText.date : labels.date}</span></div>
-      <div className="cc-grid-tools"><span>{view==='items' ? `${text.selected} ${selectedCount} ${text.items}` : text.summaryHint}<span className="cc-muted"> · {view==='items' ? text.openHint : text.fullRange}</span></span><label><input type="checkbox" checked={dense} onChange={event=>setDense(event.target.checked)} />{text.dense}</label></div>
-      {loading ? <div className="cc-loading"><CircularProgress size={24} /></div> : error ? <Alert severity="error" action={<button className="cc-button" onClick={load}>{text.retry}</button>}>{error}</Alert> : <div className={`cc-table-scroll ${dense?'is-dense':''}`}>
+    <div className="cc-totals cc-results-summary"><span>{text.results} <b>{loading || error ? '—' : visibleRows.length}</b> {text.items}</span><i /><span>{text.partners} <b>{loading || error ? '—' : partnerCount}</b> {text.companies}</span>
+      <div className="cc-total-amount"><span>{text.total}</span>{loading || error || !totals.length ? <strong>—</strong> : totals.map(total=><strong key={total.currency}>{money(total.amount,total.currency)}</strong>)}</div>
+    </div>
+      {loading ? <div className="cc-loading"><CircularProgress size={24} /></div> : error ? <Alert severity="error" action={<button className="cc-button" onClick={load}>{text.retry}</button>}>{error}</Alert> : <div className="cc-table-scroll is-dense">
         {view==='items' ? <table><thead><tr><th className="cc-check"><input type="checkbox" aria-label={text.selectAll} checked={allChecked} onChange={()=>setChecked(current=>allChecked ? current.filter(id=>!filtered.some(row=>row.id===id)) : [...new Set([...current,...filtered.map(row=>row.id)])])} /></th><th>No.</th><th><button className="cc-sort" onClick={()=>setAscending(value=>!value)}>{labels.date} {ascending?'↑':'↓'}</button></th>{[labels.industry,labels.partner,labels.code,text.order,labels.description,text.quantity,text.unitPrice,labels.amount,labels.creator,text.state].map((label,index)=><th key={index} className={index>=5&&index<=7?'cc-number':''}>{label}</th>)}</tr></thead><tbody>
           {filtered.map((row,index)=><tr key={row.id} onDoubleClick={()=>editRow(row)} className={checked.includes(row.id)?'is-selected':''}>
             <td className="cc-check" onDoubleClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(row.id)} onChange={()=>toggle(row.id)} /></td><td className="cc-row-no">{index+1}</td><td>{row.transactionDate}</td>

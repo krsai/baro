@@ -33,6 +33,11 @@ try {
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.getByRole('button',{name:'Transport cost',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),2);
     assert.equal(await page.locator('.cc-kicker').count(),0);
+    assert.equal(await page.locator('.cc-results > .cc-results-summary').count(),1);
+    assert.equal(await page.locator('.cc-results-summary .cc-total-amount').count(),1);
+    assert.equal(await page.locator('.cc-grid-tools').count(),0);
+    assert.equal(await page.getByRole('checkbox',{name:text.dense,exact:true}).count(),0);
+    assert.equal(await page.locator('.cc-table-scroll.is-dense').count(),1);
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontSize),'20px');
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontWeight),'600');
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).color),'rgb(52, 64, 84)');
