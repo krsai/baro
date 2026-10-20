@@ -1432,7 +1432,7 @@ model PartnerTransactionCost {
   @@unique([expenseRequestId, expenseRequestLine])
   @@unique([outsourcedWorkRecordId, orgId])
   outsourcedWorkRecordId Int? @unique
-  outsourcedWorkRecord OutsourcedWorkRecord? @relation(fields: [outsourcedWorkRecordId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  outsourcedWorkRecord OutsourcedWorkRecord? @relation(map: "TransactionCost_work_record_scope_fkey", fields: [outsourcedWorkRecordId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
   transactionCodeId Int?
   unitPrice Decimal? @db.Decimal(18, 4)
   quantity Decimal? @db.Decimal(18, 4)
@@ -1441,9 +1441,9 @@ model PartnerTransactionCost {
   vatAmount Decimal? @db.Decimal(18, 2)
   styleId Int?
   styleProcessId Int?
-  transactionCode TransactionCode? @relation(fields: [transactionCodeId, orgId, serviceTypeId], references: [id, ownerOrgId, serviceTypeId], onDelete: Restrict, onUpdate: Restrict)
-  style Style? @relation(fields: [styleId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
-  styleProcess StyleProcess? @relation(fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, onUpdate: Restrict)
+  transactionCode TransactionCode? @relation(map: "TransactionCost_code_scope_fkey", fields: [transactionCodeId, orgId, serviceTypeId], references: [id, ownerOrgId, serviceTypeId], onDelete: Restrict, onUpdate: Restrict)
+  style Style? @relation(map: "TransactionCost_style_scope_fkey", fields: [styleId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  styleProcess StyleProcess? @relation(map: "TransactionCost_process_scope_fkey", fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(uuid())
   orgId Int
   partnerOrgId Int
@@ -1521,6 +1521,15 @@ model ExpenseSchemaMigration {
   version String @id
   checksum String
   appliedAt DateTime @default(now())
+}
+
+// Preserve completed expense-code rollout markers during schema preparation.
+model CodeBaseRollout {
+  id Int @id
+}
+
+model CodeBaseUsageRollout {
+  id Int @id
 }
 
 model TransactionCode {

@@ -181,6 +181,15 @@ try{
    await db.workOrder.update({where:{id:order.id},data:{invoiceFinalLockedAt:new Date()}});
    const next=await form();next.clientKey=key();next.title='Forbidden';await assert.rejects(save(next),/ORDER_FINALLY_LOCKED/);
  });
+ await check('repeated schema preparation preserves FK names, version history and all business rows',async()=>{
+   const before=await db.expenseRequest.findUnique({where:{id:requestId}}),events=await db.expenseRequestAudit.count();
+   try{execFileSync(process.execPath,[cli,'db','push','--skip-generate','--schema','prisma/schema.prisma'],{cwd:backend,env,stdio:'pipe',encoding:'utf8'});}catch(error){throw Error(error.stdout+error.stderr);}
+   sql(migrationSql());
+   const fk=await db.$queryRawUnsafe("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname='TransactionCost_style_scope_fkey'");
+   assert.match(fk[0].definition,/REFERENCES "Style"\(id, "orgId"\)/);
+   assert.deepEqual(await db.expenseRequest.findUnique({where:{id:requestId}}),before);
+   assert.equal(await db.expenseRequestAudit.count(),events);
+ });
  console.log(`Expense editor PostgreSQL passed ${count} scenarios.`);
 }finally{
  await db.$disconnect();await admin.$executeRawUnsafe('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1',name).catch(()=>{});

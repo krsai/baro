@@ -147,6 +147,15 @@ test('runtime schema drift fails closed with an operator command and never appli
   await assert.rejects(startServer(),/required constraint missing/);
 });
 
+test('runtime schema readiness recognizes enabled non-constraint audit and business triggers',async()=>{
+  const names=['ExpenseRequest_write_guard','ExpenseRequestAudit_append_only','baro_transaction_cost_guard'];
+  const {findMissingRuntimeSchemaConstraints}=loadSourceBindings('backend/src/index.ts',['findMissingRuntimeSchemaConstraints'],{
+    STARTUP_REQUIRED_RUNTIME_CONSTRAINTS:names,
+    prisma:{$queryRaw:async parts=>{assert.match(parts.join(''),/FROM pg_trigger/);assert.match(parts.join(''),/tgenabled <> 'D'/);return names.map(constraint_name=>({constraint_name}));}},
+  });
+  assert.deepEqual(await findMissingRuntimeSchemaConstraints(),[]);
+});
+
 test('database initialization refuses existing application tables before schema creation', async () => {
   const { assertEmptyDatabase } = require('../backend/scripts/assert-empty-database.js');
   await assertEmptyDatabase({ $queryRaw: async () => [] });

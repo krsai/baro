@@ -31791,6 +31791,11 @@ const findMissingRuntimeSchemaConstraints = async (): Promise<string[]> => {
     FROM pg_indexes
     WHERE schemaname = 'public'
       AND indexname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
+    UNION
+    SELECT tgname AS constraint_name
+    FROM pg_trigger
+    WHERE NOT tgisinternal AND tgenabled <> 'D'
+      AND tgname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
   `;
   const available = new Set(rows.map((row) => row.constraint_name));
   return STARTUP_REQUIRED_RUNTIME_CONSTRAINTS
