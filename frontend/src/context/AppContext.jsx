@@ -39,15 +39,17 @@ export const AppProvider = ({ children }) => {
   const openTab = useCallback((tab, options) => {
     tab = { ...tab, isEditing: Array.from(unsavedGuardsRef.current.values()).some(guard => guard.isDirty && guard.path === tab.id) };
     setOpenTabs((prev) => {
+      if (options?.updateOnly && !prev.some(item => item.id === tab.id)) return prev;
       let tabs = prev;
       let changed = false;
-      const pattern = options?.replacePrefix;
+      const pattern = options?.updateOnly ? null : options?.replacePrefix ||
+        (tab.id.startsWith('/outsourcing-record/') ? '/outsourcing-record/' : null);
       let replacementIndex = -1;
 
       // If a replacement pattern is given, first remove old tabs matching it.
       if (pattern) {
-        const removedTabs = tabs.filter((t) => t.id.startsWith(pattern));
-        replacementIndex = tabs.findIndex((t) => t.id.startsWith(pattern));
+        const removedTabs = tabs.filter((t) => t.id !== tab.id && t.id.startsWith(pattern));
+        replacementIndex = tabs.findIndex((t) => t.id !== tab.id && t.id.startsWith(pattern));
         removedTabs.forEach((removedTab) => {
           const removedPath = String(removedTab?.id || '').trim();
           if (!removedPath) return;
@@ -57,7 +59,7 @@ export const AppProvider = ({ children }) => {
             unsavedGuardsRef.current.delete(guardKey);
           });
         });
-        const filtered = tabs.filter((t) => !t.id.startsWith(pattern));
+        const filtered = tabs.filter((t) => t.id === tab.id || !t.id.startsWith(pattern));
         if (filtered.length !== tabs.length) {
           changed = true;
           tabs = filtered;

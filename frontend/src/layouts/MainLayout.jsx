@@ -1444,6 +1444,9 @@ const MainLayout = () => {
           : null;
       const skipUnsavedChangesCheck = options?.skipUnsavedChangesCheck === true;
       const isSamePathNavigation = nextPathname === currentPath;
+      if (nextPathname.startsWith('/outsourcing-record/')) {
+        openOptions.replacePrefix = '/outsourcing-record/';
+      }
       if (isEmptyWorkspaceNavigation) {
         pendingTabOpenRef.current = null;
         if (closeTabId && !skipUnsavedChangesCheck) {
@@ -1517,6 +1520,11 @@ const MainLayout = () => {
       if (!skipUnsavedChangesCheck) {
         const destructivePaths = new Set();
         if (closeTabId) destructivePaths.add(closeTabId);
+        if (openOptions.replacePrefix === '/outsourcing-record/') {
+          openTabs.forEach(tab => {
+            if (tab.id !== nextPathname && tab.id.startsWith(openOptions.replacePrefix)) destructivePaths.add(tab.id);
+          });
+        }
         if (
           !isSamePathNavigation &&
           openOptions.replacePrefix &&
@@ -1569,6 +1577,7 @@ const MainLayout = () => {
       hasPathAccess,
       navigate,
       openTab,
+      openTabs,
       resolveAccessiblePath,
       resolveTabLabel,
       schedulePendingNavigationCleanup,
@@ -1652,7 +1661,7 @@ const MainLayout = () => {
         ...tab,
         label: nextLabel,
         path: tab.path || tab.id,
-      });
+      }, { updateOnly: true });
     });
   }, [openTab, openTabs, resolveRenderedTabLabel]);
 

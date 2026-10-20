@@ -3,6 +3,33 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+test('expense forms share one slot even on automatic route opens and stale relabeling cannot resurrect a closed detail',()=>{
+  const source=fs.readFileSync('frontend/src/context/AppContext.jsx','utf8');
+  let tabs=[{id:'/outsourcing-record'},{id:'/outsourcing-record/edit/legacy/1'},{id:'/outsourcing-record/edit/request/2'},{id:'/style/4'}];
+  const guards=new Map([['draft',{path:'/outsourcing-record/edit/request/3',isDirty:true}]]);
+  const context=vm.createContext({useCallback:fn=>fn,unsavedGuardsRef:{current:guards},setOpenTabs:fn=>{tabs=fn(tabs);}});
+  vm.runInContext(source.slice(source.indexOf('  const openTab ='),source.indexOf('  const markTabChanged ='))+'\nglobalThis.open=openTab;',context);
+  context.open({id:'/outsourcing-record/edit/request/3',label:'Detail'});
+  assert.deepEqual(Array.from(tabs,tab=>tab.id),['/outsourcing-record','/outsourcing-record/edit/request/3','/style/4']);
+  context.open({id:'/outsourcing-record/edit/legacy/1',label:'Old relabel'},{updateOnly:true});
+  assert.equal(tabs.length,3);assert.equal(tabs[1].id,'/outsourcing-record/edit/request/3');
+  context.open({id:'/outsourcing-record/edit/request/3',label:'Updated label'},{replacePrefix:'/outsourcing-record/'});
+  assert.equal(guards.has('draft'),true);assert.equal(tabs[1].isEditing,true);
+  context.open({id:'/outsourcing-record/new'});
+  assert.equal(tabs.filter(tab=>tab.id.startsWith('/outsourcing-record/')).length,1);
+  assert.equal(tabs[1].id,'/outsourcing-record/new');assert.equal(guards.has('draft'),false);
+});
+
+test('opening another expense from the list confirms a hidden dirty detail and cancellation preserves it',()=>{
+  const source=fs.readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
+  const start=source.indexOf('      if (!skipUnsavedChangesCheck) {',source.indexOf('const handleNavigation ='));
+  const block=source.slice(start,source.indexOf('      let label',start));
+  const calls=[];
+  const context=vm.createContext({skipUnsavedChangesCheck:false,closeTabId:null,isSamePathNavigation:false,currentPath:'/outsourcing-record',nextPathname:'/outsourcing-record/edit/request/2',openOptions:{replacePrefix:'/outsourcing-record/'},openTabs:[{id:'/outsourcing-record'},{id:'/outsourcing-record/edit/request/1'}],confirmDiscardUnsavedChanges:({path})=>{calls.push(path);return false;}});
+  assert.equal(vm.runInContext('(function(){'+block+'return "proceed";})()',context),undefined);
+  assert.deepEqual(calls,['/outsourcing-record/edit/request/1']);
+});
+
 test('tab editing aggregates all guards and clears only after every form is saved', () => {
   const source = fs.readFileSync(new URL('../frontend/src/context/AppContext.jsx', import.meta.url), 'utf8');
   let tabs = [{ id: '/order/1' }, { id: '/style/2' }];
