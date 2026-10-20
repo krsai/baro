@@ -5,7 +5,7 @@ import { annotateProcessVersionProtection } from "./services/processVersionProte
 import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
 import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
-import { REQUEST_INCLUDE, registerTransactionRequest } from './services/transactionRequest';
+import { REQUEST_INCLUDE } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
 import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
@@ -755,6 +755,9 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "ExpenseRequest", columnName: "clientKey" },
   { tableName: "ExpenseRequest", columnName: "submissionHash" },
   { tableName: "ExpenseRequest", columnName: "createdAt" },
+  ...["version","updatedAt","updatedByEmployeeId"].map(columnName=>({tableName:"ExpenseRequest",columnName})),
+  ...["id","orgId","requestId","actorId","version","clientKey","beforeSnapshot","afterSnapshot"].map(columnName=>({tableName:"ExpenseRequestAudit",columnName})),
+  { tableName: "ExpenseSchemaMigration", columnName: "version" },
   { tableName: "TransactionCode", columnName: "vatEnabled" },
   { tableName: "TransactionCode", columnName: "systemDefaultId" },
   { tableName: "TransactionCode", columnName: "isOverridden" },
@@ -997,6 +1000,14 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'ExpenseRequestAudit_requestId_orgId_fkey',
+  'ExpenseRequestAudit_actorId_orgId_fkey',
+  'ExpenseRequestAudit_requestId_version_key',
+  'ExpenseRequest_write_guard',
+  'ExpenseRequest_audit_guard',
+  'ExpenseRequestAudit_append_only',
+  'baro_transaction_cost_guard',
+  'baro_request_production_guard',
   'ExpenseRequestEdit_cost_audit',
   'ExpenseRequestEdit_production_audit',
   'ExpenseRequest_id_orgId_partnerOrgId_key',
@@ -27516,7 +27527,14 @@ app.post('/outsourcing-requests', async (req, res) => {
   const actorId = getCurrentRequestActorEmployeeId();
   if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
   const orgId = access.organization.id;
-  const row = await prisma.$transaction(tx => registerTransactionRequest(tx, orgId, actorId, req.body, appendWorkLogQuantityRemark), { isolationLevel: 'Serializable', timeout: 30000 });
+  // Older single-line clients use the same versioned, audited document writer.
+  const row = await prisma.$transaction(async tx => {
+    const document = await registerExpenseRequest(tx, orgId, actorId, {
+      title: String(req.body?.description || '').slice(0,200), requestDate: req.body?.transactionDate,
+      partnerOrgId: req.body?.partnerOrgId, clientKey: req.body?.clientKey, items: [req.body],
+    }, appendWorkLogQuantityRemark);
+    return document.items[0];
+  }, { isolationLevel: 'Serializable', timeout: 30000 });
   if (row.outsourcedWorkRecord) {
     const planId = row.outsourcedWorkRecord.assignmentPlanId;
 

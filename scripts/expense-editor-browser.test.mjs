@@ -32,8 +32,8 @@ try {
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
     await page.route('**/expense-request-editor/legacy/78?*',r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
-      if(r.request().method()==='PUT'){submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
-      return r.fulfill({headers,json:{title:mode==='PROCESS'?'':'Original request',canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',readOnly:locked,
+      if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
+      return r.fulfill({headers,json:{title:mode==='PROCESS'?'':'Original request',canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
@@ -52,6 +52,13 @@ try {
       assert.equal(await save.isDisabled(),true);
       await description.fill('Reviewed expense');await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
       await description.fill('Original buttonhole expense');assert.equal(await save.isDisabled(),true);
+      assert.match(await page.getByTestId('expense-author-context').innerText(),/v3/);
+      assert.match(await page.getByTestId('expense-author-context').innerText(),/Latest editor/);
+      await description.fill('Conflicting edit');await save.click();
+      await page.locator('.MuiAlert-standardError').waitFor();
+      assert.notEqual(await page.locator('.MuiAlert-standardError').innerText(),l.invalid);
+      assert.equal(submitted.version,3);
+      assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),'Conflicting edit');
       assert.deepEqual(errors,[]);await page.close();continue;
     }
     if(locked){assert.equal(await page.getByLabel(l.title,{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}

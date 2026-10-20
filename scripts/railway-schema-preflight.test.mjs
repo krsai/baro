@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const { runRailwayPreflight, columns, constraints } = require('../backend/scripts/railway-schema-preflight.js');
 const env = { RAILWAY_ENVIRONMENT_ID:'test-environment', RAILWAY_SERVICE_ID:'test-service', DATABASE_URL:'postgresql://test:secret@127.0.0.1/test' };
 const quiet = () => {};
+const {migrations,migrationSql}=require('../backend/scripts/migrate-expenses.js');
 test('local npm start does not open or modify a database; Railway runs the prestart hook before the pure API command', async () => {
   await runRailwayPreflight({ env: {}, log:quiet, createClient:()=>{throw Error('No local DB access');}, run:()=>{throw Error('No local SQL');} });
   const pkg=JSON.parse(fs.readFileSync('backend/package.json','utf8'));
@@ -21,13 +22,14 @@ test('missing Railway URLs and authentication database targets are refused befor
 });
 test('a complete schema skips SQL and closes the check connection', async () => {
   let closed=false;
-  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
+  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('to_regclass') ? [{present:true}] : sql==='SELECT version,checksum FROM "ExpenseSchemaMigration"' ? migrations() : sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
   assert.ok(closed);
 });
 test('preflight applies the bounded additive transaction, preserves legacy costs, verifies constraints and skips the next launch', async () => {
   const db=new PGlite();let runs=0,closed=0;
   try {
-    await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,UNIQUE(id,"ownerOrgId"));
+    await db.exec(`CREATE TABLE "SystemSetting"(key TEXT PRIMARY KEY,value JSONB,"updatedByEmployeeId" INT,"createdAt" TIMESTAMP DEFAULT now(),"updatedAt" TIMESTAMP DEFAULT now());
+      CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,UNIQUE(id,"ownerOrgId"));
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
       CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
@@ -37,7 +39,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);
       assert.match(options.input,/BEGIN;[\s\S]*pg_advisory_xact_lock[\s\S]*COMMIT;/);
-      assert.doesNotMatch(options.input,/(?:^|;)\s*(?:UPDATE|DELETE FROM|DROP TABLE|TRUNCATE)\b/m);
+      assert.equal(options.input,migrationSql());
       await db.exec(options.input);return {status:0};
     }};
     await runRailwayPreflight(dependencies); await runRailwayPreflight(dependencies);
@@ -48,13 +50,13 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
 test('migration failure stops launch, disconnects and never exposes subprocess credentials', async () => {
   let closed=false;const logs=[];
   const db={$queryRawUnsafe:async()=>[],$disconnect:async()=>{closed=true;}};
-  await assert.rejects(runRailwayPreflight({env,createClient:()=>db,log:value=>logs.push(value),run:()=>({status:1,stderr:env.DATABASE_URL})}),/API will not start/);
+  await assert.rejects(runRailwayPreflight({env,createClient:()=>db,log:value=>logs.push(value),run:()=>({status:1,stderr:env.DATABASE_URL})}),/Migration failed/);
   assert.ok(closed); assert.ok(!logs.join('').includes('secret'));
 });
 
 test('expense style FK repairs customer scope, preserves rows, rejects other manufacturers and refuses orphan repair',async()=>{
   const db=new PGlite();
-  const repair=fs.readFileSync('backend/scripts/apply-expense-style-owner-fk.sql','utf8');
+  const repair=fs.readFileSync('backend/prisma/migrations/20261020120000_expense_style_manufacturer_fk/migration.sql','utf8');
   try{
     await db.exec(`CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT,UNIQUE(id,"customerOrgId"));
       CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"styleId" INT,amount NUMERIC,

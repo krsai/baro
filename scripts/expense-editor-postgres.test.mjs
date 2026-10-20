@@ -10,6 +10,7 @@ const {loadExpenseEditorSource,expenseEditorForm,saveExpenseEditor}=require('../
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest.js');
 const {provisionSettingDefaults}=require('../backend/dist/services/transactionSettingRoutes.js');
 const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement.js');
+const {migrationSql}=require('../backend/scripts/migrate-expenses.js');
 const base=process.env.INVOICE_TEST_DATABASE_URL;
 if(!base)throw Error('INVOICE_TEST_DATABASE_URL must target dedicated local PostgreSQL');
 const url=new URL(base);if(!['localhost','127.0.0.1','[::1]'].includes(url.hostname))throw Error('Refusing non-local PostgreSQL');
@@ -25,7 +26,7 @@ try{
  await admin.$executeRawUnsafe(`CREATE DATABASE "${name}"`);
  execFileSync(process.execPath,[cli,'db','push','--skip-generate','--schema','prisma/schema.prisma'],{cwd:backend,env,stdio:'pipe'});
  for(const version of ['20261010090000_partner_transaction_cost','20261011090000_transaction_request_codes','20261011120000_setting_inheritance','20261013090000_code_bases_tax','20261013120000_code_base_usage_fk','20261016090000_expense_code_separation'])apply(`backend/prisma/migrations/${version}/migration.sql`);
- apply('backend/scripts/apply-expense-request-documents.sql');
+ apply('backend/prisma/migrations/20261017120000_expense_request_documents/migration.sql');
  const org=await db.organization.create({data:{name:'Expense seller',type:'MANUFACTURER'}});
  const productionType=await db.expenseType.findUnique({where:{code:'PRODUCTION'}}),generalType=await db.expenseType.findUnique({where:{code:'GENERAL'}});
  for(const [code,entryMode,expenseTypeId] of [['BTH','PROCESS',productionType.id],['GEN','GENERAL',generalType.id]]){
@@ -63,15 +64,38 @@ try{
    const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{title:'General',requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),items:[{transactionCodeId:general.id,currency:'VND',description:'Service',quantity:'1',unitPrice:'100',vatRate:'0',details:{}}]}));
    await assert.rejects(db.partnerTransactionCost.update({where:{id:doc.items[0].id},data:{expenseRequestId:doc.id,expenseRequestLine:1}}),/history cannot be changed/);
  });
- apply('backend/scripts/apply-expense-request-editor.sql');apply('backend/scripts/apply-expense-request-editor.sql');
+ apply('backend/prisma/migrations/20261019180000_expense_request_editor/migration.sql');apply('backend/prisma/migrations/20261019180000_expense_request_editor/migration.sql');
  await check('customer-scoped legacy FK rejects valid manufacturer cost; targeted repair preserves sources and rejects foreign styles',async()=>{
    sql('ALTER TABLE "PartnerTransactionCost" DROP CONSTRAINT "TransactionCost_style_scope_fkey"; ALTER TABLE "PartnerTransactionCost" ADD CONSTRAINT "TransactionCost_style_scope_fkey" FOREIGN KEY ("styleId","orgId") REFERENCES "Style"(id,"customerOrgId") ON DELETE RESTRICT ON UPDATE RESTRICT;');
    await assert.rejects(save(input),error=>error.code==='P2003');
    assert.equal(await db.expenseRequest.count({where:{clientKey:input.clientKey}}),0);
    assert.deepEqual(await db.outsourcedWorkRecord.findMany({orderBy:{id:'asc'}}),original);
-   apply('backend/scripts/apply-expense-style-owner-fk.sql');apply('backend/scripts/apply-expense-style-owner-fk.sql');
+   apply('backend/prisma/migrations/20261020120000_expense_style_manufacturer_fk/migration.sql');apply('backend/prisma/migrations/20261020120000_expense_style_manufacturer_fk/migration.sql');
    const definition=await db.$queryRawUnsafe("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname='TransactionCost_style_scope_fkey'");
    assert.match(definition[0].definition,/REFERENCES "Style"\(id, "orgId"\)/);
+ });
+ await check('legacy audit import preserves the exact envelope and actor; malformed history rolls back; versioned migration is repeatable',async()=>{
+   const historical=await db.expenseRequest.findFirst({where:{title:'General'}});
+   const source=await loadExpenseEditorSource(db,org.id,'request',String(historical.id));
+   const legacyKey=`EXPENSE_REQUEST_EDIT:${org.id}:legacy-history-001`;
+   const value=JSON.parse(JSON.stringify({inputHash:'legacy-input-hash',requestId:historical.id,before:source,after:source}));
+   const old=await db.systemSetting.create({data:{key:legacyKey,updatedByEmployeeId:actor.id,value}});
+   const bad=await db.systemSetting.create({data:{key:`EXPENSE_REQUEST_EDIT:${org.id}:broken-history`,value:{requestId:999999}}});
+   assert.throws(()=>sql(migrationSql()),/EXPENSE_LEGACY_AUDIT_REQUIRES_REVIEW/);
+   assert.ok(await db.systemSetting.findUnique({where:{key:legacyKey}}));
+   await db.systemSetting.delete({where:{key:bad.key}});
+   sql(migrationSql());
+   const imported=await db.expenseRequestAudit.findUnique({where:{legacyKey}});
+   const preserved=JSON.parse(JSON.stringify(old));preserved.createdAt=preserved.createdAt.replace(/Z$/,'');preserved.updatedAt=preserved.updatedAt.replace(/Z$/,'');
+   assert.equal(imported.actorId,actor.id);assert.deepEqual(imported.legacyPayload,preserved);
+   assert.deepEqual(imported.beforeSnapshot,value.before);assert.deepEqual(imported.afterSnapshot,value.after);
+   assert.equal(await db.systemSetting.findUnique({where:{key:legacyKey}}),null);
+   const updated=await db.expenseRequest.findUnique({where:{id:historical.id}});
+   assert.equal(updated.version,2);assert.equal(updated.updatedByEmployeeId,actor.id);assert.equal(+updated.updatedAt,+old.updatedAt);
+   const events=await db.expenseRequestAudit.count();sql(migrationSql());
+   assert.equal(await db.expenseRequestAudit.count(),events);
+   assert.deepEqual(await db.expenseRequest.findUnique({where:{id:historical.id}}),updated);
+   assert.equal(await db.expenseSchemaMigration.count(),4);
  });
  let requestId;
  await check('real Prisma wraps the completed legacy row with BTHE while preserving both vendors and source period',async()=>{
@@ -84,6 +108,26 @@ try{
  await check('existing request financial edits commit with audit and preserve IDs',async()=>{
    const next=await form();next.clientKey=key();next.title='Reviewed';next.items[0].description='Updated description';
    await save(next);const cost=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}});assert.equal(cost.description,'Updated description');assert.equal(cost.expenseRequestId,requestId);
+ });
+ await check('explicit versions reject stale saves and audit rows cannot be rewritten or removed',async()=>{
+   const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.title='Version winner';b.title='Stale loser';
+   await save(a);await assert.rejects(save(b),/EXPENSE_REQUEST_CHANGED/);
+   const latest=await form();assert.equal(latest.version,a.version+1);assert.equal(latest.updatedByEmployee.id,actor.id);assert.ok(latest.updatedAt);
+   const event=await db.expenseRequestAudit.findFirst({where:{requestId},orderBy:{version:'desc'}});
+   assert.equal(event.version,latest.version);assert.equal(event.afterSnapshot.document.title,'Version winner');
+   await assert.rejects(db.expenseRequestAudit.update({where:{id:event.id},data:{inputHash:'tamper'}}),/append only/);
+   await assert.rejects(db.expenseRequestAudit.delete({where:{id:event.id}}),/append only/);
+   await assert.rejects(db.expenseRequest.update({where:{id:requestId},data:{title:'bypass'}}),/context required/);
+ });
+ await check('simultaneous editors commit exactly one next version and one audit',async()=>{
+   const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.title='Parallel A';b.title='Parallel B';
+   const events=await db.expenseRequestAudit.count({where:{requestId}});
+   const results=await Promise.allSettled([save(a),save(b)]);
+   assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+   const rejected=results.find(r=>r.status==='rejected').reason;
+   assert.ok(rejected.code==='P2034'||['40001','40P01'].includes(rejected.meta?.code)||rejected.message.includes('EXPENSE_REQUEST_CHANGED'),JSON.stringify({code:rejected.code,meta:rejected.meta}));
+   assert.equal((await form()).version,a.version+1);
+   assert.equal(await db.expenseRequestAudit.count({where:{requestId}}),events+1);
  });
  await check('direct writes and context without a matching audit roll back',async()=>{
    const cost=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}});
@@ -119,10 +163,10 @@ try{
    await db.payrollSnapshot.delete({where:{id:payroll.id}});
  });
  await check('a bad later process rolls back edits, new source rows, and audit together',async()=>{
-   const before=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}}),events=await db.systemSetting.count();
+   const before=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}}),events=await db.expenseRequestAudit.count();
    const next=await form();next.clientKey=key();next.items[0].quantity='172';next.items.push({...next.items[0],itemId:undefined,sourceRecordId:undefined,unitPrice:'0'});
    await assert.rejects(save(next),/INVALID_PRICE_OR_QUANTITY/);
-   assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:before.id}}),before);assert.equal((await db.outsourcedWorkRecord.findUnique({where:{id:record.id}})).quantity,171);assert.equal(await db.systemSetting.count(),events);
+   assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:before.id}}),before);assert.equal((await db.outsourcedWorkRecord.findUnique({where:{id:record.id}})).quantity,171);assert.equal(await db.expenseRequestAudit.count(),events);
  });
  await check('another process can be added, retried and removed financially without removing its production history',async()=>{
    const additionalPlan=await db.assignmentPlan.create({data:{orgId:org.id,factoryId:factory.id,externalId:key(),workOrderId:order.id,styleId:style.id,startIndex:1,endIndex:2,assignmentCtSnapshot:snapshot,assignmentStSnapshot:snapshot}});

@@ -16,7 +16,7 @@ const input = () => ({ title: 'Factory expenses', requestDate: '2026-10-17', par
   { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {} },
 ] });
 function harness({sourceEnabled=true}={}) {
-  let state = { documents: [], costs: [], logs: [], production: [] };
+  let state = { documents: [], costs: [], logs: [], production: [], audits: [] };
   const client = data => {
     const readDocument = where => {
       const document = data.documents.find(row => where.id ? row.id === where.id : row.orgId === where.orgId_clientKey.orgId && row.clientKey === where.orgId_clientKey.clientKey);
@@ -24,7 +24,7 @@ function harness({sourceEnabled=true}={}) {
     };
     return {
       factory: { findMany: async () => [{ id: 1, managementStartDate: '2026-04-01' }] },
-      expenseRequest: { findUnique: async ({ where }) => readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1, ...row }; data.documents.push(document); return document; } },
+      expenseRequest: { findUnique: async ({ where }) => readDocument(where),findFirst:async({where})=>readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1,version:1, ...row }; data.documents.push(document); return document; } },
       partnerTransactionCost: {
         findUnique: async () => null,
         create: async ({ data: row }) => { const cost = { id: `cost-${data.costs.length + 1}`, ...JSON.parse(JSON.stringify(row)) }; data.costs.push(cost); return cost; },
@@ -33,6 +33,7 @@ function harness({sourceEnabled=true}={}) {
       transactionCode: { findFirst: async ({ where }) => ({ id: where.id, isActive:true, baseId: 1, serviceTypeId: 4, taxTreatmentId: where.id === 8 ? 3 : 1, vatEnabled: where.id !== 8,
         taxTreatment:{code:where.id===8?'EXEMPT':'VAT',suffix:where.id===8?'E':'V'},
         serviceType: { id: 4 }, base: {isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
+      expenseRequestAudit:{create:async({data:row})=>{data.audits.push(row);return row;}},
       systemSetting: { findUnique: async () => ({ value: { defaultVatRate: '10' } }) },
       organization: { findFirst: async () => ({ id: 11 }), findUnique: async () => ({ name: 'Vendor' }) },
       workOrder: { findFirst: async () => ({ id: 30 }) }, workOrderItem: { findFirst: async () => ({ id: 1 }) }, styleProcess: { findFirst: async () => ({ id: 50 }) },
@@ -93,7 +94,7 @@ test('a bad later row rolls back the header, preceding costs and process product
   body.items[0] = { ...body.items[0], transactionCodeId: 8, vatRate: '0', workOrderId: 30, styleId: 40, styleProcessId: 50, assignmentPlanId: 60 };
   body.items[1].unitPrice = '0';
   await assert.rejects(route({ body },response()),/INVALID_PRICE_OR_QUANTITY/);
-  assert.deepEqual(db.state(),{ documents: [], costs: [], logs: [], production: [] }); assert.equal(effects.length,0);
+  assert.deepEqual(db.state(),{ documents: [], costs: [], logs: [], production: [], audits: [] }); assert.equal(effects.length,0);
   body.items[1].unitPrice = '50000'; await route({ body },response());
   assert.equal(db.state().production.length,1); assert.deepEqual(effects[0].assignmentPlanIds,[60]);
   await route({ body },response()); assert.equal(db.state().production.length,1);
@@ -108,7 +109,7 @@ test('one header date applies to all new costs and conflicting item dates are re
   const other = routeHarness();
   body.items[1].transactionDate = '2026-10-17';
   await assert.rejects(other.route({ body }, response()), /EXPENSE_REQUEST_DATE_MISMATCH/);
-  assert.deepEqual(other.db.state(), { documents: [], costs: [], logs: [], production: [] });
+  assert.deepEqual(other.db.state(), { documents: [], costs: [], logs: [], production: [], audits: [] });
 });
 test('documents reject conflicting payees, invalid currencies, empty or excessive lines and unauthorized access', async () => {
   const { route,db } = routeHarness();
@@ -137,7 +138,7 @@ test('document SQL is repeatable, preserves old costs and enforces tenant/payee 
       CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,currency TEXT,amount NUMERIC);
       INSERT INTO "Organization" VALUES(1,NULL),(2,NULL),(11,1),(12,2);INSERT INTO "Employee" VALUES(20,1),(21,2);
       INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,'VND',123);`);
-    const sql = fs.readFileSync('backend/scripts/apply-expense-request-documents.sql','utf8');
+    const sql = fs.readFileSync('backend/prisma/migrations/20261017120000_expense_request_documents/migration.sql','utf8');
     await db.exec(sql); await db.exec(sql);
     await db.exec(`INSERT INTO "ExpenseRequest" (id,"orgId","partnerOrgId","createdByEmployeeId","requestDate",title,currency,"clientKey","submissionHash") VALUES(1,1,11,20,'2026-10-17','Expenses','VND','key','hash');`);
     for (const [org,payee,currency,line] of [[2,11,'VND',1],[1,12,'VND',1],[1,11,'VND','NULL'],[1,11,'VND',0]]) await assert.rejects(db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('bad',${org},${payee},'${currency}',1,1,${line})`));

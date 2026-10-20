@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { loadExpenseEditorSource, expenseEditorForm, saveExpenseEditor } = require('../backend/dist/services/expenseRequestEditor.js');
+const { loadExpenseEditorSource, expenseEditorForm, saveExpenseEditor, registerExpenseEditorRoutes } = require('../backend/dist/services/expenseRequestEditor.js');
 
 function harness() {
   let state = { documents: [], costs: [], audits: [], extraLogs: [], records: [
@@ -18,11 +18,12 @@ function harness() {
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
     return {
       factory: { findMany: async()=>[{id:1,managementStartDate:'2026-04-01'}], findFirst: async()=>({id:1,managementStartDate:'2026-04-01'}) },
-      systemSetting: { findUnique: async({where})=>s.audits.find(x=>x.key===where.key) || null, create: async({data})=>{s.audits.push(structuredClone(data));return data;} },
+      systemSetting: {findUnique:async()=>null},
+      expenseRequestAudit: {findMany:async({where,take})=>s.audits.filter(a=>a.orgId===where.orgId&&a.requestId===where.requestId&&(!where.version||a.version<where.version.lt)).sort((a,b)=>b.version-a.version).slice(0,take), findUnique: async({where})=>s.audits.find(x=>x.orgId===where.orgId_clientKey.orgId&&x.clientKey===where.orgId_clientKey.clientKey) || null, create: async({data})=>{s.audits.push(structuredClone(data));return data;} },
       expenseRequest: {
         findFirst: async({where})=>document(s.documents.find(r=>matches(r,where))),
-        create: async({data})=>{const row={id:s.documents.length+1,...data};s.documents.push(row);return row;},
-        update: async({where,data})=>Object.assign(s.documents.find(r=>r.id===where.id),data),
+        create: async({data})=>{const row={id:s.documents.length+1,version:1,...data};s.documents.push(row);return row;},
+        update: async({where,data})=>{const row=s.documents.find(r=>r.id===where.id);return Object.assign(row,{...data,version:row.version+(data.version?.increment||0)});},
       },
       partnerTransactionCost: {
         findFirst: async({where})=>cost(s.costs.find(r=>matches(r,where))),
@@ -45,13 +46,28 @@ function harness() {
       $queryRaw: async()=>[], $queryRawUnsafe: async()=>[],
     };
   };
-  return { state:()=>state, change:patch=>Object.assign(state,patch), source:()=>loadExpenseEditorSource(client(state),1,'legacy','78'),
+  return { state:()=>state, client:()=>client(state), change:patch=>Object.assign(state,patch), source:()=>loadExpenseEditorSource(client(state),1,'legacy','78'),
     save:async(body,kind='legacy',id='78',org=1)=>{const draft=structuredClone(state);const result=await saveExpenseEditor(client(draft),org,20,kind,id,body);state=draft;return result;} };
 }
 async function input(db) {
   const form=expenseEditorForm(await db.source());
   return {...form,title:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,transactionCodeId:8}))};
 }
+
+test('history is tenant-scoped, permission-gated and paged by version; serialization conflicts return a recoverable code',async()=>{
+  const db=harness();await db.save(await input(db));
+  const handlers=new Map();let orgId=1,allowed=true;
+  const app={get:(path,fn)=>handlers.set(`GET ${path}`,fn),put:(path,fn)=>handlers.set(`PUT ${path}`,fn)};
+  const gates={requireOrgRole:async(_req,_res,options)=>{assert.deepEqual(options.allowedRoles,['ADMIN','OPERATOR','ACCOUNTANT']);return allowed?{organization:{id:orgId}}:null;},actorId:()=>20};
+  registerExpenseEditorRoutes(app,{...db.client(),$transaction:async()=>{throw {code:'P2010',meta:{code:'40001'}};}},gates);
+  const response=()=>({status(n){this.code=n;return this;},json(v){this.value=v;return this;}});
+  const req={params:{kind:'request',id:'1'},query:{}};let res=response();
+  await handlers.get('GET /expense-request-editor/:kind/:id/history')(req,res);assert.equal(res.value.length,1);
+  res=response();await handlers.get('GET /expense-request-editor/:kind/:id/history')({...req,query:{beforeVersion:'1'}},res);assert.deepEqual(res.value,[]);
+  orgId=2;await assert.rejects(handlers.get('GET /expense-request-editor/:kind/:id/history')(req,response()),/NOT_FOUND/);
+  orgId=1;allowed=false;res=response();await handlers.get('GET /expense-request-editor/:kind/:id/history')(req,res);assert.equal(res.value,undefined);
+  allowed=true;res=response();await handlers.get('PUT /expense-request-editor/:kind/:id')({...req,body:{}},res);assert.equal(res.code,409);assert.equal(res.value.error,'EXPENSE_REQUEST_CHANGED');
+});
 test('historical editor loads only the selected source FK and never guesses its missing code/tax',async()=>{
   const db=harness(), form=expenseEditorForm(await db.source());
   assert.equal(form.items.length,1);assert.equal(form.items[0].sourceRecordId,78);assert.equal(form.items[0].transactionCodeId,'');
@@ -68,7 +84,7 @@ test('wrapping and editing legacy production preserves source IDs, original peri
   await db.save(next);assert.equal(db.state().costs[0].id,'cost-1');assert.equal(db.state().records[0].id,78);assert.equal(db.state().records[0].quantity,171);
   assert.equal(db.state().records[0].createdByEmployeeId,21);assert.equal(db.state().records[0].updatedByEmployeeId,20);
   assert.deepEqual(db.state().records[1],before.records[1]);assert.deepEqual(db.state().log,before.log);
-  assert.equal(db.state().audits[1].value.before.costs[0].quantity,'170');
+  assert.equal(db.state().audits[1].beforeSnapshot.costs[0].quantity,'170');
 });
 test('stale edits, cross-tenant IDs, forged sources and invalid later rows leave no partial financial or production writes',async()=>{
   const db=harness(), body=await input(db), before=structuredClone(db.state());
@@ -100,7 +116,7 @@ test('document and standalone-cost entry points resolve the saved form; item edi
   await db.save(next,'request','1');assert.equal(db.state().costs.length,1);assert.equal(db.state().costs[0].id,secondId);
   assert.equal(db.state().records.length,2);assert.equal(db.state().records[0].id,78);assert.equal(db.state().records[0].quantity,170);
   assert.equal(db.state().documents[0].id,1);assert.equal(db.state().documents[0].currency,'USD');
-  assert.equal(db.state().audits.at(-1).value.before.costs[0].id,firstId);
+  assert.equal(db.state().audits.at(-1).beforeSnapshot.costs[0].id,firstId);
 });
 test('a legacy production source can select a general expense code without deleting or duplicating production',async()=>{
   const db=harness(),body=await input(db),before=structuredClone(db.state().records);

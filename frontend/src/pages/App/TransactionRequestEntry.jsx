@@ -26,6 +26,8 @@ import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/wor
 const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New Payment Request', vi: 'Tạo đề nghị thanh toán' };
 const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit Payment Request', vi: 'Sửa đề nghị thanh toán' };
 const LOCKED_TEXT = { ko: '최종 마감된 주문의 비용 신청은 수정할 수 없습니다.', en: 'This request is read-only because its order is finally locked.', vi: 'Không thể sửa đề nghị vì đơn hàng đã khóa quyết toán.' };
+const CHANGED_TEXT = { ko: '다른 사용자가 신청서를 수정했습니다. 화면을 다시 열어 최신 내용을 확인한 뒤 저장해 주세요.', en: 'This request was changed by another user. Reopen it to review the latest version before saving.', vi: 'Đề nghị đã được người khác sửa. Vui lòng mở lại để kiểm tra phiên bản mới nhất trước khi lưu.' };
+const UPDATED_TEXT = { ko: '최종 수정', en: 'Last updated', vi: 'Cập nhật gần nhất' };
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -108,7 +110,7 @@ export default function TransactionRequestEntry() {
   };
   const save = async () => {
     if (disabled && !submission || saving || !submission && (!valid || editing && !dirty)) return;
-    const body = submission || { title: form.title, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { title: form.title, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -117,7 +119,7 @@ export default function TransactionRequestEntry() {
       setInitialSnapshot(documentSnapshot(form)); setSaved(true); showNotification(labels.saved, 'success');
     } catch (failure) {
       if (organizationRef.current !== activeOrgId) return;
-      if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError(labels.invalid); }
+      if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError((failure.details?.error || failure.message)==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : labels.invalid); }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId) setSaving(false); }
   };
@@ -146,6 +148,7 @@ export default function TransactionRequestEntry() {
           <Stack data-testid="expense-author-context" direction="row" useFlexGap flexWrap="wrap" spacing={3} sx={{mt:2,pt:2,borderTop:1,borderColor:'divider'}}>
             <Typography variant="caption" color="text.secondary">{lookup.issuer}: {accessProfile?.orgName || '—'}</Typography>
             <Typography variant="caption" color="text.secondary">{lookup.author}: {form.createdByEmployee?.name || accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '—'}</Typography>
+            {form.version != null && <Typography variant="caption" color="text.secondary">v{form.version}{form.updatedAt ? ` · ${UPDATED_TEXT[languageCode] || UPDATED_TEXT.en}: ${form.updatedByEmployee?.name || '—'} · ${new Date(form.updatedAt).toLocaleString(languageCode==='vi'?'vi-VN':languageCode==='en'?'en-GB':'ko-KR')}` : ''}</Typography>}
             <Typography variant="caption" color="text.secondary">{labels.vatDefault}: {data.settings.defaultVatRate}%</Typography>
           </Stack></Box>
         </Box>

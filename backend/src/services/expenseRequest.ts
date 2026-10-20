@@ -4,6 +4,8 @@ import { createHttpError } from '../utils/http';
 import { validateCostDate } from './partnerTransactionCost';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { registerTransactionRequest, REQUEST_INCLUDE } from './transactionRequest';
+import { loadExpenseEditorSource } from './expenseRequestEditor';
+import { env } from 'node:process';
 
 export const EXPENSE_REQUEST_INCLUDE = {
   partner: { select: { id: true, name: true } },
@@ -59,12 +61,17 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
   }
-  const document = await tx.expenseRequest.create({ data: { orgId, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId,
+  const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
+  await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
+  const document = await tx.expenseRequest.create({ data: { orgId, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
     requestDate, title, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
     await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}});
   }
   const saved = await tx.expenseRequest.findUnique({ where: { id: document.id }, include: EXPENSE_REQUEST_INCLUDE });
+  const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
+  await tx.expenseRequestAudit.create({ data: { orgId,requestId:document.id,actorId,version:document.version,action:'CREATE',
+    clientKey:auditKey,inputHash:submissionHash,beforeSnapshot:{costs:[],record:null},afterSnapshot:JSON.parse(JSON.stringify(after)) } });
   return { ...saved, ...expenseRequestTotals(saved.items) };
 }
