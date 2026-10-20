@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, CircularProgress } from '@mui/material';
+import { Alert, Button, CircularProgress } from '@mui/material';
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import StatusLabel from '../../components/StatusLabel';
@@ -115,7 +115,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   const recordKind = row => row.sourceKind === 'HISTORICAL_WORK_RECORD' ? text.historical : text.recorded;
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
-      <button className="cc-button cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</button>
+      <Button variant="contained" disableElevation className="cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
     <section className="cc-panel" aria-label={text.query}>
       <div className="cc-section-bar"><span><b>SEARCH</b><span className="cc-bar-divider">/</span>{text.query}</span><button aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded ? text.collapse : text.expand}</button></div>

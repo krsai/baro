@@ -33,6 +33,8 @@ try {
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.getByRole('button',{name:'Transport cost',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),2);
     assert.equal(await page.locator('.cc-kicker').count(),0);
+    assert.equal(await page.locator('.cc-primary.MuiButton-containedPrimary').count(),1);
+    assert.notEqual(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
     assert.equal(await page.locator('.cc-results > .cc-results-summary').count(),1);
     assert.equal(await page.locator('.cc-results-summary .cc-total-amount').count(),1);
     assert.equal(await page.locator('.cc-grid-tools').count(),0);
@@ -81,7 +83,7 @@ try {
     }
     assert.equal((await page.locator('.cc-dates [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
     await page.evaluate(()=>document.documentElement.style.setProperty('--ui-control-font-size','15px'));
-    assert.equal(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).fontSize),'15px','Native buttons follow shared token');
+    assert.equal(await page.locator('.cc-dates .cc-button').first().evaluate(el=>getComputedStyle(el).fontSize),'15px','Native buttons follow shared token');
     await page.evaluate(()=>document.documentElement.style.removeProperty('--ui-control-font-size'));
     // Exercise the real HTML table's token bridge, not just an isolated MUI preview.
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(248, 250, 252)');
