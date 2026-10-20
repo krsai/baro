@@ -1,3 +1,4 @@
+import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateExpenseApprovers, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
@@ -14,7 +15,7 @@ const recordInclude = {
     workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } } } },
 };
 const costInclude = { ...REQUEST_INCLUDE, workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } }, outsourcedWorkRecord: { include: recordInclude } };
-const documentInclude = { updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
+const documentInclude = { approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
   items: { include: costInclude, orderBy: { expenseRequestLine: 'asc' } } };
 const fail = (status: number, code: string): never => { throw createHttpError(status, code); };
 const numericId = (id: string) => /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id)>0 ? Number(id) : fail(400,'INVALID_EXPENSE_SOURCE');
@@ -44,7 +45,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
 
 export function expenseEditorRevision(source: any) {
   return hash(snapshot({ kind: source.kind, id: source.id, document: source.document && {
-    id: source.document.id, version: source.document.version, title: source.document.title, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,
+    id: source.document.id, version: source.document.version, remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,
   }, costs: source.costs.map((cost: any) => ({...cost,partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
 }
 
@@ -54,7 +55,7 @@ function editorLine(cost: any, record: any) {
     plan: { id: record.assignmentPlanId, styleId: record.styleId, processIds: [record.styleProcessId] } };
   return { itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
-    description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
+    transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
     quantity: String(cost?.quantity ?? record?.quantity ?? 1), unitPrice: String(cost?.unitPrice ?? record?.outsourceUnitPrice ?? cost?.amount ?? ''),
     vatRate: String(cost?.vatRate ?? 0), details: cost?.details || {},
     workOrderId: cost?.workOrderId || record?.assignmentPlan?.workOrderId || '', styleId: cost?.styleId || record?.styleId || '',
@@ -65,7 +66,7 @@ function editorLine(cost: any, record: any) {
 
 export function expenseEditorForm(source: any) {
   const first = source.costs[0], record = source.record || first?.outsourcedWorkRecord;
-  return { version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, title: source.document?.title || first?.description || '',
+  return { approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
     requestDate: source.document?.requestDate || first?.transactionDate || record?.workLog.displayDate,
     partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId,
     partner: source.document?.partner || first?.partner || record?.outsourcingPartner,
@@ -99,9 +100,10 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   // check that the matching audit event was saved before commit.
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const before = snapshot(source);
-  const requestDate = validateCostDate(body.requestDate), title = typeof body.title==='string' ? body.title.trim() : '';
+  const requestDate = validateCostDate(body.requestDate), remark = typeof body.remark==='string' ? body.remark.trim() : '';
+  if(remark.length>500 || /[\r\n]/.test(remark))return fail(400,'INVALID_EXPENSE_REMARK');
   assertManagedDate(requestDate,(await loadManagementPeriod(tx,orgId)).startDate);
-  if (!title || title.length>200 || !Number.isSafeInteger(body.partnerOrgId) || body.partnerOrgId<=0 || !Array.isArray(body.items) || !body.items.length || body.items.length>50 || body.items.some((item: any)=>!item || typeof item!=='object' || Array.isArray(item))) return fail(400,'INVALID_EXPENSE_REQUEST_HEADER');
+  if (!Number.isSafeInteger(body.partnerOrgId) || body.partnerOrgId<=0 || !Array.isArray(body.items) || !body.items.length || body.items.length>50 || body.items.some((item: any)=>!item || typeof item!=='object' || Array.isArray(item))) return fail(400,'INVALID_EXPENSE_REQUEST_HEADER');
   const byId = new Map(source.costs.map((cost: any)=>[cost.id,cost]));
   const itemIds = body.items.map((item: any)=>item?.itemId).filter(Boolean);
   if (new Set(itemIds).size!==itemIds.length || itemIds.some((itemId: string)=>!byId.has(itemId))) return fail(400,'INVALID_EXPENSE_REQUEST_ITEM');
@@ -112,10 +114,12 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   }
   // Release only the document/payee composite FK inside this transaction; IDs and source FKs remain intact.
   if (source.document) await tx.partnerTransactionCost.updateMany({ where: { expenseRequestId: source.document.id, orgId }, data: { expenseRequestId: null, expenseRequestLine: null } });
-  const header = { title, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
+  const approvers = await validateExpenseApprovers(tx,orgId,body.approverEmployeeIds ?? source.document?.approvalSteps?.map((step:any)=>step.employeeId));
+  const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
     await tx.expenseRequest.create({ data: { ...header, orgId, createdByEmployeeId: actorId, clientKey: body.clientKey, submissionHash: inputHash } });
+  await replaceExpenseApprovers(tx,orgId,document.id,approvers,source.document?.approvalSteps || []);
   const assignmentPlanIds: number[] = [];
   for (const [index,item] of body.items.entries()) {
     const cost: any = item.itemId ? byId.get(item.itemId) : null;
@@ -135,6 +139,10 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
 
 export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
   const path = '/expense-request-editor/:kind/:id';
+  app.get('/expense-approval-candidates',async(req:any,res:any)=>{
+    const access=await gates.requireOrgRole(req,res,{allowedRoles:EXPENSE_APPROVAL_ROLES});if(!access)return;
+    res.json(await db.employee.findMany({where:{orgId:access.organization.id,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true},orderBy:[{name:'asc'},{id:'asc'}]}));
+  });
   app.get(`${path}/history`,async(req: any,res: any)=>{
     const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);

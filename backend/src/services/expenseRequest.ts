@@ -1,3 +1,4 @@
+import { validateExpenseApprovers, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
@@ -37,8 +38,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const requestDate = validateCostDate(body?.requestDate);
   const period = await loadManagementPeriod(tx, orgId);
   assertManagedDate(requestDate, period.startDate);
-  const title = typeof body?.title === 'string' ? body.title.trim() : '';
-  if (!title || title.length > 200) fail('EXPENSE_REQUEST_TITLE_REQUIRED');
+  const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';
+  if (remark.length > 500 || /[\r\n]/.test(remark)) fail('INVALID_EXPENSE_REMARK');
   if (!Number.isSafeInteger(body?.partnerOrgId) || body.partnerOrgId <= 0) fail('INVALID_EXPENSE_REQUEST_HEADER');
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,64}$/.test(body.clientKey)) fail('INVALID_TRANSACTION_KEY');
   if (!Array.isArray(body?.items) || !body.items.length || body.items.length > 50) fail('EXPENSE_REQUEST_ITEMS_REQUIRED');
@@ -50,12 +51,13 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     if (item.partnerOrgId != null && item.partnerOrgId !== body.partnerOrgId) fail('EXPENSE_REQUEST_HEADER_MISMATCH');
     if (item.transactionDate != null && item.transactionDate !== requestDate) fail('EXPENSE_REQUEST_DATE_MISMATCH');
     return { transactionDate: requestDate, transactionCodeId: item.transactionCodeId,
-      description: item.description, unitPrice: item.unitPrice, quantity: item.quantity, vatRate: item.vatRate,
+      unitPrice: item.unitPrice, quantity: item.quantity, vatRate: item.vatRate,
       workOrderId: item.workOrderId ?? null, styleId: item.styleId ?? null, styleProcessId: item.styleProcessId ?? null,
       assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,
       partnerOrgId: body.partnerOrgId, currency, clientKey: `${body.clientKey}-${index + 1}` };
   });
-  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, title, items }))).digest('hex');
+  const approverEmployeeIds=await validateExpenseApprovers(tx,orgId,body.approverEmployeeIds);
+  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark, approverEmployeeIds, items }))).digest('hex');
   const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: EXPENSE_REQUEST_INCLUDE });
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
@@ -64,7 +66,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const document = await tx.expenseRequest.create({ data: { orgId, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
-    requestDate, title, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
+    requestDate, remark, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
+  await replaceExpenseApprovers(tx,orgId,document.id,approverEmployeeIds);
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
     await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}});

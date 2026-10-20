@@ -24,15 +24,14 @@ export function expenseDocumentTotals(lines, currency) {
   return { subtotal: sum('subtotal'), vatAmount: sum('vatAmount'), amount: sum('amount'), incomplete: amounts.some(item => !item) };
 }
 export function validExpenseLine(line, code, currency) {
-  if (!code ||
-    !line.description.trim() || line.description.trim().length > 2000 || !expenseLineAmounts(line, currency)) return false;
+  if (!code || !expenseLineAmounts(line, currency)) return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]])) &&
     (code.base?.requiredFields || []).every(key => line.details[key]?.trim());
 }
 export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency,
-  description: line.description, quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
+  quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });
 

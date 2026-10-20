@@ -170,6 +170,7 @@ model ProcessMasterOptionRelation {
 model Organization {
   expenseRequests ExpenseRequest[] @relation("ExpenseRequestOwner")
   expenseRequestAudits ExpenseRequestAudit[] @relation("ExpenseRequestAuditOwner")
+  expenseRequestApprovalSteps ExpenseRequestApprovalStep[] @relation("ExpenseRequestApprovalOwner")
   payableExpenseRequests ExpenseRequest[] @relation("ExpenseRequestPayee")
   partnerExpenseTypeId Int?
   partnerExpenseType ExpenseType? @relation("PartnerExpenseType", fields: [partnerExpenseTypeId], references: [id], onDelete: Restrict)
@@ -467,6 +468,7 @@ model Employee {
   expenseRequests ExpenseRequest[] @relation("ExpenseRequestCreator")
   updatedExpenseRequests ExpenseRequest[] @relation("ExpenseRequestUpdater")
   expenseRequestAudits ExpenseRequestAudit[] @relation("ExpenseRequestAuditActor")
+  expenseRequestApprovalSteps ExpenseRequestApprovalStep[] @relation("ExpenseRequestApprover")
   transactionCosts PartnerTransactionCost[] @relation("TransactionCostCreator")
   priorCompletions PriorProductionCompletion[] @relation("PriorCompletionCreator")
   canceledPriorCompletions PriorProductionCompletion[] @relation("PriorCompletionCanceler")
@@ -1473,7 +1475,8 @@ model ExpenseRequest {
   partnerOrgId Int
   createdByEmployeeId Int
   requestDate String
-  title String
+  legacyTitle String?
+  remark String @default("")
   currency String?
   clientKey String
   submissionHash String
@@ -1483,6 +1486,7 @@ model ExpenseRequest {
   version Int @default(1)
   updatedByEmployee Employee? @relation("ExpenseRequestUpdater", fields: [updatedByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
   audits ExpenseRequestAudit[]
+  approvalSteps ExpenseRequestApprovalStep[]
   @@unique([id, orgId])
   organization Organization @relation("ExpenseRequestOwner", fields: [orgId], references: [id], onDelete: Restrict)
   partner Organization @relation("ExpenseRequestPayee", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
@@ -1514,6 +1518,20 @@ model ExpenseRequestAudit {
   @@unique([orgId, clientKey])
   @@unique([requestId, version])
   @@index([orgId, requestId, createdAt])
+}
+
+model ExpenseRequestApprovalStep {
+  id String @id @default(uuid())
+  orgId Int
+  requestId Int
+  position Int
+  employeeId Int
+  request ExpenseRequest @relation(fields: [requestId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  organization Organization @relation("ExpenseRequestApprovalOwner", fields: [orgId], references: [id], onDelete: Restrict)
+  employee Employee @relation("ExpenseRequestApprover", fields: [employeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
+  @@unique([requestId, position])
+  @@unique([requestId, employeeId])
+  @@index([orgId, employeeId])
 }
 
 // Scoped migration ledger; other application domains retain their existing rollout.

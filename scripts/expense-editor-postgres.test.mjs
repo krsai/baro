@@ -52,16 +52,16 @@ try{
  const code=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'BTHE'}});assert.ok(code);
  const original=await db.outsourcedWorkRecord.findMany({orderBy:{id:'asc'}}),originalLog=await db.workLog.findUnique({where:{id:log.id}});
  const form=()=>loadExpenseEditorSource(db,org.id,'legacy',String(record.id)).then(expenseEditorForm);
- const input=await form();input.title='Buttonhole request';input.clientKey=key();input.items[0].transactionCodeId=code.id;
+ const input=await form();input.remark='Buttonhole request';input.clientKey=key();input.items[0].transactionCodeId=code.id;
  const save=body=>db.$transaction(tx=>saveExpenseEditor(tx,org.id,actor.id,'legacy',String(record.id),body),{isolationLevel:'Serializable',timeout:60000});
  // Reproduce the deployed insert-then-link path before applying the new guard.
  await check('old database rule reproduces the insert-then-link UPDATE failure',async()=>{
    await assert.rejects(db.$transaction(async tx=>{
-     const doc=await registerExpenseRequest(tx,org.id,actor.id,{title:'New',requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),items:[{...input.items[0],sourceRecordId:undefined,workOrderId:order.id,styleId:style.id,styleProcessId:styleProcess.id,assignmentPlanId:plan.id}]});return doc;
+     const doc=await registerExpenseRequest(tx,org.id,actor.id,{remark:'New',requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),items:[{...input.items[0],sourceRecordId:undefined,workOrderId:order.id,styleId:style.id,styleProcessId:styleProcess.id,assignmentPlanId:plan.id}]});return doc;
    }),/ELIGIBLE_ASSIGNMENT_REQUIRED/);
    // The old trigger rejects even a linkage-only update, independently of source locks.
    const general=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'GENE'}});
-   const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{title:'General',requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),items:[{transactionCodeId:general.id,currency:'VND',description:'Service',quantity:'1',unitPrice:'100',vatRate:'0',details:{}}]}));
+   const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{remark:'General',requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),items:[{transactionCodeId:general.id,currency:'VND',description:'Service',quantity:'1',unitPrice:'100',vatRate:'0',details:{}}]}));
    await assert.rejects(db.partnerTransactionCost.update({where:{id:doc.items[0].id},data:{expenseRequestId:doc.id,expenseRequestLine:1}}),/history cannot be changed/);
  });
  apply('backend/prisma/migrations/20261019180000_expense_request_editor/migration.sql');apply('backend/prisma/migrations/20261019180000_expense_request_editor/migration.sql');
@@ -75,7 +75,7 @@ try{
    assert.match(definition[0].definition,/REFERENCES "Style"\(id, "orgId"\)/);
  });
  await check('legacy audit import preserves the exact envelope and actor; malformed history rolls back; versioned migration is repeatable',async()=>{
-   const historical=await db.expenseRequest.findFirst({where:{title:'General'}});
+   const historical=await db.expenseRequest.findFirst({where:{remark:'General'}});
    const source=await loadExpenseEditorSource(db,org.id,'request',String(historical.id));
    const legacyKey=`EXPENSE_REQUEST_EDIT:${org.id}:legacy-history-001`;
    const value=JSON.parse(JSON.stringify({inputHash:'legacy-input-hash',requestId:historical.id,before:source,after:source}));
@@ -84,6 +84,8 @@ try{
    assert.throws(()=>sql(migrationSql()),/EXPENSE_LEGACY_AUDIT_REQUIRES_REVIEW/);
    assert.ok(await db.systemSetting.findUnique({where:{key:legacyKey}}));
    await db.systemSetting.delete({where:{key:bad.key}});
+   await db.$executeRawUnsafe('ALTER TABLE "ExpenseRequest" RENAME COLUMN "legacyTitle" TO title');
+   await db.$executeRawUnsafe('UPDATE "ExpenseRequest" SET title=remark');
    sql(migrationSql());
    const imported=await db.expenseRequestAudit.findUnique({where:{legacyKey}});
    const preserved=JSON.parse(JSON.stringify(old));preserved.createdAt=preserved.createdAt.replace(/Z$/,'');preserved.updatedAt=preserved.updatedAt.replace(/Z$/,'');
@@ -95,7 +97,7 @@ try{
    const events=await db.expenseRequestAudit.count();sql(migrationSql());
    assert.equal(await db.expenseRequestAudit.count(),events);
    assert.deepEqual(await db.expenseRequest.findUnique({where:{id:historical.id}}),updated);
-   assert.equal(await db.expenseSchemaMigration.count(),4);
+   assert.equal(await db.expenseSchemaMigration.count(),5);
  });
  let requestId;
  await check('real Prisma wraps the completed legacy row with BTHE while preserving both vendors and source period',async()=>{
@@ -106,21 +108,44 @@ try{
    await save(input);assert.equal(await db.partnerTransactionCost.count({where:{outsourcedWorkRecordId:record.id}}),1);
  });
  await check('existing request financial edits commit with audit and preserve IDs',async()=>{
-   const next=await form();next.clientKey=key();next.title='Reviewed';next.items[0].description='Updated description';
-   await save(next);const cost=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}});assert.equal(cost.description,'Updated description');assert.equal(cost.expenseRequestId,requestId);
+   const next=await form();next.clientKey=key();next.remark='Reviewed';next.items[0].description='User override ignored';
+   const previousDescription=(await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}})).description;
+   await save(next);const cost=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}});assert.equal(cost.description,previousDescription);assert.equal(cost.expenseRequestId,requestId);
+ });
+ await check('ordered approvers use tenant employee FKs, audit reordering and reject invalid candidates atomically',async()=>{
+   const second=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Approver',orgRole:'ACCOUNTANT',status:'ACTIVE'}});
+   const worker=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Worker',orgRole:'WORKER',status:'ACTIVE'}});
+   const next=await form();next.clientKey=key();next.approverEmployeeIds=[actor.id,second.id];await save(next);
+   assert.deepEqual((await form()).approverEmployeeIds,[actor.id,second.id]);
+   const reorder=await form();reorder.clientKey=key();reorder.approverEmployeeIds.reverse();await save(reorder);
+   assert.deepEqual((await form()).approverEmployeeIds,[second.id,actor.id]);
+   for(const ids of [[actor.id,actor.id],[worker.id],[999999]]){
+     const invalid=await form();invalid.clientKey=key();invalid.approverEmployeeIds=ids;
+     await assert.rejects(save(invalid),/INVALID_EXPENSE_APPROVERS/);
+     assert.deepEqual((await form()).approverEmployeeIds,[second.id,actor.id]);
+   }
+   const invalid=await form();invalid.clientKey=key();invalid.approverEmployeeIds=[actor.id];invalid.items[0].unitPrice='0';
+   await assert.rejects(save(invalid),/INVALID_PRICE_OR_QUANTITY/);
+   assert.deepEqual((await form()).approverEmployeeIds,[second.id,actor.id]);
+   const latest=await db.expenseRequestAudit.findFirst({where:{requestId},orderBy:{version:'desc'}});
+   assert.deepEqual(latest.afterSnapshot.document.approvalSteps.map(step=>step.employeeId),[second.id,actor.id]);
+   const general=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'GENE'}});
+   const created=await db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),approverEmployeeIds:[second.id,actor.id],items:[{transactionCodeId:general.id,currency:'VND',quantity:'1',unitPrice:'100',vatRate:'0',details:{}}]}));
+   const loaded=expenseEditorForm(await loadExpenseEditorSource(db,org.id,'request',String(created.id)));
+   assert.equal(loaded.remark,'');assert.deepEqual(loaded.approverEmployeeIds,[second.id,actor.id]);
  });
  await check('explicit versions reject stale saves and audit rows cannot be rewritten or removed',async()=>{
-   const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.title='Version winner';b.title='Stale loser';
+   const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.remark='Version winner';b.remark='Stale loser';
    await save(a);await assert.rejects(save(b),/EXPENSE_REQUEST_CHANGED/);
    const latest=await form();assert.equal(latest.version,a.version+1);assert.equal(latest.updatedByEmployee.id,actor.id);assert.ok(latest.updatedAt);
    const event=await db.expenseRequestAudit.findFirst({where:{requestId},orderBy:{version:'desc'}});
-   assert.equal(event.version,latest.version);assert.equal(event.afterSnapshot.document.title,'Version winner');
+   assert.equal(event.version,latest.version);assert.equal(event.afterSnapshot.document.remark,'Version winner');
    await assert.rejects(db.expenseRequestAudit.update({where:{id:event.id},data:{inputHash:'tamper'}}),/append only/);
    await assert.rejects(db.expenseRequestAudit.delete({where:{id:event.id}}),/append only/);
-   await assert.rejects(db.expenseRequest.update({where:{id:requestId},data:{title:'bypass'}}),/context required/);
+   await assert.rejects(db.expenseRequest.update({where:{id:requestId},data:{remark:'bypass'}}),/context required/);
  });
  await check('simultaneous editors commit exactly one next version and one audit',async()=>{
-   const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.title='Parallel A';b.title='Parallel B';
+   const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.remark='Parallel A';b.remark='Parallel B';
    const events=await db.expenseRequestAudit.count({where:{requestId}});
    const results=await Promise.allSettled([save(a),save(b)]);
    assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
@@ -137,7 +162,7 @@ try{
      await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(org.id)},true),set_config('baro.expense_editor_actor',${String(actor.id)},true),set_config('baro.expense_editor_key',${`EXPENSE_REQUEST_EDIT:${org.id}:${key()}`},true)`;
      await tx.partnerTransactionCost.update({where:{id:cost.id},data:{description:'unaudited'}});
    }),/audit required/);
-   assert.equal((await db.partnerTransactionCost.findUnique({where:{id:cost.id}})).description,'Updated description');
+   assert.equal((await db.partnerTransactionCost.findUnique({where:{id:cost.id}})).description,'Outsourced process - BTH');
  });
  await check('completed production remains immutable in both service and database guards',async()=>{
    const next=await form();next.clientKey=key();next.items[0].quantity='171';await assert.rejects(save(next),/PRODUCTION_COMPLETED/);
@@ -179,7 +204,7 @@ try{
  });
  await check('final invoice lock continues to reject financial-only edits',async()=>{
    await db.workOrder.update({where:{id:order.id},data:{invoiceFinalLockedAt:new Date()}});
-   const next=await form();next.clientKey=key();next.title='Forbidden';await assert.rejects(save(next),/ORDER_FINALLY_LOCKED/);
+   const next=await form();next.clientKey=key();next.remark='Forbidden';await assert.rejects(save(next),/ORDER_FINALLY_LOCKED/);
  });
  await check('repeated schema preparation preserves FK names, version history and all business rows',async()=>{
    const before=await db.expenseRequest.findUnique({where:{id:requestId}}),events=await db.expenseRequestAudit.count();

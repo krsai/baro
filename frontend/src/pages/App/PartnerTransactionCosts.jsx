@@ -1,3 +1,4 @@
+import { expenseLineDescription, expenseRequestSummary } from '../../utils/expenseCodePresentation.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, CircularProgress } from '@mui/material';
 import dayjs from 'dayjs';
@@ -6,7 +7,7 @@ import StatusLabel from '../../components/StatusLabel';
 import AppPageContainer from '../../components/AppPageContainer';
 import MonthRangeSelector from '../../components/MonthRangeSelector';
 import { TRANSACTION_TEXT, OUTSOURCING_REQUEST_TEXT, serviceName } from '../../components/OutsourcingServiceDialog';
-import { EXPENSE_REQUEST_TEXT } from '../../constants/expenseRequest';
+import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../../constants/expenseRequest';
 import { EXPENSE_LIST_TEXT } from '../../constants/expenseList';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -65,7 +66,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   },[activeOrgId,loading,period.loading,period.error,period.startDate]);
   const documentsById = useMemo(()=>new Map(documents.map(row=>[row.id,row])),[documents]);
   const industryLabel = row => serviceName(row.serviceType,languageCode) || (row.sourceKind === 'HISTORICAL_WORK_RECORD' ? labels.process : text.unclassified);
-  const searchValues = row => [row.partner?.name,industryLabel(row),row.transactionCode?.code,row.description,row.workOrder?.orderNumber,row.style?.name,row.style?.code,row.styleProcess?.processName,row.styleProcess?.processCode,row.createdByEmployee?.name,...Object.values(row.details||{})];
+  const searchValues = row => [row.partner?.name,industryLabel(row),row.transactionCode?.code,expenseLineDescription(row,languageCode),row.workOrder?.orderNumber,row.style?.name,row.style?.code,row.styleProcess?.processName,row.styleProcess?.processCode,row.createdByEmployee?.name,...Object.values(row.details||{})];
   const matches = values => values.filter(Boolean).join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
   const withinDates = date => date >= dateFrom.format('YYYY-MM-DD') && date <= dateTo.format('YYYY-MM-DD');
   const matchesPartner = row => !partner || String(row.partnerOrgId ?? row.partner?.id) === partner;
@@ -75,10 +76,10 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const filtered = rows.filter(row => {
     const document = documentsById.get(row.expenseRequestId);
     return withinDates(row.transactionDate) && matchesPartner(row) && matchesIndustry(row) && matchesCurrency(row) && matchesKind(row) &&
-      matches([...searchValues(row),document?.title,document && expenseRequestNumber(document.id)]);
+      matches([...searchValues(row),expenseRequestSummary(document,languageCode),document?.remark,document && expenseRequestNumber(document.id)]);
   }).sort((a,b)=>ascending ? a.transactionDate.localeCompare(b.transactionDate) : b.transactionDate.localeCompare(a.transactionDate));
   const filteredDocuments = documents.filter(row => withinDates(row.requestDate) && matchesPartner(row) && (!currency || (row.currencyTotals || row.items.map(item=>({...item,currency:item.currency || row.currency}))).some(matchesCurrency)) && kind !== 'historical' &&
-    (!industry || row.items.some(matchesIndustry)) && matches([expenseRequestNumber(row.id),row.title,row.partner?.name,row.createdByEmployee?.name,...row.items.flatMap(searchValues)]))
+    (!industry || row.items.some(matchesIndustry)) && matches([expenseRequestNumber(row.id),expenseRequestSummary(row,languageCode),row.remark,row.partner?.name,row.createdByEmployee?.name,...row.items.flatMap(searchValues)]))
     .sort((a,b)=>ascending ? a.requestDate.localeCompare(b.requestDate) : b.requestDate.localeCompare(a.requestDate));
   const partnerOptions = [...new Map([...rows,...documents].filter(row=>row.partnerOrgId != null || row.partner?.id != null).map(row=>[String(row.partnerOrgId ?? row.partner.id),row.partner?.name || '—'])).entries()];
   const industryOptions = [...new Map(rows.map(row=>[expenseIndustryKey(row),industryLabel(row)])).entries()];
@@ -140,11 +141,11 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
           {filtered.map((row,index)=><tr key={row.id} onDoubleClick={()=>editRow(row)} className={checked.includes(row.id)?'is-selected':''}>
             <td className="cc-check" onDoubleClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(row.id)} onChange={()=>toggle(row.id)} /></td><td className="cc-row-no">{index+1}</td><td>{row.transactionDate}</td>
             <td>{industryLabel(row)}</td><td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.partner?.name || '—'}</button></td><td>{row.workOrder?.orderNumber || '—'}</td>
-            <td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{row.description}</button>{documentsById.has(row.expenseRequestId) && <button className="cc-document-link" onClick={event=>{event.stopPropagation();onOpenRequest?.('request',String(row.expenseRequestId));}} onDoubleClick={event=>event.stopPropagation()}>{expenseRequestNumber(row.expenseRequestId)}</button>}</td>
+            <td><button className="cc-cell-link" onClick={event=>openRowOnClick(event,row)}>{expenseLineDescription(row,languageCode)}</button>{documentsById.has(row.expenseRequestId) && <button className="cc-document-link" onClick={event=>{event.stopPropagation();onOpenRequest?.('request',String(row.expenseRequestId));}} onDoubleClick={event=>event.stopPropagation()}>{expenseRequestNumber(row.expenseRequestId)}</button>}</td>
             <td className="cc-number">{number(row.quantity)}</td><td className="cc-number">{number(row.unitPrice)}</td><td className="cc-number cc-amount">{money(row.amount,row.currency)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><StatusLabel label={recordKind(row)} tone={row.sourceKind==='HISTORICAL_WORK_RECORD'?'gray':'blue'} /></td>
           </tr>)}{!filtered.length && <tr><td colSpan={12} className="cc-empty">{text.empty}</td></tr>}
-        </tbody></table> : view==='documents' ? <table><thead><tr>{[docText.numbering,docText.title,docText.payee,docText.date,docText.applicant,docText.items,docText.total].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>
-          {filteredDocuments.map(document=><tr key={document.id} onClick={()=>onOpenRequest?.('request',String(document.id))}><td><button className="cc-cell-link" onClick={()=>onOpenRequest?.('request',String(document.id))}>{expenseRequestNumber(document.id)}</button></td><td><button className="cc-cell-link" onClick={()=>onOpenRequest?.('request',String(document.id))}>{document.title}</button></td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
+        </tbody></table> : view==='documents' ? <table><thead><tr>{[docText.numbering,(EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en).summary,docText.payee,docText.date,docText.applicant,docText.items,docText.total].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>
+          {filteredDocuments.map(document=><tr key={document.id} onClick={()=>onOpenRequest?.('request',String(document.id))}><td><button className="cc-cell-link" onClick={()=>onOpenRequest?.('request',String(document.id))}>{expenseRequestNumber(document.id)}</button></td><td><button className="cc-cell-link" onClick={()=>onOpenRequest?.('request',String(document.id))}>{expenseRequestSummary(document,languageCode)}</button></td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
           {!filteredDocuments.length && <tr><td colSpan={7} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : <table className="cc-summary"><thead><tr><th>{view==='partner'?labels.partner:labels.industry}</th><th>{labels.currency}</th><th className="cc-number">{text.count}</th><th className="cc-number">{labels.amount}</th><th>{text.share}</th></tr></thead><tbody>
           {groups.map(group=><tr key={group.key}><td>{group.name}</td><td>{group.currency}</td><td className="cc-number">{group.count}</td><td className="cc-number cc-amount">{money(group.amount,group.currency)}</td><td><div className="cc-share"><span><i style={{width:`${group.share}%`}} /></span>{group.share.toFixed(1)}%</div></td></tr>)}{!groups.length && <tr><td colSpan={5} className="cc-empty">{text.empty}</td></tr>}

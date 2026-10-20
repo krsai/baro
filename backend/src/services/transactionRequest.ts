@@ -6,7 +6,7 @@ import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assi
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
 
-export const REQUEST_INCLUDE = { outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: true, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
+export const REQUEST_INCLUDE = { outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 const invalid = (code: string): never => { throw createHttpError(400, code); };
 export { appSettingsKey, loadAppSettings } from './applicationSettings';
 import { loadAppSettings } from './applicationSettings';
@@ -46,8 +46,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const period = await loadManagementPeriod(tx,orgId);
   assertManagedDate(transactionDate,period.startDate);
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,100}$/.test(body.clientKey)) return invalid('INVALID_TRANSACTION_KEY');
-  const description = typeof body.description === 'string' ? body.description.trim() : '';
-  if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
+  let description = typeof body.description === 'string' ? body.description.trim() : '';
+  if (!useSystemMaster && (!description || description.length > 2000)) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const details: Record<string,string> = {};
   if (!body.details || typeof body.details !== 'object' || Array.isArray(body.details)) return invalid('INVALID_TRANSACTION_DETAILS');
   for (const [key,value] of Object.entries(body.details)) {
@@ -57,6 +57,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if (details.transportDate) validateCostDate(details.transportDate);
   const previous = edit ? null : await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: REQUEST_INCLUDE });
   if (previous) {
+    if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
     if (previous.transactionCodeId !== transactionCodeId || previous.partnerOrgId !== partnerOrgId || previous.workOrderId !== workOrderId || previous.styleId !== styleId || previous.styleProcessId !== styleProcessId || previous.transactionDate !== transactionDate || previous.description !== description || previous.currency !== body.currency || previous.createdByEmployeeId !== actorId || !previous.unitPrice.equals(amounts.unitPrice) || !previous.quantity.equals(amounts.quantity) || !previous.vatRate.equals(amounts.vatRate) || COST_DETAIL_FIELDS.some(key => (previous.details?.[key] || '') !== (details[key] || ''))) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
@@ -65,6 +66,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: useSystemMaster ? SYSTEM_EXPENSE_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
   const code = useSystemMaster ? resolveSystemExpenseCode(localCode) : localCode;
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
+  if(useSystemMaster)description=edit?.cost?.description || [code.base.entryMode==='PROCESS'?'Outsourced process':code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
+  if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
   const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'] } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');

@@ -7,11 +7,12 @@ import { expenseLineAmounts, expenseDocumentTotals } from '../frontend/src/utils
 import { exactLookupCode, normalizeLookupText } from '../frontend/src/utils/expenseLookup.mjs';
 import { expenseTotalsByCurrency } from '../frontend/src/utils/expenseRequest.mjs';
 import { formatEditableDecimal } from '../frontend/src/utils/editableDecimal.mjs';
+import { expenseLineDescription, expenseRequestSummary } from '../frontend/src/utils/expenseCodePresentation.mjs';
 const require = createRequire(import.meta.url);
 const { registerExpenseRequest } = require('../backend/dist/services/expenseRequest.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
 const ts = require('../backend/node_modules/typescript');
-const input = () => ({ title: 'Factory expenses', requestDate: '2026-10-17', partnerOrgId: 11, currency: 'VND', clientKey: 'document-001', items: [
+const input = () => ({ remark: 'Factory expenses', requestDate: '2026-10-17', partnerOrgId: 11, currency: 'VND', clientKey: 'document-001', items: [
   { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Transport', quantity: '2', unitPrice: '100000', vatRate: '10', details: {} },
   { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {} },
 ] });
@@ -32,7 +33,7 @@ function harness({sourceEnabled=true}={}) {
       },
       transactionCode: { findFirst: async ({ where }) => ({ id: where.id, isActive:true, baseId: 1, serviceTypeId: 4, taxTreatmentId: where.id === 8 ? 3 : 1, vatEnabled: where.id !== 8,
         taxTreatment:{code:where.id===8?'EXEMPT':'VAT',suffix:where.id===8?'E':'V'},
-        serviceType: { id: 4 }, base: {isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
+        serviceType: { id: 4 }, base: {nameEn:'Transport',isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
       expenseRequestAudit:{create:async({data:row})=>{data.audits.push(row);return row;}},
       systemSetting: { findUnique: async () => ({ value: { defaultVatRate: '10' } }) },
       organization: { findFirst: async () => ({ id: 11 }), findUnique: async () => ({ name: 'Vendor' }) },
@@ -58,6 +59,18 @@ function postRoute(dependencies) {
   return handler;
 }
 const response = () => ({ status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
+test('live FK descriptions and first-item summaries follow the language and item order',()=>{
+  const code={id:7,base:{entryMode:'PROCESS',nameKo:'단춧구멍',nameEn:'BUTTON HOLE',nameVi:'Thùa khuyết'}};
+  const first={transactionCodeId:7,transactionCode:code,description:'Old copied text'};
+  const second={transactionCodeId:8,transactionCode:{id:8,base:{entryMode:'PROCESS',nameEn:'CUTTING'}}};
+  assert.equal(expenseLineDescription(first,'ko'),'외주 공정 - 단춧구멍');
+  assert.equal(expenseRequestSummary({items:[first,second]},'en'),'Outsourced process - BUTTON HOLE and 1 more');
+  assert.equal(expenseRequestSummary({items:[first,second]},'ko'),'외주 공정 - 단춧구멍 외 1건');
+  assert.equal(expenseRequestSummary({items:[first,second]},'vi'),'Công đoạn gia công - Thùa khuyết và 1 mục khác');
+  assert.equal(expenseRequestSummary({items:[second,first]},'en'),'Outsourced process - CUTTING and 1 more');
+  code.base.nameEn='Updated master';assert.equal(expenseLineDescription(first,'en'),'Outsourced process - Updated master');
+  assert.equal(first.description,'Old copied text');
+});
 test('lookup only resolves unique exact codes and supports Vietnamese search', () => {
   const options = [{id:1,code:'ABC',name:'Same'},{id:2,code:'XYZ',name:'Same'}];
   assert.equal(exactLookupCode(options,' abc ').id,1);
@@ -113,7 +126,7 @@ test('one header date applies to all new costs and conflicting item dates are re
 });
 test('documents reject conflicting payees, invalid currencies, empty or excessive lines and unauthorized access', async () => {
   const { route,db } = routeHarness();
-  for (const patch of [{ title: '' },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] },{ requestDate: '2026-03-31' }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
+  for (const patch of [{ remark: 'x'.repeat(501) },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] },{ requestDate: '2026-03-31' }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
   assert.equal(db.state().documents.length,0);
   const forbidden = postRoute({ requireOrgRole: async () => null, ORG_MANAGEMENT_ROLES: ['ADMIN'] });
   await forbidden({ body: input() },response());

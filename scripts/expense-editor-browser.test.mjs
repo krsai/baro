@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { EXPENSE_REQUEST_TEXT } from '../frontend/src/constants/expenseRequest.js';
+import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../frontend/src/constants/expenseRequest.js';
 import { EXPENSE_LOOKUP_TEXT } from '../frontend/src/constants/expenseLookup.js';
 import { expenseCodeDescription } from '../frontend/src/utils/expenseCodePresentation.mjs';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
@@ -33,14 +33,15 @@ try {
     await page.route('**/expense-request-editor/legacy/78?*',r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
-      return r.fulfill({headers,json:{title:mode==='PROCESS'?'':'Original request',canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
+      return r.fulfill({headers,json:{remark:'',approverEmployeeIds:[],canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
     await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
+    await page.route('**/expense-approval-candidates?*',r=>r.fulfill({headers,json:[{id:20,name:'First approver'},{id:21,name:'Second approver'}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
-    await page.getByLabel(l.title,{exact:false}).waitFor();
+    await page.getByLabel('REMARK',{exact:false}).waitFor();
     await page.getByTestId('expense-author-context').getByText(/Original author/).waitFor();
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
@@ -48,20 +49,20 @@ try {
     assert.match(await page.getByTestId('expense-author-context').innerText(),/Original author/);
     assert.equal(await page.getByRole('button',{name:l.remove,exact:true}).isDisabled(),true);
     if(mode==='SAVED'){
-      const save=page.locator('button.MuiButton-contained').first(),description=page.getByLabel(l.description,{exact:false});
+      const save=page.locator('button.MuiButton-contained').first(),description=page.getByLabel('REMARK',{exact:true});
       assert.equal(await save.isDisabled(),true);
       await description.fill('Reviewed expense');await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
-      await description.fill('Original buttonhole expense');assert.equal(await save.isDisabled(),true);
+      await description.fill('');assert.equal(await save.isDisabled(),true);
       assert.match(await page.getByTestId('expense-author-context').innerText(),/v3/);
       assert.match(await page.getByTestId('expense-author-context').innerText(),/Latest editor/);
       await description.fill('Conflicting edit');await save.click();
       await page.locator('.MuiAlert-standardError').waitFor();
       assert.notEqual(await page.locator('.MuiAlert-standardError').innerText(),l.invalid);
       assert.equal(submitted.version,3);
-      assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),'Conflicting edit');
+      assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Conflicting edit');
       assert.deepEqual(errors,[]);await page.close();continue;
     }
-    if(locked){assert.equal(await page.getByLabel(l.title,{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
+    if(locked){assert.equal(await page.getByLabel('REMARK',{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
     else {
       const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});
       await code.locator('..').getByRole('button').click();
@@ -79,7 +80,7 @@ try {
       assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
       const save=page.locator('button.MuiButton-contained').first();
       if(mode==='PROCESS'){
-        assert.equal(await page.getByLabel(l.title,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
+        assert.equal(await page.getByLabel('REMARK',{exact:false}).inputValue(),'');
         assert.equal(await page.getByTestId('expense-line').first().getByLabel(l.price,{exact:false}).isDisabled(),true);
         await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
         if(lang==='ko'){
@@ -92,15 +93,23 @@ try {
           await details.getByRole('combobox',{name:l.process,exact:false}).click();await page.getByRole('option',{name:'Buttonhole second (BH2)',exact:true}).click();
         }
       }else{
-        await page.getByLabel(l.title,{exact:false}).fill('Updated request');
+        await page.getByLabel('REMARK',{exact:false}).fill('Updated request');
         await page.getByLabel(l.price,{exact:false}).fill('5000');assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
       }
+      const h=EXPENSE_HEADER_TEXT[lang];
+      await page.getByRole('button',{name:h.approval,exact:true}).click();
+      await page.getByRole('dialog').getByRole('button',{name:h.addApprover,exact:true}).click();
+      assert.equal(await page.getByRole('dialog').getByRole('button',{name:h.apply,exact:true}).isDisabled(),true);
+      await page.getByRole('dialog').getByRole('combobox').click();
+      await page.getByRole('option',{name:'First approver',exact:true}).click();
+      await page.getByRole('dialog').getByRole('button',{name:h.apply,exact:true}).click();
       await save.click();
       if(mode==='PROCESS'&&lang==='ko'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}
       await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
-      assert.equal(submitted.title,mode==='PROCESS'?expenseCodeDescription(mocks['transaction-codes'][0],lang):'Updated request');assert.equal(submitted.revision,'server-revision');
+      assert.deepEqual(submitted.approverEmployeeIds,[20]);
+      assert.equal(submitted.remark,mode==='PROCESS'?'':'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
-      assert.equal(submitted.items[0].description,expenseCodeDescription(mocks['transaction-codes'][0],lang));
+      assert.equal(submitted.items[0].description,undefined);
       if(mode==='PROCESS'&&lang==='ko'){assert.equal(submitted.items.length,2);assert.equal(submitted.items[1].sourceRecordId,undefined);assert.equal(submitted.items[1].assignmentPlanId,61);assert.equal(submitted.items[1].quantity,'200');}
     }
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();

@@ -1,3 +1,4 @@
+import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
@@ -17,7 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAppActions } from '../../context/AppContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
-import { EXPENSE_REQUEST_TEXT } from '../../constants/expenseRequest';
+import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../../constants/expenseRequest';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
 import { expenseTotalsByCurrency, expenseLinePayload, newExpenseLine } from '../../utils/expenseRequest.mjs';
@@ -31,8 +32,8 @@ const UPDATED_TEXT = { ko: '최종 수정', en: 'Last updated', vi: 'Cập nhậ
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { title: '', requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
-const documentSnapshot = form => JSON.stringify({title:form.title,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
+const newDocument = () => { const date = today(); return { remark: '', approverEmployeeIds: [], requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const documentSnapshot = form => JSON.stringify({remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -42,6 +43,7 @@ export default function TransactionRequestEntry() {
   const { activeOrgId, user, accessProfile } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
+  const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
   const lookup = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const organizationRef = useRef(activeOrgId);
   const tableContainerRef = useRef(null), dragColumnWidths = useRef([]);
@@ -72,9 +74,6 @@ export default function TransactionRequestEntry() {
   }, [activeOrgId, reload,editing,editorPath]);
   const update = patch => setForm(current => ({ ...current, ...patch }));
   const changeLine = useCallback((key, patch) => setForm(current => ({ ...current,
-    // Historical production never had a request title. Propose one when its
-    // first explicit expense code is selected, instead of silently blocking save.
-    ...(current.canonicalSource?.kind==='legacy' && !current.title.trim() && patch.transactionCodeId && patch.description ? {title:patch.description.slice(0,200)} : {}),
     items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) })), []);
   const lineStatus = useCallback((key, valid) => setStatuses(current => current[key] === valid ? current : { ...current, [key]: valid }), []);
   const reorderLines = ({ source, destination }) => {
@@ -94,7 +93,7 @@ export default function TransactionRequestEntry() {
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
   const disabled = loading || loadError || saving || Boolean(submission) || Boolean(form.readOnly);
-  const valid = !period.loading && !period.error && form.title.trim() && form.title.trim().length <= 200 && partner?.isActive &&
+  const valid = !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: pathname });
@@ -110,7 +109,7 @@ export default function TransactionRequestEntry() {
   };
   const save = async () => {
     if (disabled && !submission || saving || !submission && (!valid || editing && !dirty)) return;
-    const body = submission || { title: form.title, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -140,10 +139,11 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 180px' }, gap: 2 }}>
-            <TextField size="small" required label={labels.title} disabled={disabled} value={form.title} sx={{gridColumn:'1 / -1'}} inputProps={{ maxLength: 200 }} onChange={event => update({ title: event.target.value })} />
-            <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(220px, 1fr) minmax(220px, 1fr)' }, gap: 2 }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
+            <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
+            <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />
+            <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{gridColumn:'1 / -1'}} />
           </Box>
           <Stack data-testid="expense-author-context" direction="row" useFlexGap flexWrap="wrap" spacing={3} sx={{mt:2,pt:2,borderTop:1,borderColor:'divider'}}>
             <Typography variant="caption" color="text.secondary">{lookup.issuer}: {accessProfile?.orgName || '—'}</Typography>

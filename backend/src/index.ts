@@ -185,7 +185,8 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
-    ExpenseRequest: ['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','title','currency','clientKey','submissionHash'],
+    ExpenseRequest: ['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
+    ExpenseRequestApprovalStep: ['id','orgId','requestId','position','employeeId'],
     PartnerTransactionCost: ['expenseRequestId','expenseRequestLine'],
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
@@ -750,7 +751,12 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   { tableName: "ExpenseRequest", columnName: "partnerOrgId" },
   { tableName: "ExpenseRequest", columnName: "createdByEmployeeId" },
   { tableName: "ExpenseRequest", columnName: "requestDate" },
-  { tableName: "ExpenseRequest", columnName: "title" },
+  { tableName: "ExpenseRequest", columnName: "remark" },
+  { tableName: "ExpenseRequest", columnName: "legacyTitle" },
+  { tableName: "ExpenseRequestApprovalStep", columnName: "requestId" },
+  { tableName: "ExpenseRequestApprovalStep", columnName: "orgId" },
+  { tableName: "ExpenseRequestApprovalStep", columnName: "position" },
+  { tableName: "ExpenseRequestApprovalStep", columnName: "employeeId" },
   { tableName: "ExpenseRequest", columnName: "currency" },
   { tableName: "ExpenseRequest", columnName: "clientKey" },
   { tableName: "ExpenseRequest", columnName: "submissionHash" },
@@ -1005,6 +1011,9 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   'ExpenseRequestAudit_requestId_version_key',
   'ExpenseRequest_write_guard',
   'ExpenseRequest_audit_guard',
+  'ExpenseRequestApprovalStep_employeeId_orgId_fkey',
+  'ExpenseRequestApprovalStep_write_guard',
+  'ExpenseRequestApprovalStep_audit_guard',
   'ExpenseRequestAudit_append_only',
   'baro_transaction_cost_guard',
   'baro_request_production_guard',
@@ -27530,7 +27539,7 @@ app.post('/outsourcing-requests', async (req, res) => {
   // Older single-line clients use the same versioned, audited document writer.
   const row = await prisma.$transaction(async tx => {
     const document = await registerExpenseRequest(tx, orgId, actorId, {
-      title: String(req.body?.description || '').slice(0,200), requestDate: req.body?.transactionDate,
+      remark: req.body?.remark, approverEmployeeIds: req.body?.approverEmployeeIds, requestDate: req.body?.transactionDate,
       partnerOrgId: req.body?.partnerOrgId, clientKey: req.body?.clientKey, items: [req.body],
     }, appendWorkLogQuantityRemark);
     return document.items[0];

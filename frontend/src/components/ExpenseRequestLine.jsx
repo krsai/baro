@@ -10,7 +10,7 @@ import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
 import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
-import { expenseCodeDescription, expenseIndustryMismatch } from '../utils/expenseCodePresentation.mjs';
+import { expenseIndustryMismatch, expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
 export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess }) {
   const currency = line.currency;
@@ -54,10 +54,10 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const chooseCode = selected => {
     if(selected?.id === line.transactionCodeId)return;
     if (line.productionLinked) {
-      onChange(line.key,{transactionCodeId:selected?.id || '',...(selected ? {description:expenseCodeDescription(selected,languageCode)} : {}),vatRate:selected?.vatEnabled ? String(settings.defaultVatRate) : '0'});
+      onChange(line.key,{transactionCodeId:selected?.id || '',vatRate:selected?.vatEnabled ? String(settings.defaultVatRate) : '0'});
       setExpanded(true);return;
     }
-    onChange(line.key, { transactionCodeId: selected?.id || '', description: expenseCodeDescription(selected,languageCode), vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
+    onChange(line.key, { transactionCodeId: selected?.id || '', vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
       workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
     if (selected?.base?.entryMode === 'PROCESS' || selected?.base?.requiredFields?.length || ['order','style','process'].some(key => inputMode(selected,key) === 'REQUIRED')) setExpanded(true);
   };
@@ -82,7 +82,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
         {key:'tax',label:lookupText.tax,value:row=>serviceName(row.taxTreatment,languageCode)||(row.vatEnabled?'VAT':lookupText.noVat)},
       ]} />
       </TableCell>
-      <TableCell><TextField {...field} required label={labels.description} value={line.description} onChange={change('description')} inputProps={{ maxLength: 2000 }} /></TableCell>
+      <TableCell><TextField {...field} required label={labels.description} value={expenseLineDescription(line,languageCode,codes)} InputProps={{readOnly:true}} /></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} disabled={disabled || line.productionLocked} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell><DecimalAmountField {...field} required label={labels.price} disabled={disabled || line.productionLocked} value={line.unitPrice} onValueChange={unitPrice => onChange(line.key, { unitPrice })} /></TableCell>

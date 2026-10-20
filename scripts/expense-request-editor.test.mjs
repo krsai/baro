@@ -51,7 +51,7 @@ function harness() {
 }
 async function input(db) {
   const form=expenseEditorForm(await db.source());
-  return {...form,title:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,transactionCodeId:8}))};
+  return {...form,remark:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,transactionCodeId:8}))};
 }
 
 test('history is tenant-scoped, permission-gated and paged by version; serialization conflicts return a recoverable code',async()=>{
@@ -111,7 +111,7 @@ test('document and standalone-cost entry points resolve the saved form; item edi
   const firstId=form.items[0].itemId,secondId=form.items[1].itemId;
   form.clientKey='edit-command-002';form.items[1].unitPrice='2.50';
   await db.save(form,'cost',firstId);assert.equal(db.state().costs[1].id,secondId);assert.equal(db.state().costs[1].amount,'5');
-  await assert.rejects(db.save({...form,title:'Changed retry'},'cost',firstId),/RETRY_MISMATCH/);
+  await assert.rejects(db.save({...form,remark:'Changed retry'},'cost',firstId),/RETRY_MISMATCH/);
   const next=expenseEditorForm(await db.source());next.clientKey='edit-command-003';next.items=next.items.slice(1);
   await db.save(next,'request','1');assert.equal(db.state().costs.length,1);assert.equal(db.state().costs[0].id,secondId);
   assert.equal(db.state().records.length,2);assert.equal(db.state().records[0].id,78);assert.equal(db.state().records[0].quantity,170);
