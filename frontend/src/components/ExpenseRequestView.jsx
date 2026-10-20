@@ -13,7 +13,7 @@ export default function ExpenseRequestView({ document, languageCode, onClose }) 
   const totals = document?.currencyTotals || (document ? [document] : []);
   const unitPrice = value => Number(value).toLocaleString(languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US', { maximumFractionDigits: 4 });
   return <Dialog open={Boolean(document)} onClose={onClose} fullWidth maxWidth="xl">
-    <DialogTitle>{labels.document} {document && expenseRequestNumber(document.id)}</DialogTitle>
+    <DialogTitle>{labels.document}</DialogTitle>
     {document && <DialogContent><Stack spacing={2}>
       <Typography variant="h6">{expenseRequestSummary(document,languageCode)}</Typography>
       {document.remark && <Typography>REMARK: {document.remark}</Typography>}

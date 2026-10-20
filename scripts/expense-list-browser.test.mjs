@@ -107,7 +107,7 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await page.locator('.cc-filter-grid select').nth(3).selectOption('USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
-    await page.getByRole('button',{name:'EXP-000001',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
+    assert.equal(await page.getByText(/^EXP-/).count(),0);await page.getByRole('button',{name:lang==='ko'?'Document cost \uC678 1\uAC74':lang==='vi'?'Document cost v\u00e0 1 m\u1ee5c kh\u00e1c':'Document cost and 1 more',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
