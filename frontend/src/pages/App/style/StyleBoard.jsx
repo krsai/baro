@@ -245,7 +245,7 @@ const StyleBoard = () => {
   } = {}) => {
     setLoading(true);
     try {
-      const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh });
+      const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh, skipCache: true });
       if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return items;
       setStyles(items);
       return items;
@@ -298,7 +298,7 @@ const StyleBoard = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.STYLES],
+    topics: [WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES],
     isActive: isStyleRouteActive,
     isBlocked: loading,
     onRefresh: () => refreshStyles({ forceRefresh: true }),
@@ -697,7 +697,7 @@ const StyleBoard = () => {
                 </TableRow>
               )}
               {rows.map((style) => {
-                const deleteBlocked = style.canDelete !== true || Boolean(style.hasWorkRecords);
+                const deleteBlocked = loading || style.canDelete !== true || Boolean(style.hasWorkRecords);
                 const deleteTooltipTitle = deleteBlocked
                   ? resolveStyleDeleteBlockedByWorkRecordsMessage(languageCode)
                   : getUiMessage('common.delete', '삭제', languageCode);

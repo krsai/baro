@@ -33,6 +33,14 @@ try{
       const used=page.locator('tbody tr').filter({hasText:'SAN049'});await used.waitFor();
       assert.equal(await used.getByRole('button').last().isDisabled(),true);
       assert.equal(await page.locator('tbody tr').filter({hasText:'UNUSED'}).getByRole('button').last().isDisabled(),false);
+      for (const topic of ['assignment-board','orders','payroll-sources']) {
+        styles[1].canDelete=false;styles[1].hasWorkRecords=true;styles[1].workRecordCount=1;
+        await page.evaluate(topic=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:[topic]}})),topic);
+        await page.waitForFunction(()=>document.querySelectorAll('tbody tr')[1]?.querySelector('button')?.disabled===true);
+        styles[1].canDelete=true;styles[1].hasWorkRecords=false;styles[1].workRecordCount=0;
+        await page.evaluate(topic=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:[topic]}})),topic);
+        await page.waitForFunction(()=>document.querySelectorAll('tbody tr')[1]?.querySelector('button')?.disabled===false);
+      }
       await page.getByRole('button',{name:'AT 갱신',exact:true}).click();
       await page.waitForFunction(()=>window.notices.some(n=>n.type==='success'));
       assert.equal(background,true);assert.ok(polls>=2);
