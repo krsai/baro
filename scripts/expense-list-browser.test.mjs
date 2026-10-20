@@ -61,9 +61,10 @@ try {
     await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,13);
+    assert.equal(headings.length,12);
     assert.equal(headings.includes(text.style),false);
-    assert.equal(headings[6],text.order);
+    assert.equal(await page.locator('tbody .cc-code').count(),0);
+    assert.equal(headings[5],text.order);
     assert.equal(await page.locator('.cc-filter-grid select').nth(0).locator('option').first().textContent(),text.allIndustries);
     assert.equal(await page.locator('.cc-filter-grid select').nth(1).locator('option').first().textContent(),text.allPartners);
     const historicalRow=page.locator('tbody tr').filter({hasText:'Legacy work'});
