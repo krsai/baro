@@ -1,3 +1,4 @@
+import { getLabelPalette } from '../theme/labelPalette';
 import { ST_REVIEW_DIVERGENCE_THRESHOLD_PERCENT } from '../constants/timeThresholds';
 
 export const TIME_DIVERGENCE_SEVERITY = {
@@ -70,25 +71,12 @@ export const resolveDivergenceMeta = (
   };
 };
 
-const DIVERGENCE_COLOR_PALETTE = {
-  positive: {
-    [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#FDECEC', text: '#C2413B' },
-    [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#F8CCCC', text: '#B42318' },
-    [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#EFA5A5', text: '#861414' },
-  },
-  negative: {
-    [TIME_DIVERGENCE_SEVERITY.NORMAL]: { bg: '#E8F2FD', text: '#2F6FAE' },
-    [TIME_DIVERGENCE_SEVERITY.REVIEW]: { bg: '#C9E0F7', text: '#1F5F9D' },
-    [TIME_DIVERGENCE_SEVERITY.CRITICAL]: { bg: '#9FC7EE', text: '#174A7E' },
-  },
-  neutral: { bg: '#ECEFF3', text: '#5F6B7A' },
-};
-
+// Small deviations remain neutral; review severity is calculated independently.
+export const DIVERGENCE_NEUTRAL_THRESHOLD_PERCENT = 1;
 export const resolveDivergenceColor = (meta) => {
-  const percent = Number(meta?.percent);
-  if (!Number.isFinite(percent) || percent === 0) return DIVERGENCE_COLOR_PALETTE.neutral;
-  const directionPalette = percent > 0
-    ? DIVERGENCE_COLOR_PALETTE.positive
-    : DIVERGENCE_COLOR_PALETTE.negative;
-  return directionPalette[meta?.severity] || directionPalette[TIME_DIVERGENCE_SEVERITY.NORMAL];
+  const percent = meta?.percent == null ? NaN : Number(meta.percent);
+  const tone = !Number.isFinite(percent) || Math.abs(percent) < DIVERGENCE_NEUTRAL_THRESHOLD_PERCENT
+    ? 'gray' : percent > 0 ? 'orange' : 'blue';
+  const palette = getLabelPalette(tone);
+  return { bg: palette.background, text: palette.text };
 };

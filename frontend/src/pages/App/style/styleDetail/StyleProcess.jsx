@@ -3623,7 +3623,7 @@ const StyleProcess = ({
                           {`AT(${timeRefQuantityLabel})`}
                         </Box>
                       </Tooltip>
-                      {(hasAT || styleAtReliability?.percent != null) && (
+                      {styleAtReliability?.percent != null && (
                         <Chip
                           size="small"
                           label={`${styleAtReliability.percent == null ? '—' : `${styleAtReliability.percent}%`}${styleAtReliability.percent != null && !styleAtReliability.complete ? (languageCode === 'ko' ? ' (일부)' : languageCode === 'vi' ? ' (một phần)' : ' (partial)') : ''}`}

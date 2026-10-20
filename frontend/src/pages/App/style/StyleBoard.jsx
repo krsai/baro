@@ -752,7 +752,7 @@ const StyleBoard = () => {
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                           {style.hasTotalAT ? formatLocalizedSeconds(style.totalAT, languageCode) : '-'}
-                          {(style.hasTotalAT || style.styleAtReliability?.percent != null) && (
+                          {style.styleAtReliability?.percent != null && (
                             <Chip
                               size="small"
                               label={formatAtReliabilityBadgeLabel(style.styleAtReliability, languageCode)}
