@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, TextField, Tooltip } from '@mui/material';
+import { Autocomplete, Box, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, InputAdornment, TextField, Tooltip, Typography } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { exactLookupCode, normalizeLookupText } from '../utils/expenseLookup.mjs';
@@ -8,31 +8,36 @@ export default function ExpenseLookupField({ label, options, value, onChange, co
   const text = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const [draft,setDraft] = useState(directCode ? value?.code || '' : value?.name || '');
   const [open,setOpen] = useState(false), [query,setQuery] = useState('');
+  const [suggesting,setSuggesting] = useState(false);
   useEffect(() => { if(value)setDraft(directCode ? value.code : value.name); },[value,directCode]);
-  useEffect(() => { if(disabled)setOpen(false); },[disabled]);
+  useEffect(() => { if(disabled){setOpen(false);setSuggesting(false);} },[disabled]);
   const title = `${label} · ${text.search}`;
-  const showSearch = () => { if(disabled)return;setQuery(directCode && !value ? draft : '');setOpen(true); };
-  const choose = option => { if(disabled)return;onChange(option);setDraft(directCode ? option.code : option.name);setOpen(false); };
-  const resolve = () => {
-    const match = directCode ? exactLookupCode(options,draft) : null;
-    if(match){if(match.id!==value?.id)choose(match);return;}
-    showSearch();
-  };
+  const showSearch = () => { if(disabled)return;setSuggesting(false);setQuery(directCode && !value ? draft : '');setOpen(true); };
+  const choose = option => { if(disabled)return;onChange(option);setDraft(directCode ? option.code : option.name);setOpen(false);setSuggesting(false); };
   const filtered = options.filter(option => normalizeLookupText(columns.map(column=>column.value(option)).join(' ')).includes(normalizeLookupText(query)));
+  const searchAdornment = <InputAdornment position="end"><Tooltip title={`${title} (F2)`}><span><IconButton size="small" aria-label={title} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={event=>{event.stopPropagation();showSearch();}}><SearchIcon fontSize="small" /></IconButton></span></Tooltip></InputAdornment>;
   return <>
-    <TextField size="small" fullWidth required={required} disabled={disabled} label={label} value={draft}
-      placeholder={directCode ? text.codeHint : text.partnerHint}
-      onClick={!directCode ? showSearch : undefined}
-      onChange={event=>{
-        const input=event.target.value;setDraft(input);
-        const match=exactLookupCode(options,input);
-        if(match){if(match.id!==value?.id)onChange(match);}
-        else if(value)onChange(null);
-      }}
-      onBlur={()=>{if(directCode && draft.trim() && !value && !open)resolve();}}
-      onKeyDown={event=>{if(event.key==='F2'||event.key==='Enter'){event.preventDefault();if(event.key==='F2')showSearch();else resolve();}}}
-      InputProps={{readOnly:!directCode,endAdornment:<InputAdornment position="end"><Tooltip title={`${title} (F2)`}><span><IconButton size="small" aria-label={title} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={event=>{event.stopPropagation();showSearch();}}><SearchIcon fontSize="small" /></IconButton></span></Tooltip></InputAdornment>}}
-    />
+    {directCode ? <Autocomplete fullWidth size="small" freeSolo autoHighlight selectOnFocus handleHomeEndKeys clearOnBlur={false} forcePopupIcon={false}
+      disabled={disabled} options={options} value={value || null} inputValue={draft}
+      open={suggesting && !open && !disabled} onOpen={()=>setSuggesting(true)} onClose={()=>setSuggesting(false)}
+      getOptionLabel={option=>typeof option==='string' ? option : option.code || ''}
+      isOptionEqualToValue={(option,selected)=>option.id===selected.id}
+      filterOptions={(rows,{inputValue})=>rows.filter(option=>normalizeLookupText(columns.map(column=>column.value(option)).join(' ')).includes(normalizeLookupText(inputValue)))}
+      onInputChange={(_,input,reason)=>{if(reason!=='input' && reason!=='clear')return;setDraft(input);const match=exactLookupCode(options,input);if(match){if(match.id!==value?.id)onChange(match);}else if(value)onChange(null);}}
+      onChange={(_,option)=>{if(typeof option==='string'){const match=exactLookupCode(options,option);if(match)choose(match);else showSearch();}else if(option)choose(option);else{setDraft('');onChange(null);}}}
+      onKeyDown={event=>{if(event.key==='F2'){event.preventDefault();showSearch();}}}
+      slotProps={{popper:{sx:{width:'min(420px, calc(100vw - 32px)) !important'}}}}
+      renderOption={(props,option)=>{const {key,...rest}=props;return <Box component="li" key={option.id} {...rest} sx={{gap:2,alignItems:'flex-start !important'}}>
+        <Typography sx={{fontWeight:600,minWidth:44}}>{option.code}</Typography>
+        <Typography color="text.secondary" sx={{minWidth:0,overflowWrap:'anywhere'}}>{columns.slice(1).map(column=>column.value(option)).filter(Boolean).join(' · ')}</Typography>
+      </Box>;}}
+      renderInput={params=><TextField {...params} required={required} label={label} placeholder={text.codeHint}
+        InputProps={{...params.InputProps,endAdornment:<>{searchAdornment}{params.InputProps.endAdornment}</>}} />}
+    /> : <TextField size="small" fullWidth required={required} disabled={disabled} label={label} value={draft}
+      placeholder={text.partnerHint} onClick={showSearch}
+      onKeyDown={event=>{if(event.key==='F2'||event.key==='Enter'){event.preventDefault();showSearch();}}}
+      InputProps={{readOnly:true,endAdornment:searchAdornment}}
+    />}
     <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="md" aria-label={title}>
       <DialogTitle sx={{ borderBottom: 1, borderColor: 'divider' }}>{title}</DialogTitle>
       <DialogContent sx={{p:0}}><div className="compact-costs cc-lookup">

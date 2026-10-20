@@ -64,8 +64,13 @@ try {
     }
     if(locked){assert.equal(await page.getByLabel('REMARK',{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
     else {
-      const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});
-      await code.locator('..').getByRole('button').click();
+      const code=page.getByTestId('expense-line').getByRole('combobox',{name:l.code,exact:false});
+      await code.fill('BT');
+      await page.getByRole('option',{name:/BTHE/}).waitFor();
+      await code.press('Enter');
+      assert.equal(await code.inputValue(),'BTHE');
+      await code.fill('');
+      await code.locator('..').getByRole('button',{name:new RegExp(lookup.search)}).click();
       const keyword=page.getByRole('dialog').getByLabel(lookup.keyword,{exact:false});
       await keyword.fill('Buttonhole');
       assert.equal(await page.getByRole('dialog').locator('tbody tr').count(),1);
