@@ -51,6 +51,11 @@ test('style deletion accounts for production history, orders, assignments and re
   assert.equal(deletion.styleDeletionState().canDelete,false);
   assert.equal(deletion.styleDeletionState({}).canDelete,true);
   for(const field of Object.keys(deletion.STYLE_DELETION_COUNTS))assert.equal(deletion.styleDeletionState({[field]:1}).canDelete,false,field);
+  // Retained source relations on inactive processes must also block deletion;
+  // an AT number or a shared prediction is not evidence of this style's work.
+  assert.equal(deletion.styleDeletionState({styleProcesses:1}).deleteBlockedReason,'TRAINING_SOURCE');
+  assert.deepEqual(deletion.STYLE_DELETION_COUNTS.styleProcesses.where.OR.map(filter=>Object.keys(filter)[0]),
+    ['workRecords','outsourcedWorkRecords','trainingBuckets','atObservations']);
 });
 
 test('AT background jobs are durable, deduplicated per org, isolated and report completion',async()=>{

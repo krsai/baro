@@ -30541,16 +30541,9 @@ const deleteUnusedStyle = async (db: any, styleId: number) => {
   return db.$transaction(async (tx: any) => {
     // Serialize deletion with FK writes before inspecting live references.
     await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 FOR UPDATE', styleId);
-    if (await tx.priorProductionCompletion.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_PRIOR_COMPLETION_HISTORY');
-    if (await tx.atTrainingBucketProcess.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_TRAINING_SOURCE_HISTORY');
-    if (await tx.partnerTransactionCost.count({ where: { styleId } })) throw createHttpError(409, 'STYLE_COST_HISTORY');
-    const work = await tx.workRecord.findFirst({ where: { styleId }, select: { id: true } });
-    const outsourced = await tx.outsourcedWorkRecord.findFirst({ where: { styleId }, select: { id: true } });
-    if (work || outsourced) throw createHttpError(409, "작업기록이 존재해서 삭제할 수 없습니다.");
-    const item = await tx.workOrderItem.findFirst({ where: { styleId }, select: { workOrder: { select: { orderId: true, orderNumber: true } } } });
-    if (item) throw createHttpError(409, `style is used by order ${item.workOrder.orderNumber || item.workOrder.orderId}`);
-    const assignment = await tx.assignmentPlan.findFirst({ where: { styleId }, select: { id: true } });
-    if (assignment) throw createHttpError(409, "style is used by assignment");
+    const liveStyle = await tx.style.findUnique({ where: { id: styleId }, select: { _count: { select: STYLE_DELETION_COUNTS } } });
+    const deletion = styleDeletionState(liveStyle?._count);
+    if (!deletion.canDelete) throw createHttpError(409, `STYLE_DELETE_BLOCKED_${deletion.deleteBlockedReason}`);
     // These are editable prices, not issued invoice snapshots.
     await tx.customerSalesPriceList.deleteMany({ where: { styleId } });
     await tx.style.delete({ where: { id: styleId } });
