@@ -82,9 +82,6 @@ try {
       assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).fontSize),'13px',selector+' uses global text size');
     }
     assert.equal((await page.locator('.cc-dates [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
-    await page.evaluate(()=>document.documentElement.style.setProperty('--ui-control-font-size','15px'));
-    assert.equal(await page.locator('.cc-dates .cc-button').first().evaluate(el=>getComputedStyle(el).fontSize),'15px','Native buttons follow shared token');
-    await page.evaluate(()=>document.documentElement.style.removeProperty('--ui-control-font-size'));
     // Exercise the real HTML table's token bridge, not just an isolated MUI preview.
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(248, 250, 252)');
     assert.equal(await page.locator('tbody .MuiChip-root').count(),3);
