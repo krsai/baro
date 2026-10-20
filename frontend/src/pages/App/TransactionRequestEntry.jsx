@@ -28,7 +28,6 @@ const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New Payment Request', vi
 const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit Payment Request', vi: 'Sửa đề nghị thanh toán' };
 const LOCKED_TEXT = { ko: '최종 마감된 주문의 비용 신청은 수정할 수 없습니다.', en: 'This request is read-only because its order is finally locked.', vi: 'Không thể sửa đề nghị vì đơn hàng đã khóa quyết toán.' };
 const CHANGED_TEXT = { ko: '다른 사용자가 신청서를 수정했습니다. 화면을 다시 열어 최신 내용을 확인한 뒤 저장해 주세요.', en: 'This request was changed by another user. Reopen it to review the latest version before saving.', vi: 'Đề nghị đã được người khác sửa. Vui lòng mở lại để kiểm tra phiên bản mới nhất trước khi lưu.' };
-const UPDATED_TEXT = { ko: '최종 수정', en: 'Last updated', vi: 'Cập nhật gần nhất' };
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -40,7 +39,7 @@ export default function TransactionRequestEntry() {
   const { pathname } = useLocation();
   const editing = Boolean(sourceKind && sourceId);
   const editorPath = editing ? `/expense-request-editor/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}` : '/expense-requests';
-  const { activeOrgId, user, accessProfile } = useAuth(), { languageCode } = useLanguage();
+  const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
@@ -139,18 +138,16 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(220px, 1fr) minmax(220px, 1fr)' }, gap: 2 }}>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) minmax(0, 1fr)' }, gap: 2 }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
-            <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />
-            <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{gridColumn:'1 / -1'}} />
+            <TextField label={header.payeeInfo} value={partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}} InputProps={{readOnly:true}} inputProps={{title:partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') : ''}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
           </Box>
-          <Stack data-testid="expense-author-context" direction="row" useFlexGap flexWrap="wrap" spacing={3} sx={{mt:2,pt:2,borderTop:1,borderColor:'divider'}}>
-            <Typography variant="caption" color="text.secondary">{lookup.issuer}: {accessProfile?.orgName || '—'}</Typography>
-            <Typography variant="caption" color="text.secondary">{lookup.author}: {form.createdByEmployee?.name || accessProfile?.employeeName || user?.user_metadata?.full_name || user?.email || '—'}</Typography>
-            {form.version != null && <Typography variant="caption" color="text.secondary">v{form.version}{form.updatedAt ? ` · ${UPDATED_TEXT[languageCode] || UPDATED_TEXT.en}: ${form.updatedByEmployee?.name || '—'} · ${new Date(form.updatedAt).toLocaleString(languageCode==='vi'?'vi-VN':languageCode==='en'?'en-GB':'ko-KR')}` : ''}</Typography>}
-            <Typography variant="caption" color="text.secondary">{labels.vatDefault}: {data.settings.defaultVatRate}%</Typography>
-          </Stack></Box>
+          <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>
+            <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />
+            <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} />
+          </Box>
+          </Box>
         </Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
         <DragDropContext onBeforeCapture={() => {

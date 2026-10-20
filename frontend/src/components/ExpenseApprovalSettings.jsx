@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import DragIndicator from '@mui/icons-material/DragIndicator';
 import DeleteActionButton from './DeleteActionButton';
@@ -19,9 +19,11 @@ export default function ExpenseApprovalSettings({ orgId, languageCode, value = [
   },[open,orgId]);
   const name=id=>options.find(row=>row.id===id)?.name || steps.find(row=>row.employeeId===id)?.employee?.name || String(id);
   return <>
-    <Button variant="outlined" disabled={disabled} onClick={()=>{setDraft([...value]);setOpen(true);}} sx={{justifyContent:'flex-start',minHeight:36}} aria-label={labels.approval}>
-      {labels.approval}: {value.length ? value.map(name).join(' → ') : labels.empty} · {labels.configure}
-    </Button>
+    <Box sx={{display:'flex',alignItems:'center',gap:1.5,minWidth:0,height:36}}>
+      <Typography color="text.secondary" sx={{flexShrink:0}}>{labels.approval}</Typography>
+      <Typography noWrap sx={{minWidth:0,flex:1}} title={value.map(name).join(' → ')}>{value.length ? value.map(name).join(' → ') : labels.empty}</Typography>
+      <Button disabled={disabled} onClick={()=>{setDraft([...value]);setOpen(true);}} sx={{flexShrink:0}} aria-label={labels.approval}>{labels.configure}</Button>
+    </Box>
     <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="sm">
       <DialogTitle>{labels.approval}</DialogTitle>
       <DialogContent>

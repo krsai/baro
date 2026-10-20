@@ -26,7 +26,7 @@ try {
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>document.documentElement.dataset.saved="true",showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const service={isActive:true,entryMode:mode==='SAVED'?'GENERAL':mode,requiredFields:[],expenseTypeId:1,serviceTypeId:4};
-    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4}]}],
+    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',contactName:'Accounts desk',contactPhone:'0901234567',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4}]}],
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[{id:'public-30',dbId:30,ownerOrgId:1,orderNumber:'L17-1'}], 'app-settings':{defaultVatRate:'10'} };
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
@@ -42,19 +42,19 @@ try {
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();
-    await page.getByTestId('expense-author-context').getByText(/Original author/).waitFor();
+    assert.equal(await page.getByTestId('expense-author-context').count(),0);
+    const payeeInfo=page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true});
+    assert.equal(await payeeInfo.inputValue(),'Accounts desk / 0901234567');
+    assert.equal(await payeeInfo.evaluate(el=>el.readOnly),true);
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
     assert.equal(await page.getByLabel(l.quantity,{exact:false}).inputValue(),'170');
-    assert.match(await page.getByTestId('expense-author-context').innerText(),/Original author/);
     assert.equal(await page.getByRole('button',{name:l.remove,exact:true}).isDisabled(),true);
     if(mode==='SAVED'){
       const save=page.locator('button.MuiButton-contained').first(),description=page.getByLabel('REMARK',{exact:true});
       assert.equal(await save.isDisabled(),true);
       await description.fill('Reviewed expense');await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
       await description.fill('');assert.equal(await save.isDisabled(),true);
-      assert.match(await page.getByTestId('expense-author-context').innerText(),/v3/);
-      assert.match(await page.getByTestId('expense-author-context').innerText(),/Latest editor/);
       await description.fill('Conflicting edit');await save.click();
       await page.locator('.MuiAlert-standardError').waitFor();
       assert.notEqual(await page.locator('.MuiAlert-standardError').innerText(),l.invalid);
@@ -114,5 +114,5 @@ try {
     }
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('Expense edit form passed: ko/en/vi, selected source values, immutable production FKs, PUT edits, original author and final-lock read-only.');
+  console.log('Expense edit form passed: ko/en/vi, selected source values, immutable production FKs, PUT edits, automatic payee information, hidden metadata and final-lock read-only.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}
