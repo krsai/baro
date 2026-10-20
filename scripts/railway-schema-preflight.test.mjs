@@ -8,6 +8,7 @@ const { runRailwayPreflight, columns, constraints } = require('../backend/script
 const env = { RAILWAY_ENVIRONMENT_ID:'test-environment', RAILWAY_SERVICE_ID:'test-service', DATABASE_URL:'postgresql://test:secret@127.0.0.1/test' };
 const quiet = () => {};
 const {migrations,migrationSql}=require('../backend/scripts/migrate-expenses.js');
+const entityMigration=require('../backend/scripts/migrate-entity-profiles.js');
 test('local npm start does not open or modify a database; Railway runs the prestart hook before the pure API command', async () => {
   await runRailwayPreflight({ env: {}, log:quiet, createClient:()=>{throw Error('No local DB access');}, run:()=>{throw Error('No local SQL');} });
   const pkg=JSON.parse(fs.readFileSync('backend/package.json','utf8'));
@@ -22,28 +23,29 @@ test('missing Railway URLs and authentication database targets are refused befor
 });
 test('a complete schema skips SQL and closes the check connection', async () => {
   let closed=false;
-  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('to_regclass') ? [{present:true}] : sql==='SELECT version,checksum FROM "ExpenseSchemaMigration"' ? migrations() : sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
+  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('to_regclass') ? [{present:true}] : sql==='SELECT version,checksum FROM "ExpenseSchemaMigration"' ? migrations() : sql.includes('SELECT version,checksum FROM "EntitySchemaMigration"') ? entityMigration.migrations() : sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
   assert.ok(closed);
 });
 test('preflight applies the bounded additive transaction, preserves legacy costs, verifies constraints and skips the next launch', async () => {
   const db=new PGlite();let runs=0,closed=0;
   try {
     await db.exec(`CREATE TABLE "SystemSetting"(key TEXT PRIMARY KEY,value JSONB,"updatedByEmployeeId" INT,"createdAt" TIMESTAMP DEFAULT now(),"updatedAt" TIMESTAMP DEFAULT now());
-      CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,UNIQUE(id,"ownerOrgId"));
+      CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,UNIQUE(id,"ownerOrgId"));
+      CREATE TABLE "Currency"(id INT PRIMARY KEY); CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
       CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
       CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC);
-      INSERT INTO "Organization" VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
+      INSERT INTO "Organization"(id,"ownerOrgId") VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
       INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,NULL,'VND',123);`);
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);
       assert.match(options.input,/BEGIN;[\s\S]*pg_advisory_xact_lock[\s\S]*COMMIT;/);
-      assert.equal(options.input,migrationSql());
+      assert.ok([migrationSql(),entityMigration.migrationSql()].includes(options.input));
       await db.exec(options.input);return {status:0};
     }};
     await runRailwayPreflight(dependencies); await runRailwayPreflight(dependencies);
-    assert.equal(runs,1);assert.equal(closed,2);
+    assert.equal(runs,2);assert.equal(closed,2);
     assert.deepEqual((await db.query(`SELECT amount::text,"expenseRequestId","expenseRequestLine" FROM "PartnerTransactionCost" WHERE id='legacy'`)).rows,[{amount:'123',expenseRequestId:null,expenseRequestLine:null}]);
   }finally{await db.close();}
 });

@@ -168,6 +168,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  bankAccounts OrganizationBankAccount[] @relation("EntityBankAccountEntity")
+  managedBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountOwner")
   expenseRequests ExpenseRequest[] @relation("ExpenseRequestOwner")
   expenseRequestAudits ExpenseRequestAudit[] @relation("ExpenseRequestAuditOwner")
   expenseRequestApprovalSteps ExpenseRequestApprovalStep[] @relation("ExpenseRequestApprovalOwner")
@@ -285,6 +287,7 @@ model Organization {
 }
 
 model Currency {
+  entityBankAccounts OrganizationBankAccount[]
   id        Int      @id @default(autoincrement())
   code      String   @unique
   name      String
@@ -296,6 +299,36 @@ model Currency {
   styleSalesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
   salaryOrganizations Organization[] @relation("OrganizationSalaryCurrency")
   salaryFactories Factory[] @relation("FactorySalaryCurrency")
+}
+
+model OrganizationBankAccount {
+  id String @id @default(uuid())
+  orgId Int
+  entityId Int
+  currencyId Int
+  bankName String
+  accountNumber String
+  accountHolder String
+  isDefault Boolean @default(false)
+  isActive Boolean @default(true)
+  createdByEmployeeId Int
+  updatedByEmployeeId Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation("EntityBankAccountOwner", fields:[orgId], references:[id], onDelete:Restrict)
+  entity Organization @relation("EntityBankAccountEntity", fields:[entityId], references:[id], onDelete:Restrict)
+  currency Currency @relation(fields:[currencyId], references:[id], onDelete:Restrict)
+  createdByEmployee Employee @relation("EntityBankAccountCreator", fields:[createdByEmployeeId,orgId], references:[id,orgId], onDelete:Restrict, onUpdate:Restrict)
+  updatedByEmployee Employee @relation("EntityBankAccountUpdater", fields:[updatedByEmployeeId,orgId], references:[id,orgId], onDelete:Restrict, onUpdate:Restrict)
+  @@unique([id,orgId])
+  @@unique([orgId,entityId,currencyId,bankName,accountNumber], map:"EntityBankAccount_unique_key")
+  @@index([orgId,entityId,currencyId])
+}
+
+model EntitySchemaMigration {
+  version String @id
+  checksum String
+  appliedAt DateTime @default(now())
 }
 
 model SystemSetting {
@@ -465,6 +498,8 @@ model Warehouse {
 
 
 model Employee {
+  createdEntityBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountCreator")
+  updatedEntityBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountUpdater")
   expenseRequests ExpenseRequest[] @relation("ExpenseRequestCreator")
   updatedExpenseRequests ExpenseRequest[] @relation("ExpenseRequestUpdater")
   expenseRequestAudits ExpenseRequestAudit[] @relation("ExpenseRequestAuditActor")

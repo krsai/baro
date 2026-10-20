@@ -44,6 +44,8 @@
     "test:month-selector": "node --test scripts/month-selector-regression.test.mjs",
     "test:date-range-browser": "node scripts/date-range-browser.test.mjs",
     "test:date-picker-theme-browser": "node scripts/date-picker-theme-browser.test.mjs",
+    "test:entity-profile-browser": "node scripts/entity-profile-browser.test.mjs",
+    "test:entity-profile": "npm --prefix backend run build && node --test scripts/entity-profile.test.mjs",
     "test:business-partner-deletion": "npm --prefix backend run build && node --test scripts/business-partner-deletion.test.mjs",
     "test:business-partner-browser": "node scripts/business-partner-browser.test.mjs",
     "test:code-bases-tax": "npm --prefix backend run build && node --test scripts/code-bases-tax.test.mjs",

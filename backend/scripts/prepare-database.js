@@ -9,9 +9,9 @@ function preparationPlan(mode = 'prepare') {
   const schema = { script: 'prisma:deploy:safe' };
   const sql = [{ script: 'prisma:apply:migration-fix' }, { script: 'prisma:apply:factory-child-org-integrity' }];
   const maintenance = value => ({ node: 'scripts/application-database-maintenance.js', args: [value] });
-  if (mode === 'initialize') return [generate, { node: 'scripts/assert-empty-database.js' }, schema, ...sql, { node: 'scripts/migrate-expenses.js' }, maintenance('prepare')];
+  if (mode === 'initialize') return [generate, { node: 'scripts/assert-empty-database.js' }, schema, ...sql, { node: 'scripts/migrate-expenses.js' }, { node: 'scripts/migrate-entity-profiles.js' }, maintenance('prepare')];
   return [generate, ...(mode === 'legacy' ? [...legacySteps, maintenance('legacy')] : []),
-    ...sql, schema, { node: 'scripts/migrate-expenses.js' }, maintenance('prepare'), ...(mode === 'legacy' ? [maintenance('historical-cards')] : [])];
+    ...sql, schema, { node: 'scripts/migrate-expenses.js' }, { node: 'scripts/migrate-entity-profiles.js' }, maintenance('prepare'), ...(mode === 'legacy' ? [maintenance('historical-cards')] : [])];
 }
 
 function runPlan(plan, run = spawnSync) {

@@ -4,6 +4,7 @@ import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../frontend/src/constants/expenseRequest.js';
+import { ENTITY_TEXT } from '../frontend/src/constants/entityProfile.js';
 import { EXPENSE_LOOKUP_TEXT } from '../frontend/src/constants/expenseLookup.js';
 import { expenseCodeDescription } from '../frontend/src/utils/expenseCodePresentation.mjs';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
@@ -17,8 +18,8 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const mode of ['GENERAL','PROCESS','SAVED','BACKGROUND'])for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND'].includes(mode)?[false]:[false,true]) {
-    const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave;const saveGate=new Promise(resolve=>{releaseSave=resolve;});
+  for(const mode of ['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+    const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
     await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,accessProfile:{orgName:"BARO",employeeName:"Current editor"}});'}));
@@ -40,13 +41,15 @@ try {
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
     await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
+    await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currency:{id:1,code:'VND'},isDefault:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
     await page.route('**/expense-approval-candidates?*',r=>r.fulfill({headers,json:[{id:20,name:'First approver'},{id:21,name:'Second approver'}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
     const payeeInfo=page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true});
-    assert.equal(await payeeInfo.inputValue(),'Accounts desk / 0901234567');
+    if(mode!=='BANKLESS')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='VND \u00b7 Test bank \u00b7 001234 \u00b7 Selected vendor'));
+    if(mode!=='BANKLESS')assert.equal(await payeeInfo.inputValue(),'VND \u00b7 Test bank \u00b7 001234 \u00b7 Selected vendor');
     assert.equal(await payeeInfo.evaluate(el=>el.readOnly),true);
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
@@ -84,6 +87,21 @@ try {
       // A unique exact code resolves directly; no legacy work group is requested.
       if(await page.getByRole('dialog').count())await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
       assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
+      if(mode==='BANKLESS'){
+        const b=ENTITY_TEXT[lang];
+        assert.equal(await page.locator('button.MuiButton-contained').first().isDisabled(),true);
+        await page.getByRole('alert').getByRole('button',{name:b.settings,exact:true}).click();
+        await page.getByRole('dialog').getByRole('button',{name:b.add,exact:true}).click();
+        const dialog=page.getByRole('dialog').last();
+        await dialog.getByLabel(b.bank,{exact:false}).fill('Test bank');
+        await dialog.getByLabel(b.number,{exact:false}).fill('001234');
+        await dialog.getByLabel(b.holder,{exact:false}).fill('Selected vendor');
+        await dialog.getByRole('button',{name:b.save,exact:true}).click();
+        await page.getByRole('dialog').getByText('001234',{exact:true}).waitFor();
+        await page.getByRole('dialog').getByRole('button',{name:b.cancel,exact:true}).click();
+        assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'');
+        await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
+      }
       assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
       const save=page.locator('button.MuiButton-contained').first();
       if(mode==='PROCESS'){

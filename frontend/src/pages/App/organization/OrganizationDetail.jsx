@@ -1,18 +1,17 @@
+import EntityBankAccounts from '../../../components/EntityBankAccounts';
+import { createPortal } from 'react-dom';
+import EntityDetailSection from '../../../components/EntityDetailSection';
+import Grid from '@mui/material/Grid';
 import PageContentStack from '../../../components/PageContentStack';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
-  Grid,
   MenuItem,
   Paper,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
-import BusinessRoundedIcon from '@mui/icons-material/BusinessRounded';
-import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
-import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded';
-import StraightenRoundedIcon from '@mui/icons-material/StraightenRounded';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
 import {
@@ -119,28 +118,7 @@ const getLocalText = (languageCode) => {
   };
 };
 
-const FormGroup = ({ icon, title, help, accent = '#0b6bcb', children }) => (
-  <Paper
-    variant="outlined"
-    sx={{
-      width: '100%',
-      borderRadius: 3,
-      overflow: 'hidden',
-      borderColor: 'divider',
-      backgroundColor: '#fff',
-    }}
-  >
-    <>
-      <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', px: { xs: 2, md: 2.5 }, py: 2, bgcolor: 'rgba(248,250,252,.8)', borderBottom: '1px solid', borderColor: 'divider' }}>
-        <Box sx={{ width: 38, height: 38, borderRadius: 2, display: 'grid', placeItems: 'center', color: accent, bgcolor: `${accent}12` }}>{icon}</Box>
-        <Box><Typography sx={{ fontWeight: 800 }}>{title}</Typography><Typography variant="caption" color="text.secondary">{help}</Typography></Box>
-      </Box>
-      <Box sx={{ p: { xs: 2, md: 2.5 } }}>{children}</Box>
-    </>
-  </Paper>
-);
-
-const OrganizationDetail = () => {
+const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const { languageCode } = useLanguage();
   const { showNotification } = useAppActions();
   const { updateActiveProfile } = useAuth();
@@ -325,21 +303,16 @@ const OrganizationDetail = () => {
     }
   };
 
-  return (
-    <AppPageContainer
-      title={text.title}
-      titleActions={(
-        <SaveButton
-          onClick={handleSave}
-          disabled={!isDirty || isSaving || !isNameValid}
-          loading={isSaving}
-        />
-      )}
-    >
-      <PageContentStack  sx={{ maxWidth: 1180 }}>
-      <FormGroup icon={<BusinessRoundedIcon />} title={localText.identityTitle} help={localText.identityHelp}>
+  const embedded = headerActionsTarget !== undefined;
+  const Container = embedded ? Box : AppPageContainer;
+  const saveAction = <SaveButton onClick={handleSave} disabled={!isDirty || isSaving || !isNameValid} loading={isSaving} />;
+  return <>
+    {headerActionsTarget && createPortal(saveAction,headerActionsTarget)}
+    <Container {...(embedded ? {sx:{minWidth:0}} : {title:text.title,titleActions:saveAction,sx:{maxWidth:1280,width:'100%'}})}>
+      <PageContentStack  >
+      <EntityDetailSection title={localText.identityTitle}>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
               select
@@ -358,21 +331,20 @@ const OrganizationDetail = () => {
             </TextField>
           </Grid>
 
-          <Grid item xs={12} md={3}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField fullWidth size="small" label={localText.businessNumber} name="businessNumber" value={formData.businessNumber} onChange={handleInputChange} />
           </Grid>
-          <Grid item xs={12} md={3}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
               size="small"
               label={localText.orgCode}
               value={formData.code || localText.orgCodeEmpty}
-              helperText={localText.orgCodeHelp}
+              inputProps={{ title: localText.orgCodeHelp }}
               disabled
-              inputProps={{ style: { letterSpacing: 1 } }}
             />
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
               required
@@ -384,7 +356,7 @@ const OrganizationDetail = () => {
               error={Boolean(formData.name) && !isNameValid}
             />
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
               size="small"
@@ -394,7 +366,7 @@ const OrganizationDetail = () => {
               onChange={handleInputChange}
             />
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
               size="small"
@@ -406,19 +378,13 @@ const OrganizationDetail = () => {
           </Grid>
 
         </Grid>
-      </FormGroup>
+      </EntityDetailSection>
 
-      {formData.industry === ORGANIZATION_TYPE_KEYS.BRAND && (
-        <FormGroup icon={<StraightenRoundedIcon />} title={localText.orderTitle} help={localText.orderHelp} accent="#7c3aed">
-          <TextField fullWidth select size="small" label={localText.sizeSet} name="defaultSizeSetCode" value={formData.defaultSizeSetCode} onChange={handleInputChange} sx={{ maxWidth: 480 }}>
-            {sizeSetOptions.map((option) => <MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}
-          </TextField>
-        </FormGroup>
-      )}
 
-      <FormGroup icon={<BadgeRoundedIcon />} title={localText.contactTitle} help={localText.contactHelp} accent="#ea580c">
+
+      <EntityDetailSection title={localText.contactTitle}>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
+          <Grid size={{xs:12,md:4}}>
             <TextField
               fullWidth
               select
@@ -428,7 +394,7 @@ const OrganizationDetail = () => {
               value={formData.representativeEmployeeId}
               onChange={handleInputChange}
               disabled={employeesLoading}
-              helperText={employeesLoading ? localText.representativeLoading : ' '}
+              helperText={employeesLoading ? localText.representativeLoading : undefined}
             >
               <MenuItem value="">{localText.representativeNone}</MenuItem>
               {employeeOptions.map((employee) => (
@@ -438,7 +404,7 @@ const OrganizationDetail = () => {
               ))}
             </TextField>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid size={{xs:12,md:4}}>
             <TextField
               fullWidth
               size="small"
@@ -449,7 +415,7 @@ const OrganizationDetail = () => {
               sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
             />
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid size={{xs:12,md:4}}>
             <TextField
               fullWidth
               size="small"
@@ -463,16 +429,16 @@ const OrganizationDetail = () => {
           </Grid>
 
         </Grid>
-      </FormGroup>
+      </EntityDetailSection>
 
-      <FormGroup icon={<LocationOnRoundedIcon />} title={localText.addressTitle} help={localText.addressHelp} accent="#059669">
+      <EntityDetailSection title={localText.addressTitle}>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={4} md={3}>
+          <Grid size={{xs:12,sm:4,md:3}}>
             <TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>
               {countryOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={8} md={9}>
+          <Grid size={{xs:12,sm:8,md:9}}>
             <TextField
               fullWidth
               multiline
@@ -484,10 +450,18 @@ const OrganizationDetail = () => {
               onChange={handleInputChange}
             />
           </Grid></Grid>
-      </FormGroup>
+      </EntityDetailSection>
+      <EntityBankAccounts entityId={organizationId} languageCode={languageCode}/>
+      {formData.industry === ORGANIZATION_TYPE_KEYS.BRAND && (
+        <EntityDetailSection title={localText.orderTitle}>
+          <TextField fullWidth select size="small" label={localText.sizeSet} name="defaultSizeSetCode" value={formData.defaultSizeSetCode} onChange={handleInputChange} sx={{ maxWidth: 480 }}>
+            {sizeSetOptions.map((option) => <MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}
+          </TextField>
+        </EntityDetailSection>
+      )}
       </PageContentStack>
-    </AppPageContainer>
-  );
+    </Container>
+  </>;
 };
 
 export default OrganizationDetail;

@@ -1,3 +1,4 @@
+const { runEntityProfileMigrations } = require('./migrate-entity-profiles');
 // Deployment-only fallback: this service's Railway settings skip preDeployCommand.
 // Local npm start and start:api never migrate. No historical repairs or db push.
 const { runExpenseMigrations } = require('./migrate-expenses');
@@ -6,19 +7,20 @@ const { spawnSync } = require('node:child_process');
 const { assertSafeApplicationDatabaseEnv } = require('../src/config/databaseTargetGuard');
 
 const columns = [
+  ['OrganizationBankAccount','entityId'],['OrganizationBankAccount','currencyId'],['EntitySchemaMigration','version'],
   ...['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash','createdAt'].map(column => ['ExpenseRequest',column]),
   ...['version','updatedAt','updatedByEmployeeId'].map(column=>['ExpenseRequest',column]),
   ['ExpenseRequestApprovalStep','employeeId'], ['ExpenseRequestAudit','requestId'], ['ExpenseSchemaMigration','version'],
   ['PartnerTransactionCost','expenseRequestId'], ['PartnerTransactionCost','expenseRequestLine'],
 ];
-const constraints = ['ExpenseRequest_id_orgId_partnerOrgId_key','ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
+const constraints = ['OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard','ExpenseRequest_id_orgId_partnerOrgId_key','ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
   'ExpenseRequest_partnerOrgId_orgId_fkey','ExpenseRequest_createdByEmployeeId_orgId_fkey',
   'PartnerTransactionCost_expense_request_fkey','PartnerTransactionCost_expenseRequestId_expenseRequestLine_key','ExpenseRequestLine_pair_check',
   'ExpenseRequestEdit_cost_audit','ExpenseRequestEdit_production_audit','TransactionCost_style_scope_fkey','ExpenseRequestAudit_requestId_orgId_fkey','ExpenseRequestAudit_actorId_orgId_fkey','ExpenseRequestAudit_requestId_version_key','ExpenseRequest_write_guard','ExpenseRequest_audit_guard','ExpenseRequestAudit_append_only','baro_transaction_cost_guard','baro_request_production_guard','ExpenseRequestApprovalStep_employeeId_orgId_fkey','ExpenseRequestApprovalStep_write_guard','ExpenseRequestApprovalStep_audit_guard'];
 
 async function missingSchema(db) {
   const existingColumns = await db.$queryRawUnsafe(`SELECT table_name,column_name,is_nullable FROM information_schema.columns
-    WHERE table_schema='public' AND table_name IN ('ExpenseRequest','PartnerTransactionCost','ExpenseRequestAudit','ExpenseSchemaMigration','ExpenseRequestApprovalStep')`);
+    WHERE table_schema='public' AND table_name IN ('ExpenseRequest','PartnerTransactionCost','ExpenseRequestAudit','ExpenseSchemaMigration','ExpenseRequestApprovalStep','OrganizationBankAccount','EntitySchemaMigration')`);
   const existingConstraints = await db.$queryRawUnsafe(`SELECT conname AS name,array_length(conkey,1) AS column_count,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace='public'::regnamespace
     UNION SELECT indexname AS name,NULL::integer AS column_count,NULL::text AS definition FROM pg_indexes WHERE schemaname='public'
     UNION SELECT tgname AS name,NULL::integer AS column_count,NULL::text AS definition FROM pg_trigger WHERE NOT tgisinternal AND tgenabled<>'D'`);
@@ -42,6 +44,7 @@ async function runRailwayPreflight({ env = process.env, run = spawnSync, createC
   const db = createClient ? createClient(url) : new (require('@prisma/client').PrismaClient)({ datasourceUrl: url });
   try {
     await runExpenseMigrations({env,run,db,log});
+    await runEntityProfileMigrations({env,run,db,log});
     if ((await missingSchema(db)).length) throw new Error('[railway-schema] Required expense schema is still missing after preparation. API will not start.');
     log('[railway-schema] Expense document schema prepared and verified.');
   } finally {

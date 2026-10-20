@@ -24,6 +24,7 @@ function harness({sourceEnabled=true}={}) {
       return document ? { ...document, items: data.costs.filter(row => row.expenseRequestId === document.id).map(row => ({ ...row, outsourcedWorkRecord: data.production.find(record => record.id === row.outsourcedWorkRecordId) || null })) } : null;
     };
     return {
+      organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       factory: { findMany: async () => [{ id: 1, managementStartDate: '2026-04-01' }] },
       expenseRequest: { findUnique: async ({ where }) => readDocument(where),findFirst:async({where})=>readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1,version:1, ...row }; data.documents.push(document); return document; } },
       partnerTransactionCost: {
@@ -41,7 +42,7 @@ function harness({sourceEnabled=true}={}) {
       assignmentPlan: { findMany: async () => [{ id: 60, factoryId: 1, isCompleted: false, assignmentCtSnapshot: { processes: [{ styleProcessId: 50 }] }, assignmentStSnapshot: { processes: [{ styleProcessId: 50 }] } }] },
       workLog: { create: async ({ data: row }) => { const log = { id: data.logs.length + 1, ...row }; data.logs.push(log); return log; } },
       outsourcedWorkRecord: { create: async ({ data: row }) => { const record = { id: data.production.length + 1, ...row }; data.production.push(record); return record; } },
-      $queryRaw: async () => [],
+      $queryRaw: async () => [], $queryRawUnsafe: async()=>[],
     };
   };
   return {

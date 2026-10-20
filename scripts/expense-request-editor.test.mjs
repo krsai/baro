@@ -17,6 +17,7 @@ function harness() {
     const document = r => r && ({ ...r, partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
     return {
+      organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       factory: { findMany: async()=>[{id:1,managementStartDate:'2026-04-01'}], findFirst: async()=>({id:1,managementStartDate:'2026-04-01'}) },
       systemSetting: {findUnique:async()=>null},
       expenseRequestAudit: {findMany:async({where,take})=>s.audits.filter(a=>a.orgId===where.orgId&&a.requestId===where.requestId&&(!where.version||a.version<where.version.lt)).sort((a,b)=>b.version-a.version).slice(0,take), findUnique: async({where})=>s.audits.find(x=>x.orgId===where.orgId_clientKey.orgId&&x.clientKey===where.orgId_clientKey.clientKey) || null, create: async({data})=>{s.audits.push(structuredClone(data));return data;} },

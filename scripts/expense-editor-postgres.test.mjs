@@ -11,6 +11,8 @@ const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest.
 const {provisionSettingDefaults}=require('../backend/dist/services/transactionSettingRoutes.js');
 const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement.js');
 const {migrationSql}=require('../backend/scripts/migrate-expenses.js');
+const entityMigration=require('../backend/scripts/migrate-entity-profiles.js');
+const {saveEntityBankAccount,requirePayeeBankAccount}=require('../backend/dist/services/entityBankAccount.js');
 const base=process.env.INVOICE_TEST_DATABASE_URL;
 if(!base)throw Error('INVOICE_TEST_DATABASE_URL must target dedicated local PostgreSQL');
 const url=new URL(base);if(!['localhost','127.0.0.1','[::1]'].includes(url.hostname))throw Error('Refusing non-local PostgreSQL');
@@ -38,6 +40,23 @@ try{
  const actor=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Editor',orgRole:'ADMIN',status:'ACTIVE'}});
  const vendor=await db.organization.create({data:{ownerOrgId:org.id,name:'Selected vendor',type:'PROCESS_OUTSOURCING'}});
  const other=await db.organization.create({data:{ownerOrgId:org.id,name:'Other vendor',type:'PROCESS_OUTSOURCING'}});
+ const vnd=await db.currency.upsert({where:{code:'VND'},create:{code:'VND',name:'Vietnam dong'},update:{}});
+ const usd=await db.currency.upsert({where:{code:'USD'},create:{code:'USD',name:'US dollar'},update:{}});
+ const bankInput={bankName:'Test bank',accountHolder:'Selected vendor',accountNumber:'001234',currencyId:vnd.id};
+ const bankSave=(id,body)=>db.$transaction(tx=>saveEntityBankAccount(tx,org.id,actor.id,vendor.id,id,body),{isolationLevel:'Serializable'});
+ await check('payee without an account is rejected; first account becomes currency default and preserves leading zeros',async()=>{
+   await assert.rejects(db.$transaction(tx=>requirePayeeBankAccount(tx,org.id,vendor.id)),/PAYEE_BANK_ACCOUNT_REQUIRED/);
+   const first=await bankSave(null,bankInput);assert.equal(first.isDefault,true);assert.equal(first.accountNumber,'001234');
+   await db.$transaction(tx=>requirePayeeBankAccount(tx,org.id,vendor.id));
+   const second=await bankSave(null,{...bankInput,accountNumber:'009876',isDefault:true});
+   assert.equal((await db.organizationBankAccount.findUnique({where:{id:first.id}})).isDefault,false);
+   await bankSave(null,{...bankInput,currencyId:usd.id});
+   assert.equal(await db.organizationBankAccount.count({where:{orgId:org.id,entityId:vendor.id,isDefault:true}}),2);
+   await bankSave(second.id,{...second,isActive:false});
+   assert.equal((await db.organizationBankAccount.findUnique({where:{id:first.id}})).isDefault,true);
+   await assert.rejects(db.$transaction(tx=>saveEntityBankAccount(tx,9999,actor.id,vendor.id,null,bankInput)),/ENTITY_NOT_FOUND/);
+   await assert.rejects(bankSave(null,{...bankInput,accountNumber:''}),/INVALID_BANK_ACCOUNT/);
+ });
  const factory=await db.factory.create({data:{orgId:org.id,name:'Factory',managementStartDate:'2026-04-01'}});
  const buyer=await db.organization.create({data:{name:'Customer',type:'BRAND'}});
  const style=await db.style.create({data:{orgId:org.id,customerOrgId:buyer.id,code:'AM02058',name:'Shirt'}});
@@ -100,6 +119,24 @@ try{
    assert.equal(await db.expenseSchemaMigration.count(),5);
  });
  let requestId;
+ await check('versioned entity migration is repeatable and database guards reject missing banks and duplicate currency defaults',async()=>{
+   const before=await db.expenseRequest.findMany();sql(entityMigration.migrationSql());sql(entityMigration.migrationSql());
+   assert.deepEqual(await db.expenseRequest.findMany(),before);assert.equal(await db.entitySchemaMigration.count(),1);
+   await assert.rejects(db.organizationBankAccount.create({data:{...bankInput,orgId:org.id,entityId:vendor.id,accountNumber:'duplicate-default',isDefault:true,createdByEmployeeId:actor.id,updatedByEmployeeId:actor.id}}),error=>error.code==='P2002');
+   const general=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'GENE'}});
+   const total=await db.expenseRequest.count();
+   await assert.rejects(db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{requestDate:'2026-07-31',partnerOrgId:other.id,clientKey:key(),items:[{transactionCodeId:general.id,currency:'VND',quantity:'1',unitPrice:'100',vatRate:'0',details:{}}]})),/PAYEE_BANK_ACCOUNT_REQUIRED/);
+   assert.equal(await db.expenseRequest.count(),total);
+   const header=await db.expenseRequest.findFirst();
+   const {id:ignoredId,...copy}=header;
+   await assert.rejects(db.$transaction(async tx=>{
+     await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(org.id)},true),set_config('baro.expense_editor_actor',${String(actor.id)},true),set_config('baro.expense_editor_key',${`EXPENSE_REQUEST_EDIT:${org.id}:${key()}`},true)`;
+     await tx.expenseRequest.create({data:{...copy,version:1,partnerOrgId:other.id,clientKey:key()}});
+     await tx.$executeRawUnsafe('SET CONSTRAINTS "ExpenseRequest_payee_bank_guard" IMMEDIATE');
+   }),/PAYEE_BANK_ACCOUNT_REQUIRED/);
+   await assert.rejects(db.organizationBankAccount.create({data:{...bankInput,orgId:org.id,entityId:buyer.id,createdByEmployeeId:actor.id,updatedByEmployeeId:actor.id}}),/BANK_ACCOUNT_ENTITY_SCOPE/);
+   await assert.rejects(db.organizationBankAccount.create({data:{...bankInput,accountNumber:'',orgId:org.id,entityId:vendor.id,createdByEmployeeId:actor.id,updatedByEmployeeId:actor.id}}),/OrganizationBankAccount_complete_check/);
+ });
  await check('real Prisma wraps the completed legacy row with BTHE while preserving both vendors and source period',async()=>{
    const result=await save(input);requestId=result.requestId;
    const doc=await db.expenseRequest.findUnique({where:{id:requestId},include:{items:true}});

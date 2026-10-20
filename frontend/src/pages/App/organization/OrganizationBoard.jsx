@@ -10,6 +10,7 @@ import FactoryBoard from './FactoryBoard';
 
 const OrganizationBoard = () => {
   const { languageCode } = useLanguage();
+  const [headerActionsTarget,setHeaderActionsTarget] = useState(null);
   const [currentTab, setCurrentTab] = useState('business');
   const [loadedTabs, setLoadedTabs] = useState({
     business: true,
@@ -43,7 +44,9 @@ const OrganizationBoard = () => {
 
   return (
     <AppPageContainer
-      title={text.title}
+      title={getUiMessage('menu.business', text.title, languageCode)}
+      titleActions={<Box ref={setHeaderActionsTarget} sx={{display:currentTab==='business'?'flex':'none'}} />}
+      sx={{maxWidth:1280,width:'100%'}}
       toolbar={(
         <PageToolbar
           left={(
@@ -63,14 +66,14 @@ const OrganizationBoard = () => {
       {loadedTabs.business && (
         <RequestScopeBoundary scopeId="business" active={currentTab === 'business'}>
           <Box sx={{ display: currentTab === 'business' ? 'block' : 'none' }}>
-            <OrganizationDetail />
+            <OrganizationDetail headerActionsTarget={headerActionsTarget} />
           </Box>
         </RequestScopeBoundary>
       )}
       {loadedTabs.factory && (
         <RequestScopeBoundary scopeId="factory" active={currentTab === 'factory'}>
           <Box sx={{ display: currentTab === 'factory' ? 'block' : 'none' }}>
-            <FactoryBoard />
+            <FactoryBoard embedded />
           </Box>
         </RequestScopeBoundary>
       )}

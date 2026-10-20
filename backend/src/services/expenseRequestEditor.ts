@@ -1,3 +1,4 @@
+import { requirePayeeBankAccount } from './entityBankAccount';
 import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateExpenseApprovers, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { env } from 'node:process';
@@ -114,6 +115,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   }
   // Release only the document/payee composite FK inside this transaction; IDs and source FKs remain intact.
   if (source.document) await tx.partnerTransactionCost.updateMany({ where: { expenseRequestId: source.document.id, orgId }, data: { expenseRequestId: null, expenseRequestLine: null } });
+  await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
   const approvers = await validateExpenseApprovers(tx,orgId,body.approverEmployeeIds ?? source.document?.approvalSteps?.map((step:any)=>step.employeeId));
   const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };

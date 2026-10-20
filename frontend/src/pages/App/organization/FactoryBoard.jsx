@@ -31,7 +31,7 @@ import {
   WORKSPACE_DATA_TOPICS,
 } from '../../../utils/workspaceDataEvents';
 
-const FactoryList = () => {
+const FactoryList = ({ embedded = false }) => {
   const pageDialogs = usePageDialogs();
   const [queryFailed, setQueryFailed] = useState(false);
   const [factories, setFactories] = useState([]);
@@ -239,7 +239,8 @@ const FactoryList = () => {
 
   return (
     <AppPageContainer
-      title={text.title}
+      title={embedded ? undefined : text.title}
+      sx={embedded ? {p:0} : undefined}
       toolbar={(
         <PageToolbar
           left={(

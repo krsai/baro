@@ -254,7 +254,7 @@ test('AT source lookup isolates manufacturers sharing a customer',()=>{
 });
 
 test('unused style deletes editable prices atomically and rejects orders, production and assignments', async()=>{
-  const {deleteUnusedStyle:remove}=load(backend,['deleteUnusedStyle'],{createHttpError:(status,message)=>Object.assign(new Error(message),{status})});
+  const {deleteUnusedStyle:remove}=load(backend,['deleteUnusedStyle'],{...require('../backend/dist/services/styleDeletion.js'),createHttpError:(status,message)=>Object.assign(new Error(message),{status})});
   for (const blocked of [null,'workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan','priorProductionCompletion','atTrainingBucketProcess','partnerTransactionCost']) {
     const calls=[];
     const tx={$queryRawUnsafe:async()=>calls.push('lock')};
@@ -262,7 +262,7 @@ test('unused style deletes editable prices atomically and rejects orders, produc
     tx.atTrainingBucketProcess={count:async()=>blocked==='atTrainingBucketProcess'?1:0};tx.partnerTransactionCost={count:async()=>blocked==='partnerTransactionCost'?1:0};
     for(const model of ['workRecord','outsourcedWorkRecord','workOrderItem','assignmentPlan']) tx[model]={findFirst:async()=>model===blocked?{id:1,workOrder:{orderId:'ORDER'}}:null};
     tx.customerSalesPriceList={deleteMany:async()=>calls.push('prices')};
-    tx.style={delete:async()=>calls.push('style')};
+    tx.style={findUnique:async()=>({_count:blocked?{[{workRecord:'workRecords',outsourcedWorkRecord:'outsourcedWorkRecords',workOrderItem:'workOrderItems',assignmentPlan:'assignmentPlans',priorProductionCompletion:'priorCompletions',atTrainingBucketProcess:'trainingBuckets',partnerTransactionCost:'transactionCosts'}[blocked]]:1}:{}}),delete:async()=>calls.push('style')};
     const db={$transaction:async fn=>fn(tx)};
     if(blocked){await assert.rejects(()=>remove(db,13),e=>e.status===409);assert.deepEqual(calls,['lock']);}
     else {await remove(db,13);assert.deepEqual(calls,['lock','prices','style']);}

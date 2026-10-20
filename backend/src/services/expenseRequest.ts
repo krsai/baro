@@ -1,3 +1,4 @@
+import { requirePayeeBankAccount } from './entityBankAccount';
 import { validateExpenseApprovers, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -63,6 +64,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
   }
+  await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
   const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const document = await tx.expenseRequest.create({ data: { orgId, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),

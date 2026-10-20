@@ -59,6 +59,8 @@ export const buildCustomerFormData = (customer = {}) => {
     code: customer?.code ?? '',
     industry: customer?.industry ?? customer?.type ?? 'BRAND',
     name: customer?.name ?? '',
+    entityId: toPositiveIntOrNull(customer?.entityId),
+    businessNumber: customer?.businessNumber ?? '',
     nameKo: customer?.nameKo ?? '',
     nameVi: customer?.nameVi ?? '',
     country,
@@ -75,6 +77,7 @@ export const buildCustomerFormData = (customer = {}) => {
 export const createEmptyCustomerFormData = () => buildCustomerFormData();
 
 export const buildCustomerPayload = (formData = {}) => ({
+  businessNumber: String(formData.businessNumber || '').trim() || null,
   code: String(formData.code || '').trim().toUpperCase(),
   name: String(formData.name || '').trim(),
   nameKo: String(formData.nameKo || '').trim() || null,

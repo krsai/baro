@@ -1,3 +1,5 @@
+import { entityProfile, partnerProfilePatch } from './services/entityProfile';
+import { registerEntityBankRoutes } from './services/entityBankAccount';
 import { displayProductionProgress } from './services/productionProgress';
 import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
 import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
@@ -187,6 +189,7 @@ function assertGeneratedPrismaClientShape() {
   for (const [model, fields] of Object.entries({
     ExpenseRequest: ['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
     ExpenseRequestApprovalStep: ['id','orgId','requestId','position','employeeId'],
+    OrganizationBankAccount: ['id','orgId','entityId','currencyId','bankName','accountNumber','accountHolder','isDefault','isActive'],
     PartnerTransactionCost: ['expenseRequestId','expenseRequestLine'],
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
@@ -713,6 +716,9 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  {tableName:'OrganizationBankAccount',columnName:'entityId'},
+  {tableName:'OrganizationBankAccount',columnName:'currencyId'},
+  {tableName:'EntitySchemaMigration',columnName:'version'},
   { tableName: "Style", columnName: "categoryId" },
   { tableName: "StyleProcessComponent", columnName: "styleProcessId" },
   { tableName: "StyleProcessComponent", columnName: "path" },
@@ -1006,6 +1012,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard',
   'ExpenseRequestAudit_requestId_orgId_fkey',
   'ExpenseRequestAudit_actorId_orgId_fkey',
   'ExpenseRequestAudit_requestId_version_key',
@@ -1786,6 +1793,7 @@ const buildSharedCustomerOrganizationData = (
   fallbackOrganization: any = null
 ) => {
   return {
+    businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
     code:
       payload?.code !== undefined
         ? normalizeOrgCode(payload.code)
@@ -1838,6 +1846,7 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     targetOrg.phone ?? relationship.managerPhone ?? null
   );
   return {
+    ...entityProfile(targetOrg),
     id: relationship.id,
     brandOrgId: relationship.brandOrgId,
     manufacturerOrgId: relationship.manufacturerOrgId,
@@ -27423,6 +27432,7 @@ const BUSINESS_PARTNER_SERVICE_INCLUDE = {
 };
 
 const toBusinessPartnerResponse = (organizationRow: any) => ({
+  ...entityProfile(organizationRow),
   id: organizationRow.id,
   name: organizationRow.name,
   type: organizationRow.type,
@@ -27467,6 +27477,7 @@ app.get("/partner-transaction-costs", async (req, res) => {
   const transactionDate = managedDateRange(period,req.query);
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
+registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{
   requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,
   syncProduction:async(orgId: number,assignmentPlanIds: number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'}),
@@ -27596,8 +27607,8 @@ app.post("/business-partners", async (req, res) => {
 
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor, partnerExpenseTypeId: expenseType?.id ?? null },
-        update: { isActive: true, representative: contactName, phone: contactPhone, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) },
+        create: { ...partnerProfilePatch(req.body), ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor, partnerExpenseTypeId: expenseType?.id ?? null },
+        update: { ...partnerProfilePatch(req.body), isActive: true, representative: contactName, phone: contactPhone, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) },
       });
       await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
       if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: partner.id, serviceTypeId, ownerOrgId: organization.id })) });
@@ -27649,7 +27660,7 @@ app.put("/business-partners/:id", async (req, res) => {
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type);
-      await tx.organization.update({ where: { id }, data: { name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) } });
+      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) } });
       if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
         if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: id, serviceTypeId, ownerOrgId: organization.id })) });
@@ -29518,6 +29529,7 @@ app.post("/customers", async (req, res) => {
         nameKo: nextTargetData.nameKo,
         nameVi: nextTargetData.nameVi,
         code: normalizedCode,
+        businessNumber: nextTargetData.businessNumber,
         address: nextTargetData.address,
         country: nextTargetData.country,
         countryCode: nextTargetData.countryCode,
@@ -29550,6 +29562,7 @@ app.post("/customers", async (req, res) => {
           nameKo: nextTargetData.nameKo,
           nameVi: nextTargetData.nameVi,
           code: normalizedCode,
+          businessNumber: nextTargetData.businessNumber,
           address: nextTargetData.address,
           country: nextTargetData.country,
           countryCode: nextTargetData.countryCode,
@@ -29565,6 +29578,7 @@ app.post("/customers", async (req, res) => {
           nameKo: nextTargetData.nameKo,
           nameVi: nextTargetData.nameVi,
           code: normalizedCode,
+          businessNumber: nextTargetData.businessNumber,
           address: nextTargetData.address,
           country: nextTargetData.country,
           countryCode: nextTargetData.countryCode,
@@ -29734,6 +29748,7 @@ app.put("/customers/:id", async (req, res) => {
       nameKo: nextTargetData.nameKo,
       nameVi: nextTargetData.nameVi,
       ...(normalizedCode ? { code: normalizedCode } : {}),
+      businessNumber: nextTargetData.businessNumber,
       address: nextTargetData.address,
       country: nextTargetData.country,
       countryCode: nextTargetData.countryCode,

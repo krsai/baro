@@ -1,9 +1,11 @@
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
+import EntityBankAccounts from '../../components/EntityBankAccounts';
+import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Dialog, DialogContent, DialogActions, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { Add } from '@mui/icons-material';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -23,7 +25,7 @@ import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../../constants/expen
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
 import { expenseTotalsByCurrency, expenseLinePayload, newExpenseLine } from '../../utils/expenseRequest.mjs';
-import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
+import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New Payment Request', vi: 'Tạo đề nghị thanh toán' };
 const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit Payment Request', vi: 'Sửa đề nghị thanh toán' };
@@ -48,6 +50,13 @@ export default function TransactionRequestEntry() {
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
+  const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
+  const [bankDialog, setBankDialog] = useState(false);
+  const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
+  const [bankReload,setBankReload] = useState(0);
+  useEffect(()=>subscribeWorkspaceDataChanged(detail=>{
+    if(Number(detail?.orgId)===Number(activeOrgId) && detail?.topics?.includes('business-partners'))setBankReload(value=>value+1);
+  }),[activeOrgId]);
   const lookup = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const organizationRef = useRef(activeOrgId);
   const tableContainerRef = useRef(null), dragColumnWidths = useRef([]);
@@ -94,8 +103,19 @@ export default function TransactionRequestEntry() {
   };
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
+  useEffect(() => {
+    let alive = true;
+    setPayeeBanks({entityId:partner?.id,accounts:[],loaded:false});
+    if (partner?.id) requestJSON(`/entities/${partner.id}/bank-accounts${buildQueryString({orgId:activeOrgId})}`,{skipCache:true})
+      .then(result=>{if(alive)setPayeeBanks({entityId:partner.id,accounts:result.accounts,loaded:true});})
+      .catch(()=>{if(alive)setPayeeBanks({entityId:partner.id,accounts:[],loaded:false,error:true});});
+    return ()=>{alive=false;};
+  },[partner?.id,activeOrgId,bankReload]);
+  const bankAccounts = payeeBanks.entityId === partner?.id ? payeeBanks.accounts.filter(row=>row.isActive) : [];
+  const hasPayeeBank = bankAccounts.some(row=>row.bankName?.trim() && row.accountNumber?.trim() && row.accountHolder?.trim() && row.currencyId);
+  const payeeInfo = bankAccounts.filter(row=>row.isDefault).map(row=>[row.currency?.code,row.bankName,row.accountNumber,row.accountHolder].filter(Boolean).join(' · ')).join(' / ');
   const disabled = loading || loadError || saving || Boolean(submission) || Boolean(form.readOnly);
-  const valid = !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
+  const valid = hasPayeeBank && !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: formPath });
@@ -121,7 +141,7 @@ export default function TransactionRequestEntry() {
       if (isTabActiveRef.current) navigateToPath('/outsourcing-record', {label:labels.document,closeTabId:formPath,skipUnsavedChangesCheck:true});
     } catch (failure) {
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
-      if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError((failure.details?.error || failure.message)==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : labels.invalid); }
+      if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError((failure.details?.error || failure.message)==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : (failure.details?.error || failure.message)==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : labels.invalid); }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
   };
@@ -139,13 +159,18 @@ export default function TransactionRequestEntry() {
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
+      {partner && !loading && !form.readOnly && !hasPayeeBank && (payeeBanks.loaded || payeeBanks.error) && <Alert severity={payeeBanks.error?'error':'warning'} action={<Button disabled={saving} onClick={()=>setBankDialog(true)}>{bankText.settings}</Button>}>{payeeBanks.error?bankText.error:bankText.required}</Alert>}
+      <Dialog open={bankDialog} onClose={()=>setBankDialog(false)} fullWidth maxWidth="md">
+        <DialogContent>{partner && <EntityBankAccounts key={`${activeOrgId}:${partner.id}`} entityId={partner.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={accounts=>setPayeeBanks({entityId:partner.id,accounts,loaded:true})}/>}</DialogContent>
+        <DialogActions><Button onClick={()=>setBankDialog(false)}>{bankText.cancel}</Button></DialogActions>
+      </Dialog>
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) minmax(0, 1fr)' }, gap: 2 }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
-            <TextField label={header.payeeInfo} value={partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}} InputProps={{readOnly:true}} inputProps={{title:partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') : ''}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
+            <TextField label={header.payeeInfo} value={partner ? payeeInfo || [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}} InputProps={{readOnly:true}} inputProps={{title:partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') : ''}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
           </Box>
           <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>
             <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />

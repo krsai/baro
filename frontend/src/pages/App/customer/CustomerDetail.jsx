@@ -259,7 +259,7 @@ const CustomerDetail = () => {
   ]);
 
   return (
-    <AppPageContainer
+    <AppPageContainer sx={{maxWidth:1280,width:'100%'}}
       title={isNew ? t('titleNew') : t('titleDetail')}
       titleActions={
         <SaveButton

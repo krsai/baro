@@ -1,13 +1,14 @@
+import EntityBankAccounts from '../../../components/EntityBankAccounts';
+import { ENTITY_TEXT } from '../../../constants/entityProfile';
+import EntityDetailSection from '../../../components/EntityDetailSection';
+import Grid from '@mui/material/Grid';
 import React, { useMemo } from 'react';
-import { Box, Grid, InputAdornment, MenuItem, Paper, Stack, TextField, Typography } from '@mui/material';
-import BusinessRoundedIcon from '@mui/icons-material/BusinessRounded';
+import { Box, InputAdornment, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import BadgeRoundedIcon from '@mui/icons-material/BadgeRounded';
-import LocationOnRoundedIcon from '@mui/icons-material/LocationOnRounded';
 import PhoneRoundedIcon from '@mui/icons-material/PhoneRounded';
 import EmailRoundedIcon from '@mui/icons-material/EmailRounded';
-import StraightenRoundedIcon from '@mui/icons-material/StraightenRounded';
 import { getSizeSetOptions } from '../../../constants/productAttributes';
-import { formatCustomerDate, normalizeCountry } from './customerFormShared';
+import { normalizeCountry } from './customerFormShared';
 
 const getText = (languageCode) => {
   const values = {
@@ -42,19 +43,6 @@ const getText = (languageCode) => {
   return values[languageCode] || values.en;
 };
 
-const Section = ({ icon, title, help, children, accent = '#0b6bcb' }) => (
-  <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden', borderColor: 'divider', boxShadow: '0 5px 20px rgba(15,23,42,.035)' }}>
-    <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', px: { xs: 2, md: 2.5 }, py: 2, bgcolor: 'rgba(248,250,252,.8)', borderBottom: '1px solid', borderColor: 'divider' }}>
-      <Box sx={{ width: 38, height: 38, borderRadius: 2, display: 'grid', placeItems: 'center', color: accent, bgcolor: `${accent}12` }}>{icon}</Box>
-      <Box>
-        <Typography sx={{ fontWeight: 800, lineHeight: 1.35 }}>{title}</Typography>
-        <Typography variant="caption" color="text.secondary">{help}</Typography>
-      </Box>
-    </Box>
-    <Box sx={{ p: { xs: 2, md: 2.5 } }}>{children}</Box>
-  </Paper>
-);
-
 const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustomer, languageCode, onBasicFieldChange, onCountryChange, t }) => {
   const text = useMemo(() => getText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
@@ -62,39 +50,37 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
   const isBrand = customerFormData.industry === 'BRAND';
 
   return (
-    <Stack spacing={2} sx={{ maxWidth: 1180 }}>
-      <Section icon={<BusinessRoundedIcon />} title={text.identity} help={text.identityHelp}>
+    <Stack spacing={2} >
+      <EntityDetailSection title={text.identity}>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} lg={2}><TextField {...common} label={text.industry} value={isBrand ? text.brand : text.factory} disabled /></Grid>
-          <Grid item xs={12} sm={6} lg={2}><TextField {...common} required label={t('customerCode')} name="code" value={customerFormData.code} onChange={onBasicFieldChange} /></Grid>
-          <Grid item xs={12} md={4} lg={2}><TextField {...common} required label={text.nameEn} name="name" value={customerFormData.name} onChange={onBasicFieldChange} /></Grid>
-          <Grid item xs={12} md={4} lg={2}><TextField {...common} label={text.nameKo} name="nameKo" value={customerFormData.nameKo} onChange={onBasicFieldChange} /></Grid>
-          <Grid item xs={12} md={4} lg={2}><TextField {...common} label={text.nameVi} name="nameVi" value={customerFormData.nameVi} onChange={onBasicFieldChange} /></Grid>
-          <Grid item xs={12} sm={6} lg={2}><TextField {...common} label={t('registeredAt')} value={formatCustomerDate(customerFormData.registeredAt, languageCode)} disabled /></Grid>
+          <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} label={text.industry} value={isBrand ? text.brand : text.factory} disabled /></Grid>
+          <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} required label={t('customerCode')} name="code" value={customerFormData.code} onChange={onBasicFieldChange} /></Grid>
+          <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} label={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).businessNumber} name="businessNumber" value={customerFormData.businessNumber||''} onChange={onBasicFieldChange} /></Grid>
+          <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} required label={text.nameEn} name="name" value={customerFormData.name} onChange={onBasicFieldChange} /></Grid>
+          <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} label={text.nameKo} name="nameKo" value={customerFormData.nameKo} onChange={onBasicFieldChange} /></Grid>
+          <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} label={text.nameVi} name="nameVi" value={customerFormData.nameVi} onChange={onBasicFieldChange} /></Grid>
         </Grid>
-      </Section>
-
-      {isBrand && <Section icon={<StraightenRoundedIcon />} title={text.order} help={text.orderHelp} accent="#7c3aed">
+      </EntityDetailSection>
+      <EntityDetailSection title={text.contact}>
+        <Grid container spacing={2}>
+          <Grid size={{xs:12,md:4}}><TextField {...common} label={t('manager')} name="manager" value={customerFormData.manager} onChange={onBasicFieldChange} InputProps={{ startAdornment: <InputAdornment position="start"><BadgeRoundedIcon fontSize="small" /></InputAdornment> }} /></Grid>
+          <Grid size={{xs:4,md:2}}><TextField {...common} label={t('countryCode')} name="countryCode" value={customerFormData.countryCode} onChange={onBasicFieldChange} /></Grid>
+          <Grid size={{xs:8,md:3}}><TextField {...common} label={t('phoneNumber')} name="phoneNumber" value={customerFormData.phoneNumber} onChange={onBasicFieldChange} InputProps={{ startAdornment: <InputAdornment position="start"><PhoneRoundedIcon fontSize="small" /></InputAdornment> }} /></Grid>
+          <Grid size={{xs:12,md:3}}><TextField {...common} type="email" label={t('email')} name="email" value={customerFormData.email} onChange={onBasicFieldChange} InputProps={{ startAdornment: <InputAdornment position="start"><EmailRoundedIcon fontSize="small" /></InputAdornment> }} /></Grid>
+        </Grid>
+      </EntityDetailSection>
+      <EntityDetailSection title={text.address}>
+        <Grid container spacing={2}>
+          <Grid size={{xs:12,sm:4,md:3}}><TextField {...common} select label={t('country')} name="country" value={normalizeCountry(customerFormData.country) || 'VN'} onChange={onCountryChange}>{countryOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField></Grid>
+          <Grid size={{xs:12,sm:8,md:9}}><TextField {...common} label={t('address')} name="address" value={customerFormData.address} onChange={onBasicFieldChange} placeholder={text.addressPlaceholder} multiline minRows={2} /></Grid>
+        </Grid>
+      </EntityDetailSection>
+      <EntityBankAccounts entityId={customerFormData.entityId} languageCode={languageCode}/>
+      {isBrand && <EntityDetailSection title={text.order}>
         <TextField {...common} select label={text.sizeSet} name="defaultSizeSetCode" value={customerFormData.defaultSizeSetCode} onChange={onBasicFieldChange} sx={{ maxWidth: 480 }}>
           {sizeSetOptions.map((option) => <MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}
         </TextField>
-      </Section>}
-
-      <Section icon={<LocationOnRoundedIcon />} title={text.address} help={text.addressHelp} accent="#059669">
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={4} md={3}><TextField {...common} select label={t('country')} name="country" value={normalizeCountry(customerFormData.country) || 'VN'} onChange={onCountryChange}>{countryOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField></Grid>
-          <Grid item xs={12} sm={8} md={9}><TextField {...common} label={t('address')} name="address" value={customerFormData.address} onChange={onBasicFieldChange} placeholder={text.addressPlaceholder} multiline minRows={2} /></Grid>
-        </Grid>
-      </Section>
-
-      <Section icon={<BadgeRoundedIcon />} title={text.contact} help={text.contactHelp} accent="#ea580c">
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}><TextField {...common} label={t('manager')} name="manager" value={customerFormData.manager} onChange={onBasicFieldChange} InputProps={{ startAdornment: <InputAdornment position="start"><BadgeRoundedIcon fontSize="small" /></InputAdornment> }} /></Grid>
-          <Grid item xs={4} md={2}><TextField {...common} label={t('countryCode')} name="countryCode" value={customerFormData.countryCode} onChange={onBasicFieldChange} /></Grid>
-          <Grid item xs={8} md={3}><TextField {...common} label={t('phoneNumber')} name="phoneNumber" value={customerFormData.phoneNumber} onChange={onBasicFieldChange} InputProps={{ startAdornment: <InputAdornment position="start"><PhoneRoundedIcon fontSize="small" /></InputAdornment> }} /></Grid>
-          <Grid item xs={12} md={3}><TextField {...common} type="email" label={t('email')} name="email" value={customerFormData.email} onChange={onBasicFieldChange} InputProps={{ startAdornment: <InputAdornment position="start"><EmailRoundedIcon fontSize="small" /></InputAdornment> }} /></Grid>
-        </Grid>
-      </Section>
+      </EntityDetailSection>}
     </Stack>
   );
 };

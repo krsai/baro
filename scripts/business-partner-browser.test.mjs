@@ -33,6 +33,7 @@ try {
   await page.route('**/outsourcing-service-types?*', route => route.fulfill({ headers, json: [] }));
   await page.route('**/expense-types', route => route.fulfill({ headers, json: [{ id: 1, nameKo: '제작 외주', entryMode: 'PROCESS', isActive: true }] }));
   await page.route('**/outsourcing-requests?*', route => route.fulfill({ headers, json: [{ id: 1, partner: { id: 11, name: partners[0].name }, transactionDate: '2026-10-10', description: 'Existing cost', amount: '100', currency: 'VND' }] }));
+  await page.route('**/entities/*/bank-accounts?*',route=>route.fulfill({headers,json:{accounts:[],currencies:[{id:1,code:'VND'}]}}));
   await page.goto(`http://127.0.0.1:${port}/business-partner-acceptance.html`);
   const used = page.locator('#partners tbody tr').filter({ has: page.getByText('Used Partner', { exact: true }) });
   const unused = page.locator('#partners tbody tr').filter({ hasText: 'Unused Partner' });

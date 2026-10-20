@@ -1,7 +1,11 @@
+import EntityDetailSection from './EntityDetailSection';
+import EntityBankAccounts from './EntityBankAccounts';
+import { ENTITY_TEXT } from '../constants/entityProfile';
+import { getStaticOptionOptions } from '../constants/staticOptionRegistry';
 import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
+  Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormControlLabel, InputLabel, ListItemText, MenuItem, Select, Stack, Switch, TextField,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
@@ -44,6 +48,7 @@ export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
 const buildFormFromPartner = (partner, initialType) => ({
   name: partner?.name || '',
   type: partner?.type || initialType,
+  nameKo: partner?.nameKo || '', nameVi: partner?.nameVi || '',businessNumber:partner?.businessNumber || '',country:partner?.country || '',countryCode:partner?.countryCode || '',address:partner?.address || '',email:partner?.email || '',
   contactName: partner?.contactName || '',
   contactPhone: partner?.contactPhone || '',
   isActive: partner?.isActive !== false,
@@ -63,6 +68,8 @@ export default function BusinessPartnerDialog({
   partner = null,
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
+  const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
+  const countryOptions=getStaticOptionOptions('country',languageCode);
   const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const [expenseTypes,setExpenseTypes] = useState([]);
   const isEdit = Boolean(partner?.id);
@@ -94,6 +101,7 @@ export default function BusinessPartnerDialog({
     try {
       const body = {
         name: form.name.trim(), type: form.type,
+        ...Object.fromEntries(['nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
         serviceTypeIds: form.serviceTypeIds,
@@ -121,11 +129,29 @@ export default function BusinessPartnerDialog({
   };
 
   return (
-    <Dialog open={open} onClose={() => !saving && onClose?.()} fullWidth maxWidth="xs">
+    <Dialog open={open} onClose={() => !saving && onClose?.()} fullWidth maxWidth="md">
       <DialogTitle>{isEdit ? labels.titleEdit : labels.titleCreate}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
+          <EntityDetailSection title={common.identity}><Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(2,minmax(0,1fr))',md:'repeat(3,minmax(0,1fr))'},gap:2}}>
+            <TextField autoFocus required fullWidth label={labels.name} value={form.name} onChange={update('name')} />
+            <TextField label={common.nameKo} value={form.nameKo} onChange={update('nameKo')} />
+            <TextField label={common.nameVi} value={form.nameVi} onChange={update('nameVi')} />
+            <TextField label={common.businessNumber} value={form.businessNumber} onChange={update('businessNumber')} />
+          </Box></EntityDetailSection>
+          <EntityDetailSection title={common.contact}><Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(2,minmax(0,1fr))'},gap:2}}>
+            <TextField label={labels.contact} value={form.contactName} onChange={update('contactName')} />
+            <TextField label={common.countryCode} value={form.countryCode} onChange={update('countryCode')} />
+            <TextField label={labels.phone} value={form.contactPhone} onChange={update('contactPhone')} />
+            <TextField type="email" label={common.email} value={form.email} onChange={update('email')} />
+          </Box></EntityDetailSection>
+          <EntityDetailSection title={common.address}><Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'160px minmax(0,1fr)'},gap:2}}>
+            <TextField select label={common.country} value={form.country} onChange={update('country')}><MenuItem value="">—</MenuItem>{countryOptions.map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>
+            <TextField multiline minRows={2} label={common.address} value={form.address} onChange={update('address')} />
+          </Box></EntityDetailSection>
+          <EntityBankAccounts entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode}/>
+          <EntityDetailSection title={common.role}><Stack spacing={2}>
           <TextField select label={expenseLabels.partnerType} value={form.partnerExpenseTypeId || expenseTypes.find(row => row.entryMode === (form.type === 'MATERIAL_SUPPLIER' ? 'PURCHASE' : 'PROCESS'))?.id || ''} onChange={event => setForm({ ...form, partnerExpenseTypeId: event.target.value })}>
             {expenseTypes.filter(row => row.isActive || row.id === form.partnerExpenseTypeId).map(row => <MenuItem key={row.id} value={row.id}>{row[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn']}</MenuItem>)}
           </TextField>
@@ -149,9 +175,6 @@ export default function BusinessPartnerDialog({
               </Select>
             </FormControl>
           ) : null}
-          <TextField autoFocus fullWidth required label={labels.name} value={form.name} onChange={update('name')} />
-          <TextField fullWidth label={labels.contact} value={form.contactName} onChange={update('contactName')} />
-          <TextField fullWidth label={labels.phone} value={form.contactPhone} onChange={update('contactPhone')} onKeyDown={(event) => { if (event.key === 'Enter') save(); }} />
           {isEdit ? (
             <FormControlLabel
               control={
@@ -163,6 +186,7 @@ export default function BusinessPartnerDialog({
               label={labels.active}
             />
           ) : null}
+          </Stack></EntityDetailSection>
         </Stack>
       </DialogContent>
       <DialogActions>
