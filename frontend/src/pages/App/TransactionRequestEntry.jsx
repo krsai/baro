@@ -1,7 +1,8 @@
+import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { Add } from '@mui/icons-material';
@@ -36,8 +37,12 @@ const documentSnapshot = form => JSON.stringify({remark:form.remark,approverEmpl
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
-  const { pathname } = useLocation();
+  const { active: isTabActive } = useRequestScopeContext();
+  const isTabActiveRef = useRef(isTabActive), mountedRef = useRef(true);
+  isTabActiveRef.current = isTabActive;
+  useEffect(()=>{mountedRef.current=true;return()=>{mountedRef.current=false;};},[]);
   const editing = Boolean(sourceKind && sourceId);
+  const formPath = editing ? `/outsourcing-record/edit/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}` : '/outsourcing-record/new';
   const editorPath = editing ? `/expense-request-editor/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}` : '/expense-requests';
   const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
@@ -52,10 +57,8 @@ export default function TransactionRequestEntry() {
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [statuses, setStatuses] = useState({});
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
   const dirty = documentSnapshot(form) !== initialSnapshot;
-  const [saved,setSaved] = useState(false);
   useUnsavedChanges(dirty);
-  useEffect(() => { if (saved) navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: pathname }); }, [saved,navigateToPath,labels.document,pathname]);
-  useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setSubmission(null); setError(''); setSaving(false); setSaved(false); }, [activeOrgId,sourceKind,sourceId]);
+  useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId]);
   useEffect(() => {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
@@ -95,7 +98,7 @@ export default function TransactionRequestEntry() {
   const valid = !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
-  const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: pathname });
+  const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: formPath });
   const addProcess = sourceKey => {
     if(disabled || form.items.length>=50)return;
     setForm(current=>{
@@ -113,13 +116,14 @@ export default function TransactionRequestEntry() {
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       emitWorkspaceDataChanged({ orgId: activeOrgId, topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], source: 'transaction-request' });
-      if (organizationRef.current !== activeOrgId) return;
-      setInitialSnapshot(documentSnapshot(form)); setSaved(true); showNotification(labels.saved, 'success');
+      if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
+      setInitialSnapshot(documentSnapshot(form)); showNotification(labels.saved, 'success');
+      if (isTabActiveRef.current) navigateToPath('/outsourcing-record', {label:labels.document,closeTabId:formPath,skipUnsavedChangesCheck:true});
     } catch (failure) {
-      if (organizationRef.current !== activeOrgId) return;
+      if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
       if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError((failure.details?.error || failure.message)==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : labels.invalid); }
       else setError(labels.saveError);
-    } finally { if (organizationRef.current === activeOrgId) setSaving(false); }
+    } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
   };
   return <AppPageContainer
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
