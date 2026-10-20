@@ -91,6 +91,7 @@
     "test:workspace-dialog-browser": "node scripts/workspace-dialog-browser.test.mjs",
     "test:workspace-page-prompts-browser": "node scripts/workspace-page-prompts-browser.test.mjs",
     "test:workspace-modal-audit": "node --test scripts/workspace-modal-audit.test.mjs",
+    "test:industry-hierarchy": "npm --prefix backend run build && node --test scripts/industry-hierarchy.test.mjs",
     "test:expense-masters-browser": "node scripts/expense-masters-browser.test.mjs",
     "test:loading-language-browser": "node scripts/loading-language-browser.test.mjs",
     "test:management-period": "npm --prefix backend run build && node --test scripts/management-period.test.mjs",

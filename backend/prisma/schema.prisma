@@ -2374,6 +2374,8 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  expenseTypeId Int?
+  expenseType ExpenseType? @relation(fields:[expenseTypeId],references:[id],onDelete:Restrict)
   codeBases TransactionCodeBase[]
   id Int @id @default(autoincrement())
   code String @unique
@@ -2431,6 +2433,7 @@ model TransactionCodeBase {
 }
 
 model ExpenseType {
+  industries SettingServiceDefault[]
   id Int @id @default(autoincrement())
   code String @unique
   nameKo String

@@ -61,15 +61,15 @@ function postRoute(dependencies) {
 }
 const response = () => ({ status(code) { this.code = code; return this; }, json(body) { this.body = body; return this; } });
 test('live FK descriptions and first-item summaries follow the language and item order',()=>{
-  const code={id:7,base:{entryMode:'PROCESS',nameKo:'단춧구멍',nameEn:'BUTTON HOLE',nameVi:'Thùa khuyết'}};
+  const code={id:7,base:{expenseType:{nameKo:'제작 외주',nameEn:'Production outsourcing',nameVi:'Gia công sản xuất'},entryMode:'PROCESS',nameKo:'단춧구멍',nameEn:'BUTTON HOLE',nameVi:'Thùa khuyết'}};
   const first={transactionCodeId:7,transactionCode:code,description:'Old copied text'};
-  const second={transactionCodeId:8,transactionCode:{id:8,base:{entryMode:'PROCESS',nameEn:'CUTTING'}}};
-  assert.equal(expenseLineDescription(first,'ko'),'외주 공정 - 단춧구멍');
-  assert.equal(expenseRequestSummary({items:[first,second]},'en'),'Outsourced process - BUTTON HOLE and 1 more');
-  assert.equal(expenseRequestSummary({items:[first,second]},'ko'),'외주 공정 - 단춧구멍 외 1건');
-  assert.equal(expenseRequestSummary({items:[first,second]},'vi'),'Công đoạn gia công - Thùa khuyết và 1 mục khác');
-  assert.equal(expenseRequestSummary({items:[second,first]},'en'),'Outsourced process - CUTTING and 1 more');
-  code.base.nameEn='Updated master';assert.equal(expenseLineDescription(first,'en'),'Outsourced process - Updated master');
+  const second={transactionCodeId:8,transactionCode:{id:8,base:{expenseType:{nameEn:'Production outsourcing'},entryMode:'PROCESS',nameEn:'CUTTING'}}};
+  assert.equal(expenseLineDescription(first,'ko'),'제작 외주 - 단춧구멍');
+  assert.equal(expenseRequestSummary({items:[first,second]},'en'),'Production outsourcing - BUTTON HOLE and 1 more');
+  assert.equal(expenseRequestSummary({items:[first,second]},'ko'),'제작 외주 - 단춧구멍 외 1건');
+  assert.equal(expenseRequestSummary({items:[first,second]},'vi'),'Gia công sản xuất - Thùa khuyết và 1 mục khác');
+  assert.equal(expenseRequestSummary({items:[second,first]},'en'),'Production outsourcing - CUTTING and 1 more');
+  code.base.nameEn='Updated master';assert.equal(expenseLineDescription(first,'en'),'Production outsourcing - Updated master');
   assert.equal(first.description,'Old copied text');
 });
 test('lookup only resolves unique exact codes and supports Vietnamese search', () => {

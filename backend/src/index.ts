@@ -195,7 +195,7 @@ function assertGeneratedPrismaClientShape() {
     Organization: ["dataOwnerOrgId"],
     OutsourcingServiceType: ["systemDefaultId", "isOverridden"],
     TransactionCode: ["systemDefaultId", "isOverridden", "taxTreatmentId", "baseId"],
-    SettingServiceDefault: ["id", "orderInput", "requiredFields"],
+    SettingServiceDefault: ["id", "orderInput", "requiredFields", "expenseTypeId"],
     SettingTransactionCodeDefault: ["id", "serviceTypeId", "vatEnabled", "baseId", "taxTreatmentId", "isEnabled"],
     TransactionCodeBase: ["id", "code", "serviceTypeId"],
     TaxTreatment: ["id", "code", "suffix"],
@@ -716,6 +716,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  {tableName:'SettingServiceDefault',columnName:'expenseTypeId'},
   {tableName:'OrganizationBankAccount',columnName:'entityId'},
   {tableName:'OrganizationBankAccount',columnName:'currencyId'},
   {tableName:'EntitySchemaMigration',columnName:'version'},
@@ -1012,6 +1013,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'SettingServiceDefault_expenseTypeId_fkey',
   'OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard',
   'ExpenseRequestAudit_requestId_orgId_fkey',
   'ExpenseRequestAudit_actorId_orgId_fkey',

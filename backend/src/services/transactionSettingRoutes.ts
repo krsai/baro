@@ -85,6 +85,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       if (req.query.catalogue === '1') { if (!await admin(req,res)) return; }
       else if (!await gates.requireSystemAdmin(req,res)) return;
       const rows = await defaults.findMany({ include: service ? {
+        expenseType: true,
         _count: { select: { codes: true, codeBases: true } },
         services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
       } : { serviceType: true, taxTreatment: true, codes: { select: { isOverridden: true, _count: { select: { costs: true } } } } }, orderBy: { id: 'asc' } });
@@ -124,6 +125,11 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
           const existing = update && Number.isSafeInteger(id) ? await model.findFirst({ where: { id, ...(!global ? { ownerOrgId: orgId } : {}) } }) : null;
           if (update && !existing) return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
           const data: any = { ...(service ? validateServiceDefinition(req.body) : validateTransactionCode(req.body, Boolean(existing && existing.code === req.body?.code && !existing.taxTreatmentId))), isActive: req.body.isActive !== false };
+          if(service && global){
+            const expenseTypeId=req.body?.expenseTypeId;
+            if(!Number.isSafeInteger(expenseTypeId)||expenseTypeId<=0||!await db.expenseType.findFirst({where:{id:expenseTypeId,...(existing?.expenseTypeId===expenseTypeId?{}:{isActive:true})}}))throw createHttpError(400,'EXPENSE_TYPE_REQUIRED');
+            data.expenseTypeId=expenseTypeId;
+          }
           if (service && existing && existing.entryMode !== data.entryMode) throw createHttpError(409,'SERVICE_ENTRY_MODE_IMMUTABLE');
           if (global && existing && existing.code !== data.code) throw createHttpError(409,'DEFAULT_CODE_IMMUTABLE');
           if (!service) {

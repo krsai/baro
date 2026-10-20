@@ -2,9 +2,7 @@ const localizedName = (row, language) => row?.[{ko:'nameKo',en:'nameEn',vi:'name
 
 export function expenseCodeDescription(code, language = 'ko') {
   if (!code) return '';
-  const process = {ko:'외주 공정',en:'Outsourced process',vi:'Công đoạn gia công'};
-  const category = code.base?.entryMode === 'PROCESS'
-    ? process[language] || process.en : localizedName(code.base?.expenseType,language);
+  const category = localizedName(code.base?.expenseType,language);
   return [category,localizedName(code.base,language) || localizedName(code,language)].filter(Boolean).join(' - ');
 }
 

@@ -121,7 +121,7 @@ try{
  let requestId;
  await check('versioned entity migration is repeatable and database guards reject missing banks and duplicate currency defaults',async()=>{
    const before=await db.expenseRequest.findMany();sql(entityMigration.migrationSql());sql(entityMigration.migrationSql());
-   assert.deepEqual(await db.expenseRequest.findMany(),before);assert.equal(await db.entitySchemaMigration.count(),1);
+   assert.deepEqual(await db.expenseRequest.findMany(),before);assert.equal(await db.entitySchemaMigration.count(),2);
    await assert.rejects(db.organizationBankAccount.create({data:{...bankInput,orgId:org.id,entityId:vendor.id,accountNumber:'duplicate-default',isDefault:true,createdByEmployeeId:actor.id,updatedByEmployeeId:actor.id}}),error=>error.code==='P2002');
    const general=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'GENE'}});
    const total=await db.expenseRequest.count();
@@ -199,7 +199,7 @@ try{
      await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(org.id)},true),set_config('baro.expense_editor_actor',${String(actor.id)},true),set_config('baro.expense_editor_key',${`EXPENSE_REQUEST_EDIT:${org.id}:${key()}`},true)`;
      await tx.partnerTransactionCost.update({where:{id:cost.id},data:{description:'unaudited'}});
    }),/audit required/);
-   assert.equal((await db.partnerTransactionCost.findUnique({where:{id:cost.id}})).description,'Outsourced process - BTH');
+   assert.equal((await db.partnerTransactionCost.findUnique({where:{id:cost.id}})).description,'Production outsourcing - BTH');
  });
  await check('completed production remains immutable in both service and database guards',async()=>{
    const next=await form();next.clientKey=key();next.items[0].quantity='171';await assert.rejects(save(next),/PRODUCTION_COMPLETED/);
