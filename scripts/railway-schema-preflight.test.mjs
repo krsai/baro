@@ -21,7 +21,7 @@ test('missing Railway URLs and authentication database targets are refused befor
 });
 test('a complete schema skips SQL and closes the check connection', async () => {
   let closed=false;
-  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
+  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
   assert.ok(closed);
 });
 test('preflight applies the bounded additive transaction, preserves legacy costs, verifies constraints and skips the next launch', async () => {
@@ -30,9 +30,10 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
     await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,UNIQUE(id,"ownerOrgId"));
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
-      CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,currency TEXT,amount NUMERIC);
+      CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
+      CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC);
       INSERT INTO "Organization" VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
-      INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,'VND',123);`);
+      INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,NULL,'VND',123);`);
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);
       assert.match(options.input,/BEGIN;[\s\S]*pg_advisory_xact_lock[\s\S]*COMMIT;/);
@@ -49,4 +50,24 @@ test('migration failure stops launch, disconnects and never exposes subprocess c
   const db={$queryRawUnsafe:async()=>[],$disconnect:async()=>{closed=true;}};
   await assert.rejects(runRailwayPreflight({env,createClient:()=>db,log:value=>logs.push(value),run:()=>({status:1,stderr:env.DATABASE_URL})}),/API will not start/);
   assert.ok(closed); assert.ok(!logs.join('').includes('secret'));
+});
+
+test('expense style FK repairs customer scope, preserves rows, rejects other manufacturers and refuses orphan repair',async()=>{
+  const db=new PGlite();
+  const repair=fs.readFileSync('backend/scripts/apply-expense-style-owner-fk.sql','utf8');
+  try{
+    await db.exec(`CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT,UNIQUE(id,"customerOrgId"));
+      CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"styleId" INT,amount NUMERIC,
+        CONSTRAINT "TransactionCost_style_scope_fkey" FOREIGN KEY("styleId","orgId") REFERENCES "Style"(id,"customerOrgId"));
+      INSERT INTO "Style" VALUES(34,1,2); INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,NULL,510000);`);
+    await assert.rejects(db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('valid',1,34,510000)`),/TransactionCost_style_scope_fkey/);
+    await db.exec(repair);await db.exec(repair);
+    await db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('valid',1,34,510000)`);
+    await assert.rejects(db.exec(`INSERT INTO "PartnerTransactionCost" VALUES('foreign',2,34,510000)`),/TransactionCost_style_scope_fkey/);
+    assert.deepEqual((await db.query(`SELECT amount::text FROM "PartnerTransactionCost" ORDER BY id`)).rows,[{amount:'510000'},{amount:'510000'}]);
+    await db.exec(`DELETE FROM "PartnerTransactionCost" WHERE id='valid'; ALTER TABLE "PartnerTransactionCost" DROP CONSTRAINT "TransactionCost_style_scope_fkey";
+      ALTER TABLE "PartnerTransactionCost" ADD CONSTRAINT "TransactionCost_style_scope_fkey" FOREIGN KEY("styleId","orgId") REFERENCES "Style"(id,"customerOrgId");
+      INSERT INTO "PartnerTransactionCost" VALUES('needs-review',2,34,42);`);
+    await assert.rejects(db.exec(repair),/EXPENSE_STYLE_OWNER_MISMATCH/);
+  }finally{await db.close();}
 });

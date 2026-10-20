@@ -64,6 +64,15 @@ try{
    await assert.rejects(db.partnerTransactionCost.update({where:{id:doc.items[0].id},data:{expenseRequestId:doc.id,expenseRequestLine:1}}),/history cannot be changed/);
  });
  apply('backend/scripts/apply-expense-request-editor.sql');apply('backend/scripts/apply-expense-request-editor.sql');
+ await check('customer-scoped legacy FK rejects valid manufacturer cost; targeted repair preserves sources and rejects foreign styles',async()=>{
+   sql('ALTER TABLE "PartnerTransactionCost" DROP CONSTRAINT "TransactionCost_style_scope_fkey"; ALTER TABLE "PartnerTransactionCost" ADD CONSTRAINT "TransactionCost_style_scope_fkey" FOREIGN KEY ("styleId","orgId") REFERENCES "Style"(id,"customerOrgId") ON DELETE RESTRICT ON UPDATE RESTRICT;');
+   await assert.rejects(save(input),error=>error.code==='P2003');
+   assert.equal(await db.expenseRequest.count({where:{clientKey:input.clientKey}}),0);
+   assert.deepEqual(await db.outsourcedWorkRecord.findMany({orderBy:{id:'asc'}}),original);
+   apply('backend/scripts/apply-expense-style-owner-fk.sql');apply('backend/scripts/apply-expense-style-owner-fk.sql');
+   const definition=await db.$queryRawUnsafe("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conname='TransactionCost_style_scope_fkey'");
+   assert.match(definition[0].definition,/REFERENCES "Style"\(id, "orgId"\)/);
+ });
  let requestId;
  await check('real Prisma wraps the completed legacy row with BTHE while preserving both vendors and source period',async()=>{
    const result=await save(input);requestId=result.requestId;

@@ -24,7 +24,8 @@ async function main() {
       UNION ALL SELECT 'WorkOrder', "orgId", count(*)::int FROM "WorkOrder" GROUP BY "orgId" ORDER BY entity,"orgId"`);
     console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry-run', before }));
     const sql = readFileSync(path.join(__dirname, 'transfer-manufacturer-ownership.sql'), 'utf8')
-      + readFileSync(path.join(__dirname, 'transfer-baro-business-data.sql'), 'utf8');
+      + readFileSync(path.join(__dirname, 'transfer-baro-business-data.sql'), 'utf8')
+      + readFileSync(path.join(__dirname, 'apply-expense-style-owner-fk.sql'), 'utf8');
     const result = spawnSync(process.execPath, [require.resolve('prisma/build/index.js'), 'db', 'execute', '--stdin', '--schema', path.join(__dirname, '../prisma/schema.prisma')], {
       env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url }, encoding: 'utf8',
       input: `BEGIN; SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='60s';

@@ -1004,6 +1004,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   'ExpenseRequest_orgId_fkey',
   'ExpenseRequest_partnerOrgId_orgId_fkey',
   'ExpenseRequest_createdByEmployeeId_orgId_fkey',
+  'TransactionCost_style_scope_fkey',
   'PartnerTransactionCost_expense_request_fkey',
   'PartnerTransactionCost_expenseRequestId_expenseRequestLine_key',
   'ExpenseRequestLine_pair_check',
@@ -31766,6 +31767,7 @@ const findMissingRuntimeSchemaConstraints = async (): Promise<string[]> => {
     SELECT conname AS constraint_name
     FROM pg_constraint
     WHERE conname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
+      AND (conname <> 'TransactionCost_style_scope_fkey' OR pg_get_constraintdef(oid) LIKE '%REFERENCES "Style"(id, "orgId")%')
     UNION
     SELECT indexname AS constraint_name
     FROM pg_indexes
