@@ -4,45 +4,17 @@ import {
   Box,
   Button,
   CircularProgress,
-  Container,
   Typography,
 } from '@mui/material';
-import Copyright from '../../components/Copyright';
+import { CalendarMonthOutlined, QueryStatsOutlined, TaskAltOutlined } from '@mui/icons-material';
+import { LOGIN_COPY } from './loginCopy';
+import './login.css';
 import AppVersionLabel from '../../components/AppVersionLabel';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { canAccessPath, resolveFirstAccessiblePath } from '../../utils/accessControl';
 import { readPersonalPreferences } from '../../utils/personalPreferences';
-
-const LOGIN_COPY_BY_LANGUAGE = {
-  ko: {
-    loginLoading: '로그인 중...',
-    loginWithGoogle: 'Google 계정으로 로그인',
-    authContextError: '로그인 후 사용자 접근 정보를 불러오지 못했습니다.',
-    restartSession: '세션 다시 시작',
-    supabaseRequired:
-      'Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과 `VITE_SUPABASE_ANON_KEY`를 추가한 뒤 다시 실행해 주세요.',
-  },
-  en: {
-    loginLoading: 'Signing in...',
-    loginWithGoogle: 'Continue with Google',
-    authContextError: 'We could not load your account access context after sign-in.',
-    restartSession: 'Restart session',
-    supabaseRequired:
-      'Supabase configuration is required. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to `.env` and restart.',
-  },
-  vi: {
-    loginLoading: 'Đang đăng nhập...',
-    loginWithGoogle: 'Đăng nhập bằng Google',
-    authContextError: 'Không thể tai thong tin truy cap tai khoan sau khi dang nhap.',
-    restartSession: 'Bat dau lai phien',
-    supabaseRequired:
-      'Cần cấu hình Supabase. Thêm `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` vào `.env` rồi khởi động lại.',
-  },
-};
-
-const getLoginCopy = (languageCode) => LOGIN_COPY_BY_LANGUAGE[languageCode] || LOGIN_COPY_BY_LANGUAGE.ko;
 
 const Login = () => {
   const navigate = useNavigate();
@@ -62,6 +34,7 @@ const Login = () => {
   } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loginError,setLoginError] = useState(false);
   const [isNavigatingAfterAuth, setIsNavigatingAfterAuth] = useState(false);
   const hasOAuthCallbackParams = useMemo(() => {
     const searchParams = new URLSearchParams(location.search || '');
@@ -79,7 +52,7 @@ const Login = () => {
     () => hasOAuthCallbackParams
   );
 
-  const loginCopy = getLoginCopy(languageCode);
+  const loginCopy = LOGIN_COPY[languageCode] || LOGIN_COPY.ko;
   const postAuthPath = useMemo(
     () => {
       const authState = {
@@ -148,8 +121,11 @@ const Login = () => {
   const handleGoogleLogin = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+    setLoginError(false);
     try {
       await signInWithGoogle();
+    } catch {
+      setLoginError(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -167,79 +143,45 @@ const Login = () => {
     isOAuthReturnPending ||
     isNavigatingAfterAuth;
 
+  const featureIcons = [CalendarMonthOutlined, QueryStatsOutlined, TaskAltOutlined];
   return (
-    <Container component="main" maxWidth="xs" sx={{ pb: 12 }}>
-      <Box
-        sx={{
-          position: 'fixed',
-          top: 16,
-          right: 16,
-          zIndex: (theme) => theme.zIndex.appBar,
-        }}
-      >
+    <Box component="main" className="lineos-login">
+      <header className="lineos-login-header">
+        <div aria-label="LINEOS"><div className="lineos-login-brand">LINEOS</div><div className="lineos-login-brand-caption">PRODUCTION MANAGEMENT</div></div>
         <LanguageSwitcher languageCode={languageCode} onChange={setLanguageCode} />
-      </Box>
-
-      <Box
-        sx={{
-          mt: 6,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Typography
-          component="h1"
-          variant="h4"
-          sx={{ mt: { xs: 6, sm: 7 }, fontWeight: 700, letterSpacing: 1.2 }}
-        >
-          LINEOS
-        </Typography>
-
-        <Box sx={{ mt: 3, width: '100%' }}>
-          <Button
-            fullWidth
-            variant="contained"
-            sx={{
-              mt: 1,
-              mb: 2,
-              backgroundColor: '#4285F4',
-              '&:hover': { backgroundColor: '#357ae8' },
-            }}
-            startIcon={isLoginLocked ? <CircularProgress size={16} color="inherit" /> : null}
-            onClick={handleGoogleLogin}
-            disabled={isLoginLocked || !isSupabaseConfigured}
-          >
+      </header>
+      <div className="lineos-login-content">
+        <section className="lineos-login-intro" aria-labelledby="lineos-introduction">
+          <h1 id="lineos-introduction">{loginCopy.headline}</h1>
+          <p className="lineos-login-introduction">{loginCopy.introduction}</p>
+          <div className="lineos-login-features">{loginCopy.features.map(([title,detail],index)=>{const Icon=featureIcons[index];return <div key={title}>
+            <span className="lineos-login-feature-icon"><Icon sx={{fontSize:21}} /></span>
+            <div className="lineos-login-feature-title">{title}</div><div className="lineos-login-feature-detail">{detail}</div>
+          </div>;})}</div>
+        </section>
+        <section className="lineos-login-card" aria-labelledby="lineos-login-heading">
+          <h2 id="lineos-login-heading">{loginCopy.welcome}</h2>
+          <p className="lineos-login-subtitle">{loginCopy.subtitle}</p>
+          <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>
-
-          {!isSupabaseConfigured && (
-            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
-              {loginCopy.supabaseRequired}
-            </Typography>
-          )}
-
-          {isAuthenticated && accessError && (
-            <Box sx={{ mt: 1.5 }}>
-              <Typography variant="body2" color="error">
-                {loginCopy.authContextError}
-              </Typography>
-              <Button
-                size="small"
-                onClick={handleRestartSession}
-                sx={{ mt: 1, px: 0, textTransform: 'none' }}
-              >
-                {loginCopy.restartSession}
-              </Button>
-            </Box>
-          )}
-        </Box>
-      </Box>
-
-      <Copyright sx={{ mt: 8, mb: 4 }} />
-      <AppVersionLabel sx={{ display: 'block', mb: 2 }} />
-    </Container>
+          {!isSupabaseConfigured && <Typography role="alert" variant="body2" color="error" sx={{mt:2}}>{loginCopy.supabaseRequired}</Typography>}
+          {loginError && <Typography role="alert" variant="body2" color="error" sx={{mt:2}}>{loginCopy.loginError}</Typography>}
+          {isAuthenticated && accessError && <Box sx={{mt:2}}><Typography role="alert" variant="body2" color="error">{loginCopy.authContextError}</Typography><Button onClick={handleRestartSession} sx={{mt:1}}>{loginCopy.restartSession}</Button></Box>}
+          <p className="lineos-login-destination">{loginCopy.destination}</p>
+        </section>
+      </div>
+      <footer className="lineos-login-footer"><span>LINEOS &copy; {new Date().getFullYear()}</span><AppVersionLabel sx={{fontSize:'inherit',color:'inherit'}} /></footer>
+    </Box>
   );
 };
 
+function GoogleMark() {
+  return <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.7-.4-4H24v7.7h11a9.4 9.4 0 0 1-4.1 6.2v5h6.6c3.9-3.6 6.1-8.8 6.1-14.9z" />
+    <path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.9l-6.6-5c-1.8 1.2-4.1 1.9-6.9 1.9-5.3 0-9.9-3.6-11.5-8.4H5.7v5.2A20.4 20.4 0 0 0 24 44z" />
+    <path fill="#FBBC05" d="M12.5 27.6a12.2 12.2 0 0 1 0-7.2v-5.2H5.7a20 20 0 0 0 0 17.6l6.8-5.2z" />
+    <path fill="#EA4335" d="M24 12c3 0 5.6 1 7.7 3l5.8-5.8A19.5 19.5 0 0 0 24 4 20.4 20.4 0 0 0 5.7 15.2l6.8 5.2C14.1 15.6 18.7 12 24 12z" />
+  </svg>;
+}
 export default Login;
