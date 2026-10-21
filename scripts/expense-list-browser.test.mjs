@@ -18,6 +18,7 @@ try {
   for(const lang of ['ko','en','vi']) {
     const text=EXPENSE_LIST_TEXT[lang],doc=EXPENSE_REQUEST_TEXT[lang],errors=[],page=await browser.newPage({viewport:{width:1440,height:1000}});
     page.on('pageerror',error=>errors.push(error.message));
+    page.on('console',message=>{if(/Encountered two children with the same key/.test(message.text()))errors.push(message.text());});
     await page.clock.install({time:new Date('2026-10-17T12:00:00+07:00')});
     await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
     await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
@@ -109,6 +110,25 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
     assert.equal(await page.getByText(/^EXP-/).count(),0);await page.getByRole('button',{name:lang==='ko'?'Document cost \uC678 1\uAC74':lang==='vi'?'Document cost v\u00e0 1 m\u1ee5c kh\u00e1c':'Document cost and 1 more',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
+    // Repeated view changes must replace headers, including Korean document
+    // columns whose translated labels are identical. Verify actual geometry.
+    for(let cycle=0;cycle<4;cycle++) {
+      for(const [name,count] of [[text.documents,7],[text.detail,12],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,12]]) {
+        await page.getByRole('tab',{name,exact:true}).click();
+        assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
+        const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{
+          const headers=Array.from(table.tHead.rows[0].cells,cell=>({x:cell.getBoundingClientRect().x,width:cell.getBoundingClientRect().width}));
+          return Array.from(table.tBodies[0].rows).filter(row=>row.cells.length>1).map(row=>Array.from(row.cells,(cell,index)=>{
+            const box=cell.getBoundingClientRect();return Math.abs(box.x-headers[index].x)<1 && Math.abs(box.width-headers[index].width)<1;
+          }).every(Boolean));
+        });
+        assert.ok(geometry.length && geometry.every(Boolean),`${lang} ${name}: header/body columns align`);
+      }
+      await page.locator('.compact-costs').evaluate(async element=>{
+        element.style.display='none';await new Promise(requestAnimationFrame);
+        element.style.removeProperty('display');await new Promise(requestAnimationFrame);
+      });
+    }
     await page.setViewportSize({width:390,height:844});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
     assert.deepEqual(errors,[]);await page.close();
