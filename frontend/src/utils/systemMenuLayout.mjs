@@ -13,14 +13,14 @@ const GROUPS=[
 
 // Reuse the canonical menu nodes, including permission checks and badges.
 // Only the SYSTEM navigation groups/order differ from the SaaS organization UI.
-export function organizeSystemMenu(items,languageCode='ko'){
+export function organizeSystemMenu(items,languageCode='ko',icons={}){
  const leaves=new Map(),groups=new Map();
  const visit=nodes=>nodes.forEach(node=>{if(node.isParent){groups.set(node.menuGroupKey,node);visit(node.children||[]);}else if(node.path)leaves.set(node.path,node);});visit(items);
  const used=new Set(['/dashboard']);
  const result=GROUPS.map(([key,paths])=>{
   const source=groups.get(key)||groups.get('SYSTEM');
   const children=paths.map(path=>{used.add(path);return leaves.get(path);}).filter(Boolean);
-  return {...source,icon:key==='MISC'?(groups.get('ACCOUNTING')?.icon||source?.icon):source?.icon,label:(LABELS[languageCode]||LABELS.en)[key],menuGroupKey:key,isParent:true,children};
+  return {...source,icon:icons[key]??source?.icon,label:(LABELS[languageCode]||LABELS.en)[key],menuGroupKey:key,isParent:true,children};
  }).filter(group=>group.children.length);
  // New canonical routes remain visible until deliberately placed in a group.
  const remaining=[...leaves.values()].filter(node=>!used.has(node.path));

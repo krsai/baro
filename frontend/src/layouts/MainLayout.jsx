@@ -56,6 +56,11 @@ import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AssessmentIcon from '@mui/icons-material/Assessment';
+import DomainOutlinedIcon from '@mui/icons-material/DomainOutlined';
+import CategoryOutlinedIcon from '@mui/icons-material/CategoryOutlined';
+import AccountTreeOutlinedIcon from '@mui/icons-material/AccountTreeOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
+import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import { buildQueryString, cancelAllTrackedRequests, requestJSON } from '../utils/apiClient';
 import { subscribeOrderDeleted } from '../utils/orderSyncEvents';
 import { canAccessPath, resolveFirstAccessiblePath } from '../utils/accessControl';
@@ -71,6 +76,13 @@ import {
 } from '../utils/workspaceDataEvents';
 
 const DRAWER_WIDTH = 240;
+const SYSTEM_MENU_ICONS = {
+  ADMIN: <DomainOutlinedIcon />,
+  ATTRIBUTE: <CategoryOutlinedIcon />,
+  PROCESS_MASTER: <AccountTreeOutlinedIcon />,
+  MISC: <ReceiptLongOutlinedIcon />,
+  SYSTEM: <SettingsOutlinedIcon />,
+};
 const TAB_BAR_HEIGHT = 41;
 const EMPTY_WORKSPACE_PATH = '/workspace';
 const EMPTY_WORKSPACE_HINT = {
@@ -999,7 +1011,7 @@ const MainLayout = () => {
         })
         .filter(Boolean);
 
-    const navigationBlueprint = isSystemProfile ? organizeSystemMenu(menuStructureBlueprint, languageCode) : menuStructureBlueprint;
+    const navigationBlueprint = isSystemProfile ? organizeSystemMenu(menuStructureBlueprint, languageCode, SYSTEM_MENU_ICONS) : menuStructureBlueprint;
     return navigationBlueprint
       .map((item) => {
         if (!item.isParent) {
