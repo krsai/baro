@@ -117,9 +117,13 @@ try {
         await page.getByRole('tab',{name,exact:true}).click();
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{
-          const headers=Array.from(table.tHead.rows[0].cells,cell=>({x:cell.getBoundingClientRect().x,width:cell.getBoundingClientRect().width}));
+          const alignment=cell=>{
+            const style=getComputedStyle(cell);
+            return [style.paddingLeft,style.paddingRight,style.paddingTop,style.paddingBottom,style.textAlign.replace('start','left')].join(':');
+          };
+          const headers=Array.from(table.tHead.rows[0].cells,cell=>({x:cell.getBoundingClientRect().x,width:cell.getBoundingClientRect().width,alignment:alignment(cell)}));
           return Array.from(table.tBodies[0].rows).filter(row=>row.cells.length>1).map(row=>Array.from(row.cells,(cell,index)=>{
-            const box=cell.getBoundingClientRect();return Math.abs(box.x-headers[index].x)<1 && Math.abs(box.width-headers[index].width)<1;
+            const box=cell.getBoundingClientRect();return Math.abs(box.x-headers[index].x)<1 && Math.abs(box.width-headers[index].width)<1 && alignment(cell)===headers[index].alignment;
           }).every(Boolean));
         });
         assert.ok(geometry.length && geometry.every(Boolean),`${lang} ${name}: header/body columns align`);
