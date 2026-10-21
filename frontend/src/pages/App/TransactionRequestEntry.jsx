@@ -1,13 +1,13 @@
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
-import EntityBankAccounts from '../../components/EntityBankAccounts';
 import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, Dialog, DialogContent, DialogActions, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Tooltip, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { Add } from '@mui/icons-material';
+import EditOutlined from '@mui/icons-material/EditOutlined';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { getUiMessage } from '../../constants/uiMessages';
@@ -15,7 +15,7 @@ import ExpenseLookupField from '../../components/ExpenseLookupField';
 import { EXPENSE_LOOKUP_TEXT } from '../../constants/expenseLookup';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import {serviceName} from '../../components/OutsourcingServiceDialog';
-import {getBusinessPartnerTypeLabel} from '../../components/BusinessPartnerDialog';
+import BusinessPartnerDialog, {getBusinessPartnerTypeLabel} from '../../components/BusinessPartnerDialog';
 import './expenseRequests.css';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import ExpenseRequestLine from '../../components/ExpenseRequestLine';
@@ -54,7 +54,7 @@ export default function TransactionRequestEntry() {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
-  const [bankDialog, setBankDialog] = useState(false);
+  const [payeeDialog, setPayeeDialog] = useState(false);
   const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
   const [bankReload,setBankReload] = useState(0);
   useEffect(()=>subscribeWorkspaceDataChanged(detail=>{
@@ -106,6 +106,7 @@ export default function TransactionRequestEntry() {
   };
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
+  useEffect(()=>setPayeeDialog(false),[activeOrgId,partner?.id]);
   useEffect(() => {
     let alive = true;
     setPayeeBanks({entityId:partner?.id,accounts:[],loaded:false});
@@ -116,7 +117,8 @@ export default function TransactionRequestEntry() {
   },[partner?.id,activeOrgId,bankReload]);
   const bankAccounts = payeeBanks.entityId === partner?.id ? payeeBanks.accounts.filter(row=>row.isActive) : [];
   const hasPayeeBank = bankAccounts.some(row=>row.bankName?.trim() && row.accountNumber?.trim() && row.accountHolder?.trim() && row.currencyId);
-  const payeeInfo = bankAccounts.filter(row=>row.isDefault).map(row=>[row.currency?.code,row.bankName,row.accountNumber,row.accountHolder].filter(Boolean).join(' · ')).join(' / ');
+  const payeeInfo = [partner?.businessNumber,partner?.contactName,partner?.contactPhone,partner?.email,partner?.address,
+    ...bankAccounts.filter(row=>row.isDefault).map(row=>[row.currency?.code,row.bankName,row.accountNumber,row.accountHolder].filter(Boolean).join(' · '))].filter(Boolean).join(' / ');
   const disabled = loading || loadError || saving || Boolean(submission) || Boolean(form.readOnly);
   const valid = hasPayeeBank && !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
@@ -162,18 +164,20 @@ export default function TransactionRequestEntry() {
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
-      {partner && !loading && !form.readOnly && !hasPayeeBank && (payeeBanks.loaded || payeeBanks.error) && <Alert severity={payeeBanks.error?'error':'warning'} action={<Button disabled={saving} onClick={()=>setBankDialog(true)}>{bankText.settings}</Button>}>{payeeBanks.error?bankText.error:bankText.required}</Alert>}
-      <Dialog open={bankDialog} onClose={()=>setBankDialog(false)} fullWidth maxWidth="md">
-        <DialogContent>{partner && <EntityBankAccounts key={`${activeOrgId}:${partner.id}`} entityId={partner.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={accounts=>setPayeeBanks({entityId:partner.id,accounts,loaded:true})}/>}</DialogContent>
-        <DialogActions><Button onClick={()=>setBankDialog(false)}>{bankText.cancel}</Button></DialogActions>
-      </Dialog>
+      {partner && !loading && !form.readOnly && !hasPayeeBank && (payeeBanks.loaded || payeeBanks.error) && <Alert severity={payeeBanks.error?'error':'warning'} action={<Button disabled={disabled} onClick={()=>setPayeeDialog(true)}>{header.editPayee}</Button>}>{payeeBanks.error?bankText.error:bankText.required}</Alert>}
+      {partner && <BusinessPartnerDialog key={`${activeOrgId}:${partner.id}`} open={payeeDialog} onClose={()=>setPayeeDialog(false)}
+        partner={partner} activeOrgId={activeOrgId} languageCode={languageCode} lockType title={header.editPayee}
+        onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}
+        onAccountsChange={accounts=>{if(organizationRef.current===activeOrgId && mountedRef.current)setPayeeBanks({entityId:partner.id,accounts,loaded:true});}} />}
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) minmax(0, 1fr)' }, gap: 2 }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'role',label:(EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en).partnerType,value:row=>getBusinessPartnerTypeLabel(row.type,languageCode)},{key:'name',label:labels.payee,value:row=>row.name},{key:'industry',label:(EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en).industry,value:row=>(row.serviceTypes||[]).map(service=>serviceName(service,languageCode)).filter(Boolean).join(' / ')}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
-            <TextField label={header.payeeInfo} value={partner ? payeeInfo || [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}} InputProps={{readOnly:true}} inputProps={{title:partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') : ''}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
+            <TextField label={header.payeeInfo} value={partner ? payeeInfo || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}}
+              InputProps={{readOnly:true,endAdornment:<InputAdornment position="end"><Tooltip title={header.editPayee}><span><IconButton size="small" aria-label={header.editPayee} disabled={!partner || disabled} onClick={()=>setPayeeDialog(true)}><EditOutlined fontSize="small"/></IconButton></span></Tooltip></InputAdornment>}}
+              inputProps={{title:payeeInfo}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
           </Box>
           <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>
             <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />

@@ -5,7 +5,7 @@ export const EXPENSE_REQUEST_TEXT = {
 };
 
 export const EXPENSE_HEADER_TEXT = {
- ko: { payeeInfo:'지급 대상 정보', noPayeeInfo:'등록된 정보 없음', selectPayee:'지급 대상을 선택하세요', remark:'REMARK', summary:'신청 내역', approval:'결재선', configure:'설정 열기', approver:'승인 담당자', addApprover:'담당자 추가', apply:'적용', empty:'미지정', loadError:'승인 담당자를 불러오지 못했습니다.' },
- en: { payeeInfo:'Payee information', noPayeeInfo:'No registered information', selectPayee:'Select a payee', remark:'REMARK', summary:'Request summary', approval:'Approval line', configure:'Open settings', approver:'Approver', addApprover:'Add approver', apply:'Apply', empty:'Not set', loadError:'Could not load approvers.' },
- vi: { payeeInfo:'Thông tin người nhận', noPayeeInfo:'Chưa có thông tin', selectPayee:'Chọn người nhận', remark:'REMARK', summary:'Nội dung đề nghị', approval:'Luồng phê duyệt', configure:'Mở cài đặt', approver:'Người phê duyệt', addApprover:'Thêm người duyệt', apply:'Áp dụng', empty:'Chưa thiết lập', loadError:'Không thể tải danh sách người phê duyệt.' },
+ ko: { editPayee:'지급 대상 정보 수정', payeeInfo:'지급 대상 정보', noPayeeInfo:'등록된 정보 없음', selectPayee:'지급 대상을 선택하세요', remark:'REMARK', summary:'신청 내역', approval:'결재선', configure:'설정 열기', approver:'승인 담당자', addApprover:'담당자 추가', apply:'적용', empty:'미지정', loadError:'승인 담당자를 불러오지 못했습니다.' },
+ en: { editPayee:'Edit payee information', payeeInfo:'Payee information', noPayeeInfo:'No registered information', selectPayee:'Select a payee', remark:'REMARK', summary:'Request summary', approval:'Approval line', configure:'Open settings', approver:'Approver', addApprover:'Add approver', apply:'Apply', empty:'Not set', loadError:'Could not load approvers.' },
+ vi: { editPayee:'Chỉnh sửa thông tin người nhận', payeeInfo:'Thông tin người nhận', noPayeeInfo:'Chưa có thông tin', selectPayee:'Chọn người nhận', remark:'REMARK', summary:'Nội dung đề nghị', approval:'Luồng phê duyệt', configure:'Mở cài đặt', approver:'Người phê duyệt', addApprover:'Thêm người duyệt', apply:'Áp dụng', empty:'Chưa thiết lập', loadError:'Không thể tải danh sách người phê duyệt.' },
 };

@@ -66,6 +66,8 @@ export default function BusinessPartnerDialog({
   initialType = 'PROCESS_OUTSOURCING',
   lockType = false,
   partner = null,
+  title,
+  onAccountsChange,
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
@@ -126,7 +128,7 @@ export default function BusinessPartnerDialog({
 
   return (
     <Dialog open={open} onClose={() => !saving && onClose?.()} fullWidth maxWidth="md">
-      <DialogTitle>{isEdit ? labels.titleEdit : labels.titleCreate}</DialogTitle>
+      <DialogTitle>{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
@@ -146,7 +148,7 @@ export default function BusinessPartnerDialog({
             <TextField select label={common.country} value={form.country} onChange={update('country')}><MenuItem value="">—</MenuItem>{countryOptions.map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>
             <TextField multiline minRows={2} label={common.address} value={form.address} onChange={update('address')} />
           </Box></EntityDetailSection>
-          <EntityBankAccounts entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode}/>
+          <EntityBankAccounts entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
           <TextField label={(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).category} value={getBusinessPartnerTypeLabel(form.type,languageCode)} InputProps={{readOnly:true}}/>
           {true ? (

@@ -19,6 +19,7 @@ try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
   for(const mode of ['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+    console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
@@ -33,6 +34,14 @@ try {
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[{id:'public-30',dbId:30,ownerOrgId:1,orderNumber:'L17-1'}], 'app-settings':{defaultVatRate:'10'} };
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
+    await page.route('**/outsourcing-service-types?*',r=>r.fulfill({headers,json:mocks['business-partners'][0].serviceTypes}));
+    const profileWrites=[];
+    await page.route('**/business-partners/11?*',r=>{
+      if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+      const body=r.request().postDataJSON();profileWrites.push(body);
+      if(lang==='ko'&&profileWrites.length===1)return r.fulfill({headers,status:500,json:{error:'temporary profile error'}});
+      return r.fulfill({headers,json:{...mocks['business-partners'][0],...body}});
+    });
     await page.route('**/expense-request-editor/legacy/78?*',async r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
@@ -48,8 +57,8 @@ try {
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
     const payeeInfo=page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true});
-    if(mode!=='BANKLESS')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='VND \u00b7 Test bank \u00b7 001234 \u00b7 Selected vendor'));
-    if(mode!=='BANKLESS')assert.equal(await payeeInfo.inputValue(),'VND \u00b7 Test bank \u00b7 001234 \u00b7 Selected vendor');
+    if(mode!=='BANKLESS')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value.includes('Test bank')));
+    if(mode!=='BANKLESS')assert.match(await payeeInfo.inputValue(),/Accounts desk.*0901234567.*Test bank.*001234/);
     assert.equal(await payeeInfo.evaluate(el=>el.readOnly),true);
     if(mode==='GENERAL'&&!locked){
       await page.getByRole('button',{name:l.payee+' \u00b7 '+lookup.search,exact:true}).click();
@@ -59,6 +68,31 @@ try {
       await dialog.getByLabel(lookup.keyword,{exact:true}).fill(category);
       assert.equal(await dialog.getByRole('cell',{name:'Selected vendor',exact:true}).count(),1);
       await dialog.getByRole('button',{name:lookup.close,exact:true}).click();
+      const b=ENTITY_TEXT[lang],edit=EXPENSE_HEADER_TEXT[lang].editPayee;
+      await page.getByRole('button',{name:edit,exact:true}).click();
+      const profile=page.getByRole('dialog');
+      await profile.getByRole('heading',{name:edit,exact:true}).waitFor();
+      await profile.getByLabel(b.businessNumber,{exact:true}).fill('TAX-123');
+      await profile.getByLabel(b.email,{exact:true}).fill('updated@example.com');
+      await profile.getByLabel(b.address,{exact:true}).fill('Updated address');
+      await profile.getByRole('button',{name:b.cancel,exact:true}).click();
+      assert.equal(profileWrites.length,0,'Cancel must not save the profile');
+      await page.getByRole('button',{name:edit,exact:true}).click();
+      assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'');
+      await profile.getByLabel(b.businessNumber,{exact:true}).fill('TAX-123');
+      await profile.getByLabel(b.email,{exact:true}).fill('updated@example.com');
+      await profile.getByLabel(b.address,{exact:true}).fill('Updated address');
+      await profile.getByRole('button',{name:b.save,exact:true}).click();
+      if(lang==='ko'){
+        await profile.getByRole('alert').filter({hasText:'temporary profile error'}).waitFor();
+        assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'updated@example.com');
+        await profile.getByRole('button',{name:b.save,exact:true}).click();
+      }
+      await profile.waitFor({state:'hidden'});
+      assert.match(await payeeInfo.inputValue(),/TAX-123.*updated@example.com.*Updated address/);
+      assert.deepEqual(profileWrites.at(-1).serviceTypeIds,[44]);
+      assert.equal(profileWrites.at(-1).type,'PROCESS_OUTSOURCING');
+      assert.equal(submitted,undefined,'Master profile changes must not save the expense');
     }
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
@@ -81,7 +115,7 @@ try {
       const code=page.getByTestId('expense-line').getByRole('combobox',{name:l.code,exact:false});
       await code.fill('BT');
       await page.getByRole('option',{name:/BTHE/}).waitFor();
-      await code.press('Enter');
+      await page.getByRole('option',{name:/BTHE/}).click();
       assert.equal(await code.inputValue(),'BTHE');
       await code.fill('');
       await code.locator('..').getByRole('button',{name:new RegExp(lookup.search)}).click();
@@ -99,7 +133,7 @@ try {
       if(mode==='BANKLESS'){
         const b=ENTITY_TEXT[lang];
         assert.equal(await page.locator('button.MuiButton-contained').first().isDisabled(),true);
-        await page.getByRole('alert').getByRole('button',{name:b.settings,exact:true}).click();
+        await page.getByRole('alert').getByRole('button',{name:EXPENSE_HEADER_TEXT[lang].editPayee,exact:true}).click();
         await page.getByRole('dialog').getByRole('button',{name:b.add,exact:true}).click();
         const dialog=page.getByRole('dialog').last();
         await dialog.getByLabel(b.bank,{exact:false}).fill('Test bank');
