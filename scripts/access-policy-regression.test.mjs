@@ -9,7 +9,8 @@ import {
   ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   sanitizeRoleAccessPolicy,
 } from '../frontend/src/utils/roleAccessPolicyCore.mjs';
-import { canAccessPath } from '../frontend/src/utils/accessControl.js';
+import { canAccessPath,resolveFeatureByPath } from '../frontend/src/utils/accessControl.js';
+import {loadSourceBindings} from './helpers/source-bindings.mjs';
 
 const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
@@ -25,6 +26,26 @@ const buildOrgAuthState = ({ orgRole, policy }) => ({
     orgRole,
     accessPolicy: withCurrentPolicyVersion(policy),
   },
+});
+
+test('unified partners requires one existing partner permission without granting the other categories or business administration',()=>{
+  for(const feature of [ACCESS_FEATURE_KEYS.CUSTOMER,ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER,ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER]){
+    const auth=buildOrgAuthState({orgRole:ORG_ROLE_KEYS.OPERATOR,policy:{MANUFACTURER:{OPERATOR:[feature]}}});
+    assert.equal(canAccessPath('/business-partner',auth),true);
+    assert.equal(canAccessPath('/business',auth),false);
+    for(const [path,key] of [['/customer',ACCESS_FEATURE_KEYS.CUSTOMER],['/outsourcing-partner',ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER],['/material-supplier',ACCESS_FEATURE_KEYS.MATERIAL_SUPPLIER]])assert.equal(canAccessPath(path,auth),key===feature);
+  }
+  const none=buildOrgAuthState({orgRole:ORG_ROLE_KEYS.OPERATOR,policy:{MANUFACTURER:{OPERATOR:[]}}});
+  assert.equal(canAccessPath('/business-partner',none),false);
+  assert.equal(canAccessPath('/business-partner/',none),false);
+  assert.equal(canAccessPath('/business-partner',{isAuthenticated:false}),false);
+});
+
+test('permission editor retains all three category switches under the single partners menu',()=>{
+ const {buildMenuTree}=loadSourceBindings('frontend/src/pages/App/system/AccessPolicyBoard.jsx',['buildMenuTree'],{resolveFeatureByPath,NON_EDITABLE_FEATURE_KEYS:new Set()});
+ const [menu]=buildMenuTree([{label:'Partners',path:'/business-partner',accessChildren:[{label:'Customers',path:'/customer'},{label:'Outsourcing',path:'/outsourcing-partner'},{label:'Suppliers',path:'/material-supplier'}]}]);
+ assert.equal(menu.type,'group');assert.equal(menu.children.length,3);
+ assert.deepEqual(menu.featureKeys,['CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER']);
 });
 
 test('manufacturer accountant defaults include employee and holiday menus', () => {

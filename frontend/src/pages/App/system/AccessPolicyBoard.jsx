@@ -130,8 +130,9 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
       const path = String(node?.path || '').trim();
       const nodeId = `${parentId}:${node?.menuGroupKey || path || index}`;
 
-      if (Array.isArray(node?.children) && node.children.length > 0) {
-        const children = buildMenuTree(node.children, nodeId);
+      const childNodes=node?.accessChildren || node?.children;
+      if (Array.isArray(childNodes) && childNodes.length > 0) {
+        const children = buildMenuTree(childNodes, nodeId);
         if (children.length === 0) return null;
         return {
           id: nodeId,

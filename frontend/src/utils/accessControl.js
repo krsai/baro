@@ -151,6 +151,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
+  if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
   if (path === '/invoices' || path.startsWith('/invoices/')) return FEATURE_KEYS.INVOICE;
   if (path === '/') return null;
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
@@ -192,6 +193,7 @@ export const canAccessPath = (pathname, authState) => {
   const path = normalizePathname(pathname);
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
   if (path === '/') return Boolean(context);
+  if (path.replace(/\/+$/,'') === '/business-partner') return [FEATURE_KEYS.CUSTOMER,FEATURE_KEYS.OUTSOURCING_PARTNER,FEATURE_KEYS.MATERIAL_SUPPLIER].some(feature=>canAccessFeatureByContext(feature,context));
   const featureKey = resolveFeatureByPath(path);
   if (!featureKey) return true;
   return canAccessFeatureByContext(featureKey, context);
@@ -219,9 +221,7 @@ const ACCESS_PATH_PRIORITY = [
   '/payroll',
   '/business',
   '/employee',
-  '/customer',
-  '/outsourcing-partner',
-  '/material-supplier',
+  '/business-partner',
   '/personal-settings',
   '/permission',
   '/holiday',

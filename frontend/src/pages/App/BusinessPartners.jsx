@@ -9,6 +9,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import { Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import AppPageContainer from '../../components/AppPageContainer';
+import PartnerListPanel from '../../components/PartnerListPanel';
 import BusinessPartnerDialog, { getBusinessPartnerTypeLabel } from '../../components/BusinessPartnerDialog';
 import SearchInput from '../../components/SearchInput';
 import OutsourcingServiceDialog, { TRANSACTION_TEXT } from '../../components/OutsourcingServiceDialog';
@@ -23,9 +24,7 @@ const TEXT = {
   vi: { title: 'Đối tác', add: 'Thêm đối tác', edit: 'Sửa', search: 'Tìm công ty, người liên hệ hoặc số điện thoại', name: 'Công ty', type: 'Loại', contact: 'Người liên hệ', phone: 'Số điện thoại', status: 'Trạng thái', active: 'Đang sử dụng', inactive: 'Ngừng sử dụng', empty: 'Chưa có đối tác.', history: 'Lịch sử giao dịch', workHistory: 'Lịch sử gia công', noHistory: 'Chưa có giao dịch liên kết.', date: 'Ngày làm việc', style: 'Mẫu', process: 'Công đoạn', unitPrice: 'Đơn giá', quantity: 'Số lượng', amount: 'Thành tiền', loadError: 'Không thể tải danh sách đối tác.', historyError: 'Không thể tải lịch sử giao dịch.' },
 };
 
-// Page title/add-button text when this screen is locked to a single vendor
-// type via the `type` prop (menu split into 외주 업체/공급 업체, both routes
-// reuse this component - see router.jsx and AGENTS.md 2026-08-20).
+// The shared partner panel is selected by role in TradePartners.
 const TITLE_BY_TYPE = {
   PROCESS_OUTSOURCING: { ko: '외주 업체', en: 'Outsourcing Partner', vi: 'Đối tác gia công' },
   MATERIAL_SUPPLIER: { ko: '공급 업체', en: 'Material Supplier', vi: 'Nhà cung cấp vật tư' },
@@ -43,7 +42,8 @@ const DELETE_TEXT = {
   vi: { remove: 'Xóa', blocked: 'Không thể xóa đối tác đã được sử dụng. Có thể chỉnh sửa hoặc ngừng sử dụng.', confirm: 'Xóa đối tác này?', cancel: 'Hủy', error: 'Không thể xóa đối tác.', help: 'Thông tin đối tác cập nhật được hiển thị trong hồ sơ liên kết. Thông tin kiểm toán ban đầu và chứng từ đã phát hành được giữ nguyên.' },
 };
 
-export default function BusinessPartners({ type }) {
+export default function BusinessPartners({ type, embedded=false }) {
+  const Container=embedded?PartnerListPanel:AppPageContainer;
   const { activeOrgId, activeOrgRole, accessProfile } = useAuth();
   const isSystemAdmin = accessProfile?.systemRole === 'SYSTEM_ADMIN';
   const canEdit = isSystemAdmin || ['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole);
@@ -103,7 +103,7 @@ export default function BusinessPartners({ type }) {
     finally { setHistoryLoading(false); }
   };
   return (
-    <AppPageContainer title={pageTitle} titleActions={canManage ? <Stack direction="row" spacing={1}>{type === 'PROCESS_OUTSOURCING' && <Button onClick={() => setServiceOpen(true)}>{(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko).addIndustry}</Button>}<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>{labels.add}</Button></Stack> : null} toolbar={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={labels.search} sx={{ width: 360 }} />}>
+    <Container title={pageTitle} titleActions={canManage ? <Stack direction="row" spacing={1}>{type === 'PROCESS_OUTSOURCING' && <Button onClick={() => setServiceOpen(true)}>{(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko).addIndustry}</Button>}<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>{labels.add}</Button></Stack> : null} toolbar={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={labels.search} sx={{ width: 360 }} />}>
       <PageContentStack>{error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}<Paper variant="outlined"><TableContainer><Table size="small">
         <TableHead><TableRow>
           <TableCell width={150}>{expenseLabels.partnerType}</TableCell><TableCell width={180}>{expenseLabels.industry}</TableCell><TableCell>{labels.name}</TableCell>
@@ -144,6 +144,6 @@ export default function BusinessPartners({ type }) {
         {costs.length > 0 && <Box mt={3}><Typography variant="subtitle1" fontWeight={700} mb={1}>{listLabels.costHistory}</Typography>
         <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{costLabels.date}</TableCell><TableCell>{costLabels.industry}</TableCell><TableCell>{costLabels.description}</TableCell><TableCell>{costLabels.amount}</TableCell></TableRow></TableHead><TableBody>{!historyLoading && !costs.length && <TableRow><TableCell colSpan={4}>{costLabels.empty}</TableCell></TableRow>}{costs.map(cost => <TableRow key={cost.id}><TableCell>{cost.transactionDate}</TableCell><TableCell>{serviceName(cost.serviceType)}</TableCell><TableCell>{cost.description}</TableCell><TableCell>{formatNumberWithCommas(cost.amount)} {cost.currency}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Box>}
       </Drawer>
-    </AppPageContainer>
+    </Container>
   );
 }

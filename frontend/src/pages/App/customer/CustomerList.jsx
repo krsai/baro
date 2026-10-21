@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
+import PartnerListPanel from '../../../components/PartnerListPanel';
 import NotificationIndicator from '../../../components/NotificationIndicator';
 import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
@@ -28,7 +29,8 @@ const resolveCustomerWorkspaceTabLabel = (languageCode, customer) => {
   return `Customer: ${displayName}`;
 };
 
-const CustomerList = () => {
+const CustomerList = ({embedded=false}) => {
+  const Container=embedded?PartnerListPanel:AppPageContainer;
   const { showNotification, navigateToPath } = useAppActions();
   const { activeOrgId } = useAuth();
   const { languageCode } = useLanguage();
@@ -96,7 +98,7 @@ const CustomerList = () => {
       WORKSPACE_DATA_TOPICS.STYLES,
       WORKSPACE_DATA_TOPICS.CUSTOMERS,
     ],
-    isActive: location.pathname === '/customer',
+    isActive: location.pathname === '/customer' || embedded,
     onRefresh: fetchCustomers,
   });
 
@@ -151,7 +153,7 @@ const CustomerList = () => {
   }, [languageCode, navigateToPath]);
 
   return (
-    <AppPageContainer
+    <Container
       title={customerText.title}
       titleActions={
         <Button variant="contained" onClick={handleAdd}>
@@ -250,7 +252,7 @@ const CustomerList = () => {
           </Table>
         </TableContainer>
       </Paper>
-    </AppPageContainer>
+    </Container>
   );
 };
 

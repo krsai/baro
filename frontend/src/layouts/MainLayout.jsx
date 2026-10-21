@@ -115,6 +115,7 @@ const hasNestedMenuChildren = (item) => Array.isArray(item?.children) && item.ch
 const matchesMenuPath = (itemPath, currentPath) => {
   const normalizedItemPath = toPathname(itemPath);
   const normalizedCurrentPath = toPathname(currentPath);
+  if(normalizedItemPath==='/business-partner' && ['/customer','/outsourcing-partner','/material-supplier'].some(path=>normalizedCurrentPath===path||normalizedCurrentPath.startsWith(`${path}/`)))return true;
   if (!normalizedItemPath || normalizedItemPath === '/') {
     return normalizedCurrentPath === normalizedItemPath;
   }
@@ -318,7 +319,6 @@ const MainLayout = () => {
 
   const [adminOpen, setAdminOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
-  const [partnersOpen, setPartnersOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
@@ -349,7 +349,6 @@ const MainLayout = () => {
 
   const setExpandedMenuGroup = React.useCallback((menuGroupKey) => {
     setOrderOpen(menuGroupKey === MENU_GROUP_KEYS.ORDER);
-    setPartnersOpen(menuGroupKey === MENU_GROUP_KEYS.PARTNERS);
     setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
     setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
     setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
@@ -431,7 +430,7 @@ const MainLayout = () => {
       currentPath.startsWith('/material-supplier') ||
       currentPath.startsWith('/business-partner')
     ) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.PARTNERS);
+      setExpandedMenuGroup(MENU_GROUP_KEYS.ADMIN);
     }
   }, [currentPath, setExpandedMenuGroup]);
 
@@ -760,31 +759,11 @@ const MainLayout = () => {
             icon: <BusinessIcon />,
             path: '/business',
           },
-        ],
-      },
-      {
-        label: getUiMessage('menu.businessPartnerManagement', '거래처 관리', languageCode),
-        icon: <BusinessIcon />,
-        isParent: true,
-        menuGroupKey: MENU_GROUP_KEYS.PARTNERS,
-        isOpen: partnersOpen,
-        children: [
-          {
-            label: getUiMessage('menu.customer', '고객사', languageCode),
-            icon: <PeopleIcon />,
-            path: '/customer',
-            notificationActive: missingSalesPriceCustomerCount > 0,
-          },
-          {
-            label: getUiMessage('menu.outsourcingPartner', '외주 업체', languageCode),
-            icon: <LocalShippingIcon />,
-            path: '/outsourcing-partner',
-          },
-          {
-            label: getUiMessage('menu.materialSupplier', '공급 업체', languageCode),
-            icon: <Inventory2Icon />,
-            path: '/material-supplier',
-          },
+          {label:getUiMessage('menu.partners','Partners',languageCode),icon:<PeopleIcon/>,path:'/business-partner',notificationActive:missingSalesPriceCustomerCount>0,accessChildren:[
+            {label:getUiMessage('menu.customer','Customer',languageCode),path:'/customer'},
+            {label:getUiMessage('menu.outsourcingPartner','Outsourcing Partner',languageCode),path:'/outsourcing-partner'},
+            {label:getUiMessage('menu.materialSupplier','Material Supplier',languageCode),path:'/material-supplier'},
+          ]},
         ],
       },
       {
@@ -918,7 +897,6 @@ const MainLayout = () => {
     miscOpen,
     operationsOpen,
     orderOpen,
-    partnersOpen,
     pendingEmployeeCount,
     pendingOnboardingCount,
     missingSalesPriceCustomerCount,
@@ -952,26 +930,6 @@ const MainLayout = () => {
             (child) => !preferredSalesPaths.includes(child.path)
           ),
         ].filter(Boolean);
-      }
-
-      if (childPaths.has('/customer') && childPaths.has('/outsourcing-partner')) {
-        const preferredPartnerPaths = [
-          '/customer',
-          '/outsourcing-partner',
-          '/material-supplier',
-        ];
-        orderedChildren = [
-          ...preferredPartnerPaths.map(
-            (path) => orderedChildren.find((child) => child.path === path) || null
-          ),
-          ...orderedChildren.filter(
-            (child) => !preferredPartnerPaths.includes(child.path)
-          ),
-        ].filter(Boolean);
-      }
-
-      if (item.menuGroupKey === MENU_GROUP_KEYS.ADMIN) {
-        orderedChildren = orderedChildren.filter((child) => child.path !== '/customer');
       }
 
       if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
@@ -1275,6 +1233,7 @@ const MainLayout = () => {
       if (tabPath.startsWith('/order/') && tabPath !== '/order') {
         return withStoredContext(getUiMessage('menu.order', '주문', languageCode));
       }
+      if (['/business-partner','/customer','/outsourcing-partner','/material-supplier'].includes(tabPath)) return getUiMessage('menu.partners','Partners',languageCode);
       if (tabPath === '/customer/new') {
         return `${getUiMessage('menu.customer', '고객', languageCode)} - ${localizedNewSuffix}`;
       }

@@ -57,7 +57,7 @@ const SystemBoard = lazyImportWithRetry(() => import('./pages/App/system/systemB
 const StaticOptionBoard = lazyImportWithRetry(() => import('./pages/App/system/StaticOptionBoard'));
 const AccessPolicyBoard = lazyImportWithRetry(() => import('./pages/App/system/AccessPolicyBoard'));
 const OnboardingBoard = lazyImportWithRetry(() => import('./pages/App/system/OnboardingBoard'));
-const Customer = lazyImportWithRetry(() => import('./pages/App/Customer'));
+const TradePartners = lazyImportWithRetry(() => import('./pages/App/TradePartners'));
 const CustomerDetail = lazyImportWithRetry(() => import('./pages/App/customer/CustomerDetail'));
 const CustomerPricingBoard = lazyImportWithRetry(() => import('./pages/App/customer/CustomerPricingBoard'));
 const Style = lazyImportWithRetry(() => import('./pages/App/Style'));
@@ -86,7 +86,7 @@ const ApplicationSettings = lazyImportWithRetry(() => import('./pages/App/Applic
 const TransactionCodeSettings = lazyImportWithRetry(() => import('./pages/App/TransactionCodeSettings'));
 const ExpenseMasterSettings = lazyImportWithRetry(() => import('./pages/App/ExpenseMasterSettings'));
 const CodeBaseSettings = lazyImportWithRetry(() => import('./pages/App/CodeBaseSettings'));
-const BusinessPartners = lazyImportWithRetry(() => import('./pages/App/BusinessPartners'));
+
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
 const Order = lazyImportWithRetry(() => import('./pages/App/Order.jsx'));
@@ -298,7 +298,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'customer',
-            element: <Customer />,
+            element: <TradePartners initialType="CUSTOMER" />,
           },
           {
             path: 'customer/new',
@@ -326,15 +326,15 @@ const router = createBrowserRouter([
           },
           {
             path: 'outsourcing-partner',
-            element: <BusinessPartners type="PROCESS_OUTSOURCING" />,
+            element: <TradePartners initialType="PROCESS_OUTSOURCING" />,
           },
           {
             path: 'material-supplier',
-            element: <BusinessPartners type="MATERIAL_SUPPLIER" />,
+            element: <TradePartners initialType="MATERIAL_SUPPLIER" />,
           },
           {
             path: 'business-partner',
-            element: <Navigate to="/outsourcing-partner" replace />,
+            element: <TradePartners />,
           },
           {
             path: 'style',
