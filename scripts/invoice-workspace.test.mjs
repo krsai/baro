@@ -15,6 +15,7 @@ function harness() {
   const requests = [];
   const navigations = [];
   const react = {
+    useMemo: run=>run(), useRef: initial=>({current:initial}),
     createElement: (type, props, ...children) => ({ type, props: { ...props, children } }), Fragment: 'Fragment',
     useState(initial) {
       const slot = index++;
@@ -64,6 +65,7 @@ function harness() {
     requests,
     navigations,
     render() { index = 0; effects = []; const tree = exports.InvoiceCustomerWorkspace({ activeOrgId: 7 }); effects.forEach(run => run()); return tree; },
+    controls: tree=>tree.props.renderSelection({requestChange:run=>run(),disabled:false}),
     find: (tree, type) => all(tree).filter(node => node.type === type),
     tick() { for (const run of [...timers]) { timers.delete(run); run(); } },
     root: () => exports.default(),
@@ -87,78 +89,32 @@ test('invoice menu opens on issued history and enters a separate creation screen
   assert.equal(app.find(app.menu(), 'Table').length, 0);
 });
 
-test('customer selection is required before listing orders; page editor receives the selected customer', async () => {
-  const app = harness();
-  let tree = app.render();
-  app.tick();
-  assert.equal(app.requests.length, 1);
-  assert.match(app.requests[0].url, /\/invoices\/customers/);
-  assert.equal(app.find(tree, 'Table').length, 0);
-  const customer = { id: 8, name: 'Buyer' };
-  app.requests[0].resolve({ rows: [customer] }); await flush();
-  tree = app.render();
-  app.find(tree, 'CustomerSelect')[0].props.onChange(null, customer);
-  app.render(); app.tick();
-  assert.match(app.requests[1].url, /buyerOrgId=8/);
-  app.requests[1].resolve({ rows: [{ orderId: 'o', orderNumber: 'PO', totalQuantity: 10, buyerOrg: customer,
-    assignments: [{ id: 'plan1', style: 'Jacket', progressPercent: 50, plannedQuantity: 10, producedQuantity: 5 }] }, { orderId: 'o2', orderNumber: 'PO2', totalQuantity: 20, buyerOrg: customer }], hasMore: false });
-  await flush(); tree = app.render();
-  const expand = app.find(tree, 'Button').find(node => node.props['aria-expanded'] === false && !node.props.disabled);
-  expand.props.onClick(); tree = app.render();
-  assert.equal(app.find(tree, 'Table').length, 2);
-  assert.ok(app.find(tree, 'TableCell').some(node => node.props.children.includes('50.0%')));
-  app.find(tree, 'Button').find(node => node.props['aria-expanded'] === true).props.onClick(); tree = app.render();
-  assert.equal(app.find(tree, 'Table').length, 1);
-  app.find(tree, 'Checkbox').forEach(box => box.props.onChange(null, true));
-  tree = app.render();
-  const create = app.find(tree, 'Button').find(node => node.props.children.includes('continue'));
-  create.props.onClick(); tree = app.render();
-  const dialog = app.find(tree, 'InvoiceEditor')[0];
-  assert.deepEqual([...dialog.props.orderIds], ['o', 'o2']);
-  assert.equal(dialog.props.buyerOrgId, 8);
-  assert.equal(dialog.props.open, true);
+test('one page always contains the editor and customer/order selectors without a continue step',async()=>{
+ const app=harness();let tree=app.render();assert.equal(tree.type,'InvoiceEditor');assert.deepEqual([...tree.props.orderIds],[]);
+ app.requests[0].resolve({rows:[{id:8,name:'A'}]});await flush();tree=app.render();
+ const controls=app.controls(tree),selects=app.find(controls,'CustomerSelect');assert.equal(selects.length,2);assert.equal(selects[1].props.multiple,true);assert.equal(selects[1].props.disabled,true);
+ selects[0].props.onChange(null,{id:8,name:'A'});app.render();app.tick();assert.match(app.requests[1].url,/buyerOrgId=8/);
+ app.requests[1].resolve({rows:[{orderId:'first',orderNumber:'PO1'}],hasMore:false});await flush();tree=app.render();
+ app.find(app.controls(tree),'CustomerSelect')[1].props.onChange(null,[{orderId:'first',orderNumber:'PO1'}]);tree=app.render();
+ assert.equal(tree.type,'InvoiceEditor');assert.deepEqual([...tree.props.orderIds],['first']);assert.equal(tree.props.buyerOrgId,8);
 });
-
-test('changing or clearing customer discards old orders and ignores late responses', async () => {
-  const app = harness();
-  let tree = app.render();
-  app.requests[0].resolve({ rows: [{ id: 8, name: 'A' }, { id: 9, name: 'B' }] }); await flush();
-  tree = app.render();
-  app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 8, name: 'A' });
-  app.render(); app.tick();
-  tree = app.render();
-  app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 9, name: 'B' });
-  app.render(); app.tick();
-  app.requests[1].resolve({ rows: [{ orderId: 'wrong', orderNumber: 'Wrong customer' }], hasMore: false }); await flush();
-  tree = app.render();
-  assert.equal(app.find(tree, 'Button').find(node => node.props.children.includes('continue')).props.disabled, true);
-  assert.match(app.requests[2].url, /buyerOrgId=9/);
-  app.find(tree, 'CustomerSelect')[0].props.onChange(null, null);
-  app.render(); app.tick();
-  app.requests[2].resolve({ rows: [{ orderId: 'late' }], hasMore: false }); await flush();
-  tree = app.render();
-  assert.equal(app.find(tree, 'Table').length, 0);
-  assert.equal(app.requests.length, 3);
-  assert.equal(app.root().props.key, 7, 'organization change remounts all customer/order/editor state');
+test('customer changes clear selections and ignore stale order responses',async()=>{
+ const app=harness();let tree=app.render();app.requests[0].resolve({rows:[]});await flush();tree=app.render();
+ app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,{id:8,name:'A'});app.render();app.tick();
+ tree=app.render();app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,{id:9,name:'B'});app.render();app.tick();
+ app.requests[1].resolve({rows:[{orderId:'wrong'}],hasMore:false});await flush();tree=app.render();
+ assert.deepEqual([...app.find(app.controls(tree),'CustomerSelect')[1].props.options],[]);assert.match(app.requests[2].url,/buyerOrgId=9/);
+ app.requests[2].resolve({rows:[{orderId:'correct',orderNumber:'PO-B'}],hasMore:false});await flush();tree=app.render();
+ assert.equal(app.find(app.controls(tree),'CustomerSelect')[1].props.options[0].orderId,'correct');
+ app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,null);tree=app.render();assert.deepEqual([...tree.props.orderIds],[]);assert.equal(app.find(app.controls(tree),'CustomerSelect')[1].props.disabled,true);
 });
-
-test('order selection survives pagination and is cleared when the customer changes', async () => {
-  const app = harness();
-  let tree = app.render();
-  app.requests[0].resolve({ rows: [{ id: 8, name: 'A' }, { id: 9, name: 'B' }] }); await flush();
-  tree = app.render();
-  app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 8, name: 'A' });
-  app.render(); app.tick();
-  app.requests[1].resolve({ rows: [{ orderId: 'first', orderNumber: 'PO1', buyerOrg: { name: 'A' } }], hasMore: true }); await flush();
-  tree = app.render(); app.find(tree, 'Checkbox')[0].props.onChange(null, true);
-  tree = app.render(); app.find(tree, 'Button').find(b => b.props.children.includes('다음')).props.onClick();
-  app.render(); app.tick();
-  app.requests[2].resolve({ rows: [{ orderId: 'second', orderNumber: 'PO2', buyerOrg: { name: 'A' } }], hasMore: false }); await flush();
-  tree = app.render(); app.find(tree, 'Checkbox')[0].props.onChange(null, true);
-  tree = app.render(); app.find(tree, 'Button').find(b => b.props.children.includes('continue')).props.onClick();
-  tree = app.render(); assert.deepEqual([...app.find(tree, 'InvoiceEditor')[0].props.orderIds], ['first', 'second']);
-  app.find(tree, 'InvoiceEditor')[0].props.onClose(); tree = app.render();
-  app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 9, name: 'B' });
-  tree = app.render();
-  assert.equal(app.find(tree, 'Button').find(b => b.props.children.includes('continue')).props.disabled, true);
+test('searching more orders keeps already selected order FKs on the same form',async()=>{
+ const app=harness();let tree=app.render();app.requests[0].resolve({rows:[]});await flush();tree=app.render();
+ app.find(app.controls(tree),'CustomerSelect')[0].props.onChange(null,{id:8,name:'A'});app.render();app.tick();
+ const first={orderId:'first',orderNumber:'PO1'};app.requests[1].resolve({rows:[first],hasMore:true});await flush();tree=app.render();
+ app.find(app.controls(tree),'CustomerSelect')[1].props.onChange(null,[first]);tree=app.render();
+ app.find(app.controls(tree),'CustomerSelect')[1].props.onInputChange(null,'PO2','input');app.render();app.tick();
+ assert.match(app.requests[2].url,/search=PO2/);app.requests[2].resolve({rows:[{orderId:'second',orderNumber:'PO2'}],hasMore:false});await flush();tree=app.render();
+ assert.deepEqual([...tree.props.orderIds],['first']);const orderSelect=app.find(app.controls(tree),'CustomerSelect')[1];
+ assert.equal(orderSelect.props.value[0].orderId,'first');assert.equal(orderSelect.props.options.length,2);
 });

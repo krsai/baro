@@ -96,6 +96,9 @@ const SearchableSelect = ({
   };
 
   const handleKeyboardSelect = (event) => {
+    // MUI manages array selection/toggling for multiple inputs. The custom
+    // single-value shortcut below must not replace that array with one object.
+    if (props.multiple) return;
     const isForwardTab = event.key === 'Tab' && !event.shiftKey;
     const isEnter = event.key === 'Enter' && !event.shiftKey;
     if (!isForwardTab && !isEnter) return;

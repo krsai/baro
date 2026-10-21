@@ -5,8 +5,8 @@ import path from 'node:path';
 import {chromium} from 'playwright-core';
 const fixture=path.resolve('frontend/invoice-editor-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import {MemoryRouter} from 'react-router-dom';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Editor from '/src/pages/App/invoice/InvoiceEditor.jsx';import List from '/src/pages/App/invoice/InvoiceList.jsx';
-const mode=new URLSearchParams(location.search).get('mode');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),mode==='list'?React.createElement(List,{orgId:1,languageCode:window.testLang}):React.createElement(Editor,{orgId:1,buyerOrgId:2,orderIds:['o1'],languageCode:window.testLang,onClose:()=>window.closedEditor=true,onIssued:()=>window.issuedEditor=true}))));</script></body></html>`);
+import React from 'react';import {MemoryRouter} from 'react-router-dom';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Editor from '/src/pages/App/invoice/InvoiceEditor.jsx';import List from '/src/pages/App/invoice/InvoiceList.jsx';import Workspace from '/src/pages/App/invoice/InvoiceWorkspace.jsx';
+const mode=new URLSearchParams(location.search).get('mode');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),mode==='workspace'?React.createElement(Workspace,{view:'editor'}):mode==='list'?React.createElement(List,{orgId:1,languageCode:window.testLang}):React.createElement(Editor,{orgId:1,buyerOrgId:2,orderIds:['o1'],languageCode:window.testLang,onClose:()=>window.closedEditor=true,onIssued:()=>window.issuedEditor=true}))));</script></body></html>`);
 const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
 const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
@@ -77,5 +77,33 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Invoice editor passed ko/en/vi: page layout, review reset, direct issue, responsive tables and same-key recovery after save/issue response loss.');
+ for(const lang of ['ko','en','vi']){
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];let allowDiscard=false;
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>allowDiscard?d.accept():d.dismiss());
+  await page.addInitScript(lang=>{window.testLang=lang;},lang);
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
+  await page.route('**/invoices/**',r=>{
+   const url=new URL(r.request().url()),headers={'Access-Control-Allow-Origin':'*'};
+   if(url.pathname.endsWith('/customers'))return r.fulfill({headers,json:{rows:[{id:2,name:'Customer'}]}});
+   if(url.pathname.endsWith('/orders'))return r.fulfill({headers,json:{rows:[{orderId:'o1',orderNumber:'PO-1',totalQuantity:10,progressPercent:100},{orderId:'o2',orderNumber:'PO-2',totalQuantity:10,progressPercent:100}],hasMore:false}});
+   assert.ok(url.pathname.includes('/order-source/'));assert.equal(url.searchParams.get('buyerOrgId'),'2');
+   const second=url.pathname.endsWith('/o2');return r.fulfill({headers,json:{...source,orderId:second?'o2':'o1',orderNumber:second?'PO-2':'PO-1'}});
+  });
+  await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=workspace`);
+  assert.equal(await page.locator('h1').count(),1);assert.equal(await page.locator('table').count(),0);
+  await page.getByRole('combobox').nth(0).click();await page.getByRole('option',{name:'Customer',exact:true}).click();
+  const orders=page.getByRole('combobox').nth(1);await orders.click();await page.getByRole('option',{name:/PO-1/}).waitFor();await orders.press('ArrowDown');await orders.press('Enter');await page.keyboard.press('Escape');
+  await page.getByLabel('REMARK',{exact:true}).waitFor();await page.getByLabel('REMARK',{exact:true}).fill('Keep this input');
+  await orders.click();await page.getByRole('option',{name:/PO-2/}).click();await page.keyboard.press('Escape');
+  assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Keep this input','Rejected selection change must preserve entered lines');
+  allowDiscard=true;await orders.click();await page.getByRole('option',{name:/PO-2/}).click();await page.keyboard.press('Escape');
+  await page.waitForFunction(()=>document.querySelectorAll('fieldset table').length>0&&[...document.querySelectorAll('fieldset table:first-of-type tbody tr')].some(row=>row.textContent.includes('PO-2')));
+  assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
+  assert.equal(await page.getByRole('button',{name:lang==='ko'?'청구 내역 입력':lang==='vi'?'Nhập chi tiết hóa đơn':'Enter invoice details',exact:true}).count(),0);
+  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+  assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('Invoice editor passed ko/en/vi: compact customer/multi-order selection on the same form, discard protection, responsive layout, direct issue and retry recovery.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

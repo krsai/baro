@@ -90,7 +90,7 @@ const messages = {
   }
 };
 
-export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, languageCode = 'ko' }) {
+export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, renderSelection, languageCode = 'ko' }) {
   const pageDialogs = usePageDialogs();
   const ui = invoiceUi[languageCode] || invoiceUi.en;
   const t = messages[languageCode] || messages.en;
@@ -126,6 +126,10 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   useEffect(() => {
     if (!open) {
       draftRef.current = null; setSavedDraft(null); clientKey.current = globalThis.crypto.randomUUID();
+      return;
+    }
+    if (!draftId && !orderId && !orderIds?.length) {
+      setSource(null); setFields(null); setLines([]); setLoading(false); setError(''); setReviewed(false);
       return;
     }
     let cancelled = false;
@@ -176,6 +180,13 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     if (saving) return;
     if ((!dirty && !uncertain) || await pageDialogs.confirm(ui.discard)) { setDirty(false); onClose(); }
   };
+  const requestSelectionChange = async change => {
+    if (saving || uncertain) return;
+    if ((dirty || savedDraft) && !await pageDialogs.confirm(ui.discard)) return;
+    draftRef.current = null; setSavedDraft(null); clientKey.current = globalThis.crypto.randomUUID();
+    setDirty(false); setReviewed(false); setSource(null); setFields(null); setError('');
+    change();
+  };
   const issue = async () => {
     if (!source || saving || !reviewed || calculation?.issues.length || !fields?.number.trim() || !fields?.date) return;
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
@@ -207,12 +218,14 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   </Stack>}>
     <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}>
       <Stack spacing={2} sx={{p:2,minWidth:0}}>
+        {renderSelection?.({requestChange:requestSelectionChange,disabled:saving||uncertain})}
+        {renderSelection && !source && !loading && <Typography variant="body2" color="text.secondary">{billingText.customer} · {billingText.orders}</Typography>}
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'180px minmax(0,1fr) minmax(0,1fr)'},gap:2}}>
+          <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:renderSelection?'180px minmax(0,1fr)':'180px minmax(0,1fr) minmax(0,1fr)'},gap:2}}>
             <TextField size="small" label={ui.date} type="date" value={fields.date} onChange={e=>changeField('date',e.target.value)} InputLabelProps={{shrink:true}}/>
-            <TextField size="small" label={billingText.customer} value={fields.buyer.name} slotProps={{input:{readOnly:true}}}/>
+            {!renderSelection && <TextField size="small" label={billingText.customer} value={fields.buyer.name} slotProps={{input:{readOnly:true}}}/>}
             <TextField size="small" label={ui.number} value={fields.number} onChange={e=>changeField('number',e.target.value)} inputProps={{maxLength:200}}/>
           </Box>
           <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
