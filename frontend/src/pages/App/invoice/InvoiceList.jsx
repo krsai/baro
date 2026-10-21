@@ -1,3 +1,4 @@
+import PageContentStack from '../../../components/PageContentStack';
 import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useState } from 'react';
@@ -182,8 +183,9 @@ export default function InvoiceList({ orgId, languageCode }) {
   const amount=(value,currencyCode)=>formatCurrency(value,{currencyCode,languageCode});
   const active=menuRow?.row;
   const action=(label,run,color)=> <MenuItem key={label} sx={color?{color}:undefined} onClick={()=>{setMenuRow(null);run(active);}}>{label}</MenuItem>;
-  return <Paper variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
-    <SearchPanel sx={{border:0,borderRadius:0}} search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} filters={<TextField select size="small" label={common.invoiceStatus} value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}} sx={{minWidth:180}}><MenuItem value="">{ui.all}</MenuItem>{['ISSUED','CANCELLED','SUPERSEDED'].map((value,index)=><MenuItem key={value} value={value}>{[ui.issued,ui.cancelled,ui.superseded][index]}</MenuItem>)}</TextField>} onReset={()=>{setSearch('');setStatus('');setPage(0);}} />
+  return <PageContentStack>
+    <SearchPanel search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} filters={<TextField select size="small" label={common.invoiceStatus} value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}} sx={{minWidth:180}}><MenuItem value="">{ui.all}</MenuItem>{['ISSUED','CANCELLED','SUPERSEDED'].map((value,index)=><MenuItem key={value} value={value}>{[ui.issued,ui.cancelled,ui.superseded][index]}</MenuItem>)}</TextField>} onReset={()=>{setSearch('');setStatus('');setPage(0);}} />
+    <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
       {[common.invoiceNumber,common.issuedDate,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,ui.actions].map((label,index)=><TableCell key={label} align={index>=4&&index<=6?'right':'left'}>{label}</TableCell>)}
@@ -199,6 +201,7 @@ export default function InvoiceList({ orgId, languageCode }) {
       </TableRow>)}
     </TableBody></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><Stack direction="row" alignItems="center" spacing={1}><Button disabled={!page||loading} onClick={()=>setPage(v=>v-1)}>{common.previous}</Button><Typography variant="caption">{page+1}</Typography><Button disabled={!issued.hasMore||loading} onClick={()=>setPage(v=>v+1)}>{common.next}</Button></Stack></Stack>
+    </Paper>
     <Menu anchorEl={menuRow?.anchor} open={Boolean(active)} onClose={()=>setMenuRow(null)}>
       {active&&[
         action(labels.history,showHistory),action(labels.credits,row=>setCreditId(row.id)),
@@ -209,5 +212,5 @@ export default function InvoiceList({ orgId, languageCode }) {
     </Menu>
     {creditId&&<InvoiceCreditDialog key={creditId} invoiceId={creditId} orgId={orgId} languageCode={languageCode} onClose={()=>setCreditId(null)} onChanged={()=>{setReload(v=>v+1);emitWorkspaceDataChanged({topics:[WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],orgId});}}/>}
     {finalReviewId&&<InvoiceFinalReviewDialog key={finalReviewId} invoiceId={finalReviewId} orgId={orgId} languageCode={languageCode} onClose={()=>setFinalReviewId(null)} onSaved={()=>{setFinalReviewId(null);setReload(v=>v+1);emitWorkspaceDataChanged({topics:[WORKSPACE_DATA_TOPICS.ISSUED_INVOICES,WORKSPACE_DATA_TOPICS.ORDERS],orgId});}}/>}
-  </Paper>;
+  </PageContentStack>;
 }

@@ -2930,6 +2930,8 @@ const WorkDetail = ({
           </Stack>
         </Paper>
 
+        <SearchPanel search={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} />
+
         <Paper
           variant="outlined"
           sx={{
@@ -2940,7 +2942,7 @@ const WorkDetail = ({
             minHeight: 420,
           }}
         >
-          <SearchPanel search={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
+
 
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!selectedFactoryId ? (

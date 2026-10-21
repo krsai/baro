@@ -67,6 +67,18 @@ try{
   try{await page.getByText('INV-001',{exact:true}).waitFor({timeout:8000});}catch(e){throw new Error(JSON.stringify({errors,queries,body:await page.locator('body').innerText()}));}
   assert.doesNotMatch(await page.locator('body').innerText(),/초안|draft|bản nháp/i);
   assert.equal(await page.locator('tbody button').count(),2,'Rows expose PDF and one action menu');
+  const assertSeparateCards=async()=>{
+   const layout=await page.locator('[data-search-panel]').evaluate(search=>{
+    const results=document.querySelector('[data-search-results]');
+    return {siblings:search.parentElement===results.parentElement,
+     nested:results.contains(search),gap:results.getBoundingClientRect().top-search.getBoundingClientRect().bottom,
+     border:getComputedStyle(search).borderTopWidth,radius:parseFloat(getComputedStyle(search).borderTopLeftRadius)};
+   });
+   assert.equal(layout.siblings,true);assert.equal(layout.nested,false);
+   assert.ok(layout.gap>=20,'Search and results have a visible section gap');
+   assert.equal(layout.border,'1px');assert.ok(layout.radius>0,'Search keeps its own rounded card');
+  };
+  await assertSeparateCards();
   await page.getByRole('button',{name:lang==='ko'?'작업':lang==='vi'?'Thao tác':'Actions',exact:true}).click();
   await page.getByRole('menuitem',{name:lang==='ko'?'개정':lang==='vi'?'Sửa đổi':'Revise',exact:true}).waitFor();
   assert.equal(await page.getByRole('menuitem').count(),6);await page.keyboard.press('Escape');
@@ -74,7 +86,7 @@ try{
   await page.getByPlaceholder(lang==='ko'?'청구번호·고객·주문 검색':lang==='vi'?'Tìm số hóa đơn, khách hàng hoặc đơn hàng':'Search invoice, customer or order').fill('PO-1');
   await page.waitForResponse(r=>r.url().includes('search=PO-1'));
   assert.ok(queries.some(q=>q.search==='PO-1'&&q.page==='0'));
-  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await assertSeparateCards();}
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ['ko','en','vi']){
