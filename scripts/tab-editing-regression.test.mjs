@@ -3,6 +3,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
+test('new and replacement detail tabs stay beside their list across navigation paths', () => {
+  const source=fs.readFileSync('frontend/src/context/AppContext.jsx','utf8');
+  let tabs=[{id:'/dashboard'},{id:'/outsourcing-record'},{id:'/invoices'},{id:'/invoices/new'}];
+  const context=vm.createContext({useCallback:fn=>fn,unsavedGuardsRef:{current:new Map()},setOpenTabs:fn=>{tabs=fn(tabs);}});
+  vm.runInContext(source.slice(source.indexOf('  const openTab ='),source.indexOf('  const markTabChanged ='))+'\nglobalThis.open=openTab;',context);
+  const ids=()=>Array.from(tabs,tab=>tab.id);
+  context.open({id:'/outsourcing-record/new'});
+  assert.deepEqual(ids(),['/dashboard','/outsourcing-record','/outsourcing-record/new','/invoices','/invoices/new']);
+  context.open({id:'/outsourcing-record/edit/request/6'},{insertAfterId:'/invoices/new'});
+  assert.deepEqual(ids(),['/dashboard','/outsourcing-record','/outsourcing-record/edit/request/6','/invoices','/invoices/new']);
+  context.open({id:'/invoices/new',label:'Create invoice'},{updateOnly:true});
+  assert.deepEqual(ids(),['/dashboard','/outsourcing-record','/outsourcing-record/edit/request/6','/invoices','/invoices/new']);
+  context.open({id:'/style/5'},{insertAfterId:'/dashboard'});
+  assert.deepEqual(ids().slice(0,3),['/dashboard','/style/5','/outsourcing-record']);
+  // A similar prefix is not a parent, and the closest open ancestor wins.
+  tabs=[{id:'/order'},{id:'/orders'},{id:'/orders/8'},{id:'/dashboard'}];
+  context.open({id:'/orders/8/history?view=all'});
+  assert.deepEqual(ids(),['/order','/orders','/orders/8','/orders/8/history?view=all','/dashboard']);
+});
+
 test('expense forms share one slot even on automatic route opens and stale relabeling cannot resurrect a closed detail',()=>{
   const source=fs.readFileSync('frontend/src/context/AppContext.jsx','utf8');
   let tabs=[{id:'/outsourcing-record'},{id:'/outsourcing-record/edit/legacy/1'},{id:'/outsourcing-record/edit/request/2'},{id:'/style/4'}];

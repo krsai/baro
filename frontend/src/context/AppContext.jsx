@@ -86,30 +86,36 @@ export const AppProvider = ({ children }) => {
         }
       } else {
         changed = true;
-        if (replacementIndex >= 0) {
+        // Route-driven opens also arrive here without navigation options. Keep
+        // create/detail tabs next to their closest open list, regardless of
+        // which unrelated tabs were opened later.
+        const pathname = String(tab.id).split(/[?#]/)[0].replace(/\/$/, '');
+        const parentTab = tabs.reduce((closest, candidate) => {
+          const candidatePath = String(candidate.id).split(/[?#]/)[0].replace(/\/$/, '');
+          if (!candidatePath || !pathname.startsWith(`${candidatePath}/`)) return closest;
+          return !closest || candidatePath.length > closest.path.length
+            ? { id: candidate.id, path: candidatePath }
+            : closest;
+        }, null);
+        const insertAfterId = parentTab?.id || options?.insertAfterId;
+        const insertAfterIndex = insertAfterId
+          ? tabs.findIndex((item) => item.id === insertAfterId)
+          : -1;
+        if (insertAfterIndex >= 0) {
+          tabs = [
+            ...tabs.slice(0, insertAfterIndex + 1),
+            tab,
+            ...tabs.slice(insertAfterIndex + 1),
+          ];
+        } else if (replacementIndex >= 0) {
           tabs = [
             ...tabs.slice(0, replacementIndex),
             tab,
             ...tabs.slice(replacementIndex),
           ];
         } else {
-          // A tab opened from within another tab's screen (e.g. a "단가"
-          // button on the customer list opening the pricing tab) is a child
-          // of the tab the user was on, not an unrelated new tab. Place it
-          // immediately after that origin tab instead of at the far end of
-          // the tab strip, so it doesn't jump past unrelated tabs opened
-          // earlier (A, B open -> opening C from A gives A, C, B).
-          const insertAfterId = options?.insertAfterId;
-          const insertAfterIndex = insertAfterId
-            ? tabs.findIndex((t) => t.id === insertAfterId)
-            : -1;
-          tabs = insertAfterIndex >= 0
-            ? [
-                ...tabs.slice(0, insertAfterIndex + 1),
-                tab,
-                ...tabs.slice(insertAfterIndex + 1),
-              ]
-            : [...tabs, tab];
+          // No open parent or origin: append an independent tab.
+          tabs = [...tabs, tab];
         }
       }
 
