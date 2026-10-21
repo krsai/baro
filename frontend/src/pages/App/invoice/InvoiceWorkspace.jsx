@@ -1,6 +1,6 @@
 import PageContentStack from '../../../components/PageContentStack';
 import React, { useEffect, useState } from 'react';
-import { Alert, Box, Button, Checkbox, CircularProgress, Stack, Table, TableBody, TableCell,
+import { Alert, Box, Button, Checkbox, CircularProgress, Paper, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -9,8 +9,10 @@ import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
-import InvoiceDraftDialog from '../order/InvoiceDraftDialog';
-import InvoiceDraftList from './InvoiceDraftList';
+import InvoiceEditor from './InvoiceEditor';
+import InvoiceList from './InvoiceList';
+import {useLocation} from 'react-router-dom';
+import {invoiceUi} from '../../../constants/invoiceUi';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 
 export default function InvoiceWorkspace({ view = 'list' } = {}) {
@@ -25,19 +27,16 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
   if (view === 'editor') {
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
   }
-  return <AppPageContainer title={t.title}>
-    <PageContentStack>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
-        <Typography variant="h6">{t.issuedInvoices}</Typography>
-        <Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>
-      </Stack>
-      <InvoiceDraftList orgId={activeOrgId} languageCode={languageCode} />
-    </PageContentStack>
+  return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>}>
+    <InvoiceList orgId={activeOrgId} languageCode={languageCode}/>
   </AppPageContainer>;
 }
 
 function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
+  const location=useLocation();
+  const revisionId=new URLSearchParams(location.search).get('revision');
   const { languageCode } = useLanguage();
+  const ui=invoiceUi[languageCode]||invoiceUi.en;
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
   const [search, setSearch] = useState('');
   const [billingHistory, setBillingHistory] = useState('ALL');
@@ -78,11 +77,9 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   }, [activeOrgId, customer, search, billingHistory, page, revision]);
   useWorkspaceRefreshOnEvent({ orgId: activeOrgId, topics: ['orders', 'customers'],
     isBlocked: Boolean(selected), onRefresh: () => setRevision((v) => v + 1) });
-  return <AppPageContainer title={t.newInvoice}>
-    <PageContentStack>
-      <Box><Button onClick={onBack} disabled={Boolean(selected)}>{t.backToInvoices}</Button></Box>
-      <Alert severity="info">{t.notice}</Alert>
-      <Typography variant="body2" color="text.secondary">{t.workflow}</Typography>
+  if(selected || revisionId) return <InvoiceEditor key={revisionId || selected.join(':')} open orderIds={selected} draftId={revisionId} orgId={activeOrgId} buyerOrgId={customer?.id} languageCode={languageCode} onClose={()=>{if(revisionId)onBack();else setSelected(null);}} onIssued={onBack}/>;
+  return <AppPageContainer title={ui.create} titleActions={<Button onClick={onBack}>{ui.cancel}</Button>}>
+    <Paper variant="outlined" sx={{p:2,borderRadius:2}}><PageContentStack>
       <SearchableSelect label={t.customer} options={customers} value={customer} loading={customersLoading}
         disabled={Boolean(selected) || !activeOrgId} autoSelect={false}
         isOptionEqualToValue={(option, value) => option.id === value.id}
@@ -94,14 +91,14 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
           setResult({ rows: [], hasMore: false }); setError(false); setLoading(Boolean(value));
         }} />
       {customersError && <Alert severity="error" action={<Button onClick={() => setRevision((v) => v + 1)}>{t.retry}</Button>}>{t.customersFailed}</Alert>}
-      {!customer && <Typography color="text.secondary">{t.selectCustomer}</Typography>}
+      {!customer && <Typography color="text.secondary">{ui.selectCustomer}</Typography>}
       {customer && <>
-      <Typography variant="h6">{t.orders}</Typography>
+      <Typography component="h2" variant="subtitle2">{ui.orders}</Typography>
       <Stack direction="row" alignItems="center" justifyContent="space-between">
         <Typography>{t.selectedOrders}: {chosenOrders.length}</Typography>
-        <Button variant="contained" disabled={!chosenOrders.length} onClick={() => setSelected([...chosenOrders])}>{t.create}</Button>
+        <Button variant="contained" disabled={!chosenOrders.length} onClick={() => setSelected([...chosenOrders])}>{ui.continue}</Button>
       </Stack>
-      <Alert severity="info">{languageCode === 'ko' ? '발행 이력은 원장 기준입니다. 비율 청구는 수량 잔여로 환산하지 않습니다.' : languageCode === 'vi' ? 'Lịch sử phát hành dựa trên sổ cái. Không quy đổi hóa đơn theo tỷ lệ thành số lượng còn lại.' : 'Issue history comes from the ledger. Percentage billing is not converted into a remaining quantity.'}</Alert>
+
       <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
         <TextField size="small" label={t.search} value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); setResult({ rows: [], hasMore: false }); setLoading(true); }} inputProps={{ maxLength: 200 }} />
         <TextField select SelectProps={{ native: true }} size="small" label={languageCode === 'ko' ? '발행 이력' : 'Issue history'} value={billingHistory}
@@ -144,7 +141,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
         <Button disabled={loading || !result.hasMore} onClick={() => setPage((v) => v + 1)}>{t.next}</Button>
       </Stack>
       </>}
-    </PageContentStack>
-    <InvoiceDraftDialog open={Boolean(selected)} orderIds={selected} orgId={activeOrgId} buyerOrgId={customer?.id} languageCode={languageCode} onClose={() => setSelected(null)} />
+    </PageContentStack></Paper>
+
   </AppPageContainer>;
 }

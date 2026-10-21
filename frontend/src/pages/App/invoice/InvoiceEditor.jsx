@@ -1,38 +1,101 @@
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead,
+import { Alert, Box, Button, Checkbox, CircularProgress, Accordion, AccordionSummary, AccordionDetails, Paper, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography } from '@mui/material';
+import AppPageContainer from '../../../components/AppPageContainer';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import {invoiceUi,invoiceSubmissionUi} from '../../../constants/invoiceUi';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
-import { INVOICE_BASES, calculateInvoiceDraft, buildInvoicePrintHtml, combineInvoiceSources, applyOrderBillingPercentages } from '../../../utils/invoiceDraft.mjs';
+import { INVOICE_BASES, calculateInvoiceDraft, combineInvoiceSources, applyOrderBillingPercentages } from '../../../utils/invoiceDraft.mjs';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
-import { invoiceDraftStorageMessages } from '../../../constants/invoiceDraftStorageMessages';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import { restoreInvoiceDraftLines } from '../../../utils/invoiceDraftRestore.mjs';
 
 const messages = {
-  ko: { title: '청구서 초안', notice: '1단계: 검토용 초안입니다. 정식 발행·보관·완전 잠금은 아직 적용되지 않습니다. 입력한 내용은 창을 닫으면 사라집니다.',
-    load: '주문·생산 실적·단가표를 불러오지 못했습니다.', close: '닫기', print: 'PDF 초안 출력',
-    review: '생산 수량과 청구 수량의 차이, 세부 수량 및 단가를 확인했습니다.',
-    explanation: '수량 변경은 청구서에만 반영됩니다. 단가는 스타일별 청구 수량 합계에 해당하는 현재 활성 단가표 구간을 사용합니다. 생산 실적은 스타일 단위이며 색상·사이즈별 실적을 뜻하지 않습니다.',
-    ordered: '주문', produced: '생산 실적', invoice: '청구', difference: '차이', quantity: '청구 수량', reason: '수량 변경 사유',
-    price: '단가', amount: '금액', scope: '단가 기준', currency: '통화', metadata: '문서 및 결제 정보',
-    seller: '판매자', buyer: '구매자', retry: '다시 조회', popup: '팝업이 차단되었습니다. 이 사이트의 팝업을 허용해 주세요.',
-    issues: { PRODUCTION: '완료되지 않았거나 생산 근거 확인이 필요한 스타일/배정이 있습니다.', QUANTITY: '수량은 0 이상의 정수로 입력하세요.', REASON: '주문 수량과 달라진 행에는 변경 사유가 필요합니다.', PRICE: '해당 통화·CMT/FP·수량 구간의 활성 단가가 없습니다. 고객 단가표를 확인하세요.', EMPTY: '청구 수량이 없습니다.', CURRENCY: '통화를 선택하세요.', DEDUCTION: '차감액은 이번 기준액 이하의 유효한 금액이어야 합니다.', DEDUCTION_REASON: '기본 차감액을 변경하면 사유가 필요합니다.' } },
-  en: { title: 'Invoice draft', notice: 'Phase 1: review draft only. Issuing, archiving and final locking are not yet available. Changes are discarded when this dialog closes.',
-    load: 'Unable to load order, production and prices.', close: 'Close', print: 'Print PDF draft',
-    review: 'I reviewed production differences, detailed quantities and prices.', explanation: 'Changes affect this draft only. Active price tiers use total invoice quantity per style. Production totals are per style, not per color or size.',
-    ordered: 'Ordered', produced: 'Produced', invoice: 'Invoiced', difference: 'Difference', quantity: 'Invoice qty', reason: 'Adjustment reason', price: 'Unit price', amount: 'Amount', scope: 'Price basis', currency: 'Currency', metadata: 'Document and payment details', seller: 'Seller', buyer: 'Buyer', retry: 'Reload', popup: 'Allow pop-ups for this site to print.',
-    issues: { PRODUCTION: 'Some styles/assignments are incomplete or require production review.', QUANTITY: 'Enter a nonnegative integer quantity.', REASON: 'Explain each quantity adjustment.', PRICE: 'No active price for this currency, basis or quantity tier. Check customer prices.', EMPTY: 'No quantity to invoice.', CURRENCY: 'Select a currency.', DEDUCTION: 'Deduction must be valid and no greater than the current amount.', DEDUCTION_REASON: 'Explain changes from the default deduction.' } },
-  vi: { title: 'Bản nháp hóa đơn', notice: 'Giai đoạn 1: chỉ để kiểm tra. Chưa phát hành, lưu trữ hoặc khóa hoàn toàn. Dữ liệu nhập sẽ mất khi đóng cửa sổ.', load: 'Không thể tải đơn hàng, sản lượng và đơn giá.', close: 'Đóng', print: 'In PDF bản nháp', review: 'Tôi đã kiểm tra chênh lệch sản lượng, số lượng chi tiết và đơn giá.', explanation: 'Thay đổi chỉ áp dụng cho bản nháp. Bậc giá hiện hành dựa trên tổng số lượng hóa đơn theo mã hàng. Sản lượng không được phân bổ theo màu hoặc cỡ.', ordered: 'Đặt hàng', produced: 'Sản xuất', invoice: 'Hóa đơn', difference: 'Chênh lệch', quantity: 'SL hóa đơn', reason: 'Lý do điều chỉnh', price: 'Đơn giá', amount: 'Thành tiền', scope: 'Cơ sở giá', currency: 'Tiền tệ', metadata: 'Thông tin hóa đơn và thanh toán', seller: 'Bên bán', buyer: 'Bên mua', retry: 'Tải lại', popup: 'Cho phép cửa sổ bật lên để in.', issues: { PRODUCTION: 'Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.', QUANTITY: 'Nhập số nguyên không âm.', REASON: 'Cần lý do điều chỉnh số lượng.', PRICE: 'Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.', EMPTY: 'Chưa có số lượng xuất hóa đơn.', CURRENCY: 'Chọn tiền tệ.', DEDUCTION: 'Khoản khấu trừ phải hợp lệ và không vượt quá số tiền hiện tại.', DEDUCTION_REASON: 'Cần lý do khi thay đổi khoản khấu trừ mặc định.' } },
+  "ko": {
+    "load": "주문·생산 실적·단가표를 불러오지 못했습니다.",
+    "review": "생산 수량과 청구 수량의 차이, 세부 수량 및 단가를 확인했습니다.",
+    "ordered": "주문",
+    "quantity": "청구 수량",
+    "reason": "수량 변경 사유",
+    "price": "단가",
+    "amount": "금액",
+    "scope": "단가 기준",
+    "currency": "통화",
+    "metadata": "문서 및 결제 정보",
+    "seller": "판매자",
+    "buyer": "구매자",
+    "retry": "다시 조회",
+    "issues": {
+      "PRODUCTION": "완료되지 않았거나 생산 근거 확인이 필요한 스타일/배정이 있습니다.",
+      "QUANTITY": "수량은 0 이상의 정수로 입력하세요.",
+      "REASON": "주문 수량과 달라진 행에는 변경 사유가 필요합니다.",
+      "PRICE": "해당 통화·CMT/FP·수량 구간의 활성 단가가 없습니다. 고객 단가표를 확인하세요.",
+      "EMPTY": "청구 수량이 없습니다.",
+      "CURRENCY": "통화를 선택하세요.",
+      "DEDUCTION": "차감액은 이번 기준액 이하의 유효한 금액이어야 합니다.",
+      "DEDUCTION_REASON": "기본 차감액을 변경하면 사유가 필요합니다."
+    }
+  },
+  "en": {
+    "load": "Unable to load order, production and prices.",
+    "review": "I reviewed production differences, detailed quantities and prices.",
+    "ordered": "Ordered",
+    "quantity": "Invoice qty",
+    "reason": "Adjustment reason",
+    "price": "Unit price",
+    "amount": "Amount",
+    "scope": "Price basis",
+    "currency": "Currency",
+    "metadata": "Document and payment details",
+    "seller": "Seller",
+    "buyer": "Buyer",
+    "retry": "Reload",
+    "issues": {
+      "PRODUCTION": "Some styles/assignments are incomplete or require production review.",
+      "QUANTITY": "Enter a nonnegative integer quantity.",
+      "REASON": "Explain each quantity adjustment.",
+      "PRICE": "No active price for this currency, basis or quantity tier. Check customer prices.",
+      "EMPTY": "No quantity to invoice.",
+      "CURRENCY": "Select a currency.",
+      "DEDUCTION": "Deduction must be valid and no greater than the current amount.",
+      "DEDUCTION_REASON": "Explain changes from the default deduction."
+    }
+  },
+  "vi": {
+    "load": "Không thể tải đơn hàng, sản lượng và đơn giá.",
+    "review": "Tôi đã kiểm tra chênh lệch sản lượng, số lượng chi tiết và đơn giá.",
+    "ordered": "Đặt hàng",
+    "quantity": "SL hóa đơn",
+    "reason": "Lý do điều chỉnh",
+    "price": "Đơn giá",
+    "amount": "Thành tiền",
+    "scope": "Cơ sở giá",
+    "currency": "Tiền tệ",
+    "metadata": "Thông tin hóa đơn và thanh toán",
+    "seller": "Bên bán",
+    "buyer": "Bên mua",
+    "retry": "Tải lại",
+    "issues": {
+      "PRODUCTION": "Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.",
+      "QUANTITY": "Nhập số nguyên không âm.",
+      "REASON": "Cần lý do điều chỉnh số lượng.",
+      "PRICE": "Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.",
+      "EMPTY": "Chưa có số lượng xuất hóa đơn.",
+      "CURRENCY": "Chọn tiền tệ.",
+      "DEDUCTION": "Khoản khấu trừ phải hợp lệ và không vượt quá số tiền hiện tại.",
+      "DEDUCTION_REASON": "Cần lý do khi thay đổi khoản khấu trừ mặc định."
+    }
+  }
 };
 
-export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, orgId, buyerOrgId, draftId, languageCode = 'ko' }) {
+export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, languageCode = 'ko' }) {
   const pageDialogs = usePageDialogs();
+  const ui = invoiceUi[languageCode] || invoiceUi.en;
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
-  const storageText = invoiceDraftStorageMessages[languageCode] || invoiceDraftStorageMessages.en;
+  const storageText = invoiceSubmissionUi[languageCode] || invoiceSubmissionUi.en;
   const settlementLabels = languageCode === 'ko' ? {
     prior: '이전 청구 / 입금', deduction: '이번 차감', outstanding: '기존 미수', statement: '안내금액 / 신규채권', reason: '차감 변경 사유', unallocated: '다중 주문 입금 미배분', newReceivable: '신규 채권',
   } : languageCode === 'vi' ? {
@@ -42,7 +105,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   };
   const [savedDraft, setSavedDraft] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saveNotice, setSaveNotice] = useState('');
+  const [uncertain, setUncertain] = useState(false);
   const draftRef = useRef(null);
   const clientKey = useRef(globalThis.crypto.randomUUID());
   const [source, setSource] = useState(null);
@@ -58,7 +121,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   const [settlements, setSettlements] = useState({});
   const [allPercentage, setAllPercentage] = useState('');
   const [dirty, setDirty] = useState(false);
-  useUnsavedChanges(open && (dirty || saving));
+  useUnsavedChanges(open && (dirty || saving || uncertain || Boolean(savedDraft)));
 
   useEffect(() => {
     if (!open) {
@@ -68,7 +131,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
     let cancelled = false;
     setLoading(true); setSource(null); setFields(null); setError(''); setReviewed(false);
     setDirty(false);
-    setPercentages({}); setSettlements({}); setAllPercentage(''); setSaveNotice('');
+    setPercentages({}); setSettlements({}); setAllPercentage(''); setUncertain(false);
     const load = async () => {
       const resumeId = draftId || draftRef.current?.id;
       const stored = resumeId ? await requestJSON(`/invoices/drafts/${encodeURIComponent(resumeId)}${buildQueryString({ orgId })}`, { skipCache: true }) : null;
@@ -91,12 +154,12 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
         const first = prices.find((p) => p.pricingBasis === INVOICE_BASES[0].value && p.currencyCode === 'USD') || prices[0];
         setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || data.currencies?.[0] || '');
         const date = new Date().toLocaleDateString('sv-SE');
-        setFields({ number: `DRAFT-${data.orderNumber}`, date, seller: data.seller, buyer: data.buyer,
+        setFields({ number: data.orderNumber, date, seller: data.seller, buyer: data.buyer,
           shipTo: [data.buyer.name, data.buyer.address, data.buyer.country].filter(Boolean).join('\n'),
           shipmentDate: '', dueDate: '', incoterm: '', paymentTerms: '', bank: '', notes: '' });
         setSettlements(Object.fromEntries(data.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[first?.currencyCode]?.defaultDeductionAmount || '', reason: '' }])));
     };
-    load().catch((e) => { if (!cancelled) setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') || /404|403/.test(String(e.status)) ? storageText.sourceChanged : t.load); })
+    load().catch((e) => { if (!cancelled) setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') || /404|403/.test(String(e.status)) ? ui.sourceChanged : t.load); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, reload, t.load, storageText.sourceChanged]);
@@ -111,66 +174,48 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
   };
   const close = async () => {
     if (saving) return;
-    const message = languageCode === 'ko' ? '초안이 저장되지 않습니다. 입력 내용을 버리고 닫을까요?'
-      : languageCode === 'vi' ? 'Bản nháp chưa được lưu. Bỏ thay đổi và đóng?' : 'This draft is not saved. Discard changes and close?';
-    if (!dirty || await pageDialogs.confirm(message)) { setDirty(false); onClose(); }
-  };
-  const save = async () => {
-    if (!source || saving) return;
-    setSaving(true); setError(''); setSaveNotice('');
-    const previous = draftRef.current;
-    try {
-      const stored = await requestJSON(`/invoices/drafts${previous ? `/${encodeURIComponent(previous.id)}` : ''}${buildQueryString({ orgId })}`, {
-        method: previous ? 'PUT' : 'POST', body: JSON.stringify({ clientKey: clientKey.current, revision: previous?.revision,
-          buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields, percentages, settlements }),
-      });
-      draftRef.current = stored; setSavedDraft(stored); setDirty(false); setSaveNotice(storageText.saved);
-      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS], orgId });
-    } catch (e) {
-      setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') ? storageText.sourceChanged :
-        String(e.message).includes('STALE_EDIT') || String(e.message).includes('NOT_FOUND') ? storageText.conflict : storageText.failed);
-    } finally { setSaving(false); }
-  };
-  const print = () => {
-    if (!reviewed || calculation?.issues.length || !fields.number.trim() || !fields.date) return;
-    const popup = window.open('', '_blank');
-    if (!popup) { setError(t.popup); return; }
-    popup.opener = null;
-    popup.document.open();
-    popup.document.write(buildInvoicePrintHtml({ source, calculation, fields, pricingBasis: basis, currencyCode: currency }));
-    popup.document.close();
-    popup.focus();
+    if ((!dirty && !uncertain) || await pageDialogs.confirm(ui.discard)) { setDirty(false); onClose(); }
   };
   const issue = async () => {
-    const current = draftRef.current;
-    if (!current || dirty || saving || !reviewed || calculation?.issues.length) return;
-    if (!await pageDialogs.confirm(storageText.confirmIssue)) return;
+    if (!source || saving || !reviewed || calculation?.issues.length || !fields?.number.trim() || !fields?.date) return;
+    if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
     setSaving(true); setError('');
     try {
+      let current = draftRef.current;
+      if (!current || (!uncertain && dirty)) {
+        current = await requestJSON(`/invoices/drafts${current ? `/${encodeURIComponent(current.id)}` : ''}${buildQueryString({ orgId })}`, {
+          method: current ? 'PUT' : 'POST', body: JSON.stringify({ clientKey: clientKey.current, revision: current?.revision,
+            buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields, percentages, settlements }),
+        });
+        draftRef.current = current; setSavedDraft(current); setDirty(false);
+      }
       await requestJSON(`/invoices/drafts/${encodeURIComponent(current.id)}/issue${buildQueryString({ orgId })}`, {
         method: 'POST', body: JSON.stringify({ revision: current.revision }),
       });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId });
-      setDirty(false); await pageDialogs.alert(storageText.issued); onClose();
+      setDirty(false); setUncertain(false); setSavedDraft(null);
+      await pageDialogs.alert(storageText.issued); (onIssued || onClose)();
     } catch (e) {
-      setError(String(e.message).includes('INVOICE_CREDIT_') ? storageText.creditReview : String(e.message).includes('STALE_EDIT') || String(e.message).includes('SOURCE_CHANGED')
-        ? storageText.conflict : storageText.failed);
+      const unknown = !e.status || e.status >= 500;
+      setUncertain(unknown);
+      setError(unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed);
     } finally { setSaving(false); }
   };
-  return <Dialog open={open} onClose={close} fullWidth maxWidth="xl">
-    <DialogTitle>{t.title}{source ? ` · ${source.orderNumber}` : ''}</DialogTitle>
-    <DialogContent dividers>
-      <Stack spacing={2}>
-        <Alert severity="info">{storageText.notice}</Alert>
-        {savedDraft && source && <Alert severity="info">{storageText.review}</Alert>}
-        {saveNotice && <Alert severity="success">{saveNotice}</Alert>}
+  return <AppPageContainer title={draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
+    <Button disabled={saving} onClick={close}>{ui.cancel}</Button>
+    <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
+  </Stack>}>
+    <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}>
+      <Stack spacing={2} sx={{p:2,minWidth:0}}>
         {loading && <CircularProgress />}
-        {error && <Alert severity="error" action={<Button disabled={saving} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
-        {!source && savedDraft && <Box><Typography>{storageText.stored}</Typography><Typography>{savedDraft.content.fields.number} · {savedDraft.content.fields.notes}</Typography>
-          <Table size="small"><TableBody>{savedDraft.content.lines.map((row, index) => <TableRow key={row.key}><TableCell>{row.label || `#${index + 1}`}</TableCell><TableCell>{row.quantity}</TableCell><TableCell>{row.remark}</TableCell></TableRow>)}</TableBody></Table>
-        </Box>}
-        {source && fields && <Box component="fieldset" disabled={saving} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Typography variant="body2">{billingText.multiOrderExplanation}</Typography>
+        {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
+        {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'180px minmax(0,1fr) minmax(0,1fr)'},gap:2}}>
+            <TextField size="small" label={ui.date} type="date" value={fields.date} onChange={e=>changeField('date',e.target.value)} InputLabelProps={{shrink:true}}/>
+            <TextField size="small" label={billingText.customer} value={fields.buyer.name} slotProps={{input:{readOnly:true}}}/>
+            <TextField size="small" label={ui.number} value={fields.number} onChange={e=>changeField('number',e.target.value)} inputProps={{maxLength:200}}/>
+          </Box>
+          <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
           <Stack direction="row" spacing={2}>
             <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { changeBilling(setBasis, e.target.value); setCurrency(''); }} sx={{ minWidth: 140 }}>
               {INVOICE_BASES.map((b) => <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>)}
@@ -179,14 +224,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
               <MenuItem value="">—</MenuItem>{currencies.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
           </Stack>
-          <>
-          <Box sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>
-            <TableCell>{billingText.orderStyle}</TableCell>{[t.ordered, t.produced, t.invoice, t.price, t.amount].map((label) => <TableCell key={label} align="right">{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{calculation.styles.map((style) => <TableRow key={style.styleScopeKey ?? style.styleId ?? 'missing'}>
-            <TableCell><Typography variant="subtitle2">{style.orderNumber}</Typography>{style.code} · {style.name}{!style.ready && ' ⚠'}</TableCell>
-            <TableCell align="right">{style.orderedQuantity}</TableCell><TableCell align="right">{style.producedQuantity ?? '—'}</TableCell>
-            <TableCell align="right">{style.invoiceQuantity}</TableCell><TableCell align="right">{style.unitPrice ?? '—'}</TableCell><TableCell align="right">{style.amount ?? '—'}</TableCell>
-          </TableRow>)}</TableBody></Table></Box>
+          <Typography component="h2" variant="subtitle2">{ui.details} · {calculation.lines.length}</Typography>
           <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 1100 }}><TableHead><TableRow>
             {[billingText.orderStyle, t.ordered, t.quantity, t.price, t.amount, 'Remark', t.reason, 'HS / Origin'].map((label) => <TableCell key={label}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.lines.map((line) => <TableRow key={line.key}>
@@ -199,7 +237,7 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
             <TableCell><TextField size="small" value={line.adjustmentReason} placeholder={t.reason} inputProps={{ 'aria-label': `${t.reason} ${line.key}`, maxLength: 500 }} onChange={(e) => changeLine(line.key, 'adjustmentReason', e.target.value)} /></TableCell>
             <TableCell><Stack spacing={1}>{['hsCode', 'origin'].map((key) => <TextField key={key} size="small" label={key === 'hsCode' ? 'HS code' : 'Origin'} value={line[key]} onChange={(e) => changeLine(line.key, key, e.target.value)} />)}</Stack></TableCell>
           </TableRow>)}</TableBody></Table></Box>
-          </>
+          <Accordion disableGutters elevation={0} sx={{border: "1px solid",borderColor:"divider",borderRadius:1,"&::before":{display:"none"}}}><AccordionSummary expandIcon={<ExpandMore/>}><Typography variant="subtitle2">{ui.options}</Typography></AccordionSummary><AccordionDetails>
           <Typography variant="h6">{billingText.settlement}</Typography>
           <Typography variant="body2">{billingText.percentHint}</Typography>
           <Stack direction="row" spacing={1} alignItems="center">
@@ -217,26 +255,23 @@ export default function InvoiceDraftDialog({ open, onClose, orderId, orderIds, o
             <TableCell><Stack spacing={1}><TextField size="small" value={settlements[order.orderId]?.deduction ?? ''} inputProps={{ inputMode: 'decimal' }} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], deduction: e.target.value } })} /><TextField size="small" placeholder={settlementLabels.reason} value={settlements[order.orderId]?.reason ?? ''} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], reason: e.target.value } })} /></Stack></TableCell>
             <TableCell>{order.priorOutstandingAmount}</TableCell><TableCell>{order.netAmount ?? '—'} / {order.receivableAdded ?? '—'}</TableCell>
           </TableRow>)}</TableBody></Table></Box>
-          <Typography variant="caption" color="text.secondary">{billingText.previewHint}</Typography>
-          <Typography align="right" variant="h6">TOTAL {currency} {calculation.total ?? '—'}</Typography>
-          <Typography align="right" variant="subtitle1">{settlementLabels.newReceivable} {currency} {calculation.receivableAdded ?? '—'}</Typography>
           <Typography variant="subtitle1">{t.metadata}</Typography>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-            {[['number', 'Invoice reference'], ['date', 'Invoice date', 'date'], ['shipmentDate', 'Shipment date', 'date'], ['dueDate', 'Payment due date', 'date'], ['incoterm', 'Incoterm / Named place'], ['paymentTerms', 'Payment terms'], ['shipTo', 'Ship to / Consignee'], ['bank', 'Bank / Payment instructions'], ['notes', 'Remarks']].map(([key, label, type]) =>
+            {[['shipmentDate', ui.shipmentDate, 'date'], ['dueDate', ui.dueDate, 'date'], ['incoterm', ui.incoterm], ['paymentTerms', ui.paymentTerms], ['shipTo', ui.shipTo], ['bank', ui.bank]].map(([key, label, type]) =>
               <TextField key={key} size="small" label={label} type={type || 'text'} multiline={!type} minRows={!type ? 2 : undefined} value={fields[key]} onChange={(e) => changeField(key, e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ maxLength: 2000 }} />)}
             {['seller', 'buyer'].map((party) => <Box key={party}><Typography>{t[party]}</Typography><Stack spacing={1}>
-              {['name', 'address', 'country', 'taxId', 'email', 'phone'].map((key) => <TextField key={key} size="small" label={key} value={fields[party][key]} inputProps={{ maxLength: 1000 }} onChange={(e) => changeField(party, { ...fields[party], [key]: e.target.value })} />)}
+              {['name', 'address', 'country', 'taxId', 'email', 'phone'].map((key) => <TextField key={key} size="small" label={ui[key]} value={fields[party][key]} inputProps={{ maxLength: 1000 }} onChange={(e) => changeField(party, { ...fields[party], [key]: e.target.value })} />)}
             </Stack></Box>)}
           </Box>
+          </AccordionDetails></Accordion>
+          <Box sx={{bgcolor:'grey.50',p:2,borderRadius:1}}>          <Typography align="right" variant="h6">TOTAL {currency} {calculation.total ?? '—'}</Typography>
+          <Typography align="right" variant="subtitle1">{settlementLabels.newReceivable} {currency} {calculation.receivableAdded ?? '—'}</Typography>
+</Box>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </Box>}
       </Stack>
-    </DialogContent>
-    <DialogActions><Button disabled={saving} onClick={close}>{t.close}</Button>
-      <Button onClick={save} disabled={loading || saving || !source || (!dirty && !!savedDraft)}>{saving ? <CircularProgress size={18} /> : storageText.save}</Button>
-      <Button color="success" variant="contained" onClick={issue} disabled={loading || saving || !savedDraft || dirty || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{storageText.issue}</Button>
-      <Button variant="contained" onClick={print} disabled={loading || saving || !!error || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{t.print}</Button></DialogActions>
-  </Dialog>;
+    </Paper>
+  </AppPageContainer>;
 }

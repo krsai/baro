@@ -3,6 +3,8 @@
   "private": true,
   "scripts": {
     "test:menu-policy-browser": "node scripts/menu-policy-browser.test.mjs",
+    "test:invoice-editor-browser": "node scripts/invoice-editor-browser.test.mjs",
+    "test:invoice-list-query": "npm --prefix backend run build && node --test scripts/invoice-list-query.test.mjs",
     "test:setting-inheritance": "npm --prefix backend run build && node --test scripts/setting-inheritance.test.mjs",
     "test:style-identity-postgres": "npm --prefix backend run build && node scripts/style-identity-postgres.test.mjs",
     "test:work-style-search": "node scripts/search-select-browser-check.mjs",

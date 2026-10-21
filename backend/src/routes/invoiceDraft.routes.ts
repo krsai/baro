@@ -74,7 +74,18 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const access = await requireAccess(req, res); if (!access) return;
     const page = Number(req.query.page ?? 0);
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000) return res.status(400).json({ error: "invalid page" });
-    const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id },
+    const search = String(req.query.search ?? '').trim();
+    const status = String(req.query.status ?? '');
+    if (search.length > 200 || (status && !['ISSUED', 'CANCELLED', 'SUPERSEDED'].includes(status))) return res.status(400).json({ error: 'invalid invoice filter' });
+    const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
+      ...(status ? { status } : {}),
+      ...(search ? { OR: [
+        { invoiceNumber: { contains: search, mode: 'insensitive' } },
+        { buyer: { OR: ['name', 'nameKo', 'nameVi'].map(key => ({ [key]: { contains: search, mode: 'insensitive' } })) } },
+        { snapshot: { path: ['fields', 'buyer', 'name'], string_contains: search, mode: 'insensitive' } },
+        { orders: { some: { sourceOrderNumber: { contains: search, mode: 'insensitive' } } } },
+      ] } : {}),
+    },
       orderBy: [{ issuedAt: "desc" }, { id: "desc" }], skip: page * 30, take: 31,
       include: { buyer: { select: { name: true } }, orders: { select: { id: true, sourceOrderId: true, sourceOrderNumber: true, installmentNumber: true,
         workOrder: { select: { totalQuantity: true, invoiceFinalLockedAt: true, invoiceFinalLockInvoiceId: true, invoiceFinalRecognizedQuantity: true } } } },

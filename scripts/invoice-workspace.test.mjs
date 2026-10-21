@@ -37,7 +37,7 @@ function harness() {
   vm.runInNewContext(ts.transpileModule(messages, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: messageExports });
   const dependencies = {
     react: { ...react, default: react },
-    '@mui/material': Object.fromEntries(['Alert', 'Box', 'Button', 'Checkbox', 'CircularProgress', 'Stack', 'Table', 'TableBody', 'TableCell', 'TableHead', 'TableRow', 'TextField', 'Typography'].map(name => [name, name])),
+    '@mui/material': Object.fromEntries(['Alert', 'Box', 'Button', 'Checkbox', 'CircularProgress', 'Paper', 'Stack', 'Table', 'TableBody', 'TableCell', 'TableHead', 'TableRow', 'TextField', 'Typography'].map(name => [name, name])),
     '../../../components/AppPageContainer': { default: 'Container' },
     '../../../components/SearchableSelect': { default: 'CustomerSelect' },
     '../../../context/AuthContext': { useAuth: () => ({ activeOrgId: 7 }) },
@@ -48,8 +48,11 @@ function harness() {
       requestJSON: url => new Promise((resolve, reject) => requests.push({ url, resolve, reject })),
     },
     '../../../constants/invoiceMessages': messageExports,
-    '../order/InvoiceDraftDialog': { default: 'DraftDialog' },
-    './InvoiceDraftList': { default: 'DraftList' },
+    './InvoiceEditor': { default: 'InvoiceEditor' },
+    'react-router-dom': {useLocation:()=>({search:''})},
+    '../../../constants/invoiceUi':{invoiceUi:{en:{},ko:{continue:'continue'}}},
+    '../../../components/PageContentStack':{default:'PageContentStack'},
+    './InvoiceList': { default: 'InvoiceList' },
     '../../../hooks/useWorkspaceRefreshOnEvent': { default: () => {} },
   };
   vm.runInNewContext(ts.transpileModule(`${component}\nexport { InvoiceCustomerWorkspace, InvoiceMenuWorkspace };`, {
@@ -73,8 +76,8 @@ test('invoice menu opens on issued history and enters a separate creation screen
   let tree = app.menu();
   assert.equal(app.find(tree, 'CustomerSelect').length, 0);
   assert.equal(app.requests.length, 0);
-  assert.equal(app.find(tree, 'DraftList').length, 1);
-  const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구서 작성'));
+  assert.equal(app.find(tree, 'InvoiceList').length, 1);
+  const create = [tree.props.titleActions,...app.find(tree, 'Button')].find(node => node.props.children?.includes?.('청구서 작성'));
   create.props.onClick();
   assert.equal(app.navigations.at(-1), '/invoices/new');
   tree = app.menu('editor');
@@ -84,7 +87,7 @@ test('invoice menu opens on issued history and enters a separate creation screen
   assert.equal(app.find(app.menu(), 'Table').length, 0);
 });
 
-test('customer selection is required before listing orders; draft receives the selected customer', async () => {
+test('customer selection is required before listing orders; page editor receives the selected customer', async () => {
   const app = harness();
   let tree = app.render();
   app.tick();
@@ -108,9 +111,9 @@ test('customer selection is required before listing orders; draft receives the s
   assert.equal(app.find(tree, 'Table').length, 1);
   app.find(tree, 'Checkbox').forEach(box => box.props.onChange(null, true));
   tree = app.render();
-  const create = app.find(tree, 'Button').find(node => node.props.children.includes('청구 내역 작성'));
+  const create = app.find(tree, 'Button').find(node => node.props.children.includes('continue'));
   create.props.onClick(); tree = app.render();
-  const dialog = app.find(tree, 'DraftDialog')[0];
+  const dialog = app.find(tree, 'InvoiceEditor')[0];
   assert.deepEqual([...dialog.props.orderIds], ['o', 'o2']);
   assert.equal(dialog.props.buyerOrgId, 8);
   assert.equal(dialog.props.open, true);
@@ -128,7 +131,7 @@ test('changing or clearing customer discards old orders and ignores late respons
   app.render(); app.tick();
   app.requests[1].resolve({ rows: [{ orderId: 'wrong', orderNumber: 'Wrong customer' }], hasMore: false }); await flush();
   tree = app.render();
-  assert.equal(app.find(tree, 'Button').find(node => node.props.children.includes('청구 내역 작성')).props.disabled, true);
+  assert.equal(app.find(tree, 'Button').find(node => node.props.children.includes('continue')).props.disabled, true);
   assert.match(app.requests[2].url, /buyerOrgId=9/);
   app.find(tree, 'CustomerSelect')[0].props.onChange(null, null);
   app.render(); app.tick();
@@ -136,7 +139,7 @@ test('changing or clearing customer discards old orders and ignores late respons
   tree = app.render();
   assert.equal(app.find(tree, 'Table').length, 0);
   assert.equal(app.requests.length, 3);
-  assert.equal(app.root().props.key, 7, 'organization change remounts all customer/order/draft state');
+  assert.equal(app.root().props.key, 7, 'organization change remounts all customer/order/editor state');
 });
 
 test('order selection survives pagination and is cleared when the customer changes', async () => {
@@ -152,10 +155,10 @@ test('order selection survives pagination and is cleared when the customer chang
   app.render(); app.tick();
   app.requests[2].resolve({ rows: [{ orderId: 'second', orderNumber: 'PO2', buyerOrg: { name: 'A' } }], hasMore: false }); await flush();
   tree = app.render(); app.find(tree, 'Checkbox')[0].props.onChange(null, true);
-  tree = app.render(); app.find(tree, 'Button').find(b => b.props.children.includes('청구 내역 작성')).props.onClick();
-  tree = app.render(); assert.deepEqual([...app.find(tree, 'DraftDialog')[0].props.orderIds], ['first', 'second']);
-  app.find(tree, 'DraftDialog')[0].props.onClose(); tree = app.render();
+  tree = app.render(); app.find(tree, 'Button').find(b => b.props.children.includes('continue')).props.onClick();
+  tree = app.render(); assert.deepEqual([...app.find(tree, 'InvoiceEditor')[0].props.orderIds], ['first', 'second']);
+  app.find(tree, 'InvoiceEditor')[0].props.onClose(); tree = app.render();
   app.find(tree, 'CustomerSelect')[0].props.onChange(null, { id: 9, name: 'B' });
   tree = app.render();
-  assert.equal(app.find(tree, 'Button').find(b => b.props.children.includes('청구 내역 작성')).props.disabled, true);
+  assert.equal(app.find(tree, 'Button').find(b => b.props.children.includes('continue')).props.disabled, true);
 });

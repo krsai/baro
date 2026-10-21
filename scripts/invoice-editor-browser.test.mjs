@@ -1,0 +1,81 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+const fixture=path.resolve('frontend/invoice-editor-acceptance.html');assert.ok(!existsSync(fixture));
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
+import React from 'react';import {MemoryRouter} from 'react-router-dom';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Editor from '/src/pages/App/invoice/InvoiceEditor.jsx';import List from '/src/pages/App/invoice/InvoiceList.jsx';
+const mode=new URLSearchParams(location.search).get('mode');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),mode==='list'?React.createElement(List,{orgId:1,languageCode:window.testLang}):React.createElement(Editor,{orgId:1,buyerOrgId:2,orderIds:['o1'],languageCode:window.testLang,onClose:()=>window.closedEditor=true,onIssued:()=>window.issuedEditor=true}))));</script></body></html>`);
+const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
+const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
+ styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
+ lines:[{key:'item1:S',itemId:1,styleId:10,styleCode:'S1',description:'Shirt',orderedQuantity:10,quantity:'10',adjustmentReason:'',remark:'',hsCode:'',origin:'',color:'Blue',size:'S'}]};
+const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+ browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
+ for(const [lang,failure] of [['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save']]){
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
+  page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+  await page.addInitScript(lang=>{window.testLang=lang;},lang);
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
+  await page.route('**/invoices/**',r=>{
+   const request=r.request(),url=new URL(request.url());if(request.method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(url.pathname.includes('order-source')){reads.push(url.pathname);return r.fulfill({headers,json:source});}
+   if(request.method()==='POST'&&url.pathname.endsWith('/drafts')){
+    saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
+   }
+   if(request.method()==='POST'&&url.pathname.endsWith('/issue')){
+    issues.push({path:url.pathname,body:request.postDataJSON()});if(failure==='issue'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'issued-1'}});
+   }
+   throw Error(`Unexpected request: ${request.method()} ${url.pathname}`);
+  });
+  await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`);
+  const review=page.getByRole('checkbox');await review.waitFor();
+  assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
+  assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
+  const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
+  await review.check();assert.equal(await issue.isEnabled(),true);
+  await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
+  await review.check();
+  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+  await issue.click();
+  if(failure!=='none'){
+   await page.getByRole('alert').filter({hasText:'could not be confirmed'}).waitFor();assert.equal(await page.getByLabel('REMARK',{exact:true}).isDisabled(),true);await issue.click();
+  }
+  await page.waitForFunction(()=>window.issuedEditor===true);
+  assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
+  assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
+  assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'10');assert.equal(saves[0].fields.notes,'Reviewed note');assert.doesNotMatch(saves[0].fields.number,/DRAFT/);
+  assert.deepEqual(errors,[]);await page.close();
+ }
+ for(const lang of ['ko','en','vi']){
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],queries=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(lang=>{window.testLang=lang;},lang);
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:path=>window.navigation=path,markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>actions;'}));
+  await page.route('**/invoices/**',r=>{
+   const url=new URL(r.request().url());assert.equal(url.pathname,'/invoices/issued','List must not load drafts');queries.push(Object.fromEntries(url.searchParams));
+   return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{hasMore:true,rows:[{id:'i1',invoiceNumber:'INV-001',status:'ISSUED',buyerName:'Customer',currencyCode:'USD',total:'20',receivableAdded:'20',receivedAmount:'0',familyBalanceAmount:'20',familyBalanceKind:'DUE',isCurrentRevision:true,issuedAt:'2026-10-21',orders:[{sourceOrderNumber:'PO-1',installmentNumber:1}]}]}});
+  });
+  await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=list`);
+  try{await page.getByText('INV-001',{exact:true}).waitFor({timeout:8000});}catch(e){throw new Error(JSON.stringify({errors,queries,body:await page.locator('body').innerText()}));}
+  assert.doesNotMatch(await page.locator('body').innerText(),/초안|draft|bản nháp/i);
+  assert.equal(await page.locator('tbody button').count(),2,'Rows expose PDF and one action menu');
+  await page.getByRole('button',{name:lang==='ko'?'작업':lang==='vi'?'Thao tác':'Actions',exact:true}).click();
+  await page.getByRole('menuitem',{name:lang==='ko'?'개정':lang==='vi'?'Sửa đổi':'Revise',exact:true}).waitFor();
+  assert.equal(await page.getByRole('menuitem').count(),6);await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:lang==='ko'?'다음':lang==='vi'?'Tiếp':'Next',exact:true}).click();await page.waitForFunction(()=>document.querySelector('tbody')?.textContent.includes('INV-001'));
+  await page.getByPlaceholder(lang==='ko'?'청구번호·고객·주문 검색':lang==='vi'?'Tìm số hóa đơn, khách hàng hoặc đơn hàng':'Search invoice, customer or order').fill('PO-1');
+  await page.waitForResponse(r=>r.url().includes('search=PO-1'));
+  assert.ok(queries.some(q=>q.search==='PO-1'&&q.page==='0'));
+  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+  assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('Invoice editor passed ko/en/vi: page layout, review reset, direct issue, responsive tables and same-key recovery after save/issue response loss.');
+}finally{await browser?.close();vite.kill();unlinkSync(fixture);}
