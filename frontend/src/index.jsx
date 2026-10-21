@@ -92,11 +92,13 @@ if (import.meta.env.PROD && canonicalOrigin && window.location.origin !== canoni
   window.location.replace(
     `${canonicalOrigin}${window.location.pathname}${window.location.search}${window.location.hash}`
   );
+} else {
+  // Storage (including the selected language) belongs to an origin. Do not
+  // briefly render with this origin's defaults while moving to the real app.
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
 }
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
