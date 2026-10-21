@@ -4,7 +4,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { assertSafeApplicationDatabaseEnv } = require('../src/config/databaseTargetGuard');
-const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry_expense_type'];
+const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry_expense_type','20261021230000_partner_industry_roles'];
 const literal = s => `'${s.replaceAll("'", "''")}'`;
 const migrations = () => versions.map(version => {
   const sql = fs.readFileSync(path.join(__dirname,'../prisma/migrations',version,'migration.sql'),'utf8').replace(/\r\n/g,'\n');

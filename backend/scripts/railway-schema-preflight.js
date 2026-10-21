@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process');
 const { assertSafeApplicationDatabaseEnv } = require('../src/config/databaseTargetGuard');
 
 const columns = [
+  ['SettingServiceDefault','partnerRoleId'],
   ['SettingServiceDefault','expenseTypeId'],
   ['OrganizationBankAccount','entityId'],['OrganizationBankAccount','currencyId'],['EntitySchemaMigration','version'],
   ...['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash','createdAt'].map(column => ['ExpenseRequest',column]),

@@ -63,7 +63,6 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   };
   const amount = expenseLineAmounts(line, currency);
   const money = value => value == null ? '—' : formatCurrency(value, { currencyCode: currency, languageCode });
-  const typeMismatch = code && partner?.partnerExpenseTypeId && code.base?.expenseTypeId && partner.partnerExpenseTypeId !== code.base.expenseTypeId;
   const industryMismatch = expenseIndustryMismatch(code,partner);
   const toggle = key => event => {
     const checked = event.target.checked;
@@ -92,8 +91,8 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
     </TableRow>
-    {(expanded || typeMismatch || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
-      {typeMismatch && <Alert severity="warning">{expenseLabels.mismatch}</Alert>}{!typeMismatch && industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
+    {(expanded || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
+      {industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>
         {code?.base?.entryMode==='PROCESS' && <Button startIcon={<Add />} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}>{labels.addProcess}</Button>}

@@ -27593,7 +27593,7 @@ app.post("/business-partners", async (req, res) => {
   if (type === "PROCESS_OUTSOURCING" && !(await requireSystemAdmin(req, res))) return;
   if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
   const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
-  const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, isActive: true } }) : await prisma.expenseType.findUnique({ where: { code: type === 'MATERIAL_SUPPLIER' ? 'MATERIAL' : 'PRODUCTION' } });
+  const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, isActive: true } }) : null;
   if (req.body?.partnerExpenseTypeId != null && !expenseType) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);

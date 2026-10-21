@@ -22,7 +22,7 @@ export const INDUSTRY_OPTION_TEXT = {
   vi: { orderInput: 'Nhập đơn hàng', styleInput: 'Nhập mẫu', processInput: 'Nhập công đoạn', REQUIRED: 'Bắt buộc', OPTIONAL: 'Tùy chọn', HIDDEN: 'Không sử dụng' },
 };
 
-export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId, languageCode, systemDefaults = false, partnerIndustryOnly = false, initialServiceId = null, initialExpenseTypeId = null }) {
+export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId, languageCode, systemDefaults = false, partnerIndustryOnly = false, initialServiceId = null, initialPartnerRoleId = null }) {
   const path = systemDefaults ? '/system-setting-defaults/services' : '/outsourcing-service-types';
   const labels = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const optionLabels = INDUSTRY_OPTION_TEXT[languageCode] || INDUSTRY_OPTION_TEXT.ko;
@@ -31,16 +31,16 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
   const [saving, setSaving] = useState(false);
   const [services, setServices] = useState([]);
   const [editingId, setEditingId] = useState('');
-  const [expenseTypes,setExpenseTypes] = useState([]);
+  const [partnerRoles,setPartnerRoles] = useState([]);
   const tree=INDUSTRY_TREE_TEXT[languageCode] || INDUSTRY_TREE_TEXT.en;
-  useEffect(()=>{if(open&&systemDefaults)requestJSON('/expense-types',{skipCache:true}).then(setExpenseTypes).catch(()=>setError(labels.loadError));},[open,systemDefaults]);
+  useEffect(()=>{if(open&&systemDefaults)requestJSON('/partner-roles',{skipCache:true}).then(setPartnerRoles).catch(()=>setError(labels.loadError));},[open,systemDefaults]);
   useEffect(() => {
     if (!open) return;
     setEditingId('');
-    setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [],expenseTypeId:initialExpenseTypeId||'' });
+    setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [],partnerRoleId:initialPartnerRoleId||'' });
     setError('');
     requestJSON(`${path}${buildQueryString({ orgId, all: '1' })}`, { skipCache: true }).then(rows => { setServices(rows); if (initialServiceId) { const initial = rows.find(row => row.id === initialServiceId); if (initial) { setEditingId(initial.id); setForm(initial); } } }).catch(() => setError(labels.loadError));
-  }, [open, orgId, labels.loadError, path, initialServiceId,initialExpenseTypeId]);
+  }, [open, orgId, labels.loadError, path, initialServiceId,initialPartnerRoleId]);
   const save = async () => {
     setSaving(true); setError('');
     try {
@@ -50,16 +50,16 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
       setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
     } catch { setError(labels.error); } finally { setSaving(false); }
   };
-  return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="xs"><DialogTitle>{labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+  return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="xs"><DialogTitle>{initialServiceId ? tree.edit : labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
     {error && <Alert severity="error">{error}</Alert>}
-    <TextField select label={labels.industry} value={editingId} onChange={event => { const id = event.target.value; setEditingId(id); const service = services.find(item => item.id === id); setForm(service ? { ...service } : { code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [],expenseTypeId:initialExpenseTypeId||'' }); }}><MenuItem value="">{labels.addIndustry}</MenuItem>{services.map(service => <MenuItem key={service.id} value={service.id}>{serviceName(service, languageCode)}</MenuItem>)}</TextField>
+    {!systemDefaults && !initialServiceId && <TextField select label={labels.industry} value={editingId} onChange={event => { const id = event.target.value; setEditingId(id); const service = services.find(item => item.id === id); setForm(service ? { ...service } : { code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [],partnerRoleId:initialPartnerRoleId||'' }); }}><MenuItem value="">{labels.addIndustry}</MenuItem>{services.map(service => <MenuItem key={service.id} value={service.id}>{serviceName(service, languageCode)}</MenuItem>)}</TextField>}
     {!systemDefaults && open && <SettingInheritanceControls kind="services" row={editingId ? form : null} orgId={orgId} languageCode={languageCode} onSaved={() => { onSaved?.(); onClose(); }} />}
-    {systemDefaults && <TextField select required disabled={saving} label={tree.category} value={form.expenseTypeId||''} onChange={event=>setForm({...form,expenseTypeId:Number(event.target.value)})}>{expenseTypes.filter(row=>row.isActive||row.id===form.expenseTypeId).map(row=><MenuItem key={row.id} value={row.id}>{serviceName(row,languageCode)}</MenuItem>)}</TextField>}
+    {systemDefaults && <TextField select required disabled={saving} label={tree.category} value={form.partnerRoleId||''} onChange={event=>setForm({...form,partnerRoleId:Number(event.target.value)})}>{partnerRoles.map(row=><MenuItem key={row.id} value={row.id}>{serviceName(row,languageCode)}</MenuItem>)}</TextField>}
     {['code', 'nameKo', 'nameEn', 'nameVi'].map(key => <TextField key={key} required disabled={saving || (key === 'code' && Boolean(editingId) && systemDefaults)} label={labels[key]} value={form[key]} onChange={event => setForm({ ...form, [key]: key === 'code' ? event.target.value.toUpperCase() : event.target.value })} />)}
     {!partnerIndustryOnly && <><TextField select disabled={Boolean(editingId) || saving} label={labels.entryMode} value={form.entryMode} onChange={event => setForm({ ...form, entryMode: event.target.value, requiredFields: event.target.value === 'LOGISTICS' ? ['transportDate', 'origin', 'destination'] : [] })}>{['PROCESS', 'LOGISTICS', 'GENERAL'].map(mode => <MenuItem key={mode} value={mode}>{labels[mode]}</MenuItem>)}</TextField>
     {form.entryMode !== 'PROCESS' && <Stack>{labels.requiredFields}{['transportDate', 'origin', 'destination', 'reference'].map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={form.requiredFields.includes(key)} disabled={saving} onChange={event => setForm({ ...form, requiredFields: event.target.checked ? [...form.requiredFields, key] : form.requiredFields.filter(field => field !== key) })} />}/>)}</Stack>}
     </>}
     {editingId && <FormControlLabel label={languageCode === 'ko' ? '사용 중' : languageCode === 'vi' ? 'Đang sử dụng' : 'Active'} control={<Checkbox checked={form.isActive !== false} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} />}
     {!partnerIndustryOnly && ['orderInput','styleInput','processInput'].map(key => <TextField select key={key} disabled={saving || form.entryMode === 'PROCESS'} label={optionLabels[key]} value={form.entryMode === 'PROCESS' ? 'REQUIRED' : form[key] || (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN')} onChange={event => setForm({ ...form, [key]: event.target.value })}>{['REQUIRED','OPTIONAL','HIDDEN'].map(value => <MenuItem key={value} value={value}>{optionLabels[value]}</MenuItem>)}</TextField>)}
-  </Stack></DialogContent><DialogActions>{editingId && <SettingDeleteButton path={path} id={editingId} name={form.code} used={form.hasUsageHistory} orgId={orgId} languageCode={languageCode} disabled={saving} onError={setError} onDeleted={() => { onSaved?.(); onClose(); }} />}<Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || systemDefaults && !form.expenseTypeId || ['code', 'nameKo', 'nameEn', 'nameVi'].some(key => !form[key].trim())} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
+  </Stack></DialogContent><DialogActions>{editingId && <SettingDeleteButton path={path} id={editingId} name={form.code} used={form.hasUsageHistory} orgId={orgId} languageCode={languageCode} disabled={saving} onError={setError} onDeleted={() => { onSaved?.(); onClose(); }} />}<Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || systemDefaults && !form.partnerRoleId || ['code', 'nameKo', 'nameEn', 'nameVi'].some(key => !form[key].trim())} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
 }

@@ -2374,6 +2374,8 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  partnerRoleId Int?
+  partnerRole PartnerRole? @relation(fields:[partnerRoleId],references:[id],onDelete:Restrict)
   expenseTypeId Int?
   expenseType ExpenseType? @relation(fields:[expenseTypeId],references:[id],onDelete:Restrict)
   codeBases TransactionCodeBase[]
@@ -2391,6 +2393,18 @@ model SettingServiceDefault {
   sortOrder Int @default(0)
   services OutsourcingServiceType[]
   codes SettingTransactionCodeDefault[]
+}
+
+// A relationship classification, independent of an entity's technical type
+// and the expense classification used by transaction codes.
+model PartnerRole {
+  id Int @id @default(autoincrement())
+  code String @unique
+  nameKo String
+  nameEn String
+  nameVi String
+  sortOrder Int @default(0)
+  industries SettingServiceDefault[]
 }
 
 model SettingTransactionCodeDefault {

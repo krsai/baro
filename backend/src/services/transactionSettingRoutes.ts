@@ -61,6 +61,10 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
   registerCodeBaseRoutes(app,db,gates);
   const admin = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] });
   const member = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] });
+  app.get('/partner-roles',async(req:any,res:any)=>{
+    if(!await member(req,res))return;
+    res.json(await db.partnerRole.findMany({orderBy:{sortOrder:'asc'}}));
+  });
   for (const global of [false,true]) {
     const prefix = global ? '/system-app-settings' : '/app-settings';
     app.get(prefix, async (req: any,res: any) => {
@@ -85,6 +89,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       if (req.query.catalogue === '1') { if (!await admin(req,res)) return; }
       else if (!await gates.requireSystemAdmin(req,res)) return;
       const rows = await defaults.findMany({ include: service ? {
+        partnerRole: true,
         expenseType: true,
         _count: { select: { codes: true, codeBases: true } },
         services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
@@ -101,7 +106,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
         const candidates = await locals.findMany({ where: {ownerOrgId:access.organization.id,isActive:true}, include: SYSTEM_EXPENSE_CODE_INCLUDE, orderBy: {code:'asc'} });
         return res.json(candidates.map(resolveSystemExpenseCode).filter(Boolean));
       }
-      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, expenseType: { isActive: true } } } : {}) }) }, include: service ? { _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
+      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, expenseType: { isActive: true } } } : {}) }) }, include: service ? { systemDefault:{include:{partnerRole:true}}, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
       res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));
     });
     for (const global of [true,false]) {
@@ -126,9 +131,10 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
           if (update && !existing) return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
           const data: any = { ...(service ? validateServiceDefinition(req.body) : validateTransactionCode(req.body, Boolean(existing && existing.code === req.body?.code && !existing.taxTreatmentId))), isActive: req.body.isActive !== false };
           if(service && global){
-            const expenseTypeId=req.body?.expenseTypeId;
-            if(!Number.isSafeInteger(expenseTypeId)||expenseTypeId<=0||!await db.expenseType.findFirst({where:{id:expenseTypeId,...(existing?.expenseTypeId===expenseTypeId?{}:{isActive:true})}}))throw createHttpError(400,'EXPENSE_TYPE_REQUIRED');
-            data.expenseTypeId=expenseTypeId;
+            const partnerRoleId=req.body?.partnerRoleId;
+            if(!Number.isSafeInteger(partnerRoleId)||partnerRoleId<=0||!await db.partnerRole.findUnique({where:{id:partnerRoleId}}))throw createHttpError(400,'PARTNER_ROLE_REQUIRED');
+            data.partnerRoleId=partnerRoleId;
+            // Legacy expenseTypeId is preserved, never repurposed as a role.
           }
           if (service && existing && existing.entryMode !== data.entryMode) throw createHttpError(409,'SERVICE_ENTRY_MODE_IMMUTABLE');
           if (global && existing && existing.code !== data.code) throw createHttpError(409,'DEFAULT_CODE_IMMUTABLE');

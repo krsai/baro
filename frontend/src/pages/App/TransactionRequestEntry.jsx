@@ -13,6 +13,9 @@ import SaveButton from '../../components/SaveButton';
 import { getUiMessage } from '../../constants/uiMessages';
 import ExpenseLookupField from '../../components/ExpenseLookupField';
 import { EXPENSE_LOOKUP_TEXT } from '../../constants/expenseLookup';
+import { EXPENSE_TEXT } from '../../constants/expenseTypes';
+import {serviceName} from '../../components/OutsourcingServiceDialog';
+import {getBusinessPartnerTypeLabel} from '../../components/BusinessPartnerDialog';
 import './expenseRequests.css';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import ExpenseRequestLine from '../../components/ExpenseRequestLine';
@@ -169,7 +172,7 @@ export default function TransactionRequestEntry() {
           <Box sx={{p:2}}>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) minmax(0, 1fr)' }, gap: 2 }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
-            <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'name',label:labels.payee,value:row=>row.name}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
+            <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'role',label:(EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en).partnerType,value:row=>getBusinessPartnerTypeLabel(row.type,languageCode)},{key:'name',label:labels.payee,value:row=>row.name},{key:'industry',label:(EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en).industry,value:row=>(row.serviceTypes||[]).map(service=>serviceName(service,languageCode)).filter(Boolean).join(' / ')}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
             <TextField label={header.payeeInfo} value={partner ? payeeInfo || [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}} InputProps={{readOnly:true}} inputProps={{title:partner ? [partner.contactName,partner.contactPhone].filter(Boolean).join(' / ') : ''}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
           </Box>
           <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>

@@ -1,8 +1,8 @@
 import EntityDetailSection from './EntityDetailSection';
 import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
+import { INDUSTRY_TREE_TEXT } from '../constants/industryHierarchy';
 import { getStaticOptionOptions } from '../constants/staticOptionRegistry';
-import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import React, { useEffect, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
@@ -20,7 +20,7 @@ const TEXT = {
     cancel: '취소', save: '등록', saveEdit: '저장',
     required: '업체명을 입력해 주세요.',
     error: '거래처를 등록하지 못했습니다.', errorEdit: '거래처를 수정하지 못했습니다.',
-    outsourcing: '제작 외주', supplier: '구매처',
+    outsourcing: '외주 업체', supplier: '구매처',
   },
   en: {
     titleCreate: 'Add Partner', titleEdit: 'Edit Partner',
@@ -28,7 +28,7 @@ const TEXT = {
     cancel: 'Cancel', save: 'Add', saveEdit: 'Save',
     required: 'Enter a company name.',
     error: 'Failed to add the partner.', errorEdit: 'Failed to update the partner.',
-    outsourcing: 'Production Outsourcing', supplier: 'Supplier',
+    outsourcing: 'Outsourcing partner', supplier: 'Supplier',
   },
   vi: {
     titleCreate: 'Thêm đối tác', titleEdit: 'Sửa đối tác',
@@ -36,12 +36,13 @@ const TEXT = {
     cancel: 'Hủy', save: 'Thêm', saveEdit: 'Lưu',
     required: 'Vui lòng nhập tên công ty.',
     error: 'Không thể thêm đối tác.', errorEdit: 'Không thể cập nhật đối tác.',
-    outsourcing: 'Gia công sản xuất', supplier: 'Nhà cung cấp',
+    outsourcing: 'Đối tác gia công', supplier: 'Nhà cung cấp',
   },
 };
 
 export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
   const labels = TEXT[languageCode] || TEXT.ko;
+  if (!BUSINESS_PARTNER_TYPES.includes(type)) return '';
   return type === 'MATERIAL_SUPPLIER' ? labels.supplier : labels.outsourcing;
 };
 
@@ -52,7 +53,6 @@ const buildFormFromPartner = (partner, initialType) => ({
   contactName: partner?.contactName || '',
   contactPhone: partner?.contactPhone || '',
   isActive: partner?.isActive !== false,
-  partnerExpenseTypeId: partner?.partnerExpenseTypeId || '',
   serviceTypeIds: (partner?.serviceTypes || []).map((item) => item.id),
 });
 
@@ -70,8 +70,6 @@ export default function BusinessPartnerDialog({
   const labels = TEXT[languageCode] || TEXT.ko;
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const countryOptions=getStaticOptionOptions('country',languageCode);
-  const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
-  const [expenseTypes,setExpenseTypes] = useState([]);
   const isEdit = Boolean(partner?.id);
   const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
   const [saving, setSaving] = useState(false);
@@ -87,7 +85,6 @@ export default function BusinessPartnerDialog({
 
   useEffect(() => {
     if (!open || !activeOrgId) return;
-    requestJSON('/expense-types', { skipGlobalLoading: true }).then(setExpenseTypes).catch(() => setError(labels.error));
     requestJSON(`/outsourcing-service-types${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true })
       .then((rows) => setServiceTypes(Array.isArray(rows) ? rows : []))
       .catch(() => setServiceTypes([]));
@@ -105,7 +102,6 @@ export default function BusinessPartnerDialog({
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
         serviceTypeIds: form.serviceTypeIds,
-        partnerExpenseTypeId: form.partnerExpenseTypeId || expenseTypes.find(row => row.entryMode === (form.type === 'MATERIAL_SUPPLIER' ? 'PURCHASE' : 'PROCESS'))?.id,
         ...(isEdit ? { isActive: Boolean(form.isActive) } : {}),
       };
       const savedPartner = await requestJSON(
@@ -152,9 +148,7 @@ export default function BusinessPartnerDialog({
           </Box></EntityDetailSection>
           <EntityBankAccounts entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
-          <TextField select label={expenseLabels.partnerType} value={form.partnerExpenseTypeId || expenseTypes.find(row => row.entryMode === (form.type === 'MATERIAL_SUPPLIER' ? 'PURCHASE' : 'PROCESS'))?.id || ''} onChange={event => setForm({ ...form, partnerExpenseTypeId: event.target.value })}>
-            {expenseTypes.filter(row => row.isActive || row.id === form.partnerExpenseTypeId).map(row => <MenuItem key={row.id} value={row.id}>{row[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn']}</MenuItem>)}
-          </TextField>
+          <TextField label={(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).category} value={getBusinessPartnerTypeLabel(form.type,languageCode)} InputProps={{readOnly:true}}/>
           {true ? (
             <FormControl fullWidth>
               <InputLabel>{languageCode === 'ko' ? '외주 업종' : languageCode === 'vi' ? 'Ngành dịch vụ' : 'Outsourcing industries'}</InputLabel>
@@ -168,7 +162,7 @@ export default function BusinessPartnerDialog({
                   return item?.[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || id;
                 }).join(', ')}
               >
-                {serviceTypes.map((item) => {
+                {serviceTypes.filter(item=>!item.systemDefault?.partnerRole || item.systemDefault.partnerRole.code===form.type || form.serviceTypeIds.includes(item.id)).map((item) => {
                   const label = item[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item.nameEn;
                   return <MenuItem key={item.id} value={item.id}><Checkbox checked={form.serviceTypeIds.includes(item.id)} /><ListItemText primary={label} /></MenuItem>;
                 })}

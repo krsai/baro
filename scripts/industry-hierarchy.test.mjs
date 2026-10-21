@@ -6,6 +6,18 @@ import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url);
 const {registerTransactionSettingRoutes}=require('../backend/dist/services/transactionSettingRoutes.js');
 
+test('partner role catalogue is independent of expense types and preserves business identifiers',async()=>{
+ const db=new PGlite();try{
+  await db.exec(`CREATE TABLE "SettingServiceDefault"(id INT PRIMARY KEY,code TEXT,"expenseTypeId" INT);INSERT INTO "SettingServiceDefault" VALUES(4,'BUTTONHOLE',99),(8,'LOGISTICS',55),(9,'GENERAL',66);`);
+  const sql=fs.readFileSync('backend/prisma/migrations/20261021230000_partner_industry_roles/migration.sql','utf8');await db.exec(sql);
+  const rows=(await db.query('SELECT s.id,s."expenseTypeId",r.code FROM "SettingServiceDefault" s LEFT JOIN "PartnerRole" r ON r.id=s."partnerRoleId" ORDER BY s.id')).rows;
+  assert.deepEqual(rows,[{id:4,expenseTypeId:99,code:'PROCESS_OUTSOURCING'},{id:8,expenseTypeId:55,code:'PROCESS_OUTSOURCING'},{id:9,expenseTypeId:66,code:null}]);
+  await assert.rejects(db.exec('UPDATE "SettingServiceDefault" SET "partnerRoleId"=999 WHERE id=4'),/foreign key/);
+  await db.exec(`UPDATE "SettingServiceDefault" SET "partnerRoleId"=(SELECT id FROM "PartnerRole" WHERE code='MATERIAL_SUPPLIER') WHERE id=4`);await db.exec(sql);
+  assert.equal((await db.query('SELECT r.code FROM "SettingServiceDefault" s JOIN "PartnerRole" r ON r.id=s."partnerRoleId" WHERE s.id=4')).rows[0].code,'MATERIAL_SUPPLIER');
+ }finally{await db.close();}
+});
+
 test('industry parent backfill uses existing code FKs, preserves ambiguity and never overwrites an explicit choice',async()=>{
  const db=new PGlite();try{
   await db.exec(`CREATE TABLE "ExpenseType"(id INT PRIMARY KEY);CREATE TABLE "SettingServiceDefault"(id INT PRIMARY KEY);CREATE TABLE "TransactionCodeBase"(id INT PRIMARY KEY,"serviceTypeId" INT,"expenseTypeId" INT);
@@ -24,11 +36,11 @@ test('SYSTEM industry writes require an explicit valid category FK and keep cost
  const handlers=new Map();let saved;
  const app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(`${method} ${path}`,fn)]));
  const tx={settingServiceDefault:{create:async({data})=>{saved=data;return data;}}};
- const db={expenseType:{findFirst:async({where})=>where.id===2?{id:2,isActive:true}:null},$transaction:async fn=>fn(tx)};
+ const db={partnerRole:{findUnique:async({where})=>where.id===2?{id:2,code:'PROCESS_OUTSOURCING'}:null},$transaction:async fn=>fn(tx)};
  registerTransactionSettingRoutes(app,db,{requireSystemAdmin:async()=>true,requireOrgRole:async()=>null});
  const fn=handlers.get('post /system-setting-defaults/services');
  const body={code:'CUSTOM',nameKo:'Custom',nameEn:'Custom',nameVi:'Custom',entryMode:'PROCESS',requiredFields:[]};
  const response={status(){return this;},json(){}};
- for(const expenseTypeId of [undefined,null,'2',999])await assert.rejects(fn({params:{},body:{...body,expenseTypeId}},response),error=>error.status===400&&error.message==='EXPENSE_TYPE_REQUIRED');
- await fn({params:{},body:{...body,expenseTypeId:2}},response);assert.equal(saved.expenseTypeId,2);assert.equal(saved.entryMode,'PROCESS');
+ for(const partnerRoleId of [undefined,null,'2',999])await assert.rejects(fn({params:{},body:{...body,partnerRoleId}},response),error=>error.status===400&&error.message==='PARTNER_ROLE_REQUIRED');
+ await fn({params:{},body:{...body,partnerRoleId:2}},response);assert.equal(saved.partnerRoleId,2);assert.equal(saved.entryMode,'PROCESS');
 });

@@ -29,7 +29,7 @@ try {
     await page.route('**/src/context/RequestScopeContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useRequestScopeContext=()=>({active:!window.expenseBackground,scopeId:"/outsourcing-record/edit/legacy/78"});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const service={isActive:true,entryMode:['SAVED','BACKGROUND'].includes(mode)?'GENERAL':mode,requiredFields:[],expenseTypeId:1,serviceTypeId:4};
-    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',contactName:'Accounts desk',contactPhone:'0901234567',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4}]}],
+    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',type:'PROCESS_OUTSOURCING',contactName:'Accounts desk',contactPhone:'0901234567',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4,nameKo:'\uB2E8\uCD94\uAD6C\uBA4D',nameEn:'Buttonhole',nameVi:'Th\u00f9a khuy'}]}],
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[{id:'public-30',dbId:30,ownerOrgId:1,orderNumber:'L17-1'}], 'app-settings':{defaultVatRate:'10'} };
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
@@ -51,6 +51,15 @@ try {
     if(mode!=='BANKLESS')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='VND \u00b7 Test bank \u00b7 001234 \u00b7 Selected vendor'));
     if(mode!=='BANKLESS')assert.equal(await payeeInfo.inputValue(),'VND \u00b7 Test bank \u00b7 001234 \u00b7 Selected vendor');
     assert.equal(await payeeInfo.evaluate(el=>el.readOnly),true);
+    if(mode==='GENERAL'&&!locked){
+      await page.getByRole('button',{name:l.payee+' \u00b7 '+lookup.search,exact:true}).click();
+      const dialog=page.getByRole('dialog'),category={ko:'\uC678\uC8FC \uC5C5\uCCB4',en:'Outsourcing partner',vi:'\u0110\u1ed1i t\u00e1c gia c\u00f4ng'}[lang],industry={ko:'\uB2E8\uCD94\uAD6C\uBA4D',en:'Buttonhole',vi:'Th\u00f9a khuy'}[lang];
+      await dialog.getByRole('cell',{name:category,exact:true}).waitFor();
+      assert.equal(await dialog.getByRole('cell',{name:industry,exact:true}).count(),1);
+      await dialog.getByLabel(lookup.keyword,{exact:true}).fill(category);
+      assert.equal(await dialog.getByRole('cell',{name:'Selected vendor',exact:true}).count(),1);
+      await dialog.getByRole('button',{name:lookup.close,exact:true}).click();
+    }
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
     assert.equal(await page.getByLabel(l.quantity,{exact:false}).inputValue(),'170');
