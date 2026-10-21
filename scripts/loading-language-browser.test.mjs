@@ -12,6 +12,21 @@ let browser;
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/loading-language-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
+  // Exercise the real entry document with React deliberately blocked. The HTML
+  // language must already match the loading UI, even on a slow first login.
+  for (const {stored,legacy,expected} of [{stored:'ko',expected:'ko'},{stored:'vi',expected:'vi'},{stored:'en',expected:'en'},{legacy:'ko',expected:'ko'},{stored:'invalid',expected:'en'},{expected:'en'}]) {
+    const page=await browser.newPage();
+    await page.addInitScript(({stored,legacy})=>{
+      localStorage.clear();sessionStorage.clear();
+      if(stored)localStorage.setItem('baro_language_override',stored);
+      if(legacy)sessionStorage.setItem('baro_language_override',legacy);
+    },{stored,legacy});
+    await page.route('**/src/index.jsx',route=>route.abort());
+    await page.goto(`http://127.0.0.1:${port}/login`,{waitUntil:'domcontentloaded'});
+    assert.equal(await page.locator('html').getAttribute('lang'),expected);
+    assert.equal(await page.locator('#root').textContent(),'');
+    await page.close();
+  }
   for(const {stored,legacy,expected} of [{stored:'ko',expected:'ko'},{stored:'vi',expected:'vi'},{stored:'en',expected:'en'},{legacy:'ko',expected:'ko'},{stored:'invalid',expected:'en'},{expected:'en'}]) {
     const page=await browser.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(({stored,legacy})=>{

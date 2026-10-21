@@ -2,6 +2,22 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Set the document language before fonts, application modules or browser translation start.
+      (() => {
+        const key = 'baro_language_override';
+        const normalize = (value) => {
+          const code = String(value || '').trim().toLowerCase().replace(/_/g, '-').split('-')[0];
+          return ['ko', 'en', 'vi'].includes(code) ? code : '';
+        };
+        let language = '';
+        try { language = normalize(localStorage.getItem(key)); } catch {}
+        if (!language) {
+          try { language = normalize(sessionStorage.getItem(key)); } catch {}
+        }
+        document.documentElement.lang = language || 'en';
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
