@@ -1,3 +1,4 @@
+import SearchPanel from '../../components/SearchPanel';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -8,7 +9,6 @@ import {
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AppPageContainer from '../../components/AppPageContainer';
-import PageToolbar from '../../components/PageToolbar';
 import SearchInput from '../../components/SearchInput';
 import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
 import PriorCompletionDialog from '../../components/PriorCompletionDialog';
@@ -273,7 +273,7 @@ const CustomerProductionReport = () => {
 
   return <AppPageContainer
     title={text.title}
-    toolbar={<PageToolbar showLastUpdater={false} left={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ width: { xs: '100%', sm: 320 } }} />} right={<><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap', m: 0 }} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel shrink>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
+    toolbar={<SearchPanel onReset={()=>{setSearch('');setIncludeCompleted(false);setCustomerId('');}}  search={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={text.search} sx={{ width: { xs: '100%', sm: 320 } }} />} filters={<><FormControlLabel control={<Switch size="small" checked={includeCompleted} onChange={(event) => setIncludeCompleted(event.target.checked)} />} label={text.includeCompleted} sx={{ whiteSpace: 'nowrap', m: 0 }} /><FormControl size="small" sx={{ width: { xs: '100%', sm: 220 }, flexShrink: 0 }}><InputLabel shrink>{text.customer}</InputLabel><Select value={customerId} label={text.customer} displayEmpty onChange={(event) => setCustomerId(event.target.value)} renderValue={(value) => value ? customerLabel(data.customers.find((customer) => String(customer.id) === String(value)), languageCode) : text.allCustomers}><MenuItem value="">{text.allCustomers}</MenuItem>{data.customers.map((customer) => <MenuItem key={customer.id} value={String(customer.id)}>{customerLabel(customer, languageCode)}</MenuItem>)}</Select></FormControl></>} />}
   >
     <PageContentStack  className="customer-production-report">
       <Box><Typography variant="h5">{selectedCustomer ? customerLabel(selectedCustomer, languageCode) : text.allCustomers}</Typography><Typography variant="caption" color="text.secondary">{text.generated}: {data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-'}</Typography></Box>

@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -34,7 +35,6 @@ import {
 import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -958,16 +958,15 @@ const CustomerPricingBoard = () => {
         </Stack>
       }
       toolbar={
-        <PageToolbar
-          showLastUpdater={false}
-          left={(
+        <SearchPanel
+          search={(
             <SearchInput
               placeholder={text.searchStyle}
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
           )}
-          right={
+          controls={
             <Stack
               direction={{ xs: 'column', lg: 'row' }}
               spacing={1.25}

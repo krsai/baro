@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -42,7 +43,6 @@ import {
 import AppPageContainer from '../../../components/AppPageContainer';
 import BusinessPartnerDialog from '../../../components/BusinessPartnerDialog';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
-import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
@@ -2940,7 +2940,7 @@ const WorkDetail = ({
             minHeight: 420,
           }}
         >
-          <PageToolbar left={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
+          <SearchPanel search={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} sx={{ mb: 1.5 }} />
 
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!selectedFactoryId ? (

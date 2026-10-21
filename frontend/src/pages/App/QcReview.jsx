@@ -1,3 +1,5 @@
+import SearchPanel from '../../components/SearchPanel';
+import SearchInput from '../../components/SearchInput';
 import PageContentStack from '../../components/PageContentStack';
 import QueryFeedback from '../../components/QueryFeedback';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
@@ -919,10 +921,14 @@ const QcReview = () => {
       title={copy.title} description={copy.description}
     >
       <PageContentStack>
-        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2 }}>
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.25} justifyContent="space-between">
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-              <TextField
+        <SearchPanel search={<SearchInput
+                size="small"
+
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder={copy.searchPlaceholder}
+                sx={{ minWidth: { xs: '100%', sm: 220 } }}
+              />} filters={<><TextField
                 select
                 size="small"
                 label={copy.factory}
@@ -938,7 +944,7 @@ const QcReview = () => {
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField
+<TextField
                 select
                 size="small"
                 label={copy.status}
@@ -949,18 +955,7 @@ const QcReview = () => {
                 <MenuItem value="pending">{copy.pending}</MenuItem>
                 <MenuItem value="completed">{copy.completed}</MenuItem>
                 <MenuItem value="all">{copy.all}</MenuItem>
-              </TextField>
-              <TextField
-                size="small"
-                label={copy.search}
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                placeholder={copy.searchPlaceholder}
-                sx={{ minWidth: { xs: '100%', sm: 220 } }}
-              />
-            </Stack>
-          </Stack>
-        </Paper>
+              </TextField></>} onReset={()=>{setSearchText('');setStatusFilter('pending');}} />
 
         <Alert severity="info">
           {copy.description}

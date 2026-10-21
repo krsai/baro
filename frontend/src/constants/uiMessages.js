@@ -2,6 +2,7 @@ import { getCurrentLanguageCode, normalizeLanguageCode } from '../utils/appLangu
 
 export const UI_MESSAGES = {
   common: {
+    clearSearch: { ko: '검색어 지우기', en: 'Clear search', vi: 'Xóa từ khóa' },
     loading: { ko: '불러오는 중...', en: 'Loading...', vi: 'Đang tải...' },
     search: { ko: '\uac80\uc0c9...', en: 'Search...', vi: 'Tìm kiếm...' },
     save: { ko: '저장', en: 'Save', vi: 'Luu' },

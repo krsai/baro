@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
 import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
@@ -6887,17 +6888,7 @@ const AssignBoard = () => {
         </Box>
       }
       toolbar={
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 1,
-            flexWrap: { xs: 'wrap', md: 'nowrap' },
-            minWidth: 0,
-          }}
-        >
-          <SearchInput
+        <SearchPanel search={<SearchInput
             placeholder={getUiMessage(
               'assign.searchPlaceholder',
               '스타일/고객사/색상 검색',
@@ -6906,8 +6897,7 @@ const AssignBoard = () => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             sx={{ flex: 1, minWidth: { xs: '100%', sm: 320 } }}
-          />
-          <Stack
+          />} controls={<Stack
             direction="row"
             spacing={1}
             sx={{
@@ -6941,8 +6931,7 @@ const AssignBoard = () => {
             >
               {getUiMessage('common.reset', '초기화', languageCode)}
             </Button>
-          </Stack>
-        </Box>
+          </Stack>} />
       }
     >
       <StaleEditNotice stale={edit.stale && isAssignmentRouteActive} dirty={isDirty} busy={loading || persisting} languageCode={languageCode} onRefresh={requestExternalBoardReload} />

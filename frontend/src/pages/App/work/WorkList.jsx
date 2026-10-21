@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
@@ -36,7 +37,6 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import MonthSelector from '../../../components/MonthSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import { ui } from '../../../theme/ui';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -796,8 +796,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               </Stack>
             )}
           />
-          <PageToolbar
-            left={<SearchInput
+          <SearchPanel
+            search={<SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장 검색')}
@@ -808,8 +808,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 flex: 1,
               }}
             />}
-            right={<>
-            <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
+            controls={<><MonthSelector
+                  factoryId={selectedFactoryId}
+                  value={dayjs(dateFilterStart).format('YYYY-MM')}
+                  onChange={handleFilterMonthChange}
+                  min={workHistoryOperationStartDay.format('YYYY-MM')}
+                  ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Work month')}
+            /></>}
+          filters={<><FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
               <InputLabel id="work-list-factory-filter-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}
               </InputLabel>
@@ -830,15 +836,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                   </MenuItem>
                 ))}
               </Select>
-            </FormControl>
-            <MonthSelector
-                  factoryId={selectedFactoryId}
-                  value={dayjs(dateFilterStart).format('YYYY-MM')}
-                  onChange={handleFilterMonthChange}
-                  min={workHistoryOperationStartDay.format('YYYY-MM')}
-                  ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Work month')}
-            />
-            </>}
+            </FormControl></>}
           />
         </Stack>
       }

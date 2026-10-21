@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { waitForAtSyncJob } from '../../../utils/atSyncJob.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -25,7 +26,6 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -624,8 +624,8 @@ const StyleBoard = () => {
         </Box>
       )}
       toolbar={(
-        <PageToolbar
-          left={(
+        <SearchPanel onReset={()=>setSearchTerm('')}
+          search={(
             <SearchInput
               placeholder={getUiMessage(
                 'styleBoard.searchPlaceholder',

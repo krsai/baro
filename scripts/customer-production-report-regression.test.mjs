@@ -127,9 +127,9 @@ test('sales report is routed and permissioned', () => {
   assert.match(page, /displayEmpty/);
   assert.match(page, /renderValue=.*text\.allCustomers/);
   assert.match(page, /selectedCustomer \? customerLabel\(selectedCustomer, languageCode\) : text\.allCustomers/);
-  assert.match(page, /import PageToolbar from/);
+  assert.match(page, /import SearchPanel from/);
   assert.match(page, /import SearchInput from/);
-  assert.match(page, /toolbar=\{<PageToolbar/);
+  assert.match(page, /toolbar=\{<SearchPanel/);
   assert.doesNotMatch(page, /toolbar=\{<Stack/);
   assert.match(pageToolbar, /className=\{className\}/);
 });

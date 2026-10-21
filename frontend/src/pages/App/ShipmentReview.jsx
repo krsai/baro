@@ -1,3 +1,5 @@
+import SearchPanel from '../../components/SearchPanel';
+import SearchInput from '../../components/SearchInput';
 import PageContentStack from '../../components/PageContentStack';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -573,22 +575,19 @@ const ShipmentReview = () => {
       title={text('title')} description={text('subtitle')}
     >
       <PageContentStack>
-        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2 }}>
-          <Stack
-            direction={{ xs: 'column', lg: 'row' }}
-            spacing={1.5}
-            alignItems={{ xs: 'stretch', lg: 'center' }}
-            justifyContent="space-between"
-          >
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25}>
-              <MonthSelector
+        <SearchPanel search={<SearchInput
+                placeholder={text('search')}
+                size="small"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                sx={{ minWidth: { xs: '100%', sm: 260 } }}
+              />} controls={<><MonthSelector
                 label={text('month')}
                 value={month}
                 onChange={setMonth}
                 inputSx={{ width: { xs: '100%', sm: 180 } }}
                 sx={{ width: { xs: '100%', sm: 'auto' } }}
-              />
-              <TextField
+              /><SaveButton onClick={handleSave} disabled={saveDisabled} loading={saving} /></>} filters={<TextField
                 label={text('filter')}
                 select
                 size="small"
@@ -601,21 +600,7 @@ const ShipmentReview = () => {
                 <MenuItem value="review">{text('filters.review')}</MenuItem>
                 <MenuItem value="blocked">{text('filters.blocked')}</MenuItem>
                 <MenuItem value="confirmed">{text('filters.confirmed')}</MenuItem>
-              </TextField>
-              <TextField
-                label={text('search')}
-                size="small"
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                sx={{ minWidth: { xs: '100%', sm: 260 } }}
-              />
-            </Stack>
-
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              <SaveButton onClick={handleSave} disabled={saveDisabled} loading={saving} />
-            </Stack>
-          </Stack>
-        </Paper>
+              </TextField>} />
 
         {!storageReady && (
           <Alert severity="error">{dataset?.storageMessage || text('storageNotReady')}</Alert>

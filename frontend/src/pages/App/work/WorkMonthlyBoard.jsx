@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import QueryFeedback from '../../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -22,7 +23,6 @@ import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import MonthSelector from '../../../components/MonthSelector';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -373,17 +373,29 @@ const WorkMonthlyBoard = () => {
         languageCode
       )}
       toolbar={(
-        <PageToolbar
-          showLastUpdater={false}
-          left={(
+        <SearchPanel
+          search={(
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업자 검색')}
             />
           )}
-          right={[
-            <FormControl key="factory" size="small" sx={{ minWidth: 180 }}>
+          controls={<><MonthSelector
+              factoryId={selectedFactoryId}
+              key="month-picker"
+              value={selectedMonth.format('YYYY-MM')}
+              onChange={(monthKey) =>
+                setSelectedMonth(
+                  normalizeProductionAnalysisMonth(monthKey, productionAnalysisMinMonth)
+                )
+              }
+              min={productionAnalysisMinMonth.format('YYYY-MM')}
+              previousDisabled={!canMoveToPreviousMonth}
+              ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Month')}
+              inputSx={{ minWidth: 150 }}
+            /></>}
+          filters={<><FormControl key="factory" size="small" sx={{ minWidth: 180 }}>
               <InputLabel id="work-monthly-factory-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}
               </InputLabel>
@@ -401,22 +413,7 @@ const WorkMonthlyBoard = () => {
                   </MenuItem>
                 ))}
               </Select>
-            </FormControl>,
-            <MonthSelector
-              factoryId={selectedFactoryId}
-              key="month-picker"
-              value={selectedMonth.format('YYYY-MM')}
-              onChange={(monthKey) =>
-                setSelectedMonth(
-                  normalizeProductionAnalysisMonth(monthKey, productionAnalysisMinMonth)
-                )
-              }
-              min={productionAnalysisMinMonth.format('YYYY-MM')}
-              previousDisabled={!canMoveToPreviousMonth}
-              ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Month')}
-              inputSx={{ minWidth: 150 }}
-            />,
-          ]}
+            </FormControl></>}
         />
       )}
     >

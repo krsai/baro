@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -21,7 +22,6 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -1539,9 +1539,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         ) : null
       )}
       toolbar={(
-        <PageToolbar
-          left={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={text('searchPlaceholder', languageCode)} sx={{ width: { xs: '100%', md: 320 } }} />}
-          right={(
+        <SearchPanel onReset={()=>{setSearchTerm('');setSelectedStatusFilter('ACTIVE');setSelectedFactoryFilterId('');}}
+          search={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={text('searchPlaceholder', languageCode)} sx={{ width: { xs: '100%', md: 320 } }} />}
+          filters={(
             <>
               <TextField select label={text('statusLabel', languageCode)} size="small" value={selectedStatusFilter} onChange={(e) => setSelectedStatusFilter(e.target.value)} sx={{ minWidth: 160 }}>
                 {employeeStatusFilterOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}

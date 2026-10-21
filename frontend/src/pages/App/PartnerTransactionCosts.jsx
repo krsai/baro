@@ -1,6 +1,8 @@
+import SearchPanel from '../../components/SearchPanel';
+import SearchInput from '../../components/SearchInput';
 import { expenseLineDescription, expenseRequestSummary } from '../../utils/expenseCodePresentation.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, CircularProgress } from '@mui/material';
+import { Alert, Box, Button, CircularProgress } from '@mui/material';
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import StatusLabel from '../../components/StatusLabel';
@@ -33,7 +35,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const [rows,setRows] = useState([]), [documents,setDocuments] = useState([]), [view,setView] = useState('items');
   const [loading,setLoading] = useState(true), [errors,setErrors] = useState({ items:'',documents:'' });
   const [search,setSearch] = useState(''), [partner,setPartner] = useState(''), [industry,setIndustry] = useState(''), [currency,setCurrency] = useState(''), [kind,setKind] = useState('');
-  const [expanded,setExpanded] = useState(true), [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
+  const [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
   const [dateFrom,setDateFrom] = useState(() => dayjs().startOf('month')), [dateTo,setDateTo] = useState(() => dayjs().endOf('month').startOf('day'));
   const loadSequence = useRef(0), rangeOrganization = useRef(null);
   const error = errors[view === 'documents' ? 'documents' : 'items'];
@@ -118,19 +120,16 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
       <Button variant="contained" disableElevation className="cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
-    <section className="cc-panel" aria-label={text.query}>
-      <div className="cc-section-bar"><span><b>SEARCH</b><span className="cc-bar-divider">/</span>{text.query}</span><button aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded ? text.collapse : text.expand}</button></div>
-      <div className="cc-search-line"><div className="cc-search"><span aria-hidden="true">⌕</span><input aria-label={text.search} placeholder={text.search} value={search} onChange={event=>setSearch(event.target.value)} /></div>
-        <div className="cc-dates"><MonthRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} /></div>
-        <button className="cc-button" disabled={loading} onClick={reset}>↺ {text.reset}</button>
-      </div>
-      {expanded && <div className="cc-filter-grid">
+    <SearchPanel title={text.query} disabled={loading} onReset={reset}
+      search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
+      controls={<MonthRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
+      filters={<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',xl:'repeat(4,minmax(0,1fr))'},gap:1.5,width:'100%'}}>
         <label><span>{labels.industry}</span><select value={industry} onChange={event=>setIndustry(event.target.value)}><option value="">{text.allIndustries}</option>{industryOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         <label><span>{labels.partner}</span><select value={partner} onChange={event=>setPartner(event.target.value)}><option value="">{text.allPartners}</option>{partnerOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         <label><span>{text.kind}</span><select value={kind} onChange={event=>setKind(event.target.value)}><option value="">{text.allKinds}</option><option value="recorded">{text.recorded}</option><option value="historical">{text.historical}</option></select></label>
         <label><span>{labels.currency}</span><select value={currency} onChange={event=>setCurrency(event.target.value)}><option value="">{text.allCurrencies}</option>{currencies.map(code=><option key={code}>{code}</option>)}</select></label>
-      </div>}
-    </section>
+      </Box>}
+    />
     <section className="cc-panel cc-results">
       <div className="cc-tabs" role="tablist">{[['items',text.detail],['partner',text.partnerSummary],['industry',text.industrySummary],['documents',text.documents]].map(([key,label])=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{label}</button>)}<span>{text.basis}: {view==='documents' ? docText.date : labels.date}</span></div>
     <div className="cc-totals cc-results-summary"><span>{text.results} <b>{loading || error ? '—' : visibleRows.length}</b> {text.items}</span><i /><span>{text.partners} <b>{loading || error ? '—' : partnerCount}</b> {text.companies}</span>

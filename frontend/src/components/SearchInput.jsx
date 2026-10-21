@@ -24,7 +24,7 @@ const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
           <InputAdornment position="end">
             <IconButton
               size="small"
-              aria-label="Clear search"
+              aria-label={getUiMessage('common.clearSearch', 'Clear search')}
               onClick={() => onChange?.({ target: { value: '' } })}
               edge="end"
             >
@@ -34,9 +34,9 @@ const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
         ) : null,
       }}
       sx={{
-        width: { xs: '100%', sm: 300, md: 320 },
+        width: { xs: '100%', sm: 320, md: 400 },
         '& .MuiOutlinedInput-root': {
-          minHeight: 40,
+          minHeight: 'var(--ui-control-height, 36px)',
           borderRadius: 1,
           backgroundColor: 'background.paper',
           border: '1px solid',
@@ -46,7 +46,7 @@ const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
           '& .MuiOutlinedInput-notchedOutline': { border: 0 },
         },
         ...sx,
-        maxWidth: { xs: '100%', sm: 320 },
+        maxWidth: '100%',
       }}
       {...props}
     />

@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
 import QueryFeedback from '../../../components/QueryFeedback';
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
@@ -30,7 +31,6 @@ import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import CustomDatePicker from '../../../components/CustomDatePicker';
-import PageToolbar from '../../../components/PageToolbar';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -548,17 +548,26 @@ const AttendanceBoard = ({
         </Stack>
       )}
       toolbar={(
-        <PageToolbar
-          left={(
+        <SearchPanel
+          search={(
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchWorker, languageCode, 'Search worker')}
             />
           )}
-          right={(
-            <>
-              <FormControl size="small" sx={{ minWidth: 200 }}>
+          controls={<><CustomDatePicker
+                label={resolveText(TEXT.workDate, languageCode, 'Work date')}
+                value={managedDate}
+                minDate={operationStartDay}
+                disabled={loadingFactories || !selectedFactoryId}
+                onChange={(value) => {
+                  if (!value || !value.isValid?.()) return;
+                  if (!value.isBefore(operationStartDay,'day')) setSelectedDate(value.startOf('day'));
+                }}
+                slotProps={{ textField: { sx: { minWidth: 160 } } }}
+              /></>}
+          filters={<><FormControl size="small" sx={{ minWidth: 200 }}>
                 <InputLabel id="attendance-factory-select-label">
                   {resolveText(TEXT.factory, languageCode, 'Factory')}
                 </InputLabel>
@@ -578,20 +587,7 @@ const AttendanceBoard = ({
                     </MenuItem>
                   ))}
                 </Select>
-              </FormControl>
-              <CustomDatePicker
-                label={resolveText(TEXT.workDate, languageCode, 'Work date')}
-                value={managedDate}
-                minDate={operationStartDay}
-                disabled={loadingFactories || !selectedFactoryId}
-                onChange={(value) => {
-                  if (!value || !value.isValid?.()) return;
-                  if (!value.isBefore(operationStartDay,'day')) setSelectedDate(value.startOf('day'));
-                }}
-                slotProps={{ textField: { sx: { minWidth: 160 } } }}
-              />
-            </>
-          )}
+              </FormControl></>}
         />
       )}
     >

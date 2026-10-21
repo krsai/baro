@@ -43,30 +43,30 @@ try {
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontSize),'20px');
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontWeight),'600');
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).color),'rgb(52, 64, 84)');
-    const dates=()=>page.locator('.cc-dates input').evaluateAll(els=>els.map(el=>el.value));
-    const left=page.locator('.cc-dates [data-testid="ChevronLeftIcon"]').locator('..');
-    const right=page.locator('.cc-dates [data-testid="ChevronRightIcon"]').locator('..');
-    const resetToAll=async()=>{await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();await left.click();};
+    const dates=()=>page.locator('[data-search-controls] input').evaluateAll(els=>els.map(el=>el.value));
+    const left=page.locator('[data-search-controls] [data-testid="ChevronLeftIcon"]').locator('..');
+    const right=page.locator('[data-search-controls] [data-testid="ChevronRightIcon"]').locator('..');
+    const resetToAll=async()=>{await page.getByRole('button',{name:text.reset,exact:true}).click();await left.click();};
     assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
     await left.click();assert.deepEqual(await dates(),['2026-09-01','2026-10-31']);
     await page.getByRole('button',{name:'M+',exact:true}).click();assert.deepEqual(await dates(),['2026-11-01','2026-11-30']);
     await left.click();assert.deepEqual(await dates(),['2026-10-01','2026-11-30']);
     await page.getByRole('button',{name:'M-',exact:true}).click();assert.deepEqual(await dates(),['2026-09-01','2026-09-30']);
     await right.click();assert.deepEqual(await dates(),['2026-09-01','2026-10-31']);
-    await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
+    await page.getByRole('button',{name:text.reset,exact:true}).click();assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
     for(let i=0;i<6;i++) await page.getByRole('button',{name:'M-',exact:true}).click();
     assert.deepEqual(await dates(),['2026-04-01','2026-04-30']);
     assert.equal(await page.getByRole('button',{name:'M-',exact:true}).isDisabled(),true);
     assert.equal(await left.isDisabled(),true);
-    await page.getByRole('button',{name:`↺ ${text.reset}`,exact:true}).click();
+    await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
     assert.equal(headings.length,12);
     assert.equal(headings.includes(text.style),false);
     assert.equal(await page.locator('tbody .cc-code').count(),0);
     assert.equal(headings[5],text.order);
-    assert.equal(await page.locator('.cc-filter-grid select').nth(0).locator('option').first().textContent(),text.allIndustries);
-    assert.equal(await page.locator('.cc-filter-grid select').nth(1).locator('option').first().textContent(),text.allPartners);
+    assert.equal(await page.locator('[data-search-filters] select').nth(0).locator('option').first().textContent(),text.allIndustries);
+    assert.equal(await page.locator('[data-search-filters] select').nth(1).locator('option').first().textContent(),text.allPartners);
     const historicalRow=page.locator('tbody tr').filter({hasText:'Legacy work'});
     await historicalRow.locator('td').nth(2).dblclick();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
@@ -76,13 +76,13 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
-    assert.deepEqual(await page.locator('.cc-dates .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
+    assert.deepEqual(await page.locator('[data-search-controls] .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
     assert.equal((await page.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
     assert.equal(await page.getByRole('button',{name:'M+',exact:true}).evaluate(el=>getComputedStyle(el).fontSize),'11px');
-    for(const selector of ['.cc-primary','.cc-search input','.cc-filter-grid select','tbody td']) {
+    for(const selector of ['.cc-primary','[data-search-panel] input[type="text"]','[data-search-filters] select','tbody td']) {
       assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).fontSize),'13px',selector+' uses global text size');
     }
-    assert.equal((await page.locator('.cc-dates [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
+    assert.equal((await page.locator('[data-search-controls] [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
     // Exercise the real HTML table's token bridge, not just an isolated MUI preview.
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(248, 250, 252)');
     assert.equal(await page.locator('tbody .MuiChip-root').count(),3);
@@ -97,15 +97,15 @@ try {
     await page.getByRole('tab',{name:text.partnerSummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
     await page.getByRole('tab',{name:text.industrySummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
     await page.getByRole('tab',{name:text.detail,exact:true}).click();
-    await page.locator('.cc-filter-grid select').nth(1).selectOption('12');assert.equal(await page.locator('tbody tr').count(),2);
-    await page.locator('.cc-filter-grid select').nth(3).selectOption('USD');assert.equal(await page.locator('tbody tr').count(),1);
+    await page.locator('[data-search-filters] select').nth(1).selectOption('12');assert.equal(await page.locator('tbody tr').count(),2);
+    await page.locator('[data-search-filters] select').nth(3).selectOption('USD');assert.equal(await page.locator('tbody tr').count(),1);
     await page.getByRole('button',{name:'Document cost',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
-    await page.locator('.cc-filter-grid select').nth(2).selectOption('historical');assert.equal(await page.locator('tbody tr').count(),1);
+    await page.locator('[data-search-filters] select').nth(2).selectOption('historical');assert.equal(await page.locator('tbody tr').count(),1);
     await resetToAll();
     await page.getByRole('tab',{name:text.documents,exact:true}).click();await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
-    await page.locator('.cc-filter-grid select').nth(3).selectOption('USD');
+    await page.locator('[data-search-filters] select').nth(3).selectOption('USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
     assert.equal(await page.getByText(/^EXP-/).count(),0);await page.getByRole('button',{name:lang==='ko'?'Document cost \uC678 1\uAC74':lang==='vi'?'Document cost v\u00e0 1 m\u1ee5c kh\u00e1c':'Document cost and 1 more',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();

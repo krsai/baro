@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -28,7 +29,6 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import MonthRangeSelector from '../../../components/MonthRangeSelector';
 import dayjs from 'dayjs';
@@ -164,19 +164,17 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
     <Button variant="contained" startIcon={<AddIcon />}>새 항목</Button>
   ) : null;
   const toolbar = view === 'stock' ? (
-    <PageToolbar
-      showLastUpdater={false}
-      left={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="자재코드, 종류, 품명, 규격 검색" />}
-      right={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><TextField select label="공장" defaultValue="HN" sx={{ minWidth: 150 }}><MenuItem value="HN">하노이</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="default">기본 창고</MenuItem></TextField><TextField select label="소유자" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="baro">BARO</MenuItem><MenuItem value="customer">고객 소유</MenuItem></TextField><TextField select label="재고 상태" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="short">부족</MenuItem><MenuItem value="negative">음수</MenuItem></TextField></Stack>}
+    <SearchPanel
+      search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="자재코드, 종류, 품명, 규격 검색" />}
+      controls={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><TextField select label="공장" defaultValue="HN" sx={{ minWidth: 150 }}><MenuItem value="HN">하노이</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="default">기본 창고</MenuItem></TextField><TextField select label="소유자" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="baro">BARO</MenuItem><MenuItem value="customer">고객 소유</MenuItem></TextField><TextField select label="재고 상태" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="short">부족</MenuItem><MenuItem value="negative">음수</MenuItem></TextField></Stack>}
     />
   ) : view === 'history' ? (
-    <PageToolbar
-      showLastUpdater={false}
-      left={<SearchInput placeholder="문서번호, 자재, 처리자 검색" />}
-      right={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="거래 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><MonthRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} onShift={shiftHistoryRange} /></Stack>}
+    <SearchPanel
+      search={<SearchInput placeholder="문서번호, 자재, 처리자 검색" />}
+      controls={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="거래 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><MonthRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} onShift={shiftHistoryRange} /></Stack>}
     />
   ) : view === 'materials' ? (
-    <PageToolbar showLastUpdater={false} left={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
+    <SearchPanel search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
   ) : null;
   const content = { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView />, materials: <MaterialsView />, settings: <SettingsView /> }[view] || <StockView keyword={keyword} />;
   return (

@@ -4,14 +4,14 @@ import { readFile } from 'node:fs/promises';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('employee and work list filters use the shared sticky toolbar', async () => {
+test('employee and work list filters use the shared search panel', async () => {
   const [employee, work] = await Promise.all([
     read('frontend/src/pages/App/employee/EmployeeBoard.jsx'),
     read('frontend/src/pages/App/work/WorkList.jsx'),
   ]);
-  assert.match(employee, /toolbar=\{\(\s*<PageToolbar/);
-  assert.match(employee, /left=\{<SearchInput/);
-  assert.match(work, /<PageToolbar[\s\S]*left=\{<SearchInput/);
+  assert.match(employee, /toolbar=\{\(\s*<SearchPanel/);
+  assert.match(employee, /search=\{<SearchInput/);
+  assert.match(work, /<SearchPanel[\s\S]*search=\{<SearchInput/);
   assert.doesNotMatch(work, /import LastUpdaterLabel/);
 });
 

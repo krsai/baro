@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, CircularProgress, Box, Paper, Menu, MenuItem, IconButton, TextField, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
@@ -182,10 +183,7 @@ export default function InvoiceList({ orgId, languageCode }) {
   const active=menuRow?.row;
   const action=(label,run,color)=> <MenuItem key={label} sx={color?{color}:undefined} onClick={()=>{setMenuRow(null);run(active);}}>{label}</MenuItem>;
   return <Paper variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
-    <Stack direction={{xs:'column',sm:'row'}} spacing={2} sx={{p:2}}>
-      <SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>
-      <TextField select size="small" label={common.invoiceStatus} value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}} sx={{minWidth:180}}><MenuItem value="">{ui.all}</MenuItem>{['ISSUED','CANCELLED','SUPERSEDED'].map((value,index)=><MenuItem key={value} value={value}>{[ui.issued,ui.cancelled,ui.superseded][index]}</MenuItem>)}</TextField>
-    </Stack>
+    <SearchPanel sx={{border:0,borderRadius:0}} search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} filters={<TextField select size="small" label={common.invoiceStatus} value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}} sx={{minWidth:180}}><MenuItem value="">{ui.all}</MenuItem>{['ISSUED','CANCELLED','SUPERSEDED'].map((value,index)=><MenuItem key={value} value={value}>{[ui.issued,ui.cancelled,ui.superseded][index]}</MenuItem>)}</TextField>} onReset={()=>{setSearch('');setStatus('');setPage(0);}} />
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
       {[common.invoiceNumber,common.issuedDate,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,ui.actions].map((label,index)=><TableCell key={label} align={index>=4&&index<=6?'right':'left'}>{label}</TableCell>)}

@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { useParams } from 'react-router-dom';
@@ -316,11 +317,11 @@ const WorkMonthlyDetail = () => {
         </Button>
       )}
       toolbar={(
-        <SearchInput
+        <SearchPanel search={<SearchInput
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
           placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업일 검색')}
-        />
+        />}  />
       )}
     >
       {!normalizedMonthKey || !normalizedFactoryId || !normalizedWorkerId ? (

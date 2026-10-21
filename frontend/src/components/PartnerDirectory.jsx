@@ -1,3 +1,4 @@
+import SearchPanel from './SearchPanel';
 import React,{useMemo,useState} from 'react';
 import {Button,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import AppPageContainer from './AppPageContainer';
@@ -24,7 +25,7 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
  const Container=embedded?PartnerListPanel:AppPageContainer,labels=PARTNER_DIRECTORY_TEXT[languageCode]||PARTNER_DIRECTORY_TEXT.en;
  const [search,setSearch]=useState('');
  const filtered=useMemo(()=>{const term=search.trim().toLocaleLowerCase();return term?rows.filter(row=>[row.code,row.name,row.subtitle,row.contactName,row.phone,row.email,row.searchText,getStaticOptionLabel('country',row.country,row.country||'',languageCode)].filter(Boolean).join(' ').toLocaleLowerCase().includes(term)):rows;},[rows,search,languageCode]);
- return <Container title={title} titleActions={<Button variant="contained" disabled={!canAdd} onClick={onAdd}>{labels.add}</Button>} toolbar={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={labels.search}/>}>
+ return <Container title={title} titleActions={<Button variant="contained" disabled={!canAdd} onClick={onAdd}>{labels.add}</Button>} toolbar={<SearchPanel title={title} onReset={()=>setSearch('')} search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={labels.search}/>} />}>
   <Paper variant="outlined" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}><TableContainer>
    <Table size="small" sx={{minWidth:1040,tableLayout:'fixed'}} data-testid="partner-directory">
     <colgroup>{[75,190,80,100,125,150,95,110,220].map((width,index)=><col key={index} style={{width}}/>)}</colgroup>

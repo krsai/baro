@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { getOrderWorkflowLabel, orderWorkflowOptions, ORDER_WORKFLOW_TONES } from '../../../constants/orderWorkflow.mjs';
 import StatusLabel from '../../../components/StatusLabel';
@@ -42,7 +43,6 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import SaveButton from '../../../components/SaveButton';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import SearchableSelect from '../../../components/SearchableSelect';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -3035,16 +3035,16 @@ const OrderList = () => {
           </Button>
         )}
         toolbar={(
-          <PageToolbar
-            showLastUpdater={false}
-            left={(
+          <SearchPanel onReset={()=>{setSearchTerm('');setProgressFilter(ORDER_FILTER_ALL);}}
+
+            search={(
               <SearchInput
                 value={searchTerm}
                 placeholder={orderPartyText.searchPlaceholder}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             )}
-            right={(
+            filters={(
               <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
                 <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0 }}>
                   <InputLabel id="order-progress-filter-label">{ORDER_STATUS_TEXT.fieldLabel}</InputLabel>

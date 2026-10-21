@@ -1,3 +1,4 @@
+import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -38,7 +39,6 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
-import PageToolbar from '../../../components/PageToolbar';
 import SearchInput from '../../../components/SearchInput';
 import MonthSelector from '../../../components/MonthSelector';
 import TableStatusRow from '../../../components/TableStatusRow';
@@ -780,17 +780,24 @@ const AttendanceList = () => {
         </Stack>
       )}
       toolbar={(
-        <PageToolbar
-          showLastUpdater={false}
-          left={(
+        <SearchPanel
+          search={(
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, 'Search date')}
             />
           )}
-          right={[
-            <FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
+          controls={<><MonthSelector
+              key="month"
+              value={selectedMonth}
+              onChange={setSelectedMonth}
+              label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
+              min={[...availableMonths].sort()[0]}
+              max={[...availableMonths].sort().at(-1)}
+              disabled={loadingRows || availableMonths.length === 0}
+            /></>}
+          filters={<><FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
               <InputLabel id="attendance-list-factory-label">
                 {resolveText(TEXT.factory, languageCode, 'Factory')}
               </InputLabel>
@@ -807,17 +814,7 @@ const AttendanceList = () => {
                   </MenuItem>
                 ))}
               </Select>
-            </FormControl>,
-            <MonthSelector
-              key="month"
-              value={selectedMonth}
-              onChange={setSelectedMonth}
-              label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
-              min={[...availableMonths].sort()[0]}
-              max={[...availableMonths].sort().at(-1)}
-              disabled={loadingRows || availableMonths.length === 0}
-            />,
-          ]}
+            </FormControl></>}
         />
       )}
     >
