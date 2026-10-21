@@ -24,6 +24,8 @@ try {
     return route.fulfill({headers,json:route.request().url().includes('expense-types')?[type,{...type,id:2,code:'LOGISTICS',nameKo:'물류 서비스'}]:[industry,{...industry,id:5,code:'LOGISTICS',nameKo:'물류·운송',expenseTypeId:2},{...industry,id:6,code:'UNKNOWN',nameKo:'Unknown',expenseTypeId:null}]});
   });
   await page.goto(`http://127.0.0.1:${port}/expense-masters-acceptance.html`);
+  await page.locator('#industries [data-testid=hierarchy-panel]').waitFor();
+  assert.equal(await page.locator('#industries nav').evaluate(el=>getComputedStyle(el).borderRightColor),'rgb(229, 234, 242)');
   await page.locator('#types').getByRole('button',{name:'수정',exact:true}).first().click();
   await page.getByRole('dialog').getByLabel('한국어 이름').fill('생산 외주');
   await page.getByRole('dialog').getByRole('button',{name:'등록',exact:true}).click();

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, List, ListItemButton, Typography, TableContainer, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Typography, TableContainer, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
 import ChevronRight from '@mui/icons-material/ChevronRight';
 import StatusLabel from '../../components/StatusLabel';
+import HierarchyPanel from '../../components/HierarchyPanel';
 import { INDUSTRY_TREE_TEXT } from '../../constants/industryHierarchy';
 import EditIcon from '@mui/icons-material/Edit';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -42,17 +43,10 @@ export default function ExpenseMasterSettings({ industries = false }) {
   </TableBody></Table></TableContainer>;
   return <AppPageContainer title={industries ? text.industries : text.types} titleActions={industries && <Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button>}>
     {error&&<Alert severity="error">{error}<Button onClick={load}>{common.loadError}</Button></Alert>}
-    {loading?<CircularProgress size={24}/>:industries?<Paper variant="outlined" sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'260px minmax(0,1fr)'},overflow:'hidden'}}>
-      <Box sx={{p:2,borderRight:{md:1},borderBottom:{xs:1,md:0},borderColor:'divider'}}>
-        <Typography variant="subtitle2" sx={{mb:1}}>{tree.category}</Typography>
-        <List disablePadding aria-label={tree.category}>{parents.map(parent=><ListItemButton key={parent.id} selected={parent.id===category} onClick={()=>setCategory(parent.id)} sx={{borderRadius:1,mb:.5}}>
-          <Typography sx={{flex:1}}>{serviceName(parent,languageCode)}</Typography><Typography variant="caption" color="text.secondary" sx={{mx:1}}>{rows.filter(row=>(row.expenseTypeId||0)===parent.id).length}</Typography><ChevronRight fontSize="small"/>
-        </ListItemButton>)}</List>
-      </Box>
-      <Box sx={{minWidth:0,p:2}}><Stack direction="row" alignItems="center" spacing={1} sx={{mb:2}}><Typography variant="subtitle2">{serviceName(selected,languageCode)}</Typography><ChevronRight fontSize="small" color="disabled"/><Typography variant="subtitle2">{tree.industry}</Typography></Stack>
-        {category===0&&<Alert severity="info" sx={{mb:2}}>{tree.review}</Alert>}{table}
-      </Box>
-    </Paper>:<Paper variant="outlined">{table}</Paper>}
+    {loading?<CircularProgress size={24}/>:industries?<HierarchyPanel label={tree.category} items={parents.map(parent=>({id:parent.id,label:serviceName(parent,languageCode),count:rows.filter(row=>(row.expenseTypeId||0)===parent.id).length}))} selectedId={category} onSelect={setCategory}>
+      <Stack direction="row" alignItems="center" spacing={1} sx={{mb:2}}><Typography variant="subtitle2">{serviceName(selected,languageCode)}</Typography><ChevronRight fontSize="small" color="disabled"/><Typography variant="subtitle2">{tree.industry}</Typography></Stack>
+      {category===0&&<Alert severity="info" sx={{mb:2}}>{tree.review}</Alert>}{table}
+    </HierarchyPanel>:<Paper variant="outlined">{table}</Paper>}
     <OutsourcingServiceDialog systemDefaults partnerIndustryOnly initialServiceId={industryId} initialExpenseTypeId={category||null} open={open} onClose={() => setOpen(false)} onSaved={load} orgId={activeOrgId} languageCode={languageCode} />
     <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{text.type}</DialogTitle><DialogContent>{form && <Stack spacing={2} sx={{ pt: 1 }}>{['nameKo','nameEn','nameVi'].map(key => <TextField key={key} label={common[key]} value={form[key]} disabled={saving} onChange={event => setForm({ ...form, [key]: event.target.value })} />)}<FormControlLabel label={languageCode === 'ko' ? '사용 중' : 'Active'} control={<Checkbox checked={form.isActive} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} /></Stack>}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setForm(null)}>{common.cancel}</Button><SaveButton loading={saving} disabled={saving || !form || ['nameKo','nameEn','nameVi'].some(key => !form[key].trim())} onClick={save}>{common.save}</SaveButton></DialogActions></Dialog>
   </AppPageContainer>;

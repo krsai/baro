@@ -30,6 +30,9 @@ try{
   const nav=page.locator('nav'),branches=nav.getByRole('button');
   assert.equal(await page.locator('h1').count(),1);
   await branches.first().waitFor();assert.equal(await branches.count(),restricted?1:3);
+  assert.equal(await page.locator('[data-testid=hierarchy-panel]').count(),1);
+  assert.equal(await nav.evaluate(el=>getComputedStyle(el).borderRightColor),'rgb(229, 234, 242)','Desktop boundary must remain subtle after responsive styles resolve');
+  assert.equal(await nav.locator('[aria-current=true]').count(),1);
   if(restricted){await page.getByText('Supplier A',{exact:true}).waitFor();assert.deepEqual(reads,['MATERIAL_SUPPLIER']);}
   else{
    await page.getByText('THE SAN',{exact:true}).waitFor();assert.deepEqual(reads,['customers']);
@@ -44,7 +47,7 @@ try{
    assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
    assert.ok(reads.includes('PROCESS_OUTSOURCING'));assert.ok(reads.includes('MATERIAL_SUPPLIER'));
   }
-  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Partner table must scroll within its panel');}
+  for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Partner table must scroll within its panel');assert.equal(await nav.evaluate(el=>getComputedStyle(el).borderRightWidth),'0px');assert.equal(await nav.evaluate(el=>getComputedStyle(el).borderBottomColor),'rgb(229, 234, 242)');}
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Unified partners passed ko/en/vi: one title, role tree, customer FK navigation, vendor history, supplier view, restricted permissions and responsive panels.');

@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import {useLocation} from 'react-router-dom';
-import {Box,List,ListItemButton,Paper,Typography} from '@mui/material';
-import ChevronRight from '@mui/icons-material/ChevronRight';
+import {Typography} from '@mui/material';
+import HierarchyPanel from '../../components/HierarchyPanel';
 import AppPageContainer from '../../components/AppPageContainer';
 import CustomerList from './customer/CustomerList';
 import BusinessPartners from './BusinessPartners';
@@ -22,14 +22,8 @@ export default function TradePartners({initialType='CUSTOMER'}){
  useEffect(()=>{if(location.state?.partnerType)setSelected(location.state.partnerType);},[location.key]);
  const current=options.find(option=>option.id===selected)||options[0];
  return <AppPageContainer title={getUiMessage('menu.partners','Partners',languageCode)}>
-  <Paper variant="outlined" sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'220px minmax(0,1fr)'},overflow:'hidden'}}>
-   <Box component="nav" aria-label={labels.type} sx={{p:2,borderRight:{md:1},borderBottom:{xs:1,md:0},borderColor:'divider'}}>
-    <Typography variant="subtitle2" sx={{mb:1}}>{labels.type}</Typography>
-    <List disablePadding>{options.map(option=><ListItemButton key={option.id} selected={current?.id===option.id} aria-current={current?.id===option.id?'true':undefined} onClick={()=>setSelected(option.id)} sx={{borderRadius:1,mb:.5}}>
-     <Typography sx={{flex:1}}>{option.label}</Typography><ChevronRight fontSize="small"/>
-    </ListItemButton>)}</List>
-   </Box>
-   <Box key={`${auth.activeOrgId}:${current?.id}`} sx={{p:2,minWidth:0}}>{!current?<Typography>{labels.denied}</Typography>:current.id==='CUSTOMER'?<CustomerList embedded/>:<BusinessPartners embedded type={current.id}/>}</Box>
-  </Paper>
+  <HierarchyPanel label={labels.type} items={options} selectedId={current?.id} onSelect={setSelected} contentKey={`${auth.activeOrgId}:${current?.id}`}>
+   {!current?<Typography>{labels.denied}</Typography>:current.id==='CUSTOMER'?<CustomerList embedded/>:<BusinessPartners embedded type={current.id}/>}
+  </HierarchyPanel>
  </AppPageContainer>;
 }
