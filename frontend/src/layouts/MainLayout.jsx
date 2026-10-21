@@ -1,5 +1,6 @@
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
 import { MenuBlueprintContext } from '../context/MenuBlueprintContext';
+import { organizeSystemMenu, findMenuGroupForPath } from '../utils/systemMenuLayout.mjs';
 import WorkspaceDialogScope from '../components/WorkspaceDialogScope';
 import TabStateIndicators from '../components/TabStateIndicators';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -998,7 +999,8 @@ const MainLayout = () => {
         })
         .filter(Boolean);
 
-    return menuStructureBlueprint
+    const navigationBlueprint = isSystemProfile ? organizeSystemMenu(menuStructureBlueprint, languageCode) : menuStructureBlueprint;
+    return navigationBlueprint
       .map((item) => {
         if (!item.isParent) {
           return hasPathAccess(item.path) ? item : null;
@@ -1011,7 +1013,13 @@ const MainLayout = () => {
         };
       })
       .filter(Boolean);
-  }, [hasPathAccess, menuStructureBlueprint]);
+  }, [hasPathAccess, menuStructureBlueprint, isSystemProfile, languageCode]);
+
+  const currentSystemMenuGroup = isSystemProfile ? findMenuGroupForPath(menuItems, currentPath) : null;
+  useEffect(() => {
+    if (!isSystemProfile) return;
+    if (currentSystemMenuGroup) setExpandedMenuGroup(currentSystemMenuGroup);
+  }, [currentPath, isSystemProfile, currentSystemMenuGroup, setExpandedMenuGroup]);
   const flattenedMenuItems = useMemo(
     () => flattenNestedMenuItems(menuItems),
     [menuItems]
