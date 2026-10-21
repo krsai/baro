@@ -61,7 +61,6 @@ import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { formatCurrency } from '../../../utils/currencyFormat';
 import { hasAssignmentCtSnapshot, resolveAssignmentCtSnapshot } from '../../../utils/assignmentCt';
 import { resolveLocalizedProcessName } from '../../../utils/processDisplay';
-import { formatSeconds } from '../../../utils/processTime';
 import { loadWorkLogContext } from './workLogStorage';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
@@ -103,12 +102,12 @@ const LABELS = {
   process: '공정',
   processPlaceholder: '공정을 선택하세요.',
   noProcessesAvailable: '선택 가능한 공정이 없습니다.',
-  ctSeconds: 'CT',
-  quantity: '생산량',
-  quantityCtTotal: '수량 x CT',
+  ctSeconds: 'CT (sec/pcs)',
+  quantity: '생산량 (pcs)',
+  quantityCtTotal: '생산량 × CT (sec)',
   recordCount: '작업 행',
   totalQuantity: '총 생산량',
-  totalQuantityCt: '총 수량 x CT',
+  totalQuantityCt: '총 생산량 × CT',
   moveUp: '위로 이동',
   moveDown: '아래로 이동',
   addBelow: '아래 작업자 추가',
@@ -132,11 +131,11 @@ const LABELS = {
 const WORK_DETAIL_LABELS = {
   ko: LABELS,
   en: {
-    title: 'Work Log Detail', workDate: 'Work End Date', coverageStartDate: 'Work Start Date', factory: 'Factory', autoFactory: 'Factory (Auto-selected)', factoryScope: 'Factory', wagePerSecond: 'Rate per Second', wagePerSecondUnit: 'VND/sec', note: 'Note', notePlaceholder: 'Enter a note.', autoNote: 'Automatic Note', searchPlaceholder: 'Search worker/style/process', rowNumber: 'Row', worker: 'Worker', workerPlaceholder: 'Select a worker.', style: 'Style', stylePlaceholder: 'Select a style.', noStylesAvailable: 'No styles available.', selectStyleFirst: 'Select a style first.', assignmentException: 'Exception', assignmentOtherFactoryScope: 'Assignment factory mismatch', orderNo: 'Order No.', orderQuantity: 'Order Quantity', assignmentQuantityExceeded: 'Order quantity exceeded', selectWorkerFirst: 'Select a worker first.', process: 'Process', processPlaceholder: 'Select a process.', noProcessesAvailable: 'No processes available.', ctSeconds: 'CT', quantity: 'Produced Quantity', quantityCtTotal: 'Quantity × CT', recordCount: 'Work Rows', totalQuantity: 'Total Produced', totalQuantityCt: 'Total Quantity × CT', moveUp: 'Move Up', moveDown: 'Move Down', addBelow: 'Add Worker Below', remove: 'Remove Worker', entryMode: 'Entry Mode', entryModeDaily: 'Daily Entry', entryModePeriodSummary: 'Period Entry', coverageSuggestionPrefix: 'The previous work log ended on', coverageSuggestionSuffix: 'The start date was suggested automatically.', firstFactoryScopeCoverage: 'This is the first work log for this factory. Enter the start date.', zeroCoverageHint: 'If there is no previous work log, enter the start date.', coverageValidation: 'The work start date cannot be later than the end date.', assignmentLinkRequired: 'Work without an assignment card cannot be saved.',
+    title: 'Work Log Detail', workDate: 'Work End Date', coverageStartDate: 'Work Start Date', factory: 'Factory', autoFactory: 'Factory (Auto-selected)', factoryScope: 'Factory', wagePerSecond: 'Rate per Second', wagePerSecondUnit: 'VND/sec', note: 'Note', notePlaceholder: 'Enter a note.', autoNote: 'Automatic Note', searchPlaceholder: 'Search worker/style/process', rowNumber: 'Row', worker: 'Worker', workerPlaceholder: 'Select a worker.', style: 'Style', stylePlaceholder: 'Select a style.', noStylesAvailable: 'No styles available.', selectStyleFirst: 'Select a style first.', assignmentException: 'Exception', assignmentOtherFactoryScope: 'Assignment factory mismatch', orderNo: 'Order No.', orderQuantity: 'Order Quantity', assignmentQuantityExceeded: 'Order quantity exceeded', selectWorkerFirst: 'Select a worker first.', process: 'Process', processPlaceholder: 'Select a process.', noProcessesAvailable: 'No processes available.', ctSeconds: 'CT (sec/pcs)', quantity: 'Production (pcs)', quantityCtTotal: 'Production × CT (sec)', recordCount: 'Work Rows', totalQuantity: 'Total Produced', totalQuantityCt: 'Total Production × CT', moveUp: 'Move Up', moveDown: 'Move Down', addBelow: 'Add Worker Below', remove: 'Remove Worker', entryMode: 'Entry Mode', entryModeDaily: 'Daily Entry', entryModePeriodSummary: 'Period Entry', coverageSuggestionPrefix: 'The previous work log ended on', coverageSuggestionSuffix: 'The start date was suggested automatically.', firstFactoryScopeCoverage: 'This is the first work log for this factory. Enter the start date.', zeroCoverageHint: 'If there is no previous work log, enter the start date.', coverageValidation: 'The work start date cannot be later than the end date.', assignmentLinkRequired: 'Work without an assignment card cannot be saved.',
     currencyUnit: 'VND', outsourceNamePrefix: 'Outsourced', outsourceUnitPriceLabel: 'Outsource Unit Price', outsourceUnitPricePlaceholder: 'Unit price', addOutsourcePartnerOption: '＋ Add Partner', outsourcePartnersLoadError: 'Failed to load outsourcing partners.',
   },
   vi: {
-    title: 'Chi tiết nhật ký công việc', workDate: 'Ngày kết thúc công việc', coverageStartDate: 'Ngày bắt đầu công việc', factory: 'Nhà máy', autoFactory: 'Nhà máy (tự động chọn)', factoryScope: 'Nhà máy', wagePerSecond: 'Đơn giá mỗi giây', wagePerSecondUnit: 'đồng/giây', note: 'Ghi chú', notePlaceholder: 'Nhập ghi chú.', autoNote: 'Ghi chú tự động', searchPlaceholder: 'Tìm nhân viên/style/công đoạn', rowNumber: 'Dòng', worker: 'Nhân viên', workerPlaceholder: 'Chọn nhân viên.', style: 'Style', stylePlaceholder: 'Chọn style.', noStylesAvailable: 'Không có style để chọn.', selectStyleFirst: 'Vui lòng chọn style trước.', assignmentException: 'Ngoại lệ', assignmentOtherFactoryScope: 'Thông tin nhà máy phân công không khớp', orderNo: 'Số đơn hàng', orderQuantity: 'Số lượng đơn hàng', assignmentQuantityExceeded: 'Vượt số lượng đơn hàng', selectWorkerFirst: 'Vui lòng chọn nhân viên trước.', process: 'Công đoạn', processPlaceholder: 'Chọn công đoạn.', noProcessesAvailable: 'Không có công đoạn để chọn.', ctSeconds: 'CT', quantity: 'Sản lượng', quantityCtTotal: 'Số lượng × CT', recordCount: 'Dòng công việc', totalQuantity: 'Tổng sản lượng', totalQuantityCt: 'Tổng số lượng × CT', moveUp: 'Di chuyển lên', moveDown: 'Di chuyển xuống', addBelow: 'Thêm nhân viên bên dưới', remove: 'Xóa nhân viên', entryMode: 'Cách nhập', entryModeDaily: 'Nhập theo ngày', entryModePeriodSummary: 'Nhập theo khoảng thời gian', coverageSuggestionPrefix: 'Nhật ký công việc trước kết thúc ngày', coverageSuggestionSuffix: 'Ngày bắt đầu đã được đề xuất tự động.', firstFactoryScopeCoverage: 'Đây là nhật ký công việc đầu tiên của nhà máy này. Vui lòng nhập ngày bắt đầu.', zeroCoverageHint: 'Nếu không có nhật ký trước đó, vui lòng nhập ngày bắt đầu.', coverageValidation: 'Ngày bắt đầu không được muộn hơn ngày kết thúc.', assignmentLinkRequired: 'Không thể lưu công việc chưa liên kết với thẻ phân công.',
+    title: 'Chi tiết nhật ký công việc', workDate: 'Ngày kết thúc công việc', coverageStartDate: 'Ngày bắt đầu công việc', factory: 'Nhà máy', autoFactory: 'Nhà máy (tự động chọn)', factoryScope: 'Nhà máy', wagePerSecond: 'Đơn giá mỗi giây', wagePerSecondUnit: 'đồng/giây', note: 'Ghi chú', notePlaceholder: 'Nhập ghi chú.', autoNote: 'Ghi chú tự động', searchPlaceholder: 'Tìm nhân viên/style/công đoạn', rowNumber: 'Dòng', worker: 'Nhân viên', workerPlaceholder: 'Chọn nhân viên.', style: 'Style', stylePlaceholder: 'Chọn style.', noStylesAvailable: 'Không có style để chọn.', selectStyleFirst: 'Vui lòng chọn style trước.', assignmentException: 'Ngoại lệ', assignmentOtherFactoryScope: 'Thông tin nhà máy phân công không khớp', orderNo: 'Số đơn hàng', orderQuantity: 'Số lượng đơn hàng', assignmentQuantityExceeded: 'Vượt số lượng đơn hàng', selectWorkerFirst: 'Vui lòng chọn nhân viên trước.', process: 'Công đoạn', processPlaceholder: 'Chọn công đoạn.', noProcessesAvailable: 'Không có công đoạn để chọn.', ctSeconds: 'CT (sec/pcs)', quantity: 'Sản lượng (pcs)', quantityCtTotal: 'Sản lượng × CT (sec)', recordCount: 'Dòng công việc', totalQuantity: 'Tổng sản lượng', totalQuantityCt: 'Tổng sản lượng × CT', moveUp: 'Di chuyển lên', moveDown: 'Di chuyển xuống', addBelow: 'Thêm nhân viên bên dưới', remove: 'Xóa nhân viên', entryMode: 'Cách nhập', entryModeDaily: 'Nhập theo ngày', entryModePeriodSummary: 'Nhập theo khoảng thời gian', coverageSuggestionPrefix: 'Nhật ký công việc trước kết thúc ngày', coverageSuggestionSuffix: 'Ngày bắt đầu đã được đề xuất tự động.', firstFactoryScopeCoverage: 'Đây là nhật ký công việc đầu tiên của nhà máy này. Vui lòng nhập ngày bắt đầu.', zeroCoverageHint: 'Nếu không có nhật ký trước đó, vui lòng nhập ngày bắt đầu.', coverageValidation: 'Ngày bắt đầu không được muộn hơn ngày kết thúc.', assignmentLinkRequired: 'Không thể lưu công việc chưa liên kết với thẻ phân công.',
     currencyUnit: 'đồng', outsourceNamePrefix: 'Gia công ngoài', outsourceUnitPriceLabel: 'Đơn giá gia công', outsourceUnitPricePlaceholder: 'Đơn giá mỗi cái', addOutsourcePartnerOption: '＋ Thêm đối tác', outsourcePartnersLoadError: 'Không thể tải danh sách đối tác gia công.',
   },
 };
@@ -254,12 +253,12 @@ const resolveRowCtDisplayMeta = ({ row, rowProcess, selectedProcessOption, langu
     totalCtSeconds: isOutsourced ? 0 : totalCtSeconds,
     ctValue: isOutsourced
       ? outsourceUnitPrice == null ? '-' : formatCurrencyAmount(outsourceUnitPrice, languageCode)
-      : hasProcess ? formatSeconds(ctSeconds, languageCode) : '-',
+      : hasProcess ? `${formatCount(ctSeconds)} sec/pcs` : '-',
     totalCtValue: isOutsourced
       ? outsourceUnitPrice != null && quantity > 0
         ? formatCurrencyAmount(outsourceUnitPrice * quantity, languageCode)
         : '-'
-      : hasProcess && quantity > 0 ? formatSeconds(totalCtSeconds, languageCode) : '-',
+      : hasProcess && quantity > 0 ? `${formatCount(totalCtSeconds)} sec` : '-',
   };
 };
 const buildComparableWorkRecord = (record = {}) => {
@@ -330,7 +329,7 @@ const DESKTOP_INLINE_FIELD_SX = {
 };
 const DESKTOP_INLINE_TEXT_SX = {
   minHeight: DESKTOP_INLINE_FIELD_HEIGHT,
-  px: 1.75,
+  px: 0,
   display: 'flex',
   alignItems: 'center',
 };
@@ -2596,10 +2595,7 @@ const WorkDetail = ({
         const quantityNumber = Math.max(0, Math.round(Number(row?.quantity) || 0));
         const quantityValue =
           quantityNumber > 0
-            ? formatNumberWithCommas(quantityNumber, {
-                fallback: '0',
-                maximumFractionDigits: 0,
-              })
+            ? `${formatCount(quantityNumber)} pcs`
             : '-';
         const rowCtMeta = resolveRowCtDisplayMeta({
           row,
@@ -2980,13 +2976,13 @@ const WorkDetail = ({
                 <Chip
                   variant="outlined"
                   size="small"
-                  label={`${LABELS.totalQuantity} ${formatCount(summary.workLogQuantityTotal)}`}
+                  label={`${LABELS.totalQuantity} ${formatCount(summary.workLogQuantityTotal)} pcs`}
                 />
                 <Chip
                   color="primary"
                   variant="outlined"
                   size="small"
-                  label={`${LABELS.totalQuantityCt} ${formatSeconds(summary.workLogCtTotalSeconds, languageCode)}`}
+                  label={`${LABELS.totalQuantityCt} ${formatCount(summary.workLogCtTotalSeconds)} sec`}
                 />
               </Stack>
               <DragDropContext onDragEnd={handleRowDragEnd}>
