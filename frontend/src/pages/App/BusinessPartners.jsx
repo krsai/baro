@@ -1,18 +1,13 @@
-import PageContentStack from '../../components/PageContentStack';
 import DeleteActionButton from '../../components/DeleteActionButton';
-import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, Chip, CircularProgress, Drawer, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import { Alert, Box, Button, CircularProgress, Drawer, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import EditIcon from '@mui/icons-material/Edit';
 import { Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
-import AppPageContainer from '../../components/AppPageContainer';
-import PartnerListPanel from '../../components/PartnerListPanel';
+import PartnerDirectory from '../../components/PartnerDirectory';
+import {resolveCustomerDisplayName} from '../../utils/appLanguage';
 import BusinessPartnerDialog, { getBusinessPartnerTypeLabel } from '../../components/BusinessPartnerDialog';
-import SearchInput from '../../components/SearchInput';
-import OutsourcingServiceDialog, { TRANSACTION_TEXT } from '../../components/OutsourcingServiceDialog';
+import { TRANSACTION_TEXT } from '../../components/OutsourcingServiceDialog';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
@@ -43,16 +38,12 @@ const DELETE_TEXT = {
 };
 
 export default function BusinessPartners({ type, embedded=false }) {
-  const Container=embedded?PartnerListPanel:AppPageContainer;
   const { activeOrgId, activeOrgRole, accessProfile } = useAuth();
   const isSystemAdmin = accessProfile?.systemRole === 'SYSTEM_ADMIN';
   const canEdit = isSystemAdmin || ['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole);
-  const canManage = type === 'MATERIAL_SUPPLIER' || isSystemAdmin;
-  const [serviceOpen, setServiceOpen] = useState(false);
   const { languageCode } = useLanguage();
   const labels = TEXT[languageCode] || TEXT.ko;
   const listLabels = LIST_TEXT[languageCode] || LIST_TEXT.ko;
-  const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const deleteLabels = DELETE_TEXT[languageCode] || DELETE_TEXT.ko;
   const [deletingPartner, setDeletingPartner] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -60,19 +51,19 @@ export default function BusinessPartners({ type, embedded=false }) {
   const pageTitle = lockedTitle || labels.title;
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editingPartner, setEditingPartner] = useState(null);
   const [error, setError] = useState('');
+  const [queryFailed,setQueryFailed] = useState(false);
   const [selected, setSelected] = useState(null);
   const [history, setHistory] = useState([]);
   const [costs, setCosts] = useState([]);
   const costLabels = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const [historyLoading, setHistoryLoading] = useState(false);
   const loadPartners = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true); setError('');setQueryFailed(false);
     try { const result = await requestJSON(`/business-partners${buildQueryString({ orgId: activeOrgId, type })}`, { skipGlobalLoading: true, skipCache: true }); setPartners(Array.isArray(result) ? result : []); }
-    catch (loadError) { setError(loadError?.message || labels.loadError); }
+    catch (loadError) { setQueryFailed(true);setError(loadError?.message || labels.loadError); }
     finally { setLoading(false); }
   }, [activeOrgId, labels.loadError, type]);
   useEffect(() => { loadPartners(); }, [loadPartners]);
@@ -95,7 +86,7 @@ export default function BusinessPartners({ type, embedded=false }) {
     } finally { setDeleting(false); }
   };
   const serviceName = useCallback((item) => item?.[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || '', [languageCode]);
-  const filteredPartners = useMemo(() => { const keyword = search.trim().toLocaleLowerCase(); return keyword ? partners.filter((partner) => [partner.name, partner.contactName, partner.contactPhone, serviceName(partner.partnerExpenseType), ...(partner.serviceTypes || []).map(serviceName)].some((value) => value?.toLocaleLowerCase().includes(keyword))) : partners; }, [partners, search, serviceName]);
+  const directoryRows=useMemo(()=>partners.map(partner=>({id:partner.id,source:partner,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:[serviceName(partner.partnerExpenseType),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' \u00b7 '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address].filter(Boolean).join(' ')})),[partners,languageCode,serviceName]);
   const openHistory = async (partner) => {
     setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);
     try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }
@@ -103,30 +94,10 @@ export default function BusinessPartners({ type, embedded=false }) {
     finally { setHistoryLoading(false); }
   };
   return (
-    <Container title={pageTitle} titleActions={canManage ? <Stack direction="row" spacing={1}>{type === 'PROCESS_OUTSOURCING' && <Button onClick={() => setServiceOpen(true)}>{(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko).addIndustry}</Button>}<Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateOpen(true)}>{labels.add}</Button></Stack> : null} toolbar={<SearchInput value={search} onChange={(event) => setSearch(event.target.value)} placeholder={labels.search} sx={{ width: 360 }} />}>
-      <PageContentStack>{error ? <Alert severity="error" onClose={() => setError('')}>{error}</Alert> : null}<Paper variant="outlined"><TableContainer><Table size="small">
-        <TableHead><TableRow>
-          <TableCell width={150}>{expenseLabels.partnerType}</TableCell><TableCell width={180}>{expenseLabels.industry}</TableCell><TableCell>{labels.name}</TableCell>
-
-          <TableCell width={160}>{labels.contact}</TableCell><TableCell width={180}>{labels.phone}</TableCell><TableCell width={120}>{labels.status}</TableCell>
-          <TableCell width={100} align="center">{listLabels.viewHistory}</TableCell><TableCell width={64} align="center">{labels.edit}</TableCell><TableCell width={64} align="center">{deleteLabels.remove}</TableCell>
-        </TableRow></TableHead>
-        <TableBody>
-          {loading && <TableRow><TableCell colSpan={9} align="center"><CircularProgress size={24} /></TableCell></TableRow>}
-          {!loading && filteredPartners.length === 0 && <TableRow><TableCell colSpan={9} align="center">{labels.empty}</TableCell></TableRow>}
-          {filteredPartners.map(partner => <TableRow key={partner.id} hover>
-            <TableCell>{serviceName(partner.partnerExpenseType) || getBusinessPartnerTypeLabel(partner.type, languageCode)}</TableCell>
-            <TableCell>{partner.serviceTypes?.map(serviceName).filter(Boolean).join(', ') || '-'}</TableCell>
-            <TableCell>{partner.name}</TableCell>
-            <TableCell>{partner.contactName || '-'}</TableCell><TableCell>{partner.contactPhone || '-'}</TableCell>
-            <TableCell><Chip size="small" color={partner.isActive ? 'success' : 'default'} label={partner.isActive ? labels.active : labels.inactive} variant="outlined" /></TableCell>
-            <TableCell align="center"><Button size="small" onClick={() => openHistory(partner)} sx={{ whiteSpace: 'nowrap' }}>{listLabels.viewHistory}</Button></TableCell>
-            <TableCell align="center"><Tooltip title={labels.edit}><span><IconButton aria-label={labels.edit} color="primary" disabled={!canEdit} size="small" onClick={() => setEditingPartner(partner)}><EditIcon fontSize="small" /></IconButton></span></Tooltip></TableCell>
-            <TableCell align="center"><Tooltip title={partner.hasUsageHistory !== false ? deleteLabels.blocked : deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} color="error" size="small" disabled={!canEdit || deleting || partner.hasUsageHistory !== false} onClick={() => setDeletingPartner(partner)} /></span></Tooltip></TableCell>
-          </TableRow>)}
-        </TableBody>
-      </Table></TableContainer></Paper></PageContentStack>
-      <OutsourcingServiceDialog partnerIndustryOnly open={serviceOpen} onClose={() => setServiceOpen(false)} onSaved={loadPartners} orgId={activeOrgId} languageCode={languageCode} />
+    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={setEditingPartner} canOpen={canEdit}
+      renderActions={partner=><><Button variant="contained" onClick={()=>openHistory(partner)}>{listLabels.viewHistory}</Button><Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
+    >
+      {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}
       <BusinessPartnerDialog
         open={createOpen || Boolean(editingPartner)}
         onClose={() => { setCreateOpen(false); setEditingPartner(null); }}
@@ -144,6 +115,6 @@ export default function BusinessPartners({ type, embedded=false }) {
         {costs.length > 0 && <Box mt={3}><Typography variant="subtitle1" fontWeight={700} mb={1}>{listLabels.costHistory}</Typography>
         <TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow><TableCell>{costLabels.date}</TableCell><TableCell>{costLabels.industry}</TableCell><TableCell>{costLabels.description}</TableCell><TableCell>{costLabels.amount}</TableCell></TableRow></TableHead><TableBody>{!historyLoading && !costs.length && <TableRow><TableCell colSpan={4}>{costLabels.empty}</TableCell></TableRow>}{costs.map(cost => <TableRow key={cost.id}><TableCell>{cost.transactionDate}</TableCell><TableCell>{serviceName(cost.serviceType)}</TableCell><TableCell>{cost.description}</TableCell><TableCell>{formatNumberWithCommas(cost.amount)} {cost.currency}</TableCell></TableRow>)}</TableBody></Table></TableContainer></Box>}
       </Drawer>
-    </Container>
+    </PartnerDirectory>
   );
 }

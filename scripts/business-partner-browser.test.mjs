@@ -38,16 +38,17 @@ try {
   const used = page.locator('#partners tbody tr').filter({ has: page.getByText('Used Partner', { exact: true }) });
   const unused = page.locator('#partners tbody tr').filter({ hasText: 'Unused Partner' });
   await used.waitFor();
-  assert.deepEqual(await page.locator('#partners thead th').allTextContents(), ['거래처 구분', '세부 업종', '업체명', '담당자', '연락처', '상태', '내역보기', '수정', '삭제']);
+  assert.deepEqual(await page.locator('#partners thead th').allTextContents(), ['\uCF54\uB4DC','\uAC70\uB798\uCC98\uBA85','\uAD6D\uAC00','\uB2F4\uB2F9\uC790','\uC5F0\uB77D\uCC98','\uC774\uBA54\uC77C','\uC0C1\uD0DC','\uB4F1\uB85D\uC77C','\uC791\uC5C5']);
   await used.getByText('Used Partner', { exact: true }).click();
   assert.equal(await page.getByText('외주 작업 내역', { exact: true }).count(), 0);
+  await page.getByRole('dialog').getByRole('button',{name:'\uCDE8\uC18C',exact:true}).click();
   await used.getByRole('button', { name: '내역보기', exact: true }).click();
   await page.getByText('Buttonhole', { exact: true }).waitFor();
   assert.equal(await page.getByText('거래 비용', { exact: true }).count(), 0);
   assert.equal(await page.getByText('비용 신청 내역', { exact: true }).count(), 0);
   await page.keyboard.press('Escape');
   assert.equal(await used.getByRole('button', { name: '삭제', exact: true }).isDisabled(), true);
-  assert.equal(await used.getByRole('button', { name: '수정', exact: true }).isEnabled(), true);
+  assert.equal(await used.getByRole('button', { name: '\uC0C1\uC138', exact: true }).isEnabled(), true);
   await unused.getByRole('button', { name: '삭제', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click();
   await unused.waitFor({ state: 'detached' }); assert.equal(deletes, 1);
@@ -56,7 +57,7 @@ try {
   await page.getByRole('dialog').getByRole('button', { name: '삭제', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: '사용 이력이 있는 거래처는 삭제할 수 없습니다.' }).waitFor();
   assert.equal(await concurrent.getByRole('button', { name: '삭제', exact: true }).isDisabled(), true);
-  await used.getByRole('button', { name: '수정', exact: true }).click();
+  await used.getByRole('button', { name: '\uC0C1\uC138', exact: true }).click();
   await page.getByRole('dialog').getByLabel('업체명', { exact: false }).fill('Renamed Partner');
   await page.getByRole('dialog').getByRole('button', { name: '저장', exact: true }).click();
   await page.locator('#costs').getByRole('button', { name: 'Renamed Partner', exact: true }).waitFor();

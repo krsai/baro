@@ -33,10 +33,15 @@ try{
   if(restricted){await page.getByText('Supplier A',{exact:true}).waitFor();assert.deepEqual(reads,['MATERIAL_SUPPLIER']);}
   else{
    await page.getByText('THE SAN',{exact:true}).waitFor();assert.deepEqual(reads,['customers']);
+   const headers=await page.locator('[data-testid=partner-directory] thead th').allTextContents();
+   assert.equal(headers.length,9);
    await page.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.partnerNavigation),'/customer/7','Customer relationship FK must remain intact');
    await branches.nth(1).click();await page.getByText('Vendor A',{exact:true}).waitFor();
-   await page.locator('tbody tr').first().getByRole('button').first().click();await page.getByText('Buttonhole',{exact:true}).waitFor();await page.keyboard.press('Escape');
+   assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
+   assert.equal(await page.getByRole('button',{name:lang==='ko'?'\uAC70\uB798\uCC98 \uB4F1\uB85D':lang==='vi'?'Th\u00eam \u0111\u1ed1i t\u00e1c':'Add partner',exact:true}).isEnabled(),true);
+   await page.locator('tbody tr').first().getByRole('button',{name:lang==='ko'?'\uB0B4\uC5ED\uBCF4\uAE30':lang==='vi'?'Xem l\u1ecbch s\u1eed':'View history',exact:true}).click();await page.getByText('Buttonhole',{exact:true}).waitFor();await page.keyboard.press('Escape');
    await branches.nth(2).click();await page.getByText('Supplier A',{exact:true}).waitFor();
+   assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
    assert.ok(reads.includes('PROCESS_OUTSOURCING'));assert.ok(reads.includes('MATERIAL_SUPPLIER'));
   }
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Partner table must scroll within its panel');}

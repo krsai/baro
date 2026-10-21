@@ -1,259 +1,42 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Button, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
-import AppPageContainer from '../../../components/AppPageContainer';
-import PartnerListPanel from '../../../components/PartnerListPanel';
+import React,{useCallback,useEffect,useMemo,useState} from 'react';
+import {useLocation} from 'react-router-dom';
+import {Button,Stack} from '@mui/material';
+import PartnerDirectory from '../../../components/PartnerDirectory';
 import NotificationIndicator from '../../../components/NotificationIndicator';
-import PageToolbar from '../../../components/PageToolbar';
-import SearchInput from '../../../components/SearchInput';
-import TableStatusRow from '../../../components/TableStatusRow';
-import { getUiMessage } from '../../../constants/uiMessages';
-import { getStaticOptionLabel } from '../../../constants/staticOptionRegistry';
-import { useAppActions } from '../../../context/AppContext';
-import { useAuth } from '../../../context/AuthContext';
-import { useLanguage } from '../../../context/LanguageContext';
-import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
+import {getUiMessage} from '../../../constants/uiMessages';
+import {useAppActions} from '../../../context/AppContext';
+import {useAuth} from '../../../context/AuthContext';
+import {useLanguage} from '../../../context/LanguageContext';
+import {buildQueryString,requestJSON} from '../../../utils/apiClient';
+import {resolveCustomerDisplayName} from '../../../utils/appLanguage';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
-import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
-import {
-  combinePhone,
-  formatCustomerDate,
-  resolveCountryForDisplay,
-} from './customerFormShared';
+import {WORKSPACE_DATA_TOPICS} from '../../../utils/workspaceDataEvents';
+import {combinePhone,resolveCountryForDisplay} from './customerFormShared';
 
-const resolveCustomerWorkspaceTabLabel = (languageCode, customer) => {
-  const displayName = resolveCustomerDisplayName(customer, languageCode) || customer?.code || '-';
-  if (languageCode === 'ko') return `고객: ${displayName}`;
-  if (languageCode === 'vi') return `Khách hàng: ${displayName}`;
-  return `Customer: ${displayName}`;
+const CustomerList=({embedded=false})=>{
+ const {showNotification,navigateToPath}=useAppActions(),{activeOrgId}=useAuth(),{languageCode}=useLanguage(),location=useLocation();
+ const [customers,setCustomers]=useState([]),[loading,setLoading]=useState(true),[queryFailed,setQueryFailed]=useState(false);
+ const fetchError=getUiMessage('customerBoard.fetchError','Failed to load customers.',languageCode);
+ const fetchCustomers=useCallback(async()=>{
+  if(!activeOrgId){setCustomers([]);setLoading(false);return;}
+  setLoading(true);setQueryFailed(false);
+  try{const data=await requestJSON(`/customers${buildQueryString({orgId:activeOrgId})}`,{skipCache:true});setCustomers(Array.isArray(data)?data:[]);}
+  catch(error){setQueryFailed(true);showNotification(error?.message||fetchError,'error');}finally{setLoading(false);}
+ },[activeOrgId,fetchError,showNotification]);
+ useEffect(()=>{fetchCustomers();},[fetchCustomers]);
+ useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:[WORKSPACE_DATA_TOPICS.SALES_PRICES,WORKSPACE_DATA_TOPICS.STYLES,WORKSPACE_DATA_TOPICS.CUSTOMERS],isActive:embedded||location.pathname==='/customer',onRefresh:fetchCustomers});
+ const pricing={ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing';
+ const rows=useMemo(()=>customers.map(customer=>({
+  id:customer.id,source:customer,code:customer.code,name:resolveCustomerDisplayName(customer,languageCode),country:resolveCountryForDisplay(customer),
+  contactName:customer.manager,phone:customer.phoneNumber?customer.phone||combinePhone(customer.countryCode,customer.phoneNumber):'',email:customer.email,
+  registeredAt:customer.registeredAt,isActive:customer.isActive!==false,
+  attentionLabel:Number(customer.missingSalesPriceStyleCount)>0?pricing:null,
+  searchText:[customer.name,customer.nameKo,customer.nameVi,customer.address].filter(Boolean).join(' '),
+ })),[customers,languageCode,pricing]);
+ const openDetail=customer=>navigateToPath(`/customer/${customer.id}`,{label:`${getUiMessage('menu.customer','Customer',languageCode)}: ${resolveCustomerDisplayName(customer,languageCode)||customer.code||'-'}`});
+ return <PartnerDirectory embedded={embedded} title={getUiMessage('menu.customer','Customers',languageCode)} languageCode={languageCode} rows={rows} loading={loading} error={queryFailed} onRetry={fetchCustomers}
+  onAdd={()=>navigateToPath('/customer/new',{label:getUiMessage('customerBoard.addCustomer','Add customer',languageCode)})} onOpen={openDetail}
+  renderActions={customer=><Button variant="contained" onClick={()=>navigateToPath(`/customer-pricing?customerId=${customer.id}`,{label:pricing})}><Stack direction="row" spacing={.75} alignItems="center"><span>{pricing}</span>{Number(customer.missingSalesPriceStyleCount)>0&&<NotificationIndicator/>}</Stack></Button>}
+ />;
 };
-
-const CustomerList = ({embedded=false}) => {
-  const Container=embedded?PartnerListPanel:AppPageContainer;
-  const { showNotification, navigateToPath } = useAppActions();
-  const { activeOrgId } = useAuth();
-  const { languageCode } = useLanguage();
-  const location = useLocation();
-
-  const [queryFailed, setQueryFailed] = useState(false);
-  const [customers, setCustomers] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
-  const customerText = useMemo(
-    () => ({
-      title: getUiMessage('customerBoard.title', 'Customer', languageCode),
-      searchPlaceholder: getUiMessage(
-        'customerBoard.searchPlaceholder',
-        'Search customer name, code, manager, or address...',
-        languageCode
-      ),
-      addCustomer: getUiMessage('customerBoard.addCustomer', 'Add Customer', languageCode),
-      code: getUiMessage('customerBoard.code', 'Customer Code', languageCode),
-      name: getUiMessage('customerBoard.name', 'Customer Name', languageCode),
-      country: getUiMessage('customerBoard.country', 'Country', languageCode),
-      manager: getUiMessage('customerBoard.manager', 'Manager', languageCode),
-      contact: getUiMessage('customerBoard.contact', 'Contact', languageCode),
-      email: getUiMessage('customerBoard.email', 'Email', languageCode),
-      registeredAt: getUiMessage('customerBoard.registeredAt', 'Registered', languageCode),
-      loadingMessage: getUiMessage('customerBoard.loadingMessage', 'Loading customers...', languageCode),
-      emptyMessage: getUiMessage('customerBoard.emptyMessage', 'No customers found.', languageCode),
-      fetchError: getUiMessage('customerBoard.fetchError', 'Failed to load customer list.', languageCode),
-      openDetail: languageCode === 'ko' ? '상세' : languageCode === 'vi' ? 'Chi tiết' : 'Detail',
-      openPricing:
-        languageCode === 'ko' ? '단가' : languageCode === 'vi' ? 'Đơn giá' : 'Pricing',
-      actions: languageCode === 'ko' ? '작업' : languageCode === 'vi' ? 'Tac vu' : 'Actions',
-    }),
-    [languageCode]
-  );
-
-  const fetchCustomers = useCallback(async () => {
-    if (!activeOrgId) {
-      setCustomers([]);
-      return;
-    }
-    setLoading(true);
-    setQueryFailed(false);
-    try {
-      const data = await requestJSON(`/customers${customerQuery}`);
-      setCustomers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      setQueryFailed(true);
-      showNotification(error?.message || customerText.fetchError, 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [activeOrgId, customerQuery, customerText.fetchError, showNotification]);
-
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
-
-  useWorkspaceRefreshOnEvent({
-    orgId: activeOrgId,
-    topics: [
-      WORKSPACE_DATA_TOPICS.SALES_PRICES,
-      WORKSPACE_DATA_TOPICS.STYLES,
-      WORKSPACE_DATA_TOPICS.CUSTOMERS,
-    ],
-    isActive: location.pathname === '/customer' || embedded,
-    onRefresh: fetchCustomers,
-  });
-
-  const filteredCustomers = useMemo(() => {
-    if (!searchTerm) return customers;
-    const lowerTerm = searchTerm.toLowerCase();
-    return customers.filter((customer) => {
-      const countryCodeForDisplay = resolveCountryForDisplay(customer);
-      const localizedCountryLabel = countryCodeForDisplay
-        ? getStaticOptionLabel('country', countryCodeForDisplay, countryCodeForDisplay, languageCode)
-        : '';
-      const searchable = [
-        customer?.name,
-        customer?.nameKo,
-        customer?.nameVi,
-        customer?.code,
-        customer?.manager,
-        customer?.address,
-        customer?.email,
-        customer?.country,
-        localizedCountryLabel,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return searchable.includes(lowerTerm);
-    });
-  }, [customers, languageCode, searchTerm]);
-
-  const openCustomerDetail = useCallback(
-    (customer) => {
-      navigateToPath(`/customer/${customer.id}`, {
-        label: resolveCustomerWorkspaceTabLabel(languageCode, customer),
-      });
-    },
-    [languageCode, navigateToPath]
-  );
-
-  const openCustomerPricing = useCallback(
-    (customer) => {
-      navigateToPath(`/customer-pricing?customerId=${customer.id}`, {
-        label: customerText.openPricing,
-      });
-    },
-    [customerText.openPricing, navigateToPath]
-  );
-
-  const handleAdd = useCallback(() => {
-    navigateToPath('/customer/new', {
-      label: languageCode === 'ko' ? '고객 추가' : languageCode === 'vi' ? 'Them khach hang' : 'Add Customer',
-    });
-  }, [languageCode, navigateToPath]);
-
-  return (
-    <Container
-      title={customerText.title}
-      titleActions={
-        <Button variant="contained" onClick={handleAdd}>
-          {customerText.addCustomer}
-        </Button>
-      }
-      toolbar={
-        <PageToolbar
-          left={
-            <SearchInput
-              placeholder={customerText.searchPlaceholder}
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          }
-        />
-      }
-    >
-      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
-        <TableContainer>
-          <Table stickyHeader size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.code}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.name}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.country}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.manager}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.contact}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.email}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }}>{customerText.registeredAt}</TableCell>
-                <TableCell sx={{ fontWeight: 'bold' }} align="center">
-                  {customerText.actions}
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {loading && (
-                <TableStatusRow colSpan={8} state="loading" sx={{ py: 2 }} />
-              )}
-              {!loading && (queryFailed || filteredCustomers.length === 0) && (
-                <TableStatusRow colSpan={8} state={queryFailed ? 'error' : 'empty'} onRetry={fetchCustomers} sx={{ py: 2 }} />
-              )}
-              {!loading && !queryFailed && filteredCustomers.map((customer) => {
-                const countryCodeForDisplay = resolveCountryForDisplay(customer);
-                const countryLabel = countryCodeForDisplay
-                  ? getStaticOptionLabel('country', countryCodeForDisplay, countryCodeForDisplay, languageCode)
-                  : '-';
-
-                return (
-                  <TableRow
-                    key={customer.id}
-                    hover
-                    onDoubleClick={() => openCustomerDetail(customer)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    <TableCell>{customer.code || '-'}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="text"
-                        onClick={() => openCustomerDetail(customer)}
-                        sx={{ px: 0, minWidth: 0, justifyContent: 'flex-start', textTransform: 'none' }}
-                      >
-                        {resolveCustomerDisplayName(customer, languageCode) || '-'}
-                      </Button>
-                    </TableCell>
-                    <TableCell>{countryLabel || '-'}</TableCell>
-                    <TableCell>{customer.manager || '-'}</TableCell>
-                    <TableCell>
-                      {customer.phone || combinePhone(customer.countryCode, customer.phoneNumber) || '-'}
-                    </TableCell>
-                    <TableCell>{customer.email || '-'}</TableCell>
-                    <TableCell>{formatCustomerDate(customer.registeredAt, languageCode)}</TableCell>
-                    <TableCell align="center">
-                      <Stack direction="row" spacing={1} justifyContent="center">
-                        <Button size="small" variant="outlined" onClick={() => openCustomerDetail(customer)}>
-                          {customerText.openDetail}
-                        </Button>
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={() => openCustomerPricing(customer)}
-                        >
-                          <Stack direction="row" spacing={1} alignItems="center">
-                            <span>{customerText.openPricing}</span>
-                            {Number(customer?.missingSalesPriceStyleCount) > 0 && (
-                              <NotificationIndicator />
-                            )}
-                          </Stack>
-                        </Button>
-                      </Stack>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Paper>
-    </Container>
-  );
-};
-
 export default CustomerList;
