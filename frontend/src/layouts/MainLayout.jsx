@@ -378,6 +378,10 @@ const MainLayout = () => {
   }, [currentPath]);
 
   useEffect(() => {
+    if (['/invoices', '/outsourcing-record', '/payroll'].some(path => currentPath === path || currentPath.startsWith(`${path}/`))) {
+      setExpandedMenuGroup(MENU_GROUP_KEYS.ACCOUNTING);
+      return;
+    }
     if (currentPath.startsWith('/attribute/processes')) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.PROCESS_MASTER);
       return;
@@ -416,7 +420,6 @@ const MainLayout = () => {
     }
     if (
       currentPath.startsWith('/order') ||
-      currentPath.startsWith('/invoices') ||
       currentPath.startsWith('/style') ||
       currentPath.startsWith('/customer-pricing') ||
       currentPath.startsWith('/customer-production-report')
@@ -640,11 +643,6 @@ const MainLayout = () => {
             path: '/order',
           },
           {
-            label: getUiMessage('menu.invoice', 'Invoices', languageCode),
-            icon: <ListAltIcon />,
-            path: '/invoices',
-          },
-          {
             label: getUiMessage('menu.customerProductionReport', '현황판', languageCode),
             icon: <AssessmentIcon />,
             path: '/customer-production-report',
@@ -667,11 +665,6 @@ const MainLayout = () => {
             label: getUiMessage('menu.workHistory', '\uC791\uC5C5 \uAE30\uB85D', languageCode),
             icon: <HistoryIcon />,
             path: '/work-history',
-          },
-          {
-            label: getUiMessage('menu.outsourcingRecord', '\uC678\uC8FC \uB0B4\uC5ED', languageCode),
-            icon: <HistoryIcon />,
-            path: '/outsourcing-record',
           },
           {
             label: getUiMessage('menu.attendance', '\uCD9C\uD1F4\uADFC', languageCode),
@@ -716,6 +709,16 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.ACCOUNTING,
         isOpen: accountingOpen,
         children: [
+          {
+            label: getUiMessage('menu.invoice', 'Invoices', languageCode),
+            icon: <ListAltIcon />,
+            path: '/invoices',
+          },
+          {
+            label: getUiMessage('menu.outsourcingRecord', '\uBE44\uC6A9 \uC2E0\uCCAD', languageCode),
+            icon: <HistoryIcon />,
+            path: '/outsourcing-record',
+          },
           {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
@@ -919,7 +922,6 @@ const MainLayout = () => {
         const preferredSalesPaths = [
           '/style',
           '/order',
-          '/invoices',
           '/customer-production-report',
         ];
         orderedChildren = [
@@ -936,7 +938,6 @@ const MainLayout = () => {
         const preferredRecordPaths = [
           '/assignment',
           '/work-history',
-          '/outsourcing-record',
           '/qc-review',
         ];
         orderedChildren = [
