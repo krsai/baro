@@ -1,4 +1,5 @@
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
+import { MenuBlueprintContext } from '../context/MenuBlueprintContext';
 import WorkspaceDialogScope from '../components/WorkspaceDialogScope';
 import TabStateIndicators from '../components/TabStateIndicators';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -980,16 +981,6 @@ const MainLayout = () => {
         }),
     [menuStructureBlueprint]
   );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.__BARO_MENU_BLUEPRINT__ = accessPolicyMenuBlueprint;
-    window.dispatchEvent(
-      new CustomEvent('baro:menu-blueprint-updated', {
-        detail: { items: accessPolicyMenuBlueprint },
-      })
-    );
-  }, [accessPolicyMenuBlueprint]);
 
   const menuItems = useMemo(() => {
     const filterVisibleMenuChildren = (children = []) =>
@@ -2065,7 +2056,7 @@ const MainLayout = () => {
   );
 
   return (
-    <ManagementPeriodProvider><Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
+    <MenuBlueprintContext.Provider value={accessPolicyMenuBlueprint}><ManagementPeriodProvider><Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden', bgcolor: 'background.default' }}>
       {/* Header */}
       <AppBar ref={appBarRef} position="fixed" sx={{ zIndex: 1201, bgcolor: 'white', color: 'text.primary' }}>
         <Toolbar
@@ -2310,7 +2301,7 @@ const MainLayout = () => {
           )}
         </Box>
       </Box>
-    </Box></ManagementPeriodProvider>
+    </Box></ManagementPeriodProvider></MenuBlueprintContext.Provider>
   );
 };
 

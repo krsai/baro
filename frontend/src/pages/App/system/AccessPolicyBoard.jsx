@@ -22,6 +22,7 @@ import { ORG_ROLE_DEFAULT_LABELS } from '../../../constants/organizationAccess';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
+import { useMenuBlueprint } from '../../../context/MenuBlueprintContext';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { resolveFeatureByPath } from '../../../utils/accessControl';
 import {
@@ -34,8 +35,6 @@ import {
   sanitizeRoleAccessPolicy,
 } from '../../../utils/roleAccessPolicy';
 
-const MENU_BLUEPRINT_EVENT = 'baro:menu-blueprint-updated';
-const MENU_BLUEPRINT_GLOBAL_KEY = '__BARO_MENU_BLUEPRINT__';
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const EDITABLE_ROLE_ORDER = [
   ORG_ROLE_KEYS.ADMIN,
@@ -115,12 +114,6 @@ const resolveLocalizedText = (localizedText, languageCode) => {
     localizedText.vi ||
     ''
   );
-};
-
-const readMenuBlueprint = () => {
-  if (typeof window === 'undefined') return [];
-  const rows = window[MENU_BLUEPRINT_GLOBAL_KEY];
-  return Array.isArray(rows) ? rows : [];
 };
 
 const buildMenuTree = (nodes = [], parentId = 'root') =>
@@ -236,7 +229,7 @@ const AccessPolicyBoard = () => {
   const isSystemAdmin =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
 
-  const [menuBlueprint, setMenuBlueprint] = React.useState(() => readMenuBlueprint());
+  const menuBlueprint = useMenuBlueprint();
   const [savedPolicy, setSavedPolicy] = React.useState(() =>
     toEditablePolicy(getDefaultRoleAccessPolicy())
   );
@@ -271,17 +264,6 @@ const AccessPolicyBoard = () => {
       cancelled = true;
     };
   }, [showNotification]);
-
-  React.useEffect(() => {
-    const handleBlueprintUpdate = (event) => {
-      const eventItems = event?.detail?.items;
-      setMenuBlueprint(Array.isArray(eventItems) ? eventItems : readMenuBlueprint());
-    };
-    handleBlueprintUpdate();
-    if (typeof window === 'undefined') return undefined;
-    window.addEventListener(MENU_BLUEPRINT_EVENT, handleBlueprintUpdate);
-    return () => window.removeEventListener(MENU_BLUEPRINT_EVENT, handleBlueprintUpdate);
-  }, []);
 
   const rows = React.useMemo(
     () => flattenMenuTree(buildMenuTree(menuBlueprint)),
