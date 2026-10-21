@@ -468,6 +468,7 @@ const StyleDetail = () => {
   return (
     <AppPageContainer
       title={detailTabLabel}
+      description={isNew ? undefined : styleFormData.name || originalData.name || styleId}
       titleActions={(
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <LastUpdaterLabel />

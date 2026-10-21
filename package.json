@@ -2,6 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:page-naming": "node --test scripts/page-naming.test.mjs",
+    "test:page-naming-browser": "node scripts/page-naming-browser.test.mjs",
     "test:menu-policy-browser": "node scripts/menu-policy-browser.test.mjs",
     "test:invoice-editor-browser": "node scripts/invoice-editor-browser.test.mjs",
     "test:invoice-list-query": "npm --prefix backend run build && node --test scripts/invoice-list-query.test.mjs",

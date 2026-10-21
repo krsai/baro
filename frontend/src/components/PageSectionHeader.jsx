@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Button, Stack, Typography } from '@mui/material';
 import { ui } from '../theme/ui';
+import { usePageNaming } from '../context/PageNamingContext';
 
 const PageSectionHeader = ({
   title,
@@ -14,6 +15,8 @@ const PageSectionHeader = ({
   titleVariant = 'h5',
   titleComponent,
 }) => {
+  const pageNaming = usePageNaming();
+  const heading = titleComponent === 'h1' ? pageNaming?.title || title : title;
   const resolvedActions =
     actions ||
     (actionLabel ? (
@@ -41,7 +44,7 @@ const PageSectionHeader = ({
     >
       <Stack spacing={0.5} sx={{minWidth:0}}>
       <Typography component={titleComponent} variant={titleVariant} sx={{ fontWeight: ui.typography.titleFontWeight, color: ui.color.heading, letterSpacing: ui.typography.titleLetterSpacing, lineHeight: 1.4, overflowWrap:'anywhere' }}>
-        {title}
+        {heading}
       </Typography>
       {description && <Typography variant="body2" color="text.secondary">{description}</Typography>}
       </Stack>

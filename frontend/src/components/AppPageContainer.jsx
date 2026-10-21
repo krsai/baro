@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Stack } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
 import { ui } from '../theme/ui';
+import { usePageNaming } from '../context/PageNamingContext';
 
 const AppPageContainer = ({
   title,
@@ -14,6 +15,8 @@ const AppPageContainer = ({
   sx = {},
   contentSx = {},
 }) => {
+  const pageNaming = usePageNaming();
+  if (title) title = pageNaming?.title || title;
   const resolvedHeader = header ? (
     <Stack spacing={ui.layout.headerGap} sx={{ minWidth: 0 }}>
       {header}

@@ -2844,7 +2844,7 @@ const WorkDetail = ({
   }, [editingRowId, isMobile]);
 
   const detailHeader = (
-    <PageSectionHeader title={`${LABELS.title}: ${workDateRangeLabel}`} titleComponent="h1" actions={
+    <PageSectionHeader title={LABELS.title} description={workDateRangeLabel} titleComponent="h1" actions={
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <SaveButton

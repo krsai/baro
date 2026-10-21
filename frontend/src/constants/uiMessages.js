@@ -28,6 +28,8 @@ export const UI_MESSAGES = {
     },
   },
   menu: {
+    permission: { ko: '권한 관리', en: 'Permissions', vi: 'Quản lý quyền' },
+    appDefaults: { ko: '앱 기본설정', en: 'App defaults', vi: 'Mặc định ứng dụng' },
     partners: { ko: '거래처', en: 'Partners', vi: 'Đối tác' },
     invoice: { ko: '청구서', en: 'Invoices', vi: 'Hóa đơn' },
     invoiceEditor: { ko: '청구서 작성', en: 'Create invoice', vi: 'Lập hóa đơn' },

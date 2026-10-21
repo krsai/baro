@@ -1,3 +1,4 @@
+import { usePageNaming } from '../../../context/PageNamingContext';
 import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
@@ -3001,6 +3002,7 @@ const rebuildFactoryScopeWithReplace = ({
 };
 
 const AssignBoard = () => {
+  const pageNaming = usePageNaming();
   const pageDialogs = usePageDialogs();
   const { showNotification, navigateToPath, setUnsavedChangesGuard, clearUnsavedChangesGuard } = useAppActions();
   const { activeOrgId, activeOrgRole, activeProfile } = useAuth();
@@ -6873,7 +6875,7 @@ const AssignBoard = () => {
       header={
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6">
-            {getUiMessage('assign.pageTitle', '작업 배정', languageCode)}
+            {pageNaming?.title || getUiMessage('menu.assignment', '배정', languageCode)}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <LastUpdaterLabel />

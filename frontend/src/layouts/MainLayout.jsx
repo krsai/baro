@@ -1,3 +1,5 @@
+import { PageNamingProvider } from '../context/PageNamingContext';
+import { applyPageMenuNames, resolvePageNaming } from '../utils/pageNaming.mjs';
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
 import { MenuBlueprintContext } from '../context/MenuBlueprintContext';
 import { organizeSystemMenu, findMenuGroupForPath } from '../utils/systemMenuLayout.mjs';
@@ -609,7 +611,7 @@ const MainLayout = () => {
   }, [activeOrgId, canViewCustomerMenu]);
 
   const baseMenuBlueprint = useMemo(() => {
-    return [
+    return applyPageMenuNames([
       {
         label: getUiMessage('menu.dashboard', 'Dashboard', languageCode),
         icon: <DashboardIcon />,
@@ -904,7 +906,7 @@ const MainLayout = () => {
           },
         ],
       },
-    ];
+    ], languageCode, key => getUiMessage(key, key, languageCode));
   }, [
     accountingOpen,
     adminOpen,
@@ -1036,245 +1038,14 @@ const MainLayout = () => {
     () => flattenNestedMenuItems(menuItems),
     [menuItems]
   );
-  const resolveWorkHistoryTabLabel = React.useCallback(
-    (kind = 'list') => {
-      const baseLabel = getUiMessage(
-        'menu.workHistory',
-        '\uC791\uC5C5 \uAE30\uB85D',
-        languageCode
-      );
-      const suffixByKind =
-        languageCode === 'ko'
-          ? { list: '\uBAA9\uB85D', new: '\uC2E0\uADDC', detail: '\uC0C1\uC138' }
-          : languageCode === 'vi'
-            ? { list: 'Danh sách', new: 'Moi', detail: 'Chi tiết' }
-            : { list: 'List', new: 'New', detail: 'Detail' };
-      if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
-      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
-      return `${baseLabel} - ${suffixByKind.list}`;
-    },
-    [languageCode]
-  );
-  const resolveOutsourcingRecordTabLabel = React.useCallback(
-    (kind = 'list') => {
-      const baseLabel = getUiMessage(
-        'menu.outsourcingRecord',
-        '외주 내역',
-        languageCode
-      );
-      const suffixByKind =
-        languageCode === 'ko'
-          ? { list: '목록', new: '신규', detail: '상세' }
-          : languageCode === 'vi'
-            ? { list: 'Danh sách', new: 'Moi', detail: 'Chi tiết' }
-            : { list: 'List', new: 'New', detail: 'Detail' };
-      if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
-      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
-      return `${baseLabel} - ${suffixByKind.list}`;
-    },
-    [languageCode]
-  );
-  const resolveProductionAnalysisTabLabel = React.useCallback(
-    (kind = 'list') => {
-      const baseLabel = getUiMessage(
-        'menu.productionAnalysis',
-        '생산 분석',
-        languageCode
-      );
-      const suffixByKind =
-        languageCode === 'ko'
-          ? { list: '\uBAA9\uB85D', detail: '\uC0C1\uC138' }
-          : languageCode === 'vi'
-            ? { list: 'Danh sách', detail: 'Chi tiết' }
-            : { list: 'List', detail: 'Detail' };
-      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
-      return `${baseLabel} - ${suffixByKind.list}`;
-    },
-    [languageCode]
-  );
-  const resolveAttendanceTabLabel = React.useCallback(
-    (kind = 'list') => {
-      const baseLabel = getUiMessage('menu.attendance', 'Attendance', languageCode);
-      const suffixByKind =
-        languageCode === 'ko'
-          ? { list: '\uBAA9\uB85D', new: '\uC2E0\uADDC', detail: '\uC0C1\uC138' }
-          : languageCode === 'vi'
-            ? { list: 'Danh sách', new: 'Moi', detail: 'Chi tiết' }
-            : { list: 'List', new: 'New', detail: 'Detail' };
-      if (kind === 'new') return `${baseLabel} - ${suffixByKind.new}`;
-      if (kind === 'detail') return `${baseLabel} - ${suffixByKind.detail}`;
-      return `${baseLabel} - ${suffixByKind.list}`;
-    },
-    [languageCode]
-  );
   const resolveTabLabel = React.useCallback(
-    (path) => {
-      if (path === '/invoices/new') {
-        return getUiMessage('menu.invoiceEditor', 'Create invoice', languageCode);
-      }
-      if (path === '/profile' || path === '/personal-settings') {
-        return getUiMessage('menu.personalSettings', 'Personal Settings', languageCode);
-      }
-      if (path === '/work-history') {
-        return resolveWorkHistoryTabLabel('list');
-      }
-      if (path === '/work-history/new') {
-        return resolveWorkHistoryTabLabel('new');
-      }
-      if (path.startsWith('/work-history/') && path !== '/work-history') {
-        return resolveWorkHistoryTabLabel('detail');
-      }
-      if (path === '/outsourcing-record') {
-        return resolveOutsourcingRecordTabLabel('list');
-      }
-      if (path === '/outsourcing-record/new') {
-        return resolveOutsourcingRecordTabLabel('new');
-      }
-      if (path.startsWith('/outsourcing-record/') && path !== '/outsourcing-record') {
-        return resolveOutsourcingRecordTabLabel('detail');
-      }
-      if (path === '/production-analysis' || path === '/work-history-monthly') {
-        return resolveProductionAnalysisTabLabel('list');
-      }
-      if (
-        (path.startsWith('/production-analysis/') && path !== '/production-analysis') ||
-        (path.startsWith('/work-history-monthly/') && path !== '/work-history-monthly')
-      ) {
-        return resolveProductionAnalysisTabLabel('detail');
-      }
-      if (path === '/attendance') {
-        return resolveAttendanceTabLabel('list');
-      }
-      if (path === '/attendance/new') {
-        return resolveAttendanceTabLabel('new');
-      }
-      if (path.startsWith('/attendance/') && path !== '/attendance') {
-        return resolveAttendanceTabLabel('detail');
-      }
-      if (path.startsWith('/payroll/') && path !== '/payroll') {
-        const month = path.match(/^\/payroll\/(\d{4}-\d{2})/)?.[1] || '';
-        const detailLabel = languageCode === 'ko' ? '\uAE09\uC5EC \uC0C1\uC138' : languageCode === 'vi' ? 'Chi tiet luong' : 'Payroll Detail';
-        return month ? `${detailLabel}: ${month}` : detailLabel;
-      }
-      const matchedMenu =
-        flattenedMenuItems.find((item) => item.path === path) ||
-        flattenedMenuItems.find((item) => path.startsWith(item.path + '/'));
-      return matchedMenu?.label || path;
-    },
-    [
-      flattenedMenuItems,
-      languageCode,
-      resolveAttendanceTabLabel,
-      resolveProductionAnalysisTabLabel,
-      resolveWorkHistoryTabLabel,
-    ]
+    (path) => resolvePageNaming(path, languageCode, key => getUiMessage(key, key, languageCode))?.title
+      || flattenedMenuItems.find(item => item.path === toPathname(path))?.label || path,
+    [languageCode, flattenedMenuItems]
   );
   const resolveRenderedTabLabel = React.useCallback(
-    (tab) => {
-      const tabPath = toPathname(tab?.id || tab?.path || '');
-      if (tabPath === '/invoices/new') {
-        return getUiMessage('menu.invoiceEditor', 'Create invoice', languageCode);
-      }
-      if (!tabPath) return tab?.label || '';
-      const storedContext = String(tab?.label || '').match(/:\s*(.+)$/)?.[1]?.trim() || '';
-      const withStoredContext = (baseLabel) =>
-        storedContext ? `${baseLabel}: ${storedContext}` : baseLabel;
-      const localizedNewSuffix = languageCode === 'ko' ? '신규' : languageCode === 'vi' ? 'Mới' : 'New';
-
-      if (tabPath === '/profile' || tabPath === '/personal-settings') {
-        return getUiMessage('menu.personalSettings', 'Personal Settings', languageCode);
-      }
-
-      if (tabPath === '/work-history') {
-        return resolveWorkHistoryTabLabel('list');
-      }
-
-      if (tabPath === '/work-history/new') {
-        return resolveWorkHistoryTabLabel('new');
-      }
-
-      if (
-        tabPath.startsWith('/work-history/') &&
-        tabPath !== '/work-history'
-      ) {
-        return withStoredContext(resolveWorkHistoryTabLabel('detail'));
-      }
-      if (tabPath === '/outsourcing-record') {
-        return resolveOutsourcingRecordTabLabel('list');
-      }
-      if (tabPath === '/outsourcing-record/new') {
-        return resolveOutsourcingRecordTabLabel('new');
-      }
-      if (
-        tabPath.startsWith('/outsourcing-record/') &&
-        tabPath !== '/outsourcing-record'
-      ) {
-        return withStoredContext(resolveOutsourcingRecordTabLabel('detail'));
-      }
-      if (tabPath === '/production-analysis' || tabPath === '/work-history-monthly') {
-        return resolveProductionAnalysisTabLabel('list');
-      }
-      if (
-        ((tabPath.startsWith('/production-analysis/') && tabPath !== '/production-analysis') ||
-          (tabPath.startsWith('/work-history-monthly/') && tabPath !== '/work-history-monthly'))
-      ) {
-        return withStoredContext(resolveProductionAnalysisTabLabel('detail'));
-      }
-      if (tabPath === '/attendance') {
-        return resolveAttendanceTabLabel('list');
-      }
-      if (tabPath === '/attendance/new') {
-        return resolveAttendanceTabLabel('new');
-      }
-      if (
-        tabPath.startsWith('/attendance/') &&
-        tabPath !== '/attendance'
-      ) {
-        return withStoredContext(resolveAttendanceTabLabel('detail'));
-      }
-      if (tabPath.startsWith('/style/') && tabPath !== '/style/new') {
-        const styleLabel = getUiMessage('menu.style', '스타일', languageCode);
-        return withStoredContext(styleLabel);
-      }
-      if (tabPath === '/style/new') {
-        return `${getUiMessage('menu.style', '스타일', languageCode)} - ${localizedNewSuffix}`;
-      }
-      if (tabPath === '/order/new') {
-        return `${getUiMessage('menu.order', '주문', languageCode)} - ${localizedNewSuffix}`;
-      }
-      if (tabPath.startsWith('/order/') && tabPath !== '/order') {
-        return withStoredContext(getUiMessage('menu.order', '주문', languageCode));
-      }
-      if (['/business-partner','/customer','/outsourcing-partner','/material-supplier'].includes(tabPath)) return getUiMessage('menu.partners','Partners',languageCode);
-      if (tabPath === '/customer/new') {
-        return `${getUiMessage('menu.customer', '고객', languageCode)} - ${localizedNewSuffix}`;
-      }
-      if (tabPath.startsWith('/customer/') && tabPath !== '/customer') {
-        return withStoredContext(getUiMessage('menu.customer', '고객', languageCode));
-      }
-      if (tabPath === '/customer-pricing') {
-        return getUiMessage('menu.customerPricing', '단가', languageCode);
-      }
-      if (tabPath.startsWith('/payroll/') && tabPath !== '/payroll') {
-        const monthContext = tabPath.match(/^\/payroll\/(\d{4}-\d{2})/)?.[1]
-          || String(tab?.label || '').match(/\b\d{4}-\d{2}\b/)?.[0]
-          || '';
-        const detailLabel = languageCode === 'ko' ? '\uAE09\uC5EC \uC0C1\uC138' : languageCode === 'vi' ? 'Chi tiet luong' : 'Payroll Detail';
-        return monthContext ? `${detailLabel}: ${monthContext}` : detailLabel;
-      }
-
-      const exactMenuItem = flattenedMenuItems.find((item) => item.path === tabPath);
-      if (exactMenuItem?.label) return exactMenuItem.label;
-
-      return tab?.label || '';
-    },
-    [
-      flattenedMenuItems,
-      languageCode,
-      resolveAttendanceTabLabel,
-      resolveProductionAnalysisTabLabel,
-      resolveWorkHistoryTabLabel,
-    ]
+    tab => resolveTabLabel(tab?.path || tab?.id || '') || tab?.label || '',
+    [resolveTabLabel]
   );
   const tabsForRender = useMemo(() => {
     if (
@@ -1509,10 +1280,7 @@ const MainLayout = () => {
         }
       }
 
-      let label = options?.label;
-      if (!label) {
-        label = resolveTabLabel(nextPathname);
-      }
+      const label = resolveTabLabel(nextPath);
       const nextTab = { id: nextPathname, label, path: nextPath };
 
       if (nextPath && currentRoutePath !== nextPath) {
@@ -2307,16 +2075,16 @@ const MainLayout = () => {
                       minWidth: 0,
                     }}
                   >
-                    <WorkspaceDialogScope viewportRef={workspaceScrollRef} active={currentPath === path}>{element}</WorkspaceDialogScope>
+                    <PageNamingProvider path={currentPath === path ? currentRoutePath : openTabs.find(tab => tab.id === path)?.path || path}><WorkspaceDialogScope viewportRef={workspaceScrollRef} active={currentPath === path}>{element}</WorkspaceDialogScope></PageNamingProvider>
                   </Box>
                 </RequestScopeBoundary>
               ))}
               {shouldRenderLiveOutlet && isCurrentPathKeepAlive ? (
                 <RequestScopeBoundary scopeId={currentPath} active>
-                  <WorkspaceDialogScope viewportRef={workspaceScrollRef} active>{routeOutlet}</WorkspaceDialogScope>
+                  <PageNamingProvider path={currentRoutePath}><WorkspaceDialogScope viewportRef={workspaceScrollRef} active>{routeOutlet}</WorkspaceDialogScope></PageNamingProvider>
                 </RequestScopeBoundary>
               ) : null}
-              {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? routeOutlet : null}
+              {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? <PageNamingProvider path={currentRoutePath}>{routeOutlet}</PageNamingProvider> : null}
             </>
           )}
         </Box>

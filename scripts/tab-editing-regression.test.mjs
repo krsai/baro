@@ -43,7 +43,7 @@ test('expense forms share one slot even on automatic route opens and stale relab
 test('opening another expense from the list confirms a hidden dirty detail and cancellation preserves it',()=>{
   const source=fs.readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
   const start=source.indexOf('      if (!skipUnsavedChangesCheck) {',source.indexOf('const handleNavigation ='));
-  const block=source.slice(start,source.indexOf('      let label',start));
+  const block=source.slice(start,source.indexOf('      const label = resolveTabLabel',start));
   const calls=[];
   const context=vm.createContext({skipUnsavedChangesCheck:false,closeTabId:null,isSamePathNavigation:false,currentPath:'/outsourcing-record',nextPathname:'/outsourcing-record/edit/request/2',openOptions:{replacePrefix:'/outsourcing-record/'},openTabs:[{id:'/outsourcing-record'},{id:'/outsourcing-record/edit/request/1'}],confirmDiscardUnsavedChanges:({path})=>{calls.push(path);return false;}});
   assert.equal(vm.runInContext('(function(){'+block+'return "proceed";})()',context),undefined);

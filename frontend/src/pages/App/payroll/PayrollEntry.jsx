@@ -666,6 +666,7 @@ const PayrollEntry = () => {
   return (
     <AppPageContainer
       title={factoryDisplayName ? `${pageTitle} · ${month} · ${factoryDisplayName}` : `${pageTitle} · ${month}`}
+      description={factoryDisplayName ? `${month} · ${factoryDisplayName}` : month}
       toolbar={
         <PageToolbar
           showLastUpdater={false}
