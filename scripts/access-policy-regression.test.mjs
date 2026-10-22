@@ -44,8 +44,18 @@ test('unified partners requires one existing partner permission without granting
 test('permission editor retains all three category switches under the single partners menu',()=>{
  const {buildMenuTree}=loadSourceBindings('frontend/src/pages/App/system/AccessPolicyBoard.jsx',['buildMenuTree'],{resolveFeatureByPath,NON_EDITABLE_FEATURE_KEYS:new Set()});
  const [menu]=buildMenuTree([{label:'Partners',path:'/business-partner',accessChildren:[{label:'Customers',path:'/customer'},{label:'Outsourcing',path:'/outsourcing-partner'},{label:'Suppliers',path:'/material-supplier'}]}]);
- assert.equal(menu.type,'group');assert.equal(menu.children.length,3);
+ assert.equal(menu.type,'menu');assert.equal(menu.path,'/business-partner');assert.equal(menu.children,undefined);assert.equal(menu.permissionOptions.length,3);
  assert.deepEqual(menu.featureKeys,['CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER']);
+});
+
+test('permission rows preserve navigation hierarchy and keep personal settings as fixed access',()=>{
+ const {buildMenuTree,flattenMenuTree}=loadSourceBindings('frontend/src/pages/App/system/AccessPolicyBoard.jsx',['buildMenuTree','flattenMenuTree'],{resolveFeatureByPath,NON_EDITABLE_FEATURE_KEYS:new Set(['PROFILE'])});
+ const tree=buildMenuTree([{isParent:true,label:'Organization',children:[{path:'/employee',label:'Employees'},{path:'/business-partner',label:'Partners',accessChildren:[{path:'/customer',label:'Customers'}]}]},{isParent:true,label:'Settings',children:[{path:'/personal-settings',label:'Personal settings'},{path:'/employee-system',label:'Employee structure'}]}]);
+ const rows=flattenMenuTree(tree);
+ assert.deepEqual(rows.map(row=>row.label),['Organization','Employees','Partners','Settings','Personal settings','Employee structure']);
+ assert.deepEqual(rows.map(row=>row.depth),[0,1,1,0,1,1]);
+ const personal=rows.find(row=>row.path==='/personal-settings');
+ assert.equal(personal.fixedAccess,true);assert.deepEqual(personal.featureKeys,[]);
 });
 
 test('manufacturer accountant defaults include employee and holiday menus', () => {

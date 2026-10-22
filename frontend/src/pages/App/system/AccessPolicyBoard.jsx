@@ -123,7 +123,7 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
       const path = String(node?.path || '').trim();
       const nodeId = `${parentId}:${node?.menuGroupKey || path || index}`;
 
-      const childNodes=node?.accessChildren || node?.children;
+      const childNodes=node?.children;
       if (Array.isArray(childNodes) && childNodes.length > 0) {
         const children = buildMenuTree(childNodes, nodeId);
         if (children.length === 0) return null;
@@ -141,8 +141,10 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
 
       if (!path) return null;
       const featureKey = resolveFeatureByPath(path);
-      if (NON_EDITABLE_FEATURE_KEYS.has(featureKey)) return null;
-      if (!featureKey) return null;
+      if (NON_EDITABLE_FEATURE_KEYS.has(featureKey) && featureKey !== 'PROFILE') return null;
+      const permissionOptions = (node.accessChildren || []).map(child => ({label:child.label,path:child.path,featureKey:resolveFeatureByPath(child.path)})).filter(child=>child.featureKey && !NON_EDITABLE_FEATURE_KEYS.has(child.featureKey));
+      const featureKeys = permissionOptions.length ? [...new Set(permissionOptions.map(child=>child.featureKey))] : featureKey && !NON_EDITABLE_FEATURE_KEYS.has(featureKey) ? [featureKey] : [];
+      if (!featureKey && !permissionOptions.length) return null;
       return {
         id: nodeId,
         type: 'menu',
@@ -150,8 +152,9 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
         icon: node?.icon || null,
         path,
         featureKey,
-        featureKeys: featureKey ? [featureKey] : [],
-        fixedAccess: !featureKey,
+        featureKeys,
+        permissionOptions,
+        fixedAccess: featureKeys.length === 0,
         disabled: Boolean(node?.disabled),
       };
     })
@@ -521,27 +524,15 @@ const AccessPolicyBoard = () => {
                         </TableCell>
                         {EDITABLE_ROLE_ORDER.map((role) => (
                           <TableCell key={`${row.featureKey}:${role}`} align="center">
-                            <Switch
-                              size="small"
-                              checked={
-                                row.fixedAccess || hasFeature(role, row.featureKey)
-                              }
-                              disabled={
-                                loadingPolicy ||
-                                savingPolicy ||
-                                row.disabled ||
-                                row.fixedAccess
-                              }
-                              onChange={(event) =>
-                                setFeature(role, row.featureKey, event.target.checked)
-                              }
-                              inputProps={{
-                                'aria-label': `${row.label} ${resolveLocalizedText(
-                                  ORG_ROLE_DEFAULT_LABELS[role],
-                                  languageCode
-                                )}`,
-                              }}
-                            />
+                            <Stack spacing={0.5} alignItems="center">
+                              {(row.permissionOptions.length ? row.permissionOptions : [{featureKey:row.featureKey,label:row.label}]).map(option => <Stack key={option.featureKey || row.id} direction="row" alignItems="center" spacing={0.5}>
+                                <Switch size="small" checked={row.fixedAccess || hasFeature(role, option.featureKey)}
+                                  disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess}
+                                  onChange={event=>setFeature(role,option.featureKey,event.target.checked)}
+                                  inputProps={{'aria-label':option.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}} />
+                                {row.permissionOptions.length>0 && <Typography variant="caption">{option.label}</Typography>}
+                              </Stack>)}
+                            </Stack>
                           </TableCell>
                         ))}
                       </TableRow>
