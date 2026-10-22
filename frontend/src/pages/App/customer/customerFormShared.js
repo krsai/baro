@@ -53,6 +53,8 @@ export const buildCustomerFormData = (customer = {}) => {
     String(customer?.countryCode || '').trim() || resolveDefaultCountryCode(country);
 
   return {
+    systemIndustryId: customer?.systemIndustryId ?? null,
+    systemIndustry: customer?.systemIndustry ?? null,
     id: customer?.id ?? null,
     brandOrgId: toPositiveIntOrNull(customer?.brandOrgId),
     manufacturerOrgId: toPositiveIntOrNull(customer?.manufacturerOrgId),
@@ -77,6 +79,7 @@ export const buildCustomerFormData = (customer = {}) => {
 export const createEmptyCustomerFormData = () => buildCustomerFormData();
 
 export const buildCustomerPayload = (formData = {}) => ({
+  systemIndustryId: formData.systemIndustryId || null,
   businessNumber: String(formData.businessNumber || '').trim() || null,
   code: String(formData.code || '').trim().toUpperCase(),
   name: String(formData.name || '').trim(),

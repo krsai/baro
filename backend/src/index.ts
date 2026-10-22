@@ -1,4 +1,5 @@
 import { entityProfile, partnerProfilePatch } from './services/entityProfile';
+import {validateCustomerIndustry} from './services/partnerIndustry';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
 import { displayProductionProgress } from './services/productionProgress';
 import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
@@ -1857,6 +1858,8 @@ const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTUR
     nameKo: (targetOrg as any)?.nameKo ?? null,
     nameVi: (targetOrg as any)?.nameVi ?? null,
     industry: targetOrg.type ?? null,
+    systemIndustryId: relationship.systemIndustryId ?? null,
+    systemIndustry: relationship.systemIndustry ?? null,
     type: targetOrg.type ?? null,
     address: targetOrg.address ?? "",
     country: (targetOrg as any)?.country ?? null,
@@ -27428,7 +27431,7 @@ app.put("/assignment-board-state", async (req, res) => {
 const BUSINESS_PARTNER_SERVICE_INCLUDE = {
   partnerExpenseType: true,
   outsourcingServiceAssignments: {
-    include: { serviceType: true },
+    include: { serviceType: {include:{systemDefault:{include:{partnerRole:true}}}} },
     orderBy: { serviceType: { sortOrder: "asc" as const } },
   },
 };
@@ -27447,7 +27450,10 @@ const toBusinessPartnerResponse = (organizationRow: any) => ({
   createdBy: organizationRow.createdBy,
   updatedAt: organizationRow.updatedAt,
   serviceTypes: ensureArray(organizationRow.outsourcingServiceAssignments).map(
-    (assignment: any) => assignment.serviceType
+    (assignment: any) => {
+      const row=assignment.serviceType,source=row.systemDefault;
+      return source?{...row,nameKo:source.nameKo,nameEn:source.nameEn,nameVi:source.nameVi}:row;
+    }
   ),
 });
 
@@ -27455,7 +27461,8 @@ const resolvePartnerServiceTypeIds = async (
   tx: any,
   ownerOrgId: number,
   rawIds: unknown,
-  _partnerType: string
+  partnerType: string,
+  retainedIds: number[] = []
 ) => {
 
   if (rawIds == null) return [];
@@ -27463,7 +27470,7 @@ const resolvePartnerServiceTypeIds = async (
   const ids = Array.from(new Set(rawIds)) as number[];
   if (ids.length === 0) return [];
   const rows = await tx.outsourcingServiceType.findMany({
-    where: { ownerOrgId, id: { in: ids }, isActive: true },
+    where: { ownerOrgId, id: { in: ids }, systemDefaultId:{not:null}, OR:[{id:{in:retainedIds}},{systemDefault: {isActive:true,OR:[{partnerRole:null},{partnerRole:{code:partnerType}}]}}] },
     select: { id: true },
   });
   if (rows.length !== ids.length) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
@@ -27590,7 +27597,6 @@ app.post("/business-partners", async (req, res) => {
   const { organization } = accessContext;
   const name = resolveOptionalString(req.body?.name, null);
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
-  if (type === "PROCESS_OUTSOURCING" && !(await requireSystemAdmin(req, res))) return;
   if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
   const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
   const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, isActive: true } }) : null;
@@ -27661,7 +27667,8 @@ app.put("/business-partners/:id", async (req, res) => {
       const locked = await tx.$queryRawUnsafe<{ id: number; type: string }[]>('SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, organization.id);
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
-      const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type);
+      const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
+      const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
       await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) } });
       if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
@@ -27747,7 +27754,7 @@ app.get("/customers", async (req, res) => {
     : { brandOrgId: organization.id };
   const relationships = await prisma.orgRelationship.findMany({
     where,
-    include: { brand: true, manufacturer: true },
+    include: { brand: true, manufacturer: true, systemIndustry: true },
     orderBy: { id: "asc" },
   });
 
@@ -29479,6 +29486,7 @@ app.post("/customers", async (req, res) => {
     });
   }
 
+  const systemIndustryId = await validateCustomerIndustry(prisma,req.body?.systemIndustryId);
   const { brandOrgId, customerOrgId, memo } = req.body ?? {};
   const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {});
   const normalizedCode = sharedOrganizationData.code;
@@ -29619,6 +29627,7 @@ app.post("/customers", async (req, res) => {
       },
     },
     update: {
+      ...(systemIndustryId !== undefined ? {systemIndustryId} : {}),
       customerCode: normalizedCode,
       defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(req.body?.defaultSizeSetCode),
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
@@ -29629,6 +29638,7 @@ app.post("/customers", async (req, res) => {
     create: {
       manufacturerOrgId,
       brandOrgId: brandOrgIdForRelationship,
+      ...(systemIndustryId !== undefined ? {systemIndustryId} : {}),
       customerCode: normalizedCode,
       defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(req.body?.defaultSizeSetCode),
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
@@ -29636,7 +29646,7 @@ app.post("/customers", async (req, res) => {
       managerEmail: resolveOptionalString(sharedOrganizationData.email, null),
       memo: resolveOptionalString(memo, null),
     },
-    include: { brand: true, manufacturer: true },
+    include: { brand: true, manufacturer: true, systemIndustry: true },
   });
   if (!relationship.salesBucketSetVersionId || !relationship.timeBucketSetVersionId) {
     relationship = await prisma.$transaction(async (tx) => {
@@ -29665,7 +29675,7 @@ app.post("/customers", async (req, res) => {
           ...(salesVersion ? { salesBucketSetVersionId: salesVersion.id } : {}),
           ...(timeVersion ? { timeBucketSetVersionId: timeVersion.id } : {}),
         },
-        include: { brand: true, manufacturer: true },
+        include: { brand: true, manufacturer: true, systemIndustry: true },
       });
     });
   }
@@ -29700,13 +29710,14 @@ app.put("/customers/:id", async (req, res) => {
     where: isManufacturerPerspective
       ? { id, manufacturerOrgId: organization.id }
       : { id, brandOrgId: organization.id },
-    include: { brand: true, manufacturer: true },
+    include: { brand: true, manufacturer: true, systemIndustry: true },
   });
 
   if (!existing) {
     return res.status(404).json({ ok: false, error: "customer not found" });
   }
 
+  const systemIndustryId = await validateCustomerIndustry(prisma,req.body?.systemIndustryId,existing.systemIndustryId);
   const { name, code, memo } = req.body ?? {};
   const targetOrganization = isManufacturerPerspective
     ? existing.brand
@@ -29761,6 +29772,7 @@ app.put("/customers/:id", async (req, res) => {
   });
 
   const relationshipUpdateData: any = {
+    ...(systemIndustryId !== undefined ? {systemIndustryId} : {}),
     managerName: resolveOptionalString(nextTargetData.representative, existing.managerName),
     managerPhone: resolveOptionalString(nextTargetData.phone, existing.managerPhone),
     managerEmail: resolveOptionalString(nextTargetData.email, existing.managerEmail),
@@ -29781,7 +29793,7 @@ app.put("/customers/:id", async (req, res) => {
 
   const refreshed = await prisma.orgRelationship.findUnique({
     where: { id: existing.id },
-    include: { brand: true, manufacturer: true },
+    include: { brand: true, manufacturer: true, systemIndustry: true },
   });
 
   res.json(toCustomerResponse(refreshed, perspective));

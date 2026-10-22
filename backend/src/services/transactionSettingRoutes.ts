@@ -4,6 +4,7 @@ import { loadAppSettings, saveAppSettings } from './applicationSettings';
 import { createHttpError } from '../utils/http';
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
 import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
+import {partnerIndustryOption} from './partnerIndustry';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -65,6 +66,10 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
     if(!await member(req,res))return;
     res.json(await db.partnerRole.findMany({orderBy:{sortOrder:'asc'}}));
   });
+  app.get('/customer-industries',async(req:any,res:any)=>{
+    if(!await member(req,res))return;
+    res.json(await db.settingServiceDefault.findMany({where:{isActive:true,partnerRole:{code:'CUSTOMER'}},orderBy:[{sortOrder:'asc'},{id:'asc'}]}));
+  });
   for (const global of [false,true]) {
     const prefix = global ? '/system-app-settings' : '/app-settings';
     app.get(prefix, async (req: any,res: any) => {
@@ -101,7 +106,13 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
     app.get(localPath, async (req: any,res: any) => {
       const access = req.query.all === '1' ? await admin(req,res) : await member(req,res);
       if (!access) return;
-      await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id,!service && req.query.forExpenseRequest === '1'), { isolationLevel: 'ReadCommitted' });
+      if(service && req.query.forPartner === '1' && !['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'].includes(req.query.partnerType))throw createHttpError(400,'INVALID_PARTNER_TYPE');
+      await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id,!service && req.query.forExpenseRequest === '1' || service && req.query.forPartner === '1'), { isolationLevel: 'ReadCommitted' });
+      if(service && req.query.forPartner === '1') {
+        const partnerType=req.query.partnerType;
+        const rows=await locals.findMany({where:{ownerOrgId:access.organization.id,systemDefaultId:{not:null}},include:{systemDefault:{include:{partnerRole:true}}},orderBy:{id:'asc'}});
+        return res.json(rows.map((row:any)=>partnerIndustryOption(row,partnerType)).filter(Boolean).sort((a:any,b:any)=>a.sortOrder-b.sortOrder||a.systemDefaultId-b.systemDefaultId));
+      }
       if (!service && req.query.forExpenseRequest === '1') {
         const candidates = await locals.findMany({ where: {ownerOrgId:access.organization.id,isActive:true}, include: SYSTEM_EXPENSE_CODE_INCLUDE, orderBy: {code:'asc'} });
         return res.json(candidates.map(resolveSystemExpenseCode).filter(Boolean));

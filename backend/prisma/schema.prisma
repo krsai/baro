@@ -840,6 +840,9 @@ model OrganizationHoliday {
 
 
 model OrgRelationship {
+  systemIndustryId Int?
+  systemIndustry SettingServiceDefault? @relation(fields: [systemIndustryId], references: [id], onDelete: Restrict)
+  @@index([systemIndustryId])
   id                      Int      @id @default(autoincrement())
   manufacturerOrgId       Int
   brandOrgId              Int
@@ -2374,6 +2377,7 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  customerIndustries OrgRelationship[]
   partnerRoleId Int?
   partnerRole PartnerRole? @relation(fields:[partnerRoleId],references:[id],onDelete:Restrict)
   expenseTypeId Int?
@@ -2393,6 +2397,12 @@ model SettingServiceDefault {
   sortOrder Int @default(0)
   services OutsourcingServiceType[]
   codes SettingTransactionCodeDefault[]
+}
+
+model PartnerIndustryMigrationAudit {
+  version String @id
+  mappings Json
+  appliedAt DateTime @default(now())
 }
 
 // A relationship classification, independent of an entity's technical type

@@ -3,7 +3,7 @@ import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
 import { INDUSTRY_TREE_TEXT } from '../constants/industryHierarchy';
 import { getStaticOptionOptions } from '../constants/staticOptionRegistry';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormControlLabel, InputLabel, ListItemText, MenuItem, Select, Stack, Switch, TextField,
@@ -70,6 +70,7 @@ export default function BusinessPartnerDialog({
   onAccountsChange,
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
+  const industryLabelId=useId();
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const countryOptions=getStaticOptionOptions('country',languageCode);
   const isEdit = Boolean(partner?.id);
@@ -87,10 +88,14 @@ export default function BusinessPartnerDialog({
 
   useEffect(() => {
     if (!open || !activeOrgId) return;
-    requestJSON(`/outsourcing-service-types${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true })
-      .then((rows) => setServiceTypes(Array.isArray(rows) ? rows : []))
-      .catch(() => setServiceTypes([]));
-  }, [activeOrgId, open]);
+    let alive=true;
+    requestJSON(`/outsourcing-service-types${buildQueryString({ orgId: activeOrgId, forPartner: '1', partnerType: form.type })}`, { skipGlobalLoading: true, skipCache: true })
+      .then((rows) => {if(alive)setServiceTypes(Array.isArray(rows) ? rows : []);})
+      .catch(() => {if(alive)setServiceTypes([]);});
+    return()=>{alive=false;};
+  }, [activeOrgId, open, form.type]);
+
+  const industryOptions=[...serviceTypes,...(partner?.serviceTypes||[]).filter(row=>!serviceTypes.some(option=>option.id===row.id))];
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const save = async () => {
@@ -153,18 +158,19 @@ export default function BusinessPartnerDialog({
           <TextField label={(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).category} value={getBusinessPartnerTypeLabel(form.type,languageCode)} InputProps={{readOnly:true}}/>
           {true ? (
             <FormControl fullWidth>
-              <InputLabel>{languageCode === 'ko' ? '외주 업종' : languageCode === 'vi' ? 'Ngành dịch vụ' : 'Outsourcing industries'}</InputLabel>
+              <InputLabel id={industryLabelId}>{(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).industry}</InputLabel>
               <Select
+                labelId={industryLabelId}
                 multiple
                 value={form.serviceTypeIds}
-                label={languageCode === 'ko' ? '외주 업종' : languageCode === 'vi' ? 'Ngành dịch vụ' : 'Outsourcing industries'}
+                label={(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).industry}
                 onChange={update('serviceTypeIds')}
                 renderValue={(ids) => ids.map((id) => {
-                  const item = serviceTypes.find((candidate) => candidate.id === id);
+                  const item = industryOptions.find((candidate) => candidate.id === id);
                   return item?.[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || id;
                 }).join(', ')}
               >
-                {serviceTypes.filter(item=>!item.systemDefault?.partnerRole || item.systemDefault.partnerRole.code===form.type || form.serviceTypeIds.includes(item.id)).map((item) => {
+                {industryOptions.filter(item=>!item.systemDefault?.partnerRole || item.systemDefault.partnerRole.code===form.type || form.serviceTypeIds.includes(item.id)).map((item) => {
                   const label = item[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item.nameEn;
                   return <MenuItem key={item.id} value={item.id}><Checkbox checked={form.serviceTypeIds.includes(item.id)} /><ListItemText primary={label} /></MenuItem>;
                 })}

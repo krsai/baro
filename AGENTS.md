@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-10-22 SaaS 거래처 등록·SYSTEM 업종 연결
+
+- 각 SaaS 법인의 관리 담당자가 자기 고객사·외주 업체·공급 업체를 등록한다. 외주 업체 생성에 SYSTEM ADMIN을 요구하지 않으며 기존 조직 관리 역할/조직 소유 범위를 검증한다. SYSTEM 기준정보 수정 권한과 SaaS 거래처 등록 권한을 혼동하지 않는다.
+- 업체 업종 후보는 `forPartner=1` 조회에서 `OutsourcingServiceType.systemDefaultId -> SettingServiceDefault` FK가 있는 항목만 제공하며 이름·구분·사용 상태는 SYSTEM 원본을 읽는다. 과거 법인 업종과 SYSTEM 사본을 함께 후보로 표시하지 않는다. 기존 비용/생산이 참조하는 법인 업종 ID는 삭제하거나 재작성하지 않는다.
+- 고객사의 조직 유형 BRAND/MANUFACTURER는 업종이 아니다. 고객 업종은 선택 입력 `OrgRelationship.systemIndustryId` FK이며 SYSTEM의 CUSTOMER 구분 업종만 허용한다. 과거 업종 값이 없으면 미지정으로 보존한다. 신규 정적 경로 `/customer/new`는 route param이 없어도 신규 모드로 처리한다.
+- `20261022200000_partner_industry_canonical`은 기존 코드의 SYSTEM FK 근거가 하나인 업체 분류만 보정하고 감사 매핑을 남긴다. 운영 외주 업체 2건의 19→412 연결을 적용했고 업무 테이블 10개 원본 값 보존을 확인했다. 고객사 2건은 실제 업종 미지정이며 이름/내부 조직 유형으로 추측 배정하지 않았다. FK 근거가 없거나 복수면 전체 이전을 중단한다.
+
 ## 2026-10-22 권한 화면의 실제 메뉴 계층 유지
 
 - 접근 권한 화면의 그룹·순서·이름·아이콘·경로는 MainLayout의 SaaS 메뉴 정의를 따른다. `children`만 실제 탐색 계층이며 `accessChildren`는 한 화면 내부의 세부 권한이다. 거래처는 조직 관리 아래 단일 메뉴 행으로 표시하고 고객사·외주 업체·공급 업체 권한은 그 행 안에서 독립적으로 설정한다. 권한 항목 때문에 가짜 메뉴 그룹/하위 메뉴를 만들지 않는다.

@@ -109,7 +109,7 @@ const CustomerDetail = () => {
 
   const t = useMemo(() => createMessageGetter(languageCode), [languageCode]);
   const customerId = String(customerIdParam || '').trim();
-  const isNew = customerId === 'new';
+  const isNew = customerId === 'new' || (!customerId && /\/customer\/new\/?$/.test(location.pathname));
   const customerQuery = useMemo(() => buildQueryString({ orgId: activeOrgId }), [activeOrgId]);
 
   const [customerFormData, setCustomerFormData] = useState(createEmptyCustomerFormData);
