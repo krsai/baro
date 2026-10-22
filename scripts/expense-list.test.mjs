@@ -1,6 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseCurrencyTotals, groupExpenseRows, expenseIndustryKey } from '../frontend/src/utils/expenseList.mjs';
+import { expenseCurrencyTotals, groupExpenseRows, expenseIndustryKey, summarizeExpenseDimensions } from '../frontend/src/utils/expenseList.mjs';
+
+test('request classification summaries count distinct FKs and preserve first-item order in all languages', () => {
+  const item=(serviceTypeId,expenseTypeId,label)=>({serviceTypeId,transactionCode:{base:{expenseTypeId}},label});
+  const rows=[item(1,7,'Buttonhole'),item(1,7,'Buttonhole'),item(2,7,'Sewing'),item(3,8,'Buttonhole')];
+  for(const [lang,expected] of [['ko','Buttonhole 외 2개'],['en','Buttonhole and 2 more'],['vi','Buttonhole và 2 mục khác']]){
+    assert.deepEqual(summarizeExpenseDimensions(rows,'industry',row=>row.label,lang),{text:expected,title:'Buttonhole, Sewing, Buttonhole',count:3});
+  }
+  assert.equal(summarizeExpenseDimensions(rows,'category',row=>String(row.transactionCode.base.expenseTypeId),'ko').text,'7 외 1개');
+  assert.equal(summarizeExpenseDimensions(rows.slice(0,2),'industry',row=>row.label,'ko').text,'Buttonhole');
+  assert.equal(summarizeExpenseDimensions([{},{}],'industry',()=> 'Unclassified').count,1);
+  assert.equal(summarizeExpenseDimensions([],'industry',()=> '').text,'—');
+});
 
 test('expense summaries preserve decimal amounts and separate currencies', () => {
   const rows=[{id:'a',partnerOrgId:11,currency:'VND',amount:'1.2345'},{id:'b',partnerOrgId:11,currency:'VND',amount:'2.3456'},{id:'c',partnerOrgId:11,currency:'USD',amount:'10.25'}];

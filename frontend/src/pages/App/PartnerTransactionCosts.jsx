@@ -16,7 +16,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useManagementPeriod } from '../../context/ManagementPeriodContext';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
-import { expenseCurrencyTotals, expenseIndustryKey, groupExpenseRows } from '../../utils/expenseList.mjs';
+import { expenseCurrencyTotals, expenseIndustryKey, groupExpenseRows, summarizeExpenseDimensions } from '../../utils/expenseList.mjs';
 import { subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import './expenseRequests.css';
 
@@ -70,6 +70,10 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const categoryLabel = row => serviceName(row.transactionCode?.base?.expenseType,languageCode) || text.unclassified;
   const remarkFor = row => row.expenseRequest?.remark ?? documentsById.get(row.expenseRequestId)?.remark ?? '';
   const industryLabel = row => serviceName(row.serviceType,languageCode) || text.unclassified;
+  const dimensionCell = (document,dimension) => {
+    const summary = summarizeExpenseDimensions(document.items,dimension,dimension === 'category' ? categoryLabel : industryLabel,languageCode);
+    return <span title={summary.title}>{summary.text}</span>;
+  };
   const searchValues = row => [row.partner?.name,categoryLabel(row),industryLabel(row),remarkFor(row),row.transactionCode?.code,expenseLineDescription(row,languageCode),row.workOrder?.orderNumber,row.style?.name,row.style?.code,row.styleProcess?.processName,row.styleProcess?.processCode,row.createdByEmployee?.name,...Object.values(row.details||{})];
   const matches = values => values.filter(Boolean).join(' ').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
   const withinDates = date => date >= dateFrom.format('YYYY-MM-DD') && date <= dateTo.format('YYYY-MM-DD');
@@ -146,7 +150,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
             <td className="cc-number">{number(row.quantity)}</td><td className="cc-number">{number(row.unitPrice)}</td><td className="cc-number cc-amount">{money(row.amount,row.currency)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><StatusLabel label={recordKind(row)} tone={row.sourceKind==='HISTORICAL_WORK_RECORD'?'gray':'blue'} /></td>
           </tr>)}{!filtered.length && <tr><td colSpan={13} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : view==='documents' ? <table key="documents"><thead><tr>{[['number','No.'],['remark',text.remark],['category',text.category],['industry',text.industry],['payee',docText.payee],['date',docText.date],['applicant',docText.applicant],['items',docText.items],['total',docText.total]].map(([key,label])=><th key={key} className={key==='number'?'cc-row-no':['items','total'].includes(key)?'cc-number':undefined}>{label}</th>)}</tr></thead><tbody>
-          {filteredDocuments.map((document,index)=><tr key={document.id} onClick={()=>onOpenRequest?.('request',String(document.id))}><td className="cc-row-no">{index+1}</td><td><button className="cc-cell-link" aria-label={`${text.details} ${index+1}`} onClick={()=>onOpenRequest?.('request',String(document.id))}>{document.remark || '—'}</button></td><td>{[...new Set(document.items.map(categoryLabel))].join(', ')}</td><td>{[...new Set(document.items.map(industryLabel))].join(', ')}</td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
+          {filteredDocuments.map((document,index)=><tr key={document.id} onClick={()=>onOpenRequest?.('request',String(document.id))}><td className="cc-row-no">{index+1}</td><td><button className="cc-cell-link" aria-label={`${text.details} ${index+1}`} onClick={()=>onOpenRequest?.('request',String(document.id))}>{document.remark || '—'}</button></td><td>{dimensionCell(document,'category')}</td><td>{dimensionCell(document,'industry')}</td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td></tr>)}
           {!filteredDocuments.length && <tr><td colSpan={9} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : <table key={view} className="cc-summary"><thead><tr><th>{view==='partner'?labels.partner:labels.industry}</th><th>{labels.currency}</th><th className="cc-number">{text.count}</th><th className="cc-number">{labels.amount}</th><th>{text.share}</th></tr></thead><tbody>
           {groups.map(group=><tr key={group.key}><td>{group.name}</td><td>{group.currency}</td><td className="cc-number">{group.count}</td><td className="cc-number cc-amount">{money(group.amount,group.currency)}</td><td><div className="cc-share"><span><i style={{width:`${group.share}%`}} /></span>{group.share.toFixed(1)}%</div></td></tr>)}{!groups.length && <tr><td colSpan={5} className="cc-empty">{text.empty}</td></tr>}

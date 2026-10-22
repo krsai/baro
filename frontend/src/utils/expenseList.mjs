@@ -13,6 +13,24 @@ export function expenseCurrencyTotals(rows) {
   return [...totals].sort(([a],[b]) => String(a).localeCompare(String(b))).map(([currency,units]) => ({ currency, units, amount: formatDecimalUnits(units,4) }));
 }
 export const expenseIndustryKey = row => row.serviceTypeId != null ? `service:${row.serviceTypeId}` : row.sourceKind === 'HISTORICAL_WORK_RECORD' ? 'historical-process' : 'unclassified';
+// Count classifications used by this request, not all capabilities of its payee.
+// Labels can be identical or translated; only the related FK identifies a value.
+export function summarizeExpenseDimensions(items, dimension, getLabel, language = 'ko') {
+  const values = new Map();
+  for (const item of items || []) {
+    const id = dimension === 'category'
+      ? item.transactionCode?.base?.expenseTypeId ?? item.transactionCode?.base?.expenseType?.id
+      : item.serviceTypeId ?? item.serviceType?.id;
+    const key = id == null ? 'unclassified' : String(id);
+    if (!values.has(key)) values.set(key, getLabel(item));
+  }
+  const labels = [...values.values()];
+  const count = Math.max(0, labels.length - 1);
+  const first = labels[0] || '—';
+  const text = !count ? first : language === 'ko' ? `${first} 외 ${count}개`
+    : language === 'vi' ? `${first} và ${count} mục khác` : `${first} and ${count} more`;
+  return { text, title: labels.join(', '), count: labels.length };
+}
 export function groupExpenseRows(rows, kind, getLabel) {
   const groups = new Map(), totals = new Map(expenseCurrencyTotals(rows).map(total => [total.currency,total.units]));
   for (const row of rows) {

@@ -26,7 +26,7 @@ try {
     const headers={'Access-Control-Allow-Origin':'*'},service={id:4,nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển'};
     const rows=[
       {id:'old',sourceKind:'HISTORICAL_WORK_RECORD',partnerOrgId:11,partner:{id:11,name:'Old Vendor'},workLogId:77,outsourcedWorkRecordId:78,transactionDate:'2026-09-20',description:'Legacy work',style:{id:40,name:'Legacy shirt',code:'OLD-40'},styleProcess:{id:50,processName:'Buttonhole'},createdByEmployee:{name:'Former Worker'},quantity:3,unitPrice:'1.2345',amount:'3.7035',currency:'VND'},
-      {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
+      {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:5,serviceType:{...service,id:5,nameKo:'봉제',nameEn:'Sewing',nameVi:'May'},transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
       {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,expenseRequest:{id:1,remark:'Delivery note'},partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
@@ -108,7 +108,10 @@ try {
     await resetToAll();
     await page.locator('[data-search-filters] select').nth(2).selectOption('historical');assert.equal(await page.locator('tbody tr').count(),1);
     await resetToAll();
-    await page.getByRole('tab',{name:text.documents,exact:true}).click();await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
+    await page.getByRole('tab',{name:text.documents,exact:true}).click();
+    assert.equal(await page.locator('tbody tr').first().locator('td').nth(3).textContent(),{ko:'물류 외 1개',en:'Logistics and 1 more',vi:'Vận chuyển và 1 mục khác'}[lang]);
+    assert.equal(await page.locator('tbody tr').first().locator('td').nth(3).locator('span').getAttribute('title'),{ko:'물류, 봉제',en:'Logistics, Sewing',vi:'Vận chuyển, May'}[lang]);
+    await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await page.locator('[data-search-filters] select').nth(3).selectOption('USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
