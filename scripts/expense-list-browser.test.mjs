@@ -26,13 +26,13 @@ try {
     const headers={'Access-Control-Allow-Origin':'*'},service={id:4,nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển'};
     const rows=[
       {id:'old',sourceKind:'HISTORICAL_WORK_RECORD',partnerOrgId:11,partner:{id:11,name:'Old Vendor'},workLogId:77,outsourcedWorkRecordId:78,transactionDate:'2026-09-20',description:'Legacy work',style:{id:40,name:'Legacy shirt',code:'OLD-40'},styleProcess:{id:50,processName:'Buttonhole'},createdByEmployee:{name:'Former Worker'},quantity:3,unitPrice:'1.2345',amount:'3.7035',currency:'VND'},
-      {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV'},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
-      {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV'},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
+      {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
+      {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,expenseRequest:{id:1,remark:'Delivery note'},partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
-    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
+    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
-    await page.getByRole('button',{name:'Transport cost',exact:true}).waitFor();assert.equal(await page.locator('tbody tr').count(),2);
+    await page.locator('[data-expense-row="cost"]').waitFor();assert.equal(await page.locator('tbody tr').count(),2);
     assert.equal(await page.locator('.cc-kicker').count(),0);
     assert.equal(await page.locator('.cc-primary.MuiButton-containedPrimary').count(),1);
     assert.notEqual(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -62,18 +62,22 @@ try {
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,12);
+    assert.equal(headings.length,13);
+    assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
+    assert.equal(await page.locator('[data-expense-row="document-item"] td').nth(7).textContent(),'Delivery note');
+    assert.equal(await page.locator('[data-expense-row="cost"] td').nth(3).textContent(),{ko:'물류 서비스',en:'Logistics service',vi:'Dịch vụ vận chuyển'}[lang]);
+    assert.equal(await page.locator('[data-expense-row="old"] td').nth(3).textContent(),text.unclassified);
     assert.equal(headings.includes(text.style),false);
     assert.equal(await page.locator('tbody .cc-code').count(),0);
-    assert.equal(headings[5],text.order);
+    assert.equal(headings[3],text.category);assert.equal(headings[4],text.industry);assert.equal(headings[6],text.order);assert.equal(headings[7],text.remark);
     assert.equal(await page.locator('[data-search-filters] select').nth(0).locator('option').first().textContent(),text.allIndustries);
     assert.equal(await page.locator('[data-search-filters] select').nth(1).locator('option').first().textContent(),text.allPartners);
-    const historicalRow=page.locator('tbody tr').filter({hasText:'Legacy work'});
+    const historicalRow=page.locator('[data-expense-row="old"]');
     await historicalRow.locator('td').nth(2).dblclick();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     await page.evaluate(()=>delete document.documentElement.dataset.destination);
-    await page.getByRole('button',{name:'Legacy work',exact:true}).dblclick();
+    await page.locator('[data-expense-row="old"] button[aria-label]').dblclick();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
@@ -91,7 +95,7 @@ try {
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(241, 242, 243)');
     await page.evaluate(()=>document.documentElement.style.removeProperty('--color-background-dark'));
     await page.getByRole('textbox',{name:text.search}).fill('OLD-40');assert.equal(await page.locator('tbody tr').count(),1);
-    await page.getByRole('button',{name:'Legacy work',exact:true}).click();
+    await page.locator('[data-expense-row="old"] button[aria-label]').click();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     await resetToAll();
     await page.getByRole('checkbox',{name:text.selectAll,exact:true}).check();assert.equal(await page.locator('tbody tr.is-selected').count(),3);
@@ -100,7 +104,7 @@ try {
     await page.getByRole('tab',{name:text.detail,exact:true}).click();
     await page.locator('[data-search-filters] select').nth(1).selectOption('12');assert.equal(await page.locator('tbody tr').count(),2);
     await page.locator('[data-search-filters] select').nth(3).selectOption('USD');assert.equal(await page.locator('tbody tr').count(),1);
-    await page.getByRole('button',{name:'Document cost',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
+    await page.locator('[data-expense-row="document-item"] button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
     await page.locator('[data-search-filters] select').nth(2).selectOption('historical');assert.equal(await page.locator('tbody tr').count(),1);
     await resetToAll();
@@ -108,12 +112,12 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await page.locator('[data-search-filters] select').nth(3).selectOption('USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
-    assert.equal(await page.getByText(/^EXP-/).count(),0);await page.getByRole('button',{name:lang==='ko'?'Document cost \uC678 1\uAC74':lang==='vi'?'Document cost v\u00e0 1 m\u1ee5c kh\u00e1c':'Document cost and 1 more',exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
+    assert.equal(await page.getByText(/^EXP-/).count(),0);await page.locator('.cc-table-scroll tbody button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.
     for(let cycle=0;cycle<4;cycle++) {
-      for(const [name,count] of [[text.documents,7],[text.detail,12],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,12]]) {
+      for(const [name,count] of [[text.documents,9],[text.detail,13],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,13]]) {
         await page.getByRole('tab',{name,exact:true}).click();
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{
