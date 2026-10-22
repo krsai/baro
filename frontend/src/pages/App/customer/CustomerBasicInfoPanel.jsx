@@ -1,5 +1,4 @@
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
-import CustomerIndustryField from '../../../components/CustomerIndustryField';
 import { ENTITY_TEXT } from '../../../constants/entityProfile';
 import EntityDetailSection from '../../../components/EntityDetailSection';
 import Grid from '@mui/material/Grid';
@@ -54,7 +53,6 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
     <Stack spacing={2} >
       <EntityDetailSection title={text.identity}>
         <Grid container spacing={2}>
-          <Grid size={{xs:12,sm:6,md:4}}><CustomerIndustryField value={customerFormData.systemIndustryId} selected={customerFormData.systemIndustry} languageCode={languageCode} disabled={savingCustomer} onChange={onBasicFieldChange}/></Grid>
           <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} required label={t('customerCode')} name="code" value={customerFormData.code} onChange={onBasicFieldChange} /></Grid>
           <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} label={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).businessNumber} name="businessNumber" value={customerFormData.businessNumber||''} onChange={onBasicFieldChange} /></Grid>
           <Grid size={{xs:12,sm:6,md:4}}><TextField {...common} required label={text.nameEn} name="name" value={customerFormData.name} onChange={onBasicFieldChange} /></Grid>

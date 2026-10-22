@@ -1,6 +1,6 @@
 import React,{useCallback,useEffect,useMemo,useState} from 'react';
 import {useLocation} from 'react-router-dom';
-import {Button,Stack,Dialog,DialogTitle,DialogContent,DialogActions} from '@mui/material';
+import {Button,Stack,Dialog,DialogTitle,DialogContent,DialogActions,Tooltip} from '@mui/material';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import PartnerDirectory from '../../../components/PartnerDirectory';
 import NotificationIndicator from '../../../components/NotificationIndicator';
@@ -46,7 +46,7 @@ const CustomerList=({embedded=false})=>{
  const openDetail=customer=>navigateToPath(`/customer/${customer.id}`,{label:`${getUiMessage('menu.customer','Customer',languageCode)}: ${resolveCustomerDisplayName(customer,languageCode)||customer.code||'-'}`});
  return <PartnerDirectory embedded={embedded} title={getUiMessage('menu.customer','Customers',languageCode)} languageCode={languageCode} rows={rows} loading={loading} error={queryFailed} onRetry={fetchCustomers}
   onAdd={()=>navigateToPath('/customer/new',{label:getUiMessage('customerBoard.addCustomer','Add customer',languageCode)})} onOpen={openDetail}
-  renderActions={customer=><><Button variant="contained" onClick={()=>navigateToPath(`/customer-pricing?customerId=${customer.id}`,{label:pricing})}><Stack direction="row" spacing={.75} alignItems="center"><span>{pricing}</span>{Number(customer.missingSalesPriceStyleCount)>0&&<NotificationIndicator/>}</Stack></Button>{canDelete&&<DeleteActionButton aria-label={deletion.remove} disabled={deleting} onClick={()=>setDeleteTarget(customer)}/>}</>}
+  renderActions={customer=><><Button variant="contained" onClick={()=>navigateToPath(`/customer-pricing?customerId=${customer.id}`,{label:pricing})}><Stack direction="row" spacing={.75} alignItems="center"><span>{pricing}</span>{Number(customer.missingSalesPriceStyleCount)>0&&<NotificationIndicator/>}</Stack></Button>{canDelete&&<Tooltip title={customer.hasUsageHistory!==false?deletion.blocked:deletion.remove}><span><DeleteActionButton aria-label={deletion.remove} disabled={deleting||customer.hasUsageHistory!==false} onClick={()=>setDeleteTarget(customer)}/></span></Tooltip>}</>}
  ><Dialog open={Boolean(deleteTarget)} onClose={()=>!deleting&&setDeleteTarget(null)}><DialogTitle>{deletion.confirm}</DialogTitle><DialogContent>{resolveCustomerDisplayName(deleteTarget||{},languageCode)}<p>{deletion.help}</p></DialogContent><DialogActions><Button disabled={deleting} onClick={()=>setDeleteTarget(null)}>{deletion.cancel}</Button><Button color="error" disabled={deleting} onClick={removeCustomer}>{deletion.remove}</Button></DialogActions></Dialog></PartnerDirectory>;
 };
 export default CustomerList;

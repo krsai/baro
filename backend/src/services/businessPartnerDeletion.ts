@@ -1,5 +1,21 @@
 const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
 
+// One batch for the directory; use the same business sources as deletion.
+export async function getCustomerUsage(db: any, ids: number[]): Promise<Set<number>> {
+  if (!ids.length) return new Set();
+  const sources = [
+    ['Style', 'linked."orgId" = r."manufacturerOrgId" AND linked."customerOrgId" = r."brandOrgId"'],
+    ['WorkOrder', 'linked."sellerOrgId" = r."manufacturerOrgId" AND linked."buyerOrgId" = r."brandOrgId"'],
+    ['AssignmentCard', 'linked."orgId" = r."manufacturerOrgId" AND linked."buyerOrgId" = r."brandOrgId"'],
+    ['AssignmentPlan', 'linked."orgRelationshipId" = r.id OR (linked."orgId" = r."manufacturerOrgId" AND linked."buyerOrgId" = r."brandOrgId")'],
+    ['Invoice', 'linked."sellerOrgId" = r."manufacturerOrgId" AND linked."buyerOrgId" = r."brandOrgId"'],
+    ['InvoiceDraft', 'linked."sellerOrgId" = r."manufacturerOrgId" AND linked."buyerOrgId" = r."brandOrgId"'],
+    ['CustomerSalesPriceList', 'linked."orgRelationshipId" = r.id'],
+  ];
+  const rows = await db.$queryRawUnsafe(`SELECT r.id FROM "OrgRelationship" r WHERE r.id = ANY($1::int[]) AND (${sources.map(([table, condition]) => `EXISTS (SELECT 1 FROM ${quote(table!)} linked WHERE ${condition})`).join(' OR ')})`, ids);
+  return new Set(rows.map((row: any) => row.id));
+}
+
 // Count actual FK references, including Cascade/SetNull, before deleting.
 // Industry selections alone are configuration and may be removed with a partner.
 export async function getBusinessPartnerUsage(db: any, ids: number[]): Promise<Set<number>> {
@@ -49,15 +65,6 @@ export async function deleteUnusedCustomer(tx: any, orgId: number, id: number, m
   const manufacturer = relationship.manufacturerOrgId, brand = relationship.brandOrgId;
   // Serialize new organization FK references with deletion. Keep the shared entity itself.
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE', [manufacturer, brand]);
-  const checks = [
-    tx.style.count({ where: { orgId: manufacturer, customerOrgId: brand } }),
-    tx.workOrder.count({ where: { sellerOrgId: manufacturer, buyerOrgId: brand } }),
-    tx.assignmentCard.count({ where: { orgId: manufacturer, buyerOrgId: brand } }),
-    tx.assignmentPlan.count({ where: { OR: [{ orgRelationshipId: id }, { orgId: manufacturer, buyerOrgId: brand }] } }),
-    tx.invoice.count({ where: { sellerOrgId: manufacturer, buyerOrgId: brand } }),
-    tx.invoiceDraft.count({ where: { sellerOrgId: manufacturer, buyerOrgId: brand } }),
-    tx.customerSalesPriceList.count({ where: { orgRelationshipId: id } }),
-  ];
-  if ((await Promise.all(checks)).some(count => count > 0)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
+  if ((await getCustomerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
   await tx.orgRelationship.delete({ where: { id } });
 }

@@ -33,10 +33,10 @@ try{
   if(screen==='customer'){
    await page.locator('input[name=code]').fill('NEWW');await page.locator('input[name=name]').fill('New customer');
    assert.equal(customerReads,0,'A static /customer/new route must not fetch an empty customer ID');
-   await industry.click();await page.getByRole('option',{name:'Retail',exact:true}).click();
+   assert.equal(await industry.count(),0,'Customers have no detailed industry selector');
    await page.locator('.app-page-header button.MuiButton-contained').click();
    await page.waitForFunction(()=>window.notifications.some(row=>row.level==='success'));
-   assert.equal(payload.systemIndustryId,31);
+   assert.equal(payload.systemIndustryId,null);
   }else{
    await page.getByRole('dialog').getByRole('textbox').first().fill('New vendor');
    await industry.click();assert.equal(await page.getByRole('option',{name:'Buttonhole',exact:true}).count(),1);await page.getByRole('option',{name:'Buttonhole',exact:true}).click();await page.keyboard.press('Escape');

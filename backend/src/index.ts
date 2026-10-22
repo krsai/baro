@@ -7,7 +7,7 @@ import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
 import { annotateProcessVersionProtection } from "./services/processVersionProtection";
 import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
-import { deleteUnusedCustomer, deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
+import { getCustomerUsage, deleteUnusedCustomer, deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
 import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
@@ -27765,8 +27765,10 @@ app.get("/customers", async (req, res) => {
         relationshipIds: relationships.map((item) => item.id),
       })
     : new Map<number, number>();
+  const customerUsage = await getCustomerUsage(prisma, relationships.map(item => item.id));
   res.json(relationships.map((item) => ({
     ...toCustomerResponse(item, perspective),
+    hasUsageHistory: customerUsage.has(item.id),
     missingSalesPriceStyleCount: missingPriceCountByRelationship.get(item.id) ?? 0,
   })));
 });

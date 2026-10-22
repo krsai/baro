@@ -13,14 +13,16 @@ test('customer deletion checks every business source and keeps shared organizati
       $queryRawUnsafe: async (sql,...args) => (await db.query(sql,args)).rows,
       orgRelationship: { delete: ({where}) => db.query('DELETE FROM "OrgRelationship" WHERE id=$1',[where.id]) },
     };
-    const sources=['style','workOrder','assignmentCard','assignmentPlan','invoice','invoiceDraft','customerSalesPriceList'];
-    for(const source of sources) tx[source]={count:async()=>0};
+    const sources=['Style','WorkOrder','AssignmentCard','AssignmentPlan','Invoice','InvoiceDraft','CustomerSalesPriceList'];
+    for(const source of sources) await db.exec('CREATE TABLE "'+source+'"("orgId" INT,"customerOrgId" INT,"sellerOrgId" INT,"buyerOrgId" INT,"orgRelationshipId" INT)');
+    assert.deepEqual([...await service.getCustomerUsage(tx,[7])],[]);
     await assert.rejects(service.deleteUnusedCustomer(tx,3,7,true),/CUSTOMER_NOT_FOUND/);
     for(const source of sources){
-      tx[source].count=async()=>1;
+      await db.exec('INSERT INTO "'+source+'" VALUES(1,2,1,2,7)');
+      assert.deepEqual([...await service.getCustomerUsage(tx,[7])],[7]);
       await assert.rejects(service.deleteUnusedCustomer(tx,1,7,true),/PARTNER_HAS_TRANSACTION_HISTORY/);
       assert.equal((await db.query('SELECT * FROM "OrgRelationship"')).rows.length,1);
-      tx[source].count=async()=>0;
+      await db.exec('DELETE FROM "'+source+'"');
     }
     await service.deleteUnusedCustomer(tx,1,7,true);
     assert.equal((await db.query('SELECT * FROM "OrgRelationship"')).rows.length,0);
