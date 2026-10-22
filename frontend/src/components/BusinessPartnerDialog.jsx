@@ -1,3 +1,4 @@
+import PartnerProfileFields from './PartnerProfileFields';
 import EntityDetailSection from './EntityDetailSection';
 import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
@@ -5,7 +6,7 @@ import { INDUSTRY_TREE_TEXT } from '../constants/industryHierarchy';
 import { getStaticOptionOptions } from '../constants/staticOptionRegistry';
 import React, { useEffect, useId, useState } from 'react';
 import {
-  Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
+  Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormControlLabel, InputLabel, ListItemText, MenuItem, Select, Stack, Switch, TextField,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
@@ -47,6 +48,7 @@ export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
 };
 
 const buildFormFromPartner = (partner, initialType) => ({
+  code: partner?.code || '',
   name: partner?.name || '',
   type: partner?.type || initialType,
   nameKo: partner?.nameKo || '', nameVi: partner?.nameVi || '',businessNumber:partner?.businessNumber || '',country:partner?.country || '',countryCode:partner?.countryCode || '',address:partner?.address || '',email:partner?.email || '',
@@ -105,7 +107,7 @@ export default function BusinessPartnerDialog({
     try {
       const body = {
         name: form.name.trim(), type: form.type,
-        ...Object.fromEntries(['nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
+        ...Object.fromEntries(['code','nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
         serviceTypeIds: form.serviceTypeIds,
@@ -132,27 +134,12 @@ export default function BusinessPartnerDialog({
   };
 
   return (
-    <Dialog open={open} onClose={() => !saving && onClose?.()} fullWidth maxWidth="md">
-      <DialogTitle>{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</DialogTitle>
-      <DialogContent>
+    <Dialog open={open} onClose={() => !saving && onClose?.()} scroll="paper" fullWidth maxWidth="md" PaperProps={{sx:{m:{xs:1,sm:3},width:{xs:"calc(100% - 16px)",sm:"calc(100% - 48px)"},maxHeight:{xs:"calc(100dvh - 16px)",sm:"calc(100dvh - 48px)"},display:"flex",flexDirection:"column",overflow:"hidden"}}}>
+      <DialogTitle sx={{flexShrink:0}}>{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</DialogTitle>
+      <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <EntityDetailSection title={common.identity}><Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(2,minmax(0,1fr))',md:'repeat(3,minmax(0,1fr))'},gap:2}}>
-            <TextField autoFocus required fullWidth label={labels.name} value={form.name} onChange={update('name')} />
-            <TextField label={common.nameKo} value={form.nameKo} onChange={update('nameKo')} />
-            <TextField label={common.nameVi} value={form.nameVi} onChange={update('nameVi')} />
-            <TextField label={common.businessNumber} value={form.businessNumber} onChange={update('businessNumber')} />
-          </Box></EntityDetailSection>
-          <EntityDetailSection title={common.contact}><Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(2,minmax(0,1fr))'},gap:2}}>
-            <TextField label={labels.contact} value={form.contactName} onChange={update('contactName')} />
-            <TextField label={common.countryCode} value={form.countryCode} onChange={update('countryCode')} />
-            <TextField label={labels.phone} value={form.contactPhone} onChange={update('contactPhone')} />
-            <TextField type="email" label={common.email} value={form.email} onChange={update('email')} />
-          </Box></EntityDetailSection>
-          <EntityDetailSection title={common.address}><Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'160px minmax(0,1fr)'},gap:2}}>
-            <TextField select label={common.country} value={form.country} onChange={update('country')}><MenuItem value="">—</MenuItem>{countryOptions.map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>
-            <TextField multiline minRows={2} label={common.address} value={form.address} onChange={update('address')} />
-          </Box></EntityDetailSection>
+          <PartnerProfileFields value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
           <TextField label={(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).category} value={getBusinessPartnerTypeLabel(form.type,languageCode)} InputProps={{readOnly:true}}/>
@@ -191,7 +178,7 @@ export default function BusinessPartnerDialog({
           </Stack></EntityDetailSection>
         </Stack>
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{flexShrink:0,px:3,py:2}}>
         <Button onClick={onClose} disabled={saving}>{labels.cancel}</Button>
         <Button variant="contained" onClick={save} disabled={saving || !form.name.trim()}>{isEdit ? labels.saveEdit : labels.save}</Button>
       </DialogActions>

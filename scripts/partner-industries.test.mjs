@@ -16,6 +16,32 @@ function routeHandler(method,path,deps){
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));
  return handler;
 }
+
+test('customers can be created without codes and duplicate codes never identify or overwrite another entity',async()=>{
+ const {normalizePartnerCode}=require('../backend/dist/services/entityProfile.js');
+ let lookups=0,creates=0;
+ const deps={ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),resolveCustomerPerspective:()=> 'MANUFACTURER',validateCustomerIndustry:async()=>null,
+  buildSharedCustomerOrganizationData:body=>({...body,code:normalizePartnerCode(body.code)}),ORGANIZATION_TYPE_KEYS:{BRAND:'BRAND',MANUFACTURER:'MANUFACTURER'},toPositiveIntOrNull:()=>null,
+  resolveOptionalString:(value,fallback)=>value??fallback,normalizeCustomerDefaultSizeSetCode:()=> 'LEGACY_APPAREL',toCustomerResponse:row=>row,
+  prisma:{organization:{findFirst:async({where})=>{lookups++;assert.ok(where.code);return{id:99,type:'BRAND'};},create:async({data})=>{creates++;assert.equal(data.code,null);return{id:44,...data};},update:()=>{throw Error('Unexpected existing entity overwrite');}},orgRelationship:{upsert:async({create})=>({...create,id:7,salesBucketSetVersionId:1,timeBucketSetVersionId:2})}}};
+ const handler=routeHandler('post','/customers',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
+ for(const code of ['',null,undefined]){await handler({body:{name:'Company',code}},res);assert.equal(res.code,201);}
+ assert.equal(lookups,0);assert.equal(creates,3);
+ await handler({body:{name:'Another company',code:'CUS-001'}},res);assert.equal(res.code,409);assert.equal(creates,3);
+});
+
+test('customer code edits accept extended codes and explicitly clear a code without querying for null',async()=>{
+ const {normalizePartnerCode}=require('../backend/dist/services/entityProfile.js');let organizationWrite,relationshipWrite;
+ const existing={id:7,brandOrgId:44,manufacturerOrgId:1,brand:{id:44,name:'Company'}};
+ const deps={ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),resolveCustomerPerspective:()=> 'MANUFACTURER',validateCustomerIndustry:async()=>undefined,
+  buildSharedCustomerOrganizationData:body=>body,normalizePartnerCode,resolveOptionalString:(value,fallback)=>value??fallback,toCustomerResponse:row=>row,
+  prisma:{orgRelationship:{findFirst:async()=>existing,update:async({data})=>{relationshipWrite=data;},findUnique:async()=>existing},organization:{findFirst:async({where})=>{assert.ok(where.code);return null;},update:async({data})=>{organizationWrite=data;}}}};
+ const handler=routeHandler('put','/customers/:id',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
+ for(const [code,expected] of [['cus-001','CUS-001'],['',null]]){
+  await handler({params:{id:'7'},body:{name:'Company',code}},res);
+  assert.equal(organizationWrite.code,expected);assert.equal(relationshipWrite.customerCode,expected);
+ }
+});
 test('SaaS managers create their own outsourcing and supplier partners without SYSTEM privileges',async()=>{
  const {resolvePartnerServiceTypeIds}=loadSourceBindings('backend/src/index.ts',['resolvePartnerServiceTypeIds']);
  for(const type of ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER']){

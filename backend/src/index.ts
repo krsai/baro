@@ -1,4 +1,4 @@
-import { entityProfile, partnerProfilePatch } from './services/entityProfile';
+import { entityProfile, partnerProfilePatch, normalizePartnerCode } from './services/entityProfile';
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
 import { displayProductionProgress } from './services/productionProgress';
@@ -84,10 +84,8 @@ import {
 import {
   ensureArray,
   isNumericId,
-  isValidOrgCode,
   normalizeComparableText,
   normalizeEmail,
-  normalizeOrgCode,
   resolveOptionalString,
   toId,
   toNumberOrNull,
@@ -1799,8 +1797,8 @@ const buildSharedCustomerOrganizationData = (
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
     code:
       payload?.code !== undefined
-        ? normalizeOrgCode(payload.code)
-        : normalizeOrgCode(fallbackOrganization?.code),
+        ? normalizePartnerCode(payload.code)
+        : normalizePartnerCode(fallbackOrganization?.code),
     name:
       payload?.name !== undefined
         ? resolveOptionalString(payload.name, null)
@@ -29492,10 +29490,10 @@ app.post("/customers", async (req, res) => {
   const { brandOrgId, customerOrgId, memo } = req.body ?? {};
   const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {});
   const normalizedCode = sharedOrganizationData.code;
-  if (!normalizedCode || !isValidOrgCode(normalizedCode)) {
+  if (normalizedCode && !/^[A-Z0-9._-]{1,40}$/.test(normalizedCode)) {
     return res.status(400).json({
       ok: false,
-      error: "code must be 4 uppercase letters",
+      error: "code must be up to 40 letters, numbers, dots, underscores or hyphens",
     });
   }
 
@@ -29520,12 +29518,12 @@ app.post("/customers", async (req, res) => {
       });
     }
 
-    const existingCodeOwner = await prisma.organization.findFirst({
+    const existingCodeOwner = normalizedCode ? await prisma.organization.findFirst({
       where: {
         code: normalizedCode,
         NOT: { id: targetOrganization.id },
       },
-    });
+    }) : null;
     if (existingCodeOwner) {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
@@ -29551,10 +29549,10 @@ app.post("/customers", async (req, res) => {
       },
     });
   } else {
-    const existingCodeOwner = await prisma.organization.findFirst({
+    const existingCodeOwner = normalizedCode ? await prisma.organization.findFirst({
       where: { code: normalizedCode },
-    });
-    if (existingCodeOwner && existingCodeOwner.type !== targetType) {
+    }) : null;
+    if (existingCodeOwner) {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
 
@@ -29566,24 +29564,6 @@ app.post("/customers", async (req, res) => {
       return res.status(400).json({ ok: false, error: "name is required" });
     }
 
-    if (existingCodeOwner && existingCodeOwner.type === targetType) {
-      targetOrganization = await prisma.organization.update({
-        where: { id: existingCodeOwner.id },
-        data: {
-          name: nextTargetData.name,
-          nameKo: nextTargetData.nameKo,
-          nameVi: nextTargetData.nameVi,
-          code: normalizedCode,
-          businessNumber: nextTargetData.businessNumber,
-          address: nextTargetData.address,
-          country: nextTargetData.country,
-          countryCode: nextTargetData.countryCode,
-          phone: nextTargetData.phone,
-          representative: nextTargetData.representative,
-          email: nextTargetData.email,
-        },
-      });
-    } else {
       targetOrganization = await prisma.organization.create({
         data: {
           name: nextTargetData.name,
@@ -29600,7 +29580,6 @@ app.post("/customers", async (req, res) => {
           type: targetType,
         },
       });
-    }
   }
 
   if (!targetOrganization || targetOrganization.type !== targetType) {
@@ -29729,7 +29708,7 @@ app.put("/customers/:id", async (req, res) => {
     : existing.manufacturerOrgId;
   const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
   const normalizedCode =
-    code !== undefined ? normalizeOrgCode(code) : undefined;
+    code !== undefined ? normalizePartnerCode(code) : undefined;
 
   if (name !== undefined) {
     if (typeof name !== "string" || !name.trim()) {
@@ -29738,19 +29717,19 @@ app.put("/customers/:id", async (req, res) => {
   }
 
   if (code !== undefined) {
-    if (!normalizedCode || !isValidOrgCode(normalizedCode)) {
+    if (normalizedCode && !/^[A-Z0-9._-]{1,40}$/.test(normalizedCode)) {
       return res.status(400).json({
         ok: false,
-        error: "code must be 4 uppercase letters",
+        error: "code must be up to 40 letters, numbers, dots, underscores or hyphens",
       });
     }
 
-    const existingCodeOwner = await prisma.organization.findFirst({
+    const existingCodeOwner = normalizedCode ? await prisma.organization.findFirst({
       where: {
         code: normalizedCode,
         NOT: { id: targetOrganizationId },
       },
-    });
+    }) : null;
     if (existingCodeOwner) {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
@@ -29762,7 +29741,7 @@ app.put("/customers/:id", async (req, res) => {
       name: nextTargetData.name ?? targetOrganization?.name ?? "",
       nameKo: nextTargetData.nameKo,
       nameVi: nextTargetData.nameVi,
-      ...(normalizedCode ? { code: normalizedCode } : {}),
+      ...(code !== undefined ? { code: normalizedCode ?? null } : {}),
       businessNumber: nextTargetData.businessNumber,
       address: nextTargetData.address,
       country: nextTargetData.country,

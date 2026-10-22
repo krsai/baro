@@ -202,10 +202,6 @@ const CustomerDetail = () => {
     if (savingCustomer) return;
 
     const payload = buildCustomerPayload(customerFormData);
-    if (!payload.code) {
-      showNotification(t('codeRequired'), 'error');
-      return;
-    }
     if (!payload.name) {
       showNotification(t('nameRequired'), 'error');
       return;

@@ -2,8 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const {entityProfile,partnerProfilePatch}=require('../backend/dist/services/entityProfile.js');
+const {entityProfile,partnerProfilePatch,normalizePartnerCode}=require('../backend/dist/services/entityProfile.js');
 const {registerEntityBankRoutes,requirePayeeBankAccount}=require('../backend/dist/services/entityBankAccount.js');
+
+test('optional partner codes normalize consistently and reject invalid values without altering organization login rules',()=>{
+  for(const value of [null,undefined,'','   '])assert.equal(normalizePartnerCode(value),null);
+  assert.equal(normalizePartnerCode(' vendor-001.a '),'VENDOR-001.A');
+  assert.deepEqual(partnerProfilePatch({code:' p_01 '}),{code:'P_01'});
+  assert.deepEqual(partnerProfilePatch({code:''}),{code:null});
+  for(const value of [123,'a b','x'.repeat(41)])assert.throws(()=>normalizePartnerCode(value),error=>error.status===400);
+});
 
 test('common profiles preserve actual entity FK and omitted partner fields cannot clear existing information',()=>{
   assert.equal(entityProfile({id:44,name:'Customer'}).entityId,44);
