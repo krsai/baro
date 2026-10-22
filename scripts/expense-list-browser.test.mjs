@@ -63,6 +63,7 @@ try {
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
     assert.equal(headings.length,13);
+    assert.ok((await page.locator('.is-dense th, .is-dense td').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).padding))).every(padding=>padding==='8px 12px'),'Header and body share compact spacing');
     assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
     assert.equal(await page.locator('[data-expense-row="document-item"] td').nth(7).textContent(),'Delivery note');
     assert.equal(await page.locator('[data-expense-row="cost"] td').nth(3).textContent(),{ko:'물류 서비스',en:'Logistics service',vi:'Dịch vụ vận chuyển'}[lang]);
@@ -81,6 +82,7 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
+    assert.ok((await page.locator('tbody .cc-amount, .cc-total-amount strong').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).fontWeight))).every(weight=>weight==='400'),'Amounts use normal weight');
     assert.deepEqual(await page.locator('[data-search-controls] .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
     assert.equal((await page.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
     assert.equal(await page.getByRole('button',{name:'M+',exact:true}).evaluate(el=>getComputedStyle(el).fontSize),'11px');
@@ -126,7 +128,7 @@ try {
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{
           const alignment=cell=>{
             const style=getComputedStyle(cell);
-            return [style.paddingLeft,style.paddingRight,style.paddingTop,style.paddingBottom,style.textAlign.replace('start','left')].join(':');
+            return [style.marginLeft,style.marginRight,style.marginTop,style.marginBottom,style.paddingLeft,style.paddingRight,style.paddingTop,style.paddingBottom,style.textAlign.replace('start','left')].join(':');
           };
           const headers=Array.from(table.tHead.rows[0].cells,cell=>({x:cell.getBoundingClientRect().x,width:cell.getBoundingClientRect().width,alignment:alignment(cell)}));
           return Array.from(table.tBodies[0].rows).filter(row=>row.cells.length>1).map(row=>Array.from(row.cells,(cell,index)=>{
