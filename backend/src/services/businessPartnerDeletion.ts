@@ -17,7 +17,8 @@ export async function getBusinessPartnerUsage(db: any, ids: number[]): Promise<S
     WHERE fk.contype = 'f' AND fk.confrelid = '"Organization"'::regclass
     GROUP BY fk.oid, ns.nspname, rel.relname
   `) as { schema: string; table: string; columns: string[]; targets: string[] }[];
-  const checks = relations.filter(row => !(row.table === 'OrganizationOutsourcingServiceType' && row.columns.includes('partnerOrgId')));
+  const checks = relations.filter(row => !(row.table === 'OrganizationOutsourcingServiceType' && row.columns.includes('partnerOrgId'))
+    && !(row.table === 'OrganizationBankAccount' && row.columns.includes('entityId')));
   if (!checks.length) return new Set();
   const rows = await db.$queryRawUnsafe(checks.map(row => `
     SELECT DISTINCT org.id FROM ${quote(row.schema)}.${quote(row.table)} linked
@@ -34,6 +35,29 @@ export async function deleteUnusedBusinessPartner(tx: any, orgId: number, id: nu
   );
   if (!partner || !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(partner.type)) throw new Error('BUSINESS_PARTNER_NOT_FOUND');
   if ((await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
+  // Referenced bank accounts still fail their Restrict FKs and roll back the transaction.
+  await tx.organizationBankAccount.deleteMany({ where: { entityId: id, orgId } });
   await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
   await tx.organization.delete({ where: { id } });
+}
+
+export async function deleteUnusedCustomer(tx: any, orgId: number, id: number, manufacturerPerspective: boolean) {
+  const [relationship] = await tx.$queryRawUnsafe(
+    `SELECT * FROM "OrgRelationship" WHERE id=$1 AND ${manufacturerPerspective ? '"manufacturerOrgId"' : '"brandOrgId"'}=$2 FOR UPDATE`, id, orgId,
+  );
+  if (!relationship) throw new Error('CUSTOMER_NOT_FOUND');
+  const manufacturer = relationship.manufacturerOrgId, brand = relationship.brandOrgId;
+  // Serialize new organization FK references with deletion. Keep the shared entity itself.
+  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE', [manufacturer, brand]);
+  const checks = [
+    tx.style.count({ where: { orgId: manufacturer, customerOrgId: brand } }),
+    tx.workOrder.count({ where: { sellerOrgId: manufacturer, buyerOrgId: brand } }),
+    tx.assignmentCard.count({ where: { orgId: manufacturer, buyerOrgId: brand } }),
+    tx.assignmentPlan.count({ where: { OR: [{ orgRelationshipId: id }, { orgId: manufacturer, buyerOrgId: brand }] } }),
+    tx.invoice.count({ where: { sellerOrgId: manufacturer, buyerOrgId: brand } }),
+    tx.invoiceDraft.count({ where: { sellerOrgId: manufacturer, buyerOrgId: brand } }),
+    tx.customerSalesPriceList.count({ where: { orgRelationshipId: id } }),
+  ];
+  if ((await Promise.all(checks)).some(count => count > 0)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
+  await tx.orgRelationship.delete({ where: { id } });
 }

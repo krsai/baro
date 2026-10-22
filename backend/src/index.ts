@@ -7,7 +7,7 @@ import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
 import { annotateProcessVersionProtection } from "./services/processVersionProtection";
 import { payrollManagementInclude, resolvePayrollManagement } from "./employees/payrollManagement";
 import { registerTransactionSettingRoutes } from './services/transactionSettingRoutes';
-import { deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
+import { deleteUnusedCustomer, deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
 import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
@@ -29821,19 +29821,15 @@ app.delete("/customers/:id", async (req, res) => {
     });
   }
 
-  const isManufacturerPerspective = perspective === "MANUFACTURER";
-  const existing = await prisma.orgRelationship.findFirst({
-    where: isManufacturerPerspective
-      ? { id, manufacturerOrgId: organization.id }
-      : { id, brandOrgId: organization.id },
-    select: { id: true },
-  });
-  if (!existing) {
-    return res.status(404).json({ ok: false, error: "customer not found" });
+  try {
+    await prisma.$transaction(tx => deleteUnusedCustomer(tx, organization.id, id, perspective === "MANUFACTURER"), { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    res.status(204).send();
+  } catch (error: any) {
+    if (error.message === 'CUSTOMER_NOT_FOUND') return res.status(404).json({ error: 'customer not found' });
+    if (error.message === 'PARTNER_HAS_TRANSACTION_HISTORY' || error.code === 'P2003') return res.status(409).json({ error: 'PARTNER_HAS_TRANSACTION_HISTORY' });
+    if (error.code === 'P2034') return res.status(409).json({ error: 'Please retry deleting the customer.' });
+    throw error;
   }
-
-  await prisma.orgRelationship.delete({ where: { id: existing.id } });
-  res.status(204).send();
 });
 
 app.get("/styles", async (req, res) => {
