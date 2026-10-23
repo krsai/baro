@@ -62,3 +62,26 @@ test('logistics is a separate partner role, with stable industry IDs and expense
   assert.equal((await db.query(`SELECT r.code FROM "SettingServiceDefault" s JOIN "PartnerRole" r ON r.id=s."partnerRoleId" WHERE s.id=1`)).rows[0].code,'MATERIAL_SUPPLIER');
  }finally{await db.close();}
 });
+
+test('customer catalogue adds woven, knit and combined without changing other partner roles or explicit edits',async()=>{
+ const db=new PGlite();try{
+  await db.exec(`CREATE TABLE "PartnerRole"(id INT PRIMARY KEY,code TEXT);INSERT INTO "PartnerRole" VALUES(1,'CUSTOMER'),(2,'PROCESS_OUTSOURCING');
+   CREATE TABLE "SettingServiceDefault"(id SERIAL PRIMARY KEY,code TEXT UNIQUE,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"entryMode" TEXT,"requiredFields" TEXT[],"orderInput" TEXT,"styleInput" TEXT,"processInput" TEXT,"isActive" BOOL,"sortOrder" INT,"partnerRoleId" INT REFERENCES "PartnerRole"(id));
+   INSERT INTO "SettingServiceDefault"(code,"partnerRoleId") VALUES('BUTTONHOLE',2);`);
+  const sql=fs.readFileSync('backend/prisma/migrations/20261023110000_customer_industry_categories/migration.sql','utf8');await db.exec(sql);
+  const rows=(await db.query(`SELECT code,"partnerRoleId" FROM "SettingServiceDefault" ORDER BY id`)).rows;
+  assert.deepEqual(rows,[{code:'BUTTONHOLE',partnerRoleId:2},{code:'CUSTOMER_WOVEN',partnerRoleId:1},{code:'CUSTOMER_KNIT',partnerRoleId:1},{code:'CUSTOMER_MIXED',partnerRoleId:1}]);
+  await db.exec(`UPDATE "SettingServiceDefault" SET "nameKo"='Custom name' WHERE code='CUSTOMER_WOVEN'`);await db.exec(sql);
+  assert.equal((await db.query(`SELECT "nameKo" FROM "SettingServiceDefault" WHERE code='CUSTOMER_WOVEN'`)).rows[0].nameKo,'Custom name');
+ }finally{await db.close();}
+});
+
+test('customer industry options are tenant-authorized and expose only active customer categories',async()=>{
+ const handlers=new Map();let query,allow=false;
+ const app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(`${method} ${path}`,fn)]));
+ const db={settingServiceDefault:{findMany:async options=>{query=options;return [{id:94,code:'CUSTOMER_WOVEN'}]}}};
+ registerTransactionSettingRoutes(app,db,{requireOrgRole:async()=>allow?{organization:{id:1}}:null});
+ const fn=handlers.get('get /customer-industries');let result;const res={json:rows=>{result=rows}};
+ await fn({query:{orgId:99}},res);assert.equal(query,undefined);
+ allow=true;await fn({query:{orgId:1}},res);assert.deepEqual(query.where,{isActive:true,partnerRole:{code:'CUSTOMER'}});assert.equal(result[0].id,94);
+});

@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:customer-industry-browser": "node scripts/customer-industry-browser.test.mjs",
     "test:partner-industries": "npm --prefix backend run build && node --test scripts/partner-industries.test.mjs",
     "test:partner-registration-browser": "node scripts/partner-registration-browser.test.mjs",
     "test:page-naming": "node --test scripts/page-naming.test.mjs",

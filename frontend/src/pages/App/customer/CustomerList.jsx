@@ -39,6 +39,7 @@ const CustomerList=({embedded=false})=>{
  const rows=useMemo(()=>customers.map(customer=>({
   id:customer.id,source:customer,code:customer.code,name:resolveCustomerDisplayName(customer,languageCode),country:resolveCountryForDisplay(customer),
   contactName:customer.manager,phone:customer.phoneNumber?customer.phone||combinePhone(customer.countryCode,customer.phoneNumber):'',email:customer.email,
+  subtitle:customer.systemIndustry?.[{ko:'nameKo',en:'nameEn',vi:'nameVi'}[languageCode]||'nameEn']||customer.systemIndustry?.nameEn||'',
   registeredAt:customer.registeredAt,isActive:customer.isActive!==false,
   attentionLabel:Number(customer.missingSalesPriceStyleCount)>0?pricing:null,
   searchText:[customer.name,customer.nameKo,customer.nameVi,customer.address].filter(Boolean).join(' '),

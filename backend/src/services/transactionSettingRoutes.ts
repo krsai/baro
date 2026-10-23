@@ -85,6 +85,10 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       res.json(await db.$transaction((tx: any) => saveAppSettings(tx,global ? undefined : access.organization.id,req.body,gates.actorId()), { isolationLevel: 'Serializable' }));
     });
   }
+  app.get('/customer-industries', async (req: any,res: any) => {
+    if (!await member(req,res)) return;
+    res.json(await db.settingServiceDefault.findMany({where:{isActive:true,partnerRole:{code:'CUSTOMER'}},select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]}));
+  });
   for (const kind of ['services','codes'] as const) {
     const service = kind === 'services';
     const localPath = service ? '/outsourcing-service-types' : '/transaction-codes';

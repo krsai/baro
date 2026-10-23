@@ -1,5 +1,11 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-10-23 고객사 세부 업종
+
+- CUSTOMER 아래에 직물(우븐)·편물(다이마루)·종합(직물·편물)을 공통 세부 업종으로 제공한다. 고객 분류는 전역 Organization.type이나 비용 유형이 아니라 OrgRelationship.systemIndustryId FK에 저장한다. 고객 목록에 표시하고 상세에서 선택한다.
+- 사용자 명시 요청으로 운영 BARO(1)의 고객 관계 1(THE SAN, brandOrgId 2)은 CUSTOMER_WOVEN, 관계 2(URIDEUL, brandOrgId 3)는 CUSTOMER_MIXED로 지정했다. 고객 코드/당사자 FK/다른 관계 필드와 업무 기록을 유지하고 PartnerIndustryMigrationAudit에 변경 전후를 남겼다. 다른 고객사에 이름 기반 자동 분류를 적용하지 않는다.
+
+
 ## 2026-10-23 물류 업체 구분
 
 - 거래처 구분에 LOGISTICS_PROVIDER(물류 업체)를 추가한다. 외주 업체(PROCESS_OUTSOURCING)는 생산 관련 업체에 사용하며 표준 LOGISTICS 세부 업종은 물류 업체 아래로 분리한다. 비용 유형 ExpenseType과 거래처 구분은 독립적이다.
