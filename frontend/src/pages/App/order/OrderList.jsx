@@ -2026,11 +2026,10 @@ const OrderList = () => {
         }, {});
         (Array.isArray(colorGroup.rows) ? colorGroup.rows : []).forEach((row) => {
           const normalizedGender = normalizeGenderCode(row?.item?.gender, '');
-          const fallbackGender =
-            currentHorizontalGenderCodes[currentHorizontalGenderCodes.length - 1] || 'U';
-          const genderCode = currentHorizontalGenderCodes.includes(normalizedGender)
-            ? normalizedGender
-            : fallbackGender;
+          // An unassigned draft is not a row for the last visible gender.
+          // Assign its gender only when the user enters a quantity in that column.
+          if (!currentHorizontalGenderCodes.includes(normalizedGender)) return;
+          const genderCode = normalizedGender;
           if (!itemByGender[genderCode]) {
             itemByGender[genderCode] = row.item;
           }
@@ -2661,10 +2660,8 @@ const OrderList = () => {
         const previewItems = (Array.isArray(prev.items) ? prev.items : []).map((item) => {
           const currentItemId = String(item?.id || '').trim();
           if (currentItemId !== targetItemId) return item;
-          const currentGender = normalizeGenderCode(item?.gender, '');
           return {
             ...item,
-            gender: currentGender || normalizedGender,
             sizeSetCode: currentSizeSetCode,
             sizeQuantities: {
               ...normalizeSizeQuantities(item?.sizeQuantities, currentSizeSetCode),
@@ -2672,9 +2669,6 @@ const OrderList = () => {
             },
           };
         });
-        if (hasDuplicateStyleColorGender(previewItems)) {
-          return prev;
-        }
         return {
           ...prev,
           items: previewItems,
@@ -2685,8 +2679,24 @@ const OrderList = () => {
 
     if (!normalizedValue) return;
 
+    // A new visual row may refer to a style/color already elsewhere on screen.
+    // Explain a conflicting gender instead of silently discarding every keypress.
+    const reference = colorRow?.referenceItem || colorRow?.rows?.[0]?.item;
+    const requestedKey = getStyleColorGenderKey(
+      group?.styleId || reference?.styleId,
+      getItemColorIdentity(reference),
+      normalizedGender
+    );
+    if (requestedKey && formData.items.some(item =>
+      getStyleColorGenderKey(getStyleIdentity(item), getItemColorIdentity(item), item.gender) === requestedKey
+    )) {
+      showNotification(orderPageText.duplicateStyleColorGender, 'warning');
+      return;
+    }
+
     const reusableZeroQuantityRow = (Array.isArray(colorRow?.rows) ? colorRow.rows : []).find(
       (row) =>
+        !normalizeGenderCode(row?.item?.gender, '') &&
         !hasAnySizeQuantity(
           normalizeSizeQuantities(row?.item?.sizeQuantities, currentSizeSetCode),
           currentSizeSetCode
