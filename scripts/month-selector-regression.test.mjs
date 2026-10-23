@@ -17,7 +17,7 @@ test('global month selector owns the preferred month input and stacked shift con
   assert.match(monthSelector, /max: maxMonth \|\| undefined/);
 });
 
-test('single-month screens reuse the global month selector', () => {
+test('query and settlement screens reuse the global date range selector', () => {
   const screens = [
     'frontend/src/pages/App/attendance/AttendanceList.jsx',
     'frontend/src/pages/App/assign/AssignBoard.jsx',
@@ -28,16 +28,16 @@ test('single-month screens reuse the global month selector', () => {
 
   screens.forEach((screen) => {
     const source = read(screen);
-    assert.match(source, /import MonthSelector from/);
-    assert.match(source, /<MonthSelector/);
+    assert.match(source, /import DateRangeSelector from/);
+    assert.match(source, /<DateRangeSelector/);
     assert.doesNotMatch(source, /type="month"/);
   });
 });
 
-test('work history maps the selected global month to its full query range', () => {
+test('work history sends the independently selected start and end dates', () => {
   const workList = read('frontend/src/pages/App/work/WorkList.jsx');
-  assert.match(workList, /const handleFilterMonthChange = useCallback/);
-  assert.match(workList, /setDateFilterStart\(nextStart\)/);
-  assert.match(workList, /setDateFilterEnd\([\s\S]*getMonthEnd\(nextStart/);
-  assert.match(workList, /min=\{workHistoryOperationStartDay\.format\('YYYY-MM'\)\}/);
+  assert.match(workList, /onStartChange=\{changeFilterDate\(setDateFilterStart\)\}/);
+  assert.match(workList, /onEndChange=\{changeFilterDate\(setDateFilterEnd\)\}/);
+  assert.match(workList, /dateFrom,/);assert.match(workList, /dateTo,/);
+  assert.doesNotMatch(workList, /handleFilterMonthChange/);
 });

@@ -2,6 +2,9 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:period-range": "npm --prefix backend run build && node --test scripts/period-range.test.mjs scripts/management-period.test.mjs",
+    "test:range-pages-browser": "node scripts/range-pages-browser.test.mjs",
+    "test:settlement-range-browser": "node scripts/settlement-range-browser.test.mjs",
     "test:customer-industry-browser": "node scripts/customer-industry-browser.test.mjs",
     "test:partner-industries": "npm --prefix backend run build && node --test scripts/partner-industries.test.mjs",
     "test:partner-registration-browser": "node scripts/partner-registration-browser.test.mjs",

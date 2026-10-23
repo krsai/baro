@@ -22,7 +22,29 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
     container={() => scope.host.current}
     disableScrollLock disableEnforceFocus disableRestoreFocus
     slotProps={{ ...slotProps, backdrop: { ...slotProps?.backdrop, sx: [{ position: 'absolute' }, slotProps?.backdrop?.sx] } }}
-    sx={[...(Array.isArray(sx) ? sx : [sx]), { position: 'absolute', inset: 0, pointerEvents: 'auto', ...(!scope.active ? { display: 'none' } : {}) }]}
+    sx={[...(Array.isArray(sx) ? sx : [sx]), {
+      position: 'absolute', inset: 0, pointerEvents: 'auto',
+      '--workspace-overlay-gap': 'clamp(12px, 2vw, 24px)',
+      '& .MuiDialog-container': {
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100%', boxSizing: 'border-box', padding: 'var(--workspace-overlay-gap)', overflow: 'hidden',
+      },
+      '& .MuiDialog-paper': {
+        margin: '0 !important', minWidth: 0, minHeight: 0, flexShrink: 1,
+        maxHeight: '100% !important', boxSizing: 'border-box', overflow: 'auto',
+      },
+      '& .MuiDrawer-paper': {
+        // Page drawers are bounded by their workspace, not the browser's header.
+        top: 'var(--workspace-overlay-gap) !important', bottom: 'var(--workspace-overlay-gap) !important',
+        height: 'auto !important', minHeight: 0, minWidth: 0,
+        maxHeight: 'calc(100% - 2 * var(--workspace-overlay-gap)) !important',
+        maxWidth: 'calc(100% - 2 * var(--workspace-overlay-gap)) !important',
+        boxSizing: 'border-box', borderRadius: 2, overflow: 'auto',
+        '&.MuiDrawer-paperAnchorRight': { right: 'var(--workspace-overlay-gap)', left: 'auto' },
+        '&.MuiDrawer-paperAnchorLeft': { left: 'var(--workspace-overlay-gap)', right: 'auto' },
+      },
+      ...(!scope.active ? { display: 'none' } : {}),
+    }]}
   />;
 });
 

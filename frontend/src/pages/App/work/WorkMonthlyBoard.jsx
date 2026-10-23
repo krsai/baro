@@ -22,7 +22,8 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
-import MonthSelector from '../../../components/MonthSelector';
+import DateRangeSelector from '../../../components/DateRangeSelector';
+import {periodMonthKeys} from '../../../utils/periodRange.mjs';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -154,12 +155,7 @@ const WorkMonthlyBoard = () => {
       }),
     [factories, selectedFactory]
   );
-  const [selectedMonth, setSelectedMonth] = useState(() =>
-    normalizeProductionAnalysisMonth(
-      dayjs(),
-      dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month')
-    )
-  );
+  const [dateFrom,setDateFrom]=useState(()=>dayjs().startOf('month')),[dateTo,setDateTo]=useState(()=>dayjs().endOf('month'));
   const [rows, setRows] = useState([]);
   const [loadError, setLoadError] = useState('');
   const [retryToken, setRetryToken] = useState(0);
@@ -168,11 +164,7 @@ const WorkMonthlyBoard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const { holidayKeys } = useHolidayCalendar(activeOrgId);
 
-  const monthRange = useMemo(() => buildMonthRange(selectedMonth), [selectedMonth]);
-  const canMoveToPreviousMonth = selectedMonth.isAfter(
-    productionAnalysisMinMonth,
-    'month'
-  );
+  const monthRange=useMemo(()=>({dateFrom:dateFrom.format('YYYY-MM-DD'),dateTo:dateTo.format('YYYY-MM-DD')}),[dateFrom,dateTo]);
   const selectedFactoryIdNumber = useMemo(
     () => normalizePositiveId(selectedFactoryId),
     [selectedFactoryId]
@@ -224,7 +216,7 @@ const WorkMonthlyBoard = () => {
   }, [activeFactoryId, activeOrgId, retryToken]);
 
   useEffect(() => {
-    setSelectedMonth((current) => normalizeProductionAnalysisMonth(current, productionAnalysisMinMonth));
+    setDateFrom(current=>current.isBefore(productionAnalysisMinMonth,'day')?productionAnalysisMinMonth:current);setDateTo(current=>current.isBefore(productionAnalysisMinMonth,'day')?productionAnalysisMinMonth.endOf('month'):current);
   }, [productionAnalysisMinMonth]);
 
   useEffect(() => {
@@ -270,7 +262,7 @@ const WorkMonthlyBoard = () => {
             `/attendance-entries${buildQueryString({
               orgId: activeOrgId,
               factoryId: selectedFactoryIdNumber,
-              month: monthRange.monthKey,
+              dateFrom:monthRange.dateFrom,dateTo:monthRange.dateTo,
             })}`,
             {
               skipGlobalLoading: true,
@@ -281,14 +273,12 @@ const WorkMonthlyBoard = () => {
 
         if (cancelled) return;
 
-        const nextRows = aggregateMonthlyWorkerRows({
-          employees: Array.isArray(employees) ? employees : [],
-          logs: Array.isArray(logs) ? logs : [],
-          attendanceRows: Array.isArray(attendanceRows) ? attendanceRows : [],
-          holidayKeys,
-          monthKey: monthRange.monthKey,
-          factoryName: selectedFactory?.name || '',
-        });
+        const nextRows=periodMonthKeys(monthRange.dateFrom,monthRange.dateTo).flatMap(monthKey=>aggregateMonthlyWorkerRows({
+          employees:Array.isArray(employees)?employees:[],
+          logs:(Array.isArray(logs)?logs:[]).filter(row=>String(row.workDate||row.startDate||'').startsWith(monthKey)),
+          attendanceRows:(Array.isArray(attendanceRows)?attendanceRows:[]).filter(row=>String(row.workDate||'').startsWith(monthKey)),
+          holidayKeys,monthKey,factoryName:selectedFactory?.name||'',dateFrom:monthRange.dateFrom,dateTo:monthRange.dateTo,
+        }).map(row=>({...row,key:monthKey+':'+row.key})));
         setRows(nextRows);
       } catch (_error) {
         if (cancelled || abortController.signal.aborted) return;
@@ -319,7 +309,7 @@ const WorkMonthlyBoard = () => {
     languageCode,
     monthRange.dateFrom,
     monthRange.dateTo,
-    monthRange.monthKey,
+
     selectedFactory?.name,
     selectedFactoryIdNumber,
     showNotification,
@@ -357,12 +347,12 @@ const WorkMonthlyBoard = () => {
   const handleOpenDetail = useCallback(
     (row) => {
       if (!row?.workerId || !selectedFactoryIdNumber) return;
-      const targetPath = `/production-analysis/${monthRange.monthKey}/${selectedFactoryIdNumber}/${row.workerId}`;
+      const targetPath = `/production-analysis/${row.workMonth}/${selectedFactoryIdNumber}/${row.workerId}`;
       navigateToPath(targetPath, {
-        label: buildMonthlyDetailTabLabel(row.workerName, monthRange.monthKey, languageCode),
+        label: buildMonthlyDetailTabLabel(row.workerName, row.workMonth, languageCode),
       });
     },
-    [languageCode, monthRange.monthKey, navigateToPath, selectedFactoryIdNumber]
+    [languageCode, navigateToPath, selectedFactoryIdNumber]
   );
 
   return (
@@ -381,20 +371,7 @@ const WorkMonthlyBoard = () => {
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업자 검색')}
             />
           )}
-          controls={<><MonthSelector
-              factoryId={selectedFactoryId}
-              key="month-picker"
-              value={selectedMonth.format('YYYY-MM')}
-              onChange={(monthKey) =>
-                setSelectedMonth(
-                  normalizeProductionAnalysisMonth(monthKey, productionAnalysisMinMonth)
-                )
-              }
-              min={productionAnalysisMinMonth.format('YYYY-MM')}
-              previousDisabled={!canMoveToPreviousMonth}
-              ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Month')}
-              inputSx={{ minWidth: 150 }}
-            /></>}
+          controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} minDate={productionAnalysisMinMonth}/>}
           filters={<><FormControl key="factory" size="small" sx={{ minWidth: 180 }}>
               <InputLabel id="work-monthly-factory-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}

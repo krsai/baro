@@ -10,7 +10,7 @@ const fixture = path.resolve('frontend/date-range-acceptance.html');
 assert.ok(!existsSync(fixture));
 writeFileSync(fixture, `<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react'; import {createRoot} from 'react-dom/client'; import {MemoryRouter} from 'react-router-dom';
-import Range from '/src/components/MonthRangeSelector.jsx'; import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';
+import Range from '/src/components/DateRangeSelector.jsx'; import Costs from '/src/pages/App/PartnerTransactionCosts.jsx';
 function App(){const [start,setStart]=React.useState('2026-10-10'),[end,setEnd]=React.useState('2026-10-11');
 return React.createElement(MemoryRouter,null,location.search ? React.createElement(Costs) : React.createElement(React.Fragment,null,
 React.createElement(Range,{monthOnly:false,startValue:start,endValue:end,onStartChange:v=>setStart(v.format('YYYY-MM-DD')),onEndChange:v=>setEnd(v.format('YYYY-MM-DD'))}),React.createElement('output',null,start+' / '+end)));}
@@ -37,9 +37,12 @@ try {
   await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
   await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
   assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2027-01-31');
+  for(const width of [390,740]){await page.setViewportSize({width,height:600});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+  await page.setViewportSize({width:1280,height:800});
   await page.clock.install({ time: new Date('2026-10-13T12:00:00+07:00') });
   const headers = { 'Access-Control-Allow-Origin': '*' };
-  await page.route('**/outsourcing-requests?*', route => route.fulfill({ headers, json: ['2026-09-01', '2026-10-01', '2026-10-31', '2026-11-30', '2026-12-01'].map((date, id) => ({ id, transactionDate: date, partner: { name: `Partner${id}` }, description: `Cost${id}`, currency: 'VND', amount: '100' })) }));
+  await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[]}));
+  await page.route('**/outsourcing-requests?*', route => route.fulfill({ headers, json: ['2026-09-01', '2026-10-01', '2026-10-31', '2026-11-30', '2026-12-01'].map((date, id) => ({ id, transactionDate: date, partner: { name: `Partner${id}` }, expenseRequest:{remark:`Cost${id}`}, description: `Legacy title${id}`, currency: 'VND', amount: '100' })) }));
   await page.goto(`http://127.0.0.1:${port}/date-range-acceptance.html?costs`);
   await page.getByText('Cost1', { exact: true }).waitFor();
   assert.equal(await page.locator('tbody tr').count(), 2);
@@ -48,7 +51,7 @@ try {
   await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
   await page.getByText('Cost3', { exact: true }).waitFor();
   assert.equal(await page.locator('tbody tr').count(), 4);
-  await page.getByPlaceholder('업체·업종·내용 검색').fill('Partner3');
+  await page.getByPlaceholder(/신청번호/).fill('Partner3');
   assert.equal(await page.locator('tbody tr').count(), 1);
   assert.deepEqual(errors, []);
   console.log('Date range browser checks passed: independent month expansion, year rollover, inclusive cost date filtering and combined search.');

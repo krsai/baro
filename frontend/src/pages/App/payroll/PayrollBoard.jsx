@@ -1,3 +1,6 @@
+import dayjs from 'dayjs';
+import DateRangeSelector from '../../../components/DateRangeSelector';
+import {periodMonthKeys,periodMonthNote} from '../../../utils/periodRange.mjs';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -134,7 +137,8 @@ const PayrollBoard = () => {
   const [snapshots, setSnapshots] = useState([]);
   const [calendar, setCalendar] = useState(null);
   const [readinessByKey, setReadinessByKey] = useState({});
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [dateFrom,setDateFrom]=useState(null),[dateTo,setDateTo]=useState(null);
+  const selectedMonths=useMemo(()=>new Set(periodMonthKeys(dateFrom?.format('YYYY-MM-DD'),dateTo?.format('YYYY-MM-DD'))),[dateFrom,dateTo]);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [mutating, setMutating] = useState('');
@@ -261,25 +265,24 @@ const PayrollBoard = () => {
       return Number(a.factory.id) - Number(b.factory.id);
     });
   }, [calendar?.availableMonthKeys, factories, latestCompletedMonthKey, readinessByKey, snapshots, snapshotsByKey]);
-  const filteredMonthFactoryRows = useMemo(
-    () => selectedMonth
-      ? monthFactoryRows.filter((row) => row.month === selectedMonth)
-      : monthFactoryRows,
-    [monthFactoryRows, selectedMonth]
-  );
+  useEffect(()=>{
+    const months=monthFactoryRows.map(row=>row.month).sort();
+    if(months.length){setDateFrom(previous=>previous||dayjs(months[0]+'-01'));setDateTo(previous=>previous||dayjs(months.at(-1)+'-01').endOf('month'));}
+  },[monthFactoryRows]);
+  const filteredMonthFactoryRows=useMemo(()=>monthFactoryRows.filter(row=>selectedMonths.has(row.month)),[monthFactoryRows,selectedMonths]);
   const batchTargetRows = useMemo(
     () => monthFactoryRows
       .filter((row) => {
         const key = rowKey(row.month, row.factory.id);
         const monthReadiness = readinessByKey[key];
-        const selected = !selectedMonth || row.month === selectedMonth;
+        const selected = selectedMonths.has(row.month);
         const calculable = row.snapshot
           ? row.snapshot.isProvisional === true && monthReadiness?.needsRecalculation === true && monthReadiness?.hasAttendanceData !== false && monthReadiness?.hasWorkData !== false
           : monthReadiness?.ready === true;
         return Boolean(selected && calculable);
       })
       .sort((a, b) => a.month.localeCompare(b.month) || Number(a.factory.id) - Number(b.factory.id)),
-    [monthFactoryRows, readinessByKey, selectedMonth]
+    [monthFactoryRows, readinessByKey, selectedMonths]
   );
   const canCalculate = batchTargetRows.length > 0 && !loading && !calculating;
   const explainCalculationError = useCallback((message) => {
@@ -414,21 +417,8 @@ const PayrollBoard = () => {
         </Stack>
       )}
       toolbar={<PageToolbar showLastUpdater={false} right={(
-        <Stack direction="row" spacing={1} alignItems="center">
-          <TextField
-            select
-            label={resolveText(languageCode, 'calculateMonth')}
-            size="small"
-            value={selectedMonth}
-            onChange={(event) => setSelectedMonth(event.target.value)}
-            SelectProps={{ renderValue: (value) => value || allMonthsLabel }}
-            sx={{ minWidth: 150 }}
-          >
-            <MenuItem value="">{allMonthsLabel}</MenuItem>
-            {Array.from(new Set(monthFactoryRows.map((row) => row.month))).map((month) => (
-              <MenuItem key={month} value={month}>{month}</MenuItem>
-            ))}
-          </TextField>
+        <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+          <DateRangeSelector languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} disabled={loading||calculating}/>
           <Button
             variant="contained" startIcon={<CalculateIcon />}
             disabled={!canCalculate} onClick={handleCalculate}
@@ -444,9 +434,10 @@ const PayrollBoard = () => {
     >
       <Box sx={{ width: '100%' }}>
         <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
-          {languageCode === 'ko' ? '월별·공장별로 직원의 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
+          {languageCode === 'ko' ? '선택 기간에 포함되는 월별·공장별 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
         </Box>
-        <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
+        <Typography variant="body2" color="text.secondary">{periodMonthNote[languageCode]||periodMonthNote.en}</Typography>
+      <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
             <Table stickyHeader size="small">
               <TableHead><TableRow>

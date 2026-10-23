@@ -42,7 +42,7 @@ import dayjs from 'dayjs';
 import { useAssignBoardDnd } from './hooks/useAssignBoardDnd';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
-import MonthSelector from '../../../components/MonthSelector';
+import DateRangeSelector from '../../../components/DateRangeSelector';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -3057,7 +3057,7 @@ const AssignBoard = () => {
   // viewStart 변경 시 assignment 인덱스 재계산을 위한 이전값 추적
   const prevViewStartRef = useRef(null);
   const dayCount = useMemo(() => {
-    return Math.max(10, Math.round((viewEnd - viewStart) / 86400000) + 1);
+    return Math.max(1, Math.round((viewEnd - viewStart) / 86400000) + 1);
   }, [viewStart, viewEnd]);
   const todayDateKey = useMemo(() => getTodayDateKey(), []);
   const [days, setDays] = useState(() =>
@@ -6840,23 +6840,9 @@ const AssignBoard = () => {
   ]);
 
   const controlsDisabled = persisting || loading;
-  const handleViewMonthChange = useCallback(
-    (value) => {
-      const nextStart = clampAssignmentViewDate(
-        getMonthStartDate(value),
-        assignmentOperationStartDateKey
-      );
-      setViewStart(nextStart);
-      setViewEnd(getMonthEndDate(nextStart));
-    },
-    [assignmentOperationStartDateKey]
-  );
-  const monthMinusDisabled =
-    controlsDisabled ||
-    getMonthStartDate(viewStart).getTime() <=
-      getMonthStartDate(
-        getAssignmentOperationStartDate(assignmentOperationStartDateKey)
-      ).getTime();
+  const changeViewDate = setter => value => {
+    if(value?.isValid?.()) setter(clampAssignmentViewDate(value.toDate(),assignmentOperationStartDateKey));
+  };
 
   return (
     <AppPageContainer
@@ -6906,9 +6892,11 @@ const AssignBoard = () => {
               alignItems: 'center',
               ml: { xs: 0, md: 'auto' },
               flexShrink: 0,
+              flexWrap: 'wrap',
               '& .MuiButton-root': { whiteSpace: 'nowrap' },
             }}
           >
+            <DateRangeSelector languageCode={languageCode} startValue={dayjs(viewStart)} endValue={dayjs(viewEnd)} onStartChange={changeViewDate(setViewStart)} onEndChange={changeViewDate(setViewEnd)} minDate={dayjs(assignmentOperationStartDateKey)} disabled={controlsDisabled}/>
             <Button
               variant="outlined"
               onMouseDown={preventToolbarButtonFocus}
@@ -6985,17 +6973,6 @@ const AssignBoard = () => {
                 {getUiMessage('assign.factoryScopeCapacityBoard', 'Factory Capacity', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                <MonthSelector
-                  value={dayjs(viewStart).format('YYYY-MM')}
-                  onChange={(monthKey) => {
-                    const monthValue = dayjs(`${monthKey}-01`);
-                    if (monthValue.isValid()) handleViewMonthChange(monthValue.toDate());
-                  }}
-                  disabled={controlsDisabled}
-                  previousDisabled={monthMinusDisabled}
-                  min={String(assignmentOperationStartDateKey || '').slice(0, 7)}
-                  ariaLabel={getUiMessage('assign.viewMonth', 'View month', languageCode)}
-                />
               </Box>
             </Box>
             <Stack spacing={1}>
@@ -7207,7 +7184,8 @@ const AssignBoard = () => {
             <Box
               sx={{
                 position: 'sticky',
-                top: (theme) => theme.spacing(-2.5),
+                top: 0,
+                left: 0,
                 zIndex: 2,
                 display: 'flex',
                 alignItems: 'center',

@@ -7,7 +7,7 @@ import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import StatusLabel from '../../components/StatusLabel';
 import AppPageContainer from '../../components/AppPageContainer';
-import MonthRangeSelector from '../../components/MonthRangeSelector';
+import DateRangeSelector from '../../components/DateRangeSelector';
 import { TRANSACTION_TEXT, OUTSOURCING_REQUEST_TEXT, serviceName } from '../../components/OutsourcingServiceDialog';
 import { EXPENSE_REQUEST_TEXT } from '../../constants/expenseRequest';
 import { EXPENSE_LIST_TEXT } from '../../constants/expenseList';
@@ -128,7 +128,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     </div>}><div className="compact-costs cc-live">
     <SearchPanel title={text.query} disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
-      controls={<MonthRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
+      controls={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
       filters={<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',xl:'repeat(4,minmax(0,1fr))'},gap:1.5,width:'100%'}}>
         <label><span>{text.industry}</span><select value={industry} onChange={event=>setIndustry(event.target.value)}><option value="">{text.allIndustries}</option>{industryOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
         <label><span>{labels.partner}</span><select value={partner} onChange={event=>setPartner(event.target.value)}><option value="">{text.allPartners}</option>{partnerOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>

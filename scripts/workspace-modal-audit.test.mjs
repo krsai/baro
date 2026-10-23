@@ -11,7 +11,8 @@ test('all business dialogs and drawers use the shared workspace scope without na
     if(/\/(PageDialogProvider|WorkspaceDialogScope)\.jsx$/.test(file))continue;
     const source=readFileSync(file,'utf8');
     assert.doesNotMatch(source,/window\.(confirm|prompt|alert)\(/,file);
-    assert.doesNotMatch(source,/createPortal\(|<Modal\b|<dialog\b/,file);
+    // A header save-action portal is not a modal and stays inside its page.
+    assert.doesNotMatch(source.replace(/createPortal\(saveAction,headerActionsTarget\)/g,''),/createPortal\(|<Modal\b|<dialog\b/,file);
     assert.doesNotMatch(source,/slots=\{\{\s*root:/,file);
     dialogs+=(source.match(/<Dialog\b/g)||[]).length;drawers+=(source.match(/<Drawer\b/g)||[]).length;
   }

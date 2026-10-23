@@ -85,3 +85,16 @@ test('cost and attendance APIs enforce company and factory dates even without fr
     await assert.rejects(attendance({query:{factoryId:11,month:'2026-07'}},res),/BEFORE_MANAGEMENT_START/);
   }finally{await db.close();}
 });
+
+test('attendance inclusive day ranges span months, keep factory scope and reject invalid/reversed ranges',async()=>{
+ const {db,prisma}=await fixture();try{
+  await db.exec(`INSERT INTO "AttendanceEntry"(id,"orgId","factoryId","workDate") VALUES(8,1,10,'2026-07-01')`);
+  const deps={...policy,prisma,requireOrgRole:async()=>({organization:{id:1}}),ORG_MANAGEMENT_ROLES:[],normalizeDateKey:policy.normalizeFactoryManagementStartDateKey,normalizeMonthKey:value=>/^\d{4}-\d{2}$/.test(String(value))?value:null,toAttendanceEntryResponse:value=>value};
+  const attendance=route('/attendance-entries',deps);let response,status;
+  const res={json:value=>{response=value},status:value=>{status=value;return res}};
+  await attendance({query:{factoryId:10,dateFrom:'2026-06-01',dateTo:'2026-07-01'}},res);assert.deepEqual(response.map(row=>row.id),[2,8]);
+  await attendance({query:{factoryId:10,dateFrom:'2026-06-16',dateTo:'2026-07-01'}},res);assert.deepEqual(response.map(row=>row.id),[8]);
+  for(const [dateFrom,dateTo] of [['2026-07-02','2026-07-01'],['2026-02-30','2026-07-01'],['2026-07-01',undefined]]){await attendance({query:{factoryId:10,dateFrom,dateTo}},res);assert.equal(status,400);assert.equal(response.error,'INVALID_DATE_RANGE');}
+  assert.equal((await db.query('SELECT count(*)::int count FROM "AttendanceEntry" WHERE id=8')).rows[0].count,1);
+ }finally{await db.close();}
+});

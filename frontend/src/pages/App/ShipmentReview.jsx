@@ -20,7 +20,9 @@ import {
   Typography,
 } from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
-import MonthSelector from '../../components/MonthSelector';
+import DateRangeSelector from '../../components/DateRangeSelector';
+import dayjs from 'dayjs';
+import {periodMonthKeys,periodMonthNote} from '../../utils/periodRange.mjs';
 import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -292,19 +294,19 @@ const computeSummary = (rows) =>
     { active: 0, idle: 0, review: 0, blocked: 0, confirmed: 0 }
   );
 
-const ShipmentReview = () => {
+const ShipmentReviewMonth = ({month,searchText,filterMode}) => {
   const { showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [month, setMonth] = useState(() => getLocalMonthKey());
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dataset, setDataset] = useState(null);
   const [draftRows, setDraftRows] = useState([]);
   const [colorOptions, setColorOptions] = useState([]);
-  const [filterMode, setFilterMode] = useState('all');
-  const [searchText, setSearchText] = useState('');
+
+
   const [dirty, setDirty] = useState(false);
   useUnsavedChanges(dirty);
 
@@ -571,36 +573,9 @@ const ShipmentReview = () => {
   ]);
 
   return (
-    <AppPageContainer
-      title={text('title')} description={text('subtitle')}
-    >
+    <Paper component="section" variant="outlined" sx={{p:2,minWidth:0}} data-settlement-month={month}>
       <PageContentStack>
-        <SearchPanel search={<SearchInput
-                placeholder={text('search')}
-                size="small"
-                value={searchText}
-                onChange={(event) => setSearchText(event.target.value)}
-                sx={{ minWidth: { xs: '100%', sm: 260 } }}
-              />} controls={<><MonthSelector
-                label={text('month')}
-                value={month}
-                onChange={setMonth}
-                inputSx={{ width: { xs: '100%', sm: 180 } }}
-                sx={{ width: { xs: '100%', sm: 'auto' } }}
-              /><SaveButton onClick={handleSave} disabled={saveDisabled} loading={saving} /></>} filters={<TextField
-                label={text('filter')}
-                select
-                size="small"
-                value={filterMode}
-                onChange={(event) => setFilterMode(event.target.value)}
-                sx={{ width: { xs: '100%', sm: 180 } }}
-              >
-                <MenuItem value="all">{text('filters.all')}</MenuItem>
-                <MenuItem value="active">{text('filters.active')}</MenuItem>
-                <MenuItem value="review">{text('filters.review')}</MenuItem>
-                <MenuItem value="blocked">{text('filters.blocked')}</MenuItem>
-                <MenuItem value="confirmed">{text('filters.confirmed')}</MenuItem>
-              </TextField>} />
+        <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="h6">{month}</Typography><SaveButton onClick={handleSave} disabled={saveDisabled} loading={saving}/></Stack>
 
         {!storageReady && (
           <Alert severity="error">{dataset?.storageMessage || text('storageNotReady')}</Alert>
@@ -798,8 +773,23 @@ const ShipmentReview = () => {
           </Box>
         )}
       </PageContentStack>
-    </AppPageContainer>
+    </Paper>
   );
 };
 
-export default ShipmentReview;
+export default function ShipmentReview(){
+ const {languageCode}=useLanguage(),{activeOrgId}=useAuth();
+ const [dateFrom,setDateFrom]=useState(()=>dayjs().startOf('month')),[dateTo,setDateTo]=useState(()=>dayjs().endOf('month'));
+ const [searchText,setSearchText]=useState(''),[filterMode,setFilterMode]=useState('all');
+ const months=useMemo(()=>periodMonthKeys(dateFrom.format('YYYY-MM-DD'),dateTo.format('YYYY-MM-DD')),[dateFrom,dateTo]);
+ // Preserve unsaved monthly drafts when the visible date range changes.
+ const [visited,setVisited]=useState(months);
+ useEffect(()=>{setVisited(previous=>{const next=[...new Set([...previous,...months])].sort();return next.join()===previous.join()?previous:next;});},[months]);
+ const allMonths=[...new Set([...visited,...months])].sort();
+ const text=key=>resolveText(PAGE_TEXT[key],languageCode);
+ return <AppPageContainer title={text('title')} description={text('subtitle')}>
+  <SearchPanel search={<SearchInput value={searchText} onChange={event=>setSearchText(event.target.value)} placeholder={text('search')}/>} controls={<DateRangeSelector languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}}/>} filters={<TextField select size="small" label={text('filter')} value={filterMode} onChange={event=>setFilterMode(event.target.value)} sx={{minWidth:180}}>{['all','active','review','blocked','confirmed'].map(value=><MenuItem key={value} value={value}>{resolveText(PAGE_TEXT.filters[value],languageCode)}</MenuItem>)}</TextField>}/>
+  <Typography variant="body2" color="text.secondary" sx={{my:2}}>{periodMonthNote[languageCode]||periodMonthNote.en}</Typography>
+  <Stack spacing={2}>{allMonths.map(month=><Box key={activeOrgId+':'+month} sx={{display:months.includes(month)?'block':'none'}}><ShipmentReviewMonth month={month} searchText={searchText} filterMode={filterMode}/></Box>)}</Stack>
+ </AppPageContainer>;
+}

@@ -224,10 +224,12 @@ export const aggregateMonthlyWorkerRows = ({
   attendanceRows = [],
   holidayKeys = [],
   monthKey = '',
+  dateFrom = '', dateTo = '',
   factoryName = '',
 }) => {
   const normalizedMonthKey = normalizeMonthKey(monthKey);
-  const monthRange = buildMonthRange(normalizedMonthKey || dayjs());
+  const baseRange = buildMonthRange(normalizedMonthKey || dayjs());
+  const monthRange={...baseRange,dateFrom:dateFrom>baseRange.dateFrom?dateFrom:baseRange.dateFrom,dateTo:dateTo&&dateTo<baseRange.dateTo?dateTo:baseRange.dateTo};
   const holidaySet = new Set(
     (Array.isArray(holidayKeys) ? holidayKeys : []).map((key) => normalizeDateKey(key)).filter(Boolean)
   );

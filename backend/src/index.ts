@@ -23907,11 +23907,16 @@ app.get("/attendance-entries", async (req, res) => {
   }
   const workDate = normalizeDateKey(req.query.workDate);
   const month = normalizeMonthKey(req.query.month);
+  const dateFrom = normalizeDateKey(req.query.dateFrom);
+  const dateTo = normalizeDateKey(req.query.dateTo);
+  const hasRange = req.query.dateFrom !== undefined || req.query.dateTo !== undefined;
+  const validDay = (value: string) => Boolean(value && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0,10) === value);
+  if (hasRange && (!validDay(dateFrom) || !validDay(dateTo) || dateFrom > dateTo)) return res.status(400).json({ok:false,error:'INVALID_DATE_RANGE'});
   const monthsOnly =
     String(req.query.monthsOnly ?? "")
       .trim()
       .toLowerCase() === "true";
-  if (!workDate && !month && !monthsOnly) {
+  if (!workDate && !month && !monthsOnly && !hasRange) {
     return res.status(400).json({
       ok: false,
       error: "workDate or month is required",
@@ -23956,7 +23961,7 @@ app.get("/attendance-entries", async (req, res) => {
       managementExcluded: false,
       orgId: organization.id,
       factoryId,
-      ...(workDate ? { workDate } : { workDate: { startsWith: month, gte: period.startDate } }),
+      ...(workDate ? { workDate } : hasRange ? {workDate:{gte:dateFrom > period.startDate ? dateFrom : period.startDate,lte:dateTo}} : { workDate: { startsWith: month, gte: period.startDate } }),
     },
     orderBy: [{ workDate: "asc" }, { workerId: "asc" }, { id: "asc" }],
   });

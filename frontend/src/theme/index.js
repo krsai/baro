@@ -515,10 +515,13 @@ const theme = createTheme(baseTheme, {
     } } },
     MuiMonthCalendar: { styleOverrides: { button: calendarChoice } },
     MuiYearCalendar: { styleOverrides: { button: calendarChoice } },
-    MuiDialog: { styleOverrides: { paper: { borderRadius: ui.radius.panel, maxHeight: 'calc(100dvh - 48px)' } } },
-    MuiDialogTitle: { styleOverrides: { root: { padding: ui.dialog.titlePadding, borderBottom: `1px solid ${ui.color.border}`, '& + .MuiDialogContent-dividers': { borderTop: 0 } } } },
-    MuiDialogContent: { styleOverrides: { root: { padding: ui.dialog.contentPadding }, dividers: { borderColor: ui.color.border } } },
-    MuiDialogActions: { styleOverrides: { root: { padding: ui.dialog.actionsPadding, gap: ui.dialog.actionsGap, '& > :not(style) ~ :not(style)': { marginLeft: 0 } } } },
+    MuiDialog: { defaultProps:{scroll:'paper'}, styleOverrides: {
+      container:{boxSizing:'border-box',padding:'clamp(12px, 2vw, 24px)'},
+      paper:{borderRadius:ui.radius.panel,margin:'0 !important',minWidth:0,minHeight:0,flexShrink:1,maxHeight:'100% !important',overflow:'auto'},
+    } },
+    MuiDialogTitle: { styleOverrides: { root: { flexShrink:0, padding: ui.dialog.titlePadding, borderBottom: `1px solid ${ui.color.border}`, '& + .MuiDialogContent-dividers': { borderTop: 0 } } } },
+    MuiDialogContent: { styleOverrides: { root: { padding: ui.dialog.contentPadding,minHeight:0,overflow:'auto' }, dividers: { borderColor: ui.color.border } } },
+    MuiDialogActions: { styleOverrides: { root: { flexShrink:0, padding: ui.dialog.actionsPadding, gap: ui.dialog.actionsGap, '& > :not(style) ~ :not(style)': { marginLeft: 0 } } } },
     MuiTab: { styleOverrides: { root: { color: ui.color.muted, backgroundColor: ui.color.canvas, '&.Mui-selected': { color: ui.color.primary } } } },
   },
 });

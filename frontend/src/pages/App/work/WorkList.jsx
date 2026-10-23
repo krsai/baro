@@ -34,7 +34,7 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
-import MonthSelector from '../../../components/MonthSelector';
+import DateRangeSelector from '../../../components/DateRangeSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import { ui } from '../../../theme/ui';
 import SearchInput from '../../../components/SearchInput';
@@ -252,22 +252,6 @@ const buildFilterDateKey = (
   return normalized ? dayjs(normalized).format('YYYY-MM-DD') : '';
 };
 
-const getMonthStart = (
-  value,
-  operationStartMonth = dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month'),
-  operationStartDay = operationStartMonth.startOf('day')
-) => {
-  const normalized = clampWorkHistoryFilterDate(value || new Date(), operationStartDay);
-  const month = dayjs(normalized).startOf('month');
-  return month.isBefore(operationStartMonth, 'month')
-    ? operationStartMonth.toDate()
-    : month.toDate();
-};
-
-const getMonthEnd = (value, operationStartMonth, operationStartDay) => {
-  return dayjs(getMonthStart(value, operationStartMonth, operationStartDay)).endOf('month').toDate();
-};
-
 const buildWorkListFilterStorageKey = (orgId) =>
   `${WORK_LIST_FILTER_STORAGE_PREFIX}:${String(orgId || 'global').trim() || 'global'}`;
 const readStoredWorkListFilters = (orgId) => {
@@ -410,19 +394,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   );
   const [dateFilterStart, setDateFilterStart] = useState(
     () =>
-      getMonthStart(
-        storedFilters?.dateFilterStart || new Date(),
-        dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month'),
+      clampWorkHistoryFilterDate(
+        storedFilters?.dateFilterStart || dayjs().startOf('month').toDate(),
         dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('day')
       )
   );
   const [dateFilterEnd, setDateFilterEnd] = useState(
     () =>
-      getMonthEnd(
-        storedFilters?.dateFilterStart || new Date(),
-        dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month'),
-        dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('day')
-      )
+      clampWorkHistoryFilterDate(storedFilters?.dateFilterEnd || dayjs().endOf('month').toDate())
   );
   const [deletingId, setDeletingId] = useState('');
   const [importing, setImporting] = useState(false);
@@ -505,17 +484,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   }, [activeFactoryId, activeOrgId, reloadNonce]);
 
   useEffect(() => {
-    const operationStartMonth = workHistoryOperationStartDay.startOf('month');
-    const nextStart = getMonthStart(
-      dateFilterStart,
-      operationStartMonth,
-      workHistoryOperationStartDay
-    );
-    const nextEnd = getMonthEnd(
-      nextStart,
-      operationStartMonth,
-      workHistoryOperationStartDay
-    );
+    const nextStart = clampWorkHistoryFilterDate(dateFilterStart,workHistoryOperationStartDay);
+    const nextEnd = clampWorkHistoryFilterDate(dateFilterEnd,workHistoryOperationStartDay);
     setDateFilterStart((current) =>
       current?.getTime?.() === nextStart?.getTime?.() ? current : nextStart
     );
@@ -754,20 +724,9 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     } finally { setImporting(false); }
   };
 
-  const handleFilterMonthChange = useCallback((monthKey) => {
-    const selectedMonth = dayjs(`${monthKey}-01`);
-    if (!selectedMonth.isValid()) return;
-    const operationStartMonth = workHistoryOperationStartDay.startOf('month');
-    const nextStart = getMonthStart(
-      selectedMonth.toDate(),
-      operationStartMonth,
-      workHistoryOperationStartDay
-    );
-    setDateFilterStart(nextStart);
-    setDateFilterEnd(
-      getMonthEnd(nextStart, operationStartMonth, workHistoryOperationStartDay)
-    );
-  }, [workHistoryOperationStartDay]);
+  const changeFilterDate = setter => value => {
+    if(value?.isValid?.()) setter(clampWorkHistoryFilterDate(value.toDate(),workHistoryOperationStartDay));
+  };
 
   return (
     <AppPageContainer
@@ -808,13 +767,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 flex: 1,
               }}
             />}
-            controls={<><MonthSelector
-                  factoryId={selectedFactoryId}
-                  value={dayjs(dateFilterStart).format('YYYY-MM')}
-                  onChange={handleFilterMonthChange}
-                  min={workHistoryOperationStartDay.format('YYYY-MM')}
-                  ariaLabel={resolveText(TEXT.workMonth, languageCode, 'Work month')}
-            /></>}
+            controls={<DateRangeSelector languageCode={languageCode} factoryId={selectedFactoryId} startValue={dayjs(dateFilterStart)} endValue={dayjs(dateFilterEnd)} onStartChange={changeFilterDate(setDateFilterStart)} onEndChange={changeFilterDate(setDateFilterEnd)} minDate={workHistoryOperationStartDay}/>}
           filters={<><FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
               <InputLabel id="work-list-factory-filter-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}

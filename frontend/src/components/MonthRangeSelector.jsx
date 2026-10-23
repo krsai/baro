@@ -40,8 +40,15 @@ const MonthRangeSelector = ({
     if (startValue && dayjs(startValue).isBefore(floor, monthOnly ? 'month' : 'day')) onStartChange?.(floor);
     if (endValue && dayjs(endValue).isBefore(floor, monthOnly ? 'month' : 'day')) onEndChange?.(monthOnly ? floor : floor.endOf('month').startOf('day'));
   }, [minimum, monthOnly, disabled, startValue, endValue]);
-  const change = handler => (value, context) => {
+  const change = (handler, isStart) => (value, context) => {
+    if (context?.validationError || (value && !value.isValid?.())) return;
     if (floor && value?.isValid?.() && value.isBefore(floor, monthOnly ? 'month' : 'day')) return;
+    const unit = monthOnly ? 'month' : 'day';
+    if (value?.isValid?.()) {
+      if (maxDate && value.isAfter(dayjs(maxDate),unit)) return;
+      if (isStart && endValue && value.isAfter(dayjs(endValue),unit)) return;
+      if (!isStart && startValue && value.isBefore(dayjs(startValue),unit)) return;
+    }
     handler?.(value, context);
   };
   const labels = TEXT[languageCode] || TEXT.ko;
@@ -60,7 +67,7 @@ const MonthRangeSelector = ({
       label={startLabel || (monthOnly ? labels.startMonth : labels.start)}
       adapterLocale={languageCode}
       value={startValue}
-      onChange={change(onStartChange)}
+      onChange={change(onStartChange, true)}
       minDate={minDate}
       maxDate={endValue || maxDate}
       disabled={disabled}
@@ -72,7 +79,7 @@ const MonthRangeSelector = ({
       label={endLabel || (monthOnly ? labels.endMonth : labels.end)}
       adapterLocale={languageCode}
       value={endValue}
-      onChange={change(onEndChange)}
+      onChange={change(onEndChange, false)}
       minDate={startValue || minDate}
       maxDate={maxDate}
       disabled={disabled}

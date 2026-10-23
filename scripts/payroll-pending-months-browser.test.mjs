@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium','/usr/bin/google-chrome'].find(existsSync);
 assert.ok(executablePath);
 const fixture=path.resolve('frontend/payroll-pending-acceptance.html');assert.ok(!existsSync(fixture));
-writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Page from '/src/pages/App/payroll/PayrollBoard.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(Page)));</script></body></html>`);
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Page from '/src/pages/App/payroll/PayrollBoard.jsx';window.testReact=React;createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(Page)));</script></body></html>`);
 const port=43190,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
 try{
@@ -26,6 +26,7 @@ try{
     if(url.searchParams.get('month')==='2026-09')return route.fulfill({headers,json:{ready:false,completedMonth:true,hasAttendanceData:false,hasWorkData:true,hasCoverageGaps:true,attendanceRecordedCount:0,attendanceRequiredCount:26,groups:[{workRecordedDayCount:20,expectedWorkingDayCount:26}]}});
     return route.fulfill({headers,json:{ready:true,completedMonth:true,hasAttendanceData:true,hasWorkData:true,hasCoverageGaps:true,attendanceRecordedCount:20,attendanceRequiredCount:26,groups:[{workRecordedDayCount:20,expectedWorkingDayCount:26}]}});
   });
+  await page.route('**/src/components/DateRangeSelector.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export default function Range({startValue,endValue,onStartChange,onEndChange}){return window.testReact.createElement('div',null,...[['Start date',startValue,onStartChange],['End date',endValue,onEndChange]].map(([label,value,change])=>window.testReact.createElement('input',{key:label,type:'date','aria-label':label,value:value?.format?.('YYYY-MM-DD')||'',onChange:e=>{const v=e.target.value;change({isValid:()=>true,format:()=>v})}})))}` }));
   await page.goto(`http://127.0.0.1:${port}/payroll-pending-acceptance.html`);
   const august=page.locator('tbody tr').filter({hasText:'2026-08'});await august.waitFor();
   assert.equal(await page.locator('tbody tr').count(),3);
@@ -33,10 +34,10 @@ try{
   await august.locator('.MuiChip-root').getByText('미계산',{exact:true}).hover();
   assert.equal(await august.getByText(/일부 미기록/).count(),0);
   assert.equal(await page.getByRole('tooltip').count(),0);
-  await page.getByRole('combobox',{name:'계산 월'}).click();await page.getByRole('option',{name:'2026-08',exact:true}).click();
+  await page.getByLabel('Start date').fill('2026-08-01');await page.getByLabel('End date').fill('2026-08-31');
   assert.equal(await page.locator('tbody tr').count(),1);
   assert.equal(await page.getByRole('button',{name:/급여 계산/}).isEnabled(),true);
-  await page.getByRole('combobox',{name:'계산 월'}).click();await page.getByRole('option',{name:'2026-09',exact:true}).click();
+  await page.getByLabel('End date').fill('2026-09-30');await page.getByLabel('Start date').fill('2026-09-01');
   await page.locator('tbody tr').getByText('자료 미완료',{exact:true}).hover();
   await page.getByRole('tooltip').waitFor();
   assert.match(await page.getByRole('tooltip').textContent(),/해당 월의.*없습니다/);

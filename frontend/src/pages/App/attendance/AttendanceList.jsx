@@ -40,7 +40,7 @@ import 'dayjs/locale/ko';
 import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
-import MonthSelector from '../../../components/MonthSelector';
+import DateRangeSelector from '../../../components/DateRangeSelector';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
@@ -294,7 +294,7 @@ const AttendanceList = () => {
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState('');
   const [availableMonths, setAvailableMonths] = useState([]);
   const [factories, setFactories] = useState([]);
   const [factoryError, setFactoryError] = useState(false);
@@ -374,7 +374,7 @@ const AttendanceList = () => {
       setMonthsError(false);
       setLoadError(false);
       setAvailableMonths([]);
-      setSelectedMonth('');
+      setDateFrom('');setDateTo('');
       return () => controller.abort();
     }
 
@@ -394,9 +394,10 @@ const AttendanceList = () => {
         /^\d{4}-\d{2}$/.test(String(value || ''))
       );
       setAvailableMonths(months);
-      setSelectedMonth((previous) =>
-        months.includes(previous) ? previous : String([...months].sort().at(-1) || '')
-      );
+      if (!months.length) { setDateFrom(''); setDateTo(''); return; }
+      const latest=[...months].sort().at(-1);
+      setDateFrom(previous=>previous||(latest?dayjs(latest+'-01').format('YYYY-MM-DD'):''));
+      setDateTo(previous=>previous||(latest?dayjs(latest+'-01').endOf('month').format('YYYY-MM-DD'):''));
       } catch (error) {
         if (!cancelled && !controller.signal.aborted) setMonthsError(true);
       } finally { if (!cancelled) setLoadingMonths(false); }
@@ -413,7 +414,7 @@ const AttendanceList = () => {
     let cancelled = false;
     const controller = new AbortController();
 
-    if (!selectedFactoryId || !selectedMonth) {
+    if (!selectedFactoryId || !dateFrom || !dateTo) {
       setRows([]);
       setEmployees([]);
       setLoadingRows(false);
@@ -435,7 +436,7 @@ const AttendanceList = () => {
           requestJSON('/attendance-entries' + buildQueryString({
             orgId: activeOrgId,
             factoryId: selectedFactoryId,
-            month: selectedMonth,
+            dateFrom, dateTo,
           }), { signal: controller.signal }),
           requestJSON('/employees' + employeeQuery, {
             signal: controller.signal,
@@ -468,7 +469,7 @@ const AttendanceList = () => {
     languageCode,
     reloadToken,
     selectedFactoryId,
-    selectedMonth,
+    dateFrom, dateTo,
     showNotification,
   ]);
 
@@ -504,11 +505,11 @@ const AttendanceList = () => {
     });
 
     const nextRows = [];
-    const selectedStartDate = dayjs(`${selectedMonth}-01`);
-    const selectedEndDate = dayjs(`${selectedMonth}-01`).endOf('month');
-    if (!selectedMonth || !selectedStartDate.isValid() || !selectedEndDate.isValid()) return [];
+    const selectedStartDate = dayjs(dateFrom);
+    const selectedEndDate = dayjs(dateTo);
+    if (!dateFrom || !dateTo || !selectedStartDate.isValid() || !selectedEndDate.isValid()) return [];
     const minDay = resolveScopedFactoryManagementStartDay({ factories, factory: factories.find(row => String(row.id) === String(selectedFactoryId)) });
-    let cursor = selectedStartDate.isBefore(minDay,'day') ? minDay : selectedStartDate.startOf('month');
+    let cursor = selectedStartDate.isBefore(minDay,'day') ? minDay : selectedStartDate.startOf('day');
 
     while (!cursor.isAfter(selectedEndDate, 'day')) {
       const workDate = cursor.format('YYYY-MM-DD');
@@ -537,7 +538,7 @@ const AttendanceList = () => {
       (left, right) =>
         dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
     );
-  }, [employees, rows, selectedMonth, factories, selectedFactoryId]);
+  }, [employees, rows, dateFrom, dateTo, factories, selectedFactoryId]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -788,15 +789,7 @@ const AttendanceList = () => {
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, 'Search date')}
             />
           )}
-          controls={<><MonthSelector
-              key="month"
-              value={selectedMonth}
-              onChange={setSelectedMonth}
-              label={resolveText(TEXT.monthLabel, languageCode, 'Month')}
-              min={[...availableMonths].sort()[0]}
-              max={[...availableMonths].sort().at(-1)}
-              disabled={loadingRows || availableMonths.length === 0}
-            /></>}
+          controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom?dayjs(dateFrom):null} endValue={dateTo?dayjs(dateTo):null} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value.format('YYYY-MM-DD'))}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value.format('YYYY-MM-DD'))}} disabled={loadingRows||loadingMonths||availableMonths.length===0}/>}
           filters={<><FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
               <InputLabel id="attendance-list-factory-label">
                 {resolveText(TEXT.factory, languageCode, 'Factory')}
