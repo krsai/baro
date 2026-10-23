@@ -168,6 +168,7 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  industryProductionPolicies IndustryProductionPolicy[]
   bankAccounts OrganizationBankAccount[] @relation("EntityBankAccountEntity")
   managedBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountOwner")
   expenseRequests ExpenseRequest[] @relation("ExpenseRequestOwner")
@@ -2377,6 +2378,7 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  productionPolicies IndustryProductionPolicy[]
   customerIndustries OrgRelationship[]
   partnerRoleId Int?
   partnerRole PartnerRole? @relation(fields:[partnerRoleId],references:[id],onDelete:Restrict)
@@ -2397,6 +2399,16 @@ model SettingServiceDefault {
   sortOrder Int @default(0)
   services OutsourcingServiceType[]
   codes SettingTransactionCodeDefault[]
+}
+
+model IndustryProductionPolicy {
+  orgId Int
+  systemIndustryId Int
+  productionLinkRequired Boolean
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict)
+  industry SettingServiceDefault @relation(fields:[systemIndustryId],references:[id],onDelete:Restrict)
+  @@id([orgId,systemIndustryId])
 }
 
 model PartnerIndustryMigrationAudit {

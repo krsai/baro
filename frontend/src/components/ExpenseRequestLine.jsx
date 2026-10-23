@@ -8,7 +8,7 @@ import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { serviceName, TRANSACTION_TEXT } from './OutsourcingServiceDialog';
 import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
-import { expenseLineAmounts, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
+import { expenseLineAmounts, expenseCodeForLine, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
 import { expenseIndustryMismatch, expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
@@ -17,13 +17,17 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const [expanded, setExpanded] = useState(Boolean(line.expandLinks));
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
   const [optionsLoading, setOptionsLoading] = useState(false), [optionsError, setOptionsError] = useState(false), [reload, setReload] = useState(0);
-  const code = codes.find(row => row.id === line.transactionCodeId) || null;
+  const code = expenseCodeForLine(line,codes.find(row => row.id === line.transactionCodeId) || null);
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const lookupText = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const isProcess = line.productionLinked || code?.base?.entryMode === 'PROCESS';
   const mode = key => line.productionLinked ? 'REQUIRED' : inputMode(code, key), visible = key => line.productionLinked || visibleInput(line, code, key);
   const availableOrders = line.preservedReferences?.order && !orders.some(row=>row.dbId===line.workOrderId) ? [...orders,{...line.preservedReferences.order,dbId:line.workOrderId}] : orders;
+  useEffect(()=>{
+    if (!line.itemId && !line.productionLinked && mode('process') === 'HIDDEN' && (line.styleProcessId || line.assignmentPlanId))
+      onChange(line.key,{styleProcessId:'',assignmentPlanId:''});
+  },[code?.base?.processInput,code?.base?.entryMode,line.itemId,line.productionLinked,line.styleProcessId,line.assignmentPlanId,line.key,onChange]);
   const selectedStyle = options.orderId === line.workOrderId ? options.styles.find(row => row.id === line.styleId) : null;
   const plans = useMemo(() => options.orderId === line.workOrderId ? options.plans.filter(plan => plan.styleId === line.styleId && plan.processIds?.includes(line.styleProcessId)) : [], [options, line.workOrderId, line.styleId, line.styleProcessId]);
   useEffect(() => {

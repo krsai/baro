@@ -1,3 +1,4 @@
+import { applyIndustryProductionPolicy, industryIdForCode } from './industryProductionPolicy';
 import { Prisma } from '@prisma/client';
 import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
@@ -64,7 +65,15 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     return previous;
   }
   const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: useSystemMaster ? SYSTEM_EXPENSE_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
-  const code = useSystemMaster ? resolveSystemExpenseCode(localCode) : localCode;
+  const rawCode = useSystemMaster ? resolveSystemExpenseCode(localCode) : localCode;
+  const systemIndustryId = industryIdForCode(rawCode);
+  const policy = systemIndustryId == null ? null : await tx.industryProductionPolicy.findUnique({where:{orgId_systemIndustryId:{orgId,systemIndustryId}}});
+  let code = applyIndustryProductionPolicy(rawCode,policy?.productionLinkRequired);
+  // A settings change never converts an existing cost-only row into production.
+  if (edit?.cost && !edit.record && (code?.base?.entryMode === 'PROCESS' || code?.productionLinkRequired != null)) {
+    code = applyIndustryProductionPolicy(code,false);
+    if (edit.cost.styleProcessId) code.base.processInput = 'OPTIONAL';
+  }
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
   if(useSystemMaster)description=edit?.cost?.description || [code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');

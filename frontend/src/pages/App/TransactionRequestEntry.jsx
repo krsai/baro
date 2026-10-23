@@ -65,6 +65,15 @@ export default function TransactionRequestEntry() {
   const tableContainerRef = useRef(null), dragColumnWidths = useRef([]);
   organizationRef.current = activeOrgId;
   const [form, setForm] = useState(newDocument), [data, setData] = useState({ partners: [], codes: [], orders: [], settings: { defaultVatRate: '10' } });
+  useEffect(()=>{
+    let alive=true;
+    const unsubscribe=subscribeWorkspaceDataChanged(detail=>{
+      if(Number(detail?.orgId)!==Number(activeOrgId)||!detail?.topics?.includes('expense-settings'))return;
+      requestJSON(`/transaction-codes${buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'})}`,{skipCache:true})
+        .then(codes=>{if(alive)setData(previous=>({...previous,codes}));}).catch(()=>{});
+    });
+    return()=>{alive=false;unsubscribe();};
+  },[activeOrgId]);
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [statuses, setStatuses] = useState({});
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));

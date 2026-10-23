@@ -41,6 +41,48 @@ test('logistics records cost only, and snapshots VAT independently of later defa
   assert.equal(row.outsourcedWorkRecordId,null);
   assert.equal((await loadAppSettings({ systemSetting: { findUnique: async () => null } },1)).defaultVatRate,'10');
 });
+
+test('tenant industry policy permits cost-only printing and requires production links for configured industries', async () => {
+  const costOnly=store(true);
+  costOnly.code.serviceType.systemDefaultId=10;
+  costOnly.industryProductionPolicy={findUnique:async({where})=>{
+    assert.deepEqual(where,{orgId_systemIndustryId:{orgId:1,systemIndustryId:10}});
+    return {productionLinkRequired:false};
+  }};
+  const result=await register(costOnly,1,20,{...input(),workOrderId:null,vatRate:'0',currency:'USD',quantity:'1.5'});
+  assert.equal(result.outsourcedWorkRecordId,null);
+  assert.deepEqual(costOnly.writes.map(([kind])=>kind),['cost']);
+  const required=store(false);
+  required.code.base.serviceTypeId=10;
+  required.industryProductionPolicy={findUnique:async()=>({productionLinkRequired:true})};
+  await assert.rejects(register(required,1,20,input()),/REQUIRED_REQUEST_STYLE/);
+  assert.equal(required.writes.length,0);
+  await register(required,1,20,{...input(),styleId:40,styleProcessId:50});
+  assert.deepEqual(required.writes.map(([kind])=>kind),['log','production','cost']);
+});
+
+test('a later required-link policy never converts a saved cost-only row into production on edit', async()=>{
+  const db=store(true);db.code.base.serviceTypeId=10;
+  db.industryProductionPolicy={findUnique:async()=>({productionLinkRequired:true})};
+  db.partnerTransactionCost.update=async({data})=>{db.writes.push(['cost',data]);return data;};
+  const body={...input(),workOrderId:null,vatRate:'0'};
+  await register(db,1,20,body,undefined,false,{cost:{id:'saved-cost',description:'Preserved'}});
+  assert.deepEqual(db.writes.map(([kind])=>kind),['cost']);
+  assert.equal(db.writes[0][1].outsourcedWorkRecordId,null);
+});
+
+test('disabling industry production links preserves an existing production FK and its required references',async()=>{
+  const db=store(true);db.code.base.serviceTypeId=10;
+  db.industryProductionPolicy={findUnique:async()=>({productionLinkRequired:false})};
+  db.assignmentPlan.findFirst=async()=>db.plan;
+  db.partnerTransactionCost.update=async({data})=>{db.writes.push(['cost',data]);return data;};
+  const record={id:90,orgId:1,styleId:40,styleProcessId:50,assignmentPlanId:60,assignmentPlan:{workOrderId:30},outsourcingPartnerId:11,quantity:2,outsourceUnitPrice:'100000'};
+  const body={...input(),vatRate:'0',styleId:40,styleProcessId:50,assignmentPlanId:60};
+  await register(db,1,20,body,undefined,false,{cost:{id:'saved-cost',description:'Preserved'},record});
+  assert.equal(db.writes[0][1].outsourcedWorkRecordId,90);
+  assert.deepEqual(db.writes.map(([kind])=>kind),['cost']);
+  await assert.rejects(register(db,1,20,{...body,styleProcessId:null},undefined,false,{cost:{id:'saved-cost'},record}),/EXISTING_PRODUCTION_IDENTITY_IMMUTABLE/);
+});
 test('process request writes one dated production record and linked cost, never employee records or AT', async () => {
   const db = store(true); const body = { ...input(), vatRate: '0', styleId: 40, styleProcessId: 50, quantity: '12' };
   const row = await register(db,1,20,body);

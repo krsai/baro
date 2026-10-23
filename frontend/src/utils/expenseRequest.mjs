@@ -3,6 +3,12 @@ import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
   currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '',
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
+export const expenseCodeForLine = (line,code) => {
+  if (!code) return code;
+  if (line.productionLinked) return {...code,base:{...code.base,entryMode:'PROCESS'}};
+  if (line.itemId && (code.base?.entryMode === 'PROCESS' || code.productionLinkRequired != null)) return {...code,base:{...code.base,entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:line.styleProcessId?'OPTIONAL':'HIDDEN'}};
+  return code;
+};
 export const inputMode = (code, key) => code?.base?.entryMode === 'PROCESS' ? 'REQUIRED' : code?.base?.[`${key}Input`] || (key === 'order' ? 'OPTIONAL' : 'HIDDEN');
 export const visibleInput = (line, code, key) => inputMode(code, key) === 'REQUIRED' || inputMode(code, key) === 'OPTIONAL' && line.enabled[key];
 export function expenseLineAmounts(line, currency) {
@@ -24,6 +30,7 @@ export function expenseDocumentTotals(lines, currency) {
   return { subtotal: sum('subtotal'), vatAmount: sum('vatAmount'), amount: sum('amount'), incomplete: amounts.some(item => !item) };
 }
 export function validExpenseLine(line, code, currency) {
+  code = expenseCodeForLine(line,code);
   if (!code || !expenseLineAmounts(line, currency)) return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;

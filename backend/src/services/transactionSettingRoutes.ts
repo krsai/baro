@@ -1,3 +1,4 @@
+import { applyIndustryProductionPolicy, industryIdForCode, registerIndustryProductionPolicyRoutes } from './industryProductionPolicy';
 import { validateServiceDefinition } from './partnerTransactionCost';
 import { validateTransactionCode } from './transactionRequest';
 import { loadAppSettings, saveAppSettings } from './applicationSettings';
@@ -60,6 +61,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
   registerCodeBaseRoutes(app,db,gates);
+  registerIndustryProductionPolicyRoutes(app,db,gates);
   const admin = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] });
   const member = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] });
   app.get('/partner-roles',async(req:any,res:any)=>{
@@ -115,7 +117,8 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       }
       if (!service && req.query.forExpenseRequest === '1') {
         const candidates = await locals.findMany({ where: {ownerOrgId:access.organization.id,isActive:true}, include: SYSTEM_EXPENSE_CODE_INCLUDE, orderBy: {code:'asc'} });
-        return res.json(candidates.map(resolveSystemExpenseCode).filter(Boolean));
+        const policies = await db.industryProductionPolicy.findMany({where:{orgId:access.organization.id}});
+        return res.json(candidates.map(resolveSystemExpenseCode).filter(Boolean).map((code:any)=>applyIndustryProductionPolicy(code,policies.find((row:any)=>row.systemIndustryId===industryIdForCode(code))?.productionLinkRequired)));
       }
       const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, expenseType: { isActive: true } } } : {}) }) }, include: service ? { systemDefault:{include:{partnerRole:true}}, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
       res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));

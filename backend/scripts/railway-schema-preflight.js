@@ -7,6 +7,7 @@ const { spawnSync } = require('node:child_process');
 const { assertSafeApplicationDatabaseEnv } = require('../src/config/databaseTargetGuard');
 
 const columns = [
+  ...['orgId','systemIndustryId','productionLinkRequired','updatedAt'].map(column=>['IndustryProductionPolicy',column]),
   ['OrgRelationship','systemIndustryId'],
   ['SettingServiceDefault','partnerRoleId'],
   ['SettingServiceDefault','expenseTypeId'],
@@ -16,14 +17,14 @@ const columns = [
   ['ExpenseRequestApprovalStep','employeeId'], ['ExpenseRequestAudit','requestId'], ['ExpenseSchemaMigration','version'],
   ['PartnerTransactionCost','expenseRequestId'], ['PartnerTransactionCost','expenseRequestLine'],
 ];
-const constraints = ['OrgRelationship_systemIndustryId_fkey','SettingServiceDefault_expenseTypeId_fkey','OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard','ExpenseRequest_id_orgId_partnerOrgId_key','ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
+const constraints = ['IndustryProductionPolicy_pkey','IndustryProductionPolicy_orgId_fkey','IndustryProductionPolicy_systemIndustryId_fkey','OrgRelationship_systemIndustryId_fkey','SettingServiceDefault_expenseTypeId_fkey','OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard','ExpenseRequest_id_orgId_partnerOrgId_key','ExpenseRequest_orgId_clientKey_key','ExpenseRequest_orgId_fkey',
   'ExpenseRequest_partnerOrgId_orgId_fkey','ExpenseRequest_createdByEmployeeId_orgId_fkey',
   'PartnerTransactionCost_expense_request_fkey','PartnerTransactionCost_expenseRequestId_expenseRequestLine_key','ExpenseRequestLine_pair_check',
   'ExpenseRequestEdit_cost_audit','ExpenseRequestEdit_production_audit','TransactionCost_style_scope_fkey','ExpenseRequestAudit_requestId_orgId_fkey','ExpenseRequestAudit_actorId_orgId_fkey','ExpenseRequestAudit_requestId_version_key','ExpenseRequest_write_guard','ExpenseRequest_audit_guard','ExpenseRequestAudit_append_only','baro_transaction_cost_guard','baro_request_production_guard','ExpenseRequestApprovalStep_employeeId_orgId_fkey','ExpenseRequestApprovalStep_write_guard','ExpenseRequestApprovalStep_audit_guard'];
 
 async function missingSchema(db) {
   const existingColumns = await db.$queryRawUnsafe(`SELECT table_name,column_name,is_nullable FROM information_schema.columns
-    WHERE table_schema='public' AND table_name IN ('ExpenseRequest','PartnerTransactionCost','ExpenseRequestAudit','ExpenseSchemaMigration','ExpenseRequestApprovalStep','OrganizationBankAccount','EntitySchemaMigration','SettingServiceDefault','OrgRelationship')`);
+    WHERE table_schema='public' AND table_name IN ('IndustryProductionPolicy','ExpenseRequest','PartnerTransactionCost','ExpenseRequestAudit','ExpenseSchemaMigration','ExpenseRequestApprovalStep','OrganizationBankAccount','EntitySchemaMigration','SettingServiceDefault','OrgRelationship')`);
   const existingConstraints = await db.$queryRawUnsafe(`SELECT conname AS name,array_length(conkey,1) AS column_count,pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE connamespace='public'::regnamespace
     UNION SELECT indexname AS name,NULL::integer AS column_count,NULL::text AS definition FROM pg_indexes WHERE schemaname='public'
     UNION SELECT tgname AS name,NULL::integer AS column_count,NULL::text AS definition FROM pg_trigger WHERE NOT tgisinternal AND tgenabled<>'D'`);
