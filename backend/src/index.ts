@@ -24189,6 +24189,14 @@ app.get("/work-logs", async (req, res) => {
     }
   }
 
+  if (req.query.monthsOnly === 'true' || req.query.monthsOnly === '1') {
+    const rows = await prisma.workLog.findMany({
+      where: {orgId:organization.id,recordKind,...(hasFactoryFilter ? {factoryId} : {}),AND:[managedWorkLogWhere(period)]},
+      select:{displayDate:true},distinct:['displayDate'],orderBy:{displayDate:'desc'},
+    });
+    return res.json([...new Set(rows.map(row=>String(row.displayDate).slice(0,7)))].filter(value=>/^\d{4}-(0[1-9]|1[0-2])$/.test(value)));
+  }
+
   const displayDateRange = {
     ...(dateFrom ? { gte: dateFrom } : {}),
     ...(dateTo ? { lte: dateTo } : {}),

@@ -1,3 +1,4 @@
+import {latestRecordedMonthEnd,clampRecordedRange} from '../../../utils/recordedMonthRange.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -415,6 +416,25 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }, [selectedFactoryId]);
 
+  const [recordedLimit,setRecordedLimit]=useState({scope:'',maximum:'',loading:true,error:false});
+  const recordScope=String(activeOrgId)+':'+String(selectedFactoryIdNumber)+':'+recordKind;
+  const limitReady=recordedLimit.scope===recordScope&&!recordedLimit.loading&&!recordedLimit.error;
+  useEffect(()=>{
+    const controller=new AbortController();
+    setRecordedLimit({scope:recordScope,maximum:'',loading:true,error:false});
+    requestJSON('/work-logs'+buildQueryString({orgId:activeOrgId,factoryId:selectedFactoryIdNumber,recordKind,monthsOnly:1}),{signal:controller.signal,skipCache:true,skipGlobalLoading:true})
+      .then(months=>{
+        if(controller.signal.aborted)return;
+        const maximum=latestRecordedMonthEnd(months);
+        setRecordedLimit({scope:recordScope,maximum,loading:false,error:false});
+        if(maximum){
+          setDateFilterStart(previous=>dayjs(clampRecordedRange(dayjs(previous).format('YYYY-MM-DD'),maximum,maximum).dateFrom).toDate());
+          setDateFilterEnd(previous=>dayjs(dayjs(previous).format('YYYY-MM-DD')>maximum?maximum:previous).toDate());
+        }
+      }).catch(()=>{if(!controller.signal.aborted){setRecordedLimit({scope:recordScope,maximum:'',loading:false,error:true});setLoadError(true);}});
+    return()=>controller.abort();
+  },[activeOrgId,selectedFactoryIdNumber,recordKind,reloadNonce]);
+
   const dateFrom = useMemo(
     () => buildFilterDateKey(dateFilterStart, workHistoryOperationStartDay),
     [dateFilterStart, workHistoryOperationStartDay]
@@ -498,6 +518,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     const abortController = new AbortController();
     let cancelled = false;
 
+    if(!limitReady||!recordedLimit.maximum){setLogs([]);setLoading(false);return()=>abortController.abort();}
     const load = async () => {
       setLoading(true);
       setLoadError(false);
@@ -506,7 +527,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           orgId: activeOrgId,
           factoryId: selectedFactoryIdNumber,
           dateFrom,
-          dateTo,
+          dateTo:dateTo>recordedLimit.maximum?recordedLimit.maximum:dateTo,
           includeRecords: false,
           recordKind,
           skipGlobalLoading: true,
@@ -541,6 +562,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     activeOrgId,
     dateFrom,
     dateTo,
+    limitReady,recordedLimit.maximum,
     languageCode,
     recordKind,
     reloadNonce,
@@ -767,7 +789,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 flex: 1,
               }}
             />}
-            controls={<DateRangeSelector languageCode={languageCode} factoryId={selectedFactoryId} startValue={dayjs(dateFilterStart)} endValue={dayjs(dateFilterEnd)} onStartChange={changeFilterDate(setDateFilterStart)} onEndChange={changeFilterDate(setDateFilterEnd)} minDate={workHistoryOperationStartDay}/>}
+            controls={<DateRangeSelector maxDate={recordedLimit.maximum||undefined} disabled={!limitReady||!recordedLimit.maximum} languageCode={languageCode} factoryId={selectedFactoryId} startValue={dayjs(dateFilterStart)} endValue={dayjs(dateFilterEnd)} onStartChange={changeFilterDate(setDateFilterStart)} onEndChange={changeFilterDate(setDateFilterEnd)} minDate={workHistoryOperationStartDay}/>}
           filters={<><FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
               <InputLabel id="work-list-factory-filter-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}

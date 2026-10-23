@@ -119,7 +119,8 @@
     "test:expense-editor-browser": "node scripts/expense-editor-browser.test.mjs",
     "test:expense-code-presentation": "node --test scripts/expense-code-presentation.test.mjs",
     "test:page-layout-browser": "node scripts/page-layout-browser.test.mjs",
-    "test:expense-editor-postgres": "npm --prefix backend run build && node scripts/expense-editor-postgres.test.mjs"
+    "test:expense-editor-postgres": "npm --prefix backend run build && node scripts/expense-editor-postgres.test.mjs",
+    "test:recorded-month-range": "node --test scripts/recorded-month-range.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

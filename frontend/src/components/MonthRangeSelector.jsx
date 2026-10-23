@@ -40,6 +40,12 @@ const MonthRangeSelector = ({
     if (startValue && dayjs(startValue).isBefore(floor, monthOnly ? 'month' : 'day')) onStartChange?.(floor);
     if (endValue && dayjs(endValue).isBefore(floor, monthOnly ? 'month' : 'day')) onEndChange?.(monthOnly ? floor : floor.endOf('month').startOf('day'));
   }, [minimum, monthOnly, disabled, startValue, endValue]);
+  useEffect(() => {
+    if (!maxDate || disabled) return;
+    const ceiling=dayjs(maxDate);
+    if(endValue && dayjs(endValue).isAfter(ceiling,'day'))onEndChange?.(ceiling);
+    if(startValue && dayjs(startValue).isAfter(ceiling,'day'))onStartChange?.(ceiling.startOf('month'));
+  },[maxDate,disabled,startValue,endValue]);
   const change = (handler, isStart) => (value, context) => {
     if (context?.validationError || (value && !value.isValid?.())) return;
     if (floor && value?.isValid?.() && value.isBefore(floor, monthOnly ? 'month' : 'day')) return;
@@ -69,7 +75,7 @@ const MonthRangeSelector = ({
       value={startValue}
       onChange={change(onStartChange, true)}
       minDate={minDate}
-      maxDate={endValue || maxDate}
+      maxDate={maxDate && (!endValue || dayjs(maxDate).isBefore(dayjs(endValue))) ? dayjs(maxDate) : endValue || maxDate}
       disabled={disabled}
       slotProps={slotProps}
     />
