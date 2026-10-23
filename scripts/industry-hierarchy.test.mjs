@@ -44,3 +44,21 @@ test('SYSTEM industry writes require an explicit valid category FK and keep cost
  for(const partnerRoleId of [undefined,null,'2',999])await assert.rejects(fn({params:{},body:{...body,partnerRoleId}},response),error=>error.status===400&&error.message==='PARTNER_ROLE_REQUIRED');
  await fn({params:{},body:{...body,partnerRoleId:2}},response);assert.equal(saved.partnerRoleId,2);assert.equal(saved.entryMode,'PROCESS');
 });
+
+test('logistics is a separate partner role, with stable industry IDs and expense classification',async()=>{
+ const db=new PGlite();try{
+  await db.exec(`CREATE TYPE "OrganizationType" AS ENUM ('MANUFACTURER','BRAND','PROCESS_OUTSOURCING','MATERIAL_SUPPLIER');
+   CREATE TABLE "SettingServiceDefault"(id INT PRIMARY KEY,code TEXT,"expenseTypeId" INT);
+   INSERT INTO "SettingServiceDefault" VALUES(1,'LOGISTICS',12),(2,'BUTTONHOLE',13),(3,'CUSTOM',14);`);
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261021230000_partner_industry_roles/migration.sql','utf8'));
+  const enumSql=fs.readFileSync('backend/prisma/migrations/20261023100000_logistics_vendor_enum/migration.sql','utf8');
+  const roleSql=fs.readFileSync('backend/prisma/migrations/20261023100100_logistics_partner_role/migration.sql','utf8');
+  await db.exec(`BEGIN;${enumSql}COMMIT;`);
+  await db.exec(`CREATE TABLE "Vendor"(id INT PRIMARY KEY,type "OrganizationType");INSERT INTO "Vendor" VALUES(7,'LOGISTICS_PROVIDER');`);
+  await db.exec(roleSql);await db.exec(roleSql);await db.exec(enumSql);
+  assert.deepEqual((await db.query(`SELECT s.id,s."expenseTypeId",r.code FROM "SettingServiceDefault" s LEFT JOIN "PartnerRole" r ON r.id=s."partnerRoleId" ORDER BY s.id`)).rows,[{id:1,expenseTypeId:12,code:'LOGISTICS_PROVIDER'},{id:2,expenseTypeId:13,code:'PROCESS_OUTSOURCING'},{id:3,expenseTypeId:14,code:null}]);
+  await db.exec(`UPDATE "SettingServiceDefault" SET "partnerRoleId"=(SELECT id FROM "PartnerRole" WHERE code='MATERIAL_SUPPLIER') WHERE id=1`);
+  await db.exec(roleSql);
+  assert.equal((await db.query(`SELECT r.code FROM "SettingServiceDefault" s JOIN "PartnerRole" r ON r.id=s."partnerRoleId" WHERE s.id=1`)).rows[0].code,'MATERIAL_SUPPLIER');
+ }finally{await db.close();}
+});

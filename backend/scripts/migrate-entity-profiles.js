@@ -4,23 +4,23 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { assertSafeApplicationDatabaseEnv } = require('../src/config/databaseTargetGuard');
-const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry_expense_type','20261021230000_partner_industry_roles','20261022200000_partner_industry_canonical','20261023090000_industry_production_policy'];
+const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry_expense_type','20261021230000_partner_industry_roles','20261022200000_partner_industry_canonical','20261023090000_industry_production_policy','20261023100000_logistics_vendor_enum','20261023100100_logistics_partner_role'];
 const literal = s => `'${s.replaceAll("'", "''")}'`;
 const migrations = () => versions.map(version => {
   const sql = fs.readFileSync(path.join(__dirname,'../prisma/migrations',version,'migration.sql'),'utf8').replace(/\r\n/g,'\n');
   return {version,sql,checksum:createHash('sha256').update(sql).digest('hex')};
 });
-const migrationSql = () => `BEGIN; SET LOCAL lock_timeout='15s'; SET LOCAL statement_timeout='60s';
+const migrationSql = () => migrations().map(m => `BEGIN; SET LOCAL lock_timeout='15s'; SET LOCAL statement_timeout='60s';
  SELECT pg_advisory_xact_lock(2026102002);
  CREATE TABLE IF NOT EXISTS "EntitySchemaMigration"(version TEXT PRIMARY KEY,checksum TEXT NOT NULL,"appliedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
- ${migrations().map(m => `DO $step$ BEGIN
+ DO $step$ BEGIN
  IF EXISTS(SELECT 1 FROM "EntitySchemaMigration" WHERE version=${literal(m.version)} AND checksum<>${literal(m.checksum)}) THEN
  RAISE EXCEPTION 'ENTITY_MIGRATION_CHECKSUM_MISMATCH'; END IF;
  IF NOT EXISTS(SELECT 1 FROM "EntitySchemaMigration" WHERE version=${literal(m.version)}) THEN
  EXECUTE ${literal(m.sql)};
  INSERT INTO "EntitySchemaMigration"(version,checksum) VALUES(${literal(m.version)},${literal(m.checksum)});
- END IF; END $step$;`).join('\n')}
- COMMIT;`;
+ END IF; END $step$;
+ COMMIT;`).join('\n');
 async function runEntityProfileMigrations({env=process.env,run=spawnSync,db,log=console.log}={}) {
   assertSafeApplicationDatabaseEnv(env);
   const url=String(env.DIRECT_URL||env.DATABASE_URL||'').trim();
@@ -39,7 +39,7 @@ async function runEntityProfileMigrations({env=process.env,run=spawnSync,db,log=
   const result=await run(process.execPath,[require.resolve('prisma/build/index.js'),'db','execute','--stdin','--schema',path.join(__dirname,'../prisma/schema.prisma')],{
     cwd:path.resolve(__dirname,'..'),env:{...env,DATABASE_URL:url,DIRECT_URL:url},encoding:'utf8',stdio:'pipe',timeout:90000,input:migrationSql(),
   });
-  if(result.error||result.signal||result.status!==0) throw Error('[entity-migrations] Migration failed and was rolled back. Check connectivity, locks and entity scope and schema integrity.');
+  if(result.error||result.signal||result.status!==0) throw Error('[entity-migrations] Migration failed; the failing step was rolled back. Earlier versioned steps may already be committed. Check connectivity, locks and entity scope and schema integrity.');
   log('[entity-migrations] Pending versioned entity migrations applied.');
 }
 if(require.main===module)runEntityProfileMigrations().catch(()=>{console.error('[entity-migrations] Migration failed; database details suppressed.');process.exitCode=1;});

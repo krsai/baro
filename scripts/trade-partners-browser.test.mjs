@@ -15,7 +15,7 @@ try{
  for(const lang of ['ko','en','vi'])for(const restricted of [false,true]){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],reads=[];
   page.on('pageerror',e=>errors.push(e.message));
-  const profile=restricted?{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'OPERATOR',accessPolicy:{__schemaVersion:11,MANUFACTURER:{OPERATOR:['MATERIAL_SUPPLIER']}}}:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN'};
+  const profile=restricted?{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'OPERATOR',accessPolicy:{__schemaVersion:12,MANUFACTURER:{OPERATOR:['MATERIAL_SUPPLIER']}}}:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN'};
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({isAuthenticated:true,activeOrgId:1,activeOrgRole:'${profile.orgRole}',accessProfile:${JSON.stringify(profile)}});`}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:(path)=>{window.partnerNavigation=path;},showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>actions;'}));
@@ -29,7 +29,7 @@ try{
   await page.goto(`http://127.0.0.1:${port}/trade-partners-acceptance.html`);
   const nav=page.locator('nav'),branches=nav.getByRole('button');
   assert.equal(await page.locator('h1').count(),1);
-  await branches.first().waitFor();assert.equal(await branches.count(),restricted?1:3);
+  await branches.first().waitFor();assert.equal(await branches.count(),restricted?1:4);
   assert.equal(await page.locator('[data-testid=hierarchy-panel]').count(),1);
   assert.equal(await nav.evaluate(el=>getComputedStyle(el).borderRightColor),'rgb(229, 234, 242)','Desktop boundary must remain subtle after responsive styles resolve');
   assert.equal(await nav.locator('[aria-current=true]').count(),1);
@@ -44,6 +44,8 @@ try{
    assert.equal(await page.getByRole('button',{name:lang==='ko'?'\uAC70\uB798\uCC98 \uB4F1\uB85D':lang==='vi'?'Th\u00eam \u0111\u1ed1i t\u00e1c':'Add partner',exact:true}).isEnabled(),true);
    await page.locator('tbody tr').first().getByRole('button',{name:lang==='ko'?'\uB0B4\uC5ED\uBCF4\uAE30':lang==='vi'?'Xem l\u1ecbch s\u1eed':'View history',exact:true}).click();await page.getByText('Buttonhole',{exact:true}).waitFor();await page.keyboard.press('Escape');
    await branches.nth(2).click();await page.getByText('Supplier A',{exact:true}).waitFor();
+   assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
+   await branches.nth(3).click();await page.getByText('Vendor A',{exact:true}).waitFor();assert.ok(reads.includes('LOGISTICS_PROVIDER'));
    assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
    assert.ok(reads.includes('PROCESS_OUTSOURCING'));assert.ok(reads.includes('MATERIAL_SUPPLIER'));
   }

@@ -18,12 +18,12 @@ try {
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   const industry={partnerRoleId:1,expenseTypeId:1,id:4,code:'BUTTONHOLE',nameKo:'단춧구멍',nameEn:'Buttonhole',nameVi:'Khuy',entryMode:'PROCESS',requiredFields:[],orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',isActive:true};
   const type={id:1,code:'PRODUCTION',nameKo:'제작 외주',nameEn:'Production outsourcing',nameVi:'Gia công',entryMode:'PROCESS',isActive:true};
-  const roles=[{id:1,code:'PROCESS_OUTSOURCING',nameKo:'\uC678\uC8FC \uC5C5\uCCB4',nameEn:'Outsourcing partner'},{id:2,code:'MATERIAL_SUPPLIER',nameKo:'\uACF5\uAE09 \uC5C5\uCCB4',nameEn:'Supplier'}];
+  const roles=[{id:3,code:'LOGISTICS_PROVIDER',nameKo:'물류 업체',nameEn:'Logistics provider'},{id:1,code:'PROCESS_OUTSOURCING',nameKo:'\uC678\uC8FC \uC5C5\uCCB4',nameEn:'Outsourcing partner'},{id:2,code:'MATERIAL_SUPPLIER',nameKo:'\uACF5\uAE09 \uC5C5\uCCB4',nameEn:'Supplier'}];
   await page.route('**/partner-roles',r=>r.fulfill({headers,json:roles}));
   for(const pattern of ['**/expense-types**','**/system-setting-defaults/services**']) await page.route(pattern,route=>{
     if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});
     if(route.request().method()==='PUT'){writes.push({url:route.request().url(),data:route.request().postDataJSON()});return route.fulfill({headers,json:{ok:true}});}
-    return route.fulfill({headers,json:route.request().url().includes('expense-types')?[type,{...type,id:2,code:'LOGISTICS',nameKo:'물류 서비스'}]:[industry,{...industry,id:5,code:'LOGISTICS',nameKo:'물류·운송',partnerRoleId:2},{...industry,id:6,code:'UNKNOWN',nameKo:'Unknown',partnerRoleId:null}]});
+    return route.fulfill({headers,json:route.request().url().includes('expense-types')?[type,{...type,id:2,code:'LOGISTICS',nameKo:'물류 서비스'}]:[industry,{...industry,id:5,code:'LOGISTICS',nameKo:'물류·운송',partnerRoleId:3},{...industry,id:6,code:'UNKNOWN',nameKo:'Unknown',partnerRoleId:null}]});
   });
   await page.goto(`http://127.0.0.1:${port}/expense-masters-acceptance.html`);
   await page.locator('#industries [data-testid=hierarchy-panel]').waitFor();
@@ -42,13 +42,13 @@ try {
   assert.equal(writes[1].data.nameEn,'Buttonhole service');assert.equal(writes[1].data.entryMode,'PROCESS');
   assert.equal(writes[1].data.partnerRoleId,1);
   const roots=page.locator('#industries').getByRole('list');
-  await roots.getByRole('button',{name:/\uACF5\uAE09/}).click();
+  await roots.getByRole('button',{name:/물류 업체/}).click();
   await page.locator('#industries tbody').getByText('\uBB3C\uB958\u00b7\uC6B4\uC1A1',{exact:true}).waitFor();
   assert.equal(await page.locator('#industries tbody').getByText('BUTTONHOLE',{exact:true}).count(),0);
   await page.locator('#industries').getByRole('button',{name:'\uC5C5\uC885 \uB4F1\uB85D',exact:true}).click();
   const added=page.getByRole('dialog');
   await added.getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).waitFor();
-  assert.match(await added.getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).innerText(),/\uACF5\uAE09/);
+  assert.match(await added.getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).innerText(),/물류 업체/);
   await added.getByRole('button',{name:'\uCDE8\uC18C',exact:true}).click();
   await roots.getByRole('button',{name:/\uAD6C\uBD84 \uBBF8\uC9C0\uC815/}).click();
   await page.locator('#industries tbody').getByText('Unknown',{exact:true}).waitFor();

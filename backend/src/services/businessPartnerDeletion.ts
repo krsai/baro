@@ -49,7 +49,7 @@ export async function deleteUnusedBusinessPartner(tx: any, orgId: number, id: nu
   const [partner] = await tx.$queryRawUnsafe(
     'SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, orgId,
   );
-  if (!partner || !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(partner.type)) throw new Error('BUSINESS_PARTNER_NOT_FOUND');
+  if (!partner || !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'].includes(partner.type)) throw new Error('BUSINESS_PARTNER_NOT_FOUND');
   if ((await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
   // Referenced bank accounts still fail their Restrict FKs and roll back the transaction.
   await tx.organizationBankAccount.deleteMany({ where: { entityId: id, orgId } });

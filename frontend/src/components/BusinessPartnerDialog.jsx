@@ -12,7 +12,7 @@ import {
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
 
-export const BUSINESS_PARTNER_TYPES = ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'];
+export const BUSINESS_PARTNER_TYPES = ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'];
 
 const TEXT = {
   ko: {
@@ -44,6 +44,7 @@ const TEXT = {
 export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
   const labels = TEXT[languageCode] || TEXT.ko;
   if (!BUSINESS_PARTNER_TYPES.includes(type)) return '';
+  if (type === 'LOGISTICS_PROVIDER') return ({ko:'물류 업체',en:'Logistics provider',vi:'Đơn vị logistics'})[languageCode] || 'Logistics provider';
   return type === 'MATERIAL_SUPPLIER' ? labels.supplier : labels.outsourcing;
 };
 

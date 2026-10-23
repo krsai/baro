@@ -39,6 +39,7 @@ const FEATURE_KEYS = {
   CUSTOMER: 'CUSTOMER',
   OUTSOURCING_PARTNER: 'OUTSOURCING_PARTNER',
   MATERIAL_SUPPLIER: 'MATERIAL_SUPPLIER',
+  LOGISTICS_PARTNER: 'LOGISTICS_PARTNER',
   ATTRIBUTE: 'ATTRIBUTE',
   PERMISSION: 'PERMISSION',
   HOLIDAY: 'HOLIDAY',
@@ -158,6 +159,7 @@ export const resolveFeatureByPath = (pathname) => {
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/customer-production-report')) return FEATURE_KEYS.ORDER;
   if (path.startsWith('/outsourcing-partner')) return FEATURE_KEYS.OUTSOURCING_PARTNER;
+  if (path.startsWith('/logistics-partner')) return FEATURE_KEYS.LOGISTICS_PARTNER;
   if (path.startsWith('/material-supplier')) return FEATURE_KEYS.MATERIAL_SUPPLIER;
   if (path.startsWith('/style')) return FEATURE_KEYS.STYLE;
   if (path.startsWith('/st-review')) return FEATURE_KEYS.ST_REVIEW;
@@ -193,7 +195,7 @@ export const canAccessPath = (pathname, authState) => {
   const path = normalizePathname(pathname);
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
   if (path === '/') return Boolean(context);
-  if (path.replace(/\/+$/,'') === '/business-partner') return [FEATURE_KEYS.CUSTOMER,FEATURE_KEYS.OUTSOURCING_PARTNER,FEATURE_KEYS.MATERIAL_SUPPLIER].some(feature=>canAccessFeatureByContext(feature,context));
+  if (path.replace(/\/+$/,'') === '/business-partner') return [FEATURE_KEYS.CUSTOMER,FEATURE_KEYS.OUTSOURCING_PARTNER,FEATURE_KEYS.MATERIAL_SUPPLIER,FEATURE_KEYS.LOGISTICS_PARTNER].some(feature=>canAccessFeatureByContext(feature,context));
   const featureKey = resolveFeatureByPath(path);
   if (!featureKey) return true;
   return canAccessFeatureByContext(featureKey, context);

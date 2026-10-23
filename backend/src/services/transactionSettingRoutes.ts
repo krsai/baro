@@ -108,7 +108,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
     app.get(localPath, async (req: any,res: any) => {
       const access = req.query.all === '1' ? await admin(req,res) : await member(req,res);
       if (!access) return;
-      if(service && req.query.forPartner === '1' && !['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'].includes(req.query.partnerType))throw createHttpError(400,'INVALID_PARTNER_TYPE');
+      if(service && req.query.forPartner === '1' && !['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(req.query.partnerType))throw createHttpError(400,'INVALID_PARTNER_TYPE');
       await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id,!service && req.query.forExpenseRequest === '1' || service && req.query.forPartner === '1'), { isolationLevel: 'ReadCommitted' });
       if(service && req.query.forPartner === '1') {
         const partnerType=req.query.partnerType;

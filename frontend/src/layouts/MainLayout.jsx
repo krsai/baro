@@ -131,7 +131,7 @@ const hasNestedMenuChildren = (item) => Array.isArray(item?.children) && item.ch
 const matchesMenuPath = (itemPath, currentPath) => {
   const normalizedItemPath = toPathname(itemPath);
   const normalizedCurrentPath = toPathname(currentPath);
-  if(normalizedItemPath==='/business-partner' && ['/customer','/outsourcing-partner','/material-supplier'].some(path=>normalizedCurrentPath===path||normalizedCurrentPath.startsWith(`${path}/`)))return true;
+  if(normalizedItemPath==='/business-partner' && ['/customer','/outsourcing-partner','/material-supplier','/logistics-partner'].some(path=>normalizedCurrentPath===path||normalizedCurrentPath.startsWith(`${path}/`)))return true;
   if (!normalizedItemPath || normalizedItemPath === '/') {
     return normalizedCurrentPath === normalizedItemPath;
   }
@@ -446,7 +446,7 @@ const MainLayout = () => {
     if (
       currentPath.startsWith('/customer') ||
       currentPath.startsWith('/outsourcing-partner') ||
-      currentPath.startsWith('/material-supplier') ||
+      currentPath.startsWith('/material-supplier') || currentPath.startsWith('/logistics-partner') ||
       currentPath.startsWith('/business-partner')
     ) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ADMIN);
@@ -782,6 +782,7 @@ const MainLayout = () => {
             {label:getUiMessage('menu.customer','Customer',languageCode),path:'/customer'},
             {label:getUiMessage('menu.outsourcingPartner','Outsourcing Partner',languageCode),path:'/outsourcing-partner'},
             {label:getUiMessage('menu.materialSupplier','Material Supplier',languageCode),path:'/material-supplier'},
+            {label:getUiMessage('menu.logisticsPartner','Logistics provider',languageCode),path:'/logistics-partner'},
           ]},
         ],
       },

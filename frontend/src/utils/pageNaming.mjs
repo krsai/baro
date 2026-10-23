@@ -15,7 +15,7 @@ export const PAGE_ROUTES = [
   ['/system-setting/access-policy','accessPolicy','page'],
   ['/system-onboarding','onboardingApproval','list'],
   ['/business-partner','partners','list'], ['/customer','partners','list'],
-  ['/outsourcing-partner','partners','list'], ['/material-supplier','partners','list'],
+  ['/outsourcing-partner','partners','list'], ['/material-supplier','partners','list'], ['/logistics-partner','partners','list'],
   ['/customer-pricing','customerPricing','page'],
   ['/order','order','list','edit'], ['/style','style','list','edit'],
   ['/customer-production-report','customerProductionReport','page'],

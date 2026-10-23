@@ -21,6 +21,7 @@ const TEXT = {
 
 // The shared partner panel is selected by role in TradePartners.
 const TITLE_BY_TYPE = {
+  LOGISTICS_PROVIDER: {ko:'물류 업체',en:'Logistics provider',vi:'Đơn vị logistics'},
   PROCESS_OUTSOURCING: { ko: '외주 업체', en: 'Outsourcing Partner', vi: 'Đối tác gia công' },
   MATERIAL_SUPPLIER: { ko: '공급 업체', en: 'Material Supplier', vi: 'Nhà cung cấp vật tư' },
 };

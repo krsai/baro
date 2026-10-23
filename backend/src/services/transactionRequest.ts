@@ -78,7 +78,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if(useSystemMaster)description=edit?.cost?.description || [code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
-  const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'] } } });
+  const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'] } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
   if (edit?.record && (edit.record.orgId !== orgId ||

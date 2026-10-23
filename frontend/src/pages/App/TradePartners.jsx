@@ -17,6 +17,7 @@ export default function TradePartners({initialType='CUSTOMER'}){
   {id:'CUSTOMER',path:'/customer',label:getUiMessage('menu.customer','Customer',languageCode)},
   {id:'PROCESS_OUTSOURCING',path:'/outsourcing-partner',label:getUiMessage('menu.outsourcingPartner','Outsourcing Partner',languageCode)},
   {id:'MATERIAL_SUPPLIER',path:'/material-supplier',label:getUiMessage('menu.materialSupplier','Material Supplier',languageCode)},
+  {id:'LOGISTICS_PROVIDER',path:'/logistics-partner',label:getUiMessage('menu.logisticsPartner','Logistics provider',languageCode)},
  ].filter(option=>canAccessPath(option.path,auth)),[auth,languageCode]);
  const [selected,setSelected]=useState(()=>location.state?.partnerType||initialType);
  useEffect(()=>{if(location.state?.partnerType)setSelected(location.state.partnerType);},[location.key]);

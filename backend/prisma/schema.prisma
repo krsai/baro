@@ -20,6 +20,7 @@ enum OrganizationType {
   // excluded from every "real tenant" org listing/lookup. See AGENTS.md.
   PROCESS_OUTSOURCING
   MATERIAL_SUPPLIER
+  LOGISTICS_PROVIDER
 }
 
 enum OrgUserRole {

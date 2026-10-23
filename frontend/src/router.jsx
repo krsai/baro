@@ -329,6 +329,10 @@ const router = createBrowserRouter([
             element: <TradePartners initialType="PROCESS_OUTSOURCING" />,
           },
           {
+            path: 'logistics-partner',
+            element: <TradePartners initialType="LOGISTICS_PROVIDER" />,
+          },
+          {
             path: 'material-supplier',
             element: <TradePartners initialType="MATERIAL_SUPPLIER" />,
           },

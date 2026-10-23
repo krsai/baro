@@ -1173,7 +1173,7 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 11;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 12;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "INVOICE",
@@ -1198,7 +1198,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "SALARY_SYSTEM",
   "CUSTOMER",
   "OUTSOURCING_PARTNER",
-  "MATERIAL_SUPPLIER",
+  "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER",
   "PERMISSION",
   "HOLIDAY",
 ] as const;
@@ -1220,7 +1220,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "DASHBOARD",
       "ORDER",
       "OUTSOURCING_PARTNER",
-      "MATERIAL_SUPPLIER",
+      "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER",
       "STYLE",
       "ST_REVIEW",
       "SHIPMENT_REVIEW",
@@ -1251,12 +1251,12 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "DASHBOARD",
       "ORDER",
       "OUTSOURCING_PARTNER",
-      "MATERIAL_SUPPLIER",
+      "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER",
       "STYLE",
       "EMPLOYEE_SYSTEM",
       "SALARY_SYSTEM",
     ],
-    OPERATOR: ["DASHBOARD", "ORDER", "OUTSOURCING_PARTNER", "MATERIAL_SUPPLIER", "STYLE"],
+    OPERATOR: ["DASHBOARD", "ORDER", "OUTSOURCING_PARTNER", "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER", "STYLE"],
     ACCOUNTANT: ["DASHBOARD"],
     WORKER: ["DASHBOARD"],
   },
@@ -1422,6 +1422,11 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   }
   if (sourceSchemaVersion < 10) {
     applyLegacyRevenueForecastSplitDefault(policy);
+  }
+  if (sourceSchemaVersion < 12) {
+    for (const roles of Object.values(policy)) for (const features of Object.values(roles)) {
+      if ((features.includes('OUTSOURCING_PARTNER') || features.includes('MATERIAL_SUPPLIER')) && !features.includes('LOGISTICS_PARTNER')) features.push('LOGISTICS_PARTNER');
+    }
   }
   return policy;
 };
@@ -27574,13 +27579,13 @@ app.get("/business-partners", async (req, res) => {
   const organization = await getOrganizationByQuery(req);
   if (!organization) return res.status(404).json({ ok: false, error: "organization not found" });
   const type = resolveOptionalString(req.query.type, null);
-  if (type && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type)) {
+  if (type && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'].includes(type)) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const rows = await prisma.organization.findMany({
     where: {
       ownerOrgId: organization.id,
-      type: type ? (type as any) : { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'] },
+      type: type ? (type as any) : { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'] },
     },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
     include: BUSINESS_PARTNER_SERVICE_INCLUDE,
@@ -27602,7 +27607,7 @@ app.post("/business-partners", async (req, res) => {
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
-  if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(type || '')) {
+  if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'].includes(type || '')) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const actor = resolveOptionalString(getRequesterEmail(req), "system@baro.local") || "system@baro.local";
@@ -27633,13 +27638,13 @@ app.put("/business-partners/:id", async (req, res) => {
   const { organization } = accessContext;
   const id = toPositiveIntOrNull(req.params.id);
   if (!id) return res.status(400).json({ ok: false, error: "invalid partner id" });
-  const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id, type: { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'] } } });
+  const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id, type: { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'] } } });
   if (!existing) return res.status(404).json({ ok: false, error: "business partner not found" });
 
   const name = resolveOptionalString(req.body?.name, null);
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
   const requestedType = resolveOptionalString(req.body?.type, null);
-  if (requestedType && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER'].includes(requestedType)) {
+  if (requestedType && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'].includes(requestedType)) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const type = requestedType || existing.type;

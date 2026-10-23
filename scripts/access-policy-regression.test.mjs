@@ -300,3 +300,15 @@ test('unknown and system-only feature keys are rejected from saved policy', () =
     ACCESS_FEATURE_KEYS.EMPLOYEE,
   ]);
 });
+
+test('logistics permission migrates vendor access, while current explicit denials remain denied',()=>{
+ const legacy=sanitizeRoleAccessPolicy({__schemaVersion:11,MANUFACTURER:{OPERATOR:['OUTSOURCING_PARTNER'],ACCOUNTANT:[]}});
+ assert.ok(legacy.MANUFACTURER.OPERATOR.includes('LOGISTICS_PARTNER'));
+ assert.equal(legacy.MANUFACTURER.ACCOUNTANT.includes('LOGISTICS_PARTNER'),false);
+ const current=sanitizeRoleAccessPolicy({__schemaVersion:12,MANUFACTURER:{OPERATOR:['OUTSOURCING_PARTNER']}});
+ assert.equal(current.MANUFACTURER.OPERATOR.includes('LOGISTICS_PARTNER'),false);
+ const auth=buildOrgAuthState({orgRole:ORG_ROLE_KEYS.OPERATOR,policy:{MANUFACTURER:{OPERATOR:['LOGISTICS_PARTNER']}}});
+ assert.equal(canAccessPath('/business-partner',auth),true);
+ assert.equal(canAccessPath('/logistics-partner',auth),true);
+ assert.equal(canAccessPath('/outsourcing-partner',auth),false);
+});
