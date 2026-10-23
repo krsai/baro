@@ -1,4 +1,3 @@
-import {latestRecordedMonthEnd,clampRecordedRange} from '../../../utils/recordedMonthRange.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
@@ -295,15 +294,12 @@ const AttendanceList = () => {
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
 
-  const [dateFrom,setDateFrom]=useState(''),[dateTo,setDateTo]=useState('');
-  const [availableMonths, setAvailableMonths] = useState([]);
+  const [dateFrom,setDateFrom]=useState(()=>dayjs().startOf('month').format('YYYY-MM-DD')),[dateTo,setDateTo]=useState(()=>dayjs().endOf('month').format('YYYY-MM-DD'));
   const [factories, setFactories] = useState([]);
   const [factoryError, setFactoryError] = useState(false);
   const [selectedFactoryId, setSelectedFactoryId] = useState('');
   const [rows, setRows] = useState([]);
   const [loadError, setLoadError] = useState(false);
-  const [monthsError, setMonthsError] = useState(false);
-  const [loadingMonths, setLoadingMonths] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [loadingRows, setLoadingRows] = useState(false);
@@ -365,53 +361,6 @@ const AttendanceList = () => {
       cancelled = true;
     };
   }, [activeFactoryId, activeOrgId, reloadToken]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-
-    if (!selectedFactoryId) {
-      setLoadingMonths(false);
-      setMonthsError(false);
-      setLoadError(false);
-      setAvailableMonths([]);
-      setDateFrom('');setDateTo('');
-      return () => controller.abort();
-    }
-
-    const loadAvailableMonths = async () => {
-      setLoadingMonths(true); setMonthsError(false);
-      setAvailableMonths([]);
-      try {
-      const query = buildQueryString({
-        orgId: activeOrgId,
-        factoryId: selectedFactoryId,
-        monthsOnly: true,
-      });
-      const fetched = await requestJSON('/attendance-entries' + query, {
-        signal: controller.signal,
-        skipCache: true,
-      });
-      if (cancelled || controller.signal.aborted) return;
-      const months = (Array.isArray(fetched) ? fetched : []).filter((value) =>
-        /^\d{4}-\d{2}$/.test(String(value || ''))
-      );
-      setAvailableMonths(months);
-      if (!months.length) { setDateFrom(''); setDateTo(''); return; }
-      const maximum=latestRecordedMonthEnd(months);
-      setDateFrom(previous=>clampRecordedRange(previous,dateTo,maximum).dateFrom);
-      setDateTo(previous=>clampRecordedRange(dateFrom,previous,maximum).dateTo);
-      } catch (error) {
-        if (!cancelled && !controller.signal.aborted) setMonthsError(true);
-      } finally { if (!cancelled) setLoadingMonths(false); }
-    };
-
-    loadAvailableMonths();
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [activeOrgId, reloadToken, selectedFactoryId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -509,9 +458,7 @@ const AttendanceList = () => {
 
     const nextRows = [];
     const selectedStartDate = dayjs(dateFrom);
-    const maximum=latestRecordedMonthEnd(availableMonths);
-    if(!maximum)return [];
-    const selectedEndDate = dayjs(dateTo>maximum?maximum:dateTo);
+    const selectedEndDate = dayjs(dateTo);
     if (!dateFrom || !dateTo || !selectedStartDate.isValid() || !selectedEndDate.isValid()) return [];
     const minDay = resolveScopedFactoryManagementStartDay({ factories, factory: factories.find(row => String(row.id) === String(selectedFactoryId)) });
     let cursor = selectedStartDate.isBefore(minDay,'day') ? minDay : selectedStartDate.startOf('day');
@@ -543,7 +490,7 @@ const AttendanceList = () => {
       (left, right) =>
         dayjs(right.workDate).valueOf() - dayjs(left.workDate).valueOf()
     );
-  }, [employees, rows, dateFrom, dateTo, factories, selectedFactoryId,availableMonths]);
+  }, [employees, rows, dateFrom, dateTo, factories, selectedFactoryId]);
 
   const filteredRows = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
@@ -794,7 +741,7 @@ const AttendanceList = () => {
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, 'Search date')}
             />
           )}
-          controls={<DateRangeSelector maxDate={latestRecordedMonthEnd(availableMonths)||undefined} factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom?dayjs(dateFrom):null} endValue={dateTo?dayjs(dateTo):null} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value.format('YYYY-MM-DD'))}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value.format('YYYY-MM-DD'))}} disabled={loadingRows||loadingMonths||availableMonths.length===0}/>}
+          controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom?dayjs(dateFrom):null} endValue={dateTo?dayjs(dateTo):null} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value.format('YYYY-MM-DD'))}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value.format('YYYY-MM-DD'))}} disabled={loadingRows}/>}
           filters={<><FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
               <InputLabel id="attendance-list-factory-label">
                 {resolveText(TEXT.factory, languageCode, 'Factory')}
@@ -844,15 +791,15 @@ const AttendanceList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loadingRows || loadingFactories || loadingMonths ? (
+              {loadingRows || loadingFactories ? (
                 <TableStatusRow
                   colSpan={6}
                   state="loading"
                 />
-              ) : loadError || factoryError || monthsError || !selectedFactoryId || filteredRows.length === 0 ? (
+              ) : loadError || factoryError || !selectedFactoryId || filteredRows.length === 0 ? (
                 <TableStatusRow
                   colSpan={6}
-                  state={loadError || factoryError || monthsError ? 'error' : 'empty'} onRetry={() => setReloadToken(value => value + 1)}
+                  state={loadError || factoryError ? 'error' : 'empty'} onRetry={() => setReloadToken(value => value + 1)}
                 />
               ) : (
                 filteredRows.map((row) => {

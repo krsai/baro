@@ -1,6 +1,6 @@
 import { ui } from '../theme/ui';
 import React, { useEffect } from 'react';
-import { useManagementPeriod } from '../context/ManagementPeriodContext';
+import useQueryDateBounds from '../hooks/useQueryDateBounds';
 import { Button, Stack, TextField } from '@mui/material';
 
 const normalizeMonthKey = (value) => {
@@ -28,15 +28,18 @@ const MonthSelector = ({
   ariaLabel,
   inputSx,
   sx,
-  factoryId,
+  allowFuture = false,
 }) => {
   const monthKey = normalizeMonthKey(value);
-  const period = useManagementPeriod();
-  const scopedStart = period.factories.find(factory => String(factory.id) === String(factoryId))?.startDate || period.startDate;
-  const minMonth = [normalizeMonthKey(min),normalizeMonthKey(scopedStart)].filter(Boolean).sort().at(-1) || '';
-  disabled = disabled || period.loading || Boolean(period.error);
-  useEffect(() => { if (!disabled && minMonth && monthKey < minMonth) onChange?.(minMonth); }, [minMonth,monthKey,disabled]);
-  const maxMonth = normalizeMonthKey(max);
+  const { minimum, maximum, loading } = useQueryDateBounds({ min, max, allowFuture });
+  const minMonth = normalizeMonthKey(minimum);
+  const maxMonth = normalizeMonthKey(maximum);
+  disabled = disabled || loading;
+  useEffect(() => {
+    if (disabled || !monthKey) return;
+    if (minMonth && monthKey < minMonth) onChange?.(minMonth);
+    else if (maxMonth && monthKey > maxMonth) onChange?.(maxMonth);
+  }, [minMonth,maxMonth,monthKey,disabled]);
   const cannotMovePrevious = previousDisabled || Boolean(minMonth && monthKey <= minMonth);
   const cannotMoveNext = nextDisabled || Boolean(maxMonth && monthKey >= maxMonth);
 

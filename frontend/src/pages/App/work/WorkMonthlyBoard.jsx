@@ -32,10 +32,6 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import useHolidayCalendar from '../../../hooks/useHolidayCalendar';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import {
-  DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
-  resolveScopedFactoryManagementStartMonth,
-} from '../../../utils/factoryManagementStart';
 import { loadWorkLogs } from './workLogStorage';
 import {
   aggregateMonthlyWorkerRows,
@@ -80,17 +76,6 @@ const TEXT = {
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
-
-const normalizeProductionAnalysisMonth = (
-  value,
-  minMonth = dayjs(DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY).startOf('month')
-) => {
-  const parsed = dayjs(value);
-  const month = parsed.isValid() ? parsed.startOf('month') : dayjs().startOf('month');
-  return month.isBefore(minMonth, 'month')
-    ? minMonth
-    : month;
-};
 
 const formatAverageCtHours = (seconds, languageCode) => {
   const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
@@ -146,14 +131,6 @@ const WorkMonthlyBoard = () => {
   const selectedFactory = useMemo(
     () => factories.find((factory) => String(factory?.id) === String(selectedFactoryId)) || null,
     [factories, selectedFactoryId]
-  );
-  const productionAnalysisMinMonth = useMemo(
-    () =>
-      resolveScopedFactoryManagementStartMonth({
-        factory: selectedFactory,
-        factories,
-      }),
-    [factories, selectedFactory]
   );
   const [dateFrom,setDateFrom]=useState(()=>dayjs().startOf('month')),[dateTo,setDateTo]=useState(()=>dayjs().endOf('month'));
   const [rows, setRows] = useState([]);
@@ -215,9 +192,6 @@ const WorkMonthlyBoard = () => {
     };
   }, [activeFactoryId, activeOrgId, retryToken]);
 
-  useEffect(() => {
-    setDateFrom(current=>current.isBefore(productionAnalysisMinMonth,'day')?productionAnalysisMinMonth:current);setDateTo(current=>current.isBefore(productionAnalysisMinMonth,'day')?productionAnalysisMinMonth.endOf('month'):current);
-  }, [productionAnalysisMinMonth]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -371,7 +345,7 @@ const WorkMonthlyBoard = () => {
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '작업자 검색')}
             />
           )}
-          controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} minDate={productionAnalysisMinMonth}/>}
+          controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}}/>}
           filters={<><FormControl key="factory" size="small" sx={{ minWidth: 180 }}>
               <InputLabel id="work-monthly-factory-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}

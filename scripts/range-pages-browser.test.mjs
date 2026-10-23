@@ -23,10 +23,10 @@ try{
   const target=kind==='attendance'?'attendance':'work';assert.ok(reads.some(r=>r.path===target&&r.from==='2026-09-15'&&r.to==='2026-10-20'),JSON.stringify({kind,reads,errors}));
   if(kind==='analysis'){const labels=await page.getByText('2026-09',{exact:true}).count();assert.ok(labels>0);const september=page.locator('tbody tr').filter({has:page.getByText('2026-09',{exact:true})});await september.dblclick();assert.match(await page.evaluate(()=>window.lastNavigation),/production-analysis\/2026-09\/1\/10/);}
   if(kind!=='analysis'){
-    recordedMonths=['2026-09'];await page.reload();await page.waitForFunction(()=>document.querySelector('input[aria-label="End date"]')?.value==='2026-09-30');
-    if(kind==='attendance')assert.equal(await page.getByText('2026-10-01',{exact:true}).count(),0);
     recordedMonths=[];await page.reload();await page.waitForTimeout(500);
-    assert.equal(await page.getByText('2026-10-01',{exact:true}).count(),0);
+    // An empty catalogue no longer erases or narrows the selected period.
+    assert.equal(await page.getByLabel('End date').inputValue(),kind==='work'?'2026-10-20':'2026-10-31');
+    assert.ok(reads.some(r=>r.path===target&&r.to?.startsWith('2026-10')));
   }
   assert.deepEqual(errors,[],kind);await page.close();
  }

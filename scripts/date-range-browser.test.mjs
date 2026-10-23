@@ -26,6 +26,7 @@ try {
   browser = await chromium.launch({ executablePath, headless: true });
   const page = await browser.newPage();
   page.setDefaultNavigationTimeout(90000);
+  await page.clock.install({ time: new Date('2026-10-13T12:00:00+07:00') });
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/src/context/AuthContext.jsx*', route => route.fulfill({ contentType: 'application/javascript', body: 'export const useAuth=()=>({activeOrgId:1});' }));
@@ -33,17 +34,14 @@ try {
   await page.goto(`http://127.0.0.1:${port}/date-range-acceptance.html`);
   await page.getByRole('button', { name: '시작일을 이전 달 1일로', exact: true }).click();
   assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2026-10-11');
-  await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
-  assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2026-11-30');
-  await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
-  await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
-  assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2027-01-31');
+  assert.equal(await page.getByRole('button', { name: /Extend end|종료일을/, exact: false }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), true);
+  assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2026-10-11');
   for(const width of [390,740]){await page.setViewportSize({width,height:600});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await page.goto('http://127.0.0.1:'+port+'/date-range-acceptance.html?limit');
   await page.waitForFunction(()=>document.querySelector('output')?.textContent==='2026-08-01 / 2026-08-31');
   assert.equal(await page.getByRole('button',{name:'종료일을 다음 달 말일로',exact:true}).isDisabled(),true);
   await page.setViewportSize({width:1280,height:800});
-  await page.clock.install({ time: new Date('2026-10-13T12:00:00+07:00') });
   const headers = { 'Access-Control-Allow-Origin': '*' };
   await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[]}));
   await page.route('**/outsourcing-requests?*', route => route.fulfill({ headers, json: ['2026-09-01', '2026-10-01', '2026-10-31', '2026-11-30', '2026-12-01'].map((date, id) => ({ id, transactionDate: date, partner: { name: `Partner${id}` }, expenseRequest:{remark:`Cost${id}`}, description: `Legacy title${id}`, currency: 'VND', amount: '100' })) }));
@@ -52,13 +50,13 @@ try {
   assert.equal(await page.locator('tbody tr').count(), 2);
   await page.getByRole('button', { name: '시작일을 이전 달 1일로', exact: true }).click();
   await page.getByText('Cost0', { exact: true }).waitFor();
-  await page.getByRole('button', { name: '종료일을 다음 달 말일로', exact: true }).click();
-  await page.getByText('Cost3', { exact: true }).waitFor();
-  assert.equal(await page.locator('tbody tr').count(), 4);
-  await page.getByPlaceholder(/신청번호/).fill('Partner3');
+  assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByText('Cost3', { exact: true }).count(), 0);
+  assert.equal(await page.locator('tbody tr').count(), 3);
+  await page.getByPlaceholder(/신청번호/).fill('Partner2');
   assert.equal(await page.locator('tbody tr').count(), 1);
   assert.deepEqual(errors, []);
-  console.log('Date range browser checks passed: independent month expansion, year rollover, inclusive cost date filtering and combined search.');
+  console.log('Date range browser checks passed: current-month ceiling, explicit tighter bounds, inclusive cost date filtering and combined search.');
 } finally {
   await browser?.close();
   vite.kill();

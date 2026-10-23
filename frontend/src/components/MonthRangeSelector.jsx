@@ -1,6 +1,6 @@
 import { ui } from '../theme/ui';
 import React, { useEffect } from 'react';
-import { useManagementPeriod } from '../context/ManagementPeriodContext';
+import useQueryDateBounds from '../hooks/useQueryDateBounds';
 import { Button, Stack, Typography } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
@@ -27,13 +27,11 @@ const MonthRangeSelector = ({
   maxDate,
   disabled = false,
   slotProps,
-  factoryId,
 }) => {
-  const period = useManagementPeriod();
-  const scopedStart = period.factories.find(factory => String(factory.id) === String(factoryId))?.startDate || period.startDate;
-  const minimum = [minDate && dayjs(minDate).format('YYYY-MM-DD'),scopedStart].filter(Boolean).sort().at(-1);
-  minDate = minimum ? dayjs(minimum) : minDate;
-  disabled = disabled || period.loading || Boolean(period.error);
+  const { minimum, maximum, loading } = useQueryDateBounds({ min: minDate, max: maxDate });
+  minDate = minimum ? dayjs(minimum) : undefined;
+  maxDate = maximum ? dayjs(maximum) : undefined;
+  disabled = disabled || loading;
   const floor = minDate && (monthOnly ? dayjs(minDate).startOf('month') : dayjs(minDate).startOf('day'));
   useEffect(() => {
     if (!floor || disabled) return;
@@ -45,7 +43,7 @@ const MonthRangeSelector = ({
     const ceiling=dayjs(maxDate);
     if(endValue && dayjs(endValue).isAfter(ceiling,'day'))onEndChange?.(ceiling);
     if(startValue && dayjs(startValue).isAfter(ceiling,'day'))onStartChange?.(ceiling.startOf('month'));
-  },[maxDate,disabled,startValue,endValue]);
+  },[maximum,disabled,startValue,endValue]);
   const change = (handler, isStart) => (value, context) => {
     if (context?.validationError || (value && !value.isValid?.())) return;
     if (floor && value?.isValid?.() && value.isBefore(floor, monthOnly ? 'month' : 'day')) return;

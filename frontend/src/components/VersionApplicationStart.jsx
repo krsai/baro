@@ -18,7 +18,7 @@ const VersionApplicationStart = ({ languageCode = 'en', mode = 'month', value, d
     <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
       <Button size="small" disabled={disabled} onClick={() => onChange?.(defaultMonth)}>{text.now}</Button>
       <Button size="small" disabled={disabled} onClick={() => onChange?.(shiftVersionMonth(defaultMonth,1))}>{text.next}</Button>
-      <MonthSelector label={label || text.month} value={value || ''} onChange={onChange} min={min} disabled={disabled} />
+      <MonthSelector allowFuture label={label || text.month} value={value || ''} onChange={onChange} min={min} disabled={disabled} />
     </Stack>
     <Typography variant="caption" color="text.secondary">{value ? text.since(value) : text.none}</Typography>
     {showHelp && <Typography variant="caption" color="text.secondary">{text.help}</Typography>}
