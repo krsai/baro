@@ -12,6 +12,7 @@ function store(process = false) {
   const snapshot = { processes: [{ styleProcessId: 50 }] };
   const plan = { id: 60, orgId: 1, workOrderId: 30, styleId: 40, factoryId: 1, isCompleted: false, ctReviewRequired: false, assignmentCtSnapshot: snapshot, assignmentStSnapshot: snapshot };
   return { writes, code, plan,
+    expenseCodeLinkPolicy:{findUnique:async()=>({target:process?'PROCESS':'NONE',auditId:null})},
     factory: { findMany: async () => [{id:1,managementStartDate:"2026-04-01"}] },
     $queryRaw: async () => [],
     systemSetting: { findUnique: async () => ({ value: { defaultVatRate: '10' } }) },
@@ -42,28 +43,28 @@ test('logistics records cost only, and snapshots VAT independently of later defa
   assert.equal((await loadAppSettings({ systemSetting: { findUnique: async () => null } },1)).defaultVatRate,'10');
 });
 
-test('tenant industry policy permits cost-only printing and requires production links for configured industries', async () => {
+test('tenant base-code policy permits cost-only printing and requires configured process inputs', async () => {
   const costOnly=store(true);
   costOnly.code.serviceType.systemDefaultId=10;
-  costOnly.industryProductionPolicy={findUnique:async({where})=>{
-    assert.deepEqual(where,{orgId_systemIndustryId:{orgId:1,systemIndustryId:10}});
-    return {productionLinkRequired:false};
+  costOnly.expenseCodeLinkPolicy={findUnique:async({where})=>{
+    assert.deepEqual(where,{orgId_baseId:{orgId:1,baseId:1}});
+    return {target:'NONE',auditId:null};
   }};
   const result=await register(costOnly,1,20,{...input(),workOrderId:null,vatRate:'0',currency:'USD',quantity:'1.5'});
   assert.equal(result.outsourcedWorkRecordId,null);
   assert.deepEqual(costOnly.writes.map(([kind])=>kind),['cost']);
   const required=store(false);
   required.code.base.serviceTypeId=10;
-  required.industryProductionPolicy={findUnique:async()=>({productionLinkRequired:true})};
+  required.expenseCodeLinkPolicy={findUnique:async()=>({target:'PROCESS',auditId:null})};
   await assert.rejects(register(required,1,20,input()),/REQUIRED_REQUEST_STYLE/);
   assert.equal(required.writes.length,0);
   await register(required,1,20,{...input(),styleId:40,styleProcessId:50});
-  assert.deepEqual(required.writes.map(([kind])=>kind),['log','production','cost']);
+  assert.deepEqual(required.writes.map(([kind])=>kind),['cost']);
 });
 
 test('a later required-link policy never converts a saved cost-only row into production on edit', async()=>{
   const db=store(true);db.code.base.serviceTypeId=10;
-  db.industryProductionPolicy={findUnique:async()=>({productionLinkRequired:true})};
+  db.expenseCodeLinkPolicy={findUnique:async()=>({target:'PROCESS',auditId:null})};
   db.partnerTransactionCost.update=async({data})=>{db.writes.push(['cost',data]);return data;};
   const body={...input(),workOrderId:null,vatRate:'0'};
   await register(db,1,20,body,undefined,false,{cost:{id:'saved-cost',description:'Preserved'}});
@@ -71,9 +72,24 @@ test('a later required-link policy never converts a saved cost-only row into pro
   assert.equal(db.writes[0][1].outsourcedWorkRecordId,null);
 });
 
-test('disabling industry production links preserves an existing production FK and its required references',async()=>{
+test('unset base policy overrides legacy PROCESS defaults without consulting industry configuration',async()=>{
+ const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>null;
+ db.industryProductionPolicy={findUnique:()=>{throw Error('No industry fallback');}};
+ const row=await register(db,1,20,{...input(),vatRate:'0',quantity:'1.5',currency:'USD',workOrderId:null});
+ assert.equal(row.linkTarget,'NONE');assert.equal(row.outsourcedWorkRecordId,null);assert.deepEqual(db.writes.map(([kind])=>kind),['cost']);
+});
+
+test('saved cost-only references survive inactive process and removed order-item candidates',async()=>{
+ const db=store();db.workOrderItem.findFirst=async()=>null;
+ db.styleProcess.findFirst=async({where})=>{assert.equal(where.orgId,1);assert.equal(where.styleId,40);assert.equal(where.isActive,undefined);return{id:50};};
+ db.partnerTransactionCost.update=async({data})=>data;
+ const row=await register(db,1,20,{...input(),styleId:40,styleProcessId:50},undefined,false,{cost:{id:'old',workOrderId:30,styleId:40,styleProcessId:50}});
+ assert.equal(row.styleProcessId,50);assert.equal(row.linkTarget,'NONE');assert.equal(row.outsourcedWorkRecordId,null);
+});
+
+test('disabling base-code process links preserves an existing production FK and its required references',async()=>{
   const db=store(true);db.code.base.serviceTypeId=10;
-  db.industryProductionPolicy={findUnique:async()=>({productionLinkRequired:false})};
+  db.expenseCodeLinkPolicy={findUnique:async()=>({target:'NONE',auditId:null})};
   db.assignmentPlan.findFirst=async()=>db.plan;
   db.partnerTransactionCost.update=async({data})=>{db.writes.push(['cost',data]);return data;};
   const record={id:90,orgId:1,styleId:40,styleProcessId:50,assignmentPlanId:60,assignmentPlan:{workOrderId:30},outsourcingPartnerId:11,quantity:2,outsourceUnitPrice:'100000'};
@@ -102,7 +118,7 @@ test('process rejects missing references, fractional quantities, completed/ambig
 test('code scope, industry options and order/style/process membership are enforced', async () => {
   const missing = store(); missing.transactionCode.findFirst = async () => null; await assert.rejects(register(missing,1,20,input()),/INVALID_TRANSACTION_CODE/);
   const vendor = store(); vendor.organization.findFirst = async () => null; await assert.rejects(register(vendor,1,20,input()),/INVALID_PARTNER_SERVICE/);
-  const hidden = store(); await assert.rejects(register(hidden,1,20,{ ...input(),styleId:40 }),/UNEXPECTED_REQUEST_STYLE/);
+  const hidden = store(); await assert.rejects(register(hidden,1,20,{ ...input(),styleId:40,styleProcessId:50 }),/UNEXPECTED_REQUEST_PROCESS/);
   const taxable = store(); taxable.code.vatEnabled = false; await assert.rejects(register(taxable,1,20,input()),/VAT_NOT_ENABLED/);
   const mismatch = store(true); mismatch.workOrderItem.findFirst = async () => null; await assert.rejects(register(mismatch,1,20,{ ...input(),vatRate:'0',styleId:40,styleProcessId:50 }),/INVALID_REQUEST_STYLE/);
 });

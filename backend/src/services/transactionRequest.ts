@@ -1,4 +1,4 @@
-import { applyIndustryProductionPolicy, industryIdForCode } from './industryProductionPolicy';
+import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
 import { Prisma } from '@prisma/client';
 import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
@@ -66,14 +66,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   }
   const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: useSystemMaster ? SYSTEM_EXPENSE_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
   const rawCode = useSystemMaster ? resolveSystemExpenseCode(localCode) : localCode;
-  const systemIndustryId = industryIdForCode(rawCode);
-  const policy = systemIndustryId == null ? null : await tx.industryProductionPolicy.findUnique({where:{orgId_systemIndustryId:{orgId,systemIndustryId}}});
-  let code = applyIndustryProductionPolicy(rawCode,policy?.productionLinkRequired);
-  // A settings change never converts an existing cost-only row into production.
-  if (edit?.cost && !edit.record && (code?.base?.entryMode === 'PROCESS' || code?.productionLinkRequired != null)) {
-    code = applyIndustryProductionPolicy(code,false);
-    if (edit.cost.styleProcessId) code.base.processInput = 'OPTIONAL';
-  }
+  const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
   if(useSystemMaster)description=edit?.cost?.description || [code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
@@ -93,8 +86,10 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   }
   if (styleId && !workOrderId || styleProcessId && !styleId) return invalid('INVALID_REQUEST_REFERENCE');
   if (workOrderId && !await tx.workOrder.findFirst({ where: { id: workOrderId, orgId }, select: { id: true } })) return invalid('INVALID_TRANSACTION_ORDER');
-  if (!edit?.record && styleId && !await tx.workOrderItem.findFirst({ where: { workOrderId, styleId, workOrder: { orgId }, style: { orgId } }, select: { id: true } })) return invalid('INVALID_REQUEST_STYLE');
-  if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
+  const retainedStyle=edit?.cost && edit.cost.workOrderId===workOrderId && edit.cost.styleId===styleId;
+  if (!edit?.record && !retainedStyle && styleId && !await tx.workOrderItem.findFirst({ where: { workOrderId, styleId, workOrder: { orgId }, style: { orgId } }, select: { id: true } })) return invalid('INVALID_REQUEST_STYLE');
+  const retainedProcess=retainedStyle && edit.cost.styleProcessId===styleProcessId;
+  if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record && !retainedProcess ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
   for (const field of service.requiredFields) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
   const settings = await loadAppSettings(tx, orgId);
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
@@ -139,7 +134,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
   } else if (assignmentPlanId) return invalid('UNEXPECTED_ASSIGNMENT_PLAN');
   // Production is recorded only in the vendor table, never employee work or AT.
-  const data = { partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
+  const data = { linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
     ...(edit?.request ? {expenseRequestId:edit.request.id,expenseRequestLine:edit.request.line} : {}) };
   return edit?.cost ? tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data, include: REQUEST_INCLUDE }) :
     tx.partnerTransactionCost.create({ data: { ...data, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });

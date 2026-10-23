@@ -13,6 +13,7 @@ const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement.js');
 const {migrationSql}=require('../backend/scripts/migrate-expenses.js');
 const entityMigration=require('../backend/scripts/migrate-entity-profiles.js');
 const {saveEntityBankAccount,requirePayeeBankAccount}=require('../backend/dist/services/entityBankAccount.js');
+const {saveExpenseCodeLinkPolicy}=require('../backend/dist/services/expenseCodeLinkPolicy.js');
 const base=process.env.INVOICE_TEST_DATABASE_URL;
 if(!base)throw Error('INVOICE_TEST_DATABASE_URL must target dedicated local PostgreSQL');
 const url=new URL(base);if(!['localhost','127.0.0.1','[::1]'].includes(url.hostname))throw Error('Refusing non-local PostgreSQL');
@@ -38,6 +39,7 @@ try{
  const gradeSet=await db.employeeGradeSet.create({data:{orgId:org.id,code:'TEST',name:'Test'}});
  const grade=await db.employeeGrade.create({data:{orgId:org.id,setId:gradeSet.id,code:'TEST',name:'Test',nameKo:'Test',nameEn:'Test',nameVi:'Test',sortOrder:1,isDefault:true}});
  const actor=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Editor',orgRole:'ADMIN',status:'ACTIVE'}});
+ for(const base of await db.transactionCodeBase.findMany({where:{code:{in:['BTH','GEN']}}}))await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,org.id,actor.id,base.id,base.code==='BTH'?'PROCESS':'NONE'),{isolationLevel:'Serializable'});
  const vendor=await db.organization.create({data:{ownerOrgId:org.id,name:'Selected vendor',type:'PROCESS_OUTSOURCING'}});
  const other=await db.organization.create({data:{ownerOrgId:org.id,name:'Other vendor',type:'PROCESS_OUTSOURCING'}});
  const vnd=await db.currency.upsert({where:{code:'VND'},create:{code:'VND',name:'Vietnam dong'},update:{}});
@@ -121,7 +123,7 @@ try{
  let requestId;
  await check('versioned entity migration is repeatable and database guards reject missing banks and duplicate currency defaults',async()=>{
    const before=await db.expenseRequest.findMany();sql(entityMigration.migrationSql());sql(entityMigration.migrationSql());
-   assert.deepEqual(await db.expenseRequest.findMany(),before);assert.equal(await db.entitySchemaMigration.count(),2);
+   assert.deepEqual(await db.expenseRequest.findMany(),before);assert.equal(await db.entitySchemaMigration.count(),entityMigration.versions.length);
    await assert.rejects(db.organizationBankAccount.create({data:{...bankInput,orgId:org.id,entityId:vendor.id,accountNumber:'duplicate-default',isDefault:true,createdByEmployeeId:actor.id,updatedByEmployeeId:actor.id}}),error=>error.code==='P2002');
    const general=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'GENE'}});
    const total=await db.expenseRequest.count();

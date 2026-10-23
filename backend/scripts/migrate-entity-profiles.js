@@ -4,7 +4,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { assertSafeApplicationDatabaseEnv } = require('../src/config/databaseTargetGuard');
-const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry_expense_type','20261021230000_partner_industry_roles','20261022200000_partner_industry_canonical','20261023090000_industry_production_policy','20261023100000_logistics_vendor_enum','20261023100100_logistics_partner_role','20261023110000_customer_industry_categories'];
+const versions = ['20261020200000_entity_bank_accounts','20261020210000_industry_expense_type','20261021230000_partner_industry_roles','20261022200000_partner_industry_canonical','20261023090000_industry_production_policy','20261023100000_logistics_vendor_enum','20261023100100_logistics_partner_role','20261023110000_customer_industry_categories','20261023140000_expense_code_link_policy','20261023140100_baro_expense_code_links'];
 const literal = s => `'${s.replaceAll("'", "''")}'`;
 const migrations = () => versions.map(version => {
   const sql = fs.readFileSync(path.join(__dirname,'../prisma/migrations',version,'migration.sql'),'utf8').replace(/\r\n/g,'\n');

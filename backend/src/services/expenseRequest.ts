@@ -72,7 +72,13 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   await replaceExpenseApprovers(tx,orgId,document.id,approverEmployeeIds);
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
-    await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}});
+    try {
+      await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}});
+    } catch(error: any) {
+      error.expenseLine=index+1;
+      error.message=`EXPENSE_LINE:${index+1}:${error.message}`;
+      throw error;
+    }
   }
   const saved = await tx.expenseRequest.findUnique({ where: { id: document.id }, include: EXPENSE_REQUEST_INCLUDE });
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));

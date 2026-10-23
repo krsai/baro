@@ -24,6 +24,8 @@ out/
 !backend/.env.example
 
 # logs
+/logs/*
+!/logs/README.md
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

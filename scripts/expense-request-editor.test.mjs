@@ -17,6 +17,7 @@ function harness() {
     const document = r => r && ({ ...r, partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
     return {
+      expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       factory: { findMany: async()=>[{id:1,managementStartDate:'2026-04-01'}], findFirst: async()=>({id:1,managementStartDate:'2026-04-01'}) },
       systemSetting: {findUnique:async()=>null},
@@ -36,7 +37,7 @@ function harness() {
       outsourcedWorkRecord: { findFirst: async({where})=>record(s.records.find(r=>matches(r,where))), update: async({where,data})=>Object.assign(s.records.find(r=>r.id===where.id),JSON.parse(JSON.stringify(data))),
         create:async({data})=>{const row={id:Math.max(...s.records.map(r=>r.id))+1,...JSON.parse(JSON.stringify(data))};s.records.push(row);return row;} },
       workLog: {create:async({data})=>{const row={id:100+s.extraLogs.length,...data};s.extraLogs.push(row);return row;}},
-      transactionCode: { findFirst: async({where})=>({id:where.id,isActive:true,baseId:1,serviceTypeId:4,taxTreatmentId:3,vatEnabled:false,taxTreatment:{code:'EXEMPT',suffix:'E'},serviceType:{id:4},
+      transactionCode: { findFirst: async({where})=>({id:where.id,isActive:true,baseId:where.id===8?2:1,serviceTypeId:4,taxTreatmentId:3,vatEnabled:false,taxTreatment:{code:'EXEMPT',suffix:'E'},serviceType:{id:4},
         base:{isActive:true,code:'BTH',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:3,isActive:true,isEnabled:true}],entryMode:where.id===8?'PROCESS':'LOGISTICS',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:'OPTIONAL',requiredFields:[]}}) },
       organization: { findFirst: async()=>({id:11,name:'Vendor'}),findUnique:async()=>({id:11,name:'Vendor'}) },
       workOrder: { findFirst: async({where})=>where.invoiceFinalLockedAt ? (s.finalLocked?order():null) : order() },

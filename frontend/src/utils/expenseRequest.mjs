@@ -5,8 +5,8 @@ export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCode
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const expenseCodeForLine = (line,code) => {
   if (!code) return code;
-  if (line.productionLinked) return {...code,base:{...code.base,entryMode:'PROCESS'}};
-  if (line.itemId && (code.base?.entryMode === 'PROCESS' || code.productionLinkRequired != null)) return {...code,base:{...code.base,entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:line.styleProcessId?'OPTIONAL':'HIDDEN'}};
+  if (line.productionLinked || line.itemId && line.linkTarget==='PROCESS') return {...code,linkTarget:'PROCESS',base:{...code.base,entryMode:line.productionLinked?'PROCESS':'GENERAL',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
+  if (line.itemId) return {...code,linkTarget:'NONE',base:{...code.base,entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:line.styleProcessId?'OPTIONAL':'HIDDEN'}};
   return code;
 };
 export const inputMode = (code, key) => code?.base?.entryMode === 'PROCESS' ? 'REQUIRED' : code?.base?.[`${key}Input`] || (key === 'order' ? 'OPTIONAL' : 'HIDDEN');

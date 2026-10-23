@@ -24,6 +24,7 @@ function harness({sourceEnabled=true}={}) {
       return document ? { ...document, items: data.costs.filter(row => row.expenseRequestId === document.id).map(row => ({ ...row, outsourcedWorkRecord: data.production.find(record => record.id === row.outsourcedWorkRecordId) || null })) } : null;
     };
     return {
+      expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       factory: { findMany: async () => [{ id: 1, managementStartDate: '2026-04-01' }] },
       expenseRequest: { findUnique: async ({ where }) => readDocument(where),findFirst:async({where})=>readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1,version:1, ...row }; data.documents.push(document); return document; } },
@@ -32,7 +33,7 @@ function harness({sourceEnabled=true}={}) {
         create: async ({ data: row }) => { const cost = { id: `cost-${data.costs.length + 1}`, ...JSON.parse(JSON.stringify(row)) }; data.costs.push(cost); return cost; },
         update: async ({ where, data: patch }) => Object.assign(data.costs.find(row => row.id === where.id), patch),
       },
-      transactionCode: { findFirst: async ({ where }) => ({ id: where.id, isActive:true, baseId: 1, serviceTypeId: 4, taxTreatmentId: where.id === 8 ? 3 : 1, vatEnabled: where.id !== 8,
+      transactionCode: { findFirst: async ({ where }) => ({ id: where.id, isActive:true, baseId: where.id===8?2:1, serviceTypeId: 4, taxTreatmentId: where.id === 8 ? 3 : 1, vatEnabled: where.id !== 8,
         taxTreatment:{code:where.id===8?'EXEMPT':'VAT',suffix:where.id===8?'E':'V'},
         serviceType: { id: 4 }, base: {nameEn:'Transport',isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
       expenseRequestAudit:{create:async({data:row})=>{data.audits.push(row);return row;}},
@@ -107,11 +108,22 @@ test('a bad later row rolls back the header, preceding costs and process product
   const { route,db,effects } = routeHarness(), body = input();
   body.items[0] = { ...body.items[0], transactionCodeId: 8, vatRate: '0', workOrderId: 30, styleId: 40, styleProcessId: 50, assignmentPlanId: 60 };
   body.items[1].unitPrice = '0';
-  await assert.rejects(route({ body },response()),/INVALID_PRICE_OR_QUANTITY/);
+  await assert.rejects(route({ body },response()),/EXPENSE_LINE:2:INVALID_PRICE_OR_QUANTITY/);
   assert.deepEqual(db.state(),{ documents: [], costs: [], logs: [], production: [], audits: [] }); assert.equal(effects.length,0);
   body.items[1].unitPrice = '50000'; await route({ body },response());
   assert.equal(db.state().production.length,1); assert.deepEqual(effects[0].assignmentPlanIds,[60]);
   await route({ body },response()); assert.equal(db.state().production.length,1);
+});
+
+test('mixed base policies validate each line independently and report the failing row',async()=>{
+ const {route,db}=routeHarness(),body=input();
+ body.items[1]={...body.items[1],transactionCodeId:8,vatRate:'0',workOrderId:30,styleId:40};
+ await assert.rejects(route({body},response()),/EXPENSE_LINE:2:REQUIRED_REQUEST_PROCESS/);
+ assert.equal(db.state().documents.length,0);assert.equal(db.state().costs.length,0);
+ body.items[1].styleProcessId=50;body.items[1].assignmentPlanId=60;
+ await route({body},response());
+ assert.deepEqual(db.state().costs.map(row=>row.linkTarget),['NONE','PROCESS']);
+ assert.equal(db.state().production.length,1);
 });
 
 test('one header date applies to all new costs and conflicting item dates are rejected atomically', async () => {

@@ -40,7 +40,12 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
     if (!line.workOrderId) { setOptionsLoading(false); return () => { alive = false; }; }
     setOptionsLoading(true);
     requestJSON(`/transaction-request-options${buildQueryString({ orgId, workOrderId: line.workOrderId })}`, { skipCache: true })
-      .then(data => { if (alive) setOptions({ ...data, orderId: line.workOrderId }); })
+      .then(data => { if (alive) {
+        const preserved=line.preservedReferences?.order?.id===line.workOrderId && line.preservedReferences?.style;
+        const styles=preserved ? data.styles.map(style=>style.id!==preserved.id?style:{...style,styleProcesses:[...(style.styleProcesses||[]),...(preserved.styleProcesses||[]).filter(process=>!style.styleProcesses?.some(row=>row.id===process.id))]}) : data.styles;
+        if(preserved&&!styles.some(style=>style.id===preserved.id))styles.push(preserved);
+        setOptions({ ...data,styles,orderId: line.workOrderId });
+      } })
       .catch(() => { if (alive) setOptionsError(true); }).finally(() => { if (alive) setOptionsLoading(false); });
     return () => { alive = false; };
   }, [line.workOrderId, orgId, reload,line.productionLinked,line.preservedReferences]);

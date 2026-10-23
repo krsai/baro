@@ -54,14 +54,14 @@ function editorLine(cost: any, record: any) {
   const refs = record && { order: record.assignmentPlan.workOrder,
     style: { ...record.style, styleProcesses: [record.styleProcess] },
     plan: { id: record.assignmentPlanId, styleId: record.styleId, processIds: [record.styleProcessId] } };
-  return { itemId: cost?.id || null, sourceRecordId: record?.id || null,
+  return { linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
     transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
     quantity: String(cost?.quantity ?? record?.quantity ?? 1), unitPrice: String(cost?.unitPrice ?? record?.outsourceUnitPrice ?? cost?.amount ?? ''),
     vatRate: String(cost?.vatRate ?? 0), details: cost?.details || {},
     workOrderId: cost?.workOrderId || record?.assignmentPlan?.workOrderId || '', styleId: cost?.styleId || record?.styleId || '',
     styleProcessId: cost?.styleProcessId || record?.styleProcessId || '', assignmentPlanId: record?.assignmentPlanId || '',
-    productionLinked: Boolean(record), productionLocked: Boolean(record?.assignmentPlan?.isCompleted), preservedReferences: refs,
+    productionLinked: Boolean(record), productionLocked: Boolean(record?.assignmentPlan?.isCompleted), preservedReferences: refs || (cost ? {order:cost.workOrder,style:cost.style && {...cost.style,styleProcesses:cost.styleProcess?[cost.styleProcess]:[]}} : null),
     enabled: { order: Boolean(cost?.workOrderId || record), style: Boolean(cost?.styleId || record), process: Boolean(cost?.styleProcessId || record) } };
 }
 
@@ -127,7 +127,9 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
     const cost: any = item.itemId ? byId.get(item.itemId) : null;
     const record = cost?.outsourcedWorkRecord || (source.record && item.sourceRecordId===source.record.id ? source.record : null);
     const input = { ...item, transactionDate: requestDate, partnerOrgId: body.partnerOrgId, clientKey: `${body.clientKey}-${index+1}` };
-    const saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}});
+    let saved;
+    try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}}); }
+    catch(error: any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
     if (saved.outsourcedWorkRecord) assignmentPlanIds.push(saved.outsourcedWorkRecord.assignmentPlanId);
   }
   const removed = source.costs.filter((cost: any)=>!itemIds.includes(cost.id));

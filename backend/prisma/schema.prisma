@@ -169,6 +169,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  expenseCodeLinkPolicies ExpenseCodeLinkPolicy[]
+  expenseCodeLinkAudits ExpenseCodeLinkAudit[]
   industryProductionPolicies IndustryProductionPolicy[]
   bankAccounts OrganizationBankAccount[] @relation("EntityBankAccountEntity")
   managedBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountOwner")
@@ -500,6 +502,7 @@ model Warehouse {
 
 
 model Employee {
+  expenseCodeLinkAudits ExpenseCodeLinkAudit[]
   createdEntityBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountCreator")
   updatedEntityBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountUpdater")
   expenseRequests ExpenseRequest[] @relation("ExpenseRequestCreator")
@@ -1468,6 +1471,9 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  linkTarget String?
+  linkPolicyAuditId Int?
+  linkPolicyAudit ExpenseCodeLinkAudit? @relation(fields:[linkPolicyAuditId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   expenseRequestId Int?
   expenseRequestLine Int?
   expenseRequest ExpenseRequest? @relation(map: "PartnerTransactionCost_expense_request_fkey", fields: [expenseRequestId, orgId, partnerOrgId], references: [id, orgId, partnerOrgId], onDelete: Restrict, onUpdate: Restrict)
@@ -2412,6 +2418,37 @@ model IndustryProductionPolicy {
   @@id([orgId,systemIndustryId])
 }
 
+model ExpenseCodeLinkPolicy {
+  orgId Int
+  baseId Int
+  target String @default("NONE")
+  auditId Int
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict)
+  base TransactionCodeBase @relation(fields:[baseId],references:[id],onDelete:Restrict)
+  audit ExpenseCodeLinkAudit @relation("CurrentExpenseCodeLink",fields:[auditId,orgId,baseId],references:[id,orgId,baseId],onDelete:Restrict,onUpdate:Restrict)
+  @@id([orgId,baseId])
+}
+
+model ExpenseCodeLinkAudit {
+  id Int @id @default(autoincrement())
+  orgId Int
+  baseId Int
+  previousTarget String?
+  target String
+  actorId Int?
+  source String @default("USER")
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict)
+  base TransactionCodeBase @relation(fields:[baseId],references:[id],onDelete:Restrict)
+  actor Employee? @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  currentPolicies ExpenseCodeLinkPolicy[] @relation("CurrentExpenseCodeLink")
+  costs PartnerTransactionCost[]
+  @@unique([id,orgId,baseId])
+  @@unique([id,orgId])
+  @@index([orgId,baseId,createdAt])
+}
+
 model PartnerIndustryMigrationAudit {
   version String @id
   mappings Json
@@ -2450,6 +2487,8 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  linkPolicies ExpenseCodeLinkPolicy[]
+  linkAudits ExpenseCodeLinkAudit[]
   expenseTypeId Int
   expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
   entryMode String

@@ -120,7 +120,11 @@
     "test:expense-code-presentation": "node --test scripts/expense-code-presentation.test.mjs",
     "test:page-layout-browser": "node scripts/page-layout-browser.test.mjs",
     "test:expense-editor-postgres": "npm --prefix backend run build && node scripts/expense-editor-postgres.test.mjs",
-    "test:recorded-month-range": "node --test scripts/recorded-month-range.test.mjs"
+    "test:recorded-month-range": "node --test scripts/recorded-month-range.test.mjs",
+    "logs:collect": "node scripts/collect-logs.mjs",
+    "test:expense-code-link-policy": "npm --prefix backend run build && node --test scripts/expense-code-link-policy.test.mjs",
+    "test:expense-code-link-browser": "node scripts/expense-code-link-browser.test.mjs",
+    "test:expense-code-link-request-browser": "npm --prefix backend run build && node scripts/expense-code-link-request-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

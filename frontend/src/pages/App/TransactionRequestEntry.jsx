@@ -155,7 +155,12 @@ export default function TransactionRequestEntry() {
       if (isTabActiveRef.current) navigateToPath('/outsourcing-record', {label:labels.document,closeTabId:formPath,skipUnsavedChangesCheck:true});
     } catch (failure) {
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
-      if ([400,403,404,409,422].includes(failure.status)) { setSubmission(null); setError((failure.details?.error || failure.message)==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : (failure.details?.error || failure.message)==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : labels.invalid); }
+      if ([400,403,404,409,422].includes(failure.status)) {
+        setSubmission(null);
+        const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
+        const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
+        setError(code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid);
+      }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
   };
