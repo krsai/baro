@@ -63,3 +63,29 @@ test('merging persists named generated notes, preserves manual notes and avoids 
   assert.equal(merged[0].note, `기존 메모\n${imported.note}`);
   assert.deepEqual(mergeImportedAttendanceEntries(merged, [imported]), merged);
 });
+
+test('late actual punches replace earlier generated values and remove only generated notes', () => {
+  for (const languageCode of ['ko', 'en', 'vi']) {
+    const generated = buildAttendanceImportPlan({ events: [event('08:08:49')], employees: [mai], languageCode }).dailyEntries[0].entries[0];
+    const existing = [{ ...generated, note: `담당자 확인 메모\n${generated.note}` }];
+    const actual = row([event('08:08:49'), event('18:32:00')]);
+    const result = mergeImportedAttendanceEntries(existing, [actual]);
+    assert.deepEqual(result, [{ workerId: mai.id, clockIn: '08:08', clockOut: '18:32', note: '담당자 확인 메모' }]);
+    assert.deepEqual(mergeImportedAttendanceEntries(result, [actual]), result);
+  }
+});
+
+test('a late single actual punch repairs its side without leaving stale generated labels', () => {
+  const old = row([event('08:08:49')]);
+  const late = row([event('18:32:00')]);
+  assert.deepEqual(mergeImportedAttendanceEntries([old], [late]), [
+    { workerId: mai.id, clockIn: '08:08', clockOut: '18:32', note: null },
+  ]);
+});
+
+test('incomplete reimports never downgrade actual punches to generated defaults', () => {
+  const existing = [{ workerId: mai.id, clockIn: '08:00', clockOut: '18:32', note: 'Actual 08:00 retained' }];
+  assert.deepEqual(mergeImportedAttendanceEntries(existing, [row([event('18:32:00')])]), existing);
+  const morning = row([event('08:00:00')]);
+  assert.deepEqual(mergeImportedAttendanceEntries(existing, [morning]), existing);
+});

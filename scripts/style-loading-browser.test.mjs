@@ -20,12 +20,12 @@ try{
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={navigateToPath:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{},showNotification:(text,type)=>window.notices.push({text,type})};export const useAppActions=()=>a;export const useAppState=()=>({});'}));
     await page.route('**/src/pages/App/style/StyleDetail.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export default function Detail(){return null;}'}));
     const headers={'Access-Control-Allow-Origin':'*'},styles=[{id:1,ownerOrgId:1,code:'SAN049',name:'SAN049',canDelete:false,deleteBlockedReason:'TRAINING_SOURCE',hasWorkRecords:false,processes:[]},{id:2,ownerOrgId:1,code:'UNUSED',name:'UNUSED',canDelete:true,processes:[]}];
-    let release,seen=false,polls=0,background=false;
+    let release,seen=false,polls=0,background=false,statusOverride=null,statusReads=0;
     await page.route('**/styles?*',async route=>{
       seen=true;if(scenario!=='normal')await new Promise(resolve=>{release=resolve;});
       await route.fulfill({headers,...(scenario==='close-failure'?{status:500,json:{error:'Simulated failure'}}:{json:styles})});
     });
-    await page.route('**/at-sync/status?*',r=>r.fulfill({headers,json:{needsUpdate:polls===0,trainingMonthKey:'2026-09'}}));
+    await page.route('**/at-sync/status?*',r=>{statusReads++;return r.fulfill({headers,json:{needsUpdate:statusOverride??polls===0,trainingMonthKey:'2026-09'}});});
     await page.route('**/at-sync/run-now?*',r=>{background=r.request().postDataJSON().background===true;return r.fulfill({headers,status:202,json:{jobId:'job-1',status:'RUNNING'}});});
     await page.route('**/at-sync/jobs/job-1?*',r=>r.fulfill({headers,json:++polls===1?{jobId:'job-1',status:'RUNNING'}:{jobId:'job-1',status:'SUCCEEDED',result:{reason:'done',trainingMonthKey:'2026-09',updatedProcesses:1}}}));
     await page.goto(`http://127.0.0.1:${port}/style-loading-acceptance.html`);
@@ -44,6 +44,22 @@ try{
       await page.getByRole('button',{name:'AT 갱신',exact:true}).click();
       await page.waitForFunction(()=>window.notices.some(n=>n.type==='success'));
       assert.equal(background,true);assert.ok(polls>=2);
+      const atButton=page.getByRole('button',{name:/^AT /}).first();
+      await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='AT \uAC31\uC2E0'&&button.disabled));
+      // Source mutations must refresh AT readiness, not only the style rows.
+      for(const source of ['attendance-entries','work-logs']){
+        statusOverride=true;const before=statusReads;
+        await page.evaluate(source=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['payroll-sources'],source}})),source);
+        await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='AT \uAC31\uC2E0'&&!button.disabled));
+        assert.ok(statusReads>before,source);
+        statusOverride=false;
+        await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+        await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='AT \uAC31\uC2E0'&&button.disabled));
+      }
+      statusOverride=true;
+      await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+      await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='AT \uAC31\uC2E0'&&!button.disabled));
+      assert.equal(await atButton.isDisabled(),false);
     }else{
       for(let i=0;i<100&&!seen;i++)await new Promise(r=>setTimeout(r,20));assert.equal(seen,true);
       await page.getByRole('button',{name:'Close tab',exact:true}).click();release();

@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { loadManagementPeriod } from '../factories/factoryManagementStart';
 import { normalizeEmployeePayTypePolicy, isPolicyWorkday } from '../employees/employeePayTypePolicy';
 
-export const AT_SOURCE_POLICY_VERSION = 'completed-factory-month-actual-attendance-v1';
+export const AT_SOURCE_POLICY_VERSION = 'completed-factory-month-actual-attendance-v2';
 export type AtFactoryMonth = { factoryId: number; monthKey: string; startDate: string; endDate: string; sourceRevision?: string };
 export const atFactoryMonthKey = (factoryId: number, monthKey: string) => `${factoryId}:${monthKey}`;
 export const atSourceSignature = (scopes: AtFactoryMonth[]) => JSON.stringify([...scopes].sort((a,b)=>atFactoryMonthKey(a.factoryId,a.monthKey).localeCompare(atFactoryMonthKey(b.factoryId,b.monthKey))));
@@ -31,6 +31,7 @@ export function completedAtFactoryMonths({ rows, factories, currentMonth, holida
         row.workThrough < lastWorkDate || row.attendanceThrough < lastWorkDate || Number(row.invalidAttendanceCount) > 0) return [];
     return [{ factoryId: factory.id, monthKey, startDate, endDate, sourceRevision: JSON.stringify([
       row.workRecordCount,row.workUpdatedAt,row.recordUpdatedAt,row.attendanceCount,row.attendanceUpdatedAt,
+      row.workRevision,row.attendanceRevision,
       policy.workWeekdays,[...holidaySet].filter(date=>date.startsWith(monthKey)).sort(),
     ]) }];
   });
@@ -44,7 +45,8 @@ export async function loadCompletedAtFactoryMonths(db: any, orgId: number, maxMo
       WITH work_months AS (
         SELECT wl."factoryId", LEFT(wl."workDate",7) AS "monthKey",
           MAX(COALESCE(wl."coverageEndDate",wl."workDate")) AS "workThrough",
-          COUNT(wr.id)::int AS "workRecordCount",MAX(wl."updatedAt") AS "workUpdatedAt",MAX(wr."updatedAt") AS "recordUpdatedAt"
+          COUNT(wr.id)::int AS "workRecordCount",MAX(wl."updatedAt") AS "workUpdatedAt",MAX(wr."updatedAt") AS "recordUpdatedAt",
+          md5(string_agg(md5(to_jsonb(wl)::text || '|' || to_jsonb(wr)::text),'' ORDER BY wr.id)) AS "workRevision"
         FROM "WorkLog" wl JOIN "Factory" f ON f.id=wl."factoryId" AND f."orgId"=wl."orgId"
           JOIN "WorkRecord" wr ON wr."workLogId"=wl.id AND wr.quantity>0 AND wr."assignmentPlanId" IS NOT NULL
         WHERE wl."orgId"=${orgId} AND wl."recordKind"='EMPLOYEE'
@@ -54,13 +56,14 @@ export async function loadCompletedAtFactoryMonths(db: any, orgId: number, maxMo
       ), attendance_months AS (
         SELECT a."factoryId",LEFT(a."workDate",7) AS "monthKey",MAX(a."workDate") AS "attendanceThrough",
           COUNT(*) FILTER (WHERE a."workedSeconds" IS NULL OR a."workedSeconds"<0)::int AS "invalidAttendanceCount",
-          COUNT(*)::int AS "attendanceCount",MAX(a."updatedAt") AS "attendanceUpdatedAt"
+          COUNT(*)::int AS "attendanceCount",MAX(a."updatedAt") AS "attendanceUpdatedAt",
+          md5(string_agg(md5(to_jsonb(a)::text),'' ORDER BY a.id)) AS "attendanceRevision"
         FROM "AttendanceEntry" a JOIN "Factory" f ON f.id=a."factoryId" AND f."orgId"=a."orgId"
         WHERE a."orgId"=${orgId} AND a."managementExcluded"=false
           AND a."workDate">=${period.startDate} AND LEFT(a."workDate",7)<=${maxMonthKey}
           AND a."workDate">=COALESCE(f."managementStartDate",${period.startDate})
         GROUP BY a."factoryId",LEFT(a."workDate",7)
-      ) SELECT w.*, a."attendanceThrough",a."invalidAttendanceCount",a."attendanceCount",a."attendanceUpdatedAt"
+      ) SELECT w.*, a."attendanceThrough",a."invalidAttendanceCount",a."attendanceCount",a."attendanceUpdatedAt",a."attendanceRevision"
         FROM work_months w LEFT JOIN attendance_months a USING ("factoryId","monthKey")
     `),
     db.organizationHoliday.findMany({ where: { orgId }, select: { holidayDate: true } }),

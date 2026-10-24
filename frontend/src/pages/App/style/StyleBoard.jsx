@@ -229,6 +229,7 @@ const StyleBoard = () => {
   const [isAtSyncRunning, setAtSyncRunning] = useState(false);
   const [isAtResetRunning, setAtResetRunning] = useState(false);
   const [atSyncStatus, setAtSyncStatus] = useState(null);
+  const atStatusSequence = useRef(0);
   const mountedRef = useRef(true);
   const currentOrgRef = useRef(activeOrgId);
   currentOrgRef.current = activeOrgId;
@@ -271,6 +272,7 @@ const StyleBoard = () => {
   }, [refreshStyles]);
 
   const refreshAtSyncStatus = useCallback(async ({ throwOnError = false } = {}) => {
+    const sequence = ++atStatusSequence.current;
     if (!activeOrgId || !canViewProcessSummary) {
       setAtSyncStatus(null);
       return null;
@@ -280,28 +282,32 @@ const StyleBoard = () => {
       const status = await requestJSON(
         `/at-sync/status${buildQueryString({ orgId: activeOrgId, mode: 'previous' })}`, {skipCache:true,skipGlobalLoading:true}
       );
-      if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return null;
+      if (!mountedRef.current || currentOrgRef.current !== activeOrgId || sequence !== atStatusSequence.current) return null;
       setAtSyncStatus(status);
       return status;
     } catch (error) {
-      if (mountedRef.current && currentOrgRef.current === activeOrgId) setAtSyncStatus(null);
+      if (mountedRef.current && currentOrgRef.current === activeOrgId && sequence === atStatusSequence.current) setAtSyncStatus(null);
       if (throwOnError) throw error;
       return null;
     } finally {
-      if (mountedRef.current && currentOrgRef.current === activeOrgId) setAtSyncStatusLoading(false);
+      if (mountedRef.current && currentOrgRef.current === activeOrgId && sequence === atStatusSequence.current) setAtSyncStatusLoading(false);
     }
   }, [activeOrgId, canViewProcessSummary]);
 
   useEffect(() => {
+    if (!isStyleRouteActive) return;
     refreshAtSyncStatus();
-  }, [refreshAtSyncStatus]);
+    const refresh = () => { void refreshAtSyncStatus(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [refreshAtSyncStatus, isStyleRouteActive]);
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
     topics: [WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES],
     isActive: isStyleRouteActive,
     isBlocked: loading,
-    onRefresh: () => refreshStyles({ forceRefresh: true }),
+    onRefresh: () => Promise.all([refreshStyles({ forceRefresh: true }), refreshAtSyncStatus()]),
   });
 
   const handleRowDoubleClick = (style) => {

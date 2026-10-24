@@ -31,8 +31,8 @@ const CACHE_INVALIDATION_MAP = {
   '/customers': ['/customers'],
   '/orders': ['/orders', '/order-parties', '/assignment-cards'],
   '/styles': ['/styles', '/assignment-cards'],
-  '/work-logs': ['/work-logs', '/factory-month-capacity', '/assignment-plan-progress', '/styles', '/payroll/readiness'],
-  '/attendance-entries': ['/attendance-entries', '/payroll/readiness'],
+  '/work-logs': ['/work-logs', '/factory-month-capacity', '/assignment-plan-progress', '/styles', '/payroll/readiness', '/at-sync/status'],
+  '/attendance-entries': ['/attendance-entries', '/payroll/readiness', '/at-sync/status'],
   '/work-orders': ['/work-orders', '/assignment-cards'],
 };
 

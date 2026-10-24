@@ -6083,8 +6083,11 @@ const buildAtSyncStatusForOrg = async (
     ? new Date(row.latest_bucket_updated_at).toISOString()
     : null;
   const resettableItemCount = Number(row?.resettable_item_count ?? 0);
-  const needsUpdate = sourceMonthCount > 0 && (staleMonthCount > 0 || (sourcePolicy?.value as any)?.reason !== 'done') ||
-    ((sourcePolicy?.value as any)?.version !== AT_SOURCE_POLICY_VERSION || (sourcePolicy?.value as any)?.sourceSignature !== atSourceSignature(sourceScopes)) && (sourceMonthCount > 0 || resettableItemCount > 0);
+  const sourceChanged = (sourcePolicy?.value as any)?.version !== AT_SOURCE_POLICY_VERSION ||
+    (sourcePolicy?.value as any)?.sourceSignature !== atSourceSignature(sourceScopes);
+  // Existing learned data alone cannot make an incomplete month eligible.
+  const needsUpdate = sourceMonthCount > 0 &&
+    (staleMonthCount > 0 || sourceChanged || (sourcePolicy?.value as any)?.reason !== 'done');
   const reason =
     sourceMonthCount <= 0
       ? "no_source_work_logs"

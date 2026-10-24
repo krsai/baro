@@ -5,6 +5,14 @@ import eligibility from '../backend/dist/services/atTrainingEligibility.js';
 import jobs from '../backend/dist/services/atSyncJob.js';
 import deletion from '../backend/dist/services/styleDeletion.js';
 import {waitForAtSyncJob} from '../frontend/src/utils/atSyncJob.mjs';
+import fs from 'node:fs';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url),ts=require('../backend/node_modules/typescript');
+const backendSource=fs.readFileSync('backend/src/index.ts','utf8');
+const loadFunction=(name,next,deps)=>new Function(...Object.keys(deps),ts.transpileModule(
+  backendSource.slice(backendSource.indexOf(`const ${name} =`),backendSource.indexOf(`const ${next} =`)),
+  {compilerOptions:{target:ts.ScriptTarget.ES2022}},
+).outputText+`;return ${name};`)(...Object.values(deps));
 const {loadCompletedAtFactoryMonths,completedAtFactoryMonths,completedAtBucketSql,atSourceSignature}=eligibility;
 const policy={workWeekdays:[1,2,3,4,5,6]};
 const base={factoryId:1,monthKey:'2026-09',workThrough:'2026-09-30',attendanceThrough:'2026-09-30',invalidAttendanceCount:0};
@@ -17,6 +25,41 @@ test('factory/month completion does not demand attendance for every employee/day
 test('month-end weekends and holidays use the final scheduled workday',()=>{
   assert.equal(complete([{...base,monthKey:'2026-05',workThrough:'2026-05-30',attendanceThrough:'2026-05-30'}]).length,1);
   assert.equal(completedAtFactoryMonths({rows:[{...base,workThrough:'2026-09-29',attendanceThrough:'2026-09-29'}],factories:[{id:1,startDate:'2026-09-15'}],currentMonth:'2026-10',holidays:['2026-09-30'],policy})[0].startDate,'2026-09-15');
+});
+
+test('source changes reactivate status and rebuild an older completed month, not incomplete months',async()=>{
+  const {Prisma}=require('../backend/node_modules/@prisma/client');
+  const scopes=[...complete([{...base,monthKey:'2026-08',workThrough:'2026-08-31',attendanceThrough:'2026-08-31'}]),...complete([base])];
+  const value={version:eligibility.AT_SOURCE_POLICY_VERSION,sourceSignature:atSourceSignature(scopes),reason:'done'};
+  const rebuilt=[];
+  const db={systemSetting:{findUnique:async()=>({value})},$queryRaw:async()=>[{
+    source_month_count:scopes.length,stale_month_count:0,source_work_log_count:2,source_work_record_count:2,bucket_count:2,resettable_item_count:2,
+  }],$transaction:async fn=>fn({})};
+  const status=loadFunction('buildAtSyncStatusForOrg','resetAtTrainingStateForOrg',{
+    Prisma,prisma:db,resolveAtSyncTrainingMonthKey:()=> '2026-09',loadCompletedAtFactoryMonths:async()=>scopes,
+    completedAtSourceSql:eligibility.completedAtSourceSql,completedAtBucketSql,AT_V2_MODEL_VERSION:'v2',
+    AT_SOURCE_POLICY_VERSION:eligibility.AT_SOURCE_POLICY_VERSION,atSourceSignature,
+  });
+  assert.equal((await status(1)).needsUpdate,false);
+  // Older source content changes even when aggregate maximum timestamps do not.
+  scopes[0]={...scopes[0],sourceRevision:'late-actual-attendance'};
+  assert.equal((await status(1)).needsUpdate,true);
+  const backfill=loadFunction('ensureHistoricalAtTrainingBucketsForOrg','loadAtTrainingDataFromBuckets',{
+    prisma:db,normalizeMonthKey:key=>key,loadCompletedAtFactoryMonths:async()=>scopes,
+    AT_SOURCE_POLICY_VERSION:eligibility.AT_SOURCE_POLICY_VERSION,atSourceSignature,
+    collectRawAtTrainingMonthKeysForOrg:async()=>['2026-07','2026-08','2026-09'],
+    collectStoredAtTrainingMonthKeysForOrg:async()=>['2026-08','2026-09'],
+    collectStaleStoredAtTrainingMonthKeysForOrg:async()=>[],ensureArray:value=>value,
+    syncAtTrainingBucketsForMonth:async({trainingMonthKey})=>rebuilt.push(trainingMonthKey),
+  });
+  assert.deepEqual(await backfill({orgId:1,maxMonthKey:'2026-09',excludeMonthKeys:['2026-09']}),['2026-08']);
+  assert.deepEqual(rebuilt,['2026-08']);
+  value.sourceSignature=atSourceSignature(scopes);
+  assert.equal((await status(1)).needsUpdate,false);
+  scopes[0]={...scopes[0],sourceRevision:'late-work-record'};
+  assert.equal((await status(1)).needsUpdate,true);
+  scopes.splice(0);
+  assert.equal((await status(1)).needsUpdate,false,'old AT values must not enable training without a completed source month');
 });
 
 test('real SQL excludes incomplete factories, current months and foreign organizations; old buckets are gated too',async()=>{
@@ -41,6 +84,12 @@ test('real SQL excludes incomplete factories, current months and foreign organiz
     const where=completedAtBucketSql(scopes,'b');
     assert.deepEqual((await sql.query(`SELECT id FROM "AtTrainingBucket" b WHERE ${where.text}`,where.values)).rows.map(r=>r.id),[1]);
     const oldSignature=atSourceSignature(scopes);
+    await sql.exec('UPDATE "WorkRecord" SET quantity=30 WHERE id=1');
+    const changedWork=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    assert.notEqual(atSourceSignature(changedWork),oldSignature,'content correction must invalidate AT even without a newer aggregate timestamp');
+    await sql.exec('UPDATE "AttendanceEntry" SET "workedSeconds"=32000 WHERE id=1');
+    const changedAttendance=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    assert.notEqual(atSourceSignature(changedAttendance),atSourceSignature(changedWork));
     await sql.exec('DELETE FROM "AttendanceEntry" WHERE id=1');
     const after=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
     assert.equal(after.length,0);assert.notEqual(atSourceSignature(after),oldSignature);

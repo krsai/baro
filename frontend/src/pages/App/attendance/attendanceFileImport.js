@@ -572,6 +572,21 @@ export const buildAttendanceImportPlan = ({
   };
 };
 
+const AUTO_FILL_NOTE_SUFFIXES = {
+  clockIn: [
+    '출근 기록 없음 → 08:00 출근 자동 생성',
+    'Missing clock-in → 08:00 clock-in auto-filled',
+    'Thiếu giờ vào → tự động bổ sung giờ vào 08:00',
+  ],
+  clockOut: [
+    '퇴근 기록 없음 → 17:00 퇴근 자동 생성',
+    'Missing clock-out → 17:00 clock-out auto-filled',
+    'Thiếu giờ ra → tự động bổ sung giờ ra 17:00',
+  ],
+};
+const autoFillNoteSide = line => Object.keys(AUTO_FILL_NOTE_SUFFIXES)
+  .find(side => AUTO_FILL_NOTE_SUFFIXES[side].some(suffix => line.endsWith(`: ${suffix}`)));
+
 export const mergeImportedAttendanceEntries = (
   existingRows = [],
   importedEntries = []
@@ -600,12 +615,24 @@ export const mergeImportedAttendanceEntries = (
       note: null,
     };
 
-    mergedByWorker.set(normalizedWorkerId, {
-      workerId: normalizedWorkerId,
-      clockIn: toText(entry?.clockIn) || current.clockIn || null,
-      clockOut: toText(entry?.clockOut) || current.clockOut || null,
-      note: [...new Set([...toText(current.note).split('\n'), toText(entry?.note)].filter(Boolean))].join('\n') || null,
-    });
+    const oldNotes = toText(current.note).split('\n').filter(Boolean);
+    const newNotes = toText(entry?.note).split('\n').filter(Boolean);
+    const notes = [...oldNotes, ...newNotes].filter(line => !autoFillNoteSide(line));
+    const merged = { workerId: normalizedWorkerId };
+    for (const side of ['clockIn', 'clockOut']) {
+      const oldAutoNote = oldNotes.find(line => autoFillNoteSide(line) === side);
+      const newAutoNote = newNotes.find(line => autoFillNoteSide(line) === side);
+      const incoming = toText(entry?.[side]);
+      // Actual punches replace generated defaults, even for an earlier month.
+      // A later incomplete import must never replace an existing actual punch
+      // with another generated default. Never infer provenance from 08:00/17:00.
+      const keepExisting = !incoming || (newAutoNote && current[side] && !oldAutoNote);
+      merged[side] = keepExisting ? current[side] : incoming;
+      const remainingAutoNote = keepExisting ? oldAutoNote : newAutoNote;
+      if (remainingAutoNote) notes.push(remainingAutoNote);
+    }
+    merged.note = [...new Set(notes)].join('\n') || null;
+    mergedByWorker.set(normalizedWorkerId, merged);
   });
 
   return Array.from(mergedByWorker.values()).sort(
