@@ -60,9 +60,9 @@ const TEXT = {
   import: { ko: '파일 등록', en: 'Import File', vi: 'Nhap tep' },
   importing: { ko: '등록 중', en: 'Importing', vi: 'Đăng nhập' },
   importHint: {
-    ko: '기기 원본 CSV/XLSX를 검토 후 등록합니다. 수동 입력·수정 표시, 시각 수식, 날짜 형식 불일치가 있으면 업로드를 차단합니다.',
-    en: 'Review the original device CSV/XLSX before importing. Manual-edit indicators, date/time formulas and inconsistent date formats block upload.',
-    vi: 'Kiểm tra CSV/XLSX gốc từ máy trước khi nhập. Tệp có dấu hiệu sửa thủ công, công thức ngày/giờ hoặc định dạng không nhất quán sẽ bị chặn.',
+    ko: '수동 수정한 CSV/XLSX도 등록할 수 있습니다. 파일의 사번·근무일·출퇴근 시각을 읽어 등록 전 검토합니다.',
+    en: 'Edited CSV/XLSX files can be imported. Review employee codes, work dates and attendance times before saving.',
+    vi: 'Có thể nhập CSV/XLSX đã chỉnh sửa. Kiểm tra mã nhân viên, ngày làm việc và giờ chấm công trước khi lưu.',
   },
   searchPlaceholder: { ko: '날짜 검색', en: 'Search date', vi: 'Tim ngay' },
   workDate: { ko: '근무일자', en: 'Work Date', vi: 'Ngay lam viec' },
@@ -650,7 +650,7 @@ const AttendanceList = () => {
 
       setImportingFile(true);
       try {
-        const parsed = await parseAttendanceImportFile(file, { languageCode });
+        const parsed = await parseAttendanceImportFile(file);
         if (!parsed.events.length) {
           setImportError(resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
           return;

@@ -11,60 +11,24 @@ const buildXlsxFile = (rows) => {
   return { arrayBuffer: async () => buffer };
 };
 
-test('manual source indicators block the whole file with localized row numbers', async () => {
-  for (const [languageCode, source, expected] of [
-    ['ko', 'Nhập thủ công', /수동 편집한 자료는 업로드할 수 없습니다/],
-    ['en', 'Manual correction', /Manually edited data cannot be uploaded/],
-    ['vi', 'Nhật ký sửa thủ công', /Không thể tải dữ liệu đã sửa thủ công/],
-  ]) {
-    await assert.rejects(parseAttendanceImportFile(buildXlsxFile([
-      ['ID Người', 'Tên', 'Thời gian', 'Nguồn dữ liệu'],
-      ['01', 'BRVN0003', '2026-09-01 08:00:00', 'Nhật ký quẹt thẻ'],
-      ['01', 'BRVN0003', '2026-09-01 17:00:00', source],
-    ]), { languageCode }), error => {
-      assert.equal(error.code, 'ATTENDANCE_FILE_INTEGRITY');
-      assert.deepEqual(error.issues, [{ rowNumber: 3, reasons: ['manual'] }]);
-      assert.match(error.message, expected);
-      return true;
-    });
+test('manual markers, cached formula values and edited timestamp spacing remain importable', async () => {
+  for (const source of ['Manual correction', 'Edited']) {
+    const parsed = await parseAttendanceImportFile(buildXlsxFile([
+      ['ID', 'Name', 'Time', 'Data source'],
+      ['01', 'BRVN0003', '2026-09-01 08:00:00', source],
+      ['01', 'BRVN0003', '2026-09-1  17:00:00', source],
+    ]));
+    assert.equal(parsed.events.length, 2);
+    const plan = buildAttendanceImportPlan({ events: parsed.events, employees: [{ id: 3, employeeNo: 'BRVN0003' }] });
+    assert.deepEqual(plan.dailyEntries[0].entries, [{ workerId: 3, clockIn: '08:00', clockOut: '17:00', note: null }]);
   }
-});
-
-test('manual processing flags also block day summaries, but blank markers and missing punches do not', async () => {
-  await assert.rejects(parseAttendanceImportFile(buildXlsxFile([
-    ['Tên', 'Ngày', 'Thời Gian Vào', 'Thời Gian Ra', 'Loại xử lý'],
-    ['BRVN0003', '2026-09-01', '08:00:00', '-', 'Chỉnh sửa'],
-  ])), { code: 'ATTENDANCE_FILE_INTEGRITY' });
-  const parsed = await parseAttendanceImportFile(buildXlsxFile([
-    ['ID Người', 'Tên', 'Thời gian', 'Nguồn dữ liệu', 'Loại xử lý'],
-    ['01', 'BRVN0003', '2026-09-01 08:00:00', 'Nhật ký quẹt thẻ', '-'],
-  ]));
-  assert.equal(parsed.events.length, 1);
-});
-
-test('inconsistent ISO timestamps are blocked instead of silently normalized', async () => {
-  await assert.rejects(parseAttendanceImportFile(buildXlsxFile([
-    ['ID Người', 'Tên', 'Thời gian'],
-    ['01', 'BRVN0003', '2026-09-01 08:00:00'],
-    ['01', 'BRVN0003', '2026-09-01 17:00:00'],
-    ['01', 'BRVN0003', '2026-09-2  8:00:00'],
-  ])), error => {
-    assert.deepEqual(error.issues, [{ rowNumber: 4, reasons: ['format'] }]);
-    return error.code === 'ATTENDANCE_FILE_INTEGRITY';
-  });
-});
-
-test('formula timestamps are rejected even if their cached value looks valid', async () => {
   const sheet = XLSX.utils.aoa_to_sheet([
-    ['ID Người', 'Tên', 'Thời gian'], ['01', 'BRVN0003', '2026-09-01 08:00:00'],
+    ['ID', 'Name', 'Time'], ['01', 'BRVN0003', '2026-09-01 08:00:00'],
   ]);
   sheet.C2.f = '"2026-09-01 08:00:00"';
   const workbook = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(workbook, sheet, 'Sheet1');
   const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-  await assert.rejects(parseAttendanceImportFile({ arrayBuffer: async () => buffer }), error => {
-    assert.deepEqual(error.issues, [{ rowNumber: 2, reasons: ['formula'] }]);
-    return error.code === 'ATTENDANCE_FILE_INTEGRITY';
-  });
+  assert.equal((await parseAttendanceImportFile({ arrayBuffer: async () => buffer })).events.length, 1);
 });
 
 test('July event report prefers full employee code in name column over unrelated device ID', async () => {

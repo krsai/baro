@@ -5,7 +5,7 @@ import path from 'node:path';
 import { chromium } from 'playwright-core';
 import * as XLSX from '../frontend/node_modules/xlsx/xlsx.mjs';
 
-const fixture = path.resolve('frontend/attendance-integrity-acceptance.html');
+const fixture = path.resolve('frontend/attendance-file-import-acceptance.html');
 assert.ok(!existsSync(fixture));
 writeFileSync(fixture, '<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from "react";import {createRoot} from "react-dom/client";import Page from "/src/pages/App/attendance/AttendanceList.jsx";createRoot(document.getElementById("root")).render(React.createElement(Page));</script></body></html>');
 const port = 43227;
@@ -21,13 +21,13 @@ function file(source) {
 }
 try {
   for (let i = 0; i < 100; i++) {
-    try { if ((await fetch(`http://127.0.0.1:${port}/attendance-integrity-acceptance.html`)).ok) break; } catch {}
+    try { if ((await fetch(`http://127.0.0.1:${port}/attendance-file-import-acceptance.html`)).ok) break; } catch {}
     await new Promise(resolve => setTimeout(resolve, 100));
   }
   const executablePath = ['C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(existsSync);
   assert.ok(executablePath);
   browser = await chromium.launch({ executablePath, headless: true });
-  for (const [language, expected] of [['ko', '수동 편집한 자료는 업로드할 수 없습니다.'], ['en', 'Manually edited data cannot be uploaded.'], ['vi', 'Không thể tải dữ liệu đã sửa thủ công.']]) {
+  for (const [language, expected] of [['ko', '전체 등록'], ['en', 'Import all'], ['vi', 'Nhập tất cả']]) {
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(90000);
     const errors = []; page.on('pageerror', error => errors.push(error.message));
@@ -39,19 +39,19 @@ try {
     await mock('**/src/pages/App/payroll/PayrollSettingsDialog.jsx*', 'export default ()=>null;');
     await mock('**/src/hooks/useWorkspaceRefreshOnEvent*', 'export default ()=>{};');
     await mock('**/src/hooks/useHolidayCalendar*', 'const holidaySet=new Set();export default ()=>({holidaySet});');
-    await mock('**/src/utils/apiClient.js*', `export const buildQueryString=o=>'?' + new URLSearchParams(o);export async function requestJSON(url,options={}){window.requests??=[];window.requests.push({url,method:options.method||'GET'});if(options.method)throw Error('Unexpected write');if(url.startsWith('/factories'))return [{id:1,name:'Hanoi',managementStartDate:'2026-04-01'}];return [];}`);
-    await page.goto(`http://127.0.0.1:${port}/attendance-integrity-acceptance.html`);
+    await mock('**/src/utils/apiClient.js*', `export const buildQueryString=o=>'?' + new URLSearchParams(o);export async function requestJSON(url,options={}){window.requests??=[];window.requests.push({url,method:options.method||'GET'});if(options.method)throw Error('Unexpected write');if(url.startsWith('/factories'))return [{id:1,name:'Hanoi',managementStartDate:'2026-04-01'}];if(url.startsWith('/employees'))return [{id:3,employeeNo:'BRVN0003',name:'Test Employee',factoryId:1,status:'ACTIVE'}];return [];}`);
+    await page.goto(`http://127.0.0.1:${port}/attendance-file-import-acceptance.html`);
     await page.waitForFunction(() => (window.requests || []).some(row => row.url.startsWith('/employees')));
-    const before = await page.evaluate(() => window.requests.length);
     await page.locator('input[type=file]').setInputFiles(file('Manual correction'));
     const dialog = page.getByRole('dialog');
-    await dialog.getByText(expected, { exact: false }).waitFor();
-    assert.equal(await page.evaluate(() => window.requests.length), before, 'Blocked files must not reach employee matching or save');
+    const confirm = dialog.getByRole('button', { name: expected, exact: true });
+    await confirm.waitFor();
+    assert.equal(await confirm.isDisabled(), false);
     assert.equal(await page.evaluate(() => window.requests.some(row => row.method !== 'GET')), false);
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log('Attendance integrity browser passed: ko/en/vi blocking dialog and zero match/save requests.');
+  console.log('Attendance file import browser passed: ko/en/vi edited-file review with enabled import confirmation and zero premature saves.');
 } finally {
   await browser?.close(); vite.kill(); unlinkSync(fixture);
 }
