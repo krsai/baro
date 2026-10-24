@@ -18,14 +18,17 @@ try{
   await page.route('**/factories?*',r=>r.fulfill({headers,json:[{id:1,name:'Hanoi',managementStartDate:'2026-04-01'}]}));await page.route('**/employees?*',r=>r.fulfill({headers,json:[employee]}));
   await page.route('**/attendance-entries?*',r=>{const url=new URL(r.request().url());if(url.searchParams.has('monthsOnly'))return r.fulfill({headers,json:recordedMonths});reads.push({path:'attendance',from:url.searchParams.get('dateFrom'),to:url.searchParams.get('dateTo')});return r.fulfill({headers,json:[]})});
   await page.route('**/work-logs?*',r=>{const url=new URL(r.request().url());if(url.searchParams.has('monthsOnly'))return r.fulfill({headers,json:recordedMonths});const from=url.searchParams.get('dateFrom'),to=url.searchParams.get('dateTo');reads.push({path:'work',from,to});return r.fulfill({headers,json:['2026-09-15','2026-10-20'].filter(date=>date>=from&&date<=to).map((date,id)=>({id,workDate:date,displayDate:date,factoryId:1,factoryName:'Hanoi',recordKind:'EMPLOYEE',records:[{workerId:10,workerName:'Worker A',ctSeconds:30,quantity:10}]}))})});
-  await page.goto(`http://127.0.0.1:${port}/range-pages-acceptance.html?${kind}`);await page.getByLabel('Start date').waitFor();await page.getByLabel('Start date').fill('2026-09-15');await page.getByLabel('End date').fill('2026-10-20');
+  await page.addInitScript(()=>sessionStorage.setItem('work-history:list-filters:v1:1',JSON.stringify({selectedFactoryId:'999',dateFrom:'2026-09-01',dateTo:'2026-09-30'})));
+  await page.goto(`http://127.0.0.1:${port}/range-pages-acceptance.html?${kind}`);await page.getByLabel('Start date').waitFor();
+  assert.equal(await page.getByLabel('Start date').inputValue(),'2026-10-01');
+  assert.equal(await page.getByLabel('End date').inputValue(),'2026-10-31');await page.getByLabel('Start date').fill('2026-09-15');await page.getByLabel('End date').fill('2026-10-20');
   await page.waitForFunction(()=>document.querySelector('input[aria-label="End date"]')?.value==='2026-10-20');await page.waitForTimeout(300);
   const target=kind==='attendance'?'attendance':'work';assert.ok(reads.some(r=>r.path===target&&r.from==='2026-09-15'&&r.to==='2026-10-20'),JSON.stringify({kind,reads,errors}));
   if(kind==='analysis'){const labels=await page.getByText('2026-09',{exact:true}).count();assert.ok(labels>0);const september=page.locator('tbody tr').filter({has:page.getByText('2026-09',{exact:true})});await september.dblclick();assert.match(await page.evaluate(()=>window.lastNavigation),/production-analysis\/2026-09\/1\/10/);}
   if(kind!=='analysis'){
     recordedMonths=[];await page.reload();await page.waitForTimeout(500);
-    // An empty catalogue no longer erases or narrows the selected period.
-    assert.equal(await page.getByLabel('End date').inputValue(),kind==='work'?'2026-10-20':'2026-10-31');
+    // Reopening always starts this month, even with legacy session filters present.
+    assert.equal(await page.getByLabel('End date').inputValue(),'2026-10-31');
     assert.ok(reads.some(r=>r.path===target&&r.to?.startsWith('2026-10')));
   }
   assert.deepEqual(errors,[],kind);await page.close();

@@ -149,7 +149,6 @@ const DAILY_LOG_LABELS = {
   vi: 'Ghi chep ngay',
 };
 
-const WORK_LIST_FILTER_STORAGE_PREFIX = 'work-history:list-filters:v1';
 
 const resolveText = (bundle, languageCode, fallback = '') =>
   bundle?.[languageCode] || bundle?.ko || fallback;
@@ -226,63 +225,6 @@ const formatCurrencyValue = (value, languageCode) => {
   return formatCurrency(value, { currencyCode: 'VND', languageCode, fallback: '-' });
 };
 
-const normalizeFilterDate = (value) => {
-  const normalized = dayjs(value);
-  if (!normalized.isValid()) return null;
-  return normalized.startOf('day').toDate();
-};
-
-// Query bounds are applied by the shared selector, not a page-specific fallback date.
-const clampWorkHistoryFilterDate = value => normalizeFilterDate(value) || dayjs().startOf('day').toDate();
-const buildFilterDateKey = value => dayjs(clampWorkHistoryFilterDate(value)).format('YYYY-MM-DD');
-
-const buildWorkListFilterStorageKey = (orgId) =>
-  `${WORK_LIST_FILTER_STORAGE_PREFIX}:${String(orgId || 'global').trim() || 'global'}`;
-const readStoredWorkListFilters = (orgId) => {
-  if (typeof window === 'undefined') return null;
-  try {
-    const raw = window.sessionStorage.getItem(buildWorkListFilterStorageKey(orgId));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const storedStart = normalizeFilterDate(
-      parsed?.dateFrom ?? parsed?.dateFilterStart ?? null
-    );
-    const storedEnd = normalizeFilterDate(
-      parsed?.dateTo ?? parsed?.dateFilterEnd ?? null
-    );
-    const selectedFactoryId = String(parsed?.selectedFactoryId || '').trim();
-    if (!storedStart && !storedEnd && !selectedFactoryId) return null;
-    const dateFilterStart = clampWorkHistoryFilterDate(storedStart || storedEnd || new Date());
-    const endCandidate = clampWorkHistoryFilterDate(storedEnd || storedStart || dateFilterStart);
-    const dateFilterEnd = endCandidate >= dateFilterStart ? endCandidate : dateFilterStart;
-    return {
-      selectedFactoryId,
-      dateFilterStart,
-      dateFilterEnd,
-    };
-  } catch (_error) {
-    return null;
-  }
-};
-const persistWorkListFilters = (orgId, { selectedFactoryId, dateFilterStart, dateFilterEnd }) => {
-  if (typeof window === 'undefined') return;
-  const startKey = buildFilterDateKey(dateFilterStart);
-  const endKey = buildFilterDateKey(dateFilterEnd);
-  if (!startKey || !endKey) return;
-  try {
-    window.sessionStorage.setItem(
-      buildWorkListFilterStorageKey(orgId),
-      JSON.stringify({
-        selectedFactoryId: String(selectedFactoryId || ''),
-        dateFrom: startKey,
-        dateTo: endKey,
-      })
-    );
-  } catch (_error) {
-    // Ignore storage errors to keep filter UX uninterrupted.
-  }
-};
-
 const resolveWorkLogCoverageDayCount = (log) => {
   const start = dayjs(log?.coverageStartDate);
   const end = dayjs(log?.coverageEndDate);
@@ -340,10 +282,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     setDraftRevision(value => value + 1);
   };
   const { languageCode } = useLanguage();
-  const storedFilters = useMemo(
-    () => readStoredWorkListFilters(activeOrgId),
-    [activeOrgId]
-  );
 
   const [logs, setLogs] = useState([]);
   const [loadError, setLoadError] = useState(false);
@@ -352,7 +290,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   const [factoryError, setFactoryError] = useState(false);
   const [loadingFactories, setLoadingFactories] = useState(false);
   const [selectedFactoryId, setSelectedFactoryId] = useState(() =>
-    activeFactoryId ? String(activeFactoryId) : storedFilters?.selectedFactoryId || ''
+    activeFactoryId ? String(activeFactoryId) : ''
   );
   const [searchTerm, setSearchTerm] = useState('');
   const selectedFactory = useMemo(
@@ -368,16 +306,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
       }),
     [factories, selectedFactory]
   );
-  const [dateFilterStart, setDateFilterStart] = useState(
-    () =>
-      clampWorkHistoryFilterDate(
-        storedFilters?.dateFilterStart || dayjs().startOf('month').toDate()
-      )
-  );
-  const [dateFilterEnd, setDateFilterEnd] = useState(
-    () =>
-      clampWorkHistoryFilterDate(storedFilters?.dateFilterEnd || dayjs().endOf('month').toDate())
-  );
+  const [dateFilterStart, setDateFilterStart] = useState(() => dayjs().startOf('month').toDate());
+  const [dateFilterEnd, setDateFilterEnd] = useState(() => dayjs().endOf('month').toDate());
   const [deletingId, setDeletingId] = useState('');
   const [importing, setImporting] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -398,19 +328,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     () => dayjs(dateFilterEnd).format('YYYY-MM-DD'),
     [dateFilterEnd]
   );
-  useEffect(() => {
-    persistWorkListFilters(activeOrgId, {
-      selectedFactoryId: activeFactoryId ? String(activeFactoryId) : selectedFactoryId,
-      dateFilterStart,
-      dateFilterEnd,
-    });
-  }, [
-    activeFactoryId,
-    activeOrgId,
-    dateFilterEnd,
-    dateFilterStart,
-    selectedFactoryId,
-  ]);
 
   useEffect(() => {
     const abortController = new AbortController();
