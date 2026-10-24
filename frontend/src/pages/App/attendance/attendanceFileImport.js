@@ -1,6 +1,7 @@
 import { isAttendanceEmployeeVisibleOnDate, isAttendanceManagementExcluded } from './attendanceEmployment.js';
 import dayjs from 'dayjs';
 import * as XLSX from 'xlsx';
+import { assertAttendanceImportIntegrity } from './attendanceImportIntegrity.js';
 
 const EXCEL_EPOCH_OFFSET = 25569;
 const EXCEL_DAY_MS = 24 * 60 * 60 * 1000;
@@ -258,17 +259,20 @@ const readSheetRows = async (file) => {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array', raw: false });
   const firstSheetName = workbook.SheetNames[0];
-  if (!firstSheetName) return [];
+  if (!firstSheetName) return { rows: [], formulaAt: () => false };
   const sheet = workbook.Sheets[firstSheetName];
-  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+  return {
+    rows: XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '', range: 0 }),
+    formulaAt: (row, column) => Boolean(sheet[XLSX.utils.encode_cell({ r: row, c: column })]?.f),
+  };
 };
 
-export const parseAttendanceImportFile = async (file) => {
+export const parseAttendanceImportFile = async (file, { languageCode = 'ko' } = {}) => {
   if (!file) {
     throw new Error('File is missing.');
   }
 
-  const rows = await readSheetRows(file);
+  const { rows, formulaAt } = await readSheetRows(file);
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('The file has no rows.');
   }
@@ -281,6 +285,7 @@ export const parseAttendanceImportFile = async (file) => {
     );
   }
 
+  assertAttendanceImportIntegrity({ rows, header, formulaAt, languageCode });
   const events = [];
   let skippedInvalidTimeCount = 0;
   let skippedMissingWorkerCount = 0;
