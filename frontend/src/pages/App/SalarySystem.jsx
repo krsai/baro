@@ -1,3 +1,4 @@
+import { applicableMonthVersion } from '../../utils/versionApplication.mjs';
 import MonthVersionBoard from '../../components/MonthVersionBoard';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
 import { resolveLocalizedAttributeName } from '../../utils/appLanguage';
@@ -432,10 +433,7 @@ const SalarySystem = () => {
   );
   const managedMonths = useMemo(() => versionTimelineMonths(monthRange(managementStartMonth, versionDefaultMonth), versionDefaultMonth, versionBoundaries), [managementStartMonth, versionDefaultMonth, versionBoundaries]);
   const colorByVersionId = useMemo(() => new Map([...versions].sort((a, b) => a.versionNumber - b.versionNumber).map((version, index) => [version.id, VERSION_GRAPH_COLORS[index % VERSION_GRAPH_COLORS.length]])), [versions]);
-  const versionForMonth = useCallback((month) => {
-    const applicable = versions.filter((version) => version.versionNumber === 1 || (versionBoundaries[version.id] && versionBoundaries[version.id] <= month));
-    return applicable.sort((a, b) => a.versionNumber - b.versionNumber).at(-1) || null;
-  }, [versionBoundaries, versions]);
+  const versionForMonth = useCallback(month => applicableMonthVersion(versions, versionBoundaries, month, 1), [versionBoundaries, versions]);
   const assignVersionToMonth = (version, month) => {
     if (versionBusy || saving || edit.stale || version.versionNumber === 1 || month && (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < managementStartMonth)) return;
     setVersionBoundaries((current) => {

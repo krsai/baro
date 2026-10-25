@@ -1,8 +1,8 @@
 import VersionAssignmentBoard from '../../../../components/VersionAssignmentBoard';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
 import VersionApplicationStart from '../../../../components/VersionApplicationStart';
-import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
+import { confirmStyleProcessVersion, fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
 import { useLanguage } from '../../../../context/LanguageContext';
 
 // One distinct color per version, git-log-graph style, so the branch line
@@ -20,6 +20,12 @@ const COPY = {
   ko: { oldest: '가장 오래된 배정에는 반드시 어떤 버전이든 하나가 적용되어야 합니다.', oneBoundary: '최소 하나의 공정 버전은 적용 구간이 지정되어야 합니다.', order: '버전 적용 순서가 올바르지 않습니다. 이후 버전은 이전 버전보다 나중 배정부터 적용되어야 합니다.', loadFail: '공정 버전을 불러오지 못했습니다.', saved: '공정 버전 적용 구간을 저장했습니다.', saveFail: '적용 구간을 저장하지 못했습니다.', title: '공정 버전 관리', processes: '개', moveOldest: '가장 오래된 배정은 반드시 어떤 버전이든 하나가 적용되어야 합니다. 다른 버전을 먼저 오래된 배정 쪽으로 옮겨주세요.', assignment: '배정', records: '기록', unspecified: '미지정', empty: '배정된 작업이 없습니다.', save: '저장' },
   en: { oldest: 'The oldest assignment must have a process version.', oneBoundary: 'At least one process version must have an effective boundary.', order: 'Version boundaries must follow version order.', loadFail: 'Failed to load process versions.', saved: 'Saved process version boundaries.', saveFail: 'Failed to save version boundaries.', title: 'Process Version Management', processes: ' processes', moveOldest: 'The oldest assignment must have a version. Move another version to the oldest assignment first.', assignment: 'Qty', records: 'Records', unspecified: 'Unspecified', empty: 'No assigned work.', save: 'Save' },
   vi: { oldest: 'Phân công cũ nhất phải được áp dụng một phiên bản công đoạn.', oneBoundary: 'Phải thiết lập phạm vi áp dụng cho ít nhất một phiên bản công đoạn.', order: 'Phạm vi áp dụng phải theo đúng thứ tự phiên bản.', loadFail: 'Không thể tải phiên bản công đoạn.', saved: 'Đã lưu phạm vi áp dụng phiên bản công đoạn.', saveFail: 'Không thể lưu phạm vi áp dụng.', title: 'Quản lý phiên bản công đoạn', processes: ' công đoạn', moveOldest: 'Phân công cũ nhất phải có một phiên bản. Hãy chuyển một phiên bản khác đến phân công cũ nhất trước.', assignment: 'Số lượng', records: 'Ghi chép', unspecified: 'Chưa chỉ định', empty: 'Không có công việc đã phân công.', save: 'Lưu' },
+};
+
+const LIFECYCLE_COPY = {
+  ko: { empty: '아직 배정이 없습니다. 확정 버전은 보관되며 첫 배정 생성 시 최신 확정 버전이 자동 적용됩니다.', next: '새 배정에 자동 적용', history: '기존 배정 적용', stored: '보관 버전', confirm: '현재 공정 확정', pending: '현재 공정에 미확정 변경이 있습니다. 확정하면 새 배정의 기본 버전이 됩니다. 기존 배정의 변경은 아래 적용 구간에서 별도로 저장하세요.', confirmed: '공정 버전을 확정했습니다.' },
+  en: { empty: 'No assignments yet. Confirmed versions are retained; the latest confirmed version will apply to the first new assignment.', next: 'Default for new assignments', history: 'Applied to existing assignments', stored: 'Retained version', confirm: 'Confirm current processes', pending: 'The current processes have unconfirmed changes. Confirm them to make a new default for new assignments. Changes to existing assignments are saved separately below.', confirmed: 'Process version confirmed.' },
+  vi: { empty: 'Chưa có phân công. Các phiên bản đã xác nhận được lưu lại; phiên bản mới nhất sẽ tự động áp dụng cho phân công đầu tiên.', next: 'Mặc định cho phân công mới', history: 'Áp dụng cho phân công hiện có', stored: 'Phiên bản được lưu', confirm: 'Xác nhận công đoạn hiện tại', pending: 'Công đoạn hiện tại có thay đổi chưa xác nhận. Xác nhận để làm mặc định cho phân công mới. Thay đổi phân công hiện có được lưu riêng bên dưới.', confirmed: 'Đã xác nhận phiên bản công đoạn.' },
 };
 
 const translateVersionBoundaryError = (message, languageCode = 'en') => {
@@ -53,6 +59,7 @@ export const deriveEditableVersionBoundaries = (versions, assignments) => {
 const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, notify }) => {
   const { languageCode } = useLanguage();
   const copy = COPY[languageCode] || COPY.en;
+  const lifecycle = LIFECYCLE_COPY[languageCode] || LIFECYCLE_COPY.en;
   const integrityWarning = languageCode === 'en'
     ? 'Some assignments need their process references reviewed. Press Save below to rebuild them from this version - completed or payroll-locked assignments are left untouched either way.'
     : languageCode === 'vi'
@@ -63,26 +70,49 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const [boundaries, setBoundaries] = useState({});
   const [savedBoundaries, setSavedBoundaries] = useState({});
   const [busy, setBusy] = useState(false);
+  const [unconfirmed, setUnconfirmed] = useState(false);
+  const loadSequence = useRef(0);
+  const scope = `${open}:${orgId}:${ownerOrgId}:${styleId}`;
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
   const lockText = languageCode === 'ko' ? '생산 완료·잠금 배정은 현재 공정 버전을 유지합니다. 새 버전의 적용 구간에 포함되어도 변경되지 않습니다.'
     : languageCode === 'vi' ? 'Phân công hoàn thành sản xuất hoặc đã khóa giữ nguyên phiên bản, kể cả khi nằm trong phạm vi phiên bản mới.'
     : 'Production-completed and locked assignments retain their current version, even inside a new version range.';
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current;
     setBusy(true);
     try {
       const data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
+      if (sequence !== loadSequence.current) return;
+      setUnconfirmed(data.hasUnconfirmedChanges);
       setVersions(data.versions);
       setAssignments(data.assignments);
       const next = deriveEditableVersionBoundaries(data.versions, data.assignments);
       setBoundaries(next);
       setSavedBoundaries(next);
     } catch (error) {
+      if (sequence !== loadSequence.current) return;
       notify(translateVersionBoundaryError(error?.message, languageCode) || error?.message || copy.loadFail, 'error');
     }
-    finally { setBusy(false); }
+    finally { if (sequence === loadSequence.current) setBusy(false); }
   }, [copy.loadFail, languageCode, notify, orgId, ownerOrgId, styleId]);
 
-  useEffect(() => { if (open) load(); }, [load, open]);
+  useEffect(() => { if (open) load(); return () => { loadSequence.current += 1; }; }, [load, open]);
+
+  const confirm = async () => {
+    if (busy || hasBoundaryChanges) return;
+    const requestedScope = scope;
+    setBusy(true);
+    try {
+      await confirmStyleProcessVersion(styleId, { orgId, ownerOrgId });
+      if (requestedScope !== currentScope.current) return;
+      notify(lifecycle.confirmed, 'success');
+      await load();
+    } catch (error) {
+      if (requestedScope === currentScope.current) notify(error?.message || copy.saveFail, 'error');
+    } finally { if (requestedScope === currentScope.current) setBusy(false); }
+  };
 
   const assignmentsWithVersion = useMemo(() => assignments.map((assignment, index) => {
     const matchingVersions = versions.filter((version) => {
@@ -92,7 +122,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     });
     const active = assignment.isVersionLocked
       ? versions.find(version => version.id === assignment.versionId)
-      : matchingVersions[matchingVersions.length - 1];
+      : [...matchingVersions].sort((a, b) => a.versionNumber - b.versionNumber).at(-1);
     return { ...assignment, activeVersion: active };
   }), [assignments, boundaries, versions]);
 
@@ -196,12 +226,14 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       <DialogTitle>{copy.title}</DialogTitle>
       <DialogContent dividers>
         <VersionApplicationStart mode="future" languageCode={languageCode} versionNumber={Math.max(0, ...versions.map(version => version.versionNumber))} />
+        {unconfirmed && <Alert severity="warning" sx={{ my: 2 }} action={<Button color="inherit" disabled={busy || hasBoundaryChanges} onClick={confirm}>{lifecycle.confirm}</Button>}>{lifecycle.pending}</Alert>}
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{lockText}</Typography>
         {assignments.some(item => item.needsSnapshotRefresh) && <Alert severity="warning" sx={{ mb: 2 }}>{integrityWarning}</Alert>}
         <VersionAssignmentBoard versions={versions} languageCode={languageCode} busy={busy} colors={colorByVersionId}
           getVersionLabel={version => version.name || 'Ver.' + version.versionNumber}
           getVersionMeta={version => String(version.processCount) + copy.processes}
-          onAssign={assignVersionToAssignment} emptyMessage={copy.empty}
+          getVersionSubtitle={version => version.versionNumber === Math.max(...versions.map(item => item.versionNumber)) ? lifecycle.next : assignments.some(item => item.versionId === version.id) ? lifecycle.history : lifecycle.stored}
+          onAssign={assignVersionToAssignment} emptyMessage={lifecycle.empty}
           targets={displayAssignments.map(assignment => ({ ...assignment, id: assignment.assignmentPlanId,
             label: assignment.orderNo || assignment.externalId,
             description: copy.assignment + ' ' + assignment.assignmentQuantity + ' · ' + new Date(assignment.assignedAt).toLocaleDateString(),

@@ -2,6 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:version-lifecycle": "npm --prefix backend run build && node --test scripts/version-lifecycle.test.mjs scripts/version-application.test.mjs scripts/process-version-protection.test.mjs scripts/payroll-management-versions.test.mjs scripts/salary-system-regression.test.mjs",
+    "test:version-lifecycle-browser": "node scripts/version-lifecycle-browser.test.mjs",
     "test:version-boards-browser": "node scripts/version-boards-browser.test.mjs",
     "test:localized-names": "npm --prefix backend run build && node --test scripts/localized-names.test.mjs scripts/localized-names-migration.test.mjs",
     "test:localized-names-browser": "node scripts/localized-names-browser.test.mjs",

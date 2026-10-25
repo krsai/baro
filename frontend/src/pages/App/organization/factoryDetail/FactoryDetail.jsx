@@ -1,3 +1,4 @@
+import { applicableMonthVersion } from '../../../../utils/versionApplication.mjs';
 import MonthVersionBoard from '../../../../components/MonthVersionBoard';
 import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
@@ -358,9 +359,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
     setSavedVersionBoundaries(boundaries);
     setVersionDialogOpen(true);
   };
-  const versionForMonth = (month) => productionAllowanceVersions
-    .filter((version) => versionBoundaries[version.id] && versionBoundaries[version.id] <= month)
-    .sort((left, right) => left.versionNumber - right.versionNumber).at(-1) || null;
+  const versionForMonth = month => applicableMonthVersion(productionAllowanceVersions, versionBoundaries, month);
   const assignVersionToMonth = (version, month) => {
     if (versionBusy) return;
     setVersionBoundaries(current => {

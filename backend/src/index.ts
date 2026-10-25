@@ -1,3 +1,4 @@
+import { confirmCurrentProcessVersion, confirmedStyleProcessIds } from './services/styleProcessVersionLifecycle';
 import { normalizeLocalizedName } from './utils/localizedName';
 import { entityProfile, partnerProfilePatch, normalizePartnerCode } from './services/entityProfile';
 import {validateCustomerIndustry} from './services/partnerIndustry';
@@ -20,7 +21,7 @@ import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
 import { buildValidatedSharedAtPrediction } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
-import { assignmentBoardRevision, assertEditRevision, editTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
+import { assignmentBoardRevision, assertEditRevision, editTransaction, retryEditTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
 import compression from "compression";
@@ -7167,6 +7168,9 @@ const syncStyleProcessStorageForStyle = async ({
     seenDraftExistingIds.add(existingRowId);
   }
 
+  const versionReferencedProcessIds = existingRows.length ? confirmedStyleProcessIds(await db.styleProcessVersion.findMany({
+    where: { orgId: processOrgId, styleId }, select: { processSnapshot: true },
+  })) : new Set<number>();
   if (existingRows.length > 0) {
     // Only currently-active rows missing from the draft represent removal
     // intent - an already-inactive row is naturally absent from every normal
@@ -7177,12 +7181,14 @@ const syncStyleProcessStorageForStyle = async ({
     );
     const rowsToDeactivate = rowsToRemove.filter(
       (row) =>
-        Number(row?._count?.workRecords ?? 0) + Number(row?._count?.outsourcedWorkRecords ?? 0) > 0
+        versionReferencedProcessIds.has(row.id) || Number(row?._count?.workRecords ?? 0) + Number(row?._count?.outsourcedWorkRecords ?? 0) > 0
     );
     const rowsToHardDelete = rowsToRemove.filter(
       (row) =>
-        Number(row?._count?.workRecords ?? 0) + Number(row?._count?.outsourcedWorkRecords ?? 0) === 0
+        !versionReferencedProcessIds.has(row.id) && Number(row?._count?.workRecords ?? 0) + Number(row?._count?.outsourcedWorkRecords ?? 0) === 0
     );
+    // Confirmed versions can precede every assignment and work record. Their
+    // process IDs must survive removal from the editable draft too.
     // A process with linked WorkRecord/OutsourcedWorkRecord rows can never be
     // hard-deleted (WorkRecord.styleProcessId is onDelete: Restrict, and
     // deleting it would orphan the historical AT/payroll data those records
@@ -7207,13 +7213,15 @@ const syncStyleProcessStorageForStyle = async ({
     const existingId = existingRow?.id;
     if (
       existingRow &&
-      (Number(existingRow?._count?.workRecords ?? 0) +
-        Number(existingRow?._count?.outsourcedWorkRecords ?? 0)) > 0 &&
+      (versionReferencedProcessIds.has(existingRow.id) || (Number(existingRow?._count?.workRecords ?? 0) +
+        Number(existingRow?._count?.outsourcedWorkRecords ?? 0)) > 0) &&
       normalizeProductionStage(existingRow.productionStage) !== draft.productionStage
     ) {
       throw createHttpError(
         409,
-        "작업기록이 연결된 공정의 작업 종류는 변경할 수 없습니다. 새 작업 종류의 공정을 추가해 주세요."
+        versionReferencedProcessIds.has(existingRow.id)
+          ? "확정 버전에 포함된 공정의 작업 종류는 변경할 수 없습니다. 새 작업 종류의 공정을 추가해 주세요."
+          : "작업기록이 연결된 공정의 작업 종류는 변경할 수 없습니다. 새 작업 종류의 공정을 추가해 주세요."
       );
     }
     const row = existingId
@@ -14028,8 +14036,8 @@ const refreshIncomingAssignmentCtSnapshotsFromStyles = async ({
   // anyone opened its "process version manager" screen), so it can have
   // zero StyleProcessVersion rows even though it already has live
   // StyleProcess rows and pre-existing AssignmentPlan rows. Auto-creating
-  // Ver.1 from the current live processes (and backfilling any
-  // styleProcessVersionId=null legacy plans onto it) here - the same helper
+  // Ver.1 from the current live processes without adopting historical
+  // styleProcessVersionId=null legacy plans here - the same helper
   // used when a brand new assignment is first created - means saving a
   // structural change never dead-ends on "confirm Ver.1 first" for a style
   // that was simply never confirmed.
@@ -30059,6 +30067,7 @@ app.post("/styles", async (req, res) => {
         db: tx,
       });
     }
+    if (includeProcesses) await confirmSavedStyleProcessVersion(tx, organization.id, createdStyle.id, getRequesterEmail(req) || 'SYSTEM');
     return tx.style.findUniqueOrThrow({
       where: { id: createdStyle.id },
       include: {
@@ -30176,6 +30185,13 @@ app.put("/styles/:styleId", async (req, res) => {
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    if (processesProvided) {
+      await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 AND "orgId"=$2 FOR NO KEY UPDATE', existing.id, organization.id);
+      if (!await tx.styleProcessVersion.findFirst({ where: { orgId: organization.id, styleId: existing.id }, select: { id: true } })) {
+        await confirmSavedStyleProcessVersion(tx, organization.id, existing.id, getRequesterEmail(req) || 'SYSTEM');
+      }
+    }
+
     const syncedProcesses = processesProvided
       ? await syncProcessMasterFromStyleProcesses({
           processes: normalized.processes,
@@ -30231,6 +30247,7 @@ app.put("/styles/:styleId", async (req, res) => {
         db: tx,
       });
     }
+    if (processesProvided) await confirmSavedStyleProcessVersion(tx, organization.id, updatedStyle.id, getRequesterEmail(req) || 'SYSTEM');
     return tx.style.findUniqueOrThrow({
       where: { id: updatedStyle.id },
       include: {
@@ -30268,6 +30285,14 @@ app.put("/styles/:styleId", async (req, res) => {
   res.json(toStyleResponse(responseUpdated, { includeProcesses, processMirrorMap }));
 });
 
+const confirmSavedStyleProcessVersion = (db: any, orgId: number, styleId: number, actor: string) => confirmCurrentProcessVersion(db, {
+  orgId, styleId, actor, date: todayDateKey(), normalizeSnapshot: normalizeStyleProcesses,
+  loadSnapshot: async client => {
+    const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db: client });
+    return normalizeStyleProcesses(mirror.get(styleId) ?? []);
+  },
+});
+
 const ensureInitialStyleProcessVersion = async ({
   orgId,
   styleId,
@@ -30284,22 +30309,18 @@ const ensureInitialStyleProcessVersion = async ({
   const initialVersion = existingVersions[0] ?? null;
   const latestVersion = existingVersions[existingVersions.length - 1] ?? null;
   if (initialVersion && latestVersion) {
-    // Legacy/unversioned assignments belong to Ver.1. New assignments receive
-    // the latest confirmed version returned below.
-    await db.assignmentPlan.updateMany({
-      where: { orgId, styleId, styleProcessVersionId: null },
-      data: { styleProcessVersionId: initialVersion.id },
-    });
+    // Initialization resolves new work only. Historical/locked assignments are
+    // never rewritten here; the explicit boundary-repair API owns those changes.
     return latestVersion;
   }
   const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db });
-  const created = await db.styleProcessVersion.create({ data: {
-    orgId, styleId, versionNumber: 1, confirmedDate: todayDateKey(),
-    processSnapshot: normalizeStyleProcesses(mirror.get(styleId) ?? []) as Prisma.InputJsonValue,
-    confirmedBy: "SYSTEM_MIGRATION",
-  }});
-  await db.assignmentPlan.updateMany({ where: { orgId, styleId, styleProcessVersionId: null }, data: { styleProcessVersionId: created.id } });
-  return created;
+  const snapshot = normalizeStyleProcesses(mirror.get(styleId) ?? []);
+  if (!snapshot.length) throw createHttpError(409, 'style has no processes to confirm');
+  const created = await db.styleProcessVersion.upsert({
+    where: { styleId_versionNumber: { styleId, versionNumber: 1 } }, update: {},
+    create: { orgId, styleId, versionNumber: 1, confirmedDate: todayDateKey(), processSnapshot: snapshot as Prisma.InputJsonValue, confirmedBy: "SYSTEM_MIGRATION" },
+  });
+  return await db.styleProcessVersion.findFirst({ where: { orgId, styleId }, orderBy: { versionNumber: "desc" } }) || created;
 };
 
 const assignmentCtSnapshotMatchesProcessVersion = (plan: any, version: any) => {
@@ -30395,31 +30416,9 @@ app.post("/styles/:styleId/process-versions/confirm", async (req, res) => {
     ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
   });
   if (!style) return res.status(404).json({ ok: false, error: "style not found" });
-  const existingInitial = await prisma.styleProcessVersion.findFirst({
-    where: { orgId: organization.id, styleId: style.id },
-    orderBy: { versionNumber: "asc" },
-  });
-  if (!existingInitial) {
-    const initial = await ensureInitialStyleProcessVersion({
-      orgId: organization.id,
-      styleId: style.id,
-    });
-    return res.json({
-      ...initial,
-      name: `Ver.${initial.versionNumber} · ${initial.confirmedDate}`,
-    });
-  }
-  const latest = await prisma.styleProcessVersion.findFirst({ where: { orgId: organization.id, styleId: style.id }, orderBy: { versionNumber: "desc" } });
-  const mirror = await loadStyleProcessMirrorMapForStyleIds([style.id], { processOrgId: organization.id });
-  const snapshot = normalizeStyleProcesses(mirror.get(style.id) ?? []);
-  if (JSON.stringify(normalizeStyleProcesses(latest?.processSnapshot)) === JSON.stringify(snapshot)) {
-    return res.status(409).json({ ok: false, error: "현재 공정은 마지막 확정 버전과 같습니다." });
-  }
-  const version = await prisma.styleProcessVersion.create({ data: {
-    orgId: organization.id, styleId: style.id, versionNumber: (latest?.versionNumber ?? 0) + 1,
-    confirmedDate: todayDateKey(), processSnapshot: snapshot as Prisma.InputJsonValue,
-    confirmedBy: resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") ?? "SYSTEM",
-  }});
+  const version = await retryEditTransaction(prisma, tx => confirmSavedStyleProcessVersion(tx, organization.id, style.id,
+    resolveOptionalString(employee?.email ?? getRequesterEmail(req), "SYSTEM") || "SYSTEM"));
+  if (!version) return res.status(409).json({ ok: false, error: "style has no processes to confirm" });
   res.json({ ...version, name: `Ver.${version.versionNumber} · ${version.confirmedDate}` });
 });
 
@@ -30771,6 +30770,11 @@ app.post("/styles/import", async (req, res) => {
   await prisma.$transaction(async (tx) => {
     for (const item of rowsWithOwner) {
       const { ownerOrgId, customer: _customer, ...stylePayload } = item;
+      const previousStyleId = existingStyleIdByOwnerCode.get(`${ownerOrgId}:${stylePayload.code}`);
+      if (includeProcesses && previousStyleId) {
+        await tx.$queryRawUnsafe('SELECT id FROM "Style" WHERE id=$1 AND "orgId"=$2 FOR NO KEY UPDATE', previousStyleId, organization.id);
+        if (!await tx.styleProcessVersion.findFirst({ where: { orgId: organization.id, styleId: previousStyleId }, select: { id: true } })) await confirmSavedStyleProcessVersion(tx, organization.id, previousStyleId, getRequesterEmail(req) || 'SYSTEM');
+      }
       const syncedProcesses = includeProcesses
         ? await syncProcessMasterFromStyleProcesses({
             processes: stylePayload.processes,
@@ -30855,6 +30859,7 @@ app.post("/styles/import", async (req, res) => {
           processes: syncedProcesses,
           db: tx,
         });
+        await confirmSavedStyleProcessVersion(tx, organization.id, upserted.id, getRequesterEmail(req) || 'SYSTEM');
       }
     }
   });

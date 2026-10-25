@@ -74,8 +74,15 @@ const getPayrollMonthRange = (month: string) => {
   return { start, endExclusive };
 };
 
-const resolveFactoryProductionAllowanceRate = (factory: any): number =>
-  Number(ensureArray(factory?.productionAllowanceRates)[0]?.wagePerSecond ?? factory?.wagePerSecond);
+const resolveFactoryProductionAllowanceRate = (factory: any): number => {
+  const applicable = ensureArray(factory?.productionAllowanceRates)[0];
+  if (applicable) return Number(applicable.wagePerSecond);
+  // A versioned factory with no applicable version must not borrow a future
+  // or explicitly unassigned rate from the editable master. Readiness reports
+  // the missing calculation basis; genuinely unversioned legacy factories retain fallback.
+  if (Number(factory?._count?.productionAllowanceRates) > 0) return Number.NaN;
+  return Number(factory?.wagePerSecond);
+};
 
 const resolvePayrollEmployeeName = (employee: any, fallback: unknown = null): string =>
   resolveOptionalString(
@@ -274,6 +281,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   const [factories, holidays, attendanceEntries, workLogs, payrollEmployees, payrollFactories, snapshot, payTypePolicies] = await Promise.all([
     prisma.factory.findMany({ where: { orgId, id: factoryId }, include: {
       employees: { include: { role: true, payrollManagementVersions: payrollManagementInclude } },
+      _count: { select: { productionAllowanceRates: true } },
       productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1, select: { wagePerSecond: true } },
     }}),
     prisma.organizationHoliday.findMany({
@@ -297,6 +305,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         factory: {
           select: {
             wagePerSecond: true,
+            _count: { select: { productionAllowanceRates: true } },
             productionAllowanceRates: {
               where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1,
               select: { wagePerSecond: true },
@@ -989,6 +998,7 @@ export const getPayrollByMonth = async (
         factory: {
           select: {
             id: true, name: true, managementStartDate: true, wagePerSecond: true,
+            _count: { select: { productionAllowanceRates: true } },
             productionAllowanceRates: {
               where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1,
               select: { wagePerSecond: true },
