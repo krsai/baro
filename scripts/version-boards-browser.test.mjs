@@ -76,10 +76,15 @@ try{
     if(r.request().method()==='PUT'){draftWrite=r.request().postDataJSON();mockRevision='r3';}
     return r.fulfill({headers,json:{items:draftWrite?.items||[],rates:[],versions:savedVersions,editRevision:'r3',defaultVersionStartMonth:'2026-10'}});
    });
-   await page.locator('input[type="checkbox"]:enabled').first().click();
+   await page.locator('[data-testid="AddIcon"]').first().locator('..').click();
+   const itemDialog=page.getByRole('dialog');
+   await itemDialog.getByRole('textbox').nth(1).fill('야근 수당');
+   await itemDialog.getByRole('button',{name:{ko:'추가',en:'Add',vi:'Thêm'}[lang],exact:true}).click();
+   await itemDialog.waitFor({state:'hidden'});
    await page.getByRole('button',{name:{ko:'저장',en:'Save',vi:'Lưu'}[lang],exact:true}).click();
    await page.locator('[data-version-id="3"]').waitFor();
    assert.equal(draftWrite.createVersion,true);assert.equal('effectiveMonth' in draftWrite,false);
+   assert.ok(draftWrite.items.some(item=>item.nameEn==='야근 수당'&&item.nameKo==='야근 수당'&&item.nameVi===''));
    assert.equal(await page.locator('[data-version-target]').filter({hasText:'Ver.3'}).count(),0,'saving a draft must not apply it');
    await drag(page,page.locator('[data-version-id="3"]'),page.locator('[data-version-target="2026-11"]'));
    const newDialog=page.locator('[data-version-board]').locator('xpath=ancestor::*[@role="dialog"][1]');
