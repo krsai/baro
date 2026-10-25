@@ -23,18 +23,17 @@ try{
     ]}});
   });
   await page.goto(`http://127.0.0.1:${port}/process-protection-acceptance.html`);
-  const row=name=>page.getByText(name,{exact:true}).locator('..').locator('..');
+  const row=name=>page.getByText(name,{exact:true}).locator('xpath=ancestor::*[@data-version-target][1]');
   await page.getByText('O-B',{exact:true}).waitFor();
-  assert.equal(await row('O-B').getByText('2026-08-01',{exact:true}).count(),1);
+  assert.equal(await row('O-B').getByText('Ver.10',{exact:true}).count(),1);
   assert.equal(await row('O-B').getByTestId('LockOutlinedIcon').count(),1);
-  const transfer=await page.evaluateHandle(()=>{const data=new DataTransfer();data.setData('text/plain','11');return data;});
-  // An explicit attempted drop on a locked row is rejected by the handler.
-  await row('O-B').dispatchEvent('drop',{dataTransfer:transfer});
-  assert.equal(await row('O-B').getByText('2026-08-01',{exact:true}).count(),1);
-  await row('O-A').dispatchEvent('drop',{dataTransfer:transfer});
-  assert.equal(await row('O-A').getByText('2026-10-14',{exact:true}).count(),1);
-  assert.equal(await row('O-C').getByText('2026-10-14',{exact:true}).count(),1);
-  assert.equal(await row('O-B').getByText('2026-08-01',{exact:true}).count(),1);
+  const drag=async target=>{const source=await page.locator('[data-version-id="11"]').boundingBox(),dest=await target.boundingBox();await page.mouse.move(source.x+source.width/2,source.y+source.height/2);await page.mouse.down();await page.mouse.move(source.x+source.width/2+8,source.y+source.height/2);await page.mouse.move(dest.x+dest.width/2,dest.y+dest.height/2,{steps:12});await page.mouse.up();};
+  await drag(row('O-B'));
+  assert.equal(await row('O-B').getByText('Ver.10',{exact:true}).count(),1);
+  await drag(row('O-A'));
+  assert.equal(await row('O-A').getByText('Ver.11',{exact:true}).count(),1);
+  assert.equal(await row('O-C').getByText('Ver.11',{exact:true}).count(),1);
+  assert.equal(await row('O-B').getByText('Ver.10',{exact:true}).count(),1);
   await page.getByRole('button',{name:'저장',exact:true}).click();await page.waitForTimeout(200);
   assert.equal(writes.length,1);assert.deepEqual(writes[0].boundaries,[{versionId:11,startAssignmentPlanId:1}]);assert.deepEqual(errors,[]);
   console.log('Existing process-version UI passed: drag ranges retained, completed assignment keeps Ver.10 while editable assignments preview Ver.11, locked direct drop rejected.');

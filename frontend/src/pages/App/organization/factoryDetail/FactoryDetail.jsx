@@ -1,8 +1,10 @@
+import MonthVersionBoard from '../../../../components/MonthVersionBoard';
 import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Chip,
@@ -327,6 +329,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
   const [versionBoundaries, setVersionBoundaries] = useState({});
   const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
   const [versionBusy, setVersionBusy] = useState(false);
+  const [versionError, setVersionError] = useState('');
   const [managerEmployees, setManagerEmployees] = useState([]);
   const [managerEmployeesLoading, setManagerEmployeesLoading] = useState(false);
 
@@ -349,6 +352,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
     [formData.managementStartDate, factory?.defaultVersionStartMonth, versionBoundaries]
   );
   const openVersionDialog = () => {
+    setVersionError('');
     const boundaries = Object.fromEntries(productionAllowanceVersions.filter((version) => version.effectiveMonth).map((version) => [version.id, version.effectiveMonth]));
     setVersionBoundaries(boundaries);
     setSavedVersionBoundaries(boundaries);
@@ -357,7 +361,22 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
   const versionForMonth = (month) => productionAllowanceVersions
     .filter((version) => versionBoundaries[version.id] && versionBoundaries[version.id] <= month)
     .sort((left, right) => left.versionNumber - right.versionNumber).at(-1) || null;
+  const assignVersionToMonth = (version, month) => {
+    if (versionBusy) return;
+    setVersionBoundaries(current => {
+      const next = { ...current, [version.id]: month };
+      if (!month) { delete next[version.id]; return next; }
+      productionAllowanceVersions.forEach(other => {
+        if (other.id === version.id || !next[other.id]) return;
+        const conflicts = other.versionNumber < version.versionNumber ? next[other.id] > month : next[other.id] < month;
+        if (conflicts) delete next[other.id];
+      });
+      return next;
+    });
+  };
   const saveVersionBoundaries = async () => {
+    if (versionBusy) return;
+    setVersionError('');
     setVersionBusy(true);
     try {
       await requestJSON(`/factories/${factory.id}/production-allowance-version-boundaries`, {
@@ -369,6 +388,8 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
       setSavedVersionBoundaries(versionBoundaries);
       setVersionDialogOpen(false);
       onClose?.();
+    } catch (error) {
+      setVersionError(error?.message || (languageCode === 'ko' ? '적용 구간을 저장하지 못했습니다.' : languageCode === 'vi' ? 'Không thể lưu phạm vi áp dụng.' : 'Failed to save version boundaries.'));
     } finally { setVersionBusy(false); }
   };
 
@@ -744,19 +765,16 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
         </Box>
       </Box>
       <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md">
-        <DialogTitle>{languageCode === 'ko' ? '생산수당 단가 버전 관리' : 'Production Allowance Rate Versions'}</DialogTitle>
+        <DialogTitle>{languageCode === 'ko' ? '생산수당 단가 버전 관리' : languageCode === 'vi' ? 'Quản lý phiên bản đơn giá phụ cấp sản lượng' : 'Production Allowance Rate Versions'}</DialogTitle>
         <DialogContent dividers>
-          <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-            <Stack spacing={0.75} sx={{ width: { xs: '100%', md: 280 }, flexShrink: 0 }}>
-              {[...productionAllowanceVersions].sort((a, b) => b.versionNumber - a.versionNumber).map((version) => <Box key={version.id} sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
-                <Stack direction="row" justifyContent="space-between"><Typography variant="body2" fontWeight={700}>{String(version.confirmedAt || version.createdAt || '').slice(0, 10)} · Ver.{version.versionNumber}</Typography><Chip size="small" label={`${Number(version.wagePerSecond || 0).toFixed(2)} VND/s`} /></Stack>
-                <VersionApplicationStart languageCode={languageCode} value={versionBoundaries[version.id]} defaultMonth={factory?.defaultVersionStartMonth || currentVersionMonth()} onChange={month => setVersionBoundaries(current => { const next = { ...current }; if (month) next[version.id] = month; else delete next[version.id]; return next; })} min={managedMonths[0]} disabled={versionBusy} />
-              </Box>)}
-            </Stack>
-            <Box sx={{ flex: 1 }}><Typography variant="caption" color="text.secondary">{managedMonths[0]} ~ {managedMonths.at(-1)}</Typography><Stack spacing={0.5} sx={{ mt: 1 }}>{[...managedMonths].reverse().map((month) => { const version = versionForMonth(month); return <Stack key={month} direction="row" justifyContent="space-between" alignItems="center" sx={{ minHeight: 32, borderBottom: 1, borderColor: 'divider' }}><Typography variant="body2">{month}</Typography><Chip size="small" variant="outlined" label={version ? `Ver.${version.versionNumber}` : '-'} /></Stack>; })}</Stack></Box>
-          </Stack>
+          {versionError && <Alert severity="error" sx={{ mb: 2 }}>{versionError}</Alert>}
+          <MonthVersionBoard versions={productionAllowanceVersions} months={managedMonths} boundaries={versionBoundaries} versionForMonth={versionForMonth}
+            onAssign={assignVersionToMonth} languageCode={languageCode} busy={versionBusy}
+            getVersionLabel={version => String(version.confirmedAt || version.createdAt || '').slice(0, 10) + ' · Ver.' + version.versionNumber}
+            getVersionMeta={version => Number(version.wagePerSecond || 0).toFixed(2) + ' VND/s'}
+            getVersionSubtitle={version => versionBoundaries[version.id] || (languageCode === 'ko' ? '미지정' : languageCode === 'vi' ? 'Chưa chỉ định' : 'Unspecified')} />
         </DialogContent>
-        <DialogActions><Button onClick={() => setVersionDialogOpen(false)} disabled={versionBusy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || JSON.stringify(versionBoundaries) === JSON.stringify(savedVersionBoundaries)}>{languageCode === 'ko' ? '저장' : 'Save'}</Button></DialogActions>
+        <DialogActions><Button onClick={() => setVersionDialogOpen(false)} disabled={versionBusy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || JSON.stringify(versionBoundaries) === JSON.stringify(savedVersionBoundaries)}>{languageCode === 'ko' ? '저장' : languageCode === 'vi' ? 'Lưu' : 'Save'}</Button></DialogActions>
       </Dialog>
     </Drawer>
   );

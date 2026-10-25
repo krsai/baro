@@ -1,3 +1,4 @@
+import MonthVersionBoard from '../../components/MonthVersionBoard';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
 import { resolveLocalizedAttributeName } from '../../utils/appLanguage';
 import { normalizeLocalizedName, hasLocalizedName } from '../../utils/localizedName.mjs';
@@ -436,7 +437,7 @@ const SalarySystem = () => {
     return applicable.sort((a, b) => a.versionNumber - b.versionNumber).at(-1) || null;
   }, [versionBoundaries, versions]);
   const assignVersionToMonth = (version, month) => {
-    if (version.versionNumber === 1) return;
+    if (versionBusy || saving || edit.stale || version.versionNumber === 1 || month && (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || month < managementStartMonth)) return;
     setVersionBoundaries((current) => {
       const next = { ...current, [version.id]: month };
       if (!month) { delete next[version.id]; return next; }
@@ -665,49 +666,12 @@ const SalarySystem = () => {
     </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft) || !hasLocalizedName(formulaSettingsDraft)}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
     <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 설정 버전 관리')}</DialogTitle><DialogContent dividers>
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-        <Box sx={{ width: { xs: '100%', md: 320 }, minWidth: 0, flexShrink: 0 }}>
-          <Stack spacing={0.75} sx={{ maxHeight: 434, overflowY: 'auto', pr: 0.5 }}>
-            {[...versions].sort((a, b) => b.versionNumber - a.versionNumber).map((version) => {
-              const versionColor = colorByVersionId.get(version.id) || '#9e9e9e';
-              const draggable = version.versionNumber > 1;
-              return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ flexShrink: 0, minWidth: 0, px: 0.75, py: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: 26, minWidth: 0 }}>
-                <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: 0.75, flexShrink: 0 }} />
-                <DragIndicatorIcon sx={{ mr: 0.5, color: draggable ? 'text.secondary' : 'text.disabled', fontSize: 18 }} />
-                <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.confirmedAt} · Ver.{version.versionNumber}</Typography>
-                <Chip size="small" variant="outlined" label={`${version.items?.length || 0}${t('개')}`} sx={{ height: 22, fontSize: '.7rem' }} />
-                </Box>
-                {draggable && <Box sx={{ width: '100%', pt: 1.5 }} draggable={false} onDragStart={event => event.preventDefault()}><VersionApplicationStart languageCode={languageCode} value={versionBoundaries[version.id]} defaultMonth={versionDefaultMonth} onChange={month => assignVersionToMonth(version, month)} disabled={versionBusy} /></Box>}
-              </Box>;
-            })}
-            {versions.length === 0 && <Typography variant="body2" color="text.secondary">{t('아직 확정된 버전이 없습니다. 저장하면 새 버전으로 기록됩니다.')}</Typography>}
-          </Stack>
-        </Box>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>{managementStartMonth} ~ {managedMonths.at(-1)}</Typography>
-          <Box sx={{ position: 'relative', maxHeight: 340, overflowY: 'auto', pr: 0.5 }}>
-            {[...managedMonths].reverse().map((month, index, displayMonths) => {
-              const activeVersion = versionForMonth(month);
-              const versionColor = activeVersion ? colorByVersionId.get(activeVersion.id) || '#9e9e9e' : '#9e9e9e';
-              const isBoundary = Object.values(versionBoundaries).includes(month);
-              const isNewest = index === 0;
-              const dotSize = isNewest ? 20 : isBoundary ? 16 : 12;
-              const olderVersion = index < displayMonths.length - 1 ? versionForMonth(displayMonths[index + 1]) : null;
-              const olderColor = olderVersion ? colorByVersionId.get(olderVersion.id) || '#9e9e9e' : '#9e9e9e';
-              return <Box key={month} onDragEnter={(event) => { event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => { delete event.currentTarget.dataset.dragover; const version = versions.find((item) => item.id === Number(event.dataTransfer.getData('text/plain'))); if (version) assignVersionToMonth(version, month); }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: 0.5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
-                {index > 0 && <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: versionColor }} />}
-                {index < displayMonths.length - 1 && <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: '50%', height: '50%', width: 2, bgcolor: olderColor }} />}
-                <Box sx={{ position: 'absolute', zIndex: 1, left: 12 - dotSize / 2, width: dotSize, height: dotSize, borderRadius: '50%', bgcolor: versionColor, border: 2, borderColor: versionColor, boxShadow: isNewest || isBoundary ? `0 0 0 3px ${versionColor}26` : 'none' }} />
-                <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
-                  <Typography variant="body2" fontWeight={600} noWrap sx={{ flex: 1, fontSize: '.78rem' }}>{month}</Typography>
-                  <Chip size="small" variant="outlined" label={activeVersion ? `Ver.${activeVersion.versionNumber}` : t('미지정')} sx={{ height: 22, fontSize: '.7rem', color: versionColor, borderColor: versionColor }} />
-                </Stack>
-              </Box>;
-            })}
-          </Box>
-        </Box>
-      </Stack>
+      <MonthVersionBoard versions={versions} months={managedMonths} boundaries={versionBoundaries} versionForMonth={versionForMonth}
+        onAssign={assignVersionToMonth} languageCode={languageCode} busy={versionBusy || saving || edit.stale} colors={colorByVersionId}
+        isVersionDisabled={version => version.versionNumber === 1}
+        getVersionLabel={version => version.confirmedAt + ' · Ver.' + version.versionNumber}
+        getVersionMeta={version => String(version.items?.length || 0) + t('개')}
+        getVersionSubtitle={version => version.versionNumber === 1 ? (languageCode === 'ko' ? '기본 버전' : languageCode === 'vi' ? 'Phiên bản cơ sở' : 'Base version') : versionBoundaries[version.id] || t('미지정')} />
     </DialogContent><DialogActions><Button onClick={() => setVersionDialogOpen(false)} disabled={versionBusy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || saving || edit.stale || !edit.revision || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>

@@ -48,9 +48,9 @@ try{
    assert.equal(row.name,name);assert.equal(row.nameKo,index===1?name:'');assert.equal(row.nameVi,index===2?name:'');
   }
   await page.getByRole('button',{name:history,exact:true}).click();
-  const cards=page.getByRole('dialog').locator('[draggable=true]');assert.equal(await cards.count(),21);
+  const cards=page.getByRole('dialog').locator('[data-version-id]');assert.equal(await cards.count(),22);
   const bounds=await cards.evaluateAll(nodes=>nodes.map(n=>({top:n.getBoundingClientRect().top,bottom:n.getBoundingClientRect().bottom,height:n.getBoundingClientRect().height,scroll:n.scrollHeight,client:n.clientHeight})));
-  assert.ok(bounds.every(row=>row.height>90&&row.scroll<=row.client+1),'version cards retain their full content height');
+  assert.ok(bounds.every(row=>row.height>=38&&row.scroll<=row.client+1),'version cards retain their full content height');
   assert.ok(bounds.slice(1).every((row,i)=>row.top>=bounds[i].bottom),'version cards must not overlap');
   assert.deepEqual(errors,[]);console.log(`${lang}: single-language salary add/save, English fallback, three fields, version layout OK`);await page.close();
  }

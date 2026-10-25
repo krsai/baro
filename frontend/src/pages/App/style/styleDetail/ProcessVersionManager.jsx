@@ -1,7 +1,6 @@
+import VersionAssignmentBoard from '../../../../components/VersionAssignmentBoard';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Stack, Typography } from '@mui/material';
-import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import { Alert, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Typography } from '@mui/material';
 import VersionApplicationStart from '../../../../components/VersionApplicationStart';
 import { fetchStyleProcessVersions, saveStyleProcessVersionBoundaries } from '../../../../utils/styleApi';
 import { useLanguage } from '../../../../context/LanguageContext';
@@ -67,7 +66,6 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const lockText = languageCode === 'ko' ? '생산 완료·잠금 배정은 현재 공정 버전을 유지합니다. 새 버전의 적용 구간에 포함되어도 변경되지 않습니다.'
     : languageCode === 'vi' ? 'Phân công hoàn thành sản xuất hoặc đã khóa giữ nguyên phiên bản, kể cả khi nằm trong phạm vi phiên bản mới.'
     : 'Production-completed and locked assignments retain their current version, even inside a new version range.';
-  const lockedLabel = languageCode === 'ko' ? '버전 변경 불가' : languageCode === 'vi' ? 'Không thể đổi phiên bản' : 'Version locked';
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -147,6 +145,52 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
     finally { setBusy(false); }
   };
 
+  const assignVersionToAssignment = (version, assignment) => {
+    if (busy || assignment.isVersionLocked) return;
+    const versionId = version.id;
+    const targetIndex = assignments.findIndex(
+      (item) => item.assignmentPlanId === assignment.assignmentPlanId
+    );
+    if (targetIndex < 0) return;
+    setBoundaries((current) => {
+      const next = { ...current, [versionId]: assignment.assignmentPlanId };
+      // Any other version whose current boundary would now violate
+      // ordering relative to this drop (an earlier-numbered version
+      // starting at/after this position, or a later-numbered version
+      // starting at/before it) is being superseded by this drop - it
+      // loses its boundary rather than blocking the action, so
+      // dragging a version all the way onto the oldest assignment
+      // (e.g. retroactively applying a newly gender-scoped version)
+      // works instead of being permanently blocked by an earlier
+      // version's fixed position.
+      const resolveIndex = (planId) =>
+        assignments.findIndex((item) => item.assignmentPlanId === planId);
+      versions.forEach((other) => {
+        if (other.id === versionId) return;
+        const otherStartId = next[other.id];
+        if (!otherStartId) return;
+        const otherIndex = resolveIndex(otherStartId);
+        if (otherIndex < 0) return;
+        const conflicts = other.versionNumber < version.versionNumber
+          ? otherIndex >= targetIndex
+          : otherIndex <= targetIndex;
+        if (conflicts) delete next[other.id];
+      });
+      const remainingIndexes = Object.entries(next)
+        .map(([, planId]) => resolveIndex(planId))
+        .filter((value) => value >= 0);
+      const earliestIndex = remainingIndexes.length > 0 ? Math.min(...remainingIndexes) : -1;
+      if (earliestIndex !== 0) {
+        notify(
+          copy.moveOldest,
+          'error'
+        );
+        return current;
+      }
+      return next;
+    });
+  };
+
   return (
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="md">
       <DialogTitle>{copy.title}</DialogTitle>
@@ -154,130 +198,17 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
         <VersionApplicationStart mode="future" languageCode={languageCode} versionNumber={Math.max(0, ...versions.map(version => version.versionNumber))} />
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{lockText}</Typography>
         {assignments.some(item => item.needsSnapshotRefresh) && <Alert severity="warning" sx={{ mb: 2 }}>{integrityWarning}</Alert>}
-        <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-          <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
-            <Stack spacing={.75}>
-              {[...versions].sort((left, right) => right.versionNumber - left.versionNumber).map((version) => {
-                const versionColor = resolveVersionColor(version);
-                return (
-                  <Box key={version.id} draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }}
-                    sx={{ display: 'flex', alignItems: 'center', minHeight: 38, pl: .75, pr: .75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: 'grab', bgcolor: 'background.paper', '&:active': { cursor: 'grabbing' } }}>
-                    <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: .75, flexShrink: 0 }} />
-                    <DragIndicatorIcon sx={{ mr: .5, color: 'text.secondary', fontSize: 18 }} />
-                    <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.name}</Typography>
-                    <Chip size="small" variant="outlined" label={`${version.processCount}${copy.processes}`} sx={{ height: 22, fontSize: '.7rem' }} />
-                  </Box>
-                );
-              })}
-            </Stack>
-          </Box>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box sx={{ position: 'relative' }}>
-              {/* Newest assignment first (top) - the chronological order used for
-                  boundary logic (assignments[0] = oldest) is untouched, only the
-                  render order is reversed here. */}
-              {displayAssignments.map((assignment, index) => {
-                const isBoundary = Object.values(boundaries).includes(assignment.assignmentPlanId);
-                const isNewest = index === 0;
-                const dotColor = resolveVersionColor(assignment.activeVersion);
-                const dotSize = isNewest ? 20 : isBoundary ? 16 : 12;
-                // Git-graph style: every dot is filled with its version's color so a
-                // version's full range reads as one continuous colored branch, not
-                // just its boundary/start entry. The connecting segment above a row
-                // keeps this row's own color; the segment below switches to the
-                // color of the next (older) row, so the color visibly changes right
-                // at the row where a new version's boundary starts.
-                const topColor = dotColor;
-                const hasTopSegment = index > 0;
-                const hasBottomSegment = index < displayAssignments.length - 1;
-                const bottomColor = hasBottomSegment
-                  ? resolveVersionColor(displayAssignments[index + 1]?.activeVersion)
-                  : null;
-                return (
-                  <Box key={assignment.assignmentPlanId} onDragEnter={(event) => { if (assignment.isVersionLocked) return; event.preventDefault(); event.currentTarget.dataset.dragover = 'true'; }} onDragOver={(event) => { if (assignment.isVersionLocked) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) delete event.currentTarget.dataset.dragover; }} onDrop={(event) => {
-                    delete event.currentTarget.dataset.dragover;
-                    if (assignment.isVersionLocked) { notify(lockedLabel, 'warning'); return; }
-                    const versionId = Number(event.dataTransfer.getData('text/plain'));
-                    const version = versions.find((item) => item.id === versionId);
-                    if (!version) return;
-                    const targetIndex = assignments.findIndex(
-                      (item) => item.assignmentPlanId === assignment.assignmentPlanId
-                    );
-                    if (targetIndex < 0) return;
-                    setBoundaries((current) => {
-                      const next = { ...current, [versionId]: assignment.assignmentPlanId };
-                      // Any other version whose current boundary would now violate
-                      // ordering relative to this drop (an earlier-numbered version
-                      // starting at/after this position, or a later-numbered version
-                      // starting at/before it) is being superseded by this drop - it
-                      // loses its boundary rather than blocking the action, so
-                      // dragging a version all the way onto the oldest assignment
-                      // (e.g. retroactively applying a newly gender-scoped version)
-                      // works instead of being permanently blocked by an earlier
-                      // version's fixed position.
-                      const resolveIndex = (planId) =>
-                        assignments.findIndex((item) => item.assignmentPlanId === planId);
-                      versions.forEach((other) => {
-                        if (other.id === versionId) return;
-                        const otherStartId = next[other.id];
-                        if (!otherStartId) return;
-                        const otherIndex = resolveIndex(otherStartId);
-                        if (otherIndex < 0) return;
-                        const conflicts = other.versionNumber < version.versionNumber
-                          ? otherIndex >= targetIndex
-                          : otherIndex <= targetIndex;
-                        if (conflicts) delete next[other.id];
-                      });
-                      const remainingIndexes = Object.entries(next)
-                        .map(([, planId]) => resolveIndex(planId))
-                        .filter((value) => value >= 0);
-                      const earliestIndex = remainingIndexes.length > 0 ? Math.min(...remainingIndexes) : -1;
-                      if (earliestIndex !== 0) {
-                        notify(
-                          copy.moveOldest,
-                          'error'
-                        );
-                        return current;
-                      }
-                      return next;
-                    });
-                  }} sx={{ position: 'relative', display: 'flex', alignItems: 'center', minHeight: 34, pl: 3.5, pr: .5, borderRadius: 1, transition: 'background-color .15s', '&[data-dragover="true"]': { bgcolor: 'action.hover' } }}>
-                    {hasTopSegment && (
-                      <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: 0, height: '50%', width: 2, bgcolor: topColor }} />
-                    )}
-                    {hasBottomSegment && (
-                      <Box sx={{ position: 'absolute', zIndex: 0, left: 11, top: '50%', height: '50%', width: 2, bgcolor: bottomColor }} />
-                    )}
-                    <Box sx={{
-                      position: 'absolute', zIndex: 1,
-                      left: 12 - dotSize / 2,
-                      width: dotSize,
-                      height: dotSize,
-                      borderRadius: '50%',
-                      bgcolor: dotColor,
-                      border: 2,
-                      borderColor: dotColor,
-                      boxShadow: isNewest || isBoundary ? `0 0 0 3px ${dotColor}26` : 'none',
-                    }} />
-                    <Stack direction="row" spacing={1} alignItems="center" sx={{ width: '100%', minWidth: 0 }}>
-                      {assignment.isVersionLocked && <LockOutlinedIcon fontSize="small" color="disabled" titleAccess={lockedLabel} />}
-                      <Typography variant="body2" fontWeight={600} noWrap sx={{ minWidth: 70, fontSize: '.78rem' }}>{assignment.orderNo || assignment.externalId}</Typography>
-                      {assignment.needsSnapshotRefresh && <Chip size="small" color="warning" label={languageCode === 'en' ? 'Review references' : languageCode === 'vi' ? 'Kiểm tra liên kết' : '공정 연결 확인'} />}
-                      <Typography variant="body2" color="text.secondary" noWrap sx={{ flex: 1, fontSize: '.75rem' }}>{copy.assignment} {assignment.assignmentQuantity} · {new Date(assignment.assignedAt).toLocaleDateString()}</Typography>
-                      {assignment.workRecordCount > 0 && <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '.7rem' }}>{copy.records} {assignment.workRecordCount}</Typography>}
-                      <Chip size="small" variant="outlined" label={assignment.activeVersion?.confirmedDate || copy.unspecified} sx={{ height: 22, maxWidth: 110, fontSize: '.7rem', color: dotColor, borderColor: dotColor }} />
-                    </Stack>
-                  </Box>
-                );
-              })}
-              {!busy && assignments.length === 0 && (
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '.75rem' }}>
-                  {copy.empty}
-                </Typography>
-              )}
-            </Box>
-          </Box>
-        </Stack>
+        <VersionAssignmentBoard versions={versions} languageCode={languageCode} busy={busy} colors={colorByVersionId}
+          getVersionLabel={version => version.name || 'Ver.' + version.versionNumber}
+          getVersionMeta={version => String(version.processCount) + copy.processes}
+          onAssign={assignVersionToAssignment} emptyMessage={copy.empty}
+          targets={displayAssignments.map(assignment => ({ ...assignment, id: assignment.assignmentPlanId,
+            label: assignment.orderNo || assignment.externalId,
+            description: copy.assignment + ' ' + assignment.assignmentQuantity + ' · ' + new Date(assignment.assignedAt).toLocaleDateString(),
+            adornment: assignment.needsSnapshotRefresh ? <Chip size="small" color="warning" label={languageCode === 'en' ? 'Review references' : languageCode === 'vi' ? 'Kiểm tra liên kết' : '공정 연결 확인'} /> : assignment.workRecordCount > 0 ? <Typography variant="caption" color="text.secondary">{copy.records} {assignment.workRecordCount}</Typography> : null,
+            version: assignment.activeVersion, locked: assignment.isVersionLocked,
+            boundary: Object.values(boundaries).includes(assignment.assignmentPlanId),
+          }))} />
       </DialogContent>
       <DialogActions><Button onClick={onClose} disabled={busy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={save} disabled={busy || assignments.length === 0 || (!hasBoundaryChanges && !hasRefreshableAssignments)}>{copy.save}</Button></DialogActions>
     </Dialog>
