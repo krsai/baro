@@ -1,3 +1,4 @@
+import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
 import { Prisma } from '@prisma/client';
 import { env } from 'node:process';
@@ -18,9 +19,11 @@ export function validateVatRate(value: unknown) {
   return rate;
 }
 export function validateTransactionCode(body: any, allowLegacy = false) {
+  if (!validLocalizedName(body, 100)) return invalid('INVALID_TRANSACTION_CODE');
+  body = { ...body, ...normalizeLocalizedName(body) };
   if (!Number.isSafeInteger(body?.serviceTypeId) || body.serviceTypeId <= 0) return invalid('INVALID_SERVICE_TYPE');
   const text = (key: string) => typeof body[key] === 'string' ? body[key].trim() : '';
-  if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(text('code')) || ['nameKo','nameEn','nameVi'].some(key => !text(key) || text(key).length > 100) || typeof body.vatEnabled !== 'boolean') return invalid('INVALID_TRANSACTION_CODE');
+  if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(text('code')) || !validLocalizedName(body, 100) || typeof body.vatEnabled !== 'boolean') return invalid('INVALID_TRANSACTION_CODE');
   const taxTreatmentId = body.taxTreatmentId ?? (body.vatEnabled && /^[A-Z]{3}V$/.test(text('code')) ? 1 : null);
   if (!allowLegacy && (!/^[A-Z]{3}[VZE]$/.test(text('code')) || ![1,2,3].includes(taxTreatmentId))) return invalid('INVALID_TRANSACTION_CODE');
   if (taxTreatmentId != null && (![1,2,3].includes(taxTreatmentId) || text('code').slice(-1) !== ({ 1: 'V', 2: 'Z', 3: 'E' } as Record<number,string>)[taxTreatmentId] || body.vatEnabled !== (taxTreatmentId === 1))) return invalid('INVALID_TAX_TREATMENT');

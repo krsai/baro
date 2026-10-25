@@ -656,12 +656,12 @@ const LANGUAGE_SORT_LOCALE_BY_CODE = {
 const resolveProcessMasterSortLabel = (item, languageCode) => {
   if (!item || typeof item !== 'object') return '';
   if (languageCode === 'ko') {
-    return String(item?.nameKo ?? item?.label ?? item?.code ?? '').trim();
+    return String(item?.nameKo || item?.nameEn || item?.label || item?.code || '').trim();
   }
   if (languageCode === 'vi') {
-    return String(item?.nameVi ?? item?.label ?? item?.code ?? '').trim();
+    return String(item?.nameVi || item?.nameEn || item?.label || item?.code || '').trim();
   }
-  return String(item?.nameEn ?? item?.label ?? item?.code ?? '').trim();
+  return String(item?.nameEn || item?.label || item?.code || '').trim();
 };
 
 const compareProcessMasterOptionAsc = (left, right, languageCode = 'en') => {
@@ -924,12 +924,12 @@ const resolveProcessCompositionText = (entry, languageCode, masterLookupByCode =
     : null;
   const baseEntry = masterOption || entry;
   if (languageCode === 'ko') {
-    return String(baseEntry?.nameKo ?? baseEntry?.label ?? baseEntry?.code ?? '').trim();
+    return String(baseEntry?.nameKo || baseEntry?.nameEn || baseEntry?.label || baseEntry?.code || '').trim();
   }
   if (languageCode === 'vi') {
-    return String(baseEntry?.nameVi ?? baseEntry?.label ?? baseEntry?.code ?? '').trim();
+    return String(baseEntry?.nameVi || baseEntry?.nameEn || baseEntry?.label || baseEntry?.code || '').trim();
   }
-  return String(baseEntry?.nameEn ?? baseEntry?.label ?? baseEntry?.code ?? '').trim();
+  return String(baseEntry?.nameEn || baseEntry?.label || baseEntry?.code || '').trim();
 };
 
 const buildProcessNameFromComposition = (

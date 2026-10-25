@@ -2,6 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:localized-names": "npm --prefix backend run build && node --test scripts/localized-names.test.mjs scripts/localized-names-migration.test.mjs",
+    "test:localized-names-browser": "node scripts/localized-names-browser.test.mjs",
     "test:attendance-file-import-browser": "node scripts/attendance-file-import-browser.test.mjs",
     "test:period-range": "npm --prefix backend run build && node --test scripts/period-range.test.mjs scripts/management-period.test.mjs",
     "test:range-pages-browser": "node scripts/range-pages-browser.test.mjs",

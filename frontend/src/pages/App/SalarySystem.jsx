@@ -1,3 +1,6 @@
+import LocalizedNameFields from '../../components/LocalizedNameFields';
+import { resolveLocalizedAttributeName } from '../../utils/appLanguage';
+import { normalizeLocalizedName, hasLocalizedName } from '../../utils/localizedName.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import { useLocation } from 'react-router-dom';
@@ -118,7 +121,7 @@ const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : PAY_TYPE_ORDER);
 const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '' };
 const item = (id, name, category, payCycle = 'MONTHLY', extra = {}) =>
-  ({ id, name, nameKo: name, nameEn: salaryText(name, 'en'), nameVi: salaryText(name, 'vi'), category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, paymentMonths: PAYMENT_MONTHS_BY_CYCLE[payCycle], capValue: '', ...extra });
+  ({ id, name: salaryText(name, 'en'), nameKo: name, nameEn: salaryText(name, 'en'), nameVi: salaryText(name, 'vi'), category, payTypes: defaultPayTypesForCategory(category), formula: ['GRADE_RATE'], payCycle, paymentMonths: PAYMENT_MONTHS_BY_CYCLE[payCycle], capValue: '', ...extra });
 const DEFAULT_ITEMS = [
   item('baseSalary', '기본급', 'BASE', 'MONTHLY', { required: true, formula: DEFAULT_FORMULA }),
   item('lunch', '점심수당', 'ALLOWANCE', 'MONTHLY', { formula: ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS'] }),
@@ -182,8 +185,8 @@ const monthRange = (startMonth, endMonth) => {
   }
   return months;
 };
-const gradeName = (grade, language) => language === 'en' ? grade.nameEn : language === 'vi' ? grade.nameVi : grade.nameKo;
-const salaryItemName = (row, language) => language === 'en' ? row.nameEn : language === 'vi' ? row.nameVi : row.nameKo;
+const gradeName = resolveLocalizedAttributeName;
+const salaryItemName = resolveLocalizedAttributeName;
 const formulaTokenLabel = (token, t) => token.startsWith('CONST:')
   ? token.slice(6)
   : t(FORMULA_PARAMETERS[token]?.label || token);
@@ -312,8 +315,8 @@ const SalarySystem = () => {
       if (sequence !== loadSequence.current || scope !== loadScope.current) return null;
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.id === 'incentiveTotal'
-        ? { ...row, name: '생산수당', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
-        : { ...row, nameKo: row.nameKo || row.name, nameEn: row.nameEn || row.name, nameVi: row.nameVi || row.name, paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle], capValue: optionalMoney(row.capValue) });
+        ? { ...row, name: 'Production Allowance', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
+        : { ...row, ...normalizeLocalizedName(row), paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle], capValue: optionalMoney(row.capValue) });
       const next = {};
       (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
         const key = `${row.payType}:${row.gradeId}`;
@@ -370,8 +373,8 @@ const SalarySystem = () => {
     setRates((prev) => ({ ...prev, [key]: { ...prev[key], [selected.id]: money(value) } }));
   };
   const addItem = () => {
-    if ([draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())) return;
-    const next = { ...draft, name: draft.nameKo.trim(), nameKo: draft.nameKo.trim(), nameEn: draft.nameEn.trim(), nameVi: draft.nameVi.trim(), id: `draft-${Date.now()}`, payTypes: defaultPayTypesForCategory(draft.category) };
+    if (!hasLocalizedName(draft)) return;
+    const next = { ...draft, ...normalizeLocalizedName(draft), id: `draft-${Date.now()}`, payTypes: defaultPayTypesForCategory(draft.category) };
     setItems((rows) => [...rows, next]);
     setSelectedId(next.id);
     setDialogOpen(false);
@@ -500,8 +503,8 @@ const SalarySystem = () => {
     setConstantDraft('');
   };
   const saveFormula = () => {
-    const names = { nameKo: formulaSettingsDraft.nameKo.trim(), nameEn: formulaSettingsDraft.nameEn.trim(), nameVi: formulaSettingsDraft.nameVi.trim() };
-    setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, ...formulaSettingsDraft, ...names, name: names.nameKo, formula: formulaDraft } : row));
+    const names = normalizeLocalizedName(formulaSettingsDraft);
+    setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, ...formulaSettingsDraft, ...names, name: names.nameEn, formula: formulaDraft } : row));
     setFormulaDialogOpen(false);
   };
 
@@ -592,11 +595,7 @@ const SalarySystem = () => {
     </Stack>
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <Paper variant="outlined" sx={{ p: 2 }}><Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1.5 }}>
-        <TextField size="small" required label="Item Name (English)" value={formulaSettingsDraft.nameEn || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameEn: e.target.value }))} />
-        <TextField size="small" required label="항목명 (한국어)" value={formulaSettingsDraft.nameKo || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameKo: e.target.value }))} />
-        <TextField size="small" required label="Tên khoản mục (Tiếng Việt)" value={formulaSettingsDraft.nameVi || ''} onChange={(e) => setFormulaSettingsDraft((prev) => ({ ...prev, nameVi: e.target.value }))} />
-      </Box></Paper>
+      <Paper variant="outlined" sx={{ p: 2 }}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field, value) => setFormulaSettingsDraft(prev => ({ ...prev, [field]: value }))} /></Paper>
       <Paper variant="outlined" sx={{ p: 2.5, minHeight: 96, bgcolor: 'action.hover', borderStyle: 'dashed' }}>
         <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
           <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
@@ -663,7 +662,7 @@ const SalarySystem = () => {
           </Paper>
         </Stack>
       </Box>
-    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft) || [formulaSettingsDraft.nameKo, formulaSettingsDraft.nameEn, formulaSettingsDraft.nameVi].some((name) => !String(name || '').trim())}>{t('계산식 적용')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft) || !hasLocalizedName(formulaSettingsDraft)}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
     <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 설정 버전 관리')}</DialogTitle><DialogContent dividers>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
@@ -712,14 +711,10 @@ const SalarySystem = () => {
     </DialogContent><DialogActions><Button onClick={() => setVersionDialogOpen(false)} disabled={versionBusy}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button><Button variant="contained" onClick={saveVersionBoundaries} disabled={versionBusy || saving || edit.stale || !edit.revision || !hasVersionBoundaryChanges}>{t('저장')}</Button></DialogActions></Dialog>
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
-      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1.5 }}>
-        <TextField autoFocus required label="Item Name (English)" value={draft.nameEn} onChange={(e) => setDraft((prev) => ({ ...prev, nameEn: e.target.value }))} placeholder="e.g. Qualification Allowance" />
-        <TextField required label="항목명 (한국어)" value={draft.nameKo} onChange={(e) => setDraft((prev) => ({ ...prev, nameKo: e.target.value }))} placeholder="예: 자격수당" />
-        <TextField required label="Tên khoản mục (Tiếng Việt)" value={draft.nameVi} onChange={(e) => setDraft((prev) => ({ ...prev, nameVi: e.target.value }))} placeholder="Ví dụ: Phụ cấp chứng chỉ" />
-      </Box>
+      <LocalizedNameFields value={draft} languageCode={languageCode} autoFocus onChange={(field, value) => setDraft(prev => ({ ...prev, [field]: value }))} />
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
-    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || [draft.nameKo, draft.nameEn, draft.nameVi].some((name) => !name.trim())}>{t('추가')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || !hasLocalizedName(draft)}>{t('추가')}</Button></DialogActions></Dialog>
 
     <PayTypeScheduleSettingsDialog open={scheduleSettingsOpen} onClose={() => setScheduleSettingsOpen(false)} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} />
   </Box></AppPageContainer>;

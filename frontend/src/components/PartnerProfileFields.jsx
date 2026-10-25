@@ -1,3 +1,4 @@
+import { LOCALIZED_NAME_HELP } from './LocalizedNameFields';
 import React from 'react';
 import {Box,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import EntityDetailSection from './EntityDetailSection';
@@ -17,9 +18,9 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
  const grid={display:'grid',gap:2,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',md:'repeat(3,minmax(0,1fr))'}};
  return <Stack spacing={2}>
   <EntityDetailSection title={common.identity}>
-   <Typography variant="body2" color="text.secondary" sx={{mb:2}}>{text.help}</Typography>
+   <Typography variant="body2" color="text.secondary" sx={{mb:2}}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
    <Box sx={grid}>
-    {field('name',text.name,{required:true,autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}
+    {field('name',text.name,{autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}
     {field('code',text.code,{helperText:text.codeHelp,inputProps:{maxLength:40}})}{field('businessNumber',common.businessNumber)}
    </Box>
   </EntityDetailSection>

@@ -32,16 +32,16 @@ try{
   assert.equal(await page.evaluate(async()=>{const {resolveCustomerDisplayName}=await import('/src/utils/appLanguage.js');return resolveCustomerDisplayName({name:'English company',nameKo:'',nameVi:''},'${lang}');}),'English company');
   const industry=page.getByRole('combobox',{name:INDUSTRY_TREE_TEXT[lang].industry,exact:true});
   if(screen==='customer'){
-   await page.locator('input[name=name]').fill('New customer');
+   await page.locator(`input[name=${lang==='ko'?'nameKo':lang==='vi'?'nameVi':'name'}]`).fill('New customer');
    assert.equal(await page.locator('input[name=code]').getAttribute('required'),null);
    if(lang==='vi')await page.locator('input[name=code]').fill('CUS-001');
    assert.equal(customerReads,0,'A static /customer/new route must not fetch an empty customer ID');
-   assert.equal(await industry.count(),0,'Customers have no detailed industry selector');
+   assert.equal(await page.locator('input[name=systemIndustryId]').count(),1,'The customer industry selector remains optional');
    await page.locator('.app-page-header button.MuiButton-contained').click();
    await page.waitForFunction(()=>window.notifications.some(row=>row.level==='success'));
-   assert.equal(payload.systemIndustryId,null);assert.equal(payload.code,lang==='vi'?'CUS-001':'');
+   assert.equal(payload.name,'New customer');assert.equal(payload.systemIndustryId,null);assert.equal(payload.code,lang==='vi'?'CUS-001':'');
   }else{
-   await page.locator('input[name=name]').fill('New vendor');
+   await page.locator(`input[name=${lang==='ko'?'nameKo':lang==='vi'?'nameVi':'name'}]`).fill('New vendor');
    await page.locator('input[name=contactName]').fill('Contact person');
    if(lang==='vi')await page.locator('input[name=code]').fill('VEN-001');
    await page.setViewportSize({width:390,height:540});

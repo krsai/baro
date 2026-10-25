@@ -1,3 +1,5 @@
+import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
+import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -124,7 +126,7 @@ const buildFactoryFormData = (factory) => {
 };
 
 const buildFactoryChangeSnapshot = (formData) => JSON.stringify({
-  name: String(formData?.name || '').trim(),
+  name: normalizeLocalizedName(formData, 'name').name,
   nameKo: String(formData?.nameKo || '').trim(),
   nameVi: String(formData?.nameVi || '').trim(),
   factoryCode: normalizeFactoryCode(formData?.factoryCode),
@@ -479,6 +481,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
         : managerMessages.helper;
 
   const handleSave = async () => {
+    if (!hasLocalizedName(formData, 'name')) return;
     const targetMonthlyWage = parseNumber(formData.targetMonthlyWage);
     const wagePerSecond = Number.isFinite(computedWagePerSecond)
       ? computedWagePerSecond
@@ -492,6 +495,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
     await onSave?.({
       ...factory,
       ...formData,
+      name: normalizeLocalizedName(formData, 'name').name,
       country: normalizeCountry(formData.country) || DEFAULT_COUNTRY,
       managerEmployeeId: normalizeManagerEmployeeId(formData.managerEmployeeId) || null,
       managementStartDate:
@@ -544,11 +548,11 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                 <TextField
                   fullWidth
                   size="small"
-                  label={text.name}
+                  label={text.name + (languageCode === 'ko' ? ' (영어 · 대표)' : languageCode === 'vi' ? ' (tiếng Anh · chính)' : ' (English · primary)')}
+                  helperText={LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
-                  required
                 />
               </Grid>
               <Grid item xs={12} sm={4}>
@@ -735,7 +739,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
           <SaveButton
             onClick={handleSave}
-            disabled={Boolean(factoryCodeError) || (!formDirty && !warehouseDirty)}
+            disabled={!hasLocalizedName(formData, 'name') || Boolean(factoryCodeError) || (!formDirty && !warehouseDirty)}
           />
         </Box>
       </Box>

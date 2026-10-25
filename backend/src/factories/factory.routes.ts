@@ -1,3 +1,4 @@
+import { normalizeEntityNameInput } from '../utils/localizedName';
 import { defaultVersionStartMonth, resolveVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { Router } from "express";
 import { prisma } from "../db";
@@ -243,6 +244,7 @@ const toFactoryResponse = (factory: any) => {
 
 export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) => {
   const factoryRouter = Router();
+  factoryRouter.use(normalizeEntityNameInput);
 
   factoryRouter.get("/factories", async (req, res) => {
     const organization = await getOrganizationByQuery(req);

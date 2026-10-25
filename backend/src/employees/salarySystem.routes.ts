@@ -1,3 +1,4 @@
+import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { defaultVersionStartMonth, resolveVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { createHttpError } from "../utils/http";
 import { editRevision, assertEditRevision, editTransaction } from "../utils/editRevision";
@@ -47,9 +48,9 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     if (await prisma.salaryItem.findFirst({ where: { orgId, factoryId }, select: { id: true } })) return;
     const legacy = await prisma.employeeCompensationPolicy.findMany({ where: { orgId } });
     const definitions = [
-      { code: "baseSalary", name: "기본급", nameKo: "기본급", nameEn: "Base Salary", nameVi: "Lương cơ bản", category: "BASE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: true },
-      { code: "allowanceTotal", name: "수당", nameKo: "수당", nameEn: "Allowance", nameVi: "Phụ cấp", category: "ALLOWANCE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: false },
-      { code: "incentiveTotal", name: "생산수당", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], required: true },
+      { code: "baseSalary", name: "Base Salary", nameKo: "기본급", nameEn: "Base Salary", nameVi: "Lương cơ bản", category: "BASE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: true },
+      { code: "allowanceTotal", name: "Allowance", nameKo: "수당", nameEn: "Allowance", nameVi: "Phụ cấp", category: "ALLOWANCE", payTypes: PAY_TYPES, formula: ["GRADE_RATE"], required: false },
+      { code: "incentiveTotal", name: "Production Allowance", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], required: true },
     ];
     await prisma.$transaction(async (tx) => {
       for (const [sortOrder, definition] of definitions.entries()) {
@@ -65,7 +66,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
   // are ordinary user-managed items and must not be touched here.
   const ensureFixedIncentiveItem = async (orgId: number, factoryId: number) => {
     const fixedItem = await prisma.salaryItem.findFirst({ where: { orgId, factoryId, code: "incentiveTotal" } });
-    const data = { name: "생산수당", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, isActive: true };
+    const data = { name: "Production Allowance", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, isActive: true };
     if (!fixedItem) {
       const last = await prisma.salaryItem.findFirst({ where: { orgId, factoryId, isActive: true }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
       await prisma.salaryItem.upsert({ where: { factoryId_code: { factoryId, code: "incentiveTotal" } }, create: { orgId, factoryId, code: "incentiveTotal", ...data, sortOrder: (last?.sortOrder || 0) + 1 }, update: data });
@@ -125,7 +126,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       const paymentMonths: number[] = Array.isArray(raw?.paymentMonths) ? raw.paymentMonths.map(Number).sort((a: number, b: number) => a - b) : [];
       const capValue = raw?.capValue === "" || raw?.capValue == null ? null : Number(raw.capValue);
       const expectedMonthCount = PAYMENT_MONTHS_BY_CYCLE[payCycle as keyof typeof PAYMENT_MONTHS_BY_CYCLE]?.length;
-      if (!code || codes.has(code) || [raw?.nameKo, raw?.nameEn, raw?.nameVi].some((name) => !String(name || "").trim()) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || payTypes.length < 1 || new Set(payTypes).size !== payTypes.length || payTypes.some((value) => !PAY_TYPES.includes(value)) || (category === "INCENTIVE" && (payTypes.length !== 1 || payTypes[0] !== "OUTPUT")) || !expectedMonthCount || paymentMonths.length !== expectedMonthCount || new Set(paymentMonths).size !== paymentMonths.length || paymentMonths.some((month) => !Number.isInteger(month) || month < 1 || month > 12) || (category === "INCENTIVE" && paymentMonths.some((month, index) => month !== PAYMENT_MONTHS_BY_CYCLE.MONTHLY[index])) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
+      if (!code || codes.has(code) || !validLocalizedName(raw) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || payTypes.length < 1 || new Set(payTypes).size !== payTypes.length || payTypes.some((value) => !PAY_TYPES.includes(value)) || (category === "INCENTIVE" && (payTypes.length !== 1 || payTypes[0] !== "OUTPUT")) || !expectedMonthCount || paymentMonths.length !== expectedMonthCount || new Set(paymentMonths).size !== paymentMonths.length || paymentMonths.some((month) => !Number.isInteger(month) || month < 1 || month > 12) || (category === "INCENTIVE" && paymentMonths.some((month, index) => month !== PAYMENT_MONTHS_BY_CYCLE.MONTHLY[index])) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
       codes.add(code);
       payTypesByCode.set(code, payTypes);
     }
@@ -150,8 +151,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
         // BASE/ALLOWANCE items - only their payTypes/payCycle/paymentMonths are still
         // forced to the INCENTIVE-wide rule (output-only, monthly).
         const isFixedIncentiveTotal = code === "incentiveTotal";
-        const nameKo = isFixedIncentiveTotal ? "생산수당" : String(raw.nameKo).trim(); const nameEn = isFixedIncentiveTotal ? "Production Allowance" : String(raw.nameEn).trim(); const nameVi = isFixedIncentiveTotal ? "Phụ cấp sản lượng" : String(raw.nameVi).trim();
-        const data = { name: nameKo, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: isFixedIncentiveTotal ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: isFixedIncentiveTotal ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: isFixedIncentiveTotal || raw.required === true, sortOrder, isActive: true };
+        const nameKo = isFixedIncentiveTotal ? "생산수당" : normalizeLocalizedName(raw).nameKo; const nameEn = isFixedIncentiveTotal ? "Production Allowance" : normalizeLocalizedName(raw).nameEn; const nameVi = isFixedIncentiveTotal ? "Phụ cấp sản lượng" : normalizeLocalizedName(raw).nameVi;
+        const data = { name: nameEn, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: isFixedIncentiveTotal ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: isFixedIncentiveTotal ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: isFixedIncentiveTotal || raw.required === true, sortOrder, isActive: true };
         const saved = await tx.salaryItem.upsert({ where: { factoryId_code: { factoryId: factory.id, code } }, create: { orgId: org.id, factoryId: factory.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
       await tx.salaryItem.updateMany({ where: { orgId: org.id, factoryId: factory.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });

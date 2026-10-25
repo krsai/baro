@@ -1,3 +1,4 @@
+import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
 import { DEFAULT_SIZE_SET_CODE, normalizeSizeSetCode } from '../../../constants/productAttributes';
 
 const COUNTRY_CODE_BY_COUNTRY = Object.freeze({
@@ -82,7 +83,7 @@ export const buildCustomerPayload = (formData = {}) => ({
   systemIndustryId: formData.systemIndustryId || null,
   businessNumber: String(formData.businessNumber || '').trim() || null,
   code: String(formData.code || '').trim().toUpperCase(),
-  name: String(formData.name || '').trim(),
+  name: normalizeLocalizedName(formData, 'name').name,
   nameKo: String(formData.nameKo || '').trim() || null,
   nameVi: String(formData.nameVi || '').trim() || null,
   country: normalizeCountry(formData.country) || null,

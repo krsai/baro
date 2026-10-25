@@ -1,3 +1,5 @@
+import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
+import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { Box, Button, Chip, CircularProgress, Stack, TextField, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -68,7 +70,7 @@ const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) =
     saveChanges: async () => {
       const changedWarehouses = warehouses.filter((warehouse) => {
         const draft = draftNames[String(warehouse.id)] || buildDraft();
-        return String(draft.name).trim() && ['name', 'nameKo', 'nameVi'].some(
+        return hasLocalizedName(draft, 'name') && ['name', 'nameKo', 'nameVi'].some(
           (field) => String(draft[field] || '').trim() !== String(warehouse[field] || '')
         );
       });
@@ -106,7 +108,7 @@ const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) =
   };
 
   const addWarehouse = async () => {
-    const name = newWarehouse.name.trim();
+    const name = normalizeLocalizedName(newWarehouse, 'name').name;
     if (!name) return;
     setSavingId('new');
     try {
@@ -129,7 +131,7 @@ const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) =
   return (
     <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 2 }}>
       <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>{text.title}</Typography>
-      <Typography variant="caption" color="text.secondary">{text.description}</Typography>
+      <Typography variant="caption" color="text.secondary">{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
       {!factoryId ? (
         <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">{text.saveFactory}</Typography>
       ) : loading ? (
@@ -141,7 +143,7 @@ const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) =
               <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ flex: 1, width: '100%' }}>
                 {['name', 'nameKo', 'nameVi'].map((field) => (
                   <TextField
-                    key={field} size="small" fullWidth required={field === 'name'} label={text[field]}
+                    key={field} size="small" fullWidth required={false} label={text[field]}
                     value={draftNames[String(warehouse.id)]?.[field] ?? ''}
                     onChange={(event) => setDraftNames((previous) => ({
                       ...previous,
@@ -158,9 +160,9 @@ const FactoryWarehouseSection = forwardRef(({ factoryId, onDirtyChange }, ref) =
           ))}
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
             {['name', 'nameKo', 'nameVi'].map((field) => (
-              <TextField key={field} size="small" fullWidth required={field === 'name'} label={text[field]} value={newWarehouse[field]} onChange={(event) => setNewWarehouse((previous) => ({ ...previous, [field]: event.target.value }))} />
+              <TextField key={field} size="small" fullWidth required={false} label={text[field]} value={newWarehouse[field]} onChange={(event) => setNewWarehouse((previous) => ({ ...previous, [field]: event.target.value }))} />
             ))}
-            <Button variant="outlined" startIcon={<AddIcon />} disabled={!newWarehouse.name.trim() || savingId !== null} onClick={addWarehouse} sx={{ whiteSpace: 'nowrap', minWidth: 88 }}>{text.add}</Button>
+            <Button variant="outlined" startIcon={<AddIcon />} disabled={!hasLocalizedName(newWarehouse, 'name') || savingId !== null} onClick={addWarehouse} sx={{ whiteSpace: 'nowrap', minWidth: 88 }}>{text.add}</Button>
           </Stack>
         </Stack>
       )}

@@ -12,7 +12,8 @@ function routeHandler(method,path,deps){
  const source=fs.readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const node=tree.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(tree)===`app.${method}`&&node.expression.arguments[0]?.text===path);
  assert.ok(node);let handler;
- const bindings={app:{[method]:(_path,fn)=>handler=fn},...deps};
+ const {normalizeLocalizedName}=require('../backend/dist/utils/localizedName.js');
+ const bindings={app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,...deps};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));
  return handler;
 }

@@ -168,8 +168,8 @@ const normalizeMasterRows = (rows = []) =>
   (Array.isArray(rows) ? rows : []).map((item, index) => ({
     id: item.id ?? `new-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
     code: toTrimmedText(item.code),
-    nameKo: toTrimmedText(item.nameKo ?? item.label),
-    nameEn: toTrimmedText(item.nameEn),
+    nameKo: toTrimmedText(item.nameKo),
+    nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.nameKo) || toTrimmedText(item.nameVi) || toTrimmedText(item.label),
     nameVi: toTrimmedText(item.nameVi),
     sortOrder: Number(item.sortOrder) || index + 1,
   }));

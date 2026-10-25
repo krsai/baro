@@ -462,9 +462,9 @@ const PayrollEntry = () => {
         };
   const salaryItemName = useCallback(
     (item) => {
-      if (languageCode === "vi") return item?.nameVi || item?.nameKo || item?.nameEn || item?.name || "-";
-      if (languageCode === "en") return item?.nameEn || item?.nameKo || item?.nameVi || item?.name || "-";
-      return item?.nameKo || item?.name || item?.nameEn || item?.nameVi || "-";
+      if (languageCode === "vi") return item?.nameVi || item?.nameEn || item?.name || item?.nameKo || "-";
+      if (languageCode === "en") return item?.nameEn || item?.name || item?.nameKo || item?.nameVi || "-";
+      return item?.nameKo || item?.nameEn || item?.name || item?.nameVi || "-";
     },
     [languageCode],
   );

@@ -1,4 +1,5 @@
 import { buildQueryString, getRequestContext, requestJSON } from './apiClient';
+import { normalizeLocalizedName } from './localizedName.mjs';
 import { buildAttributeSearchText, resolveLocalizedAttributeName } from './appLanguage';
 import { normalizePayType } from '../constants/payType';
 
@@ -28,7 +29,7 @@ const resolveAttributeBaseName = (item = {}) => {
   const nameEn = toTrimmedText(item?.nameEn);
   const nameKo = toTrimmedText(item?.nameKo);
   const nameVi = toTrimmedText(item?.nameVi);
-  return nameEn || name || nameKo || nameVi || '';
+  return nameEn || nameKo || nameVi || name || '';
 };
 
 const normalizeAttributeItem = (item = {}) => {
@@ -86,9 +87,9 @@ const normalizeAttributePayload = (payload = {}) => {
     normalized[key] = payload[key].map((item = {}) => ({
       id: item.id ?? undefined,
       code: toTrimmedText(item.code),
-      name: resolveAttributeBaseName(item),
+      name: normalizeLocalizedName(item).name,
       nameKo: toTrimmedText(item.nameKo),
-      nameEn: toTrimmedText(item.nameEn) || toTrimmedText(item.name),
+      nameEn: normalizeLocalizedName(item).nameEn,
       nameVi: toTrimmedText(item.nameVi),
       ...(key === 'roles'
         ? {
@@ -123,9 +124,9 @@ const normalizeProcessMasterItem = (item = {}, defaultType = '') => ({
   id: item.id ?? null,
   type: String(item.type ?? defaultType).trim().toUpperCase(),
   code: normalizeProcessMasterCode(item.code),
-  label: toTrimmedText(item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value),
-  nameKo: toTrimmedText(item.nameKo ?? item.label),
-  nameEn: toTrimmedText(item.nameEn),
+  label: normalizeLocalizedName(item).nameEn,
+  nameKo: toTrimmedText(item.nameKo),
+  nameEn: normalizeLocalizedName(item).nameEn,
   nameVi: toTrimmedText(item.nameVi),
   sortOrder: normalizeSortOrder(item.sortOrder),
 });
@@ -262,11 +263,9 @@ const normalizeProcessMasterPayload = (payload = {}) => {
       id: item.id ?? undefined,
       type,
       code: normalizeProcessMasterCode(item.code),
-      label: toTrimmedText(
-        item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value
-      ),
-      nameKo: toTrimmedText(item.nameKo ?? item.label),
-      nameEn: toTrimmedText(item.nameEn),
+      label: normalizeLocalizedName(item).nameEn,
+      nameKo: toTrimmedText(item.nameKo),
+      nameEn: normalizeLocalizedName(item).nameEn,
       nameVi: toTrimmedText(item.nameVi),
       sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
     }));
@@ -277,11 +276,9 @@ const normalizeProcessMasterPayload = (payload = {}) => {
       id: item.id ?? undefined,
       type: 'LOCATION',
       code: normalizeProcessMasterCode(item.code),
-      label: toTrimmedText(
-        item.label ?? item.nameKo ?? item.nameEn ?? item.nameVi ?? item.name ?? item.value
-      ),
-      nameKo: toTrimmedText(item.nameKo ?? item.label),
-      nameEn: toTrimmedText(item.nameEn),
+      label: normalizeLocalizedName(item).nameEn,
+      nameKo: toTrimmedText(item.nameKo),
+      nameEn: normalizeLocalizedName(item).nameEn,
       nameVi: toTrimmedText(item.nameVi),
       sortOrder: normalizeSortOrder(item.sortOrder) || index + 1,
     }));

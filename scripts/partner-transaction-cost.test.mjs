@@ -79,11 +79,10 @@ test('SQL is repeatable, protects organization FKs and prevents process bypass a
   } finally { await db.close(); }
 });
 
-test('partner creation requires system administrator; edits and deletion use organization management roles', () => {
+test('partner creation, edits and deletion use tenant organization management roles', () => {
   const source = fs.readFileSync('backend/src/index.ts','utf8');
-  assert.match(source, /type === "PROCESS_OUTSOURCING" && !\(await requireSystemAdmin/);
-  for (const method of ['put', 'delete']) {
-    const start = source.indexOf(`app.${method}(` + (method === 'put' ? '"' : "'") + '/business-partners/:id');
+  for (const method of ['post', 'put', 'delete']) {
+    const start = source.indexOf(`app.${method}(` + (method === 'delete' ? "'" : '"') + (method === 'post' ? '/business-partners"' : '/business-partners/:id'));
     const body = source.slice(start, source.indexOf('\napp.', start + 1));
     assert.ok(start >= 0);
     assert.match(body, /requireOrgRole[\s\S]*allowedRoles: ORG_MANAGEMENT_ROLES/);

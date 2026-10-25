@@ -1,3 +1,4 @@
+import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 ﻿import { type OrgUserRole } from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../db";
@@ -223,17 +224,14 @@ export const createEmployeeRouter = ({
     if (!(await requireGradeManager(req, res, organization.id))) return;
     const setId = Number(req.body?.setId);
     const code = String(req.body?.code || "").trim().toUpperCase();
-    const name = String(req.body?.name || "").trim();
-    const nameKo = String(req.body?.nameKo || name).trim();
-    const nameEn = String(req.body?.nameEn || "").trim();
-    const nameVi = String(req.body?.nameVi || "").trim();
+    const { name, nameKo, nameEn, nameVi } = normalizeLocalizedName(req.body);
     const sortOrder = Number(req.body?.sortOrder);
-    if (!Number.isSafeInteger(setId) || !code || !nameKo || !nameEn || !nameVi || !Number.isSafeInteger(sortOrder) || sortOrder < 1) {
+    if (!Number.isSafeInteger(setId) || !code || !nameEn || !Number.isSafeInteger(sortOrder) || sortOrder < 1) {
       return res.status(400).json({ ok: false, error: "setId, code, localized names and positive sortOrder are required" });
     }
     const set = await prisma.employeeGradeSet.findFirst({ where: { id: setId, orgId: organization.id } });
     if (!set) return res.status(404).json({ ok: false, error: "grade set not found" });
-    const created = await prisma.employeeGrade.create({ data: { orgId: organization.id, setId, code, name: nameKo, nameKo, nameEn, nameVi, sortOrder } });
+    const created = await prisma.employeeGrade.create({ data: { orgId: organization.id, setId, code, name: nameEn, nameKo, nameEn, nameVi, sortOrder } });
     return res.status(201).json(created);
   });
 
@@ -244,18 +242,15 @@ export const createEmployeeRouter = ({
     const gradeId = Number(req.params.gradeId);
     const grade = await prisma.employeeGrade.findFirst({ where: { id: gradeId, orgId: organization.id } });
     if (!grade) return res.status(404).json({ ok: false, error: "grade not found" });
-    const name = req.body?.name === undefined ? undefined : String(req.body.name || "").trim();
-    const nameKo = req.body?.nameKo === undefined ? name : String(req.body.nameKo || "").trim();
-    const nameEn = req.body?.nameEn === undefined ? undefined : String(req.body.nameEn || "").trim();
-    const nameVi = req.body?.nameVi === undefined ? undefined : String(req.body.nameVi || "").trim();
+    const { name, nameKo, nameEn, nameVi } = normalizeLocalizedName({ ...grade, ...req.body });
     const sortOrder = req.body?.sortOrder === undefined ? undefined : Number(req.body.sortOrder);
-    if (name === "" || nameKo === "" || nameEn === "" || nameVi === "" || (sortOrder !== undefined && (!Number.isSafeInteger(sortOrder) || sortOrder < 1))) {
+    if (!nameEn || (sortOrder !== undefined && (!Number.isSafeInteger(sortOrder) || sortOrder < 1))) {
       return res.status(400).json({ ok: false, error: "invalid grade input" });
     }
     const updated = await prisma.employeeGrade.update({
       where: { id: gradeId },
       data: {
-        ...(nameKo !== undefined ? { name: nameKo, nameKo } : {}),
+        name, nameKo,
         ...(nameEn !== undefined ? { nameEn } : {}),
         ...(nameVi !== undefined ? { nameVi } : {}),
         ...(sortOrder !== undefined ? { sortOrder } : {}),
@@ -274,8 +269,7 @@ export const createEmployeeRouter = ({
     if (existingRows.length === 0) return res.status(404).json({ ok: false, error: "grade set not found" });
     const existingIds = new Set(existingRows.map((row) => row.id));
     const normalizedRows = inputRows.map((row: any) => ({
-      id: Number(row?.id), nameKo: String(row?.nameKo || "").trim(),
-      nameEn: String(row?.nameEn || "").trim(), nameVi: String(row?.nameVi || "").trim(),
+      id: Number(row?.id), ...normalizeLocalizedName(row),
       sortOrder: Number(row?.sortOrder),
     }));
     const ids = normalizedRows.map((row: any) => row.id);
@@ -283,7 +277,7 @@ export const createEmployeeRouter = ({
     if (
       normalizedRows.length !== existingRows.length || new Set(ids).size !== ids.length
       || ids.some((id: number) => !existingIds.has(id)) || new Set(orders).size !== orders.length
-      || normalizedRows.some((row: any) => !row.nameKo || !row.nameEn || !row.nameVi || !Number.isSafeInteger(row.sortOrder) || row.sortOrder < 1)
+      || normalizedRows.some((row: any) => !row.nameEn || !Number.isSafeInteger(row.sortOrder) || row.sortOrder < 1)
     ) return res.status(400).json({ ok: false, error: "all grades, localized names and unique positive sortOrder values are required" });
 
     await prisma.$transaction(async (tx) => {
@@ -293,7 +287,7 @@ export const createEmployeeRouter = ({
       for (const row of normalizedRows) {
         await tx.employeeGrade.update({
           where: { id: row.id },
-          data: { name: row.nameKo, nameKo: row.nameKo, nameEn: row.nameEn, nameVi: row.nameVi, sortOrder: row.sortOrder },
+          data: { name: row.nameEn, nameKo: row.nameKo, nameEn: row.nameEn, nameVi: row.nameVi, sortOrder: row.sortOrder },
         });
       }
     });

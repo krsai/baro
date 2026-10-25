@@ -1,3 +1,5 @@
+import LocalizedNameFields from '../../components/LocalizedNameFields';
+import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Typography, TableContainer, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
 import ChevronRight from '@mui/icons-material/ChevronRight';
@@ -48,6 +50,6 @@ export default function ExpenseMasterSettings({ industries = false }) {
       {category===0&&<Alert severity="info" sx={{mb:2}}>{tree.review}</Alert>}{table}
     </HierarchyPanel>:<Paper variant="outlined">{table}</Paper>}
     <OutsourcingServiceDialog systemDefaults partnerIndustryOnly initialServiceId={industryId} initialPartnerRoleId={category||null} open={open} onClose={() => setOpen(false)} onSaved={load} orgId={activeOrgId} languageCode={languageCode} />
-    <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{text.type}</DialogTitle><DialogContent>{form && <Stack spacing={2} sx={{ pt: 1 }}>{['nameKo','nameEn','nameVi'].map(key => <TextField key={key} label={common[key]} value={form[key]} disabled={saving} onChange={event => setForm({ ...form, [key]: event.target.value })} />)}<FormControlLabel label={languageCode === 'ko' ? '사용 중' : 'Active'} control={<Checkbox checked={form.isActive} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} /></Stack>}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setForm(null)}>{common.cancel}</Button><SaveButton loading={saving} disabled={saving || !form || ['nameKo','nameEn','nameVi'].some(key => !form[key].trim())} onClick={save}>{common.save}</SaveButton></DialogActions></Dialog>
+    <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{text.type}</DialogTitle><DialogContent>{form && <Stack spacing={2} sx={{ pt: 1 }}><LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} /><FormControlLabel label={languageCode === 'ko' ? '사용 중' : 'Active'} control={<Checkbox checked={form.isActive} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} /></Stack>}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setForm(null)}>{common.cancel}</Button><SaveButton loading={saving} disabled={saving || !form || !hasLocalizedName(form)} onClick={save}>{common.save}</SaveButton></DialogActions></Dialog>
   </AppPageContainer>;
 }

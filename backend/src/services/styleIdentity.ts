@@ -1,3 +1,4 @@
+import { normalizeLocalizedName } from '../utils/localizedName';
 import { Prisma } from '@prisma/client';
 
 const fail = (message: string, status = 409): never => { throw Object.assign(new Error(message), { status }); };
@@ -35,14 +36,14 @@ export const syncCategoryCopies = async (prisma: any, sourceOrgId: number, items
       if (id) seen.add(id);
       if (id) usedCodes.delete(previousById.get(id).code);
       let code = String(item.code || '').trim().toUpperCase();
-      const name = String(item.name || item.nameKo || item.nameEn || item.nameVi || '').trim();
+      const { name, nameEn, nameKo, nameVi } = normalizeLocalizedName(item);
       if (!code && id) code = previousById.get(id).code;
       if (!code && resolveCode) code = resolveCode({ code, name, usedCodes });
       if (!code || !name || codes.has(code)) fail('category code and name are required; codes must be unique', 400);
       codes.add(code);
       usedCodes.add(code);
       return { id, oldCode: id ? previousById.get(id).code : null,
-        data: { code, name, nameKo: item.nameKo || null, nameEn: item.nameEn || null, nameVi: item.nameVi || null } };
+        data: { code, name, nameKo: nameKo || null, nameEn, nameVi: nameVi || null } };
     });
     for (const org of organizations) {
       const rows = await tx.attrCategory.findMany({ where: { orgId: org.id } });

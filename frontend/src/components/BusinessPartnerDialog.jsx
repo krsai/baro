@@ -1,3 +1,4 @@
+import { normalizeLocalizedName, hasLocalizedName } from '../utils/localizedName.mjs';
 import PartnerProfileFields from './PartnerProfileFields';
 import EntityDetailSection from './EntityDetailSection';
 import EntityBankAccounts from './EntityBankAccounts';
@@ -102,12 +103,12 @@ export default function BusinessPartnerDialog({
 
   const update = (key) => (event) => setForm((current) => ({ ...current, [key]: event.target.value }));
   const save = async () => {
-    if (!form.name.trim()) return setError(labels.required);
+    if (!hasLocalizedName(form, 'name')) return setError(labels.required);
     setSaving(true);
     setError('');
     try {
       const body = {
-        name: form.name.trim(), type: form.type,
+        name: normalizeLocalizedName(form, 'name').name, type: form.type,
         ...Object.fromEntries(['code','nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
@@ -181,7 +182,7 @@ export default function BusinessPartnerDialog({
       </DialogContent>
       <DialogActions sx={{flexShrink:0,px:3,py:2}}>
         <Button onClick={onClose} disabled={saving}>{labels.cancel}</Button>
-        <Button variant="contained" onClick={save} disabled={saving || !form.name.trim()}>{isEdit ? labels.saveEdit : labels.save}</Button>
+        <Button variant="contained" onClick={save} disabled={saving || !hasLocalizedName(form, 'name')}>{isEdit ? labels.saveEdit : labels.save}</Button>
       </DialogActions>
     </Dialog>
   );

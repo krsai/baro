@@ -1,3 +1,6 @@
+import { LOCALIZED_NAME_HELP } from '../../components/LocalizedNameFields';
+import { useLanguage } from '../../context/LanguageContext';
+import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Box, Button, IconButton, MenuItem, Paper, Stack, TextField, Typography } from "@mui/material";
@@ -8,13 +11,14 @@ import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from "../../utils/wor
 
 const toGradeDraft = (grade) => ({
   id: grade.id,
-  nameKo: grade.nameKo || grade.name || "",
+  nameKo: grade.nameKo || "",
   nameEn: grade.nameEn || grade.name || "",
-  nameVi: grade.nameVi || grade.name || "",
+  nameVi: grade.nameVi || "",
   sortOrder: String(grade.sortOrder ?? ""),
 });
 const EmployeeSystem = () => {
   const { activeOrgId } = useAuth();
+  const { languageCode } = useLanguage();
   const [sets, setSets] = useState([]);
   const [grades, setGrades] = useState({});
   const [saving, setSaving] = useState(false);
@@ -54,7 +58,7 @@ const EmployeeSystem = () => {
   const gradesChanged = allGrades.some((grade) => JSON.stringify(grades[grade.id]) !== JSON.stringify(toGradeDraft(grade)));
   const gradesValid = allGrades.every((grade) => {
     const row = grades[grade.id];
-    return row?.nameKo.trim() && row?.nameEn.trim() && row?.nameVi.trim() && Number(row?.sortOrder) > 0;
+    return hasLocalizedName(row) && Number(row?.sortOrder) > 0;
   });
   const canSave = gradesChanged && gradesValid;
 
@@ -139,6 +143,7 @@ const EmployeeSystem = () => {
           </Button>
     }>
       <Box sx={{ width: "100%" }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
         {message && (
           <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>
             {message.text}

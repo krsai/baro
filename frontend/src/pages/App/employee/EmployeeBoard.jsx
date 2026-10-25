@@ -322,7 +322,7 @@ const getEmployeeStatusLabel = (value, languageCode = 'ko') =>
 const getEmployeeGradeLabel = (employee, languageCode = 'ko') => {
   const nameKo = employee?.gradeNameKo || employee?.nameKo || employee?.gradeName || employee?.name;
   if (languageCode === 'en') return employee?.gradeNameEn || employee?.nameEn || nameKo || '-';
-  if (languageCode === 'vi') return employee?.gradeNameVi || employee?.nameVi || nameKo || '-';
+  if (languageCode === 'vi') return employee?.gradeNameVi || employee?.nameVi || employee?.gradeNameEn || employee?.nameEn || nameKo || '-';
   return nameKo || '-';
 };
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();

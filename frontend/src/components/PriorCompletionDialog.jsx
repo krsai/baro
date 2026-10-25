@@ -54,7 +54,7 @@ export default function PriorCompletionDialog({ rows, selectedStyleId, orgId, la
     <DialogContent>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       <Stack direction="row" spacing={1} sx={{ mt: 1, mb: 2 }}>
-        <TextField select label={text.reason} value={reasonId} onChange={e => setReasonId(e.target.value)} size="small" sx={{ flex: 1 }} disabled={saving}>{reasons.map(reason => <MenuItem key={reason.id} value={reason.id}>{languageCode === 'ko' ? reason.nameKo : languageCode === 'vi' ? reason.nameVi : reason.nameEn}</MenuItem>)}</TextField>
+        <TextField select label={text.reason} value={reasonId} onChange={e => setReasonId(e.target.value)} size="small" sx={{ flex: 1 }} disabled={saving}>{reasons.map(reason => <MenuItem key={reason.id} value={reason.id}>{(languageCode === 'ko' ? reason.nameKo : languageCode === 'vi' ? reason.nameVi : reason.nameEn) || reason.nameEn}</MenuItem>)}</TextField>
         <TextField select label={text.period} value={precision} onChange={e => { setPrecision(e.target.value); setPeriod(''); }} size="small" disabled={saving}><MenuItem value="month">{text.month}</MenuItem><MenuItem value="date">{text.day}</MenuItem></TextField>
         <TextField type={precision} label={text.period} value={period} onChange={e => setPeriod(e.target.value)} InputLabelProps={{ shrink: true }} size="small" disabled={saving} />
       </Stack>
@@ -69,7 +69,7 @@ export default function PriorCompletionDialog({ rows, selectedStyleId, orgId, la
       {entries.some(entry => entry.row.priorCompletions?.length) && <Stack spacing={1} sx={{ mt: 2 }}>
         <Typography fontWeight={700}>{text.history}</Typography>
         {entries.flatMap(entry => (entry.row.priorCompletions || []).map(history => <Stack key={history.id} direction="row" alignItems="center" spacing={1}>
-          <Typography variant="body2" sx={{ flex: 1 }}>{entry.row.styleName} · {history.quantity} · {history.completedPeriod} · {languageCode === 'ko' ? history.reason.nameKo : languageCode === 'vi' ? history.reason.nameVi : history.reason.nameEn} · {history.createdByEmployee.name || history.createdByEmployee.employeeNo} (#{history.createdByEmployee.id}) · {new Date(history.createdAt).toLocaleString()}{history.canceledAt ? ` · ${text.canceled}: ${history.canceledByEmployee?.name || history.canceledByEmployee?.employeeNo} · ${history.cancellationNote}` : ''}</Typography>
+          <Typography variant="body2" sx={{ flex: 1 }}>{entry.row.styleName} · {history.quantity} · {history.completedPeriod} · {(languageCode === 'ko' ? history.reason.nameKo : languageCode === 'vi' ? history.reason.nameVi : history.reason.nameEn) || history.reason.nameEn} · {history.createdByEmployee.name || history.createdByEmployee.employeeNo} (#{history.createdByEmployee.id}) · {new Date(history.createdAt).toLocaleString()}{history.canceledAt ? ` · ${text.canceled}: ${history.canceledByEmployee?.name || history.canceledByEmployee?.employeeNo} · ${history.cancellationNote}` : ''}</Typography>
           {!history.canceledAt && <Button size="small" disabled={saving} onClick={() => { setCancelId(history.id); setNote(''); }}>{text.cancel}</Button>}
         </Stack>))}
       </Stack>}

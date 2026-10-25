@@ -1,3 +1,4 @@
+import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
@@ -43,9 +44,11 @@ export function validateServiceDefinition(body: any) {
   if (!['PROCESS', 'LOGISTICS', 'GENERAL'].includes(entryMode)) return fail('INVALID_ENTRY_MODE');
   const fields = body?.requiredFields;
   if (!Array.isArray(fields) || fields.some(field => !COST_DETAIL_FIELDS.includes(field))) return fail('INVALID_REQUIRED_FIELDS');
+  if (!validLocalizedName(body, 100)) return fail('INVALID_SERVICE_NAME');
+  body = { ...body, ...normalizeLocalizedName(body) };
   const text = (key: string) => typeof body[key] === 'string' && body[key].trim().length <= 100 ? body[key].trim() : '';
   const code = text('code');
-  if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(code) || !text('nameKo') || !text('nameEn') || !text('nameVi')) return fail('INVALID_SERVICE_NAME');
+  if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(code) || !validLocalizedName(body, 100)) return fail('INVALID_SERVICE_NAME');
   const options: Record<string,string> = {};
   for (const key of ['orderInput','styleInput','processInput']) {
     const option = entryMode === 'PROCESS' ? 'REQUIRED' : body[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');

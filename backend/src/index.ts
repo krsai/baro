@@ -1,3 +1,4 @@
+import { normalizeLocalizedName } from './utils/localizedName';
 import { entityProfile, partnerProfilePatch, normalizePartnerCode } from './services/entityProfile';
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
@@ -1805,9 +1806,7 @@ const buildSharedCustomerOrganizationData = (
         ? normalizePartnerCode(payload.code)
         : normalizePartnerCode(fallbackOrganization?.code),
     name:
-      payload?.name !== undefined
-        ? resolveOptionalString(payload.name, null)
-        : resolveOptionalString(fallbackOrganization?.name, null),
+      normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,
     nameKo:
       payload?.nameKo !== undefined
         ? resolveOptionalString(payload.nameKo, null)
@@ -2935,12 +2934,12 @@ const resolveStyleProcessCompositionText = (
 ) => {
   if (!entry || typeof entry !== "object") return "";
   if (language === "ko") {
-    return resolveOptionalString(entry?.nameKo ?? entry?.label ?? entry?.code, "") ?? "";
+    return resolveOptionalString(entry?.nameKo, null) || resolveOptionalString(entry?.nameEn, null) || resolveOptionalString(entry?.label ?? entry?.code, "") || "";
   }
   if (language === "vi") {
-    return resolveOptionalString(entry?.nameVi ?? entry?.label ?? entry?.code, "") ?? "";
+    return resolveOptionalString(entry?.nameVi, null) || resolveOptionalString(entry?.nameEn, null) || resolveOptionalString(entry?.label ?? entry?.code, "") || "";
   }
-  return resolveOptionalString(entry?.nameEn ?? entry?.label ?? entry?.code, "") ?? "";
+  return resolveOptionalString(entry?.nameEn, null) || resolveOptionalString(entry?.label ?? entry?.code, "") || "";
 };
 
 const buildStyleProcessNameFromComposition = (
@@ -16262,11 +16261,7 @@ const toAttrRoleResponse = (role: any) => ({
 });
 
 const resolveManagedAttributeNameData = (item: any) => {
-  const fallbackName = resolveOptionalString(item?.name, null);
-  const nameKo = resolveOptionalString(item?.nameKo, null);
-  const nameEn = resolveOptionalString(item?.nameEn, null) ?? fallbackName;
-  const nameVi = resolveOptionalString(item?.nameVi, null);
-  const name = nameEn ?? fallbackName ?? nameKo ?? nameVi ?? "";
+  const { name, nameKo, nameEn, nameVi } = normalizeLocalizedName(item);
   return {
     name,
     nameKo,
@@ -16485,12 +16480,12 @@ const resolveProcessMasterNameData = (item: any) => {
   const fallback = normalizeProcessMasterLabel(
     item?.label ?? item?.name ?? item?.value
   );
-  const resolvedNameKo = nameKo || fallback;
-  const resolvedLabel = resolvedNameKo || nameEn || nameVi || fallback;
+  const resolvedNameKo = nameKo;
+  const resolvedLabel = nameEn || nameKo || nameVi || fallback;
 
   return {
     nameKo: resolvedNameKo,
-    nameEn,
+    nameEn: resolvedLabel,
     nameVi,
     label: resolvedLabel,
   };
@@ -16503,8 +16498,8 @@ const toProcessMasterOptionResponse = (row: any) => ({
   label: normalizeProcessMasterLabel(
     row?.label ?? row?.nameKo ?? row?.nameEn ?? row?.nameVi
   ),
-  nameKo: normalizeProcessMasterLabel(row?.nameKo ?? row?.label),
-  nameEn: normalizeProcessMasterLabel(row?.nameEn),
+  nameKo: normalizeProcessMasterLabel(row?.nameKo),
+  nameEn: normalizeProcessMasterLabel(row?.nameEn) || normalizeProcessMasterLabel(row?.nameKo) || normalizeProcessMasterLabel(row?.nameVi) || normalizeProcessMasterLabel(row?.label),
   nameVi: normalizeProcessMasterLabel(row?.nameVi),
   sortOrder: toPositiveIntOrNull(row?.sortOrder) ?? 0,
 });
@@ -27614,7 +27609,7 @@ app.post("/business-partners", async (req, res) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
   if (!accessContext) return;
   const { organization } = accessContext;
-  const name = resolveOptionalString(req.body?.name, null);
+  const name = normalizeLocalizedName(req.body, "name").name;
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
   if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
   const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
@@ -27657,7 +27652,7 @@ app.put("/business-partners/:id", async (req, res) => {
   const existing = await prisma.organization.findFirst({ where: { id, ownerOrgId: organization.id, type: { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'] } } });
   if (!existing) return res.status(404).json({ ok: false, error: "business partner not found" });
 
-  const name = resolveOptionalString(req.body?.name, null);
+  const name = normalizeLocalizedName(req.body, "name").name;
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
   const requestedType = resolveOptionalString(req.body?.type, null);
   if (requestedType && !['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'].includes(requestedType)) {
@@ -29720,7 +29715,8 @@ app.put("/customers/:id", async (req, res) => {
   }
 
   const systemIndustryId = await validateCustomerIndustry(prisma,req.body?.systemIndustryId,existing.systemIndustryId);
-  const { name, code, memo } = req.body ?? {};
+  const { code, memo } = req.body ?? {};
+  const name = ['name','nameKo','nameVi'].some(key => req.body?.[key] !== undefined) ? normalizeLocalizedName(req.body, "name").name : undefined;
   const targetOrganization = isManufacturerPerspective
     ? existing.brand
     : existing.manufacturer;

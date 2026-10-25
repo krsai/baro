@@ -1,3 +1,5 @@
+import { LOCALIZED_NAME_HELP } from '../../../components/LocalizedNameFields';
+import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
 import { createPortal } from 'react-dom';
 import EntityDetailSection from '../../../components/EntityDetailSection';
@@ -239,7 +241,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   );
   useUnsavedChanges(isDirty);
 
-  const isNameValid = formData.name.trim().length > 0;
+  const isNameValid = hasLocalizedName(formData, 'name');
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -267,7 +269,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     setIsSaving(true);
     try {
       const payload = {
-        name: formData.name.trim(),
+        name: normalizeLocalizedName(formData, 'name').name,
         nameKo: formData.nameKo?.trim() || null,
         nameVi: formData.nameVi?.trim() || null,
         businessNumber: formData.businessNumber?.trim() || null,
@@ -347,9 +349,9 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
           <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
-              required
               size="small"
               label={localText.nameEn}
+              helperText={LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}
               name="name"
               value={formData.name}
               onChange={handleInputChange}

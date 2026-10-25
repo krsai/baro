@@ -124,7 +124,7 @@ const resolveBaseAttributeName = (item = {}) => {
   const nameEn = toTrimmedText(item?.nameEn);
   const nameKo = toTrimmedText(item?.nameKo);
   const nameVi = toTrimmedText(item?.nameVi);
-  return nameEn || name || nameKo || nameVi || '';
+  return nameEn || nameKo || nameVi || name || '';
 };
 
 const normalizeRows = (rows) =>

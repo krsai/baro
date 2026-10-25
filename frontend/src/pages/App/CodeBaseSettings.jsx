@@ -1,3 +1,5 @@
+import LocalizedNameFields from '../../components/LocalizedNameFields';
+import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import PageContentStack from '../../components/PageContentStack';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
 import { useAppActions } from '../../context/AppContext';
@@ -61,8 +63,8 @@ export default function CodeBaseSettings() {
           <TextField required label={labels.code} helperText={labels.hint} sx={{width:180}} value={form.code} disabled={saving || Boolean(form.id)} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})} />
           <FormControlLabel label={labels.active} control={<Checkbox disabled={saving} checked={form.isActive} onChange={event=>setForm({...form,isActive:event.target.checked})} />} />
         </Box>
-        <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(3,minmax(0,1fr))'},gap:2}}>
-          {[['nameKo','한국어'],['nameEn','English'],['nameVi','Tiếng Việt']].map(([key,label])=><TextField key={key} required label={label} disabled={saving} value={form[key]} onChange={event=>setForm({...form,[key]:event.target.value})} />)}
+        <Box>
+          <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} />
         </Box>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(2,minmax(0,1fr))'},gap:2}}>
           <TextField select required label={expenseLabels.type} disabled={saving} value={form.expenseTypeId || ''} onChange={event=>{const type=expenseTypes.find(row=>row.id===event.target.value);setForm({...form,expenseTypeId:type.id,entryMode:type.entryMode,requiredFields:type.entryMode==='LOGISTICS'?['transportDate','origin','destination']:[],orderInput:type.entryMode==='PROCESS'?'REQUIRED':'OPTIONAL',styleInput:type.entryMode==='PROCESS'?'REQUIRED':'HIDDEN',processInput:type.entryMode==='PROCESS'?'REQUIRED':'HIDDEN'});}}>{expenseTypes.filter(row=>row.isActive || row.id===form.expenseTypeId).map(row=><MenuItem key={row.id} value={row.id}>{serviceName(row,languageCode)}</MenuItem>)}</TextField>
@@ -83,7 +85,7 @@ export default function CodeBaseSettings() {
           <Typography variant="body2" color="text.secondary" sx={{mt:1}}>{labels.generated}: {form.taxTreatmentIds.map(id=>form.code+TAXES.find(tax=>tax.id===id).suffix).join(' ? ')}</Typography>
         </Box>
       </Stack>}</DialogContent>
-      <DialogActions sx={{px:3,py:2}}><Button disabled={saving} onClick={()=>setForm(null)}>{labels.cancel}</Button><SaveButton loading={saving} onClick={save} disabled={saving || !form || !/^[A-Z]{3}$/.test(form.code) || !form.serviceTypeId || !form.expenseTypeId || !form.taxTreatmentIds.length || ['nameKo','nameEn','nameVi'].some(key=>!form[key].trim())}>{labels.save}</SaveButton></DialogActions>
+      <DialogActions sx={{px:3,py:2}}><Button disabled={saving} onClick={()=>setForm(null)}>{labels.cancel}</Button><SaveButton loading={saving} onClick={save} disabled={saving || !form || !/^[A-Z]{3}$/.test(form.code) || !form.serviceTypeId || !form.expenseTypeId || !form.taxTreatmentIds.length || !hasLocalizedName(form)}>{labels.save}</SaveButton></DialogActions>
     </Dialog>
   </AppPageContainer>;
 }

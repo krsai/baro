@@ -1,3 +1,4 @@
+import { normalizeEntityNameInput } from '../utils/localizedName';
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../db";
@@ -116,6 +117,7 @@ export const createOrganizationRouter = ({
   toOrganizationResponse,
 }: OrganizationRoutesDeps) => {
   const organizationRouter = Router();
+  organizationRouter.use(normalizeEntityNameInput);
 
   organizationRouter.get("/organizations", async (req, res) => {
     const requesterEmail = getRequesterEmail(req);
