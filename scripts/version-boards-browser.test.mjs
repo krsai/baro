@@ -58,8 +58,7 @@ try{
    assert.equal(await target('2026-10').getByText('Ver.1',{exact:true}).count(),1,'keyboard moves the boundary to November');
    await drag(page,source,target('2026-04'));assert.equal(await target('2026-04').getByText('Ver.2',{exact:true}).count(),1);
    await drag(page,source,board.locator('[data-version-unapply]'));assert.equal(await target('2026-04').getByText('Ver.1',{exact:true}).count(),1);
-   await page.getByRole('button',{name:{ko:'이후 12개월',en:'Next 12 months',vi:'12 tháng tiếp'}[lang],exact:true}).click();
-   assert.equal(await target('2027-11').count(),1,'future months stay available without a date picker');
+   assert.equal(await page.getByRole('button',{name:{ko:'이후 12개월',en:'Next 12 months',vi:'12 tháng tiếp'}[lang],exact:true}).count(),0,'version managers do not offer future-year expansion');
    await drag(page,source,target('2026-04'));assert.equal(await target('2026-04').getByText('Ver.2',{exact:true}).count(),1);
   }
   assert.equal(writes.length,0,'dragging must not save automatically');
