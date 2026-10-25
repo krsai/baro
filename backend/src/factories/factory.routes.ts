@@ -1,5 +1,5 @@
 import { normalizeEntityNameInput } from '../utils/localizedName';
-import { defaultVersionStartMonth, resolveVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
+import { defaultVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { Router } from "express";
 import { prisma } from "../db";
 import { normalizeEmployeeNo } from "../employees/employeeNumber";
@@ -11,7 +11,6 @@ import {
 import { getOrganizationByQuery } from "../middleware/access";
 import { ensureArray, toNumberOrNull, toPositiveIntOrNull } from "../utils/common";
 import { createHttpError } from "../utils/http";
-import { resolveCurrentPayrollMonthKey } from "../utils/payrollMonth";
 
 type FactoryRoutesDeps = {
   isManufacturerOrg: (org: { type?: string | null } | null | undefined) => boolean;
@@ -30,17 +29,6 @@ const FACTORY_MANAGER_EMPLOYEE_SELECT = {
 } as const;
 
 const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
-const FACTORY_RATE_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
-
-const resolveFactoryRateEffectiveMonth = (value: unknown): string | null => {
-  const fallback = resolveCurrentPayrollMonthKey({
-    timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
-  });
-  if (value === undefined || value === null || value === "") return fallback;
-  const normalized = String(value).trim();
-  return FACTORY_RATE_MONTH_PATTERN.test(normalized) ? normalized : null;
-};
-
 const roundToScale = (value: number, digits = 2): number => {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
@@ -288,7 +276,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       managerEmployeeId,
       targetMonthlyWage,
       wagePerSecond,
-      productionAllowanceEffectiveMonth,
     } = req.body ?? {};
 
     if (!name || typeof name !== "string") {
@@ -305,10 +292,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       return res.status(409).json({ ok: false, error: "factoryCode already in use" });
     }
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
-    const effectiveMonth = resolveFactoryRateEffectiveMonth(req.body?.newVersionEffectiveMonth ?? productionAllowanceEffectiveMonth);
-    if (effectiveMonth === null) {
-      return res.status(400).json({ ok: false, error: "productionAllowanceEffectiveMonth must be YYYY-MM" });
-    }
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -373,12 +356,13 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
         },
       });
       if (wageFields.wagePerSecond !== null) {
+        // A new rate remains unapplied until saved in Version Management.
         await tx.factoryProductionAllowanceRate.create({
           data: {
             orgId: organization.id,
             factoryId: createdFactory.id,
             versionNumber: 1,
-            effectiveMonth,
+            effectiveMonth: null,
             targetMonthlyWage: wageFields.targetMonthlyWage,
             wagePerSecond: wageFields.wagePerSecond,
           },
@@ -428,7 +412,6 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       managerEmployeeId,
       targetMonthlyWage,
       wagePerSecond,
-      productionAllowanceEffectiveMonth,
     } = req.body ?? {};
 
     let resolvedCode = (existing as any).factoryCode ?? null;
@@ -462,13 +445,8 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       (existing.productionAllowanceUpdatedAt === null &&
         productionAllowanceInputProvided &&
         hasProductionAllowance);
-    const effectiveMonth = resolveFactoryRateEffectiveMonth(productionAllowanceEffectiveMonth);
     const latestProductionAllowanceRate = ensureArray(existing.productionAllowanceRates)[0] ?? null;
-    const productionAllowanceEffectiveMonthChanged = Boolean(
-      productionAllowanceEffectiveMonth && effectiveMonth && latestProductionAllowanceRate?.effectiveMonth !== effectiveMonth
-    );
-    const productionAllowanceChanged =
-      productionAllowanceValueChanged || productionAllowanceEffectiveMonthChanged;
+    const productionAllowanceChanged = productionAllowanceValueChanged;
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -516,22 +494,13 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               },
             });
           }
-          if (
-            productionAllowanceEffectiveMonthChanged &&
-            !productionAllowanceValueChanged &&
-            latestProductionAllowanceRate
-          ) {
-            await tx.factoryProductionAllowanceRate.update({
-              where: { id: latestProductionAllowanceRate.id },
-              data: { effectiveMonth },
-            });
-          } else if (productionAllowanceValueChanged) {
+          if (productionAllowanceValueChanged) {
             await tx.factoryProductionAllowanceRate.create({
               data: {
                 orgId: organization.id,
                 factoryId: id,
                 versionNumber: (latestProductionAllowanceRate?.versionNumber || (existingRateCount === 0 ? 1 : existingRateCount)) + 1,
-                effectiveMonth: resolveVersionStartMonth(req.body?.newVersionEffectiveMonth),
+                effectiveMonth: null,
                 targetMonthlyWage: wageFields.targetMonthlyWage,
                 wagePerSecond: wageFields.wagePerSecond,
               },

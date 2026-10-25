@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:version-management-only": "node --test scripts/version-management-only.test.mjs",
     "test:version-lifecycle": "npm --prefix backend run build && node --test scripts/version-lifecycle.test.mjs scripts/version-application.test.mjs scripts/process-version-protection.test.mjs scripts/payroll-management-versions.test.mjs scripts/salary-system-regression.test.mjs",
     "test:version-lifecycle-browser": "node scripts/version-lifecycle-browser.test.mjs",
     "test:version-boards-browser": "node scripts/version-boards-browser.test.mjs",

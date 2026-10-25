@@ -1,5 +1,5 @@
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
-import { defaultVersionStartMonth, resolveVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
+import { defaultVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { createHttpError } from "../utils/http";
 import { editRevision, assertEditRevision, editTransaction } from "../utils/editRevision";
 import { Router } from "express";
@@ -160,7 +160,9 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       if (rates.length) await tx.salaryItemRate.createMany({ data: rates.map((r) => ({ orgId: org.id, factoryId: factory.id, payType: r.payType, gradeId: Number(r.gradeId), salaryItemId: ids.get(String(r.salaryItemCode))!, amount: Number(r.amount) })) });
       if (req.body?.createVersion === true) {
         const current = await state(org.id, factory.id, tx);
-        await tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: resolveVersionStartMonth(req.body?.effectiveMonth), confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+        // Creation only stores a snapshot. The boundary endpoint exclusively
+        // controls application, including requests from older clients.
+        await tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
       }
       return state(org.id, factory.id, tx);
     });
@@ -174,7 +176,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const created = await editTransaction(prisma, async (tx) => {
       const current = await state(org.id, factory.id, tx);
       assertEditRevision(req.body?.expectedRevision, current.editRevision);
-      return tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: resolveVersionStartMonth(req.body?.effectiveMonth), confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
+      return tx.salarySystemVersion.create({ data: { orgId: org.id, factoryId: factory.id, versionNumber: (current.versions[0]?.versionNumber || 0) + 1, effectiveMonth: null, confirmedBy: getRequesterEmail(req) || "system@baro.local", snapshot: toJsonSnapshot({ currencyCode: current.currencyCode, items: current.items, rates: current.rates }) } });
     });
     res.status(201).json(created);
   });

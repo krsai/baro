@@ -26,7 +26,6 @@ import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
-import VersionApplicationStart from '../../components/VersionApplicationStart';
 import { currentVersionMonth, versionTimelineMonths } from '../../utils/versionApplication.mjs';
 import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
 import { useAppActions } from '../../context/AppContext';
@@ -39,6 +38,11 @@ import { labelChipSx } from '../../theme/labelPalette';
 import { CURRENCY_CODES, currencySymbol } from '../../constants/currencies';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 import { resolveFactoryManagementStartDateKey } from '../../utils/factoryManagementStart';
+
+const versionSavedMessage = language => language === 'ko'
+  ? '새 버전을 저장했습니다. 버전 관리에서 적용할 월로 드래그한 뒤 저장해 주세요.'
+  : language === 'vi' ? 'Đã lưu phiên bản mới. Kéo phiên bản đến tháng áp dụng trong Quản lý phiên bản rồi lưu.'
+    : 'New version saved. Drag it to its effective month in Version Management, then save.';
 
 const PAY_TYPES = {
   GENERAL: { label: '사무(고정)', palette: 'blue' },
@@ -275,7 +279,6 @@ const SalarySystem = () => {
   const [savedVersionBoundaries, setSavedVersionBoundaries] = useState({});
   const [versionBusy, setVersionBusy] = useState(false);
   const [versionDefaultMonth, setVersionDefaultMonth] = useState(currentVersionMonth);
-  const [newVersionMonth, setNewVersionMonth] = useState(currentVersionMonth);
   const [saving, setSaving] = useState(false);
   const [scheduleSettingsOpen, setScheduleSettingsOpen] = useState(false);
   const edit = useEditRevision({ scope: `${activeOrgId}:${factoryId}`, url: `/salary-system/revision${buildQueryString({ orgId: activeOrgId, factoryId })}`, enabled: isRouteActive && Boolean(activeOrgId && factoryId), busy: saving || versionBusy });
@@ -330,7 +333,6 @@ const SalarySystem = () => {
       setCurrencyCode(loadedCurrencyCode);
       setVersions(Array.isArray(salarySystem?.versions) ? salarySystem.versions : []);
       setVersionDefaultMonth(salarySystem?.defaultVersionStartMonth || currentVersionMonth());
-      setNewVersionMonth(salarySystem?.defaultVersionStartMonth || currentVersionMonth());
       setRates(next);
       setSavedSnapshot(salaryStateSignature({ currencyCode: loadedCurrencyCode, items: loadedItems, rates: next }));
       return salarySystem;
@@ -404,10 +406,11 @@ const SalarySystem = () => {
         const [payType, gradeId] = key.split(':');
         return Object.entries(itemRates || {}).filter(([salaryItemCode]) => editableItems.get(String(salaryItemCode))?.payTypes?.includes(payType)).map(([salaryItemCode, amount]) => ({ payType, gradeId: Number(gradeId), salaryItemCode, amount: Number(String(amount).replace(/,/g, '')) || 0 }));
       });
-      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, createVersion: true, effectiveMonth: newVersionMonth, currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
+      await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, createVersion: true, currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
-      await load();
-      showNotification(languageCode === 'ko' ? `급여 설정을 저장했습니다. 새 버전은 ${newVersionMonth}부터 적용됩니다.` : languageCode === 'vi' ? `Đã lưu. Phiên bản mới áp dụng từ ${newVersionMonth}.` : `Saved. The new version applies from ${newVersionMonth}.`, 'success');
+      const saved = await load();
+      showNotification(versionSavedMessage(languageCode), 'success');
+      openVersionDialog(saved?.versions);
     } catch (error) {
       if (isStaleEditError(error)) { edit.markStale(); return; }
       showNotification(error?.message || 'Failed to save salary settings.', 'error');
@@ -534,7 +537,6 @@ const SalarySystem = () => {
       </Stack>
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
-    <Box sx={{ mb: 2 }}><VersionApplicationStart languageCode={languageCode} value={newVersionMonth} defaultMonth={versionDefaultMonth} onChange={month => setNewVersionMonth(month || versionDefaultMonth)} disabled={saving || versionBusy} showHelp /></Box>
 
     <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
       <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 350 }, flexShrink: 0 }}>

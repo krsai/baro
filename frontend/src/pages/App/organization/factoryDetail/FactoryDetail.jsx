@@ -24,8 +24,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import HistoryIcon from '@mui/icons-material/History';
 import SaveButton from '../../../../components/SaveButton';
-import VersionApplicationStart from '../../../../components/VersionApplicationStart';
-import { currentVersionMonth, versionTimelineMonths } from '../../../../utils/versionApplication.mjs';
+import { versionTimelineMonths } from '../../../../utils/versionApplication.mjs';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
 import { getStaticOptionOptions } from '../../../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../../../constants/uiMessages';
@@ -122,9 +121,6 @@ const buildFactoryFormData = (factory) => {
     managerEmployeeId: normalizeManagerEmployeeId(factory?.managerEmployeeId),
     targetMonthlyWage: factory?.targetMonthlyWage ?? '',
     wagePerSecond: factory?.wagePerSecond ?? '',
-    productionAllowanceEffectiveMonth:
-      factory?.productionAllowanceEffectiveMonth || currentMonthKey(),
-    newVersionEffectiveMonth: factory?.defaultVersionStartMonth || currentVersionMonth(),
   };
 };
 
@@ -143,8 +139,6 @@ const buildFactoryChangeSnapshot = (formData) => JSON.stringify({
   managerEmployeeId: normalizeManagerEmployeeId(formData?.managerEmployeeId),
   targetMonthlyWage: parseNumber(formData?.targetMonthlyWage),
   wagePerSecond: parseNumber(formData?.wagePerSecond),
-  productionAllowanceEffectiveMonth:
-    String(formData?.productionAllowanceEffectiveMonth || currentMonthKey()),
 });
 
 const getExtraText = (languageCode) => {
@@ -523,7 +517,6 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
         DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
       targetMonthlyWage: Number.isFinite(targetMonthlyWage) ? targetMonthlyWage : '',
       wagePerSecond,
-      productionAllowanceEffectiveMonth: factory?.id ? factory.productionAllowanceEffectiveMonth : formData.productionAllowanceEffectiveMonth || currentMonthKey(),
     });
   };
 
@@ -740,12 +733,14 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                   sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
                 />
               </Grid>
+              <Grid item xs={12}>
+                <Typography variant="body2" color="text.secondary">{languageCode === 'ko' ? '단가 변경을 저장하면 미적용 버전으로 보관됩니다. 적용월은 버전 관리에서 드래그한 뒤 저장해 주세요.' : languageCode === 'vi' ? 'Thay đổi đơn giá được lưu thành phiên bản chưa áp dụng. Kéo đến tháng áp dụng trong Quản lý phiên bản rồi lưu.' : 'Rate changes are saved as unapplied versions. Drag to an effective month in Version Management, then save.'}</Typography>
+              </Grid>
               <Grid item xs={12} sm={6}>
                 <Button fullWidth variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog} disabled={!factory?.id} sx={{ height: 40 }}>
                   {languageCode === 'ko' ? '버전 관리' : languageCode === 'vi' ? 'Quản lý phiên bản' : 'Version Management'}
                 </Button>
               </Grid>
-              <Grid item xs={12}><VersionApplicationStart languageCode={languageCode} value={formData.newVersionEffectiveMonth} defaultMonth={factory?.defaultVersionStartMonth || currentVersionMonth()} onChange={month => setFormData(current => ({ ...current, newVersionEffectiveMonth: month || factory?.defaultVersionStartMonth || currentVersionMonth() }))} showHelp /></Grid>
             </Grid>
           </SectionBlock>
 

@@ -19,7 +19,7 @@ async function drag(page,source,target){await source.scrollIntoViewIfNeeded();aw
 try{
  for(let i=0;i<150;i++){try{if((await fetch(`http://127.0.0.1:${port}/version-boards-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath,headless:true});
- for(const lang of ['ko','en','vi'])for(const screen of ['salary','factory','process']){
+ for(const lang of ['ko','en','vi'])for(const screen of ['salary','factory','process'].filter(screen=>!process.env.VERSION_BOARD_SCREEN||screen===process.env.VERSION_BOARD_SCREEN)){
   const page=await browser.newPage({viewport:{width:1440,height:1100}}),errors=[],writes=[];page.setDefaultTimeout(25000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeProfile:{orgRole:"ADMIN",entryType:"ORG"}});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
@@ -30,14 +30,16 @@ try{
   await page.route('**/employees?*',r=>r.fulfill({headers,json:[]}));
   await page.route('**/factories/1/warehouses*',r=>r.fulfill({headers,json:[]}));
   await page.route('**/employee-grades?*',r=>r.fulfill({headers,json:[]}));
-  await page.route('**/salary-system/revision?*',r=>r.fulfill({headers,json:{editRevision:'r1'}}));
+  let mockRevision='r1';
+  await page.route('**/salary-system/revision?*',r=>r.fulfill({headers,json:{editRevision:mockRevision}}));
   await page.route('**/salary-system?*',r=>r.fulfill({headers,json:{items:[],rates:[],versions,editRevision:'r1',defaultVersionStartMonth:'2026-10'}}));
   for(const route of ['**/salary-system/version-boundaries?*','**/factories/1/production-allowance-version-boundaries','**/styles/1/process-*'])await page.route(route,r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(r.request().method()==='PUT'){writes.push(r.request().postDataJSON());return r.fulfill({headers,json:{versions,editRevision:'r2'}});}
+   if(r.request().method()==='PUT'){mockRevision='r2';writes.push(r.request().postDataJSON());return r.fulfill({headers,json:{versions,editRevision:mockRevision}});}
    return r.fulfill({headers,json:{versions,assignments:[{assignmentPlanId:1,orderNo:'O-A',assignedAt:'2026-04-01',assignmentQuantity:10,versionId:1},{assignmentPlanId:2,orderNo:'O-B',assignedAt:'2026-04-02',assignmentQuantity:10,versionId:1,isVersionLocked:true},{assignmentPlanId:3,orderNo:'O-C',assignedAt:'2026-10-01',assignmentQuantity:10,versionId:1}]}});
   });
   await page.goto(`http://127.0.0.1:${port}/version-boards-acceptance.html?screen=${screen}`);
+  if(screen!=='process')assert.equal(await page.locator('input[type="month"]').count(),0,'effective months are edited only through version management');
   if(screen!=='process')await page.getByRole('button',{name:screen==='salary'?{ko:'버전 관리',en:'Version history',vi:'Lịch sử phiên bản'}[lang]:{ko:'버전 관리',en:'Version Management',vi:'Quản lý phiên bản'}[lang],exact:true}).click();
   const board=page.locator('[data-version-board]');await board.waitFor();
   const dialog=board.locator('xpath=ancestor::*[@role="dialog"][1]');
@@ -66,6 +68,24 @@ try{
   await page.setViewportSize({width:1440,height:1100});
   await dialog.getByRole('button',{name:{ko:'저장',en:'Save',vi:'Lưu'}[lang],exact:true}).click();await page.waitForTimeout(200);
   assert.equal(writes.length,1);assert.ok(writes[0].boundaries.some(row=>row.versionId===2&&(screen==='process'?row.startAssignmentPlanId===1:row.startMonth==='2026-04')));
+  if(screen==='salary') {
+   await dialog.waitFor({state:'hidden'});
+   let draftWrite;const savedVersions=[...versions,{id:3,versionNumber:3,confirmedAt:'2026-10-25',effectiveMonth:null,items:[]}];
+   await page.route('**/salary-system?*',r=>{
+    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+    if(r.request().method()==='PUT'){draftWrite=r.request().postDataJSON();mockRevision='r3';}
+    return r.fulfill({headers,json:{items:draftWrite?.items||[],rates:[],versions:savedVersions,editRevision:'r3',defaultVersionStartMonth:'2026-10'}});
+   });
+   await page.locator('input[type="checkbox"]:enabled').first().click();
+   await page.getByRole('button',{name:{ko:'저장',en:'Save',vi:'Lưu'}[lang],exact:true}).click();
+   await page.locator('[data-version-id="3"]').waitFor();
+   assert.equal(draftWrite.createVersion,true);assert.equal('effectiveMonth' in draftWrite,false);
+   assert.equal(await page.locator('[data-version-target]').filter({hasText:'Ver.3'}).count(),0,'saving a draft must not apply it');
+   await drag(page,page.locator('[data-version-id="3"]'),page.locator('[data-version-target="2026-11"]'));
+   const newDialog=page.locator('[data-version-board]').locator('xpath=ancestor::*[@role="dialog"][1]');
+   await newDialog.getByRole('button',{name:{ko:'저장',en:'Save',vi:'Lưu'}[lang],exact:true}).click();
+   await page.waitForTimeout(150);assert.ok(writes.at(-1).boundaries.some(row=>row.versionId===3&&row.startMonth==='2026-11'));
+  }
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   assert.deepEqual(errors,[]);console.log(`${lang}/${screen}: drag, locked/fixed rules, explicit save and original FK payload OK`);await page.close();
  }
