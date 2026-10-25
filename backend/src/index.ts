@@ -1014,6 +1014,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'SalaryItemRate_payType_check','EmployeeCompensationPolicy_payType_check','EmployeePayTypePolicy_payType_check',
   'SettingServiceDefault_expenseTypeId_fkey',
   'OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard',
   'ExpenseRequestAudit_requestId_orgId_fkey',
@@ -31823,6 +31824,7 @@ const findMissingRuntimeSchemaConstraints = async (): Promise<string[]> => {
     FROM pg_constraint
     WHERE conname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
       AND (conname <> 'TransactionCost_style_scope_fkey' OR pg_get_constraintdef(oid) LIKE '%REFERENCES "Style"(id, "orgId")%')
+      AND (conname NOT IN ('SalaryItemRate_payType_check','EmployeeCompensationPolicy_payType_check','EmployeePayTypePolicy_payType_check') OR pg_get_constraintdef(oid) LIKE '%OUTPUT_FIXED%')
     UNION
     SELECT indexname AS constraint_name
     FROM pg_indexes

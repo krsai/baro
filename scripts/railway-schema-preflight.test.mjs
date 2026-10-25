@@ -23,7 +23,7 @@ test('missing Railway URLs and authentication database targets are refused befor
 });
 test('a complete schema skips SQL and closes the check connection', async () => {
   let closed=false;
-  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('to_regclass') ? [{present:true}] : sql==='SELECT version,checksum FROM "ExpenseSchemaMigration"' ? migrations() : sql.includes('SELECT version,checksum FROM "EntitySchemaMigration"') ? entityMigration.migrations() : sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
+  await runRailwayPreflight({env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>sql.includes('to_regclass') ? [{present:true}] : sql==='SELECT version,checksum FROM "ExpenseSchemaMigration"' ? migrations() : sql.includes('SELECT version,checksum FROM "EntitySchemaMigration"') ? entityMigration.migrations() : sql.includes('information_schema') ? columns.map(([table_name,column_name])=>({table_name,column_name})) : constraints.map(name=>({name,definition:name==='TransactionCost_style_scope_fkey'?'FOREIGN KEY ("styleId", "orgId") REFERENCES "Style"(id, "orgId")':name.endsWith('_payType_check')?'OUTPUT_FIXED':undefined})), $disconnect:async()=>{closed=true;}}),run:()=>{throw Error('No repeated migration');}});
   assert.ok(closed);
 });
 test('preflight applies the bounded additive transaction, preserves legacy costs, verifies constraints and skips the next launch', async () => {
@@ -46,6 +46,9 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT);
       CREATE TABLE "OrganizationOutsourcingServiceType"("partnerOrgId" INT,"ownerOrgId" INT,"serviceTypeId" INT,"createdAt" TIMESTAMP,PRIMARY KEY("partnerOrgId","serviceTypeId"));
       ${['WorkLog','WorkOrder','Invoice','AssignmentPlan'].map(table=>`CREATE TABLE "${table}"(id INT);`).join('\n')}`);
+    await db.exec(['SalaryItemRate','EmployeeCompensationPolicy','EmployeePayTypePolicy'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,"payType" TEXT);`).join('\n'));
+    await db.exec(['ProcessMasterOption','Factory','Warehouse','EmployeeGrade','SalaryItem','AttrColor','AttrCategory','AttrProcess','PriorCompletionReason','TaxTreatment'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,name TEXT);`).join('\n'));
+    await db.exec(`UPDATE "Organization" SET name='Fixture organization '||id WHERE name IS NULL`);
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);
       assert.match(options.input,/BEGIN;[\s\S]*pg_advisory_xact_lock[\s\S]*COMMIT;/);

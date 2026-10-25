@@ -1,6 +1,7 @@
 // Uses real application constraints; all writes are rolled back. URL on stdin.
 import {createRequire} from 'node:module';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {loadSourceBindings} from './helpers/source-bindings.mjs';
 const require=createRequire(import.meta.url);
 const {PrismaClient}=require('../backend/node_modules/@prisma/client');
@@ -11,7 +12,8 @@ const {validateSalaryFormula}=require('../backend/dist/employees/salaryFormula.j
 const {normalizeCurrencyCode}=require('../backend/dist/currency.js');
 const {defaultVersionStartMonth,compareVersionStarts}=require('../backend/dist/utils/versionApplication.js');
 let input='';for await(const chunk of process.stdin)input+=chunk;
-const {DATABASE_PUBLIC_URL:url}=JSON.parse(input);assertSafeApplicationDatabaseEnv({DATABASE_URL:url,DIRECT_URL:url});
+const {DATABASE_PUBLIC_URL:url,payloadPath}=JSON.parse(input);assertSafeApplicationDatabaseEnv({DATABASE_URL:url,DIRECT_URL:url});
+const suppliedPayload=payloadPath?JSON.parse(readFileSync(payloadPath,'utf8').replace(/^\uFEFF/,'')):null;
 const db=new PrismaClient({datasourceUrl:url});
 try {
  const handlers=new Map();let rolledBack=false;
@@ -21,9 +23,10 @@ try {
   ...names,...revision,validateSalaryFormula,normalizeCurrencyCode,defaultVersionStartMonth,compareVersionStarts,
   editTransaction:async(_db,run)=>db.$transaction(async tx=>{
    const saved=await run(tx);
-   assert.ok(saved.items.some(item=>item.code==='draft-ROLLBACK-TEST'));
+   const newCode=suppliedPayload?.items.at(-1).code||'draft-ROLLBACK-TEST';
+   assert.ok(saved.items.some(item=>item.code===newCode));
    assert.equal(saved.versions[0].effectiveMonth,null);
-   assert.ok(saved.versions[0].items.some(item=>item.code==='draft-ROLLBACK-TEST'));
+   assert.ok(saved.versions[0].items.some(item=>item.code===newCode));
    rolledBack=true;throw Error('EXPECTED_ROLLBACK');
   },{timeout:60000}),
  });
@@ -34,7 +37,10 @@ try {
  const expectedRevision=result.editRevision;
  const items=await db.salaryItem.findMany({where:{orgId:1,factoryId:1,isActive:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]});
  const rates=await db.salaryItemRate.findMany({where:{orgId:1,factoryId:1}});
+ const gradeIds=(await db.employeeGrade.findMany({where:{orgId:1,isActive:true},select:{id:true}})).map(grade=>grade.id);
  req.body={expectedRevision,createVersion:true,currencyCode:'VND',items:[...items,{code:'draft-ROLLBACK-TEST',nameEn:'Rollback test allowance',nameKo:'',nameVi:'',category:'ALLOWANCE',payTypes:['OUTPUT_FIXED','OUTPUT'],formula:['GRADE_RATE','×','OVERTIME_HOURS'],payCycle:'MONTHLY',paymentMonths:Array.from({length:12},(_,i)=>i+1),capValue:null}],rates:rates.map(r=>({...r,salaryItemCode:items.find(i=>i.id===r.salaryItemId).code}))};
+ req.body.rates.push(...['OUTPUT_FIXED','OUTPUT'].flatMap(payType=>gradeIds.map(gradeId=>({payType,gradeId,salaryItemCode:'draft-ROLLBACK-TEST',amount:20000}))));
+ if(suppliedPayload)req.body={...suppliedPayload,expectedRevision};
  try{await handlers.get('put/salary-system')(req,res);}catch(error){if(error.message!=='EXPECTED_ROLLBACK')throw error;}
  if(!rolledBack)throw Error('VALIDATION_FAILED_'+res.code);
  assert.equal(await db.salaryItem.count({where:{orgId:1,factoryId:1,code:'draft-ROLLBACK-TEST'}}),0);
