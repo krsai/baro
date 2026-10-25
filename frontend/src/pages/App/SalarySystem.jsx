@@ -402,10 +402,10 @@ const SalarySystem = () => {
       await requestJSON(`/salary-system${buildQueryString({ orgId: activeOrgId, factoryId })}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ expectedRevision: edit.revision, createVersion: true, effectiveMonth: newVersionMonth, currencyCode, items: items.map((row) => ({ ...row, code: row.code || row.id, capValue: row.capValue === '' || row.capValue == null ? null : Number(String(row.capValue).replace(/,/g, '')) })), rates: rateRows }) });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId: activeOrgId, source: 'salary-system-version-create' });
       await load();
-      showNotification(languageCode === 'ko' ? `급여 체계를 저장했습니다. 새 버전은 ${newVersionMonth}부터 적용됩니다.` : languageCode === 'vi' ? `Đã lưu. Phiên bản mới áp dụng từ ${newVersionMonth}.` : `Saved. The new version applies from ${newVersionMonth}.`, 'success');
+      showNotification(languageCode === 'ko' ? `급여 설정을 저장했습니다. 새 버전은 ${newVersionMonth}부터 적용됩니다.` : languageCode === 'vi' ? `Đã lưu. Phiên bản mới áp dụng từ ${newVersionMonth}.` : `Saved. The new version applies from ${newVersionMonth}.`, 'success');
     } catch (error) {
       if (isStaleEditError(error)) { edit.markStale(); return; }
-      showNotification(error?.message || 'Failed to save salary system.', 'error');
+      showNotification(error?.message || 'Failed to save salary settings.', 'error');
     } finally {
       setSaving(false);
     }
@@ -520,7 +520,7 @@ const SalarySystem = () => {
     <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', optionalMoney(e.target.value))} placeholder={t('계산 결과 최대 금액')} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} />
   </>;
 
-  return <AppPageContainer title={t('급여 체계')} titleActions={<Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>}><Box sx={{ width: '100%' }}>
+  return <AppPageContainer title={t('급여 설정')} titleActions={<Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>}><Box sx={{ width: '100%' }}>
     <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
     {factories.length > 0 && <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
       <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ flex: 1, minWidth: 0 }}>
@@ -582,7 +582,7 @@ const SalarySystem = () => {
               : (formulaLabel(selected.formula, t) ? `${formulaLabel(selected.formula, t)} (${resolveRateUnitLabel(selected, currencyCode, t)})` : t('계산식이 비어 있습니다.'))}</Typography></Stack></Stack></Paper>
         </Box>
         {isFixedIncentive
-          ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('생산수당은 작업 기록을 기준으로 자동 계산되며 급여 체계에서 수정할 수 없습니다.')}</Alert>
+          ? <Alert severity="info" icon={false} sx={{ m: 2 }}>{t('생산수당은 작업 기록을 기준으로 자동 계산되며 급여 설정에서 수정할 수 없습니다.')}</Alert>
           : <><Stack direction="row" alignItems="center" spacing={1.5} sx={{ px: 2, py: 1.5, width: '100%' }}><Typography fontWeight={700}>{t('급여 타입·직급별 단가')}</Typography><FormControl size="small" sx={{ minWidth: 120, ml: 'auto', flexShrink: 0 }}><InputLabel>{t('통화')}</InputLabel><Select label={t('통화')} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value)}>{CURRENCY_CODES.map((code) => <MenuItem key={code} value={code}>{code}</MenuItem>)}</Select></FormControl></Stack>
             <TableContainer><Table size="small"><TableHead><TableRow><TableCell>{t('급여 타입')}</TableCell><TableCell>{t('직급')}</TableCell><TableCell align="right">{t('단가')} ({resolveRateUnitLabel(selected, currencyCode, t)})</TableCell></TableRow></TableHead><TableBody>
               {PAY_TYPE_ORDER.flatMap((payType) => { const active = (selected.payTypes || []).includes(payType); return grades.map((grade, index) => <TableRow key={`${payType}:${grade.id}`} hover={active} sx={{ opacity: active ? 1 : 0.48 }}>{index === 0 && <TableCell rowSpan={grades.length} sx={{ verticalAlign: 'top', pt: 2 }}><Chip size="small" variant="outlined" label={getPayTypeLabel(payType, payType, languageCode)} sx={labelChipSx(PAY_TYPES[payType].palette, active)} /><Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>{payType}</Typography></TableCell>}<TableCell>{gradeName(grade, languageCode)} ({grade.code})</TableCell>
@@ -665,19 +665,21 @@ const SalarySystem = () => {
       </Box>
     </Stack></DialogContent><DialogActions><Button variant="contained" onClick={saveFormula} disabled={formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft) || [formulaSettingsDraft.nameKo, formulaSettingsDraft.nameEn, formulaSettingsDraft.nameVi].some((name) => !String(name || '').trim())}>{t('계산식 적용')}</Button></DialogActions></Dialog>
 
-    <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 체계 버전 관리')}</DialogTitle><DialogContent dividers>
+    <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 설정 버전 관리')}</DialogTitle><DialogContent dividers>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={3}>
-        <Box sx={{ width: { xs: '100%', md: 260 }, flexShrink: 0 }}>
+        <Box sx={{ width: { xs: '100%', md: 320 }, minWidth: 0, flexShrink: 0 }}>
           <Stack spacing={0.75} sx={{ maxHeight: 434, overflowY: 'auto', pr: 0.5 }}>
             {[...versions].sort((a, b) => b.versionNumber - a.versionNumber).map((version) => {
               const versionColor = colorByVersionId.get(version.id) || '#9e9e9e';
               const draggable = version.versionNumber > 1;
-              return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', minHeight: 38, px: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>
+              return <Box key={version.id} draggable={draggable} onDragStart={(event) => { if (!draggable) return; event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(version.id)); }} sx={{ flexShrink: 0, minWidth: 0, px: 0.75, py: 0.75, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: versionColor, borderRadius: 1, cursor: draggable ? 'grab' : 'default', bgcolor: 'background.paper', '&:active': { cursor: draggable ? 'grabbing' : 'default' } }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', minHeight: 26, minWidth: 0 }}>
                 <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: versionColor, mr: 0.75, flexShrink: 0 }} />
                 <DragIndicatorIcon sx={{ mr: 0.5, color: draggable ? 'text.secondary' : 'text.disabled', fontSize: 18 }} />
                 <Typography variant="body2" fontWeight={700} sx={{ flex: 1, fontSize: '.78rem' }}>{version.confirmedAt} · Ver.{version.versionNumber}</Typography>
                 <Chip size="small" variant="outlined" label={`${version.items?.length || 0}${t('개')}`} sx={{ height: 22, fontSize: '.7rem' }} />
-                {draggable && <Box sx={{ width: '100%', py: 0.75 }} draggable={false} onDragStart={event => event.preventDefault()}><VersionApplicationStart languageCode={languageCode} value={versionBoundaries[version.id]} defaultMonth={versionDefaultMonth} onChange={month => assignVersionToMonth(version, month)} disabled={versionBusy} /></Box>}
+                </Box>
+                {draggable && <Box sx={{ width: '100%', pt: 1.5 }} draggable={false} onDragStart={event => event.preventDefault()}><VersionApplicationStart languageCode={languageCode} value={versionBoundaries[version.id]} defaultMonth={versionDefaultMonth} onChange={month => assignVersionToMonth(version, month)} disabled={versionBusy} /></Box>}
               </Box>;
             })}
             {versions.length === 0 && <Typography variant="body2" color="text.secondary">{t('아직 확정된 버전이 없습니다. 저장하면 새 버전으로 기록됩니다.')}</Typography>}

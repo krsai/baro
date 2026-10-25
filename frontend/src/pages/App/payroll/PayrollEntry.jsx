@@ -441,7 +441,7 @@ const PayrollEntry = () => {
     ? {
         basicInfo: "급여 계산 기본 정보", actualWorkdays: "실제 근무일수", scheduledWorkdays: "기준 근무일수",
         holidayWorkdays: "휴일 근무일수", fullAttendance: "만근 여부", tenureYears: "근속 연수",
-        salaryVersion: "급여 체계 버전", yes: "O", no: "X", days: "일", years: "년", hours: "시간",
+        salaryVersion: "급여 설정 버전", yes: "O", no: "X", days: "일", years: "년", hours: "시간",
         productionBasis: "생산수당 산출 내역", totalPayroll: "총 급여", styleName: "스타일명",
         productionStBaselineHours: "이번달 기준 근무시간", productionStHours: "이번달 생산 총 ST",
       }
@@ -449,14 +449,14 @@ const PayrollEntry = () => {
       ? {
           basicInfo: "Thông tin cơ bản tính lương", actualWorkdays: "Ngày làm việc thực tế", scheduledWorkdays: "Ngày làm việc tiêu chuẩn",
           holidayWorkdays: "Ngày làm việc ngày nghỉ", fullAttendance: "Chuyên cần đầy đủ", tenureYears: "Thâm niên",
-          salaryVersion: "Phiên bản cơ cấu lương", yes: "O", no: "X", days: "ngày", years: "năm", hours: "giờ",
+          salaryVersion: "Phiên bản thiết lập lương", yes: "O", no: "X", days: "ngày", years: "năm", hours: "giờ",
           productionBasis: "Chi tiết tính phụ cấp sản lượng", totalPayroll: "Tổng lương", styleName: "Kiểu dáng",
           productionStBaselineHours: "Giờ làm tiêu chuẩn tháng này", productionStHours: "Tổng ST sản xuất tháng này",
         }
       : {
           basicInfo: "Payroll Calculation Information", actualWorkdays: "Actual Workdays", scheduledWorkdays: "Scheduled Workdays",
           holidayWorkdays: "Holiday Workdays", fullAttendance: "Full Attendance", tenureYears: "Tenure",
-          salaryVersion: "Salary System Version", yes: "O", no: "X", days: "days", years: "years", hours: "hrs",
+          salaryVersion: "Salary Settings Version", yes: "O", no: "X", days: "days", years: "years", hours: "hrs",
           productionBasis: "Production Allowance Calculation", totalPayroll: "Total Payroll", styleName: "Style",
           productionStBaselineHours: "This Month's Standard Hours", productionStHours: "This Month's Total Production ST",
         };

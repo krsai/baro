@@ -9,7 +9,7 @@ import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const WEEKDAYS = { ko: ['월', '화', '수', '목', '금', '토', '일'], en: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], vi: ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] };
-// 급여 체계 화면의 급여 타입 배지(사무=blue, 생산(고정)=green, 생산(변동)=orange)와 동일한 팔레트를 재사용한다.
+// 급여 설정 화면의 급여 타입 배지(사무=blue, 생산(고정)=green, 생산(변동)=orange)와 동일한 팔레트를 재사용한다.
 const PAY_TYPE_PALETTE = { GENERAL: 'blue', OUTPUT_FIXED: 'green', OUTPUT: 'orange' };
 const toPolicyDraft = (row) => ({ ...row, workWeekdays: [...(row.workWeekdays || [])].map(Number).sort(), breakMinutes: String(row.breakMinutes), workdayMinimumHours: String(Number(row.workdayMinimumMinutes) / 60) });
 const policyPayload = (rows) => rows.map((row) => ({ payType: row.payType, workWeekdays: [...row.workWeekdays].sort(), standardClockIn: row.standardClockIn, standardClockOut: row.standardClockOut, breakMinutes: Number(row.breakMinutes), workdayMinimumMinutes: Math.round(Number(row.workdayMinimumHours) * 60) }));
@@ -24,7 +24,7 @@ const TEXT = {
 };
 
 // 급여 타입(사무/생산(고정)/생산(변동))별 근무 요일·기준 출퇴근 시간·휴게시간·근무일 인정
-// 기준은 공장이 아니라 조직 전체에 적용되는 값이라, 급여 체계 화면의 공장 탭 선택과
+// 기준은 공장이 아니라 조직 전체에 적용되는 값이라, 급여 설정 화면의 공장 탭 선택과
 // 무관하게 항상 같은 값을 조회/저장한다.
 const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, showNotification }) => {
   const text = TEXT[languageCode] || TEXT.en;

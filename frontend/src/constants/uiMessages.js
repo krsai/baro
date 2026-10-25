@@ -89,7 +89,7 @@ export const UI_MESSAGES = {
     settings: { ko: '설정', en: 'Settings', vi: 'Cài đặt' },
     personalSettings: { ko: '개인 설정', en: 'Personal Settings', vi: 'Cài đặt cá nhân' },
     employeeSystem: { ko: '직원 체계', en: 'Employee Structure', vi: 'Hệ thống nhân viên' },
-    salarySystem: { ko: '급여 체계', en: 'Salary Structure', vi: 'Cơ cấu lương' },
+    salarySystem: { ko: '급여 설정', en: 'Salary Settings', vi: 'Thiết lập lương' },
     business: { ko: '사업체', en: 'Business', vi: 'Doanh nghiệp' },
     factoryScope: { ko: '공장', en: 'Factory', vi: 'Nhà máy' },
     employee: { ko: '직원', en: 'Employee', vi: 'Nhân viên' },

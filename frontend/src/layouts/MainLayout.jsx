@@ -804,7 +804,7 @@ const MainLayout = () => {
             path: '/employee-system',
           },
           {
-            label: getUiMessage('menu.salarySystem', '급여 체계', languageCode),
+            label: getUiMessage('menu.salarySystem', '급여 설정', languageCode),
             icon: <AccountBalanceWalletIcon />,
             path: '/salary-system',
           },

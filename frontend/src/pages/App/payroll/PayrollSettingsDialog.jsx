@@ -35,7 +35,7 @@ const EmployeeList = ({ id, title, rows, empty, retired, disabled, text }) => <P
   </Stack>}</Droppable>
 </Paper>;
 
-// 급여 타입별 근무 요일·시간 기준(근로 기준일)은 급여 체계 화면의 설정으로 옮겼다
+// 급여 타입별 근무 요일·시간 기준(근로 기준일)은 급여 설정 화면의 설정으로 옮겼다
 // (PayTypeScheduleSettingsDialog, 조직 전체 값이라 공장 탭과 무관). 이 다이얼로그는
 // 직원별 예외는 적용 월 이력을 사용한다.
 const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, showNotification }) => {

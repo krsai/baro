@@ -15,7 +15,7 @@ const VersionApplicationStart = ({ languageCode = 'en', mode = 'month', value, d
     <Typography variant="caption" color="text.secondary">{text.futureHelp}</Typography>
   </Box>;
   return <Stack spacing={0.75}>
-    <Stack direction="row" spacing={0.5} flexWrap="wrap" alignItems="center">
+    <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" alignItems="center" sx={{ rowGap: 1.5 }}>
       <Button size="small" disabled={disabled} onClick={() => onChange?.(defaultMonth)}>{text.now}</Button>
       <Button size="small" disabled={disabled} onClick={() => onChange?.(shiftVersionMonth(defaultMonth,1))}>{text.next}</Button>
       <MonthSelector allowFuture label={label || text.month} value={value || ''} onChange={onChange} min={min} disabled={disabled} />
