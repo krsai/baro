@@ -1,4 +1,5 @@
 import { confirmCurrentProcessVersion, confirmedStyleProcessIds } from './services/styleProcessVersionLifecycle';
+import { missingProcessRecords } from './services/missingProcessRecords';
 import { toStyleListResponse } from './services/styleListResponse';
 import { coalesceInFlightRead } from './services/inFlightRead';
 import { contentMemo } from './services/contentMemo';
@@ -22550,6 +22551,10 @@ const buildAssignmentPlanProgressRows = async (
               processTotals: reviewProcessTotals,
             }
           : null,
+      missingRecordProcesses: missingProcessRecords(reviewProcessTotals, {
+        completed: scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
+        invalidReferences: hasInvalidProcessReferences,
+      }),
       quantityReview: includeQuantityReviewDetails
         ? {
             plannedQuantity: baselineQuantityRaw,

@@ -1,4 +1,5 @@
 import PageContentStack from '../../components/PageContentStack';
+import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
 import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
 import { ui } from '../../theme/ui';
 import QueryFeedback from '../../components/QueryFeedback';
@@ -126,6 +127,7 @@ const createEmptySummary = () => ({
   materialStockRate: EMPTY_SUMMARY.materialStockRate,
   pendingEmployeeCount: EMPTY_SUMMARY.pendingEmployeeCount,
   missingSalesPriceCustomerCount: EMPTY_SUMMARY.missingSalesPriceCustomerCount,
+  missingRecordAlerts: [],
 });
 
 const EMPTY_SYSTEM_SUMMARY = Object.freeze({
@@ -274,6 +276,14 @@ const buildSummaryData = ({ orders, assignments }) => {
   const summary = createEmptySummary();
 
   (Array.isArray(orders) ? orders : []).forEach((order) => {
+    for (const assignment of order.productionAssignments || []) {
+      if (!assignment.missingRecordProcesses?.length) continue;
+      summary.missingRecordAlerts.push({
+        id: assignment.id, orderNo: order.orderNumber, styleName: assignment.style,
+        factoryName: assignment.factory, plannedQuantity: assignment.plannedQuantity,
+        processes: assignment.missingRecordProcesses,
+      });
+    }
     const statusKey = String(order?.workflowStatus || '').trim().toUpperCase();
     if (!(statusKey in summary.orderCounts)) return;
     summary.orderCounts[statusKey] += 1;
@@ -523,6 +533,14 @@ const buildNotificationItems = ({ languageCode, isSystemProfile, summaryData, sy
     : [
         { key: 'employees', count: summaryData?.pendingEmployeeCount, path: '/employee', label: { ko: '승인 대기 직원', en: 'Employees awaiting approval', vi: 'Nhân viên chờ phê duyệt' } },
         { key: 'sales-prices', count: summaryData?.missingSalesPriceCustomerCount, path: '/customer', label: { ko: '판매단가 미설정 고객사', en: 'Customers missing sales prices', vi: 'Khách hàng chưa có đơn giá bán' } },
+        ...(summaryData?.missingRecordAlerts || []).map(alert => ({
+          key: `missing-record:${alert.id}`, count: alert.processes.length, path: '/assignment', recordAlert: alert,
+          label: {
+            ko: `작업 기록 누락 의심 · ${alert.orderNo} · ${alert.styleName}`,
+            en: `Possible missing work records · ${alert.orderNo} · ${alert.styleName}`,
+            vi: `Nghi thiếu nhật ký công việc · ${alert.orderNo} · ${alert.styleName}`,
+          },
+        })),
       ];
   return candidates
     .filter((item) => Number(item.count) > 0)
@@ -547,6 +565,8 @@ const WorkspaceDashboard = () => {
     createEmptySystemSummary()
   );
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [recordAlert, setRecordAlert] = useState(null);
+  useEffect(() => { setRecordAlert(null); }, [activeOrgId]);
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
 
   const authState = useMemo(
@@ -667,7 +687,7 @@ const WorkspaceDashboard = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES],
     isActive: !isSystemProfile,
     onRefresh: () => loadSummaryData({ forceRefresh: true }),
   });
@@ -820,8 +840,11 @@ const WorkspaceDashboard = () => {
           ) : (
             <Stack spacing={1}>
               {notificationItems.map((item) => (
-                <Button key={item.key} variant="outlined" color="warning" onClick={() => navigateToPath(item.path)} sx={{ justifyContent: 'space-between', px: 1.5, py: 1, textTransform: 'none' }}>
-                  <Typography variant="body2" fontWeight={600}>{resolveText(item.label, languageCode)}</Typography>
+                <Button key={item.key} variant="outlined" color="warning" onClick={() => item.recordAlert ? setRecordAlert(item.recordAlert) : navigateToPath(item.path)} sx={{ justifyContent: 'space-between', px: 1.5, py: 1, textTransform: 'none' }}>
+                  <Box sx={{ textAlign: 'left' }}>
+                    <Typography variant="body2" fontWeight={600}>{resolveText(item.label, languageCode)}</Typography>
+                    {item.recordAlert && <Typography variant="caption" color="text.secondary">{item.recordAlert.factoryName} · {item.recordAlert.processes.map(process => `${process.processCode || process.styleProcessId}: 0 / ${process.targetQuantity}`).join(' · ')}</Typography>}
+                  </Box>
                   <Chip size="small" color="warning" label={item.countLabel} />
                 </Button>
               ))}
@@ -849,6 +872,9 @@ const WorkspaceDashboard = () => {
 
       </PageContentStack>
       <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
+      {recordAlert && <QuantityReviewDrawer externalId={recordAlert.id} orgId={activeOrgId} languageCode={languageCode}
+        headerOrderNo={recordAlert.orderNo} headerStyleLabel={recordAlert.styleName} headerQuantity={recordAlert.plannedQuantity}
+        onClose={() => setRecordAlert(null)} />}
     </AppPageContainer>
   );
 };

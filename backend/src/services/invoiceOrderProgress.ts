@@ -13,6 +13,7 @@ export function invoiceOrderProgress(order: any, plans: any[], progress: any[]) 
     const ratio = assignmentProgressRatio(row);
     return { id: plan.externalId, style: row?.label || plan.style?.name || '',
       factory: row?.factoryName || '', plannedQuantity: row?.plannedQuantity ?? null,
+      missingRecordProcesses: row?.missingRecordProcesses ?? [],
       producedQuantity, recordedQuantity: producedQuantity == null ? null : Math.max(0, Number(row?.producedQuantity) || 0), completed,
       progressPercent: displayProductionProgress(ratio == null ? null : ratio * 100, completed),
       progressQuantity: ratio == null ? null : Math.max(0, Number(row?.plannedQuantity) || 0) * ratio };
