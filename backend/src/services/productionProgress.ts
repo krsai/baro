@@ -9,7 +9,10 @@ export function displayProductionProgress(percent: unknown, completed: boolean):
 
 export function productionProducedQuantity(row: any): number | null {
   const completed = row?.isCompleted === true;
-  if (!row || (!completed && (row.isProgressUnknown || row.hasInvalidProcessReferences))) return null;
+  if (!row || (!completed && (
+    (row.isProductionProgressUnknown ?? row.isProgressUnknown) ||
+    (row.hasInvalidProductionProcessReferences ?? row.hasInvalidProcessReferences)
+  ))) return null;
   const recorded = Math.max(0, Number(row.producedQuantity) || 0);
   const approved = Number(row.completionTargetQuantity);
   return completed && Number.isFinite(approved) && approved >= 0 ? Math.max(recorded, approved) : recorded;

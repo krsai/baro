@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('../backend/package.json', import.meta.url));
-const { snapshotProcessIds, hasValidAssignmentProcessRefs, assertAssignmentProcessRefs, invalidAssignmentProcessRefIds } = require('../backend/dist/utils/assignmentSnapshotIntegrity.js');
+const { snapshotProcessIds, hasValidAssignmentProcessRefs, assertAssignmentProcessRefs, invalidAssignmentProcessRefIds, invalidProductionProcessRefIds } = require('../backend/dist/utils/assignmentSnapshotIntegrity.js');
 // Source assertions must behave identically in Windows CRLF and LF checkouts.
 const backend = fs.readFileSync(new URL('../backend/src/index.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const plan = () => ({ id: 1, orgId: 1, styleId: 5, styleProcessVersionId: 7,
@@ -41,6 +41,23 @@ test('valid references keep historical manual CT and ST untouched, independent o
   assert.equal(hasValidAssignmentProcessRefs(item), true);
   await assertAssignmentProcessRefs(db(), 1, [item]);
   assert.deepEqual(item, before);
+});
+
+test('ST-only damage does not invalidate production identities or relax any write validation', async () => {
+  for(const corrupt of [p=>{p.assignmentStSnapshot=null;},p=>p.assignmentStSnapshot.processes.pop(),p=>{p.assignmentStSnapshot.styleProcessVersionId=8;}]){
+    const item=plan();corrupt(item);const before=structuredClone(item);
+    assert.deepEqual([...await invalidProductionProcessRefIds(db(),1,[item])],[]);
+    assert.deepEqual([...await invalidAssignmentProcessRefIds(db(),1,[item])],[1]);
+    await assert.rejects(assertAssignmentProcessRefs(db(),1,[item]),/SNAPSHOT_REFERENCE_INVALID/);
+    assert.deepEqual(item,before);
+  }
+});
+
+test('production still rejects missing/foreign CT identities and changed confirmed versions', async () => {
+  for(const corrupt of [p=>{p.assignmentCtSnapshot.processes[0].styleProcessId=null;},p=>{p.assignmentCtSnapshot.styleProcessVersionId=8;},p=>{p.styleId=99;},p=>{p.assignmentCtSnapshot.processes.pop();}]){
+    const item=plan();corrupt(item);
+    assert.deepEqual([...await invalidProductionProcessRefIds(db(),1,[item])],[1]);
+  }
 });
 
 const extract = (name, next) => backend.slice(backend.indexOf(`const ${name} =`), backend.indexOf(`const ${next} =`, backend.indexOf(`const ${name} =`)));
@@ -144,7 +161,7 @@ test('review reason distinguishes a broken process link from a genuine quantity 
     backend.indexOf('reviewReason:\n        scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED'),
     backend.indexOf('quantityReview: includeQuantityReviewDetails')
   );
-  assert.match(reviewReasonBlock, /hasInvalidProcessReferences\s*\n\s*\?\s*"PROCESS_REFERENCE_INVALID"/);
+  assert.match(reviewReasonBlock, /hasInvalidProductionProcessReferences\s*\n\s*\?\s*"PROCESS_REFERENCE_INVALID"/);
   assert.match(reviewReasonBlock, /:\s*"PROCESS_QUANTITY_MISMATCH"/);
 });
 

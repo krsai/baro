@@ -69,6 +69,34 @@ test('missing or invalid progress never becomes a fabricated zero and excess rem
   assert.equal(result.isCompleted, false);
 });
 
+test('L16-1 production remains 2245/2245 when two ST snapshots need review, without modifying snapshots', () => {
+  const quantities=[400,340,760,440,200,105];
+  const workOrder={id:16,totalQuantity:2245,workOrderItems:quantities.map((q,i)=>({styleId:i+1,totalQuantity:q}))};
+  const plans=quantities.map((q,i)=>({id:i+1,externalId:`L16-1:${i}`,workOrderId:16,styleId:i+1,assignmentQuantity:q,isCompleted:false}));
+  const rows=quantities.map((quantity,i)=>{
+    const bindings=loadSourceBindings('backend/src/index.ts',['hasExactProcessCompletion','isProductionProgressUnknown','scheduleStatus'],{
+      hasInvalidProductionProcessReferences:false,hasInvalidProcessReferences:i===3||i===4,
+      baselineQuantityRaw:quantity,processCount:3,processGroupTotals:[quantity,quantity,quantity],producedQuantity:quantity,
+      requiredProcessGroups:[[1],[2],[3]],ratioProgressUnknownCandidate:false,isMarkedCompleted:false,productionCompletedDateKey:null,
+      hasWorkProgressReachedCompletion:true,ASSIGNMENT_STATUS_PRODUCTION_COMPLETED:'PRODUCTION_COMPLETED',
+      ASSIGNMENT_STATUS_REVIEW_REQUIRED:'REVIEW_REQUIRED',ASSIGNMENT_STATUS_IN_PROGRESS:'IN_PROGRESS',
+    });
+    assert.equal(bindings.scheduleStatus,'PRODUCTION_COMPLETED');
+    return {id:plans[i].externalId,plannedQuantity:quantity,producedQuantity:quantity,operationalProgressRatio:1,
+      isCompleted:bindings.scheduleStatus==='PRODUCTION_COMPLETED',isProductionProgressUnknown:bindings.isProductionProgressUnknown,
+      hasInvalidProductionProcessReferences:false,isProgressUnknown:i===3||i===4,hasInvalidProcessReferences:i===3||i===4};
+  });
+  const result=invoiceOrderProgress(workOrder,plans,rows);
+  assert.equal(result.producedQuantity,2245);assert.equal(result.progressPercent,100);assert.equal(result.isCompleted,true);
+  assert.ok(result.styles.every(style=>style.isCompleted));
+  assert.equal(orderWorkflowStatus(workOrder,plans,result),'BILLING');
+  const partial=row({producedQuantity:40,operationalProgressRatio:.5,hasInvalidProcessReferences:true,isProgressUnknown:true,
+    hasInvalidProductionProcessReferences:false,isProductionProgressUnknown:false});
+  assert.equal(invoiceOrderProgress(order,[plan],[partial]).producedQuantity,40);
+  const broken={...partial,hasInvalidProductionProcessReferences:true,isProductionProgressUnknown:true};
+  assert.equal(invoiceOrderProgress(order,[plan],[broken]).producedQuantity,null);
+});
+
 test('historical credit does not turn unfinished allocations into approved completion or double count a baseline', () => {
   const prior = [{ quantity: 20 }];
   assert.equal(summarizeStyleProduction(100, [row({ producedQuantity: 80, operationalProgressRatio: .8 })], prior).isCompleted, false);

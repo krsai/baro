@@ -26,7 +26,7 @@ import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
 import { buildValidatedSharedAtPrediction } from "./services/atSharedPrior";
-import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
+import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, invalidProductionProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction, retryEditTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
 import cors from "cors";
@@ -22076,6 +22076,9 @@ const buildAssignmentPlanProgressRows = async (
   );
 
   const invalidProcessPlanIds = await invalidAssignmentProcessRefIds(db, orgId, plans);
+  // Only recheck rows that failed the full time-snapshot check. Production
+  // identities remain strict; ST cost/reference errors stay in capacity checks.
+  const invalidProductionPlanIds = await invalidProductionProcessRefIds(db, orgId, plans.filter(plan => invalidProcessPlanIds.has(plan.id)));
   const rows = plans.map((plan) => {
     const planId = Number(plan.id);
     const stats = statsByPlanId.get(planId) || {
@@ -22087,6 +22090,7 @@ const buildAssignmentPlanProgressRows = async (
       records: [],
     };
     const hasInvalidProcessReferences = invalidProcessPlanIds.has(plan.id);
+    const hasInvalidProductionProcessReferences = invalidProductionPlanIds.has(plan.id);
     const requiredProcessGroups = resolveAssignmentPlanRequiredProcessGroups(plan);
     const applicableQuantityByKey = resolveAssignmentPlanRequiredProcessApplicableQuantities(plan);
     const plannedQuantity = resolveAssignmentQuantity(plan);
@@ -22185,7 +22189,7 @@ const buildAssignmentPlanProgressRows = async (
     const hasWorkProgressReachedCompletion =
       totalExpected != null && totalExpected > 0 && totalDone >= totalExpected;
     const hasExactProcessCompletion = Boolean(
-      !hasInvalidProcessReferences &&
+      !hasInvalidProductionProcessReferences &&
       baselineQuantityRaw != null &&
         baselineQuantityRaw > 0 &&
         processCount != null &&
@@ -22419,11 +22423,13 @@ const buildAssignmentPlanProgressRows = async (
     const factoryScopeOrphanWorkRecordCount =
       orphanWorkRecordCountByFactoryScope.get(Number(plan.factoryId)) || 0;
 
+    const isProductionProgressUnknown = hasInvalidProductionProcessReferences ||
+      requiredProcessGroups.length === 0 || ratioProgressUnknownCandidate;
     const scheduleStatus:
       | "IN_PROGRESS"
       | "REVIEW_REQUIRED"
       | "PRODUCTION_COMPLETED" =
-      isMarkedCompleted || (!hasInvalidProcessReferences && (Boolean(productionCompletedDateKey) || hasExactProcessCompletion))
+      isMarkedCompleted || (!hasInvalidProductionProcessReferences && (Boolean(productionCompletedDateKey) || hasExactProcessCompletion))
       ? ASSIGNMENT_STATUS_PRODUCTION_COMPLETED
       : hasWorkProgressReachedCompletion
         ? ASSIGNMENT_STATUS_REVIEW_REQUIRED
@@ -22525,16 +22531,10 @@ const buildAssignmentPlanProgressRows = async (
       reviewReason:
         scheduleStatus === ASSIGNMENT_STATUS_REVIEW_REQUIRED
           ? {
-              // Reaching completion progress with a broken CT/ST process-link
-              // snapshot (hasInvalidProcessReferences) forces REVIEW_REQUIRED
-              // the same way a genuine per-process quantity mismatch does
-              // (see the scheduleStatus branch above), but the two need
-              // different operator guidance: a real mismatch is fixed by
-              // reviewing work records, while a broken link is fixed in
-              // process version management and the recorded-vs-target
-              // process quantities can legitimately show zero diff even
-              // though the assignment cannot be marked complete.
-              code: hasInvalidProcessReferences
+              // Invalid production identities still require review even if
+              // counts happen to match. ST-only issues remain separate from
+              // factual production and continue to block time calculations.
+              code: hasInvalidProductionProcessReferences
                 ? "PROCESS_REFERENCE_INVALID"
                 : "PROCESS_QUANTITY_MISMATCH",
               plannedQuantity: baselineQuantityRaw,
@@ -22547,7 +22547,7 @@ const buildAssignmentPlanProgressRows = async (
           : null,
       missingRecordProcesses: missingProcessRecords(reviewProcessTotals, {
         completed: scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
-        invalidReferences: hasInvalidProcessReferences,
+        invalidReferences: hasInvalidProductionProcessReferences,
       }),
       quantityReview: includeQuantityReviewDetails
         ? {
@@ -22578,6 +22578,8 @@ const buildAssignmentPlanProgressRows = async (
       isStUnknown,
       isProgressUnknown,
       hasInvalidProcessReferences,
+      hasInvalidProductionProcessReferences,
+      isProductionProgressUnknown,
       hasRangeCoverage: stats.hasRangeCoverage,
       factoryScopeOrphanWorkRecordCount,
       hasOrphanWorkRecords: factoryScopeOrphanWorkRecordCount > 0,

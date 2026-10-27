@@ -23,11 +23,14 @@ export const hasValidAssignmentProcessRefs = (plan: any, requireSt = true): bool
 
 // Validate identities against the owning manufacturer's canonical rows, never labels or positions.
 const snapshotVersionId = (plan: any) => plan.styleProcessVersionId ?? plan.assignmentCtSnapshot?.styleProcessVersionId ?? plan.assignmentStSnapshot?.styleProcessVersionId;
-export const invalidAssignmentProcessRefIds = async (db: any, orgId: number, plans: any[]) => {
+const invalidProcessRefIds = async (db: any, orgId: number, plans: any[], productionOnly: boolean) => {
   const invalid = new Set<any>();
   if (!plans.length) return invalid;
   const ids = [...new Set(plans.flatMap(plan => snapshotProcessIds(plan.assignmentCtSnapshot) ?? []))];
-  const versionIds = [...new Set(plans.map(plan => Number(snapshotVersionId(plan))).filter(id => Number.isSafeInteger(id) && id > 0))];
+  const versionFor = (plan: any) => productionOnly
+    ? plan.styleProcessVersionId ?? plan.assignmentCtSnapshot?.styleProcessVersionId
+    : snapshotVersionId(plan);
+  const versionIds = [...new Set(plans.map(plan => Number(versionFor(plan))).filter(id => Number.isSafeInteger(id) && id > 0))];
   const [rows, versions] = await Promise.all([
     db.styleProcess.findMany({ where: { id: { in: ids }, orgId }, select: { id: true, styleId: true } }),
     db.styleProcessVersion.findMany({ where: { id: { in: versionIds }, orgId }, select: { id: true, styleId: true, processSnapshot: true } }),
@@ -36,16 +39,23 @@ export const invalidAssignmentProcessRefIds = async (db: any, orgId: number, pla
   const byVersion = new Map<number, any>(versions.map((row: any) => [row.id, row]));
   for (const plan of plans) {
     const ct = snapshotProcessIds(plan.assignmentCtSnapshot);
-    const version = byVersion.get(Number(snapshotVersionId(plan)));
+    const version = byVersion.get(Number(versionFor(plan)));
     const versionProcesses = Array.isArray(version?.processSnapshot) ? version.processSnapshot : [];
     const versionProcessIds = snapshotProcessIds({ processes: versionProcesses.map((row: any) => ({ styleProcessId: row.styleProcessId ?? row.id })) });
-    if (!hasValidAssignmentProcessRefs(plan) || !ct || ct.some(id => byId.get(id) !== Number(plan.styleId)) ||
-        (snapshotVersionId(plan) != null && (!version || version.styleId !== Number(plan.styleId) || !versionProcessIds || versionProcessIds.length !== ct.length || ct.some(id => !versionProcessIds.includes(id))))) {
+    // Physical production uses the frozen CT process identity/targets. A broken
+    // ST costing snapshot must not erase valid recorded garment quantities.
+    // All existing write/capacity checks still validate BOTH snapshots.
+    const referencePlan = productionOnly ? { ...plan, assignmentStSnapshot: null } : plan;
+    if (!hasValidAssignmentProcessRefs(referencePlan, !productionOnly) || !ct || ct.some(id => byId.get(id) !== Number(plan.styleId)) ||
+        (versionFor(plan) != null && (!version || version.styleId !== Number(plan.styleId) || !versionProcessIds || versionProcessIds.length !== ct.length || ct.some(id => !versionProcessIds.includes(id))))) {
       invalid.add(plan.id ?? plan.externalId);
     }
   }
   return invalid;
 };
+
+export const invalidAssignmentProcessRefIds = (db: any, orgId: number, plans: any[]) => invalidProcessRefIds(db, orgId, plans, false);
+export const invalidProductionProcessRefIds = (db: any, orgId: number, plans: any[]) => invalidProcessRefIds(db, orgId, plans, true);
 
 export const assertAssignmentProcessRefs = async (db: any, orgId: number, plans: any[]) => {
   if ((await invalidAssignmentProcessRefIds(db, orgId, plans)).size) throw createHttpError(409, SNAPSHOT_REFERENCE_ERROR);
