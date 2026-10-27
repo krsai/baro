@@ -7,7 +7,6 @@ import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Chip,
   FormControl,
   InputLabel,
@@ -149,11 +148,6 @@ const TEXT = {
     ko: '공장 {id}',
     en: 'Factory {id}',
     vi: 'Nhà máy {id}',
-  },
-  atNotice: {
-    ko: 'AT 계산은 스타일 메뉴의 AT 추정 버튼 실행 시 지난달까지의 작업기록과 출퇴근 기록을 기준으로 전체 재계산됩니다.',
-    en: 'AT is fully recalculated from work logs and attendance records through the previous month when you run AT Estimate from the Style menu.',
-    vi: 'AT se duoc tinh lai toan bo tu work log va cham cong den het thang truoc khi bam nut uoc tinh AT trong menu Style.',
   },
   colWorker: {
     ko: '작업자',
@@ -590,14 +584,6 @@ const AttendanceBoard = ({
         />
       )}
     >
-      <Alert severity="warning" sx={{ mb: 2 }}>
-        {resolveText(
-          TEXT.atNotice,
-          languageCode,
-          'AT uses previous month data as of the 5th each month; workers without attendance input are auto-calculated as 8 hours.'
-        )}
-      </Alert>
-
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
           <Table size="small">
