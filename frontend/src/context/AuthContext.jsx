@@ -420,7 +420,8 @@ export const AuthProvider = ({ children }) => {
     (!!user && isSupabaseConfigured) &&
       (
         accessLookupEmail !== normalizedCurrentUserEmail ||
-        (accessLoading && !effectiveProfile)
+        (accessLoading && !effectiveProfile) ||
+        (!effectiveProfile && !accessError)
       );
   const requiresWorkspaceSelection=!!user && accessLookupEmail===normalizedCurrentUserEmail && workspaces.length>0 && !(workspaceSelection?.email===normalizedCurrentUserEmail && workspaces.some(row=>row.key===workspaceSelection.key));
   const selectWorkspace=useCallback(key=>{

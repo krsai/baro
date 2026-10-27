@@ -1544,10 +1544,6 @@ const MainLayout = () => {
       navigate('/login', { replace: true });
     }
   };
-  const handleCompanySwitch = () => {
-    if(!confirmDiscardUnsavedChanges())return;
-    void handleLogout();
-  };
   const handleLanguageButtonClick = React.useCallback((nextLanguageCode) => {
     setLanguageCode(nextLanguageCode);
   }, [setLanguageCode]);
@@ -1927,7 +1923,6 @@ const MainLayout = () => {
             </Box>
           </Fade>
 
-          <Button color="inherit" onClick={handleCompanySwitch} sx={{whiteSpace:'nowrap',mr:1}}>{languageCode==='ko'?'회사 선택':languageCode==='vi'?'Chọn công ty':'Choose company'}</Button>
           <Button
             color="inherit"
             onClick={() =>

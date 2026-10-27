@@ -137,6 +137,15 @@ const OAuthCallbackRedirect = () => {
   return <Navigate to={nextPath} replace />;
 };
 
+// Mount registration only after the server has explicitly classified this
+// identity as ONBOARDING, never during the company/context handoff.
+const OnboardingEntry = () => {
+  const { loading, isAuthenticated, requiresOnboarding, hasWorkspaceAccess, requiresSubscriptionContact } = useAuth();
+  if (loading) return <GlobalLoadingOverlay open fullscreen startedAt={Date.now()} activeRequestCount={1}/>;
+  if (isAuthenticated && requiresOnboarding) return <Onboarding/>;
+  return <Navigate to={hasWorkspaceAccess ? '/' : requiresSubscriptionContact ? '/subscription-required' : '/login'} replace/>;
+};
+
 const RootRedirect = () => {
   const { isAuthenticated, activeProfile, user, accessProfile, devBypass, devProfile } = useAuth();
   if(activeProfile?.orgType==='SERVICE')return <Navigate to={resolveFirstAccessiblePath({isAuthenticated,accessProfile,devBypass,devProfile})} replace/>;
@@ -159,6 +168,7 @@ const ProtectedRoute = () => {
     loading,
     hasWorkspaceAccess,
     requiresWorkspaceSelection,
+    requiresOnboarding,
     requiresSubscriptionContact,
     devBypass,
     devProfile,
@@ -198,7 +208,7 @@ const ProtectedRoute = () => {
     if (requiresSubscriptionContact) {
       return <Navigate to="/subscription-required" replace />;
     }
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to={requiresOnboarding ? '/onboarding' : '/login'} replace />;
   }
 
   const canAccessCurrentPath = canAccessPath(location.pathname, authState);
@@ -233,7 +243,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/onboarding',
-    element: <Onboarding />,
+    element: <OnboardingEntry />,
   },
   {
     path: '/',
