@@ -133,6 +133,7 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
           label: nodeLabel || '-',
           icon: node?.icon || null,
           children,
+          permissionGroups: children.flatMap(child => child.type === 'group' ? child.permissionGroups : child.featureKeys.length ? [child.featureKeys] : []),
           featureKeys: Array.from(
             new Set(children.flatMap((child) => child.featureKeys || []))
           ),
@@ -283,7 +284,7 @@ const AccessPolicyBoard = () => {
     [draftPolicy]
   );
 
-  const setFeature = React.useCallback((role, featureKey, checked) => {
+  const setFeature = React.useCallback((role, featureKeys, checked) => {
     setDraftPolicy((prev) => {
       const next = toEditablePolicy(prev);
       const currentFeatures = Array.isArray(next?.[EDITABLE_ORG_TYPE]?.[role])
@@ -291,9 +292,9 @@ const AccessPolicyBoard = () => {
         : [];
       const featureSet = new Set(currentFeatures);
       if (checked) {
-        featureSet.add(featureKey);
+        featureKeys.forEach(key => featureSet.add(key));
       } else {
-        featureSet.delete(featureKey);
+        featureKeys.forEach(key => featureSet.delete(key));
       }
       next[EDITABLE_ORG_TYPE][role] = Array.from(featureSet.values());
       return next;
@@ -301,10 +302,8 @@ const AccessPolicyBoard = () => {
   }, []);
 
   const countGroupFeatures = React.useCallback(
-    (role, featureKeys) =>
-      (Array.isArray(featureKeys) ? featureKeys : []).filter((featureKey) =>
-        hasFeature(role, featureKey)
-      ).length,
+    (role, permissionGroups) =>
+      (permissionGroups || []).filter(keys => keys.some(key => hasFeature(role, key))).length,
     [hasFeature]
   );
 
@@ -460,8 +459,8 @@ const AccessPolicyBoard = () => {
                         {EDITABLE_ROLE_ORDER.map((role) => (
                           <TableCell key={`${row.id}:${role}`} align="center">
                             <Typography variant="caption" color="text.secondary">
-                              {countGroupFeatures(role, row.featureKeys)}/
-                              {row.featureKeys.length}
+                              {countGroupFeatures(role, row.permissionGroups)}/
+                              {row.permissionGroups.length}
                             </Typography>
                           </TableCell>
                         ))}
@@ -524,15 +523,10 @@ const AccessPolicyBoard = () => {
                         </TableCell>
                         {EDITABLE_ROLE_ORDER.map((role) => (
                           <TableCell key={`${row.featureKey}:${role}`} align="center">
-                            <Stack spacing={0.5} alignItems="center">
-                              {(row.permissionOptions.length ? row.permissionOptions : [{featureKey:row.featureKey,label:row.label}]).map(option => <Stack key={option.featureKey || row.id} direction="row" alignItems="center" spacing={0.5}>
-                                <Switch size="small" checked={row.fixedAccess || hasFeature(role, option.featureKey)}
-                                  disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess}
-                                  onChange={event=>setFeature(role,option.featureKey,event.target.checked)}
-                                  inputProps={{'aria-label':option.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}} />
-                                {row.permissionOptions.length>0 && <Typography variant="caption">{option.label}</Typography>}
-                              </Stack>)}
-                            </Stack>
+                            <Switch size="small" checked={row.fixedAccess || row.featureKeys.some(key => hasFeature(role, key))}
+                              disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess}
+                              onChange={event=>setFeature(role,row.featureKeys,event.target.checked)}
+                              inputProps={{'aria-label':row.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}} />
                           </TableCell>
                         ))}
                       </TableRow>

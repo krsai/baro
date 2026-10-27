@@ -41,7 +41,7 @@ test('unified partners requires one existing partner permission without granting
   assert.equal(canAccessPath('/business-partner',{isAuthenticated:false}),false);
 });
 
-test('permission editor retains all three category switches under the single partners menu',()=>{
+test('permission editor retains category feature keys behind the single partners menu',()=>{
  const {buildMenuTree}=loadSourceBindings('frontend/src/pages/App/system/AccessPolicyBoard.jsx',['buildMenuTree'],{resolveFeatureByPath,NON_EDITABLE_FEATURE_KEYS:new Set()});
  const [menu]=buildMenuTree([{label:'Partners',path:'/business-partner',accessChildren:[{label:'Customers',path:'/customer'},{label:'Outsourcing',path:'/outsourcing-partner'},{label:'Suppliers',path:'/material-supplier'}]}]);
  assert.equal(menu.type,'menu');assert.equal(menu.path,'/business-partner');assert.equal(menu.children,undefined);assert.equal(menu.permissionOptions.length,3);
