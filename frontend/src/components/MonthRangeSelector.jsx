@@ -27,8 +27,9 @@ const MonthRangeSelector = ({
   maxDate,
   disabled = false,
   slotProps,
+  independentDateBounds = false,
 }) => {
-  const { minimum, maximum, loading } = useQueryDateBounds({ min: minDate, max: maxDate });
+  const { minimum, maximum, loading } = useQueryDateBounds({ min: minDate, max: maxDate, independentDateBounds });
   minDate = minimum ? dayjs(minimum) : undefined;
   maxDate = maximum ? dayjs(maximum) : undefined;
   disabled = disabled || loading;

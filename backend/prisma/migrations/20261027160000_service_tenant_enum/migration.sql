@@ -1,0 +1,1 @@
+ALTER TYPE "OrganizationType" ADD VALUE IF NOT EXISTS 'SERVICE';

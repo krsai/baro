@@ -196,7 +196,7 @@ export const ensureOrganizationSubscription = async (organization: any) => {
   // subscription. This is defense-in-depth on top of the type filter in
   // GET /organizations - any future call site that forgets that filter
   // still cannot auto-create a subscription for a vendor org here.
-  if (organization.type !== "MANUFACTURER" && organization.type !== "BRAND") return null;
+  if (organization.type !== "MANUFACTURER" && organization.type !== "BRAND" && organization.type !== "SERVICE") return null;
 
   const existing = await prisma.organizationSubscription.findUnique({
     where: { orgId: organization.id },
@@ -255,7 +255,7 @@ const getPrimaryOrganization = async (options: OrganizationAccessOptions = {}) =
   // MATERIAL_SUPPLIER, merged from BusinessPartner) - they are not real
   // tenants and must never become a system admin's resolved "primary org".
   const organization = await prisma.organization.findFirst({
-    where: { type: { in: ["MANUFACTURER", "BRAND"] } },
+    where: { type: { in: ["MANUFACTURER", "BRAND", "SERVICE"] } },
     orderBy: { id: "asc" },
   });
   if (!organization) return null;
@@ -269,7 +269,7 @@ const getSystemAdminDefaultOrganization = async (
 ) => {
   const organizationWithActiveMembers = await prisma.organization.findFirst({
     where: {
-      type: { in: ["MANUFACTURER", "BRAND"] },
+      type: { in: ["MANUFACTURER", "BRAND", "SERVICE"] },
       employees: {
         some: { status: "ACTIVE" },
       },

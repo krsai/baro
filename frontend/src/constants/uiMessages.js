@@ -28,6 +28,7 @@ export const UI_MESSAGES = {
     },
   },
   menu: {
+    bankLedger: {ko:'은행 입출금',en:'Bank transactions',vi:'Thu chi ngân hàng'},
     permission: { ko: '권한 관리', en: 'Permissions', vi: 'Quản lý quyền' },
     appDefaults: { ko: '앱 기본설정', en: 'App defaults', vi: 'Mặc định ứng dụng' },
     partners: { ko: '거래처', en: 'Partners', vi: 'Đối tác' },

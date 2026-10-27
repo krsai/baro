@@ -10,6 +10,7 @@ import { CalendarMonthOutlined, QueryStatsOutlined, TaskAltOutlined } from '@mui
 import { LOGIN_COPY } from './loginCopy';
 import './login.css';
 import AppVersionLabel from '../../components/AppVersionLabel';
+import CompanyChooser from './CompanyChooser';
 import LanguageSwitcher from '../../components/LanguageSwitcher';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -24,6 +25,7 @@ const Login = () => {
     signInWithGoogle,
     isAuthenticated,
     hasWorkspaceAccess,
+    requiresWorkspaceSelection,
     requiresOnboarding,
     requiresSubscriptionContact,
     loading,
@@ -86,6 +88,7 @@ const Login = () => {
 
   useEffect(() => {
     if (!isAuthenticated || loading) return;
+    if (requiresWorkspaceSelection) {setIsNavigatingAfterAuth(false);return;}
     if (accessError) {
       setIsNavigatingAfterAuth(false);
       return;
@@ -104,6 +107,7 @@ const Login = () => {
     }
   }, [
     hasWorkspaceAccess,
+    requiresWorkspaceSelection,
     isAuthenticated,
     loading,
     navigate,
@@ -162,6 +166,7 @@ const Login = () => {
         <section className="lineos-login-card" aria-labelledby="lineos-login-heading">
           <h2 id="lineos-login-heading">{loginCopy.welcome}</h2>
           <p className="lineos-login-subtitle">{loginCopy.subtitle}</p>
+          {isAuthenticated && requiresWorkspaceSelection ? <CompanyChooser languageCode={languageCode}/> : <>
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>
@@ -169,6 +174,7 @@ const Login = () => {
           {loginError && <Typography role="alert" variant="body2" color="error" sx={{mt:2}}>{loginCopy.loginError}</Typography>}
           {isAuthenticated && accessError && <Box sx={{mt:2}}><Typography role="alert" variant="body2" color="error">{loginCopy.authContextError}</Typography><Button onClick={handleRestartSession} sx={{mt:1}}>{loginCopy.restartSession}</Button></Box>}
           <p className="lineos-login-destination">{loginCopy.destination}</p>
+          </>}
         </section>
       </div>
       <footer className="lineos-login-footer"><span>LINEOS &copy; {new Date().getFullYear()}</span><AppVersionLabel sx={{fontSize:'inherit',color:'inherit'}} /></footer>

@@ -46,6 +46,7 @@ const lazyImportWithRetry = (importer) =>
   );
 
 const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
+const BankLedger = lazyImportWithRetry(() => import('./pages/App/BankLedger'));
 const SignUp = lazyImportWithRetry(() => import('./pages/Auth/SignUp'));
 const Organization = lazyImportWithRetry(() => import('./pages/App/Organization'));
 const Employee = lazyImportWithRetry(() => import('./pages/App/Employee'));
@@ -138,6 +139,7 @@ const OAuthCallbackRedirect = () => {
 
 const RootRedirect = () => {
   const { isAuthenticated, activeProfile, user, accessProfile, devBypass, devProfile } = useAuth();
+  if(activeProfile?.orgType==='SERVICE')return <Navigate to={resolveFirstAccessiblePath({isAuthenticated,accessProfile,devBypass,devProfile})} replace/>;
   const shouldOpenDashboard =
     readPersonalPreferences(activeProfile, user).openDashboardOnLogin &&
     canAccessPath('/dashboard', { isAuthenticated, accessProfile, devBypass, devProfile });
@@ -156,6 +158,7 @@ const ProtectedRoute = () => {
     isAuthenticated,
     loading,
     hasWorkspaceAccess,
+    requiresWorkspaceSelection,
     requiresSubscriptionContact,
     devBypass,
     devProfile,
@@ -190,6 +193,7 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
+  if (requiresWorkspaceSelection) return <Navigate to="/login" replace />;
   if (!hasWorkspaceAccess) {
     if (requiresSubscriptionContact) {
       return <Navigate to="/subscription-required" replace />;
@@ -238,6 +242,7 @@ const router = createBrowserRouter([
       {
         element: <MainLayout />,
         children: [
+          {path:'bank-ledger',element:<BankLedger/>},
           {
             index: true,
             element: <RootRedirect />,

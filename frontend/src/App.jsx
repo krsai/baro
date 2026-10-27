@@ -3,7 +3,7 @@ import { RouterProvider } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { Box, CircularProgress, CssBaseline, Typography } from '@mui/material';
 import { AuthProvider } from './context/AuthContext';
-import { AppProvider } from './context/AppContext';
+import CompanyWorkspaceProvider from './components/CompanyWorkspaceProvider';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import router from './router';
 import theme from './theme';
@@ -102,13 +102,7 @@ const App = () => {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <LanguageProvider>
-        <AppProvider>
-          <AuthProvider>
-            <Suspense fallback={<RouteLoadingFallback />}>
-              <RouterProvider router={router} />
-            </Suspense>
-          </AuthProvider>
-        </AppProvider>
+        <AuthProvider><CompanyWorkspaceProvider><Suspense fallback={<RouteLoadingFallback />}><RouterProvider router={router}/></Suspense></CompanyWorkspaceProvider></AuthProvider>
       </LanguageProvider>
     </ThemeProvider>
   );

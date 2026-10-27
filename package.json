@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:bank-ledger": "npm --prefix backend run build && node --test scripts/bank-ledger.test.mjs scripts/access-policy-regression.test.mjs scripts/auth-background-refresh-regression.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/company-bank-browser.test.mjs",
     "test:order-price-highlight": "npm --prefix backend run build && node --test scripts/order-price-highlight.test.mjs scripts/customer-order-price-alert.test.mjs scripts/order-value-regression.test.mjs scripts/sales-price-regression.test.mjs && node scripts/order-price-highlight-browser.test.mjs",
     "test:order-layout-drag": "node --test scripts/order-color-order.test.mjs scripts/order-quantity-input.test.mjs scripts/order-list-filter-regression.test.mjs && node scripts/order-layout-drag-browser.test.mjs",
     "test:invoice-item-grid": "node --test scripts/invoice-item-grid.test.mjs",

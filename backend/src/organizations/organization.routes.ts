@@ -130,7 +130,7 @@ export const createOrganizationRouter = ({
       // merged from BusinessPartner) must never appear in this list - they
       // are not real tenants and must never get an auto-created subscription
       // via attachOrganizationSubscription below. See AGENTS.md.
-      where: { type: { in: ["MANUFACTURER", "BRAND"] } },
+      where: { type: { in: ["MANUFACTURER", "BRAND", "SERVICE"] } },
       include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
       orderBy: { id: "asc" },
     });

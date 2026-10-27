@@ -14,6 +14,7 @@ datasource db {
 enum OrganizationType {
   MANUFACTURER
   BRAND
+  SERVICE
   // Vendor types (2026-08-20 merge): BusinessPartner was folded into
   // Organization. Rows with these types always have ownerOrgId set, never
   // get OrganizationSubscription/Employee/OrgRelationship rows, and are
@@ -169,6 +170,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  ledgerAccounts BankLedgerAccount[]
+  workspaceRegistration CompanyWorkspaceRegistration?
   expenseCodeLinkPolicies ExpenseCodeLinkPolicy[]
   expenseCodeLinkAudits ExpenseCodeLinkAudit[]
   industryProductionPolicies IndustryProductionPolicy[]
@@ -303,6 +306,56 @@ model Currency {
   styleSalesCurrencyOverrides OrgRelationshipStyleSalesCurrency[]
   salaryOrganizations Organization[] @relation("OrganizationSalaryCurrency")
   salaryFactories Factory[] @relation("FactorySalaryCurrency")
+}
+
+model CompanyWorkspaceRegistration {
+  actorEmail String
+  clientKey String
+  orgId Int @unique
+  requestHash String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  @@id([actorEmail, clientKey])
+}
+
+model BankLedgerAccount {
+  id String @id @default(uuid())
+  orgId Int
+  clientKey String
+  bankName String
+  accountNumber String
+  accountHolder String
+  currencyCode String
+  openingDate String
+  openingBalance Decimal @db.Decimal(24, 4)
+  createdBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  entries BankLedgerEntry[]
+  @@unique([id, orgId])
+  @@unique([orgId, clientKey])
+  @@unique([orgId, bankName, accountNumber, currencyCode], map: "BankLedgerAccount_org_bank_number_currency_key")
+  @@index([orgId, createdAt])
+}
+
+model BankLedgerEntry {
+  id String @id @default(uuid())
+  orgId Int
+  accountId String
+  clientKey String
+  transactionDate String
+  direction String
+  amount Decimal @db.Decimal(24, 4)
+  purpose String
+  evidenceNumber String
+  createdBy String
+  createdAt DateTime @default(now())
+  voidedAt DateTime?
+  voidedBy String?
+  voidReason String?
+  account BankLedgerAccount @relation(fields: [accountId, orgId], references: [id, orgId], onDelete: Restrict)
+  @@unique([orgId, clientKey])
+  @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
 }
 
 model OrganizationBankAccount {

@@ -15,7 +15,7 @@ const SubscriptionRequired = () => {
   const navigate = useNavigate();
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.ko;
-  const { activeProfile, signOut, hasWorkspaceAccess, requiresOnboarding } = useAuth();
+  const { activeProfile, signOut, hasWorkspaceAccess, requiresOnboarding, clearWorkspaceSelection } = useAuth();
 
   React.useEffect(() => {
     if (hasWorkspaceAccess) { navigate('/workspace', { replace: true }); return; }
@@ -37,7 +37,7 @@ const SubscriptionRequired = () => {
       <Typography variant="body2" color="text.secondary">{getOrganizationSubscriptionStatusDescription(subscriptionStatus, '', languageCode)}</Typography>
       {activeEndsAt ? <Typography variant="body2" color="text.secondary">{text.lastEnd}: {new Date(activeEndsAt).toLocaleDateString(text.locale)}</Typography> : null}
       <Box sx={{ pt: 1 }}><Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{text.contact}</Typography><Typography variant="body2" color="text.secondary">{contactEmail || '-'}</Typography></Box>
-      <Stack direction="row" spacing={1.5} sx={{ pt: 1 }}><Button variant="contained" onClick={() => window.location.reload()}>{text.retry}</Button><Button variant="outlined" onClick={signOut}>{text.logout}</Button></Stack>
+      <Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" sx={{ pt: 1 }}><Button variant="contained" onClick={() => window.location.reload()}>{text.retry}</Button><Button variant="outlined" onClick={()=>{clearWorkspaceSelection();navigate('/login',{replace:true});}}>{languageCode==='ko'?'회사 선택':languageCode==='vi'?'Chọn công ty':'Choose company'}</Button><Button variant="outlined" onClick={signOut}>{text.logout}</Button></Stack>
     </Stack></Paper></Box></Container>
   );
 };

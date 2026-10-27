@@ -15,6 +15,8 @@ import {
 import { sanitizeRoleAccessPolicy } from '../utils/roleAccessPolicy';
 
 const AuthContext = createContext(null);
+const WORKSPACE_SELECTION_KEY = 'baro:workspace-selection';
+const readWorkspaceSelection = () => {try{return JSON.parse(sessionStorage.getItem(WORKSPACE_SELECTION_KEY) || 'null');}catch{return null;}};
 
 const AUTH_SESSION_TIMEOUT_MS = 10_000;
 const ACCESS_PROFILE_TIMEOUT_MS = 10_000;
@@ -206,6 +208,10 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [user, setUser] = useState(null);
   const [accessProfile, setAccessProfile] = useState(null);
+  const [workspaceSelection, setWorkspaceSelection] = useState(readWorkspaceSelection);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [canCreateCompany, setCanCreateCompany] = useState(false);
+  const [workspaceReload, setWorkspaceReload] = useState(0);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessError, setAccessError] = useState('');
   const [accessLookupEmail, setAccessLookupEmail] = useState('');
@@ -303,6 +309,7 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      if(accessLookupEmail!==normalizedCurrentUserEmail){setWorkspaces([]);setCanCreateCompany(false);}
       setAccessLookupEmail(normalizedCurrentUserEmail);
       setAccessLoading(true);
       setAccessError('');
@@ -313,15 +320,26 @@ export const AuthProvider = ({ children }) => {
           accessProfileAbortController?.abort();
         }, ACCESS_PROFILE_TIMEOUT_MS);
 
-        const data = await requestJSON('/auth/context', {
+        const selectedKey=workspaceSelection?.email===normalizedCurrentUserEmail?workspaceSelection.key:null;
+        const orgId=selectedKey?.startsWith('org:')?Number(selectedKey.slice(4)):null;
+        const options={
           skipGlobalLoading: true,
           skipCache: true,
           signal: accessProfileAbortController.signal,
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'x-org-id': orgId ? String(orgId) : '',
           },
-        });
+        };
+        const choices=await requestJSON('/auth/workspaces',options);
+        if(cancelled)return;
+        setWorkspaces(choices.workspaces || []);setCanCreateCompany(!!choices.canCreateCompany);
+        if(selectedKey && !choices.workspaces.some(row=>row.key===selectedKey)){
+          sessionStorage.removeItem(WORKSPACE_SELECTION_KEY);setWorkspaceSelection(null);setAccessProfile(null);return;
+        }
+        const data=await requestJSON(`/auth/context${orgId?`?orgId=${orgId}`:''}`,options);
         if (cancelled) return;
+        if(orgId && (data.entryType!=='ORG' || Number(data.orgId)!==orgId))throw new Error('COMPANY_CONTEXT_MISMATCH');
         setAccessProfile(normalizeAccessProfile(data));
       } catch (_error) {
         if (cancelled) return;
@@ -350,7 +368,7 @@ export const AuthProvider = ({ children }) => {
       cancelled = true;
       accessProfileAbortController?.abort();
     };
-  }, [session?.access_token, user?.email]);
+  }, [session?.access_token, user?.email, workspaceSelection, workspaceReload]);
 
   const normalizedCurrentUserEmail =
     typeof user?.email === 'string' ? user.email.trim().toLowerCase() : '';
@@ -390,7 +408,18 @@ export const AuthProvider = ({ children }) => {
         accessLookupEmail !== normalizedCurrentUserEmail ||
         (accessLoading && !effectiveProfile)
       );
-  const hasWorkspaceAccess =
+  const requiresWorkspaceSelection=!!user && accessLookupEmail===normalizedCurrentUserEmail && workspaces.length>0 && !(workspaceSelection?.email===normalizedCurrentUserEmail && workspaces.some(row=>row.key===workspaceSelection.key));
+  const selectWorkspace=useCallback(key=>{
+    if(!workspaces.some(row=>row.key===key))throw new Error('COMPANY_ACCESS_DENIED');
+    const selection={email:normalizedCurrentUserEmail,key};
+    sessionStorage.setItem(WORKSPACE_SELECTION_KEY,JSON.stringify(selection));
+    setAccessProfile(null);setAccessLoading(true);setWorkspaceSelection(selection);
+  },[workspaces,normalizedCurrentUserEmail]);
+  const clearWorkspaceSelection=useCallback(()=>{
+    sessionStorage.removeItem(WORKSPACE_SELECTION_KEY);setWorkspaceSelection(null);setAccessProfile(null);setAccessLoading(true);
+  },[]);
+  const reloadWorkspaces=useCallback(()=>setWorkspaceReload(value=>value+1),[]);
+  const hasWorkspaceAccess = !requiresWorkspaceSelection &&
     !!user &&
     !!effectiveProfile &&
     normalizeUpper(effectiveProfile.entryType) !== 'ONBOARDING' &&
@@ -427,6 +456,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
+    sessionStorage.removeItem(WORKSPACE_SELECTION_KEY);setWorkspaceSelection(null);setWorkspaces([]);setCanCreateCompany(false);
     setAccessProfile(null);
     setAccessLoading(false);
     setAccessError('');
@@ -482,6 +512,7 @@ export const AuthProvider = ({ children }) => {
       accessError,
       loading: loadingState,
       hasWorkspaceAccess,
+      workspaces,canCreateCompany,requiresWorkspaceSelection,selectWorkspace,clearWorkspaceSelection,reloadWorkspaces,
       requiresOnboarding,
       requiresSubscriptionContact,
       isAuthenticated: !!user,
@@ -500,6 +531,7 @@ export const AuthProvider = ({ children }) => {
       effectiveProfile,
       enableDevBypass,
       hasWorkspaceAccess,
+      workspaces,canCreateCompany,requiresWorkspaceSelection,selectWorkspace,clearWorkspaceSelection,reloadWorkspaces,
       loadingState,
       requiresOnboarding,
       requiresSubscriptionContact,

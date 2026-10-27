@@ -1,6 +1,7 @@
 export const ORG_TYPE_KEYS = {
   MANUFACTURER: 'MANUFACTURER',
   BRAND: 'BRAND',
+  SERVICE: 'SERVICE',
 };
 
 export const ORG_ROLE_KEYS = {
@@ -14,6 +15,7 @@ export const ACCESS_FEATURE_KEYS = {
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   INVOICE: 'INVOICE',
+  BANK_LEDGER: 'BANK_LEDGER',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
   SHIPMENT_REVIEW: 'SHIPMENT_REVIEW',
@@ -40,9 +42,9 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 12;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 13;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
-const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND];
+const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
   ORG_ROLE_KEYS.ADMIN,
   ORG_ROLE_KEYS.OPERATOR,
@@ -54,6 +56,7 @@ const POLICY_FEATURES = Object.values(ACCESS_FEATURE_KEYS).filter(
 );
 
 const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
+  [ORG_TYPE_KEYS.SERVICE]: Object.freeze({ADMIN:Object.freeze(['BANK_LEDGER']),ACCOUNTANT:Object.freeze(['BANK_LEDGER']),OPERATOR:Object.freeze([]),WORKER:Object.freeze([])}),
   [ORG_TYPE_KEYS.MANUFACTURER]: Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([...POLICY_FEATURES]),
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
@@ -76,6 +79,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.CUSTOMER,
     ]),
     [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([
+      ACCESS_FEATURE_KEYS.BANK_LEDGER,
       ACCESS_FEATURE_KEYS.INVOICE,
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.PAYROLL,
@@ -89,6 +93,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
   }),
   [ORG_TYPE_KEYS.BRAND]: Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([
+      ACCESS_FEATURE_KEYS.BANK_LEDGER,
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
       ACCESS_FEATURE_KEYS.OUTSOURCING_PARTNER,
@@ -106,7 +111,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.LOGISTICS_PARTNER,
       ACCESS_FEATURE_KEYS.STYLE,
     ]),
-    [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([ACCESS_FEATURE_KEYS.DASHBOARD]),
+    [ORG_ROLE_KEYS.ACCOUNTANT]: Object.freeze([ACCESS_FEATURE_KEYS.BANK_LEDGER,ACCESS_FEATURE_KEYS.DASHBOARD]),
     [ORG_ROLE_KEYS.WORKER]: Object.freeze([ACCESS_FEATURE_KEYS.DASHBOARD]),
   }),
 });
@@ -311,6 +316,8 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     }
   }
 
+  if (sourceSchemaVersion < 13) for (const roles of Object.values(base)) for (const role of ['ADMIN','ACCOUNTANT']) {if (!roles[role].includes('BANK_LEDGER')) roles[role].push('BANK_LEDGER');}
+  if (!candidate.SERVICE) base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
   return base;
 };
 

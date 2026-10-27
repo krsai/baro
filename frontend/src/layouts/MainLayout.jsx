@@ -304,6 +304,7 @@ const MainLayout = () => {
   const currentRoutePath = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
   const {
     signOut,
+    clearWorkspaceSelection,
     devBypass,
     devProfile,
     accessProfile,
@@ -394,7 +395,7 @@ const MainLayout = () => {
   }, [currentPath]);
 
   useEffect(() => {
-    if (['/invoices', '/outsourcing-record', '/payroll'].some(path => currentPath === path || currentPath.startsWith(`${path}/`))) {
+    if (['/bank-ledger','/invoices', '/outsourcing-record', '/payroll'].some(path => currentPath === path || currentPath.startsWith(`${path}/`))) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ACCOUNTING);
       return;
     }
@@ -730,6 +731,7 @@ const MainLayout = () => {
             icon: <ListAltIcon />,
             path: '/invoices',
           },
+          {label:getUiMessage('menu.bankLedger','Bank transactions',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/bank-ledger'},
           {
             label: getUiMessage('menu.outsourcingRecord', '\uBE44\uC6A9 \uC2E0\uCCAD', languageCode),
             icon: <HistoryIcon />,
@@ -1543,6 +1545,13 @@ const MainLayout = () => {
       navigate('/login', { replace: true });
     }
   };
+  const handleCompanySwitch = () => {
+    if(!confirmDiscardUnsavedChanges())return;
+    isLoggingOutRef.current=true;
+    cancelAllTrackedRequests('company-switch');
+    setMountedTabOutlets(new Map());workspaceScrollByPathRef.current.clear();resetWorkspace();
+    clearWorkspaceSelection();navigate('/login',{replace:true});
+  };
   const handleLanguageButtonClick = React.useCallback((nextLanguageCode) => {
     setLanguageCode(nextLanguageCode);
   }, [setLanguageCode]);
@@ -1922,6 +1931,7 @@ const MainLayout = () => {
             </Box>
           </Fade>
 
+          <Button color="inherit" onClick={handleCompanySwitch} sx={{whiteSpace:'nowrap',mr:1}}>{languageCode==='ko'?'회사 선택':languageCode==='vi'?'Chọn công ty':'Choose company'}</Button>
           <Button
             color="inherit"
             onClick={() =>

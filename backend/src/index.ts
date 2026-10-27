@@ -1,3 +1,5 @@
+import {registerBankLedgerRoutes} from './services/bankLedger';
+import {registerCompanyWorkspaceRoutes,resolveCompanyWorkspace} from './services/companyWorkspaces';
 import { confirmCurrentProcessVersion, confirmedStyleProcessIds, processVersionSignature } from './services/styleProcessVersionLifecycle';
 import { missingProcessRecords } from './services/missingProcessRecords';
 import { toStyleListResponse } from './services/styleListResponse';
@@ -721,6 +723,9 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  {tableName:'BankLedgerAccount',columnName:'openingBalance'},
+  {tableName:'BankLedgerEntry',columnName:'clientKey'},
+  {tableName:'CompanyWorkspaceRegistration',columnName:'requestHash'},
   {tableName:'SettingServiceDefault',columnName:'expenseTypeId'},
   {tableName:'OrganizationBankAccount',columnName:'entityId'},
   {tableName:'OrganizationBankAccount',columnName:'currencyId'},
@@ -1018,6 +1023,13 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'BankLedgerEntry_accountId_orgId_fkey',
+  'BankLedgerAccount_orgId_fkey',
+  'CompanyWorkspaceRegistration_orgId_fkey',
+  'BankLedgerEntry_amount_check',
+  'BankLedgerEntry_direction_check',
+  'BankLedgerEntry_void_audit_check',
+  'BankLedgerAccount_currency_check',
   'SalaryItemRate_payType_check','EmployeeCompensationPolicy_payType_check','EmployeePayTypePolicy_payType_check',
   'SettingServiceDefault_expenseTypeId_fkey',
   'OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard',
@@ -1132,6 +1144,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "EmployeeCompensationPolicy_payType_check",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_ENUM_VALUES = [
+  {enumName:"OrganizationType",value:"SERVICE"},
   { enumName: "OrgMembershipStatus", value: "TERMINATED" },
   { enumName: "WorkOrderStatus", value: "EDITING" },
   { enumName: "SalesPricingBasis", value: "MANUFACTURING_SERVICE_PRICE" },
@@ -1165,6 +1178,7 @@ const SUBSCRIPTION_NULL_DATE_CUTOFF_MS = Date.UTC(1971, 0, 1);
 const ORGANIZATION_TYPE_KEYS = {
   MANUFACTURER: "MANUFACTURER",
   BRAND: "BRAND",
+  SERVICE: "SERVICE",
 } as const;
 type OrganizationTypeKey =
   (typeof ORGANIZATION_TYPE_KEYS)[keyof typeof ORGANIZATION_TYPE_KEYS];
@@ -1180,9 +1194,10 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 12;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 13;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
+  "BANK_LEDGER",
   "INVOICE",
   "DASHBOARD",
   "ORDER",
@@ -1221,6 +1236,7 @@ const ROLE_ACCESS_POLICY_FEATURE_SET = new Set<string>(
   ROLE_ACCESS_POLICY_FEATURES
 );
 const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
+  SERVICE:{ADMIN:["BANK_LEDGER"],ACCOUNTANT:["BANK_LEDGER"],OPERATOR:[],WORKER:[]},
   MANUFACTURER: {
     ADMIN: [...ROLE_ACCESS_POLICY_FEATURES],
     OPERATOR: [
@@ -1242,6 +1258,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "CUSTOMER",
     ],
     ACCOUNTANT: [
+      "BANK_LEDGER",
       "INVOICE",
       "DASHBOARD",
       "PAYROLL",
@@ -1255,6 +1272,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
   },
   BRAND: {
     ADMIN: [
+      "BANK_LEDGER",
       "DASHBOARD",
       "ORDER",
       "OUTSOURCING_PARTNER",
@@ -1264,7 +1282,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "SALARY_SYSTEM",
     ],
     OPERATOR: ["DASHBOARD", "ORDER", "OUTSOURCING_PARTNER", "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER", "STYLE"],
-    ACCOUNTANT: ["DASHBOARD"],
+    ACCOUNTANT: ["BANK_LEDGER","DASHBOARD"],
     WORKER: ["DASHBOARD"],
   },
 };
@@ -1435,6 +1453,8 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
       if ((features.includes('OUTSOURCING_PARTNER') || features.includes('MATERIAL_SUPPLIER')) && !features.includes('LOGISTICS_PARTNER')) features.push('LOGISTICS_PARTNER');
     }
   }
+  if (sourceSchemaVersion < 13) for (const roles of Object.values(policy)) for (const role of ["ADMIN","ACCOUNTANT"] as const) {if (!roles[role].includes("BANK_LEDGER")) roles[role].push("BANK_LEDGER");}
+  if (!(value as any)?.SERVICE) policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
   return policy;
 };
 const serializeRoleAccessPolicy = (
@@ -18905,6 +18925,8 @@ app.get("/ready", (_req, res) => {
   return res.json({ ok: true, ready: true });
 });
 
+registerCompanyWorkspaceRoutes(app,prisma,{getEmail:getRequesterEmail,requireOrgRole});
+registerBankLedgerRoutes(app,prisma,{requireOrgRole,loadPolicy:loadRoleAccessPolicySetting});
 app.get("/auth/context", async (req, res) => {
   const requesterEmail = getRequesterEmail(req);
   if (!requesterEmail || !requesterEmail.includes("@")) {
@@ -18916,7 +18938,7 @@ app.get("/auth/context", async (req, res) => {
     where: { email: requesterEmail },
     select: { systemRole: true },
   });
-  if (systemUser?.systemRole === "SYSTEM_ADMIN") {
+  if (systemUser?.systemRole === "SYSTEM_ADMIN" && !getRequestedOrgIdText(req)) {
     let organization = null;
     try {
       organization = await getOrganizationByQuery(req, { allowSuspended: true });
@@ -18943,41 +18965,12 @@ app.get("/auth/context", async (req, res) => {
 
   const requestedOrgIdText = getRequestedOrgIdText(req);
   if (requestedOrgIdText) {
-    if (!/^\d+$/.test(requestedOrgIdText)) {
-      return res.status(400).json({ ok: false, error: "invalid orgId" });
-    }
-    const requestedOrgId = Number(requestedOrgIdText);
-    if (!Number.isSafeInteger(requestedOrgId) || requestedOrgId <= 0) {
-      return res.status(400).json({ ok: false, error: "invalid orgId" });
-    }
-
-    const employee = await prisma.employee.findUnique({
-      where: {
-        orgId_email: {
-          orgId: requestedOrgId,
-          email: requesterEmail,
-        },
-      },
-      include: { organization: true },
-    });
-    if (employee && employee.status === "ACTIVE" && employee.organization) {
-      const organization = await attachOrganizationSubscription(employee.organization);
-      return res.json({
-        email: requesterEmail,
-        entryType: "ORG",
-        systemRole: "USER",
-        orgId: organization?.id ?? employee.organization.id,
-        orgName: organization?.name ?? employee.organization.name ?? null,
-        orgType: organization?.type ?? employee.organization.type ?? null,
-        orgRole: employee.orgRole,
-        factoryId: employee.factoryId ?? null,
-        employeeName: employee.name ?? null,
-        subscription: buildSubscriptionResponse(organization?.subscription),
-        accessPolicy: roleAccessPolicy,
-        systemAdminContactEmail: getSystemAdminContactEmail(),
-      });
-    }
-    // If requested org is stale/unauthorized, fall through and resolve by user's actual access.
+    if (!/^\d+$/.test(requestedOrgIdText)) return res.status(400).json({error:'COMPANY_INVALID_ID'});
+    const company=await resolveCompanyWorkspace(prisma,requesterEmail,Number(requestedOrgIdText),systemUser?.systemRole==='SYSTEM_ADMIN');
+    const organization=await attachOrganizationSubscription(company.organization);
+    return res.json({email:requesterEmail,entryType:'ORG',systemRole:'USER',orgId:organization.id,orgName:organization.name,orgType:organization.type,
+      orgRole:company.orgRole,employeeName:company.employeeName,factoryId:company.factoryId,
+      subscription:buildSubscriptionResponse(organization.subscription),accessPolicy:roleAccessPolicy,systemAdminContactEmail:getSystemAdminContactEmail()});
   }
 
   const employee = await prisma.employee.findFirst({

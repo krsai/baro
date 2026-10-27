@@ -6,6 +6,7 @@ import {
 const ORG_TYPES = {
   MANUFACTURER: 'MANUFACTURER',
   BRAND: 'BRAND',
+  SERVICE: 'SERVICE',
 };
 
 const ORG_ROLES = {
@@ -19,6 +20,7 @@ const FEATURE_KEYS = {
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   INVOICE: 'INVOICE',
+  BANK_LEDGER: 'BANK_LEDGER',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
   SHIPMENT_REVIEW: 'SHIPMENT_REVIEW',
@@ -132,7 +134,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     );
   }
 
-  const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND);
+  const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND, ORG_TYPES.SERVICE);
   const featureSet = resolveFeatureSetForContext(context);
 
   switch (featureKey) {
@@ -153,6 +155,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
+  if (path.startsWith('/bank-ledger')) return FEATURE_KEYS.BANK_LEDGER;
   if (path === '/invoices' || path.startsWith('/invoices/')) return FEATURE_KEYS.INVOICE;
   if (path === '/') return null;
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
@@ -209,6 +212,7 @@ export const canAccessFeature = (featureKey, authState) => {
 const ACCESS_PATH_PRIORITY = [
   '/workspace',
   '/dashboard',
+  '/bank-ledger',
   '/order',
   '/invoices',
   '/style',
@@ -233,6 +237,7 @@ const ACCESS_PATH_PRIORITY = [
 ];
 
 export const resolveFirstAccessiblePath = (authState, options = {}) => {
+  if (authState?.accessProfile?.orgType === 'SERVICE' && !(options.excludePaths || []).includes('/bank-ledger') && canAccessPath('/bank-ledger',authState)) return '/bank-ledger';
   const excludedPaths = new Set(
     (Array.isArray(options.excludePaths) ? options.excludePaths : [])
       .map((path) => normalizePathname(path))
