@@ -1,3 +1,6 @@
+import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
+import {OrderColorDragHandle, OrderColorDropRow, OrderItemsTableContainer} from '../../../components/OrderColorDrag';
+import {reorderOrderColorItems} from '../../../utils/orderColorOrder.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { getOrderWorkflowLabel, orderWorkflowOptions, ORDER_WORKFLOW_TONES } from '../../../constants/orderWorkflow.mjs';
@@ -1362,6 +1365,7 @@ const OrderList = () => {
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [progressFilter, setProgressFilter] = useState(ORDER_FILTER_ALL);
   const [formData, setFormData] = useState(buildInitialFormData);
+  const orderDragSensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}),useSensor(KeyboardSensor));
   const [detailViewMode, setDetailViewMode] = useState(ORDER_DETAIL_VIEW_MODES.HORIZONTAL);
   const [collapsedHorizontalGenders, setCollapsedHorizontalGenders] = useState(() => new Set());
   const [deferredMergeRowIds, setDeferredMergeRowIds] = useState(() => new Set());
@@ -1932,42 +1936,22 @@ const OrderList = () => {
       targetGroup.rows.push({ item, sourceIndex });
     });
 
-    const sortedGroups = Array.from(groupMap.values()).sort((a, b) => {
-      const styleA = String(a.styleName || a.styleCode || a.styleId || '').trim().toLowerCase();
-      const styleB = String(b.styleName || b.styleCode || b.styleId || '').trim().toLowerCase();
-      const isEmptyA = !styleA;
-      const isEmptyB = !styleB;
-      if (isEmptyA !== isEmptyB) {
-        return isEmptyA ? 1 : -1;
-      }
-      const styleDiff = styleA.localeCompare(styleB);
-      if (styleDiff !== 0) return styleDiff;
-      const firstSourceIndexA = a.rows[0]?.sourceIndex ?? 0;
-      const firstSourceIndexB = b.rows[0]?.sourceIndex ?? 0;
-      return firstSourceIndexA - firstSourceIndexB;
-    });
+    const sortedGroups = Array.from(groupMap.values());
 
     let nextDisplayNo = 1;
     return sortedGroups.map((group) => {
+      const colorRanks = new Map();
+      group.rows.forEach((row, index) => {
+        const key = getResolvedColorGroupKey(row.item);
+        if (!colorRanks.has(key)) colorRanks.set(key, index);
+      });
       const rows = buildColorMergedRows([...group.rows]
         .sort((a, b) => {
           const colorKeyA = getResolvedColorGroupKey(a.item);
           const colorKeyB = getResolvedColorGroupKey(b.item);
-          const hasColorA = Boolean(colorKeyA);
-          const hasColorB = Boolean(colorKeyB);
-          if (hasColorA !== hasColorB) return hasColorA ? -1 : 1;
-          if (colorKeyA !== colorKeyB) {
-            const colorLabelA = getResolvedColorLabel(a.item);
-            const colorLabelB = getResolvedColorLabel(b.item);
-            const colorLabelDiff = colorLabelA.localeCompare(
-              colorLabelB,
-              languageCode === 'ko' ? 'ko' : undefined,
-              { numeric: true, sensitivity: 'base' }
-            );
-            if (colorLabelDiff !== 0) return colorLabelDiff;
-            const colorKeyDiff = colorKeyA.localeCompare(colorKeyB);
-            if (colorKeyDiff !== 0) return colorKeyDiff;
-          }
+          const firstA = colorRanks.get(colorKeyA);
+          const firstB = colorRanks.get(colorKeyB);
+          if (firstA !== firstB) return firstA - firstB;
           const genderDiff = getGenderOrder(a.item.gender) - getGenderOrder(b.item.gender);
           if (genderDiff !== 0) return genderDiff;
           return a.sourceIndex - b.sourceIndex;
@@ -2420,6 +2404,21 @@ const OrderList = () => {
       sortStyleItemsForDisplay();
     });
   }, [sortStyleItemsForDisplay]);
+  const handleOrderDragEnd = ({active,over}) => {
+    if (isCurrentOrderModificationLocked || isSavingOrder || !over) return;
+    const from=active.data.current,to=over.data.current;
+    if (!from || !to) return;
+    if (from.kind !== 'style' && from.styleKey !== to.styleKey) return;
+    const sourceGroup=groupedStyleItems.find(group=>group.key===from.styleKey);
+    const targetGroup=groupedStyleItems.find(group=>group.key===to.styleKey);
+    if (!sourceGroup || !targetGroup) return;
+    const styleMove=from.kind==='style';
+    if (styleMove && sourceGroup.key===targetGroup.key) return;
+    const groupIds=styleMove ? groupedStyleItems.flatMap(group=>group.rowItemIds) : sourceGroup.rowItemIds;
+    setDeferredMergeRowIds(new Set());
+    setFormData(previous=>({...previous,items:reorderOrderColorItems(previous.items,groupIds,styleMove?sourceGroup.rowItemIds:from.ids,styleMove?targetGroup.rowItemIds:to.ids)}));
+  };
+  const orderDragLabel=languageCode==='ko' ? {style:'스타일 순서 변경',color:'색상 순서 변경'} : languageCode==='vi' ? {style:'Đổi thứ tự mẫu',color:'Đổi thứ tự màu'} : {style:'Reorder style',color:'Reorder color'};
   const shouldAdvanceAfterAutocompleteSelection = (_event, reason) =>
     reason === 'selectOption';
 
@@ -3570,8 +3569,9 @@ const OrderList = () => {
             sx={{ border: 0, m: 0, p: 0, minWidth: 0 }}
           >
 
+          <DndContext sensors={orderDragSensors} collisionDetection={closestCenter} onDragEnd={handleOrderDragEnd}>
           <Paper variant="outlined" sx={{ mb: 2 }}>
-            <TableContainer
+            <OrderItemsTableContainer doubleHeader={detailViewMode === ORDER_DETAIL_VIEW_MODES.HORIZONTAL}
               sx={{
                 width: '100%',
                 overflowX:
@@ -3662,10 +3662,10 @@ const OrderList = () => {
                     );
 
                     return (
-                      <TableRow
+                      <OrderColorDropRow dragId={`vertical:${item.id}`} dragData={{styleKey:group.key,ids:colorRowItemIds.length ? colorRowItemIds : group.rows.find(row => row.isColorFirstRow && getResolvedColorGroupKey(row.item) === getResolvedColorGroupKey(item))?.colorRowItemIds || [item.id]}} dragDisabled={isCurrentOrderModificationLocked || isSavingOrder}
                         key={item.id}
                         data-order-style-item-row="true"
-                        onFocusCapture={() => handleItemRowFocusCapture(item.id)}
+                        onFocusCapture={event => {if (!event.target.closest('[data-order-color-drag]')) handleItemRowFocusCapture(item.id);}}
                         onBlurCapture={(event) => handleItemRowBlurCapture(item.id, event)}
                         sx={{
                           '& > td': {
@@ -3677,7 +3677,7 @@ const OrderList = () => {
                           },
                         }}
                       >
-                        <TableCell sx={{ textAlign: 'center' }}>{displayNo}</TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>{isColorFirstRow && <OrderColorDragHandle id={`color:${item.id}`} data={{kind:'color',styleKey:group.key,ids:colorRowItemIds}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.color}/>} {displayNo}</TableCell>
                         {isFirstRow && (
                           <TableCell
                             rowSpan={group.rows.length}
@@ -3688,6 +3688,7 @@ const OrderList = () => {
                               borderBottomColor: `${groupPastelStyle.border} !important`,
                             }}
                           >
+                            <OrderColorDragHandle id={`style:${group.key}`} data={{kind:'style',styleKey:group.key}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.style}/>
                             <SearchableSelect
                               options={availableStyleOptions}
                               filterOptions={filterStyleAutocompleteOptions}
@@ -3910,7 +3911,7 @@ const OrderList = () => {
                         <TableCell sx={{ textAlign: 'center' }}>
                           <DeleteActionButton size="small" onClick={() => handleRemoveItem(item.id)} />
                         </TableCell>
-                      </TableRow>
+                      </OrderColorDropRow>
                     );
                   });
                 })}
@@ -4091,10 +4092,10 @@ const OrderList = () => {
                         const selectedColorOption = getSelectedColorOption(colorReferenceItem);
 
                         return (
-                          <TableRow
+                          <OrderColorDropRow dragId={colorRow.key} dragData={{styleKey:group.key,ids:colorTargetIds}} dragDisabled={isCurrentOrderModificationLocked || isSavingOrder}
                             key={colorRow.key}
                             data-order-style-item-row="true"
-                            onFocusCapture={() => handleItemRowFocusCapture(colorTargetIds)}
+                            onFocusCapture={event => {if (!event.target.closest('[data-order-color-drag]')) handleItemRowFocusCapture(colorTargetIds);}}
                             onBlurCapture={(event) =>
                               handleItemRowBlurCapture(colorTargetIds, event)
                             }
@@ -4108,7 +4109,7 @@ const OrderList = () => {
                               },
                             }}
                           >
-                            <TableCell sx={{ textAlign: 'center' }}>{colorRow.displayNo}</TableCell>
+                            <TableCell sx={{ textAlign: 'center' }}><OrderColorDragHandle id={`color:${colorRow.key}`} data={{kind:'color',styleKey:group.key,ids:colorTargetIds}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.color}/> {colorRow.displayNo}</TableCell>
                             {isFirstColorRow && (
                               <TableCell
                                 rowSpan={group.colorRows.length}
@@ -4121,6 +4122,7 @@ const OrderList = () => {
                                   borderBottomColor: `${groupPastelStyle.border} !important`,
                                 }}
                               >
+                                <OrderColorDragHandle id={`style:${group.key}`} data={{kind:'style',styleKey:group.key}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.style}/>
                                 <SearchableSelect
                                   options={availableStyleOptions}
                                   filterOptions={filterStyleAutocompleteOptions}
@@ -4353,15 +4355,16 @@ const OrderList = () => {
                                 disabled={!colorTargetIds.length}
                                />
                             </TableCell>
-                          </TableRow>
+                          </OrderColorDropRow>
                         );
                       });
                     })}
                   </TableBody>
                 </Table>
               )}
-          </TableContainer>
+          </OrderItemsTableContainer>
         </Paper>
+          </DndContext>
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
