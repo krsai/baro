@@ -3677,7 +3677,7 @@ const OrderList = () => {
                           },
                         }}
                       >
-                        <TableCell sx={{ textAlign: 'center' }}>{isColorFirstRow && <OrderColorDragHandle id={`color:${item.id}`} data={{kind:'color',styleKey:group.key,ids:colorRowItemIds}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.color}/>} {displayNo}</TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>{displayNo}</TableCell>
                         {isFirstRow && (
                           <TableCell
                             rowSpan={group.rows.length}
@@ -3688,70 +3688,72 @@ const OrderList = () => {
                               borderBottomColor: `${groupPastelStyle.border} !important`,
                             }}
                           >
-                            <OrderColorDragHandle id={`style:${group.key}`} data={{kind:'style',styleKey:group.key}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.style}/>
-                            <SearchableSelect
-                              options={availableStyleOptions}
-                              filterOptions={filterStyleAutocompleteOptions}
-                              value={groupStyleOption}
-                              disabled={!hasSelectedBuyer}
-                              onChange={(event, newValue, reason) => {
-                                const focusItemId = group.rows[0]?.item?.id || '';
-                                const shouldFocusNext =
-                                  shouldAdvanceAfterAutocompleteSelection(event, reason) ||
-                                  pendingStyleAdvanceFocusItemIdRef.current === focusItemId;
-                                handleStyleChange(group.rowItemIds, newValue, {
-                                  focusNext: shouldFocusNext,
-                                  focusItemId,
-                                });
-                                if (pendingStyleAdvanceFocusItemIdRef.current === focusItemId) {
-                                  pendingStyleAdvanceFocusItemIdRef.current = '';
-                                }
-                              }}
-                              getOptionLabel={(option) => option?.name || ''}
-                              isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                              autoHighlight
-                              textFieldProps={{
-                                size: 'small',
-                                placeholder: orderPageText.styleSearchPlaceholder,
-                                inputProps: {
-                                  onKeyDown: (event) => {
-                                    if (
-                                      event.nativeEvent?.isComposing ||
-                                      event.ctrlKey ||
-                                      event.altKey ||
-                                      event.metaKey
-                                    ) {
-                                      return;
-                                    }
-                                    if (
-                                      (event.key === 'Tab' && !event.shiftKey) ||
-                                      (event.key === 'Enter' && !event.shiftKey)
-                                    ) {
-                                      const focusItemId = group.rows[0]?.item?.id || '';
-                                      pendingStyleAdvanceFocusItemIdRef.current = focusItemId;
-                                      window.requestAnimationFrame(() => {
-                                        if (
-                                          pendingStyleAdvanceFocusItemIdRef.current === focusItemId
-                                        ) {
-                                          pendingStyleAdvanceFocusItemIdRef.current = '';
-                                        }
-                                      });
-                                    }
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, '& > .MuiAutocomplete-root': { flex: 1, minWidth: 0 } }}>
+                              <OrderColorDragHandle id={`style:${group.key}`} data={{kind:'style',styleKey:group.key}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.style}/>
+                              <SearchableSelect
+                                options={availableStyleOptions}
+                                filterOptions={filterStyleAutocompleteOptions}
+                                value={groupStyleOption}
+                                disabled={!hasSelectedBuyer}
+                                onChange={(event, newValue, reason) => {
+                                  const focusItemId = group.rows[0]?.item?.id || '';
+                                  const shouldFocusNext =
+                                    shouldAdvanceAfterAutocompleteSelection(event, reason) ||
+                                    pendingStyleAdvanceFocusItemIdRef.current === focusItemId;
+                                  handleStyleChange(group.rowItemIds, newValue, {
+                                    focusNext: shouldFocusNext,
+                                    focusItemId,
+                                  });
+                                  if (pendingStyleAdvanceFocusItemIdRef.current === focusItemId) {
+                                    pendingStyleAdvanceFocusItemIdRef.current = '';
+                                  }
+                                }}
+                                getOptionLabel={(option) => option?.name || ''}
+                                isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                                autoHighlight
+                                textFieldProps={{
+                                  size: 'small',
+                                  placeholder: orderPageText.styleSearchPlaceholder,
+                                  inputProps: {
+                                    onKeyDown: (event) => {
+                                      if (
+                                        event.nativeEvent?.isComposing ||
+                                        event.ctrlKey ||
+                                        event.altKey ||
+                                        event.metaKey
+                                      ) {
+                                        return;
+                                      }
+                                      if (
+                                        (event.key === 'Tab' && !event.shiftKey) ||
+                                        (event.key === 'Enter' && !event.shiftKey)
+                                      ) {
+                                        const focusItemId = group.rows[0]?.item?.id || '';
+                                        pendingStyleAdvanceFocusItemIdRef.current = focusItemId;
+                                        window.requestAnimationFrame(() => {
+                                          if (
+                                            pendingStyleAdvanceFocusItemIdRef.current === focusItemId
+                                          ) {
+                                            pendingStyleAdvanceFocusItemIdRef.current = '';
+                                          }
+                                        });
+                                      }
+                                    },
                                   },
-                                },
-                                inputRef: (node) =>
-                                  setInputElementInMap(
-                                    styleInputRefs,
-                                    group.rows[0]?.item?.id || '',
-                                    node
-                                  ),
-                              }}
-                              noOptionsText={
-                                hasSelectedBuyer
-                                  ? orderPageText.noRegisteredStyles
-                                  : orderPartyText.selectBuyerFirst
-                              }
-                            />
+                                  inputRef: (node) =>
+                                    setInputElementInMap(
+                                      styleInputRefs,
+                                      group.rows[0]?.item?.id || '',
+                                      node
+                                    ),
+                                }}
+                                noOptionsText={
+                                  hasSelectedBuyer
+                                    ? orderPageText.noRegisteredStyles
+                                    : orderPartyText.selectBuyerFirst
+                                }
+                              />
+                            </Box>
                           </TableCell>
                         )}
                         {isColorFirstRow && (
@@ -3764,7 +3766,8 @@ const OrderList = () => {
                               borderBottomColor: `${groupPastelStyle.border} !important`,
                             }}
                           >
-                            <FormControl fullWidth size="small">
+                            <FormControl fullWidth size="small" sx={{ flexDirection: 'row', alignItems: 'center', gap: 0.5, '& > .MuiAutocomplete-root': { flex: 1, minWidth: 0 } }}>
+                              <OrderColorDragHandle id={`color:${item.id}`} data={{kind:'color',styleKey:group.key,ids:colorRowItemIds}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.color}/>
                               <SearchableSelect
                                 options={normalizedColorOptions}
                                 value={selectedColorOption}
@@ -4109,7 +4112,7 @@ const OrderList = () => {
                               },
                             }}
                           >
-                            <TableCell sx={{ textAlign: 'center' }}><OrderColorDragHandle id={`color:${colorRow.key}`} data={{kind:'color',styleKey:group.key,ids:colorTargetIds}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.color}/> {colorRow.displayNo}</TableCell>
+                            <TableCell sx={{ textAlign: 'center' }}>{colorRow.displayNo}</TableCell>
                             {isFirstColorRow && (
                               <TableCell
                                 rowSpan={group.colorRows.length}
@@ -4122,75 +4125,77 @@ const OrderList = () => {
                                   borderBottomColor: `${groupPastelStyle.border} !important`,
                                 }}
                               >
-                                <OrderColorDragHandle id={`style:${group.key}`} data={{kind:'style',styleKey:group.key}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.style}/>
-                                <SearchableSelect
-                                  options={availableStyleOptions}
-                                  filterOptions={filterStyleAutocompleteOptions}
-                                  value={groupStyleOption}
-                                  disabled={!hasSelectedBuyer}
-                                  onChange={(event, newValue, reason) => {
-                                    const shouldFocusNext =
-                                      shouldAdvanceAfterAutocompleteSelection(event, reason) ||
-                                      pendingStyleAdvanceFocusItemIdRef.current ===
-                                        colorInputTargetId;
-                                    handleStyleChange(group.rowItemIds, newValue, {
-                                      focusNext:
-                                        shouldFocusNext,
-                                      focusItemId: colorInputTargetId,
-                                    });
-                                    if (
-                                      pendingStyleAdvanceFocusItemIdRef.current ===
-                                      colorInputTargetId
-                                    ) {
-                                      pendingStyleAdvanceFocusItemIdRef.current = '';
-                                    }
-                                  }}
-                                  getOptionLabel={(option) => option?.name || ''}
-                                  isOptionEqualToValue={(option, value) => option?.id === value?.id}
-                                  autoHighlight
-                                  textFieldProps={{
-                                    size: 'small',
-                                    placeholder: orderPageText.styleSearchPlaceholder,
-                                    inputProps: {
-                                      onKeyDown: (event) => {
-                                        if (
-                                          event.nativeEvent?.isComposing ||
-                                          event.ctrlKey ||
-                                          event.altKey ||
-                                          event.metaKey
-                                        ) {
-                                          return;
-                                        }
-                                        if (
-                                          (event.key === 'Tab' && !event.shiftKey) ||
-                                          (event.key === 'Enter' && !event.shiftKey)
-                                        ) {
-                                          pendingStyleAdvanceFocusItemIdRef.current =
-                                            colorInputTargetId;
-                                          window.requestAnimationFrame(() => {
-                                            if (
-                                              pendingStyleAdvanceFocusItemIdRef.current ===
-                                              colorInputTargetId
-                                            ) {
-                                              pendingStyleAdvanceFocusItemIdRef.current = '';
-                                            }
-                                          });
-                                        }
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0, '& > .MuiAutocomplete-root': { flex: 1, minWidth: 0 } }}>
+                                  <OrderColorDragHandle id={`style:${group.key}`} data={{kind:'style',styleKey:group.key}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.style}/>
+                                  <SearchableSelect
+                                    options={availableStyleOptions}
+                                    filterOptions={filterStyleAutocompleteOptions}
+                                    value={groupStyleOption}
+                                    disabled={!hasSelectedBuyer}
+                                    onChange={(event, newValue, reason) => {
+                                      const shouldFocusNext =
+                                        shouldAdvanceAfterAutocompleteSelection(event, reason) ||
+                                        pendingStyleAdvanceFocusItemIdRef.current ===
+                                          colorInputTargetId;
+                                      handleStyleChange(group.rowItemIds, newValue, {
+                                        focusNext:
+                                          shouldFocusNext,
+                                        focusItemId: colorInputTargetId,
+                                      });
+                                      if (
+                                        pendingStyleAdvanceFocusItemIdRef.current ===
+                                        colorInputTargetId
+                                      ) {
+                                        pendingStyleAdvanceFocusItemIdRef.current = '';
+                                      }
+                                    }}
+                                    getOptionLabel={(option) => option?.name || ''}
+                                    isOptionEqualToValue={(option, value) => option?.id === value?.id}
+                                    autoHighlight
+                                    textFieldProps={{
+                                      size: 'small',
+                                      placeholder: orderPageText.styleSearchPlaceholder,
+                                      inputProps: {
+                                        onKeyDown: (event) => {
+                                          if (
+                                            event.nativeEvent?.isComposing ||
+                                            event.ctrlKey ||
+                                            event.altKey ||
+                                            event.metaKey
+                                          ) {
+                                            return;
+                                          }
+                                          if (
+                                            (event.key === 'Tab' && !event.shiftKey) ||
+                                            (event.key === 'Enter' && !event.shiftKey)
+                                          ) {
+                                            pendingStyleAdvanceFocusItemIdRef.current =
+                                              colorInputTargetId;
+                                            window.requestAnimationFrame(() => {
+                                              if (
+                                                pendingStyleAdvanceFocusItemIdRef.current ===
+                                                colorInputTargetId
+                                              ) {
+                                                pendingStyleAdvanceFocusItemIdRef.current = '';
+                                              }
+                                            });
+                                          }
+                                        },
                                       },
-                                    },
-                                    inputRef: (node) =>
-                                      setInputElementInMap(
-                                        styleInputRefs,
-                                        colorInputTargetId || group.rowItemIds?.[0] || '',
-                                        node
-                                      ),
-                                  }}
-                                  noOptionsText={
-                                    hasSelectedBuyer
-                                      ? orderPageText.noRegisteredStyles
-                                      : orderPartyText.selectBuyerFirst
-                                  }
-                                />
+                                      inputRef: (node) =>
+                                        setInputElementInMap(
+                                          styleInputRefs,
+                                          colorInputTargetId || group.rowItemIds?.[0] || '',
+                                          node
+                                        ),
+                                    }}
+                                    noOptionsText={
+                                      hasSelectedBuyer
+                                        ? orderPageText.noRegisteredStyles
+                                        : orderPartyText.selectBuyerFirst
+                                    }
+                                  />
+                                </Box>
                               </TableCell>
                             )}
                             <TableCell
@@ -4199,7 +4204,8 @@ const OrderList = () => {
                                 minWidth: ORDER_DETAIL_HORIZONTAL_COLOR_COLUMN_WIDTH,
                               }}
                             >
-                              <FormControl fullWidth size="small">
+                              <FormControl fullWidth size="small" sx={{ flexDirection: 'row', alignItems: 'center', gap: 0.5, '& > .MuiAutocomplete-root': { flex: 1, minWidth: 0 } }}>
+                                <OrderColorDragHandle id={`color:${colorRow.key}`} data={{kind:'color',styleKey:group.key,ids:colorTargetIds}} disabled={isCurrentOrderModificationLocked || isSavingOrder} label={orderDragLabel.color}/>
                                 <SearchableSelect
                                   options={normalizedColorOptions}
                                   value={selectedColorOption}

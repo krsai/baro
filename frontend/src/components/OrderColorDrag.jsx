@@ -5,7 +5,7 @@ import {useDraggable, useDroppable} from '@dnd-kit/core';
 
 export function OrderColorDragHandle({id, data, disabled, label}) {
   const drag=useDraggable({id,data,disabled});
-  return <IconButton ref={drag.setNodeRef} {...drag.listeners} {...drag.attributes} disabled={disabled} size="small" aria-label={label} title={label} data-order-color-drag sx={{touchAction:'none',cursor:disabled?'default':'grab',opacity:drag.isDragging?.5:1}}><DragIndicatorIcon fontSize="small"/></IconButton>;
+  return <IconButton ref={drag.setNodeRef} {...drag.listeners} {...drag.attributes} disabled={disabled} size="small" aria-label={label} title={label} data-order-color-drag sx={{touchAction:'none',flexShrink:0,cursor:disabled?'default':'grab',opacity:drag.isDragging?.5:1}}><DragIndicatorIcon fontSize="small"/></IconButton>;
 }
 
 export function OrderColorDropRow({dragId, dragData, dragDisabled, sx, ...props}) {

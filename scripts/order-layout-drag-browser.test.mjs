@@ -26,6 +26,19 @@ try{
  await page.goto(`http://127.0.0.1:${port}/order-layout-drag-acceptance.html`);
  const rows=page.locator('[data-order-style-item-row]'),scroll=page.locator('[data-order-items-scroll]');
  await page.getByRole('button',{name:'Reorder color',exact:true}).first().waitFor();
+ const assertHandlePositions=async()=>{
+  assert.equal(await rows.locator('td:first-child [data-order-color-drag]').count(),0,'Number cells contain no drag handles');
+  for(const name of ['Reorder style','Reorder color']){
+   const positions=await page.getByRole('button',{name,exact:true}).first().evaluate(button=>{
+    const input=button.closest('td').querySelector('input');
+    const a=button.getBoundingClientRect(),b=input.getBoundingClientRect();
+    return {left:a.right<=b.left,centerDifference:Math.abs(a.y+a.height/2-b.y-b.height/2)};
+   });
+   assert.ok(positions.left,`${name} sits left of its selector`);
+   assert.ok(positions.centerDifference<3,`${name} and its selector share one line`);
+  }
+ };
+ await assertHandlePositions();
  assert.equal(await rows.count(),15,'One horizontal row per color, genders remain together');
  assert.equal(await rows.first().getByRole('combobox').first().inputValue(),'Zulu','Stored style order replaces alphabetical sorting');
  const header=scroll.locator('thead'),before=await header.boundingBox(),fields=await page.locator('input[name="orderNumber"]').boundingBox();
@@ -40,7 +53,7 @@ try{
  await scroll.evaluate(node=>node.scrollTop=node.scrollHeight);
  const styleHandle=page.getByRole('button',{name:'Reorder style',exact:true}).last();
  await styleHandle.focus();await page.keyboard.press('Space');
- for(let i=0;i<4;i++)await page.keyboard.press('ArrowUp');
+ for(let i=0;i<12;i++)await page.keyboard.press('ArrowUp');
  await page.keyboard.press('Space');
  await scroll.evaluate(node=>node.scrollTop=0);
  await page.getByRole('button',{name:/^(Save|\uC800\uC7A5)$/}).first().click({timeout:5000});
@@ -53,6 +66,7 @@ try{
  assert.equal(await rows.first().getByRole('combobox').first().inputValue(),'Alpha');
  await page.getByRole('button',{name:'Vertical',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('[data-order-style-item-row]').length===29);
+ await assertHandlePositions();
  assert.equal(await page.getByRole('button',{name:'Reorder style',exact:true}).count(),2);
  assert.equal(await page.getByRole('button',{name:'Reorder color',exact:true}).count(),15);
  await drag(page.getByRole('button',{name:'Reorder style',exact:true}).first(),page.getByRole('button',{name:'Reorder style',exact:true}).last());
