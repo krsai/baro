@@ -11,6 +11,7 @@ import {useLanguage} from '../../context/LanguageContext';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {formatLedgerMoney} from '../../utils/bankLedgerMoney.mjs';
 import {bankLedgerMessages} from '../../constants/bankLedgerMessages';
+import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export default function BankLedger(){const {activeOrgId}=useAuth();return <CompanyLedger key={activeOrgId} orgId={activeOrgId}/>;}
@@ -24,19 +25,20 @@ function CompanyLedger({orgId}){
  const dirty=!!dialog&&JSON.stringify(form)!==initialForm.current;
  useUnsavedChanges(dirty||uncertain);
  const message=e=>t.errors[e.message]||`${t.failed} ${e.message||''}`;
+ useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event?.orgId)===Number(orgId)&&event?.source==='business-accounts')setReload(value=>value+1);}),[orgId]);
  useEffect(()=>{
   let active=true;if(!orgId)return;
   requestJSON(`/bank-ledger/accounts${scope}`,{skipCache:true}).then(result=>{if(!active)return;setAccounts(result.accounts);setAccountId(previous=>result.accounts.some(row=>row.id===previous)?previous:result.accounts[0]?.id||'');}).catch(e=>{if(active)setError(message(e));});
   return()=>{active=false;};
  },[orgId,reload]);
  useEffect(()=>{
-  if(!accountId){setData(null);return;}
+  if(!accountId||account?.setupRequired){setData(null);return;}
   let active=true;setLoading(true);setError('');setData(null);
   requestJSON(`/bank-ledger/accounts/${accountId}/entries${buildQueryString({orgId,start,end,page})}`,{skipCache:true}).then(result=>{if(active)setData(result);}).catch(e=>{if(active)setError(message(e));}).finally(()=>{if(active)setLoading(false);});
   return()=>{active=false;};
- },[orgId,accountId,start,end,page,reload]);
+ },[orgId,accountId,account?.setupRequired,start,end,page,reload]);
  const open=(mode,entry=null)=>{
-  const next=mode==='account'?{bankName:'',accountNumber:'',accountHolder:activeProfile?.orgName||'',currencyCode:'VND',openingDate:today(),openingBalance:'0'}:mode==='entry'?{transactionDate:today(),direction:'IN',amount:'',purpose:'',evidenceNumber:''}:mode==='members'?{name:'',email:'',role:'ACCOUNTANT'}:{reason:''};
+  const next=mode==='entry'?{transactionDate:today(),direction:'IN',amount:'',purpose:'',evidenceNumber:''}:mode==='members'?{name:'',email:'',role:'ACCOUNTANT'}:{reason:''};
   key.current=crypto.randomUUID();initialForm.current=JSON.stringify(next);setForm(next);setFormError('');setUncertain(false);setDialog({mode,entry});
   if(mode==='members')requestJSON(`/company-members${scope}`,{skipCache:true}).then(result=>setMembers(result.members)).catch(e=>setFormError(message(e)));
  };
@@ -45,7 +47,7 @@ function CompanyLedger({orgId}){
  const submit=async event=>{
   event?.preventDefault();if(busy.current)return;busy.current=true;setSaving(true);setFormError('');
   const mode=dialog.mode;
-  const url=mode==='account'?'/bank-ledger/accounts':mode==='members'?'/company-members':`/bank-ledger/accounts/${accountId}/entries${mode==='void'?`/${dialog.entry.id}/void`:''}`;
+  const url=mode==='members'?'/company-members':`/bank-ledger/accounts/${accountId}/entries${mode==='void'?`/${dialog.entry.id}/void`:''}`;
   try{
    await requestJSON(`${url}${scope}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,clientKey:key.current})});
    setUncertain(false);setDialog(null);setReload(value=>value+1);
@@ -57,14 +59,15 @@ function CompanyLedger({orgId}){
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
   <Button disabled={loading} onClick={()=>setReload(value=>value+1)}>{t.refresh}</Button>
   {activeProfile?.orgRole==='ADMIN'&&<Button onClick={()=>open('members')}>{t.members}</Button>}
-  <Button variant="outlined" onClick={()=>open('account')}>{t.addAccount}</Button><Button variant="contained" disabled={!accountId||loading} onClick={()=>open('entry')}>{t.addEntry}</Button>
+  <Button variant="contained" disabled={!accountId||account?.setupRequired||loading} onClick={()=>open('entry')}>{t.addEntry}</Button>
  </Stack>}><PageContentStack>
   <Typography variant="body2">{activeProfile?.orgName}</Typography>
-  <SearchPanel search={<TextField select fullWidth size="small" label={t.account} value={accountId} onChange={e=>{setAccountId(e.target.value);setPage(0);}} sx={{minWidth:220}}>{accounts.map(row=><MenuItem key={row.id} value={row.id}>{row.bankName} · {row.accountNumber} · {row.currencyCode}</MenuItem>)}</TextField>}
+  <SearchPanel search={<TextField select fullWidth size="small" label={t.account} value={accountId} onChange={e=>{setAccountId(e.target.value);setPage(0);}} sx={{minWidth:220}}>{accounts.map(row=><MenuItem key={row.id} value={row.id}>{row.displayName||[row.bankName,row.accountNumber].filter(Boolean).join(' / ')} / {row.currencyCode}</MenuItem>)}</TextField>}
    controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dayjs(start)} endValue={dayjs(end)} onStartChange={date=>{if(date?.isValid()){setStart(date.format('YYYY-MM-DD'));setPage(0);}}} onEndChange={date=>{if(date?.isValid()){setEnd(date.format('YYYY-MM-DD'));setPage(0);}}} minDate={account?dayjs(account.openingDate):undefined} maxDate={dayjs(today())}/>}/>
+  {account?.setupRequired&&<Alert severity="info">{t.noAccounts}</Alert>}
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{error}</Alert>}
   {!accounts.length&&!error&&<Alert severity="info">{t.noAccounts}</Alert>}
-  {account&&<>
+  {account&&!account.setupRequired&&<>
    <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'repeat(3,minmax(0,1fr))'},gap:2}}>{[[t.currentBalance,data?.currentBalance??account.currentBalance],[t.totalIn,data?.totalIn],[t.totalOut,data?.totalOut]].map(([label,value])=><Paper key={label} variant="outlined" sx={{p:2}}><Typography variant="body2">{label}</Typography><Typography variant="h6">{money(value)}</Typography></Paper>)}</Box>
    <Typography variant="caption">{t.openingDate}: {account.openingDate} · {t.openingBalance}: {money(account.openingBalance)}</Typography>
    <Paper variant="outlined"><TableContainer><Table size="small"><TableHead><TableRow>{[t.transactionDate,t.IN,t.OUT,t.purpose,t.evidenceNumber,t.balance,t.createdBy,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
@@ -74,8 +77,7 @@ function CompanyLedger({orgId}){
   </>}
  </PageContentStack>
  <Dialog open={!!dialog} onClose={close} fullWidth maxWidth="sm"><Box component="form" onSubmit={submit}>
-  <DialogTitle>{dialog?.mode==='account'?t.addAccount:dialog?.mode==='entry'?t.addEntry:dialog?.mode==='members'?t.members:t.void}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
-   {dialog?.mode==='account'&&<>{['bankName','accountNumber','accountHolder'].map(field=>input(field,{inputProps:{maxLength:field==='accountNumber'?100:120}}))}{input('currencyCode',{select:true,children:['VND','USD','KRW'].map(code=><MenuItem key={code} value={code}>{code}</MenuItem>)})}{input('openingDate',{type:'date',InputLabelProps:{shrink:true},inputProps:{max:today()}})}{input('openingBalance',{inputProps:{inputMode:'decimal',maxLength:25}})}<Typography variant="body2">{t.openingHint}</Typography></>}
+  <DialogTitle>{dialog?.mode==='entry'?t.addEntry:dialog?.mode==='members'?t.members:t.void}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
    {dialog?.mode==='entry'&&<>{input('transactionDate',{type:'date',InputLabelProps:{shrink:true},inputProps:{min:account?.openingDate,max:today()}})}{input('direction',{select:true,children:['IN','OUT'].map(direction=><MenuItem key={direction} value={direction}>{t[direction]}</MenuItem>)})}{input('amount',{inputProps:{inputMode:'decimal',maxLength:25},helperText:account?.currencyCode})}{input('purpose',{multiline:true,minRows:2,inputProps:{maxLength:1000}})}{input('evidenceNumber',{inputProps:{maxLength:160}})}</>}
    {dialog?.mode==='void'&&input('reason',{label:t.voidReason,multiline:true,minRows:2,inputProps:{maxLength:1000}})}
    {dialog?.mode==='members'&&<>{members.map(row=><Typography key={row.id} variant="body2">{row.name} · {row.email} · {t[row.orgRole]||row.orgRole} · {row.status}</Typography>)}{input('name')}{input('email',{type:'email'})}{input('role',{select:true,children:['ACCOUNTANT','ADMIN'].map(role=><MenuItem key={role} value={role}>{t[role]}</MenuItem>)})}</>}

@@ -65,9 +65,12 @@ export async function postLedgerEntry(db:any,orgId:number,actor:string,accountId
 }
 export async function listLedgerAccounts(db:any,orgId:number){
   return retryEditTransaction(db,async(tx:any)=>{
-    const accounts=await tx.bankLedgerAccount.findMany({where:{orgId},orderBy:[{createdAt:'asc'},{id:'asc'}]});
+    const accounts=await tx.bankLedgerAccount.findMany({where:{orgId},include:{entityAccount:true},orderBy:[{createdAt:'asc'},{id:'asc'}]});
+    const masters=await tx.organizationBankAccount.findMany({where:{orgId,entityId:orgId},include:{currency:true},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
     const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null},_sum:{amount:true}});
-    return accounts.map((account:any)=>({...account,openingBalance:ledgerMoney(ledgerScale4(account.openingBalance),account.currencyCode),currentBalance:ledgerMoney(ledgerScale4(account.openingBalance)+delta(totals.filter((row:any)=>row.accountId===account.id)),account.currencyCode)}));
+    const result=accounts.map((account:any)=>({...account,displayName:account.entityAccount?.displayName,accountKind:account.entityAccount?.accountKind||'BANK',sortOrder:account.entityAccount?.sortOrder??0,openingBalance:ledgerMoney(ledgerScale4(account.openingBalance),account.currencyCode),currentBalance:ledgerMoney(ledgerScale4(account.openingBalance)+delta(totals.filter((row:any)=>row.accountId===account.id)),account.currencyCode)}));
+    for(const master of masters)if(!accounts.some((a:any)=>a.entityAccountId===master.id))result.push({...master,id:'entity:'+master.id,currencyCode:master.currency.code,setupRequired:true} as any);
+    return result.sort((a:any,b:any)=>a.sortOrder-b.sortOrder||new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime()||a.id.localeCompare(b.id));
   });
 }
 export async function listLedgerEntries(db:any,orgId:number,accountId:string,query:any){
@@ -104,7 +107,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
     return {orgId:context.organization.id,actor:context.requesterEmail};
   };
   app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json({accounts:await listLedgerAccounts(db,scope.orgId)});});
-  app.post('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(201).json(await saveLedgerAccount(db,scope.orgId,scope.actor,req.body));});
+  app.post('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(410).json({error:'REGISTER_ACCOUNT_IN_BUSINESS'});});
   app.get('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerEntries(db,scope.orgId,req.params.accountId,req.query));});
   app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(201).json(await postLedgerEntry(db,scope.orgId,scope.actor,req.params.accountId,req.body));});
   app.post('/bank-ledger/accounts/:accountId/entries/:entryId/void',async(req:any,res:any)=>{

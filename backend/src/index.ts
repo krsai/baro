@@ -724,6 +724,8 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   {tableName:'BankLedgerAccount',columnName:'openingBalance'},
+  {tableName:'BankLedgerAccount',columnName:'entityAccountId'},
+  ...['accountKind','displayName','sortOrder'].map(columnName=>({tableName:'OrganizationBankAccount',columnName})),
   {tableName:'BankLedgerEntry',columnName:'clientKey'},
   {tableName:'CompanyWorkspaceRegistration',columnName:'requestHash'},
   {tableName:'SettingServiceDefault',columnName:'expenseTypeId'},
@@ -1025,6 +1027,7 @@ const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   'BankLedgerEntry_accountId_orgId_fkey',
   'BankLedgerAccount_orgId_fkey',
+  'BankLedgerAccount_entity_account_fkey','BankLedgerAccount_master_guard','OrganizationBankAccount_ledger_identity_guard',
   'CompanyWorkspaceRegistration_orgId_fkey',
   'BankLedgerEntry_amount_check',
   'BankLedgerEntry_direction_check',
@@ -1032,7 +1035,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   'BankLedgerAccount_currency_check',
   'SalaryItemRate_payType_check','EmployeeCompensationPolicy_payType_check','EmployeePayTypePolicy_payType_check',
   'SettingServiceDefault_expenseTypeId_fkey',
-  'OrganizationBankAccount_currency_default_key','OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard',
+  'OrganizationBankAccount_scope_guard','ExpenseRequest_payee_bank_guard',
   'ExpenseRequestAudit_requestId_orgId_fkey',
   'ExpenseRequestAudit_actorId_orgId_fkey',
   'ExpenseRequestAudit_requestId_version_key',
@@ -27544,7 +27547,7 @@ app.get("/partner-transaction-costs", async (req, res) => {
   const transactionDate = managedDateRange(period,req.query);
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
-registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
+registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerExpenseEditorRoutes(app,prisma,{
   requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,
   syncProduction:async(orgId: number,assignmentPlanIds: number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'}),

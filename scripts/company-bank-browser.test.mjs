@@ -99,9 +99,8 @@ try{
   await page.getByRole('button',{name:'DEX LOGIS',exact:true}).click();await page.locator('.lineos-google-button').click();
   await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();
   assert.ok(contexts.includes(2));assert.doesNotMatch(await page.locator('body').innerText(),/BARO Bank/);
-  await page.getByRole('button',{name:t.addAccount,exact:true}).click();
-  const dialog=page.getByRole('dialog');await dialog.getByLabel(t.bankName).fill('New bank');await dialog.getByLabel(t.accountNumber).fill('003');
-  await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(accountSaves,1);
+  assert.equal(await page.getByRole('button',{name:t.addAccount,exact:true}).count(),0);
+  const dialog=page.getByRole('dialog');
   await page.getByRole('button',{name:t.addEntry,exact:true}).click();
   await dialog.getByLabel(t.amount).fill('5.25');await dialog.getByLabel(t.purpose).fill('Daily deposit');await dialog.getByLabel(t.evidenceNumber).fill('BANK-007');
   await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.getByRole('alert').waitFor();

@@ -30,7 +30,7 @@ function memoryLedger(){
   update:async({where,data})=>{const row=rows.find(row=>row.id===where.id);Object.assign(row,data);return row;},
   groupBy:async({by,where})=>{const groups=new Map();for(const row of rows.filter(row=>matches(row,where))){const key=JSON.stringify(by.map(field=>row[field]));const group=groups.get(key)||{...Object.fromEntries(by.map(field=>[field,row[field]])),minor:0n};group.minor+=ledgerScale4(row.amount);groups.set(key,group);}return [...groups.values()].map(({minor,...row})=>({...row,_sum:{amount:decimal(minor)}}));},
  });
- const db={bankLedgerAccount:model(accounts),bankLedgerEntry:model(entries),$transaction:async run=>run(db)};
+ const db={organizationBankAccount:{findMany:async()=>[]},bankLedgerAccount:model(accounts),bankLedgerEntry:model(entries),$transaction:async run=>run(db)};
  return {db,accounts,entries};
 }
 const accountBody=(extra={})=>({clientKey:randomUUID(),bankName:'Bank',accountNumber:'001',accountHolder:'Company',currencyCode:'USD',openingDate:'2026-10-01',openingBalance:'100.00',...extra});

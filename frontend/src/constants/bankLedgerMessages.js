@@ -9,3 +9,25 @@ bankLedgerMessages.vi.errors.LEDGER_FUTURE_DATE='Không được nhập giao d�
 bankLedgerMessages.ko.refresh='새로고침';
 bankLedgerMessages.en.refresh='Refresh';
 bankLedgerMessages.vi.refresh='Làm mới';
+
+bankLedgerMessages.ko.noAccounts="사업체 메뉴에서 계좌를 등록하고 기초잔액 기준일과 금액을 설정해 주세요.";
+bankLedgerMessages.en.noAccounts="Register accounts and set opening dates and balances in the Business menu.";
+bankLedgerMessages.vi.noAccounts="Đăng ký tài khoản và số dư đầu kỳ trong mục Doanh nghiệp.";
+Object.assign(bankLedgerMessages.ko.errors,{
+ LEDGER_ACCOUNT_IDENTITY_LOCKED:'입출금에 연결된 계좌의 통화·종류·계좌번호는 변경할 수 없습니다. 별도 계좌로 등록해 주세요.',
+ LEDGER_OPENING_LOCKED:'저장된 기초잔액 기준일과 금액은 변경할 수 없습니다.',
+ INVALID_BANK_ACCOUNT:'계좌명 또는 은행 계좌 정보를 확인해 주세요.',
+ INVALID_ACCOUNT_ORDER:'계좌 목록이 변경되었습니다. 새로 조회한 뒤 순서를 저장해 주세요.',
+});
+Object.assign(bankLedgerMessages.en.errors,{
+ LEDGER_ACCOUNT_IDENTITY_LOCKED:'The currency, type and number of a ledger account cannot change. Register a separate account.',
+ LEDGER_OPENING_LOCKED:'The saved opening date and balance cannot change.',
+ INVALID_BANK_ACCOUNT:'Check the account name or bank details.',
+ INVALID_ACCOUNT_ORDER:'The account list changed. Reload it before saving the order.',
+});
+Object.assign(bankLedgerMessages.vi.errors,{
+ LEDGER_ACCOUNT_IDENTITY_LOCKED:'Không thể đổi loại tiền, loại và số tài khoản đã liên kết giao dịch. Hãy đăng ký tài khoản riêng.',
+ LEDGER_OPENING_LOCKED:'Không thể thay đổi ngày và số dư đầu kỳ đã lưu.',
+ INVALID_BANK_ACCOUNT:'Kiểm tra tên tài khoản hoặc thông tin ngân hàng.',
+ INVALID_ACCOUNT_ORDER:'Danh sách tài khoản đã thay đổi. Tải lại trước khi lưu thứ tự.',
+});

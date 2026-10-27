@@ -322,6 +322,8 @@ model BankLedgerAccount {
   id String @id @default(uuid())
   orgId Int
   clientKey String
+  entityAccountId String?
+  entityAccount OrganizationBankAccount? @relation(fields:[entityAccountId,orgId], references:[id,orgId], onDelete:Restrict,map:"BankLedgerAccount_entity_account_fkey")
   bankName String
   accountNumber String
   accountHolder String
@@ -334,7 +336,7 @@ model BankLedgerAccount {
   entries BankLedgerEntry[]
   @@unique([id, orgId])
   @@unique([orgId, clientKey])
-  @@unique([orgId, bankName, accountNumber, currencyCode], map: "BankLedgerAccount_org_bank_number_currency_key")
+  @@unique([entityAccountId,orgId])
   @@index([orgId, createdAt])
 }
 
@@ -363,6 +365,10 @@ model OrganizationBankAccount {
   orgId Int
   entityId Int
   currencyId Int
+  accountKind String @default("BANK")
+  displayName String @default("")
+  sortOrder Int @default(0)
+  ledgerAccounts BankLedgerAccount[]
   bankName String
   accountNumber String
   accountHolder String
@@ -378,7 +384,7 @@ model OrganizationBankAccount {
   createdByEmployee Employee @relation("EntityBankAccountCreator", fields:[createdByEmployeeId,orgId], references:[id,orgId], onDelete:Restrict, onUpdate:Restrict)
   updatedByEmployee Employee @relation("EntityBankAccountUpdater", fields:[updatedByEmployeeId,orgId], references:[id,orgId], onDelete:Restrict, onUpdate:Restrict)
   @@unique([id,orgId])
-  @@unique([orgId,entityId,currencyId,bankName,accountNumber], map:"EntityBankAccount_unique_key")
+  @@index([orgId,entityId,sortOrder])
   @@index([orgId,entityId,currencyId])
 }
 

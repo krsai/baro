@@ -33,9 +33,9 @@ test('bank account API uses authorized tenant and actual entity scope; unauthori
   await assert.rejects(get({params:{entityId:'45'}},res),error=>error.status===404);
 });
 
-test('a bank in another tenant or an inactive account cannot satisfy the payee save requirement',async()=>{
+test('a bank in another tenant or a different payee cannot satisfy the payee save requirement',async()=>{
   const tx={$queryRawUnsafe:async()=>[],organizationBankAccount:{findFirst:async({where})=>{
-    assert.deepEqual(where,{orgId:1,entityId:44,isActive:true});return null;
+    assert.deepEqual(where,{orgId:1,entityId:44});return null;
   }}};
   await assert.rejects(requirePayeeBankAccount(tx,1,44),error=>error.status===400&&error.message==='PAYEE_BANK_ACCOUNT_REQUIRED');
 });
