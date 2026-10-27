@@ -84,14 +84,14 @@ try{
     if(r.request().method()==='POST'){const body=r.request().postDataJSON();assert.equal(orgId,2);assert.equal(body.accountNumber,'003');accountSaves++;return r.fulfill({headers,status:201,json:{...body,id:'new-account',orgId}});}
     return r.fulfill({headers,json:{accounts:[account(orgId)]}});
    }
-   assert.ok(url.pathname.includes(`/account-${orgId}/entries`),'Selected account and company must match');
+
    if(r.request().method()==='POST'){
-    const body=r.request().postDataJSON();saves.push(body);
-    if(!entry)entry={...body,id:'entry-1',accountId:'account-2',orgId,createdBy:'owner@example.com',balance:'105.25'};
+    const body=r.request().postDataJSON().rows[0];assert.equal(body.accountId,'account-'+orgId);saves.push(body);
+    if(!entry)entry={...body,id:'entry-1',accountId:'account-2',orgId,accountName:'DEXS Bank / 002',currencyCode:'USD',createdBy:'owner@example.com',balance:'105.25'};
     if(failOnce){failOnce=false;return r.fulfill({headers,status:500,json:{error:'unknown result'}});}
     assert.equal(body.clientKey,entry.clientKey);return r.fulfill({headers,status:201,json:entry});
    }
-   return r.fulfill({headers,json:{account:account(orgId),rows:entry&&orgId===2?[entry]:[],currentBalance:account(orgId).currentBalance,totalIn:entry&&orgId===2?'5.25':'0.00',totalOut:'0.00',page:0,hasMore:false}});
+   return r.fulfill({headers,json:{accounts:[account(orgId)],currencyTotals:[],rows:entry&&orgId===2?[entry]:[],currentBalance:account(orgId).currentBalance,totalIn:entry&&orgId===2?'5.25':'0.00',totalOut:'0.00',page:0,hasMore:false}});
   });
   await page.goto(`http://127.0.0.1:${port}/company-bank-acceptance.html`);
   const registerName=lang==='ko'?'물류 회사 등록':lang==='vi'?'Đăng ký công ty logistics':'Register a logistics company';
@@ -103,17 +103,18 @@ try{
   assert.equal(await page.getByRole('button',{name:t.addAccount,exact:true}).count(),0);
   const dialog=page.locator('main').filter({has:page.getByLabel(ledgerEvidenceText[lang].type,{exact:true})});
   await page.getByRole('button',{name:t.addEntry,exact:true}).click();
+  await dialog.getByLabel(t.account).click();await page.getByRole('option',{name:'DEXS Bank / 002 / USD',exact:true}).click();
   await dialog.getByLabel(t.amount).fill('5.25');await dialog.getByLabel(t.purpose).fill('Daily deposit');await dialog.getByLabel(ledgerEvidenceText[lang].reference).fill('BANK-007');
   await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.getByRole('alert').waitFor();
   assert.equal(await dialog.getByLabel(t.amount).isDisabled(),true);
   await dialog.getByRole('button',{name:t.retry,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  await page.getByRole('cell').filter({hasText:'BANK-007'}).waitFor();assert.equal(saves.length,2);assert.equal(saves[0].clientKey,saves[1].clientKey);assert.equal(saves[0].amount,'5.25');assert.equal(saves[0].purpose,'Daily deposit');
-  await page.reload();await page.getByRole('cell').filter({hasText:'BANK-007'}).waitFor();assert.equal(contexts.at(-1),2);
+  await page.getByRole('cell').filter({hasText:'Daily deposit'}).waitFor();assert.equal(saves.length,2);assert.equal(saves[0].clientKey,saves[1].clientKey);assert.equal(saves[0].amount,'5.25');assert.equal(saves[0].purpose,'Daily deposit');
+  await page.reload();await page.getByRole('cell').filter({hasText:'Daily deposit'}).waitFor();assert.equal(contexts.at(-1),2);
   await page.getByRole('button',{name:'Remember test tab',exact:true}).click();await page.getByText('tabs:1',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Switch test company',exact:true}).click();await page.getByRole('button',{name:'BARO GARMENT',exact:true}).click();await page.locator('.lineos-google-button').click();
-  await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();assert.equal(await page.getByRole('cell').filter({hasText:'BANK-007'}).count(),0);
+  await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();assert.equal(await page.getByRole('cell').filter({hasText:'Daily deposit'}).count(),0);
   await page.getByText('tabs:0',{exact:true}).waitFor();
-  assert.ok(await page.getByLabel(t.account).innerText().then(text=>text.includes('BARO Bank')));
+  await page.getByLabel(t.account,{exact:true}).click();await page.getByRole('option',{name:'BARO Bank / 001 / USD',exact:true}).click();
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await page.evaluate(()=>sessionStorage.setItem('baro:workspace-selection',JSON.stringify({email:'owner@example.com',key:'org:999'})));
   await page.reload();await page.getByRole('button',{name:'DEX LOGIS',exact:true}).waitFor();

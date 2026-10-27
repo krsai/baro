@@ -39,7 +39,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  }else if(type==='ADJUSTMENT'){
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');reference='';
  }else if(type==='INVOICE'){
-  if(body.direction!=='IN'||!reference||reference.length>160)return fail('LEDGER_INVALID_EVIDENCE');
+  if(body.direction!=='IN'||!reference||reference.length>200)return fail('LEDGER_INVALID_EVIDENCE');
   const invoice=await tx.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:reference,status:'ISSUED',currencyCode:code}});
   if(!invoice)return fail('LEDGER_INVOICE_NOT_FOUND');
   await tx.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 FOR UPDATE',invoice.id);

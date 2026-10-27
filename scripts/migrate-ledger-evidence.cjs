@@ -1,7 +1,7 @@
 // Stdin-only credentials; preserves all old financial rows and account columns.
 const fs=require('node:fs'),path=require('node:path'),{createHash}=require('node:crypto'),{spawnSync}=require('node:child_process');
 const {assertSafeApplicationDatabaseEnv}=require('../backend/src/config/databaseTargetGuard');
-const version=process.argv.includes('--delete-guard')?'20261027210100_ledger_evidence_delete':'20261027210000_ledger_evidence';
+const version=process.argv.includes('--batch')?'20261027220000_ledger_batch':process.argv.includes('--delete-guard')?'20261027210100_ledger_evidence_delete':'20261027210000_ledger_evidence';
 const tables=['OrganizationBankAccount','BankLedgerAccount','BankLedgerEntry','Invoice','PartnerTransactionCost','ExpenseRequest'];
 const quote=s=>"'"+s.replaceAll("'","''")+"'";
 const digest=()=>tables.map(table=>`SELECT '${table}' AS name,count(*)::int AS count,md5(coalesce(string_agg((to_jsonb(t)${table==='BankLedgerEntry'?"-'evidenceType'-'bankFee'":''})::text,'' ORDER BY id::text),'')) AS digest FROM "${table}" t`).join(' UNION ALL ');

@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:ledger-workspace": "npm --prefix backend run build && node --test scripts/ledger-evidence.test.mjs scripts/bank-ledger.test.mjs scripts/business-accounts.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-workspace-browser.test.mjs",
     "test:ledger-evidence": "npm --prefix backend run build && node --test scripts/ledger-evidence.test.mjs scripts/bank-ledger.test.mjs scripts/expense-request-editor.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/business-accounts-browser.test.mjs",
     "test:business-accounts": "npm --prefix backend run build && node --test scripts/business-accounts.test.mjs scripts/bank-ledger.test.mjs scripts/entity-profile.test.mjs scripts/railway-schema-preflight.test.mjs",
     "test:business-accounts-browser": "node scripts/business-accounts-browser.test.mjs",

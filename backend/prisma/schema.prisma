@@ -361,6 +361,18 @@ model BankLedgerEntry {
   account BankLedgerAccount @relation(fields: [accountId, orgId], references: [id, orgId], onDelete: Restrict)
   @@unique([orgId, clientKey])
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
+  @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
+}
+
+model BankLedgerBatch {
+  id String @id @default(uuid())
+  orgId Int
+  clientKey String
+  requestHash String
+  entryIds Json
+  createdBy String
+  createdAt DateTime @default(now())
+  @@unique([orgId,clientKey])
 }
 
 model BankLedgerEvidenceAllocation {
