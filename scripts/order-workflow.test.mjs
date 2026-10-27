@@ -42,3 +42,46 @@ test('batch projection reads actual FK history once and never writes statuses or
   assert.equal(reads,1);assert.equal(statuses.get(1),'PRODUCTION');assert.equal(statuses.get(2),'RECEIVED');
   assert.deepEqual(orderWorkflowOptions('ko').map(option=>option.label),['접수','생산','청구','완료']);
 });
+
+test('order state follows canonical assignment completion rather than the stored manual flag',()=>{
+  const {invoiceOrderProgress}=require('../backend/dist/services/invoiceOrderProgress.js');
+  const plans=[plan({externalId:'L16-1-A',_count:{workRecords:1}})];
+  const rows=[{id:'L16-1-A',isCompleted:true,plannedQuantity:100,producedQuantity:100,completionTargetQuantity:100,operationalProgressRatio:1}];
+  const production=invoiceOrderProgress(order,plans,rows);
+  assert.equal(production.isCompleted,true);
+  assert.equal(orderWorkflowStatus(order,plans,production),'BILLING','exact-process or dated completion matches board even if manual flag is false');
+  const unfinished=invoiceOrderProgress(order,plans,[{...rows[0],isCompleted:false,operationalProgressRatio:.9999}]);
+  assert.equal(orderWorkflowStatus(order,plans,unfinished),'PRODUCTION','rounded percentages cannot approve completion');
+  assert.equal(orderWorkflowStatus(order,[{...plans[0],isCompleted:true}],{isCompleted:false}),'PRODUCTION','canonical noncompletion overrides the raw flag');
+  assert.equal(orderWorkflowStatus({...order,workOrderItems:[{styleId:7,totalQuantity:110}]},plans,invoiceOrderProgress({...order,workOrderItems:[{styleId:7,totalQuantity:110}]},plans,rows)),'PRODUCTION','increased quantity is not covered');
+});
+
+test('L16-like mixed historical and current styles use the same completion summary',()=>{
+  const {invoiceOrderProgress}=require('../backend/dist/services/invoiceOrderProgress.js');
+  const mixed={...order,workOrderItems:[{styleId:7,totalQuantity:100},{styleId:8,totalQuantity:50}],priorCompletions:[{styleId:8,quantity:50}]};
+  const plans=[plan({externalId:'current',_count:{workRecords:1}}),plan({externalId:'historical',styleId:8,assignmentQuantity:50})];
+  const rows=[{id:'current',isCompleted:true,plannedQuantity:100,producedQuantity:100},{id:'historical',isCompleted:true,plannedQuantity:50,producedQuantity:0,completionTargetQuantity:0}];
+  const production=invoiceOrderProgress(mixed,plans,rows);
+  assert.equal(production.isCompleted,true);assert.equal(production.producedQuantity,150);
+  assert.equal(orderWorkflowStatus(mixed,plans,production),'BILLING');
+  assert.equal(orderWorkflowStatus({...order,priorCompletions:[{styleId:7,quantity:100}]},[],{isCompleted:true}),'PRODUCTION','historical quantities alone do not invent an assignment');
+});
+
+test('create/update projections resolve canonical progress by organization without writes',async()=>{
+  const plans=[plan({orgId:1,externalId:'same',_count:{workRecords:1}}),plan({workOrderId:2,orgId:2,externalId:'same',_count:{workRecords:1}})];
+  const db={assignmentPlan:{findMany:async()=>plans}};
+  const calls=[];
+  const statuses=await loadOrderWorkflowStatuses(db,[order,{...order,id:2}],async(orgId,ids)=>{
+    calls.push([orgId,ids]);return [{id:'same',isCompleted:orgId===1,plannedQuantity:100,producedQuantity:orgId===1?100:50}];
+  });
+  assert.equal(statuses.get(1),'BILLING');assert.equal(statuses.get(2),'PRODUCTION');assert.equal(calls.length,2);
+});
+
+test('historical credits cannot hide a reopened or missing allocation in canonical workflow',()=>{
+  const {invoiceOrderProgress}=require('../backend/dist/services/invoiceOrderProgress.js');
+  const prior={...order,priorCompletions:[{styleId:7,quantity:100}]};
+  const plans=[plan({externalId:'reopened',_count:{workRecords:1}})];
+  assert.equal(orderWorkflowStatus(prior,plans,invoiceOrderProgress(prior,plans,[{id:'reopened',plannedQuantity:100,producedQuantity:0,isCompleted:false}])),'PRODUCTION');
+  const partial=[plan({externalId:'partial',assignmentQuantity:50})];
+  assert.equal(orderWorkflowStatus(prior,partial,invoiceOrderProgress(prior,partial,[{id:'partial',plannedQuantity:50,isCompleted:true}])),'PRODUCTION');
+});

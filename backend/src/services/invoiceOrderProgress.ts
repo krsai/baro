@@ -1,5 +1,5 @@
 import { assignmentProgressRatio, displayProductionProgress, productionProducedQuantity, summarizeStyleProduction } from './productionProgress';
-import { orderAssignmentPlans } from './orderWorkflow';
+import { orderAssignmentPlans } from './orderAssignments';
 export { productionProducedQuantity as invoiceProducedQuantity } from './productionProgress';
 
 // Shared by orders, invoice selection, and the customer production report.

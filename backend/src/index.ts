@@ -28897,7 +28897,7 @@ app.get("/orders", async (req, res) => {
         return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
-        }), workflowStatus: orderWorkflowStatus(order, deletionPlans), productionProgressPercent: production.progressPercent,
+        }), workflowStatus: orderWorkflowStatus(order, deletionPlans, production), productionProgressPercent: production.progressPercent,
           hasProductionRecords: productionOrderIds.has(order.id),
           hasAssignments: assignedOrderIds.has(order.id),
           producedQuantity: production.producedQuantity,
@@ -29095,7 +29095,7 @@ app.get("/customer-production-reports", async (req, res) => {
         orderId: order.orderId,
         workOrderId: order.id,
         orderNumber: order.orderNumber,
-        orderStatus: orderWorkflowStatus(order, reportWorkflowPlans),
+        orderStatus: orderWorkflowStatus(order, reportWorkflowPlans, production),
         orderProgressPercent: production.progressPercent,
         orderProductionCompleted: production.isCompleted,
         orderProducedQuantity: production.producedQuantity,
@@ -29172,7 +29172,7 @@ app.post("/orders", async (req, res) => {
     normalized,
   });
   const orderLockState = await getOrderModificationLockState(order);
-  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [order]);
+  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [order], buildAssignmentPlanProgressRows);
   res.status(created ? 201 : 200).json(
     { ...toOrderResponse(order, {
       isAssignmentModificationLocked: orderLockState.isAssignmentLocked,
@@ -29340,7 +29340,7 @@ app.put("/orders/:orderId", async (req, res) => {
   });
 
   const updatedLockState = await getOrderModificationLockState(updated);
-  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [updated]);
+  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [updated], buildAssignmentPlanProgressRows);
   res.json(
     { ...toOrderResponse(updated, {
       isAssignmentModificationLocked: updatedLockState.isAssignmentLocked,
