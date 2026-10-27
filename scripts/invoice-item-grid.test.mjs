@@ -2,7 +2,20 @@
 import assert from 'node:assert/strict';
 import {invoiceItemGrid,invoiceLineNote,formatInvoiceMoney,sumInvoiceAmounts} from '../frontend/src/utils/invoiceItemGrid.mjs';
 import {calculateInvoiceDraft} from '../frontend/src/utils/invoiceDraft.mjs';
+import {invoiceProductionReview} from '../frontend/src/utils/invoiceProductionReview.mjs';
 const row=(size,extra={})=>({key:`item1:${size}`,orderId:'o1',itemId:1,styleId:10,description:'AA1962',styleCode:'INTERNAL',color:'Black',gender:'M',size,orderedQuantity:10,quantity:'10',remark:'',adjustmentReason:'',...extra});
+
+test('production row reasons stay scoped to the original order/style and distinguish missing evidence from unfinished work',()=>{
+ const assignments=[{externalId:'a',completed:false,producedQuantity:5,plannedQuantity:10},{externalId:'b',completed:false,producedQuantity:null,productionReviewRequired:true},{externalId:'c',completed:true,producedQuantity:10,timeReviewRequired:true}];
+ const styles=[{orderId:'o1',styleId:10,ready:false,orderedQuantity:30,producedQuantity:null,assignments},{orderId:'o2',styleId:10,ready:true,assignments:[]}];
+ const before=JSON.stringify(styles);
+ const review=invoiceProductionReview({styles},row('M'));
+ assert.deepEqual(review.problems.map(p=>p.reasons),[['incomplete'],['unknown'],['time']]);
+ assert.equal(invoiceProductionReview({styles},row('M',{orderId:'o2'})),null);
+ assert.equal(invoiceProductionReview({styles},row('M',{styleId:99})),null);
+ assert.equal(invoiceProductionReview({styles:[{...styles[0],assignments:[]}]},row('M')).reason,'unassigned');
+ assert.equal(JSON.stringify(styles),before);
+});
 test('size matrix groups one original item and never combines orders/colors/genders/items',()=>{
  const lines=[row('M'),row('L'),row('M',{key:'other:M',itemId:2}),row('L',{orderId:'o2'}),row('L',{color:'White'}),row('L',{gender:'F'})];
  const before=JSON.stringify(lines),grid=invoiceItemGrid(lines);

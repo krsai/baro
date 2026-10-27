@@ -83,6 +83,19 @@ const relationship = { salesBucketSetVersion: { id: 1, entries: [{ id: 1, bucket
 const source = () => buildInvoiceSource(order, plans, progress, relationship);
 const calc = (s, lines = s.lines, currency = 'USD') => calculateInvoiceDraft(s, lines, 'FINISHED_GOODS_PRICE', currency);
 
+test('invoice source exposes incomplete, missing and time-only review evidence per original assignment',()=>{
+ for(const [rows,unknown,time] of [
+  [[],true,false],
+  [[{...progress[0],isCompleted:false,producedQuantity:30,plannedQuantity:100}],false,false],
+  [[{...progress[0],isProgressUnknown:true,hasInvalidProcessReferences:true,isProductionProgressUnknown:false,hasInvalidProductionProcessReferences:false}],false,true],
+  [[{...progress[0],isProductionProgressUnknown:true,hasInvalidProductionProcessReferences:true}],true,false],
+ ]){
+  const before=JSON.stringify(rows),assignment=buildInvoiceSource(order,plans,rows,relationship).styles[0].assignments[0];
+  assert.equal(assignment.externalId,'a1');assert.equal(assignment.productionReviewRequired,unknown);assert.equal(assignment.timeReviewRequired,time);
+  assert.equal(JSON.stringify(rows),before);
+ }
+});
+
 test('multiple orders retain row identity and separate price tiers for the same style', () => {
   const a = { ...source(), buyerOrgId: 1, sellerOrgId: 2 };
   const b = { ...source(), orderId: 'o2', orderNumber: 'PO-2', buyerOrgId: 1, sellerOrgId: 2 };

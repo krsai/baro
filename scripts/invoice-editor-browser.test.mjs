@@ -25,7 +25,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',r=>{
    const request=r.request(),url=new URL(request.url());if(request.method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(url.pathname.includes('order-source')){reads.push(url.pathname);return r.fulfill({headers,json:failure==='layout'?{...source,lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:source});}
+   if(url.pathname.includes('order-source')){reads.push(url.pathname);return r.fulfill({headers,json:failure==='layout'?{...source,ready:false,styles:source.styles.map(s=>({...s,ready:false,assignments:[{externalId:'review-plan',completed:false,producedQuantity:5,plannedQuantity:15,factoryName:'HANOI'}]})),lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:source});}
    if(request.method()==='POST'&&url.pathname.endsWith('/drafts')){
     saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
    }
@@ -45,6 +45,13 @@ try{
   assert.equal(await grid.locator('tbody td').first().evaluate(cell=>getComputedStyle(cell).whiteSpace),'nowrap');
   assert.equal(await grid.locator('thead th').first().evaluate(cell=>getComputedStyle(cell).position),'sticky');
   if(failure==='layout'){
+   assert.equal(await grid.locator('tr[data-production-review="true"]').count(),1);
+   assert.match(await grid.locator('tbody tr').innerText(),/HANOI.*생산 미완료/);
+   let quantityReads=0;
+   await page.route('**/assignment-plans/review-plan/quantity-review*',r=>{assert.equal(new URL(r.request().url()).searchParams.get('orgId'),'1');quantityReads++;return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{plannedQuantity:15,producedQuantity:5,processTotals:[],workRecords:[]}});});
+   await grid.getByRole('button',{name:'수량 확인',exact:true}).click();
+   await page.getByText('작업기록 합계',{exact:true}).waitFor();assert.equal(quantityReads,1);
+   await page.keyboard.press('Escape');await page.getByText('작업기록 합계',{exact:true}).waitFor({state:'hidden'});
    assert.deepEqual((await grid.locator('thead th').allTextContents()).slice(4,13),['XS','S','M','L','XL','2XL','3XL','4XL','FREE']);
    for(const width of [1920,1720,1366,768,390]){
     await page.setViewportSize({width,height:1000});

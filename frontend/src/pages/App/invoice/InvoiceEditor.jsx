@@ -12,6 +12,10 @@ import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import { restoreInvoiceDraftLines } from '../../../utils/invoiceDraftRestore.mjs';
 import { invoiceItemGrid, formatInvoiceMoney, sumInvoiceAmounts } from '../../../utils/invoiceItemGrid.mjs';
+import { invoiceProductionReview } from '../../../utils/invoiceProductionReview.mjs';
+import { invoiceProductionMessages } from '../../../constants/invoiceProductionMessages';
+import { LABEL_PALETTE } from '../../../theme/labelPalette';
+import QuantityReviewDrawer from '../../../components/QuantityReviewDrawer';
 
 const messages = {
   "ko": {
@@ -93,6 +97,8 @@ const messages = {
 
 export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, renderSelection, languageCode = 'ko' }) {
   const pageDialogs = usePageDialogs();
+  const productionText = invoiceProductionMessages[languageCode] || invoiceProductionMessages.en;
+  const [reviewAssignment,setReviewAssignment] = useState(null);
   const ui = invoiceUi[languageCode] || invoiceUi.en;
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
@@ -125,6 +131,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   useUnsavedChanges(open && (dirty || saving || uncertain || Boolean(savedDraft)));
 
   useEffect(() => {
+    setReviewAssignment(null);
     if (!open) {
       draftRef.current = null; setSavedDraft(null); clientKey.current = globalThis.crypto.randomUUID();
       return;
@@ -251,9 +258,19 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           </TableRow></TableHead><TableBody>{itemGrid.rows.map(group => {
             const first = group.lines[0];
             const changed = group.lines.some(line => line.quantity !== line.orderedQuantity);
-            return <TableRow key={group.key}>
+            const production = invoiceProductionReview(source, first);
+            return <TableRow key={group.key} data-production-review={production ? 'true' : undefined} sx={production ? { bgcolor: LABEL_PALETTE.yellow.background } : undefined}>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{first.orderNumber}</TableCell>
-              <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.description || first.styleCode || '—'}</TableCell>
+              <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.description || first.styleCode || '—'}
+                {production && <Stack spacing={0.5} sx={{mt:0.75}}>
+                  <Typography variant="caption">{productionText.scope}: {production.style.producedQuantity ?? '—'}/{production.style.orderedQuantity ?? '—'}</Typography>
+                  {production.reason && <Typography variant="caption">{productionText[production.reason]}</Typography>}
+                  {production.problems.map(assignment=><Box key={assignment.externalId || assignment.id}>
+                    <Typography variant="caption" display="block">{[assignment.factoryName,`${assignment.producedQuantity ?? '—'}/${assignment.plannedQuantity ?? '—'}`,...assignment.reasons.map(reason=>productionText[reason])].filter(Boolean).join(' · ')}</Typography>
+                    {assignment.externalId && <Button size="small" disabled={saving||uncertain} onClick={()=>setReviewAssignment({externalId:assignment.externalId,orderNumber:first.orderNumber,styleLabel:first.description||first.styleCode,quantity:assignment.plannedQuantity})} sx={{p:0,minWidth:0,fontSize:'0.7rem',textAlign:'left'}}>{productionText.open}</Button>}
+                  </Box>)}
+                </Stack>}
+              </TableCell>
               <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.color || '—'}</TableCell>
               <TableCell align="center">{first.gender || '—'}</TableCell>
               {itemGrid.sizes.map(size => {
@@ -313,5 +330,6 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         </Box>}
       </Stack>
     </Paper>
+    <QuantityReviewDrawer externalId={reviewAssignment?.externalId} orgId={orgId} languageCode={languageCode} headerOrderNo={reviewAssignment?.orderNumber} headerStyleLabel={reviewAssignment?.styleLabel} headerQuantity={reviewAssignment?.quantity} onClose={()=>setReviewAssignment(null)}/>
   </AppPageContainer>;
 }
