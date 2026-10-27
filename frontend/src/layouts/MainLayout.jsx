@@ -304,7 +304,6 @@ const MainLayout = () => {
   const currentRoutePath = `${location.pathname || '/'}${location.search || ''}${location.hash || ''}`;
   const {
     signOut,
-    clearWorkspaceSelection,
     devBypass,
     devProfile,
     accessProfile,
@@ -1547,10 +1546,7 @@ const MainLayout = () => {
   };
   const handleCompanySwitch = () => {
     if(!confirmDiscardUnsavedChanges())return;
-    isLoggingOutRef.current=true;
-    cancelAllTrackedRequests('company-switch');
-    setMountedTabOutlets(new Map());workspaceScrollByPathRef.current.clear();resetWorkspace();
-    clearWorkspaceSelection();navigate('/login',{replace:true});
+    void handleLogout();
   };
   const handleLanguageButtonClick = React.useCallback((nextLanguageCode) => {
     setLanguageCode(nextLanguageCode);

@@ -1,5 +1,5 @@
 export const LOGIN_COMPANIES = [
-  { key: 'BARO', label: 'BARO GARMENT', codes: ['BARO'], names: ['BARO GARMENT'] },
+  { key: 'BARO', label: 'BARO GARMENT', codes: ['BARO'], names: ['BARO GARMENT', '바로 가먼트', '바로가먼트'] },
   { key: 'DEX', label: 'DEX LOGIS', codes: ['DEX', 'DEXS'], names: ['DEX LOGIS', 'DEXS LOGIS'] },
   { key: 'SYSTEM', label: 'SYSTEM', codes: [], names: [] },
 ];

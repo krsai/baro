@@ -86,7 +86,6 @@ const Login = () => {
   useEffect(() => {
     if (!isOAuthReturnPending) return;
     if (loading) return;
-    if (isAuthenticated) return;
     setIsOAuthReturnPending(false);
   }, [isAuthenticated, isOAuthReturnPending, loading]);
 
@@ -170,10 +169,9 @@ const Login = () => {
         <section className="lineos-login-card" aria-labelledby="lineos-login-heading">
           <h2 id="lineos-login-heading">{loginCopy.welcome}</h2>
           <p className="lineos-login-subtitle">{loginCopy.subtitle}</p>
-          {!isAuthenticated && <ToggleButtonGroup exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{mb:2,p:0.5,borderRadius:2,bgcolor:'action.hover','& .MuiToggleButtonGroup-grouped':{flex:1,minWidth:0,border:0,borderRadius:'6px !important',minHeight:44,px:0.5,fontSize:{xs:'0.65rem',sm:'0.75rem'},fontWeight:600,whiteSpace:'nowrap'},'& .Mui-selected':{bgcolor:'background.paper',color:'primary.main',boxShadow:'0 1px 4px #20395020'},'& .Mui-selected:hover':{bgcolor:'background.paper'}}}>
+          <ToggleButtonGroup exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{mb:2,p:0.5,borderRadius:2,bgcolor:'action.hover','& .MuiToggleButtonGroup-grouped':{flex:1,minWidth:0,border:0,borderRadius:'6px !important',minHeight:44,px:0.5,fontSize:{xs:'0.65rem',sm:'0.75rem'},fontWeight:600,whiteSpace:'nowrap'},'& .Mui-selected':{bgcolor:'background.paper',color:'primary.main',boxShadow:'0 1px 4px #20395020'},'& .Mui-selected:hover':{bgcolor:'background.paper'}}}>
             {LOGIN_COMPANIES.map(company=><ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
-          </ToggleButtonGroup>}
-          {isAuthenticated && requiresWorkspaceSelection ? <CompanyChooser languageCode={languageCode}/> : <>
+          </ToggleButtonGroup>
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>
@@ -181,7 +179,7 @@ const Login = () => {
           {loginError && <Typography role="alert" variant="body2" color="error" sx={{mt:2}}>{loginCopy.loginError}</Typography>}
           {isAuthenticated && accessError && <Box sx={{mt:2}}><Typography role="alert" variant="body2" color="error">{loginCopy.authContextError}</Typography><Button onClick={handleRestartSession} sx={{mt:1}}>{loginCopy.restartSession}</Button></Box>}
           <p className="lineos-login-destination">{loginCopy.destination}</p>
-          </>}
+          {isAuthenticated && requiresWorkspaceSelection && <Box sx={{mt:2}}><CompanyChooser languageCode={languageCode} managementOnly/></Box>}
         </section>
       </div>
       <footer className="lineos-login-footer"><span>LINEOS &copy; {new Date().getFullYear()}</span><AppVersionLabel sx={{fontSize:'inherit',color:'inherit'}} /></footer>

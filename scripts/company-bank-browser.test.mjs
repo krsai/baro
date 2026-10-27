@@ -7,7 +7,7 @@ import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.j
 const fixture=path.resolve('frontend/company-bank-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline,Button}from'@mui/material';import theme from'/src/theme';import{AuthProvider,useAuth}from'/src/context/AuthContext.jsx';import CompanyWorkspaceProvider from'/src/components/CompanyWorkspaceProvider.jsx';import{useAppActions,useAppState}from'/src/context/AppContext.jsx';import Login from'/src/pages/Auth/Login.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';
-function Shell(){const auth=useAuth(),actions=useAppActions(),state=useAppState();if(auth.loading)return React.createElement('p',null,'Loading');if(auth.hasWorkspaceAccess&&auth.accessProfile?.entryType==='SYSTEM')return React.createElement('h1',null,'SYSTEM workspace');return auth.hasWorkspaceAccess?React.createElement(React.Fragment,null,React.createElement(Button,{onClick:()=>auth.clearWorkspaceSelection()},'Switch test company'),React.createElement(Button,{onClick:()=>actions.openTab({id:'/private',label:'Old company private tab'})},'Remember test tab'),React.createElement('span',null,'tabs:'+state.openTabs.length),React.createElement(Ledger)):React.createElement(Login);}
+function Shell(){const auth=useAuth(),actions=useAppActions(),state=useAppState();if(auth.loading)return React.createElement('p',null,'Loading');if(auth.hasWorkspaceAccess&&auth.accessProfile?.entryType==='SYSTEM')return React.createElement('h1',null,'SYSTEM workspace');return auth.hasWorkspaceAccess?React.createElement(React.Fragment,null,React.createElement(Button,{onClick:()=>auth.clearWorkspaceSelection()},'Switch test company'),React.createElement(Button,{onClick:()=>auth.signOut()},'Restart test login'),React.createElement(Button,{onClick:()=>actions.openTab({id:'/private',label:'Old company private tab'})},'Remember test tab'),React.createElement('span',null,'tabs:'+state.openTabs.length),React.createElement(Ledger)):React.createElement(Login);}
 createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,{initialEntries:['/login']},React.createElement(AuthProvider,null,React.createElement(CompanyWorkspaceProvider,null,React.createElement(Shell))))));</script></body></html>`);
 const port=43248,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -39,6 +39,12 @@ try{
   await page.getByRole('button',{name:'Switch test company',exact:true}).waitFor();
   assert.deepEqual(contexts,[2,1]);
   assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('baro:workspace-selection')).key),'org:1');
+  await page.getByRole('button',{name:'Restart test login',exact:true}).click();
+  await page.getByRole('button',{name:'SYSTEM',exact:true}).waitFor();
+  assert.equal(await page.getByText('로그인할 업체 선택',{exact:true}).count(),0);
+  await baro.click();await page.locator('.lineos-google-button').click();
+  await page.getByRole('button',{name:'Switch test company',exact:true}).waitFor();
+  assert.equal(contexts.at(-1),1);
   await page.evaluate(()=>{sessionStorage.setItem('baro:login-company','DEX');sessionStorage.setItem('baro:workspace-selection',JSON.stringify({email:'baro.garment@gmail.com',key:'org:1'}));});
   allowDex=false;await page.reload();
   await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:'Switch test company',exact:true}).count(),0);
@@ -55,7 +61,7 @@ try{
   const t=bankLedgerMessages[lang],page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],contexts=[];
   let dexRegistered=false,failOnce=true,entry=null,accountSaves=0,wrongContext=false;
   page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:'const session={access_token:"test-token",user:{id:"owner",email:"owner@example.com"}};export const isSupabaseConfigured=true;export const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>{}}}}),signOut:async()=>{},signInWithOAuth:async()=>{}}};'}));
+  await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:'const session={access_token:"test-token",user:{id:"owner",email:"owner@example.com"}};export const isSupabaseConfigured=true;export const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>{}}}}),signOut:async()=>{},signInWithOAuth:async()=>{location.reload();return{};}}};'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}',setLanguageCode:()=>{}});`}));
   const companies=()=>[{key:'org:1',id:1,name:'BARO GARMENT',nameKo:'바로가먼트',type:'MANUFACTURER'},...(dexRegistered?[{key:'org:2',id:2,name:'DEXS LOGIS',nameKo:'덱스로지스',type:'SERVICE'}]:[])];
   await page.route('**/auth/workspaces',r=>{
@@ -90,7 +96,7 @@ try{
   const registerName=lang==='ko'?'물류 회사 등록':lang==='vi'?'Đăng ký công ty logistics':'Register a logistics company';
   await page.getByRole('button',{name:registerName,exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:lang==='ko'?'등록':lang==='vi'?'Đăng ký':'Register',exact:true}).click();
-  await page.getByRole('button',{name:lang==='ko'?'덱스로지스':'DEXS LOGIS',exact:true}).click();
+  await page.getByRole('button',{name:'DEX LOGIS',exact:true}).click();await page.locator('.lineos-google-button').click();
   await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();
   assert.ok(contexts.includes(2));assert.doesNotMatch(await page.locator('body').innerText(),/BARO Bank/);
   await page.getByRole('button',{name:t.addAccount,exact:true}).click();
@@ -104,16 +110,16 @@ try{
   await page.getByText('BANK-007',{exact:true}).waitFor();assert.equal(saves.length,2);assert.equal(saves[0].clientKey,saves[1].clientKey);assert.equal(saves[0].amount,'5.25');assert.equal(saves[0].purpose,'Daily deposit');
   await page.reload();await page.getByText('BANK-007',{exact:true}).waitFor();assert.equal(contexts.at(-1),2);
   await page.getByRole('button',{name:'Remember test tab',exact:true}).click();await page.getByText('tabs:1',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'Switch test company',exact:true}).click();await page.getByRole('button',{name:lang==='ko'?'바로가먼트':'BARO GARMENT',exact:true}).click();
+  await page.getByRole('button',{name:'Switch test company',exact:true}).click();await page.getByRole('button',{name:'BARO GARMENT',exact:true}).click();await page.locator('.lineos-google-button').click();
   await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();assert.equal(await page.getByText('BANK-007',{exact:true}).count(),0);
   await page.getByText('tabs:0',{exact:true}).waitFor();
   assert.ok(await page.getByLabel(t.account).innerText().then(text=>text.includes('BARO Bank')));
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await page.evaluate(()=>sessionStorage.setItem('baro:workspace-selection',JSON.stringify({email:'owner@example.com',key:'org:999'})));
-  await page.reload();await page.getByRole('button',{name:lang==='ko'?'덱스로지스':'DEXS LOGIS',exact:true}).waitFor();
+  await page.reload();await page.getByRole('button',{name:'DEX LOGIS',exact:true}).waitFor();
   assert.ok(!contexts.includes(999),'A forged company selection must not issue an access-context lookup for that company');
   wrongContext=true;
-  await page.getByRole('button',{name:lang==='ko'?'덱스로지스':'DEXS LOGIS',exact:true}).click();
+  await page.getByRole('button',{name:'DEX LOGIS',exact:true}).click();await page.locator('.lineos-google-button').click();
   await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:t.addEntry,exact:true}).count(),0,'An access response for a different company must fail closed');
   assert.deepEqual(errors,[]);await page.close();
  }

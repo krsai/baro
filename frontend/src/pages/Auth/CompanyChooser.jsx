@@ -8,7 +8,7 @@ const copy={
  en:{choose:'Choose a company',hint:'Only companies you can access are shown.',add:'Register a logistics company',name:'Company name (English)',nameKo:'Company name (Korean)',code:'Company code',create:'Register',cancel:'Cancel',failed:'Unable to register company.',uncertain:'The result is unknown. Retry the same request.',retry:'Retry'},
  vi:{choose:'Chọn công ty đăng nhập',hint:'Chỉ hiển thị công ty bạn được phép truy cập.',add:'Đăng ký công ty logistics',name:'Tên công ty (tiếng Anh)',nameKo:'Tên công ty (tiếng Hàn)',code:'Mã công ty',create:'Đăng ký',cancel:'Hủy',failed:'Không thể đăng ký công ty.',uncertain:'Chưa xác nhận kết quả. Hãy thử lại với cùng nội dung.',retry:'Thử lại'},
 };
-export default function CompanyChooser({languageCode}){
+export default function CompanyChooser({languageCode,managementOnly=false}){
  const {workspaces,selectWorkspace,canCreateCompany,reloadWorkspaces,loading}=useAuth(),t=copy[languageCode]||copy.en;
  const [open,setOpen]=useState(false),[form,setForm]=useState({name:'DEXS LOGIS',nameKo:'덱스로지스',nameVi:'',code:'DEXS'}),[saving,setSaving]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
  const key=useRef(crypto.randomUUID()),busy=useRef(false);
@@ -20,8 +20,8 @@ export default function CompanyChooser({languageCode}){
  };
  return <Stack spacing={1.5}>
   {readLoginCompany()&&!findLoginWorkspace(workspaces,readLoginCompany())&&<Alert severity="warning">{languageCode==='ko'?'선택한 회사에 접근 권한이 없거나 아직 등록되지 않았습니다.':languageCode==='vi'?'Bạn chưa có quyền truy cập công ty đã chọn hoặc công ty chưa được đăng ký.':'The selected company is unavailable or you do not have access.'}</Alert>}
-  <Typography variant="h6">{t.choose}</Typography><Typography variant="body2">{t.hint}</Typography>
-  {workspaces.map(workspace=><Button key={workspace.key} variant="outlined" disabled={loading} onClick={()=>selectWorkspace(workspace.key)} sx={{justifyContent:'flex-start',height:'auto',minHeight:48,textTransform:'none'}}>{languageCode==='ko'?workspace.nameKo||workspace.name:languageCode==='vi'?workspace.nameVi||workspace.name:workspace.name}</Button>)}
+  {!managementOnly&&<><Typography variant="h6">{t.choose}</Typography><Typography variant="body2">{t.hint}</Typography>
+  {workspaces.map(workspace=><Button key={workspace.key} variant="outlined" disabled={loading} onClick={()=>selectWorkspace(workspace.key)} sx={{justifyContent:'flex-start',height:'auto',minHeight:48,textTransform:'none'}}>{languageCode==='ko'?workspace.nameKo||workspace.name:languageCode==='vi'?workspace.nameVi||workspace.name:workspace.name}</Button>)}</>}
   {canCreateCompany&&<Button onClick={()=>{key.current=crypto.randomUUID();setError('');setUncertain(false);setOpen(true);}}>{t.add}</Button>}
   <Dialog open={open} onClose={()=>{if(!saving&&!uncertain)setOpen(false);}} fullWidth maxWidth="sm">
    <DialogTitle>{t.add}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
