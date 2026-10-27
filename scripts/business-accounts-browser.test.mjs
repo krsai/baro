@@ -1,3 +1,4 @@
+import {ledgerEvidenceText} from '../frontend/src/constants/ledgerEvidence.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -7,8 +8,8 @@ import {ENTITY_TEXT} from '../frontend/src/constants/entityProfile.js';
 import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.js';
 const fixture=path.resolve('frontend/business-accounts-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import{MemoryRouter}from'react-router-dom';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Accounts from'/src/components/EntityBankAccounts.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';
-const p=new URLSearchParams(location.search);createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')}))));</script></body></html>`);
+import React from 'react';import{MemoryRouter}from'react-router-dom';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Accounts from'/src/components/EntityBankAccounts.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';import Approval from'/src/components/ExpenseApprovalActions.jsx';
+const p=new URLSearchParams(location.search);createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')}))));</script></body></html>`);
 const port=43254,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/business-accounts-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -41,14 +42,28 @@ try{
   await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
   assert.equal(await dialog.getByLabel(labels.bank,{exact:true}).count(),0);assert.equal(await dialog.getByRole('checkbox').count(),0);
   await dialog.getByLabel(new RegExp({ko:'계좌명',en:'Account name',vi:'Tên tài khoản'}[lang])).fill('VND cash extra');
-  await dialog.getByLabel(money.openingDate,{exact:true}).fill('2026-01-01');await dialog.getByLabel(money.openingBalance,{exact:true}).fill('0');
+  await dialog.getByLabel(money.openingDate,{exact:true}).fill('2026-01-01');await dialog.getByLabel(money.openingBalance).last().fill('0');
   await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).accountKind,'CASH');assert.equal(writes.at(-1).currencyId,1);assert.equal('isDefault' in writes.at(-1),false);assert.equal('isActive' in writes.at(-1),false);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   await page.route('**/bank-ledger/accounts?*',r=>r.fulfill({headers,json:{accounts:accounts.map(a=>({...a,id:'entity:'+a.id,currencyCode:a.currency.code,setupRequired:true}))}}));
   await page.goto(`http://127.0.0.1:${port}/business-accounts-acceptance.html?lang=${lang}&screen=ledger`);
   await page.getByLabel(money.account).waitFor();assert.equal(await page.getByRole('button',{name:money.addAccount,exact:true}).count(),0);
-  await page.waitForTimeout(200);assert.equal(await page.getByRole('button',{name:money.addEntry,exact:true}).isDisabled(),true);
+  await page.waitForTimeout(200);assert.equal(await page.getByRole('button',{name:money.addEntry,exact:true}).isDisabled(),false);
+  const et=ledgerEvidenceText[lang],posts=[];
+  assert.equal(await page.getByRole('button',{name:money.refresh,exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:money.members,exact:true}).count(),0);
+  await page.route('**/bank-ledger/accounts/entity:*/entries?*',r=>{const body=r.request().postDataJSON();posts.push(body);return r.fulfill({headers,status:201,json:{id:'saved'}});});
+  await page.getByRole('button',{name:money.addEntry,exact:true}).click();
+  const entryDialog=page.getByRole('dialog');await entryDialog.getByLabel(money.openingBalance).last().fill('0');await entryDialog.getByLabel(money.amount).first().fill('10');await entryDialog.getByLabel(money.purpose).fill('Receipt');
+  assert.equal(await entryDialog.getByLabel(et.reference).getAttribute('required'),'');await entryDialog.getByLabel(et.reference).fill('scan-001.pdf');
+  await entryDialog.getByRole('button',{name:money.save,exact:true}).click();await entryDialog.waitFor({state:'hidden'});assert.equal(posts.at(-1).openingBalance,'0');assert.equal(posts.at(-1).evidenceType,'FILE');
+  await page.getByRole('button',{name:money.addEntry,exact:true}).click();await entryDialog.getByLabel(et.type,{exact:true}).click();await page.getByRole('option',{name:et.INVOICE,exact:true}).click();assert.equal(await entryDialog.getByLabel(et.invoice).count(),1);assert.equal(await entryDialog.getByLabel(et.fee).count(),1);
+  await page.route('**/bank-ledger/evidence/expenses?*',r=>r.fulfill({headers,json:{items:[{id:'cost1',line:1,description:'Approved expense',remaining:'100'}]}}));
+  await entryDialog.getByLabel(et.type,{exact:true}).click();await page.getByRole('option',{name:et.EXPENSE,exact:true}).click();await entryDialog.getByLabel(et.request).fill('EXP-000001');await entryDialog.getByRole('button',{name:et.find,exact:true}).click();await entryDialog.getByRole('button',{name:et.add+': #1 Approved expense',exact:false}).click();await entryDialog.getByLabel(et.allocated).fill('50');await entryDialog.getByLabel(et.fee).fill('1');await entryDialog.getByLabel(money.openingBalance).last().fill('0');await entryDialog.getByLabel(money.amount).first().fill('51');await entryDialog.getByLabel(money.purpose).fill('Paid expense');await entryDialog.getByRole('button',{name:money.save,exact:true}).click();await entryDialog.waitFor({state:'hidden'});assert.equal(posts.at(-1).expenseItems[0].itemId,'cost1');assert.equal(posts.at(-1).direction,'OUT');
+  await page.getByRole('button',{name:money.addEntry,exact:true}).click();await entryDialog.getByLabel(et.type,{exact:true}).click();await page.getByRole('option',{name:et.ADJUSTMENT,exact:true}).click();assert.equal(await entryDialog.getByLabel(et.reference).count(),0);assert.equal(await entryDialog.getByLabel(et.invoice).count(),0);
+  await entryDialog.getByRole('button',{name:money.cancel,exact:true}).click();
+  let approved=false;await page.route('**/expense-requests/1/approval?*',r=>{if(r.request().method()==='POST')approved=true;return r.fulfill({headers,json:{version:1,steps:[{id:'s1',position:1,employee:{name:'Approver'},approved}],approved,canApprove:!approved}});});
+  await page.goto(`http://127.0.0.1:${port}/business-accounts-acceptance.html?lang=${lang}&screen=approval`);await page.getByRole('button',{name:et.approve,exact:true}).click();await page.getByText(et.approval+' '+String.fromCharCode(183)+' '+et.approved,{exact:true}).waitFor();
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Business accounts: ko/en/vi cash registration, same-currency accounts, keyboard ordering and explicit save; ledger registration removed and pending setup guarded.');
+ console.log('Business accounts: ko/en/vi cash registration, same-currency accounts, keyboard ordering and explicit save; ledger opening and required evidence supported, unused buttons removed, approval actions rendered.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

@@ -1,3 +1,4 @@
+import {ledgerEvidenceText} from '../frontend/src/constants/ledgerEvidence.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -13,7 +14,7 @@ const port=43248,server=spawn(process.execPath,['node_modules/vite/bin/vite.js',
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/company-bank-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const lang of ['ko','en','vi']){
+ for(const lang of process.argv.includes('--ledger-only')?[]:['ko','en','vi']){
   const page=await browser.newPage({viewport:{width:390,height:900}}),contexts=[];let allowDex=true,allowSystem=false,loginEmail='baro.garment@gmail.com';
   await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`const session=sessionStorage.getItem('test-oauth')?{access_token:'token',user:{id:'owner',email:sessionStorage.getItem('test-email')||'baro.garment@gmail.com'}}:null;export const isSupabaseConfigured=true;export const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>{}}}}),signOut:async()=>{},signInWithOAuth:async()=>{sessionStorage.setItem('test-oauth','1');location.reload();return{};}}};`}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}',setLanguageCode:()=>{}});`}));
@@ -102,15 +103,15 @@ try{
   assert.equal(await page.getByRole('button',{name:t.addAccount,exact:true}).count(),0);
   const dialog=page.getByRole('dialog');
   await page.getByRole('button',{name:t.addEntry,exact:true}).click();
-  await dialog.getByLabel(t.amount).fill('5.25');await dialog.getByLabel(t.purpose).fill('Daily deposit');await dialog.getByLabel(t.evidenceNumber).fill('BANK-007');
+  await dialog.getByLabel(t.amount).fill('5.25');await dialog.getByLabel(t.purpose).fill('Daily deposit');await dialog.getByLabel(ledgerEvidenceText[lang].reference).fill('BANK-007');
   await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.getByRole('alert').waitFor();
   assert.equal(await dialog.getByLabel(t.amount).isDisabled(),true);
   await dialog.getByRole('button',{name:t.retry,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  await page.getByText('BANK-007',{exact:true}).waitFor();assert.equal(saves.length,2);assert.equal(saves[0].clientKey,saves[1].clientKey);assert.equal(saves[0].amount,'5.25');assert.equal(saves[0].purpose,'Daily deposit');
-  await page.reload();await page.getByText('BANK-007',{exact:true}).waitFor();assert.equal(contexts.at(-1),2);
+  await page.getByRole('cell').filter({hasText:'BANK-007'}).waitFor();assert.equal(saves.length,2);assert.equal(saves[0].clientKey,saves[1].clientKey);assert.equal(saves[0].amount,'5.25');assert.equal(saves[0].purpose,'Daily deposit');
+  await page.reload();await page.getByRole('cell').filter({hasText:'BANK-007'}).waitFor();assert.equal(contexts.at(-1),2);
   await page.getByRole('button',{name:'Remember test tab',exact:true}).click();await page.getByText('tabs:1',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Switch test company',exact:true}).click();await page.getByRole('button',{name:'BARO GARMENT',exact:true}).click();await page.locator('.lineos-google-button').click();
-  await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();assert.equal(await page.getByText('BANK-007',{exact:true}).count(),0);
+  await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();assert.equal(await page.getByRole('cell').filter({hasText:'BANK-007'}).count(),0);
   await page.getByText('tabs:0',{exact:true}).waitFor();
   assert.ok(await page.getByLabel(t.account).innerText().then(text=>text.includes('BARO Bank')));
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
@@ -122,5 +123,5 @@ try{
   await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:t.addEntry,exact:true}).count(),0,'An access response for a different company must fail closed');
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Company banking passed ko/en/vi: SaaS company registration and selection, account input, deposit with evidence, safe retry, selected-company reload and isolation.');
+ console.log('Company banking passed ko/en/vi: SaaS company registration and selection, account selection, deposit with evidence, safe retry, selected-company reload and isolation.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

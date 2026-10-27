@@ -350,6 +350,9 @@ model BankLedgerEntry {
   amount Decimal @db.Decimal(24, 4)
   purpose String
   evidenceNumber String
+  evidenceType String @default("FILE")
+  bankFee Decimal @default(0) @db.Decimal(24, 4)
+  allocations BankLedgerEvidenceAllocation[]
   createdBy String
   createdAt DateTime @default(now())
   voidedAt DateTime?
@@ -358,6 +361,30 @@ model BankLedgerEntry {
   account BankLedgerAccount @relation(fields: [accountId, orgId], references: [id, orgId], onDelete: Restrict)
   @@unique([orgId, clientKey])
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
+}
+
+model BankLedgerEvidenceAllocation {
+  id String @id @default(uuid())
+  entryId String
+  orgId Int
+  invoiceId String?
+  expenseItemId String?
+  requestVersion Int?
+  amount Decimal @db.Decimal(24, 4)
+  entry BankLedgerEntry @relation(fields:[entryId],references:[id],onDelete:Restrict)
+  @@index([invoiceId])
+  @@index([expenseItemId])
+}
+
+model ExpenseApprovalDecision {
+  id String @id @default(uuid())
+  orgId Int
+  requestId Int
+  version Int
+  position Int
+  employeeId Int
+  createdAt DateTime @default(now())
+  @@unique([requestId,version,position])
 }
 
 model OrganizationBankAccount {

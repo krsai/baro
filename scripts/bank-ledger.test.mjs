@@ -58,7 +58,7 @@ test('account and entry saves are idempotent, scoped and ignore forged actors/ba
  await assert.rejects(postLedgerEntry(db,1,'accountant@example.com',account.id,{...input,amount:'1'}),/RETRY_CONFLICT/);
  await assert.rejects(postLedgerEntry(db,1,'accountant@example.com',account.id,entryBody({transactionDate:'2026-09-30'})),/BEFORE_OPENING/);
   await assert.rejects(postLedgerEntry(db,1,'accountant@example.com',account.id,entryBody({transactionDate:'9999-01-01'})),/FUTURE_DATE/);
- await assert.rejects(postLedgerEntry(db,1,'accountant@example.com',account.id,entryBody({evidenceNumber:''})),/INVALID_INPUT/);
+ await assert.rejects(postLedgerEntry(db,1,'accountant@example.com',account.id,entryBody({evidenceNumber:''})),/FILE_REQUIRED/);
 });
 test('backdated entries, date filtering and voids produce the correct running and current balances without mixing companies',async()=>{
  const {db,entries}=memoryLedger(),a=await saveLedgerAccount(db,1,'owner',accountBody()),foreign=await saveLedgerAccount(db,2,'owner',accountBody());

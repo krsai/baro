@@ -1,3 +1,5 @@
+import {ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
+import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
 import { ENTITY_TEXT } from '../../constants/entityProfile';
@@ -177,7 +179,7 @@ export default function TransactionRequestEntry() {
       {loadError && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{labels.retryLoad}</Button>}>{labels.loadError}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
-      {form.readOnly && <Alert severity="info">{LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
+      {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
       {partner && !loading && !form.readOnly && !hasPayeeBank && (payeeBanks.loaded || payeeBanks.error) && <Alert severity={payeeBanks.error?'error':'warning'} action={<Button disabled={disabled} onClick={()=>setPayeeDialog(true)}>{header.editPayee}</Button>}>{payeeBanks.error?bankText.error:bankText.required}</Alert>}
       {partner && <BusinessPartnerDialog key={`${activeOrgId}:${partner.id}`} open={payeeDialog} onClose={()=>setPayeeDialog(false)}
         partner={partner} activeOrgId={activeOrgId} languageCode={languageCode} lockType title={header.editPayee}
@@ -194,6 +196,7 @@ export default function TransactionRequestEntry() {
               inputProps={{title:payeeInfo}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
           </Box>
           <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>
+            <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={disabled||documentSnapshot(form)!==initialSnapshot}/>
             <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />
             <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} />
           </Box>

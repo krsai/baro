@@ -27,6 +27,8 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
   if (kind === 'request') {
     const document = await db.expenseRequest.findFirst({ where: { id: numericId(id), orgId }, include: documentInclude });
     if (!document) return fail(404,'EXPENSE_SOURCE_NOT_FOUND');
+    const reconciled=db.bankLedgerEvidenceAllocation&&await db.bankLedgerEvidenceAllocation.findFirst({where:{orgId,expenseItemId:{in:document.items.map((item:any)=>item.id)},entry:{voidedAt:null}}});
+    document.bankReconciled=!!reconciled;
     return { kind, id: String(document.id), document, costs: document.items, record: null };
   }
   if (kind === 'cost') {
@@ -72,7 +74,8 @@ export function expenseEditorForm(source: any) {
     partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId,
     partner: source.document?.partner || first?.partner || record?.outsourcingPartner,
     createdByEmployee: source.document?.createdByEmployee || first?.createdByEmployee || record?.createdByEmployee || null, revision: expenseEditorRevision(source),
-    readOnly: Boolean(record?.assignmentPlan?.workOrder?.invoiceFinalLockedAt || source.costs.some((cost: any)=>cost.workOrder?.invoiceFinalLockedAt || cost.outsourcedWorkRecord?.assignmentPlan?.workOrder?.invoiceFinalLockedAt)),
+    bankReconciled:!!source.document?.bankReconciled,
+    readOnly: Boolean(source.document?.bankReconciled || record?.assignmentPlan?.workOrder?.invoiceFinalLockedAt || source.costs.some((cost: any)=>cost.workOrder?.invoiceFinalLockedAt || cost.outsourcedWorkRecord?.assignmentPlan?.workOrder?.invoiceFinalLockedAt)),
     items: source.record ? [editorLine(null,source.record)] : source.costs.map((cost: any)=>editorLine(cost,cost.outsourcedWorkRecord)),
     canonicalSource: { kind: source.kind, id: source.id } };
 }
@@ -96,6 +99,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   const records = [source.record,...source.costs.map((cost: any)=>cost.outsourcedWorkRecord)].filter(Boolean).sort((a,b)=>a.id-b.id);
   for (const record of records) await tx.$queryRawUnsafe('SELECT id FROM "OutsourcedWorkRecord" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',record.id,orgId);
   source = await loadExpenseEditorSource(tx,orgId,kind,id);
+  if(source.document?.bankReconciled)return fail(409,'EXPENSE_ALREADY_RECONCILED');
   if ((source.document && source.document.version !== body.version) || expenseEditorRevision(source) !== body.revision) return fail(409,'EXPENSE_REQUEST_CHANGED');
   // Transaction-local capability, verified by database guards and a deferred
   // check that the matching audit event was saved before commit.
