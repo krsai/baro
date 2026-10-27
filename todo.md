@@ -1,5 +1,12 @@
 # BARO 남은 작업
 
+## 2026-10-27 SYSTEM 로그인 스위치
+
+- 첫 로그인 스위치를 BARO GARMENT / DEX LOGIS / SYSTEM 세 가지로 확장했다. 회사 선택 후 Google의 계정 선택(prompt=select_account)을 거쳐 선택한 업무 공간으로 진입한다.
+- SYSTEM 선택은 서버가 반환한 system/SYSTEM/SYSTEM_ADMIN 후보에만 연결하고, 실제 context도 SYSTEM 관리자임을 확인한다. 일반 회사 계정의 SYSTEM 요청은 안내 후 차단하며 기존 회사로 조용히 진입하지 않는다. 시스템 관리자에게도 회사 스위치는 해당 회사 업무 공간으로 연결한다.
+- 시스템 관리자 판정은 기존 SystemUser.systemRole과 서버 SYSTEM_ADMIN_EMAIL 초기 등록 규칙을 유지한다. krsailer82@gmail.com은 프론트엔드 시스템 연락처로 확인했으나 운영 DB 권한이나 환경값을 이번 UI 작업으로 바꾸지 않았다.
+- 한·영·베 모바일 3개 스위치, Google 계정 모의 세션의 BARO/DEX 직접 진입·SYSTEM 관리자 진입·일반 계정 차단, 인증 갱신 회귀 2건 및 프론트엔드 빌드를 통과했다.
+
 ## 2026-10-27 첫 로그인 화면 회사 스위치
 
 - Google 로그인 전에 BARO GARMENT / DEX LOGIS 두 회사 스위치를 표시한다. 선택은 OAuth 왕복 동안만 sessionStorage에 보관하며 서버가 반환한 접근 가능 회사의 코드/대표명으로 유일하게 일치하는 실제 FK를 선택한다. DEXS 기존 코드·대표명도 DEX LOGIS 버튼과 호환한다. 회사 등록명·DB 업무 자료는 바꾸지 않는다.

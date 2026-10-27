@@ -1,6 +1,7 @@
 export const LOGIN_COMPANIES = [
   { key: 'BARO', label: 'BARO GARMENT', codes: ['BARO'], names: ['BARO GARMENT'] },
   { key: 'DEX', label: 'DEX LOGIS', codes: ['DEX', 'DEXS'], names: ['DEX LOGIS', 'DEXS LOGIS'] },
+  { key: 'SYSTEM', label: 'SYSTEM', codes: [], names: [] },
 ];
 const PENDING_KEY = 'baro:login-company';
 export const readLoginCompany = () => {
@@ -16,6 +17,7 @@ export const clearLoginCompany = () => sessionStorage.removeItem(PENDING_KEY);
 export const findLoginWorkspace = (workspaces, key) => {
   const company = LOGIN_COMPANIES.find(row => row.key === key);
   if (!company) return null;
+  if (key === 'SYSTEM') return workspaces.find(row => row.key === 'system' && row.type === 'SYSTEM' && row.role === 'SYSTEM_ADMIN') || null;
   const normalize = value => String(value || '').trim().toUpperCase();
   const byCode = workspaces.filter(row => company.codes.includes(normalize(row.code)) && row.key?.startsWith('org:'));
   if (byCode.length) return byCode.length === 1 ? byCode[0] : null;

@@ -7,22 +7,23 @@ import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.j
 const fixture=path.resolve('frontend/company-bank-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline,Button}from'@mui/material';import theme from'/src/theme';import{AuthProvider,useAuth}from'/src/context/AuthContext.jsx';import CompanyWorkspaceProvider from'/src/components/CompanyWorkspaceProvider.jsx';import{useAppActions,useAppState}from'/src/context/AppContext.jsx';import Login from'/src/pages/Auth/Login.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';
-function Shell(){const auth=useAuth(),actions=useAppActions(),state=useAppState();if(auth.loading)return React.createElement('p',null,'Loading');return auth.hasWorkspaceAccess?React.createElement(React.Fragment,null,React.createElement(Button,{onClick:()=>auth.clearWorkspaceSelection()},'Switch test company'),React.createElement(Button,{onClick:()=>actions.openTab({id:'/private',label:'Old company private tab'})},'Remember test tab'),React.createElement('span',null,'tabs:'+state.openTabs.length),React.createElement(Ledger)):React.createElement(Login);}
+function Shell(){const auth=useAuth(),actions=useAppActions(),state=useAppState();if(auth.loading)return React.createElement('p',null,'Loading');if(auth.hasWorkspaceAccess&&auth.accessProfile?.entryType==='SYSTEM')return React.createElement('h1',null,'SYSTEM workspace');return auth.hasWorkspaceAccess?React.createElement(React.Fragment,null,React.createElement(Button,{onClick:()=>auth.clearWorkspaceSelection()},'Switch test company'),React.createElement(Button,{onClick:()=>actions.openTab({id:'/private',label:'Old company private tab'})},'Remember test tab'),React.createElement('span',null,'tabs:'+state.openTabs.length),React.createElement(Ledger)):React.createElement(Login);}
 createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,{initialEntries:['/login']},React.createElement(AuthProvider,null,React.createElement(CompanyWorkspaceProvider,null,React.createElement(Shell))))));</script></body></html>`);
 const port=43248,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/company-bank-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi']){
-  const page=await browser.newPage({viewport:{width:390,height:900}}),contexts=[];let allowDex=true;
-  await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`const session=sessionStorage.getItem('test-oauth')?{access_token:'token',user:{id:'owner',email:'owner@example.com'}}:null;export const isSupabaseConfigured=true;export const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>{}}}}),signOut:async()=>{},signInWithOAuth:async()=>{sessionStorage.setItem('test-oauth','1');location.reload();return{};}}};`}));
+  const page=await browser.newPage({viewport:{width:390,height:900}}),contexts=[];let allowDex=true,allowSystem=false,loginEmail='baro.garment@gmail.com';
+  await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`const session=sessionStorage.getItem('test-oauth')?{access_token:'token',user:{id:'owner',email:sessionStorage.getItem('test-email')||'baro.garment@gmail.com'}}:null;export const isSupabaseConfigured=true;export const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>{}}}}),signOut:async()=>{},signInWithOAuth:async()=>{sessionStorage.setItem('test-oauth','1');location.reload();return{};}}};`}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}',setLanguageCode:()=>{}});`}));
-  await page.route('**/auth/workspaces',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{workspaces:[{key:'org:1',id:1,name:'BARO GARMENT',code:'BARO'},...(allowDex?[{key:'org:2',id:2,name:'DEXS LOGIS',code:'DEXS'}]:[])]}}));
-  await page.route('**/auth/context*',r=>{const id=Number(new URL(r.request().url()).searchParams.get('orgId')||1);contexts.push(id);return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{email:'owner@example.com',entryType:'ORG',orgId:id,orgType:'SERVICE',orgRole:'ADMIN',orgName:id===2?'DEXS LOGIS':'BARO GARMENT',subscription:{status:'TRIAL'}}});});
+  await page.route('**/auth/workspaces',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{workspaces:[...(allowSystem?[{key:'system',name:'SYSTEM',type:'SYSTEM',role:'SYSTEM_ADMIN'}]:[]),{key:'org:1',id:1,name:'BARO GARMENT',code:'BARO'},...(allowDex?[{key:'org:2',id:2,name:'DEXS LOGIS',code:'DEXS'}]:[])]}}));
+  await page.route('**/auth/context*',r=>{const url=new URL(r.request().url()),system=allowSystem&&!url.searchParams.has('orgId'),id=Number(url.searchParams.get('orgId')||1);contexts.push(system?'system':id);return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:system?{email:loginEmail,entryType:'SYSTEM',systemRole:'SYSTEM_ADMIN'}:{email:loginEmail,entryType:'ORG',orgId:id,orgType:'SERVICE',orgRole:'ADMIN',orgName:id===2?'DEXS LOGIS':'BARO GARMENT',subscription:{status:'TRIAL'}}});});
   await page.route('**/bank-ledger/**',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{accounts:[]}}));
   await page.goto(`http://127.0.0.1:${port}/company-bank-acceptance.html`);
   const baro=page.getByRole('button',{name:'BARO GARMENT',exact:true}),dex=page.getByRole('button',{name:'DEX LOGIS',exact:true});
   await baro.waitFor();assert.equal(await baro.getAttribute('aria-pressed'),'true');
+  assert.equal(await page.getByRole('button',{name:'SYSTEM',exact:true}).count(),1);
   await dex.click();assert.equal(await dex.getAttribute('aria-pressed'),'true');assert.equal(await baro.getAttribute('aria-pressed'),'false');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   if(lang==='ko'){
@@ -38,9 +39,16 @@ try{
   await page.getByRole('button',{name:'Switch test company',exact:true}).waitFor();
   assert.deepEqual(contexts,[2,1]);
   assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('baro:workspace-selection')).key),'org:1');
-  await page.evaluate(()=>{sessionStorage.setItem('baro:login-company','DEX');sessionStorage.setItem('baro:workspace-selection',JSON.stringify({email:'owner@example.com',key:'org:1'}));});
+  await page.evaluate(()=>{sessionStorage.setItem('baro:login-company','DEX');sessionStorage.setItem('baro:workspace-selection',JSON.stringify({email:'baro.garment@gmail.com',key:'org:1'}));});
   allowDex=false;await page.reload();
   await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:'Switch test company',exact:true}).count(),0);
+  allowSystem=true;loginEmail='krsailer82@gmail.com';
+  await page.evaluate(()=>{sessionStorage.setItem('test-email','krsailer82@gmail.com');sessionStorage.setItem('baro:login-company','SYSTEM');});await page.reload();
+  await page.getByRole('heading',{name:'SYSTEM workspace',exact:true}).waitFor();
+  assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('baro:workspace-selection')).key),'system');
+  allowSystem=false;loginEmail='baro.garment@gmail.com';
+  await page.evaluate(()=>{sessionStorage.setItem('test-email','baro.garment@gmail.com');sessionStorage.setItem('baro:login-company','SYSTEM');});await page.reload();
+  await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('heading',{name:'SYSTEM workspace',exact:true}).count(),0);
   await page.close();
  }
  for(const lang of ['ko','en','vi']){

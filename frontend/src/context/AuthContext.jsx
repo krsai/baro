@@ -353,6 +353,7 @@ export const AuthProvider = ({ children }) => {
         const data=await requestJSON(`/auth/context${orgId?`?orgId=${orgId}`:''}`,options);
         if (cancelled) return;
         if(orgId && (data.entryType!=='ORG' || Number(data.orgId)!==orgId))throw new Error('COMPANY_CONTEXT_MISMATCH');
+        if(selectedKey==='system' && (data.entryType!=='SYSTEM' || data.systemRole!=='SYSTEM_ADMIN'))throw new Error('SYSTEM_CONTEXT_MISMATCH');
         setAccessProfile(normalizeAccessProfile(data));
       } catch (_error) {
         if (cancelled) return;
