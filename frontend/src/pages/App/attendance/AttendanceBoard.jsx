@@ -38,7 +38,7 @@ import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
-import { resolveNativeInputLocale } from '../../../utils/appLanguage';
+import CustomTimePicker from '../../../components/CustomTimePicker';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
@@ -250,7 +250,6 @@ const AttendanceBoard = ({
   const { showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
   const { languageCode } = useLanguage();
-  const nativeInputLocale = resolveNativeInputLocale(languageCode);
   const [queryError, setQueryError] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => resolveInitialDate(initialWorkDate));
   const [factories, setFactories] = useState([]);
@@ -652,27 +651,25 @@ const AttendanceBoard = ({
                     <TableRow key={workerId} hover>
                       <TableCell sx={{ fontWeight: 600 }}>{employee.displayName}</TableCell>
                       <TableCell align="center" sx={{ width: 140 }}>
-                        <TextField
+                        <CustomTimePicker
                           size="small"
-                          type="time"
+                          languageCode={languageCode}
                           value={entry.clockIn}
                           onChange={(event) =>
                             handleEntryChange(workerId, 'clockIn', event.target.value)
                           }
                           InputProps={{ startAdornment: <LoginIcon fontSize="small" sx={{ mr: 0.5 }} /> }}
-                          inputProps={{ lang: nativeInputLocale }}
                         />
                       </TableCell>
                       <TableCell align="center" sx={{ width: 140 }}>
-                        <TextField
+                        <CustomTimePicker
                           size="small"
-                          type="time"
+                          languageCode={languageCode}
                           value={entry.clockOut}
                           onChange={(event) =>
                             handleEntryChange(workerId, 'clockOut', event.target.value)
                           }
                           InputProps={{ startAdornment: <LogoutIcon fontSize="small" sx={{ mr: 0.5 }} /> }}
-                          inputProps={{ lang: nativeInputLocale }}
                         />
                       </TableCell>
                       <TableCell align="center" sx={{ width: 110 }}>

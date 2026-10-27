@@ -4,7 +4,7 @@ import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, P
 import SaveButton from '../../components/SaveButton';
 import { getPayTypeLabel } from '../../constants/payType';
 import { labelChipSx, LABEL_PALETTE } from '../../theme/labelPalette';
-import { resolveNativeInputLocale } from '../../utils/appLanguage';
+import CustomTimePicker from '../../components/CustomTimePicker';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
@@ -28,7 +28,6 @@ const TEXT = {
 // 무관하게 항상 같은 값을 조회/저장한다.
 const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, showNotification }) => {
   const text = TEXT[languageCode] || TEXT.en;
-  const nativeInputLocale = resolveNativeInputLocale(languageCode);
   const [policies, setPolicies] = useState([]);
   const [baseline, setBaseline] = useState('');
   const [loading, setLoading] = useState(false);
@@ -116,8 +115,8 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
             </ToggleButtonGroup>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, minmax(130px, 1fr))' }, gap: 1.25 }}>
-              <TextField size="small" type="time" label={text.clockIn} value={row.standardClockIn} onChange={(event) => editPolicy(row.payType, 'standardClockIn', event.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ lang: nativeInputLocale }} />
-              <TextField size="small" type="time" label={text.clockOut} value={row.standardClockOut} onChange={(event) => editPolicy(row.payType, 'standardClockOut', event.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ lang: nativeInputLocale }} />
+              <CustomTimePicker languageCode={languageCode} size="small" label={text.clockIn} value={row.standardClockIn} onChange={(event) => editPolicy(row.payType, 'standardClockIn', event.target.value)} InputLabelProps={{ shrink: true }} />
+              <CustomTimePicker languageCode={languageCode} size="small" label={text.clockOut} value={row.standardClockOut} onChange={(event) => editPolicy(row.payType, 'standardClockOut', event.target.value)} InputLabelProps={{ shrink: true }} />
               <TextField size="small" type="number" label={text.breakTime} value={row.breakMinutes} onChange={(event) => editPolicy(row.payType, 'breakMinutes', event.target.value)} InputLabelProps={{ shrink: true }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5, whiteSpace: 'nowrap' }}>{text.minutes}</Typography> }} />
               <TextField size="small" type="number" label={text.minimum} value={row.workdayMinimumHours} onChange={(event) => editPolicy(row.payType, 'workdayMinimumHours', event.target.value)} inputProps={{ min: .5, step: .5 }} InputLabelProps={{ shrink: true }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5, whiteSpace: 'nowrap' }}>{text.hours}</Typography> }} />
             </Box>
