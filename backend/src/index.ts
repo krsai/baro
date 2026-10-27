@@ -27894,6 +27894,22 @@ app.get("/customers/:id/quantity-buckets", async (req, res) => {
       },
     },
   });
+  const orderedStyleQuantities = await prisma.workOrderItem.groupBy({
+    by: ["workOrderId", "styleId"],
+    where: {
+      styleId: { in: styles.map(style => style.id) },
+      totalQuantity: { gt: 0 },
+      workOrder: { sellerOrgId: relationship.manufacturerOrgId, buyerOrgId: relationship.brandOrgId },
+    },
+    _sum: { totalQuantity: true },
+  });
+  const quantitiesByStyle = new Map<number, Set<number>>();
+  for (const row of orderedStyleQuantities) {
+    if (row.styleId == null || !row._sum.totalQuantity) continue;
+    const quantities = quantitiesByStyle.get(row.styleId) || new Set<number>();
+    quantities.add(row._sum.totalQuantity);
+    quantitiesByStyle.set(row.styleId, quantities);
+  }
   const toVersionResponse = (version: any) =>
     version
       ? {
@@ -27914,6 +27930,7 @@ app.get("/customers/:id/quantity-buckets", async (req, res) => {
         name: style.name,
         code: style.code,
         source: override ? "STYLE_OVERRIDE" : "CUSTOMER_DEFAULT",
+        orderQuantities: [...(quantitiesByStyle.get(style.id) || [])],
         version: toVersionResponse(
           override?.quantityBucketSetVersion ?? relationship.salesBucketSetVersion
         ),

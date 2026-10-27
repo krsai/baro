@@ -1,5 +1,7 @@
 import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
+import {LABEL_PALETTE} from '../../../theme/labelPalette';
+import {orderedSalesPriceBuckets} from '../../../utils/orderedSalesPriceBuckets.mjs';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -46,6 +48,7 @@ import { resolveCustomerDisplayName } from '../../../utils/appLanguage';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import { CURRENCY_CODES, CURRENCY_SYMBOLS } from '../../../constants/currencies';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import {
   WORKSPACE_DATA_TOPICS,
   emitWorkspaceDataChanged,
@@ -246,6 +249,7 @@ const PricingRow = memo(function PricingRow({
   onPriceFocus,
   onPriceBlur,
 }) {
+  const requiredBuckets = orderedSalesPriceBuckets(style.orderQuantities, quantities);
   return (
     <TableRow hover>
       <TableCell
@@ -276,8 +280,9 @@ const PricingRow = memo(function PricingRow({
       {quantities.map((quantity) => {
         const key = `${scopePrefix}${style.id}:${quantity}`;
         const price = draftPrices[key] || '';
+        const missingOrderedPrice = requiredBuckets.has(quantity) && !isValidPositivePrice(price);
         return (
-          <TableCell key={key} align="center" sx={{ px: 0.75 }}>
+          <TableCell key={key} align="center" data-required-price-missing={missingOrderedPrice || undefined} sx={{ px: 0.75, bgcolor: missingOrderedPrice ? LABEL_PALETTE.yellow.background : undefined }}>
             <TextField
               value={
                 focusedPriceKey === key
@@ -303,7 +308,7 @@ const PricingRow = memo(function PricingRow({
                   </InputAdornment>
                 ),
               }}
-              sx={{ width: 112 }}
+              sx={{ width: 112, ...(missingOrderedPrice ? {'& .MuiOutlinedInput-root': {bgcolor: LABEL_PALETTE.yellow.background}} : {}) }}
             />
           </TableCell>
         );
@@ -370,6 +375,7 @@ const CustomerPricingBoard = () => {
   const [loadingPrices, setLoadingPrices] = useState(false);
   const [savingPrices, setSavingPrices] = useState(false);
   const [priceReloadKey, setPriceReloadKey] = useState(0);
+  const [orderQuantityReloadKey, setOrderQuantityReloadKey] = useState(0);
   const [bucketConfirmation, setBucketConfirmation] = useState(null);
   const [noticeAnchorEl, setNoticeAnchorEl] = useState(null);
   const bucketConfirmationResolver = useRef(null);
@@ -392,6 +398,21 @@ const CustomerPricingBoard = () => {
     () => customers.find((customer) => String(customer?.id) === selectedCustomerId) || null,
     [customers, selectedCustomerId]
   );
+
+  useWorkspaceRefreshOnEvent({orgId: activeOrgId, topics: [WORKSPACE_DATA_TOPICS.ORDERS],
+    onRefresh: () => setOrderQuantityReloadKey(value => value + 1)});
+  useEffect(() => {
+    if (!selectedCustomerId || !orderQuantityReloadKey) return;
+    let active = true;
+    requestJSON(`/customers/${selectedCustomerId}/quantity-buckets${customerQuery}`, {skipCache: true, skipGlobalLoading: true})
+      .then(payload => {
+        if (!active) return;
+        const byId = new Map((payload.styles || []).map(style => [String(style.id), style.orderQuantities || []]));
+        // An order refresh only changes the highlighting evidence, never unsaved prices/buckets.
+        setStyles(previous => previous.map(style => ({...style, orderQuantities: byId.get(String(style.id)) || []})));
+      }).catch(error => {if (active) showNotification(error?.message || text.loadFailed, 'error');});
+    return () => {active = false;};
+  }, [selectedCustomerId, customerQuery, orderQuantityReloadKey, showNotification, text.loadFailed]);
 
   useEffect(() => {
     let active = true;
@@ -472,6 +493,7 @@ const CustomerPricingBoard = () => {
           name: style.name || '',
           styleCode: style.code || '',
           code: style.code || '',
+          orderQuantities: style.orderQuantities || [],
         })));
         payloadStyles.forEach((style) => {
           const key = `${customerKey}:${style.id}`;
