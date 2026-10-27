@@ -1,6 +1,6 @@
 import { createHttpError } from '../utils/http';
 import {retryEditTransaction,editRevision,assertEditRevision} from '../utils/editRevision';
-import {ledgerDate,validateLedgerMoney,ledgerScale4} from './bankLedger';
+import {LEDGER_ZERO_START} from './bankLedger';
 
 export const BANK_INCLUDE = {currency:{select:{id:true,code:true,name:true}},ledgerAccounts:{select:{id:true,openingDate:true,openingBalance:true}}};
 export async function requireEntityAccess(db:any,orgId:number,entityId:number) {
@@ -16,6 +16,7 @@ export async function requirePayeeBankAccount(tx:any,orgId:number,entityId:numbe
   if(!account)throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');
 }
 export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,entityId:number,id:string|null,body:any) {
+  if(body.openingDate!==undefined||body.openingBalance!==undefined)throw createHttpError(409,'LEDGER_OPENING_LOCKED');
   await requireEntityAccess(tx,orgId,entityId);
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
   const previous=id ? await tx.organizationBankAccount.findFirst({where:{id,orgId,entityId}}) : null;
@@ -31,14 +32,9 @@ export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,e
   const data={currencyId,accountKind:kind,displayName,bankName:kind==='CASH'?'':text('bankName',120),accountNumber:kind==='CASH'?'':text('accountNumber',100),accountHolder:kind==='CASH'?'':text('accountHolder',160),updatedByEmployeeId:actorId};
   if(linked&&(previous.currencyId!==currencyId||previous.accountKind!==kind||previous.bankName!==data.bankName||previous.accountNumber!==data.accountNumber))throw createHttpError(409,'LEDGER_ACCOUNT_IDENTITY_LOCKED');
   const result=id?await tx.organizationBankAccount.update({where:{id},data,include:BANK_INCLUDE}):await tx.organizationBankAccount.create({data:{...data,orgId,entityId,sortOrder:(await tx.organizationBankAccount.count({where:{orgId,entityId}})),createdByEmployeeId:actorId},include:BANK_INCLUDE});
-  if(body.openingDate!==undefined||body.openingBalance!==undefined){
-    if(entityId!==orgId)throw createHttpError(400,'LEDGER_OWN_COMPANY_REQUIRED');
-    const openingDate=ledgerDate(body.openingDate),code=result.currency.code;
-    const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-    if(openingDate>today)throw createHttpError(400,'LEDGER_FUTURE_DATE');
-    const openingBalance=validateLedgerMoney(body.openingBalance,code,true);
-    if(linked&&(linked.openingDate!==openingDate||ledgerScale4(linked.openingBalance)!==ledgerScale4(openingBalance)))throw createHttpError(409,'LEDGER_OPENING_LOCKED');
-    if(!linked)await tx.bankLedgerAccount.create({data:{orgId,entityAccountId:result.id,clientKey:'entity:'+result.id,bankName:data.bankName,accountNumber:data.accountNumber,accountHolder:data.accountHolder,currencyCode:code,openingDate,openingBalance,createdBy:(await tx.employee.findUnique({where:{id:actorId},select:{email:true}}))?.email||'employee:'+actorId}});
+  if(entityId===orgId&&!linked){
+    const ledger=await tx.bankLedgerAccount.create({data:{orgId,entityAccountId:result.id,clientKey:'entity:'+result.id,bankName:data.bankName,accountNumber:data.accountNumber,accountHolder:data.accountHolder,currencyCode:result.currency.code,openingDate:LEDGER_ZERO_START,openingBalance:'0',createdBy:(await tx.employee.findUnique({where:{id:actorId},select:{email:true}}))?.email||'employee:'+actorId}});
+    result.ledgerAccounts=[ledger];
   }
 
   return result;

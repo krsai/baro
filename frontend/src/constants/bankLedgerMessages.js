@@ -11,9 +11,9 @@ bankLedgerMessages.ko.refresh='새로고침';
 bankLedgerMessages.en.refresh='Refresh';
 bankLedgerMessages.vi.refresh='Làm mới';
 
-bankLedgerMessages.ko.noAccounts="사업체 메뉴에서 계좌를 등록하고 기초잔액 기준일과 금액을 설정해 주세요.";
-bankLedgerMessages.en.noAccounts="Register accounts and set opening dates and balances in the Business menu.";
-bankLedgerMessages.vi.noAccounts="Đăng ký tài khoản và số dư đầu kỳ trong mục Doanh nghiệp.";
+bankLedgerMessages.ko.noAccounts="사업체 메뉴에서 계좌를 등록해 주세요. 잔액은 0에서 시작하며 잔액 조정으로 맞출 수 있습니다.";
+bankLedgerMessages.en.noAccounts="Register an account in Business. Accounts start at zero; use a balance adjustment to reconcile them.";
+bankLedgerMessages.vi.noAccounts="Đăng ký tài khoản trong mục Doanh nghiệp. Số dư bắt đầu từ 0; dùng điều chỉnh số dư để đối chiếu.";
 Object.assign(bankLedgerMessages.ko.errors,{
  LEDGER_ACCOUNT_IDENTITY_LOCKED:'입출금에 연결된 계좌의 통화·종류·계좌번호는 변경할 수 없습니다. 별도 계좌로 등록해 주세요.',
  LEDGER_OPENING_LOCKED:'저장된 기초잔액 기준일과 금액은 변경할 수 없습니다.',

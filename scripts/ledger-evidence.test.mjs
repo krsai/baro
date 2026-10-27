@@ -67,11 +67,11 @@ test('service validates invoice scope, actual receipt and fees without forcing f
  await assert.rejects(resolveEvidence(tx,1,{currencyCode:'VND'},body),/INVOICE_NOT_FOUND/);
  await assert.rejects(resolveEvidence(tx,1,{currencyCode:'USD'},{...body,amount:'10000'}),/EXCEEDS_DOCUMENT/);
 });
-test('first transaction initializes an owned business account only with explicit opening balance, and retries keep one transaction',async()=>{
+test('first transaction initializes an owned business account at zero without opening inputs, and retries keep one transaction',async()=>{
  let account=null,row=null;let creates=0;
  const tx={$queryRawUnsafe:async()=>[],organizationBankAccount:{findFirst:async({where})=>where.entityId===1&&where.orgId===1?{id:'master',currency:{code:'USD'},bankName:'',accountNumber:'',accountHolder:''}:null},bankLedgerAccount:{findFirst:async({where})=>account&&where.orgId===account.orgId&&(!where.id||where.id===account.id)&&(!where.entityAccountId||where.entityAccountId===account.entityAccountId)?account:null,create:async({data})=>account={id:'ledger',...data}},bankLedgerEntry:{findUnique:async()=>row,create:async({data})=>{creates++;return row={id:'entry',...data};}}};tx.$transaction=async fn=>fn(tx);
- const body={clientKey:'11111111-1111-4111-8111-111111111111',openingDate:'2026-01-01',openingBalance:'0',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Received',evidenceNumber:'receipt.pdf',evidenceType:'FILE',bankFee:'0'};
- await postLedgerEntry(tx,1,'actor','entity:master',body);await postLedgerEntry(tx,1,'actor','entity:master',body);assert.equal(creates,1);assert.equal(account.openingBalance,'0.00');
+ const body={clientKey:'11111111-1111-4111-8111-111111111111',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Received',evidenceNumber:'receipt.pdf',evidenceType:'FILE',bankFee:'0'};
+ await postLedgerEntry(tx,1,'actor','entity:master',body);await postLedgerEntry(tx,1,'actor','entity:master',body);assert.equal(creates,1);assert.equal(account.openingBalance,'0');
  await assert.rejects(postLedgerEntry(tx,2,'actor','entity:master',body),/ACCOUNT_NOT_FOUND/);
  await assert.rejects(postLedgerEntry(tx,1,'actor','entity:master',{...body,evidenceNumber:'different.pdf'}),/RETRY_CONFLICT/);
 });

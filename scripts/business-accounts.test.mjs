@@ -20,8 +20,8 @@ function memory(){
 }
 test('business registration supports VND twice, USD and KRW cash accounts without bank numbers or default/active settings',async()=>{
  const {db,accounts,ledgers}=memory();
- for(const [index,currencyId] of [1,1,2,3].entries())await saveEntityBankAccount(db,1,7,1,null,{accountKind:'CASH',displayName:'Cash '+index,currencyId,openingDate:'2026-01-01',openingBalance:'0',isDefault:true,isActive:false});
- assert.equal(accounts.length,4);assert.equal(ledgers.length,4);
+ for(const [index,currencyId] of [1,1,2,3].entries())await saveEntityBankAccount(db,1,7,1,null,{accountKind:'CASH',displayName:'Cash '+index,currencyId,isDefault:true,isActive:false});
+ assert.equal(accounts.length,4);assert.equal(ledgers.length,4);assert.ok(ledgers.every(row=>row.openingBalance==='0'));
  for(const row of accounts){assert.equal(row.bankName,'');assert.equal(row.accountNumber,'');assert.equal('isDefault' in row,false);assert.equal('isActive' in row,false);}
  await assert.rejects(saveEntityBankAccount(db,1,7,1,accounts[0].id,{...accounts[0],currencyId:2}),/IDENTITY_LOCKED/);
  await assert.rejects(saveEntityBankAccount(db,1,7,1,accounts[0].id,{...accounts[0],openingDate:'2026-01-01',openingBalance:'5'}),/OPENING_LOCKED/);

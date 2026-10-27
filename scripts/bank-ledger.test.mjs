@@ -35,6 +35,13 @@ function memoryLedger(){
 }
 const accountBody=(extra={})=>({clientKey:randomUUID(),bankName:'Bank',accountNumber:'001',accountHolder:'Company',currencyCode:'USD',openingDate:'2026-10-01',openingBalance:'100.00',...extra});
 const entryBody=(extra={})=>({clientKey:randomUUID(),transactionDate:'2026-10-03',direction:'IN',amount:'0.10',purpose:'Customer payment',evidenceNumber:'BANK-001',...extra});
+test('zero-start account is balanced by an explicit adjustment and normal transactions still require evidence',async()=>{
+ const {db}=memoryLedger(),account=await saveLedgerAccount(db,1,'actor',accountBody({openingBalance:'0'}));
+ await postLedgerEntry(db,1,'actor',account.id,entryBody({evidenceType:'ADJUSTMENT',evidenceNumber:'',purpose:'Reconcile bank statement',amount:'100'}));
+ await postLedgerEntry(db,1,'actor',account.id,entryBody({direction:'OUT',amount:'20',evidenceNumber:'receipt.pdf'}));
+ assert.equal((await listLedgerEntries(db,1,account.id,{start:'2026-10-01',end:'2026-10-31'})).currentBalance,'80.00');
+ await assert.rejects(postLedgerEntry(db,1,'actor',account.id,entryBody({evidenceNumber:''})),/FILE_REQUIRED/);
+});
 test('money remains exact above Number precision and respects currency digits, signed opening balance and real dates',()=>{
  assert.equal(formatLedgerMoney('-10000000000000000.01','USD'),'USD -10,000,000,000,000,000.01');
  assert.equal(validateLedgerMoney('99999999999999999999.99','USD'),'99999999999999999999.99');

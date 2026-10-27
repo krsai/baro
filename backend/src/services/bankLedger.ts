@@ -2,6 +2,8 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {resolveEvidence,approvalState,approveExpense} from './bankEvidence';
 
+// Internal lower bound only; new accounts have no user-defined opening period.
+export const LEDGER_ZERO_START='0001-01-01';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim()&&value.trim().length<=max?value.trim():fail('LEDGER_INVALID_INPUT');
 export const ledgerDate=(value:any)=>{
@@ -57,10 +59,9 @@ export async function postLedgerEntry(db:any,orgId:number,actor:string,accountId
       if(!master)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
       account=await tx.bankLedgerAccount.findFirst({where:{orgId,entityAccountId:masterId}});
       if(!account){
-        const openingDate=ledgerDate(body.openingDate),openingBalance=validateLedgerMoney(body.openingBalance,master.currency.code,true);
-        if(openingDate>ledgerToday())return fail('LEDGER_FUTURE_DATE');
+        const openingDate=LEDGER_ZERO_START,openingBalance='0';
         account=await tx.bankLedgerAccount.create({data:{orgId,entityAccountId:masterId,clientKey:accountId,bankName:master.bankName,accountNumber:master.accountNumber,accountHolder:master.accountHolder,currencyCode:master.currency.code,openingDate,openingBalance,createdBy:actor}});
-      }else if(body.openingDate!==account.openingDate||ledgerScale4(body.openingBalance)!==ledgerScale4(account.openingBalance))return fail('LEDGER_RETRY_CONFLICT',409);
+      }
     }
     if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
     const transactionDate=ledgerDate(body.transactionDate);
@@ -88,7 +89,7 @@ export async function listLedgerAccounts(db:any,orgId:number){
     const masters=await tx.organizationBankAccount.findMany({where:{orgId,entityId:orgId},include:{currency:true},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
     const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null},_sum:{amount:true}});
     const result=accounts.map((account:any)=>({...account,displayName:account.entityAccount?.displayName,accountKind:account.entityAccount?.accountKind||'BANK',sortOrder:account.entityAccount?.sortOrder??0,openingBalance:ledgerMoney(ledgerScale4(account.openingBalance),account.currencyCode),currentBalance:ledgerMoney(ledgerScale4(account.openingBalance)+delta(totals.filter((row:any)=>row.accountId===account.id)),account.currencyCode)}));
-    for(const master of masters)if(!accounts.some((a:any)=>a.entityAccountId===master.id))result.push({...master,id:'entity:'+master.id,currencyCode:master.currency.code,setupRequired:true} as any);
+    for(const master of masters)if(!accounts.some((a:any)=>a.entityAccountId===master.id))result.push({...master,id:'entity:'+master.id,currencyCode:master.currency.code,openingDate:LEDGER_ZERO_START,openingBalance:'0',currentBalance:'0',setupRequired:true} as any);
     return result.sort((a:any,b:any)=>a.sortOrder-b.sortOrder||new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime()||a.id.localeCompare(b.id));
   });
 }
