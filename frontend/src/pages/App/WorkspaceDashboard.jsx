@@ -840,12 +840,12 @@ const WorkspaceDashboard = () => {
           ) : (
             <Stack spacing={1}>
               {notificationItems.map((item) => (
-                <Button key={item.key} variant="outlined" color="warning" onClick={() => item.recordAlert ? setRecordAlert(item.recordAlert) : navigateToPath(item.path)} sx={{ justifyContent: 'space-between', px: 1.5, py: 1, textTransform: 'none' }}>
-                  <Box sx={{ textAlign: 'left' }}>
+                <Button key={item.key} variant="outlined" onClick={() => item.recordAlert ? setRecordAlert(item.recordAlert) : navigateToPath(item.path)} sx={{ justifyContent: 'space-between', gap: 2, height: 'auto', minHeight: item.recordAlert ? 64 : 44, px: 1.5, py: 1.25, textTransform: 'none', color: 'text.primary', borderColor: 'divider' }}>
+                  <Box sx={{ textAlign: 'left', minWidth: 0, overflowWrap: 'anywhere' }}>
                     <Typography variant="body2" fontWeight={600}>{resolveText(item.label, languageCode)}</Typography>
-                    {item.recordAlert && <Typography variant="caption" color="text.secondary">{item.recordAlert.factoryName} · {item.recordAlert.processes.map(process => `${process.processCode || process.styleProcessId}: 0 / ${process.targetQuantity}`).join(' · ')}</Typography>}
+                    {item.recordAlert && <Typography variant="caption" color="inherit" sx={{ display: 'block', mt: 0.5, lineHeight: 1.6 }}>{item.recordAlert.factoryName} · {item.recordAlert.processes.map(process => `${process.processCode || process.styleProcessId}: 0 / ${process.targetQuantity}`).join(' · ')}</Typography>}
                   </Box>
-                  <Chip size="small" color="warning" label={item.countLabel} />
+                  <Chip size="small" label={item.countLabel} sx={{ flexShrink: 0, color: 'text.primary' }} />
                 </Button>
               ))}
             </Stack>
