@@ -18939,25 +18939,17 @@ app.get("/auth/context", async (req, res) => {
     select: { systemRole: true },
   });
   if (systemUser?.systemRole === "SYSTEM_ADMIN" && !getRequestedOrgIdText(req)) {
-    let organization = null;
-    try {
-      organization = await getOrganizationByQuery(req, { allowSuspended: true });
-    } catch (error) {
-      const status = getErrorStatus(error) ?? 500;
-      const message = getErrorMessage(error, "failed to resolve organization");
-      return res.status(status).json({ ok: false, error: message });
-    }
-
+    // SYSTEM is its own workspace, not an implicit membership of the first tenant.
     return res.json({
       email: requesterEmail,
       entryType: "SYSTEM",
       systemRole: systemUser.systemRole,
-      orgId: organization?.id ?? null,
-      orgName: organization?.name ?? null,
-      orgType: organization?.type ?? null,
+      orgId: null,
+      orgName: null,
+      orgType: null,
       orgRole: null,
       employeeName: null,
-      subscription: buildSubscriptionResponse(organization?.subscription),
+      subscription: null,
       accessPolicy: roleAccessPolicy,
       systemAdminContactEmail: getSystemAdminContactEmail(),
     });
@@ -18966,7 +18958,7 @@ app.get("/auth/context", async (req, res) => {
   const requestedOrgIdText = getRequestedOrgIdText(req);
   if (requestedOrgIdText) {
     if (!/^\d+$/.test(requestedOrgIdText)) return res.status(400).json({error:'COMPANY_INVALID_ID'});
-    const company=await resolveCompanyWorkspace(prisma,requesterEmail,Number(requestedOrgIdText),systemUser?.systemRole==='SYSTEM_ADMIN');
+    const company=await resolveCompanyWorkspace(prisma,requesterEmail,Number(requestedOrgIdText));
     const organization=await attachOrganizationSubscription(company.organization);
     return res.json({email:requesterEmail,entryType:'ORG',systemRole:'USER',orgId:organization.id,orgName:organization.name,orgType:organization.type,
       orgRole:company.orgRole,employeeName:company.employeeName,factoryId:company.factoryId,

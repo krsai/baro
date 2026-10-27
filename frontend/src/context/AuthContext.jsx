@@ -362,6 +362,7 @@ export const AuthProvider = ({ children }) => {
         // already-valid profile, because ProtectedRoute would then unmount the
         // entire workspace and reset every keep-alive tab.
         setAccessProfile((previous) => {
+          if ([401, 403].includes(Number(_error?.status))) return null;
           const previousEmail =
             typeof previous?.email === 'string' ? previous.email.trim().toLowerCase() : '';
           return previousEmail === normalizedCurrentUserEmail ? previous : null;

@@ -250,42 +250,6 @@ export const getRequestedOrgIdText = (req: Request): string => {
   return readRequestHeader(req, "x-org-id");
 };
 
-const getPrimaryOrganization = async (options: OrganizationAccessOptions = {}) => {
-  // 2026-08-20: exclude vendor Organizations (PROCESS_OUTSOURCING/
-  // MATERIAL_SUPPLIER, merged from BusinessPartner) - they are not real
-  // tenants and must never become a system admin's resolved "primary org".
-  const organization = await prisma.organization.findFirst({
-    where: { type: { in: ["MANUFACTURER", "BRAND", "SERVICE"] } },
-    orderBy: { id: "asc" },
-  });
-  if (!organization) return null;
-
-  const withSubscription = await attachOrganizationSubscription(organization);
-  return ensureOrganizationAccessible(withSubscription, options);
-};
-
-const getSystemAdminDefaultOrganization = async (
-  options: OrganizationAccessOptions = {}
-) => {
-  const organizationWithActiveMembers = await prisma.organization.findFirst({
-    where: {
-      type: { in: ["MANUFACTURER", "BRAND", "SERVICE"] },
-      employees: {
-        some: { status: "ACTIVE" },
-      },
-    },
-    orderBy: { id: "asc" },
-  });
-  if (organizationWithActiveMembers) {
-    const withSubscription = await attachOrganizationSubscription(
-      organizationWithActiveMembers
-    );
-    return ensureOrganizationAccessible(withSubscription, options);
-  }
-
-  return getPrimaryOrganization(options);
-};
-
 // Returns { organization, employeeId } rather than setting the request actor's
 // Return employeeId with the organization so the request-local cache can apply
 // the actor to the CURRENT request's AsyncLocalStorage store on every lookup.
@@ -363,10 +327,7 @@ const resolveOrganizationByQuery = async (
     }
 
     if (systemUser?.systemRole === "SYSTEM_ADMIN") {
-      return {
-        organization: await getSystemAdminDefaultOrganization(options),
-        employeeId: null,
-      };
+      throw createHttpError(400, "an explicit orgId is required for system organization administration");
     }
   }
 

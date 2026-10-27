@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-10-27 SYSTEM 로그인과 회사 직원 소속 분리
+
+- SYSTEM_ADMIN은 회사 직원 소속을 자동 부여하지 않는다. 회사 로그인 후보/명시적 ORG context는 같은 이메일의 실제 ACTIVE Employee와 회사 FK만 사용하며 SYSTEM 관리자라는 이유로 모든 회사를 열거하거나 회사 ADMIN으로 승격하지 않는다. SYSTEM 계정이 실제 회사 직원이기도 하면 해당 직원의 실제 orgRole을 사용한다.
+- SYSTEM context는 orgId/orgName/orgType/subscription이 NULL인 독립 작업공간이다. 조직을 명시하지 않은 SYSTEM 조직 조회에서 최초 회사를 자동 선택하지 않는다. SYSTEM 조직 관리의 명시적 대상 조회 권한은 별도 기능으로 유지한다.
+- 401/403 거부 시 이전 accessProfile을 폐기한다. 일시적 네트워크/서버 오류일 때 같은 계정의 유효 profile을 보존하는 기존 규칙은 유지한다. 오래된 회사 선택값은 서버의 현재 후보에 없으면 지운다.
+- 운영 DB 읽기 전용 확인에서 krsailer82@gmail.com은 SYSTEM_ADMIN이며 Employee 소속이 0건이다. 수정 서비스로 후보는 SYSTEM만 반환하고 BARO 회사 로그인은 403임을 검증했다. 계정·직원·권한 데이터를 생성/변경하지 않았다.
+
 ## 2026-10-27 로그인 준비 상태·헤더 회사 선택 제거
 
 - 회사 선택/권한 context 조회 도중 유효한 계정 profile이 아직 없으면 로딩을 유지한다. 단순 미진입/오류/선택 대기를 가입으로 추측하지 않으며 서버의 명시적 ONBOARDING 응답에만 가입 화면을 마운트한다. 기존 profile이 유효한 백그라운드 토큰 갱신은 작업공간을 유지한다.

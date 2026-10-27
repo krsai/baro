@@ -6,13 +6,13 @@ const tenantTypes=['MANUFACTURER','BRAND','SERVICE'];
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim()&&value.trim().length<=max?value.trim():fail('COMPANY_INVALID_INPUT');
 
-export async function resolveCompanyWorkspace(db:any,email:string,orgId:number,systemAdmin=false){
+export async function resolveCompanyWorkspace(db:any,email:string,orgId:number){
   if(!Number.isSafeInteger(orgId)||orgId<=0)return fail('COMPANY_INVALID_ID');
   const employee=await db.employee.findUnique({where:{orgId_email:{orgId,email}},include:{organization:true}});
-  if(!systemAdmin&&employee?.status!=='ACTIVE')return fail('COMPANY_ACCESS_DENIED',403);
-  const organization=employee?.organization||(systemAdmin?await db.organization.findUnique({where:{id:orgId}}):null);
+  if(employee?.status!=='ACTIVE')return fail('COMPANY_ACCESS_DENIED',403);
+  const organization=employee.organization;
   if(!organization||!organization.isActive||organization.ownerOrgId!=null||!tenantTypes.includes(organization.type))return fail('COMPANY_ACCESS_DENIED',403);
-  return {organization,orgRole:systemAdmin?'ADMIN':employee.orgRole,employeeName:employee?.name||email,factoryId:employee?.factoryId||null};
+  return {organization,orgRole:employee.orgRole,employeeName:employee.name||email,factoryId:employee.factoryId||null};
 }
 
 export async function companyChoices(db:any,email:string){
@@ -21,10 +21,10 @@ export async function companyChoices(db:any,email:string){
     db.employee.findMany({where:{email,status:'ACTIVE',organization:{isActive:true,ownerOrgId:null,type:{in:tenantTypes}}},include:{organization:true},orderBy:{id:'asc'}}),
   ]);
   const systemAdmin=system?.systemRole==='SYSTEM_ADMIN';
-  const companies=systemAdmin?await db.organization.findMany({where:{isActive:true,ownerOrgId:null,type:{in:tenantTypes}},orderBy:{id:'asc'}}):memberships.map((row:any)=>row.organization);
+  const companies=memberships.map((row:any)=>row.organization);
   return {canCreateCompany:systemAdmin||memberships.some((row:any)=>row.orgRole==='ADMIN'),
     workspaces:[...(systemAdmin?[{key:'system',id:null,name:'SYSTEM',type:'SYSTEM',role:'SYSTEM_ADMIN'}]:[]),
-      ...companies.map((org:any)=>({key:`org:${org.id}`,id:org.id,name:org.name,nameKo:org.nameKo,nameVi:org.nameVi,code:org.code,type:org.type,role:systemAdmin?'ADMIN':memberships.find((row:any)=>row.orgId===org.id)?.orgRole}))]};
+      ...companies.map((org:any)=>({key:`org:${org.id}`,id:org.id,name:org.name,nameKo:org.nameKo,nameVi:org.nameVi,code:org.code,type:org.type,role:memberships.find((row:any)=>row.orgId===org.id)?.orgRole}))]};
 }
 async function gradeForCompany(tx:any,orgId:number){
   const existing=await tx.employeeGrade.findFirst({where:{orgId,isActive:true},orderBy:[{isDefault:'desc'},{sortOrder:'asc'},{id:'asc'}]});

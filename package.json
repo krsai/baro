@@ -2,6 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:system-tenant-login": "npm --prefix backend run build && node --test scripts/system-tenant-login.test.mjs scripts/bank-ledger.test.mjs scripts/auth-background-refresh-regression.test.mjs",
+    "test:system-tenant-login-browser": "node scripts/system-tenant-login-browser.test.mjs",
     "test:auth-company-handoff": "node --test scripts/auth-background-refresh-regression.test.mjs && node scripts/auth-company-handoff-browser.test.mjs",
     "test:bank-ledger": "npm --prefix backend run build && node --test scripts/bank-ledger.test.mjs scripts/access-policy-regression.test.mjs scripts/auth-background-refresh-regression.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/company-bank-browser.test.mjs",
     "test:order-price-highlight": "npm --prefix backend run build && node --test scripts/order-price-highlight.test.mjs scripts/customer-order-price-alert.test.mjs scripts/order-value-regression.test.mjs scripts/sales-price-regression.test.mjs && node scripts/order-price-highlight-browser.test.mjs",

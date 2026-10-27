@@ -121,13 +121,13 @@ test('anonymous workspace lookup is denied and only active memberships appear fo
 test('explicit company login never falls back to a different company or accepts a vendor tenant',async()=>{
  const organization={id:2,name:'DEXS',type:'SERVICE',isActive:true,ownerOrgId:null};
  let status='ACTIVE';
- const db={employee:{findUnique:async({where})=>where.orgId_email.orgId===2?{orgRole:'ACCOUNTANT',status,organization}:null},organization:{findUnique:async()=>organization}};
+ const db={employee:{findUnique:async({where})=>where.orgId_email.orgId===2&&where.orgId_email.email==='staff@example.com'?{orgRole:'ACCOUNTANT',status,organization}:null},organization:{findUnique:async()=>organization}};
  assert.equal((await resolveCompanyWorkspace(db,'staff@example.com',2)).orgRole,'ACCOUNTANT');
  await assert.rejects(resolveCompanyWorkspace(db,'staff@example.com',1),/ACCESS_DENIED/);
  status='SUSPENDED';await assert.rejects(resolveCompanyWorkspace(db,'staff@example.com',2),/ACCESS_DENIED/);
- status='ACTIVE';organization.type='LOGISTICS_PROVIDER';await assert.rejects(resolveCompanyWorkspace(db,'staff@example.com',2,true),/ACCESS_DENIED/);
- organization.type='SERVICE';organization.ownerOrgId=1;await assert.rejects(resolveCompanyWorkspace(db,'staff@example.com',2,true),/ACCESS_DENIED/);
- organization.ownerOrgId=null;assert.equal((await resolveCompanyWorkspace(db,'system@example.com',2,true)).orgRole,'ADMIN');
+ status='ACTIVE';organization.type='LOGISTICS_PROVIDER';await assert.rejects(resolveCompanyWorkspace(db,'staff@example.com',2),/ACCESS_DENIED/);
+ organization.type='SERVICE';organization.ownerOrgId=1;await assert.rejects(resolveCompanyWorkspace(db,'staff@example.com',2),/ACCESS_DENIED/);
+ organization.ownerOrgId=null;await assert.rejects(resolveCompanyWorkspace(db,'system@example.com',2),/ACCESS_DENIED/);
 });
 test('a logistics SaaS registration creates one independent tenant and owner membership, and retries do not clone records',async()=>{
  const companies=[],employees=[],subscriptions=[],registrations=[];
