@@ -17,6 +17,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
+import { captureReportImage } from '../../utils/captureReportImage.mjs';
 
 const TEXT = {
   ko: {
@@ -151,7 +152,7 @@ const groupRowsByOrder = (styleRows) => {
 
 const ReportStatusChip = ({ status: statusKey, languageCode, onClick }) => {
   const status = STATUS[statusKey] || STATUS.UNASSIGNED;
-  return <Chip size="small" label={status[languageCode] || status.en} color={status.color} variant={statusKey === 'COMPLETED' ? 'filled' : 'outlined'} onClick={onClick} sx={{ fontWeight: 400 }} />;
+  return <Chip data-report-status-label size="small" label={status[languageCode] || status.en} color={status.color} variant={statusKey === 'COMPLETED' ? 'filled' : 'outlined'} onClick={onClick} sx={{ fontWeight: 400 }} />;
 };
 
 const ReportProgressCell = ({ percent }) => (
@@ -189,10 +190,7 @@ const CustomerProductionReport = () => {
       // Start the clipboard write during the click gesture; rendering resolves
       // its PNG promise later so browsers can retain user activation.
       const imagePromise = (async () => {
-        const { default: html2canvas } = await import('html2canvas');
-        await document.fonts?.ready;
-        const canvas = await html2canvas(element, { backgroundColor: '#ffffff', scale: 2,
-          width: element.scrollWidth, height: element.scrollHeight, logging: false });
+        const canvas = await captureReportImage(element);
         return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('PNG conversion failed')), 'image/png'));
       })();
       // Observe rendering failure even if clipboard permission rejects first.

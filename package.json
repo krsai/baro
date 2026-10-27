@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:report-image-browser": "node scripts/report-image-browser.test.mjs",
     "test:customer-order-price-alert": "npm --prefix backend run build && node --test scripts/customer-order-price-alert.test.mjs scripts/sales-price-regression.test.mjs scripts/order-value-regression.test.mjs",
     "test:style-list-performance": "npm --prefix backend run build && node --test scripts/style-list-performance.test.mjs scripts/at-source-completion.test.mjs scripts/at-shared-prior.test.mjs",
     "test:pay-type-constraints": "node --test scripts/pay-type-constraints.test.mjs scripts/railway-schema-preflight.test.mjs",
