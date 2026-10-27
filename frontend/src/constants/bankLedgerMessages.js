@@ -34,3 +34,7 @@ Object.assign(bankLedgerMessages.vi.errors,{
 });
 
 for(const lang of ['ko','en','vi'])Object.assign(bankLedgerMessages[lang].errors,ledgerEvidenceErrors[lang],{LEDGER_INVALID_EVIDENCE:ledgerEvidenceText[lang].errors});
+
+bankLedgerMessages.ko.title='\uC785\uCD9C\uAE08';
+bankLedgerMessages.en.title='Transactions';
+bankLedgerMessages.vi.title='Thu chi';

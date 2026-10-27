@@ -99,6 +99,7 @@ const MENU_GROUP_KEYS = {
   RECORDS: 'RECORDS',
   INVENTORY: 'INVENTORY',
   ACCOUNTING: 'ACCOUNTING',
+  ACCOUNTS: 'ACCOUNTS',
   OPERATIONS: 'OPERATIONS',
   ADMIN: 'ADMIN',
   MISC: 'MISC',
@@ -338,6 +339,7 @@ const MainLayout = () => {
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
   const [miscOpen, setMiscOpen] = useState(false);
   const [attributeOpen, setAttributeOpen] = useState(false);
@@ -368,6 +370,7 @@ const MainLayout = () => {
     setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
     setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
     setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
+    setAccountsOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTS);
     setOperationsOpen(menuGroupKey === MENU_GROUP_KEYS.OPERATIONS);
     setAdminOpen(menuGroupKey === MENU_GROUP_KEYS.ADMIN);
     setMiscOpen(menuGroupKey === MENU_GROUP_KEYS.MISC);
@@ -394,7 +397,8 @@ const MainLayout = () => {
   }, [currentPath]);
 
   useEffect(() => {
-    if (['/bank-ledger','/invoices', '/outsourcing-record', '/payroll'].some(path => currentPath === path || currentPath.startsWith(`${path}/`))) {
+    if(currentPath==='/bank-ledger'||currentPath.startsWith('/bank-ledger/')){setExpandedMenuGroup(MENU_GROUP_KEYS.ACCOUNTS);return;}
+    if (['/invoices', '/outsourcing-record', '/payroll'].some(path => currentPath === path || currentPath.startsWith(`${path}/`))) {
       setExpandedMenuGroup(MENU_GROUP_KEYS.ACCOUNTING);
       return;
     }
@@ -730,7 +734,7 @@ const MainLayout = () => {
             icon: <ListAltIcon />,
             path: '/invoices',
           },
-          {label:getUiMessage('menu.bankLedger','Bank transactions',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/bank-ledger'},
+
           {
             label: getUiMessage('menu.outsourcingRecord', '\uBE44\uC6A9 \uC2E0\uCCAD', languageCode),
             icon: <HistoryIcon />,
@@ -743,6 +747,7 @@ const MainLayout = () => {
           },
         ],
       },
+      {label:getUiMessage('menu.accountManagement','Account management',languageCode),icon:<AccountBalanceWalletIcon/>,isParent:true,menuGroupKey:MENU_GROUP_KEYS.ACCOUNTS,isOpen:accountsOpen,children:[{label:getUiMessage('menu.bankLedger','Transactions',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/bank-ledger'}]},
       {
         label: getUiMessage('menu.organization', '\uC870\uC9C1 \uAD00\uB9AC', languageCode),
         icon: <OrganizationIcon />,
@@ -911,6 +916,7 @@ const MainLayout = () => {
     ], languageCode, key => getUiMessage(key, key, languageCode));
   }, [
     accountingOpen,
+    accountsOpen,
     adminOpen,
     attributeOpen,
     inventoryOpen,

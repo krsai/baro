@@ -8,8 +8,8 @@ import {ENTITY_TEXT} from '../frontend/src/constants/entityProfile.js';
 import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.js';
 const fixture=path.resolve('frontend/business-accounts-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import{MemoryRouter}from'react-router-dom';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Accounts from'/src/components/EntityBankAccounts.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';import Approval from'/src/components/ExpenseApprovalActions.jsx';
-const p=new URLSearchParams(location.search);createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')}))));</script></body></html>`);
+import React from 'react';import{MemoryRouter,useLocation,useNavigate}from'react-router-dom';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Accounts from'/src/components/EntityBankAccounts.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';import Approval from'/src/components/ExpenseApprovalActions.jsx';import Entry from'/src/pages/App/BankLedgerEntry.jsx';
+const p=new URLSearchParams(location.search);function Screen(){window.testNavigate=useNavigate();const loc=useLocation();return loc.pathname==='/bank-ledger/new'?React.createElement(Entry):p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')});}createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Screen))));</script></body></html>`);
 const port=43254,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/business-accounts-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -17,7 +17,7 @@ try{
  for(const lang of ['ko','en','vi']){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],writes=[],labels=ENTITY_TEXT[lang],money=bankLedgerMessages[lang];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeProfile:{orgRole:'ADMIN',orgName:'Company'}});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const a={setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const a={setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{},navigateToPath:path=>window.testNavigate(path)};export const useAppActions=()=>a;`}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   const currencies=[{id:1,code:'VND'},{id:2,code:'USD'},{id:3,code:'KRW'}];let accounts=[1,1,2,3].map((currencyId,index)=>({id:'a'+index,displayName:'Cash '+index,accountKind:'CASH',currencyId,currency:currencies.find(c=>c.id===currencyId),ledgerAccounts:[]}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
@@ -53,7 +53,7 @@ try{
   assert.equal(await page.getByRole('button',{name:money.refresh,exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:money.members,exact:true}).count(),0);
   await page.route('**/bank-ledger/accounts/entity:*/entries?*',r=>{const body=r.request().postDataJSON();posts.push(body);return r.fulfill({headers,status:201,json:{id:'saved'}});});
   await page.getByRole('button',{name:money.addEntry,exact:true}).click();
-  const entryDialog=page.getByRole('dialog');await entryDialog.getByLabel(money.amount).first().fill('10');await entryDialog.getByLabel(money.purpose).fill('Receipt');
+  const entryDialog=page.locator('main').filter({has:page.getByLabel(et.type,{exact:true})});await entryDialog.getByLabel(money.amount).first().fill('10');await entryDialog.getByLabel(money.purpose).fill('Receipt');
   assert.equal(await entryDialog.getByLabel(et.reference).getAttribute('required'),'');await entryDialog.getByLabel(et.reference).fill('scan-001.pdf');
   await entryDialog.getByRole('button',{name:money.save,exact:true}).click();await entryDialog.waitFor({state:'hidden'});assert.equal('openingBalance' in posts.at(-1),false);assert.equal(posts.at(-1).evidenceType,'FILE');
   await page.getByRole('button',{name:money.addEntry,exact:true}).click();await entryDialog.getByLabel(et.type,{exact:true}).click();await page.getByRole('option',{name:et.INVOICE,exact:true}).click();assert.equal(await entryDialog.getByLabel(et.invoice).count(),1);assert.equal(await entryDialog.getByLabel(et.fee).count(),1);
