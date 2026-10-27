@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import {Alert,Box,Button,Checkbox,Typography} from '@mui/material';
+import {Alert,Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchableSelect from '../../../components/SearchableSelect';
 import { useAuth } from '../../../context/AuthContext';
@@ -33,6 +33,8 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   const {languageCode}=useLanguage(),t=invoiceMessages[languageCode]||invoiceMessages.en;
   const [customers,setCustomers]=useState([]),[customer,setCustomer]=useState(null),[customersLoading,setCustomersLoading]=useState(false),[customersError,setCustomersError]=useState(false);
   const [orders,setOrders]=useState([]),[chosen,setChosen]=useState([]),[search,setSearch]=useState(''),[page,setPage]=useState(0),[hasMore,setHasMore]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState(false),[reload,setReload]=useState(0);
+  const [orderModal,setOrderModal]=useState(false),[pendingChosen,setPendingChosen]=useState([]);
+  const modalText=languageCode==='ko'?{apply:'선택 적용',cancel:'취소',oldest:'오래된 주문부터 표시'}:languageCode==='vi'?{apply:'Áp dụng',cancel:'Hủy',oldest:'Đơn hàng cũ nhất trước'}:{apply:'Apply selection',cancel:'Cancel',oldest:'Oldest orders first'};
   const pendingOrders=React.useRef(false);
   const orderIds=React.useMemo(()=>chosen.map(order=>order.orderId),[chosen]);
   useEffect(()=>{
@@ -55,12 +57,18 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       <SearchableSelect label={t.customer} options={customers} value={customer} loading={customersLoading} disabled={disabled||!activeOrgId} autoSelect={false}
         isOptionEqualToValue={(option,value)=>option.id===value.id} getOptionLabel={option=>(languageCode==='ko'?option.nameKo:languageCode==='vi'?option.nameVi:option.name)||option.name||''} noOptionsText={t.noCustomers}
         onChange={(_event,value)=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>{setCustomer(value);setChosen([]);setOrders([]);setSearch('');setPage(0);setHasMore(false);setError(false);});}}/>
-      <SearchableSelect multiple disableCloseOnSelect limitTags={2} label={t.orders} options={[...new Map([...chosen,...orders].map(order=>[order.orderId,order])).values()]} value={chosen} disabled={disabled||!customer} loading={loading} autoSelect={false}
-        filterOptions={options=>options.filter(option=>orders.some(order=>order.orderId===option.orderId))} isOptionEqualToValue={(option,value)=>option.orderId===value.orderId} getOptionLabel={option=>option.orderNumber||option.orderId}
-        onInputChange={(_event,value,reason)=>{if(reason==='input'||reason==='clear'){setSearch(value);setPage(0);}}}
-        onChange={(_event,value)=>requestChange(()=>{setChosen(value);setSearch('');setPage(0);})}
-        renderOption={(props,order,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox size="small" checked={selected} sx={{mr:1,p:.5}}/><Box sx={{flex:1}}><Typography variant="body2">{order.orderNumber}</Typography><Typography variant="caption" color="text.secondary">{order.totalQuantity??'-'} pcs{order.progressPercent==null?'':` ? ${order.progressPercent.toFixed(1)}%`}</Typography></Box></li>;}}
-        slotProps={{listbox:{style:{maxHeight:280},onScroll:event=>{const node=event.currentTarget;if(hasMore&&!pendingOrders.current&&node.scrollTop+node.clientHeight>=node.scrollHeight-24){pendingOrders.current=true;setPage(value=>value+1);}}}}}/>
+      <Button variant="outlined" disabled={disabled||!customer} onClick={()=>{setPendingChosen(chosen);setOrderModal(true);setSearch('');setPage(0);}}>{t.orders}{chosen.length ? ': '+chosen.map(order=>order.orderNumber).join(', ') : ''}</Button>
+      <Dialog open={orderModal} onClose={()=>setOrderModal(false)} fullWidth maxWidth="md">
+        <DialogTitle>{t.orders}<Typography variant="caption" display="block">{modalText.oldest}</Typography></DialogTitle>
+        <DialogContent dividers>
+          <TextField fullWidth size="small" label={t.search} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} sx={{mb:2}}/>
+          <Stack spacing={1}>{orders.map(order=>{const selected=pendingChosen.some(row=>row.orderId===order.orderId);return <Button key={order.orderId} variant={selected?'contained':'outlined'} aria-pressed={selected} onClick={()=>setPendingChosen(rows=>selected?rows.filter(row=>row.orderId!==order.orderId):[...rows,order])} sx={{justifyContent:'flex-start'}}><Checkbox checked={selected} tabIndex={-1} sx={{color:'inherit','&.Mui-checked':{color:'inherit'}}}/>{order.orderNumber} / {order.totalQuantity??'-'} PCS</Button>;})}</Stack>
+          {!loading&&!orders.length&&<Typography>{t.empty}</Typography>}
+          {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
+          {hasMore&&<Button disabled={loading} onClick={()=>setPage(value=>value+1)}>{t.next}</Button>}
+        </DialogContent>
+        <DialogActions><Button onClick={()=>setOrderModal(false)}>{modalText.cancel}</Button><Button disabled={disabled} onClick={()=>{if(chosen.length===pendingChosen.length&&chosen.every(order=>pendingChosen.some(row=>row.orderId===order.orderId))){setOrderModal(false);return;}requestChange(()=>{setChosen(pendingChosen);setOrderModal(false);});}}>{modalText.apply}</Button></DialogActions>
+      </Dialog>
     </Box>
     {(customersError||error)&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{customersError?t.customersFailed:t.failed}</Alert>}
   </>;

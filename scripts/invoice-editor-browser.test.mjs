@@ -41,9 +41,9 @@ try{
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
   const grid=page.locator('fieldset table').first();
   assert.equal(await grid.locator('tbody tr').count(),1);assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),1);assert.equal(await grid.getByRole('columnheader',{name:'M',exact:true}).count(),1);
-  assert.match(await grid.innerText(),/USD 2.00/);assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
+  assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').inputValue(),'2');await grid.locator('input[inputmode="decimal"]').fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
-  await page.locator('input[aria-label*="item1:S"]').fill('9');
+  await page.locator('input[aria-label*="item1:S"]:not([inputmode="decimal"])').fill('9');
   await page.locator('textarea[aria-label^="Remark "]').fill('One missing piece');
   await review.check();assert.equal(await issue.isEnabled(),true);
   await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
@@ -56,7 +56,7 @@ try{
   await page.waitForFunction(()=>window.issuedEditor===true);
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
-  assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.doesNotMatch(saves[0].fields.number,/DRAFT/);
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.doesNotMatch(saves[0].fields.number,/DRAFT/);
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ['ko','en','vi']){
@@ -113,13 +113,15 @@ try{
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=workspace`);
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.locator('table').count(),0);
   await page.getByRole('combobox').nth(0).click();await page.getByRole('option',{name:'Customer',exact:true}).click();
-  const orders=page.getByRole('combobox').nth(1);await orders.click();await page.getByRole('option',{name:/PO-1/}).waitFor();await orders.press('ArrowDown');await orders.press('Enter');await page.keyboard.press('Escape');
+  const orders=page.getByRole('button',{name:/^(청구 대상 주문|Orders to invoice|Đơn hàng cần lập hóa đơn)/});
+  const apply=()=>page.getByRole('button',{name:lang==='ko'?'선택 적용':lang==='vi'?'Áp dụng':'Apply selection',exact:true}).click();
+  await orders.click();await page.getByRole('dialog').getByRole('button',{name:/PO-1/}).click();await apply();
   await page.getByLabel('REMARK',{exact:true}).waitFor();await page.getByLabel('REMARK',{exact:true}).fill('Keep this input');
-  await orders.click();await page.getByRole('option',{name:/PO-2/}).click();await page.keyboard.press('Escape');
+  await orders.click();await page.getByRole('dialog').getByRole('button',{name:/PO-2/}).click();await apply();
   assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Keep this input','Rejected selection change must preserve entered lines');
-  allowDiscard=true;await orders.click();await page.getByRole('option',{name:/PO-2/}).click();await page.keyboard.press('Escape');
+  allowDiscard=true;await apply();
   await page.waitForFunction(()=>document.querySelectorAll('fieldset table').length>0&&[...document.querySelectorAll('fieldset table:first-of-type tbody tr')].some(row=>row.textContent.includes('PO-2')));
-  assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
+  await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await page.locator('h1').count(),1);
   assert.equal(await page.getByRole('button',{name:lang==='ko'?'청구 내역 입력':lang==='vi'?'Nhập chi tiết hóa đơn':'Enter invoice details',exact:true}).count(),0);
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   assert.deepEqual(errors,[]);await page.close();

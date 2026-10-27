@@ -69,14 +69,16 @@ export function calculateInvoiceDraft(source, lines, pricingBasis, currencyCode)
     const list = style?.prices.find((list) => list.pricingBasis === pricingBasis && list.currencyCode === currencyCode);
     const entries = [...(list?.entries || [])].sort((a, b) => a.quantity - b.quantity);
     const entry = entries.filter((entry) => entry.quantity <= styleQuantity).at(-1) || entries[0];
-    const price = parsePrice(entry?.unitPrice);
+    const manual = line.unitPriceOverride !== undefined;
+    const unitPrice = manual ? line.unitPriceOverride : entry?.unitPrice;
+    const price = parsePrice(unitPrice);
     if (q > 0 && price == null) issues.push('PRICE');
     // Integer decimal arithmetic, round half up per line in the selected currency.
     const divisor = 10n ** BigInt(4 - Math.min(4, digits));
     const amount = q != null && price != null ? (price * BigInt(q) + divisor / 2n) / divisor : null;
     if (q > 0 && amount != null) total += amount;
-    return { ...line, quantity: q, unitPrice: entry?.unitPrice ?? null,
-      bucketQuantity: entry?.quantity ?? null, priceId: entry?.priceId ?? null,
+    return { ...line, quantity: q, unitPrice: unitPrice ?? null,
+      bucketQuantity: entry?.quantity ?? null, priceId: manual ? null : entry?.priceId ?? null,
       versionId: list?.versionId ?? null,
       amount: amount == null ? null : formatMinor(amount, digits) };
   });

@@ -71,7 +71,9 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
     const entries = [...(list?.entries || [])].sort((a: any, b: any) => a.quantity - b.quantity);
     const styleQuantity = quantities.get(styleKey) || 0;
     const entry = entries.filter((row: any) => row.quantity <= styleQuantity).at(-1) || entries[0];
-    const priceMinor = parsePriceMinor(entry?.unitPrice);
+    const manual = input.unitPriceOverride !== undefined;
+    const unitPrice = manual ? input.unitPriceOverride : entry?.unitPrice;
+    const priceMinor = parsePriceMinor(unitPrice);
     if (quantity > 0 && priceMinor == null) fail("INVOICE_ISSUE_PRICE_MISSING");
     const amountMinor = priceMinor == null ? 0n : (priceMinor * BigInt(quantity) + divisor / 2n) / divisor;
     orderMinor.set(source.orderId, (orderMinor.get(source.orderId) || 0n) + amountMinor);
@@ -79,7 +81,7 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
       lineKey: input.key, styleId: source.styleId ?? null, styleCode: source.styleCode || "",
       styleName: source.description || "", description: source.description || "", color: source.color || "",
       gender: source.gender || "", size: source.size || "", quantity, bucketQuantity: entry?.quantity ?? 0,
-      unitPrice: entry?.unitPrice ?? "0", amount: decimal(amountMinor, digits), priceId: entry?.priceId ?? null,
+      unitPrice: priceMinor == null ? "0" : unitPrice, amount: decimal(amountMinor, digits), priceId: manual ? null : entry?.priceId ?? null,
       bucketVersionId: list?.versionId ?? null, remark: input.remark || "", adjustmentReason: input.adjustmentReason || "",
       hsCode: input.hsCode || "", origin: input.origin || "" };
   });
@@ -369,7 +371,7 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
       settlements: Object.fromEntries(invoice.orders.map((row: any) => [row.sourceOrderId, {
         deduction: String(row.appliedDeductionAmount), reason: row.deductionReason || "",
       }])),
-      lines: invoice.lines.map((line: any) => ({ key: line.lineKey, quantity: String(line.quantity), remark: line.remark || "",
+      lines: invoice.lines.map((line: any) => ({ key: line.lineKey, quantity: String(line.quantity), unitPriceOverride: String(line.unitPrice), remark: line.remark || "",
         adjustmentReason: line.adjustmentReason || "", hsCode: line.hsCode || "", origin: line.origin || "" })),
     };
     const draft = await tx.invoiceDraft.create({ data: { sellerOrgId, buyerOrgId: invoice.buyerOrgId, clientKey,

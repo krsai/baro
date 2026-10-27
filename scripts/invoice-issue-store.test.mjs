@@ -53,6 +53,20 @@ const content = {
   ],
 };
 
+test('manual prices override master tiers, retain exact decimals and reject invalid input', () => {
+  const sources = [source('o1', 'A', '1'), source('o2', 'B', '2')];
+  sources[0].styles[0].prices = [];
+  const edited = { ...content, lines: content.lines.map(line => ({ ...line, unitPriceOverride: '2.3456' })) };
+  const result = calculateInvoiceIssueSnapshot(edited, sources);
+  assert.equal(result.lines[0].unitPrice, '2.3456');
+  assert.equal(result.lines[0].amount, '7.04');
+  assert.equal(result.lines[0].priceId, null);
+  assert.equal(result.subtotal, '14.08');
+  for (const value of ['', '0', '-1', '1.23456', 'abc']) {
+    assert.throws(() => calculateInvoiceIssueSnapshot({ ...edited, lines: edited.lines.map(line => ({ ...line, unitPriceOverride: value })) }, sources), /PRICE_MISSING/);
+  }
+});
+
 test('issued snapshot prices each order independently and stores per-order settlement amounts', () => {
   const result = calculateInvoiceIssueSnapshot(content, [source('o1', 'A', '1.2345'), source('o2', 'B', '2.0000')]);
   assert.equal(result.subtotal, '9.70');

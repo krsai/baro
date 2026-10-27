@@ -23,6 +23,14 @@ test('one note satisfies adjustment verification without changing original size 
  const result=calculateInvoiceDraft(source,edited,'MANUFACTURING_SERVICE_PRICE','USD');
  assert.deepEqual(result.issues,[]);assert.equal(result.lines[0].key,'item1:M');assert.equal(result.lines[0].hsCode,'6203');assert.equal(result.lines[0].origin,'VN');assert.equal(result.total,'23.46');
 });
+test('manual prices work without master prices and agree with issued per-line rounding',()=>{
+ const source={ready:true,styles:[]};
+ const lines=[row('M',{unitPriceOverride:'2.3456'}),row('L',{unitPriceOverride:'2.3456'})];
+ const result=calculateInvoiceDraft(source,lines,'MANUFACTURING_SERVICE_PRICE','USD');
+ assert.deepEqual(result.issues,[]);assert.equal(result.total,'46.92');assert.equal(result.lines[0].priceId,null);
+ for(const value of ['', '0', '-1', '1.23456'])assert.ok(calculateInvoiceDraft(source,[row('M',{unitPriceOverride:value})],'MANUFACTURING_SERVICE_PRICE','USD').issues.includes('PRICE'));
+});
+
 test('currency display preserves four-decimal prices and exact grouped totals',()=>{
  assert.equal(formatInvoiceMoney('1.8','USD'),'USD 1.80');assert.equal(formatInvoiceMoney('1.2345','USD'),'USD 1.2345');
  assert.equal(formatInvoiceMoney('20000','VND'),'VND 20,000');assert.equal(formatInvoiceMoney(null,'USD'),'—');

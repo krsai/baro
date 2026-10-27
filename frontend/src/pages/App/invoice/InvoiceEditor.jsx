@@ -1,6 +1,6 @@
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Checkbox, CircularProgress, Accordion, AccordionSummary, AccordionDetails, Paper, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead,
+import { Alert, Box, Button, Checkbox, CircularProgress, Accordion, AccordionSummary, AccordionDetails, Paper, FormControlLabel, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import ExpandMore from '@mui/icons-material/ExpandMore';
@@ -32,7 +32,7 @@ const messages = {
       "PRODUCTION": "완료되지 않았거나 생산 근거 확인이 필요한 스타일/배정이 있습니다.",
       "QUANTITY": "수량은 0 이상의 정수로 입력하세요.",
       "REASON": "주문 수량과 달라진 행에는 변경 사유가 필요합니다.",
-      "PRICE": "해당 통화·CMT/FP·수량 구간의 활성 단가가 없습니다. 고객 단가표를 확인하세요.",
+      "PRICE": "단가는 0보다 큰 숫자로 소수 넷째 자리까지 입력하세요.",
       "EMPTY": "청구 수량이 없습니다.",
       "CURRENCY": "통화를 선택하세요.",
       "DEDUCTION": "차감액은 이번 기준액 이하의 유효한 금액이어야 합니다.",
@@ -57,7 +57,7 @@ const messages = {
       "PRODUCTION": "Some styles/assignments are incomplete or require production review.",
       "QUANTITY": "Enter a nonnegative integer quantity.",
       "REASON": "Explain each quantity adjustment.",
-      "PRICE": "No active price for this currency, basis or quantity tier. Check customer prices.",
+      "PRICE": "Enter a positive unit price with up to four decimal places.",
       "EMPTY": "No quantity to invoice.",
       "CURRENCY": "Select a currency.",
       "DEDUCTION": "Deduction must be valid and no greater than the current amount.",
@@ -82,7 +82,7 @@ const messages = {
       "PRODUCTION": "Có mã hàng/phân công chưa hoàn thành hoặc cần kiểm tra.",
       "QUANTITY": "Nhập số nguyên không âm.",
       "REASON": "Cần lý do điều chỉnh số lượng.",
-      "PRICE": "Không có đơn giá hiện hành phù hợp. Kiểm tra bảng giá khách hàng.",
+      "PRICE": "Nhập đơn giá lớn hơn 0, tối đa bốn chữ số thập phân.",
       "EMPTY": "Chưa có số lượng xuất hóa đơn.",
       "CURRENCY": "Chọn tiền tệ.",
       "DEDUCTION": "Khoản khấu trừ phải hợp lệ và không vượt quá số tiền hiện tại.",
@@ -157,7 +157,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         }
         const prices = data.styles.flatMap((style) => style.prices);
         const first = prices.find((p) => p.pricingBasis === INVOICE_BASES[0].value && p.currencyCode === 'USD') || prices[0];
-        setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || data.currencies?.[0] || '');
+        setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || data.currencies?.[0] || 'USD');
         const date = new Date().toLocaleDateString('sv-SE');
         setFields({ number: data.orderNumber, date, seller: data.seller, buyer: data.buyer,
           shipTo: [data.buyer.name, data.buyer.address, data.buyer.country].filter(Boolean).join('\n'),
@@ -168,7 +168,6 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, reload, t.load, storageText.sourceChanged]);
-  const currencies = source?.currencies || [];
   const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
   const itemGrid = useMemo(() => invoiceItemGrid(calculation?.lines || []), [calculation]);
@@ -242,14 +241,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
             <TextField size="small" label={ui.number} value={fields.number} onChange={e=>changeField('number',e.target.value)} inputProps={{maxLength:200}}/>
           </Box>
           <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
-          <Stack direction="row" spacing={2}>
-            <TextField select size="small" label={t.scope} value={basis} onChange={(e) => { changeBilling(setBasis, e.target.value); setCurrency(''); }} sx={{ minWidth: 140 }}>
-              {INVOICE_BASES.map((b) => <MenuItem key={b.value} value={b.value}>{b.label}</MenuItem>)}
-            </TextField>
-            <TextField select size="small" label={t.currency} value={currency} onChange={(e) => { const next = e.target.value; changeBilling(setCurrency, next); setSettlements(Object.fromEntries(source.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[next]?.defaultDeductionAmount || '', reason: '' }]))); }} sx={{ minWidth: 140 }}>
-              <MenuItem value="">—</MenuItem>{currencies.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-            </TextField>
-          </Stack>
+
           <Typography component="h2" variant="subtitle2">{ui.details} · {itemGrid.rows.length}</Typography>
           <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 1100 }}><TableHead><TableRow>
             {[itemText.order, itemText.style, itemText.color].map(label => <TableCell key={label}>{label}</TableCell>)}
@@ -272,7 +264,10 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
                 </> : '—'}</TableCell>;
               })}
               <TableCell>{group.lines.every(line => line.quantity != null) ? group.lines.reduce((sum, line) => sum + line.quantity, 0) : '—'}</TableCell>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(first.unitPrice, currency)}<Typography variant="caption" display="block">{first.bucketQuantity == null ? '' : `≥ ${first.bucketQuantity} PCS`}</Typography></TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}><TextField size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride ?? first.unitPrice ?? ''}
+                inputProps={{ 'aria-label': t.price + ' ' + first.key, inputMode: 'decimal', maxLength: 32 }}
+                InputProps={{ startAdornment: <Typography sx={{ mr: 1 }}>{currency}</Typography> }}
+                onChange={e => { if (saving || uncertain) return; const keys = new Set(group.lines.map(line => line.key)); const value=e.target.value; setLines(previous => previous.map(line => keys.has(line.key) ? { ...line, unitPriceOverride: value } : line)); setReviewed(false); setDirty(true); }} sx={{ minWidth: 160 }} /></TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(sumInvoiceAmounts(group.lines.map(line => line.quantity === 0 ? '0' : line.amount)), currency)}</TableCell>
               <TableCell><TextField size="small" multiline value={group.note} label={itemText.note}
                 helperText={changed ? itemText.hint : undefined} required={changed}

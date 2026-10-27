@@ -35,6 +35,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   const lines = body.lines.map((row: any) => ({
     ...pickText(row, ["key", "remark", "adjustmentReason", "hsCode", "origin"]),
     quantity: text(row.quantity, 32),
+    ...(row.unitPriceOverride !== undefined ? { unitPriceOverride: text(row.unitPriceOverride, 32) } : {}),
   }));
   if (new Set(lines.map((row: any) => row.key)).size !== lines.length) return bad();
   const fields = { ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),

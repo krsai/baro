@@ -10,6 +10,7 @@ export function restoreInvoiceDraftLines(content, source) {
     const edit = edits.get(row.key);
     // Identity, quantities ordered, production and price sources come from the server.
     return { ...row, quantity: edit.quantity, remark: edit.remark, adjustmentReason: edit.adjustmentReason,
+      ...(edit.unitPriceOverride !== undefined ? { unitPriceOverride: edit.unitPriceOverride } : {}),
       hsCode: edit.hsCode, origin: edit.origin };
   });
 }

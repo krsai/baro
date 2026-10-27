@@ -29401,7 +29401,7 @@ app.get("/invoices/orders", async (req, res) => {
       ...(search ? { orderNumber: { contains: search, mode: "insensitive" as const } } : {}),
       ...(billingHistory === "NONE" ? { invoiceOrders: { none: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } }
         : billingHistory === "EXISTS" ? { invoiceOrders: { some: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } } : {}) },
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: page * 50, take: 51,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: page * 50, take: 51,
     select: { id: true, orderId: true, orderNumber: true, totalQuantity: true, dueDate: true,
       workOrderItems: true, priorCompletions: { where: { canceledAt: null } },
       buyerOrg: { select: { id: true, name: true } } },
