@@ -15,6 +15,15 @@ test('legacy notes/reasons are both visible and typing retains spaces and a stab
  const edited=invoiceItemGrid(lines.map(l=>({...l,remark:'reason with ',adjustmentReason:'reason with '}))).rows[0];
  assert.equal(edited.key,first.key);assert.equal(edited.note,'reason with ');
 });
+
+test('size columns use apparel and numeric order while rows keep order/style/color groups together',()=>{
+ const lines=['L','M','FREE','S','XL','2XL','XS','3XL','4XL','120','100'].map(size=>row(size));
+ assert.deepEqual(invoiceItemGrid(lines).sizes,['XS','S','M','L','XL','2XL','3XL','4XL','FREE','100','120']);
+ const rows=[row('M',{itemId:2,gender:'W'}),row('M',{itemId:3,color:'White'}),row('M',{itemId:4,styleId:20}),row('M',{itemId:5,orderId:'o2'}),row('M',{itemId:1})];
+ const before=JSON.stringify(rows);
+ assert.deepEqual(invoiceItemGrid(rows).rows.map(group=>group.lines[0].itemId),[1,2,3,4,5]);
+ assert.equal(JSON.stringify(rows),before);
+});
 test('one note satisfies adjustment verification without changing original size keys or hidden historical fields',()=>{
  const lines=[row('M',{quantity:'9',hsCode:'6203',origin:'VN'}),row('L')];
  const source={ready:true,styles:[{styleId:10,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'1.2345'}]}]}]};

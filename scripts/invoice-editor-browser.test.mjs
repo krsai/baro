@@ -16,7 +16,7 @@ const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of [['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save']]){
+ for(const [lang,failure] of [['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save']]){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -25,7 +25,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',r=>{
    const request=r.request(),url=new URL(request.url());if(request.method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(url.pathname.includes('order-source')){reads.push(url.pathname);return r.fulfill({headers,json:source});}
+   if(url.pathname.includes('order-source')){reads.push(url.pathname);return r.fulfill({headers,json:failure==='layout'?{...source,lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:source});}
    if(request.method()==='POST'&&url.pathname.endsWith('/drafts')){
     saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
    }
@@ -40,6 +40,21 @@ try{
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
   const grid=page.locator('fieldset table').first();
+  assert.equal(await grid.getByRole('columnheader',{name:lang==='ko'?'성별':lang==='vi'?'Giới tính':'Gender',exact:true}).count(),1);
+  assert.deepEqual((await grid.locator('thead th').allTextContents()).slice(0,6),failure==='layout'?['주문','스타일명','색상','성별','XS','S']:lang==='ko'?['주문','스타일명','색상','성별','S','M']:lang==='vi'?['Đơn hàng','Tên mẫu','Màu sắc','Giới tính','S','M']:['Order','Style name','Color','Gender','S','M']);
+  assert.equal(await grid.locator('tbody td').first().evaluate(cell=>getComputedStyle(cell).whiteSpace),'nowrap');
+  assert.equal(await grid.locator('thead th').first().evaluate(cell=>getComputedStyle(cell).position),'sticky');
+  if(failure==='layout'){
+   assert.deepEqual((await grid.locator('thead th').allTextContents()).slice(4,13),['XS','S','M','L','XL','2XL','3XL','4XL','FREE']);
+   for(const width of [1920,1720,1366,768,390]){
+    await page.setViewportSize({width,height:1000});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+    const dimensions=await grid.locator('input[inputmode="numeric"]').first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
+    assert.ok(dimensions.input<=dimensions.cell&&dimensions.cell>=59&&dimensions.cell<=90,JSON.stringify(dimensions));
+    if(width===1720)await page.screenshot({path:path.join(process.env.TEMP||'/tmp','baro-invoice-layout.png')});
+   }
+   assert.deepEqual(errors,[]);await page.close();continue;
+  }
   assert.equal(await grid.locator('tbody tr').count(),1);assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),1);assert.equal(await grid.getByRole('columnheader',{name:'M',exact:true}).count(),1);
   assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').inputValue(),'2');await grid.locator('input[inputmode="decimal"]').fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);

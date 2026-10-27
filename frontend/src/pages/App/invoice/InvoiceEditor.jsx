@@ -172,9 +172,9 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
   const itemGrid = useMemo(() => invoiceItemGrid(calculation?.lines || []), [calculation]);
   const draftLinesByKey = useMemo(() => new Map(lines.map(line => [line.key, line])), [lines]);
-  const itemText = languageCode === 'ko' ? { order: '주문', style: '스타일명', color: '색상', note: 'Remark', hint: '수량 변경 사유를 함께 적어 주세요.' }
-    : languageCode === 'vi' ? { order: 'Đơn hàng', style: 'Tên mẫu', color: 'Màu sắc', note: 'Remark', hint: 'Ghi rõ lý do thay đổi số lượng.' }
-    : { order: 'Order', style: 'Style name', color: 'Color', note: 'Remark', hint: 'Include the reason for quantity changes.' };
+  const itemText = languageCode === 'ko' ? { order: '주문', style: '스타일명', color: '색상', gender: '성별', note: 'Remark', hint: '수량 변경 사유를 함께 적어 주세요.' }
+    : languageCode === 'vi' ? { order: 'Đơn hàng', style: 'Tên mẫu', color: 'Màu sắc', gender: 'Giới tính', note: 'Remark', hint: 'Ghi rõ lý do thay đổi số lượng.' }
+    : { order: 'Order', style: 'Style name', color: 'Color', gender: 'Gender', note: 'Remark', hint: 'Include the reason for quantity changes.' };
   const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
   const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
   const changeLine = (key, property, value) => {
@@ -243,36 +243,38 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
 
           <Typography component="h2" variant="subtitle2">{ui.details} · {itemGrid.rows.length}</Typography>
-          <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 1100 }}><TableHead><TableRow>
-            {[itemText.order, itemText.style, itemText.color].map(label => <TableCell key={label}>{label}</TableCell>)}
+          <Box sx={{ overflow: 'auto', maxHeight: 'max(320px, calc(100dvh - 360px))', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 880 + itemGrid.sizes.length * 60, '& .MuiTableCell-root': { px: 1, py: 1, verticalAlign: 'middle' }, '& .MuiTableCell-head': { whiteSpace: 'nowrap' }, '& input': { px: 0.75, py: 1, fontSize: '0.8125rem' } }}>
+            <colgroup>{[80, 110, 110, 60, ...itemGrid.sizes.map(() => 60), 80, 120, 140, 180].map((width, index) => <col key={index} style={{ width }} />)}</colgroup><TableHead><TableRow>
+            {[itemText.order, itemText.style, itemText.color, itemText.gender].map((label, index) => <TableCell key={label} align={index === 3 ? 'center' : 'left'}>{label}</TableCell>)}
             {itemGrid.sizes.map(size => <TableCell key={`size:${size}`} align="center">{size}</TableCell>)}
-            {[t.quantity, t.price, t.amount, itemText.note].map(label => <TableCell key={label}>{label}</TableCell>)}
+            {[t.quantity, t.price, t.amount, itemText.note].map((label, index) => <TableCell key={label} align={index < 3 ? 'right' : 'left'}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{itemGrid.rows.map(group => {
             const first = group.lines[0];
             const changed = group.lines.some(line => line.quantity !== line.orderedQuantity);
             return <TableRow key={group.key}>
-              <TableCell>{first.orderNumber}</TableCell>
-              <TableCell>{first.description || first.styleCode || '—'}</TableCell>
-              <TableCell>{first.color || '—'}{first.gender && <Typography variant="caption" display="block">{first.gender}</Typography>}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{first.orderNumber}</TableCell>
+              <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.description || first.styleCode || '—'}</TableCell>
+              <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.color || '—'}</TableCell>
+              <TableCell align="center">{first.gender || '—'}</TableCell>
               {itemGrid.sizes.map(size => {
                 const line = group.lines.find(row => (row.size || '—') === size);
                 return <TableCell key={size} align="center">{line ? <>
                   <TextField size="small" value={draftLinesByKey.get(line.key)?.quantity ?? ''}
-                    inputProps={{ inputMode: 'numeric', 'aria-label': `${t.quantity} ${line.key}` }}
-                    onChange={e => changeLine(line.key, 'quantity', e.target.value)} sx={{ width: 80 }} />
-                  <Typography variant="caption" display="block" color="text.secondary">{t.ordered} {line.orderedQuantity}</Typography>
+                    inputProps={{ inputMode: 'numeric', 'aria-label': `${t.quantity} ${line.key}`, style: { textAlign: 'right' } }}
+                    onChange={e => changeLine(line.key, 'quantity', e.target.value)} fullWidth />
+                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.25, whiteSpace: 'nowrap', fontSize: '0.65rem' }}>{t.ordered} {line.orderedQuantity}</Typography>
                 </> : '—'}</TableCell>;
               })}
-              <TableCell>{group.lines.every(line => line.quantity != null) ? group.lines.reduce((sum, line) => sum + line.quantity, 0) : '—'}</TableCell>
+              <TableCell align="right">{group.lines.every(line => line.quantity != null) ? group.lines.reduce((sum, line) => sum + line.quantity, 0) : '—'}</TableCell>
               <TableCell sx={{ whiteSpace: 'nowrap' }}><TextField size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride ?? first.unitPrice ?? ''}
-                inputProps={{ 'aria-label': t.price + ' ' + first.key, inputMode: 'decimal', maxLength: 32 }}
-                InputProps={{ startAdornment: <Typography sx={{ mr: 1 }}>{currency}</Typography> }}
-                onChange={e => { if (saving || uncertain) return; const keys = new Set(group.lines.map(line => line.key)); const value=e.target.value; setLines(previous => previous.map(line => keys.has(line.key) ? { ...line, unitPriceOverride: value } : line)); setReviewed(false); setDirty(true); }} sx={{ minWidth: 160 }} /></TableCell>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(sumInvoiceAmounts(group.lines.map(line => line.quantity === 0 ? '0' : line.amount)), currency)}</TableCell>
+                inputProps={{ 'aria-label': t.price + ' ' + first.key, inputMode: 'decimal', maxLength: 32, style: { textAlign: 'right' } }}
+                InputProps={{ startAdornment: <Typography variant="caption" sx={{ mr: 0.5 }}>{currency}</Typography> }}
+                onChange={e => { if (saving || uncertain) return; const keys = new Set(group.lines.map(line => line.key)); const value=e.target.value; setLines(previous => previous.map(line => keys.has(line.key) ? { ...line, unitPriceOverride: value } : line)); setReviewed(false); setDirty(true); }} fullWidth /></TableCell>
+              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(sumInvoiceAmounts(group.lines.map(line => line.quantity === 0 ? '0' : line.amount)), currency)}</TableCell>
               <TableCell><TextField size="small" multiline value={group.note} label={itemText.note}
                 helperText={changed ? itemText.hint : undefined} required={changed}
                 inputProps={{ maxLength: 1000, 'aria-label': `Remark ${first.key}` }}
-                onChange={e => changeItemNote(group, e.target.value)} sx={{ minWidth: 180 }} /></TableCell>
+                onChange={e => changeItemNote(group, e.target.value)} fullWidth /></TableCell>
             </TableRow>;
           })}</TableBody></Table></Box>
           <Accordion disableGutters elevation={0} sx={{border: "1px solid",borderColor:"divider",borderRadius:1,"&::before":{display:"none"}}}><AccordionSummary expandIcon={<ExpandMore/>}><Typography variant="subtitle2">{ui.options}</Typography></AccordionSummary><AccordionDetails>
