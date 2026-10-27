@@ -13,6 +13,7 @@ import {
   normalizeOrganizationSubscriptionStatus,
 } from '../constants/organizationAccess';
 import { sanitizeRoleAccessPolicy } from '../utils/roleAccessPolicy';
+import { clearLoginCompany, findLoginWorkspace, readLoginCompany, rememberLoginCompany } from '../utils/loginCompanySelection.mjs';
 
 const AuthContext = createContext(null);
 const WORKSPACE_SELECTION_KEY = 'baro:workspace-selection';
@@ -334,6 +335,18 @@ export const AuthProvider = ({ children }) => {
         const choices=await requestJSON('/auth/workspaces',options);
         if(cancelled)return;
         setWorkspaces(choices.workspaces || []);setCanCreateCompany(!!choices.canCreateCompany);
+        const requestedCompany=readLoginCompany();
+        if(requestedCompany){
+          const requestedWorkspace=findLoginWorkspace(choices.workspaces || [],requestedCompany);
+          if(requestedWorkspace){
+            const selection={email:normalizedCurrentUserEmail,key:requestedWorkspace.key};
+            sessionStorage.setItem(WORKSPACE_SELECTION_KEY,JSON.stringify(selection));
+            clearLoginCompany();setAccessProfile(null);setWorkspaceSelection(selection);return;
+          }
+          // Never silently enter a previous/default company if the requested
+          // company is unavailable to this Google account.
+          if(selectedKey){sessionStorage.removeItem(WORKSPACE_SELECTION_KEY);setWorkspaceSelection(null);setAccessProfile(null);return;}
+        }
         if(selectedKey && !choices.workspaces.some(row=>row.key===selectedKey)){
           sessionStorage.removeItem(WORKSPACE_SELECTION_KEY);setWorkspaceSelection(null);setAccessProfile(null);return;
         }
@@ -412,6 +425,7 @@ export const AuthProvider = ({ children }) => {
   const selectWorkspace=useCallback(key=>{
     if(!workspaces.some(row=>row.key===key))throw new Error('COMPANY_ACCESS_DENIED');
     const selection={email:normalizedCurrentUserEmail,key};
+    clearLoginCompany();
     sessionStorage.setItem(WORKSPACE_SELECTION_KEY,JSON.stringify(selection));
     setAccessProfile(null);setAccessLoading(true);setWorkspaceSelection(selection);
   },[workspaces,normalizedCurrentUserEmail]);
@@ -437,14 +451,15 @@ export const AuthProvider = ({ children }) => {
     normalizeUpper(effectiveProfile.entryType) === 'ORG' &&
     !canUseWorkspaceForOrganizationSubscriptionStatus(effectiveProfile.subscriptionStatus);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (companyKey) => {
     if (!supabase) {
       console.warn('Supabase is not configured.');
       return;
     }
 
+    if(companyKey)rememberLoginCompany(companyKey);
     const redirectTo = resolveAuthCallbackUrl();
-    await supabase.auth.signInWithOAuth({
+    const result=await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         ...(redirectTo ? { redirectTo } : {}),
@@ -453,9 +468,11 @@ export const AuthProvider = ({ children }) => {
         },
       },
     });
+    if(result?.error)throw result.error;
   };
 
   const signOut = async () => {
+    clearLoginCompany();
     sessionStorage.removeItem(WORKSPACE_SELECTION_KEY);setWorkspaceSelection(null);setWorkspaces([]);setCanCreateCompany(false);
     setAccessProfile(null);
     setAccessLoading(false);

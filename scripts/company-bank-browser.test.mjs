@@ -14,6 +14,36 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/company-bank-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi']){
+  const page=await browser.newPage({viewport:{width:390,height:900}}),contexts=[];let allowDex=true;
+  await page.route('**/src/lib/supabaseClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`const session=sessionStorage.getItem('test-oauth')?{access_token:'token',user:{id:'owner',email:'owner@example.com'}}:null;export const isSupabaseConfigured=true;export const supabase={auth:{getSession:async()=>({data:{session}}),onAuthStateChange:()=>({data:{subscription:{unsubscribe:()=>{}}}}),signOut:async()=>{},signInWithOAuth:async()=>{sessionStorage.setItem('test-oauth','1');location.reload();return{};}}};`}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}',setLanguageCode:()=>{}});`}));
+  await page.route('**/auth/workspaces',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{workspaces:[{key:'org:1',id:1,name:'BARO GARMENT',code:'BARO'},...(allowDex?[{key:'org:2',id:2,name:'DEXS LOGIS',code:'DEXS'}]:[])]}}));
+  await page.route('**/auth/context*',r=>{const id=Number(new URL(r.request().url()).searchParams.get('orgId')||1);contexts.push(id);return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{email:'owner@example.com',entryType:'ORG',orgId:id,orgType:'SERVICE',orgRole:'ADMIN',orgName:id===2?'DEXS LOGIS':'BARO GARMENT',subscription:{status:'TRIAL'}}});});
+  await page.route('**/bank-ledger/**',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{accounts:[]}}));
+  await page.goto(`http://127.0.0.1:${port}/company-bank-acceptance.html`);
+  const baro=page.getByRole('button',{name:'BARO GARMENT',exact:true}),dex=page.getByRole('button',{name:'DEX LOGIS',exact:true});
+  await baro.waitFor();assert.equal(await baro.getAttribute('aria-pressed'),'true');
+  await dex.click();assert.equal(await dex.getAttribute('aria-pressed'),'true');assert.equal(await baro.getAttribute('aria-pressed'),'false');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  if(lang==='ko'){
+   await page.setViewportSize({width:1440,height:1000});
+   await page.screenshot({path:path.join(process.env.TEMP||'/tmp','baro-company-login.png')});
+   await page.setViewportSize({width:390,height:900});
+  }
+  await page.locator('.lineos-google-button').click();
+  await page.getByRole('button',{name:'Switch test company',exact:true}).waitFor();
+  assert.deepEqual(contexts,[2],'OAuth must enter the selected company without loading BARO context');
+  assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('baro:workspace-selection')).key),'org:2');
+  await page.evaluate(()=>sessionStorage.setItem('baro:login-company','BARO'));await page.reload();
+  await page.getByRole('button',{name:'Switch test company',exact:true}).waitFor();
+  assert.deepEqual(contexts,[2,1]);
+  assert.equal(await page.evaluate(()=>JSON.parse(sessionStorage.getItem('baro:workspace-selection')).key),'org:1');
+  await page.evaluate(()=>{sessionStorage.setItem('baro:login-company','DEX');sessionStorage.setItem('baro:workspace-selection',JSON.stringify({email:'owner@example.com',key:'org:1'}));});
+  allowDex=false;await page.reload();
+  await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('button',{name:'Switch test company',exact:true}).count(),0);
+  await page.close();
+ }
+ for(const lang of ['ko','en','vi']){
   const t=bankLedgerMessages[lang],page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],contexts=[];
   let dexRegistered=false,failOnce=true,entry=null,accountSaves=0,wrongContext=false;
   page.on('pageerror',e=>errors.push(e.message));

@@ -2,6 +2,7 @@ import React,{useRef,useState} from 'react';
 import {Alert,Button,Dialog,DialogActions,DialogContent,DialogTitle,Stack,TextField,Typography} from '@mui/material';
 import {useAuth} from '../../context/AuthContext';
 import {requestJSON} from '../../utils/apiClient';
+import {findLoginWorkspace,readLoginCompany} from '../../utils/loginCompanySelection.mjs';
 const copy={
  ko:{choose:'로그인할 업체 선택',hint:'접근 권한이 있는 업체만 표시됩니다.',add:'물류 회사 등록',name:'회사명 (영어 대표명)',nameKo:'회사명 (한국어)',code:'회사 코드',create:'등록',cancel:'취소',failed:'회사 등록에 실패했습니다.',uncertain:'등록 결과를 확인하지 못했습니다. 같은 내용으로 다시 시도하세요.',retry:'다시 시도'},
  en:{choose:'Choose a company',hint:'Only companies you can access are shown.',add:'Register a logistics company',name:'Company name (English)',nameKo:'Company name (Korean)',code:'Company code',create:'Register',cancel:'Cancel',failed:'Unable to register company.',uncertain:'The result is unknown. Retry the same request.',retry:'Retry'},
@@ -18,6 +19,7 @@ export default function CompanyChooser({languageCode}){
   finally{busy.current=false;setSaving(false);}
  };
  return <Stack spacing={1.5}>
+  {readLoginCompany()&&!findLoginWorkspace(workspaces,readLoginCompany())&&<Alert severity="warning">{languageCode==='ko'?'선택한 회사에 접근 권한이 없거나 아직 등록되지 않았습니다.':languageCode==='vi'?'Bạn chưa có quyền truy cập công ty đã chọn hoặc công ty chưa được đăng ký.':'The selected company is unavailable or you do not have access.'}</Alert>}
   <Typography variant="h6">{t.choose}</Typography><Typography variant="body2">{t.hint}</Typography>
   {workspaces.map(workspace=><Button key={workspace.key} variant="outlined" disabled={loading} onClick={()=>selectWorkspace(workspace.key)} sx={{justifyContent:'flex-start',height:'auto',minHeight:48,textTransform:'none'}}>{languageCode==='ko'?workspace.nameKo||workspace.name:languageCode==='vi'?workspace.nameVi||workspace.name:workspace.name}</Button>)}
   {canCreateCompany&&<Button onClick={()=>{key.current=crypto.randomUUID();setError('');setUncertain(false);setOpen(true);}}>{t.add}</Button>}

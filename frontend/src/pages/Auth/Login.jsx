@@ -5,6 +5,8 @@ import {
   Button,
   CircularProgress,
   Typography,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import { CalendarMonthOutlined, QueryStatsOutlined, TaskAltOutlined } from '@mui/icons-material';
 import { LOGIN_COPY } from './loginCopy';
@@ -16,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { canAccessPath, resolveFirstAccessiblePath } from '../../utils/accessControl';
 import { readPersonalPreferences } from '../../utils/personalPreferences';
+import { LOGIN_COMPANIES, readLoginCompany } from '../../utils/loginCompanySelection.mjs';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -36,6 +39,7 @@ const Login = () => {
   } = useAuth();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loginCompany,setLoginCompany] = useState(() => readLoginCompany() || 'BARO');
   const [loginError,setLoginError] = useState(false);
   const [isNavigatingAfterAuth, setIsNavigatingAfterAuth] = useState(false);
   const hasOAuthCallbackParams = useMemo(() => {
@@ -127,7 +131,7 @@ const Login = () => {
     setIsSubmitting(true);
     setLoginError(false);
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(loginCompany);
     } catch {
       setLoginError(true);
     } finally {
@@ -166,6 +170,9 @@ const Login = () => {
         <section className="lineos-login-card" aria-labelledby="lineos-login-heading">
           <h2 id="lineos-login-heading">{loginCopy.welcome}</h2>
           <p className="lineos-login-subtitle">{loginCopy.subtitle}</p>
+          {!isAuthenticated && <ToggleButtonGroup exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{mb:2,p:0.5,borderRadius:2,bgcolor:'action.hover','& .MuiToggleButtonGroup-grouped':{flex:1,border:0,borderRadius:'6px !important',minHeight:44,px:1,fontSize:'0.8125rem',fontWeight:600,whiteSpace:'nowrap'},'& .Mui-selected':{bgcolor:'background.paper',color:'primary.main',boxShadow:'0 1px 4px #20395020'},'& .Mui-selected:hover':{bgcolor:'background.paper'}}}>
+            {LOGIN_COMPANIES.map(company=><ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
+          </ToggleButtonGroup>}
           {isAuthenticated && requiresWorkspaceSelection ? <CompanyChooser languageCode={languageCode}/> : <>
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
