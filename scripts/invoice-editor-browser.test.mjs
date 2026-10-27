@@ -11,6 +11,7 @@ const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
 const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
  lines:[{key:'item1:S',itemId:1,styleId:10,styleCode:'S1',description:'Shirt',orderedQuantity:10,quantity:'10',adjustmentReason:'',remark:'',hsCode:'',origin:'',color:'Blue',size:'S'}]};
+source.lines.push({...source.lines[0],key:'item1:M',size:'M',orderedQuantity:5,quantity:'5'});source.styles[0].orderedQuantity=15;source.styles[0].producedQuantity=15;
 const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -38,6 +39,12 @@ try{
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
+  const grid=page.locator('fieldset table').first();
+  assert.equal(await grid.locator('tbody tr').count(),1);assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),1);assert.equal(await grid.getByRole('columnheader',{name:'M',exact:true}).count(),1);
+  assert.match(await grid.innerText(),/USD 2.00/);assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
+  assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
+  await page.locator('input[aria-label*="item1:S"]').fill('9');
+  await page.locator('textarea[aria-label^="Remark "]').fill('One missing piece');
   await review.check();assert.equal(await issue.isEnabled(),true);
   await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
   await review.check();
@@ -49,7 +56,7 @@ try{
   await page.waitForFunction(()=>window.issuedEditor===true);
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
-  assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'10');assert.equal(saves[0].fields.notes,'Reviewed note');assert.doesNotMatch(saves[0].fields.number,/DRAFT/);
+  assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.doesNotMatch(saves[0].fields.number,/DRAFT/);
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ['ko','en','vi']){

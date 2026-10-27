@@ -11,6 +11,7 @@ import { invoiceMessages } from '../../../constants/invoiceMessages';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import { restoreInvoiceDraftLines } from '../../../utils/invoiceDraftRestore.mjs';
+import { invoiceItemGrid, formatInvoiceMoney, sumInvoiceAmounts } from '../../../utils/invoiceItemGrid.mjs';
 
 const messages = {
   "ko": {
@@ -170,11 +171,23 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   const currencies = source?.currencies || [];
   const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
+  const itemGrid = useMemo(() => invoiceItemGrid(calculation?.lines || []), [calculation]);
+  const draftLinesByKey = useMemo(() => new Map(lines.map(line => [line.key, line])), [lines]);
+  const itemText = languageCode === 'ko' ? { order: '주문', style: '스타일명', color: '색상', note: 'Remark', hint: '수량 변경 사유를 함께 적어 주세요.' }
+    : languageCode === 'vi' ? { order: 'Đơn hàng', style: 'Tên mẫu', color: 'Màu sắc', note: 'Remark', hint: 'Ghi rõ lý do thay đổi số lượng.' }
+    : { order: 'Order', style: 'Style name', color: 'Color', note: 'Remark', hint: 'Include the reason for quantity changes.' };
   const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
   const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
   const changeLine = (key, property, value) => {
     if (saving) return;
-    setLines((rows) => rows.map((row) => row.key === key ? { ...row, [property]: value } : row)); setReviewed(false); setDirty(true);
+    setLines((rows) => rows.map((row) => row.key === key ? { ...row, [property]: value,
+      ...(property === 'quantity' ? { adjustmentReason: row.adjustmentReason || row.remark || '' } : {}) } : row)); setReviewed(false); setDirty(true);
+  };
+  const changeItemNote = (group, value) => {
+    if (saving || uncertain) return;
+    const keys = new Set(group.lines.map(line => line.key));
+    setLines(rows => rows.map(row => keys.has(row.key) ? { ...row, remark: value, adjustmentReason: value } : row));
+    setReviewed(false); setDirty(true);
   };
   const close = async () => {
     if (saving) return;
@@ -237,19 +250,36 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
               <MenuItem value="">—</MenuItem>{currencies.map((c) => <MenuItem key={c} value={c}>{c}</MenuItem>)}
             </TextField>
           </Stack>
-          <Typography component="h2" variant="subtitle2">{ui.details} · {calculation.lines.length}</Typography>
+          <Typography component="h2" variant="subtitle2">{ui.details} · {itemGrid.rows.length}</Typography>
           <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 1100 }}><TableHead><TableRow>
-            {[billingText.orderStyle, t.ordered, t.quantity, t.price, t.amount, 'Remark', t.reason, 'HS / Origin'].map((label) => <TableCell key={label}>{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{calculation.lines.map((line) => <TableRow key={line.key}>
-            <TableCell><Typography variant="subtitle2">{line.orderNumber}</Typography>{[line.styleCode, line.color, line.gender, line.size].filter(Boolean).join(' / ')}<Typography variant="caption" display="block">{line.description}</Typography></TableCell>
-            <TableCell>{line.orderedQuantity}</TableCell>
-            <TableCell><TextField size="small" value={lines.find((row) => row.key === line.key)?.quantity ?? ''} inputProps={{ inputMode: 'numeric', 'aria-label': `${t.quantity} ${line.key}` }} onChange={(e) => changeLine(line.key, 'quantity', e.target.value)} sx={{ width: 100 }} /></TableCell>
-            <TableCell>{line.unitPrice ?? '—'}<Typography variant="caption" display="block">{line.bucketQuantity == null ? '' : `≥ ${line.bucketQuantity} PCS`}</Typography></TableCell>
-            <TableCell>{line.amount ?? '—'}</TableCell>
-            <TableCell><TextField size="small" multiline value={line.remark || ''} label="Remark" inputProps={{ maxLength: 1000, 'aria-label': `Remark ${line.key}` }} onChange={(e) => changeLine(line.key, 'remark', e.target.value)} /></TableCell>
-            <TableCell><TextField size="small" value={line.adjustmentReason} placeholder={t.reason} inputProps={{ 'aria-label': `${t.reason} ${line.key}`, maxLength: 500 }} onChange={(e) => changeLine(line.key, 'adjustmentReason', e.target.value)} /></TableCell>
-            <TableCell><Stack spacing={1}>{['hsCode', 'origin'].map((key) => <TextField key={key} size="small" label={key === 'hsCode' ? 'HS code' : 'Origin'} value={line[key]} onChange={(e) => changeLine(line.key, key, e.target.value)} />)}</Stack></TableCell>
-          </TableRow>)}</TableBody></Table></Box>
+            {[itemText.order, itemText.style, itemText.color].map(label => <TableCell key={label}>{label}</TableCell>)}
+            {itemGrid.sizes.map(size => <TableCell key={`size:${size}`} align="center">{size}</TableCell>)}
+            {[t.quantity, t.price, t.amount, itemText.note].map(label => <TableCell key={label}>{label}</TableCell>)}
+          </TableRow></TableHead><TableBody>{itemGrid.rows.map(group => {
+            const first = group.lines[0];
+            const changed = group.lines.some(line => line.quantity !== line.orderedQuantity);
+            return <TableRow key={group.key}>
+              <TableCell>{first.orderNumber}</TableCell>
+              <TableCell>{first.description || first.styleCode || '—'}</TableCell>
+              <TableCell>{first.color || '—'}{first.gender && <Typography variant="caption" display="block">{first.gender}</Typography>}</TableCell>
+              {itemGrid.sizes.map(size => {
+                const line = group.lines.find(row => (row.size || '—') === size);
+                return <TableCell key={size} align="center">{line ? <>
+                  <TextField size="small" value={draftLinesByKey.get(line.key)?.quantity ?? ''}
+                    inputProps={{ inputMode: 'numeric', 'aria-label': `${t.quantity} ${line.key}` }}
+                    onChange={e => changeLine(line.key, 'quantity', e.target.value)} sx={{ width: 80 }} />
+                  <Typography variant="caption" display="block" color="text.secondary">{t.ordered} {line.orderedQuantity}</Typography>
+                </> : '—'}</TableCell>;
+              })}
+              <TableCell>{group.lines.every(line => line.quantity != null) ? group.lines.reduce((sum, line) => sum + line.quantity, 0) : '—'}</TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(first.unitPrice, currency)}<Typography variant="caption" display="block">{first.bucketQuantity == null ? '' : `≥ ${first.bucketQuantity} PCS`}</Typography></TableCell>
+              <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(sumInvoiceAmounts(group.lines.map(line => line.quantity === 0 ? '0' : line.amount)), currency)}</TableCell>
+              <TableCell><TextField size="small" multiline value={group.note} label={itemText.note}
+                helperText={changed ? itemText.hint : undefined} required={changed}
+                inputProps={{ maxLength: 1000, 'aria-label': `Remark ${first.key}` }}
+                onChange={e => changeItemNote(group, e.target.value)} sx={{ minWidth: 180 }} /></TableCell>
+            </TableRow>;
+          })}</TableBody></Table></Box>
           <Accordion disableGutters elevation={0} sx={{border: "1px solid",borderColor:"divider",borderRadius:1,"&::before":{display:"none"}}}><AccordionSummary expandIcon={<ExpandMore/>}><Typography variant="subtitle2">{ui.options}</Typography></AccordionSummary><AccordionDetails>
           <Typography variant="h6">{billingText.settlement}</Typography>
           <Typography variant="body2">{billingText.percentHint}</Typography>

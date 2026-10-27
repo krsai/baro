@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:invoice-item-grid": "node --test scripts/invoice-item-grid.test.mjs",
     "test:time-locale-browser": "node scripts/time-locale-browser.test.mjs",
     "test:style-save-consistency": "npm --prefix backend run build && node --test scripts/style-save-consistency.test.mjs scripts/version-lifecycle.test.mjs",
     "test:missing-process-records": "npm --prefix backend run build && node --test scripts/missing-process-records.test.mjs scripts/production-progress.test.mjs scripts/order-workflow.test.mjs",
