@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {useLocation} from 'react-router-dom';
-import {Alert,Box,Button,IconButton,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Alert,Box,Button,IconButton,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import AppPageContainer from '../../components/AppPageContainer';
 import LedgerEvidenceFields from '../../components/LedgerEvidenceFields';
@@ -29,6 +29,12 @@ function Entry({orgId}){
  const mutate=fn=>{if(locked)return;batchKey.current=crypto.randomUUID();setRows(fn);};
  const edit=(index,patch)=>mutate(current=>current.map((row,i)=>i===index?{...row,...patch,clientKey:crypto.randomUUID()}:row));
  const changeType=(index,type)=>{edit(index,{evidenceType:type,evidenceNumber:'',expenseItems:[],bankFee:'0',...(type==='INVOICE'?{direction:'IN'}:type==='EXPENSE'?{direction:'OUT'}:{})});setExpanded(type==='EXPENSE'?index:null);};
+ const changeDirection=(index,value)=>{
+  const adjustment=value.startsWith('BALANCE_'),direction=adjustment?value.slice(8):value,row=rows[index];
+  const reset=adjustment||row.evidenceType==='ADJUSTMENT'||(row.evidenceType==='INVOICE'&&direction!=='IN')||(row.evidenceType==='EXPENSE'&&direction!=='OUT');
+  edit(index,{direction,...(reset?{evidenceType:adjustment?'ADJUSTMENT':'FILE',evidenceNumber:'',expenseItems:[],bankFee:'0'}:{})});
+  if(reset)setExpanded(null);
+ };
  const submit=async event=>{event.preventDefault();if(busy.current)return;setError('');
   const invalid=rows.findIndex(row=>!accounts.some(a=>a.id===row.accountId)||!row.amount.trim()||!row.purpose.trim()||(['FILE','INVOICE'].includes(row.evidenceType)&&!row.evidenceNumber.trim())||(row.evidenceType==='EXPENSE'&&!row.expenseItems.length));
   if(invalid>=0){setError(`${w.row} ${invalid+1}: ${w.rowError}`);return;}
@@ -37,12 +43,12 @@ function Entry({orgId}){
    const next=[newRow()];initial.current=snapshot(next);setRows(next);batchKey.current=crypto.randomUUID();setUncertain(false);setExpanded(null);emitWorkspaceDataChanged({orgId,source:'bank-ledger',topics:['bank-ledger']});if(activeRef.current)navigateToPath('/bank-ledger',{closeTabId:path.current,skipUnsavedChangesCheck:true});
   }catch(err){const unknown=!err.status||err.status>=500;setUncertain(unknown);const match=/^LEDGER_ROW:(\d+):(.+)$/.exec(err.message||'');setError(unknown?t.uncertain:match?`${w.row} ${match[1]}: ${t.errors[match[2]]||w.rowError}`:t.errors[err.message]||w.batchError);}finally{busy.current=false;setSaving(false);}
  };
- return <AppPageContainer title={t.addEntry}><Box component="form" onSubmit={submit}><Paper variant="outlined" sx={{overflow:'hidden'}}><Stack spacing={2} sx={{p:2}}><Typography variant="body2">{w.batchHint}</Typography>{error&&<Alert severity="error">{error}</Alert>}</Stack>
-  <TableContainer><Table size="small" sx={{minWidth:1500,tableLayout:'fixed'}}><TableHead><TableRow>{['#',t.account,t.transactionDate,t.direction,t.amount,t.purpose,w.evidence,''].map((label,index)=><TableCell key={index} sx={{width:[42,220,150,110,150,210,360,50][index]}}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
+ return <AppPageContainer title={t.addEntry}><Box component="form" onSubmit={submit}><Paper variant="outlined" sx={{overflow:'hidden'}}>{error&&<Alert severity="error" sx={{m:2}}>{error}</Alert>}
+  <TableContainer><Table size="small" sx={{minWidth:1500,tableLayout:'fixed'}}><TableHead><TableRow>{['#',t.account,t.transactionDate,t.direction,t.amount,t.purpose,w.evidence,''].map((label,index)=><TableCell key={index} sx={{width:[42,220,150,180,150,210,360,50][index]}}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
    {rows.map((row,index)=>{const account=accounts.find(a=>a.id===row.accountId),input=(field,extra={})=><TextField fullWidth size="small" required label={t[field]} value={row[field]} disabled={locked} onChange={ev=>edit(index,{[field]:ev.target.value})} {...extra}/>;return <React.Fragment key={row.uiId}><TableRow data-ledger-entry-row={index} sx={{'& td':{verticalAlign:'top',py:2}}}>
     <TableCell>{index+1}</TableCell><TableCell><TextField select fullWidth size="small" required label={t.account} value={row.accountId} disabled={locked} onChange={ev=>edit(index,{accountId:ev.target.value,expenseItems:[]})}><MenuItem value="" disabled>{w.choose}</MenuItem>{accounts.map(a=><MenuItem key={a.id} value={a.id}>{ledgerAccountName(a)} / {a.currencyCode}</MenuItem>)}</TextField></TableCell>
-    <TableCell>{input('transactionDate',{type:'date',InputLabelProps:{shrink:true},inputProps:{min:account?.openingDate,max:today()}})}</TableCell><TableCell>{input('direction',{select:true,children:['IN','OUT'].map(d=><MenuItem key={d} value={d}>{t[d]}</MenuItem>)})}</TableCell><TableCell>{input('amount',{helperText:account?.currencyCode||' ',inputProps:{inputMode:'decimal',maxLength:25}})}</TableCell><TableCell>{input('purpose',{multiline:true,minRows:2,inputProps:{maxLength:1000}})}</TableCell>
-    <TableCell><Stack spacing={1}><TextField select fullWidth size="small" label={e.type} value={row.evidenceType} disabled={locked} onChange={ev=>changeType(index,ev.target.value)}>{['FILE','INVOICE','EXPENSE','ADJUSTMENT'].map(type=><MenuItem key={type} value={type}>{e[type]}</MenuItem>)}</TextField>
+    <TableCell>{input('transactionDate',{type:'date',InputLabelProps:{shrink:true},inputProps:{min:account?.openingDate,max:today()}})}</TableCell><TableCell>{input('direction',{select:true,value:row.evidenceType==='ADJUSTMENT'?'BALANCE_'+row.direction:row.direction,onChange:ev=>changeDirection(index,ev.target.value),children:['IN','OUT','BALANCE_IN','BALANCE_OUT'].map(d=><MenuItem key={d} value={d}>{w[d]||t[d]}</MenuItem>)})}</TableCell><TableCell>{input('amount',{label:row.evidenceType==='ADJUSTMENT'?w.adjustAmount:t.amount,helperText:account?.currencyCode||' ',inputProps:{inputMode:'decimal',maxLength:25}})}</TableCell><TableCell>{input('purpose',{label:row.evidenceType==='ADJUSTMENT'?w.adjustReason:t.purpose,multiline:true,minRows:2,inputProps:{maxLength:1000}})}</TableCell>
+    <TableCell><Stack spacing={1}>{row.evidenceType==='ADJUSTMENT'?<TextField fullWidth size="small" label={e.type} value={e.ADJUSTMENT} InputProps={{readOnly:true}} disabled={locked}/>:<TextField select fullWidth size="small" label={e.type} value={row.evidenceType} disabled={locked} onChange={ev=>changeType(index,ev.target.value)}>{['FILE','INVOICE','EXPENSE'].map(type=><MenuItem key={type} value={type}>{e[type]}</MenuItem>)}</TextField>}
      {['FILE','INVOICE'].includes(row.evidenceType)&&<TextField fullWidth size="small" required label={row.evidenceType==='FILE'?e.reference:e.invoice} value={row.evidenceNumber} disabled={locked} inputProps={{maxLength:row.evidenceType==='FILE'?500:200}} onChange={ev=>edit(index,{evidenceNumber:ev.target.value})}/>}
      {row.evidenceType==='EXPENSE'&&<Button disabled={locked||!account} onClick={()=>setExpanded(expanded===index?null:index)}>{w.evidence} ({row.expenseItems.length})</Button>}
      {['INVOICE','EXPENSE'].includes(row.evidenceType)&&<TextField fullWidth size="small" required label={e.fee} value={row.bankFee} disabled={locked} inputProps={{inputMode:'decimal'}} onChange={ev=>edit(index,{bankFee:ev.target.value})}/>}
