@@ -1,8 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
 
-const snapshotSignature = (value: any): string => JSON.stringify(value, (_key, item) =>
-  item && typeof item === 'object' && !Array.isArray(item)
+const runtimeFields = new Set(['atParams', 'atSharedPrediction', 'atV2Observations', 'atModelVersion',
+  'workRecordCount', 'hasWorkRecords', 'instanceId', 'createdAt', 'updatedAt', 'setAt', 'setBy',
+  'atStFallbackApproved', 'atStFallbackSourceAssignmentPlanId', 'atStFallbackApprovedAt']);
+
+export const processVersionSignature = (value: any): string => JSON.stringify(value, (key, item) =>
+  runtimeFields.has(key) ? undefined : item && typeof item === 'object' && !Array.isArray(item)
     ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 
 export const confirmedStyleProcessIds = (versions: any[]): Set<number> => new Set(versions.flatMap(version =>
@@ -23,7 +27,7 @@ export async function confirmCurrentProcessVersion(db: any, input: {
   const latest = await db.styleProcessVersion.findFirst({ where: { orgId: input.orgId, styleId: input.styleId }, orderBy: { versionNumber: 'desc' } });
   if (!latest && !snapshot.length) return null;
   // Retrying a successful confirmation returns the already-confirmed version.
-  if (latest && snapshotSignature(input.normalizeSnapshot ? input.normalizeSnapshot(latest.processSnapshot) : latest.processSnapshot) === snapshotSignature(snapshot)) return latest;
+  if (latest && processVersionSignature(input.normalizeSnapshot ? input.normalizeSnapshot(latest.processSnapshot) : latest.processSnapshot) === processVersionSignature(snapshot)) return latest;
   return db.styleProcessVersion.create({ data: {
     orgId: input.orgId, styleId: input.styleId, versionNumber: (latest?.versionNumber || 0) + 1,
     confirmedDate: input.date, confirmedBy: input.actor, processSnapshot: snapshot as Prisma.InputJsonValue,

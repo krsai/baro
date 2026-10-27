@@ -1,4 +1,4 @@
-import { confirmCurrentProcessVersion, confirmedStyleProcessIds } from './services/styleProcessVersionLifecycle';
+import { confirmCurrentProcessVersion, confirmedStyleProcessIds, processVersionSignature } from './services/styleProcessVersionLifecycle';
 import { missingProcessRecords } from './services/missingProcessRecords';
 import { toStyleListResponse } from './services/styleListResponse';
 import { coalesceInFlightRead } from './services/inFlightRead';
@@ -7003,6 +7003,7 @@ const loadStyleProcessMirrorMapForStyleIds = async (
   options: {
     processOrgId?: number | null;
     db?: StyleStorageClient;
+    includePredictions?: boolean;
   } = {}
 ) => {
   const db = options.db ?? prisma;
@@ -7028,7 +7029,7 @@ const loadStyleProcessMirrorMapForStyleIds = async (
     db,
   });
 
-  const predictions = await loadStyleAtPredictions(rowsByStyleId, db);
+  const predictions = options.includePredictions === false ? new Map<number, any>() : await loadStyleAtPredictions(rowsByStyleId, db);
 
   return normalizedStyleIds.reduce((map, styleId) => {
     map.set(
@@ -30366,7 +30367,7 @@ app.put("/styles/:styleId", async (req, res) => {
 const confirmSavedStyleProcessVersion = (db: any, orgId: number, styleId: number, actor: string) => confirmCurrentProcessVersion(db, {
   orgId, styleId, actor, date: todayDateKey(), normalizeSnapshot: normalizeStyleProcesses,
   loadSnapshot: async client => {
-    const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db: client });
+    const mirror = await loadStyleProcessMirrorMapForStyleIds([styleId], { processOrgId: orgId, db: client, includePredictions: false });
     return normalizeStyleProcesses(mirror.get(styleId) ?? []);
   },
 });
@@ -30468,8 +30469,8 @@ app.get("/styles/:styleId/process-versions", async (req, res) => {
   const latestVersion = versions[versions.length - 1];
   const versionById = new Map(versions.map((version) => [version.id, version]));
   const hasUnconfirmedChanges = latestVersion
-    ? JSON.stringify(normalizeStyleProcesses(latestVersion.processSnapshot)) !==
-      JSON.stringify(liveProcesses)
+    ? processVersionSignature(normalizeStyleProcesses(latestVersion.processSnapshot)) !==
+      processVersionSignature(liveProcesses)
     : liveProcesses.length > 0;
   res.json({
     versions: versions.map((version) => ({ ...version, name: `Ver.${version.versionNumber} · ${version.confirmedDate}`, processCount: ensureArray(version.processSnapshot).length })),

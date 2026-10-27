@@ -70,6 +70,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const [boundaries, setBoundaries] = useState({});
   const [savedBoundaries, setSavedBoundaries] = useState({});
   const [busy, setBusy] = useState(false);
+  const mutationInFlight = useRef(false);
   const [unconfirmed, setUnconfirmed] = useState(false);
   const loadSequence = useRef(0);
   const scope = `${open}:${orgId}:${ownerOrgId}:${styleId}`;
@@ -82,6 +83,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     setBusy(true);
+    setUnconfirmed(false);
     try {
       const data = await fetchStyleProcessVersions(styleId, { orgId, ownerOrgId });
       if (sequence !== loadSequence.current) return;
@@ -101,7 +103,8 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   useEffect(() => { if (open) load(); return () => { loadSequence.current += 1; }; }, [load, open]);
 
   const confirm = async () => {
-    if (busy || hasBoundaryChanges) return;
+    if (mutationInFlight.current || busy || hasBoundaryChanges) return;
+    mutationInFlight.current = true;
     const requestedScope = scope;
     setBusy(true);
     try {
@@ -111,7 +114,7 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
       await load();
     } catch (error) {
       if (requestedScope === currentScope.current) notify(error?.message || copy.saveFail, 'error');
-    } finally { if (requestedScope === currentScope.current) setBusy(false); }
+    } finally { mutationInFlight.current = false; if (requestedScope === currentScope.current) setBusy(false); }
   };
 
   const assignmentsWithVersion = useMemo(() => assignments.map((assignment, index) => {
@@ -164,15 +167,20 @@ const ProcessVersionManager = ({ open, onClose, styleId, orgId, ownerOrgId, noti
   // there is something to repair, independent of any drag having happened.
   const hasRefreshableAssignments = assignments.some((item) => item.needsSnapshotRefresh && !item.isVersionLocked);
   const save = async () => {
+    if (mutationInFlight.current || busy) return;
+    mutationInFlight.current = true;
+    const requestedScope = scope;
     setBusy(true);
     try {
       await saveStyleProcessVersionBoundaries(styleId, versions.map((version) => ({ versionId: version.id, startAssignmentPlanId: boundaries[version.id] })).filter((row) => row.startAssignmentPlanId), { orgId, ownerOrgId });
+      if (requestedScope !== currentScope.current) return;
       setSavedBoundaries(boundaries);
       notify(copy.saved, 'success'); onClose();
     } catch (error) {
+      if (requestedScope !== currentScope.current) return;
       notify(String(error?.message || '').includes('SNAPSHOT_REFERENCE_INVALID') ? integrityWarning : translateVersionBoundaryError(error?.message, languageCode) || error?.message || copy.saveFail, 'error');
     }
-    finally { setBusy(false); }
+    finally { mutationInFlight.current = false; if (requestedScope === currentScope.current) setBusy(false); }
   };
 
   const assignVersionToAssignment = (version, assignment) => {

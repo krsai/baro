@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Stack,
@@ -24,7 +24,6 @@ import { RequestScopeBoundary } from '../../../context/RequestScopeContext';
 import { buildQueryString } from '../../../utils/apiClient';
 import {
   createStyle as createStyleOnApi,
-  confirmStyleProcessVersion,
   fetchStyleById,
   updateStyle as updateStyleOnApi,
 } from '../../../utils/styleApi';
@@ -203,6 +202,8 @@ const StyleDetail = () => {
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
   const [loadingStyle, setLoadingStyle] = useState(true);
+  const [savingStyle, setSavingStyle] = useState(false);
+  const saveInFlight = useRef(false);
   const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
   const [versionManagerOpen, setVersionManagerOpen] = useState(false);
 
@@ -400,17 +401,6 @@ const StyleDetail = () => {
         const savedOwnerOrgId = toOrgId(saved?.ownerOrgId);
         const savedQuery = buildQueryString({ ownerOrgId: savedOwnerOrgId });
         const savedStyleId = saved?.id || newId;
-        if (hasProcessDraftChanges) {
-          try {
-            await confirmStyleProcessVersion(savedStyleId, {
-              orgId: activeOrgId,
-              ownerOrgId: savedOwnerOrgId,
-            });
-            showNotification('스타일과 최초 공정 버전을 저장했습니다.', 'success');
-          } catch (versionError) {
-            showNotification(versionError?.message || '스타일은 저장했지만 공정 버전을 확정하지 못했습니다.', 'error');
-          }
-        }
         navigateToPath(`/style/${savedStyleId}${savedQuery}`, {
           closeTabId: '/style/new',
           skipUnsavedChangesCheck: true,
@@ -441,28 +431,20 @@ const StyleDetail = () => {
       setStyleFormData(normalizedSaved);
       setProcessMasterReloadKey((prev) => prev + 1);
       if (processesChanged) {
-        try {
-          await confirmStyleProcessVersion(styleId, {
-            orgId: activeOrgId,
-            ownerOrgId: resolvedOwnerOrgId,
-          });
-          setVersionManagerOpen(true);
-          showNotification(getStyleDetailMessage(languageCode, 'versionConfirmedSuccess'), 'success');
-        } catch (versionError) {
-          showNotification(
-            versionError?.message || getStyleDetailMessage(languageCode, 'versionConfirmError'),
-            'error'
-          );
-        }
+        // The save API confirms the version in the same transaction.
+        setVersionManagerOpen(true);
       }
     } catch (error) {
       showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
     }
   };
 
-  const handleSaveRequest = () => {
-    if (loadingStyle || !isDirty) return;
-    handleSave();
+  const handleSaveRequest = async () => {
+    if (saveInFlight.current || loadingStyle || !isDirty) return;
+    saveInFlight.current = true;
+    setSavingStyle(true);
+    try { await handleSave(); }
+    finally { saveInFlight.current = false; setSavingStyle(false); }
   };
 
   return (
@@ -474,6 +456,7 @@ const StyleDetail = () => {
           <LastUpdaterLabel />
           <SaveButton
             onClick={handleSaveRequest}
+            loading={savingStyle}
             disabled={loadingStyle || !isDirty}
           />
         </Stack>
