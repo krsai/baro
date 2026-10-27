@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import prior from '../backend/dist/services/atSharedPrior.js';
+import memoModule from '../backend/dist/services/contentMemo.js';
+import deletionModule from '../backend/dist/services/styleDeletion.js';
 const { buildSharedAtPrediction, buildValidatedSharedAtPrediction } = prior;
 const row = (styleId, category = 'JACKET', a = 50, b = 10000, quantities = [100, 500, 1000]) => ({
   id: styleId, styleId, orgId: 1, productionStage: 'SEWING', genderScope: 'UNISEX', ptSeconds: 50,
@@ -203,10 +205,13 @@ function loadDeclarations(source, names, deps) {
 
 test('actual style-list storage and response path delivers overall validation to frontend calculation', async () => {
   const records=[row(1),row(2),row(3)];
+  let predictionCalls=0;
   const db={styleProcess:{findMany:async()=>records}};
   const backend=loadDeclarations(readFileSync('backend/src/index.ts','utf8'),
-    ['loadStyleAtPredictions','ensureStyleProcessStorageForStyles','toStyleResponse'],{
-      prisma:db,buildValidatedSharedAtPrediction,AT_V2_MODEL_VERSION:2,
+    ['memoStyleAtPredictions','loadStyleAtPredictions','ensureStyleProcessStorageForStyles','toStyleResponse'],{
+      contentMemo: memoModule.contentMemo,
+      styleDeletionState: deletionModule.styleDeletionState,
+      prisma:db,buildValidatedSharedAtPrediction:(...args)=>{predictionCalls++;return buildValidatedSharedAtPrediction(...args);},AT_V2_MODEL_VERSION:2,
       ensureArray:x=>Array.isArray(x)?x:[],toPositiveIntOrNull:x=>Number(x)>0?Number(x):null,
       resolveOptionalString:(x,f)=>x??f,
       loadStyleProcessRowsByStyleId:async ids=>new Map(records.filter(r=>ids.includes(r.styleId)).map(r=>[r.styleId,[r]])),
@@ -216,7 +221,16 @@ test('actual style-list storage and response path delivers overall validation to
       buildStyleProcessMirrorFromRows:rows=>rows.map(r=>({styleProcessId:r.id,pt:r.ptSeconds,atV2Observations:r.atObservations})),
     });
   const styles=records.map(r=>({id:r.styleId,orgId:1,processes:[]}));
-  const mirrors=await backend.ensureStyleProcessStorageForStyles(styles,{processOrgId:1,db});
+  const mirrors=await backend.ensureStyleProcessStorageForStyles(styles,{processOrgId:1,db,readOnly:true});
+  assert.equal(predictionCalls,3);
+  await backend.ensureStyleProcessStorageForStyles(styles,{processOrgId:1,db,readOnly:true});
+  assert.equal(predictionCalls,3,'identical current DB inputs reuse predictions');
+  records[0].atObservations[0].allocatedLaborInputSeconds+=1000;
+  await backend.ensureStyleProcessStorageForStyles(styles,{processOrgId:1,db,readOnly:true});
+  assert.equal(predictionCalls,6,'same-count source edit recomputes predictions');
+  records[0].atObservations.pop();
+  await backend.ensureStyleProcessStorageForStyles(styles,{processOrgId:1,db,readOnly:true});
+  assert.equal(predictionCalls,9,'source deletion recomputes predictions');
   const response=JSON.parse(JSON.stringify(backend.toStyleResponse(styles[0],{processMirrorMap:mirrors})));
   assert.ok(response.processes[0].atSharedPrediction.validation.overall.meanPredictionSeconds>0);
   const frontend=loadDeclarations(readFileSync('frontend/src/utils/processTime.js','utf8'),['resolveStyleAtPredictionReliability'],{

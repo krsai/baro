@@ -2,6 +2,8 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:customer-order-price-alert": "npm --prefix backend run build && node --test scripts/customer-order-price-alert.test.mjs scripts/sales-price-regression.test.mjs scripts/order-value-regression.test.mjs",
+    "test:style-list-performance": "npm --prefix backend run build && node --test scripts/style-list-performance.test.mjs scripts/at-source-completion.test.mjs scripts/at-shared-prior.test.mjs",
     "test:pay-type-constraints": "node --test scripts/pay-type-constraints.test.mjs scripts/railway-schema-preflight.test.mjs",
     "test:version-management-only": "node --test scripts/version-management-only.test.mjs",
     "test:version-lifecycle": "npm --prefix backend run build && node --test scripts/version-lifecycle.test.mjs scripts/version-application.test.mjs scripts/process-version-protection.test.mjs scripts/payroll-management-versions.test.mjs scripts/salary-system-regression.test.mjs",

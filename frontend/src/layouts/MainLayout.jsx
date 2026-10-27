@@ -1092,6 +1092,7 @@ const MainLayout = () => {
   useEffect(() => subscribeWorkspaceDataChanged((detail) => {
     if (![
       WORKSPACE_DATA_TOPICS.SALES_PRICES,
+      WORKSPACE_DATA_TOPICS.ORDERS,
       WORKSPACE_DATA_TOPICS.STYLES,
       WORKSPACE_DATA_TOPICS.CUSTOMERS,
     ].some((topic) => hasWorkspaceDataTopic(detail, topic))) return;

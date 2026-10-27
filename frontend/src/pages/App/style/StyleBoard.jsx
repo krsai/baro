@@ -222,6 +222,25 @@ const StyleBoard = () => {
   const { navigateToPath, showNotification } = useAppActions();
   const canViewProcessSummary = true;
   const isStyleRouteActive = location.pathname === '/style';
+  const [historyStyle, setHistoryStyle] = useState(null);
+  const [orderHistory, setOrderHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  useEffect(() => { setHistoryStyle(null); }, [activeOrgId]);
+  useEffect(() => {
+    if (!historyStyle) return undefined;
+    const controller = new AbortController();
+    setOrderHistory([]);
+    setHistoryError(false);
+    setHistoryLoading(true);
+    requestJSON(`/styles/${encodeURIComponent(historyStyle.id)}/order-history${buildQueryString({
+      orgId: activeOrgId, ownerOrgId: toOrgId(historyStyle.ownerOrgId),
+    })}`, { signal: controller.signal, skipCache: true, skipGlobalLoading: true })
+      .then(data => { if (!controller.signal.aborted) setOrderHistory(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!controller.signal.aborted) setHistoryError(true); })
+      .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
+    return () => controller.abort();
+  }, [historyStyle, activeOrgId]);
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [styles, setStyles] = useState([]);
@@ -246,7 +265,7 @@ const StyleBoard = () => {
   } = {}) => {
     setLoading(true);
     try {
-      const items = await fetchStylesFromApi({ orgId: activeOrgId, forceRefresh, skipCache: true });
+      const items = await fetchStylesFromApi({ orgId: activeOrgId, listOnly: true, forceRefresh, skipCache: true });
       if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return items;
       setStyles(items);
       return items;
@@ -271,7 +290,7 @@ const StyleBoard = () => {
     refreshStyles();
   }, [refreshStyles]);
 
-  const refreshAtSyncStatus = useCallback(async ({ throwOnError = false } = {}) => {
+  const refreshAtSyncStatus = useCallback(async ({ throwOnError = false, fresh = false } = {}) => {
     const sequence = ++atStatusSequence.current;
     if (!activeOrgId || !canViewProcessSummary) {
       setAtSyncStatus(null);
@@ -280,7 +299,7 @@ const StyleBoard = () => {
     setAtSyncStatusLoading(true);
     try {
       const status = await requestJSON(
-        `/at-sync/status${buildQueryString({ orgId: activeOrgId, mode: 'previous' })}`, {skipCache:true,skipGlobalLoading:true}
+        `/at-sync/status${buildQueryString({ orgId: activeOrgId, mode: 'previous', fresh: fresh ? 1 : undefined })}`, {skipCache:true,skipGlobalLoading:true}
       );
       if (!mountedRef.current || currentOrgRef.current !== activeOrgId || sequence !== atStatusSequence.current) return null;
       setAtSyncStatus(status);
@@ -297,9 +316,13 @@ const StyleBoard = () => {
   useEffect(() => {
     if (!isStyleRouteActive) return;
     refreshAtSyncStatus();
-    const refresh = () => { void refreshAtSyncStatus(); };
+    let focusTimer;
+    const refresh = () => {
+      clearTimeout(focusTimer);
+      focusTimer = setTimeout(() => { void refreshAtSyncStatus(); }, 150);
+    };
     window.addEventListener('focus', refresh);
-    return () => window.removeEventListener('focus', refresh);
+    return () => { clearTimeout(focusTimer); window.removeEventListener('focus', refresh); };
   }, [refreshAtSyncStatus, isStyleRouteActive]);
 
   useWorkspaceRefreshOnEvent({
@@ -307,7 +330,7 @@ const StyleBoard = () => {
     topics: [WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES],
     isActive: isStyleRouteActive,
     isBlocked: loading,
-    onRefresh: () => Promise.all([refreshStyles({ forceRefresh: true }), refreshAtSyncStatus()]),
+    onRefresh: () => Promise.all([refreshStyles({ forceRefresh: true }), refreshAtSyncStatus({ fresh: true })]),
   });
 
   const handleRowDoubleClick = (style) => {
@@ -339,7 +362,7 @@ const StyleBoard = () => {
       const result = await waitForAtSyncJob(job,jobId=>requestJSON(`/at-sync/jobs/${jobId}${buildQueryString({orgId:activeOrgId})}`,{skipCache:true,skipGlobalLoading:true,requestTimeoutMs:15000}));
       if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return;
       await refreshStyles({ forceRefresh: true });
-      await refreshAtSyncStatus();
+      await refreshAtSyncStatus({ fresh: true });
       if (isAtSyncSuccessReason(result?.reason)) {
         showNotification(
           getUiMessage(
@@ -402,7 +425,7 @@ const StyleBoard = () => {
       setAtSyncStatus(result?.status ?? null);
       const followUpRefresh = await runRefreshTasks([
         () => refreshStyles({ forceRefresh: true, throwOnError: true, notifyOnError: false }),
-        () => refreshAtSyncStatus({ throwOnError: true }),
+        () => refreshAtSyncStatus({ throwOnError: true, fresh: true }),
       ]);
       const followUpRefreshFailed =
         result?.statusRefreshFailed === true || followUpRefresh.failed;
@@ -674,7 +697,7 @@ const StyleBoard = () => {
                   <TableCell sx={{ width: '15%' }}>{formatTimeReferenceColumnLabel('AT')}</TableCell>
                 ) : null}
                 <TableCell sx={{ width: '11%' }}>
-                  {getUiMessage('styleBoard.registrationDate', '등록일', languageCode)}
+                  {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
                 </TableCell>
                 <TableCell align="center" sx={{ width: '6%' }}>
                   {getUiMessage('styleBoard.action', '작업', languageCode)}
@@ -773,7 +796,11 @@ const StyleBoard = () => {
                         </Box>
                       </TableCell>
                     ) : null}
-                    <TableCell>{style.registrationDate || '-'}</TableCell>
+                    <TableCell onDoubleClick={event => event.stopPropagation()}>
+                      <Button size="small" onClick={event => { event.stopPropagation(); setHistoryStyle(style); }}>
+                        {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
+                      </Button>
+                    </TableCell>
                     <TableCell align="center">
                       <Tooltip title={deleteTooltipTitle}>
                         <span
@@ -797,6 +824,37 @@ const StyleBoard = () => {
           </Table>
         </TableContainer>
       </Paper>
+      <Dialog open={Boolean(historyStyle)} onClose={() => setHistoryStyle(null)} fullWidth maxWidth="sm" aria-labelledby="style-order-history-title">
+        <DialogTitle id="style-order-history-title">{getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ mb: 2 }}>{historyStyle?.name} · {historyStyle?.styleCode}</Box>
+          {historyLoading || historyError ? (
+            <Box role={historyError ? 'alert' : 'status'} sx={{ color: historyError ? 'error.main' : 'text.secondary' }}>
+              {getUiMessage(historyError ? 'styleBoard.orderHistoryError' : 'styleBoard.orderHistoryLoading', '', languageCode)}
+            </Box>
+          ) : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead><TableRow>
+                  {['orderHistoryNumber', 'orderHistoryDate', 'orderHistoryDue', 'orderHistoryQuantity'].map(key => (
+                    <TableCell key={key} align={key === 'orderHistoryQuantity' ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap' }}>{getUiMessage(`styleBoard.${key}`, '', languageCode)}</TableCell>
+                  ))}
+                </TableRow></TableHead>
+                <TableBody>
+                  {orderHistory.map(order => <TableRow key={order.id}>
+                    <TableCell>{order.orderNumber || '-'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{order.createdAt ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(order.createdAt)) : '-'}</TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>{order.dueDate || '-'}</TableCell>
+                    <TableCell align="right">{formatNumberWithCommas(order.quantity)}</TableCell>
+                  </TableRow>)}
+                  {orderHistory.length === 0 && <TableRow><TableCell colSpan={4} sx={{ textAlign: 'center', color: 'text.secondary' }}>{getUiMessage('styleBoard.orderHistoryEmpty', '', languageCode)}</TableCell></TableRow>}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setHistoryStyle(null)}>{getUiMessage('common.close', '닫기', languageCode)}</Button></DialogActions>
+      </Dialog>
       <Dialog open={isAtResetConfirmOpen} onClose={handleAtResetConfirmClose}>
         <DialogTitle>
           {getUiMessage('styleBoard.atResetDialogTitle', 'AT 추정 초기화 확인', languageCode)}

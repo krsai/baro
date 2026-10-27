@@ -34,7 +34,7 @@ const CustomerList=({embedded=false})=>{
   catch(error){showNotification(error?.status===409||error?.message?.includes('PARTNER_HAS_TRANSACTION_HISTORY')?deletion.blocked:deletion.failed,'error');setDeleteTarget(null);}
   finally{setDeleting(false);}
  };
- useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:[WORKSPACE_DATA_TOPICS.SALES_PRICES,WORKSPACE_DATA_TOPICS.STYLES,WORKSPACE_DATA_TOPICS.CUSTOMERS],isActive:embedded||location.pathname==='/customer',onRefresh:fetchCustomers});
+ useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:[WORKSPACE_DATA_TOPICS.SALES_PRICES,WORKSPACE_DATA_TOPICS.STYLES,WORKSPACE_DATA_TOPICS.CUSTOMERS,WORKSPACE_DATA_TOPICS.ORDERS],isActive:embedded||location.pathname==='/customer',onRefresh:fetchCustomers});
  const pricing={ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing';
  const rows=useMemo(()=>customers.map(customer=>({
   id:customer.id,source:customer,code:customer.code,name:resolveCustomerDisplayName(customer,languageCode),country:resolveCountryForDisplay(customer),

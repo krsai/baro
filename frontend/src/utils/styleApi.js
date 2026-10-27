@@ -107,6 +107,7 @@ const fetchStylesFromServer = async (options = {}) => {
       orgId: options.orgId,
       ownerOrgId: options.ownerOrgId,
       compact: options.compact ? 1 : undefined,
+      list: options.listOnly ? 1 : undefined,
     })}`,
     {
       forceRefresh: Boolean(options?.forceRefresh),
@@ -125,12 +126,14 @@ export const fetchStyles = async (options = {}) => {
     orgId: orgIdNum,
     ownerOrgId: toPositiveOrgId(options?.ownerOrgId),
     compact: Boolean(options?.compact),
+    listOnly: Boolean(options?.listOnly),
     forceRefresh: Boolean(options?.forceRefresh),
     skipGlobalLoading: Boolean(options?.skipGlobalLoading),
     skipCache: Boolean(options?.skipCache),
     signal: options?.signal,
   });
-  styles.forEach((style) => {
+  // Partial list/compact responses must never replace a full detail cache.
+  if (!options.listOnly && !options.compact) styles.forEach((style) => {
     writeStyleToCache(style, {
       orgId: orgIdNum,
       ownerOrgId: style?.ownerOrgId,

@@ -266,7 +266,7 @@ test('sales pricing supports only CMT and FP without a MIX label', () => {
   assert.doesNotMatch(uiMessages, /MIX ·|MIXED|혼합/);
 });
 
-test('customer alerts require at least one current-version price per style', () => {
+test('customer alerts include current-version setup and actual order quantity prices', () => {
   const alertLoader = backend.slice(
     backend.indexOf('const loadMissingSalesPriceStyleCountByRelationship'),
     backend.indexOf('const PRODUCTION_STAGES', backend.indexOf('const loadMissingSalesPriceStyleCountByRelationship'))
@@ -278,7 +278,9 @@ test('customer alerts require at least one current-version price per style', () 
     alertLoader,
     /l\."quantityBucketSetVersionId" = COALESCE\([\s\S]*o\."quantityBucketSetVersionId",[\s\S]*r\."salesBucketSetVersionId"/
   );
-  assert.doesNotMatch(alertLoader, /pricingBasis|currencyId/);
+  assert.match(alertLoader, /s\."customerOrgId" = r\."brandOrgId"/);
+  assert.match(alertLoader, /loadCurrentOrderValueByOrderDbId\(orders, db\)/);
+  assert.match(alertLoader, /value\?\.status !== 'MISSING_PRICE'/);
 
   const customerListRoute = backend.slice(
     backend.indexOf('app.get("/customers"'),

@@ -1,4 +1,7 @@
 import { confirmCurrentProcessVersion, confirmedStyleProcessIds } from './services/styleProcessVersionLifecycle';
+import { toStyleListResponse } from './services/styleListResponse';
+import { coalesceInFlightRead } from './services/inFlightRead';
+import { contentMemo } from './services/contentMemo';
 import { normalizeLocalizedName } from './utils/localizedName';
 import { entityProfile, partnerProfilePatch, normalizePartnerCode } from './services/entityProfile';
 import {validateCustomerIndustry} from './services/partnerIndustry';
@@ -6434,10 +6437,11 @@ const loadMissingSalesPriceStyleCountByRelationship = async ({
   const rows = await db.$queryRaw(Prisma.sql`
     SELECT
       r."id" AS "relationshipId",
-      COUNT(s."id")::integer AS "missingStyleCount"
+      ARRAY_AGG(s."id") AS "missingStyleIds"
     FROM "OrgRelationship" r
     INNER JOIN "Style" s
-      ON s."orgId" = r."brandOrgId"
+      ON s."orgId" = r."manufacturerOrgId"
+      AND s."customerOrgId" = r."brandOrgId"
     LEFT JOIN "OrgRelationshipStyleSalesBucket" o
       ON o."orgRelationshipId" = r."id"
       AND o."styleId" = s."id"
@@ -6457,11 +6461,41 @@ const loadMissingSalesPriceStyleCountByRelationship = async ({
           )
       )
     GROUP BY r."id"
-  `) as Array<{ relationshipId: number; missingStyleCount: number }>;
-
-  return new Map(
-    rows.map((row) => [Number(row.relationshipId), Number(row.missingStyleCount) || 0])
+  `) as Array<{ relationshipId: number; missingStyleIds: number[] }>;
+  const missingByRelationship = new Map<number, Set<number>>(
+    rows.map(row => [Number(row.relationshipId), new Set(row.missingStyleIds.map(Number))])
   );
+  // A price in a different tier is not enough for an actual order. Reuse the
+  // order list's scope/version/tier calculation, grouping quantities per order
+  // and style (not per color/size row, or across separate orders).
+  const relationships = await db.orgRelationship.findMany({
+    where: { manufacturerOrgId, id: { in: normalizedRelationshipIds } },
+    select: { id: true, brandOrgId: true },
+  });
+  const relationshipByBuyer = new Map<number, number>(relationships.map((row: any) => [row.brandOrgId, row.id]));
+  const orders = relationships.length ? await db.workOrder.findMany({
+    where: {
+      sellerOrgId: manufacturerOrgId,
+      buyerOrgId: { in: relationships.map((row: any) => row.brandOrgId) },
+      workOrderItems: { some: { totalQuantity: { gt: 0 } } },
+    },
+    select: {
+      id: true, sellerOrgId: true, buyerOrgId: true,
+      workOrderItems: { select: { styleId: true, totalQuantity: true } },
+    },
+  }) : [];
+  const orderValues = await loadCurrentOrderValueByOrderDbId(orders, db);
+  for (const order of orders) {
+    const relationshipId = relationshipByBuyer.get(order.buyerOrgId);
+    const value = orderValues.get(order.id);
+    if (relationshipId === undefined || value?.status !== 'MISSING_PRICE') continue;
+    const missing = missingByRelationship.get(relationshipId) ?? new Set<number>();
+    for (const line of value.lines) {
+      if (line.status === 'MISSING_PRICE') missing.add(line.styleId);
+    }
+    missingByRelationship.set(relationshipId, missing);
+  }
+  return new Map(Array.from(missingByRelationship, ([id, styles]) => [id, styles.size]));
 };
 
 const PRODUCTION_STAGES = ["SEWING", "IRONING", "INSPECTION", "PACKING"] as const;
@@ -6842,6 +6876,8 @@ const loadStyleProcessRowsByStyleId = async (
   options: {
     processOrgId?: number | null;
     db?: StyleStorageClient;
+    styles?: any[];
+    bucketContext?: Map<number, any>;
   } = {}
 ) => {
   const db = options.db ?? prisma;
@@ -6854,7 +6890,7 @@ const loadStyleProcessRowsByStyleId = async (
     )
   );
   if (normalizedStyleIds.length === 0) return new Map<number, any[]>();
-  const activeStyles = await db.style.findMany({
+  const activeStyles = options.styles ?? await db.style.findMany({
     where: { id: { in: normalizedStyleIds } },
     select: { id: true, customerOrgId: true },
   });
@@ -6877,7 +6913,7 @@ const loadStyleProcessRowsByStyleId = async (
         .map((row: any) => Number(row.styleId))
     );
     const scopedStyles = activeStyles.filter((style) => scopedStyleIds.has(style.id));
-    const contextByStyleId = await loadRelationshipTimeBucketContextByStyleId({
+    const contextByStyleId = options.bucketContext ?? await loadRelationshipTimeBucketContextByStyleId({
       db,
       manufacturerOrgId,
       styles: scopedStyles,
@@ -6945,6 +6981,7 @@ const refreshStyleProcessMirrorForStyleIds = async (
   } = {}
 ) => loadStyleProcessRowsByStyleId(styleIds, options);
 
+const memoStyleAtPredictions = contentMemo<Map<number, any>>();
 const loadStyleAtPredictions = async (rowsByStyleId: Map<number, any[]>, db: StyleStorageClient) => {
   const targetRows = Array.from(rowsByStyleId.values()).flat();
   if (targetRows.length === 0) return new Map<number, any>();
@@ -6952,9 +6989,11 @@ const loadStyleAtPredictions = async (rowsByStyleId: Map<number, any[]>, db: Sty
   const donorRows = await db.styleProcess.findMany({
     where: { orgId: { in: priorOrgIds }, isActive: true },
     include: { style: { select: { categoryId: true, collection: true } }, atObservations: { where: { modelVersion: AT_V2_MODEL_VERSION } } },
+    orderBy: { id: 'asc' },
   });
   const categoryByStyle = new Map(donorRows.map(row => [row.styleId, row.style]));
-  return new Map(targetRows.map(row => [row.id, buildValidatedSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)]));
+  return memoStyleAtPredictions([AT_V2_MODEL_VERSION, targetRows, donorRows], () =>
+    new Map(targetRows.map(row => [row.id, buildValidatedSharedAtPrediction({ ...row, style: categoryByStyle.get(row.styleId) }, donorRows)])));
 
 };
 
@@ -7425,6 +7464,9 @@ const ensureStyleProcessStorageForStyles = async (
   options: {
     processOrgId?: number | null;
     db?: StyleStorageClient;
+    readOnly?: boolean;
+    bucketContext?: Map<number, any>;
+    skipNames?: boolean;
   } = {}
 ) => {
   const db = options.db ?? prisma;
@@ -7436,9 +7478,9 @@ const ensureStyleProcessStorageForStyles = async (
 
   let rowsByStyleId = await loadStyleProcessRowsByStyleId(
     styleRows.map((style) => Number(style.id)),
-    { processOrgId, db }
+    { processOrgId, db, ...(options.bucketContext ? { styles: styleRows, bucketContext: options.bucketContext } : {}) }
   );
-  const missingStyles = styleRows.filter((style) => {
+  const missingStyles = options.readOnly ? [] : styleRows.filter((style) => {
     if ((rowsByStyleId.get(Number(style.id)) || []).length > 0) return false;
     return normalizeStyleProcesses(style?.processes).length > 0;
   });
@@ -7461,7 +7503,7 @@ const ensureStyleProcessStorageForStyles = async (
     );
   }
 
-  const outOfSyncStyles = styleRows.filter((style) =>
+  const outOfSyncStyles = options.readOnly ? [] : styleRows.filter((style) =>
     isStyleProcessStorageOutOfSync({
       style,
       rows: rowsByStyleId.get(Number(style.id)) || [],
@@ -7486,7 +7528,7 @@ const ensureStyleProcessStorageForStyles = async (
     );
   }
 
-  const processNameLookup = await loadStyleProcessNameLookup({
+  const processNameLookup = options.skipNames ? new Map() : await loadStyleProcessNameLookup({
     orgId: processOrgId,
     processCodes: Array.from(rowsByStyleId.values()).flatMap((rows) =>
       ensureArray(rows).map((row) => row?.processCode)
@@ -8330,7 +8372,7 @@ const toOrderResponse = (
   };
 };
 
-const loadCurrentOrderValueByOrderDbId = async (orders: any[]) => {
+const loadCurrentOrderValueByOrderDbId = async (orders: any[], db = prisma) => {
   const result = new Map<number, any>();
   const pairs = Array.from(new Map(ensureArray(orders).map((order) => [
     `${order?.sellerOrgId}:${order?.buyerOrgId}`,
@@ -8339,7 +8381,7 @@ const loadCurrentOrderValueByOrderDbId = async (orders: any[]) => {
   const styleIds = Array.from(new Set(ensureArray(orders).flatMap((order) =>
     ensureArray(order?.workOrderItems).map((item) => toPositiveIntOrNull(item?.styleId)).filter(Boolean)
   ))) as number[];
-  const relationships = pairs.length && styleIds.length ? await prisma.orgRelationship.findMany({
+  const relationships = pairs.length && styleIds.length ? await db.orgRelationship.findMany({
     where: { OR: pairs as any },
     include: {
       salesBucketSetVersion: { include: { entries: true } },
@@ -29846,8 +29888,9 @@ app.get("/styles", async (req, res) => {
   }
   const includeProcesses = isManufacturerOrg(organization);
   const compact = req.query.compact === "1" || req.query.compact === "true";
+  const listOnly = req.query.list === "1";
   const ownerOrgId = parseStyleOwnerOrgIdQuery(req.query.ownerOrgId);
-  let styles: any[] = compact
+  let styles: any[] = compact || listOnly
     ? await prisma.style.findMany({
         where: styleAccessWhere(organization, ownerOrgId),
         orderBy: { id: "asc" },
@@ -29866,7 +29909,7 @@ app.get("/styles", async (req, res) => {
           collection: true,
           categoryId: true,
           season: true,
-          imageUrls: true,
+          imageUrls: !listOnly,
           processes: true,
           timeBucketSource: true,
           timeBucketSetVersionId: true,
@@ -29896,23 +29939,51 @@ app.get("/styles", async (req, res) => {
           _count: { select: STYLE_DELETION_COUNTS },
         },
       });
+  let listBucketContext: Map<number, any> | undefined;
   if (includeProcesses && styles.length > 0) {
     const contextByStyleId = await loadRelationshipTimeBucketContextByStyleId({
       manufacturerOrgId: organization.id,
       styles,
     });
+    listBucketContext = contextByStyleId;
     styles = applyRelationshipTimeBucketContexts({ styles, contextByStyleId });
   }
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles(styles, {
         processOrgId: organization.id,
+        readOnly: true,
+        skipNames: listOnly,
+        ...(listBucketContext ? { bucketContext: listBucketContext } : {}),
       })
     : new Map<number, any[]>();
   res.json(
-    styles.map((style) =>
-      toStyleResponse(style, { includeProcesses, processMirrorMap })
-    )
+    styles.map((style) => {
+      const response = toStyleResponse(style, { includeProcesses, processMirrorMap });
+      return listOnly ? toStyleListResponse(response) : response;
+    })
   );
+});
+
+app.get("/styles/:styleId/order-history", async (req, res) => {
+  const organization = await getOrganizationByQuery(req);
+  if (!organization) return res.status(404).json({ error: "organization not found" });
+  const style = await resolveStyleByIdForAccess({
+    organization, styleId: String(req.params.styleId).trim(),
+    ownerOrgId: parseStyleOwnerOrgIdQuery(req.query.ownerOrgId),
+  });
+  if (!style) return res.status(404).json({ error: "style not found" });
+  const orders = await prisma.workOrder.findMany({
+    where: { OR: getOrderAccessWhere(organization.id), workOrderItems: { some: { styleId: style.id } } },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true, orderNumber: true, createdAt: true, dueDate: true,
+      workOrderItems: { where: { styleId: style.id }, select: { totalQuantity: true } },
+    },
+  });
+  return res.json(orders.map(order => ({
+    id: order.id, orderNumber: order.orderNumber, createdAt: order.createdAt, dueDate: order.dueDate,
+    quantity: order.workOrderItems.reduce((sum, item) => sum + item.totalQuantity, 0),
+  })));
 });
 
 app.get("/styles/:styleId", async (req, res) => {
@@ -29950,6 +30021,7 @@ app.get("/styles/:styleId", async (req, res) => {
   const processMirrorMap = includeProcesses
     ? await ensureStyleProcessStorageForStyles([style], {
         processOrgId: organization.id,
+        readOnly: true,
       })
     : new Map<number, any[]>();
 
@@ -31177,6 +31249,8 @@ app.put("/attributes", async (req, res) => {
   res.json(response);
 });
 
+const readAtSyncStatus = coalesceInFlightRead<Awaited<ReturnType<typeof buildAtSyncStatusForOrg>>>();
+
 app.get("/at-sync/status", async (req, res) => {
   const access = await requireOrgRole(req, res, {
     allowedRoles: ORG_MANAGEMENT_ROLES,
@@ -31216,9 +31290,13 @@ app.get("/at-sync/status", async (req, res) => {
     (mode === "current" ? currentMonthKey : "") ||
     (mode === "previous" ? previousMonthKey : "") ||
     "";
-  const status = await buildAtSyncStatusForOrg(access.organization.id, {
+  const loadStatus = () => buildAtSyncStatusForOrg(access.organization.id, {
     trainingMonthKey: overrideTrainingMonthKey,
   });
+  // Mutation-triggered refreshes must not join a pre-mutation read.
+  const status = req.query.fresh === '1'
+    ? await loadStatus()
+    : await readAtSyncStatus(`${access.organization.id}:${overrideTrainingMonthKey}`, loadStatus);
 
   return res.json({
     ok: true,
