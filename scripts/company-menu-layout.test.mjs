@@ -49,9 +49,9 @@ test('company groups, direct entry, partner scopes and notifications follow the 
   assert.deepEqual(menu.filter(item => item.isParent).map(item => item.menuGroupKey),
     ['ORDER', 'RECORDS', 'INVENTORY', 'ADMIN', 'ACCOUNTING', 'OPERATIONS', 'SETTINGS', 'SYSTEM']);
   for (const [path, group] of [
-    ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'ACCOUNTING'],
-    ['/attendance', 'ADMIN'], ['/payroll', 'ADMIN'], ['/employee-system', 'ADMIN'],
-    ['/salary-system', 'ADMIN'], ['/production-analysis', 'RECORDS'],
+    ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'SETTINGS'],
+    ['/attendance', 'ADMIN'], ['/payroll', 'ADMIN'], ['/employee-system', 'SETTINGS'],
+    ['/salary-system', 'SETTINGS'], ['/production-analysis', 'RECORDS'],
     ['/business', 'SETTINGS'], ['/inventory/stock', 'INVENTORY'],
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],

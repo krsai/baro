@@ -3,10 +3,10 @@ const GROUPS = [
   ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
   ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/production-analysis']],
   ['INVENTORY', 'materialsInventory', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/inventory/settings']],
-  ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/holiday', '/payroll', '/employee-system', '/salary-system']],
-  ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger', '/approval-settings']],
+  ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/holiday', '/payroll']],
+  ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger']],
   ['OPERATIONS', 'managementAnalysis', ['/revenue-forecast', '/revenue-analysis']],
-  ['SETTINGS', 'settings', ['/business', '/personal-settings', '/app-settings', '/system-setting/access-policy']],
+  ['SETTINGS', 'settings', ['/business', '/employee-system', '/salary-system', '/approval-settings', '/personal-settings', '/app-settings', '/system-setting/access-policy']],
 ];
 
 export function organizeCompanyMenu(items, translate) {
