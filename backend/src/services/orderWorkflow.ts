@@ -1,8 +1,9 @@
 import { orderAssignmentPlans } from './orderAssignments';
 import { invoiceOrderProgress } from './invoiceOrderProgress';
+import { loadInvoiceBillingCoverage, billingCoversProduction } from './invoiceWorkflow';
 export { orderAssignmentPlans } from './orderAssignments';
 
-export type OrderWorkflowStatus = 'RECEIVED' | 'PRODUCTION' | 'BILLING' | 'COMPLETED';
+export type OrderWorkflowStatus = 'RECEIVED' | 'PRODUCTION' | 'BILLING' | 'COLLECTION' | 'COMPLETED';
 
 // A production percentage is never evidence of an approved completion.
 export function orderWorkflowStatus(order: any, plans: any[], production?: { isCompleted: boolean; assignments?: Array<{ completed: boolean }> }): OrderWorkflowStatus {
@@ -23,15 +24,17 @@ export function orderWorkflowStatus(order: any, plans: any[], production?: { isC
   // allocation-coverage and reopened-plan guards even with historical credit.
   if (production !== undefined) {
     if (covered && hasCompletionEvidence && production.isCompleted &&
-      production.assignments?.length === related.length && production.assignments.every(row => row.completed)) return 'BILLING';
+      production.assignments?.length === related.length && production.assignments.every(row => row.completed)) return order.isFullyInvoiced === true ? 'COLLECTION' : 'BILLING';
     return history ? 'PRODUCTION' : 'RECEIVED';
   }
-  if (covered && hasCompletionEvidence && related.every(plan => plan.isCompleted === true)) return 'BILLING';
+  if (covered && hasCompletionEvidence && related.every(plan => plan.isCompleted === true)) return order.isFullyInvoiced === true ? 'COLLECTION' : 'BILLING';
   return history ? 'PRODUCTION' : 'RECEIVED';
 }
 
 export async function loadOrderWorkflowStatuses(db: any, orders: any[], loadProgress?: (orgId: number, ids: string[]) => Promise<any[]>): Promise<Map<number, OrderWorkflowStatus>> {
   if (!orders.length) return new Map();
+  const billing = await loadInvoiceBillingCoverage(db, orders);
+  orders = orders.map(order => ({ ...order, isFullyInvoiced: billing.get(order.id)?.complete === true }));
   const ids = orders.map(order => order.id);
   const plans = await db.assignmentPlan.findMany({ where: { OR: [
     { workOrderId: { in: ids } }, { assignmentCard: { is: { workOrderId: { in: ids } } } },
@@ -51,6 +54,7 @@ export async function loadOrderWorkflowStatuses(db: any, orders: any[], loadProg
       .filter(row => row.id === plan.externalId)
       .map(row => ({ ...row, id: `${plan.orgId}:${row.id}` })));
     const scopedPlans = related.map(plan => ({ ...plan, externalId: `${plan.orgId}:${plan.externalId}` }));
-    return [order.id, orderWorkflowStatus(order, plans, invoiceOrderProgress(order, scopedPlans, progress))];
+    const production = invoiceOrderProgress(order, scopedPlans, progress);
+    return [order.id, orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(billing.get(order.id), production) }, plans, production)];
   }));
 }

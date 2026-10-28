@@ -646,6 +646,7 @@ export const buildFactoryMonthCapacityBoardRows = ({
           reviewReason: assignment?.reviewReason || null,
           visiblePlannedStTotalSeconds: 0,
           isCompleted: Boolean(assignment?.isCompleted),
+          isManagementClosed: assignment?.isManagementClosed === true,
           completedAt: normalizeDateKey(assignment?.completedAt),
           productionCompletedAt: normalizeDateKey(assignment?.productionCompletedAt),
           actualProducedCompletedAt: normalizeDateKey(assignment?.actualProducedCompletedAt),

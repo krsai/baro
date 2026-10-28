@@ -296,6 +296,8 @@ export const UI_MESSAGES = {
     groupKey: { ko: 'key: {key}', en: 'key: {key}', vi: 'key: {key}' },
   },
   assign: {
+    includeManagementClosed: { ko: '관리 종료 포함', en: 'Include closed assignments', vi: 'Bao gồm phân công đã kết thúc' },
+    managementClosed: { ko: '관리 종료', en: 'Management closed', vi: 'Đã kết thúc quản lý' },
     dragRequiresReadyOrder: { ko: '스타일과 수량이 유효한 주문을 저장한 뒤 배정해 주세요.', en: 'Save an order with valid styles and quantities before scheduling.', vi: 'Lưu đơn hàng với mẫu và số lượng hợp lệ trước khi phân công.' },
     orderReadinessRequiredCompact: { ko: '주문 검토 필요', en: 'Order review required', vi: 'Cần kiểm tra đơn hàng' },
     orderNotReadySaveError: { ko: '주문의 스타일과 수량을 확인하고 저장한 뒤 배정판을 새로고침해 주세요.', en: 'Check and save the order styles and quantities, then refresh the board.', vi: 'Kiểm tra và lưu mẫu, số lượng của đơn hàng, sau đó tải lại bảng phân công.' },

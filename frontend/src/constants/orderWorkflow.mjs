@@ -1,11 +1,11 @@
-export const ORDER_WORKFLOW_KEYS = ['RECEIVED', 'PRODUCTION', 'BILLING', 'COMPLETED'];
+export const ORDER_WORKFLOW_KEYS = ['RECEIVED', 'PRODUCTION', 'BILLING', 'COLLECTION', 'COMPLETED'];
 export const ORDER_WORKFLOW_TONES = {
-  RECEIVED: 'gray', PRODUCTION: 'blue', BILLING: 'purple', COMPLETED: 'green',
+  RECEIVED: 'gray', PRODUCTION: 'blue', BILLING: 'purple', COLLECTION: 'orange', COMPLETED: 'green',
 };
 const LABELS = {
-  ko: ['접수', '생산', '청구', '완료'],
-  en: ['Received', 'Production', 'Billing', 'Completed'],
-  vi: ['Tiếp nhận', 'Sản xuất', 'Lập hóa đơn', 'Hoàn tất'],
+  ko: ['접수', '생산', '청구', '수금', '마감'],
+  en: ['Received', 'Production', 'Billing', 'Collection', 'Closed'],
+  vi: ['Tiếp nhận', 'Sản xuất', 'Lập hóa đơn', 'Thu tiền', 'Đã chốt'],
 };
 export const getOrderWorkflowLabel = (value, languageCode = 'en') =>
   (LABELS[languageCode] || LABELS.en)[ORDER_WORKFLOW_KEYS.indexOf(value)] || '—';

@@ -1460,7 +1460,7 @@ const OrderList = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.SALES_PRICES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    topics: isDetailMode ? [] : [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.SALES_PRICES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
     isActive: isOrderListRouteActive,
     onRefresh: () => loadOrdersFromDb({ forceRefresh: true }),
     shouldHandle: (detail) =>

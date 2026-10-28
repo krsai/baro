@@ -2262,6 +2262,7 @@ const resolveAssignmentProgressState = ({
       progressRow?.plannedQuantity ?? assignment?.quantity ?? assignment?.plannedQuantity ?? 0
     ),
     scheduleStatus,
+    isManagementClosed: progressRow?.isManagementClosed === true,
     isCompleted,
     plannedStTotalSeconds,
     remainingStTotalSeconds,
@@ -3373,7 +3374,7 @@ const AssignBoard = () => {
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD],
+    topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.STYLES, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
     isActive: isAssignmentRouteActive,
     isBlocked: loading || persisting || isDirty,
     onRefresh: requestExternalBoardReload,

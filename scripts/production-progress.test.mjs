@@ -145,10 +145,11 @@ test('actual customer report route uses the same order and style aggregates as i
   let handler;
   const rows = [row()];
   const deps = {
+    ...require('../backend/dist/services/invoiceWorkflow.js'),
     app: { get: (_path, callback) => { handler = callback; } },
     getOrganizationByQuery: async () => ({ id: 1 }), toPositiveIntOrNull: value => Number(value) || null,
     getOrderAccessWhere: () => [{ orgId: 1 }], WORK_ORDER_RESPONSE_INCLUDE: {},
-    prisma: { workOrder: { findMany: async () => [order] }, assignmentPlan: { findMany: async () => [plan] } },
+    prisma: { invoiceOrder: { findMany: async () => [] }, workOrder: { findMany: async () => [order] }, assignmentPlan: { findMany: async () => [plan] } },
     buildAssignmentPlanProgressRows: async () => rows, invoiceOrderProgress, orderWorkflowStatus, orderAssignmentPlans,
     ensureArray: value => Array.isArray(value) ? value : [],
     invoiceProducedQuantity: value => value.producedQuantity, normalizeDateKey: () => '',

@@ -4,6 +4,8 @@ import {
   Alert,
   Box,
   Chip,
+  Checkbox,
+  FormControlLabel,
   Collapse,
   IconButton,
   LinearProgress,
@@ -223,7 +225,9 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   // its planned quantity is 0, so there is nothing left to drag onto a factory.
   const isLocked = isCompleted || isZeroQuantityOverflow;
   const chips = [
-    isCompleted
+    assignment.isManagementClosed
+      ? { label: getUiMessage('assign.managementClosed', 'Management closed', languageCode), variant: 'outlined', color: 'success' }
+      : isCompleted
       ? {
           label: getUiMessage(
             'assign.completedStatusCompact',
@@ -588,6 +592,7 @@ const FactoryMonthCapacityBoard = ({
   onOpenContextMenu,
 }) => {
   const [expandedFactoryIds, setExpandedFactoryIds] = useState(() => new Set());
+  const [includeManagementClosed, setIncludeManagementClosed] = useState(false);
 
   const lowerSearchTerm = useMemo(
     () => String(searchTerm || '').trim().toLowerCase(),
@@ -595,7 +600,6 @@ const FactoryMonthCapacityBoard = ({
   );
   const normalizedRows = useMemo(() => {
     const sourceRows = Array.isArray(rows) ? rows : [];
-    if (!lowerSearchTerm) return sourceRows;
     return sourceRows.map((row) => ({
       ...row,
       queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm),
@@ -604,7 +608,7 @@ const FactoryMonthCapacityBoard = ({
         lowerSearchTerm
       ),
       completedAssignments: filterAssignmentsBySearchTerm(
-        row.completedAssignments,
+        (row.completedAssignments || []).filter(assignment => includeManagementClosed || !assignment.isManagementClosed),
         lowerSearchTerm
       ),
       zeroQuantityOverflowAssignments: filterAssignmentsBySearchTerm(
@@ -612,7 +616,7 @@ const FactoryMonthCapacityBoard = ({
         lowerSearchTerm
       ),
     }));
-  }, [rows, lowerSearchTerm]);
+  }, [rows, lowerSearchTerm, includeManagementClosed]);
   const normalizedMonthKeys = useMemo(
     () => (Array.isArray(monthKeys) ? monthKeys : []).filter(Boolean),
     [monthKeys]
@@ -645,6 +649,7 @@ const FactoryMonthCapacityBoard = ({
 
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}>
+      <FormControlLabel sx={{ ml: 1 }} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event => setIncludeManagementClosed(event.target.checked)} />} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)} />
       <TableContainer sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ width: '100%', minWidth: tableMinWidth }}>
           <TableHead>

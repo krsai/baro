@@ -37,10 +37,10 @@ test('historical completion counts as production history but cannot replace the 
 });
 test('batch projection reads actual FK history once and never writes statuses or returns completed',async()=>{
   let reads=0;
-  const db={assignmentPlan:{findMany:async({where})=>{reads++;assert.deepEqual(where.OR[0].workOrderId.in,[1,2]);return[plan({workOrderId:null,assignmentCard:{workOrderId:1},_count:{workRecords:1}})];}}};
+  const db={invoiceOrder:{findMany:async()=>[]},assignmentPlan:{findMany:async({where})=>{reads++;assert.deepEqual(where.OR[0].workOrderId.in,[1,2]);return[plan({workOrderId:null,assignmentCard:{workOrderId:1},_count:{workRecords:1}})];}}};
   const statuses=await loadOrderWorkflowStatuses(db,[order,{...order,id:2}]);
   assert.equal(reads,1);assert.equal(statuses.get(1),'PRODUCTION');assert.equal(statuses.get(2),'RECEIVED');
-  assert.deepEqual(orderWorkflowOptions('ko').map(option=>option.label),['접수','생산','청구','완료']);
+  assert.deepEqual(orderWorkflowOptions('ko').map(option=>option.label),['접수','생산','청구','수금','마감']);
 });
 
 test('order state follows canonical assignment completion rather than the stored manual flag',()=>{
@@ -69,7 +69,7 @@ test('L16-like mixed historical and current styles use the same completion summa
 
 test('create/update projections resolve canonical progress by organization without writes',async()=>{
   const plans=[plan({orgId:1,externalId:'same',_count:{workRecords:1}}),plan({workOrderId:2,orgId:2,externalId:'same',_count:{workRecords:1}})];
-  const db={assignmentPlan:{findMany:async()=>plans}};
+  const db={assignmentPlan:{findMany:async()=>plans},invoiceOrder:{findMany:async()=>[]}};
   const calls=[];
   const statuses=await loadOrderWorkflowStatuses(db,[order,{...order,id:2}],async(orgId,ids)=>{
     calls.push([orgId,ids]);return [{id:'same',isCompleted:orgId===1,plannedQuantity:100,producedQuantity:orgId===1?100:50}];

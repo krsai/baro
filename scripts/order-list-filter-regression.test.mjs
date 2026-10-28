@@ -17,6 +17,7 @@ test('order deletion flags include employee, outsourced and card-linked history 
   const orders = [1, 2, 3, 4, 5].map(id => ({ id, orderId: String(id) }));
   let handler, response;
   const deps = {
+    ...require('../backend/dist/services/invoiceWorkflow.js'),
     orderWorkflowStatus: require('../backend/dist/services/orderWorkflow.js').orderWorkflowStatus,
     app: { get: (_path, callback) => { handler = callback; } },
     getOrganizationByQuery: async () => ({ id: 99 }),
@@ -27,6 +28,7 @@ test('order deletion flags include employee, outsourced and card-linked history 
     invoiceOrderProgress: () => ({ progressPercent: 0, producedQuantity: 0, assignments: [] }),
     toOrderResponse: order => order,
     prisma: {
+      invoiceOrder: { findMany: async () => [] },
       workOrder: { findMany: async () => orders },
       assignmentPlan: { findMany: async query => {
         if (!query.select._count) return [];

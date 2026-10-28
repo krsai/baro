@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:invoice-workflow": "npm --prefix backend run build && node --test scripts/invoice-workflow.test.mjs scripts/order-workflow.test.mjs scripts/production-progress.test.mjs scripts/order-list-filter-regression.test.mjs && node scripts/invoice-workflow-browser.test.mjs",
     "test:invoice-number-maintenance": "npm --prefix backend run build && node --test scripts/production-invoice-numbers.test.mjs scripts/document-number.test.mjs scripts/issued-invoice-print.test.mjs",
     "test:menu-layout": "node --test scripts/company-menu-layout.test.mjs scripts/system-menu-layout.test.mjs scripts/workspace-navigation-regression.test.mjs",
     "test:document-numbers": "npm --prefix backend run build && node --test scripts/document-number.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/invoice-draft-store.test.mjs scripts/invoice-issue-store.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/invoice-editor-browser.test.mjs && node scripts/expense-editor-browser.test.mjs && node scripts/expense-list-browser.test.mjs",

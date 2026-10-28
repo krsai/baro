@@ -10,6 +10,7 @@ import { entityProfile, partnerProfilePatch, normalizePartnerCode } from './serv
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
 import { displayProductionProgress } from './services/productionProgress';
+import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow } from './services/invoiceWorkflow';
 import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
 import { assignmentCardNeedsWrite } from "./utils/assignmentCardWrite";
 import { annotateProcessVersionProtection } from "./services/processVersionProtection";
@@ -23057,7 +23058,7 @@ app.get("/assignment-plan-progress", async (req, res) => {
       .filter(Boolean);
 
     const rows = await buildAssignmentPlanProgressRows(organization.id, externalIds);
-    res.json(rows);
+    res.json(await annotateAssignmentInvoiceWorkflow(prisma, organization.id, rows, buildAssignmentPlanProgressRows));
   } catch (error) {
     console.error("[assignment-plan-progress] request failed", {
       orgId: req.query?.orgId ?? null,
@@ -28878,6 +28879,7 @@ app.get("/orders", async (req, res) => {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     include: WORK_ORDER_RESPONSE_INCLUDE,
   });
+  const invoiceCoverage = await loadInvoiceBillingCoverage(prisma, orders);
   const assignmentLockMap = await loadOrderAssignmentModificationLockMap(orders);
   const currentOrderValueByOrderDbId = await loadCurrentOrderValueByOrderDbId(orders);
   // Match DELETE's history guard across both direct and card links, regardless
@@ -28921,7 +28923,7 @@ app.get("/orders", async (req, res) => {
         return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
-        }), workflowStatus: orderWorkflowStatus(order, deletionPlans, production), productionProgressPercent: production.progressPercent,
+        }), workflowStatus: orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production) }, deletionPlans, production), productionProgressPercent: production.progressPercent,
           hasProductionRecords: productionOrderIds.has(order.id),
           hasAssignments: assignedOrderIds.has(order.id),
           producedQuantity: production.producedQuantity,
@@ -28950,6 +28952,7 @@ app.get("/customer-production-reports", async (req, res) => {
     return res.json({ generatedAt: new Date().toISOString(), customers: [], rows: [] });
   }
 
+  const invoiceCoverage = await loadInvoiceBillingCoverage(prisma, orders);
   const orderIds = orders.map((order) => order.id);
   const plans = await prisma.assignmentPlan.findMany({
     where: { orgId: organization.id, OR: [
@@ -29119,7 +29122,7 @@ app.get("/customer-production-reports", async (req, res) => {
         orderId: order.orderId,
         workOrderId: order.id,
         orderNumber: order.orderNumber,
-        orderStatus: orderWorkflowStatus(order, reportWorkflowPlans, production),
+        orderStatus: orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production) }, reportWorkflowPlans, production),
         orderProgressPercent: production.progressPercent,
         orderProductionCompleted: production.isCompleted,
         orderProducedQuantity: production.producedQuantity,
