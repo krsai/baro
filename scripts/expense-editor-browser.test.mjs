@@ -62,8 +62,15 @@ try {
     const h=expenseHeaderActions[lang];
     const numberInput=page.getByLabel(documentNumberText[lang].expense,{exact:true});if(mode==='GENERAL'&&!locked)await numberInput.fill('BARO-EXP-A');if(mode==='SAVED'){await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='EXP-2026-000008'));assert.equal(await numberInput.evaluate(el=>el.readOnly),true);}
     assert.equal(await page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true}).count(),0);
-    const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,4);
+    const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,3);
     const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields must share one row');
+    const payeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(Math.abs(payeeBox.width-boxes[0].width)<2);assert.equal(payeeBox.height,36);assert.ok((await page.getByTestId('expense-payee-button').getAttribute('class')).includes('MuiButton-contained'));
+    const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.equal(await page.getByTestId('expense-header').getByLabel('REMARK',{exact:true}).count(),0);
+    if(mode==='GENERAL'&&lang==='ko'&&!locked){
+      await page.setViewportSize({width:430,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+      const mobileRemark=await page.getByLabel('REMARK',{exact:true}).boundingBox(),mobileTotals=await page.getByTestId('expense-totals').boundingBox();assert.ok(mobileRemark.y<mobileTotals.y);
+      await page.setViewportSize({width:1600,height:1000});
+    }
     if(!locked&&mode!=='SAVED')assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),true);
     const confirmLine=async()=>{
       const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:h.approval,exact:true}).waitFor();

@@ -186,9 +186,8 @@ export default function TransactionRequestEntry() {
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
           <TextField label={numbering.expense} value={form.managementNumber||''} onChange={event=>update({managementNumber:event.target.value})} disabled={disabled} helperText={form.version?'':numbering.auto} slotProps={{input:{readOnly:Boolean(form.version)},htmlInput:{maxLength:200}}} sx={{width:{xs:'100%',sm:360},mb:2}}/>
-          <Box data-testid="expense-header" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm:'180px minmax(0,1fr)', lg: '170px minmax(180px,.8fr) minmax(180px,.8fr) minmax(280px,1.6fr)' }, gap: 1.5,alignItems:'start' }}>
+          <Box data-testid="expense-header" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm:'170px 170px minmax(0,1fr)' }, gap: 1.5,alignItems:'start' }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
-            <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} />
             <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
               onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
               onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
@@ -218,8 +217,10 @@ export default function TransactionRequestEntry() {
           <Typography variant="caption" color="text.secondary">{labels.limit}</Typography>
           <Button startIcon={<Add />} sx={{ flexShrink:0 }} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button>
         </Stack>
-        <Stack alignItems="flex-end" spacing={1} sx={{ p: 3, bgcolor: 'grey.50' }} data-testid="expense-totals">
-          {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: { xs: '100%', sm: 360 } }}>
+        <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) 360px'},gap:3,p:3,bgcolor:'grey.50'}} data-testid="expense-summary">
+          <TextField fullWidth label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{alignSelf:'start'}}/>
+        <Stack alignItems="flex-end" spacing={1} data-testid="expense-totals" sx={{minWidth:0}}>
+          {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: '100%' }}>
             <Typography variant="subtitle2">{total.currency}</Typography>
             <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">{labels.subtotal}</Typography><Typography>{money(total.subtotal,total.currency)}</Typography></Stack>
             <Stack direction="row" justifyContent="space-between"><Typography color="text.secondary">{labels.tax}</Typography><Typography>{money(total.vatAmount,total.currency)}</Typography></Stack>
@@ -227,6 +228,7 @@ export default function TransactionRequestEntry() {
           </Stack>)}
 
         </Stack>
+        </Box>
       {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
       </Paper>
     </PageContentStack>
