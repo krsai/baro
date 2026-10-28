@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { applyOrderBillingPercentages } from '../frontend/src/utils/invoiceDraft.mjs';
 const require=createRequire(import.meta.url);
 const {invoiceBillingCoverage,billingCoversProduction,annotateAssignmentInvoiceWorkflow}=require('../backend/dist/services/invoiceWorkflow.js');
 const {orderWorkflowStatus,loadOrderWorkflowStatuses}=require('../backend/dist/services/orderWorkflow.js');
+const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore.js');
 const order={id:1,orderId:'order-one',sellerOrgId:1,buyerOrgId:2,workOrderItems:[{id:5,styleId:7,totalQuantity:100,sizeQuantities:{S:40,M:60}}],priorCompletions:[]};
 const statement={workOrderId:1,sourceOrderId:'order-one',billingPercentage:'100',invoice:{sellerOrgId:1,buyerOrgId:2,status:'ISSUED'},lines:[{workOrderItemId:5,sourceItemId:5,styleId:7,size:'S',quantity:40},{workOrderItemId:5,sourceItemId:5,styleId:7,size:'M',quantity:60}]};
 const plans=[{externalId:'a',workOrderId:1,styleId:7,assignmentQuantity:40,orgId:1,isCompleted:true},{externalId:'b',workOrderId:1,styleId:7,assignmentQuantity:60,orgId:1,isCompleted:true}];
@@ -48,4 +50,31 @@ test('a fully invoiced style can close while another style on the same order sti
 test('excess unbilled production and rounded 100% do not close work',()=>{
  const coverage=invoiceBillingCoverage(order,[statement]);assert.equal(billingCoversProduction(coverage,{styles:[{styleId:7,producedQuantity:101}]}),false);
  assert.equal(orderWorkflowStatus({...order,isFullyInvoiced:true},plans,{isCompleted:false,assignments:[{completed:false},{completed:false}]}),'PRODUCTION');
+});
+
+test('30% and 100% advances can be issued before production finishes without closing orders or hiding assignments',async()=>{
+ for(const percentage of ['30','100']){
+  const date=new Date('2026-10-28T00:00:00Z'),invoices=[],ledger=[],settings=new Map();let finished=false,started=false;
+  const advanceOrder={id:1,orderId:'advance',sellerOrgId:1,buyerOrgId:2,orderNumber:'ADV',updatedAt:date,priorCompletions:[],workOrderItems:[{id:5,styleId:7,totalQuantity:100,sizeQuantities:{S:100},style:{name:'Shirt',code:'S7'}}]};
+  const content={fields:{number:'',date:'2026-10-28'},basis:'MANUFACTURING_SERVICE_PRICE',currency:'USD',orders:[{orderId:'advance',sourceUpdatedAt:date.toISOString()}],percentages:{advance:percentage},lines:[{key:JSON.stringify(['advance','5:S']),quantity:'100',unitPriceOverride:'10'}]};
+  const plan={externalId:'a',workOrderId:1,styleId:7,orgId:1,assignmentQuantity:100,_count:{workRecords:1}};
+  const rows=()=>[{id:'a',workOrderId:1,styleId:7,plannedQuantity:100,producedQuantity:finished?100:started?50:0,isCompleted:finished}];
+  const db={invoiceDraft:{findFirst:async()=>({id:'draft',revision:1,buyerOrgId:2,content})},workOrder:{findMany:async()=>[advanceOrder]},orgRelationship:{findFirst:async()=>null},
+   assignmentPlan:{findMany:async()=>[{...plan,isCompleted:finished,_count:{workRecords:started?1:0}}]},
+   invoiceOrder:{findMany:async()=>ledger,findFirst:async()=>null,create:async({data})=>{const row={id:10,...data,invoice:invoices[0],lines:[]};ledger.push(row);return row;}},
+   invoiceLine:{createMany:async({data})=>{ledger[0].lines.push(...data);}},
+   invoice:{findFirst:async({where,orderBy})=>orderBy?invoices.at(-1):where.clientKey?invoices.find(row=>row.clientKey===where.clientKey):invoices.find(row=>row.invoiceNumber.toLowerCase()===where.invoiceNumber.equals.toLowerCase()),create:async({data})=>{const row={id:'issued',status:'ISSUED',...data};invoices.push(row);return row;}},
+   systemSetting:{findUnique:async({where})=>settings.get(where.key)||null,upsert:async({where,update})=>settings.set(where.key,update)},$queryRawUnsafe:async()=>[]};
+  db.$transaction=async fn=>fn(db);
+  const invoice=await issueInvoiceDraft(db,1,'test','draft',1);assert.equal(invoice.total,percentage==='30'?'300.00':'1000.00');assert.equal(finished,false);
+  const preview=applyOrderBillingPercentages({orders:[{orderId:'advance'}]},{total:'1000.00',issues:['PRODUCTION'],lines:[{orderId:'advance',quantity:100,amount:'1000.00'}]},{advance:percentage},{},'USD');
+  assert.deepEqual(preview.issues,[]);assert.deepEqual(preview.warnings,['PRODUCTION']);
+  assert.equal((await loadOrderWorkflowStatuses(db,[advanceOrder],async()=>rows())).get(1),'RECEIVED');
+  started=true;
+  assert.equal((await loadOrderWorkflowStatuses(db,[advanceOrder],async()=>rows())).get(1),'PRODUCTION');
+  assert.equal((await annotateAssignmentInvoiceWorkflow(db,1,rows(),async()=>rows()))[0].isManagementClosed,false);
+  finished=true;
+  assert.equal((await loadOrderWorkflowStatuses(db,[advanceOrder],async()=>rows())).get(1),percentage==='100'?'COLLECTION':'BILLING');
+  assert.equal((await annotateAssignmentInvoiceWorkflow(db,1,rows(),async()=>rows()))[0].isManagementClosed,percentage==='100');
+ }
 });

@@ -1,3 +1,4 @@
+import { loadAssignmentStyleDetails } from './services/assignmentStyleLoading';
 import {registerBankLedgerRoutes} from './services/bankLedger';
 import {registerCompanyWorkspaceRoutes,resolveCompanyWorkspace} from './services/companyWorkspaces';
 import { confirmCurrentProcessVersion, confirmedStyleProcessIds, processVersionSignature } from './services/styleProcessVersionLifecycle';
@@ -19748,7 +19749,8 @@ const loadAssignmentPlanProgressWorkRows = async ({
     .filter((planId): planId is number => planId !== null);
   if (planIds.length === 0) return [];
 
-  const employeeRows: any[] = await db.workRecord.findMany({
+  const [employeeRows, outsourcedRows]: [any[], any[]] = await Promise.all([
+    db.workRecord.findMany({
       where: {
         orgId,
         assignmentPlanId: { in: planIds },
@@ -19784,12 +19786,12 @@ const loadAssignmentPlanProgressWorkRows = async ({
           },
         },
       } as any,
-    }).then((rows) => rows.map((row) => ({ ...row, isOutsourced: false, outsourceVendorName: null })));
+    }).then((rows) => rows.map((row) => ({ ...row, isOutsourced: false, outsourceVendorName: null }))),
 
   // Outsourced production advances progress/completion the same as employee
   // production (Σ both tables per assignmentPlanId+styleProcessId), but has
   // no workerId/ctSeconds/effectiveCoverage at all - see OutsourcedWorkRecord.
-  const outsourcedRows: any[] = await db.outsourcedWorkRecord.findMany({
+    db.outsourcedWorkRecord.findMany({
       where: {
         orgId,
         assignmentPlanId: { in: planIds },
@@ -19831,7 +19833,8 @@ const loadAssignmentPlanProgressWorkRows = async ({
       ctSeconds: 0,
       effectiveCoverageStartDate: null,
       effectiveCoverageEndDate: null,
-    })));
+    }))),
+  ]);
 
   const planStyleIdByPlanId = new Map<number, number>();
   normalizedPlans.forEach((plan) => {
@@ -26399,7 +26402,7 @@ app.get("/assignment-board-view", async (req, res) => {
   if (!organization) {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
-  const editRevision = await assignmentBoardRevision(prisma, organization.id);
+  const editRevision = req.query.includeRevision === "0" ? null : await assignmentBoardRevision(prisma, organization.id);
   const includeCards = !(
     req.query.includeCards === "0" || req.query.includeCards === "false"
   );
@@ -26457,6 +26460,11 @@ app.get("/assignment-cards", async (req, res) => {
   const includeProcesses = isManufacturerOrg(organization) && !(
     req.query.includeProcesses === "0" || req.query.includeProcesses === "false"
   );
+  if (req.query.stylesOnly === "1") {
+    const styles = await loadAssignmentStyleDetails(prisma, organization.id, req.query.styleIds, includeProcesses);
+    const processMirrorMap = includeProcesses ? await ensureStyleProcessStorageForStyles(styles, { processOrgId: organization.id }) : new Map<number, any[]>();
+    return res.json({ styles: styles.map((style: any) => toStyleResponse(style, { includeProcesses, processMirrorMap })) });
+  }
   const [state, cards] = await Promise.all([
     prisma.assignmentBoardState.findUnique({
       where: { orgId: organization.id },

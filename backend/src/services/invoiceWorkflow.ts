@@ -35,31 +35,39 @@ export function billingCoversProduction(coverage: ReturnType<typeof invoiceBilli
 
 export async function loadInvoiceBillingCoverage(db: any, orders: any[]) {
   if (!orders.length) return new Map<number, ReturnType<typeof invoiceBillingCoverage>>();
-  const statements = await db.invoiceOrder.findMany({ where: { workOrderId: { in: orders.map(order => order.id) }, invoice: { status: 'ISSUED' } },
-    include: { invoice: { select: { sellerOrgId: true, buyerOrgId: true, status: true } }, lines: true } });
+  const statements = await db.invoiceOrder.findMany({ where: { workOrderId: { in: orders.map(order => order.id) }, billingPercentage: 100, invoice: { status: 'ISSUED' } },
+    include: { invoice: { select: { sellerOrgId: true, buyerOrgId: true, status: true } },
+      lines: { select: { workOrderItemId: true, sourceItemId: true, styleId: true, size: true, quantity: true } } } });
   return new Map<number, ReturnType<typeof invoiceBillingCoverage>>(orders.map(order => [order.id, invoiceBillingCoverage(order, statements)]));
 }
 
 // Annotate display rows only. Never remove assignments from persisted board state.
 export async function annotateAssignmentInvoiceWorkflow(db: any, orgId: number, rows: any[], loadProgress: (orgId: number, ids: string[]) => Promise<any[]>) {
-  const ids = [...new Set(rows.map(row => row.workOrderId).filter(Boolean))];
-  if (!ids.length) return rows;
+  const visible = rows.map(row => ({ ...row, isManagementClosed: false }));
+  const candidates = rows.filter(row => row.isCompleted === true && row.workOrderId);
+  const ids = [...new Set(candidates.map(row => row.workOrderId))];
+  if (!ids.length) return visible;
   const orders = await db.workOrder.findMany({ where: { id: { in: ids }, sellerOrgId: orgId }, include: { workOrderItems: true, priorCompletions: { where: { canceledAt: null } } } });
-  const plans = orders.length ? await db.assignmentPlan.findMany({ where: { orgId, OR: [
-    { workOrderId: { in: orders.map((order: any) => order.id) } },
-    { workOrderId: null, assignmentCard: { is: { workOrderId: { in: orders.map((order: any) => order.id) } } } },
-  ] }, select: { externalId: true, styleId: true, workOrderId: true, assignmentCard: { select: { workOrderId: true } } } }) : [];
   const coverage = await loadInvoiceBillingCoverage(db, orders);
-  const missing = plans.filter((plan: any) => !rows.some(row => row.id === plan.externalId));
+  const billedOrders = orders.filter((order: any) => candidates.some(row => row.workOrderId === order.id && coverage.get(order.id)?.styles.has(row.styleId)));
+  if (!billedOrders.length) return visible;
+  const styleIds = [...new Set(candidates.filter(row => coverage.get(row.workOrderId)?.styles.has(row.styleId)).map(row => row.styleId))];
+  const plans = await db.assignmentPlan.findMany({ where: { orgId, styleId: { in: styleIds }, OR: [
+    { workOrderId: { in: billedOrders.map((order: any) => order.id) } },
+    { workOrderId: null, assignmentCard: { is: { workOrderId: { in: billedOrders.map((order: any) => order.id) } } } },
+  ] }, select: { externalId: true, styleId: true, workOrderId: true, assignmentCard: { select: { workOrderId: true } } } });
+  const rowIds = new Set(rows.map(row => row.id));
+  const missing = plans.filter((plan: any) => !rowIds.has(plan.externalId));
   const progress = [...rows, ...(missing.length ? await loadProgress(orgId, missing.map((plan: any) => plan.externalId)) : [])];
+  const progressById = new Map(progress.map(row => [row.id, row]));
   const closed = new Set<string>();
-  for (const order of orders) {
+  for (const order of billedOrders) {
     const related = orderAssignmentPlans(order.id, plans);
     const production = invoiceOrderProgress(order, related, progress);
     for (const style of production.styles) {
       const stylePlans = related.filter(plan => plan.styleId === style.styleId);
       if (style.isCompleted && coverage.get(order.id)?.styles.has(style.styleId)
-        && stylePlans.length && stylePlans.every(plan => progress.some(row => row.id === plan.externalId && row.isCompleted === true))) {
+        && stylePlans.length && stylePlans.every(plan => progressById.get(plan.externalId)?.isCompleted === true)) {
         // Do not close excess production that has not been invoiced.
         const actual = style.producedQuantity;
         if (actual == null || actual > (coverage.get(order.id)?.quantities.get(style.styleId) || 0)) continue;

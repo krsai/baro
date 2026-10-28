@@ -1,3 +1,4 @@
+import { editableAssignmentStyleIds } from './utils/assignmentLoading.mjs';
 import { usePageNaming } from '../../../context/PageNamingContext';
 import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -3832,13 +3833,10 @@ const AssignBoard = () => {
           orgId: activeOrgId,
           includeProcesses: 0,
         });
-        const assignmentCardsWithProcessesQuery = buildQueryString({
-          orgId: activeOrgId,
-          includeProcesses: 1,
-        });
         const boardViewQuery = buildQueryString({
           orgId: activeOrgId,
           includeCards: 0,
+          includeRevision: 0,
         });
         const factoryScopeHeadcountQuery = buildQueryString({
           orgId: activeOrgId,
@@ -3930,24 +3928,25 @@ const AssignBoard = () => {
           return;
         }
 
-        // Render the board from persisted card aggregates first. Loading every process/ST row
-        // is substantially heavier and is only required before edits can be persisted.
+        // Render saved aggregates first; only editable styles need full process/ST data.
         applyAssignmentCardsResponse(assignmentCardsResponse, nextFactoryScopes, boardState, false);
         appliedSavedBoardState = true;
 
         // The lightweight response is already sufficient to display cards and saved plans.
-        // Keep saving disabled until the compatible full style/process payload arrives.
+        // Keep saving disabled until editable styles have their full process payload.
         setLoading(false);
 
-        const assignmentCardsWithProcessesResponse = await requestJSON(
-          '/assignment-cards' + assignmentCardsWithProcessesQuery,
+        const editableStyleIds = editableAssignmentStyleIds(mergeCardsWithSaved(assignmentCardsResponse.cards, boardState.cards || []), boardState.assignments);
+        const assignmentCardsWithProcessesResponse = editableStyleIds.length ? await requestJSON(
+          '/assignment-cards' + buildQueryString({ orgId: activeOrgId, stylesOnly: 1, styleIds: editableStyleIds.join(',') }),
           {
             forceRefresh: true,
             skipGlobalLoading: true,
           }
-        ).catch(() => null);
+        ).catch(() => null) : { styles: [] };
         if (cancelled) return;
-        if (!assignmentCardsWithProcessesResponse) {
+        if (!assignmentCardsWithProcessesResponse || !Array.isArray(assignmentCardsWithProcessesResponse.styles)
+          || editableStyleIds.some(id => !assignmentCardsWithProcessesResponse.styles.some(style => Number(style.id) === id && Array.isArray(style.processes)))) {
           showNotification(
             getUiMessage(
               'assign.assignmentSourceLoadError',
@@ -3963,11 +3962,12 @@ const AssignBoard = () => {
           return;
         }
 
-        setStyles(
-          Array.isArray(assignmentCardsWithProcessesResponse.styles)
-            ? assignmentCardsWithProcessesResponse.styles
-            : []
-        );
+        const detailedStyles = new Map((assignmentCardsWithProcessesResponse.styles || []).map(style => [String(style.id), style]));
+        setStyles(previous => {
+          const merged = new Map(previous.map(style => [String(style.id), style]));
+          detailedStyles.forEach((style, id) => merged.set(id, style));
+          return [...merged.values()];
+        });
         setPersistReady(true);
         loadedSuccessfully = true;
       } catch (_error) {

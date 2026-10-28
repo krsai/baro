@@ -17,7 +17,7 @@ const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of [['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save']]){
+ for(const [lang,failure] of [['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']]){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -26,7 +26,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',r=>{
    const request=r.request(),url=new URL(request.url());if(request.method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(url.pathname.includes('order-source')){reads.push(url.pathname);return r.fulfill({headers,json:failure==='layout'?{...source,ready:false,styles:source.styles.map(s=>({...s,ready:false,assignments:[{externalId:'review-plan',completed:false,producedQuantity:5,plannedQuantity:15,factoryName:'HANOI'}]})),lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:source});}
+   if(url.pathname.includes('order-source')){reads.push(url.pathname);const incomplete={...source,ready:false,styles:source.styles.map(style=>({...style,ready:false,producedQuantity:5,assignments:[{externalId:'review-plan',completed:false,producedQuantity:5,plannedQuantity:15,factoryName:'HANOI'}]}))};return r.fulfill({headers,json:failure==='layout'?{...incomplete,lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:failure==='advance'?incomplete:source});}
    if(request.method()==='POST'&&url.pathname.endsWith('/drafts')){
     saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
    }
@@ -69,17 +69,19 @@ try{
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
   await page.locator('input[aria-label*="item1:S"]:not([inputmode="decimal"])').fill('9');
   await page.locator('textarea[aria-label^="Remark "]').fill('One missing piece');
+  if(failure==='advance'){await page.locator('.MuiAccordionSummary-root').click();await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('30');await page.locator('.MuiAccordionSummary-root').click();}
   await review.check();assert.equal(await issue.isEnabled(),true);
   await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
   await review.check();
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await issue.click();
-  if(failure!=='none'){
+  if(['issue','save'].includes(failure)){
    await page.getByRole('alert').filter({hasText:'could not be confirmed'}).waitFor();assert.equal(await page.getByLabel('REMARK',{exact:true}).isDisabled(),true);await issue.click();
   }
   await page.waitForFunction(()=>window.issuedEditor===true);
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
+  if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
   assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':'');
   assert.deepEqual(errors,[]);await page.close();
  }
