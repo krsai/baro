@@ -28,7 +28,9 @@ try{
   const t=approvalSettingsText[lang];
   await page.getByRole('heading',{name:t.title,exact:true}).waitFor();
   assert.equal(await page.getByLabel(t.drafter,{exact:true}).count(),0);assert.equal(await page.getByRole('combobox').count(),0);assert.equal(await page.getByRole('textbox').count(),6);
-  const limit=page.getByLabel(`${t.senior} · ${t.limit} (VND)`,{exact:true});await limit.fill('25000000');
+  assert.deepEqual(await page.locator('thead th').allTextContents(),['','USD','KRW','VND']);
+  assert.deepEqual(await page.locator('tbody th').allTextContents(),[t.senior,t.lead]);
+  const limit=page.getByLabel(`${t.senior} VND`,{exact:true});assert.equal(await limit.evaluate(el=>getComputedStyle(el).textAlign),'right');await limit.fill('25000000');
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
   assert.equal(saved.limits.VND.senior,'25000000');assert.equal(saved.limits.VND.lead,'100000000');assert.deepEqual(Object.keys(saved),['limits']);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);

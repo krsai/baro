@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Alert,Button,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
 import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
@@ -31,7 +31,13 @@ export default function ApprovalSettings(){
    <Paper variant="outlined" sx={{p:2}}><Stack spacing={2}>
      <Typography variant="h6">{t.rules}</Typography>
      {form&&<>
-       {['VND','USD','KRW'].map(currency=><Stack key={currency} direction={{xs:'column',sm:'row'}} spacing={2} alignItems="center"><Typography sx={{minWidth:40}}>{currency}</Typography>{['senior','lead'].map(level=><TextField key={level} fullWidth label={`${t[level]} · ${t.limit} (${currency})`} value={formatEditableDecimal(form.limits[currency][level])} disabled={disabled} onChange={event=>change({limits:{...form.limits,[currency]:{...form.limits[currency],[level]:event.target.value.replace(/,/g,'')}}})} slotProps={{htmlInput:{inputMode:currency==='USD'?'decimal':'numeric'}}}/>)}</Stack>)}
+       <TableContainer><Table size="small" sx={{minWidth:620,tableLayout:'fixed'}}>
+         <TableHead><TableRow><TableCell sx={{width:160}}/>{['USD','KRW','VND'].map(currency=><TableCell key={currency} align="right">{currency}</TableCell>)}</TableRow></TableHead>
+         <TableBody>{['senior','lead'].map(level=><TableRow key={level}>
+           <TableCell component="th" scope="row" sx={{whiteSpace:'nowrap'}}>{t[level]}</TableCell>
+           {['USD','KRW','VND'].map(currency=><TableCell key={currency} align="right"><TextField fullWidth value={formatEditableDecimal(form.limits[currency][level])} disabled={disabled} onChange={event=>change({limits:{...form.limits,[currency]:{...form.limits[currency],[level]:event.target.value.replace(/,/g,'')}}})} slotProps={{htmlInput:{'aria-label':`${t[level]} ${currency}`,inputMode:currency==='USD'?'decimal':'numeric',style:{textAlign:'right'}}}}/></TableCell>)}
+         </TableRow>)}</TableBody>
+       </Table></TableContainer>
        <Typography variant="caption">{t.amountHint}</Typography>
        {data.canEdit?<Button variant="contained" disabled={busy} onClick={save}>{t.save}</Button>:<Alert severity="info">{t.readonly}</Alert>}
      </>}
