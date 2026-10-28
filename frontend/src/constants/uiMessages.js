@@ -28,6 +28,12 @@ export const UI_MESSAGES = {
     },
   },
   menu: {
+    salesWorkflow: { ko: '영업·주문', en: 'Sales & orders', vi: 'Kinh doanh & đơn hàng' },
+    productionWorkflow: { ko: '생산', en: 'Production', vi: 'Sản xuất' },
+    materialsInventory: { ko: '자재·재고', en: 'Materials & inventory', vi: 'Vật tư & tồn kho' },
+    peoplePayroll: { ko: '인사·급여', en: 'People & payroll', vi: 'Nhân sự & tiền lương' },
+    finance: { ko: '회계·자금', en: 'Accounting & finance', vi: 'Kế toán & tài chính' },
+    managementAnalysis: { ko: '경영 분석', en: 'Business analysis', vi: 'Phân tích kinh doanh' },
     bankLedger: {ko:'입출금',en:'Transactions',vi:'Thu chi'},
     accountManagement: {ko:'계좌 관리',en:'Account management',vi:'Quản lý tài khoản'},
     permission: { ko: '권한 관리', en: 'Permissions', vi: 'Quản lý quyền' },

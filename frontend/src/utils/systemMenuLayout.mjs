@@ -30,6 +30,6 @@ export function organizeSystemMenu(items,languageCode='ko',icons={}){
 
 export function findMenuGroupForPath(items,path){
  let best=null;
- const visit=(nodes,group)=>nodes.forEach(node=>{if(node.isParent)visit(node.children||[],node.menuGroupKey);else if(node.path&&(path===node.path||path.startsWith(`${node.path}/`))&&(!best||node.path.length>best.length))best={key:group,length:node.path.length};});
+ const visit=(nodes,group)=>nodes.forEach(node=>{if(node.isParent)visit(node.children||[],node.menuGroupKey);else {if(node.path&&(path===node.path||path.startsWith(`${node.path}/`))&&(!best||node.path.length>best.length))best={key:group,length:node.path.length};if(node.accessChildren)visit(node.accessChildren,group);}});
  visit(items,null);return best?.key||null;
 }

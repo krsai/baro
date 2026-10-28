@@ -2,6 +2,7 @@ import { PageNamingProvider } from '../context/PageNamingContext';
 import { applyPageMenuNames, resolvePageNaming } from '../utils/pageNaming.mjs';
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
 import { MenuBlueprintContext } from '../context/MenuBlueprintContext';
+import { organizeCompanyMenu } from '../utils/companyMenuLayout.mjs';
 import { organizeSystemMenu, findMenuGroupForPath } from '../utils/systemMenuLayout.mjs';
 import WorkspaceDialogScope from '../components/WorkspaceDialogScope';
 import TabStateIndicators from '../components/TabStateIndicators';
@@ -396,66 +397,6 @@ const MainLayout = () => {
     previousWorkspacePathRef.current = currentPath;
   }, [currentPath]);
 
-  useEffect(() => {
-    if(currentPath==='/bank-ledger'||currentPath.startsWith('/bank-ledger/')){setExpandedMenuGroup(MENU_GROUP_KEYS.ACCOUNTS);return;}
-    if (['/invoices', '/outsourcing-record', '/payroll'].some(path => currentPath === path || currentPath.startsWith(`${path}/`))) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.ACCOUNTING);
-      return;
-    }
-    if (currentPath.startsWith('/attribute/processes')) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.PROCESS_MASTER);
-      return;
-    }
-    if (currentPath.startsWith('/attribute')) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.ATTRIBUTE);
-      return;
-    }
-    if (currentPath.startsWith('/employee-system') || currentPath.startsWith('/salary-system')) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.SETTINGS);
-      return;
-    }
-    if (
-      currentPath.startsWith('/employee') ||
-      currentPath.startsWith('/holiday') ||
-      currentPath === '/business' ||
-      currentPath.startsWith('/business/')
-    ) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.ADMIN);
-      return;
-    }
-    if (
-      currentPath.startsWith('/system-setting') ||
-      currentPath.startsWith('/system-onboarding')
-    ) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.SYSTEM);
-      return;
-    }
-    if (
-      currentPath.startsWith('/production-analysis') ||
-      currentPath.startsWith('/revenue-forecast') ||
-      currentPath.startsWith('/revenue-analysis')
-    ) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.OPERATIONS);
-      return;
-    }
-    if (
-      currentPath.startsWith('/order') ||
-      currentPath.startsWith('/style') ||
-      currentPath.startsWith('/customer-pricing') ||
-      currentPath.startsWith('/customer-production-report')
-    ) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.ORDER);
-      return;
-    }
-    if (
-      currentPath.startsWith('/customer') ||
-      currentPath.startsWith('/outsourcing-partner') ||
-      currentPath.startsWith('/material-supplier') || currentPath.startsWith('/logistics-partner') ||
-      currentPath.startsWith('/business-partner')
-    ) {
-      setExpandedMenuGroup(MENU_GROUP_KEYS.ADMIN);
-    }
-  }, [currentPath, setExpandedMenuGroup]);
 
   useEffect(() => {
     const element = appBarRef.current;
@@ -936,51 +877,10 @@ const MainLayout = () => {
     settingsOpen,
   ]);
 
-  const menuStructureBlueprint = useMemo(() => {
-    return baseMenuBlueprint.map((item) => {
-      if (!item.isParent || !Array.isArray(item.children)) return item;
-
-      let orderedChildren = [...item.children];
-      const childPaths = new Set(orderedChildren.map((child) => child.path));
-
-      if (childPaths.has('/order') && childPaths.has('/style')) {
-        const preferredSalesPaths = [
-          '/style',
-          '/order',
-          '/customer-production-report',
-        ];
-        orderedChildren = [
-          ...preferredSalesPaths.map(
-            (path) => orderedChildren.find((child) => child.path === path) || null
-          ),
-          ...orderedChildren.filter(
-            (child) => !preferredSalesPaths.includes(child.path)
-          ),
-        ].filter(Boolean);
-      }
-
-      if (childPaths.has('/assignment') && childPaths.has('/work-history')) {
-        const preferredRecordPaths = [
-          '/assignment',
-          '/work-history',
-          '/qc-review',
-        ];
-        orderedChildren = [
-          ...preferredRecordPaths.map(
-            (path) => orderedChildren.find((child) => child.path === path) || null
-          ),
-          ...orderedChildren.filter(
-            (child) => !preferredRecordPaths.includes(child.path)
-          ),
-        ].filter(Boolean);
-      }
-
-      return {
-        ...item,
-        children: orderedChildren,
-      };
-    });
-  }, [baseMenuBlueprint]);
+  const menuStructureBlueprint = useMemo(
+    () => organizeCompanyMenu(baseMenuBlueprint, key => getUiMessage(key, key, languageCode)),
+    [baseMenuBlueprint, languageCode]
+  );
 
   const accessPolicyMenuBlueprint = useMemo(
     () =>
@@ -999,7 +899,7 @@ const MainLayout = () => {
           return {
             ...item,
             children: item.children.filter(
-              (child) => child.path !== '/system-setting'
+              (child) => !['/system-setting', '/system-setting/access-policy'].includes(child.path)
             ),
           };
         }),
@@ -1038,11 +938,10 @@ const MainLayout = () => {
       .filter(Boolean);
   }, [hasPathAccess, menuStructureBlueprint, isSystemProfile, languageCode]);
 
-  const currentSystemMenuGroup = isSystemProfile ? findMenuGroupForPath(menuItems, currentPath) : null;
+  const currentMenuGroup = findMenuGroupForPath(menuItems, currentPath.startsWith('/customer-pricing') ? '/customer' : currentPath);
   useEffect(() => {
-    if (!isSystemProfile) return;
-    if (currentSystemMenuGroup) setExpandedMenuGroup(currentSystemMenuGroup);
-  }, [currentPath, isSystemProfile, currentSystemMenuGroup, setExpandedMenuGroup]);
+    setExpandedMenuGroup(currentMenuGroup);
+  }, [currentPath, currentMenuGroup, setExpandedMenuGroup]);
   const flattenedMenuItems = useMemo(
     () => flattenNestedMenuItems(menuItems),
     [menuItems]
@@ -1789,15 +1688,16 @@ const MainLayout = () => {
 
   const sidebarContent = (
     <Box sx={{ width: DRAWER_WIDTH, height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <List sx={{ flex: 1, overflowY: 'auto', pt: { xs: 1, md: 0 } }}>
+      <List sx={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', pt: { xs: 1, md: 0 } }}>
         {menuItems.map((menu) => {
           const isMenuSelected = !menu.isParent && matchesMenuPath(menu.path, currentPath);
           const isMenuDisabled = Boolean(menu.disabled);
           const hasNotification = hasActiveMenuNotification(menu);
 
           return (
-            <React.Fragment key={menu.label}>
+            <Box component="li" key={menu.menuGroupKey || menu.path} sx={{ listStyle: 'none', flexShrink: 0, mt: !isSystemProfile && menu.menuGroupKey === MENU_GROUP_KEYS.SETTINGS ? 'auto' : 0 }}>
             <ListItem
+              component="div"
               button
               disabled={isMenuDisabled}
               onClick={() => {
@@ -1833,7 +1733,7 @@ const MainLayout = () => {
                 </List>
               </Collapse>
             )}
-            </React.Fragment>
+            </Box>
           );
         })}
       </List>

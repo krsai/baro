@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:menu-layout": "node --test scripts/company-menu-layout.test.mjs scripts/system-menu-layout.test.mjs scripts/workspace-navigation-regression.test.mjs",
     "test:document-numbers": "npm --prefix backend run build && node --test scripts/document-number.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/invoice-draft-store.test.mjs scripts/invoice-issue-store.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/invoice-editor-browser.test.mjs && node scripts/expense-editor-browser.test.mjs && node scripts/expense-list-browser.test.mjs",
     "test:approval-settings": "npm --prefix backend run build && node --test scripts/approval-settings.test.mjs scripts/ledger-evidence.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/approval-settings-browser.test.mjs && node scripts/expense-approval-dialog-browser.test.mjs",
     "test:ledger-workspace": "npm --prefix backend run build && node --test scripts/ledger-evidence.test.mjs scripts/bank-ledger.test.mjs scripts/business-accounts.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-workspace-browser.test.mjs",
