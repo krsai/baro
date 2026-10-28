@@ -154,9 +154,7 @@ const formatOrderValue = (value, currencyCode = 'USD') => {
 
 const formatOrderValueStyle = (line) => {
   const styleName = String(line?.styleName || '').trim();
-  const styleCode = String(line?.styleCode || '').trim();
-  if (styleName && styleCode && styleName !== styleCode) return `${styleName} (${styleCode})`;
-  return styleName || styleCode || `#${line?.styleId || ''}`;
+  return styleName || '-';
 };
 
 const getOrderValueDetailText = (languageCode) => ({
@@ -3280,7 +3278,13 @@ const OrderList = () => {
                   </TableRow>
                 ))}
                 <TableRow>
-                  <TableCell colSpan={4} align="right" sx={{ fontWeight: 700 }}>{orderValueDetailText.total}</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>{orderValueDetailText.total}</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>
+                    {(orderValueDetail?.currentOrderValue?.lines || [])
+                      .reduce((sum, line) => sum + Number(line.quantity || 0), 0)
+                      .toLocaleString()}
+                  </TableCell>
+                  <TableCell colSpan={2} />
                   <TableCell align="right" sx={{ fontWeight: 700 }}>
                     {orderValueDetail?.currentOrderValue?.status === 'AVAILABLE'
                       ? formatOrderValue(orderValueDetail.currentOrderValue.amount, orderValueDetail.currentOrderValue.currencyCode)
