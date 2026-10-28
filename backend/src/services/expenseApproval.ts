@@ -33,12 +33,13 @@ export async function validateApprovalSettings(tx:any,orgId:number,value:any){
   return result;
 }
 
-export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:number,items:any[]=[]) {
+export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:number,items:any[]=[],selection?:any,allowIncomplete=false) {
   const drafter = await tx.employee.findFirst({where:{id:drafterId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{select:{isActive:true,set:{select:{isActive:true}}}}}});
   if(!drafter) throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
   const setting = await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
-  if(!setting)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
-  const config=setting.value;
+  if(!setting&&selection===undefined)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
+  const config=setting?.value||defaultApprovalSettings();
+  if(selection!==undefined && (!selection||typeof selection!=='object'||Array.isArray(selection)))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
   const totals=new Map<string,Prisma.Decimal>();
   if(!Array.isArray(items)||!items.length||items.length>50)throw createHttpError(400,'EXPENSE_REQUEST_ITEMS_REQUIRED');
   for(const [index,item] of items.entries()){
@@ -55,20 +56,43 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     level=Math.max(level,amount.lte(limits.senior)?0:amount.lte(limits.lead)?1:2);
   }
   const ownLevel=drafter.orgRole==='ACCOUNTANT'&&drafter.grade?.isActive&&drafter.grade.set?.isActive ? drafter.gradeId===config.leadGradeId?1:drafter.gradeId===config.seniorGradeId?0:-1 : -1;
-  const ids:number[]=[],skipped:string[]=[];let requiredLevel=level;
+  const ids:number[]=[],skipped:string[]=[],stages:any[]=[];let requiredLevel=level,complete=true;
   for(let index=0;index<=requiredLevel;index++){
     if(index<=ownLevel)continue;
     const key=['senior','lead','admin'][index]!;
-    const employeeId=config[`${key}EmployeeId`];
-    const employee=employeeId ? await tx.employee.findFirst({where:{id:employeeId,orgId,status:'ACTIVE',orgRole:index===2?'ADMIN':'ACCOUNTANT',...(index<2?{gradeId:config[`${key}GradeId`],grade:{isActive:true,set:{isActive:true}}}:{})}}):null;
+    const gradeId=config[`${key}GradeId`];
+    const where={orgId,status:'ACTIVE',orgRole:index===2?'ADMIN':'ACCOUNTANT',...(index<2?{...(gradeId?{gradeId}:{}),grade:{isActive:true,set:{isActive:true}}}:{})};
+    const employeeId=selection===undefined?config[`${key}EmployeeId`]:selection[`${key}EmployeeId`];
+    if(employeeId!=null&&(!Number.isSafeInteger(employeeId)||employeeId<=0))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+    const candidates=allowIncomplete?await tx.employee.findMany({where:{...where,id:{notIn:[drafterId,...ids]}},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameEn:true,nameKo:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]}):[];
+    const employee=employeeId ? await tx.employee.findFirst({where:{...where,id:employeeId}}):null;
+    if(selection!==undefined&&employeeId&&(!employee||employeeId===drafterId||ids.includes(employeeId))){
+      if(!allowIncomplete)throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+      complete=false;stages.push({key,employeeId:null,candidates,invalid:true});continue;
+    }
+    const vacant=selection===undefined?!employee:selection[`${key}Vacant`]===true;
+    if(employee&&vacant)throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+    if(selection!==undefined&&vacant&&index<2){
+      const available=allowIncomplete?candidates:await tx.employee.findMany({where:{...where,id:{notIn:[drafterId,...ids]}},select:{id:true},take:1});
+      if(available.length){
+        if(!allowIncomplete)throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+        complete=false;stages.push({key,employeeId:null,candidates,invalid:true});continue;
+      }
+    }
+    if(selection!==undefined&&!employee&&!vacant){
+      complete=false;stages.push({key,employeeId:null,candidates});
+      if(!allowIncomplete)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
+      continue;
+    }
     if(!employee){
       if(index===2)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
-      skipped.push(key);requiredLevel=Math.max(requiredLevel,index+1);continue;
+      skipped.push(key);stages.push({key,employeeId:null,vacant:true,candidates});requiredLevel=Math.max(requiredLevel,index+1);continue;
     }
     if(employeeId===drafterId)throw createHttpError(400,'EXPENSE_SELF_APPROVAL');
-    ids.push(employeeId);
+    if(ids.includes(employeeId))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+    ids.push(employeeId);stages.push({key,employeeId,name:employee.name,candidates});
   }
-  return {ids,policy:{drafterId,exempt:!ids.length&&ownLevel>=level,config,skipped,level,totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
+  return {ids,complete,stages,drafter,policy:{drafterId,exempt:complete&&!ids.length&&ownLevel>=level,config,skipped,level,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
 }
 export const EXPENSE_APPROVAL_INCLUDE = { orderBy: { position: 'asc' as const }, include: {employee: { select: { id:true, name:true, status:true } }} };
 

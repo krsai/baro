@@ -105,6 +105,13 @@ test('document registration persists ordered cost rows and server totals; identi
   assert.equal(db.state().documents.length,1); assert.equal(db.state().costs.length,2);
   await assert.rejects(route({ body: { ...body, items: body.items.slice(0,1) } },response()),/RETRY_MISMATCH/);
 });
+test('confirmed approval selection is snapshotted and retries cannot change it',async()=>{
+  const {route,db}=routeHarness(),body={...input(),approvalSelection:{}};
+  await route({body},response());
+  assert.deepEqual(db.state().audits[0].afterSnapshot.approvalPolicy.selection,{});
+  await route({body},response());assert.equal(db.state().documents.length,1);
+  await assert.rejects(route({body:{...body,approvalSelection:{seniorVacant:true}}},response()),/RETRY_MISMATCH/);
+});
 test('a bad later row rolls back the header, preceding costs and process production together', async () => {
   const { route,db,effects } = routeHarness(), body = input();
   body.items[0] = { ...body.items[0], transactionCodeId: 8, vatRate: '0', workOrderId: 30, styleId: 40, styleProcessId: 50, assignmentPlanId: 60 };

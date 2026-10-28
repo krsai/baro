@@ -4,6 +4,7 @@ import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../frontend/src/constants/expenseRequest.js';
+import {expenseHeaderActions} from '../frontend/src/constants/expenseHeaderActions.js';
 import { ENTITY_TEXT } from '../frontend/src/constants/entityProfile.js';
 import { EXPENSE_LOOKUP_TEXT } from '../frontend/src/constants/expenseLookup.js';
 import { expenseCodeDescription } from '../frontend/src/utils/expenseCodePresentation.mjs';
@@ -45,55 +46,43 @@ try {
     await page.route('**/expense-request-editor/legacy/78?*',async r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
-      return r.fulfill({headers,json:{remark:'',approverEmployeeIds:[],canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
+      return r.fulfill({headers,json:{remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
     await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
     await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currencyId:1,currency:{id:1,code:'VND'},isDefault:true,isActive:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
     await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'}]}}));
-    await page.route('**/expense-approval-preview?*',r=>r.fulfill({headers,json:{ids:[21],policy:{totals:[{currency:'VND',amount:'510000'}]}}}));
+    await page.route('**/expense-approval-preview?*',r=>{const selection=r.request().postDataJSON()?.selection||{};return r.fulfill({headers,json:{complete:selection.seniorEmployeeId===21,ids:selection.seniorEmployeeId?[21]:[],drafter:{id:20,name:'Current editor'},stages:[{key:'senior',employeeId:selection.seniorEmployeeId||null,name:selection.seniorEmployeeId?'First approver':null,candidates:[{id:21,name:'First approver'}]}],policy:{totals:[{currency:'VND',amount:'510000'}]}}});});
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
-    const payeeInfo=page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true});
-    if(mode!=='BANKLESS')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value.includes('Test bank')));
-    if(mode!=='BANKLESS')assert.match(await payeeInfo.inputValue(),/Accounts desk.*0901234567.*Test bank.*001234/);
-    assert.equal(await payeeInfo.evaluate(el=>el.readOnly),true);
+    const h=expenseHeaderActions[lang];
+    assert.equal(await page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true}).count(),0);
+    const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,4);
+    const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields must share one row');
+    if(!locked&&mode!=='SAVED')assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),true);
+    const confirmLine=async()=>{
+      const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:h.approval,exact:true}).waitFor();
+      assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).inputValue(),'Current editor');assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).evaluate(el=>el.readOnly),true);
+      await dialog.getByRole('combobox').click();await page.getByRole('option',{name:'First approver',exact:true}).click();
+      await dialog.getByRole('button',{name:h.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
+    };
     if(mode==='GENERAL'&&!locked){
-      await page.getByRole('button',{name:l.payee+' \u00b7 '+lookup.search,exact:true}).click();
-      const dialog=page.getByRole('dialog'),category={ko:'\uC678\uC8FC \uC5C5\uCCB4',en:'Outsourcing partner',vi:'\u0110\u1ed1i t\u00e1c gia c\u00f4ng'}[lang],industry={ko:'\uB2E8\uCD94\uAD6C\uBA4D',en:'Buttonhole',vi:'Th\u00f9a khuy'}[lang];
-      await dialog.getByRole('cell',{name:category,exact:true}).waitFor();
-      assert.equal(await dialog.getByRole('cell',{name:industry,exact:true}).count(),1);
-      await dialog.getByLabel(lookup.keyword,{exact:true}).fill(category);
-      assert.equal(await dialog.getByRole('cell',{name:'Selected vendor',exact:true}).count(),1);
-      await dialog.getByRole('button',{name:lookup.close,exact:true}).click();
-      const b=ENTITY_TEXT[lang],edit=EXPENSE_HEADER_TEXT[lang].editPayee;
-      await page.getByRole('button',{name:edit,exact:true}).click();
-      const profile=page.getByRole('dialog');
-      await profile.getByRole('heading',{name:edit,exact:true}).waitFor();
-      await profile.getByLabel(b.businessNumber,{exact:true}).fill('TAX-123');
-      await profile.getByLabel(b.email,{exact:true}).fill('updated@example.com');
-      await profile.getByLabel(b.address,{exact:true}).fill('Updated address');
-      await profile.getByRole('button',{name:b.cancel,exact:true}).click();
-      assert.equal(profileWrites.length,0,'Cancel must not save the profile');
-      await page.getByRole('button',{name:edit,exact:true}).click();
-      assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'');
-      await profile.getByLabel(b.businessNumber,{exact:true}).fill('TAX-123');
-      await profile.getByLabel(b.email,{exact:true}).fill('updated@example.com');
-      await profile.getByLabel(b.address,{exact:true}).fill('Updated address');
-      await profile.getByRole('button',{name:b.save,exact:true}).click();
-      if(lang==='ko'){
-        await profile.getByRole('alert').filter({hasText:'temporary profile error'}).waitFor();
-        assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'updated@example.com');
-        await profile.getByRole('button',{name:b.save,exact:true}).click();
-      }
-      await profile.waitFor({state:'hidden'});
-      assert.match(await payeeInfo.inputValue(),/TAX-123.*updated@example.com.*Updated address/);
-      assert.deepEqual(profileWrites.at(-1).serviceTypeIds,[44]);
-      assert.equal(profileWrites.at(-1).type,'PROCESS_OUTSOURCING');
-      assert.equal(submitted,undefined,'Master profile changes must not save the expense');
+      await page.getByLabel('REMARK',{exact:true}).fill('Preserve this draft');
+      await page.getByRole('button',{name:h.choosePayee,exact:true}).click();
+      const picker=page.getByRole('dialog');await picker.getByText('001234',{exact:false}).waitFor();
+      await picker.getByLabel(h.search,{exact:true}).fill('Selected vendor');assert.equal(await picker.locator('tbody tr').count(),1);
+      const b=ENTITY_TEXT[lang];await picker.getByRole('button',{name:h.information,exact:true}).click();
+      let profile=page.getByRole('dialog').last();
+      await profile.getByLabel(b.email,{exact:true}).fill('cancelled@example.com');await profile.getByRole('button',{name:b.cancel,exact:true}).click();assert.equal(profileWrites.length,0);
+      await picker.getByRole('button',{name:h.information,exact:true}).click();profile=page.getByRole('dialog').last();assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'');
+      await profile.getByLabel(b.businessNumber,{exact:true}).fill('TAX-123');await profile.getByLabel(b.email,{exact:true}).fill('updated@example.com');await profile.getByLabel(b.address,{exact:true}).fill('Updated address');await profile.getByRole('button',{name:b.save,exact:true}).click();
+      if(lang==='ko'){await profile.getByRole('alert').filter({hasText:'temporary profile error'}).waitFor();assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'updated@example.com');await profile.getByRole('button',{name:b.save,exact:true}).click();}
+      await page.getByRole('dialog').last().getByText(/TAX-123/).waitFor();
+      assert.deepEqual(profileWrites.at(-1).serviceTypeIds,[44]);assert.equal(submitted,undefined);
+      await picker.getByRole('button',{name:h.cancel,exact:true}).click();assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Preserve this draft');await page.getByLabel('REMARK',{exact:true}).fill('');
     }
     assert.equal(await page.getByTestId('expense-line').count(),1);
     assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'3,000');
@@ -104,7 +93,7 @@ try {
       assert.equal(await save.isDisabled(),true);
       await description.fill('Reviewed expense');await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
       await description.fill('');assert.equal(await save.isDisabled(),true);
-      await description.fill('Conflicting edit');await save.click();
+      await description.fill('Conflicting edit');await save.click();await confirmLine();
       await page.locator('.MuiAlert-standardError').waitFor();
       assert.notEqual(await page.locator('.MuiAlert-standardError').innerText(),l.invalid);
       assert.equal(submitted.version,3);
@@ -132,20 +121,12 @@ try {
       if(await page.getByRole('dialog').count())await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
       assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
       if(mode==='BANKLESS'){
-        const b=ENTITY_TEXT[lang];
-        assert.equal(await page.locator('button.MuiButton-contained').first().isDisabled(),true);
-        await page.getByRole('alert').getByRole('button',{name:EXPENSE_HEADER_TEXT[lang].editPayee,exact:true}).click();
-        await page.getByRole('dialog').getByRole('button',{name:b.add,exact:true}).click();
-        const dialog=page.getByRole('dialog').last();
-        await dialog.getByRole('textbox',{name:b.bank,exact:false}).fill('Test bank');
-        await dialog.getByLabel(b.number,{exact:false}).fill('001234');
-        await dialog.getByLabel(b.holder,{exact:false}).fill('Selected vendor');
-        await dialog.getByRole('button',{name:b.save,exact:true}).click();
-        await page.getByRole('dialog').getByText('001234',{exact:true}).waitFor();
-        await page.getByRole('dialog').getByRole('button',{name:b.cancel,exact:true}).click();
-        assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'');
-        await page.getByLabel('REMARK',{exact:true}).fill('Account registered; update request');
-        await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
+        const b=ENTITY_TEXT[lang];await page.getByLabel('REMARK',{exact:true}).fill('Keep request while adding account');
+        await page.getByRole('button',{name:h.choosePayee,exact:true}).click();const picker=page.getByRole('dialog');await picker.getByText(h.noAccount,{exact:true}).waitFor();assert.equal(await picker.getByRole('button',{name:h.apply,exact:true}).isDisabled(),true);
+        await picker.getByRole('button',{name:h.information,exact:true}).click();await page.getByRole('dialog').last().getByRole('button',{name:b.add,exact:true}).click();
+        const account=page.getByRole('dialog').last();await account.getByRole('textbox',{name:b.bank,exact:false}).fill('Test bank');await account.getByLabel(b.number,{exact:false}).fill('001234');await account.getByLabel(b.holder,{exact:false}).fill('Selected vendor');await account.getByRole('button',{name:b.save,exact:true}).click();
+        const profile=page.getByRole('dialog').last();await profile.getByText('001234',{exact:true}).waitFor();await profile.getByRole('button',{name:b.cancel,exact:true}).click();await picker.getByRole('button',{name:h.apply,exact:true}).click();
+        assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Keep request while adding account');
       }
       assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
       const save=page.locator('button.MuiButton-contained').first();
@@ -166,7 +147,10 @@ try {
         await page.getByLabel('REMARK',{exact:false}).fill('Updated request');
         await page.getByLabel(l.price,{exact:false}).fill('5000');assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
       }
-      await save.click();
+      if(mode==='GENERAL'){
+        await save.click();const modal=page.getByRole('dialog');await modal.getByRole('heading',{name:h.approval,exact:true}).waitFor();await modal.getByRole('button',{name:h.cancel,exact:true}).click();assert.equal(submitted,undefined);assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Updated request');
+      }
+      await save.click();await confirmLine();
       if(mode==='BACKGROUND'){
         await page.evaluate(()=>window.changeWorkspace('/dashboard'));releaseSave();await page.waitForTimeout(250);
         assert.equal(await page.evaluate(()=>window.expenseNavigations?.length || 0),0,'A background save must not reopen its closed workspace');
@@ -178,7 +162,7 @@ try {
       await page.evaluate(()=>window.changeWorkspace('/dashboard'));await page.waitForTimeout(100);
       await page.evaluate(()=>window.changeWorkspace('/outsourcing-record/edit/legacy/78'));await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>window.expenseNavigations.length),1,'Closing or returning to a saved form must not trigger another navigation');
-      assert.deepEqual(submitted.approverEmployeeIds,[]); // The server derives the line from company policy and amounts.
+      assert.equal(submitted.approvalSelection.seniorEmployeeId,21);
       assert.equal(submitted.remark,mode==='PROCESS'?'':'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,undefined);

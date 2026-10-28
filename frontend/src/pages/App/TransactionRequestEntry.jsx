@@ -7,18 +7,14 @@ import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, IconButton, InputAdornment, Tooltip, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { Add } from '@mui/icons-material';
-import EditOutlined from '@mui/icons-material/EditOutlined';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { getUiMessage } from '../../constants/uiMessages';
-import ExpenseLookupField from '../../components/ExpenseLookupField';
+import ExpensePayeePicker from '../../components/ExpensePayeePicker';
 import { EXPENSE_LOOKUP_TEXT } from '../../constants/expenseLookup';
-import { EXPENSE_TEXT } from '../../constants/expenseTypes';
-import {serviceName} from '../../components/OutsourcingServiceDialog';
-import BusinessPartnerDialog, {getBusinessPartnerTypeLabel} from '../../components/BusinessPartnerDialog';
 import './expenseRequests.css';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import ExpenseRequestLine from '../../components/ExpenseRequestLine';
@@ -40,8 +36,8 @@ const CHANGED_TEXT = { ko: '다른 사용자가 신청서를 수정했습니다.
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { remark: '', approverEmployeeIds: [], requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
-const documentSnapshot = form => JSON.stringify({remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
+const newDocument = () => { const date = today(); return { remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const documentSnapshot = form => JSON.stringify({remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -57,7 +53,7 @@ export default function TransactionRequestEntry() {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
-  const [payeeDialog, setPayeeDialog] = useState(false);
+  const approvalRef=useRef(null),saveLock=useRef(false);
   const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
   const [bankReload,setBankReload] = useState(0);
   useEffect(()=>subscribeWorkspaceDataChanged(detail=>{
@@ -93,7 +89,7 @@ export default function TransactionRequestEntry() {
       .then(([partners,codes,settings,orders,loaded]) => { if (alive) {
         if (loaded?.partner && !partners.some(row=>row.id===loaded.partner.id)) partners=[...partners,{...loaded.partner,isActive:false}];
         setData({ partners, codes, settings, orders: orders.filter(row => row.ownerOrgId === Number(activeOrgId)) });
-        if (loaded) {const draft={...loaded,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};setForm(draft);setInitialSnapshot(documentSnapshot(draft));}
+        if (loaded) {const draft={...loaded,approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};setForm(draft);setInitialSnapshot(documentSnapshot(draft));}
       } })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -118,7 +114,6 @@ export default function TransactionRequestEntry() {
   };
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
   const partner = data.partners.find(row => row.id === form.partnerOrgId);
-  useEffect(()=>setPayeeDialog(false),[activeOrgId,partner?.id]);
   useEffect(() => {
     let alive = true;
     setPayeeBanks({entityId:partner?.id,accounts:[],loaded:false});
@@ -127,10 +122,8 @@ export default function TransactionRequestEntry() {
       .catch(()=>{if(alive)setPayeeBanks({entityId:partner.id,accounts:[],loaded:false,error:true});});
     return ()=>{alive=false;};
   },[partner?.id,activeOrgId,bankReload]);
-  const bankAccounts = payeeBanks.entityId === partner?.id ? payeeBanks.accounts.filter(row=>row.isActive) : [];
-  const hasPayeeBank = bankAccounts.some(row=>row.bankName?.trim() && row.accountNumber?.trim() && row.accountHolder?.trim() && row.currencyId);
-  const payeeInfo = [partner?.businessNumber,partner?.contactName,partner?.contactPhone,partner?.email,partner?.address,
-    ...bankAccounts.filter(row=>row.isDefault).map(row=>[row.currency?.code,row.bankName,row.accountNumber,row.accountHolder].filter(Boolean).join(' · '))].filter(Boolean).join(' / ');
+  const bankAccounts = payeeBanks.entityId === partner?.id ? payeeBanks.accounts : [];
+  const hasPayeeBank = bankAccounts.length>0;
   const disabled = loading || loadError || saving || Boolean(submission) || Boolean(form.readOnly);
   const valid = hasPayeeBank && !period.loading && !period.error && (form.remark || '').length <= 500 && partner?.isActive &&
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
@@ -147,14 +140,18 @@ export default function TransactionRequestEntry() {
     });
   };
   const save = async () => {
-    if (disabled && !submission || saving || !submission && (!valid || editing && !dirty)) return;
-    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    if (saveLock.current || disabled && !submission || saving || !submission && (!valid || editing && !dirty)) return;
+    saveLock.current=true;
+    try {
+    const selection=submission?submission.approvalSelection:await approvalRef.current?.prepare();
+    if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
+    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       emitWorkspaceDataChanged({ orgId: activeOrgId, topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], source: 'transaction-request' });
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
-      setInitialSnapshot(documentSnapshot(form)); showNotification(labels.saved, 'success');
+      setInitialSnapshot(documentSnapshot({...form,approvalSelection:selection})); showNotification(labels.saved, 'success');
       if (isTabActiveRef.current) navigateToPath('/outsourcing-record', {label:labels.document,closeTabId:formPath,skipUnsavedChangesCheck:true});
     } catch (failure) {
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
@@ -167,6 +164,7 @@ export default function TransactionRequestEntry() {
       }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
+    } finally {saveLock.current=false;}
   };
   return <AppPageContainer
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
@@ -182,25 +180,17 @@ export default function TransactionRequestEntry() {
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
-      {partner && !loading && !form.readOnly && !hasPayeeBank && (payeeBanks.loaded || payeeBanks.error) && <Alert severity={payeeBanks.error?'error':'warning'} action={<Button disabled={disabled} onClick={()=>setPayeeDialog(true)}>{header.editPayee}</Button>}>{payeeBanks.error?bankText.error:bankText.required}</Alert>}
-      {partner && <BusinessPartnerDialog key={`${activeOrgId}:${partner.id}`} open={payeeDialog} onClose={()=>setPayeeDialog(false)}
-        partner={partner} activeOrgId={activeOrgId} languageCode={languageCode} lockType title={header.editPayee}
-        onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}
-        onAccountsChange={accounts=>{if(organizationRef.current===activeOrgId && mountedRef.current)setPayeeBanks({entityId:partner.id,accounts,loaded:true});}} />}
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '180px minmax(0, 1fr) minmax(0, 1fr)' }, gap: 2 }}>
+          <Box data-testid="expense-header" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm:'180px minmax(0,1fr)', lg: '170px minmax(180px,.8fr) minmax(180px,.8fr) minmax(280px,1.6fr)' }, gap: 1.5,alignItems:'start' }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
-            <ExpenseLookupField key={activeOrgId} label={labels.payee} options={data.partners.filter(row => row.isActive)} value={partner || null} onChange={value => update({partnerOrgId:value?.id || ''})} columns={[{key:'role',label:(EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en).partnerType,value:row=>getBusinessPartnerTypeLabel(row.type,languageCode)},{key:'name',label:labels.payee,value:row=>row.name},{key:'industry',label:(EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en).industry,value:row=>(row.serviceTypes||[]).map(service=>serviceName(service,languageCode)).filter(Boolean).join(' / ')}]} languageCode={languageCode} disabled={disabled || form.items.some(line=>line.productionLocked)} required />
-            <TextField label={header.payeeInfo} value={partner ? payeeInfo || header.noPayeeInfo : ''} placeholder={header.selectPayee} InputLabelProps={{shrink:true}}
-              InputProps={{readOnly:true,endAdornment:<InputAdornment position="end"><Tooltip title={header.editPayee}><span><IconButton size="small" aria-label={header.editPayee} disabled={!partner || disabled} onClick={()=>setPayeeDialog(true)}><EditOutlined fontSize="small"/></IconButton></span></Tooltip></InputAdornment>}}
-              inputProps={{title:payeeInfo}} sx={{'& .MuiInputBase-root':{bgcolor:'action.hover'},'& input':{textOverflow:'ellipsis'}}} />
-          </Box>
-          <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>
-            <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={disabled||documentSnapshot(form)!==initialSnapshot}/>
-            <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} drafter={form.createdByEmployee} editing={editing} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} />
             <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} />
+            <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
+              onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
+              onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
+            <ExpenseApprovalSettings ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} drafter={form.canonicalSource?.kind==='request'?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
+              actions={<ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={disabled||dirty}/>}/>
           </Box>
           </Box>
         </Box>

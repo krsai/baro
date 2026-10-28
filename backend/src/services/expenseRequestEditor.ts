@@ -120,7 +120,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   // Release only the document/payee composite FK inside this transaction; IDs and source FKs remain intact.
   if (source.document) await tx.partnerTransactionCost.updateMany({ where: { expenseRequestId: source.document.id, orgId }, data: { expenseRequestId: null, expenseRequestLine: null } });
   await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
-  const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items);
+  const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection);
   const approvers = approval.ids;
   const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
@@ -177,7 +177,7 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const actorId=gates.actorId();if(!actorId)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
     let drafterId=actorId;
     if(req.body?.sourceKind&&req.body?.sourceId){const source=await loadExpenseEditorSource(db,access.organization.id,req.body.sourceKind,String(req.body.sourceId));drafterId=source.document?.createdByEmployeeId||actorId;}
-    const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items);
+    const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items,req.body?.selection,true);
     res.json(approval);
   });
   app.get('/expense-approval-candidates',async(req:any,res:any)=>{
@@ -197,7 +197,13 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);
     assertManagedDate(expenseEditorForm(source).requestDate,(await loadManagementPeriod(db,access.organization.id)).startDate);
-    res.json(expenseEditorForm(source));
+    const result:any=expenseEditorForm(source);
+    if(source.document){
+      const audit=await db.expenseRequestAudit.findFirst({where:{orgId:access.organization.id,requestId:source.document.id,version:source.document.version},orderBy:{id:'desc'}});
+      const policy=audit?.afterSnapshot?.approvalPolicy;
+      result.approvalSelection=policy?.selection|| (policy?.config?{seniorEmployeeId:policy.config.seniorEmployeeId||null,leadEmployeeId:policy.config.leadEmployeeId||null,adminEmployeeId:policy.config.adminEmployeeId||null,...Object.fromEntries((policy.skipped||[]).flatMap((key:string)=>[[`${key}Vacant`,true],[`${key}EmployeeId`,null]]))}:null);
+    }
+    res.json(result);
   });
   app.put(path,async(req: any,res: any)=>{
     const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;

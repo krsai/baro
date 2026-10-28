@@ -9,7 +9,8 @@ function fixture(){
  const config={...defaultApprovalSettings(),seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
  const people=[{id:1,orgId:7,status:'ACTIVE',orgRole:'OPERATOR',gradeId:1},{id:2,orgId:7,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:10},{id:3,orgId:7,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:20},{id:4,orgId:7,status:'ACTIVE',orgRole:'ADMIN',gradeId:30}];
  people.forEach(person=>person.grade={isActive:true,set:{isActive:true}});
- const db={systemSetting:{findUnique:async({where})=>{assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');return {value:config};}},employee:{findFirst:async({where})=>people.find(p=>Object.entries(where).every(([key,value])=>key==='grade'?p.grade.isActive&&p.grade.set.isActive:p[key]===value))},employeeGrade:{findFirst:async({where})=>[10,20].includes(where.id)&&where.orgId===7?{id:where.id}:null}};
+ const matches=(person,where)=>Object.entries(where).every(([key,value])=>key==='grade'?person.grade.isActive&&person.grade.set.isActive:typeof value==='object'&&value?.notIn?!value.notIn.includes(person[key]):person[key]===value);
+ const db={systemSetting:{findUnique:async({where})=>{assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');return {value:config};}},employee:{findFirst:async({where})=>people.find(p=>matches(p,where)),findMany:async({where})=>people.filter(p=>matches(p,where))},employeeGrade:{findFirst:async({where})=>[10,20].includes(where.id)&&where.orgId===7?{id:where.id}:null}};
  return {db,config,people};
 }
 const item=(unitPrice,currency='VND',vatRate='0')=>({unitPrice:String(unitPrice),currency,vatRate,quantity:'1'});
@@ -62,4 +63,25 @@ test('company rule updates require an active administrator and ignore forged ten
  const response={json:()=>{},status:()=>response};
  await handlers.get('PUT /expense-approval-settings')({body:config},response);assert.equal(writes,0);
  current=4;await handlers.get('PUT /expense-approval-settings')({body:{...config,orgId:99,drafterId:9}},response);assert.equal(writes,1);
+});
+test('manual preview shows required vertical stages without global assignees and requires explicit selections',async()=>{
+ const {db}=fixture();db.systemSetting.findUnique=async()=>null;
+ const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{},true);
+ assert.equal(preview.complete,false);assert.deepEqual(preview.stages.map(stage=>stage.key),['senior','lead']);assert.deepEqual(preview.ids,[]);
+ await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{}),/APPROVER_REQUIRED/);
+ const chosen={seniorEmployeeId:2,leadEmployeeId:3};const result=await resolveExpenseApproval(db,7,1,[item('30000000')],chosen);
+ assert.deepEqual(result.ids,[2,3]);assert.deepEqual(result.policy.selection,chosen);
+ await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{seniorVacant:true}),/INVALID_EXPENSE_APPROVERS/);
+});
+test('manual choices retain threshold, company, grade, duplicate and self-approval guards',async()=>{
+ const {db}=fixture();
+ for(const selection of [{seniorEmployeeId:4},{seniorEmployeeId:1},{seniorEmployeeId:99},{seniorEmployeeId:2,leadEmployeeId:2},{seniorEmployeeId:2,leadVacant:true}])await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],selection),/INVALID|SELF/);
+ await assert.rejects(resolveExpenseApproval(db,7,1,[item('100000001')],{seniorEmployeeId:2,leadEmployeeId:3}),/APPROVER_REQUIRED/);
+ const recovery=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:99},true);assert.equal(recovery.complete,false);assert.equal(recovery.stages[0].invalid,true);assert.ok(recovery.stages[0].candidates.length);
+});
+test('explicitly vacant lead routes to selected administrator and preserves the reason in the snapshot',async()=>{
+ const {db,people}=fixture();people[2].status='INACTIVE';
+ const selection={seniorEmployeeId:2,leadVacant:true,adminEmployeeId:4};
+ const result=await resolveExpenseApproval(db,7,1,[item('30000000')],selection);assert.deepEqual(result.ids,[2,4]);assert.deepEqual(result.policy.skipped,['lead']);
+ const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:2,leadVacant:true},true);assert.deepEqual(preview.stages.map(row=>row.key),['senior','lead','admin']);assert.equal(preview.complete,false);
 });

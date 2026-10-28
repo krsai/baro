@@ -58,9 +58,9 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
       partnerOrgId: body.partnerOrgId, currency, clientKey: `${body.clientKey}-${index + 1}` };
   });
   const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } });
-  const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items);
+  const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items,body.approvalSelection);
   const approverEmployeeIds=approval.ids;
-  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark, approverEmployeeIds, items }))).digest('hex');
+  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark, approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}) }))).digest('hex');
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
