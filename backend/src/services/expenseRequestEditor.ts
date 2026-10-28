@@ -156,8 +156,7 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     if(!drafter)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
     const setting=await db.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
     const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true,orgRole:true,gradeId:true},orderBy:[{name:'asc'},{id:'asc'}]});
-    const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},orderBy:[{setId:'asc'},{sortOrder:'asc'}]});
-    res.json({drafter,candidates,grades,settings:setting?.value||defaultApprovalSettings(),configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
+    res.json({drafter,candidates,settings:{limits:setting?.value?.limits||defaultApprovalSettings().limits},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
   });
   app.put('/expense-approval-settings',async(req:any,res:any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;

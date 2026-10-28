@@ -21,10 +21,10 @@ for(const [currency,senior,lead] of [['VND','20000000','100000000'],['KRW','1000
  });
 }
 test('vacant or inactive lead escalates to administrator without skipping senior approval',async()=>{
- const {db,config,people}=fixture();config.leadEmployeeId=null;
+ const {db,config,people}=fixture();people[2].status='INACTIVE';
  assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')])).ids,[2,4]);
  config.leadEmployeeId=3;people[2].status='INACTIVE';assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')])).ids,[2,4]);
- config.seniorEmployeeId=null;assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('1000')])).ids,[4]);
+ people[1].status='INACTIVE';assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('1000')])).ids,[4]);
  people[3].orgId=99;await assert.rejects(resolveExpenseApproval(db,7,1,[item('1000')]),/EXPENSE_APPROVER_REQUIRED/);
 });
 test('accountant drafting skips own and lower stages but higher limits still require higher approvals',async()=>{
@@ -34,7 +34,7 @@ test('accountant drafting skips own and lower stages but higher limits still req
  assert.deepEqual((await resolveExpenseApproval(db,7,2,[item('100000001')])).ids,[3,4]);
  assert.equal((await resolveExpenseApproval(db,7,3,[item('100000000')])).policy.exempt,true);
  assert.deepEqual((await resolveExpenseApproval(db,7,3,[item('100000001')])).ids,[4]);
- await assert.rejects(resolveExpenseApproval(db,7,4,[item('100000001')]),/SELF_APPROVAL/);
+ await assert.rejects(resolveExpenseApproval(db,7,4,[item('100000001')]),/SELF_APPROVAL|APPROVER_REQUIRED/);
 });
 test('VAT and totals across all rows determine level; different currencies retain separate limits',async()=>{
  const {db,config}=fixture();
@@ -43,9 +43,10 @@ test('VAT and totals across all rows determine level; different currencies retai
  const result=await resolveExpenseApproval(db,7,1,[item('1000','VND'),item('5001','USD')]);assert.deepEqual(result.ids,[2,3,4]);assert.equal(result.policy.totals.length,2);
  config.limits.USD={senior:'',lead:''};await assert.rejects(resolveExpenseApproval(db,7,1,[item('10','USD')]),/CURRENCY_LIMIT_REQUIRED/);
 });
-test('editable limits validate grade/employee FKs, currency digits and strictly increasing bounds',async()=>{
- const {db,config}=fixture();assert.deepEqual(await validateApprovalSettings(db,7,config),config);
- for(const change of [{seniorEmployeeId:4},{leadGradeId:10},{adminEmployeeId:99},{limits:{...config.limits,VND:{senior:'20000000',lead:'1000'}}},{limits:{...config.limits,KRW:{senior:'1.1',lead:'2'}}}])await assert.rejects(validateApprovalSettings(db,7,{...config,...change}),/INVALID/);
+test('settings store only limits, validate currency digits and strictly increasing bounds',async()=>{
+ const {db,config}=fixture();assert.deepEqual(await validateApprovalSettings(db,7,config),{limits:config.limits});
+ for(const change of [{limits:{...config.limits,VND:{senior:'20000000',lead:'1000'}}},{limits:{...config.limits,KRW:{senior:'1.1',lead:'2'}}}])await assert.rejects(validateApprovalSettings(db,7,{...config,...change}),/INVALID/);
+ assert.deepEqual(await validateApprovalSettings({},7,{limits:config.limits}),{limits:config.limits});
  config.limits.USD={senior:'2000.50',lead:'9000.99'};await validateApprovalSettings(db,7,config);
  assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('1500','USD')])).ids,[2]);
 });
@@ -58,7 +59,7 @@ test('zero-step historical requests require matching explicit current-version po
 });
 test('company rule updates require an active administrator and ignore forged tenant/drafter fields',async()=>{
  const {db,config}=fixture(),handlers=new Map();let current=1,writes=0;
- db.$transaction=async run=>run(db);db.systemSetting.upsert=async({where,update})=>{writes++;assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');assert.equal(update.updatedByEmployeeId,4);};
+ db.$transaction=async run=>run(db);db.systemSetting.upsert=async({where,update})=>{writes++;assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');assert.equal(update.updatedByEmployeeId,4);assert.deepEqual(Object.keys(update.value),['limits']);};
  registerExpenseEditorRoutes({get:(p,fn)=>handlers.set('GET '+p,fn),put:(p,fn)=>handlers.set('PUT '+p,fn),post:(p,fn)=>handlers.set('POST '+p,fn)},db,{actorId:()=>current,requireOrgRole:async(_req,_res,{allowedRoles})=>allowedRoles.includes(current===4?'ADMIN':'OPERATOR')?{organization:{id:7}}:null});
  const response={json:()=>{},status:()=>response};
  await handlers.get('PUT /expense-approval-settings')({body:config},response);assert.equal(writes,0);
@@ -71,17 +72,22 @@ test('manual preview shows required vertical stages without global assignees and
  await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{}),/APPROVER_REQUIRED/);
  const chosen={seniorEmployeeId:2,leadEmployeeId:3};const result=await resolveExpenseApproval(db,7,1,[item('30000000')],chosen);
  assert.deepEqual(result.ids,[2,3]);assert.deepEqual(result.policy.selection,chosen);
- await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{seniorVacant:true}),/INVALID_EXPENSE_APPROVERS/);
+ await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{seniorVacant:true}),/APPROVER_REQUIRED/);
 });
 test('manual choices retain threshold, company, grade, duplicate and self-approval guards',async()=>{
  const {db}=fixture();
- for(const selection of [{seniorEmployeeId:4},{seniorEmployeeId:1},{seniorEmployeeId:99},{seniorEmployeeId:2,leadEmployeeId:2},{seniorEmployeeId:2,leadVacant:true}])await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],selection),/INVALID|SELF/);
+ for(const selection of [{seniorEmployeeId:4},{seniorEmployeeId:1},{seniorEmployeeId:99},{seniorEmployeeId:2,leadEmployeeId:2},{seniorEmployeeId:2,leadVacant:true}])await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],selection),/INVALID|SELF|REQUIRED/);
  await assert.rejects(resolveExpenseApproval(db,7,1,[item('100000001')],{seniorEmployeeId:2,leadEmployeeId:3}),/APPROVER_REQUIRED/);
  const recovery=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:99},true);assert.equal(recovery.complete,false);assert.equal(recovery.stages[0].invalid,true);assert.ok(recovery.stages[0].candidates.length);
 });
-test('explicitly vacant lead routes to selected administrator and preserves the reason in the snapshot',async()=>{
+test('missing lead automatically routes to administrator without any vacancy setting',async()=>{
  const {db,people}=fixture();people[2].status='INACTIVE';
- const selection={seniorEmployeeId:2,leadVacant:true,adminEmployeeId:4};
+ const selection={seniorEmployeeId:2,adminEmployeeId:4};
  const result=await resolveExpenseApproval(db,7,1,[item('30000000')],selection);assert.deepEqual(result.ids,[2,4]);assert.deepEqual(result.policy.skipped,['lead']);
- const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:2,leadVacant:true},true);assert.deepEqual(preview.stages.map(row=>row.key),['senior','lead','admin']);assert.equal(preview.complete,false);
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')],{...selection,leadEmployeeId:3})).ids,[2,4]);
+ const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:2},true);assert.deepEqual(preview.stages.map(row=>row.key),['senior','lead','admin']);assert.equal(preview.complete,false);
+});
+test('legacy global person assignments do not determine expense approvers',async()=>{
+ const {db,config}=fixture();config.seniorEmployeeId=99;config.leadEmployeeId=99;config.adminEmployeeId=99;
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('100000001')])).ids,[2,3,4]);
 });

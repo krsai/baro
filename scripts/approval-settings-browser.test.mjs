@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {existsSync,writeFileSync,unlinkSync,mkdirSync} from 'node:fs';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
@@ -13,7 +13,7 @@ createRoot(document.getElementById('root')).render(React.createElement(MemoryRou
 const port=43219,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/approval-settings-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
- browser=await chromium.launch({executablePath,headless:true});mkdirSync('artifacts/approval-settings',{recursive:true});
+ browser=await chromium.launch({executablePath,headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
   const page=await browser.newPage({viewport:{width,height:1100}}),errors=[];let saved;
   page.on('pageerror',e=>errors.push(e.message));
@@ -27,13 +27,12 @@ try{
   await page.goto(`http://127.0.0.1:${port}/approval-settings-acceptance.html`);
   const t=approvalSettingsText[lang];
   await page.getByRole('heading',{name:t.title,exact:true}).waitFor();
-  assert.equal(await page.getByLabel(t.drafter,{exact:true}).inputValue(),'Current user');assert.equal(await page.getByLabel(t.drafter,{exact:true}).getAttribute('readonly'),'');
+  assert.equal(await page.getByLabel(t.drafter,{exact:true}).count(),0);assert.equal(await page.getByRole('combobox').count(),0);assert.equal(await page.getByRole('textbox').count(),6);
   const limit=page.getByLabel(`${t.senior} · ${t.limit} (VND)`,{exact:true});await limit.fill('25000000');
-  const lead=page.locator('input[name="leadEmployeeId"]').locator('..').getByRole('combobox');await lead.click();await page.getByRole('option',{name:t.vacant,exact:true}).click();
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
-  assert.equal(saved.limits.VND.senior,'25000000');assert.equal(saved.limits.VND.lead,'100000000');assert.equal(saved.leadEmployeeId,null);assert.equal(saved.adminEmployeeId,4);
+  assert.equal(saved.limits.VND.senior,'25000000');assert.equal(saved.limits.VND.lead,'100000000');assert.deepEqual(Object.keys(saved),['limits']);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
-  await page.screenshot({path:`artifacts/approval-settings/${lang}-${width}.png`,fullPage:true});assert.deepEqual(errors,[]);await page.close();
+  assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: ko/en/vi desktop/mobile approval settings, read-only drafter, editable currency limits, vacancy routing and explicit save.');
+ console.log('PASS: ko/en/vi desktop/mobile approval settings, only editable currency limits, no person or grade controls, limits-only payload and explicit save.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

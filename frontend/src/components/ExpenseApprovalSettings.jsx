@@ -11,7 +11,7 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
  const [viewOnly,setViewOnly]=useState(true),pending=useRef(null);
  const close=()=>{setOpen(false);pending.current?.(null);pending.current=null;};
  useImperativeHandle(ref,()=>({prepare:()=>new Promise(resolve=>{
-  pending.current=resolve;setDraft(value||{seniorEmployeeId:state?.settings?.seniorEmployeeId||null,leadEmployeeId:state?.settings?.leadEmployeeId||null,adminEmployeeId:state?.settings?.adminEmployeeId||null});setError('');setViewOnly(false);setOpen(true);
+  pending.current=resolve;setDraft(value||{});setError('');setViewOnly(false);setOpen(true);
  })}),[value,state]);
  useEffect(()=>{setOpen(false);setApplied(null);return()=>{pending.current?.(null);pending.current=null;};},[orgId,sourceKind,sourceId]);
  const input=JSON.stringify({items,sourceKind,sourceId}),selection=JSON.stringify(open?draft:value);
@@ -43,9 +43,8 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
     {busy&&!viewOnly&&<Typography color="text.secondary">{t.loading}</Typography>}
     {!viewOnly&&preview?.policy?.totals&&<Typography variant="body2" color="text.secondary">{rules.total}: {preview.policy.totals.map(row=>`${Number(row.amount).toLocaleString()} ${row.currency}`).join(' / ')}</Typography>}
     {error&&<Alert severity="warning">{error}</Alert>}
-    {viewOnly?summary.map((step,index)=><Stack key={step.id} spacing={1} alignItems="center"><Typography color="text.secondary">↓</Typography><TextField fullWidth label={`${index+1}. ${t.approver||rules.approver}`} value={step.name} slotProps={{input:{readOnly:true}}}/></Stack>):preview?.stages?.map((stage,index)=><Stack key={stage.key} spacing={1} alignItems="center"><Typography color="text.secondary">↓</Typography><TextField fullWidth select error={stage.invalid} helperText={stage.invalid?rules.error:undefined} id={`expense-stage-${stage.key}`} label={`${index+1}. ${t[stage.key]}`} value={draft[`${stage.key}Vacant`]?'vacant':draft[`${stage.key}EmployeeId`]||''} onChange={event=>{const selected=event.target.value;setDraft(current=>({...current,[`${stage.key}EmployeeId`]:selected&&selected!=='vacant'?Number(selected):null,[`${stage.key}Vacant`]:selected==='vacant'}));}} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}}>
+    {viewOnly?summary.map((step,index)=><Stack key={step.id} spacing={1} alignItems="center"><Typography color="text.secondary">↓</Typography><TextField fullWidth label={`${index+1}. ${t.approver||rules.approver}`} value={step.name} slotProps={{input:{readOnly:true}}}/></Stack>):preview?.stages?.filter(stage=>!stage.vacant).map((stage,index)=><Stack key={stage.key} spacing={1} alignItems="center"><Typography color="text.secondary">↓</Typography><TextField fullWidth select error={stage.invalid} helperText={stage.invalid?rules.error:undefined} id={`expense-stage-${stage.key}`} label={`${index+1}. ${t[stage.key]}`} value={draft[`${stage.key}EmployeeId`]||''} onChange={event=>{const selected=event.target.value;setDraft(current=>({...current,[`${stage.key}EmployeeId`]:selected&&selected!=='vacant'?Number(selected):null,[`${stage.key}Vacant`]:selected==='vacant'}));}} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}}>
      <MenuItem value="" disabled>{t.select}</MenuItem>
-     {stage.key!=='admin'&&<MenuItem value="vacant" disabled={stage.candidates?.length>0}>{t.vacant}</MenuItem>}
      {draft[`${stage.key}EmployeeId`]&&!stage.candidates?.some(row=>row.id===draft[`${stage.key}EmployeeId`])&&<MenuItem disabled value={draft[`${stage.key}EmployeeId`]}>{name(draft[`${stage.key}EmployeeId`])}</MenuItem>}
      {stage.candidates?.map(row=><MenuItem key={row.id} value={row.id}>{row.name}{row.grade?.name?` · ${row.grade[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.grade.name}`:''}</MenuItem>)}
     </TextField></Stack>)}
