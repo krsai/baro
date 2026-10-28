@@ -27,10 +27,10 @@ try {
     const rows=[
       {id:'old',sourceKind:'HISTORICAL_WORK_RECORD',partnerOrgId:11,partner:{id:11,name:'Old Vendor'},workLogId:77,outsourcedWorkRecordId:78,transactionDate:'2026-09-20',description:'Legacy work',style:{id:40,name:'Legacy shirt',code:'OLD-40'},styleProcess:{id:50,processName:'Buttonhole'},createdByEmployee:{name:'Former Worker'},quantity:3,unitPrice:'1.2345',amount:'3.7035',currency:'VND'},
       {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:5,serviceType:{...service,id:5,nameKo:'봉제',nameEn:'Sewing',nameVi:'May'},transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
-      {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,expenseRequest:{id:1,remark:'Delivery note'},partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
+      {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,expenseRequest:{id:1,managementNumber:'EXP-2026-000041',remark:'Delivery note'},partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
-    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
+    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.locator('[data-expense-row="cost"]').waitFor();assert.equal(await page.locator('tbody tr').count(),2);
     assert.equal(await page.locator('.cc-kicker').count(),0);
@@ -50,8 +50,8 @@ try {
     const resetToAll=async()=>{await page.getByRole('button',{name:text.reset,exact:true}).click();await left.click();};
     assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
     await left.click();assert.deepEqual(await dates(),['2026-09-01','2026-10-31']);
-    await page.getByRole('button',{name:'M+',exact:true}).click();assert.deepEqual(await dates(),['2026-11-01','2026-11-30']);
-    await left.click();assert.deepEqual(await dates(),['2026-10-01','2026-11-30']);
+    assert.equal(await page.getByRole('button',{name:'M+',exact:true}).isDisabled(),true);
+    await page.getByRole('button',{name:text.reset,exact:true}).click();
     await page.getByRole('button',{name:'M-',exact:true}).click();assert.deepEqual(await dates(),['2026-09-01','2026-09-30']);
     await right.click();assert.deepEqual(await dates(),['2026-09-01','2026-10-31']);
     await page.getByRole('button',{name:text.reset,exact:true}).click();assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
@@ -117,7 +117,7 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await page.locator('[data-search-filters] select').nth(3).selectOption('USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
-    assert.equal(await page.getByText(/^EXP-/).count(),0);await page.locator('.cc-table-scroll tbody button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
+    assert.equal(await page.getByText('EXP-2026-000041',{exact:true}).count(),1);await page.locator('.cc-table-scroll tbody button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.

@@ -1,4 +1,5 @@
 import { requirePayeeBankAccount } from './entityBankAccount';
+import {allocateDocumentNumber,normalizeDocumentNumber,legacyExpenseNumber} from './documentNumber';
 import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateApprovalSettings, defaultApprovalSettings, replaceExpenseApprovers, resolveExpenseApproval, approvalSettingKey } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { env } from 'node:process';
@@ -69,7 +70,7 @@ function editorLine(cost: any, record: any) {
 
 export function expenseEditorForm(source: any) {
   const first = source.costs[0], record = source.record || first?.outsourcedWorkRecord;
-  return { approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
+  return { managementNumber:source.document?(source.document.managementNumber||legacyExpenseNumber(source.document.id)):'', approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
     requestDate: source.document?.requestDate || first?.transactionDate || record?.workLog.displayDate,
     partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId,
     partner: source.document?.partner || first?.partner || record?.outsourcingPartner,
@@ -122,10 +123,12 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
   const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection);
   const approvers = approval.ids;
+  if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
+  const managementNumber=source.document?.managementNumber||(!source.document?await allocateDocumentNumber(tx,orgId,'EXP',requestDate,body.managementNumber):null);
   const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
-    await tx.expenseRequest.create({ data: { ...header, orgId, createdByEmployeeId: actorId, clientKey: body.clientKey, submissionHash: inputHash } });
+    await tx.expenseRequest.create({ data: { ...header, orgId, managementNumber, createdByEmployeeId: actorId, clientKey: body.clientKey, submissionHash: inputHash } });
   await replaceExpenseApprovers(tx,orgId,document.id,approvers,source.document?.approvalSteps || []);
   const assignmentPlanIds: number[] = [];
   for (const [index,item] of body.items.entries()) {

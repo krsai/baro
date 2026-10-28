@@ -1,4 +1,5 @@
 import { requirePayeeBankAccount } from './entityBankAccount';
+import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
 import { resolveExpenseApproval, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
@@ -60,7 +61,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } });
   const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items,body.approvalSelection);
   const approverEmployeeIds=approval.ids;
-  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark, approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}) }))).digest('hex');
+  const requestedNumber=normalizeDocumentNumber(body.managementNumber);
+  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark, approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
@@ -68,7 +70,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
   const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
-  const document = await tx.expenseRequest.create({ data: { orgId, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
+  const managementNumber=await allocateDocumentNumber(tx,orgId,'EXP',requestDate,requestedNumber);
+  const document = await tx.expenseRequest.create({ data: { orgId, managementNumber, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
     requestDate, remark, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
   await replaceExpenseApprovers(tx,orgId,document.id,approverEmployeeIds);
   // Caller owns the Serializable transaction: every cost and production write rolls back together.

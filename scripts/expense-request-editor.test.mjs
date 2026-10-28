@@ -1,3 +1,4 @@
+import {withDocumentNumbers} from './helpers/document-number-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -16,7 +17,7 @@ function harness() {
     const cost = r => r && ({ ...r, outsourcedWorkRecord: record(s.records.find(x=>x.id===r.outsourcedWorkRecordId)), workOrder: r.workOrderId ? order() : null, partner: { id: r.partnerOrgId, name: 'Vendor' } });
     const document = r => r && ({ ...r, partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
-    return {
+    return withDocumentNumbers({
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{isActive:true,set:{isActive:true}}})},
@@ -47,7 +48,7 @@ function harness() {
       assignmentPlan: { findFirst: async()=>s.plan,findMany:async()=>[{...s.plan,id:61,isCompleted:false,ctReviewRequired:false,assignmentCtSnapshot:{processes:[{styleProcessId:50}]},assignmentStSnapshot:{processes:[{styleProcessId:50}]}}] },
       payrollSnapshot: { findFirst: async()=>s.payrollLocked?{id:1}:null },
       $queryRaw: async()=>[], $queryRawUnsafe: async()=>[],
-    };
+    },s);
   };
   return { state:()=>state, client:()=>client(state), change:patch=>Object.assign(state,patch), source:()=>loadExpenseEditorSource(client(state),1,'legacy','78'),
     save:async(body,kind='legacy',id='78',org=1)=>{const draft=structuredClone(state);const result=await saveExpenseEditor(client(draft),org,20,kind,id,body);state=draft;return result;} };
@@ -84,6 +85,12 @@ test('editor GET restores the confirmed document approval selection from its cur
  registerExpenseEditorRoutes({get:(p,fn)=>handlers.set(p,fn),put:()=>{},post:()=>{}},client,{requireOrgRole:async()=>({organization:{id:1}}),actorId:()=>20});
  let loaded;await handlers.get('/expense-request-editor/:kind/:id')({params:{kind:'request',id:'1'}},{json:value=>{loaded=value;}});
  assert.deepEqual(loaded.approvalSelection,{});assert.equal(loaded.createdByEmployee.id,20);
+});
+test('expense registration stores its number and later edits cannot replace the management identity',async()=>{
+ const db=harness();const body={...await input(db),managementNumber:'PAY-2026-A'};await db.save(body);
+ const loaded=expenseEditorForm(await db.source());assert.equal(loaded.managementNumber,'PAY-2026-A');
+ await assert.rejects(db.save({...loaded,clientKey:'number-change-001',managementNumber:'REPLACED'}),/DOCUMENT_NUMBER_LOCKED/);
+ assert.equal(db.state().documents[0].managementNumber,'PAY-2026-A');
 });
 test('wrapping and editing legacy production preserves source IDs, original period, author and the other vendor',async()=>{
   const db=harness(), body=await input(db), before=structuredClone(db.state());

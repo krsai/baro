@@ -1,3 +1,4 @@
+import {withDocumentNumbers} from './helpers/document-number-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,6 +11,7 @@ import { formatEditableDecimal } from '../frontend/src/utils/editableDecimal.mjs
 import { expenseLineDescription, expenseRequestSummary } from '../frontend/src/utils/expenseCodePresentation.mjs';
 const require = createRequire(import.meta.url);
 const { registerExpenseRequest } = require('../backend/dist/services/expenseRequest.js');
+const {retryEditTransaction}=require('../backend/dist/utils/editRevision.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
 const ts = require('../backend/node_modules/typescript');
 const input = () => ({ remark: 'Factory expenses', requestDate: '2026-10-17', partnerOrgId: 11, currency: 'VND', clientKey: 'document-001', items: [
@@ -23,7 +25,7 @@ function harness({sourceEnabled=true}={}) {
       const document = data.documents.find(row => where.id ? row.id === where.id : row.orgId === where.orgId_clientKey.orgId && row.clientKey === where.orgId_clientKey.clientKey);
       return document ? { ...document, items: data.costs.filter(row => row.expenseRequestId === document.id).map(row => ({ ...row, outsourcedWorkRecord: data.production.find(record => record.id === row.outsourcedWorkRecordId) || null })) } : null;
     };
-    return {
+    return withDocumentNumbers({
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{isActive:true,set:{isActive:true}}})},
@@ -45,7 +47,7 @@ function harness({sourceEnabled=true}={}) {
       workLog: { create: async ({ data: row }) => { const log = { id: data.logs.length + 1, ...row }; data.logs.push(log); return log; } },
       outsourcedWorkRecord: { create: async ({ data: row }) => { const record = { id: data.production.length + 1, ...row }; data.production.push(record); return record; } },
       $queryRaw: async () => [], $queryRawUnsafe: async()=>[],
-    };
+    },data);
   };
   return {
     state: () => state,
@@ -92,7 +94,7 @@ test('editable price formatting retains exact precision and unfinished decimals'
 function routeHarness(options) {
   const db = harness(options), effects = [];
   return { db, effects, route: postRoute({ prisma: db, requireOrgRole: async () => ({ organization: { id: 1 } }), ORG_MANAGEMENT_ROLES: ['ADMIN'],
-    getCurrentRequestActorEmployeeId: () => 20, registerExpenseRequest, appendWorkLogQuantityRemark: undefined,
+    getCurrentRequestActorEmployeeId: () => 20, registerExpenseRequest, retryEditTransaction, appendWorkLogQuantityRemark: undefined,
     trySyncAssignmentPlanSideEffectsAfterWorkLogMutation: async value => effects.push(value) }) };
 }
 
@@ -100,10 +102,19 @@ test('document registration persists ordered cost rows and server totals; identi
   const { route, db } = routeHarness(), body = input(), res = response();
   await route({ body },res);
   assert.equal(res.code,201); assert.equal(res.body.amount,'275000'); assert.equal(res.body.items.length,2);
+  assert.equal(res.body.managementNumber,'EXP-2026-000001');
   assert.deepEqual(db.state().costs.map(row => row.expenseRequestLine),[1,2]);
   await route({ body: { ...body, items: body.items.map(item => Object.fromEntries(Object.entries(item).reverse())) } },response());
   assert.equal(db.state().documents.length,1); assert.equal(db.state().costs.length,2);
   await assert.rejects(route({ body: { ...body, items: body.items.slice(0,1) } },response()),/RETRY_MISMATCH/);
+});
+test('expense management numbers accept manual input, reject duplicates and preserve exact retry identity',async()=>{
+ const {route,db}=routeHarness(),body={...input(),managementNumber:'BARO-2026-A'};
+ const res=response();await route({body},res);assert.equal(res.body.managementNumber,'BARO-2026-A');
+ await route({body},response());assert.equal(db.state().documents.length,1);
+ await assert.rejects(route({body:{...body,clientKey:'different-key',managementNumber:'baro-2026-a'}},response()),/DOCUMENT_NUMBER_ALREADY_EXISTS/);
+ await assert.rejects(route({body:{...body,managementNumber:'CHANGED'}},response()),/RETRY_MISMATCH/);
+ assert.equal(db.state().documents.length,1);
 });
 test('confirmed approval selection is snapshotted and retries cannot change it',async()=>{
   const {route,db}=routeHarness(),body={...input(),approvalSelection:{}};

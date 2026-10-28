@@ -183,8 +183,11 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   app.get('/bank-ledger/evidence/expenses',async(req:any,res:any)=>{
     const scope=await access(req,res);if(!scope)return;
     const code=currency(req.query.currencyCode),search=String(req.query.search||'').trim();
-    if(!/^EXP-\d{1,10}$/i.test(search))return res.json({items:[]});
-    const requestId=Number(search.slice(4)),state=await approvalState(db,scope.orgId,requestId);
+    const legacy=/^EXP-(\d{1,10})$/i.exec(search);
+    if(!search||search.length>200)return res.json({items:[]});
+    const document=await db.expenseRequest.findFirst({where:{orgId:scope.orgId,OR:[{managementNumber:{equals:search,mode:'insensitive'}},...(legacy?[{id:Number(legacy[1]),managementNumber:null}]:[])]},select:{id:true}});
+    if(!document)return res.json({items:[]});
+    const requestId=document.id,state=await approvalState(db,scope.orgId,requestId);
     if(!state.approved)return fail('LEDGER_EXPENSE_NOT_APPROVED');
     const items=await db.partnerTransactionCost.findMany({where:{orgId:scope.orgId,expenseRequestId:requestId,currency:code},orderBy:{expenseRequestLine:'asc'}});
     const result=[];for(const item of items){const used=await db.bankLedgerEvidenceAllocation.findMany({where:{orgId:scope.orgId,expenseItemId:item.id,entry:{voidedAt:null}}});result.push({id:item.id,line:item.expenseRequestLine,description:item.description,amount:ledgerMoney(ledgerScale4(item.amount),code),remaining:ledgerMoney(ledgerScale4(item.amount)-used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n),code)});}

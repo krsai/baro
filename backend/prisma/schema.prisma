@@ -1615,6 +1615,7 @@ model PartnerTransactionCost {
 
 model ExpenseRequest {
   id Int @id @default(autoincrement())
+  managementNumber String?
   orgId Int
   partnerOrgId Int
   createdByEmployeeId Int
@@ -1632,6 +1633,7 @@ model ExpenseRequest {
   audits ExpenseRequestAudit[]
   approvalSteps ExpenseRequestApprovalStep[]
   @@unique([id, orgId])
+  @@unique([orgId, managementNumber])
   organization Organization @relation("ExpenseRequestOwner", fields: [orgId], references: [id], onDelete: Restrict)
   partner Organization @relation("ExpenseRequestPayee", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
   createdByEmployee Employee @relation("ExpenseRequestCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)

@@ -1,5 +1,13 @@
 # BARO 남은 작업
 
+## 2026-10-28 청구서·비용 신청 관리번호
+
+- 완료: 청구서 주문번호 기본값을 제거하고 두 문서 모두 수동 입력/빈 값 자동 채번을 제공한다. 기본 코드는 INV-YYYY-000001 / EXP-YYYY-000001이며 회사·종류·문서 날짜 연도별 순번이다. 비용 신청의 번호 입력은 최초 등록 때만 수정한다.
+- 서버 저장 번호를 목록·상세·검색·발행 snapshot·입출금 증빙 FK 조회에 연결했다. 중복/대소문자 중복/취소 번호 재사용을 거부하고 요청 재시도·트랜잭션 롤백·새 연도/다른 회사/문서 종류 분리를 검증한다.
+- 기존 발행본과 과거 EXP-{id} 참조를 보존하며 원자료/확정 snapshot을 소급 변경하지 않는다. 새 nullable 비용 관리번호·unique·불변 trigger는 별도 20261028140000 migration으로 배포 실행기에 등록했다. 운영 직접 적용과 실제 다중 연결 PostgreSQL 검사는 별도 DB URL 없이 실행하지 않았다.
+- 참고: QuickBooks의 자동/사용자 번호와 Zoho의 INV 접두사+일련번호 방식을 확인했다. https://quickbooks.intuit.com/learn-support/en-uk/help-article/customise-forms/change-number-invoices-transactions/L45oIBEzJ_GB_en_GB · https://www.zoho.com/en-sg/billing/kb/invoices/change-the-default-invoice-number.html
+- 검증: 관련 서비스/로컬 SQL 회귀 88건, 청구서 한/영/베 수동/빈 번호 발행·발행 재시도와 비용 신청 관리번호 입력·목록/검색/재조회 화면, 양쪽 빌드·인코딩 검사 통과. 운영 DB 직접 적용과 실제 다중 연결 동시성 검사는 미실행이다.
+
 ## 2026-10-28 결재선 설정 금액 한도만 유지
 
 - 완료: 설정 화면의 기안자/직급/승인자 지정과 우회 드롭다운을 제거하고 통화별 선임·책임 한도 6개만 편집·저장한다. 서버도 limits만 저장하며 기존 직원 지정이 필요하지 않다.

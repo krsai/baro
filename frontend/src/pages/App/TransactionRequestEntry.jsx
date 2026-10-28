@@ -3,6 +3,7 @@ import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
 import {approvalSettingsText} from '../../constants/approvalSettings';
+import {documentNumberText,documentNumberError} from '../../constants/documentNumber';
 import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -36,8 +37,8 @@ const CHANGED_TEXT = { ko: '다른 사용자가 신청서를 수정했습니다.
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
-const documentSnapshot = form => JSON.stringify({remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
+const newDocument = () => { const date = today(); return { managementNumber:'', remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const documentSnapshot = form => JSON.stringify({managementNumber:form.managementNumber,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -52,6 +53,7 @@ export default function TransactionRequestEntry() {
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
+  const numbering=documentNumberText[languageCode]||documentNumberText.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const approvalRef=useRef(null),saveLock=useRef(false);
   const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
@@ -145,7 +147,7 @@ export default function TransactionRequestEntry() {
     try {
     const selection=submission?submission.approvalSelection:await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
-    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { managementNumber:form.managementNumber||'', remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -160,7 +162,7 @@ export default function TransactionRequestEntry() {
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
         const approvalText=approvalSettingsText[languageCode]||approvalSettingsText.en;
-        setError(code==='APPROVAL_CURRENCY_LIMIT_REQUIRED' ? approvalText.limitMissing : code==='EXPENSE_SELF_APPROVAL' ? approvalText.selfError : code==='EXPENSE_APPROVER_REQUIRED' ? approvalText.missing : code==='INVALID_EXPENSE_APPROVERS' ? approvalText.error : code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid);
+        setError(documentNumberError(code,languageCode) || (code==='APPROVAL_CURRENCY_LIMIT_REQUIRED' ? approvalText.limitMissing : code==='EXPENSE_SELF_APPROVAL' ? approvalText.selfError : code==='EXPENSE_APPROVER_REQUIRED' ? approvalText.missing : code==='INVALID_EXPENSE_APPROVERS' ? approvalText.error : code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid));
       }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
@@ -183,6 +185,7 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
+          <TextField label={numbering.expense} value={form.managementNumber||''} onChange={event=>update({managementNumber:event.target.value})} disabled={disabled} helperText={form.version?'':numbering.auto} slotProps={{input:{readOnly:Boolean(form.version)},htmlInput:{maxLength:200}}} sx={{width:{xs:'100%',sm:360},mb:2}}/>
           <Box data-testid="expense-header" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm:'180px minmax(0,1fr)', lg: '170px minmax(180px,.8fr) minmax(180px,.8fr) minmax(280px,1.6fr)' }, gap: 1.5,alignItems:'start' }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} />

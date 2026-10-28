@@ -1,3 +1,4 @@
+import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
@@ -46,7 +47,7 @@ try {
     await page.route('**/expense-request-editor/legacy/78?*',async r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
-      return r.fulfill({headers,json:{remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
+      return r.fulfill({headers,json:{managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
@@ -59,6 +60,7 @@ try {
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
     const h=expenseHeaderActions[lang];
+    const numberInput=page.getByLabel(documentNumberText[lang].expense,{exact:true});if(mode==='GENERAL'&&!locked)await numberInput.fill('BARO-EXP-A');if(mode==='SAVED'){await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='EXP-2026-000008'));assert.equal(await numberInput.evaluate(el=>el.readOnly),true);}
     assert.equal(await page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true}).count(),0);
     const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,4);
     const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields must share one row');
@@ -162,7 +164,7 @@ try {
       await page.evaluate(()=>window.changeWorkspace('/dashboard'));await page.waitForTimeout(100);
       await page.evaluate(()=>window.changeWorkspace('/outsourcing-record/edit/legacy/78'));await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>window.expenseNavigations.length),1,'Closing or returning to a saved form must not trigger another navigation');
-      assert.equal(submitted.approvalSelection.seniorEmployeeId,21);
+      assert.equal(submitted.approvalSelection.seniorEmployeeId,21);assert.equal(submitted.managementNumber,mode==='GENERAL'?'BARO-EXP-A':'');
       assert.equal(submitted.remark,mode==='PROCESS'?'':'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,undefined);

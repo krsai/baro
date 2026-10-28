@@ -1,4 +1,5 @@
 import {createHttpError} from '../utils/http';
+import {legacyExpenseNumber} from './documentNumber';
 import {retryEditTransaction} from '../utils/editRevision';
 import {ledgerScale4,ledgerMoney,validateLedgerMoney} from './bankLedger';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
@@ -12,7 +13,7 @@ export async function approvalState(db:any,orgId:number,requestId:number,actorId
  const policy=audit?.afterSnapshot?.approvalPolicy;
  const exempt=policy?.exempt===true && policy.drafterId===request.createdByEmployeeId;
  const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}) : null;
- return {version:request.version,steps,exempt,approved:steps.length>0?!next:exempt,canApprove:!!actor&&!!next&&next.employeeId===actorId};
+ return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),steps,exempt,approved:steps.length>0?!next:exempt,canApprove:!!actor&&!!next&&next.employeeId===actorId};
 }
 export async function approveExpense(db:any,orgId:number,actorId:number,requestId:number,version:number){
  return retryEditTransaction(db,async(tx:any)=>{
@@ -69,7 +70,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
    const value=validateLedgerMoney(row.amount,code),minor=ledgerScale4(value);
    const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:row.itemId,entry:{voidedAt:null}}});
    if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+minor>ledgerScale4(cost.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
-   allocated+=minor;refs.push(`EXP-${String(cost.expenseRequestId).padStart(6,'0')} #${cost.expenseRequestLine}`);
+   allocated+=minor;refs.push(`${state.managementNumber} #${cost.expenseRequestLine}`);
    allocations.push({expenseItemId:row.itemId,requestVersion:state.version,amount:value});
   }
   if(allocated+bankFee!==amount)return fail('LEDGER_ALLOCATION_MISMATCH');reference=refs.join(', ');

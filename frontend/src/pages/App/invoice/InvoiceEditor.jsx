@@ -1,3 +1,4 @@
+import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Box, Button, Checkbox, CircularProgress, Accordion, AccordionSummary, AccordionDetails, Paper, FormControlLabel, Stack, Table, TableBody, TableCell, TableHead,
@@ -166,7 +167,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         const first = prices.find((p) => p.pricingBasis === INVOICE_BASES[0].value && p.currencyCode === 'USD') || prices[0];
         setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || data.currencies?.[0] || 'USD');
         const date = new Date().toLocaleDateString('sv-SE');
-        setFields({ number: data.orderNumber, date, seller: data.seller, buyer: data.buyer,
+        setFields({ number: '', date, seller: data.seller, buyer: data.buyer,
           shipTo: [data.buyer.name, data.buyer.address, data.buyer.country].filter(Boolean).join('\n'),
           shipmentDate: '', dueDate: '', incoterm: '', paymentTerms: '', bank: '', notes: '' });
         setSettlements(Object.fromEntries(data.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[first?.currencyCode]?.defaultDeductionAmount || '', reason: '' }])));
@@ -207,7 +208,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     change();
   };
   const issue = async () => {
-    if (!source || saving || !reviewed || calculation?.issues.length || !fields?.number.trim() || !fields?.date) return;
+    if (!source || saving || !reviewed || calculation?.issues.length || !fields?.date) return;
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
     setSaving(true); setError('');
     try {
@@ -228,12 +229,12 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     } catch (e) {
       const unknown = !e.status || e.status >= 500;
       setUncertain(unknown);
-      setError(unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed);
+      setError(documentNumberError(e.details?.error||e.message,languageCode) || (unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed));
     } finally { setSaving(false); }
   };
   return <AppPageContainer title={draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
     <Button disabled={saving} onClick={close}>{ui.cancel}</Button>
-    <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.number.trim() || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
+    <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
   </Stack>}>
     <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}>
       <Stack spacing={2} sx={{p:2,minWidth:0}}>
@@ -245,7 +246,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:renderSelection?'180px minmax(0,1fr)':'180px minmax(0,1fr) minmax(0,1fr)'},gap:2}}>
             <TextField size="small" label={ui.date} type="date" value={fields.date} onChange={e=>changeField('date',e.target.value)} InputLabelProps={{shrink:true}}/>
             {!renderSelection && <TextField size="small" label={billingText.customer} value={fields.buyer.name} slotProps={{input:{readOnly:true}}}/>}
-            <TextField size="small" label={ui.number} value={fields.number} onChange={e=>changeField('number',e.target.value)} inputProps={{maxLength:200}}/>
+            <TextField size="small" label={(documentNumberText[languageCode]||documentNumberText.en).invoice} placeholder="INV-YYYY-000001" helperText={(documentNumberText[languageCode]||documentNumberText.en).auto} value={fields.number} onChange={e=>changeField('number',e.target.value)} inputProps={{maxLength:200}}/>
           </Box>
           <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
 

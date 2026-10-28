@@ -1,3 +1,4 @@
+import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -36,6 +37,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`);
   const review=page.getByRole('checkbox');await review.waitFor();
+  const numberInput=page.getByLabel(documentNumberText[lang].invoice,{exact:true});assert.equal(await numberInput.inputValue(),'');if(failure==='save')await numberInput.fill('CUSTOM-2026-A');
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
@@ -58,7 +60,7 @@ try{
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
     const dimensions=await grid.locator('input[inputmode="numeric"]').first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
     assert.ok(dimensions.input<=dimensions.cell&&dimensions.cell>=59&&dimensions.cell<=90,JSON.stringify(dimensions));
-    if(width===1720)await page.screenshot({path:path.join(process.env.TEMP||'/tmp','baro-invoice-layout.png')});
+
    }
    assert.deepEqual(errors,[]);await page.close();continue;
   }
@@ -78,7 +80,7 @@ try{
   await page.waitForFunction(()=>window.issuedEditor===true);
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
-  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.doesNotMatch(saves[0].fields.number,/DRAFT/);
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':'');
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ['ko','en','vi']){

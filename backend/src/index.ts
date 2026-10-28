@@ -194,7 +194,7 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
-    ExpenseRequest: ['id','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
+    ExpenseRequest: ['id','managementNumber','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
     ExpenseRequestApprovalStep: ['id','orgId','requestId','position','employeeId'],
     OrganizationBankAccount: ['id','orgId','entityId','currencyId','bankName','accountNumber','accountHolder','isDefault','isActive'],
     PartnerTransactionCost: ['expenseRequestId','expenseRequestLine'],
@@ -1080,6 +1080,8 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   "InvoiceDraftLine_draftId_fkey",
   "InvoiceDraftLine_workOrderItemId_fkey",
   "Invoice_sellerOrgId_invoiceNumber_key",
+  "ExpenseRequest_orgId_managementNumber_key",
+  "ExpenseRequest_number_guard",
   "Invoice_sellerOrgId_clientKey_key",
   "Invoice_sellerOrgId_sequenceNumber_key",
   "Invoice_sellerOrgId_fkey",
@@ -27577,7 +27579,7 @@ app.post('/expense-requests', async (req, res) => {
   const actorId = getCurrentRequestActorEmployeeId();
   if (!actorId) return res.status(403).json({ error: 'ACTIVE_EMPLOYEE_REQUIRED' });
   const orgId = access.organization.id;
-  const document = await prisma.$transaction(tx => registerExpenseRequest(tx, orgId, actorId, req.body, appendWorkLogQuantityRemark), { isolationLevel: 'Serializable', timeout: 60000 });
+  const document = await retryEditTransaction(prisma, tx => registerExpenseRequest(tx, orgId, actorId, req.body, appendWorkLogQuantityRemark), 60000);
   const assignmentPlanIds = [...new Set(document.items.flatMap((item: any) => item.outsourcedWorkRecord ? [item.outsourcedWorkRecord.assignmentPlanId] : []))] as number[];
   if (assignmentPlanIds.length) await trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({ orgId, assignmentPlanIds, mode: 'create' });
   return res.status(201).json(document);

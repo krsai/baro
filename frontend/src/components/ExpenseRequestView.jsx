@@ -5,7 +5,7 @@ import { EXPENSE_REQUEST_TEXT } from '../constants/expenseRequest';
 import { TRANSACTION_TEXT, serviceName } from './OutsourcingServiceDialog';
 import { formatCurrency } from '../utils/currencyFormat';
 
-export const expenseRequestNumber = id => `EXP-${String(id).padStart(6, '0')}`;
+export const expenseRequestNumber = document => document?.managementNumber || `EXP-${String(document?.id ?? document).padStart(6, '0')}`;
 export default function ExpenseRequestView({ document, languageCode, onClose }) {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
@@ -15,6 +15,7 @@ export default function ExpenseRequestView({ document, languageCode, onClose }) 
   return <Dialog open={Boolean(document)} onClose={onClose} fullWidth maxWidth="xl">
     <DialogTitle>{labels.document}</DialogTitle>
     {document && <DialogContent><Stack spacing={2}>
+      <Typography variant="subtitle1">{labels.numbering}: {expenseRequestNumber(document)}</Typography>
       <Typography variant="h6">{expenseRequestSummary(document,languageCode)}</Typography>
       {document.remark && <Typography>REMARK: {document.remark}</Typography>}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>{[[labels.payee,document.partner?.name],[labels.date,document.requestDate],[labels.applicant,document.createdByEmployee?.name]].map(([label,value]) => <Box key={label}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value || '—'}</Typography></Box>)}</Box>
