@@ -8,12 +8,16 @@ export async function approvalState(db:any,orgId:number,requestId:number,actorId
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId,version:request.version},orderBy:{position:'asc'}});
  const steps=request.approvalSteps.map((step:any)=>({...step,approved:decisions.some((d:any)=>d.position===step.position&&d.employeeId===step.employeeId)}));
  const next=steps.find((step:any)=>!step.approved);
- return {version:request.version,steps,approved:steps.length>0&&!next,canApprove:!!next&&next.employeeId===actorId};
+ const audit=!steps.length ? await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}) : null;
+ const policy=audit?.afterSnapshot?.approvalPolicy;
+ const exempt=policy?.exempt===true && policy.drafterId===request.createdByEmployeeId;
+ const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}) : null;
+ return {version:request.version,steps,exempt,approved:steps.length>0?!next:exempt,canApprove:!!actor&&!!next&&next.employeeId===actorId};
 }
 export async function approveExpense(db:any,orgId:number,actorId:number,requestId:number,version:number){
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',requestId,orgId);
-  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}});
+  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}});
   if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
   const state=await approvalState(tx,orgId,requestId,actorId);
   if(state.version!==version)return fail('EXPENSE_REQUEST_CHANGED',409);

@@ -18,7 +18,7 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const mode of ['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+  for(const mode of (process.env.EXPENSE_EDITOR_MODES?.split(',')||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS']))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
     console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
@@ -50,8 +50,9 @@ try {
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
     await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
-    await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currency:{id:1,code:'VND'},isDefault:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
-    await page.route('**/expense-approval-candidates?*',r=>r.fulfill({headers,json:[{id:20,name:'First approver'},{id:21,name:'Second approver'}]}));
+    await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currencyId:1,currency:{id:1,code:'VND'},isDefault:true,isActive:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
+    await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'}]}}));
+    await page.route('**/expense-approval-preview?*',r=>r.fulfill({headers,json:{ids:[21],policy:{totals:[{currency:'VND',amount:'510000'}]}}}));
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();
@@ -136,13 +137,14 @@ try {
         await page.getByRole('alert').getByRole('button',{name:EXPENSE_HEADER_TEXT[lang].editPayee,exact:true}).click();
         await page.getByRole('dialog').getByRole('button',{name:b.add,exact:true}).click();
         const dialog=page.getByRole('dialog').last();
-        await dialog.getByLabel(b.bank,{exact:false}).fill('Test bank');
+        await dialog.getByRole('textbox',{name:b.bank,exact:false}).fill('Test bank');
         await dialog.getByLabel(b.number,{exact:false}).fill('001234');
         await dialog.getByLabel(b.holder,{exact:false}).fill('Selected vendor');
         await dialog.getByRole('button',{name:b.save,exact:true}).click();
         await page.getByRole('dialog').getByText('001234',{exact:true}).waitFor();
         await page.getByRole('dialog').getByRole('button',{name:b.cancel,exact:true}).click();
         assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'');
+        await page.getByLabel('REMARK',{exact:true}).fill('Account registered; update request');
         await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);
       }
       assert.equal(await page.locator('.MuiAlert-standardWarning').count(),0,'Shared source FK must not produce an industry warning');
@@ -164,13 +166,6 @@ try {
         await page.getByLabel('REMARK',{exact:false}).fill('Updated request');
         await page.getByLabel(l.price,{exact:false}).fill('5000');assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
       }
-      const h=EXPENSE_HEADER_TEXT[lang];
-      await page.getByRole('button',{name:h.approval,exact:true}).click();
-      await page.getByRole('dialog').getByRole('button',{name:h.addApprover,exact:true}).click();
-      assert.equal(await page.getByRole('dialog').getByRole('button',{name:h.apply,exact:true}).isDisabled(),true);
-      await page.getByRole('dialog').getByRole('combobox').click();
-      await page.getByRole('option',{name:'First approver',exact:true}).click();
-      await page.getByRole('dialog').getByRole('button',{name:h.apply,exact:true}).click();
       await save.click();
       if(mode==='BACKGROUND'){
         await page.evaluate(()=>window.changeWorkspace('/dashboard'));releaseSave();await page.waitForTimeout(250);
@@ -183,7 +178,7 @@ try {
       await page.evaluate(()=>window.changeWorkspace('/dashboard'));await page.waitForTimeout(100);
       await page.evaluate(()=>window.changeWorkspace('/outsourcing-record/edit/legacy/78'));await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>window.expenseNavigations.length),1,'Closing or returning to a saved form must not trigger another navigation');
-      assert.deepEqual(submitted.approverEmployeeIds,[20]);
+      assert.deepEqual(submitted.approverEmployeeIds,[]); // The server derives the line from company policy and amounts.
       assert.equal(submitted.remark,mode==='PROCESS'?'':'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,undefined);

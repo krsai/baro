@@ -8,6 +8,7 @@ export const PAGE_ROUTES = [
   ['/system-setting','subscription','page'],
   ['/app-settings/transaction-codes','transactionCodes','page'],
   ['/app-settings','appSettings','page'],
+  ['/approval-settings','approvalSettings','page'],
   ['/system-setting/app-defaults','appDefaults','page'],
   ['/system-setting/expense-types','expenseTypes','page'],
   ['/system-setting/partner-industries','partnerIndustries','page'],

@@ -815,6 +815,7 @@ const MainLayout = () => {
             path: '/salary-system',
           },
           { label: getUiMessage('menu.appSettings', '앱 설정', languageCode), icon: <TuneIcon />, path: '/app-settings' },
+          { label: getUiMessage('menu.approvalSettings', '결재선 설정', languageCode), icon: <TuneIcon />, path: '/approval-settings' },
         ],
       },
       {

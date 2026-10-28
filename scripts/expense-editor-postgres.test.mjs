@@ -8,6 +8,7 @@ import {PrismaClient} from '../backend/node_modules/@prisma/client/default.js';
 const require=createRequire(import.meta.url);
 const {loadExpenseEditorSource,expenseEditorForm,saveExpenseEditor}=require('../backend/dist/services/expenseRequestEditor.js');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest.js');
+const {defaultApprovalSettings,validateApprovalSettings}=require('../backend/dist/services/expenseApproval.js');
 const {provisionSettingDefaults}=require('../backend/dist/services/transactionSettingRoutes.js');
 const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement.js');
 const {migrationSql}=require('../backend/scripts/migrate-expenses.js');
@@ -39,6 +40,9 @@ try{
  const gradeSet=await db.employeeGradeSet.create({data:{orgId:org.id,code:'TEST',name:'Test'}});
  const grade=await db.employeeGrade.create({data:{orgId:org.id,setId:gradeSet.id,code:'TEST',name:'Test',nameKo:'Test',nameEn:'Test',nameVi:'Test',sortOrder:1,isDefault:true}});
  const actor=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Editor',orgRole:'ADMIN',status:'ACTIVE'}});
+ const senior=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Senior accountant',orgRole:'ACCOUNTANT',status:'ACTIVE'}});
+ const approvalConfig={...defaultApprovalSettings(),seniorGradeId:grade.id,seniorEmployeeId:senior.id,adminEmployeeId:actor.id};
+ await db.systemSetting.create({data:{key:'EXPENSE_APPROVAL_POLICY:'+org.id,value:approvalConfig}});
  for(const base of await db.transactionCodeBase.findMany({where:{code:{in:['BTH','GEN']}}}))await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,org.id,actor.id,base.id,base.code==='BTH'?'PROCESS':'NONE'),{isolationLevel:'Serializable'});
  const vendor=await db.organization.create({data:{ownerOrgId:org.id,name:'Selected vendor',type:'PROCESS_OUTSOURCING'}});
  const other=await db.organization.create({data:{ownerOrgId:org.id,name:'Other vendor',type:'PROCESS_OUTSOURCING'}});
@@ -151,27 +155,21 @@ try{
    const previousDescription=(await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}})).description;
    await save(next);const cost=await db.partnerTransactionCost.findUnique({where:{outsourcedWorkRecordId:record.id}});assert.equal(cost.description,previousDescription);assert.equal(cost.expenseRequestId,requestId);
  });
- await check('ordered approvers use tenant employee FKs, audit reordering and reject invalid candidates atomically',async()=>{
-   const second=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Approver',orgRole:'ACCOUNTANT',status:'ACTIVE'}});
-   const worker=await db.employee.create({data:{orgId:org.id,gradeId:grade.id,name:'Worker',orgRole:'WORKER',status:'ACTIVE'}});
-   const next=await form();next.clientKey=key();next.approverEmployeeIds=[actor.id,second.id];await save(next);
-   assert.deepEqual((await form()).approverEmployeeIds,[actor.id,second.id]);
-   const reorder=await form();reorder.clientKey=key();reorder.approverEmployeeIds.reverse();await save(reorder);
-   assert.deepEqual((await form()).approverEmployeeIds,[second.id,actor.id]);
-   for(const ids of [[actor.id,actor.id],[worker.id],[999999]]){
-     const invalid=await form();invalid.clientKey=key();invalid.approverEmployeeIds=ids;
-     await assert.rejects(save(invalid),/INVALID_EXPENSE_APPROVERS/);
-     assert.deepEqual((await form()).approverEmployeeIds,[second.id,actor.id]);
-   }
-   const invalid=await form();invalid.clientKey=key();invalid.approverEmployeeIds=[actor.id];invalid.items[0].unitPrice='0';
-   await assert.rejects(save(invalid),/INVALID_PRICE_OR_QUANTITY/);
-   assert.deepEqual((await form()).approverEmployeeIds,[second.id,actor.id]);
+ await check('company policy derives sequential approvers and audits the saved limits',async()=>{
+   const leadGrade=await db.employeeGrade.create({data:{orgId:org.id,setId:gradeSet.id,code:'LEAD',name:'Lead',nameKo:'Lead',nameEn:'Lead',nameVi:'Lead',sortOrder:2}});
+   const second=await db.employee.create({data:{orgId:org.id,gradeId:leadGrade.id,name:'Lead accountant',orgRole:'ACCOUNTANT',status:'ACTIVE'}});
+   const policy={...approvalConfig,leadGradeId:leadGrade.id,leadEmployeeId:second.id,limits:{...approvalConfig.limits,VND:{senior:'100',lead:'100000000'}}};
+   await db.systemSetting.update({where:{key:'EXPENSE_APPROVAL_POLICY:'+org.id},data:{value:await validateApprovalSettings(db,org.id,policy)}});
+   const next=await form();next.clientKey=key();next.approverEmployeeIds=[actor.id];await save(next);
+   assert.deepEqual((await form()).approverEmployeeIds,[senior.id,second.id]);
+   await assert.rejects(validateApprovalSettings(db,org.id,{...policy,leadEmployeeId:actor.id}),/INVALID_EXPENSE_APPROVERS/);
    const latest=await db.expenseRequestAudit.findFirst({where:{requestId},orderBy:{version:'desc'}});
-   assert.deepEqual(latest.afterSnapshot.document.approvalSteps.map(step=>step.employeeId),[second.id,actor.id]);
+   assert.deepEqual(latest.afterSnapshot.document.approvalSteps.map(step=>step.employeeId),[senior.id,second.id]);
+   assert.equal(latest.afterSnapshot.approvalPolicy.config.limits.VND.senior,'100');
    const general=await db.transactionCode.findFirst({where:{ownerOrgId:org.id,code:'GENE'}});
-   const created=await db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),approverEmployeeIds:[second.id,actor.id],items:[{transactionCodeId:general.id,currency:'VND',quantity:'1',unitPrice:'100',vatRate:'0',details:{}}]}));
+   const created=await db.$transaction(tx=>registerExpenseRequest(tx,org.id,actor.id,{requestDate:'2026-07-31',partnerOrgId:vendor.id,clientKey:key(),approverEmployeeIds:[actor.id],items:[{transactionCodeId:general.id,currency:'VND',quantity:'1',unitPrice:'1000',vatRate:'0',details:{}}]}));
    const loaded=expenseEditorForm(await loadExpenseEditorSource(db,org.id,'request',String(created.id)));
-   assert.equal(loaded.remark,'');assert.deepEqual(loaded.approverEmployeeIds,[second.id,actor.id]);
+   assert.deepEqual(loaded.approverEmployeeIds,[senior.id,second.id]);
  });
  await check('explicit versions reject stale saves and audit rows cannot be rewritten or removed',async()=>{
    const a=await form(),b=await form();a.clientKey=key();b.clientKey=key();a.remark='Version winner';b.remark='Stale loser';

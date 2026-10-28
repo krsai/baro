@@ -22,9 +22,27 @@ async function fixture(){
  await db.exec(await readFile('backend/prisma/migrations/20261027210000_ledger_evidence/migration.sql','utf8'));
  await db.exec(await readFile('backend/prisma/migrations/20261027210100_ledger_evidence_delete/migration.sql','utf8'));
  await db.exec(await readFile('backend/prisma/migrations/20261027220000_ledger_batch/migration.sql','utf8'));
+ await db.exec('ALTER TABLE "ExpenseRequest" ADD COLUMN "createdByEmployeeId" integer; CREATE TABLE "ExpenseRequestAudit" ("requestId" integer,"orgId" integer,version integer,"afterSnapshot" jsonb);');
+ await db.exec(await readFile('backend/prisma/migrations/20261028090000_expense_approval_settings/migration.sql','utf8'));
  return db;
 }
 const entry=(id,type,amount,fee=0,direction='IN',reference='evidence.pdf')=>`INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy","evidenceType","bankFee") VALUES('${id}',1,'a','${id}','2026-01-02','${direction}',${amount},'Reason','${reference}','actor','${type}',${fee});`;
+test('SQL accepts accountant exemption only for the exact saved drafter and version',async()=>{
+ const db=await fixture();
+ const allocation=`INSERT INTO "BankLedgerEvidenceAllocation"(id,"entryId","orgId","expenseItemId","requestVersion",amount) VALUES('exempt-a','exempt',1,'c1',1,50);`;
+ try{
+   await db.exec('DELETE FROM "ExpenseRequestApprovalStep"; UPDATE "ExpenseRequest" SET "createdByEmployeeId"=11;');
+   await rejectTx(db,entry('exempt','EXPENSE',50,0,'OUT')+allocation,/LEDGER_EXPENSE_NOT_APPROVED/);
+   await db.exec(`INSERT INTO "ExpenseRequestAudit" VALUES(1,1,1,'{"approvalPolicy":{"drafterId":11,"exempt":true}}');`);
+   await db.exec('BEGIN;'+entry('exempt','EXPENSE',50,0,'OUT')+allocation+'COMMIT;');
+ }finally{await db.close();}
+});
+test('SQL rejects new approval decisions from operators even when a historical step names them',async()=>{
+ const db=await fixture();try{
+   await db.exec(`UPDATE "Employee" SET "orgRole"='OPERATOR' WHERE id=10;`);
+   await assert.rejects(db.exec(`INSERT INTO "ExpenseApprovalDecision" VALUES('operator',1,1,1,1,10,now())`),/INVALID_EXPENSE_APPROVERS/);
+ }finally{await db.close();}
+});
 async function rejectTx(db,sql,pattern){try{await assert.rejects(db.exec(`BEGIN;${sql}COMMIT;`),pattern);}finally{await db.exec('ROLLBACK');}}
 test('database keeps old evidence, requires file evidence, and permits reasoned balance adjustments',async()=>{
  const db=await fixture();try{

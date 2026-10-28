@@ -26,6 +26,7 @@ function harness({sourceEnabled=true}={}) {
     return {
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
+      employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{isActive:true,set:{isActive:true}}})},
       factory: { findMany: async () => [{ id: 1, managementStartDate: '2026-04-01' }] },
       expenseRequest: { findUnique: async ({ where }) => readDocument(where),findFirst:async({where})=>readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1,version:1, ...row }; data.documents.push(document); return document; } },
       partnerTransactionCost: {
@@ -37,7 +38,7 @@ function harness({sourceEnabled=true}={}) {
         taxTreatment:{code:where.id===8?'EXEMPT':'VAT',suffix:where.id===8?'E':'V'},
         serviceType: { id: 4 }, base: {nameEn:'Transport',isActive:true,code:'TRK',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:where.id===8?3:1,isActive:true,isEnabled:sourceEnabled}], entryMode: where.id === 8 ? 'PROCESS' : 'LOGISTICS', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } }) },
       expenseRequestAudit:{create:async({data:row})=>{data.audits.push(row);return row;}},
-      systemSetting: { findUnique: async () => ({ value: { defaultVatRate: '10' } }) },
+      systemSetting: { findUnique: async ({where}) => ({ value: where.key.startsWith('EXPENSE_APPROVAL_POLICY:') ? {limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:1,leadGradeId:2} : { defaultVatRate: '10' } }) },
       organization: { findFirst: async () => ({ id: 11 }), findUnique: async () => ({ name: 'Vendor' }) },
       workOrder: { findFirst: async () => ({ id: 30 }) }, workOrderItem: { findFirst: async () => ({ id: 1 }) }, styleProcess: { findFirst: async () => ({ id: 50 }) },
       assignmentPlan: { findMany: async () => [{ id: 60, factoryId: 1, isCompleted: false, assignmentCtSnapshot: { processes: [{ styleProcessId: 50 }] }, assignmentStSnapshot: { processes: [{ styleProcessId: 50 }] } }] },

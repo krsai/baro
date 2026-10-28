@@ -2,6 +2,7 @@ import {ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
 import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
+import {approvalSettingsText} from '../../constants/approvalSettings';
 import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -161,7 +162,8 @@ export default function TransactionRequestEntry() {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
-        setError(code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid);
+        const approvalText=approvalSettingsText[languageCode]||approvalSettingsText.en;
+        setError(code==='APPROVAL_CURRENCY_LIMIT_REQUIRED' ? approvalText.limitMissing : code==='EXPENSE_SELF_APPROVAL' ? approvalText.selfError : code==='EXPENSE_APPROVER_REQUIRED' ? approvalText.missing : code==='INVALID_EXPENSE_APPROVERS' ? approvalText.error : code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid);
       }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
@@ -197,7 +199,7 @@ export default function TransactionRequestEntry() {
           </Box>
           <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(280px, .8fr) minmax(0, 1.6fr)'},gap:2,mt:2}}>
             <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={disabled||documentSnapshot(form)!==initialSnapshot}/>
-            <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} value={form.approverEmployeeIds} steps={form.approvalSteps} disabled={disabled} onChange={approverEmployeeIds=>update({approverEmployeeIds})} />
+            <ExpenseApprovalSettings orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} drafter={form.createdByEmployee} editing={editing} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} />
             <TextField label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} />
           </Box>
           </Box>

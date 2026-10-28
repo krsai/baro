@@ -1,5 +1,5 @@
 import { requirePayeeBankAccount } from './entityBankAccount';
-import { validateExpenseApprovers, replaceExpenseApprovers } from './expenseApproval';
+import { resolveExpenseApproval, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
@@ -57,9 +57,10 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
       assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,
       partnerOrgId: body.partnerOrgId, currency, clientKey: `${body.clientKey}-${index + 1}` };
   });
-  const approverEmployeeIds=await validateExpenseApprovers(tx,orgId,body.approverEmployeeIds);
+  const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } });
+  const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items);
+  const approverEmployeeIds=approval.ids;
   const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark, approverEmployeeIds, items }))).digest('hex');
-  const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: EXPENSE_REQUEST_INCLUDE });
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
@@ -83,6 +84,6 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const saved = await tx.expenseRequest.findUnique({ where: { id: document.id }, include: EXPENSE_REQUEST_INCLUDE });
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
   await tx.expenseRequestAudit.create({ data: { orgId,requestId:document.id,actorId,version:document.version,action:'CREATE',
-    clientKey:auditKey,inputHash:submissionHash,beforeSnapshot:{costs:[],record:null},afterSnapshot:JSON.parse(JSON.stringify(after)) } });
+    clientKey:auditKey,inputHash:submissionHash,beforeSnapshot:{costs:[],record:null},afterSnapshot:JSON.parse(JSON.stringify({...after,approvalPolicy:approval.policy})) } });
   return { ...saved, ...expenseRequestTotals(saved.items) };
 }

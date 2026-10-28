@@ -1,5 +1,5 @@
 import { requirePayeeBankAccount } from './entityBankAccount';
-import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateExpenseApprovers, replaceExpenseApprovers } from './expenseApproval';
+import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateApprovalSettings, defaultApprovalSettings, replaceExpenseApprovers, resolveExpenseApproval, approvalSettingKey } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
@@ -120,7 +120,8 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   // Release only the document/payee composite FK inside this transaction; IDs and source FKs remain intact.
   if (source.document) await tx.partnerTransactionCost.updateMany({ where: { expenseRequestId: source.document.id, orgId }, data: { expenseRequestId: null, expenseRequestLine: null } });
   await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
-  const approvers = await validateExpenseApprovers(tx,orgId,body.approverEmployeeIds ?? source.document?.approvalSteps?.map((step:any)=>step.employeeId));
+  const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items);
+  const approvers = approval.ids;
   const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
@@ -141,14 +142,46 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   for (const cost of removed) await tx.partnerTransactionCost.delete({ where: { id: cost.id } });
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
   await tx.expenseRequestAudit.create({ data: { orgId, requestId: document.id, actorId, version: document.version,
-    action: source.document ? 'UPDATE' : 'CREATE', clientKey:key, inputHash, beforeSnapshot: before, afterSnapshot:snapshot(after) } });
+    action: source.document ? 'UPDATE' : 'CREATE', clientKey:key, inputHash, beforeSnapshot: before, afterSnapshot:snapshot({...after,approvalPolicy:approval.policy}) } });
   return { requestId: document.id, assignmentPlanIds: [...new Set(assignmentPlanIds)] };
 }
 
 export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
   const path = '/expense-request-editor/:kind/:id';
+  app.get('/expense-approval-settings',async(req:any,res:any)=>{
+    const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!access)return;
+    const actorId=gates.actorId();if(!actorId)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
+    const orgId=access.organization.id;
+    const drafter=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true}});
+    if(!drafter)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
+    const setting=await db.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
+    const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true,orgRole:true,gradeId:true},orderBy:[{name:'asc'},{id:'asc'}]});
+    const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},orderBy:[{setId:'asc'},{sortOrder:'asc'}]});
+    res.json({drafter,candidates,grades,settings:setting?.value||defaultApprovalSettings(),configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
+  });
+  app.put('/expense-approval-settings',async(req:any,res:any)=>{
+    const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;
+    const actorId=gates.actorId();if(!actorId)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
+    await db.$transaction(async(tx:any)=>{
+      const orgId=access.organization.id;
+      const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:'ADMIN'}});
+      if(!actor)throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
+      const value=await validateApprovalSettings(tx,orgId,req.body);
+      const data={value,updatedByEmployeeId:actorId};
+      await tx.systemSetting.upsert({where:{key:approvalSettingKey(orgId)},create:{key:approvalSettingKey(orgId),...data},update:data});
+    },{isolationLevel:'Serializable'});
+    res.json({ok:true});
+  });
+  app.post('/expense-approval-preview',async(req:any,res:any)=>{
+    const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!access)return;
+    const actorId=gates.actorId();if(!actorId)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
+    let drafterId=actorId;
+    if(req.body?.sourceKind&&req.body?.sourceId){const source=await loadExpenseEditorSource(db,access.organization.id,req.body.sourceKind,String(req.body.sourceId));drafterId=source.document?.createdByEmployeeId||actorId;}
+    const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items);
+    res.json(approval);
+  });
   app.get('/expense-approval-candidates',async(req:any,res:any)=>{
-    const access=await gates.requireOrgRole(req,res,{allowedRoles:EXPENSE_APPROVAL_ROLES});if(!access)return;
+    const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!access)return;
     res.json(await db.employee.findMany({where:{orgId:access.organization.id,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true},orderBy:[{name:'asc'},{id:'asc'}]}));
   });
   app.get(`${path}/history`,async(req: any,res: any)=>{

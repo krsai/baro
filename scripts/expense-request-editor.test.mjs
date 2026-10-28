@@ -19,8 +19,9 @@ function harness() {
     return {
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
+      employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{isActive:true,set:{isActive:true}}})},
       factory: { findMany: async()=>[{id:1,managementStartDate:'2026-04-01'}], findFirst: async()=>({id:1,managementStartDate:'2026-04-01'}) },
-      systemSetting: {findUnique:async()=>null},
+      systemSetting: {findUnique:async({where})=>where.key.startsWith('EXPENSE_APPROVAL_POLICY:')?{value:{limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:1,leadGradeId:2}}:null},
       expenseRequestAudit: {findMany:async({where,take})=>s.audits.filter(a=>a.orgId===where.orgId&&a.requestId===where.requestId&&(!where.version||a.version<where.version.lt)).sort((a,b)=>b.version-a.version).slice(0,take), findUnique: async({where})=>s.audits.find(x=>x.orgId===where.orgId_clientKey.orgId&&x.clientKey===where.orgId_clientKey.clientKey) || null, create: async({data})=>{s.audits.push(structuredClone(data));return data;} },
       expenseRequest: {
         findFirst: async({where})=>document(s.documents.find(r=>matches(r,where))),
@@ -59,7 +60,7 @@ async function input(db) {
 test('history is tenant-scoped, permission-gated and paged by version; serialization conflicts return a recoverable code',async()=>{
   const db=harness();await db.save(await input(db));
   const handlers=new Map();let orgId=1,allowed=true;
-  const app={get:(path,fn)=>handlers.set(`GET ${path}`,fn),put:(path,fn)=>handlers.set(`PUT ${path}`,fn)};
+  const app={get:(path,fn)=>handlers.set(`GET ${path}`,fn),put:(path,fn)=>handlers.set(`PUT ${path}`,fn),post:(path,fn)=>handlers.set(`POST ${path}`,fn)};
   const gates={requireOrgRole:async(_req,_res,options)=>{assert.deepEqual(options.allowedRoles,['ADMIN','OPERATOR','ACCOUNTANT']);return allowed?{organization:{id:orgId}}:null;},actorId:()=>20};
   registerExpenseEditorRoutes(app,{...db.client(),$transaction:async()=>{throw {code:'P2010',meta:{code:'40001'}};}},gates);
   const response=()=>({status(n){this.code=n;return this;},json(v){this.value=v;return this;}});

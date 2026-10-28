@@ -1,47 +1,34 @@
-import React, { useEffect, useState } from 'react';
-import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Stack, TextField, Typography } from '@mui/material';
-import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
-import DragIndicator from '@mui/icons-material/DragIndicator';
-import DeleteActionButton from './DeleteActionButton';
-import { EXPENSE_HEADER_TEXT } from '../constants/expenseRequest';
-import { requestJSON, buildQueryString } from '../utils/apiClient';
+import React,{useEffect,useState} from 'react';
+import {Alert,Stack,TextField,Typography} from '@mui/material';
+import {requestJSON,buildQueryString} from '../utils/apiClient';
+import {approvalSettingsText} from '../constants/approvalSettings';
+import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 
-export default function ExpenseApprovalSettings({ orgId, languageCode, value = [], steps = [], disabled, onChange }) {
-  const labels = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
-  const [open,setOpen]=useState(false), [draft,setDraft]=useState([]), [options,setOptions]=useState([]), [loading,setLoading]=useState(false), [error,setError]=useState(false);
-  useEffect(()=>{setOpen(false);setDraft([]);setOptions([]);},[orgId]);
-  useEffect(()=>{
-    if(!open)return;
-    let alive=true;setLoading(true);setError(false);
-    requestJSON(`/expense-approval-candidates${buildQueryString({orgId})}`,{skipCache:true})
-      .then(rows=>{if(alive)setOptions(rows);}).catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setLoading(false);});
-    return()=>{alive=false;};
-  },[open,orgId]);
-  const name=id=>options.find(row=>row.id===id)?.name || steps.find(row=>row.employeeId===id)?.employee?.name || String(id);
-  return <>
-    <Box sx={{display:'flex',alignItems:'center',gap:1.5,minWidth:0,height:36}}>
-      <Typography color="text.secondary" sx={{flexShrink:0}}>{labels.approval}</Typography>
-      <Typography noWrap sx={{minWidth:0,flex:1}} title={value.map(name).join(' → ')}>{value.length ? value.map(name).join(' → ') : labels.empty}</Typography>
-      <Button disabled={disabled} onClick={()=>{setDraft([...value]);setOpen(true);}} sx={{flexShrink:0}} aria-label={labels.approval}>{labels.configure}</Button>
-    </Box>
-    <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="sm">
-      <DialogTitle>{labels.approval}</DialogTitle>
-      <DialogContent>
-        {error && <Alert severity="error">{labels.loadError}</Alert>}
-        <DragDropContext onDragEnd={({source,destination})=>{if(!destination)return;setDraft(current=>{const next=[...current];next.splice(destination.index,0,next.splice(source.index,1)[0]);return next;});}}>
-          <Droppable droppableId="expense-approvers">{provided=><Stack ref={provided.innerRef} {...provided.droppableProps} spacing={1} sx={{pt:1}}>
-            {draft.map((id,index)=><Draggable key={id || `empty-${index}`} draggableId={String(id || `empty-${index}`)} index={index}>{drag=><Stack direction="row" alignItems="center" spacing={1} ref={drag.innerRef} {...drag.draggableProps}>
-              <span {...drag.dragHandleProps}><DragIndicator fontSize="small" /></span><Typography>{index+1}</Typography>
-              <TextField select fullWidth label={labels.approver} value={id || ''} disabled={loading || error} onChange={event=>setDraft(current=>current.map((item,i)=>i===index?Number(event.target.value):item))}>
-                {id && !options.some(row=>row.id===id) && <MenuItem value={id} disabled>{name(id)}</MenuItem>}
-                {options.filter(row=>row.id===id || !draft.includes(row.id)).map(row=><MenuItem key={row.id} value={row.id}>{row.name}</MenuItem>)}
-              </TextField><DeleteActionButton onClick={()=>setDraft(current=>current.filter((_,i)=>i!==index))} />
-            </Stack>}</Draggable>)}{provided.placeholder}
-          </Stack>}</Droppable>
-        </DragDropContext>
-        <Stack alignItems="flex-end" sx={{mt:1}}><Button disabled={loading || error || draft.length>=20 || draft.includes(0)} onClick={()=>setDraft(current=>[...current,0])}>{labels.addApprover}</Button></Stack>
-      </DialogContent>
-      <DialogActions><Button onClick={()=>setOpen(false)}>{languageCode==='ko'?'취소':languageCode==='vi'?'Hủy':'Cancel'}</Button><Button variant="contained" disabled={loading || error || draft.includes(0)} onClick={()=>{onChange(draft);setOpen(false);}}>{labels.apply}</Button></DialogActions>
-    </Dialog>
-  </>;
+export default function ExpenseApprovalSettings({orgId,languageCode,steps=[],drafter,editing,items=[],sourceKind,sourceId}){
+  const t=approvalSettingsText[languageCode]||approvalSettingsText.en;
+  const [state,setState]=useState(null),[error,setError]=useState(false),[reload,setReload]=useState(0);
+  const [preview,setPreview]=useState(null),[previewError,setPreviewError]=useState('');
+  const input=JSON.stringify({items,sourceKind,sourceId});
+  useEffect(()=>subscribeWorkspaceDataChanged(detail=>{if(Number(detail.orgId)===Number(orgId)&&detail.topics?.includes('expense-approval-settings'))setReload(n=>n+1);}),[orgId]);
+  useEffect(()=>{let active=true;setState(null);setError(false);
+    requestJSON(`/expense-approval-settings${buildQueryString({orgId})}`,{skipCache:true}).then(data=>{if(active)setState(data);}).catch(()=>{if(active)setError(true);});
+    return()=>{active=false;};
+  },[orgId,reload]);
+  useEffect(()=>{let active=true;setPreview(null);setPreviewError('');
+    const timeout=setTimeout(()=>{requestJSON(`/expense-approval-preview${buildQueryString({orgId})}`,{method:'POST',body:input}).then(value=>{if(active)setPreview(value);}).catch(failure=>{if(active)setPreviewError(failure.details?.error||failure.message);});},250);
+    return()=>{active=false;clearTimeout(timeout);};
+  },[orgId,input,reload]);
+  const ids=preview?.ids||[];
+  const names=ids.map(id=>steps.find(step=>step.employeeId===id)?.employee?.name||state?.candidates.find(row=>row.id===id)?.name||t.missing);
+  return <Stack spacing={1}>
+    <Typography variant="subtitle2">{t.preview}</Typography>
+    <Stack direction="row" alignItems="center" spacing={1}>
+      <TextField fullWidth size="small" label={t.drafter} value={(editing?drafter:state?.drafter)?.name||''} slotProps={{input:{readOnly:true}}}/>
+      <Typography>→</Typography>
+      <TextField fullWidth size="small" label={t.approver} value={names.join(' → ')||(preview?t.none:'')} slotProps={{input:{readOnly:true}}}/>
+    </Stack>
+    {error&&<Alert severity="error">{t.error}</Alert>}
+    {preview&&<Typography variant="caption">{t.total}: {preview.policy.totals.map(row=>`${Number(row.amount).toLocaleString()} ${row.currency}`).join(' / ')}</Typography>}
+    {previewError&&<Alert severity={['INVALID_PRICE_OR_QUANTITY','INVALID_TRANSACTION_AMOUNT'].includes(previewError)?'info':'warning'}>{previewError==='APPROVAL_CURRENCY_LIMIT_REQUIRED'?t.limitMissing:previewError==='EXPENSE_SELF_APPROVAL'?t.selfError:previewError==='EXPENSE_APPROVER_REQUIRED'?t.missing:t.notReady}</Alert>}
+  </Stack>;
 }

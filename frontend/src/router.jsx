@@ -87,6 +87,7 @@ const TransactionRequestEntry = lazyImportWithRetry(() => import('./pages/App/Tr
 const ApplicationSettings = lazyImportWithRetry(() => import('./pages/App/ApplicationSettings'));
 const TransactionCodeSettings = lazyImportWithRetry(() => import('./pages/App/TransactionCodeSettings'));
 const ExpenseMasterSettings = lazyImportWithRetry(() => import('./pages/App/ExpenseMasterSettings'));
+const ApprovalSettings = lazyImportWithRetry(() => import('./pages/App/ApprovalSettings'));
 const CodeBaseSettings = lazyImportWithRetry(() => import('./pages/App/CodeBaseSettings'));
 
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
@@ -297,6 +298,7 @@ const router = createBrowserRouter([
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
           { path: 'app-settings', element: <ApplicationSettings />,
           },
+          { path: 'approval-settings', element: <ApprovalSettings /> },
           { path: 'system-setting/expense-types', element: <ExpenseMasterSettings /> },
           { path: 'system-setting/partner-industries', element: <ExpenseMasterSettings industries /> },
           { path: 'system-setting/transaction-codes', element: <CodeBaseSettings />,
