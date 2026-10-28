@@ -48,9 +48,11 @@ rl.on('line',line=>{queue=queue.then(async()=>{try{
  const input=JSON.parse(line);
  if(!db){const url=String(input.url||'');new URL(url);assertSafeApplicationDatabaseEnv({DATABASE_URL:url,DIRECT_URL:url});const client=new PrismaClient({datasourceUrl:url,log:[]});await client.$connect();db=client;print({connected:true});return;}
  if(input.action==='audit')print(await audit());
+ else if(input.action==='inspect-invoice-numbers')print(await require('./helpers/production-invoice-numbers.cjs').inspect(db));
+ else if(input.action==='verify-invoice-numbers'||input.action==='apply-invoice-numbers')print(await require('./helpers/production-invoice-numbers.cjs').renumber({db,targets:input.targets,apply:input.action==='apply-invoice-numbers'}));
  else if(input.action==='verify-migrations')print(await migrate(false));
  else if(input.action==='apply-migrations')print(await migrate(true));
  else if(input.action==='verify-backfill'||input.action==='apply-backfill')print(await require('./helpers/production-document-operations.cjs').backfill({db,fingerprints,apply:input.action==='apply-backfill'}));
  else if(input.action==='close'){await db.$disconnect();rl.close();process.stdin.destroy();}
  else print({error:'UNKNOWN_ACTION'});
- }catch(error){print({error:error.code||(['CHECKSUM_MISMATCH','BUSINESS_DATA_CHANGED'].includes(error.message)?error.message:'OPERATION_FAILED'),sqlCode:error.meta?.code});}});});
+ }catch(error){print({error:error.code||(['CHECKSUM_MISMATCH','BUSINESS_DATA_CHANGED'].includes(error.message)?error.message:'OPERATION_FAILED'),sqlCode:error.meta?.code,unsupportedVoidResult:String(error.meta?.message||error.message).includes('void')});}});});

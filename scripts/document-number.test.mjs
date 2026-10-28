@@ -12,7 +12,7 @@ async function fixture(){
  await pg.exec(await readFile('backend/prisma/migrations/20261028140000_document_management_numbers/migration.sql','utf8'));
  const query=async(sql,values=[])=> (await pg.query(sql,values)).rows;
  const tx={
-  $queryRawUnsafe:async(sql,...args)=>{assert.match(sql,/pg_advisory_xact_lock/);assert.ok(args[0]>0);assert.ok([202610281,202610282].includes(args[1]));return [];},
+  $queryRawUnsafe:async(sql,...args)=>{assert.match(sql,/pg_advisory_xact_lock\(\$1::integer,\$2::integer\)::text/);assert.ok(args[0]>0);assert.ok([202610281,202610282].includes(args[1]));return [];},
   systemSetting:{findUnique:async({where})=>(await query('SELECT * FROM "SystemSetting" WHERE key=$1',[where.key]))[0]||null,upsert:async({where,create,update})=>query('INSERT INTO "SystemSetting" VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=$2',[where.key,JSON.stringify(update.value)])},
   invoice:{findFirst:async({where})=>(await query('SELECT id FROM "Invoice" WHERE "sellerOrgId"=$1 AND lower("invoiceNumber")=lower($2)',[where.sellerOrgId,where.invoiceNumber.equals]))[0]||null},
   expenseRequest:{findFirst:async({where})=>(await query(where.managementNumber===null?'SELECT id FROM "ExpenseRequest" WHERE "orgId"=$1 AND id=$2 AND "managementNumber" IS NULL':'SELECT id FROM "ExpenseRequest" WHERE "orgId"=$1 AND lower("managementNumber")=lower($2)',[where.orgId,where.managementNumber===null?where.id:where.managementNumber.equals]))[0]||null}
