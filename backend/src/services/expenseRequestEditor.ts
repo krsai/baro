@@ -182,10 +182,6 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items,req.body?.selection,true);
     res.json(approval);
   });
-  app.get('/expense-approval-candidates',async(req:any,res:any)=>{
-    const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!access)return;
-    res.json(await db.employee.findMany({where:{orgId:access.organization.id,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true},orderBy:[{name:'asc'},{id:'asc'}]}));
-  });
   app.get(`${path}/history`,async(req: any,res: any)=>{
     const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);
