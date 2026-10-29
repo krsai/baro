@@ -28,6 +28,7 @@ import {
 } from "../work-records/workRecord.shared";
 import { loadManagementPeriod, assertManagedDate, normalizeFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 import { evaluateSalaryFormula } from "../employees/salaryFormula";
+import { hasPreviousYearSixMonthsService, isTenureSalaryItem } from "../employees/salaryTenure";
 import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendanceParameters";
 import { employeePayTypePolicyMap, isPolicyWorkday, loadEmployeePayTypePolicies } from "../employees/employeePayTypePolicy";
 
@@ -744,6 +745,7 @@ const buildIntegratedPayrollEmployees = async (
       const parameters: Record<string, number> = {
         GRADE_RATE: 0,
         TENURE_YEARS: tenureYears,
+        SENIORITY_PREVIOUS_YEAR_ELIGIBLE: hasPreviousYearSixMonthsService(employee, month) ? 1 : 0,
         ...attendanceParameters,
         WORK_HOURS: regularSeconds / 3600,
         OVERTIME_HOURS: overtimeSeconds / 3600,
@@ -778,7 +780,8 @@ const buildIntegratedPayrollEmployees = async (
         const formula = ensureArray(item?.formula).map(String);
         let amount = 0;
         let rate: number | null = null;
-        if (isPaymentMonth) {
+        const tenureEligible = !isTenureSalaryItem(item) || parameters.SENIORITY_PREVIOUS_YEAR_ELIGIBLE === 1;
+        if (isPaymentMonth && tenureEligible) {
           const matchingRates = ensureArray(rates).filter((row) =>
             String(row?.salaryItemCode || "") === code &&
             Number(row?.gradeId) === employee.gradeId

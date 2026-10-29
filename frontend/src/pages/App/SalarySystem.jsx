@@ -28,6 +28,7 @@ import SaveButton from '../../components/SaveButton';
 import { currentVersionMonth, versionTimelineMonths } from '../../utils/versionApplication.mjs';
 import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
 import SalaryRateMatrix from './SalaryRateMatrix';
+import EmployeeSalaryPreview from './EmployeeSalaryPreview';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -276,6 +277,7 @@ const SalarySystem = () => {
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
   const [itemDetailOpen, setItemDetailOpen] = useState(false);
+  const [employeePreviewOpen, setEmployeePreviewOpen] = useState(false);
   const [formulaDraft, setFormulaDraft] = useState([]);
   // 새 토큰이 끼워질 위치. 항상 이 인덱스 앞에 삽입되고, 삽입 후에는 그 다음 자리로 한 칸 이동한다.
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -514,7 +516,8 @@ const SalarySystem = () => {
     <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', optionalMoney(e.target.value))} placeholder={t('계산 결과 최대 금액')} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} />
   </>;
 
-  return <AppPageContainer title={t('급여 설정')} titleActions={<Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>}><Box sx={{ width: '100%' }}>
+  return <AppPageContainer title={t('급여 설정')} titleActions={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button variant="outlined" onClick={() => setEmployeePreviewOpen(true)}>{languageCode === 'ko' ? '직원별 예상 급여' : languageCode === 'vi' ? 'Lương dự kiến theo nhân viên' : 'Employee salary estimate'}</Button><Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button></Stack>}><Box sx={{ width: '100%' }}>
+    <EmployeeSalaryPreview open={employeePreviewOpen} onClose={() => setEmployeePreviewOpen(false)} orgId={activeOrgId} languageCode={languageCode} />
     <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen || itemDetailOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setItemDetailOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
     {factories.length > 0 && <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
       <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ flex: 1, minWidth: 0 }}>

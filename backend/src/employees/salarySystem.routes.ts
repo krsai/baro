@@ -7,6 +7,9 @@ import { prisma } from "../db";
 import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
 import { validateSalaryFormula } from "./salaryFormula";
 import { normalizeCurrencyCode } from "../currency";
+import { buildSalaryPreview } from './salaryPreview';
+import { loadEmployeePayTypePolicies } from './employeePayTypePolicy';
+import { payrollManagementInclude } from './payrollManagement';
 
 type Args = { requireSalarySystemManager: (req: any, res: any, orgId: number) => Promise<boolean> };
 const PAY_TYPES = ["GENERAL", "OUTPUT_FIXED", "OUTPUT"];
@@ -20,6 +23,25 @@ const toJsonSnapshot = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) => {
   const router = Router();
+  router.get('/salary-system/employee-preview', async (req, res) => {
+    const org = await getOrganizationByQuery(req);
+    if (!org) return res.status(404).json({ok:false,error:'organization not found'});
+    if (!(await requireSalarySystemManager(req, res, org.id))) return;
+    const month = String(req.query.month || '');
+    if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ok:false,error:'month must be YYYY-MM'});
+    const [employees, factories, policies, holidays] = await Promise.all([
+      prisma.employee.findMany({where:{orgId:org.id,status:{in:['ACTIVE','SUSPENDED','TERMINATED']}},include:{role:true,grade:true,payrollManagementVersions:payrollManagementInclude},orderBy:[{name:'asc'},{id:'asc'}]}),
+      prisma.factory.findMany({where:{orgId:org.id},include:{
+        salaryCurrency:{select:{code:true}},organization:{select:{salaryCurrency:{select:{code:true}}}},
+        salarySystemVersions:{where:{effectiveMonth:{lte:month}},orderBy:[{effectiveMonth:'desc'},{versionNumber:'desc'}],take:1},
+        productionAllowanceRates:{where:{effectiveMonth:{lte:month}},orderBy:[{effectiveMonth:'desc'},{versionNumber:'desc'}],take:1},
+        _count:{select:{productionAllowanceRates:true}},
+      },orderBy:{id:'asc'}}),
+      loadEmployeePayTypePolicies(org.id),
+      prisma.organizationHoliday.findMany({where:{orgId:org.id,holidayDate:{gte:`${month}-01`,lt:`${month}-32`}},select:{holidayDate:true}}),
+    ]);
+    return res.json(buildSalaryPreview({month,employees,factories,policies,holidays:holidays.map(row=>row.holidayDate),includeInactive:req.query.includeInactive==='1'}));
+  });
   const resolveFactory = async (orgId: number, rawFactoryId: unknown) => {
     const requestedId = Number(rawFactoryId);
     if (Number.isSafeInteger(requestedId) && requestedId > 0) return prisma.factory.findFirst({ where: { id: requestedId, orgId } });
