@@ -34,6 +34,8 @@ try {
     ];
     const grades=[1,2,3,4].map(id=>({id,code:`CL${id}`,nameEn:`Grade ${id}`,nameKo:`직급 ${id}`,nameVi:`Bậc ${id}`,isActive:true}));
     const rates=payTypes.flatMap(payType=>grades.flatMap(grade=>[['baseSalary',1000],['lunch',200],['tenure',900]].map(([salaryItemCode,amount])=>({payType,gradeId:grade.id,salaryItemCode,amount}))));
+    rates.find(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='baseSalary').amount=0;
+    rates.splice(rates.findIndex(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='lunch'),1);
     await page.route('**/factories?*',r=>r.fulfill({headers,json:[{id:1,name:'Factory',managementStartDate:'2026-04-01'}]}));
     await page.route('**/employee-grades?*',r=>r.fulfill({headers,json:[{grades}]}));
     await page.route('**/salary-system/revision?*',r=>r.fulfill({headers,json:{editRevision:'r1'}}));
@@ -50,6 +52,9 @@ try {
     assert.ok((await base.boundingBox()).height < 70,'rows stay compact without repeated chips');
     const totals=matrix.locator('[data-salary-total]');
     assert.equal(await totals.count(),1,'only monthly payment items have a total');
+    assert.equal(await base.locator('td').nth(8).innerText(),'—','stored zero uses a dash');
+    assert.equal(await matrix.locator('[data-salary-item="lunch"] td').nth(8).innerText(),'—','missing rate uses a dash');
+    assert.equal(await totals.locator('td').nth(8).innerText(),'—','zero total uses a dash');
     assert.match(await totals.first().innerText(),/1[,.]200/);
     assert.equal(await matrix.locator('[data-salary-item="tenure"]').count(),1,'non-monthly items remain visible');
     assert.doesNotMatch(await totals.innerText(),/900|2[,.]100/,'semiannual rate is excluded');
@@ -64,6 +69,7 @@ try {
     await applicability.uncheck();assert.equal(await applicability.isChecked(),false);
     await page.getByRole('dialog').getByRole('button',{name:{ko:'닫기',en:'Close',vi:'Đóng'}[lang],exact:true}).click();
     assert.match(await totals.first().innerText(),/1[,.]000/);
+    assert.equal(await lunch.locator('td').nth(1).innerText(),'—','inactive rate uses the same dash');
     await base.getByRole('button',{name:new RegExp(editLabel)}).click();
     const dialog=page.getByRole('dialog');await dialog.waitFor();
     const rate=dialog.locator('input[inputmode="numeric"]').first();
@@ -82,6 +88,7 @@ try {
     assert.equal(writes.length,1);
     assert.equal(writes[0].expectedRevision,'r1');
     assert.equal(writes[0].createVersion,true);
+    assert.equal(writes[0].rates.find(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='baseSalary').amount,0,'display formatting preserves stored zero');
     assert.deepEqual(writes[0].items.map(row=>row.id),['baseSalary','tenure','lunch','incentiveTotal']);
     assert.equal(writes[0].rates.find(row=>row.payType==='GENERAL' && row.gradeId===1 && row.salaryItemCode==='baseSalary').amount,1500);
     assert.equal(writes[0].rates.some(row=>row.payType==='GENERAL' && row.salaryItemCode==='lunch'),false);

@@ -19,6 +19,7 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   const labels = copy[languageCode] || copy.en;
   const name = row => resolveLocalizedAttributeName(row, languageCode);
   const amount = (row, type, grade) => Number(String(rates[`${type}:${grade.id}`]?.[row.id] || '0').replace(/,/g, ''));
+  const formatAmount = value => value === 0 ? '—' : value.toLocaleString(languageCode);
   const monthlyItems = items.filter(row => row.payCycle === 'MONTHLY' && row.id !== 'incentiveTotal');
   const units = [...new Set(monthlyItems.map(unitLabel))];
   const sticky = { position: 'sticky', left: 0, zIndex: 1, bgcolor: ui.color.surface, minWidth: 220, borderRight: 1, borderColor: 'divider' };
@@ -45,14 +46,14 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
                   </TableCell>
                   {TYPES.flatMap(type => {
                     const active = (row.payTypes || []).includes(type);
-                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', borderLeft: index === 0 ? 1 : 0, borderColor: 'divider' }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : amount(row, type, grade).toLocaleString(languageCode)}</TableCell>) : <TableCell key={type}>—</TableCell>;
+                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', borderLeft: index === 0 ? 1 : 0, borderColor: 'divider' }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : formatAmount(amount(row, type, grade))}</TableCell>) : <TableCell key={type}>—</TableCell>;
                   })}
                 </TableRow>}
               </Draggable>)}
               {provided.placeholder}
             </TableBody>}
           </Droppable>)}
-          <TableBody>{units.map(unit => <TableRow key={unit} data-salary-total={unit} sx={{ bgcolor: ui.color.header }}><TableCell sx={{ ...sticky, bgcolor: ui.color.header, fontWeight: 600 }}>{labels[0]}<Typography variant="caption" display="block" color="text.secondary">{unit}</Typography></TableCell>{TYPES.flatMap(type => grades.length ? grades.map(grade => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ fontWeight: 600 }}>{monthlyItems.filter(row => (row.payTypes || []).includes(type) && unitLabel(row) === unit).reduce((sum, row) => sum + amount(row, type, grade), 0).toLocaleString(languageCode)}</TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>)}</TableBody>
+          <TableBody>{units.map(unit => <TableRow key={unit} data-salary-total={unit} sx={{ bgcolor: ui.color.header }}><TableCell sx={{ ...sticky, bgcolor: ui.color.header, fontWeight: 600 }}>{labels[0]}<Typography variant="caption" display="block" color="text.secondary">{unit}</Typography></TableCell>{TYPES.flatMap(type => grades.length ? grades.map(grade => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ fontWeight: 600 }}>{formatAmount(monthlyItems.filter(row => (row.payTypes || []).includes(type) && unitLabel(row) === unit).reduce((sum, row) => sum + amount(row, type, grade), 0))}</TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>)}</TableBody>
         </Table>
       </DragDropContext>
     </TableContainer>
