@@ -13,9 +13,8 @@ import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
-  TextField, Tooltip, Typography, alpha,
+  TextField, Tooltip, Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
@@ -28,6 +27,7 @@ import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { currentVersionMonth, versionTimelineMonths } from '../../utils/versionApplication.mjs';
 import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
+import SalaryRateMatrix from './SalaryRateMatrix';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -49,18 +49,8 @@ const PAY_TYPES = {
   OUTPUT_FIXED: { label: '생산(고정)', palette: 'green' },
   OUTPUT: { label: '생산(변동)', palette: 'orange' },
 };
-// 급여 항목 목록의 좁은 열 헤더 전용 약어. 전체 이름은 헤더 위 툴팁과
-// 체크박스 aria-label, 상세 패널 칩(getPayTypeLabel)에서 그대로 보여준다.
-const PAY_TYPE_HEADER_LABELS = {
-  GENERAL: { ko: '사무', en: 'Office', vi: 'VP' },
-  OUTPUT_FIXED: { ko: '생산\n(고정)', en: 'Prod.\n(F)', vi: 'SX\n(CĐ)' },
-  OUTPUT: { ko: '생산\n(변동)', en: 'Prod.\n(V)', vi: 'SX\n(BĐ)' },
-};
-const payTypeHeaderLabel = (payType, languageCode) =>
-  PAY_TYPE_HEADER_LABELS[payType]?.[languageCode] || PAY_TYPE_HEADER_LABELS[payType]?.en || payType;
 const PAY_TYPE_ORDER = ['GENERAL', 'OUTPUT_FIXED', 'OUTPUT'];
 const CATEGORIES = { BASE: '기본급', ALLOWANCE: '급여 수당', INCENTIVE: '성과급' };
-const CATEGORY_PALETTES = { BASE: 'blue', ALLOWANCE: 'green', INCENTIVE: 'orange' };
 const PAY_CYCLES = {
   MONTHLY: '1개월', QUARTERLY: '3개월', SEMIANNUAL: '6개월', ANNUAL: '12개월',
 };
@@ -285,6 +275,7 @@ const SalarySystem = () => {
   const [draft, setDraft] = useState(DEFAULT_DRAFT);
   const [message, setMessage] = useState(null);
   const [formulaDialogOpen, setFormulaDialogOpen] = useState(false);
+  const [itemDetailOpen, setItemDetailOpen] = useState(false);
   const [formulaDraft, setFormulaDraft] = useState([]);
   // 새 토큰이 끼워질 위치. 항상 이 인덱스 앞에 삽입되고, 삽입 후에는 그 다음 자리로 한 칸 이동한다.
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -351,8 +342,6 @@ const SalarySystem = () => {
 
   const selected = items.find((row) => row.id === selectedId) || items[0];
   const isFixedIncentive = selected.id === 'incentiveTotal';
-  const counts = useMemo(() => items.reduce((map, row) => ({ ...map, [row.category]: (map[row.category] || 0) + 1 }), {}), [items]);
-  const updateSelected = (field, value) => setItems((rows) => rows.map((row) => row.id === selected.id ? { ...row, [field]: value } : row));
   const toggleItemPayType = (itemRow, payType) => {
     if (itemRow.category === 'INCENTIVE') return;
     const current = itemRow.payTypes || [];
@@ -526,7 +515,7 @@ const SalarySystem = () => {
   </>;
 
   return <AppPageContainer title={t('급여 설정')} titleActions={<Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button>}><Box sx={{ width: '100%' }}>
-    <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
+    <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen || itemDetailOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setItemDetailOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
     {factories.length > 0 && <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
       <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ flex: 1, minWidth: 0 }}>
         {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
@@ -538,44 +527,9 @@ const SalarySystem = () => {
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
-    <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} alignItems="stretch">
-      <Paper variant="outlined" sx={{ width: { xs: '100%', lg: 350 }, flexShrink: 0 }}>
-        <Stack direction="row" alignItems="flex-start" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-          <Box><Typography fontWeight={700}>{t('급여 항목')}</Typography><Typography variant="caption" color="text.secondary">{t('항목을 선택해 계산 방식과 직급별 단가를 설정하세요.')}</Typography></Box>
-          <Tooltip title={t('항목 추가')}><IconButton size="small" color="primary" sx={{ ml: 'auto' }} onClick={() => setDialogOpen(true)}><AddIcon /></IconButton></Tooltip>
-        </Stack>
-        <Box sx={{ display: 'grid', gridTemplateColumns: `34px minmax(0, 1fr) repeat(${PAY_TYPE_ORDER.length}, 46px)`, alignItems: 'center', px: 1.5, py: 0.75, borderBottom: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
-          <span />
-          <Typography variant="caption" color="text.secondary" fontWeight={700}>{t('항목명')}</Typography>
-          {PAY_TYPE_ORDER.map((payType) => (
-            <Tooltip key={payType} title={getPayTypeLabel(payType, payType, languageCode)}>
-              <Typography variant="caption" color="text.secondary" fontWeight={700} textAlign="center" sx={{ lineHeight: 1.2, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
-                {payTypeHeaderLabel(payType, languageCode)}
-              </Typography>
-            </Tooltip>
-          ))}
-        </Box>
-        <DragDropContext onDragEnd={reorderItems}>
-          {Object.entries(CATEGORIES).map(([category, label]) => <Box key={category} sx={{ p: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ px: 0.5, mb: 1 }}><Chip size="small" variant="outlined" label={t(label)} sx={labelChipSx(CATEGORY_PALETTES[category])} /><Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? `${counts[category] || 0}${t('개')}` : `${counts[category] || 0} ${t('개')}`}</Typography></Stack>
-            <Droppable droppableId={`salary-items:${category}`}>
-              {(dropProvided) => <Stack ref={dropProvided.innerRef} {...dropProvided.droppableProps} spacing={0.5}>
-                {items.filter((row) => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index}>
-                  {(dragProvided, snapshot) => <Stack ref={dragProvided.innerRef} {...dragProvided.draggableProps} direction="row" alignItems="center" sx={{ bgcolor: snapshot.isDragging ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                    <IconButton {...dragProvided.dragHandleProps} size="small" aria-label="순서 변경" sx={{ flexShrink: 0, cursor: 'grab', color: 'text.disabled', '&:active': { cursor: 'grabbing' } }}><DragIndicatorIcon fontSize="small" /></IconButton>
-                    <Box role="button" tabIndex={0} onClick={() => setSelectedId(row.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedId(row.id); } }} sx={(theme) => ({ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: `minmax(0, 1fr) repeat(${PAY_TYPE_ORDER.length}, 46px)`, alignItems: 'center', pl: 1.5, pr: 0.25, py: 0.65, borderRadius: 1, cursor: 'pointer', bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.12) : 'transparent', color: selectedId === row.id ? 'primary.dark' : 'text.primary', '&:hover': { bgcolor: selectedId === row.id ? alpha(theme.palette.primary.main, 0.18) : 'action.hover' } })}>
-                      <Box sx={{ minWidth: 0 }}><Typography variant="body2" fontWeight={600} noWrap>{salaryItemName(row, languageCode)}</Typography><Typography variant="caption" sx={{ display: 'block', opacity: 0.75 }}>{t(PAY_CYCLES[row.payCycle])}</Typography></Box>
-                      {PAY_TYPE_ORDER.map((payType) => { const active = (row.payTypes || []).includes(payType); const fixed = row.category === 'INCENTIVE'; return <Checkbox key={payType} size="small" checked={active} disabled={fixed} onClick={(event) => event.stopPropagation()} onChange={() => toggleItemPayType(row, payType)} inputProps={{ 'aria-label': `${salaryItemName(row, languageCode)} ${getPayTypeLabel(payType, payType, languageCode)}` }} sx={{ justifySelf: 'center', p: 0.5 }} />; })}
-                    </Box>
-                  </Stack>}
-                </Draggable>)}
-                {dropProvided.placeholder}
-              </Stack>}
-            </Droppable>
-          </Box>)}
-        </DragDropContext>
-      </Paper>
-
+    <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onAdd={() => setDialogOpen(true)} onEdit={row => { setSelectedId(row.id); setItemDetailOpen(true); }} onToggle={toggleItemPayType} onReorder={reorderItems} />
+    <Dialog open={itemDetailOpen} onClose={() => setItemDetailOpen(false)} fullWidth maxWidth="lg">
+      <DialogContent sx={{ p: 0 }}>
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography></Box>
           {!isFixedIncentive && <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}><Button variant="outlined" startIcon={<EditOutlinedIcon />} onClick={openFormulaDialog}>{t('수정')}</Button><Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span><DeleteActionButton color="error" disabled={selected.required} onClick={removeItem} /></span></Tooltip></Stack>}</Stack>
@@ -593,7 +547,9 @@ const SalarySystem = () => {
                 <TableCell align="right"><TextField size="small" disabled={!active} value={getRate(payType, grade.id)} onFocus={(e) => e.target.select()} onChange={(e) => changeRate(payType, grade.id, e.target.value)} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} sx={{ width: 170 }} /></TableCell></TableRow>); })}
             </TableBody></Table></TableContainer></>}
       </Paper>
-    </Stack>
+      </DialogContent>
+      <DialogActions><Button onClick={() => setItemDetailOpen(false)}>{languageCode === 'ko' ? '닫기' : languageCode === 'vi' ? 'Đóng' : 'Close'}</Button></DialogActions>
+    </Dialog>
 
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('계산 방식 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <Paper variant="outlined" sx={{ p: 2 }}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field, value) => setFormulaSettingsDraft(prev => ({ ...prev, [field]: value }))} /></Paper>

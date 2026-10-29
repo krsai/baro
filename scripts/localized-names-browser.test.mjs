@@ -42,6 +42,8 @@ try{
    assert.equal(await dialog.getByRole('button',{name:add,exact:true}).isEnabled(),true);
    await dialog.getByRole('button',{name:add,exact:true}).click();
    await page.getByRole('button',{name:save,exact:true}).click();
+   await page.locator('[data-version-board]').waitFor();
+   await page.getByRole('dialog').getByRole('button',{name:{ko:'닫기',en:'Close',vi:'Đóng'}[lang],exact:true}).click();
    await page.waitForFunction(()=>!document.querySelector('[role=dialog]'));
    await page.waitForTimeout(200);
    const row=payload?.items.find(row=>row.nameEn===name);assert.ok(row,`${lang}: English fallback persisted`);

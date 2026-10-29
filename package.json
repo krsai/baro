@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:salary-rate-matrix-browser": "node scripts/salary-rate-matrix-browser.test.mjs",
     "test:assignment-loading": "npm --prefix backend run build && node --test scripts/assignment-loading.test.mjs scripts/invoice-workflow.test.mjs scripts/order-workflow.test.mjs scripts/production-progress.test.mjs scripts/assignment-st-snapshot-regression.test.mjs scripts/customer-production-report-regression.test.mjs && node scripts/invoice-editor-browser.test.mjs",
     "test:invoice-workflow": "npm --prefix backend run build && node --test scripts/invoice-workflow.test.mjs scripts/order-workflow.test.mjs scripts/production-progress.test.mjs scripts/order-list-filter-regression.test.mjs && node scripts/invoice-workflow-browser.test.mjs",
     "test:invoice-number-maintenance": "npm --prefix backend run build && node --test scripts/production-invoice-numbers.test.mjs scripts/document-number.test.mjs scripts/issued-invoice-print.test.mjs",
