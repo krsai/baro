@@ -63,11 +63,11 @@ try {
     const numberInput=page.getByLabel(documentNumberText[lang].expense,{exact:true});assert.equal(await numberInput.evaluate(el=>el.readOnly),true);if(mode==='SAVED')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='EXP-2026-000008'));
     assert.equal(await page.getByTestId('expense-line').getByLabel(l.description,{exact:false}).evaluate(el=>el.readOnly),true);
     assert.equal(await page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true}).count(),0);
-    const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,3);
+    const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,4);
     const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields must share one row');
     const payeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(Math.abs(payeeBox.width-boxes[0].width)<2);assert.equal(payeeBox.height,36);assert.ok((await page.getByTestId('expense-payee-button').getAttribute('class')).includes('MuiButton-contained'));
     const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).locator('..').boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.ok(Math.abs(remarkBox.height-totalsBox.height)<3);assert.equal(await page.getByTestId('expense-header').getByLabel('REMARK',{exact:true}).count(),0);
-    assert.ok((await numberInput.boundingBox()).y>boxes[0].y+boxes[0].height);
+    assert.ok(Math.abs((await numberInput.boundingBox()).x-boxes[1].x)<2);assert.ok(Math.abs(boxes[1].width-220)<2);assert.ok(Math.abs(boxes[3].width-320)<2);
     if(mode==='GENERAL'&&lang==='ko'&&!locked){
       await page.setViewportSize({width:430,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
       const mobileRemark=await page.getByLabel('REMARK',{exact:true}).boundingBox(),mobileTotals=await page.getByTestId('expense-totals').boundingBox();assert.ok(mobileRemark.y<mobileTotals.y);

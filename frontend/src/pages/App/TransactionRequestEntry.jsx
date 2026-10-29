@@ -221,15 +221,15 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box data-testid="expense-header" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm:'170px 170px minmax(0,1fr)' }, gap: 1.5,alignItems:'start' }}>
+          <Box data-testid="expense-header" sx={{display:'flex',flexWrap:'wrap',gap:1.5,alignItems:'flex-start','& > *':{width:{xs:'100%',sm:170},minWidth:0},'& > :nth-child(2)':{width:{xs:'100%',sm:220}},'& > :nth-child(4)':{width:{xs:'100%',sm:320}}}}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
+            <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
             <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
               onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
               onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
             <ExpenseApprovalSettings ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
               />
           </Box>
-          <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} helperText={form.version?'':formText.number} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}} sx={{width:{xs:'100%',sm:360},mt:2}}/>
           </Box>
         </Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
