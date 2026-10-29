@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
+import { Box, IconButton, InputBase, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -15,7 +15,7 @@ const copy = {
   vi: ['Tổng đơn giá hàng tháng', 'Chỉ cộng lương cơ bản và phụ cấp cơ bản có chu kỳ 1 tháng. Không gồm phụ cấp bổ sung và thưởng hiệu suất. Số tiền thực nhận phụ thuộc công thức và kết quả chấm công hoặc sản xuất.', 'Tự động'],
 };
 
-export default function SalaryRateMatrix({ items, grades, rates, languageCode, currencyCode, t, categories, unitLabel, onEdit, onReorder }) {
+export default function SalaryRateMatrix({ items, grades, rates, languageCode, currencyCode, t, categories, unitLabel, onEdit, onReorder, onChangeRate, disabled=false }) {
   const labels = copy[languageCode] || copy.en;
   const name = row => resolveLocalizedAttributeName(row, languageCode);
   const amount = (row, type, grade) => Number(String(rates[`${type}:${grade.id}`]?.[row.id] || '0').replace(/,/g, ''));
@@ -26,9 +26,6 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   const gradeBorder = index => ({ borderLeft: `${index === 0 ? 2 : 1}px solid ${ui.color.border}` });
   const sticky = { position: 'sticky', left: 0, zIndex: 1, bgcolor: ui.color.surface, minWidth: 220, borderRight: 1, borderColor: 'divider' };
   return <Paper variant="outlined" sx={{ minWidth: 0 }}>
-    <Stack direction="row" alignItems="center" sx={{ p: 2 }}>
-      <Typography fontWeight={700}>{t('급여 항목')} · {currencyCode}</Typography>
-    </Stack>
     <TableContainer sx={{ overflowX: 'auto' }} data-salary-rate-matrix>
       <DragDropContext onDragEnd={onReorder}>
         <Table size="small" sx={{ minWidth: 220 + TYPES.length * Math.max(grades.length, 1) * 96 }}>
@@ -43,18 +40,18 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
               <TableRow><TableCell colSpan={1 + TYPES.length * Math.max(grades.length, 1)} sx={{ bgcolor: ui.color.header, color: ui.color.muted, fontWeight: 600 }}>{t(label)}</TableCell></TableRow>
               {items.filter(row => salaryDisplayGroup(row) === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index} disableInteractiveElementBlocking>
                 {drag => <TableRow ref={drag.innerRef} {...drag.draggableProps} hover data-salary-item={row.id}>
-                  <TableCell sx={sticky}><Stack direction="row" spacing={0.5} alignItems="center"><IconButton size="small" {...drag.dragHandleProps} aria-label={languageCode === 'ko' ? '순서 변경' : languageCode === 'vi' ? 'Đổi thứ tự' : 'Reorder'} sx={{ color: 'text.disabled', cursor: 'grab' }}><DragIndicatorIcon fontSize="small" /></IconButton><Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="body2" fontWeight={600}>{name(row)}</Typography><Typography variant="caption" color="text.secondary">{unitLabel(row)}</Typography></Box><Tooltip title={t('수정')}><IconButton size="small" onClick={() => onEdit(row)} aria-label={`${name(row)} ${t('수정')}`}><EditOutlinedIcon fontSize="small" /></IconButton></Tooltip></Stack>
+                  <TableCell sx={sticky}><Stack direction="row" spacing={0.5} alignItems="center"><IconButton size="small" {...drag.dragHandleProps} aria-label={languageCode === 'ko' ? '순서 변경' : languageCode === 'vi' ? 'Đổi thứ tự' : 'Reorder'} sx={{ color: 'text.disabled', cursor: 'grab' }}><DragIndicatorIcon fontSize="small" /></IconButton><Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="body2" fontWeight={600}>{name(row)}</Typography><Typography variant="caption" color="text.secondary">{unitLabel(row)}</Typography></Box><Tooltip title={t('정산 설정')}><IconButton size="small" onClick={() => onEdit(row)} aria-label={`${name(row)} ${t('정산 설정')}`}><EditOutlinedIcon fontSize="small" /></IconButton></Tooltip></Stack>
                   </TableCell>
                   {TYPES.flatMap(type => {
                     const active = (row.payTypes || []).includes(type);
-                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="center" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : formatAmount(amount(row, type, grade))}</TableCell>) : <TableCell key={type}>—</TableCell>;
+                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : <InputBase fullWidth disabled={disabled} value={amount(row,type,grade)===0?'':amount(row,type,grade).toLocaleString(languageCode)} placeholder="—" onFocus={event=>event.target.select()} onChange={event=>onChangeRate(row.id,type,grade.id,event.target.value)} inputProps={{inputMode:'numeric','aria-label':`${name(row)} ${getPayTypeLabel(type,type,languageCode)} ${name(grade)} ${currencyCode}`}} sx={{fontSize:ui.table.fontSize,border:'1px solid transparent',borderRadius:1,'&:hover':{borderColor:ui.color.border},'&.Mui-focused':{borderColor:'primary.main',bgcolor:'background.paper'},'& input':{textAlign:'right',fontVariantNumeric:'tabular-nums',p:'4px',height:'auto'},'& input::placeholder':{opacity:1,color:'text.disabled'}}} />}</TableCell>) : <TableCell key={type}>—</TableCell>;
                   })}
                 </TableRow>}
               </Draggable>)}
               {provided.placeholder}
             </TableBody>}
           </Droppable>)}
-          <TableBody>{units.map(unit => <TableRow key={unit} data-salary-total={unit} sx={{ bgcolor: ui.color.header }}><TableCell sx={{ ...sticky, bgcolor: ui.color.header, fontWeight: 600 }}>{labels[0]}<Typography variant="caption" display="block" color="text.secondary">{unit}</Typography></TableCell>{TYPES.flatMap(type => grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="center" sx={{ ...gradeBorder(index), fontWeight: 600 }}>{formatAmount(monthlyItems.filter(row => (row.payTypes || []).includes(type) && unitLabel(row) === unit).reduce((sum, row) => sum + amount(row, type, grade), 0))}</TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>)}</TableBody>
+          <TableBody>{units.map(unit => <TableRow key={unit} data-salary-total={unit} sx={{ bgcolor: ui.color.header }}><TableCell sx={{ ...sticky, bgcolor: ui.color.header, fontWeight: 600 }}>{labels[0]}<Typography variant="caption" display="block" color="text.secondary">{unit}</Typography></TableCell>{TYPES.flatMap(type => grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ ...gradeBorder(index), fontWeight: 600 }}>{formatAmount(monthlyItems.filter(row => (row.payTypes || []).includes(type) && unitLabel(row) === unit).reduce((sum, row) => sum + amount(row, type, grade), 0))}</TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>)}</TableBody>
         </Table>
       </DragDropContext>
     </TableContainer>

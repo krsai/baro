@@ -182,6 +182,7 @@ export default function TransactionRequestEntry() {
       {error && <Alert severity="error">{error}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
+      <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
@@ -192,7 +193,7 @@ export default function TransactionRequestEntry() {
               onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
               onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
             <ExpenseApprovalSettings ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} drafter={form.canonicalSource?.kind==='request'?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
-              actions={<ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={disabled||dirty}/>}/>
+              />
           </Box>
           </Box>
         </Box>

@@ -7,13 +7,22 @@ export async function approvalState(db:any,orgId:number,requestId:number,actorId
  const request=await db.expenseRequest.findFirst({where:{id:requestId,orgId},include:{approvalSteps:{orderBy:{position:'asc'},include:{employee:{select:{id:true,name:true}}}}}});
  if(!request)return fail('EXPENSE_SOURCE_NOT_FOUND',404);
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId,version:request.version},orderBy:{position:'asc'}});
- const steps=request.approvalSteps.map((step:any)=>({...step,approved:decisions.some((d:any)=>d.position===step.position&&d.employeeId===step.employeeId)}));
+ const steps=request.approvalSteps.map((step:any)=>{const decision=decisions.find((d:any)=>d.position===step.position&&d.employeeId===step.employeeId);return {...step,approved:!!decision,approvedAt:decision?.createdAt||null};});
  const next=steps.find((step:any)=>!step.approved);
  const audit=!steps.length ? await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}) : null;
  const policy=audit?.afterSnapshot?.approvalPolicy;
  const exempt=policy?.exempt===true && policy.drafterId===request.createdByEmployeeId;
  const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}) : null;
- return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),steps,exempt,approved:steps.length>0?!next:exempt,canApprove:!!actor&&!!next&&next.employeeId===actorId};
+ return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),steps,exempt,approved:steps.length>0?!next:exempt,canApprove:!!actor&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId};
+}
+export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:number){
+ const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}});
+ if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
+ const requests=await db.expenseRequest.findMany({where:{orgId,approvalSteps:{some:{employeeId:actorId}}},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},createdByEmployee:{select:{name:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
+ if(!requests.length)return [];
+ const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true}});
+ return requests.filter((request:any)=>request.createdByEmployeeId!==actorId&&request.approvalSteps.find((step:any)=>!decisions.some((decision:any)=>decision.requestId===request.id&&decision.version===request.version&&decision.position===step.position&&decision.employeeId===step.employeeId))?.employeeId===actorId)
+  .map((request:any)=>({id:request.id,version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),requestDate:request.requestDate,payee:request.partner?.name||'',drafter:request.createdByEmployee?.name||''}));
 }
 export async function approveExpense(db:any,orgId:number,actorId:number,requestId:number,version:number){
  return retryEditTransaction(db,async(tx:any)=>{

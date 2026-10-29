@@ -5,6 +5,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Box, Button, CircularProgress } from '@mui/material';
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
+import ExpenseApprovalInbox from '../../components/ExpenseApprovalInbox';
 import AppPageContainer from '../../components/AppPageContainer';
 import DateRangeSelector from '../../components/DateRangeSelector';
 import { TRANSACTION_TEXT, OUTSOURCING_REQUEST_TEXT, serviceName } from '../../components/OutsourcingServiceDialog';
@@ -26,7 +27,7 @@ const currentMonthRange = managementStart => {
 };
 
 export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest }) {
-  const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
+  const { activeOrgId, activeProfile } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod();
   const labels = { ...(TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko), ...(OUTSOURCING_REQUEST_TEXT[languageCode] || OUTSOURCING_REQUEST_TEXT.ko) };
   const docText = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
@@ -56,7 +57,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   },[activeOrgId,labels.loadError]);
   useEffect(() => { load(); return () => {loadSequence.current++;}; },[load]);
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
-    if (['transaction-request','business-partner'].includes(detail?.source) && Number(detail.orgId) === Number(activeOrgId)) load();
+    if (['transaction-request','business-partner','expense-approval'].includes(detail?.source) && Number(detail.orgId) === Number(activeOrgId)) load();
   }),[activeOrgId,load]);
   useEffect(() => {setPartner('');setIndustry('');setCurrency('');setChecked([]);},[activeOrgId]);
   useEffect(() => {
@@ -122,6 +123,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   };
   const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
+      {['ADMIN','ACCOUNTANT'].includes(activeProfile?.orgRole)&&<ExpenseApprovalInbox orgId={activeOrgId} languageCode={languageCode} onOpenRequest={onOpenRequest}/>}
       <Button variant="contained" disableElevation className="cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
     <SearchPanel title={text.query} disabled={loading} onReset={reset}

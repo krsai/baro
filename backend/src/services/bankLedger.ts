@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {resolveEvidence,approvalState,approveExpense} from './bankEvidence';
+import {resolveEvidence,approvalState,approveExpense,listExpenseApprovalInbox} from './bankEvidence';
 
 // Internal lower bound only; new accounts have no user-defined opening period.
 export const LEDGER_ZERO_START='0001-01-01';
@@ -199,6 +199,11 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
     if(!Number.isSafeInteger(requestId)||requestId<=0)return fail('LEDGER_INVALID_INPUT');
     if(!actorId)return fail('LEDGER_ACCESS_DENIED',403);
     res.json(method==='get'?await approvalState(db,auth.organization.id,requestId,actorId):await approveExpense(db,auth.organization.id,actorId,requestId,req.body.version));
+  });
+  app.get('/expense-approval-inbox',async(req:any,res:any)=>{
+    const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT']});if(!auth)return;
+    const actorId=auth.employee?.id;if(!actorId)return fail('LEDGER_ACCESS_DENIED',403);
+    res.json(await listExpenseApprovalInbox(db,auth.organization.id,actorId));
   });
   app.get('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerEntries(db,scope.orgId,req.params.accountId,req.query));});
   app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(201).json(await postLedgerEntry(db,scope.orgId,scope.actor,req.params.accountId,req.body));});
