@@ -29,11 +29,13 @@ try {
     const items=[
       {id:'baseSalary',nameEn:'Base salary',nameKo:'기본급',nameVi:'Lương cơ bản',category:'BASE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY',required:true},
       {id:'lunch',nameEn:'Lunch',nameKo:'점심 수당',nameVi:'Ăn trưa',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
+      {id:'phone',nameEn:'Phone',nameKo:'통신비',nameVi:'Điện thoại',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
       {id:'tenure',nameEn:'Tenure',nameKo:'근속 수당',nameVi:'Thâm niên',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'SEMIANNUAL'},
+      {id:'custom-night',nameEn:'Overtime',nameKo:'야근 수당',nameVi:'Tăng ca',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
       {id:'incentiveTotal',category:'INCENTIVE',payTypes:['OUTPUT'],formula:['PRODUCTION_ALLOWANCE'],payCycle:'MONTHLY'},
     ];
     const grades=[1,2,3,4].map(id=>({id,code:`CL${id}`,nameEn:`Grade ${id}`,nameKo:`직급 ${id}`,nameVi:`Bậc ${id}`,isActive:true}));
-    const rates=payTypes.flatMap(payType=>grades.flatMap(grade=>[['baseSalary',1000],['lunch',200],['tenure',900]].map(([salaryItemCode,amount])=>({payType,gradeId:grade.id,salaryItemCode,amount}))));
+    const rates=payTypes.flatMap(payType=>grades.flatMap(grade=>[['baseSalary',1000],['lunch',200],['phone',0],['tenure',900],['custom-night',500]].map(([salaryItemCode,amount])=>({payType,gradeId:grade.id,salaryItemCode,amount}))));
     rates.find(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='baseSalary').amount=0;
     rates.splice(rates.findIndex(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='lunch'),1);
     await page.route('**/factories?*',r=>r.fulfill({headers,json:[{id:1,name:'Factory',managementStartDate:'2026-04-01'}]}));
@@ -52,6 +54,8 @@ try {
     assert.ok((await base.boundingBox()).height < 70,'rows stay compact without repeated chips');
     const totals=matrix.locator('[data-salary-total]');
     assert.equal(await totals.count(),1,'only monthly payment items have a total');
+    assert.deepEqual(await matrix.locator('[data-salary-group="ALLOWANCE"] [data-salary-item]').evaluateAll(nodes=>nodes.map(node=>node.dataset.salaryItem)),['lunch','phone']);
+    assert.deepEqual(await matrix.locator('[data-salary-group="ADDITIONAL_ALLOWANCE"] [data-salary-item]').evaluateAll(nodes=>nodes.map(node=>node.dataset.salaryItem)),['tenure','custom-night']);
     assert.equal(await base.locator('td').nth(8).innerText(),'—','stored zero uses a dash');
     assert.equal(await matrix.locator('[data-salary-item="lunch"] td').nth(8).innerText(),'—','missing rate uses a dash');
     assert.equal(await totals.locator('td').nth(8).innerText(),'—','zero total uses a dash');
@@ -78,18 +82,20 @@ try {
     assert.match(await base.innerText(),/1[,.]500/);
     assert.match(await totals.first().innerText(),/1[,.]500/);
     assert.equal(writes.length,0,'editing stays local until version save');
-    const handle=matrix.locator('[data-salary-item="tenure"] [data-rfd-drag-handle-draggable-id]');
+    const handle=matrix.locator('[data-salary-item="phone"] [data-rfd-drag-handle-draggable-id]');
     await handle.focus();await page.keyboard.press('Space');await page.waitForTimeout(100);
     await page.keyboard.press('ArrowUp');await page.waitForTimeout(100);
     await page.keyboard.press('Space');await page.waitForTimeout(300);
-    assert.deepEqual(await matrix.locator('[data-salary-item]').evaluateAll(nodes=>nodes.map(node=>node.dataset.salaryItem)),['baseSalary','tenure','lunch','incentiveTotal']);
+    assert.deepEqual(await matrix.locator('[data-salary-item]').evaluateAll(nodes=>nodes.map(node=>node.dataset.salaryItem)),['baseSalary','phone','lunch','tenure','custom-night','incentiveTotal']);
     await page.getByRole('button',{name:{ko:'저장',en:'Save',vi:'Lưu'}[lang],exact:true}).click();
     await page.waitForFunction(()=>Boolean(document.querySelector('[data-version-board]')));
     assert.equal(writes.length,1);
     assert.equal(writes[0].expectedRevision,'r1');
     assert.equal(writes[0].createVersion,true);
     assert.equal(writes[0].rates.find(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='baseSalary').amount,0,'display formatting preserves stored zero');
-    assert.deepEqual(writes[0].items.map(row=>row.id),['baseSalary','tenure','lunch','incentiveTotal']);
+    assert.deepEqual(writes[0].items.map(row=>row.id),['baseSalary','phone','lunch','tenure','custom-night','incentiveTotal']);
+    assert.equal(writes[0].items.find(row=>row.id==='custom-night').category,'ALLOWANCE','display grouping preserves stored category');
+    assert.equal(writes[0].rates.find(row=>row.salaryItemCode==='custom-night').amount,500,'excluded display totals preserve additional rates');
     assert.equal(writes[0].rates.find(row=>row.payType==='GENERAL' && row.gradeId===1 && row.salaryItemCode==='baseSalary').amount,1500);
     assert.equal(writes[0].rates.some(row=>row.payType==='GENERAL' && row.salaryItemCode==='lunch'),false);
     assert.equal(writes[0].rates.find(row=>row.payType==='OUTPUT' && row.gradeId===1 && row.salaryItemCode==='lunch').amount,200);

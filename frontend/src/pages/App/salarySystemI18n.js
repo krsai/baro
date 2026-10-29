@@ -1,4 +1,6 @@
 const translations = {
+  '기본 수당': ['Regular allowances', 'Phụ cấp cơ bản'],
+  '추가 수당': ['Additional allowances', 'Phụ cấp bổ sung'],
   '일반': ['General', 'Thường'], '생산': ['Output', 'Sản lượng'],
   '기본급': ['Base salary', 'Lương cơ bản'], '급여 수당': ['Allowances', 'Phụ cấp'], '성과급': ['Incentives', 'Thưởng hiệu suất'],
   '1개월': ['1 month', '1 tháng'], '3개월': ['3 months', '3 tháng'], '6개월': ['6 months', '6 tháng'], '12개월': ['12 months', '12 tháng'],

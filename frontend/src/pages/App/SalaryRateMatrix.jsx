@@ -7,12 +7,13 @@ import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import { getPayTypeLabel } from '../../constants/payType';
 import { resolveLocalizedAttributeName } from '../../utils/appLanguage';
 import { ui } from '../../theme/ui';
+import { salaryDisplayGroup, isMonthlyBaseSalaryItem } from './salaryAllowanceGroups.mjs';
 
 const TYPES = ['GENERAL', 'OUTPUT_FIXED', 'OUTPUT'];
 const copy = {
-  ko: ['월 지급 단가 합계', '지급 주기가 1개월인 항목의 설정 단가만 합산합니다. 실제 지급액은 계산식과 근무·생산 실적에 따라 달라집니다.', '자동 계산'],
-  en: ['Monthly rate total', 'Only configured rates for monthly payment items are included. Actual payments depend on formulas and attendance or production results.', 'Automatic'],
-  vi: ['Tổng đơn giá hàng tháng', 'Chỉ cộng đơn giá của các khoản có chu kỳ thanh toán 1 tháng. Số tiền thực nhận phụ thuộc công thức và kết quả chấm công hoặc sản xuất.', 'Tự động'],
+  ko: ['월 지급 단가 합계', '지급 주기가 1개월인 기본급과 기본 수당만 합산합니다. 추가 수당과 성과급은 제외하며, 실제 지급액은 계산식과 근무·생산 실적에 따라 달라집니다.', '자동 계산'],
+  en: ['Monthly rate total', 'Includes only monthly base salary and regular allowances. Additional allowances and incentives are excluded. Actual payments depend on formulas and attendance or production results.', 'Automatic'],
+  vi: ['Tổng đơn giá hàng tháng', 'Chỉ cộng lương cơ bản và phụ cấp cơ bản có chu kỳ 1 tháng. Không gồm phụ cấp bổ sung và thưởng hiệu suất. Số tiền thực nhận phụ thuộc công thức và kết quả chấm công hoặc sản xuất.', 'Tự động'],
 };
 
 export default function SalaryRateMatrix({ items, grades, rates, languageCode, currencyCode, t, categories, unitLabel, onEdit, onAdd, onReorder }) {
@@ -20,7 +21,8 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   const name = row => resolveLocalizedAttributeName(row, languageCode);
   const amount = (row, type, grade) => Number(String(rates[`${type}:${grade.id}`]?.[row.id] || '0').replace(/,/g, ''));
   const formatAmount = value => value === 0 ? '—' : value.toLocaleString(languageCode);
-  const monthlyItems = items.filter(row => row.payCycle === 'MONTHLY' && row.id !== 'incentiveTotal');
+  const monthlyItems = items.filter(isMonthlyBaseSalaryItem);
+  const displayCategories = { BASE: categories.BASE, ALLOWANCE: '기본 수당', ADDITIONAL_ALLOWANCE: '추가 수당', INCENTIVE: categories.INCENTIVE };
   const units = [...new Set(monthlyItems.map(unitLabel))];
   const sticky = { position: 'sticky', left: 0, zIndex: 1, bgcolor: ui.color.surface, minWidth: 220, borderRight: 1, borderColor: 'divider' };
   return <Paper variant="outlined" sx={{ minWidth: 0 }}>
@@ -37,10 +39,10 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
             </TableRow>
             <TableRow>{TYPES.flatMap(type => grades.length ? grades.map(grade => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap' }}>{name(grade)}<Typography variant="caption" display="block" color="text.secondary">{grade.code}</Typography></TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>
           </TableHead>
-          {Object.entries(categories).map(([category, label]) => <Droppable key={category} droppableId={`salary-items:${category}`}>
-            {provided => <TableBody ref={provided.innerRef} {...provided.droppableProps}>
+          {Object.entries(displayCategories).map(([category, label]) => <Droppable key={category} droppableId={`salary-items:${category}`}>
+            {provided => <TableBody ref={provided.innerRef} {...provided.droppableProps} data-salary-group={category}>
               <TableRow><TableCell colSpan={1 + TYPES.length * Math.max(grades.length, 1)} sx={{ bgcolor: ui.color.header, color: ui.color.muted, fontWeight: 600 }}>{t(label)}</TableCell></TableRow>
-              {items.filter(row => row.category === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index} disableInteractiveElementBlocking>
+              {items.filter(row => salaryDisplayGroup(row) === category).map((row, index) => <Draggable key={row.id} draggableId={String(row.id)} index={index} disableInteractiveElementBlocking>
                 {drag => <TableRow ref={drag.innerRef} {...drag.draggableProps} hover data-salary-item={row.id}>
                   <TableCell sx={sticky}><Stack direction="row" spacing={0.5} alignItems="center"><IconButton size="small" {...drag.dragHandleProps} aria-label={languageCode === 'ko' ? '순서 변경' : languageCode === 'vi' ? 'Đổi thứ tự' : 'Reorder'} sx={{ color: 'text.disabled', cursor: 'grab' }}><DragIndicatorIcon fontSize="small" /></IconButton><Box sx={{ flex: 1, minWidth: 0 }}><Typography variant="body2" fontWeight={600}>{name(row)}</Typography><Typography variant="caption" color="text.secondary">{unitLabel(row)}</Typography></Box><Tooltip title={t('수정')}><IconButton size="small" onClick={() => onEdit(row)} aria-label={`${name(row)} ${t('수정')}`}><EditOutlinedIcon fontSize="small" /></IconButton></Tooltip></Stack>
                   </TableCell>

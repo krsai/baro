@@ -29,6 +29,7 @@ import { currentVersionMonth, versionTimelineMonths } from '../../utils/versionA
 import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
 import SalaryRateMatrix from './SalaryRateMatrix';
 import EmployeeSalaryPreview from './EmployeeSalaryPreview';
+import { salaryDisplayGroup } from './salaryAllowanceGroups.mjs';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -380,12 +381,12 @@ const SalarySystem = () => {
     if (!destination || source.droppableId !== destination.droppableId || source.index === destination.index) return;
     const category = source.droppableId.replace('salary-items:', '');
     setItems((rows) => {
-      const categoryItems = rows.filter((row) => row.category === category);
+      const categoryItems = rows.filter((row) => salaryDisplayGroup(row) === category);
       const [moved] = categoryItems.splice(source.index, 1);
       if (!moved) return rows;
       categoryItems.splice(destination.index, 0, moved);
       let categoryIndex = 0;
-      return rows.map((row) => row.category === category ? categoryItems[categoryIndex++] : row);
+      return rows.map((row) => salaryDisplayGroup(row) === category ? categoryItems[categoryIndex++] : row);
     });
   };
   const saveDraft = async () => {
