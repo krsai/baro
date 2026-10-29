@@ -45,15 +45,25 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-salary-item="baseSalary"]')?.innerText.includes('1,000') || document.querySelector('[data-salary-item="baseSalary"]')?.innerText.includes('1.000'));
     assert.equal(await matrix.locator('thead tr').count(),2);
     assert.equal(await matrix.locator('thead tr').nth(1).locator('th').count(),12);
+    assert.equal(await base.locator('td').nth(1).evaluate(node=>getComputedStyle(node).fontSize),'13px','use shared body table typography');
+    assert.equal(await matrix.locator('thead th').first().evaluate(node=>getComputedStyle(node).backgroundColor),await matrix.locator('thead tr').nth(1).locator('th').first().evaluate(node=>getComputedStyle(node).backgroundColor),'sticky header follows shared header surface');
+    assert.ok((await base.boundingBox()).height < 70,'rows stay compact without repeated chips');
     const totals=matrix.locator('[data-salary-total]');
     assert.equal(await totals.count(),2);
     assert.match(await totals.first().innerText(),/1[,.]200/);
     assert.match(await totals.nth(1).innerText(),/900/);
-    const toggle=matrix.locator('[data-salary-item="lunch"] [aria-pressed]').first();
-    await toggle.click();assert.equal(await toggle.getAttribute('aria-pressed'),'false');
-    assert.match(await totals.first().innerText(),/1[,.]000/);
     const editLabel={ko:'수정',en:'Edit',vi:'Sửa'}[lang];
-    await base.getByRole('button',{name:editLabel,exact:true}).click();
+    assert.equal(await matrix.locator('[aria-pressed]').count(),0,'no repeated pay-type chips in overview');
+    const lunch=matrix.locator('[data-salary-item="lunch"]');
+    const lunchEdit=lunch.getByRole('button',{name:new RegExp(editLabel)});
+    assert.equal(await lunchEdit.innerText(),'','item edit uses an icon only');
+    assert.equal(await lunchEdit.locator('xpath=ancestor::td[1]').evaluate(node=>node.cellIndex),0,'edit belongs to item-name column');
+    await lunchEdit.click();
+    const applicability=page.getByRole('dialog').getByRole('checkbox').first();
+    await applicability.uncheck();assert.equal(await applicability.isChecked(),false);
+    await page.getByRole('dialog').getByRole('button',{name:{ko:'닫기',en:'Close',vi:'Đóng'}[lang],exact:true}).click();
+    assert.match(await totals.first().innerText(),/1[,.]000/);
+    await base.getByRole('button',{name:new RegExp(editLabel)}).click();
     const dialog=page.getByRole('dialog');await dialog.waitFor();
     const rate=dialog.locator('input[inputmode="numeric"]').first();
     await rate.fill('1500');
@@ -81,5 +91,5 @@ try {
     assert.deepEqual(errors,[]);
     await page.close();
   }
-  console.log('Salary matrix passed: ko/en/vi grouped grades, item editing, pay-type toggles, period totals, mobile scroll, and no premature writes.');
+  console.log('Salary matrix passed: ko/en/vi shared table styles, icon-only item actions, applicability checkboxes, grouped grades, period totals, reorder, mobile scroll, and version saves.');
 } finally { await browser?.close();server.kill();unlinkSync(fixture); }

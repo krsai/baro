@@ -11,7 +11,7 @@ import StaleEditNotice from '../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
+  FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
   Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs,
   TextField, Tooltip, Typography,
 } from '@mui/material';
@@ -527,10 +527,16 @@ const SalarySystem = () => {
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
-    <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onAdd={() => setDialogOpen(true)} onEdit={row => { setSelectedId(row.id); setItemDetailOpen(true); }} onToggle={toggleItemPayType} onReorder={reorderItems} />
+    <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onAdd={() => setDialogOpen(true)} onEdit={row => { setSelectedId(row.id); setItemDetailOpen(true); }} onReorder={reorderItems} />
     <Dialog open={itemDetailOpen} onClose={() => setItemDetailOpen(false)} fullWidth maxWidth="lg">
       <DialogContent sx={{ p: 0 }}>
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Typography variant="body2" fontWeight={600}>{languageCode === 'ko' ? '적용 대상' : languageCode === 'vi' ? 'Đối tượng áp dụng' : 'Applies to'}</Typography>
+          <Stack direction="row" useFlexGap flexWrap="wrap">
+            {PAY_TYPE_ORDER.map(payType => <FormControlLabel key={payType} label={getPayTypeLabel(payType, payType, languageCode)} control={<Checkbox size="small" checked={(selected.payTypes || []).includes(payType)} disabled={selected.category === 'INCENTIVE'} onChange={() => toggleItemPayType(selected, payType)} inputProps={{ 'aria-label': getPayTypeLabel(payType, payType, languageCode) }} />} />)}
+          </Stack>
+        </Box>
         <Stack direction="row" alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}><Box><Typography variant="h6" fontWeight={700}>{salaryItemName(selected, languageCode)}</Typography></Box>
           {!isFixedIncentive && <Stack direction="row" spacing={0.5} alignItems="center" sx={{ ml: 'auto' }}><Button variant="outlined" startIcon={<EditOutlinedIcon />} onClick={openFormulaDialog}>{t('수정')}</Button><Tooltip title={t(selected.required ? '기본급은 삭제할 수 없습니다.' : '항목 삭제')}><span><DeleteActionButton color="error" disabled={selected.required} onClick={removeItem} /></span></Tooltip></Stack>}</Stack>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
