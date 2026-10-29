@@ -1213,6 +1213,7 @@ model ManufacturerDataArchive {
 }
 
 model StyleProcess {
+  expenseCostLinks ExpenseCostProcess[]
   transactionCosts PartnerTransactionCost[]
   /// Nonzero only for retained historical customer-scoped processes.
   sourceOrgId Int @default(0)
@@ -1569,6 +1570,8 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  processLinks ExpenseCostProcess[]
+  @@unique([id, orgId, styleId])
   linkTarget String?
   linkPolicyAuditId Int?
   linkPolicyAudit ExpenseCodeLinkAudit? @relation(fields:[linkPolicyAuditId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
@@ -1611,6 +1614,17 @@ model PartnerTransactionCost {
   @@unique([orgId, clientKey])
   @@index([orgId, transactionDate])
   @@index([orgId, partnerOrgId])
+}
+
+model ExpenseCostProcess {
+  costId String
+  orgId Int
+  styleId Int
+  styleProcessId Int
+  cost PartnerTransactionCost @relation(map: "ExpenseCostProcess_cost_scope_fkey", fields: [costId, orgId, styleId], references: [id, orgId, styleId], onDelete: Cascade, onUpdate: Restrict)
+  styleProcess StyleProcess @relation(map: "ExpenseCostProcess_process_scope_fkey", fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, onUpdate: Restrict)
+  @@id([costId, styleProcessId])
+  @@index([styleProcessId, styleId, orgId])
 }
 
 model ExpenseRequest {

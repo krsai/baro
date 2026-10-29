@@ -5,6 +5,15 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { loadExpenseEditorSource, expenseEditorForm, saveExpenseEditor, registerExpenseEditorRoutes } = require('../backend/dist/services/expenseRequestEditor.js');
 
+test('editor restores multiple process references as one monetary line, including inactive historical references',()=>{
+ const processes=[{id:50,processName:'Sew',isActive:false},{id:51,processName:'Finish',isActive:true}];
+ const cost={id:'sewing-cost',linkTarget:'STYLE',workOrderId:30,styleId:40,styleProcessId:null,quantity:2,unitPrice:'100',amount:'200',transactionDate:'2026-10-29',partnerOrgId:11,style:{id:40,name:'Shirt'},workOrder:{id:30},processLinks:processes.map(styleProcess=>({styleProcessId:styleProcess.id,styleProcess}))};
+ const form=expenseEditorForm({kind:'cost',id:cost.id,document:null,record:null,costs:[cost]});
+ assert.equal(form.items.length,1);assert.equal(form.items[0].unitPrice,'100');assert.equal(form.items[0].quantity,'2');
+ assert.deepEqual(form.items[0].styleProcessIds,[50,51]);assert.deepEqual(form.items[0].preservedReferences.style.styleProcesses,processes);
+ assert.equal(form.items[0].productionLinked,false);assert.equal(form.items[0].enabled.process,true);
+});
+
 function harness() {
   let state = { documents: [], costs: [], audits: [], extraLogs: [], records: [
     { id: 78, orgId: 1, workLogId: 77, outsourcingPartnerId: 11, quantity: 170, outsourceUnitPrice: '3000', styleId: 40, styleProcessId: 50, assignmentPlanId: 60, createdByEmployeeId: 21 },

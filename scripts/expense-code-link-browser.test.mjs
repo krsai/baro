@@ -13,7 +13,7 @@ const port=43212,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-code-link-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath,headless:true});
- for(const [lang,cost,save,defaultLabel] of [['ko','스타일 공정 (필수)','저장','연결 없음'],['en','Style process (required)','Save','No link'],['vi','Công đoạn mẫu (bắt buộc)','Lưu','Không liên kết']]){
+ for(const [lang,cost,save,defaultLabel] of [['ko','주문 + 스타일 + 공정 (필수)','저장','연결 없음'],['en','Order + style + process (required)','Save','No link'],['vi','Đơn hàng + mẫu + công đoạn (bắt buộc)','Lưu','Không liên kết']]){
   for(const [orgId,role] of [[1,'ADMIN'],[2,'OPERATOR']]){
    const page=await browser.newPage({viewport:{width:1024,height:850}}),errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
    await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:${orgId},activeOrgRole:'${role}'});`}));
@@ -33,6 +33,10 @@ try{
     await page.getByRole('alert').waitFor();assert.deepEqual(writes,[{baseId:10,target:'PROCESS'}]);
     assert.equal(await page.getByRole('button',{name:save,exact:true}).first().isDisabled(),true);
     assert.equal(await page.getByRole('combobox').nth(1).textContent(),defaultLabel);
+    for(const [index,target] of [[1,'ORDER'],[2,'STYLE']]){
+     await select.click();await page.getByRole('option').nth(index).click();await page.getByRole('button',{name:save,exact:true}).first().click();
+     await page.waitForFunction(()=>document.querySelector('tbody button')?.disabled);assert.equal(writes.at(-1).target,target);
+    }
    }else{assert.equal(await select.isDisabled(),true);assert.equal(await page.getByRole('button',{name:save,exact:true}).count(),0);assert.deepEqual(writes,[]);}
    await page.setViewportSize({width:390,height:844});
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);

@@ -28,6 +28,27 @@ function store(process = false) {
     outsourcedWorkRecord: { create: async ({ data }) => { writes.push(['production',data]); return { id: 90 }; } },
   };
 }
+
+test('style-scope sewing selects zero or multiple processes without recording production or multiplying its cost',async()=>{
+ for(const ids of [[],[50,51]]){
+  const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE',auditId:1});
+  const links=[];let saved;
+  db.styleProcess.findMany=async({where})=>{assert.equal(where.orgId,1);assert.equal(where.styleId,40);return where.id.in.map(id=>({id}));};
+  db.expenseCostProcess={deleteMany:async()=>{},createMany:async({data})=>links.push(...data)};
+  db.partnerTransactionCost.create=async({data})=>{db.writes.push(['cost',data]);saved={id:'multi-cost',...data};return saved;};
+  db.partnerTransactionCost.findUnique=async()=>saved?{...saved,processLinks:links}:null;
+  const row=await register(db,1,20,{...input(),workOrderId:30,styleId:40,styleProcessId:null,styleProcessIds:ids,vatRate:'0',currency:'USD'});
+  assert.deepEqual(db.writes.map(([kind])=>kind),['cost']);assert.equal(row.amount.toString(),'200000');assert.equal(links.length,ids.length);assert.equal(row.outsourcedWorkRecordId,null);
+ }
+});
+
+test('multiple references reject duplicates and inactive, wrong-style or cross-company process IDs',async()=>{
+ for(const ids of [[50,50],[0],[50,51]]){
+  const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE'});db.styleProcess.findMany=async()=>[{id:50}];
+  await assert.rejects(register(db,1,20,{...input(),styleId:40,styleProcessIds:ids,vatRate:'0'}),/INVALID_REQUEST_PROCESSES/);
+  assert.equal(db.writes.length,0);
+ }
+});
 test('VAT calculation uses currency rounding and rejects malformed values', () => {
   assert.equal(amounts('100000','2','VND','10').amount.toString(),'220000');
   assert.equal(amounts('0.05','3','USD','10').vatAmount.toString(),'0.02');

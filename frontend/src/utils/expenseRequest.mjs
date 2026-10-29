@@ -1,11 +1,12 @@
 import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 
 export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
-  currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '',
+  currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [],
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const expenseCodeForLine = (line,code) => {
   if (!code) return code;
   if (line.productionLinked || line.itemId && line.linkTarget==='PROCESS') return {...code,linkTarget:'PROCESS',base:{...code.base,entryMode:line.productionLinked?'PROCESS':'GENERAL',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
+  if(line.itemId&&['ORDER','STYLE'].includes(line.linkTarget))return {...code,linkTarget:line.linkTarget,base:{...code.base,entryMode:'GENERAL',orderInput:'REQUIRED',styleInput:line.linkTarget==='STYLE'?'REQUIRED':'HIDDEN',processInput:line.linkTarget==='STYLE'?'OPTIONAL':'HIDDEN'}};
   if (line.itemId) return {...code,linkTarget:'NONE',base:{...code.base,entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:line.styleProcessId?'OPTIONAL':'HIDDEN'}};
   return code;
 };
@@ -33,13 +34,15 @@ export function validExpenseLine(line, code, currency) {
   code = expenseCodeForLine(line,code);
   if (!code || !expenseLineAmounts(line, currency)) return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
+  if(line.styleProcessIds?.length&&(!line.workOrderId||!line.styleId||line.styleProcessIds.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(line.styleProcessIds).size!==line.styleProcessIds.length))return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;
-  return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]])) &&
+  return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(key==='process' ? line.styleProcessId || line.styleProcessIds?.length : line[{order:'workOrderId',style:'styleId'}[key]])) &&
     (code.base?.requiredFields || []).every(key => line.details[key]?.trim());
 }
 export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency,
   quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
+  ...(line.styleProcessIds===undefined?{}:{styleProcessIds:line.styleProcessIds}),
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });
 
 export const expenseTotalsByCurrency = lines => [...new Set(lines.map(line => line.currency))].sort().map(currency => ({ currency, ...expenseDocumentTotals(lines.filter(line => line.currency === currency), currency) }));

@@ -7,6 +7,39 @@ import {expenseCodeForLine,inputMode,validExpenseLine} from '../frontend/src/uti
 const sql=readFileSync('backend/prisma/migrations/20261023140000_expense_code_link_policy/migration.sql','utf8');
 const seed=readFileSync('backend/prisma/migrations/20261023140100_baro_expense_code_links/migration.sql','utf8');
 
+test('hierarchy requires parent references while style scope supports an optional process set without production',()=>{
+ const base={entryMode:'PROCESS',requiredFields:[]},line={quantity:'2',unitPrice:'10',vatRate:'0',details:{},enabled:{},workOrderId:40,styleId:50,styleProcessIds:[55,56]};
+ for(const [target,expected] of [['ORDER',['REQUIRED','HIDDEN','HIDDEN']],['STYLE',['REQUIRED','REQUIRED','OPTIONAL']],['PROCESS',['REQUIRED','REQUIRED','REQUIRED']]]){
+  const code=policy.applyExpenseCodeLinkPolicy({base,vatEnabled:false},target);
+  assert.deepEqual(['order','style','process'].map(key=>inputMode(code,key)),expected);
+  if(target==='STYLE'){
+   assert.equal(code.base.entryMode,'GENERAL');assert.equal(validExpenseLine(line,code,'USD'),true);
+   assert.equal(validExpenseLine({...line,styleProcessIds:[]},code,'USD'),true);
+   assert.equal(validExpenseLine({...line,workOrderId:''},code,'USD'),false);
+   assert.equal(expenseCodeForLine({...line,itemId:'saved',linkTarget:'STYLE'},policy.applyExpenseCodeLinkPolicy({base},'NONE')).linkTarget,'STYLE');
+  }
+ }
+});
+
+test('hierarchy SQL keeps legacy rows and permits one cost with multiple real process FKs',async()=>{
+ const db=await fixture(true);try{
+  const setPolicy=async target=>{const {rows:[audit]}=await db.query(`INSERT INTO "ExpenseCodeLinkAudit"("orgId","baseId",target,"actorId") VALUES(1,20,$1,20) RETURNING id`,[target]);await db.query(`UPDATE "ExpenseCodeLinkPolicy" SET target=$1,"auditId"=$2 WHERE "orgId"=1 AND "baseId"=20`,[target,audit.id]);};
+  const insert=(id,style=null)=>db.query(`INSERT INTO "PartnerTransactionCost"(id,"orgId","partnerOrgId","serviceTypeId","transactionCodeId","workOrderId","styleId","unitPrice",quantity,subtotal,"vatRate","vatAmount",amount,currency,details) VALUES($1,1,11,1,4,40,$2,10,2,20,0,0,20,'VND','{}')`,[id,style]);
+  await setPolicy('ORDER');await insert('order-only');await assert.rejects(insert('unexpected-style',50),/unexpected input option/);
+  await setPolicy('STYLE');await assert.rejects(insert('missing-style'),/required input option/);await insert('style',50);
+  await assert.rejects(db.exec(`INSERT INTO "ExpenseCostProcess" VALUES('style',1,50,55)`),/audit required/);
+  await db.exec(`SET test.editor='true';INSERT INTO "ExpenseCostProcess" VALUES('style',1,50,55),('style',1,50,56)`);
+  assert.equal((await db.query(`SELECT count(*)::int AS n FROM "ExpenseCostProcess"`)).rows[0].n,2);
+  assert.equal(Number((await db.query(`SELECT amount FROM "PartnerTransactionCost" WHERE id='style'`)).rows[0].amount),20);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM "OutsourcedWorkRecord"')).rows[0].n,1,'Only the original production record exists');
+  for(const [style,process] of [[50,57],[50,58],[51,57]])await assert.rejects(db.query(`INSERT INTO "ExpenseCostProcess" VALUES('style',1,$1,$2)`,[style,process]),/foreign key/);
+  await db.exec(`INSERT INTO "BankLedgerEntry" VALUES(1,NULL);INSERT INTO "BankLedgerEvidenceAllocation" VALUES('style',1)`);
+  await assert.rejects(db.exec(`DELETE FROM "ExpenseCostProcess" WHERE "costId"='style'`),/EXPENSE_ALREADY_RECONCILED/);
+  await db.exec(`UPDATE "BankLedgerEntry" SET "voidedAt"=NOW();UPDATE "WorkOrder" SET "invoiceFinalLockedAt"=NOW() WHERE id=40`);
+  await assert.rejects(db.exec(`DELETE FROM "ExpenseCostProcess" WHERE "costId"='style'`),/finally locked/);
+ }finally{await db.close();}
+});
+
 test('base FK determines all E/V/Z variants; unset defaults ignore industry and legacy input flags',async()=>{
  const db={expenseCodeLinkPolicy:{findUnique:async({where})=>where.orgId_baseId.orgId===1&&where.orgId_baseId.baseId===10?{target:'PROCESS',auditId:5}:null},industryProductionPolicy:{findUnique:()=>{throw Error('Legacy industry setting must not be read');}}};
  for(const tax of ['E','V','Z']){
@@ -45,11 +78,11 @@ test('settings API ignores request tenant IDs, validates role and target, and sa
  assert.deepEqual(writes[1].where,{orgId_baseId:{orgId:1,baseId:10}});
  allowed=false;await route(req,res);assert.equal(writes.length,2);allowed=true;
  current={target:'PROCESS'};await route(req,res);assert.equal(writes.length,2);current=null;
- for(const target of [true,null,'ORDER','default'])await assert.rejects(route({...req,body:{baseId:10,target}},res),/INVALID_EXPENSE_CODE_LINK_POLICY/);
+ for(const target of [true,null,'UNKNOWN','default'])await assert.rejects(route({...req,body:{baseId:10,target}},res),/INVALID_EXPENSE_CODE_LINK_POLICY/);
  validBase=false;await assert.rejects(route(req,res),/INVALID_EXPENSE_CODE_BASE/);
 });
 
-async function fixture(){
+async function fixture(hierarchy=false){
  const db=new PGlite();
  await db.exec(`
  CREATE TABLE "Organization"(id INT PRIMARY KEY,name TEXT,type TEXT,"ownerOrgId" INT,"isActive" BOOL DEFAULT true,UNIQUE(id,"ownerOrgId"));
@@ -75,6 +108,14 @@ async function fixture(){
  await db.exec(sql);await db.exec(seed);await db.exec(sql);await db.exec(seed);
  assert.deepEqual((await db.query(`SELECT to_jsonb(c)-'linkTarget'-'linkPolicyAuditId' AS row FROM "PartnerTransactionCost" c`)).rows,before);
  await db.exec('CREATE TRIGGER cost_guard BEFORE INSERT OR UPDATE OR DELETE ON "PartnerTransactionCost" FOR EACH ROW EXECUTE FUNCTION baro_transaction_cost_guard()');
+ if(hierarchy){
+  await db.exec(`CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,UNIQUE(id,"styleId","orgId"));INSERT INTO "StyleProcess" VALUES(55,50,1),(56,50,1),(57,51,1),(58,50,2);
+   CREATE TABLE "BankLedgerEntry"(id INT PRIMARY KEY,"voidedAt" TIMESTAMP);CREATE TABLE "BankLedgerEvidenceAllocation"("expenseItemId" TEXT,"entryId" INT);`);
+  const migration=readFileSync('backend/prisma/migrations/20261029190000_expense_link_hierarchy/migration.sql','utf8');
+  const before=(await db.query('SELECT to_jsonb(c) AS row FROM "PartnerTransactionCost" c ORDER BY id')).rows;
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query('SELECT to_jsonb(c) AS row FROM "PartnerTransactionCost" c ORDER BY id')).rows,before);
+ }
  return db;
 }
 

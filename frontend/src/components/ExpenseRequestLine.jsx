@@ -22,12 +22,15 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const lookupText = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const isProcess = line.productionLinked || code?.base?.entryMode === 'PROCESS';
+  const multipleProcesses = !isProcess && ['STYLE','PROCESS'].includes(code?.linkTarget) && (code?.linkReferenceVersion>=2 || line.linkTarget==='STYLE' || line.styleProcessIds?.length>0);
+  const selectedProcessIds = line.styleProcessIds?.length ? line.styleProcessIds : multipleProcesses && line.styleProcessId ? [line.styleProcessId] : [];
   const mode = key => line.productionLinked ? 'REQUIRED' : inputMode(code, key), visible = key => line.productionLinked || visibleInput(line, code, key);
   const availableOrders = line.preservedReferences?.order && !orders.some(row=>row.dbId===line.workOrderId) ? [...orders,{...line.preservedReferences.order,dbId:line.workOrderId}] : orders;
   useEffect(()=>{
-    if (!line.itemId && !line.productionLinked && mode('process') === 'HIDDEN' && (line.styleProcessId || line.assignmentPlanId))
-      onChange(line.key,{styleProcessId:'',assignmentPlanId:''});
-  },[code?.base?.processInput,code?.base?.entryMode,line.itemId,line.productionLinked,line.styleProcessId,line.assignmentPlanId,line.key,onChange]);
+    if(line.itemId||line.productionLinked)return;
+    if(mode('style')==='HIDDEN'&&(line.styleId||line.styleProcessId||line.styleProcessIds?.length))onChange(line.key,{styleId:'',styleProcessId:'',styleProcessIds:[],assignmentPlanId:''});
+    else if(mode('process')==='HIDDEN'&&(line.styleProcessId||line.styleProcessIds?.length||line.assignmentPlanId))onChange(line.key,{styleProcessId:'',styleProcessIds:[],assignmentPlanId:''});
+  },[code?.linkTarget,code?.base?.processInput,code?.base?.styleInput,line.itemId,line.productionLinked,line.styleId,line.styleProcessId,line.styleProcessIds?.length,line.assignmentPlanId,line.key,onChange]);
   const selectedStyle = options.orderId === line.workOrderId ? options.styles.find(row => row.id === line.styleId) : null;
   const plans = useMemo(() => options.orderId === line.workOrderId ? options.plans.filter(plan => plan.styleId === line.styleId && plan.processIds?.includes(line.styleProcessId)) : [], [options, line.workOrderId, line.styleId, line.styleProcessId]);
   useEffect(() => {
@@ -37,7 +40,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       setOptions({orderId:line.workOrderId,styles:[line.preservedReferences.style],plans:[line.preservedReferences.plan]});setOptionsLoading(false);
       return () => {alive=false;};
     }
-    if (!line.workOrderId) { setOptionsLoading(false); return () => { alive = false; }; }
+    if (!line.workOrderId || mode('style')==='HIDDEN') { setOptionsLoading(false); return () => { alive = false; }; }
     setOptionsLoading(true);
     requestJSON(`/transaction-request-options${buildQueryString({ orgId, workOrderId: line.workOrderId })}`, { skipCache: true })
       .then(data => { if (alive) {
@@ -48,14 +51,14 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       } })
       .catch(() => { if (alive) setOptionsError(true); }).finally(() => { if (alive) setOptionsLoading(false); });
     return () => { alive = false; };
-  }, [line.workOrderId, orgId, reload,line.productionLinked,line.preservedReferences]);
+  }, [line.workOrderId, orgId, reload,line.productionLinked,line.preservedReferences,code?.base?.styleInput]);
   useEffect(() => {
     if (line.productionLinked || !isProcess || !line.styleProcessId || optionsLoading || options.orderId !== line.workOrderId) return;
     const id = plans.length === 1 ? plans[0].id : plans.some(plan => plan.id === line.assignmentPlanId) ? line.assignmentPlanId : '';
     if (id !== line.assignmentPlanId) onChange(line.key, { assignmentPlanId: id });
   }, [plans, isProcess, line.key, line.styleProcessId, line.assignmentPlanId, line.workOrderId, optionsLoading, options.orderId, onChange]);
   const refsValid = (!line.workOrderId || availableOrders.some(row => row.dbId === line.workOrderId)) &&
-    (!line.styleId || Boolean(selectedStyle)) && (!line.styleProcessId || selectedStyle?.styleProcesses?.some(row => row.id === line.styleProcessId)) &&
+    (!line.styleId || Boolean(selectedStyle)) && (!line.styleProcessId || selectedStyle?.styleProcesses?.some(row => row.id === line.styleProcessId)) && selectedProcessIds.every(id => selectedStyle?.styleProcesses?.some(row => row.id === id)) &&
     (!isProcess || plans.some(plan => plan.id === line.assignmentPlanId));
   const valid = validExpenseLine(line, code, currency) && (!line.productionLinked || currency === 'VND' && Number.isInteger(Number(line.quantity)) && Number(line.quantity) <= 2147483647) && refsValid && !optionsLoading && !optionsError;
   useEffect(() => { onStatus(line.key, Boolean(valid)); }, [line.key, valid, onStatus]);
@@ -67,7 +70,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       setExpanded(true);return;
     }
     onChange(line.key, { transactionCodeId: selected?.id || '', vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
-      workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
+      workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
     if (selected?.base?.entryMode === 'PROCESS' || selected?.base?.requiredFields?.length || ['order','style','process'].some(key => inputMode(selected,key) === 'REQUIRED')) setExpanded(true);
   };
   const amount = expenseLineAmounts(line, currency);
@@ -76,7 +79,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const toggle = key => event => {
     const checked = event.target.checked;
     onChange(line.key, { enabled: { ...line.enabled, [key]: checked, ...(key === 'order' && !checked ? { style: false, process: false } : key === 'style' && !checked ? { process: false } : {}) },
-      ...(key === 'order' ? { workOrderId: '', styleId: '', styleProcessId: '', assignmentPlanId: '' } : key === 'style' ? { styleId: '', styleProcessId: '', assignmentPlanId: '' } : { styleProcessId: '', assignmentPlanId: '' }) });
+      ...(key === 'order' ? { workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' } : key === 'style' ? { styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' } : { styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' }) });
     setExpanded(true);
   };
   const field = { size: 'small', fullWidth: true, disabled };
@@ -108,9 +111,13 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       </Stack>
         <Stack direction="row" flexWrap="wrap">{['order','style','process'].filter(key => mode(key) === 'OPTIONAL').map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={line.enabled[key]} disabled={disabled || key === 'style' && !visible('order') || key === 'process' && !visible('style')} onChange={toggle(key)} />} />)}</Stack>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
-          {visible('order') && <TextField {...field} required={mode('order') === 'REQUIRED'} disabled={disabled || line.productionLinked} select label={labels.order} value={line.workOrderId} onChange={event => onChange(line.key, { workOrderId: event.target.value, styleId: '', styleProcessId: '', assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{availableOrders.map(row => <MenuItem key={row.dbId} value={row.dbId}>{row.orderNumber}</MenuItem>)}</TextField>}
-          {visible('style') && <TextField {...field} required={mode('style') === 'REQUIRED'} disabled={disabled || line.productionLinked || !line.workOrderId || optionsLoading} select label={labels.style} value={line.styleId} onChange={event => onChange(line.key, { styleId: event.target.value, styleProcessId: '', assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{options.styles.map(row => <MenuItem key={row.id} value={row.id}>{row.name} ({row.code})</MenuItem>)}</TextField>}
-          {visible('process') && <TextField {...field} required={mode('process') === 'REQUIRED'} disabled={disabled || line.productionLinked || !selectedStyle || optionsLoading} select label={labels.process} value={line.styleProcessId} onChange={event => onChange(line.key, { styleProcessId: event.target.value, assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{(selectedStyle?.styleProcesses || []).map(row => <MenuItem key={row.id} value={row.id}>{row.processName} ({row.processCode})</MenuItem>)}</TextField>}
+          {visible('order') && <TextField {...field} required={mode('order') === 'REQUIRED'} disabled={disabled || line.productionLinked} select label={labels.order} value={line.workOrderId} onChange={event => onChange(line.key, { workOrderId: event.target.value, styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{availableOrders.map(row => <MenuItem key={row.dbId} value={row.dbId}>{row.orderNumber}</MenuItem>)}</TextField>}
+          {visible('style') && <TextField {...field} required={mode('style') === 'REQUIRED'} disabled={disabled || line.productionLinked || !line.workOrderId || optionsLoading} select label={labels.style} value={line.styleId} onChange={event => onChange(line.key, { styleId: event.target.value, styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{options.styles.map(row => <MenuItem key={row.id} value={row.id}>{row.name} ({row.code})</MenuItem>)}</TextField>}
+          {visible('process') && <TextField {...field} required={mode('process') === 'REQUIRED'} disabled={disabled || line.productionLinked || !selectedStyle || optionsLoading} select label={labels.process}
+            SelectProps={multipleProcesses ? {multiple:true,renderValue:ids=>ids.map(id=>{const process=selectedStyle?.styleProcesses?.find(row=>row.id===id);return process?.processName||String(id);}).join(', ')} : undefined}
+            value={multipleProcesses ? selectedProcessIds : line.styleProcessId} onChange={event => {const value=multipleProcesses&&typeof event.target.value==='string'?event.target.value.split(',').map(Number):event.target.value;onChange(line.key,multipleProcesses?{styleProcessIds:value,styleProcessId:code.linkTarget==='PROCESS'?(value[0]||''):'',assignmentPlanId:''}:{styleProcessId:value,styleProcessIds:[],assignmentPlanId:''});}}>
+            {!multipleProcesses&&<MenuItem value="">{common.none}</MenuItem>}{(selectedStyle?.styleProcesses || []).map(row => <MenuItem key={row.id} value={row.id}>{multipleProcesses&&<Checkbox checked={selectedProcessIds.includes(row.id)}/>} {row.processName} ({row.processCode})</MenuItem>)}
+          </TextField>}
           {isProcess && plans.length > 1 && <TextField {...field} select required label={labels.assignment} value={line.assignmentPlanId} onChange={change('assignmentPlanId')}><MenuItem value="">{common.none}</MenuItem>{plans.map(row => <MenuItem key={row.id} value={row.id}>{row.factoryName} · #{row.id}</MenuItem>)}</TextField>}
           {(code?.base?.requiredFields || []).map(key => <TextField {...field} key={key} required type={key === 'transportDate' ? 'date' : 'text'} label={common[key]} value={line.details[key] || ''} slotProps={key === 'transportDate' ? { inputLabel: { shrink: true } } : {}} onChange={event => onChange(line.key, { details: { ...line.details, [key]: event.target.value } })} />)}
         </Box>

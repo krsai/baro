@@ -6,11 +6,18 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {serviceName} from './OutsourcingServiceDialog';
 import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 
-export const EXPENSE_CODE_LINK_TEXT={
+const BASE_TEXT={
  ko:{title:'비용 코드별 연결 설정',help:'이 업체의 기본 코드별로 입력할 업무 대상을 설정합니다. 세금 구분 E·V·Z에 공통 적용됩니다. 공정을 선택하면 비용 내역에서 스타일의 공정 입력이 필수입니다. 미설정 코드는 연결 없음이며 기존 내역은 변경하지 않습니다.',code:'기본 코드',name:'코드명',target:'연결 대상',none:'연결 없음',process:'스타일 공정 (필수)',save:'저장',saved:'설정을 저장했습니다.',error:'설정을 불러오거나 저장하지 못했습니다.',retry:'다시 불러오기',loading:'불러오는 중...',empty:'등록된 비용 기본 코드가 없습니다.'},
  en:{title:'Expense code link settings',help:'Set the required business reference for each base code in this company. The same setting applies to E, V and Z variants. Process requires a style process on each expense line. Unconfigured codes require no link. Existing entries are preserved.',code:'Base code',name:'Code name',target:'Link target',none:'No link',process:'Style process (required)',save:'Save',saved:'Settings saved.',error:'Could not load or save settings.',retry:'Reload',loading:'Loading...',empty:'No expense base codes registered.'},
  vi:{title:'Liên kết theo mã chi phí',help:'Thiết lập đối tượng liên kết cho từng mã gốc của công ty. Áp dụng chung cho E, V và Z. Khi chọn công đoạn, mỗi dòng chi phí phải chọn công đoạn của mẫu. Mã chưa cài đặt không yêu cầu liên kết. Giữ nguyên các nội dung đã lưu.',code:'Mã gốc',name:'Tên mã',target:'Đối tượng liên kết',none:'Không liên kết',process:'Công đoạn mẫu (bắt buộc)',save:'Lưu',saved:'Đã lưu cài đặt.',error:'Không thể tải hoặc lưu cài đặt.',retry:'Tải lại',loading:'Đang tải...',empty:'Chưa có mã chi phí gốc.'},
 };
+const HIERARCHY_TEXT={
+ ko:{order:'주문',style:'주문 + 스타일 (공정 선택 가능)',process:'주문 + 스타일 + 공정 (필수)',help:'주문 → 스타일 → 공정 순서로 연결합니다. 스타일 단계는 스타일 전체 또는 선택한 복수 공정을 참조할 수 있습니다. E·V·Z에 공통 적용되며 기존 내역은 변경하지 않습니다.'},
+ en:{order:'Order',style:'Order + style (optional processes)',process:'Order + style + process (required)',help:'Link in order → style → process sequence. Style scope can reference the whole style or multiple selected processes. Applies to E, V and Z. Existing entries are preserved.'},
+ vi:{order:'Đơn hàng',style:'Đơn hàng + mẫu (tùy chọn công đoạn)',process:'Đơn hàng + mẫu + công đoạn (bắt buộc)',help:'Liên kết theo đơn hàng → mẫu → công đoạn. Có thể chọn toàn bộ mẫu hoặc nhiều công đoạn. Áp dụng cho E, V, Z và giữ nguyên dữ liệu cũ.'},
+};
+
+export const EXPENSE_CODE_LINK_TEXT=Object.fromEntries(Object.entries(BASE_TEXT).map(([language,text])=>[language,{...text,...HIERARCHY_TEXT[language]}]));
 
 export default function ExpenseCodeLinkSettings(){
  const {activeOrgId,activeOrgRole}=useAuth(),{languageCode}=useLanguage();
@@ -35,7 +42,7 @@ export default function ExpenseCodeLinkSettings(){
   <TableContainer><Table size="small" sx={{minWidth:550}}><TableHead><TableRow>{[text.code,text.name,text.target,''].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
    {rows.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell>
     <TextField select size="small" fullWidth label={text.target} value={row.target} disabled={!canEdit||saving} onChange={event=>setRows(previous=>previous.map(item=>item.id===row.id?{...item,target:event.target.value}:item))}>
-     <MenuItem value="NONE">{text.none}</MenuItem><MenuItem value="PROCESS">{text.process}</MenuItem>
+     <MenuItem value="NONE">{text.none}</MenuItem><MenuItem value="ORDER">{text.order}</MenuItem><MenuItem value="STYLE">{text.style}</MenuItem><MenuItem value="PROCESS">{text.process}</MenuItem>
     </TextField></TableCell><TableCell>{canEdit&&<Button disabled={saving||row.original===row.target} onClick={()=>save(row)}>{text.save}</Button>}</TableCell></TableRow>)}
    {!rows.length&&<TableRow><TableCell colSpan={4}>{loading?text.loading:text.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>

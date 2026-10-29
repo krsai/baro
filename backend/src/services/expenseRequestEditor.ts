@@ -54,6 +54,7 @@ export function expenseEditorRevision(source: any) {
 }
 
 function editorLine(cost: any, record: any) {
+  const costProcesses=[...new Map([...(cost?.styleProcess?[cost.styleProcess]:[]),...(cost?.processLinks||[]).map((link:any)=>link.styleProcess)].filter(Boolean).map((process:any)=>[process.id,process])).values()];
   const refs = record && { order: record.assignmentPlan.workOrder,
     style: { ...record.style, styleProcesses: [record.styleProcess] },
     plan: { id: record.assignmentPlanId, styleId: record.styleId, processIds: [record.styleProcessId] } };
@@ -63,9 +64,10 @@ function editorLine(cost: any, record: any) {
     quantity: String(cost?.quantity ?? record?.quantity ?? 1), unitPrice: String(cost?.unitPrice ?? record?.outsourceUnitPrice ?? cost?.amount ?? ''),
     vatRate: String(cost?.vatRate ?? 0), details: cost?.details || {},
     workOrderId: cost?.workOrderId || record?.assignmentPlan?.workOrderId || '', styleId: cost?.styleId || record?.styleId || '',
+    styleProcessIds: (cost?.processLinks || []).map((link:any)=>link.styleProcessId),
     styleProcessId: cost?.styleProcessId || record?.styleProcessId || '', assignmentPlanId: record?.assignmentPlanId || '',
-    productionLinked: Boolean(record), productionLocked: Boolean(record?.assignmentPlan?.isCompleted), preservedReferences: refs || (cost ? {order:cost.workOrder,style:cost.style && {...cost.style,styleProcesses:cost.styleProcess?[cost.styleProcess]:[]}} : null),
-    enabled: { order: Boolean(cost?.workOrderId || record), style: Boolean(cost?.styleId || record), process: Boolean(cost?.styleProcessId || record) } };
+    productionLinked: Boolean(record), productionLocked: Boolean(record?.assignmentPlan?.isCompleted), preservedReferences: refs || (cost ? {order:cost.workOrder,style:cost.style && {...cost.style,styleProcesses:costProcesses}} : null),
+    enabled: { order: Boolean(cost?.workOrderId || record), style: Boolean(cost?.styleId || record), process: Boolean(cost?.styleProcessId || cost?.processLinks?.length || record) } };
 }
 
 export function expenseEditorForm(source: any) {

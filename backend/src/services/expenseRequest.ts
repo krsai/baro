@@ -55,7 +55,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     return { transactionDate: requestDate, transactionCodeId: item.transactionCodeId,
       unitPrice: item.unitPrice, quantity: item.quantity, vatRate: item.vatRate,
       workOrderId: item.workOrderId ?? null, styleId: item.styleId ?? null, styleProcessId: item.styleProcessId ?? null,
-      assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,
+      ...(item.styleProcessIds===undefined?{}:{styleProcessIds:item.styleProcessIds}), assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,
       partnerOrgId: body.partnerOrgId, currency, clientKey: `${body.clientKey}-${index + 1}` };
   });
   const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } });

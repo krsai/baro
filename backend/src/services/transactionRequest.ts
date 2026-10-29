@@ -1,3 +1,4 @@
+import { normalizeExpenseProcessIds, storedExpenseProcessIds, validateExpenseProcessLinks } from './expenseProcessLinks';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
 import { Prisma } from '@prisma/client';
@@ -8,7 +9,7 @@ import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assi
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
 
-export const REQUEST_INCLUDE = { expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
+export const REQUEST_INCLUDE = { processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 const invalid = (code: string): never => { throw createHttpError(400, code); };
 export { appSettingsKey, loadAppSettings } from './applicationSettings';
 import { loadAppSettings } from './applicationSettings';
@@ -46,6 +47,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const partnerOrgId = id(body?.partnerOrgId)!, transactionCodeId = id(body?.transactionCodeId)!;
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
   const assignmentPlanId = id(body?.assignmentPlanId, true);
+  const processIds = normalizeExpenseProcessIds(body?.styleProcessIds === undefined ? (edit?.cost ? storedExpenseProcessIds(edit.cost) : undefined) : body.styleProcessIds);
   const transactionDate = validateCostDate(body?.transactionDate);
   const period = await loadManagementPeriod(tx,orgId);
   assertManagedDate(transactionDate,period.startDate);
@@ -63,6 +65,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if (previous) {
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
+    if (JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if (previous.transactionCodeId !== transactionCodeId || previous.partnerOrgId !== partnerOrgId || previous.workOrderId !== workOrderId || previous.styleId !== styleId || previous.styleProcessId !== styleProcessId || previous.transactionDate !== transactionDate || previous.description !== description || previous.currency !== body.currency || previous.createdByEmployeeId !== actorId || !previous.unitPrice.equals(amounts.unitPrice) || !previous.quantity.equals(amounts.quantity) || !previous.vatRate.equals(amounts.vatRate) || COST_DETAIL_FIELDS.some(key => (previous.details?.[key] || '') !== (details[key] || ''))) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     return previous;
@@ -93,6 +96,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if (!edit?.record && !retainedStyle && styleId && !await tx.workOrderItem.findFirst({ where: { workOrderId, styleId, workOrder: { orgId }, style: { orgId } }, select: { id: true } })) return invalid('INVALID_REQUEST_STYLE');
   const retainedProcess=retainedStyle && edit.cost.styleProcessId===styleProcessId;
   if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record && !retainedProcess ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
+  await validateExpenseProcessLinks(tx,orgId,body,code,edit,processIds);
   for (const field of service.requiredFields) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
   const settings = await loadAppSettings(tx, orgId);
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
@@ -139,6 +143,11 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   // Production is recorded only in the vendor table, never employee work or AT.
   const data = { linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
     ...(edit?.request ? {expenseRequestId:edit.request.id,expenseRequestLine:edit.request.line} : {}) };
-  return edit?.cost ? tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data, include: REQUEST_INCLUDE }) :
-    tx.partnerTransactionCost.create({ data: { ...data, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
+  const previousIds=storedExpenseProcessIds(edit?.cost);
+  const replaceLinks=JSON.stringify(previousIds)!==JSON.stringify(processIds);
+  if(replaceLinks&&previousIds.length)await tx.expenseCostProcess.deleteMany({where:{costId:edit!.cost.id,orgId}});
+  const saved = edit?.cost ? await tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data, include: REQUEST_INCLUDE }) :
+    await tx.partnerTransactionCost.create({ data: { ...data, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
+  if(replaceLinks&&processIds.length)await tx.expenseCostProcess.createMany({data:processIds.map(styleProcessId=>({costId:saved.id,orgId,styleId:styleId!,styleProcessId}))});
+  return replaceLinks ? tx.partnerTransactionCost.findUnique({where:{id:saved.id},include:REQUEST_INCLUDE}) : saved;
 }
