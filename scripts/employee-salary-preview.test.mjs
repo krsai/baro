@@ -121,6 +121,25 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   const legacy=await fn(1,'2026-12',[],1);
   assert.equal(legacy.find(row=>row.workerId===1).salaryItems[0].amount,0);
   assert.equal(legacy.find(row=>row.workerId===2).salaryItems[0].amount,200000);
+  const overtime={code:'night',category:'ALLOWANCE',payTypes:['GENERAL'],formula:['BASE_SALARY','÷','CONST:26','÷','CONST:8','×','OVERTIME_HOURS','×','CONST:1.5'],paymentMonths:[],payCycle:'MONTHLY'};
+  const base={...items[0],code:'baseSalary'};
+  prisma.factory.findMany=async()=>[{...factory,salarySystemVersions:[{id:1,versionNumber:5,snapshot:{currencyCode:'VND',items:[base,overtime],rates:[{payType:'GENERAL',gradeId:7,salaryItemCode:'baseSalary',amount:2600000},{payType:'GENERAL',gradeId:7,salaryItemCode:'night',amount:999999}]}}]}];
+  prisma.attendanceEntry.findMany=async()=>[{workerId:1,factoryId:1,workDate:'2026-12-01',workedSeconds:10*3600}];
+  const calculated=await fn(1,'2026-12',[],1);const worker=calculated.find(row=>row.workerId===1),night=worker.salaryItems.find(row=>row.code==='night');
+  assert.equal(worker.parameters.BASE_SALARY,2600000);assert.equal(night.amount,37500);assert.equal(night.rate,null,'automatic allowance ignores dormant manual rate');
+  assert.notEqual(worker.salaryItems.find(row=>row.code==='baseSalary').amount,2600000,'overtime uses configured base rather than attendance-prorated base');
+});
+
+test('preview uses base-rate formulas without an own allowance rate and fails closed when the base is unavailable',()=>{
+ const night={code:'night',category:'ALLOWANCE',payTypes:['OUTPUT'],formula:['BASE_SALARY','÷','CONST:26','÷','CONST:8','×','OVERTIME_HOURS'],payCycle:'MONTHLY'};
+ const snapshot={currencyCode:'VND',items:[items[0],night],rates:rates.filter(row=>row.salaryItemCode==='base')};
+ let row=buildSalaryPreview(fixture({factories:[{...factory,salarySystemVersions:[{versionNumber:1,snapshot}]}]})).factories[0].employees[0];
+ assert.equal(row.salaryItems.find(item=>item.code==='night').amount,0,'full-attendance preview still has zero overtime');assert.notEqual(row.total,null);
+ const mixed={...night,formula:['BASE_SALARY','+','GRADE_RATE']};
+ row=buildSalaryPreview(fixture({factories:[{...factory,salarySystemVersions:[{versionNumber:1,snapshot:{...snapshot,items:[items[0],mixed]}}]}]})).factories[0].employees[0];
+ assert.equal(row.salaryItems.find(item=>item.code==='night').reason,'MISSING_RATE','mixed formulas still require their own rate');
+ row=buildSalaryPreview(fixture({factories:[{...factory,salarySystemVersions:[{versionNumber:1,snapshot:{...snapshot,items:[night]}}]}]})).factories[0].employees[0];
+ assert.equal(row.salaryItems[0].reason,'MISSING_BASE_SALARY');assert.equal(row.total,null);
 });
 
 test('preview route enforces salary access and company scope, validates month, and never initializes or writes settings',async()=>{

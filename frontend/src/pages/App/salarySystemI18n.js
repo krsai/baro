@@ -1,4 +1,6 @@
 const translations = {
+  '계산 기준': ['Calculation basis', 'Cơ sở tính'],
+  '같은 적용 급여 버전의 급여 타입·직급에 설정된 기본급 단가입니다. 근무일수로 비례 계산하기 전의 금액을 사용합니다.': ['The configured base salary rate for the same effective salary version, pay type and grade, before attendance proration.', 'Đơn giá lương cơ bản theo cùng phiên bản có hiệu lực, loại lương và cấp bậc, trước khi tính tỷ lệ ngày công.'],
   '기본 수당': ['Regular allowances', 'Phụ cấp cơ bản'],
   '추가 수당': ['Additional allowances', 'Phụ cấp bổ sung'],
   '일반': ['General', 'Thường'], '생산': ['Output', 'Sản lượng'],

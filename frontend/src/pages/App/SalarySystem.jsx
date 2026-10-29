@@ -82,6 +82,7 @@ const PAYMENT_MONTHS_BY_CYCLE = {
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
   GRADE_RATE: { label: '직급별 단가', currencyUnit: true, hint: '직원의 급여 타입과 직급에 지정된 이 급여 항목의 단가입니다.' },
+  BASE_SALARY: { label: '기본급', currencyUnit: true, hint: '같은 적용 급여 버전의 급여 타입·직급에 설정된 기본급 단가입니다. 근무일수로 비례 계산하기 전의 금액을 사용합니다.' },
   TENURE_YEARS: { label: '근속연수', unit: '년', hint: '급여 정산월 말일을 기준으로 계산한 직원의 만 근속연수(정수, 소수점 절사)입니다. 예: 입사 후 11개월째면 0, 만 1년을 채우면 1입니다.' },
   ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일', hint: '주말과 휴일 메뉴에 등록된 휴일을 제외한 정규 근무일 중 4시간 이상 근무한 날짜 수입니다. 휴일 근무는 포함하지 않습니다.' },
   SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '생산 급여 타입은 일요일과 등록 휴일을, 일반 급여 타입은 토·일요일과 등록 휴일을 제외한 해당 월의 날짜 수입니다.' },
@@ -100,7 +101,7 @@ const hasValidPaymentMonths = (item) => {
   return Boolean(expectedCount) && months.length === expectedCount && new Set(months).size === months.length && months.every((month) => Number.isInteger(Number(month)) && Number(month) >= 1 && Number(month) <= 12);
 };
 const FORMULA_PARAMETER_GROUPS = [
-  { label: '단가·근속', keys: ['GRADE_RATE', 'TENURE_YEARS'] },
+  { label: '단가·근속', keys: ['GRADE_RATE', 'BASE_SALARY', 'TENURE_YEARS'] },
   { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS', 'HOLIDAY_WORKDAYS'] },
   { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
   { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },
@@ -213,13 +214,11 @@ const canInsertTokenAt = (formula, cursorIndex, token) => {
     ? canAppendOperand(hypothetical)
     : canAppendOperatorToken(hypothetical, right);
 };
-// 일반(GENERAL)/수당(OUTPUT) 항목의 급여는 결국 직급별 단가에서 출발하므로, 생산수당처럼
-// 외부에서 이미 계산된 값을 그대로 지급하는 고정 항목(계산식이 정확히 PRODUCTION_ALLOWANCE
-// 단일 토큰인 경우)이 아니면 계산식의 첫 토큰을 직급별 단가로 고정한다.
-const ensureFormulaStartsWithGradeRate = (formula) => {
+// Keep the chosen grade-rate/base-salary basis when reopening an existing formula.
+const ensureFormulaHasBasis = (formula) => {
   const normalized = Array.isArray(formula) ? formula : [];
   const isProductionAllowancePassthrough = normalized.length === 1 && normalized[0] === 'PRODUCTION_ALLOWANCE';
-  if (isProductionAllowancePassthrough || normalized[0] === 'GRADE_RATE') return normalized;
+  if (isProductionAllowancePassthrough || ['GRADE_RATE','BASE_SALARY'].includes(normalized[0])) return normalized;
   return ['GRADE_RATE', ...normalized];
 };
 
@@ -445,7 +444,7 @@ const SalarySystem = () => {
   };
   const openFormulaDialog = (row = selected) => {
     setSelectedId(row.id);
-    const initialFormula = ensureFormulaStartsWithGradeRate(row.formula);
+    const initialFormula = ensureFormulaHasBasis(row.formula);
     setFormulaDraft(initialFormula);
     setCursorIndex(initialFormula.length);
     setFormulaSettingsDraft({ ...row, payTypes: [...(row.payTypes || [])] });
@@ -455,7 +454,7 @@ const SalarySystem = () => {
   const isFirstTokenLocked = selected.id !== 'incentiveTotal';
   const minCursorIndex = isFirstTokenLocked ? 1 : 0;
   const resetFormulaDraft = () => {
-    const resetFormula = isFirstTokenLocked ? ['GRADE_RATE'] : [];
+    const resetFormula = isFirstTokenLocked ? [formulaDraft[0] === 'BASE_SALARY' ? 'BASE_SALARY' : 'GRADE_RATE'] : [];
     setFormulaDraft(resetFormula);
     setCursorIndex(resetFormula.length);
   };
@@ -527,6 +526,7 @@ const SalarySystem = () => {
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Stack spacing={2}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field,value)=>setFormulaSettingsDraft(previous=>({...previous,[field]:value}))}/><Alert severity="info">{languageCode === 'ko' ? '이름은 변경할 수 있으며, 생산수당 자동 계산 규칙은 유지됩니다.' : languageCode === 'vi' ? 'Có thể đổi tên. Quy tắc tự động tính phụ cấp sản lượng được giữ nguyên.' : 'You can rename this item. Its automatic production allowance calculation remains unchanged.'}</Alert></Stack> : <Stack spacing={2}>
       <LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field, value) => setFormulaSettingsDraft(prev => ({ ...prev, [field]: value }))} />
       <Box><Typography variant="body2" fontWeight={600}>{languageCode === 'ko' ? '적용 대상' : languageCode === 'vi' ? 'Đối tượng áp dụng' : 'Applies to'}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map(payType=><FormControlLabel key={payType} label={getPayTypeLabel(payType,payType,languageCode)} control={<Checkbox size="small" checked={(formulaSettingsDraft.payTypes||[]).includes(payType)} disabled={formulaSettingsDraft.category==='INCENTIVE'} onChange={()=>toggleDraftPayType(payType)} inputProps={{'aria-label':getPayTypeLabel(payType,payType,languageCode)}}/>}/>)}</Stack></Box>
+      <FormControl size="small" sx={{maxWidth:260}}><InputLabel id="salary-formula-basis-label">{t('계산 기준')}</InputLabel><Select labelId="salary-formula-basis-label" label={t('계산 기준')} value={formulaDraft[0] === 'BASE_SALARY' ? 'BASE_SALARY' : 'GRADE_RATE'} onChange={event=>setFormulaDraft(previous=>[event.target.value,...previous.slice(1)])}><MenuItem value="GRADE_RATE">{t('직급별 단가')}</MenuItem>{formulaSettingsDraft.category!=='BASE'&&<MenuItem value="BASE_SALARY">{t('기본급')}</MenuItem>}</Select></FormControl>
       <Paper variant="outlined" sx={{ p: 2, minHeight: 80, bgcolor: 'background.default' }}>
         <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
           <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
@@ -564,7 +564,7 @@ const SalarySystem = () => {
           <Stack spacing={1.5}>
             {FORMULA_PARAMETER_GROUPS.filter((group) => !group.incentiveOnly || formulaSettingsDraft.category === 'INCENTIVE').map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
-              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.map((key) => {
+              <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.filter(key=>key!=='BASE_SALARY'||formulaSettingsDraft.category!=='BASE').map((key) => {
                 const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode);
                 return <Stack key={key} direction="row" spacing={0.25} alignItems="center">
                   <Button size="small" variant="outlined" disabled={!canInsertTokenAt(formulaDraft, cursorIndex, key)} onClick={() => insertFormulaToken(key)}>{t(FORMULA_PARAMETERS[key].label)} · {t(unit)}</Button>

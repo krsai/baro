@@ -1,5 +1,5 @@
 export const SALARY_FORMULA_PARAMETERS = new Set([
-  "GRADE_RATE", "TENURE_YEARS", "ACTUAL_WORKDAYS", "SCHEDULED_WORKDAYS",
+  "GRADE_RATE", "BASE_SALARY", "TENURE_YEARS", "ACTUAL_WORKDAYS", "SCHEDULED_WORKDAYS",
   "HOLIDAY_WORKDAYS", "WORK_HOURS", "OVERTIME_HOURS", "HOLIDAY_HOURS", "FULL_ATTENDANCE_FACTOR",
   "PRODUCTION_ALLOWANCE", "PRODUCTION_ST_EXCESS_PERCENT",
 ]);
@@ -32,7 +32,7 @@ const isWellFormedFormulaTokenSequence = (tokens: string[]): boolean => {
 
 // INCENTIVE has exactly two allowed shapes: the fixed production-allowance
 // passthrough (single PRODUCTION_ALLOWANCE token, always code "incentiveTotal"),
-// or a normal GRADE_RATE-starting arithmetic formula that may reference
+// or a normal grade-rate/base-salary arithmetic formula that may reference
 // PRODUCTION_ST_EXCESS_PERCENT (a second, optional, output-only incentive item -
 // e.g. GRADE_RATE × PRODUCTION_ST_EXCESS_PERCENT pays the grade rate once per
 // percentage point that an employee's monthly production ST exceeds the
@@ -44,8 +44,26 @@ export const validateSalaryFormula = (value: unknown, category: string) => {
   if (tokens.includes("PRODUCTION_ALLOWANCE") && !isProductionAllowancePassthrough) return false;
   if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ALLOWANCE")) return false;
   if (category !== "INCENTIVE" && tokens.includes("PRODUCTION_ST_EXCESS_PERCENT")) return false;
-  if (!isProductionAllowancePassthrough && tokens[0] !== "GRADE_RATE") return false;
+  if (category === 'BASE' && tokens.includes('BASE_SALARY')) return false;
+  if (!isProductionAllowancePassthrough && !['GRADE_RATE','BASE_SALARY'].includes(tokens[0]!)) return false;
   return isWellFormedFormulaTokenSequence(tokens);
+};
+
+// Reference the configured base rate in this exact factory/version, not a
+// prorated payslip amount or another allowance. No recursive formula references.
+export const resolveConfiguredBaseSalary = (items: any[], rates: any[], payType: string, gradeId: number): number => {
+  const bases = items.filter(item => item.category === 'BASE' && Array.isArray(item.payTypes)
+    && (item.payTypes.includes(payType) || payType === 'OUTPUT_FIXED' && item.payTypes.includes('OUTPUT')));
+  const canonical = bases.filter(item => String(item.code || item.id) === 'baseSalary');
+  const base = canonical.length === 1 ? canonical[0] : bases.length === 1 ? bases[0] : null;
+  if (!base || base.formula?.includes('BASE_SALARY')) throw new Error('BASE_SALARY_RATE_REQUIRED');
+  const code = String(base.code || base.id);
+  const candidates = rates.filter(rate => rate.salaryItemCode === code && Number(rate.gradeId) === gradeId);
+  const matches = candidates.filter(rate=>rate.payType===payType);
+  const fallback = payType === 'OUTPUT_FIXED' ? candidates.filter(rate=>rate.payType==='OUTPUT') : [];
+  const selected = matches.length ? matches : fallback;
+  if (selected.length !== 1 || selected[0].amount == null || !Number.isFinite(Number(selected[0].amount)) || Number(selected[0].amount)<0) throw new Error('BASE_SALARY_RATE_REQUIRED');
+  return Number(selected[0].amount);
 };
 
 export const evaluateSalaryFormula = (formula: string[], parameters: Record<string, number>) => {

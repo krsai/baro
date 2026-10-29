@@ -298,13 +298,17 @@ const PayrollBoard = () => {
     match = raw.match(/salary rate is missing for employee (\d+), item (.+)/i);
     if (match) {
       const employee = employeeDirectory.find((row) => Number(row?.id) === Number(match[1]));
+      if (match[2] === 'BASE_SALARY') {
+        const name = employee?.name || `#${match[1]}`;
+        return languageCode === 'ko' ? `${name}의 기본급 참조를 확인할 수 없습니다. 적용 급여 버전에서 해당 급여 타입·직급의 기본급 단가를 확인해 주세요.` : languageCode === 'vi' ? `Không xác định được lương cơ bản của ${name}. Kiểm tra đơn giá theo loại lương và cấp bậc trong phiên bản có hiệu lực.` : `The base salary for ${name} could not be resolved. Check its pay type and grade rate in the effective salary version.`;
+      }
       return `${employee?.name || `직원 #${match[1]}`}의 급여 항목 '${match[2]}' 단가가 없습니다. 급여 설정에서 해당 급여 타입과 직급의 단가를 입력해 주세요.`;
     }
     if (/attendance records must belong/i.test(raw) || /attendance in multiple factories/i.test(raw)) return '직원의 출퇴근 기록이 소속 공장과 일치하지 않습니다. 출퇴근 기록을 확인해 한 직원의 기록이 올바른 공장 한 곳에만 있도록 수정해 주세요.';
     if (/salary system version .* is invalid/i.test(raw)) return '적용 중인 급여 설정 버전의 항목 또는 단가 정보가 손상되었습니다. 급여 설정을 새 버전으로 저장하고 적용 구간을 지정해 주세요.';
     if (/attendance and work records are incomplete/i.test(raw)) return '해당 월의 필수 출퇴근 기록 또는 생산 작업 기록이 모두 입력되지 않았습니다.';
     return raw || '알 수 없는 오류가 발생했습니다. 입력 자료와 급여 설정을 확인해 주세요.';
-  }, [employeeDirectory]);
+  }, [employeeDirectory, languageCode]);
   const allMonthsLabel = languageCode === 'ko'
     ? '전체'
     : languageCode === 'vi'

@@ -470,19 +470,19 @@ const PayrollEntry = () => {
   );
   const formulaParameterLabels = useMemo(() => {
     if (languageCode === "ko") return {
-      GRADE_RATE: "직급별 단가", TENURE_YEARS: "근속 연수", ACTUAL_WORKDAYS: "실제 근무일수",
+      GRADE_RATE: "직급별 단가", BASE_SALARY: "기본급", TENURE_YEARS: "근속 연수", ACTUAL_WORKDAYS: "실제 근무일수",
       SCHEDULED_WORKDAYS: "기준 근무일수", HOLIDAY_WORKDAYS: "휴일 근무일수", WORK_HOURS: "정규 근무시간",
       OVERTIME_HOURS: "연장근무시간", HOLIDAY_HOURS: "휴일 특근시간", FULL_ATTENDANCE_FACTOR: "만근 여부",
       PRODUCTION_ALLOWANCE: "생산수당", PRODUCTION_ST_EXCESS_PERCENT: "생산 ST 초과율",
     };
     if (languageCode === "vi") return {
-      GRADE_RATE: "Đơn giá theo cấp bậc", TENURE_YEARS: "Thâm niên", ACTUAL_WORKDAYS: "Ngày làm thực tế",
+      GRADE_RATE: "Đơn giá theo cấp bậc", BASE_SALARY: "Lương cơ bản", TENURE_YEARS: "Thâm niên", ACTUAL_WORKDAYS: "Ngày làm thực tế",
       SCHEDULED_WORKDAYS: "Ngày làm tiêu chuẩn", HOLIDAY_WORKDAYS: "Ngày làm ngày nghỉ", WORK_HOURS: "Giờ làm chính thức",
       OVERTIME_HOURS: "Giờ tăng ca", HOLIDAY_HOURS: "Giờ làm ngày nghỉ", FULL_ATTENDANCE_FACTOR: "Đủ chuyên cần",
       PRODUCTION_ALLOWANCE: "Phụ cấp sản lượng", PRODUCTION_ST_EXCESS_PERCENT: "Tỷ lệ vượt ST sản xuất",
     };
     return {
-      GRADE_RATE: "Grade Rate", TENURE_YEARS: "Tenure Years", ACTUAL_WORKDAYS: "Actual Workdays",
+      GRADE_RATE: "Grade Rate", BASE_SALARY: "Base Salary", TENURE_YEARS: "Tenure Years", ACTUAL_WORKDAYS: "Actual Workdays",
       SCHEDULED_WORKDAYS: "Scheduled Workdays", HOLIDAY_WORKDAYS: "Holiday Workdays", WORK_HOURS: "Regular Hours",
       OVERTIME_HOURS: "Overtime Hours", HOLIDAY_HOURS: "Holiday Hours", FULL_ATTENDANCE_FACTOR: "Full Attendance",
       PRODUCTION_ALLOWANCE: "Production Allowance", PRODUCTION_ST_EXCESS_PERCENT: "Production ST Excess %",
@@ -496,7 +496,7 @@ const PayrollEntry = () => {
   const formatFormulaParameterValue = useCallback(
     (token, rawValue) => {
       const numeric = Number(rawValue) || 0;
-      if (token === "GRADE_RATE") return formatDong(numeric);
+      if (token === "GRADE_RATE" || token === "BASE_SALARY") return formatDong(numeric);
       if (token === "ACTUAL_WORKDAYS" || token === "SCHEDULED_WORKDAYS" || token === "HOLIDAY_WORKDAYS") {
         return `${formatNumberWithCommas(numeric)}${formulaUnitSuffixes.days}`;
       }

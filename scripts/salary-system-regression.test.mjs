@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { evaluateSalaryFormula, validateSalaryFormula } from '../backend/dist/employees/salaryFormula.js';
+import { evaluateSalaryFormula, validateSalaryFormula, resolveConfiguredBaseSalary } from '../backend/dist/employees/salaryFormula.js';
 import {createRequire} from 'node:module';
 import {loadSourceBindings} from './helpers/source-bindings.mjs';
 const require=createRequire(import.meta.url);
@@ -36,6 +36,21 @@ test('validates and evaluates the restricted salary formula language', () => {
   assert.equal(validateSalaryFormula(['ACTUAL_WORKDAYS'], 'ALLOWANCE'), false);
   assert.equal(validateSalaryFormula(['PRODUCTION_ALLOWANCE'], 'INCENTIVE'), true);
   assert.throws(() => evaluateSalaryFormula(['CONST:1', '÷', 'CONST:0'], {}), /division by zero/);
+});
+
+test('base salary is a valid allowance basis with exact same-version grade rates and no recursive base references',()=>{
+ const formula=['BASE_SALARY','÷','CONST:26','÷','CONST:8','×','OVERTIME_HOURS','×','CONST:1.5'];
+ assert.equal(validateSalaryFormula(formula,'ALLOWANCE'),true);
+ assert.equal(validateSalaryFormula(['BASE_SALARY'],'BASE'),false);
+ assert.equal(evaluateSalaryFormula(formula,{BASE_SALARY:2600000,OVERTIME_HOURS:2}),37500);
+ assert.throws(()=>evaluateSalaryFormula(formula,{OVERTIME_HOURS:2}),/BASE_SALARY/);
+ const items=[{code:'baseSalary',category:'BASE',payTypes:['GENERAL','OUTPUT'],formula:['GRADE_RATE']}];
+ const rates=[{salaryItemCode:'baseSalary',payType:'GENERAL',gradeId:1,amount:2600000},{salaryItemCode:'baseSalary',payType:'OUTPUT',gradeId:1,amount:3000000}];
+ assert.equal(resolveConfiguredBaseSalary(items,rates,'GENERAL',1),2600000);
+ assert.equal(resolveConfiguredBaseSalary(items,rates,'OUTPUT_FIXED',1),3000000);
+ assert.throws(()=>resolveConfiguredBaseSalary(items,rates,'GENERAL',2),/BASE_SALARY_RATE_REQUIRED/);
+ assert.throws(()=>resolveConfiguredBaseSalary(items,[],'GENERAL',1),/BASE_SALARY_RATE_REQUIRED/);
+ assert.throws(()=>resolveConfiguredBaseSalary([{...items[0],formula:['BASE_SALARY']}],rates,'GENERAL',1),/BASE_SALARY_RATE_REQUIRED/);
 });
 
 test('startup drift detection repairs the nullable salary version boundary column', async () => {

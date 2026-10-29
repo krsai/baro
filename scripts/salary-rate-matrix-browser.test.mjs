@@ -31,7 +31,7 @@ try {
       {id:'lunch',nameEn:'Lunch',nameKo:'점심 수당',nameVi:'Ăn trưa',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
       {id:'phone',nameEn:'Phone',nameKo:'통신비',nameVi:'Điện thoại',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
       {id:'tenure',nameEn:'Tenure',nameKo:'근속 수당',nameVi:'Thâm niên',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'SEMIANNUAL'},
-      {id:'custom-night',nameEn:'Overtime',nameKo:'야근 수당',nameVi:'Tăng ca',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
+      {id:'custom-night',nameEn:'Overtime',nameKo:'야근 수당',nameVi:'Tăng ca',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE','÷','CONST:26','÷','CONST:8','×','OVERTIME_HOURS','×','CONST:1.5'],payCycle:'MONTHLY'},
       {id:'incentiveTotal',nameEn:'Output incentive',nameKo:'실적 수당',nameVi:'Phụ cấp kết quả',category:'INCENTIVE',payTypes:['OUTPUT'],formula:['PRODUCTION_ALLOWANCE'],payCycle:'MONTHLY'},
     ];
     const grades=[1,2,3,4].map(id=>({id,code:`CL${id}`,nameEn:`Grade ${id}`,nameKo:`직급 ${id}`,nameVi:`Bậc ${id}`,isActive:true}));
@@ -96,6 +96,13 @@ try {
     await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
     assert.match(await rate.inputValue(),/1[,.]500/,'canceling settlement does not discard inline rate edits');
     assert.equal(writes.length,0,'editing stays local until version save');
+    const night=matrix.locator('[data-salary-item="custom-night"]');
+    await night.getByRole('button',{name:new RegExp(editLabel)}).click();dialog=page.getByRole('dialog');
+    await dialog.getByRole('combobox',{name:{ko:'계산 기준',en:'Calculation basis',vi:'Cơ sở tính'}[lang],exact:true}).click();
+    await page.getByRole('option',{name:{ko:'기본급',en:'Base salary',vi:'Lương cơ bản'}[lang],exact:true}).click();
+    await dialog.getByRole('button',{name:{ko:'확인',en:'Confirm',vi:'Xác nhận'}[lang],exact:true}).click();
+    assert.equal(await night.getByRole('textbox').count(),0,'base-salary formulas need no manual allowance inputs');
+    assert.ok((await night.innerText()).includes({ko:'자동 계산',en:'Automatic',vi:'Tự động'}[lang]));
     const production=matrix.locator('[data-salary-item="incentiveTotal"]');
     const originalProductionName={ko:'실적 수당',en:'Output incentive',vi:'Phụ cấp kết quả'}[lang];
     assert.match(await production.innerText(),new RegExp(originalProductionName),'loading preserves custom production name');
@@ -126,6 +133,7 @@ try {
     assert.equal(writes[0].rates.find(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='baseSalary').amount,0,'display formatting preserves stored zero');
     assert.deepEqual(writes[0].items.map(row=>row.id),['baseSalary','phone','lunch','tenure','custom-night','incentiveTotal']);
     assert.equal(writes[0].items.find(row=>row.id==='custom-night').category,'ALLOWANCE','display grouping preserves stored category');
+    assert.deepEqual(writes[0].items.find(row=>row.id==='custom-night').formula,['BASE_SALARY','÷','CONST:26','÷','CONST:8','×','OVERTIME_HOURS','×','CONST:1.5'],'basis switch preserves the rest of the formula');
     assert.equal(writes[0].rates.find(row=>row.salaryItemCode==='custom-night').amount,500,'excluded display totals preserve additional rates');
     assert.equal(writes[0].rates.find(row=>row.payType==='GENERAL' && row.gradeId===1 && row.salaryItemCode==='baseSalary').amount,1500);
     assert.equal(writes[0].rates.some(row=>row.payType==='GENERAL' && row.salaryItemCode==='lunch'),false);

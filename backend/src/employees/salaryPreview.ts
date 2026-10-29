@@ -1,7 +1,7 @@
 import { resolveEmployeeEffectivePayType } from './employeeCompensation';
 import { normalizeEmployeePayTypePolicy } from './employeePayTypePolicy';
 import { resolveSalaryAttendanceParameters } from './salaryAttendanceParameters';
-import { evaluateSalaryFormula } from './salaryFormula';
+import { evaluateSalaryFormula, resolveConfiguredBaseSalary } from './salaryFormula';
 import { employmentDateKey, hasPreviousYearSixMonthsService, isTenureSalaryItem, resolveSalaryTenureYears } from './salaryTenure';
 import { resolvePayrollManagement } from './payrollManagement';
 
@@ -48,10 +48,15 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
         const candidates = rates.filter(rate => rate.salaryItemCode === code && Number(rate.gradeId) === employee.gradeId);
         const rate = candidates.find(row => row.payType === payType) || (payType === 'OUTPUT_FIXED' ? candidates.find(row => row.payType === 'OUTPUT') : null);
         const formula: string[] = Array.isArray(item.formula) ? item.formula : [];
-        if (formula[0] === 'GRADE_RATE' && !rate) return { code, amount: null, reason: 'MISSING_RATE' };
+        if (formula.includes('GRADE_RATE') && !rate) return { code, amount: null, reason: 'MISSING_RATE' };
         if (formula.includes('PRODUCTION_ALLOWANCE') && !Number.isFinite(parameters.PRODUCTION_ALLOWANCE)) return { code, amount: null, reason: 'MISSING_PRODUCTION_RATE' };
         try {
-          let amount = Number(evaluateSalaryFormula(formula, {...parameters, GRADE_RATE: Number(rate?.amount || 0)}));
+          let baseSalary = 0;
+          if (formula.includes('BASE_SALARY')) {
+            try { baseSalary = resolveConfiguredBaseSalary(items,rates,payType,employee.gradeId); }
+            catch { return {code,amount:null,reason:'MISSING_BASE_SALARY'}; }
+          }
+          let amount = Number(evaluateSalaryFormula(formula, {...parameters, BASE_SALARY:baseSalary, GRADE_RATE: Number(rate?.amount || 0)}));
           if (item.capValue != null && item.capValue !== '') amount = Math.min(amount, Number(item.capValue));
           if (!Number.isFinite(amount)) return {code,amount:null,reason:'INVALID_FORMULA'};
           const rounded = Math.max(0, Math.round(amount));

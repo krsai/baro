@@ -27,7 +27,7 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
     return ()=>{cancelled=true;controller.abort();};
   },[open,orgId,month,all,reload]);
   const money=value=>value===null?text.unknown:value===0?'—':Number(value).toLocaleString(languageCode);
-  const reasonText=reason=>({NOT_APPLICABLE:text.notApplicable,PAYROLL_EXCLUDED:text.excluded,NOT_PAYMENT_MONTH:text.unpaid,TENURE_INELIGIBLE:text.ineligible,TENURE_ZERO_YEARS:tenureText.zero,MISSING_RATE:text.missingRate,MISSING_PRODUCTION_RATE:text.missingProduction,INVALID_FORMULA:text.badFormula}[reason] || '');
+  const reasonText=reason=>({NOT_APPLICABLE:text.notApplicable,PAYROLL_EXCLUDED:text.excluded,NOT_PAYMENT_MONTH:text.unpaid,TENURE_INELIGIBLE:text.ineligible,TENURE_ZERO_YEARS:tenureText.zero,MISSING_RATE:text.missingRate,MISSING_BASE_SALARY:text.missingRate,MISSING_PRODUCTION_RATE:text.missingProduction,INVALID_FORMULA:text.badFormula}[reason] || '');
   const sticky={position:'sticky',left:0,zIndex:1,bgcolor:ui.color.surface,minWidth:160};
   return <Dialog open={open} onClose={onClose} fullWidth maxWidth="xl" aria-labelledby="employee-salary-preview-title">
     <DialogTitle id="employee-salary-preview-title">{text.title}</DialogTitle>

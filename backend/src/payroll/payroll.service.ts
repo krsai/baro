@@ -27,7 +27,7 @@ import {
   WORK_RECORD_WITH_REFS_INCLUDE,
 } from "../work-records/workRecord.shared";
 import { loadManagementPeriod, assertManagedDate, normalizeFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
-import { evaluateSalaryFormula } from "../employees/salaryFormula";
+import { evaluateSalaryFormula, resolveConfiguredBaseSalary } from "../employees/salaryFormula";
 import { hasPreviousYearSixMonthsService, isTenureSalaryItem, resolveSalaryTenureYears } from "../employees/salaryTenure";
 import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendanceParameters";
 import { employeePayTypePolicyMap, isPolicyWorkday, loadEmployeePayTypePolicies } from "../employees/employeePayTypePolicy";
@@ -788,14 +788,18 @@ const buildIntegratedPayrollEmployees = async (
             || (payType === EMPLOYEE_PAY_TYPE.OUTPUT_FIXED
               ? matchingRates.find((row) => String(row?.payType || "").toUpperCase() === EMPLOYEE_PAY_TYPE.OUTPUT)
               : null);
-          // Only formulas that actually start with GRADE_RATE need a configured rate row.
+          // Only formulas that reference GRADE_RATE need their own configured rate row.
           // The fixed production-allowance passthrough item (formula === [PRODUCTION_ALLOWANCE])
           // never has a rate; a custom INCENTIVE item that starts with GRADE_RATE (e.g. a
           // production-ST-excess bonus) does, exactly like a normal BASE/ALLOWANCE item.
-          if (formula[0] === "GRADE_RATE" && !matchedRate) {
+          if (formula.includes("GRADE_RATE") && !matchedRate) {
             throw createHttpError(409, `salary rate is missing for employee ${employee.id}, item ${code}`);
           }
-          rate = matchedRate ? toPayrollAmount(matchedRate.amount, 0) : null;
+          if (formula.includes('BASE_SALARY')) {
+            try { parameters.BASE_SALARY = resolveConfiguredBaseSalary(items,rates,payType,employee.gradeId); }
+            catch { throw createHttpError(409,`salary rate is missing for employee ${employee.id}, item BASE_SALARY`); }
+          }
+          rate = formula.includes('GRADE_RATE') && matchedRate ? toPayrollAmount(matchedRate.amount, 0) : null;
           const itemParameters = { ...parameters, GRADE_RATE: toPayrollAmount(matchedRate?.amount, 0) };
           amount = Number(evaluateSalaryFormula(formula, itemParameters) ?? 0);
           const capValue = toPayrollAmountOrNull(item?.capValue);

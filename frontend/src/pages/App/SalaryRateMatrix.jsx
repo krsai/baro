@@ -20,7 +20,7 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   const name = row => resolveLocalizedAttributeName(row, languageCode);
   const amount = (row, type, grade) => Number(String(rates[`${type}:${grade.id}`]?.[row.id] || '0').replace(/,/g, ''));
   const formatAmount = value => value === 0 ? '—' : value.toLocaleString(languageCode);
-  const monthlyItems = items.filter(isMonthlyBaseSalaryItem);
+  const monthlyItems = items.filter(row=>isMonthlyBaseSalaryItem(row)&&(row.formula||[]).includes('GRADE_RATE'));
   const displayCategories = { BASE: categories.BASE, ALLOWANCE: '기본 수당', ADDITIONAL_ALLOWANCE: '추가 수당', INCENTIVE: categories.INCENTIVE };
   const units = [...new Set(monthlyItems.map(unitLabel))];
   const gradeBorder = index => ({ borderLeft: `${index === 0 ? 2 : 1}px solid ${ui.color.border}` });
@@ -44,7 +44,7 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
                   </TableCell>
                   {TYPES.flatMap(type => {
                     const active = (row.payTypes || []).includes(type);
-                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : <InputBase fullWidth disabled={disabled} value={amount(row,type,grade)===0?'':amount(row,type,grade).toLocaleString(languageCode)} placeholder="—" onFocus={event=>event.target.select()} onChange={event=>onChangeRate(row.id,type,grade.id,event.target.value)} inputProps={{inputMode:'numeric','aria-label':`${name(row)} ${getPayTypeLabel(type,type,languageCode)} ${name(grade)} ${currencyCode}`}} sx={{fontSize:ui.table.fontSize,border:'1px solid transparent',borderRadius:1,'&:hover':{borderColor:ui.color.border},'&.Mui-focused':{borderColor:'primary.main',bgcolor:'background.paper'},'& input':{textAlign:'right',fontVariantNumeric:'tabular-nums',p:'4px',height:'auto'},'& input::placeholder':{opacity:1,color:'text.disabled'}}} />}</TableCell>) : <TableCell key={type}>—</TableCell>;
+                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : !(row.formula||[]).includes('GRADE_RATE') ? labels[2] : <InputBase fullWidth disabled={disabled} value={amount(row,type,grade)===0?'':amount(row,type,grade).toLocaleString(languageCode)} placeholder="—" onFocus={event=>event.target.select()} onChange={event=>onChangeRate(row.id,type,grade.id,event.target.value)} inputProps={{inputMode:'numeric','aria-label':`${name(row)} ${getPayTypeLabel(type,type,languageCode)} ${name(grade)} ${currencyCode}`}} sx={{fontSize:ui.table.fontSize,border:'1px solid transparent',borderRadius:1,'&:hover':{borderColor:ui.color.border},'&.Mui-focused':{borderColor:'primary.main',bgcolor:'background.paper'},'& input':{textAlign:'right',fontVariantNumeric:'tabular-nums',p:'4px',height:'auto'},'& input::placeholder':{opacity:1,color:'text.disabled'}}} />}</TableCell>) : <TableCell key={type}>—</TableCell>;
                   })}
                 </TableRow>}
               </Draggable>)}
