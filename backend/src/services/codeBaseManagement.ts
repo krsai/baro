@@ -13,7 +13,13 @@ export async function initializeOtherExpenseDefaults(tx: any, actorId?: number |
   } });
   let base = await tx.transactionCodeBase.findUnique({ where: { code: 'OTH' } });
   if (!base) {
-    const industry = await tx.settingServiceDefault.findUnique({ where: { code: 'GENERAL' } });
+    let industry = await tx.settingServiceDefault.findUnique({ where: { code: 'GENERAL' } });
+    if (!industry) {
+      // The unclassified general-service template may have been renamed before
+      // OTHER is first initialized. Never pick arbitrarily from several templates.
+      const candidates = (await tx.settingServiceDefault.findMany({ where: { entryMode: 'GENERAL' } })).filter((row: any) => row.partnerRoleId == null);
+      if (candidates.length === 1) industry = candidates[0];
+    }
     if (!industry) throw createHttpError(409, 'DEFAULT_GENERAL_SERVICE_REQUIRED');
     base = await saveCodeBase(tx, { code: 'OTH', nameKo: '기타 비용', nameEn: 'Other expenses', nameVi: 'Chi phí khác',
       expenseTypeId: type.id, serviceTypeId: industry.id, taxTreatmentIds: [1,2,3], requiredFields: [],

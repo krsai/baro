@@ -1031,6 +1031,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'ServiceDefaultRenamePropagation',
   'CodeDefaultRenamePropagation',
   'BankLedgerEntry_accountId_orgId_fkey',
   'BankLedgerAccount_orgId_fkey',

@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import service from '../backend/dist/services/codeBaseManagement.js';
 import routes from '../backend/dist/services/transactionSettingRoutes.js';
 import requests from '../backend/dist/services/transactionRequest.js';
+import industries from '../backend/dist/services/partnerIndustry.js';
 const inheritance = fs.readFileSync('backend/prisma/migrations/20261011120000_setting_inheritance/migration.sql','utf8');
 const rollout = fs.readFileSync('backend/prisma/migrations/20261013090000_code_bases_tax/migration.sql','utf8');
 const usageRollout = fs.readFileSync('backend/prisma/migrations/20261013120000_code_base_usage_fk/migration.sql','utf8');
@@ -49,6 +50,7 @@ async function fixture(legacyCode = 'OLD_CODE') {
   await db.exec(inheritance); await db.exec(rollout); await db.exec(usageRollout);
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261029160000_code_base_rename/migration.sql','utf8'));
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261029170000_partner_industry_code_rename/migration.sql','utf8'));
   return db;
 }
 
@@ -173,6 +175,47 @@ test('code-family collisions roll back every code, flag and name including unuse
   }
  }finally{await db.close();}
 });
+
+test('industry rename keeps source, tenant, partner and cost identities and preserves tenant overrides',async()=>{
+ const db=await fixture();try {
+  const [source]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows;
+  await db.query(`UPDATE "OutsourcingServiceType" SET "systemDefaultId"=$1,"isOverridden"=false WHERE id=100`,[source.id]);
+  await db.query(`INSERT INTO "OutsourcingServiceType"(id,"ownerOrgId",code,"systemDefaultId","isOverridden","entryMode","nameEn","isActive") VALUES(200,2,'SYSTEM_LOGISTICS',$1,true,'LOGISTICS','Custom logistics',false)`,[source.id]);
+  await db.exec(`INSERT INTO "OrganizationOutsourcingServiceType"("serviceTypeId") VALUES(100),(200);
+   CREATE TABLE "OrgRelationship"(id INT PRIMARY KEY,"systemIndustryId" INT REFERENCES "SettingServiceDefault"(id));
+   INSERT INTO "OrgRelationship" VALUES(1,${source.id});`);
+  const preserved=['PartnerTransactionCost','TransactionCode','TransactionCodeBase','SettingTransactionCodeDefault','OrganizationOutsourcingServiceType','OrgRelationship'];
+  const snapshot=async()=>Object.fromEntries(await Promise.all(preserved.map(async table=>[table,(await db.query(`SELECT * FROM "${table}" ORDER BY to_jsonb("${table}")::text`)).rows])));
+  const before=await snapshot();
+  await db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...source,code:'FREIGHT'},source.id));
+  const rows=(await db.query('SELECT * FROM "OutsourcingServiceType" ORDER BY id')).rows;
+  assert.deepEqual(rows.map(row=>row.id),[100,200]);assert.ok(rows.every(row=>row.code==='FREIGHT'));
+  assert.ok(rows.every(row=>row.systemDefaultId===source.id));
+  assert.equal(rows[1].nameEn,'Custom logistics');assert.equal(rows[1].isActive,false);assert.equal(rows[1].isOverridden,true);
+  assert.deepEqual(await snapshot(),before,'only industry code labels move; cost codes and business FKs do not');
+  await db.exec(inheritance);await db.exec(rollout);await db.exec(usageRollout);
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261029160000_code_base_rename/migration.sql','utf8'));
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261029170000_partner_industry_code_rename/migration.sql','utf8'));
+  await db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...source,code:'FREIGHT_AGAIN'},source.id));
+  assert.deepEqual(await snapshot(),before);
+ }finally{await db.close();}
+});
+
+test('industry duplicate codes and changed entry modes roll back source and tenant state',async()=>{
+ const db=await fixture();try {
+  const [source]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows;
+  await db.query(`UPDATE "OutsourcingServiceType" SET "systemDefaultId"=$1,"isOverridden"=false WHERE id=100`,[source.id]);
+  await db.exec(`INSERT INTO "OutsourcingServiceType"(id,"ownerOrgId",code,"entryMode","isActive") VALUES(200,1,'TAKEN','GENERAL',false)`);
+  const snapshot=async()=>[(await db.query('SELECT * FROM "SettingServiceDefault" ORDER BY id')).rows,(await db.query('SELECT * FROM "OutsourcingServiceType" ORDER BY id')).rows];
+  const before=await snapshot();
+  for(const code of ['PRINTING','TAKEN']){
+   await assert.rejects(db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...source,code,nameEn:'Must not persist'},source.id)),/INDUSTRY_CODE_CONFLICT/);
+   assert.deepEqual(await snapshot(),before);
+  }
+  await assert.rejects(db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...source,code:'FREIGHT',entryMode:'GENERAL'},source.id)),/SERVICE_ENTRY_MODE_IMMUTABLE/);
+  assert.deepEqual(await snapshot(),before);
+ }finally{await db.close();}
+});
 test('deleting a used base rolls back all variants; unused removal survives repeated startup SQL',async()=>{
   const db=await fixture();try {
     const source=(await db.query(`SELECT * FROM "SettingTransactionCodeDefault" WHERE code='TRKV'`)).rows[0];
@@ -241,6 +284,8 @@ test('OTHER and OTH defaults are linked by FK, initialized once and never recrea
   const db=await fixture();try{
     await assert.rejects(db.transaction(sql=>adapter(sql).$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)')),/cannot deserialize void/);
     await db.exec('CREATE TABLE IF NOT EXISTS "SystemSetting" (key TEXT PRIMARY KEY,value JSONB NOT NULL,"updatedByEmployeeId" INT)');
+    const [general]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='GENERAL'`)).rows;
+    await db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...general,code:'GENERAL_RENAMED'},general.id));
     const bootstrap=()=>db.transaction(async sql=>{
       const tx=adapter(sql);
       tx.systemSetting={findUnique:async({where})=>(await sql.query('SELECT * FROM "SystemSetting" WHERE key=$1',[where.key])).rows[0],create:async({data})=>sql.query('INSERT INTO "SystemSetting" (key,value,"updatedByEmployeeId") VALUES($1,$2::jsonb,$3)',[data.key,JSON.stringify(data.value),data.updatedByEmployeeId])};

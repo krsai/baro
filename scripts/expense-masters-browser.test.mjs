@@ -40,9 +40,12 @@ try {
   assert.equal(await dialog.getByLabel('이름 (한국어)').inputValue(),'단춧구멍');
   assert.equal(await dialog.getByText('입력 방식',{exact:true}).count(),0);
   await dialog.getByLabel('이름 (영어 · 대표)').fill('Buttonhole service');
+  assert.equal(await dialog.getByRole('textbox',{name:'코드',exact:true}).isEnabled(),true);
+  await dialog.getByRole('textbox',{name:'코드',exact:true}).fill('buttonhole_new');
   await dialog.getByRole('button',{name:'등록',exact:true}).click();await dialog.waitFor({state:'hidden'});
   assert.equal(writes[1].data.nameEn,'Buttonhole service');assert.equal(writes[1].data.entryMode,'PROCESS');
   assert.equal(writes[1].data.partnerRoleId,1);
+  assert.equal(writes[1].data.code,'BUTTONHOLE_NEW');
   const roots=page.locator('#industries').getByRole('list');
   await roots.getByRole('button',{name:/물류 업체/}).click();
   await page.locator('#industries tbody').getByText('\uBB3C\uB958\u00b7\uC6B4\uC1A1',{exact:true}).waitFor();

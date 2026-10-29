@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-10-29 SYSTEM 세부업종 코드 변경·연결 ID 보존
+
+- 거래처 업종 편집창에서 기존 세부업종 코드도 수정한다. SYSTEM_ADMIN 저장의 한 트랜잭션에서 SettingServiceDefault와 실제 systemDefaultId로 연결된 회사별 업종 코드만 변경한다. ID·회사·업종 source FK·거래처/관계/생산/비용의 FK 및 기존 비용 코드는 유지하며 회사 override의 이름·활성 상태를 보존한다. 독립된 과거 업종은 이름으로 매칭하거나 재연결하지 않는다.
+- 시스템/회사별 대상 코드 중복은 전체 롤백하며 편집 입력을 유지하고 안내한다. 기존 entryMode 변경 금지는 유지한다. GENERAL 코드가 초기 OTHER 설정 전에 바뀐 경우는 유일한 미분류 GENERAL 방식 업종만 사용하고 모호하면 생성하지 않는다.
+- 별도 20261029170000_partner_industry_code_rename으로 업종 코드명 변경만 허용하는 propagation 규칙을 준비했다. 앞선 비용 코드 변경 규칙도 유지한다. 공통 버전 실행기·반복 migration_fix 끝의 최신 정의·Railway/API 읽기 전용 trigger 검사를 함께 등록했다. 기존 적용 migration은 수정하지 않는다.
+- 관련 PGlite/권한/배포 회귀 25건, 업종 코드 입력/저장 브라우저 검사, 양쪽 빌드·번역·인코딩 검사 통과. 운영 DB 직접 migration·코드 변경·실제 다중 연결 동시성 검증은 미실행이며 PNG를 생성하지 않았다.
+
 ## 2026-10-29 기본 비용 코드 변경·회사별 코드 FK 보존
 
 - SYSTEM 비용 코드 관리에서 기존 3자리 기본 코드를 수정할 수 있다. 저장은 코드 설정 테이블의 쓰기를 직렬화한 한 트랜잭션에서 기본 코드·모든 활성/비활성 시스템 V/Z/E variant·실제 baseId/taxTreatmentId로 연결된 회사별 V/Z/E 코드 문자열을 함께 변경한다. source/base/tax/회사/업종 ID와 비용의 transactionCodeId는 유지하며 회사별 override 이름·활성 상태는 보존한다.

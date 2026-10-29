@@ -5,7 +5,7 @@ import { loadAppSettings, saveAppSettings } from './applicationSettings';
 import { createHttpError } from '../utils/http';
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
 import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
-import {partnerIndustryOption} from './partnerIndustry';
+import {partnerIndustryOption, saveSystemIndustry} from './partnerIndustry';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -159,7 +159,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
             // Legacy expenseTypeId is preserved, never repurposed as a role.
           }
           if (service && existing && existing.entryMode !== data.entryMode) throw createHttpError(409,'SERVICE_ENTRY_MODE_IMMUTABLE');
-          if (global && existing && existing.code !== data.code) throw createHttpError(409,'DEFAULT_CODE_IMMUTABLE');
+          if (global && !service && existing && existing.code !== data.code) throw createHttpError(409,'DEFAULT_CODE_IMMUTABLE');
           if (!service) {
             if (existing && existing.serviceTypeId !== data.serviceTypeId) throw createHttpError(409,'CODE_SERVICE_IMMUTABLE');
             const target = global ? db.settingServiceDefault : db.outsourcingServiceType;
@@ -175,6 +175,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
             }
           }
           const saved = await db.$transaction(async (tx: any) => {
+            if (global && service) return saveSystemIndustry(tx,data,update ? id : undefined);
             const target = global ? (service ? tx.settingServiceDefault : tx.settingTransactionCodeDefault) : (service ? tx.outsourcingServiceType : tx.transactionCode);
             if (update && !service && !global) {
               await tx.$queryRawUnsafe('SELECT id FROM "TransactionCode" WHERE id=$1 AND "ownerOrgId"=$2 FOR UPDATE',id,orgId);

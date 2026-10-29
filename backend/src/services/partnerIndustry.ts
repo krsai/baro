@@ -1,5 +1,25 @@
 import {createHttpError} from '../utils/http';
 
+export async function saveSystemIndustry(db: any, data: any, id?: number) {
+  await db.$queryRawUnsafe('LOCK TABLE "SettingServiceDefault", "OutsourcingServiceType" IN SHARE ROW EXCLUSIVE MODE');
+  const previous = id ? await db.settingServiceDefault.findFirst({where:{id}}) : null;
+  if (id && !previous) throw createHttpError(404,'SETTING_NOT_FOUND');
+  if (previous && previous.entryMode !== data.entryMode) throw createHttpError(409,'SERVICE_ENTRY_MODE_IMMUTABLE');
+  const renaming = previous && previous.code !== data.code;
+  if (renaming) {
+    const conflicts = await db.$queryRawUnsafe(`SELECT 1 FROM "SettingServiceDefault" WHERE upper(code)=$2 AND id<>$1
+      UNION ALL SELECT 1 FROM "OutsourcingServiceType" target JOIN "OutsourcingServiceType" source ON target."ownerOrgId"=source."ownerOrgId"
+      WHERE source."systemDefaultId"=$1 AND upper(target.code)=$2 AND target.id<>source.id LIMIT 1`,id,data.code);
+    if (conflicts.length) throw createHttpError(409,'INDUSTRY_CODE_CONFLICT');
+  }
+  const saved = id ? await db.settingServiceDefault.update({where:{id},data}) : await db.settingServiceDefault.create({data});
+  if (renaming) {
+    // Source-linked IDs, tenant overrides and every business FK stay unchanged.
+    await db.$executeRawUnsafe('UPDATE "OutsourcingServiceType" SET code=$2 WHERE "systemDefaultId"=$1',id,data.code);
+  }
+  return saved;
+}
+
 export async function validateCustomerIndustry(db: any, value: unknown, retainedId?: number | null) {
   if (value === undefined) return undefined;
   if (value === null) return null;
