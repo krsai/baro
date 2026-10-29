@@ -23,8 +23,14 @@ const TEXT = {
 const TAXES = [{ id: 1, suffix: 'V', ko: '과세', en: 'VAT', vi: 'Chịu thuế' }, { id: 2, suffix: 'Z', ko: '영세율', en: 'Zero-rated', vi: 'Thuế suất 0%' }, { id: 3, suffix: 'E', ko: '면세', en: 'Exempt', vi: 'Không chịu thuế' }];
 const emptyForm = () => ({ code: '', nameKo: '', nameEn: '', nameVi: '', serviceTypeId: '', expenseTypeId: '', requiredFields: [], orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', taxTreatmentIds: [1,2,3], isActive: true });
 const path = '/system-setting-defaults/code-bases';
+const RENAME_TEXT = {
+  ko: { help: '기본 코드를 변경하면 연결된 회사별 V/Z/E 코드와 기존 비용 내역의 코드 표시도 함께 변경됩니다. 비용 내역과 결재 이력은 유지됩니다.', conflict: '같은 기본 코드 또는 변경할 회사별 코드가 이미 있습니다. 다른 코드를 입력해 주세요.' },
+  en: { help: 'Changing the base code also renames linked company V/Z/E codes and their display in existing costs. Cost records and approval history are preserved.', conflict: 'The base code or a resulting company code already exists. Enter a different code.' },
+  vi: { help: 'Đổi mã gốc sẽ đổi cả mã V/Z/E của công ty được liên kết và mã hiển thị trong chi phí cũ. Giữ nguyên bản ghi chi phí và lịch sử duyệt.', conflict: 'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại. Vui lòng nhập mã khác.' },
+};
 export default function CodeBaseSettings() {
   const { languageCode } = useLanguage();
+  const renameText = RENAME_TEXT[languageCode] || RENAME_TEXT.en;
   const oldLabels = TEXT[languageCode] || TEXT.ko;
   const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const labels = { ...oldLabels, title: expenseLabels.codes, industry: expenseLabels.industry };
@@ -51,7 +57,7 @@ export default function CodeBaseSettings() {
   const save = async () => {
     setSaving(true); setError('');
     try { await requestJSON(`${path}${form.id ? `/${form.id}` : ''}`, { method: form.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) }); setForm(null); await load(); }
-    catch { setError(labels.error); } finally { setSaving(false); }
+    catch (error) { setError(error?.message === 'CODE_RENAME_CONFLICT' ? renameText.conflict : labels.error); } finally { setSaving(false); }
   };
   return <AppPageContainer title={labels.title} titleActions={<Stack direction="row" spacing={1}><Button onClick={() => navigateToPath('/system-setting/expense-types', { label: expenseLabels.types })}>{expenseLabels.types}</Button><Button variant="contained" disabled={loading} onClick={() => setForm(emptyForm())}>{labels.add}</Button></Stack>}>
     <PageContentStack><Alert severity="info">{labels.help}</Alert>{error && <Alert severity="error">{error}</Alert>}<TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow>{[labels.code, labels.name, expenseLabels.type, labels.industry, labels.active, ''].map((label,index) => <TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{serviceName(row, languageCode)}</TableCell><TableCell>{serviceName(row.expenseType, languageCode)}</TableCell><TableCell>{serviceName(row.serviceType, languageCode)}</TableCell><TableCell>{row.isActive ? '✓' : '—'}</TableCell><TableCell><Stack direction="row"><Tooltip title={labels.edit}><IconButton aria-label={labels.edit} color="primary" size="small" onClick={() => setForm({ ...row, taxTreatmentIds: row.variants.filter(value => value.taxTreatmentId && (value.isEnabled ?? value.isActive)).map(value => value.taxTreatmentId) })}><EditIcon fontSize="small" /></IconButton></Tooltip><SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} disabled={loading} languageCode={languageCode} onDeleted={load} onError={async message => { await load(); setError(message); }} /></Stack></TableCell></TableRow>)}{!loading && !rows.length && <TableRow><TableCell colSpan={6}>{labels.empty}</TableCell></TableRow>}</TableBody></Table></TableContainer><Typography variant="caption" color="text.secondary">{labels.legacy}</Typography></PageContentStack>
@@ -60,9 +66,10 @@ export default function CodeBaseSettings() {
       <DialogContent dividers>{form && <Stack spacing={2.5} sx={{py:1}}>
         {error && <Alert severity="error">{error}</Alert>}
         <Box sx={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:2}}>
-          <TextField required label={labels.code} helperText={labels.hint} sx={{width:180}} value={form.code} disabled={saving || Boolean(form.id)} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})} />
+          <TextField required label={labels.code} helperText={labels.hint} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})} />
           <FormControlLabel label={labels.active} control={<Checkbox disabled={saving} checked={form.isActive} onChange={event=>setForm({...form,isActive:event.target.checked})} />} />
         </Box>
+        {form.id && <Alert severity="info">{renameText.help}</Alert>}
         <Box>
           <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} />
         </Box>

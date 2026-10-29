@@ -10,7 +10,7 @@ const rollout = fs.readFileSync('backend/prisma/migrations/20261013090000_code_b
 const usageRollout = fs.readFileSync('backend/prisma/migrations/20261013120000_code_base_usage_fk/migration.sql','utf8');
 const q = value => `"${value.replaceAll('"','""')}"`;
 function adapter(db) {
-  const result = { $queryRawUnsafe: async (sql,...args) => {
+  const result = { $executeRawUnsafe: async (sql,...args) => (await db.query(sql,args)).affectedRows, $queryRawUnsafe: async (sql,...args) => {
     const result=await db.query(sql,args);
     // Match Prisma's unsupported-type boundary rather than silently accepting void.
     assert.ok(!result.fields.some(field=>field.dataTypeID===2278),'Prisma cannot deserialize void columns');
@@ -48,6 +48,7 @@ async function fixture(legacyCode = 'OLD_CODE') {
   await db.exec('CREATE TABLE "Organization"(id INT PRIMARY KEY,type TEXT,"ownerOrgId" INT,"isActive" BOOLEAN DEFAULT true)');
   await db.exec(inheritance); await db.exec(rollout); await db.exec(usageRollout);
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261029160000_code_base_rename/migration.sql','utf8'));
   return db;
 }
 
@@ -113,8 +114,64 @@ test('base creation/edit generates selected suffixes atomically and retains vari
     assert.deepEqual((await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows,variants);
     assert.equal((await db.query(`SELECT "isActive" FROM "SettingTransactionCodeDefault" WHERE code='AIRZ'`)).rows[0].isActive,false);
     for(const patch of [{code:'TOOLONG'},{code:'A1R'},{taxTreatmentIds:[]},{taxTreatmentIds:[4]},{taxTreatmentIds:[1,1]}])assert.throws(()=>service.validateCodeBase({...body,...patch}));
-    await assert.rejects(db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,code:'SEA'},base.id)),/CODE_BASE_IDENTITY_IMMUTABLE/);
+    await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,code:'SEA'},base.id));
+    assert.deepEqual((await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows,variants.map(row=>({...row,code:row.code.replace('AIR','SEA')})));
   }finally{await db.close();}
+});
+
+test('renaming a used family keeps multi-company source and cost FKs, overrides and historical snapshots',async()=>{
+ const db=await fixture('PRINTING');try {
+  const [base]=(await db.query(`SELECT * FROM "TransactionCodeBase" WHERE code='PRT'`)).rows;
+  const sources=(await db.query('SELECT * FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY id',[base.id])).rows;
+  await db.query(`INSERT INTO "OutsourcingServiceType"(id,"ownerOrgId",code,"systemDefaultId","isOverridden") VALUES(101,1,'PRINTING',$1,false)`,[base.serviceTypeId]);
+  await db.query(`INSERT INTO "OutsourcingServiceType"(id,"ownerOrgId",code,"systemDefaultId","isOverridden") VALUES(200,2,'PRINTING',$1,false)`,[base.serviceTypeId]);
+  for(const [index,source] of sources.entries()){
+   await db.query(`INSERT INTO "TransactionCode"(id,"ownerOrgId","serviceTypeId",code,"systemDefaultId","isOverridden") VALUES($1,1,101,$2,$3,false)`,[110+index,source.code,source.id]);
+   await db.query(`INSERT INTO "TransactionCode"(id,"ownerOrgId","serviceTypeId",code,"baseId","taxTreatmentId","vatEnabled","isOverridden","nameEn","isActive") VALUES($1,2,200,$2,$3,$4,$5,true,'Company custom name',false)`,[210+index,source.code,base.id,source.taxTreatmentId,source.vatEnabled]);
+  }
+  await db.exec(`INSERT INTO "PartnerTransactionCost"("transactionCodeId","serviceTypeId","vatRate",amount) VALUES(110,101,0,1234),(210,200,0,5678);
+   CREATE TABLE "PreservedDocumentSnapshot"(id INT PRIMARY KEY,snapshot JSONB);
+   INSERT INTO "PreservedDocumentSnapshot" VALUES(1,'{"code":"PRTV","approved":true}');`);
+  const costs=(await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+  const snapshots=(await db.query('SELECT * FROM "PreservedDocumentSnapshot"')).rows;
+  const before=(await db.query('SELECT * FROM "TransactionCode" ORDER BY id')).rows;
+  // Exclude Z from active selection; its stored identity must still move.
+  await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...base,code:'INK',taxTreatmentIds:[1,3]},base.id));
+  const after=(await db.query('SELECT * FROM "TransactionCode" ORDER BY id')).rows;
+  for(const row of before){
+   const next=after.find(value=>value.id===row.id);
+   if(row.taxTreatmentId){
+    assert.equal(next.code,'INK'+row.code.slice(-1));
+    for(const key of ['id','baseId','taxTreatmentId','systemDefaultId','ownerOrgId','serviceTypeId','isOverridden'])assert.equal(next[key],row[key],key);
+    if(row.isOverridden){assert.equal(next.nameEn,row.nameEn);assert.equal(next.isActive,row.isActive);}
+   }else assert.deepEqual(next,row,'legacy code without tax classification is not inferred or relinked');
+  }
+  const renamed=(await db.query('SELECT * FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY id',[base.id])).rows;
+  assert.deepEqual(renamed.map(row=>row.id),sources.map(row=>row.id));
+  assert.equal(renamed.find(row=>row.taxTreatmentId===2).code,'INKZ');
+  assert.equal(renamed.find(row=>row.taxTreatmentId===2).isEnabled,false);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,costs);
+  assert.deepEqual((await db.query('SELECT * FROM "PreservedDocumentSnapshot"')).rows,snapshots);
+  await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...base,code:'INK',taxTreatmentIds:[1,2,3]},base.id));
+  assert.equal((await db.query(`SELECT id FROM "SettingTransactionCodeDefault" WHERE code='INKZ'`)).rows[0].id,sources.find(row=>row.taxTreatmentId===2).id);
+  const migration=fs.readFileSync('backend/prisma/migrations/20261029160000_code_base_rename/migration.sql','utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,costs);
+ }finally{await db.close();}
+});
+
+test('code-family collisions roll back every code, flag and name including unused tenant codes',async()=>{
+ const db=await fixture();try {
+  const [base]=(await db.query(`SELECT * FROM "TransactionCodeBase" WHERE code='PRT'`)).rows;
+  await db.exec(`INSERT INTO "TransactionCode"(id,"ownerOrgId","serviceTypeId",code,"baseId","taxTreatmentId","vatEnabled") VALUES(110,1,100,'PRTV',${base.id},1,true);
+   INSERT INTO "TransactionCode"(id,"ownerOrgId","serviceTypeId",code,"isActive") VALUES(111,1,100,'INKV',false);`);
+  const state=async()=>Object.fromEntries(await Promise.all(['TransactionCodeBase','SettingTransactionCodeDefault','TransactionCode','PartnerTransactionCost'].map(async table=>[table,(await db.query(`SELECT * FROM "${table}" ORDER BY id`)).rows])));
+  const original=await state();
+  for(const code of ['TRK','INK']){
+   await assert.rejects(db.transaction(tx=>service.saveCodeBase(adapter(tx),{...base,code,nameEn:'Must roll back',taxTreatmentIds:[1]},base.id)),/CODE_RENAME_CONFLICT/);
+   assert.deepEqual(await state(),original);
+  }
+ }finally{await db.close();}
 });
 test('deleting a used base rolls back all variants; unused removal survives repeated startup SQL',async()=>{
   const db=await fixture();try {

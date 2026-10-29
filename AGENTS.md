@@ -1,5 +1,12 @@
 # BARO 프로젝트 컨텍스트
 
+## 2026-10-29 기본 비용 코드 변경·회사별 코드 FK 보존
+
+- SYSTEM 비용 코드 관리에서 기존 3자리 기본 코드를 수정할 수 있다. 저장은 코드 설정 테이블의 쓰기를 직렬화한 한 트랜잭션에서 기본 코드·모든 활성/비활성 시스템 V/Z/E variant·실제 baseId/taxTreatmentId로 연결된 회사별 V/Z/E 코드 문자열을 함께 변경한다. source/base/tax/회사/업종 ID와 비용의 transactionCodeId는 유지하며 회사별 override 이름·활성 상태는 보존한다.
+- 기본 코드·시스템 variant·회사별 대상 코드가 다른 ID와 충돌하면 409로 전체 롤백한다. 세금 분류 없는 과거 alias는 임의 분류·이름 매칭으로 변경하지 않는다. 기존 비용 금액·기록·승인/문서 snapshot을 재작성하지 않으며 업종 FK 변경과 사용 중 입력 방식 변경 금지는 유지한다.
+- 별도 20261029160000_code_base_rename migration은 기본 코드/세금 FK를 유지하는 코드명 변경만 허용하는 propagation 규칙을 설치한다. 기존 migration은 수정하지 않는다. 반복 준비에서 구 trigger로 회귀하지 않도록 migration_fix.sql 끝에도 같은 최신 정의를 추가하고 공통 버전 실행기·Railway/API 읽기 전용 시작 검사에 새 trigger를 등록했다.
+- 실제 PostgreSQL 호환 PGlite 회귀에서 다중 회사·사용 중 비용 FK·override·비활성 variant·snapshot 보존 및 충돌 롤백을 검증했다. 관련 19건과 한/영/베 코드 수정·충돌 후 입력 보존 브라우저 검사, 양쪽 빌드·번역·인코딩 검사를 통과했다. 운영 DB 직접 적용/실제 다중 연결 동시성 검증은 미실행이며 PNG는 생성하지 않았다.
+
 ## 2026-10-29 SYSTEM 비용·거래 메뉴 펼침·기준정보 조회 수정
 
 - SYSTEM 메뉴는 회사 메뉴 재구성 전 원본 blueprint로 구성한다. 회사 재구성에서 빈 MISC 그룹이 제거되어 SYSTEM 그룹의 isOpen을 빌려 쓰던 문제를 해결하며 비용·거래 기준과 시스템 설정의 펼침 상태를 독립적으로 유지한다.

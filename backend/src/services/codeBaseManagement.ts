@@ -36,13 +36,16 @@ export function validateCodeBase(body: any) {
 
 export async function saveCodeBase(tx: any, body: any, id?: number) {
   const data: any = validateCodeBase(body);
+  // Serialize catalogue writes and tenant provisioning while code identities move.
+  // Business cost rows and their FKs are never updated.
+  await tx.$queryRawUnsafe('LOCK TABLE "TransactionCodeBase", "SettingTransactionCodeDefault", "TransactionCode" IN SHARE ROW EXCLUSIVE MODE');
   await tx.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=$1 FOR UPDATE', data.serviceTypeId);
   if (!await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } })) throw createHttpError(400,'INVALID_SERVICE_TYPE');
   if (id) {
     await tx.$queryRawUnsafe('SELECT id FROM "TransactionCodeBase" WHERE id=$1 FOR UPDATE', id);
     const previous = await tx.transactionCodeBase.findUnique({ where: { id } });
     if (!previous) throw createHttpError(404,'SETTING_NOT_FOUND');
-    if (previous.code !== data.code || previous.serviceTypeId !== data.serviceTypeId) throw createHttpError(409,'CODE_BASE_IDENTITY_IMMUTABLE');
+    if (previous.serviceTypeId !== data.serviceTypeId) throw createHttpError(409,'CODE_BASE_IDENTITY_IMMUTABLE');
   }
   const source = await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } });
   const previous = id ? await tx.transactionCodeBase.findUnique({ where: { id } }) : null;
@@ -60,7 +63,16 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
     if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(data[key])) throw createHttpError(400,'INVALID_INPUT_OPTION');
   }
   if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
+  const renaming = previous && previous.code !== data.code;
+  if (renaming) await assertCodeBaseRenameAvailable(tx, id!, data.code);
   const base = id ? await tx.transactionCodeBase.update({ where: { id }, data }) : await tx.transactionCodeBase.create({ data });
+  if (renaming) {
+    // Rename disabled variants too; re-enabling must reuse the same IDs.
+    await tx.$executeRawUnsafe(`UPDATE "SettingTransactionCodeDefault" c SET code=$2 || t.suffix
+      FROM "TaxTreatment" t WHERE c."baseId"=$1 AND c."taxTreatmentId"=t.id`,base.id,base.code);
+    await tx.$executeRawUnsafe(`UPDATE "TransactionCode" c SET code=$2 || t.suffix
+      FROM "TaxTreatment" t WHERE c."baseId"=$1 AND c."taxTreatmentId"=t.id`,base.id,base.code);
+  }
   const taxes = await tx.taxTreatment.findMany({ where: { id: { in: body.taxTreatmentIds } } });
   if (taxes.length !== body.taxTreatmentIds.length) throw createHttpError(400,'INVALID_TAX_TREATMENT');
   await tx.settingTransactionCodeDefault.updateMany({ where: { baseId: base.id, taxTreatmentId: { not: null } }, data: { isActive: false, isEnabled: false } });
@@ -73,6 +85,16 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
     else await tx.settingTransactionCodeDefault.create({ data: variant });
   }
   return tx.transactionCodeBase.findUnique({ where: { id: base.id }, include: { serviceType: true, expenseType: true, variants: { include: { taxTreatment: true } } } });
+}
+
+async function assertCodeBaseRenameAvailable(tx: any, id: number, code: string) {
+  const conflicts = await tx.$queryRawUnsafe(`SELECT 1 FROM "TransactionCodeBase" WHERE upper(code)=$2 AND id<>$1
+    UNION ALL SELECT 1 FROM "SettingTransactionCodeDefault" c JOIN "TaxTreatment" t ON upper(c.code)=$2 || t.suffix
+      WHERE c."baseId" IS DISTINCT FROM $1 OR c."taxTreatmentId" IS DISTINCT FROM t.id
+    UNION ALL SELECT 1 FROM "TransactionCode" target JOIN "TransactionCode" source ON target."ownerOrgId"=source."ownerOrgId"
+      JOIN "TaxTreatment" t ON t.id=source."taxTreatmentId"
+      WHERE source."baseId"=$1 AND upper(target.code)=$2 || t.suffix AND target.id<>source.id LIMIT 1`,id,code);
+  if (conflicts.length) throw createHttpError(409,'CODE_RENAME_CONFLICT');
 }
 
 // Pure inherited copies are configuration; manual overrides and business use block deletion.
@@ -164,7 +186,11 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
     if (!await gates.requireSystemAdmin(req,res)) return;
     const id = update ? Number(req.params.id) : undefined;
     if (update && (!Number.isSafeInteger(id) || !id || id < 0)) throw createHttpError(400,'INVALID_SETTING_REFERENCE');
-    res.status(update ? 200 : 201).json(await db.$transaction((tx: any) => saveCodeBase(tx,req.body,id)));
+    try { res.status(update ? 200 : 201).json(await db.$transaction((tx: any) => saveCodeBase(tx,req.body,id))); }
+    catch (error: any) {
+      if (error.code === 'P2002') throw createHttpError(409,'CODE_RENAME_CONFLICT');
+      throw error;
+    }
   });
   app.delete(`${path}/:id`, async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
