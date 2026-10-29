@@ -49,9 +49,10 @@ try {
     assert.equal(await matrix.locator('thead th').first().evaluate(node=>getComputedStyle(node).backgroundColor),await matrix.locator('thead tr').nth(1).locator('th').first().evaluate(node=>getComputedStyle(node).backgroundColor),'sticky header follows shared header surface');
     assert.ok((await base.boundingBox()).height < 70,'rows stay compact without repeated chips');
     const totals=matrix.locator('[data-salary-total]');
-    assert.equal(await totals.count(),2);
+    assert.equal(await totals.count(),1,'only monthly payment items have a total');
     assert.match(await totals.first().innerText(),/1[,.]200/);
-    assert.match(await totals.nth(1).innerText(),/900/);
+    assert.equal(await matrix.locator('[data-salary-item="tenure"]').count(),1,'non-monthly items remain visible');
+    assert.doesNotMatch(await totals.innerText(),/900|2[,.]100/,'semiannual rate is excluded');
     const editLabel={ko:'수정',en:'Edit',vi:'Sửa'}[lang];
     assert.equal(await matrix.locator('[aria-pressed]').count(),0,'no repeated pay-type chips in overview');
     const lunch=matrix.locator('[data-salary-item="lunch"]');
