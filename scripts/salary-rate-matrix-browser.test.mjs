@@ -32,7 +32,7 @@ try {
       {id:'phone',nameEn:'Phone',nameKo:'통신비',nameVi:'Điện thoại',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
       {id:'tenure',nameEn:'Tenure',nameKo:'근속 수당',nameVi:'Thâm niên',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'SEMIANNUAL'},
       {id:'custom-night',nameEn:'Overtime',nameKo:'야근 수당',nameVi:'Tăng ca',category:'ALLOWANCE',payTypes,formula:['GRADE_RATE'],payCycle:'MONTHLY'},
-      {id:'incentiveTotal',category:'INCENTIVE',payTypes:['OUTPUT'],formula:['PRODUCTION_ALLOWANCE'],payCycle:'MONTHLY'},
+      {id:'incentiveTotal',nameEn:'Output incentive',nameKo:'실적 수당',nameVi:'Phụ cấp kết quả',category:'INCENTIVE',payTypes:['OUTPUT'],formula:['PRODUCTION_ALLOWANCE'],payCycle:'MONTHLY'},
     ];
     const grades=[1,2,3,4].map(id=>({id,code:`CL${id}`,nameEn:`Grade ${id}`,nameKo:`직급 ${id}`,nameVi:`Bậc ${id}`,isActive:true}));
     const rates=payTypes.flatMap(payType=>grades.flatMap(grade=>[['baseSalary',1000],['lunch',200],['phone',0],['tenure',900],['custom-night',500]].map(([salaryItemCode,amount])=>({payType,gradeId:grade.id,salaryItemCode,amount}))));
@@ -41,7 +41,7 @@ try {
     await page.route('**/factories?*',r=>r.fulfill({headers,json:[{id:1,name:'Factory',managementStartDate:'2026-04-01'}]}));
     await page.route('**/employee-grades?*',r=>r.fulfill({headers,json:[{grades}]}));
     await page.route('**/salary-system/revision?*',r=>r.fulfill({headers,json:{editRevision:'r1'}}));
-    await page.route('**/salary-system?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='PUT')writes.push(r.request().postDataJSON());return r.fulfill({headers,json:{items,rates,currencyCode:'VND',editRevision:'r1',versions:[]}});});
+    await page.route('**/salary-system?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='PUT'){const body=r.request().postDataJSON();writes.push(body);items.splice(0,items.length,...body.items);}return r.fulfill({headers,json:{items,rates,currencyCode:'VND',editRevision:'r1',versions:[]}});});
     await page.goto(`http://127.0.0.1:${port}/salary-matrix-acceptance.html`);
     const matrix=page.locator('[data-salary-rate-matrix]');
     const base=matrix.locator('[data-salary-item="baseSalary"]');
@@ -96,6 +96,21 @@ try {
     await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
     assert.match(await rate.inputValue(),/1[,.]500/,'canceling settlement does not discard inline rate edits');
     assert.equal(writes.length,0,'editing stays local until version save');
+    const production=matrix.locator('[data-salary-item="incentiveTotal"]');
+    const originalProductionName={ko:'실적 수당',en:'Output incentive',vi:'Phụ cấp kết quả'}[lang];
+    assert.match(await production.innerText(),new RegExp(originalProductionName),'loading preserves custom production name');
+    await production.getByRole('button',{name:new RegExp(editLabel)}).click();dialog=page.getByRole('dialog');
+    assert.equal(await dialog.getByRole('textbox').count(),3,'production item edits names only');
+    await dialog.getByRole('textbox').first().fill('Discarded name');await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
+    assert.match(await production.innerText(),new RegExp(originalProductionName));
+    await production.getByRole('button',{name:new RegExp(editLabel)}).click();dialog=page.getByRole('dialog');
+    for(const input of await dialog.getByRole('textbox').all())await input.fill('');
+    const confirmName={ko:'확인',en:'Confirm',vi:'Xác nhận'}[lang];
+    assert.equal(await dialog.getByRole('button',{name:confirmName,exact:true}).isDisabled(),true);
+    const renamedProduction={ko:'생산 실적 수당',en:'Renamed production',vi:'Phụ cấp năng suất'}[lang];
+    await dialog.getByRole('textbox').nth({en:0,ko:1,vi:2}[lang]).fill(renamedProduction);
+    await dialog.getByRole('button',{name:confirmName,exact:true}).click();
+    assert.match(await production.innerText(),new RegExp(renamedProduction));
     const handle=matrix.locator('[data-salary-item="phone"] [data-rfd-drag-handle-draggable-id]');
     await handle.focus();await page.keyboard.press('Space');await page.waitForTimeout(100);
     await page.keyboard.press('ArrowUp');await page.waitForTimeout(100);
@@ -106,6 +121,8 @@ try {
     assert.equal(writes.length,1);
     assert.equal(writes[0].expectedRevision,'r1');
     assert.equal(writes[0].createVersion,true);
+    const productionItem=writes[0].items.find(item=>item.id==='incentiveTotal');
+    assert.equal(productionItem.nameEn,renamedProduction);assert.deepEqual(productionItem.formula,['PRODUCTION_ALLOWANCE']);assert.deepEqual(productionItem.payTypes,['OUTPUT']);assert.equal(productionItem.required,true);assert.equal(productionItem.capValue,null);
     assert.equal(writes[0].rates.find(row=>row.payType==='OUTPUT_FIXED' && row.gradeId===4 && row.salaryItemCode==='baseSalary').amount,0,'display formatting preserves stored zero');
     assert.deepEqual(writes[0].items.map(row=>row.id),['baseSalary','phone','lunch','tenure','custom-night','incentiveTotal']);
     assert.equal(writes[0].items.find(row=>row.id==='custom-night').category,'ALLOWANCE','display grouping preserves stored category');
@@ -114,6 +131,7 @@ try {
     assert.equal(writes[0].rates.some(row=>row.payType==='GENERAL' && row.salaryItemCode==='lunch'),false);
     assert.equal(writes[0].rates.find(row=>row.payType==='OUTPUT' && row.gradeId===1 && row.salaryItemCode==='lunch').amount,200);
     await page.getByRole('dialog').getByRole('button',{name:{ko:'닫기',en:'Close',vi:'Đóng'}[lang],exact:true}).click();
+    assert.match(await production.innerText(),new RegExp(renamedProduction),'name survives save and reload');
     await page.setViewportSize({width:390,height:844});
     assert.equal(await matrix.evaluate(node=>node.scrollWidth>node.clientWidth),true);
     assert.deepEqual(errors,[]);

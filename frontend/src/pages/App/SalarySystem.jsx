@@ -306,7 +306,7 @@ const SalarySystem = () => {
       if (sequence !== loadSequence.current || scope !== loadScope.current) return null;
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
       const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.id === 'incentiveTotal'
-        ? { ...row, name: 'Production Allowance', nameKo: '생산수당', nameEn: 'Production Allowance', nameVi: 'Phụ cấp sản lượng', payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
+        ? { ...row, ...normalizeLocalizedName(row), payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
         : { ...row, ...normalizeLocalizedName(row), paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle], capValue: optionalMoney(row.capValue) });
       const next = {};
       (Array.isArray(salarySystem?.rates) ? salarySystem.rates : []).forEach((row) => {
@@ -478,6 +478,11 @@ const SalarySystem = () => {
   };
   const saveFormula = () => {
     const names = normalizeLocalizedName(formulaSettingsDraft);
+    if (isFixedIncentive) {
+      setItems(rows=>rows.map(row=>row.id===selected.id?{...row,...names}:row));
+      setFormulaDialogOpen(false);
+      return;
+    }
     const payTypes = formulaSettingsDraft.payTypes || [];
     setRates(previous => Object.fromEntries(Object.entries(previous).map(([key,itemRates]) => {
       if (payTypes.includes(key.split(':')[0])) return [key,itemRates];
@@ -519,7 +524,7 @@ const SalarySystem = () => {
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
     <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onEdit={openFormulaDialog} onReorder={reorderItems} onChangeRate={changeRate} disabled={saving || versionBusy || edit.stale || savedSnapshot === null} />
-    <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Alert severity="info">{t('생산수당은 작업 기록을 기준으로 자동 계산되며 급여 설정에서 수정할 수 없습니다.')}</Alert> : <Stack spacing={2}>
+    <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Stack spacing={2}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field,value)=>setFormulaSettingsDraft(previous=>({...previous,[field]:value}))}/><Alert severity="info">{languageCode === 'ko' ? '이름은 변경할 수 있으며, 생산수당 자동 계산 규칙은 유지됩니다.' : languageCode === 'vi' ? 'Có thể đổi tên. Quy tắc tự động tính phụ cấp sản lượng được giữ nguyên.' : 'You can rename this item. Its automatic production allowance calculation remains unchanged.'}</Alert></Stack> : <Stack spacing={2}>
       <LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field, value) => setFormulaSettingsDraft(prev => ({ ...prev, [field]: value }))} />
       <Box><Typography variant="body2" fontWeight={600}>{languageCode === 'ko' ? '적용 대상' : languageCode === 'vi' ? 'Đối tượng áp dụng' : 'Applies to'}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map(payType=><FormControlLabel key={payType} label={getPayTypeLabel(payType,payType,languageCode)} control={<Checkbox size="small" checked={(formulaSettingsDraft.payTypes||[]).includes(payType)} disabled={formulaSettingsDraft.category==='INCENTIVE'} onChange={()=>toggleDraftPayType(payType)} inputProps={{'aria-label':getPayTypeLabel(payType,payType,languageCode)}}/>}/>)}</Stack></Box>
       <Paper variant="outlined" sx={{ p: 2, minHeight: 80, bgcolor: 'background.default' }}>
@@ -588,7 +593,7 @@ const SalarySystem = () => {
           </Paper>
         </Stack>
       </Box>
-    </Stack>}</DialogContent><DialogActions>{!selected.required&&!isFixedIncentive&&<DeleteActionButton color="error" onClick={()=>{removeItem();setFormulaDialogOpen(false);}} sx={{mr:'auto'}} />}<Button variant="contained" onClick={isFixedIncentive?()=>setFormulaDialogOpen(false):saveFormula} disabled={!isFixedIncentive&&(formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft) || !hasLocalizedName(formulaSettingsDraft))}>{languageCode === 'ko' ? '확인' : languageCode === 'vi' ? 'Xác nhận' : 'Confirm'}</Button></DialogActions></Dialog>
+    </Stack>}</DialogContent><DialogActions>{!selected.required&&!isFixedIncentive&&<DeleteActionButton color="error" onClick={()=>{removeItem();setFormulaDialogOpen(false);}} sx={{mr:'auto'}} />}<Button variant="contained" onClick={saveFormula} disabled={!hasLocalizedName(formulaSettingsDraft)||(!isFixedIncentive&&(formulaDraft.length === 0 || !hasValidPaymentMonths(formulaSettingsDraft)))}>{languageCode === 'ko' ? '확인' : languageCode === 'vi' ? 'Xác nhận' : 'Confirm'}</Button></DialogActions></Dialog>
 
     <Dialog open={versionDialogOpen} onClose={versionBusy ? undefined : () => setVersionDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 설정 버전 관리')}</DialogTitle><DialogContent dividers>
       <MonthVersionBoard versions={versions} months={managedMonths} boundaries={versionBoundaries} versionForMonth={versionForMonth}

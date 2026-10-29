@@ -88,14 +88,14 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
   // are ordinary user-managed items and must not be touched here.
   const ensureFixedIncentiveItem = async (orgId: number, factoryId: number) => {
     const fixedItem = await prisma.salaryItem.findFirst({ where: { orgId, factoryId, code: "incentiveTotal" } });
-    const data = { name: "Production Allowance", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, isActive: true };
+    const names = { name: "Production Allowance", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng" };
+    const data = { category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, isActive: true };
     if (!fixedItem) {
       const last = await prisma.salaryItem.findFirst({ where: { orgId, factoryId, isActive: true }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
-      await prisma.salaryItem.upsert({ where: { factoryId_code: { factoryId, code: "incentiveTotal" } }, create: { orgId, factoryId, code: "incentiveTotal", ...data, sortOrder: (last?.sortOrder || 0) + 1 }, update: data });
+      await prisma.salaryItem.upsert({ where: { factoryId_code: { factoryId, code: "incentiveTotal" } }, create: { orgId, factoryId, code: "incentiveTotal", ...names, ...data, sortOrder: (last?.sortOrder || 0) + 1 }, update: data });
       return;
     }
-    const isCanonical = fixedItem.name === data.name && fixedItem.nameEn === data.nameEn && fixedItem.nameVi === data.nameVi
-      && fixedItem.category === data.category && JSON.stringify(fixedItem.payTypes) === JSON.stringify(data.payTypes)
+    const isCanonical = fixedItem.category === data.category && JSON.stringify(fixedItem.payTypes) === JSON.stringify(data.payTypes)
       && JSON.stringify(fixedItem.formula) === JSON.stringify(data.formula) && fixedItem.payCycle === data.payCycle
       && JSON.stringify(fixedItem.paymentMonths) === JSON.stringify(data.paymentMonths) && fixedItem.capValue === null
       && fixedItem.required && fixedItem.isActive;
@@ -168,12 +168,12 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       for (const [sortOrder, raw] of items.entries()) {
         const code = String(raw.code || raw.id).trim(); const category = String(raw.category).toUpperCase();
         // Only the fixed passthrough item (code "incentiveTotal") is forced to the
-        // canonical name/formula/cap. Other INCENTIVE-category items (e.g. a
+        // canonical formula/cap. Names remain user-editable for every item. Other INCENTIVE-category items (e.g. a
         // production-ST-excess bonus) keep the user's own name/formula/cap, same as
         // BASE/ALLOWANCE items - only their payTypes/payCycle/paymentMonths are still
         // forced to the INCENTIVE-wide rule (output-only, monthly).
         const isFixedIncentiveTotal = code === "incentiveTotal";
-        const nameKo = isFixedIncentiveTotal ? "생산수당" : normalizeLocalizedName(raw).nameKo; const nameEn = isFixedIncentiveTotal ? "Production Allowance" : normalizeLocalizedName(raw).nameEn; const nameVi = isFixedIncentiveTotal ? "Phụ cấp sản lượng" : normalizeLocalizedName(raw).nameVi;
+        const { nameKo, nameEn, nameVi } = normalizeLocalizedName(raw);
         const data = { name: nameEn, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: isFixedIncentiveTotal ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: isFixedIncentiveTotal ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: isFixedIncentiveTotal || raw.required === true, sortOrder, isActive: true };
         const saved = await tx.salaryItem.upsert({ where: { factoryId_code: { factoryId: factory.id, code } }, create: { orgId: org.id, factoryId: factory.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
