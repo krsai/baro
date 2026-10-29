@@ -19,7 +19,8 @@ try{
     await mock('**/src/context/AppContext.jsx*','const actions={showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;');
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const items=['base','lunch','night','tenure','production'].map(code=>({code,nameEn:code,nameKo:code,nameVi:code}));
-    const employee={id:1,name:'Active Worker',employeeNo:'E1',grade:{nameEn:'Staff',nameKo:'사원',nameVi:'Nhân viên'},payType:'OUTPUT',tenureEligible:true,scheduledWorkdays:25,regularHours:200,salaryItems:items.map((item,index)=>({code:item.code,amount:[1000000,250000,0,0,1440000][index]})),total:2690000,subtotal:2690000};
+    const employee={id:1,name:'Active Worker',employeeNo:'E1',grade:{nameEn:'Staff',nameKo:'사원',nameVi:'Nhân viên'},payType:'OUTPUT',tenureEligible:true,tenureYears:2,scheduledWorkdays:25,regularHours:200,salaryItems:items.map((item,index)=>({code:item.code,amount:[1000000,250000,0,200000,1440000][index]})),total:2890000,subtotal:2890000};
+    const underYear={...employee,id:3,name:'Under one year',tenureYears:0,salaryItems:employee.salaryItems.map(item=>item.code==='tenure'?{...item,amount:0,reason:'TENURE_ZERO_YEARS'}:item),total:2690000,subtotal:2690000};
     await page.route('**/factories?*',r=>r.fulfill({headers,json:[{id:1,name:'Factory'}]}));
     await page.route('**/employee-grades?*',r=>r.fulfill({headers,json:[]}));
     await page.route('**/salary-system/revision?*',r=>r.fulfill({headers,json:{editRevision:'r1'}}));
@@ -29,7 +30,7 @@ try{
       const url=new URL(r.request().url());requests.push({method:r.request().method(),month:url.searchParams.get('month'),all:url.searchParams.get('includeInactive')});
       if(fail)return r.fulfill({headers,status:500,json:{error:'test error'}});
       const all=url.searchParams.get('includeInactive')==='1';
-      const result={month:url.searchParams.get('month'),unassigned:[],factories:[{id:1,name:'Factory',currencyCode:'VND',versionNumber:3,items,standards:[{payType:'OUTPUT',workWeekdays:[1,2,3,4,5,6],standardClockIn:'08:00',standardClockOut:'17:00',breakMinutes:60,scheduledWorkdays:25,regularHours:200}],employees:[employee,...(all?[{...employee,id:2,name:'Former Worker'}]:[])]}]};
+      const result={month:url.searchParams.get('month'),unassigned:[],factories:[{id:1,name:'Factory',currencyCode:'VND',versionNumber:3,items,standards:[{payType:'OUTPUT',workWeekdays:[1,2,3,4,5,6],standardClockIn:'08:00',standardClockOut:'17:00',breakMinutes:60,scheduledWorkdays:25,regularHours:200}],employees:[employee,underYear,...(all?[{...employee,id:2,name:'Former Worker'}]:[])]}]};
       if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
       await r.fulfill({headers,json:result}).catch(()=>{});
     });
@@ -38,7 +39,10 @@ try{
     const dialog=page.getByRole('dialog');const row=dialog.locator('[data-preview-employee="1"]');await row.waitFor();
     assert.match(await row.locator('[data-preview-item="production"]').innerText(),/1[,.]440[,.]000/);
     assert.equal(await row.locator('[data-preview-item="night"]').innerText(),'—');
-    assert.equal(await row.locator('[data-preview-item="tenure"]').innerText(),'—');
+    assert.match(await row.locator('[data-preview-item="tenure"]').innerText(),/200[,.]000/);
+    assert.equal(await row.locator('[data-preview-tenure]').innerText(),'2');
+    await dialog.locator('[data-preview-employee="3"] [data-preview-item="tenure"]').getByText({ko:'근속 1년 미만',en:'Under one completed year',vi:'Chưa đủ 1 năm'}[lang],{exact:true}).waitFor();
+    assert.doesNotMatch(await dialog.innerText(),/근속 0년|zero tenure years|thâm niên 0 năm/,'no forced-zero tenure assumption');
     assert.match(await dialog.locator('[data-preview-standard="OUTPUT"]').innerText(),/08:00–17:00/);
     assert.equal(await dialog.locator('[data-preview-employee="2"]').count(),0);
     await dialog.getByRole('checkbox').check();await dialog.locator('[data-preview-employee="2"]').waitFor();

@@ -2,7 +2,7 @@ import { resolveEmployeeEffectivePayType } from './employeeCompensation';
 import { normalizeEmployeePayTypePolicy } from './employeePayTypePolicy';
 import { resolveSalaryAttendanceParameters } from './salaryAttendanceParameters';
 import { evaluateSalaryFormula } from './salaryFormula';
-import { employmentDateKey, hasPreviousYearSixMonthsService, isTenureSalaryItem } from './salaryTenure';
+import { employmentDateKey, hasPreviousYearSixMonthsService, isTenureSalaryItem, resolveSalaryTenureYears } from './salaryTenure';
 import { resolvePayrollManagement } from './payrollManagement';
 
 export const buildSalaryPreview = ({ month, employees, factories, policies, holidays, includeInactive = false, today = employmentDateKey(new Date()) }: {
@@ -30,7 +30,7 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
       const management = resolvePayrollManagement(employee, month);
       const tenureEligible = hasPreviousYearSixMonthsService(employee, month);
       const parameters = {
-        GRADE_RATE: 0, TENURE_YEARS: 0, ACTUAL_WORKDAYS: standard.scheduledWorkdays,
+        GRADE_RATE: 0, TENURE_YEARS: resolveSalaryTenureYears(employee.joinedAt ?? employee.approvedAt ?? employee.createdAt, month), ACTUAL_WORKDAYS: standard.scheduledWorkdays,
         SCHEDULED_WORKDAYS: standard.scheduledWorkdays, FULL_ATTENDANCE_FACTOR: standard.scheduledWorkdays > 0 ? 1 : 0,
         HOLIDAY_WORKDAYS: 0, WORK_HOURS: standard.regularHours, OVERTIME_HOURS: 0, HOLIDAY_HOURS: 0,
         PRODUCTION_ALLOWANCE: payType === 'OUTPUT' ? standard.regularHours * 3600 * wage : 0,
@@ -54,13 +54,14 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
           let amount = Number(evaluateSalaryFormula(formula, {...parameters, GRADE_RATE: Number(rate?.amount || 0)}));
           if (item.capValue != null && item.capValue !== '') amount = Math.min(amount, Number(item.capValue));
           if (!Number.isFinite(amount)) return {code,amount:null,reason:'INVALID_FORMULA'};
-          return { code, amount: Math.max(0, Math.round(amount)), reason: null };
+          const rounded = Math.max(0, Math.round(amount));
+          return { code, amount: rounded, reason: rounded === 0 && isTenureSalaryItem(item) && formula.includes('TENURE_YEARS') && parameters.TENURE_YEARS === 0 ? 'TENURE_ZERO_YEARS' : null };
         } catch { return { code, amount: null, reason: 'INVALID_FORMULA' }; }
       });
       const complete = Boolean(version && items.length) && salaryItems.every(item => item.amount !== null);
       return { id: employee.id, name: employee.name || employee.email || String(employee.id), employeeNo: employee.employeeNo,
         status: employee.status, grade: employee.grade, payType, payrollExcluded: management.payrollExcluded,
-        tenureEligible, scheduledWorkdays: standard.scheduledWorkdays, regularHours: standard.regularHours,
+        tenureEligible, tenureYears: parameters.TENURE_YEARS, scheduledWorkdays: standard.scheduledWorkdays, regularHours: standard.regularHours,
         salaryItems, subtotal: salaryItems.reduce((sum, item) => sum + (item.amount || 0), 0), total: complete ? salaryItems.reduce((sum, item) => sum + (item.amount || 0), 0) : null,
         error: !version || !items.length ? 'MISSING_SALARY_VERSION' : !complete ? 'INCOMPLETE' : null };
     });
@@ -68,5 +69,5 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
       versionNumber: version?.versionNumber || null, items, standards, employees: rows };
   }).filter(group => group.employees.length);
   const unassigned = visible.filter(employee => !factories.some(factory => factory.id === employee.factoryId)).map(employee => ({id:employee.id,name:employee.name || employee.employeeNo || String(employee.id)}));
-  return {month, factories: groups, unassigned, assumptions: {fullAttendance:true, overtimeHours:0, holidayHours:0, tenureYears:0, productionEfficiencyPercent:100}};
+  return {month, factories: groups, unassigned, assumptions: {fullAttendance:true, overtimeHours:0, holidayHours:0, tenureBasis:'EMPLOYMENT_DATE', productionEfficiencyPercent:100}};
 };

@@ -18,7 +18,7 @@ const items=[
   {code:'base',nameEn:'Base',category:'BASE',payTypes:['GENERAL','OUTPUT_FIXED','OUTPUT'],formula:['GRADE_RATE','×','ACTUAL_WORKDAYS','÷','SCHEDULED_WORKDAYS'],payCycle:'MONTHLY'},
   {code:'lunch',nameEn:'Lunch',category:'ALLOWANCE',payTypes:['GENERAL','OUTPUT_FIXED','OUTPUT'],formula:['GRADE_RATE','×','ACTUAL_WORKDAYS'],payCycle:'MONTHLY'},
   {code:'night',nameEn:'Overtime',category:'ALLOWANCE',payTypes:['GENERAL','OUTPUT_FIXED','OUTPUT'],formula:['GRADE_RATE','×','OVERTIME_HOURS'],payCycle:'MONTHLY'},
-  {code:'tenure',nameEn:'Tenure',category:'ALLOWANCE',payTypes:['GENERAL','OUTPUT_FIXED','OUTPUT'],formula:['GRADE_RATE','×','TENURE_YEARS'],payCycle:'SEMIANNUAL'},
+  {code:'tenure',nameEn:'Tenure',category:'ALLOWANCE',payTypes:['GENERAL','OUTPUT_FIXED','OUTPUT'],formula:['GRADE_RATE','×','TENURE_YEARS'],payCycle:'SEMIANNUAL',paymentMonths:[6,12]},
   {code:'incentiveTotal',nameEn:'Production',category:'INCENTIVE',payTypes:['OUTPUT'],formula:['PRODUCTION_ALLOWANCE'],payCycle:'MONTHLY'},
 ];
 const employee={id:1,orgId:1,factoryId:1,name:'Active',employeeNo:'E1',gradeId:7,grade:{id:7,nameEn:'Staff'},status:'ACTIVE',payType:'OUTPUT',joinedAt:'2024-01-01'};
@@ -36,19 +36,41 @@ test('previous-year six calendar months includes July 1 through December 31, exc
   assert.equal(tenure.hasPreviousYearSixMonthsService({joinedAt:'2024-01-01'},'2025-12'),true);
 });
 
-test('full-attendance preview uses actual workdays, holidays and policy hours, zero overtime/tenure and 100% production',()=>{
+test('full-attendance preview uses actual workdays, holidays, actual tenure, zero overtime and 100% production',()=>{
   const result=buildSalaryPreview(fixture());const group=result.factories[0],row=group.employees[0];
   assert.equal(group.standards.find(row=>row.payType==='OUTPUT').scheduledWorkdays,25);
   assert.equal(row.regularHours,200);
   assert.equal(row.salaryItems.find(item=>item.code==='base').amount,1000000);
   assert.equal(row.salaryItems.find(item=>item.code==='lunch').amount,250000);
   assert.equal(row.salaryItems.find(item=>item.code==='night').amount,0);
-  assert.equal(row.salaryItems.find(item=>item.code==='tenure').amount,0);
+  assert.equal(row.tenureYears,2);
+  assert.equal(row.salaryItems.find(item=>item.code==='tenure').amount,200000);
   assert.equal(row.salaryItems.find(item=>item.code==='incentiveTotal').amount,1440000);
-  assert.equal(row.total,2690000);
+  assert.equal(row.total,2890000);
   const custom=buildSalaryPreview(fixture({policies:[{payType:'OUTPUT',workWeekdays:[1,2,3,4,5],standardClockIn:'09:00',standardClockOut:'17:00',breakMinutes:60,workdayMinimumMinutes:240}]}));
   assert.equal(custom.factories[0].employees[0].scheduledWorkdays,21);
   assert.equal(custom.factories[0].employees[0].regularHours,147);
+});
+
+test('completed calendar tenure handles anniversaries, leap days and year-end without average-year rounding',()=>{
+  for(const [joined,month,expected] of [
+    ['2024-01-01','2026-12',2],['2024-01-01','2027-01',3],
+    ['2025-11-01','2026-10',0],['2025-11-01','2026-11',1],
+    ['2024-02-29','2025-01',0],['2024-02-29','2025-02',1],['2027-01-01','2026-10',0],
+  ])assert.equal(tenure.resolveSalaryTenureYears(joined,month),expected,`${joined} at ${month}`);
+});
+
+test('preview distinguishes ineligible, under-one-year and unpaid-month tenure instead of forcing everyone to zero',()=>{
+  let row=buildSalaryPreview(fixture({employees:[{...employee,joinedAt:'2025-07-01'}]})).factories[0].employees[0];
+  assert.equal(row.tenureEligible,true);assert.equal(row.tenureYears,0);assert.equal(row.salaryItems.find(item=>item.code==='tenure').reason,'TENURE_ZERO_YEARS');
+  row=buildSalaryPreview(fixture({employees:[{...employee,joinedAt:'2025-07-02'}]})).factories[0].employees[0];
+  assert.equal(row.tenureEligible,false);assert.equal(row.salaryItems.find(item=>item.code==='tenure').reason,'TENURE_INELIGIBLE');
+  row=buildSalaryPreview(fixture({month:'2026-10'})).factories[0].employees[0];
+  assert.equal(row.tenureYears,2);assert.equal(row.salaryItems.find(item=>item.code==='tenure').reason,'NOT_PAYMENT_MONTH');
+  const flatItem={...items.find(item=>item.code==='tenure'),code:'draft-opaque',nameKo:'근속 수당',formula:['GRADE_RATE'],payCycle:'MONTHLY',paymentMonths:[1,2,3,4,5,6,7,8,9,10,11,12]};
+  const configured={...factory,salarySystemVersions:[{versionNumber:4,snapshot:{items:[flatItem],rates:[{payType:'OUTPUT',gradeId:7,salaryItemCode:'draft-opaque',amount:200000}],currencyCode:'VND'}}]};
+  row=buildSalaryPreview(fixture({factories:[configured],employees:[{...employee,joinedAt:'2025-07-02'}]})).factories[0].employees[0];
+  assert.equal(row.salaryItems[0].reason,'TENURE_INELIGIBLE','legacy user-defined fixed tenure allowances still enforce eligibility');
 });
 
 test('active default, all-employees filter, excluded payroll and unassigned employees remain distinct',()=>{
@@ -74,10 +96,12 @@ test('missing rate or effective version cannot turn into a complete zero estimat
 
 test('real payroll applies previous-year tenure gate while preserving actual completed tenure for eligible employees',async()=>{
   const src=readFileSync('backend/src/payroll/payroll.service.ts','utf8');
+  const nextPaymentSource=src.slice(src.indexOf('const resolveNextPaymentMonthKey ='),src.indexOf('const assertPayrollMonth ='));
+  const nextPayment=new Function(ts.transpileModule(nextPaymentSource,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return resolveNextPaymentMonthKey;')();
   const section=src.slice(src.indexOf('const buildIntegratedPayrollEmployees ='),src.indexOf('export const listPayrollSnapshots'));
   const employees=[{...employee,payType:'GENERAL',joinedAt:'2025-07-02'},{...employee,id:2,payType:'GENERAL',joinedAt:'2024-01-01'}];
   const prisma={employee:{findMany:async()=>employees},attendanceEntry:{findMany:async()=>[]},organizationHoliday:{findMany:async()=>[]},factory:{findMany:async()=>[factory]}};
-  const deps={...comp,...policy,...attendance,...formula,...tenure,...management,...common,...service,prisma,
+  const deps={...comp,...policy,...attendance,...formula,...tenure,...management,...common,...service,prisma,resolveNextPaymentMonthKey:nextPayment,
     loadManagementPeriod:async()=>({startDate:'2020-01-01'}),loadEmployeePayTypePolicies:async()=>[],
     employeePayTypePolicyMap:()=>new Map(['GENERAL','OUTPUT_FIXED','OUTPUT'].map(type=>[type,policy.normalizeEmployeePayTypePolicy(null,type)])),
     getPayrollMonthRange:month=>({start:new Date(`${month}-01T00:00:00Z`),endExclusive:new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),1))}),
@@ -88,7 +112,15 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   assert.equal(result.find(row=>row.workerId===1).salaryItems.find(row=>row.code==='tenure').amount,0);
   assert.ok(result.find(row=>row.workerId===1).parameters.TENURE_YEARS>=1,'ineligible employee has a completed year but fails previous-year rule');
   const eligible=result.find(row=>row.workerId===2);
-  assert.equal(eligible.salaryItems.find(row=>row.code==='tenure').amount,eligible.parameters.TENURE_YEARS*100000);
+  assert.equal(eligible.parameters.TENURE_YEARS,2,'January 2024 to December 2026 has only two completed years');
+  assert.equal(eligible.salaryItems.find(row=>row.code==='tenure').amount,200000);
+  const unpaid=await fn(1,'2026-10',[],1);const item=unpaid.find(row=>row.workerId===2).salaryItems.find(row=>row.code==='tenure');
+  assert.equal(item.amount,0);assert.equal(item.isPaymentMonth,false);assert.equal(item.nextPaymentMonthKey,'2026-12');
+  const custom={...items.find(item=>item.code==='tenure'),code:'draft-opaque',nameKo:'근속 수당',formula:['GRADE_RATE'],payCycle:'MONTHLY',paymentMonths:[1,2,3,4,5,6,7,8,9,10,11,12]};
+  prisma.factory.findMany=async()=>[{...factory,salarySystemVersions:[{id:1,versionNumber:4,snapshot:{currencyCode:'VND',items:[custom],rates:[{payType:'GENERAL',gradeId:7,salaryItemCode:'draft-opaque',amount:200000}]}}]}];
+  const legacy=await fn(1,'2026-12',[],1);
+  assert.equal(legacy.find(row=>row.workerId===1).salaryItems[0].amount,0);
+  assert.equal(legacy.find(row=>row.workerId===2).salaryItems[0].amount,200000);
 });
 
 test('preview route enforces salary access and company scope, validates month, and never initializes or writes settings',async()=>{
