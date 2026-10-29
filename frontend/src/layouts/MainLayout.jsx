@@ -922,7 +922,7 @@ const MainLayout = () => {
         })
         .filter(Boolean);
 
-    const navigationBlueprint = isSystemProfile ? organizeSystemMenu(menuStructureBlueprint, languageCode, SYSTEM_MENU_ICONS) : menuStructureBlueprint;
+    const navigationBlueprint = isSystemProfile ? organizeSystemMenu(baseMenuBlueprint, languageCode, SYSTEM_MENU_ICONS) : menuStructureBlueprint;
     return navigationBlueprint
       .map((item) => {
         if (!item.isParent) {
@@ -936,7 +936,7 @@ const MainLayout = () => {
         };
       })
       .filter(Boolean);
-  }, [hasPathAccess, menuStructureBlueprint, isSystemProfile, languageCode]);
+  }, [hasPathAccess, baseMenuBlueprint, menuStructureBlueprint, isSystemProfile, languageCode]);
 
   const currentMenuGroup = findMenuGroupForPath(menuItems, currentPath.startsWith('/customer-pricing') ? '/customer' : currentPath);
   useEffect(() => {

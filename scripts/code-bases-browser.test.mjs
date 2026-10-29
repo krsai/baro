@@ -15,18 +15,19 @@ try{
   for(const lang of ['ko','en','vi']){
     const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],writes=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
+    await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:null,activeProfile:{entryType:"SYSTEM",systemRole:"SYSTEM_ADMIN"}});'}));
     await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const industry={id:4,code:'LOGISTICS',nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển',entryMode:'LOGISTICS',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true};
     const taxes=[{id:1,nameKo:'과세',nameEn:'VAT',nameVi:'Chịu thuế'},{id:2,nameKo:'영세율',nameEn:'Zero-rated',nameVi:'Thuế suất 0%'},{id:3,nameKo:'면세',nameEn:'Exempt',nameVi:'Không chịu thuế'}];
     const expenseType={id:2,nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
-    await page.route('**/expense-types',route=>route.fulfill({headers,json:[expenseType,{id:5,code:'OTHER',nameKo:'기타',nameEn:'Other',nameVi:'Khác',entryMode:'GENERAL',isActive:true}]}));
+    await page.route('**/expense-types',route=>route.fulfill({headers,status:404,json:{error:'organization not found'}}));
     let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
     await page.route('**/system-setting-defaults/**',route=>{
       const url=new URL(route.request().url()),method=route.request().method();
       if(method==='OPTIONS')return route.fulfill({headers,status:204});
+      if(url.pathname.endsWith('/expense-types'))return route.fulfill({headers,json:[expenseType,{id:5,code:'OTHER',nameKo:'기타',nameEn:'Other',nameVi:'Khác',entryMode:'GENERAL',isActive:true}]});
       if(method==='DELETE'){
         writes.push({path:url.pathname});
         if(url.pathname.includes('/services/'))return route.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});
@@ -50,7 +51,8 @@ try{
     const savePosition=await dialog.getByRole('button',{name:labels.save,exact:true}).boundingBox();assert.ok(savePosition.y+savePosition.height<1000);
     await dialog.getByLabel(labels.code,{exact:false}).fill('air');
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');
-    for(const [label,value] of [['한국어','항공'],['English','Air'],['Tiếng Việt','Hàng không']])await dialog.getByLabel(label,{exact:false}).fill(value);
+    const nameLabels={ko:['이름 (한국어)','이름 (영어 · 대표)','이름 (베트남어)'],en:['Name (Korean)','Name (English · primary)','Name (Vietnamese)'],vi:['Tên (tiếng Hàn)','Tên (tiếng Anh · chính)','Tên (tiếng Việt)']}[lang];
+    for(const [index,value] of ['항공','Air','Hàng không'].entries())await dialog.getByLabel(nameLabels[index],{exact:true}).fill(value);
     await dialog.getByRole('combobox').nth(0).click();assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),1);await page.getByRole('option').first().click();
     await dialog.getByRole('combobox').nth(1).click();await page.getByRole('option').first().click();
     await dialog.getByRole('checkbox',{name:/^Z/}).uncheck();await dialog.getByRole('button',{name:labels.save,exact:true}).click();

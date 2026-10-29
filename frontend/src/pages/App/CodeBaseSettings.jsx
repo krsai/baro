@@ -36,7 +36,7 @@ export default function CodeBaseSettings() {
     try {
       try { await requestJSON('/system-setting-defaults/other-expense-defaults', {method:'POST',body:JSON.stringify({})}); }
       catch { setError(labels.error); }
-      const [bases, industries, types] = await Promise.all([requestJSON(path, { skipCache: true }), requestJSON('/system-setting-defaults/services', { skipCache: true }), requestJSON('/expense-types', { skipCache: true })]);
+      const [bases, industries, types] = await Promise.all([requestJSON(path, { skipCache: true }), requestJSON('/system-setting-defaults/services', { skipCache: true }), requestJSON('/system-setting-defaults/expense-types', { skipCache: true })]);
       setRows(bases); setServices(industries); setExpenseTypes(types);
     }
     catch { setError(labels.error); } finally { setLoading(false); }

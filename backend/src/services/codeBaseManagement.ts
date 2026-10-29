@@ -122,6 +122,10 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
+  app.get('/system-setting-defaults/expense-types', async (req: any,res: any) => {
+    if (!await gates.requireSystemAdmin(req,res)) return;
+    res.json(await db.expenseType.findMany({ orderBy: { id: 'asc' } }));
+  });
   app.post('/system-setting-defaults/other-expense-defaults', async (req: any, res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
     res.json(await db.$transaction((tx: any) => initializeOtherExpenseDefaults(tx,gates.actorId?.()), { isolationLevel: 'Serializable' }));

@@ -64,6 +64,10 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
   registerExpenseCodeLinkPolicyRoutes(app,db,gates);
   const admin = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] });
   const member = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] });
+  app.get('/system-setting-defaults/partner-roles',async(req:any,res:any)=>{
+    if(!await gates.requireSystemAdmin(req,res))return;
+    res.json(await db.partnerRole.findMany({orderBy:{sortOrder:'asc'}}));
+  });
   app.get('/partner-roles',async(req:any,res:any)=>{
     if(!await member(req,res))return;
     res.json(await db.partnerRole.findMany({orderBy:{sortOrder:'asc'}}));

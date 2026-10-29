@@ -35,7 +35,7 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
   const [editingId, setEditingId] = useState('');
   const [partnerRoles,setPartnerRoles] = useState([]);
   const tree=INDUSTRY_TREE_TEXT[languageCode] || INDUSTRY_TREE_TEXT.en;
-  useEffect(()=>{if(open&&systemDefaults)requestJSON('/partner-roles',{skipCache:true}).then(setPartnerRoles).catch(()=>setError(labels.loadError));},[open,systemDefaults]);
+  useEffect(()=>{if(open&&systemDefaults)requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}).then(setPartnerRoles).catch(()=>setError(labels.loadError));},[open,systemDefaults]);
   useEffect(() => {
     if (!open) return;
     setEditingId('');

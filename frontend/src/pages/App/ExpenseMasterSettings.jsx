@@ -25,7 +25,7 @@ export default function ExpenseMasterSettings({ industries = false }) {
   const load = async () => {
     setLoading(true);setError('');
     try {
-      const [items,parents]=await Promise.all([requestJSON(path,{skipCache:true}),industries?requestJSON('/partner-roles',{skipCache:true}):Promise.resolve([])]);
+      const [items,parents]=await Promise.all([requestJSON(industries ? path : '/system-setting-defaults/expense-types',{skipCache:true}),industries?requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}):Promise.resolve([])]);
       setRows(items);setTypes(parents);
       if(industries)setCategory(current=>(current===0&&items.some(row=>!row.partnerRoleId)||parents.some(row=>row.id===current))?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||0);
     }catch{setError(common.loadError);}finally{setLoading(false);}

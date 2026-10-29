@@ -1,10 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {organizeSystemMenu,findMenuGroupForPath} from '../frontend/src/utils/systemMenuLayout.mjs';
 const paths=['/system-setting','/employee','/system-onboarding','/attribute/colors','/attribute/categories','/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs','/system-setting/static-options','/system-setting/access-policy','/system-setting/app-defaults','/system-setting/expense-types','/system-setting/partner-industries','/system-setting/transaction-codes','/employee-system','/salary-system'];
 const dashboard={path:'/dashboard',label:'Dashboard'};
 const leaves=paths.map(path=>({path,label:path,notificationActive:path==='/system-onboarding',disabled:path==='/attribute/colors'}));
 const source=[dashboard,...['ADMIN','ATTRIBUTE','PROCESS_MASTER','MISC','SYSTEM'].map((key,index)=>({menuGroupKey:key,isParent:true,isOpen:index===0,children:index===0?leaves:[]}))];
+
+test('SYSTEM menu uses original groups so expense expansion never borrows system settings state',()=>{
+ const layout=readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
+ assert.match(layout,/organizeSystemMenu\(baseMenuBlueprint,/);
+ for(const selected of [null,'MISC','SYSTEM','ATTRIBUTE']){
+  const blueprint=source.map(group=>group.isParent?{...group,isOpen:group.menuGroupKey===selected}:group);
+  const organized=organizeSystemMenu(blueprint);
+  assert.deepEqual(organized.filter(group=>group.isOpen).map(group=>group.menuGroupKey),selected?[selected]:[]);
+ }
+});
 test('SYSTEM groups preserve every canonical node, route, badge and disabled state exactly once',()=>{
  const original=JSON.stringify(source),groups=organizeSystemMenu(source);
  assert.deepEqual(groups.slice(1).map(g=>g.menuGroupKey),['ADMIN','ATTRIBUTE','PROCESS_MASTER','MISC','SYSTEM']);
