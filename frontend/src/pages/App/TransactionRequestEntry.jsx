@@ -27,13 +27,15 @@ import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import { EXPENSE_REQUEST_TEXT, EXPENSE_HEADER_TEXT } from '../../constants/expenseRequest';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
-import { expenseTotalsByCurrency, expenseLinePayload, newExpenseLine } from '../../utils/expenseRequest.mjs';
+import { expenseTotalsByCurrency, expenseLinePayload, newExpenseLine, expenseCodeForLine, inputMode } from '../../utils/expenseRequest.mjs';
+import {TRANSACTION_TEXT} from '../../components/OutsourcingServiceDialog';
 import { emitWorkspaceDataChanged, subscribeWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../utils/workspaceDataEvents';
 
 const ENTRY_TITLES = { ko: '비용 신청 등록', en: 'New Payment Request', vi: 'Tạo đề nghị thanh toán' };
 const EDIT_TITLES = { ko: '비용 신청 수정', en: 'Edit Payment Request', vi: 'Sửa đề nghị thanh toán' };
 const LOCKED_TEXT = { ko: '최종 마감된 주문의 비용 신청은 수정할 수 없습니다.', en: 'This request is read-only because its order is finally locked.', vi: 'Không thể sửa đề nghị vì đơn hàng đã khóa quyết toán.' };
 const CHANGED_TEXT = { ko: '다른 사용자가 신청서를 수정했습니다. 화면을 다시 열어 최신 내용을 확인한 뒤 저장해 주세요.', en: 'This request was changed by another user. Reopen it to review the latest version before saving.', vi: 'Đề nghị đã được người khác sửa. Vui lòng mở lại để kiểm tra phiên bản mới nhất trước khi lưu.' };
+const FORM_TEXT={ko:{auto:'등록 시 자동 부여',required:'필수 입력 항목을 확인해 주세요',number:'관리번호는 자동으로 부여됩니다.'},en:{auto:'Assigned automatically on registration',required:'Please complete the required fields',number:'Management numbers are assigned automatically.'},vi:{auto:'Tự động cấp khi đăng ký',required:'Vui lòng điền các trường bắt buộc',number:'Mã quản lý được cấp tự động.'}};
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -54,6 +56,7 @@ export default function TransactionRequestEntry() {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
   const numbering=documentNumberText[languageCode]||documentNumberText.en;
+  const formText=FORM_TEXT[languageCode]||FORM_TEXT.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const approvalRef=useRef(null),saveLock=useRef(false);
   const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
@@ -77,6 +80,7 @@ export default function TransactionRequestEntry() {
   },[activeOrgId]);
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [statuses, setStatuses] = useState({});
+  const [validationAttempt,setValidationAttempt]=useState(0),[validation,setValidation]=useState(''),[approvalStatus,setApprovalStatus]=useState(null);
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
   const dirty = documentSnapshot(form) !== initialSnapshot;
   useUnsavedChanges(dirty);
@@ -96,9 +100,9 @@ export default function TransactionRequestEntry() {
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [activeOrgId, reload,editing,editorPath]);
-  const update = patch => setForm(current => ({ ...current, ...patch }));
-  const changeLine = useCallback((key, patch) => setForm(current => ({ ...current,
-    items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) })), []);
+  const update = patch => {setValidation('');setForm(current => ({ ...current, ...patch }));};
+  const changeLine = useCallback((key, patch) => {setValidation('');setForm(current => ({ ...current,
+    items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) }));}, []);
   const lineStatus = useCallback((key, valid) => setStatuses(current => current[key] === valid ? current : { ...current, [key]: valid }), []);
   const reorderLines = ({ source, destination }) => {
     if (disabled || !destination || source.index === destination.index) return;
@@ -142,12 +146,35 @@ export default function TransactionRequestEntry() {
     });
   };
   const save = async () => {
-    if (saveLock.current || disabled && !submission || saving || !submission && (!valid || editing && !dirty)) return;
+    if (saveLock.current || disabled && !submission || saving || !submission && valid && editing && !dirty) return;
+    if(!submission&&!valid){
+      setValidationAttempt(value=>value+1);
+      const missing=[];
+      if(!form.requestDate||period.startDate&&form.requestDate<period.startDate)missing.push(labels.date);
+      if(!partner?.isActive)missing.push(labels.payee);
+      if(!hasPayeeBank)missing.push(bankText.required);
+      const detailLabels=TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en;
+      form.items.forEach((line,index)=>{
+        if(statuses[line.key])return;
+        const code=expenseCodeForLine(line,data.codes.find(code=>code.id===line.transactionCodeId)),fields=[];
+        if(!code)fields.push(labels.code);
+        if(!Number(line.quantity)||Number(line.quantity)<0)fields.push(labels.quantity);
+        if(!Number(line.unitPrice)||Number(line.unitPrice)<0)fields.push(labels.price);
+        for(const key of ['order','style','process'])if(inputMode(code,key)==='REQUIRED'&&!line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]]&&!(key==='process'&&line.styleProcessIds?.length))fields.push(labels[key]);
+        for(const key of code?.base?.requiredFields||[])if(!line.details?.[key]?.trim())fields.push(detailLabels[key]||key);
+        if(code?.base?.entryMode==='PROCESS'&&!line.assignmentPlanId)fields.push(labels.assignment);
+        missing.push(`${labels.row} ${index+1}: ${fields.join(', ')||labels.invalid}`);
+      });
+      setValidation(`${formText.required}: ${missing.join(' / ')}`);
+      setTimeout(()=>tableContainerRef.current?.querySelector('input[required]:invalid')?.focus(),0);
+      return;
+    }
+    setValidation('');
     saveLock.current=true;
     try {
     const selection=submission?submission.approvalSelection:await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
-    const body = submission || { managementNumber:form.managementNumber||'', remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -161,8 +188,15 @@ export default function TransactionRequestEntry() {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
+        const requiredDetail=line?.[2]?.match(/^REQUIRED_TRANSACTION_FIELD:(.+)$/);
+        if(field||requiredDetail){
+          const detailLabels=TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en;
+          setValidationAttempt(value=>value+1);setError('');
+          setValidation(`${formText.required}: ${labels.row} ${line[1]} · ${field?labels[field]:detailLabels[requiredDetail[1]]||requiredDetail[1]}`);
+          return;
+        }
         const approvalText=approvalSettingsText[languageCode]||approvalSettingsText.en;
-        setError(documentNumberError(code,languageCode) || (code==='APPROVAL_CURRENCY_LIMIT_REQUIRED' ? approvalText.limitMissing : code==='EXPENSE_SELF_APPROVAL' ? approvalText.selfError : code==='EXPENSE_APPROVER_REQUIRED' ? approvalText.missing : code==='INVALID_EXPENSE_APPROVERS' ? approvalText.error : code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid));
+        setError((code==='DOCUMENT_NUMBER_AUTOMATIC'?formText.number:documentNumberError(code,languageCode)) || (code==='APPROVAL_CURRENCY_LIMIT_REQUIRED' ? approvalText.limitMissing : code==='EXPENSE_SELF_APPROVAL' ? approvalText.selfError : code==='EXPENSE_APPROVER_REQUIRED' ? approvalText.missing : code==='INVALID_EXPENSE_APPROVERS' ? approvalText.error : code==='PAYEE_BANK_ACCOUNT_REQUIRED' ? bankText.required : code==='EXPENSE_REQUEST_CHANGED' ? CHANGED_TEXT[languageCode] || CHANGED_TEXT.en : line ? `${labels.row} ${line[1]} · ${labels.invalid}${field?` (${labels[field]})`:''}` : labels.invalid));
       }
       else setError(labels.saveError);
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
@@ -172,7 +206,7 @@ export default function TransactionRequestEntry() {
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
     titleActions={<Stack direction="row" spacing={1}>
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
-      <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && (!valid || editing && !dirty)} onClick={save}>
+      <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
         {submission ? labels.retry : getUiMessage('common.save', 'Save', languageCode)}
       </SaveButton>
     </Stack>}
@@ -180,21 +214,22 @@ export default function TransactionRequestEntry() {
     <PageContentStack>
       {loadError && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)}>{labels.retryLoad}</Button>}>{labels.loadError}</Alert>}
       {error && <Alert severity="error">{error}</Alert>}
+      {validation && <Alert severity="warning" data-testid="expense-validation">{validation}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
-      <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
+      <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <TextField label={numbering.expense} value={form.managementNumber||''} onChange={event=>update({managementNumber:event.target.value})} disabled={disabled} helperText={form.version?'':numbering.auto} slotProps={{input:{readOnly:Boolean(form.version)},htmlInput:{maxLength:200}}} sx={{width:{xs:'100%',sm:360},mb:2}}/>
           <Box data-testid="expense-header" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm:'170px 170px minmax(0,1fr)' }, gap: 1.5,alignItems:'start' }}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
               onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
               onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
-            <ExpenseApprovalSettings ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} drafter={form.canonicalSource?.kind==='request'?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
+            <ExpenseApprovalSettings ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
               />
           </Box>
+          <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} helperText={form.version?'':formText.number} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}} sx={{width:{xs:'100%',sm:360},mt:2}}/>
           </Box>
         </Box>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
@@ -207,7 +242,7 @@ export default function TransactionRequestEntry() {
               <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 7 && index <= 9 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
-                  <ExpenseRequestLine line={line} index={index} {...data} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAddProcess={addProcess} canAddProcess={form.items.length<50} />
+                  <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAddProcess={addProcess} canAddProcess={form.items.length<50} />
                 </TableBody>
               )}</Draggable>)}
               {provided.placeholder}
@@ -219,7 +254,7 @@ export default function TransactionRequestEntry() {
           <Button startIcon={<Add />} sx={{ flexShrink:0 }} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button>
         </Stack>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) 360px'},gap:3,p:3,bgcolor:'grey.50'}} data-testid="expense-summary">
-          <TextField fullWidth label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{alignSelf:'start'}}/>
+          <TextField fullWidth multiline minRows={4} label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
         <Stack alignItems="flex-end" spacing={1} data-testid="expense-totals" sx={{minWidth:0}}>
           {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: '100%' }}>
             <Typography variant="subtitle2">{total.currency}</Typography>

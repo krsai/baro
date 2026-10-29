@@ -12,7 +12,7 @@ import { expenseLineAmounts, expenseCodeForLine, inputMode, visibleInput, validE
 import { formatCurrency } from '../utils/currencyFormat';
 import { expenseIndustryMismatch, expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
   const currency = line.currency;
   const [expanded, setExpanded] = useState(Boolean(line.expandLinks));
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
@@ -25,6 +25,8 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const multipleProcesses = !isProcess && ['STYLE','PROCESS'].includes(code?.linkTarget) && (code?.linkReferenceVersion>=2 || line.linkTarget==='STYLE' || line.styleProcessIds?.length>0);
   const selectedProcessIds = line.styleProcessIds?.length ? line.styleProcessIds : multipleProcesses && line.styleProcessId ? [line.styleProcessId] : [];
   const mode = key => line.productionLinked ? 'REQUIRED' : inputMode(code, key), visible = key => line.productionLinked || visibleInput(line, code, key);
+  const needsExpansion = isProcess || Boolean(code?.base?.requiredFields?.length) || ['order','style','process'].some(key=>mode(key)==='REQUIRED');
+  useEffect(()=>{if(needsExpansion)setExpanded(true);},[line.transactionCodeId,needsExpansion,validationAttempt]);
   const availableOrders = line.preservedReferences?.order && !orders.some(row=>row.dbId===line.workOrderId) ? [...orders,{...line.preservedReferences.order,dbId:line.workOrderId}] : orders;
   useEffect(()=>{
     if(line.itemId||line.productionLinked)return;
@@ -119,7 +121,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
             {!multipleProcesses&&<MenuItem value="">{common.none}</MenuItem>}{(selectedStyle?.styleProcesses || []).map(row => <MenuItem key={row.id} value={row.id}>{multipleProcesses&&<Checkbox checked={selectedProcessIds.includes(row.id)}/>} {row.processName} ({row.processCode})</MenuItem>)}
           </TextField>}
           {isProcess && plans.length > 1 && <TextField {...field} select required label={labels.assignment} value={line.assignmentPlanId} onChange={change('assignmentPlanId')}><MenuItem value="">{common.none}</MenuItem>{plans.map(row => <MenuItem key={row.id} value={row.id}>{row.factoryName} · #{row.id}</MenuItem>)}</TextField>}
-          {(code?.base?.requiredFields || []).map(key => <TextField {...field} key={key} required type={key === 'transportDate' ? 'date' : 'text'} label={common[key]} value={line.details[key] || ''} slotProps={key === 'transportDate' ? { inputLabel: { shrink: true } } : {}} onChange={event => onChange(line.key, { details: { ...line.details, [key]: event.target.value } })} />)}
+          {(code?.base?.requiredFields || []).map(key => <TextField {...field} key={key} required error={validationAttempt>0&&!line.details[key]?.trim()} type={key === 'transportDate' ? 'date' : 'text'} label={common[key]} value={line.details[key] || ''} slotProps={key === 'transportDate' ? { inputLabel: { shrink: true } } : {}} onChange={event => onChange(line.key, { details: { ...line.details, [key]: event.target.value } })} />)}
         </Box>
         {optionsError && <Alert severity="error" action={<Button onClick={() => setReload(value => value + 1)} disabled={disabled}>{labels.retryLoad}</Button>}>{labels.loadError}</Alert>}
         {isProcess && line.styleProcessId && !optionsLoading && !plans.length && <Alert severity="warning">{labels.noPlan}</Alert>}

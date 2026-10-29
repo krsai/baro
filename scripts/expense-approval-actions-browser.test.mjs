@@ -35,7 +35,7 @@ try{
   await panel.getByRole('button',{name:t.refresh,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-testid="expense-approval-actions"] .MuiAlert-standardWarning'));
   await button.click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.approve,exact:true}).click();
   await dialog.waitFor({state:'hidden'});await panel.getByText(t.approved,{exact:true}).first().waitFor();assert.deepEqual(posts,[{version:2}]);
-  await panel.getByRole('button',{name:t.history,exact:true}).click();await panel.getByText(/2026/).waitFor();
+  await panel.getByText(/2026/).waitFor();
   await page.getByRole('button',{name:t.inbox,exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByText(t.empty).waitFor();await dialog.getByRole('button',{name:t.close,exact:true}).click();
   await page.setViewportSize({width:390,height:844});assert.equal(await panel.isVisible(),true);assert.deepEqual(errors,[]);await page.close();
  }

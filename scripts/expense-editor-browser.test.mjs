@@ -55,26 +55,33 @@ try {
     await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currencyId:1,currency:{id:1,code:'VND'},isDefault:true,isActive:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
     await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'}]}}));
     await page.route('**/expense-approval-preview?*',r=>{const selection=r.request().postDataJSON()?.selection||{};return r.fulfill({headers,json:{complete:selection.seniorEmployeeId===21,ids:selection.seniorEmployeeId?[21]:[],drafter:{id:20,name:'Current editor'},stages:[{key:'senior',employeeId:selection.seniorEmployeeId||null,name:selection.seniorEmployeeId?'First approver':null,candidates:[{id:21,name:'First approver'}]}],policy:{totals:[{currency:'VND',amount:'510000'}]}}});});
-    await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`);
+    await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`,{timeout:90000});
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
     const h=expenseHeaderActions[lang];
-    const numberInput=page.getByLabel(documentNumberText[lang].expense,{exact:true});if(mode==='GENERAL'&&!locked)await numberInput.fill('BARO-EXP-A');if(mode==='SAVED'){await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='EXP-2026-000008'));assert.equal(await numberInput.evaluate(el=>el.readOnly),true);}
+    const numberInput=page.getByLabel(documentNumberText[lang].expense,{exact:true});assert.equal(await numberInput.evaluate(el=>el.readOnly),true);if(mode==='SAVED')await page.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(el=>el.value==='EXP-2026-000008'));
+    assert.equal(await page.getByTestId('expense-line').getByLabel(l.description,{exact:false}).evaluate(el=>el.readOnly),true);
     assert.equal(await page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true}).count(),0);
     const headerItems=await page.getByTestId('expense-header').locator(':scope > *').all();assert.equal(headerItems.length,3);
     const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields must share one row');
     const payeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(Math.abs(payeeBox.width-boxes[0].width)<2);assert.equal(payeeBox.height,36);assert.ok((await page.getByTestId('expense-payee-button').getAttribute('class')).includes('MuiButton-contained'));
-    const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.equal(await page.getByTestId('expense-header').getByLabel('REMARK',{exact:true}).count(),0);
+    const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).locator('..').boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.ok(Math.abs(remarkBox.height-totalsBox.height)<3);assert.equal(await page.getByTestId('expense-header').getByLabel('REMARK',{exact:true}).count(),0);
+    assert.ok((await numberInput.boundingBox()).y>boxes[0].y+boxes[0].height);
     if(mode==='GENERAL'&&lang==='ko'&&!locked){
       await page.setViewportSize({width:430,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
       const mobileRemark=await page.getByLabel('REMARK',{exact:true}).boundingBox(),mobileTotals=await page.getByTestId('expense-totals').boundingBox();assert.ok(mobileRemark.y<mobileTotals.y);
       await page.setViewportSize({width:1600,height:1000});
     }
-    if(!locked&&mode!=='SAVED')assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),true);
+    if(!locked&&mode!=='SAVED'){assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),false);await page.getByTestId('expense-approval-button').getByText('Current editor',{exact:true}).waitFor();}
+    if(!locked&&mode!=='SAVED'){
+      await page.locator('button.MuiButton-contained').first().click();
+      await page.getByTestId('expense-validation').waitFor();assert.equal(submitted,undefined);assert.equal(await page.getByRole('dialog').count(),0);
+      assert.ok((await page.getByTestId('expense-validation').innerText()).includes(l.code));
+    }
     const confirmLine=async()=>{
       const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:h.approval,exact:true}).waitFor();
-      assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).inputValue(),'Current editor');assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).evaluate(el=>el.readOnly),true);
+      assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).inputValue(),mode==='SAVED'?'Original author':'Current editor');assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).evaluate(el=>el.readOnly),true);
       await dialog.getByRole('combobox').click();await page.getByRole('option',{name:'First approver',exact:true}).click();
       await dialog.getByRole('button',{name:h.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
     };
@@ -171,7 +178,7 @@ try {
       await page.evaluate(()=>window.changeWorkspace('/dashboard'));await page.waitForTimeout(100);
       await page.evaluate(()=>window.changeWorkspace('/outsourcing-record/edit/legacy/78'));await page.waitForTimeout(100);
       assert.equal(await page.evaluate(()=>window.expenseNavigations.length),1,'Closing or returning to a saved form must not trigger another navigation');
-      assert.equal(submitted.approvalSelection.seniorEmployeeId,21);assert.equal(submitted.managementNumber,mode==='GENERAL'?'BARO-EXP-A':'');
+      assert.equal(submitted.approvalSelection.seniorEmployeeId,21);assert.equal(submitted.managementNumber,undefined);
       assert.equal(submitted.remark,mode==='PROCESS'?'':'Updated request');assert.equal(submitted.revision,'server-revision');
       assert.equal(submitted.items[0].sourceRecordId,78);assert.equal(submitted.items[0].assignmentPlanId,60);assert.equal(submitted.items[0].unitPrice,mode==='PROCESS'?'3000':'5000');
       assert.equal(submitted.items[0].description,undefined);

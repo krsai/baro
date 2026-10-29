@@ -109,7 +109,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const before = snapshot(source);
   const requestDate = validateCostDate(body.requestDate), remark = typeof body.remark==='string' ? body.remark.trim() : '';
-  if(remark.length>500 || /[\r\n]/.test(remark))return fail(400,'INVALID_EXPENSE_REMARK');
+  if(remark.length>500)return fail(400,'INVALID_EXPENSE_REMARK');
   assertManagedDate(requestDate,(await loadManagementPeriod(tx,orgId)).startDate);
   if (!Number.isSafeInteger(body.partnerOrgId) || body.partnerOrgId<=0 || !Array.isArray(body.items) || !body.items.length || body.items.length>50 || body.items.some((item: any)=>!item || typeof item!=='object' || Array.isArray(item))) return fail(400,'INVALID_EXPENSE_REQUEST_HEADER');
   const byId = new Map(source.costs.map((cost: any)=>[cost.id,cost]));
@@ -126,6 +126,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection);
   const approvers = approval.ids;
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
+  if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
   const managementNumber=source.document?.managementNumber||(!source.document?await allocateDocumentNumber(tx,orgId,'EXP',requestDate,body.managementNumber):null);
   const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };

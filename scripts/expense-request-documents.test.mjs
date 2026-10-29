@@ -108,11 +108,14 @@ test('document registration persists ordered cost rows and server totals; identi
   assert.equal(db.state().documents.length,1); assert.equal(db.state().costs.length,2);
   await assert.rejects(route({ body: { ...body, items: body.items.slice(0,1) } },response()),/RETRY_MISMATCH/);
 });
-test('expense management numbers accept manual input, reject duplicates and preserve exact retry identity',async()=>{
- const {route,db}=routeHarness(),body={...input(),managementNumber:'BARO-2026-A'};
- const res=response();await route({body},res);assert.equal(res.body.managementNumber,'BARO-2026-A');
+test('expense management numbers are automatic, reject manual input and preserve exact retry identity',async()=>{
+ const {route,db}=routeHarness(),body={...input(),remark:'Factory expenses\nAdditional remark'};
+ await assert.rejects(route({body:{...body,managementNumber:'BARO-2026-A'}},response()),/DOCUMENT_NUMBER_AUTOMATIC/);
+ assert.equal(db.state().documents.length,0);
+ const res=response();await route({body},res);assert.equal(res.body.managementNumber,'EXP-2026-000001');
+ assert.equal(res.body.remark,body.remark);
  await route({body},response());assert.equal(db.state().documents.length,1);
- await assert.rejects(route({body:{...body,clientKey:'different-key',managementNumber:'baro-2026-a'}},response()),/DOCUMENT_NUMBER_ALREADY_EXISTS/);
+ await assert.rejects(route({body:{...body,clientKey:'different-key',managementNumber:'baro-2026-a'}},response()),/DOCUMENT_NUMBER_AUTOMATIC/);
  await assert.rejects(route({body:{...body,managementNumber:'CHANGED'}},response()),/RETRY_MISMATCH/);
  assert.equal(db.state().documents.length,1);
 });

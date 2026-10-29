@@ -96,10 +96,12 @@ test('editor GET restores the confirmed document approval selection from its cur
  assert.deepEqual(loaded.approvalSelection,{});assert.equal(loaded.createdByEmployee.id,20);
 });
 test('expense registration stores its number and later edits cannot replace the management identity',async()=>{
- const db=harness();const body={...await input(db),managementNumber:'PAY-2026-A'};await db.save(body);
- const loaded=expenseEditorForm(await db.source());assert.equal(loaded.managementNumber,'PAY-2026-A');
+ const db=harness();const body={...await input(db),remark:'July expenses\nAdditional remark'};
+ await assert.rejects(db.save({...body,managementNumber:'PAY-2026-A'}),/DOCUMENT_NUMBER_AUTOMATIC/);
+ await db.save(body);
+ const loaded=expenseEditorForm(await db.source());assert.equal(loaded.managementNumber,'EXP-2026-000001');assert.equal(loaded.remark,body.remark);
  await assert.rejects(db.save({...loaded,clientKey:'number-change-001',managementNumber:'REPLACED'}),/DOCUMENT_NUMBER_LOCKED/);
- assert.equal(db.state().documents[0].managementNumber,'PAY-2026-A');
+ assert.equal(db.state().documents[0].managementNumber,'EXP-2026-000001');
 });
 test('wrapping and editing legacy production preserves source IDs, original period, author and the other vendor',async()=>{
   const db=harness(), body=await input(db), before=structuredClone(db.state());

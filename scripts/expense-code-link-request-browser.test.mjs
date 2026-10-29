@@ -17,7 +17,7 @@ try{
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi'])for(const mode of ['required','production','saved','order','style']){
   const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));const labels=EXPENSE_REQUEST_TEXT[lang];
-  const base={entryMode:['production','style','order'].includes(mode)?'PROCESS':'GENERAL',requiredFields:[],isActive:true,expenseType:{nameEn:'Expense'},serviceTypeId:1};
+  const base={entryMode:['production','style','order'].includes(mode)?'PROCESS':'GENERAL',requiredFields:mode==='order'?['transportDate']:[],isActive:true,expenseType:{nameEn:'Expense'},serviceTypeId:1};
   const codes=['BTHV','BTHE','BTHZ','PRTV'].map((code,index)=>applyExpenseCodeLinkPolicy({id:7+index,code,baseId:index===3?20:10,isActive:true,nameEn:code,vatEnabled:false,base},index===3?'NONE':mode==='style'?'STYLE':mode==='order'?'ORDER':'PROCESS'));
   await page.addInitScript(({lang,codes,saved})=>{window.lang=lang;window.codes=codes;window.saved=saved;},{lang,codes,saved:mode==='saved'});
   const headers={'Access-Control-Allow-Origin':'*'};
@@ -26,6 +26,7 @@ try{
   if(mode==='order'||mode==='style'){
    await page.getByRole('combobox',{name:labels.order,exact:false}).click();await page.getByRole('option',{name:'Order X',exact:true}).click();
    if(mode==='order'){
+    const requiredDate=page.locator('input[type="date"][required]');await requiredDate.waitFor();assert.equal(await page.evaluate(()=>document.documentElement.dataset.valid),'false');await requiredDate.fill('2026-10-29');
     await page.waitForFunction(()=>document.documentElement.dataset.valid==='true');assert.equal(await page.getByRole('combobox',{name:labels.style,exact:false}).count(),0);
    }else{
     await page.getByRole('combobox',{name:labels.style,exact:false}).click();await page.getByRole('option',{name:'Dress (ST)',exact:true}).click();

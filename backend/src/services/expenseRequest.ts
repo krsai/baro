@@ -41,7 +41,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const period = await loadManagementPeriod(tx, orgId);
   assertManagedDate(requestDate, period.startDate);
   const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';
-  if (remark.length > 500 || /[\r\n]/.test(remark)) fail('INVALID_EXPENSE_REMARK');
+  if (remark.length > 500) fail('INVALID_EXPENSE_REMARK');
   if (!Number.isSafeInteger(body?.partnerOrgId) || body.partnerOrgId <= 0) fail('INVALID_EXPENSE_REQUEST_HEADER');
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,64}$/.test(body.clientKey)) fail('INVALID_TRANSACTION_KEY');
   if (!Array.isArray(body?.items) || !body.items.length || body.items.length > 50) fail('EXPENSE_REQUEST_ITEMS_REQUIRED');
@@ -67,6 +67,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
   }
+  if(requestedNumber)throw createHttpError(400,'DOCUMENT_NUMBER_AUTOMATIC');
   await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
   const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;

@@ -5,15 +5,16 @@ import {ledgerEvidenceErrors} from '../constants/ledgerEvidence';
 import {expenseApprovalActionsText} from '../constants/expenseApprovalActions';
 import {emitWorkspaceDataChanged,subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 
-export default function ExpenseApprovalActions({requestId,version,orgId,languageCode,disabled,dirty=false,onRefresh}) {
+export default function ExpenseApprovalActions({requestId,version,orgId,languageCode,disabled,dirty=false,onRefresh,drafter,onState}) {
  const t=expenseApprovalActionsText[languageCode]||expenseApprovalActionsText.en;
- const [result,setState]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[reload,setReload]=useState(0),[history,setHistory]=useState(false),[confirm,setConfirm]=useState(false);
+ const [result,setState]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[reload,setReload]=useState(0),[history,setHistory]=useState(true),[confirm,setConfirm]=useState(false);
  const scope=`${orgId}:${requestId}:${version}`,current=useRef(scope),lock=useRef(false);current.current=scope;
  const state=result?.scope===scope?result.value:null;
  const path=`/expense-requests/${requestId}/approval${buildQueryString({orgId})}`;
+ useEffect(()=>{onState?.(state);},[state,onState]);
  const message=e=>{const code=e.details?.error||e.message;return code==='EXPENSE_REQUEST_CHANGED'?t.changed:(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en)[code]||t.failed;};
  useEffect(()=>subscribeWorkspaceDataChanged(detail=>{if(Number(detail.orgId)===Number(orgId)&&detail.topics?.includes('expense-approvals'))setReload(n=>n+1);}),[orgId]);
- useEffect(()=>{current.current=scope;setConfirm(false);setBusy(false);lock.current=false;return()=>{if(current.current===scope)current.current='';};},[scope]);
+ useEffect(()=>{current.current=scope;setHistory(true);setConfirm(false);setBusy(false);lock.current=false;return()=>{if(current.current===scope)current.current='';};},[scope]);
  useEffect(()=>{
   setState(null);setError('');if(!requestId)return;let active=true;
   const controller=new AbortController();setLoading(true);
@@ -42,6 +43,7 @@ export default function ExpenseApprovalActions({requestId,version,orgId,language
    {state&&<Button onClick={()=>setHistory(value=>!value)}>{t.history}</Button>}
    {state?.canApprove&&<Button variant="contained" disabled={busy||disabled||stale||loading} onClick={()=>{setError('');setConfirm(true);}}>{t.approve}</Button>}
   </Stack>
+  {drafter?.name&&<Typography variant="body2" sx={{mt:1}}>{t.drafter}: {drafter.name}</Typography>}
   {dirty&&<Alert severity="info" sx={{mt:1}}>{t.dirty}</Alert>}
   {stale&&<Alert severity="warning" sx={{mt:1}} action={onRefresh&&<Button disabled={disabled||busy} onClick={onRefresh}>{t.refresh}</Button>}>{t.changed}</Alert>}
   {error&&<Alert severity="error" sx={{mt:1}} action={!state&&<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{error}</Alert>}
