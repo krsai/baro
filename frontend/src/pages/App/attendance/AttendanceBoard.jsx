@@ -238,8 +238,6 @@ const resolveInitialDate = (value) => {
 const AttendanceBoard = ({
   initialFactoryId = '',
   initialWorkDate = '',
-  onClose = null,
-  closeOnSave = false,
 }) => {
   const { showNotification } = useAppActions();
   const { activeOrgId, activeFactoryId } = useAuth();
@@ -491,9 +489,6 @@ const AttendanceBoard = ({
       setEntriesByWorker(nextEntriesByWorker);
       setSavedEntriesSignature(buildAttendanceEntriesSignature(nextEntriesByWorker));
       showNotification(resolveText(TEXT.saveSuccess, languageCode, 'Attendance entries saved.'), 'success');
-      if (closeOnSave && typeof onClose === 'function') {
-        onClose();
-      }
     } catch (error) {
       showNotification(
         error?.message || resolveText(TEXT.saveFailed, languageCode, 'Failed to save attendance entries.'),
