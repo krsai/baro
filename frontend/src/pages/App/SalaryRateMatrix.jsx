@@ -1,6 +1,5 @@
 import React from 'react';
-import { Box, Button, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
+import { Box, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -16,7 +15,7 @@ const copy = {
   vi: ['Tổng đơn giá hàng tháng', 'Chỉ cộng lương cơ bản và phụ cấp cơ bản có chu kỳ 1 tháng. Không gồm phụ cấp bổ sung và thưởng hiệu suất. Số tiền thực nhận phụ thuộc công thức và kết quả chấm công hoặc sản xuất.', 'Tự động'],
 };
 
-export default function SalaryRateMatrix({ items, grades, rates, languageCode, currencyCode, t, categories, unitLabel, onEdit, onAdd, onReorder }) {
+export default function SalaryRateMatrix({ items, grades, rates, languageCode, currencyCode, t, categories, unitLabel, onEdit, onReorder }) {
   const labels = copy[languageCode] || copy.en;
   const name = row => resolveLocalizedAttributeName(row, languageCode);
   const amount = (row, type, grade) => Number(String(rates[`${type}:${grade.id}`]?.[row.id] || '0').replace(/,/g, ''));
@@ -24,20 +23,20 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   const monthlyItems = items.filter(isMonthlyBaseSalaryItem);
   const displayCategories = { BASE: categories.BASE, ALLOWANCE: '기본 수당', ADDITIONAL_ALLOWANCE: '추가 수당', INCENTIVE: categories.INCENTIVE };
   const units = [...new Set(monthlyItems.map(unitLabel))];
+  const gradeBorder = index => ({ borderLeft: `${index === 0 ? 2 : 1}px solid ${ui.color.border}` });
   const sticky = { position: 'sticky', left: 0, zIndex: 1, bgcolor: ui.color.surface, minWidth: 220, borderRight: 1, borderColor: 'divider' };
   return <Paper variant="outlined" sx={{ minWidth: 0 }}>
     <Stack direction="row" alignItems="center" sx={{ p: 2 }}>
       <Typography fontWeight={700}>{t('급여 항목')} · {currencyCode}</Typography>
-      <Button startIcon={<AddIcon />} sx={{ ml: 'auto' }} onClick={onAdd}>{t('항목 추가')}</Button>
     </Stack>
     <TableContainer sx={{ overflowX: 'auto' }} data-salary-rate-matrix>
       <DragDropContext onDragEnd={onReorder}>
         <Table size="small" sx={{ minWidth: 220 + TYPES.length * Math.max(grades.length, 1) * 96 }}>
           <TableHead>
             <TableRow><TableCell rowSpan={2} sx={{ ...sticky, zIndex: 2, bgcolor: ui.color.header }}>{t('항목명')}</TableCell>
-              {TYPES.map(type => <TableCell key={type} colSpan={Math.max(grades.length, 1)} align="center" sx={{ borderLeft: 1, borderColor: 'divider' }}>{getPayTypeLabel(type, type, languageCode)}</TableCell>)}
+              {TYPES.map(type => <TableCell key={type} colSpan={Math.max(grades.length, 1)} align="center" sx={gradeBorder(0)}>{getPayTypeLabel(type, type, languageCode)}</TableCell>)}
             </TableRow>
-            <TableRow>{TYPES.flatMap(type => grades.length ? grades.map(grade => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap' }}>{name(grade)}<Typography variant="caption" display="block" color="text.secondary">{grade.code}</Typography></TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>
+            <TableRow>{TYPES.flatMap(type => grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="center" sx={{ ...gradeBorder(index), whiteSpace: 'nowrap' }}>{name(grade)}<Typography variant="caption" display="block" color="text.secondary">{grade.code}</Typography></TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>
           </TableHead>
           {Object.entries(displayCategories).map(([category, label]) => <Droppable key={category} droppableId={`salary-items:${category}`}>
             {provided => <TableBody ref={provided.innerRef} {...provided.droppableProps} data-salary-group={category}>
@@ -48,14 +47,14 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
                   </TableCell>
                   {TYPES.flatMap(type => {
                     const active = (row.payTypes || []).includes(type);
-                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', borderLeft: index === 0 ? 1 : 0, borderColor: 'divider' }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : formatAmount(amount(row, type, grade))}</TableCell>) : <TableCell key={type}>—</TableCell>;
+                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="center" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : row.id === 'incentiveTotal' ? labels[2] : formatAmount(amount(row, type, grade))}</TableCell>) : <TableCell key={type}>—</TableCell>;
                   })}
                 </TableRow>}
               </Draggable>)}
               {provided.placeholder}
             </TableBody>}
           </Droppable>)}
-          <TableBody>{units.map(unit => <TableRow key={unit} data-salary-total={unit} sx={{ bgcolor: ui.color.header }}><TableCell sx={{ ...sticky, bgcolor: ui.color.header, fontWeight: 600 }}>{labels[0]}<Typography variant="caption" display="block" color="text.secondary">{unit}</Typography></TableCell>{TYPES.flatMap(type => grades.length ? grades.map(grade => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ fontWeight: 600 }}>{formatAmount(monthlyItems.filter(row => (row.payTypes || []).includes(type) && unitLabel(row) === unit).reduce((sum, row) => sum + amount(row, type, grade), 0))}</TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>)}</TableBody>
+          <TableBody>{units.map(unit => <TableRow key={unit} data-salary-total={unit} sx={{ bgcolor: ui.color.header }}><TableCell sx={{ ...sticky, bgcolor: ui.color.header, fontWeight: 600 }}>{labels[0]}<Typography variant="caption" display="block" color="text.secondary">{unit}</Typography></TableCell>{TYPES.flatMap(type => grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="center" sx={{ ...gradeBorder(index), fontWeight: 600 }}>{formatAmount(monthlyItems.filter(row => (row.payTypes || []).includes(type) && unitLabel(row) === unit).reduce((sum, row) => sum + amount(row, type, grade), 0))}</TableCell>) : <TableCell key={type}>—</TableCell>)}</TableRow>)}</TableBody>
         </Table>
       </DragDropContext>
     </TableContainer>

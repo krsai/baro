@@ -16,6 +16,7 @@ import {
   TextField, Tooltip, Typography,
 } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
+import AddIcon from '@mui/icons-material/Add';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
 import SettingsIcon from '@mui/icons-material/Settings';
@@ -520,18 +521,19 @@ const SalarySystem = () => {
   return <AppPageContainer title={t('급여 설정')} titleActions={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button variant="outlined" onClick={() => setEmployeePreviewOpen(true)}>{languageCode === 'ko' ? '직원별 예상 급여' : languageCode === 'vi' ? 'Lương dự kiến theo nhân viên' : 'Employee salary estimate'}</Button><Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button></Stack>}><Box sx={{ width: '100%' }}>
     <EmployeeSalaryPreview open={employeePreviewOpen} onClose={() => setEmployeePreviewOpen(false)} orgId={activeOrgId} languageCode={languageCode} />
     <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen || itemDetailOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setItemDetailOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
-    {factories.length > 0 && <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
+    {factories.length > 0 && <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'stretch', md: 'center' }} spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
       <Tabs value={factoryId} onChange={(_event, value) => { setSavedSnapshot(null); setSelectedId('baseSalary'); setFactoryId(value); }} sx={{ flex: 1, minWidth: 0 }}>
         {factories.map((factory) => <Tab key={factory.id} value={factory.id} label={languageCode === 'ko' ? (factory.nameKo || factory.name) : languageCode === 'vi' ? (factory.nameVi || factory.name) : factory.name} />)}
       </Tabs>
-      <Stack direction="row" spacing={1} sx={{ pb: 0.75, flexShrink: 0 }}>
+      <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ pb: 0.75, flexShrink: 0, justifyContent: 'flex-end' }}>
+        <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setDialogOpen(true)}>{t('항목 추가')}</Button>
         <Button variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog}>{t('버전 관리')}</Button>
         <SaveButton onClick={saveDraft} loading={saving} disabled={!isDirty || edit.stale || !edit.revision || versionBusy}>{t('저장')}</SaveButton>
       </Stack>
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
-    <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onAdd={() => setDialogOpen(true)} onEdit={row => { setSelectedId(row.id); setItemDetailOpen(true); }} onReorder={reorderItems} />
+    <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onEdit={row => { setSelectedId(row.id); setItemDetailOpen(true); }} onReorder={reorderItems} />
     <Dialog open={itemDetailOpen} onClose={() => setItemDetailOpen(false)} fullWidth maxWidth="lg">
       <DialogContent sx={{ p: 0 }}>
       <Paper variant="outlined" sx={{ flex: 1, minWidth: 0 }}>

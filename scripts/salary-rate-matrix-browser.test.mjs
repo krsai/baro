@@ -53,6 +53,12 @@ try {
     assert.equal(await matrix.locator('thead th').first().evaluate(node=>getComputedStyle(node).backgroundColor),await matrix.locator('thead tr').nth(1).locator('th').first().evaluate(node=>getComputedStyle(node).backgroundColor),'sticky header follows shared header surface');
     assert.ok((await base.boundingBox()).height < 70,'rows stay compact without repeated chips');
     const totals=matrix.locator('[data-salary-total]');
+    for(const cells of [matrix.locator('thead tr').nth(1).locator('th'),base.locator('td').filter({hasNot:page.locator('button')}),totals.locator('td').filter({hasNotText:/월 지급|Monthly rate|Tổng đơn/})]){
+      assert.ok((await cells.evaluateAll(nodes=>nodes.map(node=>getComputedStyle(node).textAlign))).every(value=>value==='center'),'grade labels, rates and totals are centered');
+    }
+    for(const row of [matrix.locator('thead tr').nth(1).locator('th'),base.locator('td').nth(1),totals.locator('td').nth(1)]){
+      assert.ok((await row.evaluateAll(nodes=>nodes.map(node=>parseFloat(getComputedStyle(node).borderLeftWidth)))).every(width=>width>=1),'grade columns have visible dividers');
+    }
     assert.equal(await totals.count(),1,'only monthly payment items have a total');
     assert.deepEqual(await matrix.locator('[data-salary-group="ALLOWANCE"] [data-salary-item]').evaluateAll(nodes=>nodes.map(node=>node.dataset.salaryItem)),['lunch','phone']);
     assert.deepEqual(await matrix.locator('[data-salary-group="ADDITIONAL_ALLOWANCE"] [data-salary-item]').evaluateAll(nodes=>nodes.map(node=>node.dataset.salaryItem)),['tenure','custom-night']);
