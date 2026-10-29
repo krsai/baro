@@ -42,6 +42,10 @@ try{
   if(screen!=='process')assert.equal(await page.locator('input[type="month"]').count(),0,'effective months are edited only through version management');
   if(screen!=='process')await page.getByRole('button',{name:screen==='salary'?{ko:'버전 관리',en:'Version history',vi:'Lịch sử phiên bản'}[lang]:{ko:'버전 관리',en:'Version Management',vi:'Quản lý phiên bản'}[lang],exact:true}).click();
   const board=page.locator('[data-version-board]');await board.waitFor();
+  for(const [portSelector,itemSelector] of [['[data-version-list]','[data-version-id]'],['[data-version-target-list]','[data-version-target]']]){
+   const inset=await board.locator(portSelector).evaluate((port,selector)=>{const item=port.querySelector(selector),outer=port.getBoundingClientRect(),inner=item.getBoundingClientRect();return{left:inner.left-outer.left,right:outer.left+port.clientWidth-inner.right,top:inner.top-outer.top};},itemSelector);
+   assert.ok(inset.left>=2&&inset.right>=2&&inset.top>=2,`${lang}/${screen}: card and target outlines fit inside scroll viewport: ${JSON.stringify(inset)}`);
+  }
   const dialog=board.locator('xpath=ancestor::*[@role="dialog"][1]');
   assert.equal(await dialog.locator('input[type=month],select,[role=combobox]').count(),0,'version range editor has no selectors');
   assert.deepEqual(await board.locator('[data-version-id]').evaluateAll(nodes=>nodes.map(n=>n.dataset.versionId)),['2','1']);

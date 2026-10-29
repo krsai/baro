@@ -27,7 +27,7 @@ export function versionKeyboardCoordinates(event, { context, currentCoordinates 
 function VersionCard({ version, color, label, meta, subtitle, disabled }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: `version:${version.id}`, data: { version }, disabled });
   return <Box ref={setNodeRef} {...attributes} {...listeners} data-version-id={version.id}
-    aria-label={label} sx={{ flexShrink: 0, minWidth: 0, p: 1, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: color, borderRadius: 1, bgcolor: 'background.paper', cursor: disabled ? 'default' : 'grab', opacity: isDragging ? 0.4 : 1, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}>
+    aria-label={label} sx={{ flexShrink: 0, minWidth: 0, scrollMargin: '4px', p: 1, border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: color, borderRadius: 1, bgcolor: 'background.paper', cursor: disabled ? 'default' : 'grab', opacity: isDragging ? 0.4 : 1, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}>
     <Stack direction="row" spacing={0.75} alignItems="center">
       {disabled ? <LockOutlinedIcon sx={{ fontSize: 17, color: 'text.disabled' }} /> : <DragIndicatorIcon sx={{ fontSize: 18, color: 'text.secondary' }} />}
       <Typography variant="body2" fontWeight={700} sx={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{label}</Typography>
@@ -40,7 +40,7 @@ function VersionCard({ version, color, label, meta, subtitle, disabled }) {
 function TargetRow({ target, order, color, olderColor, first, last, busy, text }) {
   const { setNodeRef, isOver } = useDroppable({ id: `target:${target.id}`, data: { target, order }, disabled: busy || target.locked });
   return <Box ref={setNodeRef} data-version-target={target.id} data-dragover={isOver || undefined} aria-disabled={busy || target.locked || undefined}
-    sx={{ position: 'relative', minHeight: 44, display: 'flex', alignItems: 'center', pl: 3.5, pr: 0.75, py: 0.75, borderRadius: 1, bgcolor: isOver ? 'action.selected' : 'transparent', outline: isOver ? '2px solid' : 'none', outlineColor: 'primary.main' }}>
+    sx={{ position: 'relative', minHeight: 44, scrollMargin: '4px', display: 'flex', alignItems: 'center', pl: 3.5, pr: 0.75, py: 0.75, borderRadius: 1, bgcolor: isOver ? 'action.selected' : 'transparent', outline: isOver ? '2px solid' : 'none', outlineColor: 'primary.main' }}>
     {!first && <Box sx={{ position: 'absolute', left: 11, top: 0, height: '50%', width: 2, bgcolor: color }} />}
     {!last && <Box sx={{ position: 'absolute', left: 11, top: '50%', height: '50%', width: 2, bgcolor: olderColor }} />}
     <Box sx={{ position: 'absolute', left: target.boundary || first ? 4 : 6, width: target.boundary || first ? 16 : 12, height: target.boundary || first ? 16 : 12, borderRadius: '50%', bgcolor: color }} />
@@ -76,14 +76,14 @@ export default function VersionAssignmentBoard({ versions, targets, onAssign, on
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} data-version-board>
       <Box sx={{ width: { xs: '100%', md: 280 }, minWidth: 0, flexShrink: 0 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>{text.versions}</Typography>
-        <Stack spacing={0.75} sx={{ maxHeight: { xs: 200, md: 434 }, overflowY: 'auto', pr: 0.75, py: 0.25 }}>
+        <Stack spacing={0.75} data-version-list sx={{ maxHeight: { xs: 200, md: 434 }, overflowY: 'auto', px: 0.5, py: 0.5, scrollPadding: '4px', scrollbarGutter: 'stable' }}>
           {[...ordered].reverse().map(version => <VersionCard key={version.id} version={version} color={colorFor(version)} label={getVersionLabel(version)} meta={getVersionMeta?.(version)} subtitle={getVersionSubtitle?.(version)} disabled={busy || isVersionDisabled(version)} />)}
         </Stack>
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{ mb: 1 }}><Typography variant="subtitle2">{text.targets}</Typography>{targetActions}</Stack>
         {rangeLabel && <Typography variant="caption" color="text.secondary">{rangeLabel}</Typography>}
-        <Box sx={{ maxHeight: { xs: 300, md: 434 }, overflowY: 'auto', pr: 0.75, py: 0.25 }}>
+        <Box data-version-target-list sx={{ maxHeight: { xs: 300, md: 434 }, overflowY: 'auto', px: 0.5, py: 0.5, scrollPadding: '4px', scrollbarGutter: 'stable' }}>
           {targets.map((target, index) => <TargetRow key={target.id} target={target} order={index} color={colorFor(target.version)} olderColor={colorFor(targets[index + 1]?.version)} first={index === 0} last={index === targets.length - 1} busy={busy} text={text} />)}
           {!targets.length && <Typography variant="body2" color="text.secondary">{emptyMessage || text.empty}</Typography>}
         </Box>
