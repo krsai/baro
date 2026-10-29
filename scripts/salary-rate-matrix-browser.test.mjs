@@ -98,8 +98,10 @@ try {
     assert.equal(writes.length,0,'editing stays local until version save');
     const night=matrix.locator('[data-salary-item="custom-night"]');
     await night.getByRole('button',{name:new RegExp(editLabel)}).click();dialog=page.getByRole('dialog');
-    await dialog.getByRole('combobox',{name:{ko:'계산 기준',en:'Calculation basis',vi:'Cơ sở tính'}[lang],exact:true}).click();
-    await page.getByRole('option',{name:{ko:'기본급',en:'Base salary',vi:'Lương cơ bản'}[lang],exact:true}).click();
+    const baseLabel={ko:'기본급',en:'Base salary',vi:'Lương cơ bản'}[lang];
+    await dialog.getByRole('button',{name:`${baseLabel} · VND`,exact:true}).click();
+    assert.equal(await dialog.locator('.MuiChip-root').first().innerText(),baseLabel,'module replaces the first formula chip');
+    assert.equal(await dialog.getByRole('combobox',{name:{ko:'계산 기준',en:'Calculation basis',vi:'Cơ sở tính'}[lang],exact:true}).count(),0,'basis is selected directly through formula modules');
     await dialog.getByRole('button',{name:{ko:'확인',en:'Confirm',vi:'Xác nhận'}[lang],exact:true}).click();
     assert.equal(await night.getByRole('textbox').count(),0,'base-salary formulas need no manual allowance inputs');
     assert.ok((await night.innerText()).includes({ko:'자동 계산',en:'Automatic',vi:'Tự động'}[lang]));
