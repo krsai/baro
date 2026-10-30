@@ -32,7 +32,7 @@ try {
     await page.route('**/src/context/RequestScopeContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useRequestScopeContext=()=>({active:!window.expenseBackground,scopeId:"/outsourcing-record/edit/legacy/78"});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const service={isActive:true,entryMode:['SAVED','BACKGROUND'].includes(mode)?'GENERAL':mode,requiredFields:[],expenseTypeId:1,serviceTypeId:4};
-    const mocks={ 'business-partners':[{id:11,name:'Selected vendor',type:'PROCESS_OUTSOURCING',contactName:'Accounts desk',contactPhone:'0901234567',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4,nameKo:'\uB2E8\uCD94\uAD6C\uBA4D',nameEn:'Buttonhole',nameVi:'Th\u00f9a khuy'}]}],
+    const mocks={'expense-units':[{id:1,code:'PCS',nameKo:'개',nameEn:'Piece',nameVi:'Cái',isActive:true}], 'business-partners':[{id:11,name:'Selected vendor',type:'PROCESS_OUTSOURCING',contactName:'Accounts desk',contactPhone:'0901234567',isActive:true,partnerExpenseTypeId:1,serviceTypes:[{id:44,systemDefaultId:4,nameKo:'\uB2E8\uCD94\uAD6C\uBA4D',nameEn:'Buttonhole',nameVi:'Th\u00f9a khuy'}]}],
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[{id:'public-30',dbId:30,ownerOrgId:1,orderNumber:'L17-1'}], 'app-settings':{defaultVatRate:'10'} };
     for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
@@ -156,7 +156,7 @@ try {
           const second=page.getByTestId('expense-line').nth(1);
           await second.getByLabel(l.quantity,{exact:false}).fill('200');await second.getByLabel(l.price,{exact:false}).fill('2500');
           const details=page.locator('tbody[data-rfd-draggable-id]').nth(1);
-          await details.getByRole('combobox',{name:l.style,exact:false}).click();await page.getByRole('option',{name:'Shirt (AM02058)',exact:true}).click();
+          await details.getByRole('combobox',{name:l.style,exact:true}).click();await page.getByRole('option',{name:'Shirt (AM02058)',exact:true}).click();
           await details.getByRole('combobox',{name:l.process,exact:false}).click();await page.getByRole('option',{name:'Buttonhole second (BH2)',exact:true}).click();
         }
       }else{

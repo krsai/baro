@@ -8,8 +8,9 @@ import { validateCostDate, COST_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
+import {prepareExpenseMetadata,saveExpenseReferences} from './expenseMetadata';
 
-export const REQUEST_INCLUDE = { processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
+export const REQUEST_INCLUDE = { processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, unit:true, referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}},orderBy:{id:'asc' as const}}, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 const invalid = (code: string): never => { throw createHttpError(400, code); };
 export { appSettingsKey, loadAppSettings } from './applicationSettings';
 import { loadAppSettings } from './applicationSettings';
@@ -62,7 +63,14 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   }
   if (details.transportDate) validateCostDate(details.transportDate);
   const previous = edit ? null : await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: REQUEST_INCLUDE });
+  const metadata=await prepareExpenseMetadata(tx,orgId,body,edit?.cost||previous||(edit?.record?{workOrderId:edit.record.assignmentPlan?.workOrderId,styleId:edit.record.styleId}:null));
   if (previous) {
+    if(body.unitId!==undefined&&metadata.unitId!==(previous.unitId??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
+    if(metadata.supplied){
+      const keys=(orders:any[],styles:any[])=>JSON.stringify([...orders.map(id=>`${id}:`),...styles.map(row=>`${row.workOrderId}:${row.styleId}`)].sort());
+      const oldLinks=previous.referenceLinks||[];
+      if(keys(metadata.orderIds,metadata.styles)!==keys(oldLinks.filter((row:any)=>!row.styleId).map((row:any)=>row.workOrderId),oldLinks.filter((row:any)=>row.styleId)))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
+    }
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
     if (JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
@@ -89,6 +97,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     const option = process || edit?.record ? 'REQUIRED' : service[`${key}Input`];
     if (option === 'REQUIRED' && !selections[key]) return invalid(`REQUIRED_REQUEST_${key.toUpperCase()}`);
     if (option === 'HIDDEN' && selections[key]) return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
+    if(metadata.supplied&&option==='HIDDEN'&&(key==='order'&&metadata.orderIds.length||key==='style'&&metadata.styles.length))return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
   }
   if (styleId && !workOrderId || styleProcessId && !styleId) return invalid('INVALID_REQUEST_REFERENCE');
   if (workOrderId && !await tx.workOrder.findFirst({ where: { id: workOrderId, orgId }, select: { id: true } })) return invalid('INVALID_TRANSACTION_ORDER');
@@ -146,8 +155,10 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const previousIds=storedExpenseProcessIds(edit?.cost);
   const replaceLinks=JSON.stringify(previousIds)!==JSON.stringify(processIds);
   if(replaceLinks&&previousIds.length)await tx.expenseCostProcess.deleteMany({where:{costId:edit!.cost.id,orgId}});
-  const saved = edit?.cost ? await tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data, include: REQUEST_INCLUDE }) :
-    await tx.partnerTransactionCost.create({ data: { ...data, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
+  const unitData=body.unitId!==undefined||edit?.cost?.unitId!=null?{unitId:metadata.unitId}:{};
+  const saved = edit?.cost ? await tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data:{...data,...unitData}, include: REQUEST_INCLUDE }) :
+    await tx.partnerTransactionCost.create({ data: { ...data,...unitData, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
   if(replaceLinks&&processIds.length)await tx.expenseCostProcess.createMany({data:processIds.map(styleProcessId=>({costId:saved.id,orgId,styleId:styleId!,styleProcessId}))});
-  return replaceLinks ? tx.partnerTransactionCost.findUnique({where:{id:saved.id},include:REQUEST_INCLUDE}) : saved;
+  await saveExpenseReferences(tx,saved,metadata);
+  return replaceLinks || metadata.supplied ? tx.partnerTransactionCost.findUnique({where:{id:saved.id},include:REQUEST_INCLUDE}) : saved;
 }

@@ -725,6 +725,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  {tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
   {tableName:'BankLedgerAccount',columnName:'openingBalance'},
   {tableName:'BankLedgerAccount',columnName:'entityAccountId'},
   ...['accountKind','displayName','sortOrder'].map(columnName=>({tableName:'OrganizationBankAccount',columnName})),
@@ -1031,6 +1032,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'ExpenseItemReference_guard','ExpenseItemReference_audit_guard','ExpenseItemReference_cost_scope_fkey','ExpenseItemReference_order_scope_fkey','ExpenseItemReference_style_scope_fkey',
   'ServiceDefaultRenamePropagation',
   'CodeDefaultRenamePropagation',
   'BankLedgerEntry_accountId_orgId_fkey',

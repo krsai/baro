@@ -15,7 +15,7 @@ test('editor restores multiple process references as one monetary line, includin
 });
 
 function harness() {
-  let state = { documents: [], costs: [], audits: [], extraLogs: [], records: [
+  let state = { references:[], documents: [], costs: [], audits: [], extraLogs: [], records: [
     { id: 78, orgId: 1, workLogId: 77, outsourcingPartnerId: 11, quantity: 170, outsourceUnitPrice: '3000', styleId: 40, styleProcessId: 50, assignmentPlanId: 60, createdByEmployeeId: 21 },
     { id: 79, orgId: 1, workLogId: 77, outsourcingPartnerId: 12, quantity: 850, outsourceUnitPrice: '3000', styleId: 40, styleProcessId: 50, assignmentPlanId: 60, createdByEmployeeId: 22 },
   ], log: { id: 77, displayDate: '2026-07-31', coverageStartDate: '2026-07-01', coverageEndDate: '2026-07-31' },
@@ -23,7 +23,7 @@ function harness() {
   const client = s => {
     const order = () => ({ id: 30, orderNumber: 'L17-1', invoiceFinalLockedAt: s.finalLocked ? new Date() : null });
     const record = r => r && ({ ...r, workLog: r.workLogId===77?s.log:s.extraLogs.find(log=>log.id===r.workLogId), style: { id: 40, name: 'Shirt', code: 'AM02058' }, styleProcess: { id: 50, processName: 'Buttonhole' }, outsourcingPartner: { id: r.outsourcingPartnerId, name: 'Vendor' }, assignmentPlan: { ...s.plan, workOrder: order() } });
-    const cost = r => r && ({ ...r, outsourcedWorkRecord: record(s.records.find(x=>x.id===r.outsourcedWorkRecordId)), workOrder: r.workOrderId ? order() : null, partner: { id: r.partnerOrgId, name: 'Vendor' } });
+    const cost = r => r && ({ ...r, referenceLinks:s.references.filter(ref=>ref.costId===r.id), outsourcedWorkRecord: record(s.records.find(x=>x.id===r.outsourcedWorkRecordId)), workOrder: r.workOrderId ? order() : null, partner: { id: r.partnerOrgId, name: 'Vendor' } });
     const document = r => r && ({ ...r, partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
     return withDocumentNumbers({
@@ -38,7 +38,9 @@ function harness() {
         create: async({data})=>{const row={id:s.documents.length+1,version:1,...data};s.documents.push(row);return row;},
         update: async({where,data})=>{const row=s.documents.find(r=>r.id===where.id);return Object.assign(row,{...data,version:row.version+(data.version?.increment||0)});},
       },
+      expenseItemReference:{deleteMany:async({where})=>{s.references=s.references.filter(ref=>ref.costId!==where.costId||ref.orgId!==where.orgId);},createMany:async({data})=>{s.references.push(...data);}},
       partnerTransactionCost: {
+        findUnique:async({where})=>cost(s.costs.find(row=>row.id===where.id)),
         findFirst: async({where})=>cost(s.costs.find(r=>matches(r,where))),
         create: async({data})=>{const row={id:`cost-${s.costs.length+1}`,...JSON.parse(JSON.stringify(data))};s.costs.push(row);return cost(row);},
         update: async({where,data})=>cost(Object.assign(s.costs.find(r=>r.id===where.id),JSON.parse(JSON.stringify(data)))),
@@ -51,7 +53,7 @@ function harness() {
       transactionCode: { findFirst: async({where})=>({id:where.id,isActive:true,baseId:where.id===8?2:1,serviceTypeId:4,taxTreatmentId:3,vatEnabled:false,taxTreatment:{code:'EXEMPT',suffix:'E'},serviceType:{id:4},
         base:{isActive:true,code:'BTH',expenseType:{isActive:true},variants:[{id:2,taxTreatmentId:3,isActive:true,isEnabled:true}],entryMode:where.id===8?'PROCESS':'LOGISTICS',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:'OPTIONAL',requiredFields:[]}}) },
       organization: { findFirst: async()=>({id:11,name:'Vendor'}),findUnique:async()=>({id:11,name:'Vendor'}) },
-      workOrder: { findFirst: async({where})=>where.invoiceFinalLockedAt ? (s.finalLocked?order():null) : order() },
+      workOrder: {findMany:async()=>[order()], findFirst: async({where})=>where.invoiceFinalLockedAt ? (s.finalLocked?order():null) : order() },
       styleProcess: { findFirst: async()=>({id:50}) },
       workOrderItem: { findFirst: async()=>({id:1}) },
       assignmentPlan: { findFirst: async()=>s.plan,findMany:async()=>[{...s.plan,id:61,isCompleted:false,ctReviewRequired:false,assignmentCtSnapshot:{processes:[{styleProcessId:50}]},assignmentStSnapshot:{processes:[{styleProcessId:50}]}}] },

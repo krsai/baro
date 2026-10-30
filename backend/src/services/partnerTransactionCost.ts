@@ -4,7 +4,7 @@ import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 
 export const COST_DETAIL_FIELDS = ['transportDate', 'origin', 'destination', 'reference'] as const;
-export const costInclude = { partner: { select: { id: true, name: true } }, serviceType: true, workOrder: { select: { id: true, orderNumber: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
+export const costInclude = { unit:true,referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}}}, partner: { select: { id: true, name: true } }, serviceType: true, workOrder: { select: { id: true, orderNumber: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 // Project historical production records for the unified request list without
 // migrating, recreating or approving the original production observations.
 export function historicalOutsourcingRows(records: any[]) {

@@ -42,6 +42,20 @@ test('style-scope sewing selects zero or multiple processes without recording pr
  }
 });
 
+test('one monetary item persists multiple orders and styles plus its unit alongside multiple process references',async()=>{
+ const db=store(true),links=[],processes=[];let saved;
+ db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE'});
+ db.workOrder.findMany=async()=>[{id:30},{id:31}];
+ db.expenseUnit={findUnique:async()=>({id:1,isActive:true})};
+ db.styleProcess.findMany=async()=>[{id:50},{id:51}];
+ db.expenseCostProcess={createMany:async({data})=>processes.push(...data)};
+ db.expenseItemReference={deleteMany:async()=>{},createMany:async({data})=>links.push(...data)};
+ db.partnerTransactionCost.create=async({data})=>{db.writes.push(['cost',data]);return saved={id:'multi',...data};};
+ db.partnerTransactionCost.findUnique=async()=>saved?{...saved,referenceLinks:links,processLinks:processes}:null;
+ const row=await register(db,1,20,{...input(),styleId:40,vatRate:'0',styleProcessIds:[50,51],unitId:1,linkedOrderIds:[30,31],linkedStyles:[{workOrderId:30,styleId:40},{workOrderId:31,styleId:41}]});
+ assert.equal(db.writes.length,1);assert.equal(row.amount.toString(),'200000');assert.equal(row.unitId,1);assert.equal(row.referenceLinks.length,4);assert.equal(row.processLinks.length,2);assert.equal(row.outsourcedWorkRecordId,null);
+});
+
 test('multiple references reject duplicates and inactive, wrong-style or cross-company process IDs',async()=>{
  for(const ids of [[50,50],[0],[50,51]]){
   const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE'});db.styleProcess.findMany=async()=>[{id:50}];

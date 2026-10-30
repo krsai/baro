@@ -61,6 +61,10 @@ function editorLine(cost: any, record: any) {
   return { linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
     transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
+    unitId:cost?.unitId??'',unit:cost?.unit??null,
+    linkedOrderIds:cost?.referenceLinks?.length?[...new Set(cost.referenceLinks.map((row:any)=>row.workOrderId))]:(cost?.workOrderId?[cost.workOrderId]:record?.assignmentPlan?.workOrderId?[record.assignmentPlan.workOrderId]:[]),
+    linkedStyles:cost?.referenceLinks?.length?cost.referenceLinks.filter((row:any)=>row.styleId).map((row:any)=>({workOrderId:row.workOrderId,styleId:row.styleId})):(cost?.styleId?[{workOrderId:cost.workOrderId,styleId:cost.styleId}]:record?[{workOrderId:record.assignmentPlan.workOrderId,styleId:record.styleId}]:[]),
+    referenceLinks:cost?.referenceLinks||[],
     quantity: String(cost?.quantity ?? record?.quantity ?? 1), unitPrice: String(cost?.unitPrice ?? record?.outsourceUnitPrice ?? cost?.amount ?? ''),
     vatRate: String(cost?.vatRate ?? 0), details: cost?.details || {},
     workOrderId: cost?.workOrderId || record?.assignmentPlan?.workOrderId || '', styleId: cost?.styleId || record?.styleId || '',
@@ -93,8 +97,8 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
     return { requestId: previous.requestId, assignmentPlanIds: [] };
   }
   let source = await loadExpenseEditorSource(tx,orgId,kind,id);
-  const orders = [...new Set([...source.costs.flatMap((cost: any)=>[cost.workOrderId,cost.outsourcedWorkRecord?.assignmentPlan?.workOrderId]),source.record?.assignmentPlan?.workOrderId,
-    ...(Array.isArray(body.items)?body.items.map((item: any)=>item?.workOrderId):[])].filter((value: any)=>Number.isSafeInteger(value)&&value>0))].sort((a: any,b: any)=>a-b);
+  const orders = [...new Set([...source.costs.flatMap((cost: any)=>[cost.workOrderId,cost.outsourcedWorkRecord?.assignmentPlan?.workOrderId,...(cost.referenceLinks||[]).map((link:any)=>link.workOrderId)]),source.record?.assignmentPlan?.workOrderId,
+    ...(Array.isArray(body.items)?body.items.flatMap((item: any)=>[item?.workOrderId,...(Array.isArray(item?.linkedOrderIds)?item.linkedOrderIds:[])]):[])].filter((value: any)=>Number.isSafeInteger(value)&&value>0))].sort((a: any,b: any)=>a-b);
   for (const orderId of orders) await tx.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',orderId,orgId);
   if (orders.length && await tx.workOrder.findFirst({ where: { id: { in: orders }, orgId, invoiceFinalLockedAt: { not: null } }, select: { id: true } })) return fail(409,'ORDER_FINALLY_LOCKED');
   if (source.document) await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',source.document.id,orgId);

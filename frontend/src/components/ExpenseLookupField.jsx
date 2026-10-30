@@ -32,7 +32,7 @@ export default function ExpenseLookupField({ label, options, value, onChange, co
         <Typography color="text.secondary" sx={{minWidth:0,overflowWrap:'anywhere'}}>{columns.slice(1).map(column=>column.value(option)).filter(Boolean).join(' · ')}</Typography>
       </Box>;}}
       renderInput={params=><TextField {...params} required={required} label={label} placeholder={text.codeHint}
-        InputProps={{...params.InputProps,endAdornment:<>{searchAdornment}{params.InputProps.endAdornment}</>}} />}
+        InputProps={{...params.InputProps,endAdornment:<Box sx={{display:'flex',alignItems:'center','& .MuiAutocomplete-endAdornment':{position:'static',transform:'none'}}}>{params.InputProps.endAdornment}{searchAdornment}</Box>}} />}
     /> : <TextField size="small" fullWidth required={required} disabled={disabled} label={label} value={draft}
       placeholder={text.partnerHint} onClick={showSearch}
       onKeyDown={event=>{if(event.key==='F2'||event.key==='Enter'){event.preventDefault();showSearch();}}}

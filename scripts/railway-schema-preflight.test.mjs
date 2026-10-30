@@ -46,6 +46,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT);
       CREATE TABLE "OrganizationOutsourcingServiceType"("partnerOrgId" INT,"ownerOrgId" INT,"serviceTypeId" INT,"createdAt" TIMESTAMP,PRIMARY KEY("partnerOrgId","serviceTypeId"));
       ${['WorkLog','WorkOrder','AssignmentPlan'].map(table=>`CREATE TABLE "${table}"(id INT);`).join('\n')}`);
+    await db.exec('ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
     await db.exec('CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC)');
     await db.exec('CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,UNIQUE(id,"styleId","orgId"))');
     await db.exec(['SalaryItemRate','EmployeeCompensationPolicy','EmployeePayTypePolicy'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,"payType" TEXT);`).join('\n'));

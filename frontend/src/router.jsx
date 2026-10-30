@@ -299,6 +299,7 @@ const router = createBrowserRouter([
           { path: 'app-settings', element: <ApplicationSettings />,
           },
           { path: 'approval-settings', element: <ApprovalSettings /> },
+          { path: 'system-setting/expense-units', element: <ExpenseMasterSettings units /> },
           { path: 'system-setting/expense-types', element: <ExpenseMasterSettings /> },
           { path: 'system-setting/partner-industries', element: <ExpenseMasterSettings industries /> },
           { path: 'system-setting/transaction-codes', element: <CodeBaseSettings />,

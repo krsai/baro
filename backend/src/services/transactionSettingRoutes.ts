@@ -6,6 +6,7 @@ import { createHttpError } from '../utils/http';
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
 import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
 import {partnerIndustryOption, saveSystemIndustry} from './partnerIndustry';
+import {registerExpenseUnitRoutes} from './expenseMetadata';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -60,6 +61,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 }
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
+  registerExpenseUnitRoutes(app,db,gates);
   registerCodeBaseRoutes(app,db,gates);
   registerExpenseCodeLinkPolicyRoutes(app,db,gates);
   const admin = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] });

@@ -1,7 +1,7 @@
 import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 
 export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
-  currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [],
+  unitId:'',linkedOrderIds:null,linkedStyles:null,currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [],
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const expenseCodeForLine = (line,code) => {
   if (!code) return code;
@@ -40,7 +40,7 @@ export function validExpenseLine(line, code, currency) {
     (code.base?.requiredFields || []).every(key => line.details[key]?.trim());
 }
 export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency,
-  quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
+  unitId:line.unitId||null,linkedOrderIds:line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]),linkedStyles:line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]),quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   ...(line.styleProcessIds===undefined?{}:{styleProcessIds:line.styleProcessIds}),
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });

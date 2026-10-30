@@ -1,6 +1,7 @@
+import ExpenseReferenceFields from './ExpenseReferenceFields';
 import DeleteActionButton from './DeleteActionButton';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, Checkbox, FormControlLabel, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, Checkbox, IconButton, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
 import { Add, DragIndicator, ExpandLess, ExpandMore } from '@mui/icons-material';
 import ExpenseLookupField from './ExpenseLookupField';
 import DecimalAmountField from './DecimalAmountField';
@@ -8,12 +9,13 @@ import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { serviceName, TRANSACTION_TEXT } from './OutsourcingServiceDialog';
 import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
-import { expenseLineAmounts, expenseCodeForLine, inputMode, visibleInput, validExpenseLine } from '../utils/expenseRequest.mjs';
+import { expenseLineAmounts, expenseCodeForLine, inputMode,  validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
 import { expenseIndustryMismatch, expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, units = [], partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
   const currency = line.currency;
+  const [referencesBusy,setReferencesBusy]=useState(false);
   const [expanded, setExpanded] = useState(Boolean(line.expandLinks));
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
   const [optionsLoading, setOptionsLoading] = useState(false), [optionsError, setOptionsError] = useState(false), [reload, setReload] = useState(0);
@@ -24,7 +26,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const isProcess = line.productionLinked || code?.base?.entryMode === 'PROCESS';
   const multipleProcesses = !isProcess && ['STYLE','PROCESS'].includes(code?.linkTarget) && (code?.linkReferenceVersion>=2 || line.linkTarget==='STYLE' || line.styleProcessIds?.length>0);
   const selectedProcessIds = line.styleProcessIds?.length ? line.styleProcessIds : multipleProcesses && line.styleProcessId ? [line.styleProcessId] : [];
-  const mode = key => line.productionLinked ? 'REQUIRED' : inputMode(code, key), visible = key => line.productionLinked || visibleInput(line, code, key);
+  const mode = key => line.productionLinked ? 'REQUIRED' : inputMode(code, key), visible = key => mode(key)!=='HIDDEN';
   const needsExpansion = isProcess || Boolean(code?.base?.requiredFields?.length) || ['order','style','process'].some(key=>mode(key)==='REQUIRED');
   useEffect(()=>{if(needsExpansion)setExpanded(true);},[line.transactionCodeId,needsExpansion,validationAttempt]);
   const availableOrders = line.preservedReferences?.order && !orders.some(row=>row.dbId===line.workOrderId) ? [...orders,{...line.preservedReferences.order,dbId:line.workOrderId}] : orders;
@@ -62,7 +64,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
   const refsValid = (!line.workOrderId || availableOrders.some(row => row.dbId === line.workOrderId)) &&
     (!line.styleId || Boolean(selectedStyle)) && (!line.styleProcessId || selectedStyle?.styleProcesses?.some(row => row.id === line.styleProcessId)) && selectedProcessIds.every(id => selectedStyle?.styleProcesses?.some(row => row.id === id)) &&
     (!isProcess || plans.some(plan => plan.id === line.assignmentPlanId));
-  const valid = validExpenseLine(line, code, currency) && (!line.productionLinked || currency === 'VND' && Number.isInteger(Number(line.quantity)) && Number(line.quantity) <= 2147483647) && refsValid && !optionsLoading && !optionsError;
+  const valid = validExpenseLine(line, code, currency) && (!line.productionLinked || currency === 'VND' && Number.isInteger(Number(line.quantity)) && Number(line.quantity) <= 2147483647) && refsValid && !optionsLoading && !optionsError && !referencesBusy;
   useEffect(() => { onStatus(line.key, Boolean(valid)); }, [line.key, valid, onStatus]);
   const change = key => event => onChange(line.key, { [key]: event.target.value });
   const chooseCode = selected => {
@@ -72,18 +74,12 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       setExpanded(true);return;
     }
     onChange(line.key, { transactionCodeId: selected?.id || '', vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
-      workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
+      workOrderId: '', styleId: '', linkedOrderIds:[],linkedStyles:[], styleProcessId: '', styleProcessIds: [], assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
     if (selected?.base?.entryMode === 'PROCESS' || selected?.base?.requiredFields?.length || ['order','style','process'].some(key => inputMode(selected,key) === 'REQUIRED')) setExpanded(true);
   };
   const amount = expenseLineAmounts(line, currency);
   const money = value => value == null ? '—' : formatCurrency(value, { currencyCode: currency, languageCode });
   const industryMismatch = expenseIndustryMismatch(code,partner);
-  const toggle = key => event => {
-    const checked = event.target.checked;
-    onChange(line.key, { enabled: { ...line.enabled, [key]: checked, ...(key === 'order' && !checked ? { style: false, process: false } : key === 'style' && !checked ? { process: false } : {}) },
-      ...(key === 'order' ? { workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' } : key === 'style' ? { styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' } : { styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' }) });
-    setExpanded(true);
-  };
   const field = { size: 'small', fullWidth: true, disabled };
   return <>
     <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
@@ -98,6 +94,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       <TableCell><TextField {...field} required label={labels.description} value={expenseLineDescription(line,languageCode,codes)} InputProps={{readOnly:true}} /></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} disabled={disabled || line.productionLocked} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
+      <TableCell><TextField {...field} select label={labels.unit} value={line.unitId||''} onChange={change('unitId')}><MenuItem value="">—</MenuItem>{[...units,...(line.unit&&!units.some(unit=>unit.id===line.unit.id)?[line.unit]:[])].filter(unit=>unit.isActive||unit.id===line.unitId).map(unit=><MenuItem key={unit.id} value={unit.id}>{serviceName(unit,languageCode)}</MenuItem>)}</TextField></TableCell>
       <TableCell><DecimalAmountField {...field} required label={labels.price} disabled={disabled || line.productionLocked} value={line.unitPrice} onValueChange={unitPrice => onChange(line.key, { unitPrice })} /></TableCell>
       <TableCell><TextField {...field} label={labels.vat} disabled={disabled || !code?.vatEnabled} value={line.vatRate} onChange={change('vatRate')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.subtotal)}</TableCell>
@@ -105,16 +102,16 @@ export default function ExpenseRequestLine({ line, index, codes, orders, partner
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
     </TableRow>
-    {(expanded || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
+    {(expanded || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={12} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>
         {code?.base?.entryMode==='PROCESS' && <Button startIcon={<Add />} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}>{labels.addProcess}</Button>}
       </Stack>
-        <Stack direction="row" flexWrap="wrap">{['order','style','process'].filter(key => mode(key) === 'OPTIONAL').map(key => <FormControlLabel key={key} label={labels[key]} control={<Checkbox checked={line.enabled[key]} disabled={disabled || key === 'style' && !visible('order') || key === 'process' && !visible('style')} onChange={toggle(key)} />} />)}</Stack>
+        <ExpenseReferenceFields line={line} orders={availableOrders} orgId={orgId} labels={isProcess?{...labels,order:labels.order+' · '+labels.options,style:labels.style+' · '+labels.options}:labels} disabled={disabled} production={isProcess} hiddenOrder={mode('order')==='HIDDEN'} hiddenStyle={mode('style')==='HIDDEN'} onChange={onChange} onLoading={setReferencesBusy}/>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: 2 }}>
-          {visible('order') && <TextField {...field} required={mode('order') === 'REQUIRED'} disabled={disabled || line.productionLinked} select label={labels.order} value={line.workOrderId} onChange={event => onChange(line.key, { workOrderId: event.target.value, styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{availableOrders.map(row => <MenuItem key={row.dbId} value={row.dbId}>{row.orderNumber}</MenuItem>)}</TextField>}
-          {visible('style') && <TextField {...field} required={mode('style') === 'REQUIRED'} disabled={disabled || line.productionLinked || !line.workOrderId || optionsLoading} select label={labels.style} value={line.styleId} onChange={event => onChange(line.key, { styleId: event.target.value, styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{options.styles.map(row => <MenuItem key={row.id} value={row.id}>{row.name} ({row.code})</MenuItem>)}</TextField>}
+          {isProcess && visible('order') && <TextField {...field} required={mode('order') === 'REQUIRED'} disabled={disabled || line.productionLinked} select label={labels.order} value={line.workOrderId} onChange={event => onChange(line.key, { workOrderId: event.target.value, styleId: '', styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{availableOrders.map(row => <MenuItem key={row.dbId} value={row.dbId}>{row.orderNumber}</MenuItem>)}</TextField>}
+          {isProcess && visible('style') && <TextField {...field} required={mode('style') === 'REQUIRED'} disabled={disabled || line.productionLinked || !line.workOrderId || optionsLoading} select label={labels.style} value={line.styleId} onChange={event => onChange(line.key, { styleId: event.target.value, styleProcessId: '', styleProcessIds: [], assignmentPlanId: '' })}><MenuItem value="">{common.none}</MenuItem>{options.styles.map(row => <MenuItem key={row.id} value={row.id}>{row.name} ({row.code})</MenuItem>)}</TextField>}
           {visible('process') && <TextField {...field} required={mode('process') === 'REQUIRED'} disabled={disabled || line.productionLinked || !selectedStyle || optionsLoading} select label={labels.process}
             SelectProps={multipleProcesses ? {multiple:true,renderValue:ids=>ids.map(id=>{const process=selectedStyle?.styleProcesses?.find(row=>row.id===id);return process?.processName||String(id);}).join(', ')} : undefined}
             value={multipleProcesses ? selectedProcessIds : line.styleProcessId} onChange={event => {const value=multipleProcesses&&typeof event.target.value==='string'?event.target.value.split(',').map(Number):event.target.value;onChange(line.key,multipleProcesses?{styleProcessIds:value,styleProcessId:code.linkTarget==='PROCESS'?(value[0]||''):'',assignmentPlanId:''}:{styleProcessId:value,styleProcessIds:[],assignmentPlanId:''});}}>

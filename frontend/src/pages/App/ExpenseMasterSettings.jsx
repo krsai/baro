@@ -15,17 +15,19 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
 
-export default function ExpenseMasterSettings({ industries = false }) {
+export default function ExpenseMasterSettings({ industries = false, units = false }) {
   const { languageCode } = useLanguage(), { activeOrgId } = useAuth();
-  const text = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko, common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
-  const path = industries ? '/system-setting-defaults/services' : '/expense-types';
+  const original = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko, common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
+  const unitLabels={ko:{types:'단위 관리',type:'단위',add:'단위 등록'},en:{types:'Units',type:'Unit',add:'Add unit'},vi:{types:'Quản lý đơn vị',type:'Đơn vị',add:'Thêm đơn vị'}}[languageCode]||{types:'Units',type:'Unit',add:'Add unit'};
+  const text=units?{...original,...unitLabels}:original;
+  const path = units ? '/system-setting-defaults/expense-units' : industries ? '/system-setting-defaults/services' : '/expense-types';
   const tree = INDUSTRY_TREE_TEXT[languageCode] || INDUSTRY_TREE_TEXT.en;
   const [types,setTypes] = useState([]), [category,setCategory] = useState(null), [loading,setLoading] = useState(true);
   const [rows,setRows] = useState([]), [form,setForm] = useState(null), [industryId,setIndustryId] = useState(null), [open,setOpen] = useState(false), [error,setError] = useState(''), [saving,setSaving] = useState(false);
   const load = async () => {
     setLoading(true);setError('');
     try {
-      const [items,parents]=await Promise.all([requestJSON(industries ? path : '/system-setting-defaults/expense-types',{skipCache:true}),industries?requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}):Promise.resolve([])]);
+      const [items,parents]=await Promise.all([requestJSON(industries||units ? path : '/system-setting-defaults/expense-types',{skipCache:true}),industries?requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}):Promise.resolve([])]);
       setRows(items);setTypes(parents);
       if(industries)setCategory(current=>(current===0&&items.some(row=>!row.partnerRoleId)||parents.some(row=>row.id===current))?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||0);
     }catch{setError(common.loadError);}finally{setLoading(false);}
@@ -33,7 +35,7 @@ export default function ExpenseMasterSettings({ industries = false }) {
   useEffect(() => { load(); }, [path]);
   const save = async () => {
     setSaving(true); setError('');
-    try { await requestJSON(`${path}/${form.id}`, { method: 'PUT', body: JSON.stringify(form) }); setForm(null); await load(); }
+    try { await requestJSON(`${path}${form.id?'/'+form.id:''}`, { method: form.id?'PUT':'POST',headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) }); setForm(null); await load(); }
     catch { setError(common.error); } finally { setSaving(false); }
   };
   const parents=[...types,...(rows.some(row=>!row.partnerRoleId)?[{id:0,nameKo:tree.unclassified,nameEn:tree.unclassified,nameVi:tree.unclassified}]:[])];
@@ -43,13 +45,13 @@ export default function ExpenseMasterSettings({ industries = false }) {
     {visible.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell><StatusLabel tone={row.isActive?'blue':'gray'} label={row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><IconButton color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton></TableCell></TableRow>)}
     {!visible.length&&<TableRow><TableCell colSpan={4}>{tree.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>;
-  return <AppPageContainer title={industries ? text.industries : text.types} titleActions={industries && <Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button>}>
+  return <AppPageContainer title={industries ? text.industries : text.types} titleActions={units?<Button variant="contained" disabled={loading} onClick={()=>setForm({code:'',nameEn:'',nameKo:'',nameVi:'',isActive:true,sortOrder:0})}>{unitLabels.add}</Button>:industries && <Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button>}>
     {error&&<Alert severity="error">{error}<Button onClick={load}>{common.loadError}</Button></Alert>}
     {loading?<CircularProgress size={24}/>:industries?<HierarchyPanel label={tree.category} items={parents.map(parent=>({id:parent.id,label:serviceName(parent,languageCode),count:rows.filter(row=>(row.partnerRoleId||0)===parent.id).length}))} selectedId={category} onSelect={setCategory}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{mb:2}}><Typography variant="subtitle2">{serviceName(selected,languageCode)}</Typography><ChevronRight fontSize="small" color="disabled"/><Typography variant="subtitle2">{tree.industry}</Typography></Stack>
       {category===0&&<Alert severity="info" sx={{mb:2}}>{tree.review}</Alert>}{table}
     </HierarchyPanel>:<Paper variant="outlined">{table}</Paper>}
     <OutsourcingServiceDialog systemDefaults partnerIndustryOnly initialServiceId={industryId} initialPartnerRoleId={category||null} open={open} onClose={() => setOpen(false)} onSaved={load} orgId={activeOrgId} languageCode={languageCode} />
-    <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{text.type}</DialogTitle><DialogContent>{form && <Stack spacing={2} sx={{ pt: 1 }}><LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} /><FormControlLabel label={languageCode === 'ko' ? '사용 중' : 'Active'} control={<Checkbox checked={form.isActive} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} /></Stack>}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setForm(null)}>{common.cancel}</Button><SaveButton loading={saving} disabled={saving || !form || !hasLocalizedName(form)} onClick={save}>{common.save}</SaveButton></DialogActions></Dialog>
+    <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{text.type}</DialogTitle><DialogContent>{form && <Stack spacing={2} sx={{ pt: 1 }}>{units&&<TextField label={common.code} required value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase()})}/>}<LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} /><FormControlLabel label={languageCode === 'ko' ? '사용 중' : 'Active'} control={<Checkbox checked={form.isActive} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} /></Stack>}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setForm(null)}>{common.cancel}</Button><SaveButton loading={saving} disabled={saving || !form || (!hasLocalizedName(form)||units&&!/^[A-Z][A-Z0-9_]{0,29}$/.test(form.code))} onClick={save}>{common.save}</SaveButton></DialogActions></Dialog>
   </AppPageContainer>;
 }

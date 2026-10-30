@@ -24,18 +24,20 @@ try{
   await page.route('**/transaction-request-options?*',route=>route.fulfill({headers,json:{styles:[{id:40,name:'Dress',code:'ST',styleProcesses:[{id:50,processName:'Sew',processCode:'P1'},{id:51,processName:'Cut',processCode:'P2'}]}],plans:[{id:60,styleId:40,processIds:[50],factoryName:'Factory A'},{id:61,styleId:40,processIds:[50],factoryName:'Factory B'}]}}));
   await page.goto(`http://127.0.0.1:${port}/expense-code-link-lines-acceptance.html`);
   if(mode==='order'||mode==='style'){
-   await page.getByRole('combobox',{name:labels.order,exact:false}).click();await page.getByRole('option',{name:'Order X',exact:true}).click();
+   await page.getByRole('combobox',{name:labels.order,exact:true}).click();await page.getByRole('option',{name:'Order X',exact:true}).click();
    if(mode==='order'){
     const requiredDate=page.locator('input[type="date"][required]');await requiredDate.waitFor();assert.equal(await page.evaluate(()=>document.documentElement.dataset.valid),'false');await requiredDate.fill('2026-10-29');
-    await page.waitForFunction(()=>document.documentElement.dataset.valid==='true');assert.equal(await page.getByRole('combobox',{name:labels.style,exact:false}).count(),0);
+    await page.waitForFunction(()=>document.documentElement.dataset.valid==='true');assert.equal(await page.getByRole('combobox',{name:labels.style,exact:true}).count(),0);
    }else{
-    await page.getByRole('combobox',{name:labels.style,exact:false}).click();await page.getByRole('option',{name:'Dress (ST)',exact:true}).click();
+    await page.getByRole('combobox',{name:labels.style,exact:true}).click();await page.getByRole('option',{name:/Dress \(ST\)/}).click();
     await page.waitForFunction(()=>document.documentElement.dataset.valid==='true');assert.deepEqual(await page.evaluate(()=>window.currentLine.styleProcessIds),[]);
-    await page.getByRole('checkbox',{name:labels.process,exact:true}).check();await page.getByRole('combobox',{name:labels.process,exact:false}).click();
+    await page.getByRole('combobox',{name:labels.process,exact:false}).click();
     await page.getByRole('option',{name:'Sew (P1)',exact:true}).click();await page.getByRole('option',{name:'Cut (P2)',exact:true}).click();await page.keyboard.press('Escape');
     await page.waitForFunction(()=>document.documentElement.dataset.valid==='true');assert.deepEqual(await page.evaluate(()=>window.currentLine.styleProcessIds),[50,51]);
     assert.equal(await page.getByRole('combobox',{name:labels.assignment,exact:false}).count(),0);
-    await page.getByRole('combobox',{name:labels.order,exact:false}).click();await page.getByRole('option',{name:'Order Y',exact:true}).click();
+    await page.getByRole('combobox',{name:labels.order,exact:true}).click();await page.getByRole('option',{name:'Order Y',exact:true}).click();
+    await page.keyboard.press('Escape');assert.deepEqual(await page.evaluate(()=>window.currentLine.linkedOrderIds),[30,31]);assert.deepEqual(await page.evaluate(()=>window.currentLine.styleProcessIds),[50,51]);
+    await page.getByRole('button',{name:'Order X',exact:true}).locator('.MuiChip-deleteIcon').click();
     await page.waitForFunction(()=>document.documentElement.dataset.valid==='false');assert.deepEqual(await page.evaluate(()=>window.currentLine.styleProcessIds),[]);assert.equal(await page.evaluate(()=>window.currentLine.unitPrice),'10');
    }
    assert.deepEqual(errors,[]);await page.close();continue;
@@ -46,7 +48,7 @@ try{
   }else{
    await page.waitForFunction(()=>document.documentElement.dataset.valid==='false');
    for(const [field,option] of [['order','Order X'],['style','Dress (ST)'],['process','Sew (P1)']]){
-    await page.getByRole('combobox',{name:labels[field],exact:false}).click();await page.getByRole('option',{name:option,exact:true}).click();
+    await page.getByRole('combobox',{name:labels[field],exact:true}).click();await page.getByRole('option',{name:new RegExp(RegExp.escape(option))}).click();
    }
    if(mode==='required')await page.keyboard.press('Escape');
    if(mode==='production'){

@@ -89,12 +89,12 @@ export default function TransactionRequestEntry() {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
     Promise.all([
-      ...['business-partners','transaction-codes','app-settings','orders'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
+      ...['business-partners','transaction-codes','app-settings','orders','expense-units'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
       editing ? requestJSON(`${editorPath}${query}`,{skipCache:true}) : Promise.resolve(null),
     ])
-      .then(([partners,codes,settings,orders,loaded]) => { if (alive) {
+      .then(([partners,codes,settings,orders,units,loaded]) => { if (alive) {
         if (loaded?.partner && !partners.some(row=>row.id===loaded.partner.id)) partners=[...partners,{...loaded.partner,isActive:false}];
-        setData({ partners, codes, settings, orders: orders.filter(row => row.ownerOrgId === Number(activeOrgId)) });
+        setData({ partners, codes, settings, units, orders: orders.filter(row => row.ownerOrgId === Number(activeOrgId)) });
         if (loaded) {const draft={...loaded,approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};setForm(draft);setInitialSnapshot(documentSnapshot(draft));}
       } })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
@@ -238,8 +238,8 @@ export default function TransactionRequestEntry() {
         }} onDragEnd={reorderLines}>
           <Droppable droppableId="expense-items" isDropDisabled={disabled}>{provided => (
             <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1280, tableLayout: 'fixed' }}>
-              <colgroup>{[64,128,null,88,96,112,96,112,112,128,88].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
-              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 7 && index <= 9 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
+              <colgroup>{[64,128,null,88,96,100,112,96,112,112,128,88].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
+              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
                   <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAddProcess={addProcess} canAddProcess={form.items.length<50} />
