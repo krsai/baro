@@ -10,7 +10,12 @@ export async function requireEntityAccess(db:any,orgId:number,entityId:number) {
   if(!entity)throw createHttpError(404,'ENTITY_NOT_FOUND');
   return entity;
 }
-export async function requirePayeeBankAccount(tx:any,orgId:number,entityId:number) {
+export async function requirePayeeBankAccount(tx:any,orgId:number,entityId:number|null,payeeEmployeeId?:number) {
+  if(payeeEmployeeId){
+    await tx.$queryRawUnsafe('SELECT id FROM "Employee" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',payeeEmployeeId,orgId);
+    if(!await tx.employee.findFirst({where:{id:payeeEmployeeId,orgId,status:'ACTIVE'}})||!await tx.employeeExpenseBankAccount.findFirst({where:{orgId,employeeId:payeeEmployeeId}}))throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');
+    return;
+  }
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
   const account=await tx.organizationBankAccount.findFirst({where:{orgId,entityId},select:{id:true}});
   if(!account)throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');

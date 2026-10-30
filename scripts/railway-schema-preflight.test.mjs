@@ -36,9 +36,9 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
       CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
-      CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC);
+      CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC,"outsourcedWorkRecordId" INT);
       INSERT INTO "Organization"(id,"ownerOrgId") VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
-      INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,NULL,'VND',123);`);
+      INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,NULL,'VND',123,NULL);`);
     await db.exec(`ALTER TABLE "SettingServiceDefault" ADD COLUMN "nameKo" TEXT,ADD COLUMN "nameEn" TEXT,ADD COLUMN "nameVi" TEXT,ADD COLUMN "entryMode" TEXT,ADD COLUMN "requiredFields" TEXT[],ADD COLUMN "orderInput" TEXT,ADD COLUMN "styleInput" TEXT,ADD COLUMN "processInput" TEXT,ADD COLUMN "isActive" BOOL,ADD COLUMN "sortOrder" INT;
       ALTER TABLE "TransactionCodeBase" ADD COLUMN id INT PRIMARY KEY,ADD COLUMN code TEXT;
       CREATE TABLE "OutsourcingServiceType"(id SERIAL PRIMARY KEY,"ownerOrgId" INT,code TEXT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"entryMode" TEXT,"requiredFields" TEXT[],"orderInput" TEXT,"styleInput" TEXT,"processInput" TEXT,"isActive" BOOL,"sortOrder" INT,"systemDefaultId" INT,"isOverridden" BOOL,"updatedAt" TIMESTAMP,UNIQUE("ownerOrgId","systemDefaultId"));

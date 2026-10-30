@@ -1,3 +1,4 @@
+import {employeePayee,registerExpensePayeeRoutes} from './services/expensePayee';
 import { loadAssignmentStyleDetails } from './services/assignmentStyleLoading';
 import {registerBankLedgerRoutes} from './services/bankLedger';
 import {registerCompanyWorkspaceRoutes,resolveCompanyWorkspace} from './services/companyWorkspaces';
@@ -197,10 +198,11 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
-    ExpenseRequest: ['id','managementNumber','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
+    ExpenseRequest: ['payeeEmployeeId','id','managementNumber','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
     ExpenseRequestApprovalStep: ['id','orgId','requestId','position','employeeId'],
     OrganizationBankAccount: ['id','orgId','entityId','currencyId','bankName','accountNumber','accountHolder','isDefault','isActive'],
-    PartnerTransactionCost: ['expenseRequestId','expenseRequestLine'],
+    PartnerTransactionCost: ['payeeEmployeeId','expenseRequestId','expenseRequestLine'],
+    EmployeeExpenseBankAccount:['id','orgId','employeeId','createdByEmployeeId','currencyCode','bankName','accountNumber','accountHolder'],
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
     OutsourcingServiceType: ["systemDefaultId", "isOverridden"],
@@ -728,7 +730,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
   {tableName:'BankLedgerEntry',columnName:'writeOffAmount'},{tableName:'BankLedgerEntry',columnName:'settlementMode'},{tableName:'BankLedgerSettlementLine',columnName:'entryId'},
   {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
-  {tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
+  {tableName:'EmployeeExpenseBankAccount',columnName:'id'},{tableName:'ExpenseRequest',columnName:'payeeEmployeeId'},{tableName:'PartnerTransactionCost',columnName:'payeeEmployeeId'},{tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
   {tableName:'BankLedgerAccount',columnName:'openingBalance'},
   {tableName:'BankLedgerAccount',columnName:'entityAccountId'},
   ...['accountKind','displayName','sortOrder'].map(columnName=>({tableName:'OrganizationBankAccount',columnName})),
@@ -1070,6 +1072,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
   'baro_request_production_guard',
   'ExpenseRequestEdit_cost_audit',
   'ExpenseRequestEdit_production_audit',
+  'EmployeeExpenseBankAccount_write_guard','ExpenseRequest_payee_kind_check','TransactionCost_payee_kind_check','TransactionCost_request_scope_fkey','TransactionCost_employee_request_fkey','TransactionCost_payee_match_guard',
   'ExpenseRequest_id_orgId_partnerOrgId_key',
   'ExpenseRequest_orgId_clientKey_key',
   'ExpenseRequest_orgId_fkey',
@@ -27578,6 +27581,7 @@ app.get("/partner-transaction-costs", async (req, res) => {
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
 registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
+registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{
   requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,
   syncProduction:async(orgId: number,assignmentPlanIds: number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'}),
@@ -27591,7 +27595,7 @@ app.get('/expense-requests', async (req, res) => {
   const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate }, include: EXPENSE_REQUEST_INCLUDE,
     orderBy: [{ requestDate: 'desc' }, { id: 'desc' }] });
   const approvedRows=await attachExpenseApprovalStates(prisma,orgId,rows);
-  return res.json(approvedRows.map(row => ({ ...row, ...expenseRequestTotals(row.items) })));
+  return res.json(approvedRows.map(row => ({ ...row,partner:row.partner||employeePayee(row.payeeEmployee), ...expenseRequestTotals(row.items) })));
 });
 app.post('/expense-requests', async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
@@ -27621,7 +27625,7 @@ app.get("/outsourcing-requests", async (req, res) => {
       createdByEmployee: { select: { id: true, name: true } },
     } }),
   ]);
-  return res.json([...costs.map(row => ({ ...row, sourceKind: 'COST_REQUEST' })), ...historicalOutsourcingRows(records)].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)));
+  return res.json([...costs.map(row => ({ ...row,partner:row.partner||employeePayee(row.payeeEmployee), sourceKind: 'COST_REQUEST' })), ...historicalOutsourcingRows(records)].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)));
 });
 app.post("/partner-transaction-costs", async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });

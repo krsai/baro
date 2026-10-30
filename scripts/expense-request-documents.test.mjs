@@ -28,6 +28,7 @@ function harness({sourceEnabled=true}={}) {
     return withDocumentNumbers({
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
+      employeeExpenseBankAccount:{findFirst:async()=>({id:'employee-bank'})},
       employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{isActive:true,set:{isActive:true}}})},
       factory: { findMany: async () => [{ id: 1, managementStartDate: '2026-04-01' }] },
       expenseRequest: { findUnique: async ({ where }) => readDocument(where),findFirst:async({where})=>readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1,version:1, ...row }; data.documents.push(document); return document; } },
@@ -118,6 +119,16 @@ test('expense management numbers are automatic, reject manual input and preserve
  await assert.rejects(route({body:{...body,clientKey:'different-key',managementNumber:'baro-2026-a'}},response()),/DOCUMENT_NUMBER_AUTOMATIC/);
  await assert.rejects(route({body:{...body,managementNumber:'CHANGED'}},response()),/RETRY_MISMATCH/);
  assert.equal(db.state().documents.length,1);
+});
+
+test('employee expense requests retain real payee identity and server-assigned dates on retry',async()=>{
+ const {route,db}=routeHarness(),body={...input(),partnerOrgId:null,payeeEmployeeId:31,automaticRequestDate:true,requestDate:'1900-01-01',items:input().items.map(({transactionDate,...item})=>item)};
+ const res=response();await route({body},res);
+ assert.equal(res.body.partnerOrgId,null);assert.equal(res.body.payeeEmployeeId,31);
+ assert.equal(res.body.requestDate,new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'}));
+ assert.ok(db.state().costs.every(row=>row.partnerOrgId===null&&row.payeeEmployeeId===31&&row.transactionDate===res.body.requestDate));
+ await route({body},response());assert.equal(db.state().documents.length,1);
+ await assert.rejects(route({body:{...body,payeeEmployeeId:32}},response()),/RETRY_MISMATCH/);
 });
 test('confirmed approval selection is snapshotted and retries cannot change it',async()=>{
   const {route,db}=routeHarness(),body={...input(),approvalSelection:{}};

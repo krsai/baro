@@ -621,6 +621,10 @@ model Warehouse {
 
 
 model Employee {
+  payableExpenseRequests ExpenseRequest[] @relation("ExpenseEmployeePayee")
+  payableExpenseCosts PartnerTransactionCost[] @relation("ExpenseCostEmployeePayee")
+  expenseBankAccounts EmployeeExpenseBankAccount[]
+  createdExpenseBankAccounts EmployeeExpenseBankAccount[] @relation("EmployeeExpenseBankCreator")
   expenseCodeLinkAudits ExpenseCodeLinkAudit[]
   createdEntityBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountCreator")
   updatedEntityBankAccounts OrganizationBankAccount[] @relation("EntityBankAccountUpdater")
@@ -1593,6 +1597,8 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  payeeEmployeeId Int?
+  payeeEmployee Employee? @relation("ExpenseCostEmployeePayee",fields:[payeeEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   processLinks ExpenseCostProcess[]
   @@unique([id, orgId, styleId])
   unitId Int?
@@ -1604,7 +1610,9 @@ model PartnerTransactionCost {
   linkPolicyAudit ExpenseCodeLinkAudit? @relation(fields:[linkPolicyAuditId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   expenseRequestId Int?
   expenseRequestLine Int?
-  expenseRequest ExpenseRequest? @relation(map: "PartnerTransactionCost_expense_request_fkey", fields: [expenseRequestId, orgId, partnerOrgId], references: [id, orgId, partnerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  expenseRequest ExpenseRequest? @relation("ExpenseRequestItems",map:"TransactionCost_request_scope_fkey",fields:[expenseRequestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  vendorExpenseRequest ExpenseRequest? @relation("ExpenseVendorRequest",map: "PartnerTransactionCost_expense_request_fkey", fields: [expenseRequestId, orgId, partnerOrgId], references: [id, orgId, partnerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  employeeExpenseRequest ExpenseRequest? @relation("ExpenseEmployeeRequest",map:"TransactionCost_employee_request_fkey",fields:[expenseRequestId,orgId,payeeEmployeeId],references:[id,orgId,payeeEmployeeId],onDelete:Restrict,onUpdate:Restrict)
   @@unique([expenseRequestId, expenseRequestLine])
   @@unique([outsourcedWorkRecordId, orgId])
   outsourcedWorkRecordId Int? @unique
@@ -1622,7 +1630,7 @@ model PartnerTransactionCost {
   styleProcess StyleProcess? @relation(map: "TransactionCost_process_scope_fkey", fields: [styleProcessId, styleId, orgId], references: [id, styleId, orgId], onDelete: Restrict, onUpdate: Restrict)
   id String @id @default(uuid())
   orgId Int
-  partnerOrgId Int
+  partnerOrgId Int?
   serviceTypeId Int
   workOrderId Int?
   transactionDate String
@@ -1634,7 +1642,7 @@ model PartnerTransactionCost {
   createdByEmployeeId Int
   createdAt DateTime @default(now())
   organization Organization @relation("TransactionCostOwner", fields: [orgId], references: [id], onDelete: Restrict)
-  partner Organization @relation("TransactionCostVendor", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  partner Organization? @relation("TransactionCostVendor", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
   serviceType OutsourcingServiceType @relation(fields: [serviceTypeId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
   workOrder WorkOrder? @relation(fields: [workOrderId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
   createdByEmployee Employee @relation("TransactionCostCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
@@ -1655,10 +1663,12 @@ model ExpenseCostProcess {
 }
 
 model ExpenseRequest {
+  payeeEmployeeId Int?
+  payeeEmployee Employee? @relation("ExpenseEmployeePayee",fields:[payeeEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   id Int @id @default(autoincrement())
   managementNumber String?
   orgId Int
-  partnerOrgId Int
+  partnerOrgId Int?
   createdByEmployeeId Int
   requestDate String
   legacyTitle String?
@@ -1676,13 +1686,31 @@ model ExpenseRequest {
   @@unique([id, orgId])
   @@unique([orgId, managementNumber])
   organization Organization @relation("ExpenseRequestOwner", fields: [orgId], references: [id], onDelete: Restrict)
-  partner Organization @relation("ExpenseRequestPayee", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  partner Organization? @relation("ExpenseRequestPayee", fields: [partnerOrgId, orgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
   createdByEmployee Employee @relation("ExpenseRequestCreator", fields: [createdByEmployeeId, orgId], references: [id, orgId], onDelete: Restrict, onUpdate: Restrict)
-  items PartnerTransactionCost[]
+  items PartnerTransactionCost[] @relation("ExpenseRequestItems")
+  vendorItems PartnerTransactionCost[] @relation("ExpenseVendorRequest")
+  employeeItems PartnerTransactionCost[] @relation("ExpenseEmployeeRequest")
+  @@unique([id,orgId,payeeEmployeeId])
   @@unique([orgId, clientKey])
   @@unique([id, orgId, partnerOrgId])
   @@unique([id, orgId, partnerOrgId, currency])
   @@index([orgId, requestDate])
+}
+
+model EmployeeExpenseBankAccount {
+  id String @id @default(uuid())
+  orgId Int
+  employeeId Int
+  employee Employee @relation(fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  createdByEmployeeId Int
+  createdByEmployee Employee @relation("EmployeeExpenseBankCreator",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  currencyCode String
+  bankName String
+  accountNumber String
+  accountHolder String
+  createdAt DateTime @default(now())
+  @@unique([orgId,employeeId,currencyCode,bankName,accountNumber],map:"EmployeeExpenseBank_identity_key")
 }
 
 model ExpenseRequestAudit {

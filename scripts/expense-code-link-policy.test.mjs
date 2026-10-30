@@ -40,6 +40,31 @@ test('hierarchy SQL keeps legacy rows and permits one cost with multiple real pr
  }finally{await db.close();}
 });
 
+test('employee payee SQL preserves vendor history and enforces real employee, account and document scopes',async()=>{
+ const db=await fixture(true);try{
+  await db.exec(`ALTER TABLE "Employee" ADD COLUMN status TEXT DEFAULT 'ACTIVE',ADD COLUMN "orgRole" TEXT DEFAULT 'ADMIN',ADD COLUMN "bankAccountNumber" TEXT DEFAULT 'payroll-original';
+   CREATE TABLE "ExpenseRequest"(id INT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT NOT NULL);
+   CREATE TABLE "OrganizationBankAccount"(id TEXT PRIMARY KEY,"orgId" INT,"entityId" INT);`);
+  const before=(await db.query('SELECT to_jsonb(c) AS row FROM "PartnerTransactionCost" c ORDER BY id')).rows;
+  const migration=readFileSync('backend/prisma/migrations/20261030210000_employee_expense_payees/migration.sql','utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query(`SELECT to_jsonb(c)-'payeeEmployeeId' AS row FROM "PartnerTransactionCost" c ORDER BY id`)).rows,before);
+  await db.exec(`CREATE CONSTRAINT TRIGGER request_bank AFTER INSERT OR UPDATE ON "ExpenseRequest" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION baro_expense_payee_bank_guard();`);
+  await assert.rejects(db.exec(`INSERT INTO "ExpenseRequest" VALUES(1,1,NULL,20)`),/PAYEE_BANK_ACCOUNT_REQUIRED/);
+  await db.exec(`INSERT INTO "EmployeeExpenseBankAccount"(id,"orgId","employeeId","createdByEmployeeId","currencyCode","bankName","accountNumber","accountHolder") VALUES('emp-bank',1,20,20,'USD','Bank','123','Employee');`);
+  await assert.rejects(db.exec(`INSERT INTO "EmployeeExpenseBankAccount"(id,"orgId","employeeId","createdByEmployeeId","currencyCode","bankName","accountNumber","accountHolder") VALUES('wrong',1,21,20,'USD','Bank','123','Other company')`));
+  await db.exec(`INSERT INTO "ExpenseRequest" VALUES(1,1,NULL,20);SET test.editor='true';`);
+  await db.exec(`INSERT INTO "Employee"(id,"orgId") VALUES(22,1);`);
+  const insert=(id,employee,record=null)=>db.query(`INSERT INTO "PartnerTransactionCost"(id,"orgId","partnerOrgId","payeeEmployeeId","expenseRequestId","serviceTypeId","transactionCodeId","unitPrice",quantity,subtotal,"vatRate","vatAmount",amount,currency,details,"outsourcedWorkRecordId") VALUES($1,1,NULL,$2,1,1,5,10,2,20,0,0,20,'USD','{}',$3)`,[id,employee,record]);
+  await insert('employee-cost',20);
+  await assert.rejects(insert('other-company-cost',21));
+  await assert.rejects(insert('different-request-payee',22));
+  await assert.rejects(insert('production-for-employee',20,70));
+  await assert.rejects(db.exec(`UPDATE "EmployeeExpenseBankAccount" SET "accountNumber"='changed' WHERE id='emp-bank'`),/immutable/);
+  assert.equal((await db.query(`SELECT "bankAccountNumber" FROM "Employee" WHERE id=20`)).rows[0].bankAccountNumber,'payroll-original');
+ }finally{await db.close();}
+});
+
 test('base FK determines all E/V/Z variants; unset defaults ignore industry and legacy input flags',async()=>{
  const db={expenseCodeLinkPolicy:{findUnique:async({where})=>where.orgId_baseId.orgId===1&&where.orgId_baseId.baseId===10?{target:'PROCESS',auditId:5}:null},industryProductionPolicy:{findUnique:()=>{throw Error('Legacy industry setting must not be read');}}};
  for(const tax of ['E','V','Z']){

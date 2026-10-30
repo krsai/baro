@@ -1,3 +1,4 @@
+import {expensePayeeIds,requireEmployeePayee} from './expensePayee';
 import { normalizeExpenseProcessIds, storedExpenseProcessIds, validateExpenseProcessLinks } from './expenseProcessLinks';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
@@ -10,7 +11,7 @@ import { loadManagementPeriod, assertManagedDate } from '../factories/factoryMan
 import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
 import {prepareExpenseMetadata,saveExpenseReferences} from './expenseMetadata';
 
-export const REQUEST_INCLUDE = { processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, unit:true, referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}},orderBy:{id:'asc' as const}}, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
+export const REQUEST_INCLUDE = { payeeEmployee: { select: {id:true,name:true,employeeNo:true,status:true} }, processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, unit:true, referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}},orderBy:{id:'asc' as const}}, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 const invalid = (code: string): never => { throw createHttpError(400, code); };
 export { appSettingsKey, loadAppSettings } from './applicationSettings';
 import { loadAppSettings } from './applicationSettings';
@@ -45,7 +46,7 @@ export function calculateRequestAmounts(unitPrice: unknown, quantity: unknown, c
 }
 export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any; request?: { id: number; line: number } }) {
   const id = (value: unknown, optional = false): number | null => optional && (value == null || value === '') ? null : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : invalid('INVALID_REQUEST_REFERENCE');
-  const partnerOrgId = id(body?.partnerOrgId)!, transactionCodeId = id(body?.transactionCodeId)!;
+  const payeeIds=expensePayeeIds(body),partnerOrgId=payeeIds.partnerOrgId,transactionCodeId=id(body?.transactionCodeId)!;
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
   const assignmentPlanId = id(body?.assignmentPlanId, true);
   const processIds = normalizeExpenseProcessIds(body?.styleProcessIds === undefined ? (edit?.cost ? storedExpenseProcessIds(edit.cost) : undefined) : body.styleProcessIds);
@@ -73,7 +74,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
-    if (JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
+    if ((previous.payeeEmployeeId??null)!==(payeeIds.payeeEmployeeId??null)||JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if (previous.transactionCodeId !== transactionCodeId || previous.partnerOrgId !== partnerOrgId || previous.workOrderId !== workOrderId || previous.styleId !== styleId || previous.styleProcessId !== styleProcessId || previous.transactionDate !== transactionDate || previous.description !== description || previous.currency !== body.currency || previous.createdByEmployeeId !== actorId || !previous.unitPrice.equals(amounts.unitPrice) || !previous.quantity.equals(amounts.quantity) || !previous.vatRate.equals(amounts.vatRate) || COST_DETAIL_FIELDS.some(key => (previous.details?.[key] || '') !== (details[key] || ''))) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     return previous;
@@ -85,9 +86,10 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if(useSystemMaster)description=edit?.cost?.description || [code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
-  const partner = await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'] } } });
+  const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'] } } });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
+  if(payeeIds.payeeEmployeeId&&(process||edit?.record))return invalid('EMPLOYEE_PAYEE_PRODUCTION_NOT_ALLOWED');
   if (edit?.record && (edit.record.orgId !== orgId ||
     edit.record.styleId !== styleId || edit.record.styleProcessId !== styleProcessId || edit.record.assignmentPlanId !== assignmentPlanId ||
     edit.record.assignmentPlan.workOrderId !== workOrderId)) return invalid('EXISTING_PRODUCTION_IDENTITY_IMMUTABLE');
@@ -150,7 +152,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
   } else if (assignmentPlanId) return invalid('UNEXPECTED_ASSIGNMENT_PLAN');
   // Production is recorded only in the vendor table, never employee work or AT.
-  const data = { linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,partnerOrgId, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
+  const data = { linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
     ...(edit?.request ? {expenseRequestId:edit.request.id,expenseRequestLine:edit.request.line} : {}) };
   const previousIds=storedExpenseProcessIds(edit?.cost);
   const replaceLinks=JSON.stringify(previousIds)!==JSON.stringify(processIds);
