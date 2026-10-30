@@ -54,20 +54,34 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
  const draft=options.find(row=>row.id===draftId);
  const [loadedId,setLoadedId]=useState(null);
  const [input,setInput]=useState(''),directRequest=useRef(0);
+ const [suggesting,setSuggesting]=useState(false),pendingPayee=useRef(null);
  const text=PAYEE_TEXT[languageCode]||PAYEE_TEXT.en;
  const display=payee=>[payee?.code,payee?.name].filter(Boolean).join(' · ');
  useEffect(()=>{if(value)setInput(display(value));},[value?.id,value?.code,value?.name]);
  const chooseDirect=async selected=>{
   if(lockSelection&&selected.id!==value?.id)return;
   const key=++directRequest.current,company=orgId;
+  pendingPayee.current=selected;setSuggesting(false);
   setInput(display(selected));onChange(null,[]);
   try{const result=await requestJSON(`${payeeAccountPath(selected)}${buildQueryString({orgId})}`,{skipCache:true});
    if(key!==directRequest.current||scope.current!==company)return;
    if(result.accounts?.length)onChange(selected,result.accounts);
-   else{setDraftId(selected.id);setOpen(true);}
-  }catch{if(key===directRequest.current&&scope.current===company){setDraftId(selected.id);setOpen(true);}}
+   else{setDraftId(selected.id);setQuery(selected.code||selected.name||'');setOpen(true);}
+  }catch{if(key===directRequest.current&&scope.current===company){setDraftId(selected.id);setQuery(selected.code||selected.name||'');setOpen(true);}}
+  finally{if(key===directRequest.current)pendingPayee.current=null;}
  };
- useEffect(()=>{setOpen(false);setProfileOpen(false);setDraftId(null);setAccounts([]);setInput('');directRequest.current++;},[orgId]);
+ const openSearch=()=>{
+  directRequest.current++;pendingPayee.current=null;setSuggesting(false);setLoadedId(null);setAccounts([]);setDraftId(value?.id||null);
+  setQuery(value&&normalizeLookupText(input)===normalizeLookupText(display(value))?value.code||value.name||'':input.trim());setOpen(true);
+ };
+ const commitCode=()=>{
+  const selected=value||pendingPayee.current;
+  if(selected&&normalizeLookupText(input)===normalizeLookupText(display(selected))){setSuggesting(false);return true;}
+  const exact=options.filter(row=>row.isActive!==false&&row.code&&normalizeLookupText(row.code)===normalizeLookupText(input));
+  if(exact.length===1){chooseDirect(exact[0]);return true;}
+  openSearch();return false;
+ };
+ useEffect(()=>{setOpen(false);setProfileOpen(false);setDraftId(null);setAccounts([]);setInput('');setSuggesting(false);pendingPayee.current=null;directRequest.current++;},[orgId]);
  useEffect(()=>{if(!open||!draftId)return;let alive=true;setBusy(true);setError(false);setAccounts([]);
   setLoadedId(null);
   requestJSON(`${payeeAccountPath(draft)}${buildQueryString({orgId})}`,{skipCache:true}).then(result=>{if(alive){setAccounts(result.accounts||[]);setLoadedId(draftId);}}).catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setBusy(false);});
@@ -76,11 +90,20 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
  const rows=options.filter(row=>row.isActive!==false&&normalizeLookupText([row.code,row.name,row.nameKo,row.nameVi,row.contactName,row.contactPhone].filter(Boolean).join(' ')).includes(normalizeLookupText(query)));
  return <>
   <Autocomplete data-testid="expense-payee-button" fullWidth size="small" freeSolo forcePopupIcon={false} disabled={disabled||lockSelection} options={options.filter(row=>row.isActive!==false)} value={value||null} inputValue={input} getOptionLabel={row=>typeof row==='string'?row:display(row)} isOptionEqualToValue={(a,b)=>a.id===b.id}
+   open={suggesting&&!open&&!disabled&&!lockSelection} onOpen={()=>setSuggesting(true)} onClose={()=>setSuggesting(false)}
    filterOptions={(rows,{inputValue})=>rows.filter(row=>normalizeLookupText([row.code,row.name,row.nameKo,row.nameVi].join(' ')).includes(normalizeLookupText(inputValue)))}
-   onInputChange={(_,next,reason)=>{if(!['input','clear'].includes(reason))return;setInput(next);const exact=options.filter(row=>row.isActive!==false&&row.code&&normalizeLookupText(row.code)===normalizeLookupText(next));if(exact.length===1)chooseDirect(exact[0]);else if(value){directRequest.current++;onChange(null,[]);}}}
+   onInputChange={(_,next,reason)=>{if(!['input','clear'].includes(reason))return;directRequest.current++;pendingPayee.current=null;setInput(next);if(value)onChange(null,[]);}}
    onChange={(_,selected)=>{if(selected&&typeof selected!=='string')chooseDirect(selected);else if(!selected){directRequest.current++;onChange(null,[]);}}}
+   onKeyDown={event=>{
+    if(disabled||lockSelection||event.nativeEvent?.isComposing||event.keyCode===229)return;
+    if(event.key==='F2'){event.preventDefault();event.defaultMuiPrevented=true;openSearch();return;}
+    if(!['Enter','Tab'].includes(event.key)||event.key==='Tab'&&event.shiftKey||!input.trim())return;
+    if(event.key==='Enter'&&event.target.getAttribute('aria-activedescendant'))return;
+    event.defaultMuiPrevented=true;
+    const matched=commitCode();if(event.key==='Enter'||!matched)event.preventDefault();
+   }}
    renderOption={(props,row)=>{const {key,...rest}=props;return <Box component="li" key={row.id} {...rest}><Stack spacing={.25}><Typography variant="body2">{display(row)}</Typography><Typography variant="caption" color="text.secondary">{payeeTypeLabel(row,languageCode)}</Typography></Stack></Box>;}}
-   renderInput={params=><TextField {...params} label={t.payee} placeholder={text.search} InputProps={{...params.InputProps,endAdornment:<InputAdornment position="end"><IconButton size="small" disabled={disabled} aria-label={t.choosePayee} onClick={()=>{directRequest.current++;setLoadedId(null);setAccounts([]);setDraftId(value?.id||null);setQuery('');setOpen(true);}}><SearchOutlined fontSize="small"/></IconButton></InputAdornment>}}/>}/>
+   renderInput={params=><TextField {...params} label={t.payee} placeholder={text.search} InputProps={{...params.InputProps,endAdornment:<InputAdornment position="end"><IconButton size="small" tabIndex={-1} disabled={disabled} aria-label={t.choosePayee} onClick={openSearch}><SearchOutlined fontSize="small"/></IconButton></InputAdornment>}}/>}/>
   <Dialog open={open} onClose={()=>setOpen(false)} maxWidth="md" fullWidth slotProps={{paper:{sx:{maxWidth:800}}}} aria-labelledby="expense-payee-title">
    <DialogTitle id="expense-payee-title" sx={{px:2,py:1.5}}>{t.choosePayee}</DialogTitle>
    <DialogContent dividers sx={{p:2}}><Stack spacing={1.5}>
