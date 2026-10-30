@@ -14,5 +14,6 @@ test('industry warnings compare shared source FKs and do not treat unclassified 
   assert.equal(expenseIndustryMismatch(code,{serviceTypes:[{id:44}]}),false);
   assert.equal(expenseIndustryMismatch(code,{serviceTypes:[{id:44,systemDefaultId:8}]}),true);
   assert.equal(expenseIndustryMismatch(code,{serviceTypes:[]}),true);
+  assert.equal(expenseIndustryMismatch(code,{type:'EMPLOYEE',serviceTypes:[]}),false);
   assert.equal(expenseIndustryMismatch(code,{}),false);
 });
