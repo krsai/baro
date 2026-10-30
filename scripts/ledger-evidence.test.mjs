@@ -28,6 +28,26 @@ async function fixture(){
  return db;
 }
 const entry=(id,type,amount,fee=0,direction='IN',reference='evidence.pdf')=>`INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy","evidenceType","bankFee") VALUES('${id}',1,'a','${id}','2026-01-02','${direction}',${amount},'Reason','${reference}','actor','${type}',${fee});`;
+
+test('accounting migration preserves legacy purpose and restricts new classifications to active company codes',async()=>{
+ const db=await fixture();try{
+  await db.exec(`CREATE TABLE "ExpenseType"(id INT PRIMARY KEY,"isActive" BOOL);INSERT INTO "ExpenseType" VALUES(1,true);
+   CREATE TABLE "TransactionCodeBase"(id INT PRIMARY KEY,"expenseTypeId" INT,"isActive" BOOL);INSERT INTO "TransactionCodeBase" VALUES(1,1,true);
+   CREATE TABLE "TaxTreatment"(id INT PRIMARY KEY);INSERT INTO "TaxTreatment" VALUES(1);
+   CREATE TABLE "TransactionCode"(id INT PRIMARY KEY,"ownerOrgId" INT,"baseId" INT,"taxTreatmentId" INT,"isActive" BOOL);INSERT INTO "TransactionCode" VALUES(7,1,1,1,true),(8,2,1,1,true),(9,1,1,1,false);
+   CREATE TABLE "SettingTransactionCodeDefault"("baseId" INT,"taxTreatmentId" INT,"isActive" BOOL,"isEnabled" BOOL);INSERT INTO "SettingTransactionCodeDefault" VALUES(1,1,true,true);`);
+  const sql=await readFile('backend/prisma/migrations/20261030220000_ledger_accounting_codes/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+  assert.deepEqual((await db.query('SELECT purpose,"accountingCodeId",amount::text FROM "BankLedgerEntry" WHERE id=\'old\'')).rows,[{purpose:'Legacy',accountingCodeId:null,amount:'1.0000'}]);
+  const coded=(id,code)=>entry(id,'FILE',10).replace('"bankFee")','"bankFee","accountingCodeId")').replace("'FILE',0);",`'FILE',0,${code});`);
+  await db.exec(coded('valid',7));
+  await assert.rejects(db.exec(coded('foreign',8)),/ACCOUNTING_CODE_INVALID|foreign key/);
+  await assert.rejects(db.exec(coded('inactive',9)),/ACCOUNTING_CODE_INVALID/);
+  await assert.rejects(db.exec('UPDATE "BankLedgerEntry" SET "accountingCodeId"=8 WHERE id=\'valid\''),/immutable|append|UPDATE/i);
+  await db.exec('UPDATE "SettingTransactionCodeDefault" SET "isEnabled"=false');
+  await assert.rejects(db.exec(coded('disabled',7)),/ACCOUNTING_CODE_INVALID/);
+  assert.equal((await db.query('SELECT sum(amount)::text total FROM "BankLedgerEntry"')).rows[0].total,'11.0000');
+ }finally{await db.close();}
+});
 test('SQL accepts accountant exemption only for the exact saved drafter and version',async()=>{
  const db=await fixture();
  const allocation=`INSERT INTO "BankLedgerEvidenceAllocation"(id,"entryId","orgId","expenseItemId","requestVersion",amount) VALUES('exempt-a','exempt',1,'c1',1,50);`;

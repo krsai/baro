@@ -123,6 +123,7 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
   }
   if (!global) {
     if (await tx.partnerTransactionCost.count({ where: service ? { serviceTypeId: id } : { transactionCodeId: id } })) throw createHttpError(409,'SETTING_IN_USE');
+    if(!service&&(await tx.bankLedgerEntry?.count({where:{accountingCodeId:id}})||await tx.bankLedgerSettlementLine?.count({where:{accountingCodeId:id}})))throw createHttpError(409,'SETTING_IN_USE');
     if (service && (await tx.organizationOutsourcingServiceType.count({ where: { serviceTypeId: id } }) || await tx.transactionCode.count({ where: { serviceTypeId: id } }))) throw createHttpError(409,'SETTING_IN_USE');
   }
   await model.delete({ where: { id } });

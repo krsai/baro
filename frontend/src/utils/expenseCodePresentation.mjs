@@ -1,10 +1,5 @@
-const localizedName = (row, language) => row?.[{ko:'nameKo',en:'nameEn',vi:'nameVi'}[language] || 'nameEn'] || row?.nameEn || '';
-
-export function expenseCodeDescription(code, language = 'ko') {
-  if (!code) return '';
-  const category = localizedName(code.base?.expenseType,language);
-  return [category,localizedName(code.base,language) || localizedName(code,language)].filter(Boolean).join(' - ');
-}
+import {accountingCodeDescription} from './accountingCode.mjs';
+export const expenseCodeDescription=accountingCodeDescription;
 
 export function expenseLineDescription(line, language = 'ko', codes = []) {
   if (!line?.transactionCodeId) return line?.description || '';

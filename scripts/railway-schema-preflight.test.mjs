@@ -40,7 +40,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       INSERT INTO "Organization"(id,"ownerOrgId") VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
       INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,NULL,'VND',123,NULL);`);
     await db.exec(`ALTER TABLE "SettingServiceDefault" ADD COLUMN "nameKo" TEXT,ADD COLUMN "nameEn" TEXT,ADD COLUMN "nameVi" TEXT,ADD COLUMN "entryMode" TEXT,ADD COLUMN "requiredFields" TEXT[],ADD COLUMN "orderInput" TEXT,ADD COLUMN "styleInput" TEXT,ADD COLUMN "processInput" TEXT,ADD COLUMN "isActive" BOOL,ADD COLUMN "sortOrder" INT;
-      ALTER TABLE "TransactionCodeBase" ADD COLUMN id INT PRIMARY KEY,ADD COLUMN code TEXT;
+      ALTER TABLE "TransactionCodeBase" ADD COLUMN id INT PRIMARY KEY,ADD COLUMN code TEXT,ADD COLUMN "nameKo" TEXT,ADD COLUMN "nameEn" TEXT,ADD COLUMN "nameVi" TEXT;
       CREATE TABLE "OutsourcingServiceType"(id SERIAL PRIMARY KEY,"ownerOrgId" INT,code TEXT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"entryMode" TEXT,"requiredFields" TEXT[],"orderInput" TEXT,"styleInput" TEXT,"processInput" TEXT,"isActive" BOOL,"sortOrder" INT,"systemDefaultId" INT,"isOverridden" BOOL,"updatedAt" TIMESTAMP,UNIQUE("ownerOrgId","systemDefaultId"));
       CREATE TABLE "TransactionCode"(id INT,"ownerOrgId" INT,"serviceTypeId" INT,"baseId" INT,"systemDefaultId" INT);
       CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT);

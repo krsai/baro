@@ -202,6 +202,7 @@ function assertGeneratedPrismaClientShape() {
     ExpenseRequestApprovalStep: ['id','orgId','requestId','position','employeeId'],
     OrganizationBankAccount: ['id','orgId','entityId','currencyId','bankName','accountNumber','accountHolder','isDefault','isActive'],
     PartnerTransactionCost: ['payeeEmployeeId','expenseRequestId','expenseRequestLine'],
+    BankLedgerEntry:['accountingCodeId'],BankLedgerSettlementLine:['accountingCodeId'],
     EmployeeExpenseBankAccount:['id','orgId','employeeId','createdByEmployeeId','currencyCode','bankName','accountNumber','accountHolder'],
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
@@ -727,7 +728,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
   "20261007_style_identity_fk_v1",
 ] as const;
-const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
   {tableName:'BankLedgerEntry',columnName:'writeOffAmount'},{tableName:'BankLedgerEntry',columnName:'settlementMode'},{tableName:'BankLedgerSettlementLine',columnName:'entryId'},
   {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
   {tableName:'EmployeeExpenseBankAccount',columnName:'id'},{tableName:'ExpenseRequest',columnName:'payeeEmployeeId'},{tableName:'PartnerTransactionCost',columnName:'payeeEmployeeId'},{tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
@@ -1037,6 +1038,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  "SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
   'ExpenseApprovalDecision_result_check','BankLedgerExpenseRejection_guard',

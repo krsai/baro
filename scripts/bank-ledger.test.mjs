@@ -35,6 +35,20 @@ function memoryLedger(){
 }
 const accountBody=(extra={})=>({clientKey:randomUUID(),bankName:'Bank',accountNumber:'001',accountHolder:'Company',currencyCode:'USD',openingDate:'2026-10-01',openingBalance:'100.00',...extra});
 const entryBody=(extra={})=>({clientKey:randomUUID(),transactionDate:'2026-10-03',direction:'IN',amount:'0.10',purpose:'Customer payment',evidenceNumber:'BANK-001',...extra});
+
+test('accounting codes derive the description, validate company scope and retain the original retry after catalogue changes',async()=>{
+ const {db,entries}=memoryLedger(),account=await saveLedgerAccount(db,1,'actor',accountBody());
+ let active=true;
+ db.transactionCode={findFirst:async({where})=>where.ownerOrgId===1&&where.id===7&&active?{id:7,isActive:true,taxTreatmentId:1,taxTreatment:{code:'VAT',suffix:'V'},base:{code:'GEN',isActive:true,nameEn:'Administration',expenseType:{isActive:true,nameEn:'Management'},variants:[{id:4,taxTreatmentId:1,isActive:true,isEnabled:true}]}}:null};
+ const body=entryBody({accountingCodeId:7,purpose:'Forged description'});
+ const saved=await postLedgerEntry(db,1,'actor',account.id,body);
+ assert.equal(saved.accountingCodeId,7);assert.equal(saved.purpose,'Management - Administration');
+ active=false;
+ assert.equal((await postLedgerEntry(db,1,'actor',account.id,body)).id,saved.id);assert.equal(entries.length,1);
+ await assert.rejects(postLedgerEntry(db,1,'actor',account.id,{...body,clientKey:randomUUID()}),/ACCOUNTING_CODE_INVALID/);
+ await assert.rejects(postLedgerEntry(db,1,'actor',account.id,{...body,accountingCodeId:8}),/RETRY_CONFLICT/);
+ await assert.rejects(postLedgerEntry(db,1,'actor',account.id,{...body,accountingCodeId:'7'}),/ACCOUNTING_CODE_INVALID/);
+});
 test('zero-start account is balanced by an explicit adjustment and normal transactions still require evidence',async()=>{
  const {db}=memoryLedger(),account=await saveLedgerAccount(db,1,'actor',accountBody({openingBalance:'0'}));
  await postLedgerEntry(db,1,'actor',account.id,entryBody({evidenceType:'ADJUSTMENT',evidenceNumber:'',purpose:'Reconcile bank statement',amount:'100'}));

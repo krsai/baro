@@ -6,6 +6,21 @@ import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url);
 const {registerTransactionSettingRoutes}=require('../backend/dist/services/transactionSettingRoutes.js');
 
+test('management classifies every formerly unspecified industry without changing source or accounting IDs',async()=>{
+ const db=new PGlite();try{
+  await db.exec(`CREATE TABLE "SettingServiceDefault"(id INT PRIMARY KEY,code TEXT,"expenseTypeId" INT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT);
+   INSERT INTO "SettingServiceDefault" VALUES(1,'GENERAL',7,'일반 서비스','General service','Other service'),(2,'CUSTOM',8,'Custom','Custom','Custom'),(3,'CUTTING',9,'Cutting','Cutting','Cutting');`);
+  await db.exec(`CREATE TABLE "TransactionCodeBase"(id INT PRIMARY KEY,"serviceTypeId" INT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT);
+   INSERT INTO "TransactionCodeBase" VALUES(44,1,'일반 서비스','General service','Other service'),(45,1,'Custom','Custom','Custom');`);
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261021230000_partner_industry_roles/migration.sql','utf8'));
+  const sql=fs.readFileSync('backend/prisma/migrations/20261030230000_industry_management_category/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+  assert.deepEqual((await db.query('SELECT s.id,s."expenseTypeId",r.code FROM "SettingServiceDefault" s JOIN "PartnerRole" r ON r.id=s."partnerRoleId" ORDER BY s.id')).rows,[{id:1,expenseTypeId:7,code:'MANAGEMENT'},{id:2,expenseTypeId:8,code:'MANAGEMENT'},{id:3,expenseTypeId:9,code:'PROCESS_OUTSOURCING'}]);
+  assert.equal((await db.query('SELECT "nameKo" FROM "SettingServiceDefault" WHERE id=1')).rows[0].nameKo,'관리');
+  assert.deepEqual((await db.query('SELECT id,"nameKo" FROM "TransactionCodeBase" ORDER BY id')).rows,[{id:44,nameKo:'관리'},{id:45,nameKo:'Custom'}]);
+  await assert.rejects(db.exec('UPDATE "SettingServiceDefault" SET "partnerRoleId"=NULL WHERE id=1'),/not-null|check constraint/);
+ }finally{await db.close();}
+});
+
 test('partner role catalogue is independent of expense types and preserves business identifiers',async()=>{
  const db=new PGlite();try{
   await db.exec(`CREATE TABLE "SettingServiceDefault"(id INT PRIMARY KEY,code TEXT,"expenseTypeId" INT);INSERT INTO "SettingServiceDefault" VALUES(4,'BUTTONHOLE',99),(8,'LOGISTICS',55),(9,'GENERAL',66);`);
@@ -35,7 +50,7 @@ test('industry parent backfill uses existing code FKs, preserves ambiguity and n
 test('SYSTEM industry writes require an explicit valid category FK and keep cost input settings independent',async()=>{
  const handlers=new Map();let saved;
  const app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(`${method} ${path}`,fn)]));
- const tx={settingServiceDefault:{create:async({data})=>{saved=data;return data;}}};
+ const tx={$queryRawUnsafe:async()=>[],settingServiceDefault:{create:async({data})=>{saved=data;return data;}}};
  const db={partnerRole:{findUnique:async({where})=>where.id===2?{id:2,code:'PROCESS_OUTSOURCING'}:null},$transaction:async fn=>fn(tx)};
  registerTransactionSettingRoutes(app,db,{requireSystemAdmin:async()=>true,requireOrgRole:async()=>null});
  const fn=handlers.get('post /system-setting-defaults/services');

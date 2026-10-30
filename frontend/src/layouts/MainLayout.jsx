@@ -844,9 +844,9 @@ const MainLayout = () => {
             path: '/system-setting/access-policy',
           },
           { label: languageCode === 'ko' ? '앱 기본설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
-          { label: getUiMessage('menu.transactionMasters', 'Expense codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
+          { label: getUiMessage('menu.transactionMasters', 'Accounting codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           { label: getUiMessage('menu.expenseUnits', 'Units', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-units' },
-          { label: getUiMessage('menu.expenseTypes', 'Expense types', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-types' },
+          { label: getUiMessage('menu.expenseTypes', 'Transaction types', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-types' },
           { label: getUiMessage('menu.partnerIndustries', 'Partner industries', languageCode), icon: <DnsIcon />, path: '/system-setting/partner-industries' },
           {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),

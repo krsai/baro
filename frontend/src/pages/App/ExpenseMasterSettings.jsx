@@ -29,7 +29,7 @@ export default function ExpenseMasterSettings({ industries = false, units = fals
     try {
       const [items,parents]=await Promise.all([requestJSON(industries||units ? path : '/system-setting-defaults/expense-types',{skipCache:true}),industries?requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}):Promise.resolve([])]);
       setRows(items);setTypes(parents);
-      if(industries)setCategory(current=>(current===0&&items.some(row=>!row.partnerRoleId)||parents.some(row=>row.id===current))?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||0);
+      if(industries)setCategory(current=>parents.some(row=>row.id===current)?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||null);
     }catch{setError(common.loadError);}finally{setLoading(false);}
   };
   useEffect(() => { load(); }, [path]);
@@ -38,7 +38,7 @@ export default function ExpenseMasterSettings({ industries = false, units = fals
     try { await requestJSON(`${path}${form.id?'/'+form.id:''}`, { method: form.id?'PUT':'POST',headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) }); setForm(null); await load(); }
     catch { setError(common.error); } finally { setSaving(false); }
   };
-  const parents=[...types,...(rows.some(row=>!row.partnerRoleId)?[{id:0,nameKo:tree.unclassified,nameEn:tree.unclassified,nameVi:tree.unclassified}]:[])];
+  const parents=types;
   const selected=parents.find(row=>row.id===category);
   const visible=industries?rows.filter(row=>(row.partnerRoleId||0)===category):rows;
   const table=<TableContainer><Table size="small"><TableHead><TableRow><TableCell>{common.code}</TableCell><TableCell>{industries ? tree.industry : text.type}</TableCell><TableCell>{tree.active}</TableCell><TableCell /></TableRow></TableHead><TableBody>
@@ -49,7 +49,7 @@ export default function ExpenseMasterSettings({ industries = false, units = fals
     {error&&<Alert severity="error">{error}<Button onClick={load}>{common.loadError}</Button></Alert>}
     {loading?<CircularProgress size={24}/>:industries?<HierarchyPanel label={tree.category} items={parents.map(parent=>({id:parent.id,label:serviceName(parent,languageCode),count:rows.filter(row=>(row.partnerRoleId||0)===parent.id).length}))} selectedId={category} onSelect={setCategory}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{mb:2}}><Typography variant="subtitle2">{serviceName(selected,languageCode)}</Typography><ChevronRight fontSize="small" color="disabled"/><Typography variant="subtitle2">{tree.industry}</Typography></Stack>
-      {category===0&&<Alert severity="info" sx={{mb:2}}>{tree.review}</Alert>}{table}
+      {table}
     </HierarchyPanel>:<Paper variant="outlined">{table}</Paper>}
     <OutsourcingServiceDialog systemDefaults partnerIndustryOnly initialServiceId={industryId} initialPartnerRoleId={category||null} open={open} onClose={() => setOpen(false)} onSaved={load} orgId={activeOrgId} languageCode={languageCode} />
     <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="sm"><DialogTitle>{text.type}</DialogTitle><DialogContent>{form && <Stack spacing={2} sx={{ pt: 1 }}>{units&&<TextField label={common.code} required value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase()})}/>}<LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key, value) => setForm(prev => ({ ...prev, [key]: value }))} /><FormControlLabel label={languageCode === 'ko' ? '사용 중' : 'Active'} control={<Checkbox checked={form.isActive} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} /></Stack>}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setForm(null)}>{common.cancel}</Button><SaveButton loading={saving} disabled={saving || !form || (!hasLocalizedName(form)||units&&!/^[A-Z][A-Z0-9_]{0,29}$/.test(form.code))} onClick={save}>{common.save}</SaveButton></DialogActions></Dialog>

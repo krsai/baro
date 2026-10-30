@@ -8,7 +8,7 @@ import { createHttpError } from '../utils/http';
 import { validateCostDate, COST_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
-import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
+import { resolveAccountingCode, ACCOUNTING_CODE_INCLUDE } from './accountingCode';
 import {prepareExpenseMetadata,saveExpenseReferences} from './expenseMetadata';
 
 export const REQUEST_INCLUDE = { payeeEmployee: { select: {id:true,name:true,employeeNo:true,status:true} }, processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, unit:true, referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}},orderBy:{id:'asc' as const}}, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: true, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
@@ -79,8 +79,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     return previous;
   }
-  const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: useSystemMaster ? SYSTEM_EXPENSE_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
-  const rawCode = useSystemMaster ? resolveSystemExpenseCode(localCode) : localCode;
+  const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: useSystemMaster ? ACCOUNTING_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
+  const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
   if(useSystemMaster)description=edit?.cost?.description || [code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
