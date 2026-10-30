@@ -89,6 +89,11 @@ try {
       await page.getByLabel('REMARK',{exact:true}).fill('Preserve this draft');
       await page.getByRole('button',{name:h.choosePayee,exact:true}).click();
       const picker=page.getByRole('dialog');await picker.getByText('001234',{exact:false}).waitFor();
+      const payeeDetails=picker.getByTestId('payee-details'),account=payeeDetails.getByTestId('payee-account');
+      await payeeDetails.getByText('Accounts desk',{exact:true}).waitFor();await payeeDetails.getByText('0901234567',{exact:true}).waitFor();
+      await payeeDetails.getByText({ko:'단추구멍',en:'Buttonhole',vi:'Thùa khuy'}[lang],{exact:true}).waitFor();
+      await account.getByText('Test bank',{exact:true}).waitFor();await account.getByText('001234',{exact:true}).waitFor();await account.getByText('Selected vendor',{exact:true}).waitFor();
+      if(lang==='ko'){await page.setViewportSize({width:430,height:1000});assert.ok(await picker.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'payee details stay within the mobile dialog');await page.setViewportSize({width:1600,height:1000});}
       await picker.getByLabel(h.search,{exact:true}).fill('Selected vendor');assert.equal(await picker.locator('tbody tr').count(),1);
       const b=ENTITY_TEXT[lang];await picker.getByRole('button',{name:h.information,exact:true}).click();
       let profile=page.getByRole('dialog').last();
