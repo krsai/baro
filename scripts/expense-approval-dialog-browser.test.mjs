@@ -32,7 +32,12 @@ try{
   await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>document.documentElement.dataset.saved),'true');
   for(const name of names)await page.getByTestId('expense-approval-button').getByText(name,{exact:true}).waitFor();
   await page.evaluate(()=>window.setApprovalStatus({steps:[{employeeId:2,approved:true},{employeeId:3,approved:false},{employeeId:4,approved:false}]}));
-  const progress=expenseApprovalActionsText[lang];await page.getByTestId('expense-approval-button').getByText(names[0]+' · '+progress.approved,{exact:true}).waitFor();await page.getByTestId('expense-approval-button').getByText(names[1]+' · '+progress.pending,{exact:true}).waitFor();
+  const progress=expenseApprovalActionsText[lang],approvalButton=page.getByTestId('expense-approval-button');
+  const approved=approvalButton.locator('[data-approval-state="approved"]'),waiting=approvalButton.locator('[data-approval-state="pending"]');
+  await approved.getByText(names[0],{exact:true}).waitFor();await waiting.getByText(names[1],{exact:true}).waitFor();
+  assert.equal(await approved.getAttribute('aria-label'),names[0]+' · '+progress.approved);
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-approval-state="approved"]')).backgroundColor==='rgb(232, 247, 239)');
+  await page.waitForFunction(()=>[...document.querySelectorAll('[data-approval-state="pending"]')].every(el=>getComputedStyle(el).backgroundColor==='rgb(255, 246, 219)'));
   await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('combobox').count(),0);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).count(),0);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
   assert.deepEqual(errors,[]);await page.close();
  }

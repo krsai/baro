@@ -221,7 +221,7 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box data-testid="expense-header" sx={{display:'flex',flexWrap:'wrap',gap:1.5,alignItems:'flex-start','& > *':{width:{xs:'100%',sm:170},minWidth:0},'& > :nth-child(2)':{width:{xs:'100%',sm:220}},'& > :nth-child(4)':{width:{xs:'100%',sm:320}}}}>
+          <Box data-testid="expense-header" sx={{display:'flex',flexWrap:'wrap',gap:1.5,alignItems:'flex-start','& > *':{flex:{xs:'0 0 100%',sm:'0 0 220px'},width:{xs:'100%',sm:220},height:36,minWidth:0}}}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
             <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}

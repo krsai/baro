@@ -67,7 +67,7 @@ try {
     const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields must share one row');
     const payeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(Math.abs(payeeBox.width-boxes[0].width)<2);assert.equal(payeeBox.height,36);assert.ok((await page.getByTestId('expense-payee-button').getAttribute('class')).includes('MuiButton-contained'));
     const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).locator('..').boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.ok(Math.abs(remarkBox.height-totalsBox.height)<3);assert.equal(await page.getByTestId('expense-header').getByLabel('REMARK',{exact:true}).count(),0);
-    assert.ok(Math.abs((await numberInput.boundingBox()).x-boxes[1].x)<2);assert.ok(Math.abs(boxes[1].width-220)<2);assert.ok(Math.abs(boxes[3].width-320)<2);
+    assert.ok(Math.abs((await numberInput.boundingBox()).x-boxes[1].x)<2);for(const box of boxes){assert.ok(Math.abs(box.width-220)<2,'header controls have equal widths');assert.ok(Math.abs(box.height-36)<2,'header controls have equal heights');}
     if(mode==='GENERAL'&&lang==='ko'&&!locked){
       await page.setViewportSize({width:430,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
       const mobileRemark=await page.getByLabel('REMARK',{exact:true}).boundingBox(),mobileTotals=await page.getByTestId('expense-totals').boundingBox();assert.ok(mobileRemark.y<mobileTotals.y);
