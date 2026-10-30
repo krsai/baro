@@ -38,3 +38,6 @@ for(const lang of ['ko','en','vi'])Object.assign(bankLedgerMessages[lang].errors
 bankLedgerMessages.ko.title='\uC785\uCD9C\uAE08';
 bankLedgerMessages.en.title='Transactions';
 bankLedgerMessages.vi.title='Thu chi';
+Object.assign(bankLedgerMessages.ko.errors,{LEDGER_INVALID_SETTLEMENT:'수수료·대손 행의 연결 대상과 금액·사유를 확인해 주세요.',LEDGER_SETTLEMENT_MISMATCH:'연결한 수수료·대손 행의 합계가 일치하지 않습니다.',EXPENSE_REQUEST_CHANGED:'비용 신청이 변경되었습니다. 다시 검색해 최신 버전을 연결하세요.'});
+Object.assign(bankLedgerMessages.en.errors,{LEDGER_INVALID_SETTLEMENT:'Check the linked transaction, amount and reason for fee or write-off rows.',LEDGER_SETTLEMENT_MISMATCH:'Linked fee and write-off rows do not match their totals.',EXPENSE_REQUEST_CHANGED:'The expense request changed. Search again and link the latest version.'});
+Object.assign(bankLedgerMessages.vi.errors,{LEDGER_INVALID_SETTLEMENT:'Kiểm tra giao dịch liên kết, số tiền và lý do của dòng phí hoặc nợ xấu.',LEDGER_SETTLEMENT_MISMATCH:'Tổng các dòng phí hoặc nợ xấu không khớp.',EXPENSE_REQUEST_CHANGED:'Đề nghị chi đã thay đổi. Tìm lại và liên kết phiên bản mới nhất.'});

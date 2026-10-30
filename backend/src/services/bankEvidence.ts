@@ -28,9 +28,10 @@ export async function approvalState(db:any,orgId:number,requestId:number,actorId
 export async function attachExpenseApprovalStates(db:any,orgId:number,requests:any[]){
  if(!requests.length)return requests;
  const ids=requests.map(row=>row.id);
+ const auditIds=requests.filter(row=>!row.approvalSteps?.length).map(row=>row.id);
  const [decisions,audits]=await Promise.all([
   db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:ids}}}),
-  db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:requests.filter(row=>!row.approvalSteps?.length).map(row=>row.id)}},select:{requestId:true,version:true,afterSnapshot:true}}),
+  auditIds.length?db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:auditIds}},select:{requestId:true,version:true,afterSnapshot:true}}):Promise.resolve([]),
  ]);
  return requests.map(row=>{const policy=audits.find((audit:any)=>audit.requestId===row.id&&audit.version===row.version)?.afterSnapshot?.approvalPolicy;return {...row,approval:expenseApprovalSummary(row,decisions,policy?.exempt===true&&policy.drafterId===row.createdByEmployeeId)};});
 }
@@ -86,9 +87,9 @@ export async function approveExpense(db:any,orgId:number,actorId:number,requestI
 export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  const type=body.evidenceType||'FILE',code=account.currencyCode;
  if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
- const fee=validateLedgerMoney(body.bankFee||'0',code,true);
- if(ledgerScale4(fee)<0n)return fail('LEDGER_INVALID_AMOUNT');
- const amount=ledgerScale4(body.amount),bankFee=ledgerScale4(fee);
+ const fee=validateLedgerMoney(body.bankFee||'0',code,true),writeOff=validateLedgerMoney(body.writeOffAmount||'0',code,true);
+ if(ledgerScale4(fee)<0n||ledgerScale4(writeOff)<0n||type!=='INVOICE'&&ledgerScale4(writeOff)!==0n)return fail('LEDGER_INVALID_AMOUNT');
+ const amount=ledgerScale4(body.amount),bankFee=ledgerScale4(fee),loss=ledgerScale4(writeOff);
  let reference=typeof body.evidenceNumber==='string'?body.evidenceNumber.trim():'';
  const allocations:any[]=[];
  if(type==='FILE'){
@@ -104,16 +105,17 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   const current=await tx.invoice.findFirst({where:{id:invoice.id,sellerOrgId:orgId,status:'ISSUED',currencyCode:code}});
   if(!current)return fail('LEDGER_INVOICE_NOT_FOUND');
   const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,invoiceId:invoice.id,entry:{voidedAt:null}}});
-  if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+amount+bankFee>ledgerScale4(current.total))return fail('LEDGER_EXCEEDS_DOCUMENT');
-  allocations.push({invoiceId:invoice.id,amount:ledgerMoney(amount+bankFee,code)});
+  if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+amount+bankFee+loss>ledgerScale4(current.total))return fail('LEDGER_EXCEEDS_DOCUMENT');
+  allocations.push({invoiceId:invoice.id,amount:ledgerMoney(amount+bankFee+loss,code)});
  }else{
   if(body.direction!=='OUT'||!Array.isArray(body.expenseItems)||!body.expenseItems.length||body.expenseItems.length>50)return fail('LEDGER_INVALID_EVIDENCE');
   const ids=body.expenseItems.map((r:any)=>r.itemId);
   if(ids.some((id:any)=>typeof id!=='string')||new Set(ids).size!==ids.length)return fail('LEDGER_INVALID_EVIDENCE');
   const costs=await tx.partnerTransactionCost.findMany({where:{orgId,id:{in:ids}}});
   if(costs.length!==ids.length||costs.some((c:any)=>!c.expenseRequestId||c.currency!==code))return fail('LEDGER_INVALID_EVIDENCE');
+  if(body.expenseRequestId!==undefined&&costs.some((c:any)=>c.expenseRequestId!==body.expenseRequestId))return fail('LEDGER_INVALID_EVIDENCE');
   const requestIds=[...new Set<number>(costs.map((c:any)=>c.expenseRequestId))].sort((a,b)=>a-b);
-  for(const id of requestIds){await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);if(!(await approvalState(tx,orgId,id)).approved)return fail('LEDGER_EXPENSE_NOT_APPROVED');}
+  for(const id of requestIds){await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);const state=await approvalState(tx,orgId,id);if(!state.approved)return fail('LEDGER_EXPENSE_NOT_APPROVED');if(body.expenseVersion!==undefined&&state.version!==body.expenseVersion)return fail('EXPENSE_REQUEST_CHANGED',409);}
   let allocated=0n;const refs:string[]=[];
   for(const row of [...body.expenseItems].sort((a,b)=>a.itemId.localeCompare(b.itemId))){
    const cost=await tx.partnerTransactionCost.findFirst({where:{id:row.itemId,orgId}});
@@ -128,5 +130,5 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   }
   if(allocated+bankFee!==amount)return fail('LEDGER_ALLOCATION_MISMATCH');reference=refs.join(', ');
  }
- return {evidenceType:type,evidenceNumber:reference,bankFee:fee,allocations};
+ return {evidenceType:type,evidenceNumber:reference,bankFee:fee,writeOffAmount:writeOff,allocations};
 }

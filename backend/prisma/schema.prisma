@@ -352,6 +352,9 @@ model BankLedgerEntry {
   evidenceNumber String
   evidenceType String @default("FILE")
   bankFee Decimal @default(0) @db.Decimal(24, 4)
+  writeOffAmount Decimal @default(0) @db.Decimal(24, 4)
+  settlementMode String @default("LEGACY")
+  settlementLines BankLedgerSettlementLine[]
   allocations BankLedgerEvidenceAllocation[]
   createdBy String
   createdAt DateTime @default(now())
@@ -361,7 +364,23 @@ model BankLedgerEntry {
   account BankLedgerAccount @relation(fields: [accountId, orgId], references: [id, orgId], onDelete: Restrict)
   @@unique([orgId, clientKey])
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
+  @@unique([id,orgId])
   @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
+}
+
+model BankLedgerSettlementLine {
+  id String @id @default(uuid())
+  orgId Int
+  entryId String
+  clientKey String
+  kind String
+  amount Decimal @db.Decimal(24,4)
+  purpose String
+  createdBy String
+  createdAt DateTime @default(now())
+  entry BankLedgerEntry @relation(fields:[entryId,orgId],references:[id,orgId],onDelete:Restrict,map:"BankLedgerSettlementLine_entry_scope_fkey")
+  @@unique([orgId,clientKey])
+  @@index([entryId])
 }
 
 model BankLedgerBatch {

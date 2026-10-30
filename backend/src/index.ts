@@ -726,6 +726,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  {tableName:'BankLedgerEntry',columnName:'writeOffAmount'},{tableName:'BankLedgerEntry',columnName:'settlementMode'},{tableName:'BankLedgerSettlementLine',columnName:'entryId'},
   {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
   {tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
   {tableName:'BankLedgerAccount',columnName:'openingBalance'},
@@ -1034,6 +1035,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
   'ExpenseApprovalDecision_result_check','BankLedgerExpenseRejection_guard',
   'ExpenseItemReference_guard','ExpenseItemReference_audit_guard','ExpenseItemReference_cost_scope_fkey','ExpenseItemReference_order_scope_fkey','ExpenseItemReference_style_scope_fkey',
   'ServiceDefaultRenamePropagation',
