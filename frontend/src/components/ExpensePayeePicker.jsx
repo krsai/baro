@@ -59,7 +59,7 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
  },[open,draftId,orgId,reload]);
  const rows=options.filter(row=>row.isActive!==false&&normalizeLookupText([row.name,row.nameKo,row.nameVi,row.contactName,row.contactPhone].filter(Boolean).join(' ')).includes(normalizeLookupText(query)));
  return <>
-  <Button variant="contained" disableElevation size="small" startIcon={<SearchOutlined/>} title={value?.name||t.choosePayee} disabled={disabled} onClick={()=>{setDraftId(value?.id||null);setQuery('');setOpen(true);}} aria-label={t.choosePayee} data-testid="expense-payee-button" sx={{width:{xs:'100%',sm:170},height:36,minWidth:0,textTransform:'none',overflow:'hidden'}}><Typography variant="button" noWrap sx={{minWidth:0}}>{value?.name||t.choosePayee}</Typography></Button>
+  <Button variant="outlined" disableElevation size="small" startIcon={<SearchOutlined/>} title={value?.name||t.choosePayee} disabled={disabled} onClick={()=>{setDraftId(value?.id||null);setQuery('');setOpen(true);}} aria-label={t.choosePayee} data-testid="expense-payee-button" sx={{width:'100%',height:36,minWidth:0,justifyContent:'flex-start',color:'text.primary',borderColor:'divider',bgcolor:'background.paper',textTransform:'none',overflow:'hidden','& .MuiButton-startIcon':{color:'text.secondary'},'&:hover':{borderColor:'text.secondary',bgcolor:'action.hover'}}}><Typography variant="button" noWrap sx={{minWidth:0}}>{value?.name||t.choosePayee}</Typography></Button>
   <Dialog open={open} onClose={()=>setOpen(false)} maxWidth="md" fullWidth aria-labelledby="expense-payee-title">
    <DialogTitle id="expense-payee-title">{t.choosePayee}</DialogTitle>
    <DialogContent dividers><Stack spacing={2}>

@@ -217,18 +217,22 @@ export default function TransactionRequestEntry() {
       {validation && <Alert severity="warning" data-testid="expense-validation">{validation}</Alert>}
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
-      <ExpenseApprovalActions requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box data-testid="expense-header" sx={{display:'flex',flexWrap:'wrap',gap:1.5,alignItems:'flex-start','& > *':{flex:{xs:'0 0 100%',sm:'0 0 220px'},width:{xs:'100%',sm:220},height:36,minWidth:0}}}>
+          <Box data-testid="expense-header" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(220px,320px) minmax(0,1fr)'},gap:3,alignItems:'start'}}>
+            <Stack data-testid="expense-header-fields" spacing={1.5} sx={{'& > *':{height:36,minWidth:0,width:'100%'}}}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
             <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
               onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
               onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
-            <ExpenseApprovalSettings ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
+            </Stack>
+            <Box data-testid="expense-header-approval" sx={{justifySelf:{xs:'stretch',sm:'end'},minWidth:0,maxWidth:520,width:{xs:'100%',sm:'auto'}}}><Stack direction="row" spacing={2} alignItems="flex-start">
+            <ExpenseApprovalSettings vertical ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
               />
+      <ExpenseApprovalActions compact requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
+            </Stack></Box>
           </Box>
           </Box>
         </Box>
