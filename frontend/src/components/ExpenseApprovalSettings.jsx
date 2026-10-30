@@ -57,7 +57,6 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
      {draft[`${stage.key}EmployeeId`]&&!stage.candidates?.some(row=>row.id===draft[`${stage.key}EmployeeId`])&&<MenuItem disabled value={draft[`${stage.key}EmployeeId`]}>{name(draft[`${stage.key}EmployeeId`])}</MenuItem>}
      {stage.candidates?.map(row=><MenuItem key={row.id} value={row.id}>{row.name}{row.grade?.name?` · ${row.grade[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.grade.name}`:''}</MenuItem>)}
     </TextField></Stack>)}
-    {((viewOnly&&!summary.length)||(!viewOnly&&preview?.complete&&!preview.ids.length))&&<Alert severity="info">{viewOnly?emptySummary:t.none}</Alert>}
     {viewOnly&&actions}
    </Stack></DialogContent>
    <DialogActions><Button onClick={close}>{viewOnly?getCloseText(languageCode):t.cancel}</Button>{!viewOnly&&<Button variant="contained" disabled={busy||!preview?.complete||!!error} onClick={()=>{setApplied(preview);onChange(draft);setOpen(false);pending.current?.(draft);pending.current=null;}}>{t.confirmSave}</Button>}</DialogActions>

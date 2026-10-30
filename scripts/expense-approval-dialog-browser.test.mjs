@@ -5,7 +5,6 @@ import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {expenseHeaderActions} from '../frontend/src/constants/expenseHeaderActions.js';
 import {expenseApprovalActionsText} from '../frontend/src/constants/expenseApprovalActions.js';
-import {approvalWorkflowText} from '../frontend/src/constants/approvalWorkflow.js';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
 const fixture=path.resolve('frontend/expense-approval-dialog-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
@@ -46,7 +45,8 @@ try{
   assert.notEqual(await approvalButton.locator('[data-approval-state="rejected"]').evaluate(el=>getComputedStyle(el).backgroundColor),await approved.evaluate(el=>getComputedStyle(el).backgroundColor));
   await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('combobox').count(),0);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).count(),0);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
   adminPreview=true;await page.reload();await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  await page.getByText(approvalWorkflowText[lang].selfAuthorized,{exact:true}).waitFor();await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').getByText('Current user',{exact:true}).waitFor();
+  await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').getByText('Current user',{exact:true}).waitFor();
+  await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: save opens sequential vertical approvals, cancellation preserves inputs, confirmation saves, header opens a read-only reference, ko/en/vi desktop/mobile.');
