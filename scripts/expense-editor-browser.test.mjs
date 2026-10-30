@@ -66,6 +66,7 @@ try {
     assert.equal(await page.getByTestId('expense-line').getByLabel(l.description,{exact:false}).evaluate(el=>el.readOnly),true);
     const entryHeader=page.getByTestId('document-entry-header'),approvalBox=await page.getByTestId('document-entry-approval').boundingBox(),payeeBox=await page.getByTestId('expense-payee-button').boundingBox();
     assert.ok(approvalBox.x>payeeBox.x+payeeBox.width);assert.equal(await page.getByTestId('expense-approval-stages').count(),1);
+    const approvalStrip=await page.getByTestId('expense-approval-stages').boundingBox();assert.ok(Math.abs(approvalStrip.height-36)<1);assert.ok(Math.abs((approvalStrip.y+approvalStrip.height/2)-(payeeBox.y+payeeBox.height/2))<1,'Payee and approval controls share the same vertical center');
     const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).locator('..').boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.ok(Math.abs(remarkBox.height-totalsBox.height)<3);
     if(mode==='GENERAL'&&lang==='ko'&&!locked){
       await page.setViewportSize({width:430,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
