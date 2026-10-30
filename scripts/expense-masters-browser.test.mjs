@@ -16,7 +16,7 @@ try {
   await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:null,activeProfile:{entryType:"SYSTEM",systemRole:"SYSTEM_ADMIN"}});'}));
   await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:"ko"});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-  const industry={partnerRoleId:1,expenseTypeId:1,id:4,code:'BUTTONHOLE',nameKo:'단춧구멍',nameEn:'Buttonhole',nameVi:'Khuy',entryMode:'PROCESS',requiredFields:[],orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',isActive:true};
+  const industry={hasUsageHistory:true,partnerRoleId:1,expenseTypeId:1,id:4,code:'BUTTONHOLE',nameKo:'단춧구멍',nameEn:'Buttonhole',nameVi:'Khuy',entryMode:'PROCESS',requiredFields:[],orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',isActive:true};
   const type={id:1,code:'PRODUCTION',nameKo:'제작 외주',nameEn:'Production outsourcing',nameVi:'Gia công',entryMode:'PROCESS',isActive:true};
   const roles=[{id:4,code:'MANAGEMENT',nameKo:'\uAD00\uB9AC',nameEn:'Administration'},{id:3,code:'LOGISTICS_PROVIDER',nameKo:'물류 업체',nameEn:'Logistics provider'},{id:1,code:'PROCESS_OUTSOURCING',nameKo:'\uC678\uC8FC \uC5C5\uCCB4',nameEn:'Outsourcing partner'},{id:2,code:'MATERIAL_SUPPLIER',nameKo:'\uACF5\uAE09 \uC5C5\uCCB4',nameEn:'Supplier'}];
   await page.route('**/partner-roles',r=>r.fulfill({headers,status:404,json:{error:'organization not found'}}));
@@ -25,10 +25,11 @@ try {
   for(const pattern of ['**/expense-types/*','**/system-setting-defaults/expense-types','**/system-setting-defaults/services**']) await page.route(pattern,route=>{
     if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});
     if(route.request().method()==='PUT'){writes.push({url:route.request().url(),data:route.request().postDataJSON()});return route.fulfill({headers,json:{ok:true}});}
-    return route.fulfill({headers,json:route.request().url().includes('expense-types')?[type,{...type,id:2,code:'LOGISTICS',nameKo:'물류 서비스'}]:[industry,{...industry,id:5,code:'LOGISTICS',nameKo:'물류·운송',partnerRoleId:3},{...industry,id:6,code:'GENERAL',nameKo:'\uAD00\uB9AC',partnerRoleId:4}]});
+    return route.fulfill({headers,json:route.request().url().includes('expense-types')?[type,{...type,id:2,code:'LOGISTICS',nameKo:'물류 서비스'}]:[industry,{...industry,id:5,code:'LOGISTICS',nameKo:'물류·운송',partnerRoleId:3},{...industry,id:6,hasUsageHistory:false,code:'GENERAL',nameKo:'\uAD00\uB9AC',partnerRoleId:4}]});
   });
   await page.goto(`http://127.0.0.1:${port}/expense-masters-acceptance.html`);
   await page.locator('#industries [data-testid=hierarchy-panel]').waitFor();assert.equal(await page.getByText('\uAD6C\uBD84 \uBBF8\uC9C0\uC815',{exact:true}).count(),0);await page.locator('#types').getByText('\uAC70\uB798 \uC720\uD615 \uAD00\uB9AC',{exact:true}).waitFor();
+  assert.equal(await page.locator('#industries tbody').getByRole('button',{name:'\uC0AD\uC81C',exact:true}).isDisabled(),true);
   assert.equal(await page.locator('#industries nav').evaluate(el=>getComputedStyle(el).borderRightColor),'rgb(229, 234, 242)');
   await page.locator('#types').getByRole('button',{name:'수정',exact:true}).first().click();
   await page.getByRole('dialog').getByLabel('이름 (한국어)').fill('생산 외주');
@@ -56,7 +57,7 @@ try {
   assert.match(await added.getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).innerText(),/물류 업체/);
   await added.getByRole('button',{name:'\uCDE8\uC18C',exact:true}).click();
   await roots.getByRole('button',{name:/\uAD00\uB9AC/}).click();
-  await page.locator('#industries tbody').getByText('\uAD00\uB9AC',{exact:true}).waitFor();
+  await page.locator('#industries tbody').getByText('\uAD00\uB9AC',{exact:true}).waitFor();assert.equal(await page.locator('#industries tbody').getByRole('button',{name:'\uC0AD\uC81C',exact:true}).isEnabled(),true);
   await page.locator('#industries').getByRole('button',{name:'\uC218\uC815',exact:true}).click();
   await page.getByRole('dialog').getByLabel('이름 (한국어)').waitFor();
   assert.equal(await page.getByRole('dialog').getByRole('button',{name:'\uB4F1\uB85D',exact:true}).isEnabled(),true);

@@ -1,3 +1,4 @@
+import SettingDeleteButton from '../../components/SettingDeleteButton';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
 import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import React, { useEffect, useState } from 'react';
@@ -42,7 +43,7 @@ export default function ExpenseMasterSettings({ industries = false, units = fals
   const selected=parents.find(row=>row.id===category);
   const visible=industries?rows.filter(row=>(row.partnerRoleId||0)===category):rows;
   const table=<TableContainer><Table size="small"><TableHead><TableRow><TableCell>{common.code}</TableCell><TableCell>{industries ? tree.industry : text.type}</TableCell><TableCell>{tree.active}</TableCell><TableCell /></TableRow></TableHead><TableBody>
-    {visible.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell><StatusLabel tone={row.isActive?'blue':'gray'} label={row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><IconButton color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton></TableCell></TableRow>)}
+    {visible.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell><StatusLabel tone={row.isActive?'blue':'gray'} label={row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><IconButton color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton>{industries&&<SettingDeleteButton path={path} id={row.id} name={serviceName(row,languageCode)} used={row.hasUsageHistory} disabled={loading} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>}</TableCell></TableRow>)}
     {!visible.length&&<TableRow><TableCell colSpan={4}>{tree.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>;
   return <AppPageContainer title={industries ? text.industries : text.types} titleActions={units?<Button variant="contained" disabled={loading} onClick={()=>setForm({code:'',nameEn:'',nameKo:'',nameVi:'',isActive:true,sortOrder:0})}>{unitLabels.add}</Button>:industries && <Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button>}>

@@ -2595,6 +2595,7 @@ model IndustryProductionPolicy {
 }
 
 model ExpenseCodeLinkPolicy {
+  inputSettings Json?
   orgId Int
   baseId Int
   target String @default("NONE")
@@ -2607,6 +2608,7 @@ model ExpenseCodeLinkPolicy {
 }
 
 model ExpenseCodeLinkAudit {
+  inputSettings Json?
   id Int @id @default(autoincrement())
   orgId Int
   baseId Int

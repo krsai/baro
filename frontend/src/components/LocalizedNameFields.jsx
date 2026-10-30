@@ -11,12 +11,12 @@ const LABELS = {
   en: ['Name (English · primary)', 'Name (Korean)', 'Name (Vietnamese)'],
   vi: ['Tên (tiếng Anh · chính)', 'Tên (tiếng Hàn)', 'Tên (tiếng Việt)'],
 };
-export default function LocalizedNameFields({ value, onChange, languageCode = 'en', englishField = 'nameEn', disabled = false, autoFocus = false }) {
+export default function LocalizedNameFields({ value, onChange, languageCode = 'en', englishField = 'nameEn', disabled = false, autoFocus = false, showHelp = false }) {
   const labels = LABELS[languageCode] || LABELS.en;
   return <Box>
     <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(3, minmax(0, 1fr))' } }}>
       {[englishField, 'nameKo', 'nameVi'].map((key, index) => <TextField key={key} fullWidth size="small" label={labels[index]} value={value?.[key] || ''} disabled={disabled} autoFocus={autoFocus && index === 0} onChange={event => onChange(key, event.target.value)} />)}
     </Box>
-    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
+    {showHelp && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>}
   </Box>;
 }

@@ -16,7 +16,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-code-link-lines-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi'])for(const mode of ['required','production','saved','order','style']){
-  const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));const labels=EXPENSE_REQUEST_TEXT[lang];
+  const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));const labels=EXPENSE_REQUEST_TEXT[lang];
   const base={entryMode:['production','style','order'].includes(mode)?'PROCESS':'GENERAL',requiredFields:mode==='order'?['transportDate']:[],isActive:true,expenseType:{nameEn:'Expense'},serviceTypeId:1};
   const codes=['BTHV','BTHE','BTHZ','PRTV'].map((code,index)=>applyExpenseCodeLinkPolicy({id:7+index,code,baseId:index===3?20:10,isActive:true,nameEn:code,vatEnabled:false,base},index===3?'NONE':mode==='style'?'STYLE':mode==='order'?'ORDER':'PROCESS'));
   await page.addInitScript(({lang,codes,saved})=>{window.lang=lang;window.codes=codes;window.saved=saved;},{lang,codes,saved:mode==='saved'});

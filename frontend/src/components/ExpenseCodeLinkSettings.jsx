@@ -1,5 +1,6 @@
+import AccountingInputSettings from './AccountingInputSettings';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TableContainer,TextField,Typography} from '@mui/material';
+import {Dialog,DialogTitle,DialogContent,DialogActions,Alert,Button,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TableContainer,TextField,Typography} from '@mui/material';
 import {useAuth} from '../context/AuthContext';
 import {useLanguage} from '../context/LanguageContext';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
@@ -24,27 +25,30 @@ export default function ExpenseCodeLinkSettings(){
  const text=EXPENSE_CODE_LINK_TEXT[languageCode]||EXPENSE_CODE_LINK_TEXT.en,scope=useRef(activeOrgId);scope.current=activeOrgId;
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(false),[saved,setSaved]=useState(false),[reload,setReload]=useState(0);
  const canEdit=activeOrgRole==='ADMIN';
- useEffect(()=>{let alive=true;setRows([]);setLoading(true);setSaving(false);setError(false);setSaved(false);
+ const [editingId,setEditingId]=useState(null);const editing=rows.find(row=>row.id===editingId);
+ const fingerprint=row=>JSON.stringify(row.inputSettings);
+ const update=settings=>setRows(previous=>previous.map(row=>row.id===editingId?{...row,inputSettings:settings,target:settings.processInput==='REQUIRED'?'PROCESS':settings.styleInput==='REQUIRED'?'STYLE':settings.orderInput==='REQUIRED'?'ORDER':'NONE'}:row));
+ useEffect(()=>{let alive=true;setEditingId(null);setRows([]);setLoading(true);setSaving(false);setError(false);setSaved(false);
   requestJSON(`/app-settings/expense-code-links${buildQueryString({orgId:activeOrgId})}`,{skipCache:true})
-   .then(data=>{if(alive)setRows(data.map(row=>({...row,original:row.target})));})
+   .then(data=>{if(alive)setRows(data.map(row=>({...row,original:JSON.stringify(row.inputSettings)})));})
    .catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};
  },[activeOrgId,reload]);
  const save=async row=>{const orgId=activeOrgId;setSaving(true);setError(false);setSaved(false);
-  try{await requestJSON(`/app-settings/expense-code-links${buildQueryString({orgId})}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseId:row.id,target:row.target})});
+  try{await requestJSON(`/app-settings/expense-code-links${buildQueryString({orgId})}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseId:row.id,target:row.target,inputSettings:row.inputSettings})});
    emitWorkspaceDataChanged({orgId,topics:['expense-settings'],source:'expense-code-link-policy'});
-   if(scope.current===orgId){setRows(previous=>previous.map(item=>item.id===row.id?{...item,original:row.target}:item));setSaved(true);}
+   if(scope.current===orgId){setRows(previous=>previous.map(item=>item.id===row.id?{...item,original:JSON.stringify(row.inputSettings)}:item));setSaved(true);setEditingId(null);}
   }catch{if(scope.current===orgId)setError(true);}finally{if(scope.current===orgId)setSaving(false);}
  };
  return <Paper variant="outlined" sx={{p:'var(--ui-panel-padding, 16px)',maxWidth:1000,minWidth:0}}><Stack spacing={2} sx={{minWidth:0}}>
-  <Typography variant="h6">{text.title}</Typography><Typography variant="body2" color="text.secondary">{text.help}</Typography>
+  <Typography variant="h6">{text.title}</Typography>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{text.retry}</Button>}>{text.error}</Alert>}
   {saved&&<Alert severity="success">{text.saved}</Alert>}
   <TableContainer><Table size="small" sx={{minWidth:550}}><TableHead><TableRow>{[text.code,text.name,text.target,''].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
    {rows.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell>
-    <TextField select size="small" fullWidth label={text.target} value={row.target} disabled={!canEdit||saving} onChange={event=>setRows(previous=>previous.map(item=>item.id===row.id?{...item,target:event.target.value}:item))}>
-     <MenuItem value="NONE">{text.none}</MenuItem><MenuItem value="ORDER">{text.order}</MenuItem><MenuItem value="STYLE">{text.style}</MenuItem><MenuItem value="PROCESS">{text.process}</MenuItem>
-    </TextField></TableCell><TableCell>{canEdit&&<Button disabled={saving||row.original===row.target} onClick={()=>save(row)}>{text.save}</Button>}</TableCell></TableRow>)}
+    {text[row.target==='NONE'?'none':row.target.toLowerCase()]}
+    </TableCell><TableCell><Button disabled={saving} onClick={()=>setEditingId(row.id)}>{text.target}</Button></TableCell></TableRow>)}
    {!rows.length&&<TableRow><TableCell colSpan={4}>{loading?text.loading:text.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>
+ <Dialog open={Boolean(editing)} onClose={()=>!saving&&setEditingId(null)} fullWidth maxWidth="sm"><DialogTitle>{editing?.code} · {serviceName(editing,languageCode)}</DialogTitle><DialogContent>{editing&&<AccountingInputSettings value={editing.inputSettings} onChange={update} languageCode={languageCode} disabled={!canEdit||saving}/>}</DialogContent><DialogActions><Button onClick={()=>setEditingId(null)}>{languageCode==='ko'?'닫기':languageCode==='vi'?'Đóng':'Close'}</Button>{canEdit&&<Button disabled={saving||!editing||editing.original===fingerprint(editing)} onClick={()=>save(editing)}>{text.save}</Button>}</DialogActions></Dialog>
  </Stack></Paper>;
 }

@@ -105,7 +105,7 @@ test('rollout creates three-letter bases and V/Z/E variants without guessing leg
     await assert.rejects(db.exec(`UPDATE "SettingTransactionCodeDefault" SET "vatEnabled"=true WHERE code='TRKZ'`),/code tax mismatch/);
   }finally{await db.close();}
 });
-test('base creation/edit generates selected suffixes atomically and retains variant identities', async()=>{
+test('base creation/edit always generates all tax suffixes atomically and retains variant identities', async()=>{
   const db=await fixture();try {
     const serviceTypeId=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows[0].id;
     const body={code:'AIR',nameKo:'항공',nameEn:'Air',nameVi:'Hàng không',serviceTypeId,taxTreatmentIds:[1,2,3]};
@@ -114,7 +114,7 @@ test('base creation/edit generates selected suffixes atomically and retains vari
     assert.deepEqual(variants.map(row=>row.code),['AIRE','AIRV','AIRZ']);
     await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,nameEn:'Air delivery',taxTreatmentIds:[1,3]},base.id));
     assert.deepEqual((await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows,variants);
-    assert.equal((await db.query(`SELECT "isActive" FROM "SettingTransactionCodeDefault" WHERE code='AIRZ'`)).rows[0].isActive,false);
+    assert.equal((await db.query(`SELECT "isActive" FROM "SettingTransactionCodeDefault" WHERE code='AIRZ'`)).rows[0].isActive,true);
     for(const patch of [{code:'TOOLONG'},{code:'A1R'},{taxTreatmentIds:[]},{taxTreatmentIds:[4]},{taxTreatmentIds:[1,1]}])assert.throws(()=>service.validateCodeBase({...body,...patch}));
     await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,code:'SEA'},base.id));
     assert.deepEqual((await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows,variants.map(row=>({...row,code:row.code.replace('AIR','SEA')})));
@@ -151,7 +151,7 @@ test('renaming a used family keeps multi-company source and cost FKs, overrides 
   const renamed=(await db.query('SELECT * FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY id',[base.id])).rows;
   assert.deepEqual(renamed.map(row=>row.id),sources.map(row=>row.id));
   assert.equal(renamed.find(row=>row.taxTreatmentId===2).code,'INKZ');
-  assert.equal(renamed.find(row=>row.taxTreatmentId===2).isEnabled,false);
+  assert.equal(renamed.find(row=>row.taxTreatmentId===2).isEnabled,true);
   assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,costs);
   assert.deepEqual((await db.query('SELECT * FROM "PreservedDocumentSnapshot"')).rows,snapshots);
   await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...base,code:'INK',taxTreatmentIds:[1,2,3]},base.id));
@@ -278,6 +278,28 @@ test('new codes require four English letters and explicit zero versus exempt cla
   assert.equal(requests.validateTransactionCode({...row,code:'TRKE',taxTreatmentId:3}).taxTreatmentId,3);
   for(const patch of [{code:'LOGISTICS'},{code:'TRKZ'},{code:'TRKE',taxTreatmentId:2},{code:'TRKV',taxTreatmentId:1}])assert.throws(()=>requests.validateTransactionCode({...row,...patch}));
   assert.equal(requests.validateTransactionCode({...row,code:'LOGISTICS'},true).taxTreatmentId,null);
+});
+
+test('tax rollout completes every active family and preserves existing IDs and historical costs',async()=>{
+ const db=await fixture();try{
+  const base=(await db.query(`SELECT id FROM "TransactionCodeBase" WHERE code='GEN'`)).rows[0].id;
+  await db.query('DELETE FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId"=2',[base]);
+  await db.query('UPDATE "SettingTransactionCodeDefault" SET "isEnabled"=false WHERE "baseId"=$1 AND "taxTreatmentId"=3',[base]);
+  const before=(await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY code',[base])).rows;
+  const costs=(await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+  const migration=fs.readFileSync('backend/prisma/migrations/20261031010100_accounting_tax_variants/migration.sql','utf8');await db.exec(migration);await db.exec(migration);
+  const after=(await db.query('SELECT id,code,"isEnabled","isActive" FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY code',[base])).rows;
+  assert.equal(after.length,3);assert.ok(after.every(row=>row.isEnabled&&row.isActive));
+  for(const row of before)assert.equal(after.find(next=>next.code===row.code).id,row.id);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,costs);
+ }finally{await db.close();}
+});
+
+test('industry deletion refuses customer links and removes genuinely unused definitions',async()=>{
+ let linked=1,deleted=false;
+ const tx={$queryRawUnsafe:async()=>[{id:9}],settingServiceDefault:{delete:async()=>{deleted=true;}},settingTransactionCodeDefault:{count:async()=>0},transactionCodeBase:{count:async()=>0},orgRelationship:{count:async()=>linked},industryProductionPolicy:{count:async()=>0},outsourcingServiceType:{findMany:async()=>[]}};
+ await assert.rejects(service.deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);assert.equal(deleted,false);
+ linked=0;await service.deleteSetting(tx,'services',true,9);assert.equal(deleted,true);
 });
 
 test('OTHER retirement preserves historical costs and IDs, disables all variants and cannot bootstrap or reactivate',async()=>{

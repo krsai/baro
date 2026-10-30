@@ -59,7 +59,7 @@ function editorLine(cost: any, record: any) {
   const refs = record && { order: record.assignmentPlan.workOrder,
     style: { ...record.style, styleProcesses: [record.styleProcess] },
     plan: { id: record.assignmentPlanId, styleId: record.styleId, processIds: [record.styleProcessId] } };
-  return { linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
+  return { inputSettings:cost?.linkPolicyAudit?.inputSettings??null,linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
     transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
     unitId:cost?.unitId??'',unit:cost?.unit??null,

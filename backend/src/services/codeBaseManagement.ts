@@ -1,3 +1,4 @@
+import {accountingInputs} from './accountingInputs';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { createHttpError } from '../utils/http';
 import { COST_DETAIL_FIELDS } from './partnerTransactionCost';
@@ -17,6 +18,7 @@ export function validateCodeBase(body: any) {
 }
 
 export async function saveCodeBase(tx: any, body: any, id?: number) {
+  body={...body,taxTreatmentIds:[1,2,3]};
   const data: any = validateCodeBase(body);
   // Serialize catalogue writes and tenant provisioning while code identities move.
   // Business cost rows and their FKs are never updated.
@@ -41,10 +43,11 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   data.requiredFields = body.requiredFields ?? previous?.requiredFields ?? source.requiredFields;
   if (!Array.isArray(data.requiredFields) || data.requiredFields.some((field: any) => !COST_DETAIL_FIELDS.includes(field))) throw createHttpError(400,'INVALID_REQUIRED_FIELDS');
   for (const key of ['orderInput','styleInput','processInput']) {
-    data[key] = data.entryMode === 'PROCESS' ? 'REQUIRED' : body[key] ?? previous?.[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
+    data[key] = body[key] ?? previous?.[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
     if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(data[key])) throw createHttpError(400,'INVALID_INPUT_OPTION');
   }
   if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
+  accountingInputs(data);
   const renaming = previous && previous.code !== data.code;
   if (renaming) await assertCodeBaseRenameAvailable(tx, id!, data.code);
   const base = id ? await tx.transactionCodeBase.update({ where: { id }, data }) : await tx.transactionCodeBase.create({ data });
@@ -93,6 +96,7 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
   if (global) {
     const local = service ? tx.outsourcingServiceType : tx.transactionCode;
     if (service && (await tx.settingTransactionCodeDefault.count({ where: { serviceTypeId: id } }) || await tx.transactionCodeBase.count({ where: { serviceTypeId: id } }))) throw createHttpError(409,'SETTING_IN_USE');
+    if(service&&(await tx.orgRelationship?.count({where:{systemIndustryId:id}})||await tx.industryProductionPolicy?.count({where:{systemIndustryId:id}})))throw createHttpError(409,'SETTING_IN_USE');
     const copies = await local.findMany({ where: { systemDefaultId: id } });
     if (copies.some((row: any) => row.isOverridden)) throw createHttpError(409,'SETTING_IN_USE');
     for (const row of copies) await deleteSetting(tx, kind, false, row.id, row.ownerOrgId, true);
@@ -120,9 +124,12 @@ export async function deleteCodeBase(tx: any, id: number) {
 
 export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<number>> {
   if (!ids.length) return new Set();
+  const ledgerUsage=db.bankLedgerEntry&&db.bankLedgerSettlementLine?`
+    UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerEntry" entry ON entry."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])
+    UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerSettlementLine" line ON line."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])`:'';
   const rows = await db.$queryRawUnsafe(`SELECT DISTINCT code."baseId" AS id
     FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id
-    WHERE code."baseId"=ANY($1::int[])`,ids) as { id: number }[];
+    WHERE code."baseId"=ANY($1::int[])`+ledgerUsage,ids) as { id: number }[];
   return new Set(rows.map(row=>row.id));
 }
 

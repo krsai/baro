@@ -21,7 +21,7 @@ try{
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const industry={id:4,code:'LOGISTICS',nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển',entryMode:'LOGISTICS',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true};
     const taxes=[{id:1,nameKo:'과세',nameEn:'VAT',nameVi:'Chịu thuế'},{id:2,nameKo:'영세율',nameEn:'Zero-rated',nameVi:'Thuế suất 0%'},{id:3,nameKo:'면세',nameEn:'Exempt',nameVi:'Không chịu thuế'}];
-    const expenseType={id:2,nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
+    const expenseType={id:2,code:'LOGISTICS',nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
     await page.route('**/expense-types',route=>route.fulfill({headers,status:404,json:{error:'organization not found'}}));
     let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
     await page.route('**/system-setting-defaults/**',route=>{
@@ -52,7 +52,7 @@ try{
     await used.getByRole('button').filter({has:page.locator('[data-testid="EditIcon"]')}).click();
     const editDialog=page.getByRole('dialog');
     assert.equal(await editDialog.getByLabel(labels.code,{exact:false}).isEnabled(),true,'used base codes can be renamed');
-    await editDialog.getByRole('checkbox',{name:/^V/}).check();
+
     await editDialog.getByLabel(labels.code,{exact:false}).fill('dup');
     await editDialog.getByRole('button',{name:labels.save,exact:true}).click();
     const conflict={ko:'같은 기본 코드 또는 변경할 회사별 코드가 이미 있습니다.',en:'The base code or a resulting company code already exists.',vi:'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại.'}[lang];
@@ -72,10 +72,10 @@ try{
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');
     const nameLabels={ko:['이름 (한국어)','이름 (영어 · 대표)','이름 (베트남어)'],en:['Name (Korean)','Name (English · primary)','Name (Vietnamese)'],vi:['Tên (tiếng Hàn)','Tên (tiếng Anh · chính)','Tên (tiếng Việt)']}[lang];
     for(const [index,value] of ['항공','Air','Hàng không'].entries())await dialog.getByLabel(nameLabels[index],{exact:true}).fill(value);
-    await dialog.getByRole('combobox').nth(0).click();assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),0);await page.getByRole('option').first().click();
-    await dialog.getByRole('combobox').nth(1).click();await page.getByRole('option').first().click();
-    await dialog.getByRole('checkbox',{name:/^Z/}).uncheck();await dialog.getByRole('button',{name:labels.save,exact:true}).click();
-    await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,3]);
+    await dialog.getByRole('combobox').nth(0).fill('LOGISTICS');assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),0);await page.getByRole('option').first().click();
+    await dialog.getByRole('combobox').nth(1).fill('LOGISTICS');await page.getByRole('option').first().click();
+    assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);await dialog.getByRole('button',{name:labels.save,exact:true}).click();
+    await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,2,3]);
     bases[0].hasUsageHistory=true;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{source:'transaction-request',topics:['orders'],orgId:1}})));
     await page.waitForFunction(({remove,add})=>{
