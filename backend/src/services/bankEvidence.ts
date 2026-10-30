@@ -3,39 +3,83 @@ import {legacyExpenseNumber} from './documentNumber';
 import {retryEditTransaction} from '../utils/editRevision';
 import {ledgerScale4,ledgerMoney,validateLedgerMoney} from './bankLedger';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
+export function expenseApprovalSummary(request:any,decisions:any[],exempt=false){
+ const current=decisions.filter(row=>row.requestId===request.id&&row.version===request.version);
+ const steps=(request.approvalSteps||[]).map((step:any)=>{const record=current.find(row=>row.position===step.position&&row.employeeId===step.employeeId);const rejected=record?.decision==='REJECTED';return {...step,approved:!!record&&!rejected,rejected,approvedAt:record&&!rejected?record.createdAt:null,rejectedAt:rejected?record.createdAt:null,reason:rejected?record.reason:null};});
+ const rejection=steps.find((step:any)=>step.rejected);
+ if(rejection)for(const step of steps)if(step.position>rejection.position)step.blocked=true;
+ const next=rejection?null:steps.find((step:any)=>!step.approved);
+ const approved=!rejection&&(steps.length>0?!next:exempt);
+ const status=rejection?'REJECTED':approved?'APPROVED':steps.some((step:any)=>step.approved)?'IN_REVIEW':'REQUESTED';
+ return {status,steps,exempt,approved,rejected:!!rejection,rejection:rejection?{employeeId:rejection.employeeId,name:rejection.employee?.name||'',reason:rejection.reason,createdAt:rejection.rejectedAt}:null};
+}
 export async function approvalState(db:any,orgId:number,requestId:number,actorId?:number){
  const request=await db.expenseRequest.findFirst({where:{id:requestId,orgId},include:{approvalSteps:{orderBy:{position:'asc'},include:{employee:{select:{id:true,name:true}}}}}});
  if(!request)return fail('EXPENSE_SOURCE_NOT_FOUND',404);
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId,version:request.version},orderBy:{position:'asc'}});
- const steps=request.approvalSteps.map((step:any)=>{const decision=decisions.find((d:any)=>d.position===step.position&&d.employeeId===step.employeeId);return {...step,approved:!!decision,approvedAt:decision?.createdAt||null};});
- const next=steps.find((step:any)=>!step.approved);
- const audit=!steps.length ? await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}) : null;
+ const audit=!request.approvalSteps.length ? await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}) : null;
  const policy=audit?.afterSnapshot?.approvalPolicy;
- const exempt=policy?.exempt===true && policy.drafterId===request.createdByEmployeeId;
+ const summary=expenseApprovalSummary(request,decisions,policy?.exempt===true&&policy.drafterId===request.createdByEmployeeId);
+ const next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
  const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}) : null;
- return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),steps,exempt,approved:steps.length>0?!next:exempt,canApprove:!!actor&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId};
+ const canApprove=!!actor&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId;
+ return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),...summary,canApprove,canReject:canApprove};
 }
-export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:number){
- const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}});
+export async function attachExpenseApprovalStates(db:any,orgId:number,requests:any[]){
+ if(!requests.length)return requests;
+ const ids=requests.map(row=>row.id);
+ const [decisions,audits]=await Promise.all([
+  db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:ids}}}),
+  db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:requests.filter(row=>!row.approvalSteps?.length).map(row=>row.id)}},select:{requestId:true,version:true,afterSnapshot:true}}),
+ ]);
+ return requests.map(row=>{const policy=audits.find((audit:any)=>audit.requestId===row.id&&audit.version===row.version)?.afterSnapshot?.approvalPolicy;return {...row,approval:expenseApprovalSummary(row,decisions,policy?.exempt===true&&policy.drafterId===row.createdByEmployeeId)};});
+}
+export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:number,view='pending'){
+ if(!['pending','inProgress','completed','requested'].includes(view))return fail('INVALID_APPROVAL_VIEW');
+ const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}});
  if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
- const requests=await db.expenseRequest.findMany({where:{orgId,approvalSteps:{some:{employeeId:actorId}}},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},createdByEmployee:{select:{name:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
+ if(actor.orgRole==='OPERATOR'&&view!=='requested')return [];
+ const handled=view==='completed'?await db.expenseApprovalDecision.findMany({where:{orgId,employeeId:actorId},select:{requestId:true,version:true,decision:true,reason:true,createdAt:true}}):[];
+ const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},createdByEmployee:{select:{name:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
  if(!requests.length)return [];
- const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true}});
- return requests.filter((request:any)=>request.createdByEmployeeId!==actorId&&request.approvalSteps.find((step:any)=>!decisions.some((decision:any)=>decision.requestId===request.id&&decision.version===request.version&&decision.position===step.position&&decision.employeeId===step.employeeId))?.employeeId===actorId)
-  .map((request:any)=>({id:request.id,version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),requestDate:request.requestDate,payee:request.partner?.name||'',drafter:request.createdByEmployee?.name||''}));
+ const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true,decision:true,reason:true,createdAt:true}});
+ const auditIds=requests.filter((row:any)=>view==='completed'||!row.approvalSteps.length).map((row:any)=>row.id);
+ const audits=auditIds.length?await db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:auditIds}},select:{requestId:true,version:true,afterSnapshot:true}}):[];
+ const toRow=(request:any,status:string)=>{
+  const totals=new Map<string,bigint>();for(const item of request.items||[])totals.set(item.currency,(totals.get(item.currency)||0n)+ledgerScale4(item.amount));
+  return {id:request.id,kind:'EXPENSE_REQUEST',version:request.version,status,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),requestDate:request.requestDate,payee:request.partner?.name||'',drafter:request.createdByEmployee?.name||'',totals:[...totals].map(([currency,amount])=>({currency,amount:ledgerMoney(amount,currency)}))};
+ };
+ const rows=requests.flatMap((request:any)=>{
+  const policy=audits.find((audit:any)=>audit.requestId===request.id&&audit.version===request.version)?.afterSnapshot?.approvalPolicy;
+  const summary=expenseApprovalSummary(request,decisions,policy?.exempt===true&&policy.drafterId===request.createdByEmployeeId),next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
+  const pending=request.createdByEmployeeId!==actorId&&next?.employeeId===actorId;
+  if(view==='pending'&&!pending||view==='inProgress'&&(pending||summary.rejected||summary.approved))return [];
+  if(view!=='completed')return [toRow(request,summary.status)];
+  return handled.filter((item:any)=>item.requestId===request.id).map((item:any)=>{
+   const snapshot=audits.find((audit:any)=>audit.requestId===request.id&&audit.version===item.version)?.afterSnapshot;
+   // Never present current amounts as the contents of an older reviewed version.
+   const source=item.version===request.version?request:snapshot?.document?{...snapshot.document,items:snapshot.costs||snapshot.document.items||[]}:{...request,requestDate:null,partner:null,items:[]};
+   return {...toRow(source,item.decision||'APPROVED'),id:request.id,handledVersion:item.version,decision:item.decision||'APPROVED',reason:item.reason,handledAt:item.createdAt};
+  });
+ });
+ return view==='completed'?rows.sort((a:any,b:any)=>new Date(b.handledAt).getTime()-new Date(a.handledAt).getTime()):rows;
 }
-export async function approveExpense(db:any,orgId:number,actorId:number,requestId:number,version:number){
+export async function approveExpense(db:any,orgId:number,actorId:number,requestId:number,version:number,decision='APPROVED',reason?:unknown){
+ if(!['APPROVED','REJECTED'].includes(decision))return fail('INVALID_APPROVAL_DECISION');
+ const normalized=decision==='REJECTED'&&typeof reason==='string'?reason.trim():null;
+ if(decision==='REJECTED'&&(!normalized||normalized.length>1000))return fail('EXPENSE_REJECTION_REASON_REQUIRED');
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',requestId,orgId);
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}});
   if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
   const state=await approvalState(tx,orgId,requestId,actorId);
   if(state.version!==version)return fail('EXPENSE_REQUEST_CHANGED',409);
-  // Repeating a successful approval never advances another person's step.
-  if(state.steps.some((s:any)=>s.employeeId===actorId&&s.approved))return state;
+  const handled=state.steps.find((step:any)=>step.employeeId===actorId&&(step.approved||step.rejected));
+  if(handled){if((handled.rejected?'REJECTED':'APPROVED')===decision&&(decision!=='REJECTED'||handled.reason===normalized))return state;return fail('EXPENSE_APPROVAL_ALREADY_DECIDED',409);}
+  if(state.rejected)return fail('EXPENSE_REQUEST_REJECTED',409);
   if(!state.canApprove)return fail('EXPENSE_APPROVAL_NOT_YOUR_TURN',403);
-  const step=state.steps.find((s:any)=>!s.approved);
-  await tx.expenseApprovalDecision.create({data:{orgId,requestId,version,position:step.position,employeeId:actorId}});
+  const step=state.steps.find((item:any)=>!item.approved);
+  await tx.expenseApprovalDecision.create({data:{orgId,requestId,version,position:step.position,employeeId:actorId,decision,reason:normalized}});
   return approvalState(tx,orgId,requestId,actorId);
  });
 }

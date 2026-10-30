@@ -158,7 +158,8 @@
     "logs:collect": "node scripts/collect-logs.mjs",
     "test:expense-code-link-policy": "npm --prefix backend run build && node --test scripts/expense-code-link-policy.test.mjs",
     "test:expense-code-link-browser": "node scripts/expense-code-link-browser.test.mjs",
-    "test:expense-code-link-request-browser": "npm --prefix backend run build && node scripts/expense-code-link-request-browser.test.mjs"
+    "test:expense-code-link-request-browser": "npm --prefix backend run build && node scripts/expense-code-link-request-browser.test.mjs",
+    "test:approval-workflow": "npm --prefix backend run build && node --test scripts/expense-approval-actions.test.mjs scripts/ledger-evidence.test.mjs scripts/approval-settings.test.mjs scripts/expense-request-editor.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/expense-approval-actions-browser.test.mjs && node scripts/approval-inbox-browser.test.mjs && node scripts/expense-approval-dialog-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

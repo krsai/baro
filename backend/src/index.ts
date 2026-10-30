@@ -20,6 +20,7 @@ import { registerTransactionSettingRoutes } from './services/transactionSettingR
 import { getCustomerUsage, deleteUnusedCustomer, deleteUnusedBusinessPartner, getBusinessPartnerUsage } from './services/businessPartnerDeletion';
 import { REQUEST_INCLUDE } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
+import {attachExpenseApprovalStates} from './services/bankEvidence';
 import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
@@ -725,6 +726,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20261007_style_identity_fk_v1",
 ] as const;
 const STARTUP_REQUIRED_RUNTIME_COLUMNS = [
+  {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
   {tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
   {tableName:'BankLedgerAccount',columnName:'openingBalance'},
   {tableName:'BankLedgerAccount',columnName:'entityAccountId'},
@@ -1032,6 +1034,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'ExpenseApprovalDecision_result_check','BankLedgerExpenseRejection_guard',
   'ExpenseItemReference_guard','ExpenseItemReference_audit_guard','ExpenseItemReference_cost_scope_fkey','ExpenseItemReference_order_scope_fkey','ExpenseItemReference_style_scope_fkey',
   'ServiceDefaultRenamePropagation',
   'CodeDefaultRenamePropagation',
@@ -27584,7 +27587,8 @@ app.get('/expense-requests', async (req, res) => {
   const requestDate = managedDateRange(period, req.query);
   const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate }, include: EXPENSE_REQUEST_INCLUDE,
     orderBy: [{ requestDate: 'desc' }, { id: 'desc' }] });
-  return res.json(rows.map(row => ({ ...row, ...expenseRequestTotals(row.items) })));
+  const approvedRows=await attachExpenseApprovalStates(prisma,orgId,rows);
+  return res.json(approvedRows.map(row => ({ ...row, ...expenseRequestTotals(row.items) })));
 });
 app.post('/expense-requests', async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });

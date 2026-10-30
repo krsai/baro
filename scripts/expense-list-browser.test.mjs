@@ -62,7 +62,7 @@ try {
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,11);
+    assert.equal(headings.length,12);
     assert.ok((await page.locator('.is-dense th, .is-dense td').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).padding))).every(padding=>padding==='8px 12px'),'Header and body share compact spacing');
     assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
     assert.equal(headings.includes(text.remark),false);assert.equal(headings.includes(text.source),false);assert.equal(await page.locator('[data-search-filters] select').count(),3);assert.doesNotMatch(await page.locator('tbody').innerText(),/Delivery note/);
@@ -92,7 +92,7 @@ try {
     assert.equal((await page.locator('[data-search-controls] [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
     // Exercise the real HTML table's token bridge, not just an isolated MUI preview.
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(248, 250, 252)');
-    assert.equal(await page.locator('tbody .MuiChip-root').count(),0);
+    assert.equal(await page.locator('tbody [data-approval-status]').count(),3);
     await page.evaluate(()=>document.documentElement.style.setProperty('--color-background-dark','#f1f2f3'));
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(241, 242, 243)');
     await page.evaluate(()=>document.documentElement.style.removeProperty('--color-background-dark'));
@@ -120,7 +120,7 @@ try {
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.
     for(let cycle=0;cycle<4;cycle++) {
-      for(const [name,count] of [[text.documents,8],[text.detail,11],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,11]]) {
+      for(const [name,count] of [[text.documents,9],[text.detail,12],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,12]]) {
         await page.getByRole('tab',{name,exact:true}).click();
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{

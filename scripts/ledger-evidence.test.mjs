@@ -44,6 +44,26 @@ test('SQL rejects new approval decisions from operators even when a historical s
  }finally{await db.close();}
 });
 async function rejectTx(db,sql,pattern){try{await assert.rejects(db.exec(`BEGIN;${sql}COMMIT;`),pattern);}finally{await db.exec('ROLLBACK');}}
+test('rejection migration preserves approvals, requires reasons and prevents later decisions or payment until a new version',async()=>{
+ const db=await fixture();try{
+  await db.exec(`UPDATE "ExpenseRequest" SET "createdByEmployeeId"=99; INSERT INTO "ExpenseApprovalDecision" VALUES('prior',1,1,1,1,10,now());`);
+  const sql=await readFile('backend/prisma/migrations/20261030120000_expense_approval_rejection/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+  assert.deepEqual((await db.query(`SELECT decision,reason FROM "ExpenseApprovalDecision" WHERE id='prior'`)).rows,[{decision:'APPROVED',reason:null}]);
+  const decide=(id,position,employee,decision,reason)=>`INSERT INTO "ExpenseApprovalDecision"(id,"orgId","requestId",version,position,"employeeId",decision,reason) VALUES('${id}',1,1,1,${position},${employee},'${decision}',${reason});`;
+  for(const reason of ['NULL',"'   '","repeat('x',1001)"])await assert.rejects(db.exec(decide('bad',2,11,'REJECTED',reason)),/ExpenseApprovalDecision_result_check/);
+  await db.exec(decide('rejected',2,11,'REJECTED',"'Incorrect invoice'"));
+  await assert.rejects(db.exec(decide('later',2,11,'APPROVED','NULL')),/NOT_YOUR_TURN/);
+  await assert.rejects(db.exec(`UPDATE "ExpenseApprovalDecision" SET reason='changed' WHERE id='rejected'`),/EVIDENCE_APPEND_ONLY/);
+  await assert.rejects(db.exec(`DELETE FROM "ExpenseApprovalDecision" WHERE id='rejected'`),/EVIDENCE_APPEND_ONLY/);
+  const allocation=`INSERT INTO "BankLedgerEvidenceAllocation"(id,"entryId","orgId","expenseItemId","requestVersion",amount) VALUES('rejected-a','rejected-pay',1,'c1',1,50);`;
+  await rejectTx(db,entry('rejected-pay','EXPENSE',50,0,'OUT')+allocation,/LEDGER_EXPENSE_NOT_APPROVED/);
+  await db.exec(`UPDATE "ExpenseRequest" SET version=2 WHERE id=1;`);
+  await assert.rejects(db.exec(decide('stale',1,10,'APPROVED','NULL')),/NOT_YOUR_TURN/);
+  await db.exec(`INSERT INTO "ExpenseApprovalDecision"(id,"orgId","requestId",version,position,"employeeId") VALUES('new-1',1,1,2,1,10),('new-2',1,1,2,2,11);`);
+  await db.exec('BEGIN;'+entry('rejected-pay','EXPENSE',50,0,'OUT')+allocation.replace("'c1',1,50","'c1',2,50")+'COMMIT;');
+  assert.equal((await db.query(`SELECT reason FROM "ExpenseApprovalDecision" WHERE id='rejected'`)).rows[0].reason,'Incorrect invoice');
+ }finally{await db.close();}
+});
 test('database keeps old evidence, requires file evidence, and permits reasoned balance adjustments',async()=>{
  const db=await fixture();try{
   assert.deepEqual((await db.query(`SELECT amount::text,"evidenceNumber","evidenceType" FROM "BankLedgerEntry" WHERE id='old'`)).rows,[{amount:'1.0000',evidenceNumber:'old-ref',evidenceType:'FILE'}]);

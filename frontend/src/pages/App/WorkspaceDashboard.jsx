@@ -1,3 +1,4 @@
+import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
 import PageContentStack from '../../components/PageContentStack';
 import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
 import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
@@ -741,6 +742,7 @@ const WorkspaceDashboard = () => {
   return (
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <PageContentStack>
+        {!isSystemProfile&&['ADMIN','ACCOUNTANT'].includes(activeProfile?.orgRole)&&canAccessPath('/approval-inbox',authState)&&<ApprovalDashboardCard orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath}/>}
         <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(

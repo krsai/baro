@@ -110,6 +110,7 @@ export const UI_MESSAGES = {
     system: { ko: '시스템 설정', en: 'System', vi: 'Hệ thống' },
     transactionMasters: { ko: '비용 코드 관리', en: 'Expense codes', vi: 'Mã chi phí' },
     expenseUnits: { ko: '단위 관리', en: 'Units', vi: 'Quản lý đơn vị' },
+    approvalInbox: { ko: '결재함', en: 'Approval inbox', vi: 'Hộp phê duyệt' },
     expenseTypes: { ko: '비용 유형 관리', en: 'Expense types', vi: 'Loại chi phí' },
     partnerIndustries: { ko: '거래처 업종 관리', en: 'Partner industries', vi: 'Ngành của đối tác' },
     accessPolicy: { ko: '접근 권한', en: 'Access Policy', vi: 'Chính sách truy cap' },

@@ -38,6 +38,9 @@ try{
   assert.equal(await approved.getAttribute('aria-label'),names[0]+' · '+progress.approved);
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-approval-state="approved"]')).backgroundColor==='rgb(232, 247, 239)');
   await page.waitForFunction(()=>[...document.querySelectorAll('[data-approval-state="pending"]')].every(el=>getComputedStyle(el).backgroundColor==='rgb(255, 246, 219)'));
+  await page.evaluate(()=>window.setApprovalStatus({steps:[{employeeId:2,approved:true},{employeeId:3,rejected:true},{employeeId:4,blocked:true}]}));
+  await approvalButton.locator('[data-approval-state="rejected"]').waitFor();await approvalButton.locator('[data-approval-state="stopped"]').waitFor();
+  assert.notEqual(await approvalButton.locator('[data-approval-state="rejected"]').evaluate(el=>getComputedStyle(el).backgroundColor),await approved.evaluate(el=>getComputedStyle(el).backgroundColor));
   await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('combobox').count(),0);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).count(),0);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
   assert.deepEqual(errors,[]);await page.close();
  }

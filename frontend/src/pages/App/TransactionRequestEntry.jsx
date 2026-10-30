@@ -178,7 +178,7 @@ export default function TransactionRequestEntry() {
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      emitWorkspaceDataChanged({ orgId: activeOrgId, topics: [WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], source: 'transaction-request' });
+      emitWorkspaceDataChanged({ orgId: activeOrgId, topics: ['expense-approvals',WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], source: 'transaction-request' });
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
       setInitialSnapshot(documentSnapshot({...form,approvalSelection:selection})); showNotification(labels.saved, 'success');
       if (isTabActiveRef.current) navigateToPath('/outsourcing-record', {label:labels.document,closeTabId:formPath,skipUnsavedChangesCheck:true});

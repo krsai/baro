@@ -11,6 +11,7 @@ import { loadExpenseEditorSource } from './expenseRequestEditor';
 import { env } from 'node:process';
 
 export const EXPENSE_REQUEST_INCLUDE = {
+  approvalSteps:{orderBy:{position:'asc' as const},include:{employee:{select:{id:true,name:true}}}},
   partner: { select: { id: true, name: true } },
   createdByEmployee: { select: { id: true, name: true } },
   items: { include: REQUEST_INCLUDE, orderBy: { expenseRequestLine: 'asc' as const } },

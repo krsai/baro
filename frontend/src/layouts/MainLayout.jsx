@@ -1,3 +1,4 @@
+import {ApprovalMenuBadge} from '../components/ApprovalDashboardCard';
 import { PageNamingProvider } from '../context/PageNamingContext';
 import { applyPageMenuNames, resolvePageNaming } from '../utils/pageNaming.mjs';
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
@@ -681,6 +682,7 @@ const MainLayout = () => {
             icon: <HistoryIcon />,
             path: '/outsourcing-record',
           },
+          {label:getUiMessage('menu.approvalInbox','Approval inbox',languageCode),icon:<ListAltIcon/>,path:'/approval-inbox'},
           {
             label: getUiMessage('menu.payroll', '\uAE09\uC5EC \uACC4\uC0B0', languageCode),
             icon: <CalculateIcon />,
@@ -1676,7 +1678,7 @@ const MainLayout = () => {
             <ListItemText
               primary={(
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <span>{item.label}</span>
+                  <span>{item.label}</span>{item.path==='/approval-inbox'&&['ADMIN','ACCOUNTANT'].includes(activeProfile?.orgRole)&&<ApprovalMenuBadge orgId={activeOrgId}/>}
                   {item.notificationActive && <NotificationIndicator />}
                 </Box>
               )}
@@ -1684,7 +1686,7 @@ const MainLayout = () => {
           </ListItem>
         );
       }),
-    [currentPath, getMenuItemSx, handleMenuItemClick]
+    [currentPath, getMenuItemSx, handleMenuItemClick, activeOrgId, activeProfile?.orgRole]
   );
 
   const sidebarContent = (

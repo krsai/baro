@@ -1,6 +1,7 @@
 import React,{forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import StatusLabel from './StatusLabel';
+import {approvalWorkflowText} from '../constants/approvalWorkflow';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {approvalSettingsText} from '../constants/approvalSettings';
 import {expenseHeaderActions} from '../constants/expenseHeaderActions';
@@ -33,14 +34,15 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
  },[orgId,input,selection,open,reload,viewOnly]);
  const name=(id)=>state?.candidates?.find(row=>row.id===id)?.name||steps.find(row=>row.employeeId===id)?.employee?.name||String(id);
  const progressText=expenseApprovalActionsText[languageCode]||expenseApprovalActionsText.en;
- const progress=id=>{const step=approvalStatus?.steps?.find(step=>step.employeeId===id);return step?` · ${step.approved?progressText.approved:progressText.pending}`:'';};
- const progressState=id=>{const step=approvalStatus?.steps?.find(step=>step.employeeId===id);return step?step.approved?'approved':'pending':'unconfirmed';};
+ const workflow=approvalWorkflowText[languageCode]||approvalWorkflowText.en;
+ const progress=id=>{const step=approvalStatus?.steps?.find(step=>step.employeeId===id);return step?` · ${step.rejected?workflow.reject:step.blocked?workflow.stopped:step.approved?progressText.approved:progressText.pending}`:'';};
+ const progressState=id=>{const step=approvalStatus?.steps?.find(step=>step.employeeId===id);return step?step.rejected?'rejected':step.blocked?'stopped':step.approved?'approved':'pending':'unconfirmed';};
  const configured=value!==null||steps.length>0;
  const emptySummary=approvalStatus?.exempt||applied?.complete?t.none:configured?progressText.none:t.amount;
  const summary=applied?.stages?.filter(stage=>!stage.vacant&&stage.employeeId).map(stage=>({id:stage.employeeId,name:stage.name||name(stage.employeeId)}))||steps.map(step=>({id:step.employeeId,name:step.employee?.name||name(step.employeeId)}));
  return <>
   <Button variant="outlined" disabled={disabled} onClick={()=>{setError('');setViewOnly(true);setOpen(true);}} aria-label={t.approval} data-testid="expense-approval-button" sx={{height:36,justifyContent:'flex-start',minWidth:0,textTransform:'none'}}>
-   <Box sx={{display:'flex',alignItems:'center',gap:.5,overflowX:'auto',whiteSpace:'nowrap',width:'100%',scrollbarWidth:'none','&::-webkit-scrollbar':{display:'none'},'& .MuiChip-root':{flexShrink:0}}}><Typography variant="caption" sx={{flexShrink:0}}>{t.approval}</Typography><StatusLabel tone="gray" label={drafter?.name||state?.drafter?.name||t.drafter} title={t.drafter}/>{summary.map(step=>{const status=progressState(step.id),description=step.name+progress(step.id);return <React.Fragment key={step.id}><Typography>›</Typography><StatusLabel tone={status==='approved'?'green':status==='pending'?'yellow':'gray'} label={step.name} title={description} aria-label={description} data-approval-state={status}/></React.Fragment>;})}{configured&&!summary.length&&<Typography variant="caption">› {emptySummary}</Typography>}</Box>
+   <Box sx={{display:'flex',alignItems:'center',gap:.5,overflowX:'auto',whiteSpace:'nowrap',width:'100%',scrollbarWidth:'none','&::-webkit-scrollbar':{display:'none'},'& .MuiChip-root':{flexShrink:0}}}><Typography variant="caption" sx={{flexShrink:0}}>{t.approval}</Typography><StatusLabel tone="gray" label={drafter?.name||state?.drafter?.name||t.drafter} title={t.drafter}/>{summary.map(step=>{const status=progressState(step.id),description=step.name+progress(step.id);return <React.Fragment key={step.id}><Typography>›</Typography><StatusLabel tone={status==='approved'?'green':status==='pending'?'yellow':status==='rejected'?'red':'gray'} label={step.name} title={description} aria-label={description} data-approval-state={status}/></React.Fragment>;})}{configured&&!summary.length&&<Typography variant="caption">› {emptySummary}</Typography>}</Box>
   </Button>
   <Dialog open={open} onClose={close} fullWidth maxWidth="sm" aria-labelledby="expense-approval-title">
    <DialogTitle id="expense-approval-title">{t.approval}</DialogTitle>

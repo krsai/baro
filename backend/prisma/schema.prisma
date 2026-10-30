@@ -389,6 +389,8 @@ model BankLedgerEvidenceAllocation {
 }
 
 model ExpenseApprovalDecision {
+  decision String @default("APPROVED")
+  reason String?
   id String @id @default(uuid())
   orgId Int
   requestId Int

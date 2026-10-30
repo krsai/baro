@@ -198,12 +198,12 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
     const requestId=Number(req.params.requestId),actorId=auth.employee?.id;
     if(!Number.isSafeInteger(requestId)||requestId<=0)return fail('LEDGER_INVALID_INPUT');
     if(!actorId)return fail('LEDGER_ACCESS_DENIED',403);
-    res.json(method==='get'?await approvalState(db,auth.organization.id,requestId,actorId):await approveExpense(db,auth.organization.id,actorId,requestId,req.body.version));
+    res.json(method==='get'?await approvalState(db,auth.organization.id,requestId,actorId):await approveExpense(db,auth.organization.id,actorId,requestId,req.body.version,req.body.decision||'APPROVED',req.body.reason));
   });
   app.get('/expense-approval-inbox',async(req:any,res:any)=>{
-    const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT']});if(!auth)return;
+    const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!auth)return;
     const actorId=auth.employee?.id;if(!actorId)return fail('LEDGER_ACCESS_DENIED',403);
-    res.json(await listExpenseApprovalInbox(db,auth.organization.id,actorId));
+    res.json(await listExpenseApprovalInbox(db,auth.organization.id,actorId,String(req.query.view||'pending')));
   });
   app.get('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerEntries(db,scope.orgId,req.params.accountId,req.query));});
   app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(201).json(await postLedgerEntry(db,scope.orgId,scope.actor,req.params.accountId,req.body));});
