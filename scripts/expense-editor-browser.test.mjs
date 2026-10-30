@@ -64,8 +64,9 @@ try {
     assert.equal(await page.getByTestId('expense-line').getByLabel(l.description,{exact:false}).evaluate(el=>el.readOnly),true);
     assert.equal(await page.getByLabel(EXPENSE_HEADER_TEXT[lang].payeeInfo,{exact:true}).count(),0);
     const headerItems=await page.getByTestId('expense-header-fields').locator(':scope > *').all();assert.equal(headerItems.length,3);
-    const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.x-boxes[0].x)<2),'Header fields share the left column');assert.ok(boxes[0].y<boxes[1].y&&boxes[1].y<boxes[2].y);
+    const boxes=await Promise.all(headerItems.map(item=>item.boundingBox()));assert.ok(boxes.every(box=>Math.abs(box.y-boxes[0].y)<2),'Header fields share one horizontal row: '+JSON.stringify(boxes));assert.ok(boxes[0].x<boxes[1].x&&boxes[1].x<boxes[2].x);
     const approvalBox=await page.getByTestId('expense-header-approval').boundingBox();assert.ok(approvalBox.x>boxes[0].x+boxes[0].width);assert.ok(Math.abs(approvalBox.y-boxes[0].y)<2);
+    assert.equal(await page.getByTestId('expense-header-approval').getByText(h.amount,{exact:true}).count(),0);
     assert.equal(await page.getByTestId('expense-approval-actions').locator('.MuiPaper-root').count(),0);
     const payeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(Math.abs(payeeBox.width-boxes[0].width)<2);assert.equal(payeeBox.height,36);assert.ok((await page.getByTestId('expense-payee-button').getAttribute('class')).includes('MuiButton-outlined'));
     const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).locator('..').boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.ok(Math.abs(remarkBox.height-totalsBox.height)<3);assert.equal(await page.getByTestId('expense-header').getByLabel('REMARK',{exact:true}).count(),0);

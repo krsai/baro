@@ -220,14 +220,14 @@ export default function TransactionRequestEntry() {
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Box sx={{p:2}}>
-          <Box data-testid="expense-header" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(220px,320px) minmax(0,1fr)'},gap:3,alignItems:'start'}}>
-            <Stack data-testid="expense-header-fields" spacing={1.5} sx={{'& > *':{height:36,minWidth:0,width:'100%'}}}>
+          <Box data-testid="expense-header" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) auto'},gap:3,alignItems:'start'}}>
+            <Box data-testid="expense-header-fields" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(auto-fit,220px)'},gap:1.5,alignItems:'start','& > *':{height:36,minWidth:0,width:'100%'}}}>
             <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
             <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
             <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
               onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
               onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
-            </Stack>
+            </Box>
             <Box data-testid="expense-header-approval" sx={{justifySelf:{xs:'stretch',sm:'end'},minWidth:0,maxWidth:520,width:{xs:'100%',sm:'auto'}}}><Stack direction="row" spacing={2} alignItems="flex-start">
             <ExpenseApprovalSettings vertical ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
               />
