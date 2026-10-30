@@ -5,7 +5,7 @@ export const ACCOUNTING_CODE_INCLUDE={serviceType:true,taxTreatment:true,base:{i
 export function resolveAccountingCode(row:any){
  const base=row?.base,tax=row?.taxTreatment;
  const source=base?.variants?.find((variant:any)=>variant.taxTreatmentId===row.taxTreatmentId&&variant.isActive&&variant.isEnabled);
- if(!row?.isActive||!base?.isActive||!base.expenseType?.isActive||!tax||!source)return null;
+ if(base?.expenseType?.code==='OTHER'||!row?.isActive||!base?.isActive||!base.expenseType?.isActive||!tax||!source)return null;
  return {...row,code:base.code+tax.suffix,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi,vatEnabled:tax.code==='VAT',systemSourceId:source.id};
 }
 export function accountingCodeId(value:any,required=false):number|null{

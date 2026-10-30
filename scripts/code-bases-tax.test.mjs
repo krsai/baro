@@ -280,25 +280,19 @@ test('new codes require four English letters and explicit zero versus exempt cla
   assert.equal(requests.validateTransactionCode({...row,code:'LOGISTICS'},true).taxTreatmentId,null);
 });
 
-test('OTHER and OTH defaults are linked by FK, initialized once and never recreate deleted codes',async()=>{
-  const db=await fixture();try{
-    await assert.rejects(db.transaction(sql=>adapter(sql).$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)')),/cannot deserialize void/);
-    await db.exec('CREATE TABLE IF NOT EXISTS "SystemSetting" (key TEXT PRIMARY KEY,value JSONB NOT NULL,"updatedByEmployeeId" INT)');
-    const [general]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='GENERAL'`)).rows;
-    await db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...general,code:'GENERAL_RENAMED'},general.id));
-    const bootstrap=()=>db.transaction(async sql=>{
-      const tx=adapter(sql);
-      tx.systemSetting={findUnique:async({where})=>(await sql.query('SELECT * FROM "SystemSetting" WHERE key=$1',[where.key])).rows[0],create:async({data})=>sql.query('INSERT INTO "SystemSetting" (key,value,"updatedByEmployeeId") VALUES($1,$2::jsonb,$3)',[data.key,JSON.stringify(data.value),data.updatedByEmployeeId])};
-      return service.initializeOtherExpenseDefaults(tx,20);
-    });
-    const first=await bootstrap();await bootstrap();
-    const type=(await db.query('SELECT * FROM "ExpenseType" WHERE code=$1',['OTHER'])).rows[0];
-    const base=(await db.query('SELECT * FROM "TransactionCodeBase" WHERE code=$1',['OTH'])).rows[0];
-    assert.equal(base.expenseTypeId,type.id);assert.equal(type.entryMode,'GENERAL');
-    assert.deepEqual((await db.query('SELECT code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows.map(row=>row.code),['OTHE','OTHV','OTHZ']);
-    await db.query('UPDATE "TransactionCodeBase" SET "nameEn"=$1 WHERE id=$2',['Custom other',base.id]);await bootstrap();
-    assert.equal((await db.query('SELECT "nameEn" FROM "TransactionCodeBase" WHERE id=$1',[base.id])).rows[0].nameEn,'Custom other');
-    await db.transaction(sql=>service.deleteCodeBase(adapter(sql),base.id));await bootstrap();
-    assert.equal((await db.query('SELECT * FROM "TransactionCodeBase" WHERE id=$1',[first.baseId])).rows.length,0);
-  }finally{await db.close();}
+test('OTHER retirement preserves historical costs and IDs, disables all variants and cannot bootstrap or reactivate',async()=>{
+ const db=await fixture();try{
+  await db.exec(`INSERT INTO "ExpenseType"(code,"nameKo","nameEn","nameVi","entryMode","isActive") VALUES('OTHER','Other','Other','Other','GENERAL',true);
+   UPDATE "TransactionCodeBase" SET "expenseTypeId"=(SELECT id FROM "ExpenseType" WHERE code='OTHER') WHERE code='GEN';`);
+  await db.transaction(async sql=>{const tx=adapter(sql);tx.$queryRaw=async()=>[];await routes.provisionSettingDefaults(tx,1,true);});
+  const before=(await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+  const ids=(await db.query('SELECT id FROM "TransactionCode" ORDER BY id')).rows;
+  const migration=fs.readFileSync('backend/prisma/migrations/20261030233000_retire_other_accounting_type/migration.sql','utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,before);
+  assert.deepEqual((await db.query('SELECT id FROM "TransactionCode" ORDER BY id')).rows,ids);
+  assert.equal((await db.query(`SELECT count(*)::int n FROM "TransactionCode" c JOIN "TransactionCodeBase" b ON b.id=c."baseId" JOIN "ExpenseType" t ON t.id=b."expenseTypeId" WHERE t.code='OTHER' AND c."isActive"`)).rows[0].n,0);
+  await assert.rejects(service.initializeOtherExpenseDefaults({},20),error=>error.status===410);
+  await assert.rejects(db.exec(`UPDATE "ExpenseType" SET "isActive"=true WHERE code='OTHER'`),/ExpenseType_other_retired/);
+ }finally{await db.close();}
 });

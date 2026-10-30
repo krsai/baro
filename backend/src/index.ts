@@ -1038,7 +1038,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
-  "SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
+  "ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
   'ExpenseApprovalDecision_result_check','BankLedgerExpenseRejection_guard',

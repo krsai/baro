@@ -31,7 +31,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
   try {
     await db.exec(`CREATE TYPE "OrganizationType" AS ENUM ('MANUFACTURER','BRAND','PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'); CREATE TABLE "SystemSetting"(key TEXT PRIMARY KEY,value JSONB,"updatedByEmployeeId" INT,"createdAt" TIMESTAMP DEFAULT now(),"updatedAt" TIMESTAMP DEFAULT now());
       CREATE TABLE "Organization"(id INT PRIMARY KEY,name TEXT,type "OrganizationType" DEFAULT 'MANUFACTURER',"ownerOrgId" INT,"dataOwnerOrgId" INT,UNIQUE(id,"ownerOrgId"));
-      CREATE TABLE "SettingServiceDefault"(id SERIAL PRIMARY KEY,code TEXT UNIQUE); CREATE TABLE "ExpenseType"(id INT PRIMARY KEY); CREATE TABLE "TransactionCodeBase"("serviceTypeId" INT,"expenseTypeId" INT);
+      CREATE TABLE "SettingServiceDefault"(id SERIAL PRIMARY KEY,code TEXT UNIQUE); CREATE TABLE "ExpenseType"(id INT PRIMARY KEY,code TEXT,"isActive" BOOL DEFAULT true); CREATE TABLE "TransactionCodeBase"("serviceTypeId" INT,"expenseTypeId" INT);
       CREATE TABLE "Currency"(id INT PRIMARY KEY); CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
@@ -40,10 +40,10 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       INSERT INTO "Organization"(id,"ownerOrgId") VALUES(1,NULL),(11,1); INSERT INTO "Employee"(id,"orgId") VALUES(20,1);
       INSERT INTO "PartnerTransactionCost" VALUES('legacy',1,11,NULL,'VND',123,NULL);`);
     await db.exec(`ALTER TABLE "SettingServiceDefault" ADD COLUMN "nameKo" TEXT,ADD COLUMN "nameEn" TEXT,ADD COLUMN "nameVi" TEXT,ADD COLUMN "entryMode" TEXT,ADD COLUMN "requiredFields" TEXT[],ADD COLUMN "orderInput" TEXT,ADD COLUMN "styleInput" TEXT,ADD COLUMN "processInput" TEXT,ADD COLUMN "isActive" BOOL,ADD COLUMN "sortOrder" INT;
-      ALTER TABLE "TransactionCodeBase" ADD COLUMN id INT PRIMARY KEY,ADD COLUMN code TEXT,ADD COLUMN "nameKo" TEXT,ADD COLUMN "nameEn" TEXT,ADD COLUMN "nameVi" TEXT;
+      ALTER TABLE "TransactionCodeBase" ADD COLUMN id INT PRIMARY KEY,ADD COLUMN "isActive" BOOL DEFAULT true,ADD COLUMN code TEXT,ADD COLUMN "nameKo" TEXT,ADD COLUMN "nameEn" TEXT,ADD COLUMN "nameVi" TEXT;
       CREATE TABLE "OutsourcingServiceType"(id SERIAL PRIMARY KEY,"ownerOrgId" INT,code TEXT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"entryMode" TEXT,"requiredFields" TEXT[],"orderInput" TEXT,"styleInput" TEXT,"processInput" TEXT,"isActive" BOOL,"sortOrder" INT,"systemDefaultId" INT,"isOverridden" BOOL,"updatedAt" TIMESTAMP,UNIQUE("ownerOrgId","systemDefaultId"));
-      CREATE TABLE "TransactionCode"(id INT,"ownerOrgId" INT,"serviceTypeId" INT,"baseId" INT,"systemDefaultId" INT);
-      CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT);
+      CREATE TABLE "TransactionCode"(id INT,"ownerOrgId" INT,"serviceTypeId" INT,"baseId" INT,"systemDefaultId" INT,"isActive" BOOL DEFAULT true);
+      CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT,"baseId" INT,"isActive" BOOL DEFAULT true,"isEnabled" BOOL DEFAULT true);
       CREATE TABLE "OrganizationOutsourcingServiceType"("partnerOrgId" INT,"ownerOrgId" INT,"serviceTypeId" INT,"createdAt" TIMESTAMP,PRIMARY KEY("partnerOrgId","serviceTypeId"));
       ${['WorkLog','WorkOrder','AssignmentPlan'].map(table=>`CREATE TABLE "${table}"(id INT);`).join('\n')}`);
     await db.exec('ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
