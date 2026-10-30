@@ -38,6 +38,22 @@ test('SQL accepts accountant exemption only for the exact saved drafter and vers
    await db.exec('BEGIN;'+entry('exempt','EXPENSE',50,0,'OUT')+allocation+'COMMIT;');
  }finally{await db.close();}
 });
+test('administrator final authority completes only the active original company author without bypassing saved approval lines',async()=>{
+ const db=await fixture();try{
+  await db.exec(await readFile('backend/prisma/migrations/20261030120000_expense_approval_rejection/migration.sql','utf8'));
+  const sql=await readFile('backend/prisma/migrations/20261030170000_admin_drafter_final_authority/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+  await db.exec(`UPDATE "ExpenseRequest" SET "createdByEmployeeId"=10`);
+  const exempt=async(org=1,version=1)=>(await db.query(`SELECT baro_expense_approval_exempt(1,$1,$2) AS allowed`,[org,version])).rows[0].allowed;
+  assert.equal(await exempt(),false,'saved approvers still have to act');
+  await db.exec('DELETE FROM "ExpenseRequestApprovalStep"');assert.equal(await exempt(),true);
+  assert.equal(await exempt(2),false);assert.equal(await exempt(1,2),false);
+  await db.exec(`UPDATE "Employee" SET status='INACTIVE' WHERE id=10`);assert.equal(await exempt(),false);
+  await db.exec(`UPDATE "Employee" SET status='ACTIVE',"orgRole"='ACCOUNTANT' WHERE id=10`);assert.equal(await exempt(),false);
+  await db.exec(`UPDATE "Employee" SET "orgRole"='ADMIN' WHERE id=10`);
+  await db.exec(`BEGIN;${entry('own-admin','EXPENSE',50,0,'OUT')}INSERT INTO "BankLedgerEvidenceAllocation"(id,"entryId","orgId","expenseItemId","requestVersion",amount) VALUES('own-admin-a','own-admin',1,'c1',1,50);COMMIT;`);
+  assert.equal((await db.query(`SELECT count(*)::int AS n FROM "ExpenseApprovalDecision"`)).rows[0].n,0,'final authority does not fabricate approval decisions');
+ }finally{await db.close();}
+});
 test('SQL rejects new approval decisions from operators even when a historical step names them',async()=>{
  const db=await fixture();try{
    await db.exec(`UPDATE "Employee" SET "orgRole"='OPERATOR' WHERE id=10;`);

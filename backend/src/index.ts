@@ -1035,6 +1035,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
 const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = [
+  'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
   'ExpenseApprovalDecision_result_check','BankLedgerExpenseRejection_guard',
   'ExpenseItemReference_guard','ExpenseItemReference_audit_guard','ExpenseItemReference_cost_scope_fkey','ExpenseItemReference_order_scope_fkey','ExpenseItemReference_style_scope_fkey',
@@ -31958,6 +31959,8 @@ const findMissingRuntimeSchemaConstraints = async (): Promise<string[]> => {
     FROM pg_trigger
     WHERE NOT tgisinternal AND tgenabled <> 'D'
       AND tgname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
+    UNION
+    SELECT proname AS constraint_name FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname = ANY(${[...STARTUP_REQUIRED_RUNTIME_CONSTRAINTS]}::text[])
   `;
   const available = new Set(rows.map((row) => row.constraint_name));
   return STARTUP_REQUIRED_RUNTIME_CONSTRAINTS

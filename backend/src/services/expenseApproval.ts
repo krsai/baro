@@ -44,7 +44,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     if(!limits?.senior||!limits?.lead)throw createHttpError(400,'APPROVAL_CURRENCY_LIMIT_REQUIRED');
     level=Math.max(level,amount.lte(limits.senior)?0:amount.lte(limits.lead)?1:2);
   }
-  const ownLevel=drafter.orgRole==='ACCOUNTANT'&&drafter.grade?.isActive&&drafter.grade.set?.isActive ? drafter.gradeId===config.leadGradeId?1:!config.seniorGradeId||drafter.gradeId===config.seniorGradeId?0:-1 : -1;
+  const ownLevel=drafter.orgRole==='ADMIN'?2:drafter.orgRole==='ACCOUNTANT'&&drafter.grade?.isActive&&drafter.grade.set?.isActive ? drafter.gradeId===config.leadGradeId?1:!config.seniorGradeId||drafter.gradeId===config.seniorGradeId?0:-1 : -1;
   const ids:number[]=[],skipped:string[]=[],stages:any[]=[];let requiredLevel=level,complete=true;
   for(let index=0;index<=requiredLevel;index++){
     if(index<=ownLevel)continue;
@@ -71,7 +71,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     if(ids.includes(employeeId))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
     ids.push(employeeId);stages.push({key,employeeId,name:employee.name,candidates});
   }
-  return {ids,complete,stages,drafter,policy:{drafterId,exempt:complete&&!ids.length&&ownLevel>=level,config,skipped,level,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
+  return {ids,complete,stages,drafter,policy:{drafterId,exempt:complete&&!ids.length&&ownLevel>=level,...(drafter.orgRole==='ADMIN'?{exemptionReason:'ADMIN_DRAFTER'}:{}),config,skipped,level,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
 }
 export const EXPENSE_APPROVAL_INCLUDE = { orderBy: { position: 'asc' as const }, include: {employee: { select: { id:true, name:true, status:true } }} };
 

@@ -4,7 +4,7 @@ const GROUPS = [
   ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/production-analysis']],
   ['INVENTORY', 'materialsInventory', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/inventory/settings']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/holiday', '/payroll']],
-  ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/approval-inbox', '/bank-ledger']],
+  ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger']],
   ['OPERATIONS', 'managementAnalysis', ['/revenue-forecast', '/revenue-analysis']],
   ['SETTINGS', 'settings', ['/business', '/employee-system', '/salary-system', '/approval-settings', '/personal-settings', '/app-settings', '/system-setting/access-policy']],
 ];

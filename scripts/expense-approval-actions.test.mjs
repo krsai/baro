@@ -2,7 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const {approvalState,approveExpense,listExpenseApprovalInbox}=require('../backend/dist/services/bankEvidence.js');
+const {approvalState,approveExpense,listExpenseApprovalInbox,attachExpenseApprovalStates}=require('../backend/dist/services/bankEvidence.js');
+
+test('own administrator requests show the same completed status in detail, document lists and dashboard',async()=>{
+ const request={id:1,version:1,orgId:7,createdByEmployeeId:11,createdByEmployee:{id:11,name:'Owner',orgId:7,orgRole:'ADMIN',status:'ACTIVE'},approvalSteps:[],items:[]};
+ const db={employee:{findFirst:async()=>({id:11,orgRole:'ADMIN'})},expenseRequest:{findFirst:async()=>request,findMany:async({where})=>{assert.equal(where.orgId,7);assert.equal(where.createdByEmployeeId,11);return [request];}},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>null,findMany:async()=>[]}};
+ assert.equal((await approvalState(db,7,1,11)).status,'APPROVED');
+ assert.equal((await attachExpenseApprovalStates(db,7,[request]))[0].approval.status,'APPROVED');
+ assert.equal((await listExpenseApprovalInbox(db,7,11,'requested'))[0].status,'APPROVED');
+});
 
 test('approval inbox includes only the current version and the actual next designated employee',async()=>{
  const step=(position,employeeId)=>({position,employeeId});

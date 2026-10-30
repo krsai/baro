@@ -6,8 +6,8 @@ import {chromium} from 'playwright-core';
 import {approvalWorkflowText} from '../frontend/src/constants/approvalWorkflow.js';
 const fixture=path.resolve('frontend/approval-inbox-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
-import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Inbox from'/src/pages/App/ApprovalInbox.jsx';import Card,{ApprovalMenuBadge}from'/src/components/ApprovalDashboardCard.jsx';
-function App(){const[orgId,setOrg]=React.useState(7);window.setOrg=setOrg;window.currentOrg=orgId;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(ApprovalMenuBadge,{orgId}),React.createElement(Card,{orgId,languageCode:new URLSearchParams(location.search).get('lang'),onNavigate:p=>window.destination=p}),React.createElement(Inbox));}createRoot(document.getElementById('root')).render(React.createElement(App));
+import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Card from'/src/components/ApprovalDashboardCard.jsx';
+function App(){const[orgId,setOrg]=React.useState(7),[role,setRole]=React.useState('ACCOUNTANT');window.setOrg=setOrg;window.setRole=setRole;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Card,{orgId,role,languageCode:new URLSearchParams(location.search).get('lang'),onNavigate:p=>window.destination=p}));}createRoot(document.getElementById('root')).render(React.createElement(App));
 </script></body></html>`);
 const port=43265,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -21,18 +21,19 @@ try{
   await page.route('**/expense-approval-inbox?*',async r=>{
    const url=new URL(r.request().url()),headers={'Access-Control-Allow-Origin':'*'};
    if(url.searchParams.get('orgId')==='8'){await new Promise(resolve=>setTimeout(resolve,250));return r.fulfill({headers,json:[]});}
-   const view=url.searchParams.get('view')||'pending',rows=Array.from({length:view==='pending'?6:1},(_,i)=>({id:i+1,kind:'EXPENSE_REQUEST',version:2,managementNumber:`EXP-2026-00000${i+1}`,requestDate:'2026-10-30',payee:'Vendor',drafter:'Author',status:view==='requested'?'REJECTED':view==='inProgress'?'IN_REVIEW':'REQUESTED',totals:[{currency:'USD',amount:'100.25'}],...(view==='completed'?{handledVersion:1,decision:'REJECTED',reason:'Incorrect invoice',handledAt:'2026-10-29T00:00:00Z'}:{})}));return r.fulfill({headers,json:rows});
+   const view=url.searchParams.get('view')||'pending',rows=Array.from({length:view==='pending'?13:1},(_,i)=>({id:i+1,kind:'EXPENSE_REQUEST',version:2,managementNumber:`EXP-2026-00000${i+1}`,requestDate:'2026-10-30',payee:'Vendor',drafter:'Author',status:view==='requested'?'REJECTED':view==='inProgress'?'IN_REVIEW':'REQUESTED',totals:[{currency:'USD',amount:'100.25'}],...(view==='completed'?{handledVersion:1,decision:'REJECTED',reason:'Incorrect invoice',handledAt:'2026-10-29T00:00:00Z'}:{})}));return r.fulfill({headers,json:rows});
   });
   await page.goto(`http://127.0.0.1:${port}/approval-inbox-acceptance.html?lang=${lang}`);
-  const card=page.getByTestId('approval-dashboard'),main=page.locator('main');await card.getByText('EXP-2026-000001',{exact:true}).waitFor();assert.equal(await card.locator('tbody tr').count(),5);assert.equal(await card.locator('.MuiChip-label').filter({hasText:/^6$/}).count(),1);
-  await card.getByRole('button',{name:t.viewAll}).click();assert.equal(await page.evaluate(()=>window.destination),'/approval-inbox');
-  await main.getByRole('button',{name:'EXP-2026-000006',exact:true}).click();assert.equal(await page.evaluate(()=>window.destination),'/outsourcing-record/edit/request/6');
+  const card=page.getByTestId('approval-dashboard'),main=card;await card.getByText('EXP-2026-000001',{exact:true}).waitFor();assert.equal(await card.locator('tbody tr').count(),10);assert.equal(await card.locator('.MuiChip-label').filter({hasText:/^13$/}).count(),1);
+  assert.equal(await card.locator('thead th').count(),5);assert.equal(await card.getByText('Vendor',{exact:true}).count(),0);assert.equal(await card.getByText('USD 100.25',{exact:true}).count(),0);assert.equal(await card.getByRole('button',{name:t.viewAll,exact:true}).count(),0);
+  await card.getByRole('button',{name:t.next,exact:true}).click();await card.getByRole('button',{name:'EXP-2026-0000011',exact:true}).click();assert.equal(await page.evaluate(()=>window.destination),'/outsourcing-record/edit/request/11');
   await main.getByRole('tab',{name:t.progressTab,exact:true}).click();await main.locator('[data-approval-status="IN_REVIEW"]').waitFor();
-  await main.getByRole('tab',{name:t.completedTab,exact:true}).click();await main.getByText('Incorrect invoice',{exact:true}).waitFor();assert.equal(await main.locator('[data-approval-status="REJECTED"]').count(),1);assert.equal(await main.locator('thead th').count(),9);
+  await main.getByRole('tab',{name:t.completedTab,exact:true}).click();await main.getByText('Incorrect invoice',{exact:true}).waitFor();assert.equal(await main.locator('[data-approval-status="REJECTED"]').count(),1);assert.equal(await main.locator('thead th').count(),5);
   await main.getByRole('textbox').fill('No matching request');await main.getByText(t.empty,{exact:true}).waitFor();await main.getByRole('textbox').fill('invoice');await main.getByText('Incorrect invoice',{exact:true}).waitFor();
   await main.getByRole('textbox').fill('');await main.getByRole('tab',{name:t.requestedTab,exact:true}).click();await main.locator('[data-approval-status="REJECTED"]').waitFor();
+  await page.evaluate(()=>window.setRole('OPERATOR'));assert.equal(await card.getByRole('tab').count(),1);assert.equal(await card.getByRole('tab',{name:t.requestedTab,exact:true}).getAttribute('aria-selected'),'true');
   await page.setViewportSize({width:390,height:844});assert.ok(await main.locator('.MuiTableContainer-root').evaluate(el=>el.scrollWidth>el.clientWidth));
   await page.evaluate(()=>window.setOrg(8));assert.equal(await page.getByRole('button',{name:'EXP-2026-000001',exact:true}).count(),0,'changing company clears all old rows immediately');await card.getByText(t.empty,{exact:true}).waitFor();assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: dashboard count/top five, review links, pending/progress/handled/own tabs, rejection reason/search, tenant clearing, ko/en/vi and mobile internal scroll.');
+ console.log('PASS: dashboard four tabs/pagination/common five columns, review links, pending/progress/handled/own tabs, rejection reason/search, tenant clearing, ko/en/vi and mobile internal scroll.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

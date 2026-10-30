@@ -742,7 +742,7 @@ const WorkspaceDashboard = () => {
   return (
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <PageContentStack>
-        {!isSystemProfile&&['ADMIN','ACCOUNTANT'].includes(activeProfile?.orgRole)&&canAccessPath('/approval-inbox',authState)&&<ApprovalDashboardCard orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath}/>}
+        {!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)&&<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}
         <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(

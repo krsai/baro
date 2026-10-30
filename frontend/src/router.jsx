@@ -87,7 +87,6 @@ const TransactionRequestEntry = lazyImportWithRetry(() => import('./pages/App/Tr
 const ApplicationSettings = lazyImportWithRetry(() => import('./pages/App/ApplicationSettings'));
 const TransactionCodeSettings = lazyImportWithRetry(() => import('./pages/App/TransactionCodeSettings'));
 const ExpenseMasterSettings = lazyImportWithRetry(() => import('./pages/App/ExpenseMasterSettings'));
-const ApprovalInbox = lazyImportWithRetry(() => import('./pages/App/ApprovalInbox'));
 const ApprovalSettings = lazyImportWithRetry(() => import('./pages/App/ApprovalSettings'));
 const CodeBaseSettings = lazyImportWithRetry(() => import('./pages/App/CodeBaseSettings'));
 
@@ -299,7 +298,7 @@ const router = createBrowserRouter([
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
           { path: 'app-settings', element: <ApplicationSettings />,
           },
-          { path: 'approval-inbox', element: <ApprovalInbox /> },
+          { path: 'approval-inbox', element: <Navigate to="/" replace /> },
           { path: 'approval-settings', element: <ApprovalSettings /> },
           { path: 'system-setting/expense-units', element: <ExpenseMasterSettings units /> },
           { path: 'system-setting/expense-types', element: <ExpenseMasterSettings /> },

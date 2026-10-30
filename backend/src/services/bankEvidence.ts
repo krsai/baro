@@ -3,6 +3,15 @@ import {legacyExpenseNumber} from './documentNumber';
 import {retryEditTransaction} from '../utils/editRevision';
 import {ledgerScale4,ledgerMoney,validateLedgerMoney} from './bankLedger';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
+function approvalExemption(request:any,decisions:any[],policy:any,orgId:number){
+ if((request.approvalSteps||[]).length)return {exempt:false,exemptionReason:null};
+ const current=decisions.filter(row=>row.requestId===request.id&&row.version===request.version);
+ if(current.some(row=>row.decision==='REJECTED'))return {exempt:false,exemptionReason:null};
+ if(policy?.exempt===true&&policy.drafterId===request.createdByEmployeeId)return {exempt:true,exemptionReason:policy.exemptionReason||'SAVED_POLICY'};
+ const author=request.createdByEmployee;
+ const admin=current.length===0&&author?.id===request.createdByEmployeeId&&author?.orgId===orgId&&author?.status==='ACTIVE'&&author?.orgRole==='ADMIN';
+ return {exempt:admin,exemptionReason:admin?'ADMIN_DRAFTER':null};
+}
 export function expenseApprovalSummary(request:any,decisions:any[],exempt=false){
  const current=decisions.filter(row=>row.requestId===request.id&&row.version===request.version);
  const steps=(request.approvalSteps||[]).map((step:any)=>{const record=current.find(row=>row.position===step.position&&row.employeeId===step.employeeId);const rejected=record?.decision==='REJECTED';return {...step,approved:!!record&&!rejected,rejected,approvedAt:record&&!rejected?record.createdAt:null,rejectedAt:rejected?record.createdAt:null,reason:rejected?record.reason:null};});
@@ -10,20 +19,21 @@ export function expenseApprovalSummary(request:any,decisions:any[],exempt=false)
  if(rejection)for(const step of steps)if(step.position>rejection.position)step.blocked=true;
  const next=rejection?null:steps.find((step:any)=>!step.approved);
  const approved=!rejection&&(steps.length>0?!next:exempt);
- const status=rejection?'REJECTED':approved?'APPROVED':steps.some((step:any)=>step.approved)?'IN_REVIEW':'REQUESTED';
+ const status=rejection?'REJECTED':approved?'APPROVED':!steps.length?'UNKNOWN':steps.some((step:any)=>step.approved)?'IN_REVIEW':'REQUESTED';
  return {status,steps,exempt,approved,rejected:!!rejection,rejection:rejection?{employeeId:rejection.employeeId,name:rejection.employee?.name||'',reason:rejection.reason,createdAt:rejection.rejectedAt}:null};
 }
 export async function approvalState(db:any,orgId:number,requestId:number,actorId?:number){
- const request=await db.expenseRequest.findFirst({where:{id:requestId,orgId},include:{approvalSteps:{orderBy:{position:'asc'},include:{employee:{select:{id:true,name:true}}}}}});
+ const request=await db.expenseRequest.findFirst({where:{id:requestId,orgId},include:{createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},approvalSteps:{orderBy:{position:'asc'},include:{employee:{select:{id:true,name:true}}}}}});
  if(!request)return fail('EXPENSE_SOURCE_NOT_FOUND',404);
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId,version:request.version},orderBy:{position:'asc'}});
  const audit=!request.approvalSteps.length ? await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}) : null;
  const policy=audit?.afterSnapshot?.approvalPolicy;
- const summary=expenseApprovalSummary(request,decisions,policy?.exempt===true&&policy.drafterId===request.createdByEmployeeId);
+ const exemption=approvalExemption(request,decisions,policy,orgId);
+ const summary=expenseApprovalSummary(request,decisions,exemption.exempt);
  const next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
  const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}) : null;
  const canApprove=!!actor&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId;
- return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),...summary,canApprove,canReject:canApprove};
+ return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),...summary,exemptionReason:exemption.exemptionReason,canApprove,canReject:canApprove};
 }
 export async function attachExpenseApprovalStates(db:any,orgId:number,requests:any[]){
  if(!requests.length)return requests;
@@ -33,7 +43,7 @@ export async function attachExpenseApprovalStates(db:any,orgId:number,requests:a
   db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:ids}}}),
   auditIds.length?db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:auditIds}},select:{requestId:true,version:true,afterSnapshot:true}}):Promise.resolve([]),
  ]);
- return requests.map(row=>{const policy=audits.find((audit:any)=>audit.requestId===row.id&&audit.version===row.version)?.afterSnapshot?.approvalPolicy;return {...row,approval:expenseApprovalSummary(row,decisions,policy?.exempt===true&&policy.drafterId===row.createdByEmployeeId)};});
+ return requests.map(row=>{const policy=audits.find((audit:any)=>audit.requestId===row.id&&audit.version===row.version)?.afterSnapshot?.approvalPolicy,exemption=approvalExemption(row,decisions,policy,orgId);return {...row,approval:{...expenseApprovalSummary(row,decisions,exemption.exempt),exemptionReason:exemption.exemptionReason}};});
 }
 export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:number,view='pending'){
  if(!['pending','inProgress','completed','requested'].includes(view))return fail('INVALID_APPROVAL_VIEW');
@@ -41,7 +51,7 @@ export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:numbe
  if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
  if(actor.orgRole==='OPERATOR'&&view!=='requested')return [];
  const handled=view==='completed'?await db.expenseApprovalDecision.findMany({where:{orgId,employeeId:actorId},select:{requestId:true,version:true,decision:true,reason:true,createdAt:true}}):[];
- const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},createdByEmployee:{select:{name:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
+ const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
  if(!requests.length)return [];
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true,decision:true,reason:true,createdAt:true}});
  const auditIds=requests.filter((row:any)=>view==='completed'||!row.approvalSteps.length).map((row:any)=>row.id);
@@ -52,7 +62,7 @@ export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:numbe
  };
  const rows=requests.flatMap((request:any)=>{
   const policy=audits.find((audit:any)=>audit.requestId===request.id&&audit.version===request.version)?.afterSnapshot?.approvalPolicy;
-  const summary=expenseApprovalSummary(request,decisions,policy?.exempt===true&&policy.drafterId===request.createdByEmployeeId),next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
+  const summary=expenseApprovalSummary(request,decisions,approvalExemption(request,decisions,policy,orgId).exempt),next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
   const pending=request.createdByEmployeeId!==actorId&&next?.employeeId===actorId;
   if(view==='pending'&&!pending||view==='inProgress'&&(pending||summary.rejected||summary.approved))return [];
   if(view!=='completed')return [toRow(request,summary.status)];

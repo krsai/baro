@@ -34,7 +34,22 @@ test('accountant drafting skips own and lower stages but higher limits still req
  assert.deepEqual((await resolveExpenseApproval(db,7,2,[item('100000001')])).ids,[3,4]);
  assert.equal((await resolveExpenseApproval(db,7,3,[item('100000000')])).policy.exempt,true);
  assert.deepEqual((await resolveExpenseApproval(db,7,3,[item('100000001')])).ids,[4]);
- await assert.rejects(resolveExpenseApproval(db,7,4,[item('100000001')]),/SELF_APPROVAL|APPROVER_REQUIRED/);
+ const admin=await resolveExpenseApproval(db,7,4,[item('100000001')]);assert.deepEqual(admin.ids,[]);assert.equal(admin.policy.exempt,true);assert.equal(admin.policy.exemptionReason,'ADMIN_DRAFTER');
+});
+
+test('administrator requests use final authority for every threshold and retain an explicit policy without fake self approvals',async()=>{
+ const {db,people}=fixture();
+ for(const amount of ['100','20000001','100000001']){const result=await resolveExpenseApproval(db,7,4,[item(amount)],{});assert.equal(result.complete,true);assert.deepEqual(result.stages,[]);assert.equal(result.policy.exempt,true);assert.equal(result.policy.drafterId,4);}
+ people[3].status='INACTIVE';await assert.rejects(resolveExpenseApproval(db,7,4,[item('100')],{}),/ACTIVE_EMPLOYEE_REQUIRED/);
+});
+
+test('only an active original company administrator can complete a legacy request with no approval line',async()=>{
+ const author={id:4,orgId:7,status:'ACTIVE',orgRole:'ADMIN'},request={id:10,version:2,createdByEmployeeId:4,createdByEmployee:author,approvalSteps:[]};let decisions=[];
+ const db={expenseRequest:{findFirst:async()=>request},expenseApprovalDecision:{findMany:async()=>decisions},expenseRequestAudit:{findFirst:async()=>null}};
+ let state=await approvalState(db,7,10);assert.equal(state.status,'APPROVED');assert.equal(state.exemptionReason,'ADMIN_DRAFTER');assert.equal(state.canApprove,false);
+ for(const change of [{status:'INACTIVE'},{orgId:8},{orgRole:'ACCOUNTANT'},{id:5}]){const old={...author};Object.assign(author,change);assert.equal((await approvalState(db,7,10)).approved,false);Object.assign(author,old);}
+ request.approvalSteps=[{position:1,employeeId:11}];assert.equal((await approvalState(db,7,10)).approved,false);
+ request.approvalSteps=[];decisions=[{requestId:10,version:2,position:1,employeeId:11,decision:'REJECTED'}];assert.equal((await approvalState(db,7,10)).approved,false);
 });
 test('VAT and totals across all rows determine level; different currencies retain separate limits',async()=>{
  const {db,config}=fixture();
@@ -54,6 +69,7 @@ test('zero-step historical requests require matching explicit current-version po
  let policy=null;
  const db={expenseRequest:{findFirst:async()=>({version:2,createdByEmployeeId:1,approvalSteps:[]})},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async({where})=>{assert.equal(where.version,2);return {afterSnapshot:{approvalPolicy:policy}};}}};
  assert.equal((await approvalState(db,7,10)).approved,false);
+ assert.equal((await approvalState(db,7,10)).status,'UNKNOWN');
  policy={exempt:true,drafterId:9};assert.equal((await approvalState(db,7,10)).approved,false);
  policy={exempt:true,drafterId:1};assert.equal((await approvalState(db,7,10)).approved,true);
 });

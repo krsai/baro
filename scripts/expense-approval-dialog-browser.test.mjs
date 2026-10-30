@@ -5,6 +5,7 @@ import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {expenseHeaderActions} from '../frontend/src/constants/expenseHeaderActions.js';
 import {expenseApprovalActionsText} from '../frontend/src/constants/expenseApprovalActions.js';
+import {approvalWorkflowText} from '../frontend/src/constants/approvalWorkflow.js';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
 const fixture=path.resolve('frontend/expense-approval-dialog-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
@@ -17,9 +18,9 @@ try{
  browser=await chromium.launch({executablePath,headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
-  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},keys=['senior','lead','admin'],names=['Senior approver','Lead approver','Admin approver'];
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},keys=['senior','lead','admin'],names=['Senior approver','Lead approver','Admin approver'];let adminPreview=false;
   await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:{drafter:{id:1,name:'Current user'},candidates:names.map((name,i)=>({id:i+2,name}))}}));
-  await page.route('**/expense-approval-preview?*',r=>{const selection=r.request().postDataJSON()?.selection||{},stages=keys.map((key,i)=>({key,employeeId:selection[`${key}EmployeeId`]||null,name:names[i],candidates:[{id:i+2,name:names[i]}]}));return r.fulfill({headers,json:{complete:stages.every(stage=>stage.employeeId),ids:stages.map(stage=>stage.employeeId).filter(Boolean),stages,drafter:{id:1,name:'Current user'},policy:{totals:[{currency:'VND',amount:'100000001'}]}}});});
+  await page.route('**/expense-approval-preview?*',r=>{if(adminPreview)return r.fulfill({headers,json:{complete:true,ids:[],stages:[],drafter:{id:1,name:'Current user'},policy:{drafterId:1,exempt:true,exemptionReason:'ADMIN_DRAFTER'}}});const selection=r.request().postDataJSON()?.selection||{},stages=keys.map((key,i)=>({key,employeeId:selection[`${key}EmployeeId`]||null,name:names[i],candidates:[{id:i+2,name:names[i]}]}));return r.fulfill({headers,json:{complete:stages.every(stage=>stage.employeeId),ids:stages.map(stage=>stage.employeeId).filter(Boolean),stages,drafter:{id:1,name:'Current user'},policy:{totals:[{currency:'VND',amount:'100000001'}]}}});});
   await page.goto(`http://127.0.0.1:${port}/expense-approval-dialog-acceptance.html?lang=${lang}`);const t=expenseHeaderActions[lang];
   assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),false);
   await page.getByTestId('expense-approval-button').getByText('Current user',{exact:true}).waitFor();
@@ -44,6 +45,8 @@ try{
   await approvalButton.locator('[data-approval-state="rejected"]').waitFor();await approvalButton.locator('[data-approval-state="stopped"]').waitFor();
   assert.notEqual(await approvalButton.locator('[data-approval-state="rejected"]').evaluate(el=>getComputedStyle(el).backgroundColor),await approved.evaluate(el=>getComputedStyle(el).backgroundColor));
   await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('combobox').count(),0);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).count(),0);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
+  adminPreview=true;await page.reload();await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await page.getByText(approvalWorkflowText[lang].selfAuthorized,{exact:true}).waitFor();await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').getByText('Current user',{exact:true}).waitFor();
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: save opens sequential vertical approvals, cancellation preserves inputs, confirmation saves, header opens a read-only reference, ko/en/vi desktop/mobile.');
