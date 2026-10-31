@@ -18,3 +18,9 @@ test('outstanding uses real partner/currency keys, avoids installment double cou
  const report=outstandingReport(invoices,requests,[{invoiceId:'new',amount:'1000'},{expenseItemId:'c1',amount:'100'},{expenseItemId:'c2',amount:'200'}]);
  assert.equal(report.receivables[0].balance,'0.00');assert.equal(report.receivables[0].hasUnlinkedReceipt,true);assert.equal(report.receivables[0].separateReceived,'300.00');assert.equal(report.payables.length,1);assert.equal(report.payables[0].balance,'800');assert.equal(report.outstandingTotals.find(row=>row.currencyCode==='USD').receivable,'0.00');
 });
+
+test('employee payables remain separate from partners with the same numeric ID and other employees',()=>{
+ const request=(id,partnerOrgId,payeeEmployeeId)=>({id,partnerOrgId,payeeEmployeeId,payeeEmployee:{name:'Employee '+id},partner:partnerOrgId?{name:'Vendor'}:null,items:[{id:'c'+id,currency:'VND',amount:'100'}]});
+ const report=outstandingReport([],[request(1,3,null),request(2,null,3),request(3,null,4)],[]);
+ assert.equal(report.payables.length,3);assert.deepEqual(report.payables.map(r=>r.partyKind),['PARTNER','EMPLOYEE','EMPLOYEE']);assert.equal(report.outstandingTotals[0].payable,'300');
+});

@@ -102,6 +102,7 @@ test('expense registration stores its number and later edits cannot replace the 
  await assert.rejects(db.save({...body,managementNumber:'PAY-2026-A'}),/DOCUMENT_NUMBER_AUTOMATIC/);
  await db.save(body);
  const loaded=expenseEditorForm(await db.source());assert.equal(loaded.managementNumber,'EXP-2026-000001');assert.equal(loaded.remark,body.remark);
+ await assert.rejects(db.save({...loaded,clientKey:'date-change-001',requestDate:'2026-10-30'}),/EXPENSE_REQUEST_DATE_LOCKED/);
  await assert.rejects(db.save({...loaded,clientKey:'number-change-001',managementNumber:'REPLACED'}),/DOCUMENT_NUMBER_LOCKED/);
  assert.equal(db.state().documents[0].managementNumber,'EXP-2026-000001');
 });

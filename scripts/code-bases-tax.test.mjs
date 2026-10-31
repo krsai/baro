@@ -105,7 +105,7 @@ test('rollout creates three-letter bases and V/Z/E variants without guessing leg
     await assert.rejects(db.exec(`UPDATE "SettingTransactionCodeDefault" SET "vatEnabled"=true WHERE code='TRKZ'`),/code tax mismatch/);
   }finally{await db.close();}
 });
-test('base creation/edit generates selected suffixes atomically and retains variant identities', async()=>{
+test('base creation/edit always generates all tax suffixes atomically and retains variant identities', async()=>{
   const db=await fixture();try {
     const serviceTypeId=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows[0].id;
     const body={code:'AIR',nameKo:'항공',nameEn:'Air',nameVi:'Hàng không',serviceTypeId,taxTreatmentIds:[1,2,3]};
@@ -114,7 +114,7 @@ test('base creation/edit generates selected suffixes atomically and retains vari
     assert.deepEqual(variants.map(row=>row.code),['AIRE','AIRV','AIRZ']);
     await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,nameEn:'Air delivery',taxTreatmentIds:[1,3]},base.id));
     assert.deepEqual((await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows,variants);
-    assert.equal((await db.query(`SELECT "isActive" FROM "SettingTransactionCodeDefault" WHERE code='AIRZ'`)).rows[0].isActive,false);
+    assert.equal((await db.query(`SELECT "isActive" FROM "SettingTransactionCodeDefault" WHERE code='AIRZ'`)).rows[0].isActive,true);
     for(const patch of [{code:'TOOLONG'},{code:'A1R'},{taxTreatmentIds:[]},{taxTreatmentIds:[4]},{taxTreatmentIds:[1,1]}])assert.throws(()=>service.validateCodeBase({...body,...patch}));
     await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,code:'SEA'},base.id));
     assert.deepEqual((await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows,variants.map(row=>({...row,code:row.code.replace('AIR','SEA')})));
@@ -151,7 +151,7 @@ test('renaming a used family keeps multi-company source and cost FKs, overrides 
   const renamed=(await db.query('SELECT * FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY id',[base.id])).rows;
   assert.deepEqual(renamed.map(row=>row.id),sources.map(row=>row.id));
   assert.equal(renamed.find(row=>row.taxTreatmentId===2).code,'INKZ');
-  assert.equal(renamed.find(row=>row.taxTreatmentId===2).isEnabled,false);
+  assert.equal(renamed.find(row=>row.taxTreatmentId===2).isEnabled,true);
   assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,costs);
   assert.deepEqual((await db.query('SELECT * FROM "PreservedDocumentSnapshot"')).rows,snapshots);
   await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...base,code:'INK',taxTreatmentIds:[1,2,3]},base.id));
@@ -280,25 +280,41 @@ test('new codes require four English letters and explicit zero versus exempt cla
   assert.equal(requests.validateTransactionCode({...row,code:'LOGISTICS'},true).taxTreatmentId,null);
 });
 
-test('OTHER and OTH defaults are linked by FK, initialized once and never recreate deleted codes',async()=>{
-  const db=await fixture();try{
-    await assert.rejects(db.transaction(sql=>adapter(sql).$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)')),/cannot deserialize void/);
-    await db.exec('CREATE TABLE IF NOT EXISTS "SystemSetting" (key TEXT PRIMARY KEY,value JSONB NOT NULL,"updatedByEmployeeId" INT)');
-    const [general]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='GENERAL'`)).rows;
-    await db.transaction(tx=>industries.saveSystemIndustry(adapter(tx),{...general,code:'GENERAL_RENAMED'},general.id));
-    const bootstrap=()=>db.transaction(async sql=>{
-      const tx=adapter(sql);
-      tx.systemSetting={findUnique:async({where})=>(await sql.query('SELECT * FROM "SystemSetting" WHERE key=$1',[where.key])).rows[0],create:async({data})=>sql.query('INSERT INTO "SystemSetting" (key,value,"updatedByEmployeeId") VALUES($1,$2::jsonb,$3)',[data.key,JSON.stringify(data.value),data.updatedByEmployeeId])};
-      return service.initializeOtherExpenseDefaults(tx,20);
-    });
-    const first=await bootstrap();await bootstrap();
-    const type=(await db.query('SELECT * FROM "ExpenseType" WHERE code=$1',['OTHER'])).rows[0];
-    const base=(await db.query('SELECT * FROM "TransactionCodeBase" WHERE code=$1',['OTH'])).rows[0];
-    assert.equal(base.expenseTypeId,type.id);assert.equal(type.entryMode,'GENERAL');
-    assert.deepEqual((await db.query('SELECT code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows.map(row=>row.code),['OTHE','OTHV','OTHZ']);
-    await db.query('UPDATE "TransactionCodeBase" SET "nameEn"=$1 WHERE id=$2',['Custom other',base.id]);await bootstrap();
-    assert.equal((await db.query('SELECT "nameEn" FROM "TransactionCodeBase" WHERE id=$1',[base.id])).rows[0].nameEn,'Custom other');
-    await db.transaction(sql=>service.deleteCodeBase(adapter(sql),base.id));await bootstrap();
-    assert.equal((await db.query('SELECT * FROM "TransactionCodeBase" WHERE id=$1',[first.baseId])).rows.length,0);
-  }finally{await db.close();}
+test('tax rollout completes every active family and preserves existing IDs and historical costs',async()=>{
+ const db=await fixture();try{
+  const base=(await db.query(`SELECT id FROM "TransactionCodeBase" WHERE code='GEN'`)).rows[0].id;
+  await db.query('DELETE FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId"=2',[base]);
+  await db.query('UPDATE "SettingTransactionCodeDefault" SET "isEnabled"=false WHERE "baseId"=$1 AND "taxTreatmentId"=3',[base]);
+  const before=(await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY code',[base])).rows;
+  const costs=(await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+  const migration=fs.readFileSync('backend/prisma/migrations/20261031010100_accounting_tax_variants/migration.sql','utf8');await db.exec(migration);await db.exec(migration);
+  const after=(await db.query('SELECT id,code,"isEnabled","isActive" FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "taxTreatmentId" IS NOT NULL ORDER BY code',[base])).rows;
+  assert.equal(after.length,3);assert.ok(after.every(row=>row.isEnabled&&row.isActive));
+  for(const row of before)assert.equal(after.find(next=>next.code===row.code).id,row.id);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,costs);
+ }finally{await db.close();}
+});
+
+test('industry deletion refuses customer links and removes genuinely unused definitions',async()=>{
+ let linked=1,deleted=false;
+ const tx={$queryRawUnsafe:async()=>[{id:9}],settingServiceDefault:{delete:async()=>{deleted=true;}},settingTransactionCodeDefault:{count:async()=>0},transactionCodeBase:{count:async()=>0},orgRelationship:{count:async()=>linked},industryProductionPolicy:{count:async()=>0},outsourcingServiceType:{findMany:async()=>[]}};
+ await assert.rejects(service.deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);assert.equal(deleted,false);
+ linked=0;await service.deleteSetting(tx,'services',true,9);assert.equal(deleted,true);
+});
+
+test('OTHER retirement preserves historical costs and IDs, disables all variants and cannot bootstrap or reactivate',async()=>{
+ const db=await fixture();try{
+  await db.exec(`INSERT INTO "ExpenseType"(code,"nameKo","nameEn","nameVi","entryMode","isActive") VALUES('OTHER','Other','Other','Other','GENERAL',true);
+   UPDATE "TransactionCodeBase" SET "expenseTypeId"=(SELECT id FROM "ExpenseType" WHERE code='OTHER') WHERE code='GEN';`);
+  await db.transaction(async sql=>{const tx=adapter(sql);tx.$queryRaw=async()=>[];await routes.provisionSettingDefaults(tx,1,true);});
+  const before=(await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+  const ids=(await db.query('SELECT id FROM "TransactionCode" ORDER BY id')).rows;
+  const migration=fs.readFileSync('backend/prisma/migrations/20261030233000_retire_other_accounting_type/migration.sql','utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,before);
+  assert.deepEqual((await db.query('SELECT id FROM "TransactionCode" ORDER BY id')).rows,ids);
+  assert.equal((await db.query(`SELECT count(*)::int n FROM "TransactionCode" c JOIN "TransactionCodeBase" b ON b.id=c."baseId" JOIN "ExpenseType" t ON t.id=b."expenseTypeId" WHERE t.code='OTHER' AND c."isActive"`)).rows[0].n,0);
+  await assert.rejects(service.initializeOtherExpenseDefaults({},20),error=>error.status===410);
+  await assert.rejects(db.exec(`UPDATE "ExpenseType" SET "isActive"=true WHERE code='OTHER'`),/ExpenseType_other_retired/);
+ }finally{await db.close();}
 });

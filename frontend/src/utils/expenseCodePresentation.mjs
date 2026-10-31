@@ -1,10 +1,5 @@
-const localizedName = (row, language) => row?.[{ko:'nameKo',en:'nameEn',vi:'nameVi'}[language] || 'nameEn'] || row?.nameEn || '';
-
-export function expenseCodeDescription(code, language = 'ko') {
-  if (!code) return '';
-  const category = localizedName(code.base?.expenseType,language);
-  return [category,localizedName(code.base,language) || localizedName(code,language)].filter(Boolean).join(' - ');
-}
+import {accountingCodeDescription} from './accountingCode.mjs';
+export const expenseCodeDescription=accountingCodeDescription;
 
 export function expenseLineDescription(line, language = 'ko', codes = []) {
   if (!line?.transactionCodeId) return line?.description || '';
@@ -26,7 +21,7 @@ export function expenseRequestSummary(document, language = 'ko', codes = []) {
 // Only explicit local or source FKs establish equivalence. Legacy rows with no
 // source FK are unknown; matching text never establishes an industry relation.
 export function expenseIndustryMismatch(code, partner) {
-  if (!code || !partner || !Array.isArray(partner.serviceTypes)) return false;
+  if (!code || !partner || partner.type === 'EMPLOYEE' || !Array.isArray(partner.serviceTypes)) return false;
   const industries = partner.serviceTypes;
   if (industries.some(row=>row.id===code.serviceTypeId)) return false;
   const sourceId = code.serviceType?.systemDefaultId || code.base?.serviceTypeId;

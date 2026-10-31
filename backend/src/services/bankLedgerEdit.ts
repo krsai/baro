@@ -4,7 +4,7 @@ import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
 import {legacyExpenseNumber} from './documentNumber';
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
 export async function readLedgerEdit(db:any,orgId:number,id:string){
- const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include:{account:true,purposeCode:true,settlementLines:{include:{purposeCode:true}},allocations:{include:{invoice:{include:{buyer:{select:{name:true}}}},expenseItem:{include:{expenseRequest:{include:{partner:{select:{name:true}}}}}}}}}});
+ const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include:{account:true,accountingCode:true,settlementLines:{include:{accountingCode:true}},allocations:{include:{invoice:{include:{buyer:{select:{name:true}}}},expenseItem:{include:{expenseRequest:{include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}}}}}}});
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');
  const code=entry.account.currencyCode;
  const other=await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:{not:id},entry:{voidedAt:null},OR:[{invoiceId:{in:entry.allocations.map((a:any)=>a.invoiceId).filter(Boolean)}},{expenseItemId:{in:entry.allocations.map((a:any)=>a.expenseItemId).filter(Boolean)}}]}});
@@ -16,7 +16,7 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  if(entry.evidenceType==='EXPENSE'){
   const requests=[...new Map(entry.allocations.filter((a:any)=>a.expenseItem?.expenseRequest).map((a:any)=>[a.expenseItem.expenseRequest.id,a.expenseItem.expenseRequest])).values()] as any[];
   const items=entry.allocations.map((a:any)=>({id:a.expenseItemId,line:a.expenseItem.expenseRequestLine,description:a.expenseItem.description,amount:ledgerMoney(ledgerScale4(a.expenseItem.amount),code),remaining:ledgerMoney(ledgerScale4(a.expenseItem.amount)-other.filter((b:any)=>b.expenseItemId===a.expenseItemId).reduce((sum:bigint,b:any)=>sum+ledgerScale4(b.amount),0n),code)}));
-  document={...(requests.length===1?{id:requests[0].id,version:requests[0].version}:{}),reference:requests.length===1?requests[0].managementNumber||legacyExpenseNumber(requests[0].id):entry.evidenceNumber,payee:requests.map(r=>r.partner?.name||'').join(', '),items,amount:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)};
+  document={...(requests.length===1?{id:requests[0].id,version:requests[0].version}:{}),reference:requests.length===1?requests[0].managementNumber||legacyExpenseNumber(requests[0].id):entry.evidenceNumber,payee:requests.map(r=>r.partner?.name||r.payeeEmployee?.name||'').join(', '),items,amount:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)};
  }
  return {...entry,bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
 }

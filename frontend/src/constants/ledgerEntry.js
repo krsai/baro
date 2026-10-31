@@ -9,3 +9,5 @@ Object.assign(ledgerEntryText.en,{editTitle:'Edit transaction',edit:'Edit',delet
 Object.assign(ledgerEntryText.vi,{editTitle:'Sửa thu chi',edit:'Sửa',delete:'Xóa',deleted:'Đã xóa',includeDeleted:'Hiện giao dịch đã xóa',code:'Mã chi phí / kế toán',linked:'Chứng từ liên kết',memo:'Ghi chú / lý do'});
 
 ledgerEntryText.ko.deleteReason='삭제 사유';ledgerEntryText.en.deleteReason='Deletion reason';ledgerEntryText.vi.deleteReason='Lý do xóa';
+
+ledgerEntryText.ko.purpose="\uC6A9\uB3C4";ledgerEntryText.en.purpose="Purpose";ledgerEntryText.vi.purpose="M\u1ee5c \u0111\u00edch";

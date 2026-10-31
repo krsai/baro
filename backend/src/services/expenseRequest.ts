@@ -1,4 +1,5 @@
 import { requirePayeeBankAccount } from './entityBankAccount';
+import {expensePayeeIds,expenseApplicationDate} from './expensePayee';
 import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
 import { resolveExpenseApproval, replaceExpenseApprovers } from './expenseApproval';
 import { createHash } from 'node:crypto';
@@ -11,6 +12,7 @@ import { loadExpenseEditorSource } from './expenseRequestEditor';
 import { env } from 'node:process';
 
 export const EXPENSE_REQUEST_INCLUDE = {
+  payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}},
   approvalSteps:{orderBy:{position:'asc' as const},include:{employee:{select:{id:true,name:true}}}},
   partner: { select: { id: true, name: true } },
   createdByEmployee: { select: { id: true, name: true,orgId:true,orgRole:true,status:true } },
@@ -38,12 +40,13 @@ export function expenseRequestTotals(items: any[]) {
 
 export async function registerExpenseRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>) {
   const fail = (message: string): never => { throw createHttpError(400, message); };
-  const requestDate = validateCostDate(body?.requestDate);
+  const previous = typeof body?.clientKey==='string'?await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } }):null;
+  const requestDate = validateCostDate(body?.automaticRequestDate ? previous?.requestDate||expenseApplicationDate() : body?.requestDate??previous?.requestDate??expenseApplicationDate());
   const period = await loadManagementPeriod(tx, orgId);
   assertManagedDate(requestDate, period.startDate);
   const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';
   if (remark.length > 500) fail('INVALID_EXPENSE_REMARK');
-  if (!Number.isSafeInteger(body?.partnerOrgId) || body.partnerOrgId <= 0) fail('INVALID_EXPENSE_REQUEST_HEADER');
+  const payeeIds=expensePayeeIds(body);
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,64}$/.test(body.clientKey)) fail('INVALID_TRANSACTION_KEY');
   if (!Array.isArray(body?.items) || !body.items.length || body.items.length > 50) fail('EXPENSE_REQUEST_ITEMS_REQUIRED');
   const items = body.items.map((item: any, index: number) => {
@@ -60,9 +63,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
       ...(item.unitId===undefined?{}:{unitId:item.unitId}),
       ...(item.linkedOrderIds===undefined?{}:{linkedOrderIds:item.linkedOrderIds}),
       ...(item.linkedStyles===undefined?{}:{linkedStyles:item.linkedStyles}),
-      partnerOrgId: body.partnerOrgId, currency, clientKey: `${body.clientKey}-${index + 1}` };
+      ...payeeIds, currency, clientKey: `${body.clientKey}-${index + 1}` };
   });
-  const previous = await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } });
   const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items,body.approvalSelection);
   const approverEmployeeIds=approval.ids;
   const requestedNumber=normalizeDocumentNumber(body.managementNumber);
@@ -72,11 +74,11 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     return { ...previous, ...expenseRequestTotals(previous.items) };
   }
   if(requestedNumber)throw createHttpError(400,'DOCUMENT_NUMBER_AUTOMATIC');
-  await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
+  await requirePayeeBankAccount(tx,orgId,payeeIds.partnerOrgId,payeeIds.payeeEmployeeId);
   const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const managementNumber=await allocateDocumentNumber(tx,orgId,'EXP',requestDate,requestedNumber);
-  const document = await tx.expenseRequest.create({ data: { orgId, managementNumber, partnerOrgId: body.partnerOrgId, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
+  const document = await tx.expenseRequest.create({ data: { orgId, managementNumber, ...payeeIds, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
     requestDate, remark, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
   await replaceExpenseApprovers(tx,orgId,document.id,approverEmployeeIds);
   // Caller owns the Serializable transaction: every cost and production write rolls back together.

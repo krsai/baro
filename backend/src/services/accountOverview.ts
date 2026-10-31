@@ -32,18 +32,18 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
   const accounts=await readLedgerAccounts(tx,orgId,asOf),monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,-29),start=[monthStart,yesterday,historyStart].sort()[0];
   const [flows,dailyEntries,outstanding]=await Promise.all([
    tx.bankLedgerEntry.groupBy({by:['accountId','transactionDate','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:asOf}},_sum:{amount:true}}),
-   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:{include:{invoice:{select:{buyer:{select:{name:true}}}},expenseItem:{select:{partner:{select:{name:true}}}}}},settlementLines:true},orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
+   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:{include:{invoice:{select:{buyer:{select:{name:true}}}},expenseItem:{select:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}}},settlementLines:true},orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
    loadOutstanding(tx,orgId,asOf),
   ]);
   const known=new Map<string,any>(accounts.map((row:any)=>[row.id,row]));
-  const transactions=dailyEntries.map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:[...new Set(row.allocations.map((a:any)=>a.invoice?.buyer?.name||a.expenseItem?.partner?.name).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
+  const transactions=dailyEntries.map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:[...new Set(row.allocations.map((a:any)=>a.invoice?.buyer?.name||a.expenseItem?.partner?.name||a.expenseItem?.payeeEmployee?.name).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
   return {orgId,...accountBalanceReport(accounts,flows,asOf),transactions,...outstanding};
  },60000);
 }
 async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
  const [invoices,requests,allocations]=await Promise.all([
   tx.invoice.findMany({where:{sellerOrgId:orgId},select:{id:true,buyerOrgId:true,currencyCode:true,status:true,invoiceNumber:true,receivableAdded:true,issuedAt:true,buyer:{select:{name:true}},credits:{where:{voidedAt:null},select:{amount:true}},payments:{where:{voidedAt:null,receivedAt:{lte:new Date(`${asOf}T23:59:59.999+07:00`)}},select:{kind:true,amount:true}}}}),
-  tx.expenseRequest.findMany({where:{orgId,requestDate:{lte:asOf}},include:{partner:{select:{name:true}},createdByEmployee:{select:{id:true,orgId:true,status:true,orgRole:true}},approvalSteps:{orderBy:{position:'asc'}},items:{select:{id:true,currency:true,amount:true}}}}),
+  tx.expenseRequest.findMany({where:{orgId,requestDate:{lte:asOf}},include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,orgId:true,status:true,orgRole:true}},approvalSteps:{orderBy:{position:'asc'}},items:{select:{id:true,currency:true,amount:true}}}}),
   tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,entry:{voidedAt:null,transactionDate:{lte:asOf}}},select:{invoiceId:true,expenseItemId:true,amount:true}}),
  ]);
  const approved=(await attachExpenseApprovalStates(tx,orgId,requests)).filter((row:any)=>row.approval.approved);
@@ -60,7 +60,7 @@ export function outstandingReport(invoices:any[],requests:any[],allocations:any[
   group.references.push({kind:'INVOICE',id:invoice.id,number:invoice.invoiceNumber,date:invoice.issuedAt});receivable.set(key,group);
  }
  for(const request of requests)for(const item of request.items){
-  const key=JSON.stringify([request.partnerOrgId,item.currency]),group=payable.get(key)||{partyId:request.partnerOrgId,party:request.partner?.name||'',currencyCode:item.currency,debt:0n,matched:0n,references:[]};
+  const key=JSON.stringify([request.payeeEmployeeId?'EMPLOYEE':'PARTNER',request.payeeEmployeeId||request.partnerOrgId,item.currency]),group=payable.get(key)||{partyKind:request.payeeEmployeeId?'EMPLOYEE':'PARTNER',partyId:request.payeeEmployeeId||request.partnerOrgId,party:request.partner?.name||request.payeeEmployee?.name||'',currencyCode:item.currency,debt:0n,matched:0n,references:[]};
   group.debt+=ledgerScale4(item.amount);group.matched+=allocations.filter(row=>row.expenseItemId===item.id).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
   if(!group.references.some((r:any)=>r.id===request.id))group.references.push({kind:'EXPENSE_REQUEST',id:request.id,number:request.managementNumber||legacyExpenseNumber(request.id),date:request.requestDate});payable.set(key,group);
  }

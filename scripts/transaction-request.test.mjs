@@ -63,6 +63,18 @@ test('multiple references reject duplicates and inactive, wrong-style or cross-c
   assert.equal(db.writes.length,0);
  }
 });
+
+test('employee payees use the real employee FK and never create outsourced production',async()=>{
+ const body={...input(),partnerOrgId:null,payeeEmployeeId:31};
+ const db=store();db.employee={findFirst:async({where})=>where.id===31&&where.orgId===1?{id:31,name:'Employee'}:null};
+ const saved=await register(db,1,20,body);
+ assert.equal(saved.payeeEmployeeId,31);assert.equal(saved.partnerOrgId,null);assert.deepEqual(db.writes.map(([kind])=>kind),['cost']);
+ await assert.rejects(register(db,2,20,{...body,clientKey:'other-company'}),/INVALID_EXPENSE_EMPLOYEE/);
+ const production=store(true);production.employee=db.employee;
+ await assert.rejects(register(production,1,20,{...body,styleId:40,styleProcessId:50,assignmentPlanId:60}),/EMPLOYEE_PAYEE_PRODUCTION_NOT_ALLOWED/);
+ assert.equal(production.writes.length,0);
+ await assert.rejects(register(db,1,20,{...body,partnerOrgId:11}),/INVALID_EXPENSE_REQUEST_HEADER/);
+});
 test('VAT calculation uses currency rounding and rejects malformed values', () => {
   assert.equal(amounts('100000','2','VND','10').amount.toString(),'220000');
   assert.equal(amounts('0.05','3','USD','10').vatAmount.toString(),'0.02');

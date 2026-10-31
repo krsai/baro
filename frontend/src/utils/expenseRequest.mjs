@@ -5,6 +5,7 @@ export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCode
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const expenseCodeForLine = (line,code) => {
   if (!code) return code;
+  if(line.itemId&&line.inputSettings)return {...code,linkTarget:line.linkTarget,base:{...code.base,...line.inputSettings,entryMode:line.productionLinked?'PROCESS':'GENERAL'}};
   if (line.productionLinked || line.itemId && line.linkTarget==='PROCESS') return {...code,linkTarget:'PROCESS',base:{...code.base,entryMode:line.productionLinked?'PROCESS':'GENERAL',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
   if(line.itemId&&['ORDER','STYLE'].includes(line.linkTarget))return {...code,linkTarget:line.linkTarget,base:{...code.base,entryMode:'GENERAL',orderInput:'REQUIRED',styleInput:line.linkTarget==='STYLE'?'REQUIRED':'HIDDEN',processInput:line.linkTarget==='STYLE'?'OPTIONAL':'HIDDEN'}};
   if (line.itemId) return {...code,linkTarget:'NONE',base:{...code.base,entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'OPTIONAL',processInput:line.styleProcessId?'OPTIONAL':'HIDDEN'}};

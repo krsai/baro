@@ -17,7 +17,7 @@ async function fixture(){
  CREATE TABLE "ExpenseRequestApprovalStep"(id TEXT,"orgId" INT,"requestId" INT,position INT,"employeeId" INT);INSERT INTO "ExpenseRequestApprovalStep" VALUES('s1',1,1,1,10),('s2',1,1,2,11);
  CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC,"invoiceNumber" TEXT);INSERT INTO "Invoice" VALUES('i1',1,'ISSUED','USD',10000,'INV-1'),('i2',2,'ISSUED','USD',10000,'INV-2');
  CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"expenseRequestId" INT,"expenseRequestLine" INT,currency TEXT,amount NUMERIC,description TEXT);INSERT INTO "PartnerTransactionCost" VALUES('c1',1,1,1,'USD',100,'Expense');
- CREATE TABLE "TransactionCode"(id INT PRIMARY KEY,"ownerOrgId" INT,code TEXT,"nameEn" TEXT,"nameKo" TEXT,"nameVi" TEXT,"isActive" BOOLEAN,"baseId" INT,"createdAt" TIMESTAMP DEFAULT now());
+ CREATE TABLE "TransactionCode"(id INT PRIMARY KEY,"ownerOrgId" INT,code TEXT,"nameEn" TEXT,"nameKo" TEXT,"nameVi" TEXT,"isActive" BOOLEAN,"baseId" INT,"taxTreatmentId" INT DEFAULT 1,"createdAt" TIMESTAMP DEFAULT now());
  INSERT INTO "TransactionCode"(id,"ownerOrgId",code,"nameEn","isActive") VALUES(100,1,'GENE','General',true),(101,1,'FEEE','Fee',true),(102,2,'GENE','Other company',true),(103,1,'OLDE','Inactive',false);`);
  await db.exec(await readFile('backend/prisma/migrations/20261027160100_bank_ledger/migration.sql','utf8'));
  // Old transactions are preserved without rewriting their evidence.
@@ -30,9 +30,31 @@ async function fixture(){
  await db.exec(await readFile('backend/prisma/migrations/20261028090000_expense_approval_settings/migration.sql','utf8'));
  await db.exec(await readFile('backend/prisma/migrations/20261030150000_ledger_settlement_lines/migration.sql','utf8'));
  await db.exec(await readFile('backend/prisma/migrations/20261030190000_ledger_entry_revisions/migration.sql','utf8'));
+ await db.exec(`CREATE TABLE "ExpenseType"(id INT PRIMARY KEY,"isActive" BOOL);INSERT INTO "ExpenseType" VALUES(1,true);
+ CREATE TABLE "TransactionCodeBase"(id INT PRIMARY KEY,"expenseTypeId" INT,"isActive" BOOL);INSERT INTO "TransactionCodeBase" VALUES(1,1,true);
+ CREATE TABLE "TaxTreatment"(id INT PRIMARY KEY);INSERT INTO "TaxTreatment" VALUES(1);
+ CREATE TABLE "SettingTransactionCodeDefault"("baseId" INT,"taxTreatmentId" INT,"isActive" BOOL,"isEnabled" BOOL);INSERT INTO "SettingTransactionCodeDefault" VALUES(1,1,true,true);
+ UPDATE "TransactionCode" SET "baseId"=1;`);
+ await db.exec(await readFile('backend/prisma/migrations/20261030220000_ledger_accounting_codes/migration.sql','utf8'));
  return db;
 }
 const entry=(id,type,amount,fee=0,direction='IN',reference='evidence.pdf')=>`INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy","evidenceType","bankFee") VALUES('${id}',1,'a','${id}','2026-01-02','${direction}',${amount},'Reason','${reference}','actor','${type}',${fee});`;
+
+test('accounting migration preserves legacy purpose and restricts new classifications to active company codes',async()=>{
+ const db=await fixture();try{
+  await db.exec(`INSERT INTO "TransactionCode"(id,"ownerOrgId","baseId","taxTreatmentId","isActive") VALUES(7,1,1,1,true),(8,2,1,1,true),(9,1,1,1,false);`);
+  const sql=await readFile('backend/prisma/migrations/20261030220000_ledger_accounting_codes/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+  assert.deepEqual((await db.query('SELECT purpose,"accountingCodeId",amount::text FROM "BankLedgerEntry" WHERE id=\'old\'')).rows,[{purpose:'Legacy',accountingCodeId:null,amount:'1.0000'}]);
+  const coded=(id,code)=>entry(id,'FILE',10).replace('"bankFee")','"bankFee","accountingCodeId")').replace("'FILE',0);",`'FILE',0,${code});`);
+  await db.exec(coded('valid',7));
+  await assert.rejects(db.exec(coded('foreign',8)),/ACCOUNTING_CODE_INVALID|foreign key/);
+  await assert.rejects(db.exec(coded('inactive',9)),/ACCOUNTING_CODE_INVALID/);
+  await assert.rejects(db.exec('UPDATE "BankLedgerEntry" SET "accountingCodeId"=8 WHERE id=\'valid\''),/immutable|append|UPDATE/i);
+  await db.exec('UPDATE "SettingTransactionCodeDefault" SET "isEnabled"=false');
+  await assert.rejects(db.exec(coded('disabled',7)),/ACCOUNTING_CODE_INVALID/);
+  assert.equal((await db.query('SELECT sum(amount)::text total FROM "BankLedgerEntry"')).rows[0].total,'11.0000');
+ }finally{await db.close();}
+});
 test('SQL accepts accountant exemption only for the exact saved drafter and version',async()=>{
  const db=await fixture();
  const allocation=`INSERT INTO "BankLedgerEvidenceAllocation"(id,"entryId","orgId","expenseItemId","requestVersion",amount) VALUES('exempt-a','exempt',1,'c1',1,50);`;
@@ -163,7 +185,7 @@ function ledgerDatabase(pg){
   update:async({where,data})=>{const values=Object.values(data),sets=Object.keys(data).map((key,index)=>`"${key}"=$${index+1}`).join(',');return (await q(`UPDATE "${table}" SET ${sets} WHERE ${whereSql(where,values)} RETURNING *`,values))[0];},
   groupBy:async({by,where})=>{const args=[],fields=by.map(k=>'"'+k+'"').join(',');return (await q(`SELECT ${fields},sum(amount)::text AS total FROM "${table}" WHERE ${whereSql(where,args)} GROUP BY ${fields}`,args)).map(({total,...row})=>({...row,_sum:{amount:total}}));}
  });
- const db={transactionCode:model('TransactionCode'),bankLedgerAccount:model('BankLedgerAccount'),bankLedgerEntry:model('BankLedgerEntry'),bankLedgerBatch:model('BankLedgerBatch'),bankLedgerSettlementLine:model('BankLedgerSettlementLine'),organizationBankAccount:{findMany:async()=>[]},$queryRawUnsafe:async(sql,...args)=>q(sql,args)};
+ const db={transactionCode:{findFirst:async args=>{const row=await model('TransactionCode').findFirst(args);return row?{...row,taxTreatment:{code:'VAT',suffix:'E'},base:{code:row.code.slice(0,3),nameEn:row.nameEn,isActive:true,expenseType:{nameEn:'Expense',isActive:true},variants:[{id:1,taxTreatmentId:row.taxTreatmentId,isActive:true,isEnabled:true}]}}:null;}},bankLedgerAccount:model('BankLedgerAccount'),bankLedgerEntry:model('BankLedgerEntry'),bankLedgerBatch:model('BankLedgerBatch'),bankLedgerSettlementLine:model('BankLedgerSettlementLine'),organizationBankAccount:{findMany:async()=>[]},$queryRawUnsafe:async(sql,...args)=>q(sql,args)};
  db.$transaction=async run=>{await pg.exec('BEGIN ISOLATION LEVEL SERIALIZABLE');try{const result=await run(db);await pg.exec('COMMIT');return result;}catch(error){await pg.exec('ROLLBACK');throw error;}};
  return db;
 }
@@ -190,8 +212,8 @@ test('approval overview filters date, company, participant and current status in
 });
 test('coded ledger edits replace atomically, preserve history and reject stale, foreign or inactive codes; deletion is audited and retry-safe',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
-  const row=batchRow({entryKind:'BANK',purposeCodeId:100,purpose:'',amount:'100'}),original=await postLedgerBatch(db,1,'actor',{schemaVersion:2,clientKey:randomUUID(),rows:[row]}),id=original.entryIds[0];
-  const body={schemaVersion:2,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),purposeCodeId:101,amount:'150'}]};
+  const row=batchRow({entryKind:'BANK',accountingCodeId:100,purpose:'',amount:'100'}),original=await postLedgerBatch(db,1,'actor',{schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[row]}),id=original.entryIds[0];
+  const body={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),accountingCodeId:101,amount:'150'}]};
   const replacement=await replaceLedgerEntry(db,1,'actor',id,body);assert.deepEqual(await replaceLedgerEntry(db,1,'actor',id,body),replacement);
   const history=(await pg.query(`SELECT amount::text,"voidedAt","revisesEntryId" FROM "BankLedgerEntry" WHERE id IN ($1,$2) ORDER BY amount`,[id,replacement.entryIds[0]])).rows;
   assert.equal(history[0].amount,'100.0000');assert.ok(history[0].voidedAt);assert.equal(history[1].revisesEntryId,id);
@@ -199,7 +221,7 @@ test('coded ledger edits replace atomically, preserve history and reject stale, 
   await assert.rejects(replaceLedgerEntry(db,1,'actor',id,{...body,clientKey:randomUUID()}),/ENTRY_CHANGED/);
   await assert.rejects(replaceLedgerEntry(db,1,'actor',id,{...body,rows:[{...body.rows[0],amount:'151'}]}),/RETRY_CONFLICT/);
   const nextId=replacement.entryIds[0];
-  for(const code of [102,103])await assert.rejects(replaceLedgerEntry(db,1,'actor',nextId,{...body,clientKey:randomUUID(),rows:[{...body.rows[0],clientKey:randomUUID(),purposeCodeId:code}]}),/PURPOSE_CODE_REQUIRED/);
+  for(const code of [102,103])await assert.rejects(replaceLedgerEntry(db,1,'actor',nextId,{...body,clientKey:randomUUID(),rows:[{...body.rows[0],clientKey:randomUUID(),accountingCodeId:code}]}),/ACCOUNTING_CODE_INVALID/);
   assert.equal((await pg.query(`SELECT "voidedAt" FROM "BankLedgerEntry" WHERE id=$1`,[nextId])).rows[0].voidedAt,null,'failed replacement restores the active original');
   await assert.rejects(replaceLedgerEntry(db,2,'actor',nextId,body),/NOT_FOUND/);
   await assert.rejects(deleteLedgerEntry(db,1,'actor',nextId,' '),/INVALID_INPUT/);

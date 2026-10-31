@@ -1,13 +1,13 @@
 const LABELS={
- ko:{ADMIN:'조직·가입 관리',ATTRIBUTE:'공통 기준정보',PROCESS_MASTER:'공정 기준정보',MISC:'비용·거래 기준',SYSTEM:'시스템 설정'},
- en:{ADMIN:'Organizations & onboarding',ATTRIBUTE:'Shared reference data',PROCESS_MASTER:'Process reference data',MISC:'Expense & partner data',SYSTEM:'System settings'},
- vi:{ADMIN:'Tổ chức & đăng ký',ATTRIBUTE:'Dữ liệu dùng chung',PROCESS_MASTER:'Danh mục công đoạn',MISC:'Chi phí & đối tác',SYSTEM:'Cài đặt hệ thống'},
+ ko:{ADMIN:'조직·가입 관리',ATTRIBUTE:'공통 기준정보',PROCESS_MASTER:'공정 기준정보',MISC:'회계·거래 기준',SYSTEM:'시스템 설정'},
+ en:{ADMIN:'Organizations & onboarding',ATTRIBUTE:'Shared reference data',PROCESS_MASTER:'Process reference data',MISC:'Accounting & partner data',SYSTEM:'System settings'},
+ vi:{ADMIN:'Tổ chức & đăng ký',ATTRIBUTE:'Dữ liệu dùng chung',PROCESS_MASTER:'Danh mục công đoạn',MISC:'Kế toán & đối tác',SYSTEM:'Cài đặt hệ thống'},
 };
 const GROUPS=[
  ['ADMIN',['/system-setting','/system-onboarding','/employee']],
- ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories']],
+ ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units']],
  ['PROCESS_MASTER',['/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs']],
- ['MISC',['/system-setting/expense-units','/system-setting/expense-types','/system-setting/partner-industries','/system-setting/transaction-codes']],
+ ['MISC',['/system-setting/transaction-codes','/system-setting/expense-types','/system-setting/partner-industries']],
  ['SYSTEM',['/system-setting/access-policy','/system-setting/app-defaults','/employee-system','/salary-system','/personal-settings','/app-settings']],
 ];
 

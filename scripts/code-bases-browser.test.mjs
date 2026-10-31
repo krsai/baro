@@ -21,19 +21,19 @@ try{
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
     const industry={id:4,code:'LOGISTICS',nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển',entryMode:'LOGISTICS',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true};
     const taxes=[{id:1,nameKo:'과세',nameEn:'VAT',nameVi:'Chịu thuế'},{id:2,nameKo:'영세율',nameEn:'Zero-rated',nameVi:'Thuế suất 0%'},{id:3,nameKo:'면세',nameEn:'Exempt',nameVi:'Không chịu thuế'}];
-    const expenseType={id:2,nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
+    const expenseType={id:2,code:'LOGISTICS',nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
     await page.route('**/expense-types',route=>route.fulfill({headers,status:404,json:{error:'organization not found'}}));
     let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
     await page.route('**/system-setting-defaults/**',route=>{
       const url=new URL(route.request().url()),method=route.request().method();
       if(method==='OPTIONS')return route.fulfill({headers,status:204});
-      if(url.pathname.endsWith('/expense-types'))return route.fulfill({headers,json:[expenseType,{id:5,code:'OTHER',nameKo:'기타',nameEn:'Other',nameVi:'Khác',entryMode:'GENERAL',isActive:true}]});
+      if(url.pathname.endsWith('/expense-types'))return route.fulfill({headers,json:[expenseType]});
       if(method==='DELETE'){
         writes.push({path:url.pathname});
         if(url.pathname.includes('/services/'))return route.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});
         bases=bases.filter(row=>row.id!==7);return route.fulfill({headers,json:{ok:true}});
       }
-      if(url.pathname.endsWith('/other-expense-defaults'))return route.fulfill(lang==='ko'?{headers,status:500,json:{error:'INITIALIZATION_FAILED'}}:{headers,json:{expenseTypeId:5,baseId:9}});
+      if(url.pathname.endsWith('/other-expense-defaults'))throw Error('Retired defaults must never initialize');
       if(method==='POST'||method==='PUT'){
         const body=route.request().postDataJSON();writes.push({path:url.pathname,body});
         if(body.code==='DUP')return route.fulfill({headers,status:409,json:{error:'CODE_RENAME_CONFLICT'}});
@@ -45,14 +45,14 @@ try{
     const labels=lang==='ko'?{add:'기본 코드 등록',code:'기본 코드',save:'저장',remove:'삭제',industry:'업종·입력 옵션 관리',used:'사용 이력이나 연결 설정이 있어'}:lang==='en'?{add:'Add base code',code:'Base code',save:'Save',remove:'Delete',industry:'Industries & input options',used:'Usage history or linked settings'}:{add:'Thêm mã gốc',code:'Mã gốc',save:'Lưu',remove:'Xóa',industry:'Ngành và tùy chọn nhập',used:'Không thể xóa do có lịch sử sử dụng'};
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
     const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
-    if(lang==='ko') assert.equal(await page.getByRole('alert').filter({hasText:'설정을 불러오거나 저장하지 못했습니다'}).count(),1,'Initialization failure must remain visible while existing codes load');
+    assert.equal(await page.locator('.MuiAlert-standardError').count(),0);
     assert.equal(await page.locator('thead th').count(),6);
     assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).locator('[data-testid="DeleteOutlineIcon"]').count(),1);
     assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);
     await used.getByRole('button').filter({has:page.locator('[data-testid="EditIcon"]')}).click();
     const editDialog=page.getByRole('dialog');
     assert.equal(await editDialog.getByLabel(labels.code,{exact:false}).isEnabled(),true,'used base codes can be renamed');
-    await editDialog.getByRole('checkbox',{name:/^V/}).check();
+
     await editDialog.getByLabel(labels.code,{exact:false}).fill('dup');
     await editDialog.getByRole('button',{name:labels.save,exact:true}).click();
     const conflict={ko:'같은 기본 코드 또는 변경할 회사별 코드가 이미 있습니다.',en:'The base code or a resulting company code already exists.',vi:'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại.'}[lang];
@@ -72,10 +72,10 @@ try{
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');
     const nameLabels={ko:['이름 (한국어)','이름 (영어 · 대표)','이름 (베트남어)'],en:['Name (Korean)','Name (English · primary)','Name (Vietnamese)'],vi:['Tên (tiếng Hàn)','Tên (tiếng Anh · chính)','Tên (tiếng Việt)']}[lang];
     for(const [index,value] of ['항공','Air','Hàng không'].entries())await dialog.getByLabel(nameLabels[index],{exact:true}).fill(value);
-    await dialog.getByRole('combobox').nth(0).click();assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),1);await page.getByRole('option').first().click();
-    await dialog.getByRole('combobox').nth(1).click();await page.getByRole('option').first().click();
-    await dialog.getByRole('checkbox',{name:/^Z/}).uncheck();await dialog.getByRole('button',{name:labels.save,exact:true}).click();
-    await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,3]);
+    await dialog.getByRole('combobox').nth(0).fill('LOGISTICS');assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),0);await page.getByRole('option').first().click();
+    await dialog.getByRole('combobox').nth(1).fill('LOGISTICS');await page.getByRole('option').first().click();
+    assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);await dialog.getByRole('button',{name:labels.save,exact:true}).click();
+    await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,2,3]);
     bases[0].hasUsageHistory=true;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{source:'transaction-request',topics:['orders'],orgId:1}})));
     await page.waitForFunction(({remove,add})=>{

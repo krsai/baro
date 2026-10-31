@@ -1,9 +1,9 @@
-import { applyExpenseCodeLinkPolicy, registerExpenseCodeLinkPolicyRoutes } from './expenseCodeLinkPolicy';
+import { effectiveExpenseCode, registerExpenseCodeLinkPolicyRoutes } from './expenseCodeLinkPolicy';
 import { validateServiceDefinition } from './partnerTransactionCost';
 import { validateTransactionCode } from './transactionRequest';
 import { loadAppSettings, saveAppSettings } from './applicationSettings';
 import { createHttpError } from '../utils/http';
-import { resolveSystemExpenseCode, SYSTEM_EXPENSE_CODE_INCLUDE } from './systemExpenseCode';
+import { resolveAccountingCode, ACCOUNTING_CODE_INCLUDE } from './accountingCode';
 import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
 import {partnerIndustryOption, saveSystemIndustry} from './partnerIndustry';
 import {registerExpenseUnitRoutes} from './expenseMetadata';
@@ -108,30 +108,31 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       const rows = await defaults.findMany({ include: service ? {
         partnerRole: true,
         expenseType: true,
-        _count: { select: { codes: true, codeBases: true } },
+        _count: { select: { codes: true, codeBases: true,customerIndustries:true,productionPolicies:true } },
         services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
-      } : { serviceType: true, taxTreatment: true, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,ledgerSettlementLines:true } } } } }, orderBy: { id: 'asc' } });
-      res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: service
-        ? row._count.codes > 0 || row._count.codeBases > 0 || row.services.some((local: any) => local.isOverridden || Object.values(local._count).some((count: any) => count > 0))
-        : row.codes.some((local: any) => local.isOverridden || local._count.costs > 0) })));
+      } : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
+      res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: service
+        ? Object.values(row._count).some((count:any)=>Number(count)>0) || row.services.some((local: any) => local.isOverridden || Object.values(local._count).some((count: any) => count > 0))
+        : row.codes.some((local: any) => local.isOverridden || Object.values(local._count).some((count:any)=>Number(count)>0)) })));
     });
     app.get(localPath, async (req: any,res: any) => {
       const access = req.query.all === '1' ? await admin(req,res) : await member(req,res);
       if (!access) return;
       if(service && req.query.forPartner === '1' && !['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(req.query.partnerType))throw createHttpError(400,'INVALID_PARTNER_TYPE');
-      await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id,!service && req.query.forExpenseRequest === '1' || service && req.query.forPartner === '1'), { isolationLevel: 'ReadCommitted' });
+      await db.$transaction((tx: any) => provisionSettingDefaults(tx,access.organization.id,!service && (req.query.forExpenseRequest === '1'||req.query.forAccounting==='1') || service && req.query.forPartner === '1'), { isolationLevel: 'ReadCommitted' });
       if(service && req.query.forPartner === '1') {
         const partnerType=req.query.partnerType;
         const rows=await locals.findMany({where:{ownerOrgId:access.organization.id,systemDefaultId:{not:null}},include:{systemDefault:{include:{partnerRole:true}}},orderBy:{id:'asc'}});
         return res.json(rows.map((row:any)=>partnerIndustryOption(row,partnerType)).filter(Boolean).sort((a:any,b:any)=>a.sortOrder-b.sortOrder||a.systemDefaultId-b.systemDefaultId));
       }
-      if (!service && req.query.forExpenseRequest === '1') {
-        const candidates = await locals.findMany({ where: {ownerOrgId:access.organization.id,isActive:true}, include: SYSTEM_EXPENSE_CODE_INCLUDE, orderBy: {code:'asc'} });
+      if (!service && (req.query.forExpenseRequest === '1'||req.query.forAccounting==='1')) {
+        const candidates = await locals.findMany({ where: {ownerOrgId:access.organization.id,isActive:true}, include: ACCOUNTING_CODE_INCLUDE, orderBy: {code:'asc'} });
+        if(req.query.forAccounting==='1')return res.json(candidates.map(resolveAccountingCode).filter(Boolean));
         const policies = await db.expenseCodeLinkPolicy.findMany({where:{orgId:access.organization.id}});
-        return res.json(candidates.map(resolveSystemExpenseCode).filter(Boolean).map((code:any)=>applyExpenseCodeLinkPolicy(code,policies.find((row:any)=>row.baseId===code.baseId)?.target ?? 'NONE',policies.find((row:any)=>row.baseId===code.baseId)?.auditId ?? null)));
+        return res.json(candidates.map(resolveAccountingCode).filter(Boolean).map((code:any)=>effectiveExpenseCode(code,policies.find((row:any)=>row.baseId===code.baseId))));
       }
-      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, expenseType: { isActive: true } } } : {}) }) }, include: service ? { systemDefault:{include:{partnerRole:true}}, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
-      res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));
+      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, expenseType: { isActive: true } } } : {}) }) }, include: service ? { systemDefault:{include:{partnerRole:true}}, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
+      res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));
     });
     for (const global of [true,false]) {
       const base = global ? defaultPath : localPath;

@@ -156,11 +156,13 @@
     "test:expense-editor-postgres": "npm --prefix backend run build && node scripts/expense-editor-postgres.test.mjs",
     "test:recorded-month-range": "node --test scripts/recorded-month-range.test.mjs",
     "logs:collect": "node scripts/collect-logs.mjs",
+    "test:expense-payee-workspace": "npm --prefix backend run build && node --test scripts/expense-payee.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/transaction-request.test.mjs scripts/expense-code-link-policy.test.mjs scripts/railway-schema-preflight.test.mjs scripts/expense-approval-actions.test.mjs scripts/ledger-evidence.test.mjs && node scripts/expense-payee-browser.test.mjs && node scripts/expense-approval-dialog-browser.test.mjs && node scripts/ledger-workspace-browser.test.mjs",
     "test:expense-code-link-policy": "npm --prefix backend run build && node --test scripts/expense-code-link-policy.test.mjs",
     "test:expense-code-link-browser": "node scripts/expense-code-link-browser.test.mjs",
     "test:expense-code-link-request-browser": "npm --prefix backend run build && node scripts/expense-code-link-request-browser.test.mjs",
     "test:approval-workflow": "npm --prefix backend run build && node --test scripts/expense-approval-actions.test.mjs scripts/ledger-evidence.test.mjs scripts/approval-settings.test.mjs scripts/expense-request-editor.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/expense-approval-actions-browser.test.mjs && node scripts/approval-inbox-browser.test.mjs && node scripts/expense-approval-dialog-browser.test.mjs",
-    "test:ledger-settlement": "npm --prefix backend run build && node --test scripts/ledger-evidence.test.mjs scripts/ledger-evidence-search.test.mjs scripts/bank-ledger.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-workspace-browser.test.mjs"
+    "test:ledger-settlement": "npm --prefix backend run build && node --test scripts/ledger-evidence.test.mjs scripts/ledger-evidence-search.test.mjs scripts/bank-ledger.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-workspace-browser.test.mjs",
+    "test:account-overview": "npm --prefix backend run build && node --test scripts/account-overview.test.mjs scripts/ledger-evidence.test.mjs scripts/bank-ledger.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-workspace-browser.test.mjs && node scripts/approval-inbox-browser.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.3.15",

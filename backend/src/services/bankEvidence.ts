@@ -52,14 +52,14 @@ export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:numbe
  if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
  if(actor.orgRole==='OPERATOR'&&view!=='requested')return [];
  const handled=view==='completed'?await db.expenseApprovalDecision.findMany({where:{orgId,employeeId:actorId},select:{requestId:true,version:true,decision:true,reason:true,createdAt:true}}):[];
- const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
+ const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
  if(!requests.length)return [];
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true,decision:true,reason:true,createdAt:true}});
  const auditIds=requests.filter((row:any)=>view==='completed'||!row.approvalSteps.length).map((row:any)=>row.id);
  const audits=auditIds.length?await db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:auditIds}},select:{requestId:true,version:true,afterSnapshot:true}}):[];
  const toRow=(request:any,status:string)=>{
   const totals=new Map<string,bigint>();for(const item of request.items||[])totals.set(item.currency,(totals.get(item.currency)||0n)+ledgerScale4(item.amount));
-  return {id:request.id,kind:'EXPENSE_REQUEST',version:request.version,status,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),requestDate:request.requestDate,payee:request.partner?.name||'',drafter:request.createdByEmployee?.name||'',totals:[...totals].map(([currency,amount])=>({currency,amount:ledgerMoney(amount,currency)}))};
+  return {id:request.id,kind:'EXPENSE_REQUEST',version:request.version,status,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),requestDate:request.requestDate,payee:request.partner?.name||request.payeeEmployee?.name||'',drafter:request.createdByEmployee?.name||'',totals:[...totals].map(([currency,amount])=>({currency,amount:ledgerMoney(amount,currency)}))};
  };
  const rows=requests.flatMap((request:any)=>{
   const policy=audits.find((audit:any)=>audit.requestId===request.id&&audit.version===request.version)?.afterSnapshot?.approvalPolicy;

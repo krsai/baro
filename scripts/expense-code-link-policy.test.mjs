@@ -7,6 +7,38 @@ import {expenseCodeForLine,inputMode,validExpenseLine} from '../frontend/src/uti
 const sql=readFileSync('backend/prisma/migrations/20261023140000_expense_code_link_policy/migration.sql','utf8');
 const seed=readFileSync('backend/prisma/migrations/20261023140100_baro_expense_code_links/migration.sql','utf8');
 
+test('company input settings override system defaults, validate hierarchy and retain saved document settings',async()=>{
+ const {accountingInputs}=await import('../backend/dist/services/accountingInputs.js');
+ const settings={orderInput:'REQUIRED',styleInput:'OPTIONAL',processInput:'HIDDEN',requiredFields:['origin']};
+ const code={baseId:30,base:{entryMode:'GENERAL',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',requiredFields:['destination']}};
+ assert.equal(policy.effectiveExpenseCode(code).linkTarget,'PROCESS');
+ assert.deepEqual(policy.effectiveExpenseCode(code,{target:'ORDER',auditId:7,inputSettings:settings}).base,{...code.base,...settings,entryMode:'GENERAL'});
+ assert.throws(()=>accountingInputs({...settings,orderInput:'HIDDEN'}),/INVALID_INPUT_OPTION/);
+ const edited=await policy.resolveExpenseCodeLink({expenseCodeLinkAudit:{findUnique:async()=>({inputSettings:settings})}},1,code,{cost:{linkTarget:'ORDER',linkPolicyAuditId:7}});
+ assert.deepEqual(edited.base.requiredFields,['origin']);assert.equal(edited.base.styleInput,'OPTIONAL');
+ const line=expenseCodeForLine({itemId:'saved',inputSettings:settings,linkTarget:'ORDER'},code);
+ assert.equal(line.base.processInput,'HIDDEN');assert.equal(line.base.styleInput,'OPTIONAL');
+});
+
+test('SQL input overrides enforce details and references while preserving earlier audit snapshots and amounts',async()=>{
+ const db=await fixture(true);try{
+  await db.exec(`ALTER TABLE "Employee" ADD COLUMN status TEXT DEFAULT 'ACTIVE';ALTER TABLE "PartnerTransactionCost" ADD COLUMN "payeeEmployeeId" INT;`);
+  const migration=readFileSync('backend/prisma/migrations/20261031010000_accounting_input_defaults/migration.sql','utf8');await db.exec(migration);await db.exec(migration);
+  const settings={orderInput:'REQUIRED',styleInput:'OPTIONAL',processInput:'HIDDEN',requiredFields:['origin']};
+  const audit=(await db.query(`INSERT INTO "ExpenseCodeLinkAudit"("orgId","baseId",target,"actorId","inputSettings") VALUES(1,20,'ORDER',20,$1) RETURNING id`,[JSON.stringify(settings)])).rows[0].id;
+  await db.query(`UPDATE "ExpenseCodeLinkPolicy" SET target='ORDER',"auditId"=$1,"inputSettings"=$2 WHERE "orgId"=1 AND "baseId"=20`,[audit,JSON.stringify(settings)]);
+  const insert=(id,details)=>db.query(`INSERT INTO "PartnerTransactionCost"(id,"orgId","partnerOrgId","serviceTypeId","transactionCodeId","workOrderId","unitPrice",quantity,subtotal,"vatRate","vatAmount",amount,currency,details,"linkTarget","linkPolicyAuditId") VALUES($1,1,11,1,4,40,10,2,20,0,0,20,'VND',$2,'ORDER',$3)`,[id,JSON.stringify(details),audit]);
+  await assert.rejects(insert('missing',{}),/required transaction detail/);await insert('valid',{origin:'Factory'});
+  await assert.rejects(db.exec(`UPDATE "ExpenseCodeLinkPolicy" SET "inputSettings"='{"orderInput":"HIDDEN"}' WHERE "baseId"=20`),/check constraint|audit mismatch/);
+  const next=(await db.query(`INSERT INTO "ExpenseCodeLinkAudit"("orgId","baseId",target,"actorId") VALUES(1,20,'NONE',20) RETURNING id`)).rows[0].id;
+  await db.query(`UPDATE "ExpenseCodeLinkPolicy" SET target='NONE',"auditId"=$1,"inputSettings"=NULL WHERE "baseId"=20`,[next]);
+  await db.exec(`SET test.editor='true'`);
+  await assert.rejects(db.exec(`UPDATE "PartnerTransactionCost" SET details='{}' WHERE id='valid'`),/required transaction detail/);
+  assert.equal(Number((await db.query(`SELECT amount FROM "PartnerTransactionCost" WHERE id='valid'`)).rows[0].amount),20);
+  assert.equal((await db.query('SELECT count(*)::int n FROM "OutsourcedWorkRecord"')).rows[0].n,1);
+ }finally{await db.close();}
+});
+
 test('hierarchy requires parent references while style scope supports an optional process set without production',()=>{
  const base={entryMode:'PROCESS',requiredFields:[]},line={quantity:'2',unitPrice:'10',vatRate:'0',details:{},enabled:{},workOrderId:40,styleId:50,styleProcessIds:[55,56]};
  for(const [target,expected] of [['ORDER',['REQUIRED','HIDDEN','HIDDEN']],['STYLE',['REQUIRED','REQUIRED','OPTIONAL']],['PROCESS',['REQUIRED','REQUIRED','REQUIRED']]]){
@@ -40,15 +72,40 @@ test('hierarchy SQL keeps legacy rows and permits one cost with multiple real pr
  }finally{await db.close();}
 });
 
-test('base FK determines all E/V/Z variants; unset defaults ignore industry and legacy input flags',async()=>{
+test('employee payee SQL preserves vendor history and enforces real employee, account and document scopes',async()=>{
+ const db=await fixture(true);try{
+  await db.exec(`ALTER TABLE "Employee" ADD COLUMN status TEXT DEFAULT 'ACTIVE',ADD COLUMN "orgRole" TEXT DEFAULT 'ADMIN',ADD COLUMN "bankAccountNumber" TEXT DEFAULT 'payroll-original';
+   CREATE TABLE "ExpenseRequest"(id INT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT NOT NULL);
+   CREATE TABLE "OrganizationBankAccount"(id TEXT PRIMARY KEY,"orgId" INT,"entityId" INT);`);
+  const before=(await db.query('SELECT to_jsonb(c) AS row FROM "PartnerTransactionCost" c ORDER BY id')).rows;
+  const migration=readFileSync('backend/prisma/migrations/20261030210000_employee_expense_payees/migration.sql','utf8');
+  await db.exec(migration);await db.exec(migration);
+  assert.deepEqual((await db.query(`SELECT to_jsonb(c)-'payeeEmployeeId' AS row FROM "PartnerTransactionCost" c ORDER BY id`)).rows,before);
+  await db.exec(`CREATE CONSTRAINT TRIGGER request_bank AFTER INSERT OR UPDATE ON "ExpenseRequest" DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION baro_expense_payee_bank_guard();`);
+  await assert.rejects(db.exec(`INSERT INTO "ExpenseRequest" VALUES(1,1,NULL,20)`),/PAYEE_BANK_ACCOUNT_REQUIRED/);
+  await db.exec(`INSERT INTO "EmployeeExpenseBankAccount"(id,"orgId","employeeId","createdByEmployeeId","currencyCode","bankName","accountNumber","accountHolder") VALUES('emp-bank',1,20,20,'USD','Bank','123','Employee');`);
+  await assert.rejects(db.exec(`INSERT INTO "EmployeeExpenseBankAccount"(id,"orgId","employeeId","createdByEmployeeId","currencyCode","bankName","accountNumber","accountHolder") VALUES('wrong',1,21,20,'USD','Bank','123','Other company')`));
+  await db.exec(`INSERT INTO "ExpenseRequest" VALUES(1,1,NULL,20);SET test.editor='true';`);
+  await db.exec(`INSERT INTO "Employee"(id,"orgId") VALUES(22,1);`);
+  const insert=(id,employee,record=null)=>db.query(`INSERT INTO "PartnerTransactionCost"(id,"orgId","partnerOrgId","payeeEmployeeId","expenseRequestId","serviceTypeId","transactionCodeId","unitPrice",quantity,subtotal,"vatRate","vatAmount",amount,currency,details,"outsourcedWorkRecordId") VALUES($1,1,NULL,$2,1,1,5,10,2,20,0,0,20,'USD','{}',$3)`,[id,employee,record]);
+  await insert('employee-cost',20);
+  await assert.rejects(insert('other-company-cost',21));
+  await assert.rejects(insert('different-request-payee',22));
+  await assert.rejects(insert('production-for-employee',20,70));
+  await assert.rejects(db.exec(`UPDATE "EmployeeExpenseBankAccount" SET "accountNumber"='changed' WHERE id='emp-bank'`),/immutable/);
+  assert.equal((await db.query(`SELECT "bankAccountNumber" FROM "Employee" WHERE id=20`)).rows[0].bankAccountNumber,'payroll-original');
+ }finally{await db.close();}
+});
+
+test('base FK determines all E/V/Z variants; unset company settings inherit system defaults independently of industry',async()=>{
  const db={expenseCodeLinkPolicy:{findUnique:async({where})=>where.orgId_baseId.orgId===1&&where.orgId_baseId.baseId===10?{target:'PROCESS',auditId:5}:null},industryProductionPolicy:{findUnique:()=>{throw Error('Legacy industry setting must not be read');}}};
  for(const tax of ['E','V','Z']){
-  const code={baseId:10,code:'BTH'+tax,base:{entryMode:'PROCESS',processInput:'REQUIRED',requiredFields:[],serviceTypeId:1}};
+  const code={baseId:10,code:'BTH'+tax,base:{entryMode:'PROCESS',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',requiredFields:[],serviceTypeId:1}};
   const original=structuredClone(code),required=await policy.resolveExpenseCodeLink(db,1,code);
   assert.equal(required.linkTarget,'PROCESS');assert.equal(inputMode(required,'process'),'REQUIRED');assert.deepEqual(code,original);
   for(const [org,base] of [[2,10],[1,20],[1,99]]){
    const optional=await policy.resolveExpenseCodeLink(db,org,{...code,baseId:base});
-   assert.equal(optional.linkTarget,'NONE');assert.equal(optional.base.entryMode,'GENERAL');assert.equal(inputMode(optional,'process'),'HIDDEN');
+   assert.equal(optional.linkTarget,'PROCESS');assert.equal(optional.base.entryMode,'PROCESS');assert.equal(inputMode(optional,'process'),'REQUIRED');
   }
  }
 });

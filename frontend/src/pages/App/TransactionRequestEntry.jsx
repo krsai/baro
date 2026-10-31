@@ -1,9 +1,10 @@
+import DocumentEntryHeader from '../../components/DocumentEntryHeader';
 import {ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
 import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
 import {approvalSettingsText} from '../../constants/approvalSettings';
-import {documentNumberText,documentNumberError} from '../../constants/documentNumber';
+import {documentNumberError} from '../../constants/documentNumber';
 import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -14,10 +15,10 @@ import { Add } from '@mui/icons-material';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { getUiMessage } from '../../constants/uiMessages';
-import ExpensePayeePicker from '../../components/ExpensePayeePicker';
+import ExpensePayeePicker,{payeeAccountPath} from '../../components/ExpensePayeePicker';
 import { EXPENSE_LOOKUP_TEXT } from '../../constants/expenseLookup';
 import './expenseRequests.css';
-import CustomDatePicker from '../../components/CustomDatePicker';
+
 import ExpenseRequestLine from '../../components/ExpenseRequestLine';
 import { useManagementPeriod } from '../../context/ManagementPeriodContext';
 import { useAuth } from '../../context/AuthContext';
@@ -40,7 +41,7 @@ const FORM_TEXT={ko:{auto:'등록 시 자동 부여',required:'필수 입력 항
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
 const newDocument = () => { const date = today(); return { managementNumber:'', remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
-const documentSnapshot = form => JSON.stringify({managementNumber:form.managementNumber,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,items:form.items.map(expenseLinePayload)});
+const documentSnapshot = form => JSON.stringify({managementNumber:form.managementNumber,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,payeeEmployeeId:form.payeeEmployeeId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -55,7 +56,6 @@ export default function TransactionRequestEntry() {
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
-  const numbering=documentNumberText[languageCode]||documentNumberText.en;
   const formText=FORM_TEXT[languageCode]||FORM_TEXT.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const approvalRef=useRef(null),saveLock=useRef(false);
@@ -89,7 +89,7 @@ export default function TransactionRequestEntry() {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
     Promise.all([
-      ...['business-partners','transaction-codes','app-settings','orders','expense-units'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
+      ...['expense-payees','transaction-codes','app-settings','orders','expense-units'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
       editing ? requestJSON(`${editorPath}${query}`,{skipCache:true}) : Promise.resolve(null),
     ])
       .then(([partners,codes,settings,orders,units,loaded]) => { if (alive) {
@@ -119,11 +119,11 @@ export default function TransactionRequestEntry() {
     setForm(current => current.items[0]?.key === key ? current : { ...current, items: current.items.filter(line => line.key !== key) });
   };
   const totals = useMemo(() => expenseTotalsByCurrency(form.items), [form.items]);
-  const partner = data.partners.find(row => row.id === form.partnerOrgId);
+  const partner = data.partners.find(row => row.id === (form.payeeEmployeeId?`EMP:${form.payeeEmployeeId}`:form.partnerOrgId));
   useEffect(() => {
     let alive = true;
     setPayeeBanks({entityId:partner?.id,accounts:[],loaded:false});
-    if (partner?.id) requestJSON(`/entities/${partner.id}/bank-accounts${buildQueryString({orgId:activeOrgId})}`,{skipCache:true})
+    if (partner?.id) requestJSON(`${payeeAccountPath(partner)}${buildQueryString({orgId:activeOrgId})}`,{skipCache:true})
       .then(result=>{if(alive)setPayeeBanks({entityId:partner.id,accounts:result.accounts,loaded:true});})
       .catch(()=>{if(alive)setPayeeBanks({entityId:partner.id,accounts:[],loaded:false,error:true});});
     return ()=>{alive=false;};
@@ -174,7 +174,7 @@ export default function TransactionRequestEntry() {
     try {
     const selection=submission?submission.approvalSelection:await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
-    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, requestDate: form.requestDate, partnerOrgId: form.partnerOrgId, clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -218,24 +218,14 @@ export default function TransactionRequestEntry() {
       {period.error && <Alert severity="error">{labels.loadError}</Alert>}
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Box sx={{p:2}}>
-          <Box data-testid="expense-header" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(220px,320px) minmax(0,1fr)'},gap:3,alignItems:'start'}}>
-            <Stack data-testid="expense-header-fields" spacing={1.5} sx={{'& > *':{height:36,minWidth:0,width:'100%'}}}>
-            <CustomDatePicker label={labels.date} value={form.requestDate} minDate={period.startDate} adapterLocale={languageCode} disabled={disabled} onChange={(date, context) => { if (date?.isValid() && !context?.validationError) update({ requestDate: date.format('YYYY-MM-DD') }); }} />
-            <TextField label={numbering.expense} value={form.managementNumber||''} placeholder={formText.auto} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
-            <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
-              onChange={(selected,accounts)=>{update({partnerOrgId:selected.id});setPayeeBanks({entityId:selected.id,accounts,loaded:true});}}
-              onSaved={saved=>{if(organizationRef.current===activeOrgId && mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
-            </Stack>
-            <Box data-testid="expense-header-approval" sx={{justifySelf:{xs:'stretch',sm:'end'},minWidth:0,maxWidth:520,width:{xs:'100%',sm:'auto'}}}><Stack direction="row" spacing={2} alignItems="flex-start">
-            <ExpenseApprovalSettings vertical ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}
-              />
-      <ExpenseApprovalActions compact requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
-            </Stack></Box>
-          </Box>
-          </Box>
-        </Box>
+        <DocumentEntryHeader approval={<Stack spacing={1}>
+          <ExpenseApprovalSettings horizontalStages ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}/>
+          <ExpenseApprovalActions compact requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
+        </Stack>}>
+          <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
+            onChange={(selected,accounts)=>{update({partnerOrgId:selected?.employeeId?null:selected?.id||null,payeeEmployeeId:selected?.employeeId||null});setPayeeBanks({entityId:selected?.id,accounts,loaded:true});}}
+            onSaved={saved=>{if(organizationRef.current===activeOrgId&&mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
+        </DocumentEntryHeader>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
         <DragDropContext onBeforeCapture={() => {
           dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);

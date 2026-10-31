@@ -1,33 +1,10 @@
+import {accountingInputs} from './accountingInputs';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { createHttpError } from '../utils/http';
 import { COST_DETAIL_FIELDS } from './partnerTransactionCost';
 
-export async function initializeOtherExpenseDefaults(tx: any, actorId?: number | null) {
-  // Prisma cannot deserialize PostgreSQL's void result from advisory locks.
-  await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(2026101903)::text AS lock');
-  const key = 'EXPENSE_OTHER_DEFAULTS:2026-10-19';
-  const previous = await tx.systemSetting.findUnique({ where: { key } });
-  if (previous) return previous.value;
-  const type = await tx.expenseType.findUnique({ where: { code: 'OTHER' } }) || await tx.expenseType.create({ data: {
-    code: 'OTHER', nameKo: '기타', nameEn: 'Other', nameVi: 'Khác', entryMode: 'GENERAL', isActive: true,
-  } });
-  let base = await tx.transactionCodeBase.findUnique({ where: { code: 'OTH' } });
-  if (!base) {
-    let industry = await tx.settingServiceDefault.findUnique({ where: { code: 'GENERAL' } });
-    if (!industry) {
-      // The unclassified general-service template may have been renamed before
-      // OTHER is first initialized. Never pick arbitrarily from several templates.
-      const candidates = (await tx.settingServiceDefault.findMany({ where: { entryMode: 'GENERAL' } })).filter((row: any) => row.partnerRoleId == null);
-      if (candidates.length === 1) industry = candidates[0];
-    }
-    if (!industry) throw createHttpError(409, 'DEFAULT_GENERAL_SERVICE_REQUIRED');
-    base = await saveCodeBase(tx, { code: 'OTH', nameKo: '기타 비용', nameEn: 'Other expenses', nameVi: 'Chi phí khác',
-      expenseTypeId: type.id, serviceTypeId: industry.id, taxTreatmentIds: [1,2,3], requiredFields: [],
-      orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', isActive: true });
-  }
-  const value = { expenseTypeId: type.id, baseId: base.id };
-  await tx.systemSetting.create({ data: { key, value, updatedByEmployeeId: actorId ?? null } });
-  return value;
+export async function initializeOtherExpenseDefaults(_tx: any, _actorId?: number | null) {
+  throw createHttpError(410,'OTHER_EXPENSE_TYPE_RETIRED');
 }
 
 export function validateCodeBase(body: any) {
@@ -41,6 +18,7 @@ export function validateCodeBase(body: any) {
 }
 
 export async function saveCodeBase(tx: any, body: any, id?: number) {
+  body={...body,taxTreatmentIds:[1,2,3]};
   const data: any = validateCodeBase(body);
   // Serialize catalogue writes and tenant provisioning while code identities move.
   // Business cost rows and their FKs are never updated.
@@ -58,17 +36,18 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   const expenseType = body.expenseTypeId
     ? await tx.expenseType.findUnique({ where: { id: body.expenseTypeId } })
     : await tx.expenseType.findUnique({ where: { code: source.entryMode === 'PROCESS' ? 'PRODUCTION' : source.entryMode === 'LOGISTICS' ? 'LOGISTICS' : 'GENERAL' } });
-  if (!expenseType || !expenseType.isActive && expenseType.id !== previous?.expenseTypeId) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
+  if (!expenseType || expenseType.code === 'OTHER' || !expenseType.isActive && expenseType.id !== previous?.expenseTypeId) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
   if (previous?.entryMode && previous.entryMode !== expenseType.entryMode && (await getCodeBaseUsage(tx,[id!])).has(id!)) throw createHttpError(409,'USED_CODE_ENTRY_MODE_IMMUTABLE');
   data.expenseTypeId = expenseType.id;
   data.entryMode = expenseType.entryMode;
   data.requiredFields = body.requiredFields ?? previous?.requiredFields ?? source.requiredFields;
   if (!Array.isArray(data.requiredFields) || data.requiredFields.some((field: any) => !COST_DETAIL_FIELDS.includes(field))) throw createHttpError(400,'INVALID_REQUIRED_FIELDS');
   for (const key of ['orderInput','styleInput','processInput']) {
-    data[key] = data.entryMode === 'PROCESS' ? 'REQUIRED' : body[key] ?? previous?.[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
+    data[key] = body[key] ?? previous?.[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
     if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(data[key])) throw createHttpError(400,'INVALID_INPUT_OPTION');
   }
   if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
+  accountingInputs(data);
   const renaming = previous && previous.code !== data.code;
   if (renaming) await assertCodeBaseRenameAvailable(tx, id!, data.code);
   const base = id ? await tx.transactionCodeBase.update({ where: { id }, data }) : await tx.transactionCodeBase.create({ data });
@@ -117,13 +96,14 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
   if (global) {
     const local = service ? tx.outsourcingServiceType : tx.transactionCode;
     if (service && (await tx.settingTransactionCodeDefault.count({ where: { serviceTypeId: id } }) || await tx.transactionCodeBase.count({ where: { serviceTypeId: id } }))) throw createHttpError(409,'SETTING_IN_USE');
+    if(service&&(await tx.orgRelationship?.count({where:{systemIndustryId:id}})||await tx.industryProductionPolicy?.count({where:{systemIndustryId:id}})))throw createHttpError(409,'SETTING_IN_USE');
     const copies = await local.findMany({ where: { systemDefaultId: id } });
     if (copies.some((row: any) => row.isOverridden)) throw createHttpError(409,'SETTING_IN_USE');
     for (const row of copies) await deleteSetting(tx, kind, false, row.id, row.ownerOrgId, true);
   }
   if (!global) {
     if (await tx.partnerTransactionCost.count({ where: service ? { serviceTypeId: id } : { transactionCodeId: id } })) throw createHttpError(409,'SETTING_IN_USE');
-    if(!service&&((tx.bankLedgerEntry?.count&&await tx.bankLedgerEntry.count({where:{purposeCodeId:id}}))||(tx.bankLedgerSettlementLine?.count&&await tx.bankLedgerSettlementLine.count({where:{purposeCodeId:id}}))))throw createHttpError(409,'SETTING_IN_USE');
+    if(!service&&(await tx.bankLedgerEntry?.count({where:{accountingCodeId:id}})||await tx.bankLedgerSettlementLine?.count({where:{accountingCodeId:id}})))throw createHttpError(409,'SETTING_IN_USE');
     if (service && (await tx.organizationOutsourcingServiceType.count({ where: { serviceTypeId: id } }) || await tx.transactionCode.count({ where: { serviceTypeId: id } }))) throw createHttpError(409,'SETTING_IN_USE');
   }
   await model.delete({ where: { id } });
@@ -144,16 +124,19 @@ export async function deleteCodeBase(tx: any, id: number) {
 
 export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<number>> {
   if (!ids.length) return new Set();
+  const ledgerUsage=db.bankLedgerEntry&&db.bankLedgerSettlementLine?`
+    UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerEntry" entry ON entry."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])
+    UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerSettlementLine" line ON line."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])`:'';
   const rows = await db.$queryRawUnsafe(`SELECT DISTINCT code."baseId" AS id
     FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id
-    WHERE code."baseId"=ANY($1::int[])`,ids) as { id: number }[];
+    WHERE code."baseId"=ANY($1::int[])`+ledgerUsage,ids) as { id: number }[];
   return new Set(rows.map(row=>row.id));
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
   app.get('/system-setting-defaults/expense-types', async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
-    res.json(await db.expenseType.findMany({ orderBy: { id: 'asc' } }));
+    res.json(await db.expenseType.findMany({ where: { code: { not: 'OTHER' } }, orderBy: { id: 'asc' } }));
   });
   app.post('/system-setting-defaults/other-expense-defaults', async (req: any, res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
@@ -161,12 +144,14 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
   });
   app.get('/expense-types', async (req: any,res: any) => {
     if (!await gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] })) return;
-    res.json(await db.expenseType.findMany({ orderBy: { id: 'asc' } }));
+    res.json(await db.expenseType.findMany({ where: { code: { not: 'OTHER' } }, orderBy: { id: 'asc' } }));
   });
   app.put('/expense-types/:id', async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id <= 0 || !validLocalizedName(req.body, 100)) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
+    const existing = await db.expenseType.findUnique({where:{id}});
+    if(existing?.code === 'OTHER') throw createHttpError(410,'OTHER_EXPENSE_TYPE_RETIRED');
     const { nameEn, nameKo, nameVi } = normalizeLocalizedName(req.body);
     res.json(await db.expenseType.update({ where: { id }, data: { nameEn, nameKo, nameVi, isActive: req.body.isActive !== false } }));
   });
@@ -187,7 +172,7 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
       },
     });
     const usedIds = await getCodeBaseUsage(db,bases.map((base: any)=>base.id));
-    res.json(bases.map((base: any) => ({ ...base, hasUsageHistory: usedIds.has(base.id) })));
+    res.json(bases.filter((base: any)=>base.expenseType?.code !== 'OTHER').map((base: any) => ({ ...base, hasUsageHistory: usedIds.has(base.id) })));
   });
   for (const update of [false,true]) app[update ? 'put' : 'post'](`${path}${update ? '/:id' : ''}`, async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;

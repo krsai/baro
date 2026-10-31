@@ -1,4 +1,5 @@
 import { requirePayeeBankAccount } from './entityBankAccount';
+import {expensePayeeIds,employeePayee,expenseApplicationDate} from './expensePayee';
 import {allocateDocumentNumber,normalizeDocumentNumber,legacyExpenseNumber} from './documentNumber';
 import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateApprovalSettings, defaultApprovalSettings, replaceExpenseApprovers, resolveExpenseApproval, approvalSettingKey } from './expenseApproval';
 import { createHash } from 'node:crypto';
@@ -17,7 +18,7 @@ const recordInclude = {
     workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } } } },
 };
 const costInclude = { ...REQUEST_INCLUDE, workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } }, outsourcedWorkRecord: { include: recordInclude } };
-const documentInclude = { approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
+const documentInclude = { payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}}, approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
   items: { include: costInclude, orderBy: { expenseRequestLine: 'asc' } } };
 const fail = (status: number, code: string): never => { throw createHttpError(status, code); };
 const numericId = (id: string) => /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id)>0 ? Number(id) : fail(400,'INVALID_EXPENSE_SOURCE');
@@ -49,7 +50,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
 
 export function expenseEditorRevision(source: any) {
   return hash(snapshot({ kind: source.kind, id: source.id, document: source.document && {
-    id: source.document.id, version: source.document.version, remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,
+    id: source.document.id, version: source.document.version, remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
   }, costs: source.costs.map((cost: any) => ({...cost,partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
 }
 
@@ -58,7 +59,7 @@ function editorLine(cost: any, record: any) {
   const refs = record && { order: record.assignmentPlan.workOrder,
     style: { ...record.style, styleProcesses: [record.styleProcess] },
     plan: { id: record.assignmentPlanId, styleId: record.styleId, processIds: [record.styleProcessId] } };
-  return { linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
+  return { inputSettings:cost?.linkPolicyAudit?.inputSettings??null,linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
     transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
     unitId:cost?.unitId??'',unit:cost?.unit??null,
@@ -78,8 +79,9 @@ export function expenseEditorForm(source: any) {
   const first = source.costs[0], record = source.record || first?.outsourcedWorkRecord;
   return { managementNumber:source.document?(source.document.managementNumber||legacyExpenseNumber(source.document.id)):'', approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
     requestDate: source.document?.requestDate || first?.transactionDate || record?.workLog.displayDate,
-    partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId,
-    partner: source.document?.partner || first?.partner || record?.outsourcingPartner,
+    partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId || null,
+    payeeEmployeeId:source.document?.payeeEmployeeId||first?.payeeEmployeeId||null,
+    partner: employeePayee(source.document?.payeeEmployee||first?.payeeEmployee)||source.document?.partner || first?.partner || record?.outsourcingPartner,
     createdByEmployee: source.document?.createdByEmployee || first?.createdByEmployee || record?.createdByEmployee || null, revision: expenseEditorRevision(source),
     bankReconciled:!!source.document?.bankReconciled,
     readOnly: Boolean(source.document?.bankReconciled || record?.assignmentPlan?.workOrder?.invoiceFinalLockedAt || source.costs.some((cost: any)=>cost.workOrder?.invoiceFinalLockedAt || cost.outsourcedWorkRecord?.assignmentPlan?.workOrder?.invoiceFinalLockedAt)),
@@ -112,10 +114,12 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   // check that the matching audit event was saved before commit.
   await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
   const before = snapshot(source);
-  const requestDate = validateCostDate(body.requestDate), remark = typeof body.remark==='string' ? body.remark.trim() : '';
+  if(source.document&&body.requestDate!==undefined&&body.requestDate!==source.document.requestDate)return fail(409,'EXPENSE_REQUEST_DATE_LOCKED');
+  const requestDate = validateCostDate(source.document?.requestDate||source.costs[0]?.transactionDate||(body.automaticRequestDate?expenseApplicationDate():body.requestDate??expenseApplicationDate())), remark = typeof body.remark==='string' ? body.remark.trim() : '';
   if(remark.length>500)return fail(400,'INVALID_EXPENSE_REMARK');
   assertManagedDate(requestDate,(await loadManagementPeriod(tx,orgId)).startDate);
-  if (!Number.isSafeInteger(body.partnerOrgId) || body.partnerOrgId<=0 || !Array.isArray(body.items) || !body.items.length || body.items.length>50 || body.items.some((item: any)=>!item || typeof item!=='object' || Array.isArray(item))) return fail(400,'INVALID_EXPENSE_REQUEST_HEADER');
+  const payeeIds=expensePayeeIds(body);
+  if (!Array.isArray(body.items) || !body.items.length || body.items.length>50 || body.items.some((item: any)=>!item || typeof item!=='object' || Array.isArray(item))) return fail(400,'INVALID_EXPENSE_REQUEST_HEADER');
   const byId = new Map(source.costs.map((cost: any)=>[cost.id,cost]));
   const itemIds = body.items.map((item: any)=>item?.itemId).filter(Boolean);
   if (new Set(itemIds).size!==itemIds.length || itemIds.some((itemId: string)=>!byId.has(itemId))) return fail(400,'INVALID_EXPENSE_REQUEST_ITEM');
@@ -126,13 +130,13 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   }
   // Release only the document/payee composite FK inside this transaction; IDs and source FKs remain intact.
   if (source.document) await tx.partnerTransactionCost.updateMany({ where: { expenseRequestId: source.document.id, orgId }, data: { expenseRequestId: null, expenseRequestLine: null } });
-  await requirePayeeBankAccount(tx,orgId,body.partnerOrgId);
+  await requirePayeeBankAccount(tx,orgId,payeeIds.partnerOrgId,payeeIds.payeeEmployeeId);
   const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection);
   const approvers = approval.ids;
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
   if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
   const managementNumber=source.document?.managementNumber||(!source.document?await allocateDocumentNumber(tx,orgId,'EXP',requestDate,body.managementNumber):null);
-  const header = { remark, requestDate, partnerOrgId: body.partnerOrgId, updatedAt: new Date(), updatedByEmployeeId: actorId,
+  const header = { remark, requestDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
     await tx.expenseRequest.create({ data: { ...header, orgId, managementNumber, createdByEmployeeId: actorId, clientKey: body.clientKey, submissionHash: inputHash } });
@@ -141,7 +145,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   for (const [index,item] of body.items.entries()) {
     const cost: any = item.itemId ? byId.get(item.itemId) : null;
     const record = cost?.outsourcedWorkRecord || (source.record && item.sourceRecordId===source.record.id ? source.record : null);
-    const input = { ...item, transactionDate: requestDate, partnerOrgId: body.partnerOrgId, clientKey: `${body.clientKey}-${index+1}` };
+    const input = { ...item, transactionDate: requestDate, ...payeeIds, clientKey: `${body.clientKey}-${index+1}` };
     let saved;
     try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}}); }
     catch(error: any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
