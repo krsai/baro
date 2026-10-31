@@ -13,7 +13,7 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
 
 test('issued HTML renders frozen document fields, public order numbers and settlement, not live masters or internal reasons', () => {
   const invoice = fixture(), before = structuredClone(invoice), html = buildIssuedInvoicePrintHtml(invoice);
-  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', 'Warehouse', '2026-09-29', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'STYLE123', 'Jacket', 'HS123', 'Vietnam', 'Customer remark', 'TOTAL USD 80.00']) assert.ok(html.includes(text), text);
+  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', 'Warehouse', '2026-09-29', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'STYLE123', 'Jacket', 'HS123', 'Vietnam', 'Customer remark', 'USD 80.00']) assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /CURRENT MASTER|internal-order-id|INTERNAL REASON|DRAFT|<script>/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /thead\{display:table-header-group\}/);
@@ -28,4 +28,15 @@ test('issued template rejects unknown versions and explicitly supports legacy sn
   assert.match(buildIssuedInvoicePrintHtml(invoice), /INV-1/);
   invoice.snapshot.version = 999;
   assert.throws(() => buildIssuedInvoicePrintHtml(invoice), /TEMPLATE_UNSUPPORTED/);
+});
+
+test('document grid localizes the form and keeps cancelled status visible',()=>{
+  const invoice=fixture();invoice.status='CANCELLED';
+  for(const [lang,title,status] of [['ko','청 구 서','취소'],['en','INVOICE','Cancelled'],['vi','HÓA ĐƠN','Đã hủy']]){
+    const html=buildIssuedInvoicePrintHtml(invoice,lang);
+    assert.ok(html.includes(`<h1 class="invoice-heading">${title}</h1>`));
+    assert.ok(html.includes(`<p class="invoice-status">${status}</p>`));
+    assert.match(html,/class="invoice-parties"/);assert.match(html,/class="invoice-total"/);
+    assert.equal((html.match(/aria-hidden="true"/g)||[]).length,9);
+  }
 });

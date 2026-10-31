@@ -2,12 +2,12 @@ import {buildIssuedInvoicePrintHtml} from './issuedInvoicePrint.mjs';
 
 // Render the stored document in the browser so Korean/Vietnamese system fonts
 // remain available without sending invoice data to an external PDF service.
-export async function buildIssuedInvoicePdfBlob(invoice){
+export async function buildIssuedInvoicePdfBlob(invoice,languageCode='en'){
  const [{default:html2canvas},{jsPDF}]=await Promise.all([import('html2canvas'),import('jspdf')]);
  const frame=document.createElement('iframe');frame.title='Invoice PDF renderer';frame.setAttribute('aria-hidden','true');frame.setAttribute('sandbox','allow-same-origin');
  frame.style.cssText='position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;pointer-events:none';
  try{
-  const ready=new Promise((resolve,reject)=>{frame.onload=resolve;frame.onerror=reject;});frame.srcdoc=buildIssuedInvoicePrintHtml(invoice);document.body.appendChild(frame);await ready;
+  const ready=new Promise((resolve,reject)=>{frame.onload=resolve;frame.onerror=reject;});frame.srcdoc=buildIssuedInvoicePrintHtml(invoice,languageCode);document.body.appendChild(frame);await ready;
   const doc=frame.contentDocument;doc.querySelector('.screen')?.remove();doc.body.style.cssText='margin:0;width:794px;background:white';await doc.fonts.ready;
   const pdf=new jsPDF({unit:'mm',format:'a4',compress:true});pdf.setProperties({title:invoice.invoiceNumber||'Invoice'});
   const width=794,pageHeight=width*269/182,total=doc.body.scrollHeight,blocks=[...doc.querySelectorAll('tr,section,h1,h2')].map(node=>({top:node.getBoundingClientRect().top-doc.body.getBoundingClientRect().top,height:node.offsetHeight}));

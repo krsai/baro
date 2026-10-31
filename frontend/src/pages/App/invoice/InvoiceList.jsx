@@ -52,7 +52,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     let timer;
     try {
       const invoice = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}${buildQueryString({ orgId })}`, { skipCache: true });
-      const blob=await Promise.race([buildIssuedInvoicePdfBlob(invoice),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('PDF_TIMEOUT')),45000);})]);showInvoicePdf(popup,blob);
+      const blob=await Promise.race([buildIssuedInvoicePdfBlob(invoice,languageCode),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('PDF_TIMEOUT')),45000);})]);showInvoicePdf(popup,blob);
     } catch { if(!popup.closed)popup.document.body.textContent=ui.failed; setError(ui.failed); }finally{clearTimeout(timer);setPdfBusy(false);}
   };
   const reviseIssued = async row => {
@@ -95,7 +95,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button onClick={()=>navigateToPath('/invoices',{closeTabId:'/invoices/'+invoiceId})}>{d.back}</Button><Button disabled={pdfBusy} aria-label={d.pdf} onClick={()=>printIssued(detail)}><InvoicePdfIcon/></Button>
         {detail.status==='ISSUED'&&<Button onClick={()=>reviseIssued(detail)}>{ui.edit}</Button>}
         </Stack>
-        <InvoiceSheet sx={{p:0,overflow:'hidden'}}><Box component="iframe" title={d.title} sandbox="allow-same-origin" srcDoc={buildIssuedInvoicePrintHtml(detail)} onLoad={event=>{const frame=event.currentTarget;frame.style.height=(frame.contentDocument.body.scrollHeight+32)+'px';}} sx={{display:'block',border:0,width:'100%',minHeight:900}}/></InvoiceSheet>
+        <InvoiceSheet sx={{p:0,overflow:'hidden'}}><Box component="iframe" title={d.title} sandbox="allow-same-origin" srcDoc={buildIssuedInvoicePrintHtml(detail,languageCode)} onLoad={event=>{const frame=event.currentTarget;frame.style.height=(frame.contentDocument.body.scrollHeight+32)+'px';}} sx={{display:'block',border:0,width:'100%',minHeight:900}}/></InvoiceSheet>
       </>}
     </>}
   </PageContentStack>;

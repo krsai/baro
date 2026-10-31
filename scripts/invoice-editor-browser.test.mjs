@@ -46,9 +46,14 @@ try{
   const grid=page.locator('fieldset table').first();
   assert.equal(await grid.locator('thead th').count(),6);
   assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),0);
+  assert.equal(await grid.locator('thead th').nth(2).evaluate(el=>getComputedStyle(el).textAlign),'right');
+  assert.equal(await grid.locator('tbody tr').count(),10);
+  assert.equal(await page.locator('.invoice-party').count(),2);
+  assert.equal(await page.locator('.invoice-cell').first().evaluate(el=>getComputedStyle(el).display),'grid');
+  assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'solid');
   if(failure==='layout'){
    assert.equal(await grid.locator('tr[data-production-review="true"]').count(),1);
-   assert.match(await grid.locator('tbody tr').innerText(),/HANOI/);
+   assert.match(await grid.locator('tbody tr[data-invoice-line]').innerText(),/HANOI/);
    let quantityReads=0;
    await page.route('**/assignment-plans/review-plan/quantity-review*',r=>{assert.equal(new URL(r.request().url()).searchParams.get('orgId'),'1');quantityReads++;return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{plannedQuantity:15,producedQuantity:5,processTotals:[],workRecords:[]}});});
    await grid.getByRole('button',{name:'수량 확인',exact:true}).click();
@@ -57,16 +62,16 @@ try{
    for(const width of [1920,1720,1366,768,390]){
     await page.setViewportSize({width,height:1000});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-    const dimensions=await grid.locator('input[inputmode="decimal"]').nth(1).first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
+    const dimensions=await grid.locator('input[inputmode="decimal"]').nth(0).first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
     assert.ok(dimensions.input<=dimensions.cell&&dimensions.cell>=100,JSON.stringify(dimensions));
 
    }
    assert.deepEqual(errors,[]);await page.close();continue;
   }
-  assert.equal(await grid.locator('tbody tr').count(),1);
-  assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').nth(1).inputValue(),'2');await grid.locator('input[inputmode="decimal"]').nth(1).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
+  assert.equal(await grid.locator('tbody tr[data-invoice-line]').count(),1);
+  assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
-  await grid.locator('input').first().fill('14');
+  await grid.locator('input[inputmode="decimal"]').nth(1).fill('14');
   await page.locator('textarea[aria-label^="Remark "]').fill('One missing piece');
   if(failure==='advance'){await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('30');}
   await review.check();assert.equal(await issue.isEnabled(),true);
