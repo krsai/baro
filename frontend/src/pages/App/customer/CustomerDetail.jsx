@@ -19,6 +19,7 @@ import {
   resolveDefaultCountryCode,
 } from './customerFormShared';
 import CustomerBasicInfoPanel from './CustomerBasicInfoPanel';
+import {classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../../../utils/partnerClassification.mjs';
 import {
   WORKSPACE_DATA_TOPICS,
   emitWorkspaceDataChanged,
@@ -205,6 +206,9 @@ const CustomerDetail = () => {
     if (!payload.name) {
       showNotification(t('nameRequired'), 'error');
       return;
+    }
+    if(!classificationComplete(customerFormData.classification)){
+      showNotification((PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en).required,'error');return;
     }
 
     setSavingCustomer(true);

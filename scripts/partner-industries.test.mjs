@@ -13,7 +13,9 @@ function routeHandler(method,path,deps){
  const node=tree.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(tree)===`app.${method}`&&node.expression.arguments[0]?.text===path);
  assert.ok(node);let handler;
  const {normalizeLocalizedName}=require('../backend/dist/utils/localizedName.js');
- const bindings={app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,...deps};
+ if(deps.prisma&&!deps.prisma.$transaction)deps.prisma.$transaction=run=>run(deps.prisma);
+ const classification=async(_db,body)=>{assert.ok(body?.industryIds?.length,'classification required');};
+ const bindings={app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,validateClassification:classification,requireClassificationActor:async()=>{},saveClassification:async(_db,_org,_entity,_actor,body)=>classification(null,body),getCurrentRequestActorEmployeeId:()=>8,attachPartnerClassifications:async(_db,_org,rows)=>rows,...deps};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));
  return handler;
 }
@@ -26,9 +28,9 @@ test('customers can be created without codes and duplicate codes never identify 
   resolveOptionalString:(value,fallback)=>value??fallback,normalizeCustomerDefaultSizeSetCode:()=> 'LEGACY_APPAREL',toCustomerResponse:row=>row,
   prisma:{organization:{findFirst:async({where})=>{lookups++;assert.ok(where.code);return{id:99,type:'BRAND'};},create:async({data})=>{creates++;assert.equal(data.code,null);return{id:44,...data};},update:()=>{throw Error('Unexpected existing entity overwrite');}},orgRelationship:{upsert:async({create})=>({...create,id:7,salesBucketSetVersionId:1,timeBucketSetVersionId:2})}}};
  const handler=routeHandler('post','/customers',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
- for(const code of ['',null,undefined]){await handler({body:{name:'Company',code}},res);assert.equal(res.code,201);}
+ for(const code of ['',null,undefined]){await handler({body:{name:'Company',code,classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);assert.equal(res.code,201);}
  assert.equal(lookups,0);assert.equal(creates,3);
- await handler({body:{name:'Another company',code:'CUS-001'}},res);assert.equal(res.code,409);assert.equal(creates,3);
+ await handler({body:{name:'Another company',code:'CUS-001',classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);assert.equal(res.code,409);assert.equal(creates,3);
 });
 
 test('customer code edits accept extended codes and explicitly clear a code without querying for null',async()=>{
@@ -39,7 +41,7 @@ test('customer code edits accept extended codes and explicitly clear a code with
   prisma:{orgRelationship:{findFirst:async()=>existing,update:async({data})=>{relationshipWrite=data;},findUnique:async()=>existing},organization:{findFirst:async({where})=>{assert.ok(where.code);return null;},update:async({data})=>{organizationWrite=data;}}}};
  const handler=routeHandler('put','/customers/:id',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
  for(const [code,expected] of [['cus-001','CUS-001'],['',null]]){
-  await handler({params:{id:'7'},body:{name:'Company',code}},res);
+  await handler({params:{id:'7'},body:{name:'Company',code,classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);
   assert.equal(organizationWrite.code,expected);assert.equal(relationshipWrite.customerCode,expected);
  }
 });
@@ -50,7 +52,7 @@ test('SaaS managers create their own outsourcing and supplier partners without S
   const tx={outsourcingServiceType:{findMany:async({where})=>{assert.equal(where.ownerOrgId,1);assert.deepEqual(where.systemDefaultId,{not:null});return[{id:412}];}},organization:{upsert:async({where,create})=>{assert.equal(where.ownerOrgId_type_name.ownerOrgId,1);assert.equal(create.ownerOrgId,1);writes++;return{id:11};},findUniqueOrThrow:async()=>({id:11,type})},organizationOutsourcingServiceType:{deleteMany:async()=>{},createMany:async({data})=>{assert.deepEqual(data,[{partnerOrgId:11,serviceTypeId:412,ownerOrgId:1}]);}}};
   const deps={BUSINESS_PARTNER_SERVICE_INCLUDE:{},ORG_MANAGEMENT_ROLES:['ADMIN','OPERATOR','ACCOUNTANT'],requireOrgRole:async()=>({organization:{id:1}}),requireSystemAdmin:()=>{throw Error('Unexpected SYSTEM gate');},resolveOptionalString:(value,fallback=null)=>value==null?fallback:String(value).trim(),toPositiveIntOrNull:value=>Number.isSafeInteger(value)&&value>0?value:null,getRequesterEmail:()=>null,partnerProfilePatch:()=>({}),resolvePartnerServiceTypeIds,toBusinessPartnerResponse:row=>row,prisma:{$transaction:run=>run(tx)}};
   const handler=routeHandler('post','/business-partners',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;}};
-  await handler({body:{name:'My vendor',type,ownerOrgId:999,serviceTypeIds:[412]}},res);assert.equal(res.code,201);assert.equal(writes,1);
+  await handler({body:{name:'My vendor',type,ownerOrgId:999,serviceTypeIds:[412],classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);assert.equal(res.code,201);assert.equal(writes,1);
   await routeHandler('post','/business-partners',{...deps,requireOrgRole:async()=>null})({body:{name:'Denied',type}},res);assert.equal(writes,1);
  }
 });

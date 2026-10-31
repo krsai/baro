@@ -113,7 +113,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       const rows = await defaults.findMany({ include: service ? {
         partnerRole: true,
         expenseType: true,
-        _count: { select: { codes: true, codeBases: true,customerIndustries:true,productionPolicies:true } },
+        _count: { select: { codes: true, codeBases: true,customerIndustries:true,productionPolicies:true,partnerClassifications:true } },
         services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
       } : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
       res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: service

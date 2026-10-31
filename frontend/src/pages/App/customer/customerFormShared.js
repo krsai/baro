@@ -1,5 +1,6 @@
 import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
 import { DEFAULT_SIZE_SET_CODE, normalizeSizeSetCode } from '../../../constants/productAttributes';
+import {emptyPartnerClassification,classificationPayload} from '../../../utils/partnerClassification.mjs';
 
 const COUNTRY_CODE_BY_COUNTRY = Object.freeze({
   KR: '+82',
@@ -54,6 +55,7 @@ export const buildCustomerFormData = (customer = {}) => {
     String(customer?.countryCode || '').trim() || resolveDefaultCountryCode(country);
 
   return {
+    classification:customer.classification||emptyPartnerClassification(),
     systemIndustryId: customer?.systemIndustryId ?? null,
     systemIndustry: customer?.systemIndustry ?? null,
     id: customer?.id ?? null,
@@ -80,7 +82,7 @@ export const buildCustomerFormData = (customer = {}) => {
 export const createEmptyCustomerFormData = () => buildCustomerFormData();
 
 export const buildCustomerPayload = (formData = {}) => ({
-  systemIndustryId: formData.systemIndustryId || null,
+  classification:classificationPayload(formData.classification),
   businessNumber: String(formData.businessNumber || '').trim() || null,
   code: String(formData.code || '').trim().toUpperCase(),
   name: normalizeLocalizedName(formData, 'name').name,

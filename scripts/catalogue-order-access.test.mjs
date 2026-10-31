@@ -37,9 +37,9 @@ test('only SYSTEM can reorder or edit the accounting category code; renaming kee
  allowed=true;await handlers.get('put:/expense-types/:id')(req,res);assert.equal(writes,1);assert.equal(row.code,'PRODUCTION');
  await assert.rejects(handlers.get('put:/expense-types/:id')({...req,body:{...req.body,code:'OTHER'}},res),/INVALID_EXPENSE_TYPE/);
 });
-test('former generic industry is marked Check by its original ID and is unavailable for new assignments',()=>{
+test('GENERAL is identified as an existing reference and is unavailable for new assignments',()=>{
  const row={id:41,code:'GENERAL',nameKo:'관리',systemDefault:{id:7,code:'GENERAL',isActive:true}};
- assert.equal(partnerIndustryLabel(row,'ko'),'확인');assert.equal(partnerIndustryLabel(row,'en'),'Check');
+ assert.equal(partnerIndustryLabel(row,'ko'),'기존 GENERAL 연결');assert.equal(partnerIndustryLabel(row,'en'),'Existing GENERAL link');
  assert.equal(partnerIndustryOption(row,'MATERIAL_SUPPLIER'),null);assert.equal(row.id,41);assert.equal(row.nameKo,'관리');
 });
 test('accountants cannot create adjustments or bypass the rule by replacing, deleting or voiding an existing adjustment',async()=>{

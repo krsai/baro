@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
+import {PARTNER_CLASSIFICATION_TEXT} from '../frontend/src/utils/partnerClassification.mjs';
 import {INDUSTRY_TREE_TEXT} from '../frontend/src/constants/industryHierarchy.js';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync);assert.ok(executablePath);
 const fixture=path.resolve('frontend/partner-registration-acceptance.html');assert.ok(!existsSync(fixture));
@@ -20,8 +21,9 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'window.notifications=[];const actions={navigateToPath:()=>{},showNotification:(message,level)=>window.notifications.push({message,level}),setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-  await page.route('**/customer-industries?*',r=>r.fulfill({headers,json:[{id:31,nameKo:'Retail',nameEn:'Retail',nameVi:'Retail',isActive:true}]}));
-  await page.route('**/outsourcing-service-types?*',r=>{requestedCatalogue=new URL(r.request().url());return r.fulfill({headers,json:[{id:412,nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',systemDefaultId:1,systemDefault:{id:1,partnerRole:{code:screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING'}}}]});});
+  const role={id:1,code:screen==='customer'?'CUSTOMER':screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING',nameKo:'Category',nameEn:'Category',nameVi:'Category'};
+  const source={id:screen==='customer'?31:1,code:'DETAIL',nameKo:'Detail',nameEn:'Detail',nameVi:'Detail',partnerRoleId:1,partnerRole:role,isActive:true};
+  await page.route('**/partner-classifications/options?*',r=>{requestedCatalogue=new URL(r.request().url());return r.fulfill({headers,json:{roles:[role],industries:[source]}});});
   await page.route('**/entities/*/bank-accounts?*',r=>r.fulfill({headers,json:{accounts:[],currencies:[]}}));
   for(const endpoint of ['customers','business-partners'])await page.route(`**/${endpoint}?*`,r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
@@ -30,16 +32,17 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/partner-registration-acceptance.html${screen==='customer'?'':'?'+screen}`);
   assert.equal(await page.evaluate(async()=>{const {resolveCustomerDisplayName}=await import('/src/utils/appLanguage.js');return resolveCustomerDisplayName({name:'English company',nameKo:'',nameVi:''},'${lang}');}),'English company');
-  const industry=page.getByRole('combobox',{name:INDUSTRY_TREE_TEXT[lang].industry,exact:true});
+  const industry=page.getByRole('combobox',{name:'Category > '+PARTNER_CLASSIFICATION_TEXT[lang].industry,exact:true});
   if(screen==='customer'){
    await page.locator(`input[name=${lang==='ko'?'nameKo':lang==='vi'?'nameVi':'name'}]`).fill('New customer');
    assert.equal(await page.locator('input[name=code]').getAttribute('required'),null);
    if(lang==='vi')await page.locator('input[name=code]').fill('CUS-001');
    assert.equal(customerReads,0,'A static /customer/new route must not fetch an empty customer ID');
-   assert.equal(await page.locator('input[name=systemIndustryId]').count(),1,'The customer industry selector remains optional');
+   assert.equal(await page.locator('input[name=systemIndustryId]').count(),0);
+   await industry.fill('Detail');await page.getByRole('option',{name:'Detail',exact:true}).click();await page.keyboard.press('Escape');
    await page.locator('.app-page-header button.MuiButton-contained').click();
    await page.waitForFunction(()=>window.notifications.some(row=>row.level==='success'));
-   assert.equal(payload.name,'New customer');assert.equal(payload.systemIndustryId,null);assert.equal(payload.code,lang==='vi'?'CUS-001':'');
+   assert.equal(payload.name,'New customer');assert.ok(!('systemIndustryId'in payload));assert.deepEqual(payload.classification.industryIds,[31]);assert.equal(payload.code,lang==='vi'?'CUS-001':'');
   }else{
    await page.locator(`input[name=${lang==='ko'?'nameKo':lang==='vi'?'nameVi':'name'}]`).fill('New vendor');
    await page.locator('input[name=contactName]').fill('Contact person');
@@ -50,11 +53,11 @@ try{
     const bounds=await page.locator(selector).boundingBox();assert.ok(bounds.y>=0 && bounds.y+bounds.height<=541,'Modal title and actions must stay inside viewport');
    }
    await page.setViewportSize({width:1280,height:600});
-   await industry.click();assert.equal(await page.getByRole('option',{name:'Buttonhole',exact:true}).count(),1);await page.getByRole('option',{name:'Buttonhole',exact:true}).click();await page.keyboard.press('Escape');
+   await industry.fill('Detail');assert.equal(await page.getByRole('option',{name:'Detail',exact:true}).count(),1);await page.getByRole('option',{name:'Detail',exact:true}).click();await page.keyboard.press('Escape');
    await page.getByRole('dialog').getByRole('button',{name:{ko:'등록',en:'Add',vi:'Thêm'}[lang],exact:true}).click();
    await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
-   assert.equal(requestedCatalogue.searchParams.get('forPartner'),'1');assert.equal(requestedCatalogue.searchParams.get('partnerType'),screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING');
-   assert.deepEqual(payload.serviceTypeIds,[412]);assert.equal(payload.type,screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING');
+   assert.equal(requestedCatalogue.searchParams.get('orgId'),'1');assert.equal(requestedCatalogue.pathname,'/partner-classifications/options');
+   assert.ok(!('serviceTypeIds'in payload));assert.deepEqual(payload.classification,{revision:0,roleIds:[1],industryIds:[1]});assert.equal(payload.type,screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING');
    assert.equal(payload.name,'New vendor');assert.equal(payload.contactName,'Contact person');assert.equal(payload.code,lang==='vi'?'VEN-001':null);
   }
   assert.deepEqual(await page.evaluate(()=>window.notifications.filter(row=>row.level==='error')),[]);assert.deepEqual(errors,[]);await page.close();

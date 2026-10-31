@@ -1,12 +1,11 @@
+import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
 import {useAuth} from '../../../context/AuthContext';
-import {buildQueryString,requestJSON} from '../../../utils/apiClient';
 import PartnerProfileFields from '../../../components/PartnerProfileFields';
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
 import { ENTITY_TEXT } from '../../../constants/entityProfile';
 import EntityDetailSection from '../../../components/EntityDetailSection';
-import Grid from '@mui/material/Grid';
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, MenuItem, Stack, TextField } from '@mui/material';
+import React, { useMemo } from 'react';
+import { MenuItem, Stack, TextField } from '@mui/material';
 import { getSizeSetOptions } from '../../../constants/productAttributes';
 
 const getText = (languageCode) => {
@@ -46,15 +45,6 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
   const text = useMemo(() => getText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
   const {activeOrgId}=useAuth();
-  const [industries,setIndustries]=useState([]),[industryError,setIndustryError]=useState(false);
-  const industryText=({ko:{label:'세부 업종',none:'미지정',error:'세부 업종을 불러오지 못했습니다.'},en:{label:'Industry',none:'Unspecified',error:'Could not load industries.'},vi:{label:'Ngành nghề',none:'Chưa phân loại',error:'Không thể tải ngành nghề.'}})[languageCode]||{label:'Industry',none:'Unspecified',error:'Could not load industries.'};
-  useEffect(()=>{let active=true;setIndustries([]);setIndustryError(false);
-    if(activeOrgId)requestJSON('/customer-industries'+buildQueryString({orgId:activeOrgId})).then(rows=>{if(active)setIndustries(rows);}).catch(()=>{if(active)setIndustryError(true);});
-    return ()=>{active=false;};
-  },[activeOrgId]);
-  const currentIndustry=customerFormData.systemIndustry;
-  const options=currentIndustry&&!industries.some(row=>row.id===currentIndustry.id)?[...industries,currentIndustry]:industries;
-  const industryName=row=>row?.[{ko:'nameKo',en:'nameEn',vi:'nameVi'}[languageCode]||'nameEn']||row?.nameEn||row?.code||'';
   const common = { fullWidth: true, disabled: savingCustomer, size: 'small' };
   const isBrand = customerFormData.industry === 'BRAND';
 
@@ -67,12 +57,8 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
           const event={target:{name,value}};
           if(key==='country')onCountryChange(event);else onBasicFieldChange(event);
         }}/>
-      <EntityDetailSection title={industryText.label}>
-        {industryError&&<Alert severity="error">{industryText.error}</Alert>}
-        <TextField {...common} select label={industryText.label} name="systemIndustryId" value={customerFormData.systemIndustryId??''} disabled={savingCustomer||industryError} onChange={event=>onBasicFieldChange({target:{name:'systemIndustryId',value:event.target.value===''?null:Number(event.target.value)}})} sx={{maxWidth:480}}>
-          <MenuItem value="">{industryText.none}</MenuItem>
-          {options.map(row=><MenuItem key={row.id} value={row.id}>{industryName(row)}</MenuItem>)}
-        </TextField>
+      <EntityDetailSection title={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).role}>
+        <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode} initialRoleCode={!customerFormData.id?'CUSTOMER':undefined}/>
       </EntityDetailSection>
       <EntityBankAccounts entityId={customerFormData.entityId} languageCode={languageCode}/>
       {isBrand && <EntityDetailSection title={text.order}>

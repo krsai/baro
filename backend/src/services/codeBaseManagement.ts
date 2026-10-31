@@ -99,7 +99,7 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
   if (global) {
     const local = service ? tx.outsourcingServiceType : tx.transactionCode;
     if (service && (await tx.settingTransactionCodeDefault.count({ where: { serviceTypeId: id } }) || await tx.transactionCodeBase.count({ where: { serviceTypeId: id } }))) throw createHttpError(409,'SETTING_IN_USE');
-    if(service&&(await tx.orgRelationship?.count({where:{systemIndustryId:id}})||await tx.industryProductionPolicy?.count({where:{systemIndustryId:id}})))throw createHttpError(409,'SETTING_IN_USE');
+    if(service&&(await tx.orgRelationship?.count({where:{systemIndustryId:id}})||await tx.industryProductionPolicy?.count({where:{systemIndustryId:id}})||await tx.partnerClassificationIndustry?.count({where:{systemIndustryId:id}})))throw createHttpError(409,'SETTING_IN_USE');
     const copies = await local.findMany({ where: { systemDefaultId: id } });
     if (copies.some((row: any) => row.isOverridden)) throw createHttpError(409,'SETTING_IN_USE');
     for (const row of copies) await deleteSetting(tx, kind, false, row.id, row.ownerOrgId, true);

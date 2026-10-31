@@ -34,6 +34,7 @@ export async function getBusinessPartnerUsage(db: any, ids: number[]): Promise<S
     GROUP BY fk.oid, ns.nspname, rel.relname
   `) as { schema: string; table: string; columns: string[]; targets: string[] }[];
   const checks = relations.filter(row => !(row.table === 'OrganizationOutsourcingServiceType' && row.columns.includes('partnerOrgId'))
+    && !(row.table === 'PartnerClassification' && row.columns.includes('entityId'))
     && !(row.table === 'OrganizationBankAccount' && row.columns.includes('entityId')));
   if (!checks.length) return new Set();
   const rows = await db.$queryRawUnsafe(checks.map(row => `
@@ -66,5 +67,6 @@ export async function deleteUnusedCustomer(tx: any, orgId: number, id: number, m
   // Serialize new organization FK references with deletion. Keep the shared entity itself.
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id = ANY($1::int[]) ORDER BY id FOR UPDATE', [manufacturer, brand]);
   if ((await getCustomerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
+  await tx.partnerClassification?.deleteMany({where:{OR:[{orgId:manufacturer,entityId:brand},{orgId:brand,entityId:manufacturer}]}});
   await tx.orgRelationship.delete({ where: { id } });
 }

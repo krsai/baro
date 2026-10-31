@@ -170,6 +170,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  ownedPartnerClassifications PartnerClassification[] @relation("PartnerClassificationOwner")
+  partnerClassifications PartnerClassification[] @relation("PartnerClassificationEntity")
   ledgerAccounts BankLedgerAccount[]
   workspaceRegistration CompanyWorkspaceRegistration?
   expenseCodeLinkPolicies ExpenseCodeLinkPolicy[]
@@ -640,6 +642,7 @@ model Warehouse {
 
 
 model Employee {
+  updatedPartnerClassifications PartnerClassification[]
   payableExpenseRequests ExpenseRequest[] @relation("ExpenseEmployeePayee")
   payableExpenseCosts PartnerTransactionCost[] @relation("ExpenseCostEmployeePayee")
   expenseBankAccounts EmployeeExpenseBankAccount[]
@@ -2576,6 +2579,7 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  partnerClassifications PartnerClassificationIndustry[]
   productionPolicies IndustryProductionPolicy[]
   customerIndustries OrgRelationship[]
   partnerRoleId Int
@@ -2597,6 +2601,30 @@ model SettingServiceDefault {
   sortOrder Int @default(0)
   services OutsourcingServiceType[]
   codes SettingTransactionCodeDefault[]
+}
+
+model PartnerClassification {
+  orgId Int
+  entityId Int
+  revision Int @default(1)
+  updatedByEmployeeId Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner Organization @relation("PartnerClassificationOwner", fields:[orgId],references:[id],onDelete:Restrict)
+  entity Organization @relation("PartnerClassificationEntity", fields:[entityId],references:[id],onDelete:Cascade)
+  updatedBy Employee @relation(fields:[updatedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PartnerClassification_actor_scope_fkey")
+  industries PartnerClassificationIndustry[]
+  @@id([orgId,entityId])
+}
+
+model PartnerClassificationIndustry {
+  orgId Int
+  entityId Int
+  systemIndustryId Int
+  classification PartnerClassification @relation(fields:[orgId,entityId],references:[orgId,entityId],onDelete:Cascade,map:"PartnerClassificationIndustry_scope_fkey")
+  industry SettingServiceDefault @relation(fields:[systemIndustryId],references:[id],onDelete:Restrict)
+  @@id([orgId,entityId,systemIndustryId])
+  @@index([systemIndustryId])
 }
 
 model IndustryProductionPolicy {
