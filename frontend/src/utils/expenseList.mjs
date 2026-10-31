@@ -25,12 +25,10 @@ export function groupExpenseRequests(rows) {
 export const expenseIndustryKey = row => row.serviceTypeId != null ? `service:${row.serviceTypeId}` : row.sourceKind === 'HISTORICAL_WORK_RECORD' ? 'historical-process' : 'unclassified';
 // Count classifications used by this request, not all capabilities of its payee.
 // Labels can be identical or translated; only the related FK identifies a value.
-export function summarizeExpenseDimensions(items, dimension, getLabel, language = 'ko') {
+export function summarizeExpenseDimensions(items, getLabel, language = 'ko') {
   const values = new Map();
   for (const item of items || []) {
-    const id = dimension === 'category'
-      ? item.transactionCode?.base?.expenseTypeId ?? item.transactionCode?.base?.expenseType?.id
-      : item.serviceTypeId ?? item.serviceType?.id;
+    const id = item.serviceTypeId ?? item.serviceType?.id;
     const key = id == null ? 'unclassified' : String(id);
     if (!values.has(key)) values.set(key, getLabel(item));
   }

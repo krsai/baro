@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium','/usr/bin/google-chrome'].find(existsSync);
 assert.ok(executablePath);
 const fixture=path.resolve('frontend/code-bases-acceptance.html');assert.ok(!existsSync(fixture));
-writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/CodeBaseSettings.jsx';createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page)));</script></body></html>`);
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/AccountingCodeSettings.jsx';createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page)));</script></body></html>`);
 const port=43189,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});
 let browser;
 try{
@@ -19,15 +19,17 @@ try{
     await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>{}});'}));
     const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-    const industry={id:4,code:'LOGISTICS',nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển',entryMode:'LOGISTICS',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true};
+    const role={id:20,code:'SUPPLIER',nameKo:'공급 업체',nameEn:'Supplier',nameVi:'Nhà cung cấp'};
+    const industry={partnerRoleId:20,partnerRole:role,id:4,code:'LOGISTICS',nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển',entryMode:'LOGISTICS',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true};
     const taxes=[{id:1,nameKo:'과세',nameEn:'VAT',nameVi:'Chịu thuế'},{id:2,nameKo:'영세율',nameEn:'Zero-rated',nameVi:'Thuế suất 0%'},{id:3,nameKo:'면세',nameEn:'Exempt',nameVi:'Không chịu thuế'}];
     const expenseType={id:2,code:'LOGISTICS',nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
     await page.route('**/expense-types',route=>route.fulfill({headers,status:404,json:{error:'organization not found'}}));
-    let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
+    let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',industryIds:[4],industries:[industry],industryRevision:1,expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',industryIds:[4],industries:[industry],industryRevision:1,expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
     await page.route('**/system-setting-defaults/**',route=>{
       const url=new URL(route.request().url()),method=route.request().method();
       if(method==='OPTIONS')return route.fulfill({headers,status:204});
-      if(url.pathname.endsWith('/expense-types'))return route.fulfill({headers,json:[expenseType]});
+      if(url.pathname.endsWith('/expense-types'))throw Error('Retired type endpoints must not be requested');
+      if(url.pathname.endsWith('/partner-roles'))return route.fulfill({headers,json:[role]});
       if(method==='DELETE'){
         writes.push({path:url.pathname});
         if(url.pathname.includes('/services/'))return route.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});
@@ -73,7 +75,6 @@ try{
     const nameLabels={ko:['이름 (한국어)','이름 (영어 · 대표)','이름 (베트남어)'],en:['Name (Korean)','Name (English · primary)','Name (Vietnamese)'],vi:['Tên (tiếng Hàn)','Tên (tiếng Anh · chính)','Tên (tiếng Việt)']}[lang];
     for(const [index,value] of ['항공','Air','Hàng không'].entries())await dialog.getByLabel(nameLabels[index],{exact:true}).fill(value);
     await dialog.getByRole('combobox').nth(0).fill('LOGISTICS');assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),0);await page.getByRole('option').first().click();
-    await dialog.getByRole('combobox').nth(1).fill('LOGISTICS');await page.getByRole('option').first().click();
     assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);await dialog.getByRole('button',{name:labels.save,exact:true}).click();
     await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,2,3]);
     bases[0].hasUsageHistory=true;
@@ -98,5 +99,5 @@ try{
     assert.deepEqual(errors,[]);
     await page.close();
   }
-  console.log('Code base UI passed in ko/en/vi: uppercase 3-letter input, selected suffixes, used deletion disabled, unused deletion, independent expense type and input configuration.');
+  console.log('Code base UI passed in ko/en/vi: uppercase 3-letter input, selected suffixes, used deletion disabled, unused deletion, industry mapping and independent code input configuration.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

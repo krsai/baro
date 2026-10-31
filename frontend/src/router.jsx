@@ -89,7 +89,7 @@ const ApplicationSettings = lazyImportWithRetry(() => import('./pages/App/Applic
 const TransactionCodeSettings = lazyImportWithRetry(() => import('./pages/App/TransactionCodeSettings'));
 const ExpenseMasterSettings = lazyImportWithRetry(() => import('./pages/App/ExpenseMasterSettings'));
 const ApprovalSettings = lazyImportWithRetry(() => import('./pages/App/ApprovalSettings'));
-const CodeBaseSettings = lazyImportWithRetry(() => import('./pages/App/CodeBaseSettings'));
+const AccountingCodeSettings = lazyImportWithRetry(() => import('./pages/App/AccountingCodeSettings'));
 
 const Onboarding = lazyImportWithRetry(() => import('./pages/Auth/Onboarding'));
 const Attribute = lazyImportWithRetry(() => import('./pages/App/Attribute'));
@@ -306,7 +306,7 @@ const router = createBrowserRouter([
           { path: 'system-setting/expense-units', element: <ExpenseMasterSettings units /> },
           { path: 'system-setting/expense-types', element: <Navigate to="/system-setting/transaction-codes" replace /> },
           { path: 'system-setting/partner-industries', element: <ExpenseMasterSettings industries /> },
-          { path: 'system-setting/transaction-codes', element: <CodeBaseSettings />,
+          { path: 'system-setting/transaction-codes', element: <AccountingCodeSettings />,
           },
           {
             path: 'system-setting/static-options',

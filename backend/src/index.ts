@@ -200,6 +200,7 @@ function assertGeneratedPrismaClientShape() {
 
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
+    AccountingCodeIndustry:['baseId','systemIndustryId'],
     PartnerClassification:['orgId','entityId','revision','updatedByEmployeeId'],
     PartnerClassificationIndustry:['orgId','entityId','systemIndustryId'],
     ExpenseRequest: ['payeeEmployeeId','id','managementNumber','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
@@ -214,7 +215,7 @@ function assertGeneratedPrismaClientShape() {
     TransactionCode: ["systemDefaultId", "isOverridden", "taxTreatmentId", "baseId"],
     SettingServiceDefault: ["id", "orderInput", "requiredFields", "expenseTypeId"],
     SettingTransactionCodeDefault: ["id", "serviceTypeId", "vatEnabled", "baseId", "taxTreatmentId", "isEnabled"],
-    TransactionCodeBase: ["id", "code", "serviceTypeId"],
+    TransactionCodeBase: ["id", "code", "serviceTypeId", "industryRevision"],
     TaxTreatment: ["id", "code", "suffix"],
     StyleProcess: ["sourceOrgId"],
     InvoiceDraft: ["id", "sellerOrgId", "buyerOrgId", "clientKey", "revision", "content", "createdBy", "updatedBy", "createdAt", "updatedAt", "revisionOfInvoiceId", "revisionReason"],
@@ -743,6 +744,8 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'BankLedgerEntry',columnNam
   {tableName:'BankLedgerEntry',columnName:'evidenceType'},
   ...['orgId','entityId','revision','updatedByEmployeeId'].map(columnName=>({tableName:'PartnerClassification',columnName})),
   ...['orgId','entityId','systemIndustryId'].map(columnName=>({tableName:'PartnerClassificationIndustry',columnName})),
+  {tableName:'TransactionCodeBase',columnName:'industryRevision'},
+  ...['baseId','systemIndustryId'].map(columnName=>({tableName:'AccountingCodeIndustry',columnName})),
   {tableName:'LedgerChangeAcknowledgement',columnName:'employeeId'},
   {tableName:'LedgerChangeAcknowledgement',columnName:'confirmedAt'},
   {tableName:'BankLedgerBatch',columnName:'requestHash'},
@@ -1060,6 +1063,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerEntry_revision_scope_fk
   'BankLedgerEntry_amount_check',
   'BankLedgerEntry_evidence_guard',
   'PartnerClassification_actor_scope_fkey','PartnerClassificationIndustry_scope_fkey','PartnerClassification_scope_guard','PartnerClassificationIndustry_guard','PartnerClassification_required','PartnerClassificationIndustry_required',
+  'AccountingCodeIndustry_pkey','AccountingCodeIndustry_baseId_fkey','AccountingCodeIndustry_systemIndustryId_fkey',
   'LedgerChangeAcknowledgement_entry_scope_fkey',
   'LedgerChangeAcknowledgement_employee_scope_fkey',
   'LedgerChangeAcknowledgement_scope_guard',
@@ -27710,10 +27714,7 @@ app.post("/business-partners", async (req, res) => {
   const { organization } = accessContext;
   const name = normalizeLocalizedName(req.body, "name").name;
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
-  if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
-  const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
-  const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, isActive: true } }) : null;
-  if (req.body?.partnerExpenseTypeId != null && !expenseType) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
+  if(req.body?.partnerExpenseTypeId!=null)throw createHttpError(410,'ACCOUNTING_TYPES_RETIRED');
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
@@ -27728,8 +27729,8 @@ app.post("/business-partners", async (req, res) => {
 
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ...partnerProfilePatch(req.body), ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor, partnerExpenseTypeId: expenseType?.id ?? null },
-        update: { ...partnerProfilePatch(req.body), representative: contactName, phone: contactPhone, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) },
+        create: { ...partnerProfilePatch(req.body), ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
+        update: { ...partnerProfilePatch(req.body), representative: contactName, phone: contactPhone },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if(Array.isArray(req.body?.serviceTypeIds))await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
@@ -27760,10 +27761,7 @@ app.put("/business-partners/:id", async (req, res) => {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
   }
   const type = requestedType || existing.type;
-  if (req.body?.partnerExpenseTypeId != null && (!Number.isSafeInteger(req.body.partnerExpenseTypeId) || req.body.partnerExpenseTypeId <= 0)) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
-  const partnerExpenseTypeId = toPositiveIntOrNull(req.body?.partnerExpenseTypeId);
-  const expenseType = partnerExpenseTypeId ? await prisma.expenseType.findFirst({ where: { id: partnerExpenseTypeId, ...(partnerExpenseTypeId === existing.partnerExpenseTypeId ? {} : { isActive: true }) } }) : null;
-  if (req.body?.partnerExpenseTypeId != null && !expenseType) return res.status(400).json({ error: 'INVALID_EXPENSE_TYPE' });
+  if(req.body?.partnerExpenseTypeId!==undefined&&req.body.partnerExpenseTypeId!==existing.partnerExpenseTypeId)throw createHttpError(410,'ACCOUNTING_TYPES_RETIRED');
   const contactName = resolveOptionalString(req.body?.contactName, null);
   const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
@@ -27784,7 +27782,7 @@ app.put("/business-partners/:id", async (req, res) => {
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
-      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...(expenseType ? { partnerExpenseTypeId: expenseType.id } : {}) } });
+      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
       await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });

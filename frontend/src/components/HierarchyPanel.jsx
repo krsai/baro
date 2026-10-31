@@ -10,7 +10,7 @@ export default function HierarchyPanel({label,items,selectedId,onSelect,children
  const renderItems=provided=><List ref={provided?.innerRef} {...provided?.droppableProps} disablePadding sx={{position:'relative',pl:1.5,'&::before':{content:'""',position:'absolute',left:4,top:18,bottom:18,width:'1px',bgcolor:'#dce4ef'}}}>
   {items.map((item,index)=>{
    const selected=item.id===selectedId;
-   const renderRow=drag=><Box ref={drag?.innerRef} {...drag?.draggableProps} sx={{display:'flex',alignItems:'center'}}>
+   const renderRow=drag=><Box ref={drag?.innerRef} {...drag?.draggableProps} sx={{display:'flex',alignItems:'center',pl:item.depth?2:0}}>
     {onReorder&&<Box {...drag?.dragHandleProps} aria-label={item.label} sx={{display:'flex',alignItems:'center',color:'text.disabled',touchAction:'none',px:.25}}><DragIndicator fontSize="small"/></Box>}
     <ListItemButton disabled={reorderDisabled} selected={selected} aria-current={selected?'true':undefined} onClick={()=>onSelect(item.id)} sx={{position:'relative',flex:1,minWidth:0,borderRadius:1,mb:.5,minHeight:36,px:1.5,'&::before':{content:'""',position:'absolute',left:-8,width:8,height:'1px',bgcolor:'#dce4ef'},'&.Mui-selected':{bgcolor:'#eaf1ff',color:'primary.main',boxShadow:'inset 3px 0 0 #2f75ed'},'&.Mui-selected:hover':{bgcolor:'#e3edff'}}}>
      <Typography sx={{flex:1,fontWeight:selected?600:400}}>{item.label}</Typography>

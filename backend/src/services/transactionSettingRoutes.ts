@@ -113,7 +113,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       const rows = await defaults.findMany({ include: service ? {
         partnerRole: true,
         expenseType: true,
-        _count: { select: { codes: true, codeBases: true,customerIndustries:true,productionPolicies:true,partnerClassifications:true } },
+        _count: { select: { codes: true, codeBases: true,customerIndustries:true,productionPolicies:true,partnerClassifications:true,accountingCodeLinks:true } },
         services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
       } : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
       res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: service
@@ -136,7 +136,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
         const policies = await db.expenseCodeLinkPolicy.findMany({where:{orgId:access.organization.id}});
         return res.json(candidates.map(resolveAccountingCode).filter(Boolean).map((code:any)=>effectiveExpenseCode(code,policies.find((row:any)=>row.baseId===code.baseId))));
       }
-      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, expenseType: { isActive: true } } } : {}) }) }, include: service ? { systemDefault:{include:{partnerRole:true}}, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
+      const rows = await locals.findMany({ where: { ownerOrgId: access.organization.id, ...(req.query.all === '1' ? {} : { isActive: true, ...(!service ? { baseId: { not: null }, taxTreatmentId: { not: null }, base: { isActive: true, OR:[{expenseTypeId:null},{expenseType:{isActive:true}}] } } : {}) }) }, include: service ? { systemDefault:{include:{partnerRole:true}}, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } : { base: { include: { expenseType: true } }, serviceType: true, taxTreatment: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } }, orderBy: service ? [{ sortOrder: 'asc' }, { id: 'asc' }] : { code: 'asc' } });
       res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: Boolean(row.systemDefaultId) || Object.values(row._count).some((count: any) => count > 0) })));
     });
     for (const global of [true,false]) {

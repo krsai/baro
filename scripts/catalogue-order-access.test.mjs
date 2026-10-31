@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {partnerIndustryLabel} from '../frontend/src/utils/partnerIndustry.mjs';
 const require=createRequire(import.meta.url);
-const {saveCatalogueOrder,orderedExpenseTypes}=require('../backend/dist/services/catalogueOrder.js');
+const {saveCatalogueOrder}=require('../backend/dist/services/catalogueOrder.js');
 const {requireLedgerAdjustmentAccess}=require('../backend/dist/services/ledgerAdjustmentAccess.js');
 const {registerCodeBaseRoutes}=require('../backend/dist/services/codeBaseManagement.js');
 const {partnerIndustryOption}=require('../backend/dist/services/partnerIndustry.js');
@@ -20,13 +20,10 @@ test('catalogue ordering persists by IDs and rejects stale, missing, duplicate o
  await saveCatalogueOrder(db,'roles',{previousIds:[2,1],ids:[1,2]});
  assert.deepEqual([...roles].sort((a,b)=>a.sortOrder-b.sortOrder).map(row=>row.id),[1,2]);
  await assert.rejects(saveCatalogueOrder(db,'roles',{previousIds:[2,1],ids:[2,1]}),/CATALOGUE_ORDER_CHANGED/);
- for(const ids of [[1],[1,1],[1,99],['1',2]])await assert.rejects(saveCatalogueOrder(db,'expenses',{previousIds:[1,2],ids}),/INVALID_CATALOGUE_ORDER/);
- await saveCatalogueOrder(db,'expenses',{previousIds:[1,2],ids:[2,1]});
- assert.deepEqual((await orderedExpenseTypes(db,expenses)).map(row=>row.id),[2,1]);
- assert.deepEqual(expenses.map(row=>row.code),['PRODUCTION','LOGISTICS']);
- assert.deepEqual((await orderedExpenseTypes(db,[...expenses,{id:3,code:'MATERIAL'}])).map(row=>row.id),[2,1,3]);
+ for(const ids of [[1],[1,1],[1,99],['1',2]])await assert.rejects(saveCatalogueOrder(db,'roles',{previousIds:[1,2],ids}),/INVALID_CATALOGUE_ORDER/);
+ await assert.rejects(saveCatalogueOrder(db,'expenses',{}),/ACCOUNTING_TYPES_RETIRED/);
 });
-test('only SYSTEM can reorder or edit the accounting category code; renaming keeps its identity and input mode',async()=>{
+test('retired accounting type endpoints authenticate before returning 410 and cannot write',async()=>{
  const handlers=new Map(),row={id:1,code:'PRODUCTION',entryMode:'PROCESS'};let allowed=false,writes=0,locks=0;
  const db={expenseType:{findUnique:async()=>row,update:async({where,data})=>{assert.equal(where.id,1);assert.equal(data.code,'MAKING');assert.equal(data.entryMode,undefined);writes++;return {...row,...data};}},$transaction:async()=>{locks++;}};
  registerCodeBaseRoutes(Object.fromEntries(['get','put','post','delete'].map(method=>[method,(path,fn)=>handlers.set(method+':'+path,fn)])),db,{requireSystemAdmin:async()=>allowed});
@@ -34,8 +31,8 @@ test('only SYSTEM can reorder or edit the accounting category code; renaming kee
  await handlers.get('put:/expense-types/order')({body:{}},res);assert.equal(locks,0);
  const req={params:{id:'1'},body:{code:'making',nameEn:'Making',nameKo:'',nameVi:'',isActive:true}};
  await handlers.get('put:/expense-types/:id')(req,res);assert.equal(writes,0);
- allowed=true;await handlers.get('put:/expense-types/:id')(req,res);assert.equal(writes,1);assert.equal(row.code,'PRODUCTION');
- await assert.rejects(handlers.get('put:/expense-types/:id')({...req,body:{...req.body,code:'OTHER'}},res),/INVALID_EXPENSE_TYPE/);
+ allowed=true;await assert.rejects(handlers.get('put:/expense-types/:id')(req,res),/ACCOUNTING_TYPES_RETIRED/);assert.equal(writes,0);assert.equal(row.code,'PRODUCTION');
+ await assert.rejects(handlers.get('put:/expense-types/order')({body:{}},res),/ACCOUNTING_TYPES_RETIRED/);assert.equal(locks,0);
 });
 test('GENERAL is identified as an existing reference and is unavailable for new assignments',()=>{
  const row={id:41,code:'GENERAL',nameKo:'관리',systemDefault:{id:7,code:'GENERAL',isActive:true}};

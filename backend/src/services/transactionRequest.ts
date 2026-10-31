@@ -79,11 +79,11 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     return previous;
   }
-  const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, expenseType: { isActive: true } } }, include: useSystemMaster ? ACCOUNTING_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
+  const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, OR:[{expenseTypeId:null},{expenseType:{isActive:true}}] } }, include: useSystemMaster ? ACCOUNTING_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
-  if(useSystemMaster)description=edit?.cost?.description || [code.base.expenseType?.nameEn,code.base.nameEn || code.nameEn || code.code].filter(Boolean).join(' - ');
+  if(useSystemMaster)description=edit?.cost?.description || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
   const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'] } } });

@@ -13,7 +13,7 @@ export const PAGE_ROUTES = [
   ['/approval-settings','approvalSettings','page'],
   ['/system-setting/app-defaults','appDefaults','page'],
   ['/system-setting/expense-units','expenseUnits','page'],
-  ['/system-setting/expense-types','expenseTypes','page'],
+  ['/system-setting/expense-types','transactionMasters','page'],
   ['/system-setting/partner-industries','partnerIndustries','page'],
   ['/system-setting/transaction-codes','transactionMasters','page'],
   ['/system-setting/static-options','staticOptions','page'],

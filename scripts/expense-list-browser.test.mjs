@@ -63,18 +63,18 @@ try {
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,11);
+    assert.equal(headings.length,10);
     assert.ok((await page.locator('.is-dense th, .is-dense td').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).padding))).every(padding=>padding==='8px 12px'),'Header and body share compact spacing');
     assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
     assert.equal(headings.includes(text.remark),false);assert.equal(headings.includes(text.source),false);assert.equal(await page.locator('[data-search-filters] select').count(),3);assert.doesNotMatch(await page.locator('tbody').innerText(),/Delivery note/);
-    assert.equal(await page.locator('[data-expense-row="cost"] td').nth(3).textContent(),{ko:'물류 서비스',en:'Logistics service',vi:'Dịch vụ vận chuyển'}[lang]);
+    assert.equal(await page.locator('[data-expense-row="cost"] td').nth(3).textContent(),{ko:'봉제',en:'Sewing',vi:'May'}[lang]);
     assert.equal(await page.locator('[data-expense-row="old"] td').nth(3).textContent(),text.unclassified);
     assert.equal(headings.includes(text.style),false);
     assert.equal(headings.includes(text.quantity),false);assert.equal(headings.includes(text.unitPrice),false);
-    const grouped=page.locator('[data-expense-request="1"]');assert.equal(await grouped.count(),1);assert.equal(await grouped.locator('td').nth(7).innerText(),'2');assert.match(await grouped.locator('td').nth(8).innerText(),/30[.,]75/);
-    await page.getByRole('textbox',{name:text.search}).fill('NEW-42');assert.equal(await grouped.locator('td').nth(7).innerText(),'2');await page.getByRole('textbox',{name:text.search}).fill('');
+    const grouped=page.locator('[data-expense-request="1"]');assert.equal(await grouped.count(),1);assert.equal(await grouped.locator('td').nth(6).innerText(),'2');assert.match(await grouped.locator('td').nth(7).innerText(),/30[.,]75/);
+    await page.getByRole('textbox',{name:text.search}).fill('NEW-42');assert.equal(await grouped.locator('td').nth(6).innerText(),'2');await page.getByRole('textbox',{name:text.search}).fill('');
     assert.equal(await page.locator('tbody .cc-code').count(),0);
-    assert.equal(headings[3],text.category);assert.equal(headings[4],text.industry);assert.equal(headings[6],text.order);assert.equal(headings[7],text.count);
+    assert.equal(headings.includes(text.category),false);assert.equal(headings[3],text.industry);assert.equal(headings[5],text.order);assert.equal(headings[6],text.count);
     assert.equal(await page.locator('[data-search-filters] select').nth(0).locator('option').first().textContent(),text.allIndustries);
     assert.equal(await page.locator('[data-search-filters] select').nth(1).locator('option').first().textContent(),text.allPartners);
     const historicalRow=page.locator('[data-expense-row="old"]');
@@ -113,8 +113,8 @@ try {
     await page.locator('[data-expense-row="document-item"] button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
     await page.getByRole('tab',{name:text.documents,exact:true}).click();
-    assert.equal(await page.locator('tbody tr').first().locator('td').nth(2).textContent(),{ko:'물류 외 1개',en:'Logistics and 1 more',vi:'Vận chuyển và 1 mục khác'}[lang]);
-    assert.equal(await page.locator('tbody tr').first().locator('td').nth(2).locator('span').getAttribute('title'),{ko:'물류, 봉제',en:'Logistics, Sewing',vi:'Vận chuyển, May'}[lang]);
+    assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).textContent(),{ko:'물류 외 1개',en:'Logistics and 1 more',vi:'Vận chuyển và 1 mục khác'}[lang]);
+    assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).locator('span').getAttribute('title'),{ko:'물류, 봉제',en:'Logistics, Sewing',vi:'Vận chuyển, May'}[lang]);
     await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await page.locator('[data-search-filters] select').nth(2).selectOption('USD');
@@ -124,7 +124,7 @@ try {
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.
     for(let cycle=0;cycle<4;cycle++) {
-      for(const [name,count] of [[text.documents,9],[text.detail,11],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,11]]) {
+      for(const [name,count] of [[text.documents,8],[text.detail,10],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,10]]) {
         await page.getByRole('tab',{name,exact:true}).click();
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{

@@ -43,7 +43,7 @@ export async function saveExpenseCodeLinkPolicy(tx: any, orgId: number, actorId:
     throw createHttpError(400,'INVALID_EXPENSE_CODE_LINK_POLICY');
   // Serialize absent-row creation too; an upsert alone cannot lock an absent policy.
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
-  if (!await tx.transactionCodeBase.findFirst({where:{id:baseId,isActive:true,expenseType:{isActive:true}}}))throw createHttpError(400,'INVALID_EXPENSE_CODE_BASE');
+  if (!await tx.transactionCodeBase.findFirst({where:{id:baseId,isActive:true,OR:[{expenseTypeId:null},{expenseType:{isActive:true}}]}}))throw createHttpError(400,'INVALID_EXPENSE_CODE_BASE');
   const current=await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId}}});
   if(current?.target===target&&JSON.stringify(current.inputSettings?accountingInputs(current.inputSettings):null)===JSON.stringify(settings??null))return current;
   const audit=await tx.expenseCodeLinkAudit.create({data:{orgId,baseId,previousTarget:current?.target ?? 'NONE',target,actorId,...(settings?{inputSettings:settings}:{})}});
@@ -56,7 +56,7 @@ export function registerExpenseCodeLinkPolicyRoutes(app: any, db: any, gates: an
   app.get(path,async(req: any,res: any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!access)return;
     const [bases,policies]=await Promise.all([
-      db.transactionCodeBase.findMany({where:{isActive:true,expenseType:{isActive:true}},orderBy:{code:'asc'}}),
+      db.transactionCodeBase.findMany({where:{isActive:true,OR:[{expenseTypeId:null},{expenseType:{isActive:true}}]},orderBy:{code:'asc'}}),
       db.expenseCodeLinkPolicy.findMany({where:{orgId:access.organization.id}}),
     ]);
     const byId=new Map(policies.map((row: any)=>[row.baseId,row]));

@@ -2,8 +2,9 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:accounting-code-industries": "npm --prefix backend run build && node --test scripts/accounting-code-industries.test.mjs scripts/code-bases-tax.test.mjs scripts/catalogue-order-access.test.mjs scripts/expense-code-link-policy.test.mjs scripts/ledger-evidence.test.mjs scripts/ledger-edit-read.test.mjs scripts/railway-schema-preflight.test.mjs scripts/expense-list.test.mjs && node scripts/accounting-code-industries-browser.test.mjs && node scripts/code-bases-browser.test.mjs && node scripts/expense-list-browser.test.mjs",
     "test:partner-classification": "npm --prefix backend run build && node --test scripts/partner-classification.test.mjs scripts/partner-industries.test.mjs scripts/catalogue-order-access.test.mjs scripts/business-partner-deletion.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/partner-classification-browser.test.mjs && node scripts/partner-registration-browser.test.mjs",
-    "test:accounting-hierarchy": "npm --prefix backend run build && node --test scripts/catalogue-order-access.test.mjs scripts/system-menu-layout.test.mjs && node scripts/accounting-hierarchy-browser.test.mjs",
+    "test:accounting-hierarchy": "npm --prefix backend run build && node --test scripts/catalogue-order-access.test.mjs scripts/system-menu-layout.test.mjs && node scripts/accounting-hierarchy-browser.test.mjs && node scripts/accounting-code-industries-browser.test.mjs",
     "test:invoice-list-detail": "node --test scripts/page-naming.test.mjs scripts/invoice-list-query.test.mjs scripts/invoice-style-rows.test.mjs scripts/issued-invoice-print.test.mjs && node scripts/invoice-list-detail-browser.test.mjs",
     "test:issued-order-value": "npm --prefix backend run build && node --test scripts/issued-order-value.test.mjs scripts/order-value-regression.test.mjs scripts/customer-order-price-alert.test.mjs scripts/sales-price-regression.test.mjs",
     "test:expense-approval-actions": "npm --prefix backend run build && node --test scripts/expense-approval-actions.test.mjs scripts/ledger-evidence.test.mjs && node scripts/expense-approval-actions-browser.test.mjs",

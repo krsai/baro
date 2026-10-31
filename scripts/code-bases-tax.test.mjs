@@ -17,13 +17,13 @@ function adapter(db) {
     assert.ok(!result.fields.some(field=>field.dataTypeID===2278),'Prisma cannot deserialize void columns');
     return result.rows;
   } };
-  for (const [name,table] of Object.entries({ expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
+  for (const [name,table] of Object.entries({ accountingCodeIndustry:'AccountingCodeIndustry', expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
     const where = (input, args) => Object.entries(input || {}).map(([key,value]) => {
       if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; if ('not' in value) {args.push(value.not);return `${q(key)}<>$${args.length}`;} throw Error('unsupported condition'); }
       args.push(value); return `${q(key)}=$${args.length}`;
     }).join(' AND ') || 'true';
-    const find = async ({ where: input } = {}) => { const args=[]; return (await db.query(`SELECT * FROM ${q(table)} WHERE ${where(input,args)} ORDER BY id`,args)).rows; };
-    const update = async ({ where: input,data }) => { const args=[];const sets=Object.entries(data).map(([key,value])=>{args.push(value);return `${q(key)}=$${args.length}`;}).join(',');return (await db.query(`UPDATE ${q(table)} SET ${sets} WHERE ${where(input,args)} RETURNING *`,args)).rows; };
+    const find = async ({where:input}={})=>{const args=[];return (await db.query(`SELECT * FROM ${q(table)} WHERE ${where(input,args)} ORDER BY ${table==="AccountingCodeIndustry"?q("baseId")+","+q("systemIndustryId"):"id"}`,args)).rows;};
+    const update = async ({where:input,data})=>{const args=[];const sets=Object.entries(data).map(([key,value])=>{const inc=value&&typeof value==="object"&&"increment"in value;args.push(inc?value.increment:value);return inc?`${q(key)}=${q(key)}+$${args.length}`:`${q(key)}=$${args.length}`;}).join(",");return(await db.query(`UPDATE ${q(table)} SET ${sets} WHERE ${where(input,args)} RETURNING *`,args)).rows;};
     result[name] = {
       findMany: find, findUnique: async options => (await find(options))[0] || null, findFirst: async options => (await find(options))[0] || null,
       createMany: async ({data}) => { for(const row of data) { const entries=Object.entries(row);await db.query(`INSERT INTO ${q(table)} (${entries.map(([key])=>q(key)).join(',')}) VALUES(${entries.map((_,i)=>`$${i+1}`).join(',')}) ON CONFLICT DO NOTHING`,entries.map(([,value])=>value)); } },
@@ -51,6 +51,9 @@ async function fixture(legacyCode = 'OLD_CODE') {
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261029160000_code_base_rename/migration.sql','utf8'));
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261029170000_partner_industry_code_rename/migration.sql','utf8'));
+  await db.exec(`CREATE TABLE IF NOT EXISTS "SystemSetting"(key TEXT PRIMARY KEY,value JSONB);CREATE TABLE IF NOT EXISTS "PartnerRole"(id INT PRIMARY KEY,code TEXT);INSERT INTO "PartnerRole" VALUES(1,'TEST') ON CONFLICT DO NOTHING;`);
+  await db.exec('ALTER TABLE "SettingServiceDefault" ADD COLUMN IF NOT EXISTS "partnerRoleId" INT DEFAULT 1 REFERENCES "PartnerRole"(id)');
+  await db.exec(fs.readFileSync('backend/prisma/migrations/20261031220000_accounting_code_industries/migration.sql','utf8'));
   return db;
 }
 
@@ -82,14 +85,45 @@ test('expense input settings copy once by FK and stay independent of partner ind
   const db=await fixture();try {
     const before=(await db.query(`SELECT * FROM "TransactionCodeBase" ORDER BY id`)).rows;
     await db.exec(`UPDATE "SettingServiceDefault" SET "requiredFields"=ARRAY['reference'];`);
-    await db.exec(fs.readFileSync('backend/prisma/migrations/20261016090000_expense_code_separation/migration.sql','utf8'));
+    await db.exec(fs.readFileSync('backend/prisma/migrations/20261031220000_accounting_code_industries/migration.sql','utf8'));
     assert.deepEqual((await db.query(`SELECT * FROM "TransactionCodeBase" ORDER BY id`)).rows,before);
     assert.equal((await db.query('SELECT count(*)::int n FROM "ExpenseType"')).rows[0].n,4);
     const [purchase]=(await db.query(`SELECT id FROM "ExpenseType" WHERE code='MATERIAL'`)).rows;
-    const [industry]=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='GENERAL'`)).rows;
-    const base=await db.transaction(tx=>service.saveCodeBase(adapter(tx),{code:'FAB',nameKo:'원단',nameEn:'Fabric',nameVi:'Vải',serviceTypeId:industry.id,expenseTypeId:purchase.id,requiredFields:[],taxTreatmentIds:[1,2,3]}));
-    assert.equal(base.entryMode,'PURCHASE');assert.equal(base.expenseTypeId,purchase.id);
+    const [industry]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows;
+    const base=await db.transaction(tx=>service.saveCodeBase(adapter(tx),{code:'FAB',nameKo:'원단',nameEn:'Fabric',nameVi:'Vải',serviceTypeId:industry.id,requiredFields:[],taxTreatmentIds:[1,2,3]}));
+    assert.equal(base.entryMode,industry.entryMode);assert.equal(base.expenseTypeId,null);
   }finally{await db.close();}
+});
+
+test('N:M edits keep original accounting, production, tax and business IDs and reject stale rule changes',async()=>{
+ const db=await fixture('TRKV');try{
+  const [base]=(await db.query(`SELECT * FROM "TransactionCodeBase" WHERE code='TRK'`)).rows;
+  const [other]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='BUTTONHOLE'`)).rows;
+  const before=(await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows;
+  const variants=(await db.query('SELECT id,code,"taxTreatmentId" FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY id',[base.id])).rows;
+  const codes=(await db.query('SELECT * FROM "TransactionCode" ORDER BY id')).rows;
+  const body={...base,industryIds:[other.id],industryRevision:base.industryRevision};
+  await db.transaction(tx=>service.saveCodeBase(adapter(tx),body,base.id));
+  const [saved]=(await db.query('SELECT * FROM "TransactionCodeBase" WHERE id=$1',[base.id])).rows;
+  assert.equal(saved.serviceTypeId,base.serviceTypeId);assert.equal(saved.entryMode,base.entryMode);assert.equal(saved.expenseTypeId,base.expenseTypeId);assert.equal(saved.industryRevision,base.industryRevision+1);
+  assert.deepEqual((await db.query('SELECT "systemIndustryId" FROM "AccountingCodeIndustry" WHERE "baseId"=$1',[base.id])).rows,[{systemIndustryId:other.id}]);
+  assert.deepEqual((await db.query('SELECT id,code,"taxTreatmentId" FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY id',[base.id])).rows,variants);
+  assert.deepEqual((await db.query('SELECT * FROM "TransactionCode" ORDER BY id')).rows,codes);assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,before);
+  await assert.rejects(db.transaction(tx=>service.saveCodeBase(adapter(tx),body,base.id)),/ACCOUNTING_INDUSTRY_CHANGED/);
+  await assert.rejects(db.query('DELETE FROM "SettingServiceDefault" WHERE id=$1',[other.id]),/foreign key/);
+ }finally{await db.close();}
+});
+
+test('type-free new families provision all company tax variants without changing legacy transaction rows',async()=>{
+ const db=await fixture();try{
+  const [industry]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='BUTTONHOLE'`)).rows;
+  const before=(await db.query('SELECT * FROM "PartnerTransactionCost"')).rows;
+  const base=await db.transaction(tx=>service.saveCodeBase(adapter(tx),{code:'EXT',nameEn:'Extra cost',nameKo:'추가 비용',nameVi:'Chi phí khác',industryIds:[industry.id],entryMode:'GENERAL',taxTreatmentIds:[1,2,3]}));
+  assert.equal(base.expenseTypeId,null);assert.equal(base.entryMode,'GENERAL');
+  const tx=adapter(db);tx.$queryRaw=async()=>[];await routes.provisionSettingDefaults(tx,1,true);
+  assert.deepEqual((await db.query('SELECT code FROM "TransactionCode" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows.map(row=>row.code),['EXTE','EXTV','EXTZ']);
+  assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost"')).rows,before);
+ }finally{await db.close();}
 });
 
 test('rollout creates three-letter bases and V/Z/E variants without guessing legacy tax or source FKs', async () => {
@@ -315,7 +349,6 @@ test('OTHER retirement preserves historical costs and IDs, disables all variants
   assert.deepEqual((await db.query('SELECT * FROM "PartnerTransactionCost" ORDER BY id')).rows,before);
   assert.deepEqual((await db.query('SELECT id FROM "TransactionCode" ORDER BY id')).rows,ids);
   assert.equal((await db.query(`SELECT count(*)::int n FROM "TransactionCode" c JOIN "TransactionCodeBase" b ON b.id=c."baseId" JOIN "ExpenseType" t ON t.id=b."expenseTypeId" WHERE t.code='OTHER' AND c."isActive"`)).rows[0].n,0);
-  await assert.rejects(service.initializeOtherExpenseDefaults({},20),error=>error.status===410);
   await assert.rejects(db.exec(`UPDATE "ExpenseType" SET "isActive"=true WHERE code='OTHER'`),/ExpenseType_other_retired/);
  }finally{await db.close();}
 });

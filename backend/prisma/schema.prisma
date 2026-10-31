@@ -2579,6 +2579,7 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  accountingCodeLinks AccountingCodeIndustry[]
   partnerClassifications PartnerClassificationIndustry[]
   productionPolicies IndustryProductionPolicy[]
   customerIndustries OrgRelationship[]
@@ -2708,10 +2709,12 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  industryLinks AccountingCodeIndustry[]
+  industryRevision Int @default(1)
   linkPolicies ExpenseCodeLinkPolicy[]
   linkAudits ExpenseCodeLinkAudit[]
-  expenseTypeId Int
-  expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+  expenseTypeId Int?
+  expenseType ExpenseType? @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
   entryMode String
   requiredFields String[] @default([])
   orderInput String @default("OPTIONAL")
@@ -2727,6 +2730,15 @@ model TransactionCodeBase {
   serviceType SettingServiceDefault @relation(fields: [serviceTypeId], references: [id], onDelete: Restrict)
   isActive Boolean @default(true)
   variants SettingTransactionCodeDefault[]
+}
+
+model AccountingCodeIndustry {
+  baseId Int
+  systemIndustryId Int
+  base TransactionCodeBase @relation(fields:[baseId],references:[id],onDelete:Cascade)
+  industry SettingServiceDefault @relation(fields:[systemIndustryId],references:[id],onDelete:Restrict)
+  @@id([baseId,systemIndustryId])
+  @@index([systemIndustryId])
 }
 
 model ExpenseType {
