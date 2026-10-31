@@ -32,6 +32,22 @@ test('refunds allocated to an order retain signed sub-unit amounts without corru
   assert.equal(result.priorReceivedAmount, '-0.1234');
 });
 const { calculateInvoiceIssueSnapshot, createInvoiceRevisionDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } = require('../backend/dist/services/invoiceIssueStore.js');
+test('stale new invoice selection cannot issue a fully billed order; successful retries return the original invoice', async () => {
+  const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore.js');
+  const locks=[];
+  const tx={invoiceDraft:{findFirst:async()=>({id:'d',revision:1,buyerOrgId:8,content:{fields:{date:'2026-10-31'},orders:[{orderId:'o'}]}})},
+    invoice:{findFirst:async()=>null},workOrder:{findMany:async()=>[{id:10,orderId:'o'}]},
+    $queryRawUnsafe:async(...args)=>locks.push(args),invoiceOrder:{findFirst:async({where})=>{
+      assert.deepEqual(where,{workOrderId:{in:[10]},billingPercentage:{gte:100},invoice:{sellerOrgId:7,buyerOrgId:8,status:'ISSUED'}});
+      return {id:20};
+    }}};
+  const db={$transaction:async run=>run(tx)};
+  await assert.rejects(issueInvoiceDraft(db,7,'admin','d',1),/INVOICE_ORDER_FULLY_BILLED/);
+  assert.equal(locks.length,1);
+  tx.invoice.findFirst=async()=>({id:'already-issued'});
+  assert.deepEqual(await issueInvoiceDraft(db,7,'admin','d',1),{id:'already-issued'});
+  assert.equal(locks.length,1);
+});
 const [schema, migration, routes] = await Promise.all([
   readFile(new URL('../backend/prisma/schema.prisma', import.meta.url), 'utf8'),
   readFile(new URL('../backend/migration_fix.sql', import.meta.url), 'utf8'),

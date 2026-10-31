@@ -165,6 +165,16 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       orderId: { in: content.orders.map((row: any) => row.orderId) } },
       include: { workOrderItems: { include: { style: true, color: true } }, priorCompletions: { where: { canceledAt: null } }, buyerOrg: true, sellerOrg: true } });
     if (orders.length !== content.orders.length) fail("INVOICE_SOURCE_CHANGED");
+    if (!revisedFrom) {
+      for (const order of [...orders].sort((a: any, b: any) => a.id - b.id)) {
+        await tx.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE id = $1 AND "sellerOrgId" = $2 FOR UPDATE', order.id, sellerOrgId);
+      }
+      const fullyBilled = await tx.invoiceOrder.findFirst({ where: {
+        workOrderId: { in: orders.map((order: any) => order.id) }, billingPercentage: { gte: 100 },
+        invoice: { sellerOrgId, buyerOrgId: draft.buyerOrgId, status: "ISSUED" },
+      } });
+      if (fullyBilled) fail("INVOICE_ORDER_FULLY_BILLED");
+    }
     for (const requested of content.orders) {
       const row = orders.find((order: any) => order.orderId === requested.orderId);
       if (!row || row.updatedAt.toISOString() !== requested.sourceUpdatedAt) fail("INVOICE_SOURCE_CHANGED");

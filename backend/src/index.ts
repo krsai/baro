@@ -29454,6 +29454,7 @@ app.get("/invoices/orders", async (req, res) => {
   const page = Math.max(0, Math.min(100000, Math.trunc(Number(req.query.page) || 0)));
   const orders = await prisma.workOrder.findMany({
     where: { sellerOrgId: access.organization.id, buyerOrgId,
+      AND: [{ invoiceOrders: { none: { billingPercentage: { gte: 100 }, invoice: { sellerOrgId: access.organization.id, buyerOrgId, status: "ISSUED" } } } }],
       ...(search ? { orderNumber: { contains: search, mode: "insensitive" as const } } : {}),
       ...(billingHistory === "NONE" ? { invoiceOrders: { none: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } }
         : billingHistory === "EXISTS" ? { invoiceOrders: { some: { invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } } } } : {}) },
@@ -29473,11 +29474,13 @@ app.get("/invoices/orders", async (req, res) => {
   }) : [];
   const progress = plans.length ? await buildAssignmentPlanProgressRows(access.organization.id, plans.map(plan => plan.externalId)) : [];
   const issuedRows = visible.length ? await prisma.invoiceOrder.findMany({ where: { workOrderId: { in: visible.map(order => order.id) },
-    invoice: { sellerOrgId: access.organization.id, status: "ISSUED" } }, select: { workOrderId: true, receivableAdded: true,
+    invoice: { sellerOrgId: access.organization.id, buyerOrgId, status: "ISSUED" } }, select: { workOrderId: true, receivableAdded: true, billingPercentage: true,
       invoice: { select: { currencyCode: true } } } }) : [];
   const billingByOrder = new Map<number, Record<string, bigint>>();
+  const billingPercentByOrder = new Map<number, number>();
   for (const row of issuedRows) {
     if (!row.workOrderId) continue;
+    billingPercentByOrder.set(row.workOrderId, Math.max(billingPercentByOrder.get(row.workOrderId) || 0, Number(row.billingPercentage) || 0));
     const byCurrency = billingByOrder.get(row.workOrderId) || {};
     const [whole, fraction = ""] = String(row.receivableAdded).split(".");
     byCurrency[row.invoice.currencyCode] = (byCurrency[row.invoice.currencyCode] || 0n) + BigInt(whole || "0") * 10000n + BigInt(fraction.padEnd(4, "0").slice(0, 4));
@@ -29485,6 +29488,7 @@ app.get("/invoices/orders", async (req, res) => {
   }
   const moneyText = (value: bigint) => { const text = value.toString().padStart(5, "0"); return `${text.slice(0, -4)}.${text.slice(-4)}`; };
   return res.json({ rows: visible.map(order => ({ ...invoiceOrderProgress(order, plans, progress),
+    billingPercent: billingPercentByOrder.get(order.id) || 0,
     billingHistory: Object.entries(billingByOrder.get(order.id) || {}).map(([currencyCode, value]) => ({ currencyCode, receivableAdded: moneyText(value) })) })),
     hasMore: orders.length > 50 });
 });

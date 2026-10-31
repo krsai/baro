@@ -83,7 +83,7 @@ const ts = require('../backend/node_modules/typescript');
 const backend = readFileSync('backend/src/index.ts', 'utf8');
 const section = backend.slice(backend.indexOf('const requireInvoiceAccess ='), backend.indexOf('app.post("/orders/:orderId/modification-lock"'));
 const routeCode = ts.transpileModule(section, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, orders = [], plans = [], progress = [] } = {}) => {
+const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, orders = [], plans = [], progress = [], issued = [] } = {}) => {
   const routes = new Map();
   const queries = [];
   const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; },
@@ -93,7 +93,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     workOrder: { async findFirst(query) { queries.push(query); return found ? { id: 10, orderId: 'o', buyerOrgId: null, workOrderItems: [] } : null; },
       async findMany(query) { queries.push(query); return orders; } },
     assignmentPlan: { async findMany(query) { queries.push(query); return plans; } },
-    invoiceOrder: { async findMany(query) { queries.push(query); return []; } },
+    invoiceOrder: { async findMany(query) { queries.push(query); return issued; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
   new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', routeCode)(
@@ -132,6 +132,7 @@ test('list queries are paginated and preserve seller scope when searching', asyn
   await routes.get('/invoices/orders')({ query: { buyerOrgId: '8', search: 'PO', page: '2' } }, response);
   assert.equal(queries[0].where.sellerOrgId, 7);
   assert.equal(queries[0].where.buyerOrgId, 8);
+  assert.deepEqual(queries[0].where.AND, [{invoiceOrders:{none:{billingPercentage:{gte:100},invoice:{sellerOrgId:7,buyerOrgId:8,status:'ISSUED'}}}}]);
   assert.deepEqual(queries[0].where.orderNumber, { contains: 'PO', mode: 'insensitive' });
   assert.equal(queries[0].take, 51);
   assert.equal(queries[0].skip, 100);
@@ -150,6 +151,13 @@ test('invoice order list scopes and batches assignment progress for only its vis
   assert.equal(response.body.rows[0].progressPercent, 30);
   assert.equal(response.body.rows[0].assignments[0].progressPercent, 60);
   assert.equal(response.body.hasMore, true);
+});
+
+test('picker reports cumulative billing percentage rather than adding invoice percentages', async () => {
+  const {routes,response,queries}=createRoutes({orders:[{id:1,orderId:'o1',totalQuantity:100}],issued:[30,70].map(billingPercentage=>({workOrderId:1,billingPercentage,receivableAdded:'1.0000',invoice:{currencyCode:'USD'}}))});
+  await routes.get('/invoices/orders')({query:{buyerOrgId:'8'}},response);
+  assert.equal(response.body.rows[0].billingPercent,70);
+  assert.deepEqual(queries.at(-1).where.invoice,{sellerOrgId:7,buyerOrgId:8,status:'ISSUED'});
 });
 
 test('customer options contain only buyers with orders sold by the active factory', async () => {
