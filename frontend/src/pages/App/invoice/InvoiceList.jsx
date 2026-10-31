@@ -2,26 +2,26 @@ import PageContentStack from '../../../components/PageContentStack';
 import SearchPanel from '../../../components/SearchPanel';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, CircularProgress, Box, Paper, Menu, MenuItem, IconButton, TextField, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
+import { Alert, Button, CircularProgress, Box, Paper, MenuItem, TextField, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
-import { buildIssuedInvoicePrintHtml } from '../../../utils/issuedInvoicePrint.mjs';
+import {buildIssuedInvoicePdfBlob,showInvoicePdf} from '../../../utils/issuedInvoicePdf';
+import {invoiceDetailText} from '../../../constants/invoiceDetail';
 import {useAppActions} from '../../../context/AppContext';
 import {invoiceUi,invoiceListUi} from '../../../constants/invoiceUi';
 import SearchInput from '../../../components/SearchInput';
 import StatusLabel from '../../../components/StatusLabel';
 import {formatCurrency} from '../../../utils/currencyFormat';
-import MoreVert from '@mui/icons-material/MoreVert';
 import InvoiceFinalReviewDialog from './InvoiceFinalReviewDialog';
 import InvoiceCreditDialog from './InvoiceCreditDialog';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
-export default function InvoiceList({ orgId, languageCode }) {
+export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const pageDialogs = usePageDialogs();
   const {navigateToPath}=useAppActions();
-  const ui=invoiceUi[languageCode]||invoiceUi.en;
-  const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[menuRow,setMenuRow]=useState(null);
+  const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
+  const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[detail,setDetail]=useState(null),[pdfBusy,setPdfBusy]=useState(false);
   const labels=invoiceListUi[languageCode]||invoiceListUi.en;
   const common = invoiceMessages[languageCode] || invoiceMessages.en;
   const [issued, setIssued] = useState({ rows: [], hasMore: false });
@@ -34,24 +34,23 @@ export default function InvoiceList({ orgId, languageCode }) {
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
-    setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setMenuRow(null);
-    const timer=setTimeout(()=>requestJSON(`/invoices/issued${buildQueryString({ orgId, page, search, status })}`, { skipCache:true })
-      .then(invoices=>{if(!cancelled)setIssued(invoices);})
+    setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null);
+    const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status}:{}) })}`, { skipCache:true })
+      .then(invoices=>{if(!cancelled){if(invoiceId)setDetail({...invoices,isFinalLocked:invoices.orders?.some(order=>order.workOrder?.invoiceFinalLockedAt&&order.workOrder.invoiceFinalLockInvoiceId===invoices.id)});else setIssued(invoices);}})
       .catch(()=>{if(!cancelled)setError(ui.failed);})
       .finally(()=>{if(!cancelled)setLoading(false);}),200);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [orgId, page, reload, search, status, ui.failed]);
+  }, [orgId, invoiceId, page, reload, search, status, ui.failed]);
   const printIssued = async row => {
     // Open synchronously from the click so browsers do not block the print tab.
     const popup = window.open('', '_blank');
     if (!popup) { setError(ui.failed); return; }
     popup.opener = null;
+    setPdfBusy(true);
     try {
       const invoice = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}${buildQueryString({ orgId })}`, { skipCache: true });
-      const html = buildIssuedInvoicePrintHtml(invoice);
-      if (popup.closed) return;
-      popup.document.write(html); popup.document.close();
-    } catch { popup.close(); setError(ui.failed); }
+      const blob=await buildIssuedInvoicePdfBlob(invoice);showInvoicePdf(popup,blob);
+    } catch { popup.close(); setError(ui.failed); }finally{setPdfBusy(false);}
   };
   const cancelIssued = async row => {
     const policy = languageCode === 'ko' ? '취소하면 이 회차의 채권은 제거되지만 이전 개정본이 다시 활성화되지는 않습니다. 기록된 입금은 보존되어 고객 예수금/환급 검토에 계속 표시됩니다.'
@@ -181,35 +180,45 @@ export default function InvoiceList({ orgId, languageCode }) {
     } catch { setError(ui.failed); }
   };
   const amount=(value,currencyCode)=>formatCurrency(value,{currencyCode,languageCode});
-  const active=menuRow?.row;
-  const action=(label,run,color)=> <MenuItem key={label} sx={color?{color}:undefined} onClick={()=>{setMenuRow(null);run(active);}}>{label}</MenuItem>;
+  const active=detail;
+  const action=(label,run,color)=> <Button key={label} sx={color?{color}:undefined} onClick={()=>run(active)}>{label}</Button>;
   return <PageContentStack>
+    {!invoiceId&&<>
     <SearchPanel search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} filters={<TextField select size="small" label={common.invoiceStatus} value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}} sx={{minWidth:180}}><MenuItem value="">{ui.all}</MenuItem>{['ISSUED','CANCELLED','SUPERSEDED'].map((value,index)=><MenuItem key={value} value={value}>{[ui.issued,ui.cancelled,ui.superseded][index]}</MenuItem>)}</TextField>} onReset={()=>{setSearch('');setStatus('');setPage(0);}} />
     <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
-      {[common.invoiceNumber,common.issuedDate,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,ui.actions].map((label,index)=><TableCell key={label} align={index>=4&&index<=6?'right':'left'}>{label}</TableCell>)}
+      {[common.issuedDate,common.invoiceStatus,common.invoiceNumber,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,'PDF'].map((label,index)=><TableCell key={label} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
     </TableRow></TableHead><TableBody>
-      {loading?<TableRow><TableCell colSpan={8} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={8} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover>
-        <TableCell><Typography variant="subtitle2">{row.invoiceNumber}</Typography><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/>{row.isFinalLocked&&<Typography variant="caption" color="success.main" display="block">{labels.locked}</Typography>}</TableCell>
+      {loading?<TableRow><TableCell colSpan={9} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={9} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
+        <TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/>{row.isFinalLocked&&<Typography variant="caption" color="success.main" display="block">{labels.locked}</Typography>}</TableCell>
+        <TableCell><Typography variant="subtitle2">{row.invoiceNumber}</Typography></TableCell>
         <TableCell>{row.buyerName}</TableCell><TableCell>{row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography><Typography variant="caption" color="text.secondary">{labels.debt}: {amount(row.receivableAdded,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}<Typography variant="caption" display="block" color={row.familyBalanceKind==='CREDIT'?'warning.main':'text.secondary'}>{!row.isCurrentRevision?labels.historical:row.familyBalanceKind==='CREDIT'?labels.credit:row.familyBalanceKind==='SETTLED'?labels.settled:labels.due}</Typography></TableCell>
-        <TableCell sx={{whiteSpace:'nowrap'}}><Button onClick={()=>printIssued(row)}>PDF</Button><IconButton aria-label={ui.actions} onClick={event=>setMenuRow({row,anchor:event.currentTarget})}><MoreVert/></IconButton></TableCell>
+        <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}>PDF</Button></TableCell>
       </TableRow>)}
     </TableBody></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><Stack direction="row" alignItems="center" spacing={1}><Button disabled={!page||loading} onClick={()=>setPage(v=>v-1)}>{common.previous}</Button><Typography variant="caption">{page+1}</Typography><Button disabled={!issued.hasMore||loading} onClick={()=>setPage(v=>v+1)}>{common.next}</Button></Stack></Stack>
     </Paper>
-    <Menu anchorEl={menuRow?.anchor} open={Boolean(active)} onClose={()=>setMenuRow(null)}>
+    </>}
+    {invoiceId&&<>
+      {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
+      {loading?<CircularProgress size={22}/>:detail&&<>
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button onClick={()=>navigateToPath('/invoices',{closeTabId:'/invoices/'+invoiceId})}>{d.back}</Button><Button disabled={pdfBusy} aria-label={d.pdf} onClick={()=>printIssued(detail)}>PDF</Button>
       {active&&[
         action(labels.history,showHistory),action(labels.credits,row=>setCreditId(row.id)),
         active.orders.length>1? action(labels.allocate,allocateExistingPayment):null,
         ...(active.status==='ISSUED'?[action(labels.payment,addPayment),action(labels.revise,reviseIssued),active.isFinalLocked?action(labels.unlock,unlockFinalLock,'warning.main'):action(labels.finalClose,approveFinalLock,'success.main'),action(labels.cancel,cancelIssued,'error.main')]:[]),
-        Number(active.receivedAmount)>0?action(labels.refund,refundPayment,'warning.main'):null,
+        (Number(active.receivedAmount)>0||active.payments?.some(payment=>!payment.voidedAt&&payment.kind!=='REFUND'))?action(labels.refund,refundPayment,'warning.main'):null,
       ]}
-    </Menu>
+        </Stack>
+        <Paper variant="outlined" sx={{p:2}}><Stack spacing={1}><Typography variant="h6">{detail.invoiceNumber}</Typography><Typography>{new Date(detail.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')} / {({ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded})[detail.status]}</Typography><Typography>{common.customerName}: {detail.snapshot?.fields?.buyer?.name||''}</Typography><Typography>{labels.orders}: {detail.orders.map(order=>order.sourceOrderNumber).join(', ')}</Typography><Typography sx={{textAlign:'right',fontWeight:700}}>{labels.statement}: {amount(detail.total,detail.currencyCode)}</Typography></Stack></Paper>
+        <Paper variant="outlined" sx={{overflow:'hidden'}}><Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:700}}><TableHead><TableRow>{[labels.orders,d.description,d.quantity,d.unitPrice,labels.statement].map((label,index)=><TableCell key={index} align={index>=2?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{detail.snapshot?.lines?.map((line,index)=><TableRow key={line.lineKey||index}><TableCell>{detail.orders.find(order=>order.sourceOrderId===line.orderId)?.sourceOrderNumber}</TableCell><TableCell>{[line.description||line.styleName,line.color,line.gender,line.size].filter(Boolean).join(' / ')}</TableCell><TableCell align="right">{line.quantity}</TableCell><TableCell align="right">{detail.currencyCode} {String(line.unitPrice)}</TableCell><TableCell align="right">{amount(line.amount,detail.currencyCode)}</TableCell></TableRow>)}</TableBody></Table></Box></Paper>
+      </>}
+    </>}
     {creditId&&<InvoiceCreditDialog key={creditId} invoiceId={creditId} orgId={orgId} languageCode={languageCode} onClose={()=>setCreditId(null)} onChanged={()=>{setReload(v=>v+1);emitWorkspaceDataChanged({topics:[WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],orgId});}}/>}
     {finalReviewId&&<InvoiceFinalReviewDialog key={finalReviewId} invoiceId={finalReviewId} orgId={orgId} languageCode={languageCode} onClose={()=>setFinalReviewId(null)} onSaved={()=>{setFinalReviewId(null);setReload(v=>v+1);emitWorkspaceDataChanged({topics:[WORKSPACE_DATA_TOPICS.ISSUED_INVOICES,WORKSPACE_DATA_TOPICS.ORDERS],orgId});}}/>}
   </PageContentStack>;

@@ -1,3 +1,4 @@
+import {invoiceDetailText} from '../../../constants/invoiceDetail';
 import React, { useEffect, useState } from 'react';
 import {Alert,Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -9,7 +10,7 @@ import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
 import InvoiceEditor from './InvoiceEditor';
 import InvoiceList from './InvoiceList';
-import {useLocation} from 'react-router-dom';
+import {useLocation,useParams} from 'react-router-dom';
 
 export default function InvoiceWorkspace({ view = 'list' } = {}) {
   const { activeOrgId } = useAuth();
@@ -20,9 +21,11 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
   const { navigateToPath } = useAppActions();
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
+  const {invoiceId}=useParams();
   if (view === 'editor') {
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
   }
+  if(view==='detail')return <AppPageContainer title={(invoiceDetailText[languageCode]||invoiceDetailText.en).title}><InvoiceList orgId={activeOrgId} languageCode={languageCode} invoiceId={invoiceId}/></AppPageContainer>;
   return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>}>
     <InvoiceList orgId={activeOrgId} languageCode={languageCode}/>
   </AppPageContainer>;

@@ -7,8 +7,12 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
+          if (id.includes('commonjsHelpers')) return 'vendor-core'
           if (!id.includes('node_modules')) return undefined
+          // Load PDF generation only when the user opens a PDF.
+          if (/node_modules\/(jspdf|html2canvas|canvg|core-js|dompurify|fast-png|fflate|iobuffer|pako|performance-now|raf|regenerator-runtime|rgbcolor|stackblur-canvas|svg-pathdata|css-line-break|text-segmentation|utrie|base64-arraybuffer)\//.test(id.replaceAll('\\','/'))) return 'vendor-invoice-pdf'
           if (id.includes('@mui/icons-material')) return 'vendor-mui-icons'
           if (id.includes('@mui/x-date-pickers')) return 'vendor-mui-x'
           if (id.includes('@emotion')) return 'vendor-emotion'

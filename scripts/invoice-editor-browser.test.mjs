@@ -99,7 +99,7 @@ try{
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=list`);
   try{await page.getByText('INV-001',{exact:true}).waitFor({timeout:8000});}catch(e){throw new Error(JSON.stringify({errors,queries,body:await page.locator('body').innerText()}));}
   assert.doesNotMatch(await page.locator('body').innerText(),/초안|draft|bản nháp/i);
-  assert.equal(await page.locator('tbody button').count(),2,'Rows expose PDF and one action menu');
+  assert.equal(await page.locator('tbody button').count(),1,'Rows expose only PDF');
   const assertSeparateCards=async()=>{
    const layout=await page.locator('[data-search-panel]').evaluate(search=>{
     const results=document.querySelector('[data-search-results]');
@@ -112,9 +112,7 @@ try{
    assert.equal(layout.border,'1px');assert.ok(layout.radius>0,'Search keeps its own rounded card');
   };
   await assertSeparateCards();
-  await page.getByRole('button',{name:lang==='ko'?'작업':lang==='vi'?'Thao tác':'Actions',exact:true}).click();
-  await page.getByRole('menuitem',{name:lang==='ko'?'개정':lang==='vi'?'Sửa đổi':'Revise',exact:true}).waitFor();
-  assert.equal(await page.getByRole('menuitem').count(),6);await page.keyboard.press('Escape');
+  await page.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.navigation),'/invoices/i1');
   await page.getByRole('button',{name:lang==='ko'?'다음':lang==='vi'?'Tiếp':'Next',exact:true}).click();await page.waitForFunction(()=>document.querySelector('tbody')?.textContent.includes('INV-001'));
   await page.getByPlaceholder(lang==='ko'?'청구번호·고객·주문 검색':lang==='vi'?'Tìm số hóa đơn, khách hàng hoặc đơn hàng':'Search invoice, customer or order').fill('PO-1');
   await page.waitForResponse(r=>r.url().includes('search=PO-1'));
