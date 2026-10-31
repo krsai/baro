@@ -5,7 +5,8 @@ import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
 import {legacyExpenseNumber} from './documentNumber';
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
 export async function readLedgerEdit(db:any,orgId:number,id:string){
- const include={account:true,accountingCode:true,settlementLines:{include:{accountingCode:true}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
+ const codeInclude={base:{include:{expenseType:true}}} satisfies Prisma.TransactionCodeInclude;
+ const include={account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
  const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include});
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');
  const code=entry.account.currencyCode;

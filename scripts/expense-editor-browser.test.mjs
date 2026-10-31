@@ -123,10 +123,10 @@ try {
     }
     if(locked){assert.equal(await page.getByLabel('REMARK',{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
     else {
-      const code=page.getByTestId('expense-line').getByRole('combobox',{name:l.code,exact:false});
+      const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});
       await code.fill('BT');
-      await page.getByRole('option',{name:/BTHE/}).waitFor();
-      await page.getByRole('option',{name:/BTHE/}).click();
+      await code.press('Tab');
+      await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
       assert.equal(await code.inputValue(),'BTHE');
       await code.fill('');
       await code.locator('..').getByRole('button',{name:new RegExp(lookup.search)}).click();

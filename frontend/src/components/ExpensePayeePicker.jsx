@@ -89,7 +89,7 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
  },[open,draftId,orgId,reload]);
  const rows=options.filter(row=>row.isActive!==false&&normalizeLookupText([row.code,row.name,row.nameKo,row.nameVi,row.contactName,row.contactPhone].filter(Boolean).join(' ')).includes(normalizeLookupText(query)));
  return <>
-  <Autocomplete data-testid="expense-payee-button" fullWidth size="small" freeSolo forcePopupIcon={false} disabled={disabled||lockSelection} options={options.filter(row=>row.isActive!==false)} value={value||null} inputValue={input} getOptionLabel={row=>typeof row==='string'?row:display(row)} isOptionEqualToValue={(a,b)=>a.id===b.id}
+  <Autocomplete data-testid="expense-payee-button" sx={{minWidth:0,'& .MuiAutocomplete-inputRoot.MuiOutlinedInput-root':{paddingRight:'8px !important',flexWrap:'nowrap'},'& .MuiAutocomplete-input':{minWidth:0,width:0,flex:'1 1 0'}}} fullWidth size="small" freeSolo forcePopupIcon={false} disabled={disabled||lockSelection} options={options.filter(row=>row.isActive!==false)} value={value||null} inputValue={input} getOptionLabel={row=>typeof row==='string'?row:display(row)} isOptionEqualToValue={(a,b)=>a.id===b.id}
    open={suggesting&&!open&&!disabled&&!lockSelection} onOpen={()=>setSuggesting(true)} onClose={()=>setSuggesting(false)}
    filterOptions={(rows,{inputValue})=>rows.filter(row=>normalizeLookupText([row.code,row.name,row.nameKo,row.nameVi].join(' ')).includes(normalizeLookupText(inputValue)))}
    onInputChange={(_,next,reason)=>{if(!['input','clear'].includes(reason))return;directRequest.current++;pendingPayee.current=null;setInput(next);if(value)onChange(null,[]);}}
@@ -103,7 +103,7 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
     const matched=commitCode();if(event.key==='Enter'||!matched)event.preventDefault();
    }}
    renderOption={(props,row)=>{const {key,...rest}=props;return <Box component="li" key={row.id} {...rest}><Stack spacing={.25}><Typography variant="body2">{display(row)}</Typography><Typography variant="caption" color="text.secondary">{payeeTypeLabel(row,languageCode)}</Typography></Stack></Box>;}}
-   renderInput={params=><TextField {...params} label={t.payee} placeholder={text.search} InputProps={{...params.InputProps,endAdornment:<InputAdornment position="end"><IconButton size="small" tabIndex={-1} disabled={disabled} aria-label={t.choosePayee} onClick={openSearch}><SearchOutlined fontSize="small"/></IconButton></InputAdornment>}}/>}/>
+   renderInput={params=><TextField {...params} label={t.payee} placeholder={text.search} InputProps={{...params.InputProps,endAdornment:<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><IconButton sx={{width:28,height:28,p:.5,m:0}} size="small" tabIndex={-1} disabled={disabled} aria-label={t.choosePayee} onClick={openSearch}><SearchOutlined fontSize="small"/></IconButton></InputAdornment>}}/>}/>
   <Dialog open={open} onClose={()=>setOpen(false)} maxWidth="md" fullWidth slotProps={{paper:{sx:{maxWidth:800}}}} aria-labelledby="expense-payee-title">
    <DialogTitle id="expense-payee-title" sx={{px:2,py:1.5}}>{t.choosePayee}</DialogTitle>
    <DialogContent dividers sx={{p:2}}><Stack spacing={1.5}>
