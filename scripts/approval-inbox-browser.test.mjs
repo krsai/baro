@@ -22,6 +22,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*'};
   await page.route('**/orders?*',r=>{orderReads++;return r.fulfill({headers,json:[{orderNumber:'ORDER',workflowStatus:'RECEIVED',productionAssignments:Array.from({length:30},(_,i)=>({id:i+1,style:'Style '+i,factory:'Factory',plannedQuantity:100,missingRecordProcesses:[{processCode:'P',targetQuantity:100}]}))}]});});
   for(const endpoint of ['assignment-board-view','org-memberships','customers'])await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json:endpoint==='assignment-board-view'?{assignments:[]}:[]}));
+  await page.route('**/bank-ledger/changes?*',r=>r.fulfill({headers,json:{rows:[],total:0}}));
   await page.route('**/expense-approval-overview?*',async r=>{
    const url=new URL(r.request().url()),params=Object.fromEntries(url.searchParams);queries.push(params);const pageSize=Number(params.pageSize),offset=Number(params.page)*pageSize,total=params.orgId==='8'?0:55;
    const rows=Array.from({length:Math.min(pageSize,Math.max(0,total-offset))},(_,i)=>({id:offset+i+1,kind:'EXPENSE_REQUEST',managementNumber:'EXP-'+String(offset+i+1).padStart(6,'0'),requestDate:'2026-10-29',drafter:'Author',status:params.status==='ALL'?(i%2?'REJECTED':'APPROVED'):params.status==='APPROVED'?'APPROVED':'REQUESTED'}));return r.fulfill({headers,json:{rows,total}});

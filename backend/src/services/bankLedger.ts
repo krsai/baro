@@ -1,3 +1,4 @@
+import {listLedgerChanges} from './ledgerChanges';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -256,6 +257,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
     return {orgId:context.organization.id,actor:context.requesterEmail,actorId:context.employee?.id};
   };
   app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json({accounts:await listLedgerAccounts(db,scope.orgId)});});
+  app.get('/bank-ledger/changes',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerChanges(db,scope.orgId,req.query));});
   app.get('/bank-ledger/overview',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await loadAccountOverview(db,scope.orgId,req.query));});
   app.get('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await readLedgerEdit(db,scope.orgId,req.params.entryId));});
   app.put('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await replaceLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body));});
