@@ -1,3 +1,4 @@
+import {partnerIndustryLabel} from '../utils/partnerIndustry.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../utils/localizedName.mjs';
 import PartnerProfileFields from './PartnerProfileFields';
 import EntityDetailSection from './EntityDetailSection';
@@ -8,7 +9,7 @@ import { getStaticOptionOptions } from '../constants/staticOptionRegistry';
 import React, { useEffect, useId, useState } from 'react';
 import {
   Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormControlLabel, InputLabel, ListItemText, MenuItem, Select, Stack, Switch, TextField,
+  FormControl, InputLabel, ListItemText, MenuItem, Select, Stack, TextField,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
@@ -56,7 +57,6 @@ const buildFormFromPartner = (partner, initialType) => ({
   nameKo: partner?.nameKo || '', nameVi: partner?.nameVi || '',businessNumber:partner?.businessNumber || '',country:partner?.country || '',countryCode:partner?.countryCode || '',address:partner?.address || '',email:partner?.email || '',
   contactName: partner?.contactName || '',
   contactPhone: partner?.contactPhone || '',
-  isActive: partner?.isActive !== false,
   serviceTypeIds: (partner?.serviceTypes || []).map((item) => item.id),
 });
 
@@ -113,7 +113,7 @@ export default function BusinessPartnerDialog({
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
         serviceTypeIds: form.serviceTypeIds,
-        ...(isEdit ? { isActive: Boolean(form.isActive) } : {}),
+
       };
       const savedPartner = await requestJSON(
         isEdit
@@ -129,7 +129,7 @@ export default function BusinessPartnerDialog({
       (onSaved || onCreated)?.(savedPartner);
       onClose?.();
     } catch (saveError) {
-      setError(saveError?.message || (isEdit ? labels.errorEdit : labels.error));
+      setError(saveError?.message==='PARTNER_CODE_CONFLICT'?({ko:'\uC774\uBBF8 \uC0AC\uC6A9 \uC911\uC778 \uAC70\uB798\uCC98 \uCF54\uB4DC\uC785\uB2C8\uB2E4.',en:'This partner code is already in use.',vi:'M\u00e3 \u0111\u1ed1i t\u00e1c \u0111\u00e3 \u0111\u01b0\u1ee3c s\u1eed d\u1ee5ng.'})[languageCode]||labels.errorEdit:saveError?.message || (isEdit ? labels.errorEdit : labels.error));
     } finally {
       setSaving(false);
     }
@@ -156,27 +156,17 @@ export default function BusinessPartnerDialog({
                 onChange={update('serviceTypeIds')}
                 renderValue={(ids) => ids.map((id) => {
                   const item = industryOptions.find((candidate) => candidate.id === id);
-                  return item?.[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || id;
+                  return partnerIndustryLabel(item,languageCode)||id;
                 }).join(', ')}
               >
                 {industryOptions.filter(item=>!item.systemDefault?.partnerRole || item.systemDefault.partnerRole.code===form.type || form.serviceTypeIds.includes(item.id)).map((item) => {
-                  const label = item[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item.nameEn;
-                  return <MenuItem key={item.id} value={item.id}><Checkbox checked={form.serviceTypeIds.includes(item.id)} /><ListItemText primary={label} /></MenuItem>;
+                  const label = partnerIndustryLabel(item,languageCode);
+                  return <MenuItem key={item.id} value={item.id} disabled={(item.code==='GENERAL'||item.systemDefault?.code==='GENERAL')&&!form.serviceTypeIds.includes(item.id)}><Checkbox checked={form.serviceTypeIds.includes(item.id)} /><ListItemText primary={label} /></MenuItem>;
                 })}
               </Select>
             </FormControl>
           ) : null}
-          {isEdit ? (
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={Boolean(form.isActive)}
-                  onChange={(event) => setForm((current) => ({ ...current, isActive: event.target.checked }))}
-                />
-              }
-              label={labels.active}
-            />
-          ) : null}
+
           </Stack></EntityDetailSection>
         </Stack>
       </DialogContent>

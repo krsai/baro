@@ -33,6 +33,6 @@ export async function validateCustomerIndustry(db: any, value: unknown, retained
 // and selectable definitions always come from the explicit SYSTEM source FK.
 export function partnerIndustryOption(row: any, partnerType?: string) {
   const source=row.systemDefault;
-  if (!source?.isActive || source.partnerRole && source.partnerRole.code!==partnerType) return null;
+  if (!source?.isActive || source.code==='GENERAL' || source.partnerRole && source.partnerRole.code!==partnerType) return null;
   return {...row,code:source.code,nameKo:source.nameKo,nameEn:source.nameEn,nameVi:source.nameVi,isActive:source.isActive,sortOrder:source.sortOrder};
 }

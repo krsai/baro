@@ -27566,7 +27566,7 @@ const resolvePartnerServiceTypeIds = async (
   const ids = Array.from(new Set(rawIds)) as number[];
   if (ids.length === 0) return [];
   const rows = await tx.outsourcingServiceType.findMany({
-    where: { ownerOrgId, id: { in: ids }, systemDefaultId:{not:null}, OR:[{id:{in:retainedIds}},{systemDefault: {isActive:true,OR:[{partnerRole:null},{partnerRole:{code:partnerType}}]}}] },
+    where: { ownerOrgId, id: { in: ids }, systemDefaultId:{not:null}, OR:[{id:{in:retainedIds}},{systemDefault: {isActive:true,code:{not:'GENERAL'},OR:[{partnerRole:null},{partnerRole:{code:partnerType}}]}}] },
     select: { id: true },
   });
   if (rows.length !== ids.length) throw new Error("INVALID_OUTSOURCING_SERVICE_TYPE");
@@ -27721,6 +27721,7 @@ app.post("/business-partners", async (req, res) => {
       return tx.organization.findUniqueOrThrow({ where: { id: partner.id }, include: BUSINESS_PARTNER_SERVICE_INCLUDE });
     });
   } catch (error) {
+    if ((error as any)?.code==='P2002' && String((error as any)?.meta?.target||'').toLowerCase().includes('code')) return res.status(409).json({error:'PARTNER_CODE_CONFLICT'});
     if (error instanceof Error && error.message === "INVALID_OUTSOURCING_SERVICE_TYPE") return res.status(400).json({ ok: false, error: "invalid outsourcing service type" });
     throw error;
   }
@@ -27775,6 +27776,7 @@ app.put("/business-partners/:id", async (req, res) => {
       return tx.organization.findUniqueOrThrow({ where: { id }, include: BUSINESS_PARTNER_SERVICE_INCLUDE });
     });
   } catch (error) {
+    if ((error as any)?.code==='P2002' && String((error as any)?.meta?.target||'').toLowerCase().includes('code')) return res.status(409).json({error:'PARTNER_CODE_CONFLICT'});
     if (error instanceof Error && ['PARTNER_CHANGED', 'PARTNER_HAS_TRANSACTION_HISTORY'].includes(error.message)) return res.status(409).json({ error: error.message });
     if (error instanceof Error && error.message === "INVALID_OUTSOURCING_SERVICE_TYPE") return res.status(400).json({ ok: false, error: "invalid outsourcing service type" });
     throw error;

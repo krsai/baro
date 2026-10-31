@@ -20,6 +20,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={navigateToPath:(path)=>{window.partnerNavigation=path;},showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>actions;'}));
   const headers={'Access-Control-Allow-Origin':'*'};
+  await page.route('**/partner-roles',r=>r.fulfill({headers,json:[{code:'MATERIAL_SUPPLIER'},{code:'CUSTOMER'},{code:'PROCESS_OUTSOURCING'},{code:'LOGISTICS_PROVIDER'}]}));
   await page.route('**/customers?*',r=>{reads.push('customers');return r.fulfill({headers,json:[{id:7,entityId:44,brandOrgId:44,name:'THE SAN',code:'SAN',country:'KR',manager:'Contact',phoneNumber:'01234',email:'san@example.com'}]});});
   await page.route('**/business-partners?*',r=>{const type=new URL(r.request().url()).searchParams.get('type');reads.push(type);return r.fulfill({headers,json:[{id:type==='MATERIAL_SUPPLIER'?55:66,name:type==='MATERIAL_SUPPLIER'?'Supplier A':'Vendor A',type,isActive:true,hasUsageHistory:true,serviceTypes:[]}]});});
   await page.route('**/business-partners/*/history?*',r=>r.fulfill({headers,json:{records:[{id:1,workDate:'2026-10-20',styleCode:'STYLE',processName:'Buttonhole',quantity:10,unitPrice:100,amount:1000}],costs:[]}}));
@@ -39,11 +40,11 @@ try{
    const headers=await page.locator('[data-testid=partner-directory] thead th').allTextContents();
    assert.equal(headers.length,9);
    await page.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.partnerNavigation),'/customer/7','Customer relationship FK must remain intact');
-   await branches.nth(1).click();await page.getByText('Vendor A',{exact:true}).waitFor();
+   await branches.nth(2).click();await page.getByText('Vendor A',{exact:true}).waitFor();
    assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
    assert.equal(await page.getByRole('button',{name:lang==='ko'?'\uAC70\uB798\uCC98 \uB4F1\uB85D':lang==='vi'?'Th\u00eam \u0111\u1ed1i t\u00e1c':'Add partner',exact:true}).isEnabled(),true);
    await page.locator('tbody tr').first().getByRole('button',{name:lang==='ko'?'\uB0B4\uC5ED\uBCF4\uAE30':lang==='vi'?'Xem l\u1ecbch s\u1eed':'View history',exact:true}).click();await page.getByText('Buttonhole',{exact:true}).waitFor();await page.keyboard.press('Escape');
-   await branches.nth(2).click();await page.getByText('Supplier A',{exact:true}).waitFor();
+   await branches.nth(0).click();await page.getByText('Supplier A',{exact:true}).waitFor();
    assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);
    await branches.nth(3).click();await page.getByText('Vendor A',{exact:true}).waitFor();assert.ok(reads.includes('LOGISTICS_PROVIDER'));
    assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);

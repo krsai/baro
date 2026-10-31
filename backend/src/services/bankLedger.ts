@@ -1,3 +1,4 @@
+import {requireLedgerAdjustmentAccess} from './ledgerAdjustmentAccess';
 import {listLedgerChanges} from './ledgerChanges';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -254,16 +255,16 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
       const policy=(await gates.loadPolicy()).policy;
       if(!policy?.[context.organization.type]?.[context.employee?.orgRole]?.includes('BANK_LEDGER')){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}
     }
-    return {orgId:context.organization.id,actor:context.requesterEmail,actorId:context.employee?.id};
+    return {orgId:context.organization.id,actor:context.requesterEmail,actorId:context.employee?.id,role:context.employee?.orgRole};
   };
   app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json({accounts:await listLedgerAccounts(db,scope.orgId)});});
   app.get('/bank-ledger/changes',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerChanges(db,scope.orgId,req.query));});
   app.get('/bank-ledger/overview',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await loadAccountOverview(db,scope.orgId,req.query));});
   app.get('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await readLedgerEdit(db,scope.orgId,req.params.entryId));});
-  app.put('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await replaceLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body));});
-  app.delete('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await deleteLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body.reason));});
+  app.put('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body,req.params.entryId);res.json(await replaceLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body));}});
+  app.delete('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,null,req.params.entryId);res.json(await deleteLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body.reason));}});
   app.get('/bank-ledger/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerActivity(db,scope.orgId,req.query));});
-  app.post('/bank-ledger/entries/batch',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(201).json(await postLedgerBatch(db,scope.orgId,scope.actor,req.body));});
+  app.post('/bank-ledger/entries/batch',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body);res.status(201).json(await postLedgerBatch(db,scope.orgId,scope.actor,req.body));}});
   app.post('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(410).json({error:'REGISTER_ACCOUNT_IN_BUSINESS'});});
   app.get('/bank-ledger/evidence/search',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await searchLedgerEvidence(db,scope.orgId,req.query));});
   app.get('/bank-ledger/evidence/expenses',async(req:any,res:any)=>{
@@ -293,9 +294,9 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   });
   app.get('/expense-approval-overview',async(req:any,res:any)=>{const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!auth)return;const actorId=auth.employee?.id;if(!actorId)return fail('LEDGER_ACCESS_DENIED',403);res.json(await listApprovalOverview(db,auth.organization.id,actorId,req.query));});
   app.get('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerEntries(db,scope.orgId,req.params.accountId,req.query));});
-  app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(201).json(await postLedgerEntry(db,scope.orgId,scope.actor,req.params.accountId,req.body));});
+  app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body);res.status(201).json(await postLedgerEntry(db,scope.orgId,scope.actor,req.params.accountId,req.body));}});
   app.post('/bank-ledger/accounts/:accountId/entries/:entryId/void',async(req:any,res:any)=>{
-    const scope=await access(req,res);if(!scope)return;
+    const scope=await access(req,res);if(!scope)return;await requireLedgerAdjustmentAccess(db,scope,null,req.params.entryId);
     const reason=text(req.body.reason,1000);
     const row=await retryEditTransaction(db,async(tx:any)=>{
       const entry=await tx.bankLedgerEntry.findFirst({where:{id:req.params.entryId,accountId:req.params.accountId,orgId:scope.orgId}});

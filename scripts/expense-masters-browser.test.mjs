@@ -48,7 +48,7 @@ try {
   assert.equal(writes[1].data.partnerRoleId,1);
   assert.equal(writes[1].data.code,'BUTTONHOLE_NEW');
   const roots=page.locator('#industries').getByRole('list');
-  await roots.getByRole('button',{name:/물류 업체/}).click();
+  await roots.getByRole('button',{name:/물류 업체/}).filter({has:page.locator('[data-testid=ChevronRightIcon]')}).click();
   await page.locator('#industries tbody').getByText('\uBB3C\uB958\u00b7\uC6B4\uC1A1',{exact:true}).waitFor();
   assert.equal(await page.locator('#industries tbody').getByText('BUTTONHOLE',{exact:true}).count(),0);
   await page.locator('#industries').getByRole('button',{name:'\uC5C5\uC885 \uB4F1\uB85D',exact:true}).click();
@@ -56,13 +56,18 @@ try {
   await added.getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).waitFor();
   assert.match(await added.getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).innerText(),/물류 업체/);
   await added.getByRole('button',{name:'\uCDE8\uC18C',exact:true}).click();
-  await roots.getByRole('button',{name:/\uAD00\uB9AC/}).click();
-  await page.locator('#industries tbody').getByText('\uAD00\uB9AC',{exact:true}).waitFor();assert.equal(await page.locator('#industries tbody').getByRole('button',{name:'\uC0AD\uC81C',exact:true}).isEnabled(),true);
+  await roots.getByRole('button',{name:/\uAD00\uB9AC/}).filter({has:page.locator('[data-testid=ChevronRightIcon]')}).click();
+  await page.locator('#industries tbody').getByText('\uD655\uC778',{exact:true}).waitFor();assert.equal(await page.locator('#industries tbody').getByRole('button',{name:'\uC0AD\uC81C',exact:true}).isEnabled(),true);
   await page.locator('#industries').getByRole('button',{name:'\uC218\uC815',exact:true}).click();
   await page.getByRole('dialog').getByLabel('이름 (한국어)').waitFor();
   assert.equal(await page.getByRole('dialog').getByRole('button',{name:'\uB4F1\uB85D',exact:true}).isEnabled(),true);
   await page.getByRole('dialog').getByRole('combobox',{name:'\uAD6C\uBD84',exact:false}).click();
   await page.getByRole('option',{name:roles[1].nameKo,exact:true}).click();
   assert.equal(await page.getByRole('dialog').getByRole('button',{name:'\uB4F1\uB85D',exact:true}).isEnabled(),true);
+  await page.getByRole('dialog').getByRole('button',{name:'\uCDE8\uC18C',exact:true}).click();
+  await page.route('**/system-setting-defaults/partner-roles/order',r=>{writes.push({url:r.request().url(),data:r.request().postDataJSON()});return r.fulfill({headers,json:{ok:true}});});
+  await page.locator('#types').getByRole('button',{name:'\uC81C\uC791 \uC678\uC8FC \uC544\uB798\uB85C',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#types tbody tr td').textContent==='LOGISTICS');assert.deepEqual(writes.at(-1).data,{previousIds:[1,2],ids:[2,1]});
+  await page.locator('#industries').getByRole('button',{name:'\uAD00\uB9AC \uC544\uB798\uB85C',exact:true}).click();assert.deepEqual(writes.at(-1).data,{previousIds:[4,3,1,2],ids:[3,4,1,2]});
   assert.deepEqual(errors,[]);console.log('Expense masters passed: independent expense type and industry editing, preserved industry identity and no cost input controls in partner industries.');
 } finally {await browser?.close();vite.kill();unlinkSync(fixture);}

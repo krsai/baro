@@ -1,4 +1,5 @@
 import {accountingInputs} from './accountingInputs';
+import {orderedExpenseTypes,saveCatalogueOrder} from './catalogueOrder';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { createHttpError } from '../utils/http';
 import { COST_DETAIL_FIELDS } from './partnerTransactionCost';
@@ -33,9 +34,11 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   }
   const source = await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } });
   const previous = id ? await tx.transactionCodeBase.findUnique({ where: { id } }) : null;
-  const expenseType = body.expenseTypeId
-    ? await tx.expenseType.findUnique({ where: { id: body.expenseTypeId } })
-    : await tx.expenseType.findUnique({ where: { code: source.entryMode === 'PROCESS' ? 'PRODUCTION' : source.entryMode === 'LOGISTICS' ? 'LOGISTICS' : 'GENERAL' } });
+  const typeId=body.expenseTypeId||previous?.expenseTypeId||source.expenseTypeId;
+  const mode=source.entryMode==='PROCESS'?'PROCESS':source.entryMode==='LOGISTICS'?'LOGISTICS':'GENERAL';
+  const legacyCode=mode==='PROCESS'?'PRODUCTION':mode==='LOGISTICS'?'LOGISTICS':'GENERAL';
+  const candidates=typeId?[]:await tx.expenseType.findMany({where:{entryMode:mode,code:{not:'OTHER'},isActive:true}});
+  const expenseType=typeId?await tx.expenseType.findUnique({where:{id:typeId}}):candidates.find((row:any)=>row.code===legacyCode)||(candidates.length===1?candidates[0]:null);
   if (!expenseType || expenseType.code === 'OTHER' || !expenseType.isActive && expenseType.id !== previous?.expenseTypeId) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
   if (previous?.entryMode && previous.entryMode !== expenseType.entryMode && (await getCodeBaseUsage(tx,[id!])).has(id!)) throw createHttpError(409,'USED_CODE_ENTRY_MODE_IMMUTABLE');
   data.expenseTypeId = expenseType.id;
@@ -134,9 +137,13 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
+  app.put('/expense-types/order', async (req:any,res:any)=>{
+    if(!await gates.requireSystemAdmin(req,res))return;
+    res.json(await db.$transaction((tx:any)=>saveCatalogueOrder(tx,'expenses',req.body),{isolationLevel:'Serializable'}));
+  });
   app.get('/system-setting-defaults/expense-types', async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
-    res.json(await db.expenseType.findMany({ where: { code: { not: 'OTHER' } }, orderBy: { id: 'asc' } }));
+    res.json(await orderedExpenseTypes(db,await db.expenseType.findMany({ where: { code: { not: 'OTHER' } }, orderBy: { id: 'asc' } })));
   });
   app.post('/system-setting-defaults/other-expense-defaults', async (req: any, res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
@@ -144,7 +151,7 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
   });
   app.get('/expense-types', async (req: any,res: any) => {
     if (!await gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] })) return;
-    res.json(await db.expenseType.findMany({ where: { code: { not: 'OTHER' } }, orderBy: { id: 'asc' } }));
+    res.json(await orderedExpenseTypes(db,await db.expenseType.findMany({ where: { code: { not: 'OTHER' } }, orderBy: { id: 'asc' } })));
   });
   app.put('/expense-types/:id', async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;
@@ -152,8 +159,11 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
     if (!Number.isSafeInteger(id) || id <= 0 || !validLocalizedName(req.body, 100)) throw createHttpError(400,'INVALID_EXPENSE_TYPE');
     const existing = await db.expenseType.findUnique({where:{id}});
     if(existing?.code === 'OTHER') throw createHttpError(410,'OTHER_EXPENSE_TYPE_RETIRED');
+    const code=req.body?.code===undefined?existing?.code:String(req.body.code).trim().toUpperCase();
+    if(!code||!/^[A-Z][A-Z0-9_]{0,39}$/.test(code)||code==='OTHER')throw createHttpError(400,'INVALID_EXPENSE_TYPE');
     const { nameEn, nameKo, nameVi } = normalizeLocalizedName(req.body);
-    res.json(await db.expenseType.update({ where: { id }, data: { nameEn, nameKo, nameVi, isActive: req.body.isActive !== false } }));
+    try{res.json(await db.expenseType.update({ where: { id }, data: { code,nameEn, nameKo, nameVi, isActive: req.body.isActive !== false } }));}
+    catch(error:any){if(error.code==='P2002')throw createHttpError(409,'CODE_RENAME_CONFLICT');throw error;}
   });
   const path = '/system-setting-defaults/code-bases';
   app.get('/tax-treatments', async (req: any, res: any) => {

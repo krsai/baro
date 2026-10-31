@@ -1,3 +1,4 @@
+import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Drawer, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
@@ -86,7 +87,7 @@ export default function BusinessPartners({ type, embedded=false }) {
       setError(failure?.status === 409 || failure?.message?.includes('PARTNER_HAS_TRANSACTION_HISTORY') ? deleteLabels.blocked : deleteLabels.error);
     } finally { setDeleting(false); }
   };
-  const serviceName = useCallback((item) => item?.[languageCode === 'ko' ? 'nameKo' : languageCode === 'vi' ? 'nameVi' : 'nameEn'] || item?.nameEn || '', [languageCode]);
+  const serviceName = useCallback(item=>partnerIndustryLabel(item,languageCode),[languageCode]);
   const directoryRows=useMemo(()=>partners.map(partner=>({id:partner.id,source:partner,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' \u00b7 '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address].filter(Boolean).join(' ')})),[partners,languageCode,serviceName]);
   const openHistory = async (partner) => {
     setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);

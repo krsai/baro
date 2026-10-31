@@ -19,7 +19,7 @@ function adapter(db) {
   } };
   for (const [name,table] of Object.entries({ expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
     const where = (input, args) => Object.entries(input || {}).map(([key,value]) => {
-      if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; throw Error('unsupported condition'); }
+      if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; if ('not' in value) {args.push(value.not);return `${q(key)}<>$${args.length}`;} throw Error('unsupported condition'); }
       args.push(value); return `${q(key)}=$${args.length}`;
     }).join(' AND ') || 'true';
     const find = async ({ where: input } = {}) => { const args=[]; return (await db.query(`SELECT * FROM ${q(table)} WHERE ${where(input,args)} ORDER BY id`,args)).rows; };
@@ -108,6 +108,7 @@ test('rollout creates three-letter bases and V/Z/E variants without guessing leg
 test('base creation/edit always generates all tax suffixes atomically and retains variant identities', async()=>{
   const db=await fixture();try {
     const serviceTypeId=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows[0].id;
+    await db.query("UPDATE \"ExpenseType\" SET code='DELIVERY' WHERE code='LOGISTICS'");
     const body={code:'AIR',nameKo:'항공',nameEn:'Air',nameVi:'Hàng không',serviceTypeId,taxTreatmentIds:[1,2,3]};
     const base=await db.transaction(tx=>service.saveCodeBase(adapter(tx),body));
     const variants=(await db.query('SELECT id,code FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 ORDER BY code',[base.id])).rows;

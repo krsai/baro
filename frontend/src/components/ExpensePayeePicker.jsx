@@ -1,3 +1,4 @@
+import {partnerIndustryLabel} from '../utils/partnerIndustry.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Autocomplete,Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,InputAdornment,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import BusinessPartnerDialog,{getBusinessPartnerTypeLabel} from './BusinessPartnerDialog';
@@ -9,7 +10,7 @@ import SearchOutlined from '@mui/icons-material/SearchOutlined';
 import StatusLabel from './StatusLabel';
 import {ENTITY_TEXT} from '../constants/entityProfile';
 import {INDUSTRY_TREE_TEXT} from '../constants/industryHierarchy';
-import {serviceName} from './OutsourcingServiceDialog';
+
 
 const DETAIL_TEXT={
  ko:{person:'담당자',phone:'전화',cash:'현금',loading:'계좌 정보를 불러오는 중입니다.'},
@@ -28,7 +29,7 @@ function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t
    <Stack spacing={.75}>
     <Typography variant="subtitle2" fontWeight={700} color={draft?'text.primary':'text.secondary'} sx={{overflowWrap:'anywhere'}}>{draft?.name||t.payee}</Typography>
     {draft&&<Box><StatusLabel label={payeeTypeLabel(draft,languageCode)} tone="blue"/></Box>}
-    <Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={.5}><Typography variant="caption" color="text.secondary">{industry.industry}</Typography>{draft?.serviceTypes?.length?draft.serviceTypes.map(row=><StatusLabel key={row.id} label={serviceName(row.systemDefault||row,languageCode)||row.code||'—'} tone="gray"/>):<Typography variant="body2" color="text.secondary">—</Typography>}</Stack>
+    <Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={.5}><Typography variant="caption" color="text.secondary">{industry.industry}</Typography>{draft?.serviceTypes?.length?draft.serviceTypes.map(row=><StatusLabel key={row.id} label={partnerIndustryLabel(row.systemDefault||row,languageCode)||row.code||'—'} tone="gray"/>):<Typography variant="body2" color="text.secondary">—</Typography>}</Stack>
     <InformationRows rows={[[labels.businessNumber,draft?.businessNumber]]}/>
    </Stack>
    <Stack spacing={.75}><Typography variant="subtitle2">{labels.contact}</Typography><InformationRows rows={[[detail.person,draft?.contactName],[detail.phone,draft?.contactPhone],[labels.email,draft?.email],[labels.address,draft?.address]]}/></Stack>
