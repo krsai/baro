@@ -31,12 +31,13 @@ export function ledgerChangedFields(before:any,after:any){
 export async function listLedgerChanges(db:any,orgId:number,query:any){
  const today=accountReportToday(),start=ledgerDate(query.start||today.slice(0,7)+'-01'),end=ledgerDate(query.end||today),action=String(query.action||'ALL'),page=Number(query.page||0),pageSize=Number(query.pageSize||20);
  if(start>end||end>today||!['ALL','EDIT','DELETE'].includes(action)||!Number.isSafeInteger(page)||page<0||page>100000||![10,20,50].includes(pageSize))throw createHttpError(400,'LEDGER_INVALID_HISTORY_QUERY');
- const where={orgId,voidedAt:{gte:new Date(start+'T00:00:00+07:00'),lt:new Date(shiftReportDate(end,1)+'T00:00:00+07:00')},
+ const where={orgId,changeAcknowledgement:{is:null},voidedAt:{gte:new Date(start+'T00:00:00+07:00'),lt:new Date(shiftReportDate(end,1)+'T00:00:00+07:00')},
   ...(action==='ALL'?{}:{replacementEntries:action==='EDIT'?{some:{orgId}}:{none:{orgId}}}),
  } satisfies Prisma.BankLedgerEntryWhereInput;
  return retryEditTransaction(db,async(tx:any)=>{
   const total=await tx.bankLedgerEntry.count({where});
-  const entries=await tx.bankLedgerEntry.findMany({where,orderBy:[{voidedAt:'desc'},{id:'desc'}],skip:page*pageSize,take:pageSize,
+  const actualPage=Math.min(page,Math.max(0,Math.ceil(total/pageSize)-1));
+  const entries=await tx.bankLedgerEntry.findMany({where,orderBy:[{voidedAt:'desc'},{id:'desc'}],skip:actualPage*pageSize,take:pageSize,
    select:{...snapshotSelect,voidedAt:true,voidedBy:true,voidReason:true,replacementEntries:{where:{orgId},take:1,select:snapshotSelect}},
   });
   const allocations=entries.flatMap((row:any)=>[row,...row.replacementEntries]).flatMap((row:any)=>row.allocations);
@@ -49,6 +50,21 @@ export async function listLedgerChanges(db:any,orgId:number,query:any){
   return {rows:entries.map((row:any)=>{
    const before=snapshot(row,references),after=row.replacementEntries[0]?snapshot(row.replacementEntries[0],references):null;
    return {id:row.id,action:after?'EDIT':'DELETE',changedAt:row.voidedAt,actor:row.voidedBy||null,reason:after?null:row.voidReason,before,after,changedFields:ledgerChangedFields(before,after)};
-  }),total,start,end,action,page,pageSize};
+  }),total,start,end,action,page:actualPage,pageSize};
+ });
+}
+
+export async function acknowledgeLedgerChange(db:any,orgId:number,employeeId:number,entryId:string){
+ if(!Number.isSafeInteger(employeeId)||employeeId<=0)throw createHttpError(403,'LEDGER_CHANGE_ACK_DENIED');
+ if(typeof entryId!=='string'||!entryId||entryId.length>100)throw createHttpError(400,'LEDGER_ENTRY_NOT_FOUND');
+ return retryEditTransaction(db,async(tx:any)=>{
+  const employee=await tx.employee.findFirst({where:{id:employeeId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}},select:{id:true,email:true}});
+  if(!employee)throw createHttpError(403,'LEDGER_CHANGE_ACK_DENIED');
+  await tx.$queryRawUnsafe('SELECT id FROM "BankLedgerEntry" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',entryId,orgId);
+  const entry=await tx.bankLedgerEntry.findFirst({where:{id:entryId,orgId,voidedAt:{not:null}},select:{id:true}});
+  if(!entry)throw createHttpError(404,'LEDGER_ENTRY_NOT_FOUND');
+  const previous=await tx.ledgerChangeAcknowledgement.findUnique({where:{entryId_orgId:{entryId,orgId}}});
+  if(previous)return previous;
+  return tx.ledgerChangeAcknowledgement.create({data:{entryId,orgId,employeeId,actorEmail:employee.email||'employee:'+employeeId}});
  });
 }

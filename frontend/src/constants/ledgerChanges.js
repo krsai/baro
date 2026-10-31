@@ -6,3 +6,6 @@ export const ledgerChangesText={
  vi:{title:'Lịch sử sửa / xóa thu chi',action:'Loại thay đổi',ALL:'Tất cả',EDIT:'Đã sửa',DELETE:'Đã xóa',time:'Thời gian thay đổi',actor:'Người thực hiện',changes:'Nội dung thay đổi',before:'Trước',after:'Sau',field:'Mục',reason:'Lý do xóa',empty:'Chưa có giao dịch sửa hoặc xóa.',error:'Không thể tải lịch sử thay đổi.',retry:'Tải lại',close:'Đóng',perPage:'Số dòng mỗi trang',previous:'Trước',next:'Sau',IN:'Thu',OUT:'Chi',FEE:'Phí',WRITEOFF:'Xóa nợ',FILE:'Tệp',INVOICE:'Hóa đơn',EXPENSE:'Đề nghị thanh toán',ADJUSTMENT:'Điều chỉnh số dư',
  fields:{accountId:'Tài khoản',currencyCode:'Tiền tệ',transactionDate:'Ngày giao dịch',direction:'Thu / Chi',amount:'Số tiền',accountingCodeId:'Mã kế toán',purpose:'Nội dung',evidenceType:'Loại chứng từ',evidenceNumber:'Chứng từ liên kết',settlementLines:'Phí / Xóa nợ',allocations:'Phân bổ chứng từ'}},
 };
+Object.assign(ledgerChangesText.ko,{acknowledge:'확인',confirmError:'확인 처리하지 못했습니다. 다시 시도해 주세요.'});
+Object.assign(ledgerChangesText.en,{acknowledge:'Acknowledge',confirmError:'Could not acknowledge this change. Please retry.'});
+Object.assign(ledgerChangesText.vi,{acknowledge:'Xác nhận',confirmError:'Không thể xác nhận thay đổi. Vui lòng thử lại.'});

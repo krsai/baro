@@ -354,6 +354,7 @@ model BankLedgerEntry {
   revisesEntryId String? @unique
   revisesEntry BankLedgerEntry? @relation("LedgerRevision",fields:[revisesEntryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"BankLedgerEntry_revision_scope_fkey")
   replacementEntries BankLedgerEntry[] @relation("LedgerRevision")
+  changeAcknowledgement LedgerChangeAcknowledgement?
   evidenceNumber String
   evidenceType String @default("FILE")
   bankFee Decimal @default(0) @db.Decimal(24, 4)
@@ -371,6 +372,17 @@ model BankLedgerEntry {
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
   @@unique([id,orgId])
   @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
+}
+
+model LedgerChangeAcknowledgement {
+  entryId String
+  orgId Int
+  employeeId Int
+  actorEmail String
+  confirmedAt DateTime @default(now())
+  entry BankLedgerEntry @relation(fields:[entryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"LedgerChangeAcknowledgement_entry_scope_fkey")
+  @@id([entryId,orgId])
+  @@index([orgId,confirmedAt])
 }
 
 model BankLedgerSettlementLine {
