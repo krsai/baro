@@ -6,20 +6,23 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import {formatLedgerMoney} from '../utils/bankLedgerMoney.mjs';
 import {ledgerChangesText} from '../constants/ledgerChanges';
+import {useRequestScopeContext} from '../context/RequestScopeContext';
 
 const businessToday=()=>dayjs(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
 export default function LedgerChangesDashboardCard({orgId,languageCode}){
+ const {active}=useRequestScopeContext();
  const t=ledgerChangesText[languageCode]||ledgerChangesText.en;
  const [start,setStart]=useState(()=>businessToday().startOf('month')),[end,setEnd]=useState(businessToday),[action,setAction]=useState('ALL'),[page,setPage]=useState(0),[pageSize,setPageSize]=useState(20),[result,setResult]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(false),[reload,setReload]=useState(0),[selected,setSelected]=useState(null);
  const scope=JSON.stringify({orgId,start:start.format('YYYY-MM-DD'),end:end.format('YYYY-MM-DD'),action,page,pageSize});
  const data=result?.scope===scope?result.data:{rows:[],total:0};
  useEffect(()=>{setPage(0);setSelected(null);setResult(null);},[orgId]);
+ useEffect(()=>{if(!active)setSelected(null);},[active]);
  useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&(event.source==='bank-ledger'||event.topics?.includes('bank-ledger')))setReload(value=>value+1);}),[orgId]);
  useEffect(()=>{const focus=()=>setReload(value=>value+1);window.addEventListener('focus',focus);return()=>window.removeEventListener('focus',focus);},[]);
- useEffect(()=>{if(!orgId)return;let alive=true;const controller=new AbortController();setLoading(true);setError(false);
+ useEffect(()=>{if(!orgId||!active)return;let alive=true;const controller=new AbortController();setLoading(true);setError(false);
   requestJSON('/bank-ledger/changes'+buildQueryString(JSON.parse(scope)),{skipCache:true,skipGlobalLoading:true,signal:controller.signal}).then(value=>{if(alive)setResult({scope,data:value});}).catch(err=>{if(alive&&err.name!=='AbortError')setError(true);}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;controller.abort();};
- },[scope,reload]);
+ },[scope,reload,active]);
  const time=value=>new Intl.DateTimeFormat({ko:'ko-KR',en:'en-GB',vi:'vi-VN'}[languageCode]||'en-GB',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(value));
  const money=snapshot=>formatLedgerMoney(snapshot.amount,snapshot.currencyCode);
  const value=(snapshot,key)=>{
