@@ -11,9 +11,9 @@ import { EXPENSE_TEXT } from '../constants/expenseTypes';
 import { requestJSON, buildQueryString } from '../utils/apiClient';
 import { expenseLineAmounts, expenseCodeForLine, inputMode,  validExpenseLine } from '../utils/expenseRequest.mjs';
 import { formatCurrency } from '../utils/currencyFormat';
-import { expenseIndustryMismatch, expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
+import { expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, units = [], partner, settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, units = [], settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
   const currency = line.currency;
   const [referencesBusy,setReferencesBusy]=useState(false);
   const [expanded, setExpanded] = useState(Boolean(line.expandLinks));
@@ -79,7 +79,6 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
   };
   const amount = expenseLineAmounts(line, currency);
   const money = value => value == null ? '—' : formatCurrency(value, { currencyCode: currency, languageCode });
-  const industryMismatch = expenseIndustryMismatch(code,partner);
   const field = { size: 'small', fullWidth: true, disabled };
   return <>
     <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
@@ -102,8 +101,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
     </TableRow>
-    {(expanded || industryMismatch || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={12} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
-      {industryMismatch && <Alert severity="warning">{expenseLabels.subMismatch}</Alert>}
+    {(expanded || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={12} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <><Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="subtitle2">{labels.row} {index + 1} · {labels.options}</Typography>
         {code?.base?.entryMode==='PROCESS' && <Button startIcon={<Add />} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}>{labels.addProcess}</Button>}
