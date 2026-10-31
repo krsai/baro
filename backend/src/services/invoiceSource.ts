@@ -51,6 +51,7 @@ export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[]
     orderId: order.orderId, orderNumber: order.orderNumber, sourceUpdatedAt: order.updatedAt,
     buyerOrgId: order.buyerOrgId ?? order.buyerOrg?.id, sellerOrgId: order.sellerOrgId ?? order.sellerOrg?.id,
     seller: party(order.sellerOrg), buyer: party(order.buyerOrg), styles,
+    sellerBankAccounts: order.sellerOrg?.bankAccounts || [],
     ready: styles.length > 0 && styles.every((style) => style.ready) &&
       plans.every((plan) => styleIds.includes(plan.styleId)),
     lines: items.flatMap((item: any) => {

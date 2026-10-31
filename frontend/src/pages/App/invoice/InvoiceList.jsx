@@ -12,9 +12,9 @@ import {invoiceUi,invoiceListUi} from '../../../constants/invoiceUi';
 import SearchInput from '../../../components/SearchInput';
 import StatusLabel from '../../../components/StatusLabel';
 import {formatCurrency} from '../../../utils/currencyFormat';
-import InvoiceSheet from '../../../components/InvoiceSheet';
+import InvoiceIssuedForm from './InvoiceIssuedForm';
 import InvoicePdfIcon from '../../../components/InvoicePdfIcon';
-import {buildIssuedInvoicePrintHtml} from '../../../utils/issuedInvoicePrint.mjs';
+
 
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
@@ -95,7 +95,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button onClick={()=>navigateToPath('/invoices',{closeTabId:'/invoices/'+invoiceId})}>{d.back}</Button><Button disabled={pdfBusy} aria-label={d.pdf} onClick={()=>printIssued(detail)}><InvoicePdfIcon/></Button>
         {detail.status==='ISSUED'&&<Button onClick={()=>reviseIssued(detail)}>{ui.edit}</Button>}
         </Stack>
-        <InvoiceSheet sx={{p:0,overflow:'hidden'}}><Box component="iframe" title={d.title} sandbox="allow-same-origin" srcDoc={buildIssuedInvoicePrintHtml(detail,languageCode)} onLoad={event=>{const frame=event.currentTarget;frame.style.height=(frame.contentDocument.body.scrollHeight+32)+'px';}} sx={{display:'block',border:0,width:'100%',minHeight:900}}/></InvoiceSheet>
+        <InvoiceIssuedForm invoice={detail} languageCode={languageCode}/>
       </>}
     </>}
   </PageContentStack>;

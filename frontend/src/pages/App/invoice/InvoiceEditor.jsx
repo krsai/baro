@@ -1,4 +1,6 @@
-import InvoiceDocumentField from '../../../components/InvoiceDocumentField';
+import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
+import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
+import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
 import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -173,8 +175,8 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         setBasis(first?.pricingBasis || INVOICE_BASES[0].value); setCurrency(first?.currencyCode || data.currencies?.[0] || 'USD');
         const date = new Date().toLocaleDateString('sv-SE');
         setFields({ number: '', date, seller: data.seller, buyer: data.buyer,
-          shipTo: [data.buyer.name, data.buyer.address, data.buyer.country].filter(Boolean).join('\n'),
-          shipmentDate: '', dueDate: '', incoterm: '', paymentTerms: '', bank: '', notes: '' });
+          shipTo: '',
+          shipmentDate: '', dueDate: '', incoterm: '', paymentTerms: '', bank: invoiceBankInfo(data.sellerBankAccounts,first?.currencyCode||data.currencies?.[0]||'USD'), notes: '' });
         setSettlements(Object.fromEntries(data.orders.map(order => [order.orderId, { deduction: order.settlementsByCurrency?.[first?.currencyCode]?.defaultDeductionAmount || '', reason: '' }])));
     };
     load().catch((e) => { if (!cancelled) setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') || /404|403/.test(String(e.status)) ? ui.sourceChanged : t.load); })
@@ -185,16 +187,12 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
   const styleRows = useMemo(() => invoiceStyleRows(calculation?.lines || []), [calculation]);
   const draftLinesByKey = useMemo(() => new Map(lines.map(line => [line.key, line])), [lines]);
-  const itemText = languageCode === 'ko' ? { order: '주문', style: '스타일명', color: '색상', gender: '성별', note: 'Remark', hint: '수량 변경 사유를 함께 적어 주세요.' }
-    : languageCode === 'vi' ? { order: 'Đơn hàng', style: 'Tên mẫu', color: 'Màu sắc', gender: 'Giới tính', note: 'Remark', hint: 'Ghi rõ lý do thay đổi số lượng.' }
-    : { order: 'Order', style: 'Style name', color: 'Color', gender: 'Gender', note: 'Remark', hint: 'Include the reason for quantity changes.' };
   const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
   const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
-  const changeItemNote = (group, value) => {
-    if (saving || uncertain) return;
-    const keys = new Set(group.lines.map(line => line.key));
-    setLines(rows => rows.map(row => keys.has(row.key) ? { ...row, remark: value, adjustmentReason: value } : row));
-    setReviewed(false); setDirty(true);
+  const changeRemark = value => {
+    if(saving||uncertain)return;
+    changeField('notes',value);
+    setLines(rows=>rows.map(row=>Number(row.quantity)!==row.orderedQuantity?{...row,adjustmentReason:value}:row));
   };
   const close = async () => {
     if (saving) return;
@@ -237,35 +235,27 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
   </Stack>}>
     <InvoiceSheet>
-      <Stack spacing={2} sx={{minWidth:0}}>
-        <Typography component="div" className="invoice-heading">{sheetText.title}</Typography>
-        {renderSelection?.({requestChange:requestSelectionChange,disabled:saving||uncertain})}
+      <Stack spacing={0} sx={{minWidth:0}}>
+        {renderSelection&&<Box sx={{p:2,borderBottom:1,borderColor:'divider'}}>{renderSelection({requestChange:requestSelectionChange,disabled:saving||uncertain})}</Box>}
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
-        {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box>
-          <Box className="invoice-parties">{['buyer','seller'].map(party=><Box className="invoice-party" key={party}><Typography component="h2" className="invoice-party-title">{sheetText[party]}</Typography>
-            {['name','address','taxId','country','phone','email'].map(key=><InvoiceDocumentField key={key} label={ui[key]} value={fields[party][key]} onChange={e=>changeField(party,{...fields[party],[key]:e.target.value})} multiline={key==='address'} maxLength={1000}/>)}
-          </Box>)}</Box>
-          <Box className="invoice-metadata">
-            <InvoiceDocumentField label={(documentNumberText[languageCode]||documentNumberText.en).invoice} value={fields.number} placeholder="INV-YYYY-000001" onChange={e=>changeField('number',e.target.value)} maxLength={200}/>
-            <InvoiceDocumentField label={ui.date} type="date" value={fields.date} onChange={e=>changeField('date',e.target.value)}/>
-            {[['dueDate',ui.dueDate,'date'],['shipmentDate',ui.shipmentDate,'date'],['paymentTerms',ui.paymentTerms],['incoterm',ui.incoterm]].map(([key,label,type])=><InvoiceDocumentField key={key} label={label} type={type} value={fields[key]} onChange={e=>changeField(key,e.target.value)}/>)}
-          </Box></Box>
-          <Box sx={{overflowX:'auto'}}><Table className="invoice-lines" size="small" sx={{minWidth:780,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,230,125,110,140,135].map((width,index)=><col key={index} style={{width}}/>)}</colgroup><TableHead><TableRow>
-            {[sheetText.row,sheetText.description,t.price,t.quantity,t.amount,itemText.note].map((label,index)=><TableCell key={label} align={index===0||index>=2&&index<=4?'right':'left'}>{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],changed=group.lines.some(line=>line.quantity!==line.orderedQuantity),production=invoiceProductionReview(source,first);return <TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
+        {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField}/>
+          <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
+          <Box sx={{overflowX:'auto'}}><Table className="invoice-lines" size="small" sx={{minWidth:660,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,null,130,120,160].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
+            {[sheetText.row,sheetText.description,t.price,t.quantity,t.amount].map((label,index)=><TableCell key={label} align={index===0||index>=2&&index<=4?'right':'left'}>{label}</TableCell>)}
+          </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],production=invoiceProductionReview(source,first);return <TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
             <TableCell align="right">{invoiceNumber(index+1)}</TableCell>
-            <TableCell><Typography variant="caption" display="block">{first.orderNumber}</Typography><Typography variant="body2" fontWeight={600}>{first.styleCode}</Typography>{first.description||first.styleName}
+            <TableCell><Typography variant="caption" display="block">{first.orderNumber}</Typography>{first.description||first.styleName}
               {production&&<Typography variant="caption" display="block" color="warning.main">{productionText.scope}: {invoiceNumber(production.style.producedQuantity)} / {invoiceNumber(production.style.orderedQuantity)}</Typography>}
-              {production?.problems.map(assignment=><Box key={assignment.externalId||assignment.id}><Typography variant="caption">{assignment.factoryName} {invoiceNumber(assignment.producedQuantity)} / {invoiceNumber(assignment.plannedQuantity)}</Typography>{assignment.externalId&&<Button size="small" onClick={()=>setReviewAssignment({externalId:assignment.externalId,orderNumber:first.orderNumber,styleLabel:first.description||first.styleCode,quantity:assignment.plannedQuantity})}>{productionText.open}</Button>}</Box>)}
+              {production?.problems.map(assignment=><Box key={assignment.externalId||assignment.id}><Typography variant="caption">{assignment.factoryName} {invoiceNumber(assignment.producedQuantity)} / {invoiceNumber(assignment.plannedQuantity)}</Typography>{assignment.externalId&&<Button size="small" onClick={()=>setReviewAssignment({externalId:assignment.externalId,orderNumber:first.orderNumber,styleLabel:first.description||first.styleName||'—',quantity:assignment.plannedQuantity})}>{productionText.open}</Button>}</Box>)}
             </TableCell>
             <TableCell align="right"><DecimalAmountField size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride??first.unitPrice??''} onValueChange={value=>{if(saving||uncertain)return;const keys=new Set(group.lines.map(line=>line.key));setLines(previous=>previous.map(line=>keys.has(line.key)?{...line,unitPriceOverride:value}:line));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.price+' '+first.key,style:{textAlign:'right'}}} sx={{width:120}}/><Typography variant="caption">{currency}</Typography></TableCell>
-            <TableCell align="right"><DecimalAmountField size="small" value={String(group.quantity??'')} onValueChange={value=>{const distributed=distributeInvoiceQuantity(group,value);if(!distributed||saving||uncertain)return;const values=new Map(distributed.map(row=>[row.key,row.quantity]));setLines(previous=>previous.map(row=>values.has(row.key)?{...row,quantity:values.get(row.key),adjustmentReason:row.adjustmentReason||row.remark||''}:row));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.quantity+' '+first.key,style:{textAlign:'right'}}} sx={{width:110}}/><Typography variant="caption" display="block">{t.ordered} {invoiceNumber(group.orderedQuantity)}</Typography></TableCell>
+            <TableCell align="right"><DecimalAmountField size="small" value={String(group.quantity??'')} onValueChange={value=>{const distributed=distributeInvoiceQuantity(group,value);if(!distributed||saving||uncertain)return;const values=new Map(distributed.map(row=>[row.key,row.quantity]));setLines(previous=>previous.map(row=>values.has(row.key)?{...row,quantity:values.get(row.key),adjustmentReason:fields.notes||row.adjustmentReason||row.remark||''}:row));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.quantity+' '+first.key,style:{textAlign:'right'}}} sx={{width:110}}/><Typography variant="caption" display="block">{t.ordered} {invoiceNumber(group.orderedQuantity)}</Typography></TableCell>
             <TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatInvoiceMoney(group.amount,currency)}</TableCell>
-            <TableCell><TextField size="small" multiline value={group.note} label={itemText.note} required={changed} inputProps={{maxLength:1000,'aria-label':'Remark '+first.key}} onChange={e=>changeItemNote(group,e.target.value)}/></TableCell>
-          </TableRow>;})}{Array.from({length:Math.max(0,10-styleRows.length)},(_,index)=><TableRow aria-hidden="true" key={'empty'+index} sx={{height:32}}>{Array.from({length:6},(_,column)=><TableCell key={column}>{column===0?invoiceNumber(styleRows.length+index+1):' '}</TableCell>)}</TableRow>)}</TableBody></Table></Box>
-          <Stack spacing={2}>
+
+          </TableRow>;})}</TableBody></Table></Box>
+          <Stack spacing={1} sx={{p:2}}>
           <Typography className="invoice-section-title">{billingText.settlement}</Typography>
 
           <Stack direction="row" spacing={1} alignItems="center">
@@ -284,8 +274,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
             <TableCell align="right">{formatInvoiceMoney(order.netAmount,currency)}{order.hasUnallocatedPayments && <Typography color="warning.main" variant="caption" display="block">{settlementLabels.unallocated}</Typography>}</TableCell>
           </TableRow>)}</TableBody></Table></Box>
           </Stack>
-          <Box className="invoice-total"><span>{ui.summary}</span><span>{formatInvoiceMoney(calculation.total,currency)}</span></Box>
-          <Box className="invoice-footer">{[['bank',ui.bank],['shipTo',ui.shipTo],['notes',ui.notes]].map(([key,label])=><InvoiceDocumentField key={key} label={label} value={fields[key]} multiline onChange={e=>changeField(key,e.target.value)}/>)}</Box>
+          <InvoiceFormSummary fields={fields} total={calculation.total} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark}/>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />

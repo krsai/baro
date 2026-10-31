@@ -1,3 +1,4 @@
+import {invoiceDocumentText} from '../frontend/src/constants/invoiceDocument.js';
 import {combineInvoiceSources} from '../frontend/src/utils/invoiceDraft.mjs';
 import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
 import assert from 'node:assert/strict';
@@ -13,6 +14,7 @@ const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
 const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
  lines:[{key:'item1:S',itemId:1,styleId:10,styleCode:'S1',description:'Shirt',orderedQuantity:10,quantity:'10',adjustmentReason:'',remark:'',hsCode:'',origin:'',color:'Blue',size:'S'}]};
+source.sellerBankAccounts=[{bankName:'Company Bank',accountNumber:'USD-001',accountHolder:'BARO',currency:{code:'USD'}},{bankName:'Company Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}];
 source.lines.push({...source.lines[0],key:'item1:M',size:'M',orderedQuantity:5,quantity:'5'});source.styles[0].orderedQuantity=15;source.styles[0].producedQuantity=15;
 const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -39,18 +41,20 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
   const review=page.getByRole('checkbox');await review.waitFor();
-  const numberInput=page.getByLabel(documentNumberText[lang].invoice,{exact:true});assert.equal(await numberInput.inputValue(),'');if(failure==='save')await numberInput.fill('CUSTOM-2026-A');
+  const numberInput=page.getByLabel(invoiceDocumentText[lang].number,{exact:true});assert.equal(await numberInput.inputValue(),'');if(failure==='save')await numberInput.fill('CUSTOM-2026-A');
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
+  assert.equal(await page.getByText('S1',{exact:true}).count(),0);
+  assert.equal(await page.locator('textarea[aria-label^="Remark "]').count(),0);
   const grid=page.locator('fieldset table').first();
-  assert.equal(await grid.locator('thead th').count(),6);
+  assert.equal(await grid.locator('thead th').count(),5);
   assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),0);
   assert.equal(await grid.locator('thead th').nth(2).evaluate(el=>getComputedStyle(el).textAlign),'right');
-  assert.equal(await grid.locator('tbody tr').count(),10);
+  assert.equal(await grid.locator('tbody tr').count(),1);
   assert.equal(await page.locator('.invoice-party').count(),2);
-  assert.equal(await page.locator('.invoice-cell').first().evaluate(el=>getComputedStyle(el).display),'grid');
-  assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'solid');
+  assert.equal(await page.locator('.invoice-cell').first().evaluate(el=>getComputedStyle(el).display),'flex');
+  assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'none');
   if(failure==='layout'){
    assert.equal(await grid.locator('tr[data-production-review="true"]').count(),1);
    assert.match(await grid.locator('tbody tr[data-invoice-line]').innerText(),/HANOI/);
@@ -72,7 +76,7 @@ try{
   assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
   await grid.locator('input[inputmode="decimal"]').nth(1).fill('14');
-  await page.locator('textarea[aria-label^="Remark "]').fill('One missing piece');
+  await page.getByLabel('REMARK',{exact:true}).fill('One missing piece');
   if(failure==='advance'){await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('30');}
   await review.check();assert.equal(await issue.isEnabled(),true);
   await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
@@ -86,7 +90,7 @@ try{
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
   if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
-  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark==='One missing piece'&&line.adjustmentReason==='One missing piece'));assert.equal(saves[0].fields.notes,'Reviewed note');assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':'');
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':'');
   assert.deepEqual(errors,[]);await page.close();
  }
  for(const lang of ['ko','en','vi']){

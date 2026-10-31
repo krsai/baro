@@ -6,15 +6,18 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
   version: 3, templateVersion: 'BARO_INVOICE_V1', pricingBasis: 'FINISHED_GOODS_PRICE', currencyCode: 'USD', total: '80', receivableAdded: '0',
   fields: { number: 'INV-1', date: '2026-09-28', seller: { name: 'Frozen seller', address: 'Frozen address' },
     buyer: { name: 'Frozen buyer', country: 'VN', taxId: 'TAX123', email: 'frozen@example.com', phone: 'PHONE123' },
-    shipTo: 'Warehouse', shipmentDate: '2026-09-29', dueDate: '2026-10-28', incoterm: 'FOB', paymentTerms: '30 days', bank: 'Frozen bank', notes: '<script>alert(1)</script>' },
+    shipTo:'Warehouse',shipmentDate:'2026-09-29',dueDate: '2026-10-28', incoterm: 'FOB', paymentTerms: '30 days', bank: 'Frozen bank', notes: '<script>alert(1)</script>' },
   orders: [{ sourceOrderId: 'internal-order-id', sourceOrderNumber: 'ORDER-1', basisAmount: '100', billingPercentage: '80', netAmount: '80', receivableAdded: '0' }],
-  lines: [{ orderId: 'internal-order-id', quantity: 1, styleCode: 'STYLE123', description: 'Jacket', color: 'Blue', gender: 'U', size: 'XL', hsCode: 'HS123', origin: 'Vietnam', unitPrice: '100', amount: '100', remark: 'Customer remark', adjustmentReason: 'INTERNAL REASON' }],
+  lines: [{ orderId: 'internal-order-id', quantity: 1, styleCode:'STYLE123',description: 'Jacket', color: 'Blue', gender: 'U', size: 'XL', hsCode:'HS123',origin:'Vietnam',unitPrice: '100', amount: '100', remark:'Customer remark',adjustmentReason: 'INTERNAL REASON' }],
 } });
 
 test('issued HTML renders frozen document fields, public order numbers and settlement, not live masters or internal reasons', () => {
   const invoice = fixture(), before = structuredClone(invoice), html = buildIssuedInvoicePrintHtml(invoice);
-  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', 'Warehouse', '2026-09-29', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'STYLE123', 'Jacket', 'HS123', 'Vietnam', 'Customer remark', 'USD 80.00']) assert.ok(html.includes(text), text);
+  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'Jacket', 'USD 80.00']) assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /CURRENT MASTER|internal-order-id|INTERNAL REASON|DRAFT|<script>/);
+  assert.doesNotMatch(html,/STYLE123|Warehouse|Customer remark|HS123|Vietnam|Color \/ Gender \/ Size/);
+  assert.match(html,/Authorized signature \/ Company seal/);
+  assert.doesNotMatch(html,/<footer[^>]*>2026/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /thead\{display:table-header-group\}/);
   assert.match(html, /@media print\{\.screen\{display:none\}\}/);
@@ -37,6 +40,6 @@ test('document grid localizes the form and keeps cancelled status visible',()=>{
     assert.ok(html.includes(`<h1 class="invoice-heading">${title}</h1>`));
     assert.ok(html.includes(`<p class="invoice-status">${status}</p>`));
     assert.match(html,/class="invoice-parties"/);assert.match(html,/class="invoice-total"/);
-    assert.equal((html.match(/aria-hidden="true"/g)||[]).length,9);
+    assert.equal((html.match(/aria-hidden="true"/g)||[]).length,0);
   }
 });

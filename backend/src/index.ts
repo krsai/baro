@@ -29505,7 +29505,10 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
   const order = await prisma.workOrder.findFirst({
     where: { orderId: String(req.params.orderId), sellerOrgId: organization.id,
       ...(buyerOrgId !== null ? { buyerOrgId } : {}) },
-    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE, priorCompletions: { where: { canceledAt: null } }, buyerOrg: true, sellerOrg: true },
+    include: { workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE, priorCompletions: { where: { canceledAt: null } }, buyerOrg: true,
+      sellerOrg: { include: { bankAccounts: { where: { orgId: organization.id, entityId: organization.id, accountKind: "BANK" },
+        select: { bankName: true, accountNumber: true, accountHolder: true, currency: { select: { code: true } } },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }] } } } },
   });
   if (!order) return res.status(404).json({ error: "seller order not found" });
   const [plans, relationship] = await Promise.all([
