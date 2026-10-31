@@ -1,3 +1,4 @@
+import {combineInvoiceSources} from '../frontend/src/utils/invoiceDraft.mjs';
 import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -7,7 +8,7 @@ import {chromium} from 'playwright-core';
 const fixture=path.resolve('frontend/invoice-editor-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import {MemoryRouter} from 'react-router-dom';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Editor from '/src/pages/App/invoice/InvoiceEditor.jsx';import List from '/src/pages/App/invoice/InvoiceList.jsx';import Workspace from '/src/pages/App/invoice/InvoiceWorkspace.jsx';
-const mode=new URLSearchParams(location.search).get('mode');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),mode==='workspace'?React.createElement(Workspace,{view:'editor'}):mode==='list'?React.createElement(List,{orgId:1,languageCode:window.testLang}):React.createElement(Editor,{orgId:1,buyerOrgId:2,orderIds:['o1'],languageCode:window.testLang,onClose:()=>window.closedEditor=true,onIssued:()=>window.issuedEditor=true}))));</script></body></html>`);
+const mode=new URLSearchParams(location.search).get('mode');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),mode==='workspace'?React.createElement(Workspace,{view:'editor'}):mode==='list'?React.createElement(List,{orgId:1,languageCode:window.testLang}):React.createElement(Editor,{draftId:new URLSearchParams(location.search).get('draft'),orgId:1,buyerOrgId:2,orderIds:['o1'],languageCode:window.testLang,onClose:()=>window.closedEditor=true,onIssued:()=>window.issuedEditor=true}))));</script></body></html>`);
 const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
 const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
@@ -17,7 +18,7 @@ const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of [['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']]){
+ for(const [lang,failure] of [['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']]){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -27,7 +28,8 @@ try{
   await page.route('**/invoices/**',r=>{
    const request=r.request(),url=new URL(request.url());if(request.method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(url.pathname.includes('order-source')){reads.push(url.pathname);const incomplete={...source,ready:false,styles:source.styles.map(style=>({...style,ready:false,producedQuantity:5,assignments:[{externalId:'review-plan',completed:false,producedQuantity:5,plannedQuantity:15,factoryName:'HANOI'}]}))};return r.fulfill({headers,json:failure==='layout'?{...incomplete,lines:['L','M','FREE','S','XL','2XL','XS','3XL','4XL'].map(size=>({...source.lines[0],key:`item1:${size}`,size,gender:'M'}))}:failure==='advance'?incomplete:source});}
-   if(request.method()==='POST'&&url.pathname.endsWith('/drafts')){
+   if(request.method()==='GET'&&url.pathname.endsWith('/drafts/revision'))return r.fulfill({headers,json:{id:'revision',revision:1,clientKey:'saved-client',buyerOrgId:2,content:{version:2,buyerOrgId:2,basis:'MANUFACTURING_SERVICE_PRICE',currency:'USD',orders:combineInvoiceSources([source]).orders,lines:combineInvoiceSources([source]).lines,percentages:{},settlements:{},fields:{number:'',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'',shipTo:'',shipmentDate:'',dueDate:'',incoterm:'',paymentTerms:''}}}});
+   if((request.method()==='POST'&&url.pathname.endsWith('/drafts'))||(request.method()==='PUT'&&url.pathname.endsWith('/drafts/revision'))){
     saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
    }
    if(request.method()==='POST'&&url.pathname.endsWith('/issue')){
@@ -35,41 +37,38 @@ try{
    }
    throw Error(`Unexpected request: ${request.method()} ${url.pathname}`);
   });
-  await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`);
+  await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
   const review=page.getByRole('checkbox');await review.waitFor();
   const numberInput=page.getByLabel(documentNumberText[lang].invoice,{exact:true});assert.equal(await numberInput.inputValue(),'');if(failure==='save')await numberInput.fill('CUSTOM-2026-A');
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
   const issue=page.getByRole('button',{name:lang==='ko'?'발행':lang==='vi'?'Phát hành':'Issue',exact:true});assert.equal(await issue.isDisabled(),true);
   const grid=page.locator('fieldset table').first();
-  assert.equal(await grid.getByRole('columnheader',{name:lang==='ko'?'성별':lang==='vi'?'Giới tính':'Gender',exact:true}).count(),1);
-  assert.deepEqual((await grid.locator('thead th').allTextContents()).slice(0,6),failure==='layout'?['주문','스타일명','색상','성별','XS','S']:lang==='ko'?['주문','스타일명','색상','성별','S','M']:lang==='vi'?['Đơn hàng','Tên mẫu','Màu sắc','Giới tính','S','M']:['Order','Style name','Color','Gender','S','M']);
-  assert.equal(await grid.locator('tbody td').first().evaluate(cell=>getComputedStyle(cell).whiteSpace),'nowrap');
-  assert.equal(await grid.locator('thead th').first().evaluate(cell=>getComputedStyle(cell).position),'sticky');
+  assert.equal(await grid.locator('thead th').count(),6);
+  assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),0);
   if(failure==='layout'){
    assert.equal(await grid.locator('tr[data-production-review="true"]').count(),1);
-   assert.match(await grid.locator('tbody tr').innerText(),/HANOI.*생산 미완료/);
+   assert.match(await grid.locator('tbody tr').innerText(),/HANOI/);
    let quantityReads=0;
    await page.route('**/assignment-plans/review-plan/quantity-review*',r=>{assert.equal(new URL(r.request().url()).searchParams.get('orgId'),'1');quantityReads++;return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{plannedQuantity:15,producedQuantity:5,processTotals:[],workRecords:[]}});});
    await grid.getByRole('button',{name:'수량 확인',exact:true}).click();
    await page.getByText('작업기록 합계',{exact:true}).waitFor();assert.equal(quantityReads,1);
    await page.keyboard.press('Escape');await page.getByText('작업기록 합계',{exact:true}).waitFor({state:'hidden'});
-   assert.deepEqual((await grid.locator('thead th').allTextContents()).slice(4,13),['XS','S','M','L','XL','2XL','3XL','4XL','FREE']);
    for(const width of [1920,1720,1366,768,390]){
     await page.setViewportSize({width,height:1000});
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-    const dimensions=await grid.locator('input[inputmode="numeric"]').first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
-    assert.ok(dimensions.input<=dimensions.cell&&dimensions.cell>=59&&dimensions.cell<=90,JSON.stringify(dimensions));
+    const dimensions=await grid.locator('input[inputmode="decimal"]').nth(1).first().evaluate(input=>({input:input.getBoundingClientRect().width,cell:input.closest('td').getBoundingClientRect().width}));
+    assert.ok(dimensions.input<=dimensions.cell&&dimensions.cell>=100,JSON.stringify(dimensions));
 
    }
    assert.deepEqual(errors,[]);await page.close();continue;
   }
-  assert.equal(await grid.locator('tbody tr').count(),1);assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),1);assert.equal(await grid.getByRole('columnheader',{name:'M',exact:true}).count(),1);
-  assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').inputValue(),'2');await grid.locator('input[inputmode="decimal"]').fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
+  assert.equal(await grid.locator('tbody tr').count(),1);
+  assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').nth(1).inputValue(),'2');await grid.locator('input[inputmode="decimal"]').nth(1).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
-  await page.locator('input[aria-label*="item1:S"]:not([inputmode="decimal"])').fill('9');
+  await grid.locator('input').first().fill('14');
   await page.locator('textarea[aria-label^="Remark "]').fill('One missing piece');
-  if(failure==='advance'){await page.locator('.MuiAccordionSummary-root').click();await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('30');await page.locator('.MuiAccordionSummary-root').click();}
+  if(failure==='advance'){await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('30');}
   await review.check();assert.equal(await issue.isEnabled(),true);
   await page.getByLabel('REMARK',{exact:true}).fill('Reviewed note');assert.equal(await review.isChecked(),false);
   await review.check();

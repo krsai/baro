@@ -1,3 +1,4 @@
+import {invoiceNumber} from '../../../utils/invoiceStyleRows.mjs';
 import {invoiceDetailText} from '../../../constants/invoiceDetail';
 import React, { useEffect, useState } from 'react';
 import {Alert,Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
@@ -63,10 +64,10 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
         onChange={(_event,value)=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>{setCustomer(value);setChosen([]);setOrders([]);setSearch('');setPage(0);setHasMore(false);setError(false);});}}/>
       <Button variant="outlined" disabled={disabled||!customer} onClick={()=>{setPendingChosen(chosen);setOrderModal(true);setSearch('');setPage(0);}}>{t.orders}{chosen.length ? ': '+chosen.map(order=>order.orderNumber).join(', ') : ''}</Button>
       <Dialog open={orderModal} onClose={()=>setOrderModal(false)} fullWidth maxWidth="md">
-        <DialogTitle>{t.orders}<Typography variant="caption" display="block">{modalText.oldest}</Typography></DialogTitle>
+        <DialogTitle>{t.orders}</DialogTitle>
         <DialogContent dividers>
           <TextField fullWidth size="small" label={t.search} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} sx={{mb:2}}/>
-          <Stack spacing={1}>{orders.map(order=>{const selected=pendingChosen.some(row=>row.orderId===order.orderId);return <Button key={order.orderId} variant={selected?'contained':'outlined'} aria-pressed={selected} onClick={()=>setPendingChosen(rows=>selected?rows.filter(row=>row.orderId!==order.orderId):[...rows,order])} sx={{justifyContent:'flex-start',gap:1,flexWrap:'wrap'}}><Checkbox checked={selected} tabIndex={-1} sx={{color:'inherit','&.Mui-checked':{color:'inherit'}}}/>{order.orderNumber} / {order.totalQuantity??'-'} PCS<Box component="span" sx={{ml:'auto',fontWeight:400}}>{rateText.progress} {order.progressPercent==null?'—':`${order.progressPercent}%`} · {rateText.billing} {order.billingPercent??0}%</Box></Button>;})}</Stack>
+          <Stack spacing={1}>{orders.map(order=>{const selected=pendingChosen.some(row=>row.orderId===order.orderId);return <Button key={order.orderId} variant={selected?'contained':'outlined'} aria-pressed={selected} onClick={()=>setPendingChosen(rows=>selected?rows.filter(row=>row.orderId!==order.orderId):[...rows,order])} sx={{justifyContent:'flex-start',gap:1,flexWrap:'wrap'}}><Checkbox checked={selected} tabIndex={-1} sx={{color:'inherit','&.Mui-checked':{color:'inherit'}}}/>{order.orderNumber} / {invoiceNumber(order.totalQuantity)} PCS<Box component="span" sx={{ml:'auto',fontWeight:400}}>{rateText.progress} {order.progressPercent==null?'—':`${order.progressPercent}%`} · {rateText.billing} {order.billingPercent??0}%</Box></Button>;})}</Stack>
           {!loading&&!orders.length&&<Typography>{t.empty}</Typography>}
           {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
           {hasMore&&<Button disabled={loading} onClick={()=>setPage(value=>value+1)}>{t.next}</Button>}

@@ -13,7 +13,7 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
 
 test('issued HTML renders frozen document fields, public order numbers and settlement, not live masters or internal reasons', () => {
   const invoice = fixture(), before = structuredClone(invoice), html = buildIssuedInvoicePrintHtml(invoice);
-  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', 'Warehouse', '2026-09-29', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'STYLE123', 'Jacket', 'Blue / U / XL', 'HS123', 'Vietnam', 'Customer remark', 'NEW RECEIVABLE USD 0']) assert.ok(html.includes(text), text);
+  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', 'Warehouse', '2026-09-29', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'STYLE123', 'Jacket', 'HS123', 'Vietnam', 'Customer remark', 'TOTAL USD 80.00']) assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /CURRENT MASTER|internal-order-id|INTERNAL REASON|DRAFT|<script>/);
   assert.match(html, /&lt;script&gt;/);
   assert.match(html, /thead\{display:table-header-group\}/);

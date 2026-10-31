@@ -1,10 +1,12 @@
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Checkbox, CircularProgress, Accordion, AccordionSummary, AccordionDetails, Paper, FormControlLabel, Stack, Table, TableBody, TableCell, TableHead,
+import { Alert, Box, Button, Checkbox, CircularProgress, FormControlLabel, Stack, Table, TableBody, TableCell, TableHead,
   TableRow, TextField, Typography } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
-import ExpandMore from '@mui/icons-material/ExpandMore';
+import InvoiceSheet from '../../../components/InvoiceSheet';
+import DecimalAmountField from '../../../components/DecimalAmountField';
+import {invoiceStyleRows,invoiceNumber,distributeInvoiceQuantity} from '../../../utils/invoiceStyleRows.mjs';
 import {invoiceUi,invoiceSubmissionUi} from '../../../constants/invoiceUi';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { INVOICE_BASES, calculateInvoiceDraft, combineInvoiceSources, applyOrderBillingPercentages } from '../../../utils/invoiceDraft.mjs';
@@ -12,7 +14,7 @@ import { invoiceMessages } from '../../../constants/invoiceMessages';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import { restoreInvoiceDraftLines } from '../../../utils/invoiceDraftRestore.mjs';
-import { invoiceItemGrid, formatInvoiceMoney, sumInvoiceAmounts } from '../../../utils/invoiceItemGrid.mjs';
+import { formatInvoiceMoney } from '../../../utils/invoiceItemGrid.mjs';
 import { invoiceProductionReview } from '../../../utils/invoiceProductionReview.mjs';
 import { invoiceProductionMessages } from '../../../constants/invoiceProductionMessages';
 import { LABEL_PALETTE } from '../../../theme/labelPalette';
@@ -178,18 +180,13 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, reload, t.load, storageText.sourceChanged]);
   const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
-  const itemGrid = useMemo(() => invoiceItemGrid(calculation?.lines || []), [calculation]);
+  const styleRows = useMemo(() => invoiceStyleRows(calculation?.lines || []), [calculation]);
   const draftLinesByKey = useMemo(() => new Map(lines.map(line => [line.key, line])), [lines]);
   const itemText = languageCode === 'ko' ? { order: '주문', style: '스타일명', color: '색상', gender: '성별', note: 'Remark', hint: '수량 변경 사유를 함께 적어 주세요.' }
     : languageCode === 'vi' ? { order: 'Đơn hàng', style: 'Tên mẫu', color: 'Màu sắc', gender: 'Giới tính', note: 'Remark', hint: 'Ghi rõ lý do thay đổi số lượng.' }
     : { order: 'Order', style: 'Style name', color: 'Color', gender: 'Gender', note: 'Remark', hint: 'Include the reason for quantity changes.' };
   const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
   const changeField = (key, value) => { if (saving) return; setFields((f) => ({ ...f, [key]: value })); setReviewed(false); setDirty(true); };
-  const changeLine = (key, property, value) => {
-    if (saving) return;
-    setLines((rows) => rows.map((row) => row.key === key ? { ...row, [property]: value,
-      ...(property === 'quantity' ? { adjustmentReason: row.adjustmentReason || row.remark || '' } : {}) } : row)); setReviewed(false); setDirty(true);
-  };
   const changeItemNote = (group, value) => {
     if (saving || uncertain) return;
     const keys = new Set(group.lines.map(line => line.key));
@@ -236,101 +233,70 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     <Button disabled={saving} onClick={close}>{ui.cancel}</Button>
     <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
   </Stack>}>
-    <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}>
-      <Stack spacing={2} sx={{p:2,minWidth:0}}>
+    <InvoiceSheet>
+      <Stack spacing={3} sx={{minWidth:0}}>
+        <Typography component="div" className="invoice-heading">INVOICE</Typography>
         {renderSelection?.({requestChange:requestSelectionChange,disabled:saving||uncertain})}
-        {renderSelection && !source && !loading && <Typography variant="body2" color="text.secondary">{billingText.customer} · {billingText.orders}</Typography>}
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:renderSelection?'180px minmax(0,1fr)':'180px minmax(0,1fr) minmax(0,1fr)'},gap:2}}>
+          <Box className="invoice-parties">{['seller', 'buyer'].map((party) => <Box key={party}><Typography variant="overline">{t[party]}</Typography><Box sx={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:1}}>
+              {['name', 'address', 'country', 'taxId', 'email', 'phone'].map((key) => <TextField key={key} size="small" label={ui[key]} value={fields[party][key]||''} sx={key==='name'||key==='address'?{gridColumn:'1 / -1'}:undefined} inputProps={{ maxLength: 1000 }} onChange={(e) => changeField(party, { ...fields[party], [key]: e.target.value })} />)}
+            </Box></Box>)}</Box>
+          <Box className="invoice-metadata">
             <TextField size="small" label={ui.date} type="date" value={fields.date} onChange={e=>changeField('date',e.target.value)} InputLabelProps={{shrink:true}}/>
-            {!renderSelection && <TextField size="small" label={billingText.customer} value={fields.buyer.name} slotProps={{input:{readOnly:true}}}/>}
             <TextField size="small" label={(documentNumberText[languageCode]||documentNumberText.en).invoice} placeholder="INV-YYYY-000001" helperText={(documentNumberText[languageCode]||documentNumberText.en).auto} value={fields.number} onChange={e=>changeField('number',e.target.value)} inputProps={{maxLength:200}}/>
           </Box>
-          <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
 
-          <Typography component="h2" variant="subtitle2">{ui.details} · {itemGrid.rows.length}</Typography>
-          <Box sx={{ overflow: 'auto', maxHeight: 'max(320px, calc(100dvh - 360px))', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}><Table stickyHeader size="small" sx={{ tableLayout: 'fixed', minWidth: 880 + itemGrid.sizes.length * 60, '& .MuiTableCell-root': { px: 1, py: 1, verticalAlign: 'middle' }, '& .MuiTableCell-head': { whiteSpace: 'nowrap' }, '& input': { px: 0.75, py: 1, fontSize: '0.8125rem' } }}>
-            <colgroup>{[80, 110, 110, 60, ...itemGrid.sizes.map(() => 60), 80, 120, 140, 180].map((width, index) => <col key={index} style={{ width }} />)}</colgroup><TableHead><TableRow>
-            {[itemText.order, itemText.style, itemText.color, itemText.gender].map((label, index) => <TableCell key={label} align={index === 3 ? 'center' : 'left'}>{label}</TableCell>)}
-            {itemGrid.sizes.map(size => <TableCell key={`size:${size}`} align="center">{size}</TableCell>)}
-            {[t.quantity, t.price, t.amount, itemText.note].map((label, index) => <TableCell key={label} align={index < 3 ? 'right' : 'left'}>{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{itemGrid.rows.map(group => {
-            const first = group.lines[0];
-            const changed = group.lines.some(line => line.quantity !== line.orderedQuantity);
-            const production = invoiceProductionReview(source, first);
-            return <TableRow key={group.key} data-production-review={production ? 'true' : undefined} sx={production ? { bgcolor: LABEL_PALETTE.yellow.background } : undefined}>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}>{first.orderNumber}</TableCell>
-              <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.description || first.styleCode || '—'}
-                {production && <Stack spacing={0.5} sx={{mt:0.75}}>
-                  <Typography variant="caption">{productionText.scope}: {production.style.producedQuantity ?? '—'}/{production.style.orderedQuantity ?? '—'}</Typography>
-                  {production.reason && <Typography variant="caption">{productionText[production.reason]}</Typography>}
-                  {production.problems.map(assignment=><Box key={assignment.externalId || assignment.id}>
-                    <Typography variant="caption" display="block">{[assignment.factoryName,`${assignment.producedQuantity ?? '—'}/${assignment.plannedQuantity ?? '—'}`,...assignment.reasons.map(reason=>productionText[reason])].filter(Boolean).join(' · ')}</Typography>
-                    {assignment.externalId && <Button size="small" disabled={saving||uncertain} onClick={()=>setReviewAssignment({externalId:assignment.externalId,orderNumber:first.orderNumber,styleLabel:first.description||first.styleCode,quantity:assignment.plannedQuantity})} sx={{p:0,minWidth:0,fontSize:'0.7rem',textAlign:'left'}}>{productionText.open}</Button>}
-                  </Box>)}
-                </Stack>}
-              </TableCell>
-              <TableCell sx={{ overflowWrap: 'anywhere' }}>{first.color || '—'}</TableCell>
-              <TableCell align="center">{first.gender || '—'}</TableCell>
-              {itemGrid.sizes.map(size => {
-                const line = group.lines.find(row => (row.size || '—') === size);
-                return <TableCell key={size} align="center">{line ? <>
-                  <TextField size="small" value={draftLinesByKey.get(line.key)?.quantity ?? ''}
-                    inputProps={{ inputMode: 'numeric', 'aria-label': `${t.quantity} ${line.key}`, style: { textAlign: 'right' } }}
-                    onChange={e => changeLine(line.key, 'quantity', e.target.value)} fullWidth />
-                  <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.25, whiteSpace: 'nowrap', fontSize: '0.65rem' }}>{t.ordered} {line.orderedQuantity}</Typography>
-                </> : '—'}</TableCell>;
-              })}
-              <TableCell align="right">{group.lines.every(line => line.quantity != null) ? group.lines.reduce((sum, line) => sum + line.quantity, 0) : '—'}</TableCell>
-              <TableCell sx={{ whiteSpace: 'nowrap' }}><TextField size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride ?? first.unitPrice ?? ''}
-                inputProps={{ 'aria-label': t.price + ' ' + first.key, inputMode: 'decimal', maxLength: 32, style: { textAlign: 'right' } }}
-                InputProps={{ startAdornment: <Typography variant="caption" sx={{ mr: 0.5 }}>{currency}</Typography> }}
-                onChange={e => { if (saving || uncertain) return; const keys = new Set(group.lines.map(line => line.key)); const value=e.target.value; setLines(previous => previous.map(line => keys.has(line.key) ? { ...line, unitPriceOverride: value } : line)); setReviewed(false); setDirty(true); }} fullWidth /></TableCell>
-              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>{formatInvoiceMoney(sumInvoiceAmounts(group.lines.map(line => line.quantity === 0 ? '0' : line.amount)), currency)}</TableCell>
-              <TableCell><TextField size="small" multiline value={group.note} label={itemText.note}
-                helperText={changed ? itemText.hint : undefined} required={changed}
-                inputProps={{ maxLength: 1000, 'aria-label': `Remark ${first.key}` }}
-                onChange={e => changeItemNote(group, e.target.value)} fullWidth /></TableCell>
-            </TableRow>;
-          })}</TableBody></Table></Box>
-          <Accordion disableGutters elevation={0} sx={{border: "1px solid",borderColor:"divider",borderRadius:1,"&::before":{display:"none"}}}><AccordionSummary expandIcon={<ExpandMore/>}><Typography variant="subtitle2">{ui.options}</Typography></AccordionSummary><AccordionDetails>
+
+          <Typography variant="subtitle1">{t.metadata}</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+            {[['shipmentDate', ui.shipmentDate, 'date'], ['dueDate', ui.dueDate, 'date'], ['incoterm', ui.incoterm], ['paymentTerms', ui.paymentTerms], ['shipTo', ui.shipTo], ['bank', ui.bank]].map(([key, label, type]) =>
+              <TextField key={key} size="small" label={label} type={type || 'text'} multiline={!type} minRows={!type ? 2 : undefined} value={fields[key]} onChange={(e) => changeField(key, e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ maxLength: 2000 }} />)}
+
+          </Box>
+          <Box sx={{overflowX:'auto',border:'1px solid',borderColor:'divider'}}><Table size="small" sx={{minWidth:720,'& td':{verticalAlign:'top'},'& th':{whiteSpace:'nowrap'}}}><TableHead><TableRow>
+            {[itemText.order,itemText.style,t.quantity,t.price,t.amount,itemText.note].map((label,index)=><TableCell key={label} align={index>=2&&index<=4?'right':'left'}>{label}</TableCell>)}
+          </TableRow></TableHead><TableBody>{styleRows.map(group=>{const first=group.lines[0],changed=group.lines.some(line=>line.quantity!==line.orderedQuantity),production=invoiceProductionReview(source,first);return <TableRow key={first.key} data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
+            <TableCell sx={{whiteSpace:'nowrap'}}>{first.orderNumber}</TableCell>
+            <TableCell><Typography variant="body2" fontWeight={600}>{first.styleCode}</Typography>{first.description||first.styleName}
+              {production&&<Typography variant="caption" display="block" color="warning.main">{productionText.scope}: {invoiceNumber(production.style.producedQuantity)} / {invoiceNumber(production.style.orderedQuantity)}</Typography>}
+              {production?.problems.map(assignment=><Box key={assignment.externalId||assignment.id}><Typography variant="caption">{assignment.factoryName} {invoiceNumber(assignment.producedQuantity)} / {invoiceNumber(assignment.plannedQuantity)}</Typography>{assignment.externalId&&<Button size="small" onClick={()=>setReviewAssignment({externalId:assignment.externalId,orderNumber:first.orderNumber,styleLabel:first.description||first.styleCode,quantity:assignment.plannedQuantity})}>{productionText.open}</Button>}</Box>)}
+            </TableCell>
+            <TableCell align="right"><DecimalAmountField size="small" value={String(group.quantity??'')} onValueChange={value=>{const distributed=distributeInvoiceQuantity(group,value);if(!distributed||saving||uncertain)return;const values=new Map(distributed.map(row=>[row.key,row.quantity]));setLines(previous=>previous.map(row=>values.has(row.key)?{...row,quantity:values.get(row.key),adjustmentReason:row.adjustmentReason||row.remark||''}:row));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.quantity+' '+first.key,style:{textAlign:'right'}}} sx={{width:110}}/><Typography variant="caption" display="block">{t.ordered} {invoiceNumber(group.orderedQuantity)}</Typography></TableCell>
+            <TableCell align="right"><DecimalAmountField size="small" value={draftLinesByKey.get(first.key)?.unitPriceOverride??first.unitPrice??''} onValueChange={value=>{if(saving||uncertain)return;const keys=new Set(group.lines.map(line=>line.key));setLines(previous=>previous.map(line=>keys.has(line.key)?{...line,unitPriceOverride:value}:line));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.price+' '+first.key,style:{textAlign:'right'}}} sx={{width:120}}/><Typography variant="caption">{currency}</Typography></TableCell>
+            <TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatInvoiceMoney(group.amount,currency)}</TableCell>
+            <TableCell><TextField size="small" multiline value={group.note} label={itemText.note} required={changed} inputProps={{maxLength:1000,'aria-label':'Remark '+first.key}} onChange={e=>changeItemNote(group,e.target.value)}/></TableCell>
+          </TableRow>;})}</TableBody></Table></Box>
+          <Stack spacing={2}>
           <Typography variant="h6">{billingText.settlement}</Typography>
-          <Typography variant="body2">{billingText.percentHint}</Typography>
+
           <Stack direction="row" spacing={1} alignItems="center">
             <TextField size="small" label={billingText.percentage} placeholder="100" value={allPercentage} inputProps={{ inputMode: 'decimal', maxLength: 6 }} onChange={e => setAllPercentage(e.target.value)} />
             <Button onClick={() => changeBilling(setPercentages, Object.fromEntries(source.orders.map(order => [order.orderId, allPercentage])))}>{billingText.applyAll}</Button>
           </Stack>
           <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 650 }}><TableHead><TableRow>
-            {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, settlementLabels.prior, settlementLabels.deduction, settlementLabels.outstanding, settlementLabels.statement].map(label => <TableCell key={label}>{label}</TableCell>)}
+            {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, settlementLabels.deduction, ui.summary].map((label,index) => <TableCell key={label} align={index ? 'right' : 'left'}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.orders.map(order => <TableRow key={order.orderId}>
-            <TableCell>{order.orderNumber}</TableCell><TableCell>{order.subtotal ?? '—'}</TableCell>
-            <TableCell><TextField size="small" placeholder="100" value={percentages[order.orderId] ?? ''} error={order.percentage == null}
+            <TableCell>{order.orderNumber}</TableCell><TableCell align="right">{formatInvoiceMoney(order.subtotal,currency)}</TableCell>
+            <TableCell align="right"><TextField size="small" placeholder="100" value={percentages[order.orderId] ?? ''} error={order.percentage == null}
               inputProps={{ inputMode: 'decimal', maxLength: 6, 'aria-label': `${billingText.percentage} ${order.orderNumber}` }} sx={{ width: 100 }}
               onChange={e => changeBilling(setPercentages, { ...percentages, [order.orderId]: e.target.value })} /></TableCell>
-            <TableCell>{order.amount ?? '—'}</TableCell><TableCell>{order.priorBilledAmount} / {order.priorReceivedAmount}{order.hasUnallocatedPayments && <Typography color="warning.main" variant="caption" display="block">{settlementLabels.unallocated}</Typography>}</TableCell>
-            <TableCell><Stack spacing={1}><TextField size="small" value={settlements[order.orderId]?.deduction ?? ''} inputProps={{ inputMode: 'decimal' }} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], deduction: e.target.value } })} /><TextField size="small" placeholder={settlementLabels.reason} value={settlements[order.orderId]?.reason ?? ''} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], reason: e.target.value } })} /></Stack></TableCell>
-            <TableCell>{order.priorOutstandingAmount}</TableCell><TableCell>{order.netAmount ?? '—'} / {order.receivableAdded ?? '—'}</TableCell>
+            <TableCell align="right">{formatInvoiceMoney(order.amount,currency)}</TableCell>
+            <TableCell align="right"><Stack spacing={1}><DecimalAmountField size="small" value={settlements[order.orderId]?.deduction ?? ''} inputProps={{style:{textAlign:'right'}}} onValueChange={value => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], deduction: value } })} /><TextField size="small" placeholder={settlementLabels.reason} value={settlements[order.orderId]?.reason ?? ''} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], reason: e.target.value } })} /></Stack></TableCell>
+            <TableCell align="right">{formatInvoiceMoney(order.netAmount,currency)}{order.hasUnallocatedPayments && <Typography color="warning.main" variant="caption" display="block">{settlementLabels.unallocated}</Typography>}</TableCell>
           </TableRow>)}</TableBody></Table></Box>
-          <Typography variant="subtitle1">{t.metadata}</Typography>
-          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
-            {[['shipmentDate', ui.shipmentDate, 'date'], ['dueDate', ui.dueDate, 'date'], ['incoterm', ui.incoterm], ['paymentTerms', ui.paymentTerms], ['shipTo', ui.shipTo], ['bank', ui.bank]].map(([key, label, type]) =>
-              <TextField key={key} size="small" label={label} type={type || 'text'} multiline={!type} minRows={!type ? 2 : undefined} value={fields[key]} onChange={(e) => changeField(key, e.target.value)} InputLabelProps={{ shrink: true }} inputProps={{ maxLength: 2000 }} />)}
-            {['seller', 'buyer'].map((party) => <Box key={party}><Typography>{t[party]}</Typography><Stack spacing={1}>
-              {['name', 'address', 'country', 'taxId', 'email', 'phone'].map((key) => <TextField key={key} size="small" label={ui[key]} value={fields[party][key]} inputProps={{ maxLength: 1000 }} onChange={(e) => changeField(party, { ...fields[party], [key]: e.target.value })} />)}
-            </Stack></Box>)}
-          </Box>
-          </AccordionDetails></Accordion>
-          <Box sx={{bgcolor:'grey.50',p:2,borderRadius:1}}>          <Typography align="right" variant="h6">TOTAL {currency} {calculation.total ?? '—'}</Typography>
-          <Typography align="right" variant="subtitle1">{settlementLabels.newReceivable} {currency} {calculation.receivableAdded ?? '—'}</Typography>
+          </Stack>
+          <TextField size="small" label={ui.notes} value={fields.notes} onChange={e=>changeField('notes',e.target.value)} inputProps={{maxLength:2000}}/>
+          <Box sx={{bgcolor:'grey.50',p:2,borderRadius:1}}>          <Typography align="right" variant="h6">TOTAL {formatInvoiceMoney(calculation.total,currency)}</Typography>
+          <Typography align="right" variant="subtitle1">{settlementLabels.newReceivable} {formatInvoiceMoney(calculation.receivableAdded,currency)}</Typography>
 </Box>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </Box>}
       </Stack>
-    </Paper>
+    </InvoiceSheet>
     <QuantityReviewDrawer externalId={reviewAssignment?.externalId} orgId={orgId} languageCode={languageCode} headerOrderNo={reviewAssignment?.orderNumber} headerStyleLabel={reviewAssignment?.styleLabel} headerQuantity={reviewAssignment?.quantity} onClose={()=>setReviewAssignment(null)}/>
   </AppPageContainer>;
 }

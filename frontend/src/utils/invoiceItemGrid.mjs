@@ -43,7 +43,7 @@ export function invoiceItemGrid(lines) {
 export function formatInvoiceMoney(value, currency) {
   if (value == null || !currency) return '—';
   const text = String(value);
-  if (!/^\d+(\.\d+)?$/.test(text)) return '—';
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return '—';
   let digits;
   try { digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().minimumFractionDigits; }
   catch { return '—'; }
