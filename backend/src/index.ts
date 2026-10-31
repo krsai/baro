@@ -1,3 +1,4 @@
+import {loadIssuedOrderSalesValues} from './services/issuedOrderSalesValue';
 import {employeePayee,registerExpensePayeeRoutes} from './services/expensePayee';
 import { loadAssignmentStyleDetails } from './services/assignmentStyleLoading';
 import {registerBankLedgerRoutes} from './services/bankLedger';
@@ -8426,6 +8427,7 @@ const toOrderResponse = (
 };
 
 const loadCurrentOrderValueByOrderDbId = async (orders: any[], db = prisma) => {
+  const issuedOrderValues = await loadIssuedOrderSalesValues(db, orders);
   const result = new Map<number, any>();
   const pairs = Array.from(new Map(ensureArray(orders).map((order) => [
     `${order?.sellerOrgId}:${order?.buyerOrgId}`,
@@ -8453,7 +8455,7 @@ const loadCurrentOrderValueByOrderDbId = async (orders: any[], db = prisma) => {
     const orderDbId = toPositiveIntOrNull(order?.id);
     if (!orderDbId) return;
     const relationship: any = relationshipByPair.get(`${order?.sellerOrgId}:${order?.buyerOrgId}`);
-    result.set(orderDbId, calculateOrderSalesValue(order, relationship));
+    result.set(orderDbId, issuedOrderValues.get(orderDbId) ?? {...calculateOrderSalesValue(order, relationship),source:'CURRENT_PRICE'});
   });
   return result;
 };

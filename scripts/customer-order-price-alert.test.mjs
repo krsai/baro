@@ -5,13 +5,14 @@ import {createRequire} from 'node:module';
 import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url),ts=require('../backend/node_modules/typescript');
 const {Prisma}=require('../backend/node_modules/@prisma/client');
+const {loadIssuedOrderSalesValues}=require('../backend/dist/services/issuedOrderSalesValue.js');
 const {calculateOrderSalesValue}=require('../backend/dist/utils/orderSalesValue.js');
 const source=fs.readFileSync('backend/src/index.ts','utf8');
 const declarations=['loadMissingSalesPriceStyleCountByRelationship','loadCurrentOrderValueByOrderDbId'];
 const ast=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
 const chunks=[];
 function visit(n){if(ts.isVariableDeclaration(n)&&declarations.includes(n.name.getText(ast)))chunks.push('const '+n.getText(ast)+';');ts.forEachChild(n,visit);}visit(ast);
-const load=db=>new Function('prisma','Prisma','ensureArray','toPositiveIntOrNull','calculateOrderSalesValue',ts.transpileModule(chunks.join('\n'),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return loadMissingSalesPriceStyleCountByRelationship;')(db,Prisma,v=>Array.isArray(v)?v:[],v=>Number(v)>0?Number(v):null,calculateOrderSalesValue);
+const load=db=>new Function('prisma','Prisma','ensureArray','toPositiveIntOrNull','calculateOrderSalesValue','loadIssuedOrderSalesValues',ts.transpileModule(chunks.join('\n'),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return loadMissingSalesPriceStyleCountByRelationship;')(db,Prisma,v=>Array.isArray(v)?v:[],v=>Number(v)>0?Number(v):null,calculateOrderSalesValue,loadIssuedOrderSalesValues);
 const version=(id,values)=>({id,entries:values.map(bucketQuantity=>({bucketQuantity}))});
 const price=(styleId,v,values,basis='MANUFACTURING_SERVICE_PRICE',currency='USD')=>({styleId,quantityBucketSetVersionId:v.id,pricingBasis:basis,currency:{code:currency},prices:values.map(([bucketQuantity,unitPrice])=>({unitPrice,quantityBucketEntry:{bucketQuantity}}))});
 
@@ -30,7 +31,7 @@ test('customer warning checks each order style quantity, active overrides and co
     const v=version(10,[100,500,1000]),override=version(20,[100,300,500]);
     const rel={id:1,manufacturerOrgId:1,brandOrgId:2,salesBucketSetVersion:v,salesBucketOverrides:[],salesPriceLists:[price(7,v,[[100,2]]),price(8,v,[[100,3],[500,3]])]};
     let orders=[{id:52,sellerOrgId:1,buyerOrgId:2,workOrderItems:[{styleId:7,totalQuantity:300},{styleId:7,totalQuantity:250},{styleId:8,totalQuantity:100}]}];
-    const db={
+    const db={invoiceOrder:{findMany:async()=>[]},
       $queryRaw:async q=>(await sql.query(q.text,q.values)).rows,
       orgRelationship:{findMany:async({where,select})=>{
         if(select){assert.equal(where.manufacturerOrgId,1);assert.deepEqual(where.id.in,[1]);return [{id:1,brandOrgId:2}];}

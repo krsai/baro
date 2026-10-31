@@ -157,6 +157,7 @@ const formatOrderValueStyle = (line) => {
   return styleName || '-';
 };
 
+const ISSUED_ORDER_VALUE_TEXT={ko:'발행 청구서에 저장된 주문 전체 기준 금액과 단가입니다.',en:'Full order basis and prices saved in the issued invoice.',vi:'Giá trị cơ sở toàn đơn hàng và đơn giá đã lưu trong hóa đơn phát hành.'};
 const getOrderValueDetailText = (languageCode) => ({
   title: languageCode === 'vi' ? 'Chi tiết giá trị đơn hàng' : languageCode === 'en' ? 'Order value details' : '수주 금액 계산',
   description: languageCode === 'vi'
@@ -3229,11 +3230,13 @@ const OrderList = () => {
         </DialogTitle>
         <DialogContent dividers>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {orderValueDetailText.description}
+            {orderValueDetail?.currentOrderValue?.source==='ISSUED_INVOICE'
+              ? `${ISSUED_ORDER_VALUE_TEXT[languageCode]||ISSUED_ORDER_VALUE_TEXT.en}${orderValueDetail.currentOrderValue.invoiceNumber?` (${orderValueDetail.currentOrderValue.invoiceNumber})`:''}`
+              :orderValueDetailText.description}
           </Typography>
-          <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+          {orderValueDetail?.currentOrderValue?.source!=='ISSUED_INVOICE'&&<Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
             {orderValueDetailText.currentPriceNotice}
-          </Typography>
+          </Typography>}
           {orderValueDetail?.currentOrderValue?.pricingBasis && (
             <Stack direction="row" spacing={1} sx={{ mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
               <Chip
@@ -3261,7 +3264,7 @@ const OrderList = () => {
               </TableHead>
               <TableBody>
                 {(orderValueDetail?.currentOrderValue?.lines || []).map((line) => (
-                  <TableRow key={line.styleId}>
+                  <TableRow key={line.key||line.styleId}>
                     <TableCell>
                       {formatOrderValueStyle(line)}
                     </TableCell>
