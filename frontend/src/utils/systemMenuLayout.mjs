@@ -7,7 +7,7 @@ const GROUPS=[
  ['ADMIN',['/system-setting','/system-onboarding','/employee']],
  ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units']],
  ['PROCESS_MASTER',['/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs']],
- ['MISC',['/system-setting/transaction-codes','/system-setting/expense-types','/system-setting/partner-industries']],
+ ['MISC',['/system-setting/transaction-codes','/system-setting/partner-industries']],
  ['SYSTEM',['/system-setting/access-policy','/system-setting/app-defaults','/employee-system','/salary-system','/personal-settings','/app-settings']],
 ];
 
@@ -16,7 +16,7 @@ const GROUPS=[
 export function organizeSystemMenu(items,languageCode='ko',icons={}){
  const leaves=new Map(),groups=new Map();
  const visit=nodes=>nodes.forEach(node=>{if(node.isParent){groups.set(node.menuGroupKey,node);visit(node.children||[]);}else if(node.path)leaves.set(node.path,node);});visit(items);
- const used=new Set(['/dashboard']);
+ const used=new Set(['/dashboard','/system-setting/expense-types']);
  const result=GROUPS.map(([key,paths])=>{
   const source=groups.get(key)||groups.get('SYSTEM');
   const children=paths.map(path=>{used.add(path);return leaves.get(path);}).filter(Boolean);

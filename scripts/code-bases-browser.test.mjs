@@ -46,7 +46,7 @@ try{
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
     const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
     assert.equal(await page.locator('.MuiAlert-standardError').count(),0);
-    assert.equal(await page.locator('thead th').count(),6);
+    assert.equal(await page.locator('thead th').count(),5);
     assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).locator('[data-testid="DeleteOutlineIcon"]').count(),1);
     assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);
     await used.getByRole('button').filter({has:page.locator('[data-testid="EditIcon"]')}).click();

@@ -42,7 +42,9 @@ export default function ExpenseMasterSettings({ industries = false, units = fals
     catch { setError(common.error); } finally { setSaving(false); }
   };
   const reorder=async(index,direction,roles=false)=>{
-    const current=roles?types:rows,next=[...current];[next[index],next[index+direction]]=[next[index+direction],next[index]];
+    const current=roles?types:rows,next=[...current];
+    if(roles)next.splice(direction,0,next.splice(index,1)[0]);
+    else [next[index],next[index+direction]]=[next[index+direction],next[index]];
     setSaving(true);setError('');
     try{await requestJSON(roles?'/system-setting-defaults/partner-roles/order':'/expense-types/order',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({previousIds:current.map(row=>row.id),ids:next.map(row=>row.id)})});if(roles)setTypes(next);else setRows(next);}
     catch{await load();setError(common.error);}finally{setSaving(false);}
@@ -56,7 +58,7 @@ export default function ExpenseMasterSettings({ industries = false, units = fals
   </TableBody></Table></TableContainer>;
   return <AppPageContainer title={industries ? text.industries : text.types} titleActions={units?<Button variant="contained" disabled={loading} onClick={()=>setForm({code:'',nameEn:'',nameKo:'',nameVi:'',isActive:true,sortOrder:0})}>{unitLabels.add}</Button>:industries && <Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button>}>
     {error&&<Alert severity="error">{error}<Button onClick={load}>{common.loadError}</Button></Alert>}
-    {loading?<CircularProgress size={24}/>:industries?<HierarchyPanel label={tree.category} items={parents.map((parent,index)=>({id:parent.id,label:serviceName(parent,languageCode),actions:<CatalogueOrderButtons label={serviceName(parent,languageCode)} index={index} count={parents.length} disabled={saving||loading} languageCode={languageCode} onMove={(i,d)=>reorder(i,d,true)}/>,count:rows.filter(row=>(row.partnerRoleId||0)===parent.id).length}))} selectedId={category} onSelect={setCategory}>
+    {loading?<CircularProgress size={24}/>:industries?<HierarchyPanel label={tree.category} items={parents.map(parent=>({id:parent.id,label:serviceName(parent,languageCode),count:rows.filter(row=>(row.partnerRoleId||0)===parent.id).length}))} selectedId={category} onSelect={setCategory} onReorder={(from,to)=>reorder(from,to,true)} reorderDisabled={saving||loading}>
       <Stack direction="row" alignItems="center" spacing={1} sx={{mb:2}}><Typography variant="subtitle2">{serviceName(selected,languageCode)}</Typography><ChevronRight fontSize="small" color="disabled"/><Typography variant="subtitle2">{tree.industry}</Typography></Stack>
       {table}
     </HierarchyPanel>:<Paper variant="outlined">{table}</Paper>}

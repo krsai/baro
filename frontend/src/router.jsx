@@ -304,7 +304,7 @@ const router = createBrowserRouter([
           { path: 'approval-inbox', element: <Navigate to="/" replace /> },
           { path: 'approval-settings', element: <ApprovalSettings /> },
           { path: 'system-setting/expense-units', element: <ExpenseMasterSettings units /> },
-          { path: 'system-setting/expense-types', element: <ExpenseMasterSettings /> },
+          { path: 'system-setting/expense-types', element: <Navigate to="/system-setting/transaction-codes" replace /> },
           { path: 'system-setting/partner-industries', element: <ExpenseMasterSettings industries /> },
           { path: 'system-setting/transaction-codes', element: <CodeBaseSettings />,
           },

@@ -3,7 +3,7 @@ import LocalizedNameFields from '../../components/LocalizedNameFields';
 import { hasLocalizedName } from '../../utils/localizedName.mjs';
 import PageContentStack from '../../components/PageContentStack';
 import { EXPENSE_TEXT } from '../../constants/expenseTypes';
-import { useAppActions } from '../../context/AppContext';
+import HierarchyPanel from '../../components/HierarchyPanel';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Autocomplete, createFilterOptions, Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import SaveButton from '../../components/SaveButton';
@@ -34,7 +34,7 @@ export default function CodeBaseSettings() {
   const oldLabels = TEXT[languageCode] || TEXT.ko;
   const expenseLabels = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko;
   const labels = { ...oldLabels, title: expenseLabels.codes, industry: expenseLabels.industry };
-  const { navigateToPath } = useAppActions();
+  const [category,setCategory] = useState(null),[typeForm,setTypeForm] = useState(null);
   const [expenseTypes, setExpenseTypes] = useState([]);
   const [rows, setRows] = useState([]), [services, setServices] = useState([]), [error, setError] = useState(''), [loading, setLoading] = useState(true), [saving, setSaving] = useState(false), [form, setForm] = useState(null);
   const load = useCallback(async () => {
@@ -42,6 +42,7 @@ export default function CodeBaseSettings() {
     try {
       const [bases, industries, types] = await Promise.all([requestJSON(path, { skipCache: true }), requestJSON('/system-setting-defaults/services', { skipCache: true }), requestJSON('/system-setting-defaults/expense-types', { skipCache: true })]);
       setRows(bases); setServices(industries); setExpenseTypes(types);
+      setCategory(current=>types.some(type=>type.id===current)?current:types[0]?.id??null);
     }
     catch { setError(labels.error); } finally { setLoading(false); }
   }, [labels.error]);
@@ -57,8 +58,31 @@ export default function CodeBaseSettings() {
     try { await requestJSON(`${path}${form.id ? `/${form.id}` : ''}`, { method: form.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({...form,taxTreatmentIds:[1,2,3]}) }); setForm(null); await load(); }
     catch (error) { setError(error?.message === 'CODE_RENAME_CONFLICT' ? renameText.conflict : labels.error); } finally { setSaving(false); }
   };
-  return <AppPageContainer title={labels.title} titleActions={<Stack direction="row" spacing={1}><Button onClick={() => navigateToPath('/system-setting/expense-types', { label: expenseLabels.types })}>{expenseLabels.types}</Button><Button variant="contained" disabled={loading} onClick={() => setForm(emptyForm())}>{labels.add}</Button></Stack>}>
-    <PageContentStack>{error && <Alert severity="error">{error}</Alert>}<TableContainer component={Paper} variant="outlined"><Table size="small"><TableHead><TableRow>{[labels.code, labels.name, expenseLabels.type, labels.industry, labels.active, ''].map((label,index) => <TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map(row => <TableRow key={row.id}><TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{serviceName(row, languageCode)}</TableCell><TableCell>{serviceName(row.expenseType, languageCode)}</TableCell><TableCell>{serviceName(row.serviceType, languageCode)}</TableCell><TableCell>{row.isActive ? '✓' : '—'}</TableCell><TableCell><Stack direction="row"><Tooltip title={labels.edit}><IconButton aria-label={labels.edit} color="primary" size="small" onClick={() => setForm({ ...row, taxTreatmentIds: row.variants.filter(value => value.taxTreatmentId && (value.isEnabled ?? value.isActive)).map(value => value.taxTreatmentId) })}><EditIcon fontSize="small" /></IconButton></Tooltip><SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} disabled={loading} languageCode={languageCode} onDeleted={load} onError={async message => { await load(); setError(message); }} /></Stack></TableCell></TableRow>)}{!loading && !rows.length && <TableRow><TableCell colSpan={6}>{labels.empty}</TableCell></TableRow>}</TableBody></Table></TableContainer></PageContentStack>
+  const saveType=async()=>{
+    setSaving(true);setError('');
+    try{await requestJSON(`/expense-types/${typeForm.id}`,{method:'PUT',body:JSON.stringify(typeForm)});setTypeForm(null);await load();}
+    catch(error){setError(error?.message==='CODE_RENAME_CONFLICT'?renameText.conflict:labels.error);}finally{setSaving(false);}
+  };
+  const reorderTypes=async(from,to)=>{
+    const next=[...expenseTypes];next.splice(to,0,next.splice(from,1)[0]);
+    setSaving(true);setError('');
+    try{await requestJSON('/expense-types/order',{method:'PUT',body:JSON.stringify({previousIds:expenseTypes.map(row=>row.id),ids:next.map(row=>row.id)})});setExpenseTypes(next);}
+    catch{await load();setError(labels.error);}finally{setSaving(false);}
+  };
+  const visible=rows.filter(row=>row.expenseTypeId===category);
+  const selectedType=expenseTypes.find(row=>row.id===category);
+  return <AppPageContainer title={labels.title} titleActions={<Button variant="contained" disabled={loading||saving||!selectedType?.isActive} onClick={() => setForm({...emptyForm(),expenseTypeId:category,entryMode:selectedType.entryMode})}>{labels.add}</Button>}>
+    <PageContentStack>{error && <Alert severity="error">{error}</Alert>}<HierarchyPanel label={expenseLabels.type} items={expenseTypes.map(type=>({id:type.id,label:serviceName(type,languageCode),count:rows.filter(row=>row.expenseTypeId===type.id).length,actions:<IconButton size="small" color="primary" aria-label={labels.edit+' '+serviceName(type,languageCode)} disabled={loading||saving} onClick={()=>setTypeForm({...type})}><EditIcon fontSize="small"/></IconButton>}))} selectedId={category} onSelect={setCategory} onReorder={reorderTypes} reorderDisabled={loading||saving}><Typography variant="subtitle2" sx={{mb:2}}>{serviceName(selectedType,languageCode)}</Typography><TableContainer><Table size="small"><TableHead><TableRow>{[labels.code, labels.name, labels.industry, labels.active, ''].map((label,index) => <TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{visible.map(row => <TableRow key={row.id}><TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{serviceName(row, languageCode)}</TableCell><TableCell>{serviceName(row.serviceType, languageCode)}</TableCell><TableCell>{row.isActive ? '✓' : '—'}</TableCell><TableCell><Stack direction="row"><Tooltip title={labels.edit}><IconButton aria-label={labels.edit} color="primary" size="small" onClick={() => setForm({ ...row, taxTreatmentIds: row.variants.filter(value => value.taxTreatmentId && (value.isEnabled ?? value.isActive)).map(value => value.taxTreatmentId) })}><EditIcon fontSize="small" /></IconButton></Tooltip><SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} disabled={loading} languageCode={languageCode} onDeleted={load} onError={async message => { await load(); setError(message); }} /></Stack></TableCell></TableRow>)}{!loading && !visible.length && <TableRow><TableCell colSpan={5}>{labels.empty}</TableCell></TableRow>}</TableBody></Table></TableContainer></HierarchyPanel></PageContentStack>
+    <Dialog open={Boolean(typeForm)} onClose={()=>!saving&&setTypeForm(null)} fullWidth maxWidth="sm">
+      <DialogTitle>{expenseLabels.type}</DialogTitle>
+      <DialogContent dividers>{typeForm&&<Stack spacing={2} sx={{pt:1}}>
+        {error&&<Alert severity="error">{error}</Alert>}
+        <TextField label={languageCode==='ko'?'코드':languageCode==='vi'?'Mã':'Code'} required value={typeForm.code} disabled={saving} onChange={event=>setTypeForm({...typeForm,code:event.target.value.toUpperCase()})}/>
+        <LocalizedNameFields value={typeForm} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setTypeForm(previous=>({...previous,[key]:value}))}/>
+        <FormControlLabel label={labels.active} control={<Checkbox checked={typeForm.isActive} disabled={saving} onChange={event=>setTypeForm({...typeForm,isActive:event.target.checked})}/>}/>
+      </Stack>}</DialogContent>
+      <DialogActions><Button disabled={saving} onClick={()=>setTypeForm(null)}>{labels.cancel}</Button><SaveButton loading={saving} disabled={saving||!typeForm||!hasLocalizedName(typeForm)||!/^[A-Z][A-Z0-9_]{0,39}$/.test(typeForm.code)} onClick={saveType}>{labels.save}</SaveButton></DialogActions>
+    </Dialog>
     <Dialog open={Boolean(form)} onClose={() => !saving && setForm(null)} fullWidth maxWidth="md" slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)'}}}}>
       <DialogTitle>{form?.id ? labels.edit : labels.add}</DialogTitle>
       <DialogContent dividers>{form && <Stack spacing={2.5} sx={{py:1}}>

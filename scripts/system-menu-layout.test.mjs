@@ -16,14 +16,15 @@ test('SYSTEM menu uses original groups so expense expansion never borrows system
   assert.deepEqual(organized.filter(group=>group.isOpen).map(group=>group.menuGroupKey),selected?[selected]:[]);
  }
 });
-test('SYSTEM groups preserve every canonical node, route, badge and disabled state exactly once',()=>{
+test('SYSTEM groups combine accounting type management and preserve remaining nodes exactly once',()=>{
  const original=JSON.stringify(source),groups=organizeSystemMenu(source);
  assert.deepEqual(groups.slice(1).map(g=>g.menuGroupKey),['ADMIN','ATTRIBUTE','PROCESS_MASTER','MISC','SYSTEM']);
  const result=groups.flatMap(g=>g.children||[g]);
- assert.equal(result.length,paths.length+1);assert.equal(new Set(result.map(n=>n.path)).size,result.length);
- for(const leaf of leaves)assert.equal(result.find(n=>n.path===leaf.path),leaf);
+ assert.equal(result.length,paths.length);assert.equal(new Set(result.map(n=>n.path)).size,result.length);
+ for(const leaf of leaves.filter(leaf=>leaf.path!=='/system-setting/expense-types'))assert.equal(result.find(n=>n.path===leaf.path),leaf);
+ assert.equal(result.some(node=>node.path==='/system-setting/expense-types'),false);
  assert.equal(JSON.stringify(source),original);
- assert.deepEqual(groups.find(g=>g.menuGroupKey==='MISC').children.map(n=>n.path),['/system-setting/transaction-codes','/system-setting/expense-types','/system-setting/partner-industries']);
+ assert.deepEqual(groups.find(g=>g.menuGroupKey==='MISC').children.map(n=>n.path),['/system-setting/transaction-codes','/system-setting/partner-industries']);
 });
 test('direct entry chooses the most specific group without confusing subscription and settings',()=>{
  const menu=organizeSystemMenu(source);
