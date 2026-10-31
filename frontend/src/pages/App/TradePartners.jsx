@@ -14,6 +14,7 @@ export default function TradePartners({initialType='ALL'}){
  const [data,setData]=useState({roles:[],rows:[]}),[selected,setSelected]=useState(()=>location.state?.partnerType||initialType);
  const onDirectoryLoaded=useCallback(value=>setData(value),[]);
  useEffect(()=>{setData({roles:[],rows:[]});},[auth.activeOrgId]);
+ useEffect(()=>{if(data.roles.length&&selected!=='ALL'&&!data.roles.some(role=>role.code===selected))setSelected('ALL');},[data.roles,selected]);
  useEffect(()=>{if(location.state?.partnerType)setSelected(location.state.partnerType);},[location.key]);
  const current=data.roles.find(role=>role.code===selected);
  const items=[{id:'ALL',label:labels.all,count:data.rows.length},...data.roles.map(role=>({id:role.code,label:classificationName(role,languageCode),count:data.rows.filter(row=>row.classification.roleIds.includes(role.id)).length}))];

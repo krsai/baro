@@ -40,6 +40,7 @@ export default function AccountingCodeSettings(){
   ...sourceRows.filter(row=>row.partnerRoleId===role.id).map(industry=>({id:'industry:'+industry.id,label:name(industry),depth:1,count:rows.filter(row=>inIndustry(row,industry.id)).length})),
  ])];
  const [kind,idText]=selected.split(':'),selectedId=Number(idText);
+ useEffect(()=>{if(!loading&&!items.some(item=>item.id===selected))setSelected('ALL');},[loading,roles,industries,selected]);
  const visible=selected==='ALL'?rows:rows.filter(row=>kind==='role'?inRole(row,selectedId):inIndustry(row,selectedId));
  const openCreate=()=>{
   const initial=kind==='industry'?sourceRows.find(row=>row.id===selectedId):null;

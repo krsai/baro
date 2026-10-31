@@ -1,6 +1,7 @@
 import {createHttpError} from '../utils/http';
 import {entityProfile} from './entityProfile';
 import type {Prisma} from '@prisma/client';
+import {partnerRoleCatalogue} from './partnerRoleCatalogue';
 
 export const CLASSIFICATION_INCLUDE={industries:{include:{industry:{include:{partnerRole:true}}}}} satisfies Prisma.PartnerClassificationInclude;
 const vendorTypes=['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'];
@@ -62,7 +63,7 @@ export function registerPartnerClassificationRoutes(app:any,db:any,gates:any){
   const access=(req:any,res:any)=>gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});
   app.get('/partner-classifications/options',async(req:any,res:any)=>{
     if(!await access(req,res))return;
-    const [roles,industries]=await Promise.all([db.partnerRole.findMany({orderBy:[{sortOrder:'asc'},{id:'asc'}]}),db.settingServiceDefault.findMany({where:{isActive:true,code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]})]);
+    const [roles,industries]=await Promise.all([partnerRoleCatalogue(db),db.settingServiceDefault.findMany({where:{isActive:true,code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]})]);
     res.json({roles,industries});
   });
   app.get('/partner-classifications/:entityId',async(req:any,res:any)=>{
@@ -75,7 +76,7 @@ export function registerPartnerClassificationRoutes(app:any,db:any,gates:any){
     const [vendors,customers,stored,roles]=await Promise.all([
       db.organization.findMany({where:{ownerOrgId:orgId,type:{in:vendorTypes}},include:{outsourcingServiceAssignments:{include:{serviceType:{include:{systemDefault:{include:{partnerRole:true}}}}}}},orderBy:{name:'asc'}}),
       db.orgRelationship.findMany({where:{OR:[{manufacturerOrgId:orgId},{brandOrgId:orgId}]},include:{brand:true,manufacturer:true,systemIndustry:{include:{partnerRole:true}}}}),
-      db.partnerClassification.findMany({where:{orgId},include:CLASSIFICATION_INCLUDE}),db.partnerRole.findMany({orderBy:[{sortOrder:'asc'},{id:'asc'}]})]);
+      db.partnerClassification.findMany({where:{orgId},include:CLASSIFICATION_INCLUDE}),partnerRoleCatalogue(db)]);
     const documents=new Map(stored.map((row:any)=>[row.entityId,row]));
     const rows=[...vendors.map((entity:any)=>({entity,kind:'BUSINESS',legacy:entity.outsourcingServiceAssignments.map((a:any)=>a.serviceType.systemDefault).filter(Boolean)})),
       ...customers.map((r:any)=>{const entity=r.manufacturerOrgId===orgId?r.brand:r.manufacturer;return {entity:{...entity,code:entity.code||r.customerCode,representative:entity.representative||r.managerName,phone:entity.phone||r.managerPhone,email:entity.email||r.managerEmail,createdAt:r.createdAt},kind:'CUSTOMER',relationshipId:r.id,legacy:r.systemIndustry?[r.systemIndustry]:[]};})]

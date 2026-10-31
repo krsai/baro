@@ -8,6 +8,7 @@ import { registerCodeBaseRoutes, deleteSetting } from './codeBaseManagement';
 import {partnerIndustryOption, saveSystemIndustry} from './partnerIndustry';
 import {registerExpenseUnitRoutes} from './expenseMetadata';
 import {saveCatalogueOrder} from './catalogueOrder';
+import {partnerRoleCatalogue} from './partnerRoleCatalogue';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -69,7 +70,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
   const member = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN','OPERATOR','ACCOUNTANT'] });
   app.get('/system-setting-defaults/partner-roles',async(req:any,res:any)=>{
     if(!await gates.requireSystemAdmin(req,res))return;
-    res.json(await db.partnerRole.findMany({orderBy:[{sortOrder:'asc'},{id:'asc'}]}));
+    res.json(await partnerRoleCatalogue(db));
   });
   app.put('/system-setting-defaults/partner-roles/order',async(req:any,res:any)=>{
     if(!await gates.requireSystemAdmin(req,res))return;
@@ -77,7 +78,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
   });
   app.get('/partner-roles',async(req:any,res:any)=>{
     if(!await member(req,res))return;
-    res.json(await db.partnerRole.findMany({orderBy:[{sortOrder:'asc'},{id:'asc'}]}));
+    res.json(await partnerRoleCatalogue(db));
   });
   app.get('/customer-industries',async(req:any,res:any)=>{
     if(!await member(req,res))return;
