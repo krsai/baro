@@ -3,6 +3,7 @@ import React from 'react';
 import {Box,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import EntityDetailSection from './EntityDetailSection';
 import {ENTITY_TEXT} from '../constants/entityProfile';
+import {ENTITY_CODE_TEXT} from '../utils/entityCode.mjs';
 import {getStaticOptionOptions} from '../constants/staticOptionRegistry';
 
 export const PARTNER_PROFILE_TEXT={
@@ -21,7 +22,7 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
    <Typography variant="body2" color="text.secondary" sx={{mb:2}}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>
    <Box sx={grid}>
     {field('name',text.name,{autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}
-    {field('code',text.code,{helperText:text.codeHelp,inputProps:{maxLength:40}})}{field('businessNumber',common.businessNumber)}
+    {field('code',text.code,{helperText:(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help,inputProps:{maxLength:40}})}{field('businessNumber',common.businessNumber)}
    </Box>
   </EntityDetailSection>
   <EntityDetailSection title={common.contact}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>

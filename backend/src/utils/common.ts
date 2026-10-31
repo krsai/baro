@@ -11,14 +11,6 @@ export const normalizeEmail = (value: unknown): string => {
   return value.trim().toLowerCase();
 };
 
-export const normalizeOrgCode = (value: unknown): string | null => {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim().toUpperCase();
-  return trimmed === "" ? null : trimmed;
-};
-
-export const isValidOrgCode = (value: string): boolean => /^[A-Z]{4}$/.test(value);
-
 export const toNumberOrNull = (value: unknown): number | null => {
   if (value === "" || value === null || value === undefined) return null;
   const parsed = Number(value);

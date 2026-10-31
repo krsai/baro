@@ -19,13 +19,13 @@ const modelAuditConfig = new Map<string, AuditModelConfig>(
   Prisma.dmmf.datamodel.models.map((model) => [
     model.name,
     {
-      hasCreatedBy: model.fields.some((field) => field.name === "createdBy"),
-      hasUpdatedBy: model.fields.some((field) => field.name === "updatedBy"),
+      hasCreatedBy: model.fields.some((field) => field.name === "createdBy" && field.kind === "scalar"),
+      hasUpdatedBy: model.fields.some((field) => field.name === "updatedBy" && field.kind === "scalar"),
       hasCreatedByEmployeeId: model.fields.some(
-        (field) => field.name === "createdByEmployeeId"
+        (field) => field.name === "createdByEmployeeId" && field.kind === "scalar"
       ),
       hasUpdatedByEmployeeId: model.fields.some(
-        (field) => field.name === "updatedByEmployeeId"
+        (field) => field.name === "updatedByEmployeeId" && field.kind === "scalar"
       ),
       relationModels: new Map(
         model.fields

@@ -7,6 +7,13 @@ export const normalizePartnerCode = (value: any): string | null => {
   if (!/^[A-Z0-9._-]{1,40}$/.test(code)) throw Object.assign(new Error('INVALID_PARTNER_CODE'), {status:400});
   return code;
 };
+export const resolvePartnerCode = (value: any, englishName: unknown): string => {
+  const explicit=normalizePartnerCode(value);
+  if(explicit)return explicit;
+  const generated=typeof englishName==='string'?englishName.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6):'';
+  if(!generated)throw Object.assign(new Error('PARTNER_CODE_REQUIRED'),{status:400});
+  return generated;
+};
 export const entityProfile = (entity:any) => ({
   entityId:entity.id,name:entity.name,nameKo:entity.nameKo ?? null,nameVi:entity.nameVi ?? null,
   code:entity.code ?? null,businessNumber:entity.businessNumber ?? null,

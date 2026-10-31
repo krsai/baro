@@ -7,7 +7,7 @@ const GROUPS=[
  ['ADMIN',['/system-setting','/system-onboarding','/employee']],
  ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units']],
  ['PROCESS_MASTER',['/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs']],
- ['MISC',['/system-setting/transaction-codes','/system-setting/partner-industries']],
+ ['MISC',['/system-setting/partner-industries','/system-setting/transaction-codes']],
  ['SYSTEM',['/system-setting/access-policy','/system-setting/app-defaults','/employee-system','/salary-system','/personal-settings','/app-settings']],
 ];
 

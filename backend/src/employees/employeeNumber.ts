@@ -28,11 +28,17 @@ export const resolveNextEmployeeNo = (
   orgCode?: string | null
 ): string => {
   let maxSequence = 0;
+  const normalizedOrgCode =
+    typeof orgCode === "string" && orgCode.trim() ? orgCode.trim().toUpperCase() : "";
 
   values.forEach((value) => {
     const normalized = normalizeEmployeeNo(value);
     if (!normalized) return;
-    const match = normalized.match(/(\d+)$/);
+    // A user-editable prefix may itself end in digits. Those digits are not
+    // part of the employee sequence, including prefixes above Number precision.
+    const sequencePart=normalizedOrgCode && normalized.startsWith(normalizedOrgCode)
+      ? normalized.slice(normalizedOrgCode.length) : normalized;
+    const match = sequencePart.match(/(\d+)$/);
     if (!match) return;
 
     const sequence = Number(match[1]);
@@ -42,8 +48,6 @@ export const resolveNextEmployeeNo = (
   });
 
   const nextDigits = String(maxSequence + 1).padStart(EMPLOYEE_NUMBER_WIDTH, "0");
-  const normalizedOrgCode =
-    typeof orgCode === "string" && orgCode.trim() ? orgCode.trim().toUpperCase() : "";
   return normalizedOrgCode ? `${normalizedOrgCode}${nextDigits}` : nextDigits;
 };
 

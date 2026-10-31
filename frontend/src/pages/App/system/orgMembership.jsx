@@ -1,3 +1,4 @@
+import {entityCodeError} from '../../../utils/entityCode.mjs';
 import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -319,7 +320,7 @@ const OrganizationSubscriptionBoard = () => {
       );
     } catch (error) {
       showNotification(
-        error?.message || getPageMessage('organizationCreateError', languageCode),
+        entityCodeError(error,languageCode,getPageMessage('organizationCreateError', languageCode)),
         'error'
       );
     } finally {

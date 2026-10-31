@@ -2,6 +2,7 @@ import PartnerClassificationFields from './PartnerClassificationFields';
 import {emptyPartnerClassification,classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../utils/localizedName.mjs';
 import PartnerProfileFields from './PartnerProfileFields';
+import {entityCodeError} from '../utils/entityCode.mjs';
 import EntityDetailSection from './EntityDetailSection';
 import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
@@ -127,7 +128,7 @@ export default function BusinessPartnerDialog({
       (onSaved || onCreated)?.(savedPartner);
       onClose?.();
     } catch (saveError) {
-      setError(saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:saveError?.message==='PARTNER_CODE_CONFLICT'?({ko:'\uC774\uBBF8 \uC0AC\uC6A9 \uC911\uC778 \uAC70\uB798\uCC98 \uCF54\uB4DC\uC785\uB2C8\uB2E4.',en:'This partner code is already in use.',vi:'M\u00e3 \u0111\u1ed1i t\u00e1c \u0111\u00e3 \u0111\u01b0\u1ee3c s\u1eed d\u1ee5ng.'})[languageCode]||labels.errorEdit:saveError?.message || (isEdit ? labels.errorEdit : labels.error));
+      setError(saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error));
     } finally {
       setSaving(false);
     }

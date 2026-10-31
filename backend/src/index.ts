@@ -9,7 +9,7 @@ import { toStyleListResponse } from './services/styleListResponse';
 import { coalesceInFlightRead } from './services/inFlightRead';
 import { contentMemo } from './services/contentMemo';
 import { normalizeLocalizedName } from './utils/localizedName';
-import { entityProfile, partnerProfilePatch, normalizePartnerCode } from './services/entityProfile';
+import { entityProfile, partnerProfilePatch, resolvePartnerCode } from './services/entityProfile';
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
@@ -1877,8 +1877,8 @@ const buildSharedCustomerOrganizationData = (
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
     code:
       payload?.code !== undefined
-        ? normalizePartnerCode(payload.code)
-        : normalizePartnerCode(fallbackOrganization?.code),
+        ? resolvePartnerCode(payload.code,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name)
+        : fallbackOrganization?.code || resolvePartnerCode(null,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name),
     name:
       normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,
     nameKo:
@@ -27727,10 +27727,14 @@ app.post("/business-partners", async (req, res) => {
     row = await prisma.$transaction(async (tx) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
 
+      const retained=await tx.organization.findUnique({where:{ownerOrgId_type_name:{ownerOrgId:organization.id,type:type as any,name}}});
+      const code=resolvePartnerCode(req.body?.code===undefined?retained?.code:req.body.code,name);
+      if(await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},...(retained?{id:{not:retained.id}}:{})}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
+
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ...partnerProfilePatch(req.body), ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
-        update: { ...partnerProfilePatch(req.body), representative: contactName, phone: contactPhone },
+        create: { ...partnerProfilePatch(req.body), code, ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
+        update: { ...partnerProfilePatch(req.body), code, representative: contactName, phone: contactPhone },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if(Array.isArray(req.body?.serviceTypeIds))await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
@@ -27780,9 +27784,11 @@ app.put("/business-partners/:id", async (req, res) => {
       const locked = await tx.$queryRawUnsafe<{ id: number; type: string }[]>('SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, organization.id);
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
+      const code=resolvePartnerCode(req.body?.code===undefined?existing.code:req.body.code,name);
+      if(await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},id:{not:id}}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
-      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
+      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), code, name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
       await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
@@ -29669,7 +29675,7 @@ app.post("/customers", async (req, res) => {
 
     const existingCodeOwner = normalizedCode ? await tx.organization.findFirst({
       where: {
-        code: normalizedCode,
+        code: {equals:normalizedCode,mode:'insensitive'},
         NOT: { id: targetOrganization.id },
       },
     }) : null;
@@ -29699,7 +29705,7 @@ app.post("/customers", async (req, res) => {
     });
   } else {
     const existingCodeOwner = normalizedCode ? await tx.organization.findFirst({
-      where: { code: normalizedCode },
+      where: { code: {equals:normalizedCode,mode:'insensitive'} },
     }) : null;
     if (existingCodeOwner) {
       return res.status(409).json({ ok: false, error: "code already exists" });
@@ -29859,7 +29865,7 @@ app.put("/customers/:id", async (req, res) => {
     : existing.manufacturerOrgId;
   const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
   const normalizedCode =
-    code !== undefined ? normalizePartnerCode(code) : undefined;
+    code !== undefined || !targetOrganization.code ? resolvePartnerCode(code,nextTargetData.name) : undefined;
 
   if (name !== undefined) {
     if (typeof name !== "string" || !name.trim()) {
@@ -29867,7 +29873,7 @@ app.put("/customers/:id", async (req, res) => {
     }
   }
 
-  if (code !== undefined) {
+  if (normalizedCode !== undefined) {
     if (normalizedCode && !/^[A-Z0-9._-]{1,40}$/.test(normalizedCode)) {
       return res.status(400).json({
         ok: false,
@@ -29877,7 +29883,7 @@ app.put("/customers/:id", async (req, res) => {
 
     const existingCodeOwner = normalizedCode ? await prisma.organization.findFirst({
       where: {
-        code: normalizedCode,
+        code: {equals:normalizedCode,mode:'insensitive'},
         NOT: { id: targetOrganizationId },
       },
     }) : null;
@@ -29893,7 +29899,7 @@ app.put("/customers/:id", async (req, res) => {
       name: nextTargetData.name ?? targetOrganization?.name ?? "",
       nameKo: nextTargetData.nameKo,
       nameVi: nextTargetData.nameVi,
-      ...(code !== undefined ? { code: normalizedCode ?? null } : {}),
+      ...(normalizedCode !== undefined ? { code: normalizedCode } : {}),
       businessNumber: nextTargetData.businessNumber,
       address: nextTargetData.address,
       country: nextTargetData.country,
@@ -29917,7 +29923,7 @@ app.put("/customers/:id", async (req, res) => {
           ),
         }
       : {}),
-    ...(code !== undefined ? { customerCode: normalizedCode } : {}),
+    ...(normalizedCode !== undefined ? { customerCode: normalizedCode } : {}),
   };
   await tx.orgRelationship.update({
     where: { id: existing.id },
@@ -31573,6 +31579,9 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     prismaErrorCode === "P2002" &&
     (hasGlobalColorCodeTargetField ||
       prismaErrorTarget.some((item) => /AttrColor_code_key/i.test(item)));
+  if (prismaErrorCode === 'P2002' && prismaErrorTarget.some(item=>item==='code'||/Organization_code_key/i.test(item)) && (prismaMeta?.modelName==='Organization'||/^\/(customers|organizations|business-partners|auth\/workspaces)(\/|\?|$)/.test(req.originalUrl))) {
+    return res.status(409).json({ok:false,error:'PARTNER_CODE_CONFLICT'});
+  }
   if (isGlobalColorCodeUniqueError) {
     return res.status(409).json({
       ok: false,

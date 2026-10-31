@@ -8,6 +8,7 @@ const require=createRequire(import.meta.url);
 const {validateCustomerIndustry,partnerIndustryOption}=require('../backend/dist/services/partnerIndustry.js');
 const sql=fs.readFileSync('backend/prisma/migrations/20261022200000_partner_industry_canonical/migration.sql','utf8');
 const ts=require('../backend/node_modules/typescript');
+const {resolvePartnerCode}=require('../backend/dist/services/entityProfile.js');
 function routeHandler(method,path,deps){
  const source=fs.readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const node=tree.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(tree)===`app.${method}`&&node.expression.arguments[0]?.text===path);
@@ -15,32 +16,32 @@ function routeHandler(method,path,deps){
  const {normalizeLocalizedName}=require('../backend/dist/utils/localizedName.js');
  if(deps.prisma&&!deps.prisma.$transaction)deps.prisma.$transaction=run=>run(deps.prisma);
  const classification=async(_db,body)=>{assert.ok(body?.industryIds?.length,'classification required');};
- const bindings={app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,validateClassification:classification,requireClassificationActor:async()=>{},saveClassification:async(_db,_org,_entity,_actor,body)=>classification(null,body),getCurrentRequestActorEmployeeId:()=>8,attachPartnerClassifications:async(_db,_org,rows)=>rows,...deps};
+ const bindings={app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,resolvePartnerCode,validateClassification:classification,requireClassificationActor:async()=>{},saveClassification:async(_db,_org,_entity,_actor,body)=>classification(null,body),getCurrentRequestActorEmployeeId:()=>8,attachPartnerClassifications:async(_db,_org,rows)=>rows,...deps};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));
  return handler;
 }
 
 test('customers can be created without codes and duplicate codes never identify or overwrite another entity',async()=>{
  const {normalizePartnerCode}=require('../backend/dist/services/entityProfile.js');
- let lookups=0,creates=0;
+ let lookups=0,creates=0,conflict=false;
  const deps={ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),resolveCustomerPerspective:()=> 'MANUFACTURER',validateCustomerIndustry:async()=>null,
-  buildSharedCustomerOrganizationData:body=>({...body,code:normalizePartnerCode(body.code)}),ORGANIZATION_TYPE_KEYS:{BRAND:'BRAND',MANUFACTURER:'MANUFACTURER'},toPositiveIntOrNull:()=>null,
+  buildSharedCustomerOrganizationData:body=>({...body,code:resolvePartnerCode(body.code,body.name)}),ORGANIZATION_TYPE_KEYS:{BRAND:'BRAND',MANUFACTURER:'MANUFACTURER'},toPositiveIntOrNull:()=>null,
   resolveOptionalString:(value,fallback)=>value??fallback,normalizeCustomerDefaultSizeSetCode:()=> 'LEGACY_APPAREL',toCustomerResponse:row=>row,
-  prisma:{organization:{findFirst:async({where})=>{lookups++;assert.ok(where.code);return{id:99,type:'BRAND'};},create:async({data})=>{creates++;assert.equal(data.code,null);return{id:44,...data};},update:()=>{throw Error('Unexpected existing entity overwrite');}},orgRelationship:{upsert:async({create})=>({...create,id:7,salesBucketSetVersionId:1,timeBucketSetVersionId:2})}}};
+  prisma:{organization:{findFirst:async({where})=>{lookups++;assert.ok(where.code);return conflict?{id:99,type:'BRAND'}:null;},create:async({data})=>{creates++;assert.equal(data.code,'COMPAN');return{id:44,...data};},update:()=>{throw Error('Unexpected existing entity overwrite');}},orgRelationship:{upsert:async({create})=>({...create,id:7,salesBucketSetVersionId:1,timeBucketSetVersionId:2})}}};
  const handler=routeHandler('post','/customers',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
  for(const code of ['',null,undefined]){await handler({body:{name:'Company',code,classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);assert.equal(res.code,201);}
- assert.equal(lookups,0);assert.equal(creates,3);
+ assert.equal(lookups,3);assert.equal(creates,3);conflict=true;
  await handler({body:{name:'Another company',code:'CUS-001',classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);assert.equal(res.code,409);assert.equal(creates,3);
 });
 
-test('customer code edits accept extended codes and explicitly clear a code without querying for null',async()=>{
+test('customer code edits accept extended codes and generate from the name when cleared',async()=>{
  const {normalizePartnerCode}=require('../backend/dist/services/entityProfile.js');let organizationWrite,relationshipWrite;
  const existing={id:7,brandOrgId:44,manufacturerOrgId:1,brand:{id:44,name:'Company'}};
  const deps={ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),resolveCustomerPerspective:()=> 'MANUFACTURER',validateCustomerIndustry:async()=>undefined,
   buildSharedCustomerOrganizationData:body=>body,normalizePartnerCode,resolveOptionalString:(value,fallback)=>value??fallback,toCustomerResponse:row=>row,
   prisma:{orgRelationship:{findFirst:async()=>existing,update:async({data})=>{relationshipWrite=data;},findUnique:async()=>existing},organization:{findFirst:async({where})=>{assert.ok(where.code);return null;},update:async({data})=>{organizationWrite=data;}}}};
  const handler=routeHandler('put','/customers/:id',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;return this;}};
- for(const [code,expected] of [['cus-001','CUS-001'],['',null]]){
+ for(const [code,expected] of [['cus-001','CUS-001'],['','COMPAN']]){
   await handler({params:{id:'7'},body:{name:'Company',code,classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);
   assert.equal(organizationWrite.code,expected);assert.equal(relationshipWrite.customerCode,expected);
  }
@@ -49,7 +50,7 @@ test('SaaS managers create their own outsourcing and supplier partners without S
  const {resolvePartnerServiceTypeIds}=loadSourceBindings('backend/src/index.ts',['resolvePartnerServiceTypeIds']);
  for(const type of ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER']){
   let writes=0;
-  const tx={outsourcingServiceType:{findMany:async({where})=>{assert.equal(where.ownerOrgId,1);assert.deepEqual(where.systemDefaultId,{not:null});return[{id:412}];}},organization:{upsert:async({where,create})=>{assert.equal(where.ownerOrgId_type_name.ownerOrgId,1);assert.equal(create.ownerOrgId,1);writes++;return{id:11};},findUniqueOrThrow:async()=>({id:11,type})},organizationOutsourcingServiceType:{deleteMany:async()=>{},createMany:async({data})=>{assert.deepEqual(data,[{partnerOrgId:11,serviceTypeId:412,ownerOrgId:1}]);}}};
+  const tx={outsourcingServiceType:{findMany:async({where})=>{assert.equal(where.ownerOrgId,1);assert.deepEqual(where.systemDefaultId,{not:null});return[{id:412}];}},organization:{findUnique:async()=>null,findFirst:async()=>null,upsert:async({where,create})=>{assert.equal(where.ownerOrgId_type_name.ownerOrgId,1);assert.equal(create.ownerOrgId,1);writes++;return{id:11};},findUniqueOrThrow:async()=>({id:11,type})},organizationOutsourcingServiceType:{deleteMany:async()=>{},createMany:async({data})=>{assert.deepEqual(data,[{partnerOrgId:11,serviceTypeId:412,ownerOrgId:1}]);}}};
   const deps={BUSINESS_PARTNER_SERVICE_INCLUDE:{},ORG_MANAGEMENT_ROLES:['ADMIN','OPERATOR','ACCOUNTANT'],requireOrgRole:async()=>({organization:{id:1}}),requireSystemAdmin:()=>{throw Error('Unexpected SYSTEM gate');},resolveOptionalString:(value,fallback=null)=>value==null?fallback:String(value).trim(),toPositiveIntOrNull:value=>Number.isSafeInteger(value)&&value>0?value:null,getRequesterEmail:()=>null,partnerProfilePatch:()=>({}),resolvePartnerServiceTypeIds,toBusinessPartnerResponse:row=>row,prisma:{$transaction:run=>run(tx)}};
   const handler=routeHandler('post','/business-partners',deps),res={status(code){this.code=code;return this;},json(body){this.body=body;}};
   await handler({body:{name:'My vendor',type,ownerOrgId:999,serviceTypeIds:[412],classification:{revision:0,roleIds:[1],industryIds:[1]}}},res);assert.equal(res.code,201);assert.equal(writes,1);

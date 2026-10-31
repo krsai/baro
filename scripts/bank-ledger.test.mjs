@@ -42,7 +42,7 @@ test('accounting codes derive the description, validate company scope and retain
  db.transactionCode={findFirst:async({where})=>where.ownerOrgId===1&&where.id===7&&active?{id:7,isActive:true,taxTreatmentId:1,taxTreatment:{code:'VAT',suffix:'V'},base:{code:'GEN',isActive:true,nameEn:'Administration',expenseType:{isActive:true,nameEn:'Management'},variants:[{id:4,taxTreatmentId:1,isActive:true,isEnabled:true}]}}:null};
  const body=entryBody({accountingCodeId:7,purpose:'Forged description'});
  const saved=await postLedgerEntry(db,1,'actor',account.id,body);
- assert.equal(saved.accountingCodeId,7);assert.equal(saved.purpose,'Management - Administration');
+ assert.equal(saved.accountingCodeId,7);assert.equal(saved.purpose,'Administration');
  active=false;
  assert.equal((await postLedgerEntry(db,1,'actor',account.id,body)).id,saved.id);assert.equal(entries.length,1);
  await assert.rejects(postLedgerEntry(db,1,'actor',account.id,{...body,clientKey:randomUUID()}),/ACCOUNTING_CODE_INVALID/);
@@ -154,7 +154,8 @@ test('a logistics SaaS registration creates one independent tenant and owner mem
  const companies=[],employees=[],subscriptions=[],registrations=[];
  const db={
   systemUser:{findUnique:async()=>({systemRole:'SYSTEM_ADMIN'})},
-  organization:{findMany:async()=>companies,findUnique:async({where})=>companies.find(row=>Object.entries(where).every(([key,value])=>row[key]===value))||null,create:async({data})=>{const row={...data,id:2};companies.push(row);return row;}},
+  // Mirror the global case-insensitive code precheck as well as the DB unique key.
+  organization:{findMany:async()=>companies,findFirst:async({where})=>companies.find(row=>row.code.toUpperCase()===where.code.equals)||null,findUnique:async({where})=>companies.find(row=>Object.entries(where).every(([key,value])=>row[key]===value))||null,create:async({data})=>{const row={...data,id:2};companies.push(row);return row;}},
   employee:{findMany:async()=>[],create:async({data})=>{employees.push(data);return data;}},
   employeeGrade:{findFirst:async()=>null,create:async()=>({id:10})},employeeGradeSet:{upsert:async()=>({id:5})},
   organizationSubscription:{create:async({data})=>{subscriptions.push(data);return data;}},

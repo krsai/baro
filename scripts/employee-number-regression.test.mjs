@@ -31,10 +31,18 @@ test('allows organization sequences to grow beyond four digits', () => {
 
 test('prefixes generated numbers with the organization code when set', () => {
   assert.equal(resolveNextEmployeeNo(['0001', '0024'], 'BRVN'), 'BRVN0025');
+  const existing=['BRVN0001','BRVN0024'];
+  assert.equal(resolveNextEmployeeNo(existing,'BAROGA'),'BAROGA0025');
+  assert.deepEqual(existing,['BRVN0001','BRVN0024']);
 });
 
 test('finds the max sequence across pre- and post-migration formats', () => {
   assert.equal(resolveNextEmployeeNo(['0001', '0024', 'BRVN0025'], 'BRVN'), 'BRVN0026');
+});
+test('editable codes ending in digits do not inflate or reset employee sequences',()=>{
+ assert.equal(resolveNextEmployeeNo(['BAR120001','BAR120025'],'BAR12'),'BAR120026');
+ const code='1234567890123456789012345678901234567890';
+ assert.equal(resolveNextEmployeeNo([code+'0001',code+'0024'],code),code+'0025');
 });
 
 test('ignores blank/whitespace organization codes and falls back to plain numbers', () => {

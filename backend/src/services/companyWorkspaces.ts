@@ -2,6 +2,7 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {normalizeLocalizedName,validLocalizedName} from '../utils/localizedName';
 import {createHash} from 'node:crypto';
+import {resolvePartnerCode} from './entityProfile';
 const tenantTypes=['MANUFACTURER','BRAND','SERVICE'];
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim()&&value.trim().length<=max?value.trim():fail('COMPANY_INVALID_INPUT');
@@ -36,14 +37,14 @@ export async function createServiceCompany(db:any,email:string,body:any){
   if(!(await companyChoices(db,email)).canCreateCompany)return fail('COMPANY_ADMIN_REQUIRED',403);
   if(!validLocalizedName(body,160))return fail('COMPANY_INVALID_INPUT');
   const {name,nameKo,nameVi}=normalizeLocalizedName(body,'name');
-  const code=text(body.code,40).toUpperCase(),key=text(body.clientKey,60);
-  if(!/^[A-Z][A-Z0-9_-]{2,39}$/.test(code)||!/^[-0-9a-f]{36}$/i.test(key))return fail('COMPANY_INVALID_INPUT');
+  const code=resolvePartnerCode(body.code,name),key=text(body.clientKey,60);
+  if(!/^[-0-9a-f]{36}$/i.test(key))return fail('COMPANY_INVALID_INPUT');
   const requestHash=createHash('sha256').update(JSON.stringify({name,nameKo,nameVi,code})).digest('hex');
   return retryEditTransaction(db,async(tx:any)=>{
     if(!(await companyChoices(tx,email)).canCreateCompany)return fail('COMPANY_ADMIN_REQUIRED',403);
     const previous=await tx.companyWorkspaceRegistration.findUnique({where:{actorEmail_clientKey:{actorEmail:email,clientKey:key}},include:{organization:true}});
     if(previous){if(previous.requestHash!==requestHash)return fail('COMPANY_RETRY_CONFLICT',409);return previous.organization;}
-    if(await tx.organization.findUnique({where:{code}}))return fail('COMPANY_CODE_EXISTS',409);
+    if(await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'}}}))return fail('COMPANY_CODE_EXISTS',409);
     const organization=await tx.organization.create({data:{type:'SERVICE',name,nameKo,nameVi,code,industry:'LOGISTICS',createdBy:email}});
     const now=new Date();
     await tx.organizationSubscription.create({data:{orgId:organization.id,status:'TRIAL',membershipEmail:email,billingEmail:email,trialStartedAt:now,trialEndsAt:new Date(now.getTime()+30*86400000),createdBy:email}});

@@ -1,4 +1,5 @@
 import { LOCALIZED_NAME_HELP } from '../../../components/LocalizedNameFields';
+import {ENTITY_CODE_TEXT,entityCodeError} from '../../../utils/entityCode.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
 import { createPortal } from 'react-dom';
@@ -75,7 +76,7 @@ const getLocalText = (languageCode) => {
       addressTitle: 'Địa chỉ doanh nghiep', addressHelp: 'Nhap dia chi day du cua doanh nghiep.',
       country: 'Quoc gia',
       orderTitle: 'Thiet lap don hang mac dinh', orderHelp: 'Chi ap dung cho to chuc thuong hieu.', sizeSet: 'Cach ghi kich co mac dinh', businessNumber: 'Ma so doanh nghiep',
-      orgCode: 'Ma to chuc', orgCodeEmpty: 'Chua thiet lap', orgCodeHelp: 'Dung lam tien to ma nhan vien (vi du: BRVN0001). Chi quan tri he thong moi doi duoc.',
+      orgCode: 'Ma to chuc',
       industryOptions: {
         [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Nhà máy',
         [ORGANIZATION_TYPE_KEYS.BRAND]: 'Thuong hieu',
@@ -94,7 +95,7 @@ const getLocalText = (languageCode) => {
       addressTitle: 'Business address', addressHelp: 'Enter the full registered business address.',
       country: 'Country',
       orderTitle: 'Order defaults', orderHelp: 'Available only for brand organizations.', sizeSet: 'Default size notation', businessNumber: 'Business registration no.',
-      orgCode: 'Organization Code', orgCodeEmpty: 'Not set', orgCodeHelp: 'Used as the employee number prefix (e.g. BRVN0001). Only a system admin can change it.',
+      orgCode: 'Organization Code',
       industryOptions: {
         [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: 'Manufacturer',
         [ORGANIZATION_TYPE_KEYS.BRAND]: 'Brand',
@@ -112,7 +113,7 @@ const getLocalText = (languageCode) => {
     addressTitle: '사업장 주소', addressHelp: '법인의 전체 사업장 주소를 입력하세요.',
     country: '국가',
     orderTitle: '기본 주문 설정', orderHelp: '브랜드 법인에서만 사용하는 신규 주문 기본값입니다.', sizeSet: '기본 사이즈 표기 방식', businessNumber: '사업자등록번호',
-    orgCode: '업체 코드', orgCodeEmpty: '미설정', orgCodeHelp: '사번 접두어로 사용됩니다(예: BRVN0001). 시스템 관리자만 변경할 수 있습니다.',
+    orgCode: '업체 코드',
     industryOptions: {
       [ORGANIZATION_TYPE_KEYS.MANUFACTURER]: '\uACF5\uC7A5',
       [ORGANIZATION_TYPE_KEYS.BRAND]: '\uBE0C\uB79C\uB4DC',
@@ -269,6 +270,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     setIsSaving(true);
     try {
       const payload = {
+        code: formData.code?.trim() || '',
         name: normalizeLocalizedName(formData, 'name').name,
         nameKo: formData.nameKo?.trim() || null,
         nameVi: formData.nameVi?.trim() || null,
@@ -299,7 +301,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
       });
       showNotification(text.saveSuccess, 'success');
     } catch (error) {
-      showNotification(error?.message || text.saveError, 'error');
+      showNotification(entityCodeError(error,languageCode,text.saveError), 'error');
     } finally {
       setIsSaving(false);
     }
@@ -341,9 +343,12 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               fullWidth
               size="small"
               label={localText.orgCode}
-              value={formData.code || localText.orgCodeEmpty}
-              inputProps={{ title: localText.orgCodeHelp }}
-              disabled
+              name="code"
+              value={formData.code}
+              onChange={handleInputChange}
+              inputProps={{maxLength:40}}
+              helperText={(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help}
+              disabled={isSaving}
             />
           </Grid>
           <Grid size={{xs:12,sm:6,md:4}}>

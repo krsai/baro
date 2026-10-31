@@ -9,10 +9,7 @@ import {
   getRequesterEmail,
   requireSystemAdmin,
 } from "../middleware/access";
-import {
-  isValidOrgCode,
-  normalizeOrgCode,
-} from "../utils/common";
+import {resolvePartnerCode} from '../services/entityProfile';
 
 type OrganizationRoutesDeps = {
   applySubscriptionPayload: (organization: any, payload?: any) => Promise<any>;
@@ -169,7 +166,7 @@ export const createOrganizationRouter = ({
       defaultSizeSetCode,
       type,
     } = req.body ?? {};
-    const normalizedCode = normalizeOrgCode(code);
+    const normalizedCode = resolvePartnerCode(code,name);
 
     if (!name || typeof name !== "string") {
       return res.status(400).json({ ok: false, error: "name is required" });
@@ -186,19 +183,12 @@ export const createOrganizationRouter = ({
         .json({ ok: false, error: representativeEmployeeResolved.error });
     }
 
-    if (code !== undefined) {
-      if (!normalizedCode || !isValidOrgCode(normalizedCode)) {
-        return res.status(400).json({
-          ok: false,
-          error: "code must be 4 uppercase letters",
-        });
-      }
-
+    {
       const existingCodeOwner = await prisma.organization.findFirst({
-        where: { code: normalizedCode },
+        where: { code: {equals:normalizedCode,mode:'insensitive'} },
       });
       if (existingCodeOwner) {
-        return res.status(409).json({ ok: false, error: "code already exists" });
+        return res.status(409).json({ ok: false, error: "PARTNER_CODE_CONFLICT" });
       }
     }
 
@@ -273,10 +263,10 @@ export const createOrganizationRouter = ({
       type,
     } = req.body ?? {};
 
-    if ((code !== undefined || type !== undefined) && !isSystemAdmin) {
+    if (type !== undefined && !isSystemAdmin) {
       return res.status(403).json({
         ok: false,
-        error: "system admin access required to change code or type",
+        error: "system admin access required to change type",
       });
     }
 
@@ -287,24 +277,19 @@ export const createOrganizationRouter = ({
       });
     }
 
-    const normalizedCode = normalizeOrgCode(code);
+    const current=await prisma.organization.findUnique({where:{id},select:{name:true,code:true}});
+    if(!current)return res.status(404).json({error:'organization not found'});
+    const normalizedCode = code!==undefined || !current.code ? resolvePartnerCode(code,name??current.name) : undefined;
 
-    if (code !== undefined) {
-      if (!normalizedCode || !isValidOrgCode(normalizedCode)) {
-        return res.status(400).json({
-          ok: false,
-          error: "code must be 4 uppercase letters",
-        });
-      }
-
+    if (normalizedCode !== undefined) {
       const existingCodeOwner = await prisma.organization.findFirst({
         where: {
-          code: normalizedCode,
+          code: {equals:normalizedCode,mode:'insensitive'},
           NOT: { id },
         },
       });
       if (existingCodeOwner) {
-        return res.status(409).json({ ok: false, error: "code already exists" });
+        return res.status(409).json({ ok: false, error: "PARTNER_CODE_CONFLICT" });
       }
     }
 
@@ -360,7 +345,7 @@ export const createOrganizationRouter = ({
         ? { nameVi: normalizeOptionalOrganizationText(nameVi) }
         : {}),
       ...(isSystemAdmin && type !== undefined ? { type } : {}),
-      ...(code !== undefined ? { code: normalizedCode } : {}),
+      ...(normalizedCode !== undefined ? { code: normalizedCode } : {}),
     };
 
     const organization = await prisma.organization.update({

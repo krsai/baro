@@ -24,7 +24,7 @@ test('SYSTEM groups combine accounting type management and preserve remaining no
  for(const leaf of leaves.filter(leaf=>leaf.path!=='/system-setting/expense-types'))assert.equal(result.find(n=>n.path===leaf.path),leaf);
  assert.equal(result.some(node=>node.path==='/system-setting/expense-types'),false);
  assert.equal(JSON.stringify(source),original);
- assert.deepEqual(groups.find(g=>g.menuGroupKey==='MISC').children.map(n=>n.path),['/system-setting/transaction-codes','/system-setting/partner-industries']);
+ assert.deepEqual(groups.find(g=>g.menuGroupKey==='MISC').children.map(n=>n.path),['/system-setting/partner-industries','/system-setting/transaction-codes']);
 });
 test('direct entry chooses the most specific group without confusing subscription and settings',()=>{
  const menu=organizeSystemMenu(source);

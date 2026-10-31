@@ -4,6 +4,7 @@ import { Stack } from '@mui/material';
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
+import {entityCodeError} from '../../../utils/entityCode.mjs';
 import { getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
@@ -241,7 +242,7 @@ const CustomerDetail = () => {
         });
       }
     } catch (error) {
-      showNotification(error?.message || t('saveError'), 'error');
+      showNotification(entityCodeError(error,languageCode,t('saveError')), 'error');
     } finally {
       setSavingCustomer(false);
     }
