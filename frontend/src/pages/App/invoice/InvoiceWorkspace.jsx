@@ -1,5 +1,4 @@
 import {invoiceNumber} from '../../../utils/invoiceStyleRows.mjs';
-import {invoiceDetailText} from '../../../constants/invoiceDetail';
 import React, { useEffect, useState } from 'react';
 import {Alert,Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -26,7 +25,7 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
   if (view === 'editor') {
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
   }
-  if(view==='detail')return <AppPageContainer title={(invoiceDetailText[languageCode]||invoiceDetailText.en).title}><InvoiceList orgId={activeOrgId} languageCode={languageCode} invoiceId={invoiceId}/></AppPageContainer>;
+  if(view==='detail')return <InvoiceList key={invoiceId} orgId={activeOrgId} languageCode={languageCode} invoiceId={invoiceId}/>;
   return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>}>
     <InvoiceList orgId={activeOrgId} languageCode={languageCode}/>
   </AppPageContainer>;

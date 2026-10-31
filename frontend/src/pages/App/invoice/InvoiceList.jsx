@@ -1,6 +1,6 @@
 import PageContentStack from '../../../components/PageContentStack';
+import AppPageContainer from '../../../components/AppPageContainer';
 import SearchPanel from '../../../components/SearchPanel';
-import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, CircularProgress, Box, Paper, MenuItem, TextField, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
@@ -13,14 +13,14 @@ import SearchInput from '../../../components/SearchInput';
 import StatusLabel from '../../../components/StatusLabel';
 import {formatCurrency} from '../../../utils/currencyFormat';
 import InvoiceIssuedForm from './InvoiceIssuedForm';
+import InvoiceEditor from './InvoiceEditor';
 import InvoicePdfIcon from '../../../components/InvoicePdfIcon';
 
 
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
-import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
+import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 export default function InvoiceList({ orgId, languageCode, invoiceId }) {
-  const pageDialogs = usePageDialogs();
   const {navigateToPath}=useAppActions();
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[detail,setDetail]=useState(null),[pdfBusy,setPdfBusy]=useState(false);
@@ -55,17 +55,6 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
       const blob=await Promise.race([buildIssuedInvoicePdfBlob(invoice,languageCode),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('PDF_TIMEOUT')),45000);})]);showInvoicePdf(popup,blob);
     } catch { if(!popup.closed)popup.document.body.textContent=ui.failed; setError(ui.failed); }finally{clearTimeout(timer);setPdfBusy(false);}
   };
-  const reviseIssued = async row => {
-    const reason = await pageDialogs.prompt(languageCode === 'ko' ? '개정 사유를 입력하세요.' : languageCode === 'vi' ? 'Nhập lý do sửa đổi.' : 'Enter a revision reason.');
-    if (!reason?.trim()) return;
-    try {
-      const draft = await requestJSON(`/invoices/issued/${encodeURIComponent(row.id)}/revision-draft${buildQueryString({ orgId })}`, {
-        method: 'POST', body: JSON.stringify({ clientKey: globalThis.crypto.randomUUID(), reason: reason.trim() }),
-      });
-      emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS], orgId }); navigateToPath('/invoices/new?revision='+encodeURIComponent(draft.id));
-    } catch (e) { setError(String(e.message).includes('INVOICE_REVISION_SOURCE_REMOVED')
-      ? (languageCode === 'ko' ? '원본 주문 또는 품목이 삭제되어 개정할 수 없습니다.' : 'The source order or item was removed, so this invoice cannot be revised.') : ui.failed); }
-  };
   const amount=(value,currencyCode)=>formatCurrency(value,{currencyCode,languageCode});
   return <PageContentStack>
     {!invoiceId&&<>
@@ -92,10 +81,9 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     {invoiceId&&<>
       {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
       {loading?<CircularProgress size={22}/>:detail&&<>
-        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button onClick={()=>navigateToPath('/invoices',{closeTabId:'/invoices/'+invoiceId})}>{d.back}</Button><Button disabled={pdfBusy} aria-label={d.pdf} onClick={()=>printIssued(detail)}><InvoicePdfIcon/></Button>
-        {detail.status==='ISSUED'&&<Button onClick={()=>reviseIssued(detail)}>{ui.edit}</Button>}
-        </Stack>
-        <InvoiceIssuedForm invoice={detail} languageCode={languageCode}/>
+        {detail.status==='ISSUED'
+          ? <InvoiceEditor orgId={orgId} revisionInvoice={detail} languageCode={languageCode} onClose={()=>navigateToPath('/invoices')} onIssued={()=>navigateToPath('/invoices')}/>
+          : <AppPageContainer title={d.title}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
       </>}
     </>}
   </PageContentStack>;

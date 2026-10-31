@@ -102,7 +102,7 @@ const messages = {
   }
 };
 
-export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, renderSelection, languageCode = 'ko' }) {
+export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, revisionInvoice, renderSelection, languageCode = 'ko' }) {
   const pageDialogs = usePageDialogs();
   const productionText = invoiceProductionMessages[languageCode] || invoiceProductionMessages.en;
   const [reviewAssignment,setReviewAssignment] = useState(null);
@@ -144,7 +144,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       draftRef.current = null; setSavedDraft(null); clientKey.current = globalThis.crypto.randomUUID();
       return;
     }
-    if (!draftId && !orderId && !orderIds?.length) {
+    if (!revisionInvoice && !draftId && !orderId && !orderIds?.length) {
       setSource(null); setFields(null); setLines([]); setLoading(false); setError(''); setReviewed(false);
       return;
     }
@@ -155,19 +155,27 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     const load = async () => {
       const resumeId = draftId || draftRef.current?.id;
       const stored = resumeId ? await requestJSON(`/invoices/drafts/${encodeURIComponent(resumeId)}${buildQueryString({ orgId })}`, { skipCache: true }) : null;
+      const restored = stored || (revisionInvoice ? {buyerOrgId:revisionInvoice.buyerOrgId,revisionOfInvoiceId:revisionInvoice.id,content:{
+        version:2,buyerOrgId:revisionInvoice.buyerOrgId,basis:revisionInvoice.pricingBasis,currency:revisionInvoice.currencyCode,
+        fields:{...revisionInvoice.snapshot.fields,number:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)},
+        orders:revisionInvoice.orders.map(row=>({orderId:row.sourceOrderId,sourceUpdatedAt:row.sourceUpdatedAt})),
+        percentages:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,String(row.billingPercentage)])),
+        settlements:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,{deduction:String(row.appliedDeductionAmount),reason:row.deductionReason||''}])),
+        lines:revisionInvoice.snapshot.lines.map(row=>({key:row.lineKey,quantity:String(row.quantity),unitPriceOverride:String(row.unitPrice),remark:row.remark||'',adjustmentReason:row.adjustmentReason||'',hsCode:row.hsCode||'',origin:row.origin||''})),
+      }} : null);
       if (cancelled) return;
       draftRef.current = stored; setSavedDraft(stored);
       if (stored) clientKey.current = stored.clientKey;
-      const ids = stored ? stored.content.orders.map(row => row.orderId) : (orderIds || [orderId]);
-      const buyer = stored?.buyerOrgId ?? buyerOrgId;
-      const data = combineInvoiceSources(await Promise.all(ids.map(id => requestJSON(`/invoices/order-source/${encodeURIComponent(id)}${buildQueryString({ orgId, buyerOrgId: buyer, revisionOfInvoiceId: stored?.revisionOfInvoiceId })}`, { skipCache: true }))));
-      const restoredLines = stored ? restoreInvoiceDraftLines(stored.content, data) : data.lines;
+      const ids = restored ? restored.content.orders.map(row => row.orderId) : (orderIds || [orderId]);
+      const buyer = restored?.buyerOrgId ?? buyerOrgId;
+      const data = combineInvoiceSources(await Promise.all(ids.map(id => requestJSON(`/invoices/order-source/${encodeURIComponent(id)}${buildQueryString({ orgId, buyerOrgId: buyer, revisionOfInvoiceId: restored?.revisionOfInvoiceId })}`, { skipCache: true }))));
+      const restoredLines = restored ? restoreInvoiceDraftLines(restored.content, data) : data.lines;
         if (cancelled) return;
         setSource(data); setLines(data.lines);
-        if (stored) {
+        if (restored) {
           setLines(restoredLines);
-          setBasis(stored.content.basis); setCurrency(stored.content.currency);
-          setFields(stored.content.fields); setPercentages(stored.content.percentages); setSettlements(stored.content.settlements || {});
+          setBasis(restored.content.basis); setCurrency(restored.content.currency);
+          setFields(restored.content.fields); setPercentages(restored.content.percentages); setSettlements(restored.content.settlements || {});
           return;
         }
         const prices = data.styles.flatMap((style) => style.prices);
@@ -182,7 +190,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     load().catch((e) => { if (!cancelled) setError(String(e.message).includes('INVOICE_SOURCE_CHANGED') || /404|403/.test(String(e.status)) ? ui.sourceChanged : t.load); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, reload, t.load, storageText.sourceChanged]);
+  }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, revisionInvoice, reload, t.load, storageText.sourceChanged]);
   const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
     calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
   const styleRows = useMemo(() => invoiceStyleRows(calculation?.lines || []), [calculation]);
@@ -205,18 +213,30 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     setDirty(false); setReviewed(false); setSource(null); setFields(null); setError('');
     change();
   };
+  const revisionRequest = useRef(null);
+  const revisionNeedsSave = useRef(false);
   const issue = async () => {
     if (!source || saving || !reviewed || calculation?.issues.length || !fields?.date) return;
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
+    if (revisionInvoice && !draftRef.current && !revisionRequest.current) {
+      const reason = await pageDialogs.prompt(languageCode==='ko'?'개정 사유를 입력하세요.':languageCode==='vi'?'Nhập lý do sửa đổi.':'Enter a revision reason.');
+      if (!reason?.trim()) return;
+      revisionRequest.current={clientKey:clientKey.current,reason:reason.trim()};
+    }
     setSaving(true); setError('');
     try {
       let current = draftRef.current;
-      if (!current || (!uncertain && dirty)) {
+      if (revisionInvoice && !current) {
+        current = await requestJSON('/invoices/issued/'+encodeURIComponent(revisionInvoice.id)+'/revision-draft'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(revisionRequest.current)});
+        clientKey.current=current.clientKey;
+        draftRef.current=current; setSavedDraft(current); revisionNeedsSave.current=true;
+      }
+      if (!current || revisionNeedsSave.current || (!uncertain && dirty)) {
         current = await requestJSON(`/invoices/drafts${current ? `/${encodeURIComponent(current.id)}` : ''}${buildQueryString({ orgId })}`, {
           method: current ? 'PUT' : 'POST', body: JSON.stringify({ clientKey: clientKey.current, revision: current?.revision,
             buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields, percentages, settlements }),
         });
-        draftRef.current = current; setSavedDraft(current); setDirty(false);
+        draftRef.current = current; setSavedDraft(current); revisionNeedsSave.current=false; setDirty(false);
       }
       await requestJSON(`/invoices/drafts/${encodeURIComponent(current.id)}/issue${buildQueryString({ orgId })}`, {
         method: 'POST', body: JSON.stringify({ revision: current.revision }),
@@ -230,7 +250,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       setError(documentNumberError(e.details?.error||e.message,languageCode) || (String(e.message).includes('INVOICE_ORDER_FULLY_BILLED') ? (languageCode==='ko'?'이미 100% 이상 청구된 주문이 있습니다. 청구 대상을 다시 선택하세요.':languageCode==='vi'?'Có đơn hàng đã được lập hóa đơn đủ 100%. Vui lòng chọn lại đơn hàng.':'An order is already fully billed. Please select the orders again.') : unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed));
     } finally { setSaving(false); }
   };
-  return <AppPageContainer title={draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
+  return <AppPageContainer title={revisionInvoice ? (languageCode==='ko'?'청구서 상세':languageCode==='vi'?'Chi tiết hóa đơn':'Invoice detail') : draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
     <Button disabled={saving} onClick={close}>{ui.cancel}</Button>
     <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
   </Stack>}>
