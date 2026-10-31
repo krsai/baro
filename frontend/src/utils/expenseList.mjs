@@ -12,6 +12,16 @@ export function expenseCurrencyTotals(rows) {
   for (const row of rows) totals.set(row.currency, (totals.get(row.currency) || 0n) + amountUnits(row.amount));
   return [...totals].sort(([a],[b]) => String(a).localeCompare(String(b))).map(([currency,units]) => ({ currency, units, amount: formatDecimalUnits(units,4) }));
 }
+// Group by the actual document FK; never merge standalone or historical records by a displayed number.
+export function groupExpenseRequests(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = JSON.stringify([row.orgId ?? null, row.expenseRequestId != null ? 'request' : row.sourceKind || 'cost', row.expenseRequestId ?? row.id]);
+    if (!groups.has(key)) groups.set(key,{key,row,items:[]});
+    groups.get(key).items.push(row);
+  }
+  return [...groups.values()].map(group=>({...group,currencyTotals:expenseCurrencyTotals(group.items)}));
+}
 export const expenseIndustryKey = row => row.serviceTypeId != null ? `service:${row.serviceTypeId}` : row.sourceKind === 'HISTORICAL_WORK_RECORD' ? 'historical-process' : 'unclassified';
 // Count classifications used by this request, not all capabilities of its payee.
 // Labels can be identical or translated; only the related FK identifies a value.

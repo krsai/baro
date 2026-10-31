@@ -17,7 +17,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useManagementPeriod } from '../../context/ManagementPeriodContext';
 import { requestJSON, buildQueryString } from '../../utils/apiClient';
 import { formatCurrency } from '../../utils/currencyFormat';
-import { expenseCurrencyTotals, expenseIndustryKey, groupExpenseRows, summarizeExpenseDimensions } from '../../utils/expenseList.mjs';
+import { expenseCurrencyTotals, expenseIndustryKey, groupExpenseRequests, groupExpenseRows, summarizeExpenseDimensions } from '../../utils/expenseList.mjs';
 import { subscribeWorkspaceDataChanged } from '../../utils/workspaceDataEvents';
 import './expenseRequests.css';
 
@@ -94,14 +94,16 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const partnerOptions = [...new Map([...rows,...documents].filter(row=>row.partnerOrgId != null || row.partner?.id != null).map(row=>[String(row.partnerOrgId ?? row.partner.id),row.partner?.name || '—'])).entries()];
   const industryOptions = [...new Map(rows.map(row=>[expenseIndustryKey(row),industryLabel(row)])).entries()];
   const currencies = [...new Set([...rows,...documents.flatMap(document=>document.currencyTotals || document.items.map(item=>({...item,currency:item.currency || document.currency})))].map(row=>row.currency).filter(Boolean))].sort();
-  const totals = expenseCurrencyTotals(view === 'documents' ? filteredDocuments.flatMap(document=>document.currencyTotals || [document]).filter(matchesCurrency) : filtered);
+  const matchedRows = new Set(filtered);
+  const requests = groupExpenseRequests(rows).filter(group=>group.items.some(row=>matchedRows.has(row)))
+    .sort((a,b)=>ascending ? a.row.transactionDate.localeCompare(b.row.transactionDate) : b.row.transactionDate.localeCompare(a.row.transactionDate));
+  const totals = expenseCurrencyTotals(view === 'documents' ? filteredDocuments.flatMap(document=>document.currencyTotals || [document]).filter(matchesCurrency) : view === 'items' ? requests.flatMap(group=>group.items).filter(matchesCurrency) : filtered);
   const groups = groupExpenseRows(filtered,view, row=>view === 'partner' ? row.partner?.name || '—' : industryLabel(row));
-  const visibleRows = view === 'documents' ? filteredDocuments : filtered;
+  const visibleRows = view === 'documents' ? filteredDocuments : view === 'items' ? requests.map(group=>group.row) : filtered;
   const partnerCount = new Set(visibleRows.map(row=>row.partnerOrgId ?? row.partner?.id).filter(id=>id!=null)).size;
-  const selectedCount = filtered.filter(row=>checked.includes(row.id)).length;
-  const allChecked = filtered.length > 0 && selectedCount === filtered.length;
+  const selectedCount = requests.filter(group=>checked.includes(group.key)).length;
+  const allChecked = requests.length > 0 && selectedCount === requests.length;
   const money = (value,code) => formatCurrency(value,{currencyCode:code,languageCode});
-  const number = value => value == null ? '—' : Number(value).toLocaleString(languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US',{maximumFractionDigits:4});
   const toggle = id => setChecked(current=>current.includes(id) ? current.filter(key=>key!==id) : [...current,id]);
   const reset = () => {
     setSearch('');setPartner('');setIndustry('');setCurrency('');setChecked([]);setAscending(false);
@@ -142,12 +144,12 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
       <div className="cc-total-amount"><span>{text.total}</span>{loading || error || !totals.length ? <strong>—</strong> : totals.map(total=><strong key={total.currency}>{money(total.amount,total.currency)}</strong>)}</div>
     </div>
       {loading ? <div className="cc-loading"><CircularProgress size={24} /></div> : error ? <Alert severity="error" action={<button className="cc-button" onClick={load}>{text.retry}</button>}>{error}</Alert> : <div className="cc-table-scroll is-dense">
-        {view==='items' ? <table key="items"><thead><tr><th className="cc-check"><input type="checkbox" aria-label={text.selectAll} checked={allChecked} onChange={()=>setChecked(current=>allChecked ? current.filter(id=>!filtered.some(row=>row.id===id)) : [...new Set([...current,...filtered.map(row=>row.id)])])} /></th><th>{docText.numbering}</th><th><button className="cc-sort" onClick={()=>setAscending(value=>!value)}>{labels.date} {ascending?'↑':'↓'}</button></th>{[text.category,text.industry,labels.partner,text.order,text.quantity,text.unitPrice,labels.amount,labels.creator,workflow.status].map((label,index)=><th key={index} className={index>=4&&index<=6?'cc-number':''}>{label}</th>)}</tr></thead><tbody>
-          {filtered.map((row,index)=><tr key={row.id} data-expense-row={row.id} onDoubleClick={()=>editRow(row)} className={checked.includes(row.id)?'is-selected':''}>
-            <td className="cc-check" onDoubleClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(row.id)} onChange={()=>toggle(row.id)} /></td><td style={{whiteSpace:'nowrap'}}>{numberFor(row)}</td><td>{row.transactionDate}</td>
-            <td>{categoryLabel(row)}</td><td>{industryLabel(row)}</td><td><button className="cc-cell-link" aria-label={`${text.details} ${index+1}`} onClick={event=>openRowOnClick(event,row)}>{row.partner?.name || '—'}</button></td><td>{row.referenceLinks?.length?[...new Set(row.referenceLinks.map(link=>link.workOrder?.orderNumber).filter(Boolean))].join(', '):row.workOrder?.orderNumber || '—'}</td>
-            <td className="cc-number">{number(row.quantity)}{row.unit ? ' '+serviceName(row.unit,languageCode) : ''}</td><td className="cc-number">{number(row.unitPrice)}</td><td className="cc-number cc-amount">{money(row.amount,row.currency)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><ApprovalStatusLabel status={documentsById.get(row.expenseRequestId)?.approval?.status||(row.expenseRequestId?'UNKNOWN':'NOT_REQUESTED')} languageCode={languageCode}/></td>
-          </tr>)}{!filtered.length && <tr><td colSpan={12} className="cc-empty">{text.empty}</td></tr>}
+        {view==='items' ? <table key="items"><thead><tr><th className="cc-check"><input type="checkbox" aria-label={text.selectAll} checked={allChecked} onChange={()=>setChecked(current=>allChecked ? current.filter(id=>!requests.some(group=>group.key===id)) : [...new Set([...current,...requests.map(group=>group.key)])])} /></th><th>{docText.numbering}</th><th><button className="cc-sort" onClick={()=>setAscending(value=>!value)}>{labels.date} {ascending?'↑':'↓'}</button></th>{[text.category,text.industry,labels.partner,text.order,text.count,docText.total,labels.creator,workflow.status].map((label,index)=><th key={index} className={index>=4&&index<=5?'cc-number':''}>{label}</th>)}</tr></thead><tbody>
+          {requests.map(({key,row,items,currencyTotals},index)=><tr key={key} data-expense-row={row.id} data-expense-request={row.expenseRequestId} onDoubleClick={()=>editRow(row)} className={checked.includes(key)?'is-selected':''}>
+            <td className="cc-check" onDoubleClick={event=>event.stopPropagation()}><input type="checkbox" aria-label={`${text.selectRow} ${index+1}`} checked={checked.includes(key)} onChange={()=>toggle(key)} /></td><td style={{whiteSpace:'nowrap'}}>{numberFor(row)}</td><td>{row.transactionDate}</td>
+            <td>{dimensionCell({items},'category')}</td><td>{dimensionCell({items},'industry')}</td><td><button className="cc-cell-link" aria-label={`${text.details} ${index+1}`} onClick={event=>openRowOnClick(event,row)}>{row.partner?.name || '—'}</button></td><td>{[...new Set(items.flatMap(item=>[item.workOrder?.orderNumber,...(item.referenceLinks||[]).map(link=>link.workOrder?.orderNumber)]).filter(Boolean))].join(', ') || '—'}</td>
+            <td className="cc-number">{items.length}</td><td className="cc-number cc-amount">{currencyTotals.filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td><td>{row.createdByEmployee?.name || '—'}</td><td><ApprovalStatusLabel status={documentsById.get(row.expenseRequestId)?.approval?.status||(row.expenseRequestId?'UNKNOWN':'NOT_REQUESTED')} languageCode={languageCode}/></td>
+          </tr>)}{!requests.length && <tr><td colSpan={11} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table> : view==='documents' ? <table key="documents"><thead><tr>{[['number',docText.numbering],['category',text.category],['industry',text.industry],['payee',docText.payee],['date',docText.date],['applicant',docText.applicant],['items',docText.items],['total',docText.total],['approval',workflow.status]].map(([key,label])=><th key={key} className={['items','total'].includes(key)?'cc-number':undefined}>{label}</th>)}</tr></thead><tbody>
           {filteredDocuments.map((document,index)=><tr key={document.id} onClick={()=>onOpenRequest?.('request',String(document.id))}><td style={{whiteSpace:'nowrap'}}><button className="cc-cell-link" aria-label={`${text.details} ${index+1}`} onClick={event=>{event.stopPropagation();onOpenRequest?.('request',String(document.id));}}>{expenseRequestNumber(document)}</button></td><td>{dimensionCell(document,'category')}</td><td>{dimensionCell(document,'industry')}</td><td>{document.partner?.name}</td><td>{document.requestDate}</td><td>{document.createdByEmployee?.name}</td><td className="cc-number">{document.items.length}</td><td className="cc-number cc-amount">{(document.currencyTotals || [document]).filter(matchesCurrency).map(total=><div key={total.currency}>{money(total.amount,total.currency)}</div>)}</td><td><ApprovalStatusLabel status={document.approval?.status||'UNKNOWN'} languageCode={languageCode}/></td></tr>)}
           {!filteredDocuments.length && <tr><td colSpan={9} className="cc-empty">{text.empty}</td></tr>}
@@ -155,7 +157,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
           {groups.map(group=><tr key={group.key}><td>{group.name}</td><td>{group.currency}</td><td className="cc-number">{group.count}</td><td className="cc-number cc-amount">{money(group.amount,group.currency)}</td><td><div className="cc-share"><span><i style={{width:`${group.share}%`}} /></span>{group.share.toFixed(1)}%</div></td></tr>)}{!groups.length && <tr><td colSpan={5} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table>}
       </div>}
-      <div className="cc-footer"><span>{text.results}: {loading || error ? '—' : view==='items'?filtered.length:view==='documents'?filteredDocuments.length:groups.length} · {text.fullRange}</span><span>BARO GARMENT</span></div>
+      <div className="cc-footer"><span>{text.results}: {loading || error ? '—' : view==='items'?requests.length:view==='documents'?filteredDocuments.length:groups.length} · {text.fullRange}</span><span>BARO GARMENT</span></div>
     </section>
   </div></AppPageContainer>;
 }

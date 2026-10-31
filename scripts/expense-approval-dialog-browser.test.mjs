@@ -47,6 +47,10 @@ try{
   adminPreview=true;await page.reload();await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
   await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').getByText('Current user',{exact:true}).first().waitFor();
   await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);
+  await page.keyboard.press('Escape');
+  await page.evaluate(()=>window.setApprovalStatus({exempt:true,exemptionReason:'SAVED_POLICY',steps:[]}));
+  assert.equal(await page.getByTestId('expense-approval-button').getByText('Current user',{exact:true}).count(),2);
+  await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('textbox').count(),2);assert.deepEqual(await dialog.getByRole('textbox').evaluateAll(elements=>elements.map(el=>[el.value,el.readOnly])),[['Current user',true],['Current user',true]]);
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: save opens sequential vertical approvals, cancellation preserves inputs, confirmation saves, header opens a read-only reference, ko/en/vi desktop/mobile.');

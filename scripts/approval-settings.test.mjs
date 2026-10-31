@@ -14,6 +14,21 @@ function fixture(){
  return {db,config,people};
 }
 const item=(unitPrice,currency='VND',vatRate='0')=>({unitPrice:String(unitPrice),currency,vatRate,quantity:'1'});
+test('changing company limits changes new resolutions but leaves saved approval steps and current-version decisions intact',async()=>{
+ const {db,config}=fixture();
+ const saved=await resolveExpenseApproval(db,7,1,[item('30000000')]);
+ const request={id:18,version:2,createdByEmployeeId:1,approvalSteps:saved.ids.map((employeeId,index)=>({id:index+1,employeeId,position:index+1}))};
+ const audit={afterSnapshot:{approvalPolicy:structuredClone(saved.policy)}};
+ db.expenseRequest={findFirst:async()=>structuredClone(request)};
+ db.expenseApprovalDecision={findMany:async()=>[{requestId:18,version:2,position:1,employeeId:2,decision:'APPROVED',createdAt:'2026-10-30'}]};
+ db.expenseRequestAudit={findFirst:async()=>structuredClone(audit)};
+ const before=await approvalState(db,7,18);
+ config.limits.VND.senior='50000000';
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')])).ids,[2]);
+ assert.deepEqual(await approvalState(db,7,18),before);
+ assert.deepEqual(request.approvalSteps.map(step=>step.employeeId),[2,3]);
+ assert.equal(audit.afterSnapshot.approvalPolicy.config.limits.VND.senior,'20000000');
+});
 for(const [currency,senior,lead] of [['VND','20000000','100000000'],['KRW','1000000','5000000'],['USD','1000','5000']]){
  test(`${currency} uses inclusive limits and cumulative approvals`,async()=>{
    const {db}=fixture();

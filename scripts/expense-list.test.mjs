@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expenseCurrencyTotals, groupExpenseRows, expenseIndustryKey, summarizeExpenseDimensions } from '../frontend/src/utils/expenseList.mjs';
+import { expenseCurrencyTotals, groupExpenseRows, groupExpenseRequests, expenseIndustryKey, summarizeExpenseDimensions } from '../frontend/src/utils/expenseList.mjs';
+
+test('request rows count mixed units and sum exact amounts per currency without merging different documents or standalone sources',()=>{
+  const rows=[
+    {id:'a',orgId:1,expenseRequestId:18,quantity:'5.28',unit:{id:1},currency:'VND',amount:'52800'},
+    {id:'b',orgId:1,expenseRequestId:18,quantity:'1',unit:{id:2},currency:'VND',amount:'50000'},
+    {id:'c',orgId:1,expenseRequestId:18,currency:'USD',amount:'1.2345'},
+    {id:'d',orgId:1,expenseRequestId:19,currency:'VND',amount:'10'},
+    {id:'e',orgId:2,expenseRequestId:18,currency:'VND',amount:'20'},
+    {id:'same',sourceKind:'COST_REQUEST',currency:'VND',amount:'1'},
+    {id:'same',sourceKind:'HISTORICAL_WORK_RECORD',currency:'VND',amount:'2'},
+  ];
+  const groups=groupExpenseRequests(rows);
+  assert.equal(groups.length,5);assert.equal(groups[0].items.length,3);
+  assert.deepEqual(groups[0].currencyTotals.map(({currency,amount})=>({currency,amount})),[{currency:'USD',amount:'1.2345'},{currency:'VND',amount:'102800.0000'}]);
+  assert.equal(groups.flatMap(group=>group.items).length,rows.length);
+  assert.equal(rows[0].quantity,'5.28');assert.notEqual(groups[3].key,groups[4].key);
+});
 
 test('request classification summaries count distinct FKs and preserve first-item order in all languages', () => {
   const item=(serviceTypeId,expenseTypeId,label)=>({serviceTypeId,transactionCode:{base:{expenseTypeId}},label});

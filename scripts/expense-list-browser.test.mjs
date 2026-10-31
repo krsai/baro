@@ -29,6 +29,7 @@ try {
       {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:5,serviceType:{...service,id:5,nameKo:'봉제',nameEn:'Sewing',nameVi:'May'},transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
       {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,expenseRequest:{id:1,managementNumber:'EXP-2026-000041',remark:'Delivery note'},partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
+    rows.push({...rows[2],id:'document-item-2',quantity:'7',unit:{id:2,nameEn:'Meter'},amount:'20.50',subtotal:'20.50'});
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
     await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
@@ -62,15 +63,18 @@ try {
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,12);
+    assert.equal(headings.length,11);
     assert.ok((await page.locator('.is-dense th, .is-dense td').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).padding))).every(padding=>padding==='8px 12px'),'Header and body share compact spacing');
     assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
     assert.equal(headings.includes(text.remark),false);assert.equal(headings.includes(text.source),false);assert.equal(await page.locator('[data-search-filters] select').count(),3);assert.doesNotMatch(await page.locator('tbody').innerText(),/Delivery note/);
     assert.equal(await page.locator('[data-expense-row="cost"] td').nth(3).textContent(),{ko:'물류 서비스',en:'Logistics service',vi:'Dịch vụ vận chuyển'}[lang]);
     assert.equal(await page.locator('[data-expense-row="old"] td').nth(3).textContent(),text.unclassified);
     assert.equal(headings.includes(text.style),false);
+    assert.equal(headings.includes(text.quantity),false);assert.equal(headings.includes(text.unitPrice),false);
+    const grouped=page.locator('[data-expense-request="1"]');assert.equal(await grouped.count(),1);assert.equal(await grouped.locator('td').nth(7).innerText(),'2');assert.match(await grouped.locator('td').nth(8).innerText(),/30[.,]75/);
+    await page.getByRole('textbox',{name:text.search}).fill('NEW-42');assert.equal(await grouped.locator('td').nth(7).innerText(),'2');await page.getByRole('textbox',{name:text.search}).fill('');
     assert.equal(await page.locator('tbody .cc-code').count(),0);
-    assert.equal(headings[3],text.category);assert.equal(headings[4],text.industry);assert.equal(headings[6],text.order);assert.equal(headings[7],text.quantity);
+    assert.equal(headings[3],text.category);assert.equal(headings[4],text.industry);assert.equal(headings[6],text.order);assert.equal(headings[7],text.count);
     assert.equal(await page.locator('[data-search-filters] select').nth(0).locator('option').first().textContent(),text.allIndustries);
     assert.equal(await page.locator('[data-search-filters] select').nth(1).locator('option').first().textContent(),text.allPartners);
     const historicalRow=page.locator('[data-expense-row="old"]');
@@ -120,7 +124,7 @@ try {
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.
     for(let cycle=0;cycle<4;cycle++) {
-      for(const [name,count] of [[text.documents,9],[text.detail,12],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,12]]) {
+      for(const [name,count] of [[text.documents,9],[text.detail,11],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,11]]) {
         await page.getByRole('tab',{name,exact:true}).click();
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{
