@@ -1,6 +1,7 @@
 // One screen identity for menus, workspace tabs and page headings. Route modes
 // describe the screen's purpose; dirty state and record IDs never rename it.
 export const PAGE_ROUTES = [
+  ['/account-overview','accountOverview','page'],
   ['/bank-ledger','bankLedger','list'],
   ['/dashboard','dashboard','page'], ['/business','business','list'],
   ['/employee','employee','list'], ['/employee-system','employeeSystem','page'],
@@ -66,6 +67,7 @@ export function resolvePageNaming(path, languageCode, translate) {
   const rest = pathname.slice(base.length);
   let mode = rest ? childMode || 'detail' : baseMode;
   if (rest === '/new') mode = 'create';
+  if(base==='/bank-ledger'&&rest.startsWith('/edit/'))mode='edit';
   if (base === '/customer' && rest) mode = rest === '/new' ? 'create' : 'edit';
   if (base === '/invoices' && rest === '/new' && url.searchParams.has('revision')) mode = 'revise';
   const nameKey = base === '/customer' && rest ? 'customer'

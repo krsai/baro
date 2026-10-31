@@ -6,34 +6,36 @@ import {chromium} from 'playwright-core';
 import {approvalWorkflowText} from '../frontend/src/constants/approvalWorkflow.js';
 const fixture=path.resolve('frontend/approval-inbox-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
-import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Card from'/src/components/ApprovalDashboardCard.jsx';
-function App(){const[orgId,setOrg]=React.useState(7),[role,setRole]=React.useState('ACCOUNTANT');window.setOrg=setOrg;window.setRole=setRole;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Card,{orgId,role,languageCode:new URLSearchParams(location.search).get('lang'),onNavigate:p=>window.destination=p}));}createRoot(document.getElementById('root')).render(React.createElement(App));
+import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import{MemoryRouter}from'react-router-dom';import theme from'/src/theme';import Dashboard from'/src/pages/App/WorkspaceDashboard.jsx';
+function App(){const[orgId,setOrg]=React.useState(7);window.setOrg=setOrg;window.currentOrg=orgId;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Dashboard)));}createRoot(document.getElementById('root')).render(React.createElement(App));
 </script></body></html>`);
 const port=43265,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/approval-inbox-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
- const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);browser=await chromium.launch({executablePath,headless:true});
+ browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi']){
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],t=approvalWorkflowText[lang];page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useAuth=()=>({activeOrgId:window.currentOrg,activeProfile:{orgRole:'ACCOUNTANT'}});"}));
+  const page=await browser.newPage({viewport:{width:1600,height:1100}}),errors=[],queries=[],t=approvalWorkflowText[lang];let orderReads=0;
+  page.on('pageerror',e=>errors.push(e.message));await page.clock.install({time:new Date('2026-10-30T12:00:00+07:00')});
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useAuth=()=>{const profile={entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',orgId:window.currentOrg};return {isAuthenticated:true,activeOrgId:window.currentOrg,activeProfile:profile,accessProfile:profile};};"}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useAppActions=()=>({navigateToPath:p=>window.destination=p});"}));
-  await page.route('**/expense-approval-inbox?*',async r=>{
-   const url=new URL(r.request().url()),headers={'Access-Control-Allow-Origin':'*'};
-   if(url.searchParams.get('orgId')==='8'){await new Promise(resolve=>setTimeout(resolve,250));return r.fulfill({headers,json:[]});}
-   const view=url.searchParams.get('view')||'pending',rows=Array.from({length:view==='pending'?13:1},(_,i)=>({id:i+1,kind:'EXPENSE_REQUEST',version:2,managementNumber:`EXP-2026-00000${i+1}`,requestDate:'2026-10-30',payee:'Vendor',drafter:'Author',status:view==='requested'?'REJECTED':view==='inProgress'?'IN_REVIEW':'REQUESTED',totals:[{currency:'USD',amount:'100.25'}],...(view==='completed'?{handledVersion:1,decision:'REJECTED',reason:'Incorrect invoice',handledAt:'2026-10-29T00:00:00Z'}:{})}));return r.fulfill({headers,json:rows});
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"const actions={navigateToPath:p=>window.destination=p,showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>actions;export const useAppState=()=>({});"}));
+  const headers={'Access-Control-Allow-Origin':'*'};
+  await page.route('**/orders?*',r=>{orderReads++;return r.fulfill({headers,json:[{orderNumber:'ORDER',workflowStatus:'RECEIVED',productionAssignments:Array.from({length:30},(_,i)=>({id:i+1,style:'Style '+i,factory:'Factory',plannedQuantity:100,missingRecordProcesses:[{processCode:'P',targetQuantity:100}]}))}]});});
+  for(const endpoint of ['assignment-board-view','org-memberships','customers'])await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json:endpoint==='assignment-board-view'?{assignments:[]}:[]}));
+  await page.route('**/expense-approval-overview?*',async r=>{
+   const url=new URL(r.request().url()),params=Object.fromEntries(url.searchParams);queries.push(params);const pageSize=Number(params.pageSize),offset=Number(params.page)*pageSize,total=params.orgId==='8'?0:55;
+   const rows=Array.from({length:Math.min(pageSize,Math.max(0,total-offset))},(_,i)=>({id:offset+i+1,kind:'EXPENSE_REQUEST',managementNumber:'EXP-'+String(offset+i+1).padStart(6,'0'),requestDate:'2026-10-29',drafter:'Author',status:params.status==='ALL'?(i%2?'REJECTED':'APPROVED'):params.status==='APPROVED'?'APPROVED':'REQUESTED'}));return r.fulfill({headers,json:{rows,total}});
   });
   await page.goto(`http://127.0.0.1:${port}/approval-inbox-acceptance.html?lang=${lang}`);
-  const card=page.getByTestId('approval-dashboard'),main=card;await card.getByText('EXP-2026-000001',{exact:true}).waitFor();assert.equal(await card.locator('tbody tr').count(),10);assert.equal(await card.locator('.MuiChip-label').filter({hasText:/^13$/}).count(),1);
-  assert.equal(await card.locator('thead th').count(),5);assert.equal(await card.getByText('Vendor',{exact:true}).count(),0);assert.equal(await card.getByText('USD 100.25',{exact:true}).count(),0);assert.equal(await card.getByRole('button',{name:t.viewAll,exact:true}).count(),0);
-  await card.getByRole('button',{name:t.next,exact:true}).click();await card.getByRole('button',{name:'EXP-2026-0000011',exact:true}).click();assert.equal(await page.evaluate(()=>window.destination),'/outsourcing-record/edit/request/11');
-  await main.getByRole('tab',{name:t.progressTab,exact:true}).click();await main.locator('[data-approval-status="IN_REVIEW"]').waitFor();
-  await main.getByRole('tab',{name:t.completedTab,exact:true}).click();await main.getByText('Incorrect invoice',{exact:true}).waitFor();assert.equal(await main.locator('[data-approval-status="REJECTED"]').count(),1);assert.equal(await main.locator('thead th').count(),5);
-  await main.getByRole('textbox').fill('No matching request');await main.getByText(t.empty,{exact:true}).waitFor();await main.getByRole('textbox').fill('invoice');await main.getByText('Incorrect invoice',{exact:true}).waitFor();
-  await main.getByRole('textbox').fill('');await main.getByRole('tab',{name:t.requestedTab,exact:true}).click();await main.locator('[data-approval-status="REJECTED"]').waitFor();
-  await page.evaluate(()=>window.setRole('OPERATOR'));assert.equal(await card.getByRole('tab').count(),1);assert.equal(await card.getByRole('tab',{name:t.requestedTab,exact:true}).getAttribute('aria-selected'),'true');
-  await page.setViewportSize({width:390,height:844});assert.ok(await main.locator('.MuiTableContainer-root').evaluate(el=>el.scrollWidth>el.clientWidth));
-  await page.evaluate(()=>window.setOrg(8));assert.equal(await page.getByRole('button',{name:'EXP-2026-000001',exact:true}).count(),0,'changing company clears all old rows immediately');await card.getByText(t.empty,{exact:true}).waitFor();assert.deepEqual(errors,[]);await page.close();
+  const card=page.getByTestId('approval-dashboard'),notifications=page.getByTestId('dashboard-notifications');await card.getByText('EXP-000001',{exact:true}).waitFor();await notifications.getByText('Style 29',{exact:false}).waitFor();
+  assert.equal(queries[0].status,'UNAPPROVED');assert.equal(queries[0].start,'2026-10-01');assert.equal(queries[0].end,'2026-10-30');assert.equal(await card.getByRole('tab').count(),0);assert.equal(await card.locator('thead th').count(),5);assert.equal(await card.locator('tbody tr').count(),20);
+  const left=await notifications.boundingBox(),right=await card.boundingBox();assert.ok(left.x<right.x);assert.ok(Math.abs(left.y-right.y)<2);assert.ok(Math.abs(left.height-540)<2&&Math.abs(right.height-540)<2);
+  assert.ok(await notifications.locator(':scope > .MuiBox-root').evaluate(el=>el.scrollHeight>el.clientHeight));assert.equal(await page.getByText(({ko:'빠른 이동',en:'Quick Actions',vi:'Di chuyen nhanh'})[lang],{exact:true}).count(),0);
+  await card.getByRole('button',{name:t.next,exact:true}).click();await card.getByRole('button',{name:'EXP-000021',exact:true}).click();assert.equal(await page.evaluate(()=>window.destination),'/outsourcing-record/edit/request/21');
+  await card.locator('#approval-overview-status').click();await page.getByRole('option',{name:t.all,exact:true}).click();await card.locator('[data-approval-status="APPROVED"]').first().waitFor();assert.equal(queries.at(-1).status,'ALL');assert.equal(queries.at(-1).page,'0');
+  const before=orderReads;await card.getByText('M-',{exact:true}).click();await page.waitForFunction(()=>true);await page.waitForTimeout(300);assert.ok(queries.at(-1).end<'2026-10-01');assert.equal(orderReads,before,'approval date changes do not reload production summaries');
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);const mobileLeft=await notifications.boundingBox(),mobileRight=await card.boundingBox();assert.ok(mobileLeft.y<mobileRight.y);
+  await page.evaluate(()=>window.setOrg(8));assert.equal(await card.getByRole('button',{name:'EXP-000001',exact:true}).count(),0);await card.getByText(t.empty,{exact:true}).waitFor();assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: dashboard four tabs/pagination/common five columns, review links, pending/progress/handled/own tabs, rejection reason/search, tenant clearing, ko/en/vi and mobile internal scroll.');
+ console.log('PASS: summary first, fixed-height notifications/approval columns, no quick links/tabs, global period control, server status/page filters, tenant clearing and ko/en/vi mobile.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

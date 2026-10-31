@@ -15,7 +15,8 @@ function approvalExemption(request:any,decisions:any[],policy:any,orgId:number){
 export function expenseApprovalSummary(request:any,decisions:any[],exempt=false){
  const current=decisions.filter(row=>row.requestId===request.id&&row.version===request.version);
  const steps=(request.approvalSteps||[]).map((step:any)=>{const record=current.find(row=>row.position===step.position&&row.employeeId===step.employeeId);const rejected=record?.decision==='REJECTED';return {...step,approved:!!record&&!rejected,rejected,approvedAt:record&&!rejected?record.createdAt:null,rejectedAt:rejected?record.createdAt:null,reason:rejected?record.reason:null};});
- const rejection=steps.find((step:any)=>step.rejected);
+ const rejectedRecord=current.find(row=>row.decision==='REJECTED');
+ const rejection=steps.find((step:any)=>step.rejected)||(rejectedRecord?{...rejectedRecord,rejectedAt:rejectedRecord.createdAt}:null);
  if(rejection)for(const step of steps)if(step.position>rejection.position)step.blocked=true;
  const next=rejection?null:steps.find((step:any)=>!step.approved);
  const approved=!rejection&&(steps.length>0?!next:exempt);

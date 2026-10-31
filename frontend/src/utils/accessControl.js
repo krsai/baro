@@ -155,6 +155,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
+  if (path.startsWith('/account-overview')) return FEATURE_KEYS.BANK_LEDGER;
   if (path.startsWith('/bank-ledger')) return FEATURE_KEYS.BANK_LEDGER;
   if (path.startsWith('/approval-inbox')) return FEATURE_KEYS.OUTSOURCING_RECORD;
   if (path.startsWith('/approval-settings')) return FEATURE_KEYS.OUTSOURCING_RECORD;

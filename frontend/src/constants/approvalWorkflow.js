@@ -4,3 +4,7 @@ export const approvalWorkflowText={
  vi:{dashboard:'Phê duyệt',perPage:'Số dòng mỗi trang',next:'Trang sau',previous:'Trang trước',selfAuthorized:'Quản trị viên tự quyết',center:'Hộp phê duyệt',pendingTab:'Chờ tôi duyệt',progressTab:'Đang xử lý',completedTab:'Đã xử lý',requestedTab:'Yêu cầu của tôi',reject:'Từ chối',reason:'Lý do từ chối',rejectConfirm:'Từ chối đề nghị này?',reasonRequired:'Nhập lý do từ chối.',reasonHint:'Nêu rõ lý do từ chối. (Tối đa 1.000 ký tự)',resubmit:'Sửa và lưu tài liệu để gửi lại phê duyệt cho phiên bản mới.',type:'Loại yêu cầu',expense:'Đề nghị chi phí',status:'Trạng thái',amount:'Số tiền đề nghị',handledAt:'Ngày xử lý',handledVersion:'Phiên bản xử lý',viewAll:'Mở hộp phê duyệt',empty:'Không có yêu cầu phê duyệt.',search:'Tìm loại yêu cầu, mã hoặc người lập',stopped:'Đã dừng',statuses:{UNKNOWN:'Chưa xác nhận',NOT_REQUESTED:'Chưa gửi',REQUESTED:'Đã gửi duyệt',IN_REVIEW:'Đang duyệt',APPROVED:'Đã duyệt',REJECTED:'Bị từ chối'}},
 };
 export const approvalStatusTone=status=>({REQUESTED:'blue',IN_REVIEW:'yellow',APPROVED:'green',REJECTED:'red'})[status]||'gray';
+
+approvalWorkflowText.ko.overview='승인 현황';approvalWorkflowText.en.overview='Approval status';approvalWorkflowText.vi.overview='Tình trạng phê duyệt';
+approvalWorkflowText.ko.unapproved='미승인만';approvalWorkflowText.en.unapproved='Unapproved only';approvalWorkflowText.vi.unapproved='Chỉ chưa duyệt';
+approvalWorkflowText.ko.all='전체';approvalWorkflowText.en.all='All';approvalWorkflowText.vi.all='Tất cả';

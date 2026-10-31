@@ -41,3 +41,7 @@ bankLedgerMessages.vi.title='Thu chi';
 Object.assign(bankLedgerMessages.ko.errors,{LEDGER_INVALID_SETTLEMENT:'수수료·대손 행의 연결 대상과 금액·사유를 확인해 주세요.',LEDGER_SETTLEMENT_MISMATCH:'연결한 수수료·대손 행의 합계가 일치하지 않습니다.',EXPENSE_REQUEST_CHANGED:'비용 신청이 변경되었습니다. 다시 검색해 최신 버전을 연결하세요.'});
 Object.assign(bankLedgerMessages.en.errors,{LEDGER_INVALID_SETTLEMENT:'Check the linked transaction, amount and reason for fee or write-off rows.',LEDGER_SETTLEMENT_MISMATCH:'Linked fee and write-off rows do not match their totals.',EXPENSE_REQUEST_CHANGED:'The expense request changed. Search again and link the latest version.'});
 Object.assign(bankLedgerMessages.vi.errors,{LEDGER_INVALID_SETTLEMENT:'Kiểm tra giao dịch liên kết, số tiền và lý do của dòng phí hoặc nợ xấu.',LEDGER_SETTLEMENT_MISMATCH:'Tổng các dòng phí hoặc nợ xấu không khớp.',EXPENSE_REQUEST_CHANGED:'Đề nghị chi đã thay đổi. Tìm lại và liên kết phiên bản mới nhất.'});
+
+Object.assign(bankLedgerMessages.ko.errors,{LEDGER_ENTRY_CHANGED:'내역이 이미 수정 또는 삭제되었습니다. 목록을 다시 확인해 주세요.',LEDGER_PURPOSE_CODE_REQUIRED:'사용 중인 비용·회계 코드를 선택해 주세요.'});
+Object.assign(bankLedgerMessages.en.errors,{LEDGER_ENTRY_CHANGED:'This transaction has already been edited or deleted. Reload the list.',LEDGER_PURPOSE_CODE_REQUIRED:'Select an active expense / accounting code.'});
+Object.assign(bankLedgerMessages.vi.errors,{LEDGER_ENTRY_CHANGED:'Giao dịch đã được sửa hoặc xóa. Tải lại danh sách.',LEDGER_PURPOSE_CODE_REQUIRED:'Chọn mã chi phí / kế toán đang sử dụng.'});

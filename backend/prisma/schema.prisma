@@ -349,6 +349,11 @@ model BankLedgerEntry {
   direction String
   amount Decimal @db.Decimal(24, 4)
   purpose String
+  purposeCodeId Int?
+  purposeCode TransactionCode? @relation("LedgerPurposeCode",fields:[purposeCodeId,orgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"BankLedgerEntry_purpose_scope_fkey")
+  revisesEntryId String? @unique
+  revisesEntry BankLedgerEntry? @relation("LedgerRevision",fields:[revisesEntryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"BankLedgerEntry_revision_scope_fkey")
+  replacementEntries BankLedgerEntry[] @relation("LedgerRevision")
   evidenceNumber String
   evidenceType String @default("FILE")
   bankFee Decimal @default(0) @db.Decimal(24, 4)
@@ -376,6 +381,8 @@ model BankLedgerSettlementLine {
   kind String
   amount Decimal @db.Decimal(24,4)
   purpose String
+  purposeCodeId Int?
+  purposeCode TransactionCode? @relation("LedgerSettlementPurposeCode",fields:[purposeCodeId,orgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"BankLedgerSettlementLine_purpose_scope_fkey")
   createdBy String
   createdAt DateTime @default(now())
   entry BankLedgerEntry @relation(fields:[entryId,orgId],references:[id,orgId],onDelete:Restrict,map:"BankLedgerSettlementLine_entry_scope_fkey")
@@ -1738,6 +1745,9 @@ model CodeBaseUsageRollout {
 }
 
 model TransactionCode {
+  ledgerEntries BankLedgerEntry[] @relation("LedgerPurposeCode")
+  ledgerSettlementLines BankLedgerSettlementLine[] @relation("LedgerSettlementPurposeCode")
+  @@unique([id,ownerOrgId])
   @@index([baseId])
   baseId Int?
   base TransactionCodeBase? @relation(fields: [baseId], references: [id], onDelete: Restrict)

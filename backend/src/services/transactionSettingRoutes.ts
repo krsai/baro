@@ -110,7 +110,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
         expenseType: true,
         _count: { select: { codes: true, codeBases: true } },
         services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
-      } : { serviceType: true, taxTreatment: true, codes: { select: { isOverridden: true, _count: { select: { costs: true } } } } }, orderBy: { id: 'asc' } });
+      } : { serviceType: true, taxTreatment: true, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,ledgerSettlementLines:true } } } } }, orderBy: { id: 'asc' } });
       res.json(rows.map((row: any) => ({ ...row, hasUsageHistory: service
         ? row._count.codes > 0 || row._count.codeBases > 0 || row.services.some((local: any) => local.isOverridden || Object.values(local._count).some((count: any) => count > 0))
         : row.codes.some((local: any) => local.isOverridden || local._count.costs > 0) })));

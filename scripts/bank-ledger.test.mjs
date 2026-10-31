@@ -85,7 +85,7 @@ test('running balance carries over page boundaries and repeated void requests re
  for(let i=0;i<101;i++)await postLedgerEntry(db,1,'staff',a.id,entryBody());
  const first=await listLedgerEntries(db,1,a.id,{start:'2026-10-01',end:'2026-10-31'}),second=await listLedgerEntries(db,1,a.id,{start:'2026-10-01',end:'2026-10-31',page:1});
  assert.equal(first.rows.length,100);assert.equal(first.hasMore,true);assert.equal(second.rows[0].balance,'110.10');assert.equal(second.hasMore,false);
- const routes=new Map(),app={get:(p,f)=>routes.set('GET '+p,f),post:(p,f)=>routes.set('POST '+p,f)};
+ const routes=new Map(),app={get:(p,f)=>routes.set('GET '+p,f),post:(p,f)=>routes.set('POST '+p,f),put:(p,f)=>routes.set('PUT '+p,f),delete:(p,f)=>routes.set('DELETE '+p,f)};
  registerBankLedgerRoutes(app,db,{requireOrgRole:async()=>({organization:{id:1,type:'SERVICE'},employee:{orgRole:'ACCOUNTANT'},requesterEmail:'staff@example.com'}),loadPolicy:async()=>({policy:getDefaultRoleAccessPolicy()})});
  const handler=routes.get('POST /bank-ledger/accounts/:accountId/entries/:entryId/void'),req={params:{accountId:a.id,entryId:entries[0].id},body:{reason:'Wrong bank reference'}},res={json:()=>{}};
  await handler(req,res);await handler({...req,body:{reason:'A changed reason'}},res);
@@ -122,7 +122,7 @@ test('anonymous workspace lookup is denied and only active memberships appear fo
  const db={systemUser:{findUnique:async()=>null},employee:{findMany:async args=>{assert.equal(args.where.email,'staff@example.com');assert.equal(args.where.status,'ACTIVE');assert.deepEqual(args.where.organization.type.in,['MANUFACTURER','BRAND','SERVICE']);return [{orgId:2,orgRole:'ACCOUNTANT',organization:{id:2,name:'DEXS',type:'SERVICE'}}];}}};
  const choices=await companyChoices(db,'staff@example.com');assert.deepEqual(choices.workspaces.map(row=>row.id),[2]);assert.equal(choices.canCreateCompany,false);
  await assert.rejects(createServiceCompany(db,'staff@example.com',{name:'forged'}),/ADMIN_REQUIRED/);
- const routes=new Map();registerCompanyWorkspaceRoutes({get:(p,f)=>routes.set(p,f),post:()=>{}},db,{getEmail:()=>'',requireOrgRole:()=>null});
+ const routes=new Map();registerCompanyWorkspaceRoutes({get:(p,f)=>routes.set(p,f),post:()=>{},put:()=>{},delete:()=>{}},db,{getEmail:()=>'',requireOrgRole:()=>null});
  await assert.rejects(routes.get('/auth/workspaces')({},{}),/AUTHENTICATION_REQUIRED/);
 });
 test('explicit company login never falls back to a different company or accepts a vendor tenant',async()=>{
@@ -159,7 +159,7 @@ test('a logistics SaaS registration creates one independent tenant and owner mem
 });
 test('bank access honors current policy denials and never reaches the ledger for a forbidden role',async()=>{
  const routes=new Map();let reads=0;
- registerBankLedgerRoutes({get:(p,f)=>routes.set(p,f),post:()=>{}},{bankLedgerAccount:{findMany:async()=>{reads++;}}},{requireOrgRole:async()=>({organization:{id:2,type:'SERVICE'},employee:{orgRole:'ACCOUNTANT'},requesterEmail:'staff@example.com'}),loadPolicy:async()=>({policy:{SERVICE:{ACCOUNTANT:[]}}})});
+ registerBankLedgerRoutes({get:(p,f)=>routes.set(p,f),post:()=>{},put:()=>{},delete:()=>{}},{bankLedgerAccount:{findMany:async()=>{reads++;}}},{requireOrgRole:async()=>({organization:{id:2,type:'SERVICE'},employee:{orgRole:'ACCOUNTANT'},requesterEmail:'staff@example.com'}),loadPolicy:async()=>({policy:{SERVICE:{ACCOUNTANT:[]}}})});
  let status;const res={status:code=>{status=code;return res;},json:()=>{}};
  await routes.get('/bank-ledger/accounts')({query:{orgId:1}},res);assert.equal(status,403);assert.equal(reads,0);
 });

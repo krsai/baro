@@ -46,6 +46,7 @@ const lazyImportWithRetry = (importer) =>
   );
 
 const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
+const AccountOverview = lazyImportWithRetry(() => import('./pages/App/AccountOverview'));
 const BankLedgerEntry = lazyImportWithRetry(() => import('./pages/App/BankLedgerEntry'));
 const BankLedger = lazyImportWithRetry(() => import('./pages/App/BankLedger'));
 const SignUp = lazyImportWithRetry(() => import('./pages/Auth/SignUp'));
@@ -254,8 +255,10 @@ const router = createBrowserRouter([
       {
         element: <MainLayout />,
         children: [
+          {path:'account-overview',element:<AccountOverview/>},
           {path:'bank-ledger',element:<BankLedger/>},
           {path:'bank-ledger/new',element:<BankLedgerEntry/>},
+          {path:'bank-ledger/edit/:entryId',element:<BankLedgerEntry/>},
           {
             index: true,
             element: <RootRedirect />,

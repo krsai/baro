@@ -727,13 +727,6 @@ const WorkspaceDashboard = () => {
     [isSystemProfile, languageCode, summaryData, summaryLoading, systemSummaryData]
   );
 
-  const quickActions = useMemo(
-    () =>
-      buildQuickActions(languageCode, isSystemProfile).filter((item) =>
-        canAccessPath(item.path, authState)
-      ),
-    [authState, isSystemProfile, languageCode]
-  );
   const notificationItems = useMemo(
     () => buildNotificationItems({ languageCode, isSystemProfile, summaryData, systemSummaryData }).filter((item) => canAccessPath(item.path, authState)),
     [authState, isSystemProfile, languageCode, summaryData, systemSummaryData]
@@ -742,7 +735,6 @@ const WorkspaceDashboard = () => {
   return (
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <PageContentStack>
-        {!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)&&<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}
         <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(
@@ -823,12 +815,14 @@ const WorkspaceDashboard = () => {
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
+        <Box data-testid="dashboard-workflow" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:isSystemProfile?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:2,alignItems:'start'}}>
+        <Paper variant="outlined" data-testid="dashboard-notifications" sx={{p:2,borderRadius:`${ui.radius.panel}px`,height:540,minWidth:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <NotificationsNoneIcon color="primary" />
             <Typography variant="h6">{resolveText(DASHBOARD_TEXT.notificationTitle, languageCode)}</Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{resolveText(DASHBOARD_TEXT.notificationDescription, languageCode)}</Typography>
+          <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>
           {summaryLoading ? (
             <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5 }}>
               <CircularProgress size={18} />
@@ -852,25 +846,12 @@ const WorkspaceDashboard = () => {
               ))}
             </Stack>
           )}
+          </Box>
         </Paper>
+          {!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)&&<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}
+        </Box>
 
-        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
-          <Typography variant="h6" sx={{ mb: 1.5 }}>
-            {resolveText(DASHBOARD_TEXT.quickActionTitle, languageCode)}
-          </Typography>
-          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
-            {quickActions.map((action) => (
-              <Button
-                key={action.path}
-                variant="outlined"
-                startIcon={action.icon}
-                onClick={() => navigateToPath(action.path, { label: action.label })}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </Stack>
-        </Paper>
+
 
       </PageContentStack>
       <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
