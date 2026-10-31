@@ -1,13 +1,24 @@
+import type {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
 import {legacyExpenseNumber} from './documentNumber';
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
 export async function readLedgerEdit(db:any,orgId:number,id:string){
- const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include:{account:true,accountingCode:true,settlementLines:{include:{accountingCode:true}},allocations:{include:{invoice:{include:{buyer:{select:{name:true}}}},expenseItem:{include:{expenseRequest:{include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}}}}}}});
+ const include={account:true,accountingCode:true,settlementLines:{include:{accountingCode:true}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
+ const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include});
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');
  const code=entry.account.currencyCode;
- const other=await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:{not:id},entry:{voidedAt:null},OR:[{invoiceId:{in:entry.allocations.map((a:any)=>a.invoiceId).filter(Boolean)}},{expenseItemId:{in:entry.allocations.map((a:any)=>a.expenseItemId).filter(Boolean)}}]}});
+ const invoiceIds=[...new Set(entry.allocations.map((a:any)=>a.invoiceId).filter(Boolean))];
+ const expenseIds=[...new Set(entry.allocations.map((a:any)=>a.expenseItemId).filter(Boolean))];
+ const expenseInclude={expenseRequest:{include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}} satisfies Prisma.PartnerTransactionCostInclude;
+ const [invoices,expenses,other]=await Promise.all([
+  invoiceIds.length?db.invoice.findMany({where:{sellerOrgId:orgId,id:{in:invoiceIds}},include:{buyer:{select:{name:true}}}}):[],
+  expenseIds.length?db.partnerTransactionCost.findMany({where:{orgId,id:{in:expenseIds}},include:expenseInclude}):[],
+  invoiceIds.length||expenseIds.length?db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:{not:id},entry:{voidedAt:null},OR:[{invoiceId:{in:invoiceIds}},{expenseItemId:{in:expenseIds}}]}}):[],
+ ]);
+ entry.allocations=entry.allocations.map((allocation:any)=>({...allocation,invoice:invoices.find((row:any)=>row.id===allocation.invoiceId)||null,expenseItem:expenses.find((row:any)=>row.id===allocation.expenseItemId)||null}));
+ if(entry.allocations.some((allocation:any)=>allocation.invoiceId&&!allocation.invoice||allocation.expenseItemId&&!allocation.expenseItem))return fail('LEDGER_INVALID_EVIDENCE');
  let document:any=null;
  if(entry.evidenceType==='INVOICE'){
   const invoice=entry.allocations[0]?.invoice;if(!invoice)return fail('LEDGER_INVALID_EVIDENCE');
