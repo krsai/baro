@@ -1,5 +1,6 @@
 import { LOCALIZED_NAME_HELP } from '../../../components/LocalizedNameFields';
 import {ENTITY_CODE_TEXT,entityCodeError} from '../../../utils/entityCode.mjs';
+import {classificationName} from '../../../utils/partnerClassification.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
 import { createPortal } from 'react-dom';
@@ -19,7 +20,6 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
 import {
   ORGANIZATION_TYPE_KEYS,
-  normalizeOrganizationType,
 } from '../../../constants/organizationType';
 import { getUiMessage } from '../../../constants/uiMessages';
 import { getStaticOptionOptions } from '../../../constants/staticOptionRegistry';
@@ -48,7 +48,7 @@ const buildCompanyInfo = (data = {}) => {
     businessNumber: data.businessNumber ?? '',
     representativeEmployeeId: normalizePositiveId(data.representativeEmployeeId),
     representative: representativeEmployee?.name ?? data.representative ?? '',
-    industry: normalizeOrganizationType(data.industry) || normalizeOrganizationType(data.type),
+    industry: data.industry ?? '',
     country: data.country ?? 'VN',
     defaultSizeSetCode: normalizeSizeSetCode(data.defaultSizeSetCode),
     address: data.address ?? '',
@@ -131,6 +131,17 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const [employees, setEmployees] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [industryRoles,setIndustryRoles]=useState([]);
+  const [industryLoading,setIndustryLoading]=useState(true);
+  const [industryError,setIndustryError]=useState(false);
+
+  useEffect(()=>{let alive=true;setIndustryLoading(true);setIndustryError(false);
+    requestJSON(`/partner-classifications/options${activeOrgId?`?orgId=${activeOrgId}`:''}`,{skipCache:true})
+      .then(data=>{if(alive)setIndustryRoles(data.roles||[]);})
+      .catch(()=>{if(alive)setIndustryError(true);})
+      .finally(()=>{if(alive)setIndustryLoading(false);});
+    return()=>{alive=false;};
+  },[activeOrgId]);
 
   const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
@@ -243,6 +254,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   useUnsavedChanges(isDirty);
 
   const isNameValid = hasLocalizedName(formData, 'name');
+  const currentIndustryRole=industryRoles.find(role=>role.code===(formData.industry==='LOGISTICS'?'LOGISTICS_PROVIDER':formData.industry));
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -323,15 +335,15 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               size="small"
               label={text.industry}
               name="industry"
-              value={formData.industry}
+              value={currentIndustryRole?.code||formData.industry}
               onChange={handleInputChange}
+              disabled={industryLoading||industryError}
+              error={industryError}
+              helperText={industryError?({ko:'공통 거래처 구분을 불러오지 못했습니다.',en:'Unable to load shared partner categories.',vi:'Không thể tải nhóm đối tác dùng chung.'})[languageCode]:undefined}
             >
               <MenuItem value="">-</MenuItem>
-              {Object.entries(activeProfile?.orgType==='SERVICE'?{LOGISTICS:({ko:'물류',en:'Logistics',vi:'Logistics'})[languageCode]||'Logistics'}:localText.industryOptions).map(([value, label]) => (
-                <MenuItem key={value} value={value}>
-                  {label}
-                </MenuItem>
-              ))}
+              {formData.industry&&!currentIndustryRole&&<MenuItem value={formData.industry}>{localText.industryOptions[formData.industry]||formData.industry}</MenuItem>}
+              {industryRoles.map(role=><MenuItem key={role.id} value={role.code}>{classificationName(role,languageCode)}</MenuItem>)}
             </TextField>
           </Grid>
 
@@ -459,7 +471,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
           </Grid></Grid>
       </EntityDetailSection>
       <EntityBankAccounts entityId={organizationId} orgId={activeOrgId} languageCode={languageCode}/>
-      {formData.industry === ORGANIZATION_TYPE_KEYS.BRAND && (
+      {activeProfile?.orgType === ORGANIZATION_TYPE_KEYS.BRAND && (
         <EntityDetailSection title={localText.orderTitle}>
           <TextField fullWidth select size="small" label={localText.sizeSet} name="defaultSizeSetCode" value={formData.defaultSizeSetCode} onChange={handleInputChange} sx={{ maxWidth: 480 }}>
             {sizeSetOptions.map((option) => <MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}

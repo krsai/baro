@@ -277,8 +277,10 @@ export const createOrganizationRouter = ({
       });
     }
 
-    const current=await prisma.organization.findUnique({where:{id},select:{name:true,code:true}});
+    const current=await prisma.organization.findUnique({where:{id},select:{name:true,code:true,industry:true}});
     if(!current)return res.status(404).json({error:'organization not found'});
+    if(industry!==undefined&&industry!==null&&industry!==current.industry&&
+      (typeof industry!=='string'||!await prisma.partnerRole.findUnique({where:{code:industry}})))return res.status(400).json({error:'INVALID_PARTNER_ROLE'});
     const normalizedCode = code!==undefined || !current.code ? resolvePartnerCode(code,name??current.name) : undefined;
 
     if (normalizedCode !== undefined) {

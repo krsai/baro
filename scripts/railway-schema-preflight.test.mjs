@@ -30,7 +30,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
   const db=new PGlite();let runs=0,closed=0;
   try {
     await db.exec(`CREATE TYPE "OrganizationType" AS ENUM ('MANUFACTURER','BRAND','PROCESS_OUTSOURCING','MATERIAL_SUPPLIER'); CREATE TABLE "SystemSetting"(key TEXT PRIMARY KEY,value JSONB,"updatedByEmployeeId" INT,"createdAt" TIMESTAMP DEFAULT now(),"updatedAt" TIMESTAMP DEFAULT now());
-      CREATE TABLE "Organization"(id INT PRIMARY KEY,name TEXT,type "OrganizationType" DEFAULT 'MANUFACTURER',"ownerOrgId" INT,"dataOwnerOrgId" INT,UNIQUE(id,"ownerOrgId"));
+      CREATE TABLE "Organization"(id INT PRIMARY KEY,name TEXT,"nameKo" TEXT,"nameVi" TEXT,type "OrganizationType" DEFAULT 'MANUFACTURER',"ownerOrgId" INT,"dataOwnerOrgId" INT,"businessNumber" TEXT,"isActive" BOOL DEFAULT true,UNIQUE(id,"ownerOrgId"));
       CREATE TABLE "SettingServiceDefault"(id SERIAL PRIMARY KEY,code TEXT UNIQUE); CREATE TABLE "ExpenseType"(id INT PRIMARY KEY,code TEXT,"isActive" BOOL DEFAULT true); CREATE TABLE "TransactionCodeBase"("serviceTypeId" INT,"expenseTypeId" INT);
       CREATE TABLE "Currency"(id INT PRIMARY KEY); CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));

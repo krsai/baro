@@ -16,7 +16,7 @@ function routeHandler(method,path,deps){
  const {normalizeLocalizedName}=require('../backend/dist/utils/localizedName.js');
  if(deps.prisma&&!deps.prisma.$transaction)deps.prisma.$transaction=run=>run(deps.prisma);
  const classification=async(_db,body)=>{assert.ok(body?.industryIds?.length,'classification required');};
- const bindings={app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,resolvePartnerCode,validateClassification:classification,requireClassificationActor:async()=>{},saveClassification:async(_db,_org,_entity,_actor,body)=>classification(null,body),getCurrentRequestActorEmployeeId:()=>8,attachPartnerClassifications:async(_db,_org,rows)=>rows,...deps};
+ const bindings={assertPartnerProfileEditable:async()=>{},connectPartnerCompany:async()=>null,app:{[method]:(_path,fn)=>handler=fn},normalizeLocalizedName,resolvePartnerCode,validateClassification:classification,requireClassificationActor:async()=>{},saveClassification:async(_db,_org,_entity,_actor,body)=>classification(null,body),getCurrentRequestActorEmployeeId:()=>8,attachPartnerClassifications:async(_db,_org,rows)=>rows,...deps};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));
  return handler;
 }

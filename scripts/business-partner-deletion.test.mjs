@@ -8,6 +8,7 @@ test('customer deletion checks every business source and keeps shared organizati
   try {
     await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY); INSERT INTO "Organization" VALUES(1),(2);
       CREATE TABLE "OrgRelationship"(id INT PRIMARY KEY,"manufacturerOrgId" INT REFERENCES "Organization","brandOrgId" INT REFERENCES "Organization");
+      CREATE TABLE "CompanyPartnerLink"("orgId" INT,"entityId" INT);
       INSERT INTO "OrgRelationship" VALUES(7,1,2);`);
     const tx = {
       $queryRawUnsafe: async (sql,...args) => (await db.query(sql,args)).rows,
@@ -24,6 +25,9 @@ test('customer deletion checks every business source and keeps shared organizati
       assert.equal((await db.query('SELECT * FROM "OrgRelationship"')).rows.length,1);
       await db.exec('DELETE FROM "'+source+'"');
     }
+    await db.exec('INSERT INTO "CompanyPartnerLink" VALUES(1,2)');
+    await assert.rejects(service.deleteUnusedCustomer(tx,1,7,true),/PARTNER_HAS_TRANSACTION_HISTORY/);
+    await db.exec('DELETE FROM "CompanyPartnerLink"');
     await service.deleteUnusedCustomer(tx,1,7,true);
     assert.equal((await db.query('SELECT * FROM "OrgRelationship"')).rows.length,0);
     assert.equal((await db.query('SELECT * FROM "Organization"')).rows.length,2);

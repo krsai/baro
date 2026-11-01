@@ -1,4 +1,5 @@
 import PartnerClassificationFields from './PartnerClassificationFields';
+import {CompanyConnectionField} from './CompanyConnections';
 import {emptyPartnerClassification,classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../utils/localizedName.mjs';
 import PartnerProfileFields from './PartnerProfileFields';
@@ -108,6 +109,7 @@ export default function BusinessPartnerDialog({
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
         classification: classificationPayload(form.classification),
+        ...(form.companyConnection?{companyConnection:form.companyConnection}:{}),
 
       };
       const creatingCustomer=allowCustomerCreation&&!isEdit&&form.classification.industries.some(row=>row.partnerRole?.code==='CUSTOMER'&&form.classification.industryIds.includes(row.id));
@@ -141,6 +143,7 @@ export default function BusinessPartnerDialog({
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
           <PartnerProfileFields value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
+          <CompanyConnectionField orgId={activeOrgId} entityId={partner?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={companyConnection=>setForm(current=>({...current,companyConnection}))} disabled={saving} languageCode={languageCode}/>
           <EntityBankAccounts entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
           <PartnerClassificationFields value={form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded} languageCode={languageCode} initialRoleCode={!isEdit?initialType:undefined} onReady={setOptionsReady}/>

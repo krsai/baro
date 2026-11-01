@@ -14,6 +14,7 @@ import { entityProfile, partnerProfilePatch, resolvePartnerCode } from './servic
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
+import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable} from './services/companyConnections';
 import { displayProductionProgress } from './services/productionProgress';
 import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow } from './services/invoiceWorkflow';
 import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
@@ -202,6 +203,7 @@ function assertGeneratedPrismaClientShape() {
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
     AccountingCodeIndustry:['baseId','systemIndustryId'],
+    CompanyPartnerLink:['orgId','entityId','targetOrgId','createdByEmployeeId','matchMethod'],
     PartnerClassification:['orgId','entityId','revision','updatedByEmployeeId'],
     PartnerClassificationIndustry:['orgId','entityId','systemIndustryId'],
     ExpenseRequest: ['payeeEmployeeId','id','managementNumber','orgId','partnerOrgId','createdByEmployeeId','requestDate','legacyTitle','remark','currency','clientKey','submissionHash'],
@@ -845,6 +847,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'BankLedgerEntry',columnNam
   { tableName: "WorkLog", columnName: "factoryId" },
   { tableName: "Organization", columnName: "nameKo" },
   { tableName: "Organization", columnName: "nameVi" },
+  ...['orgId','entityId','targetOrgId','createdByEmployeeId','matchMethod'].map(columnName=>({tableName:'CompanyPartnerLink',columnName})),
   { tableName: "Organization", columnName: "salaryCurrencyId" },
   { tableName: "Organization", columnName: "representativeEmployeeId" },
   { tableName: "Organization", columnName: "defaultSizeSetCode" },
@@ -1063,6 +1066,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerEntry_revision_scope_fk
   'CompanyWorkspaceRegistration_orgId_fkey',
   'BankLedgerEntry_amount_check',
   'BankLedgerEntry_evidence_guard',
+  'CompanyPartnerLink_actor_scope_fkey','CompanyPartnerLink_scope_guard',
   'PartnerClassification_actor_scope_fkey','PartnerClassificationIndustry_scope_fkey','PartnerClassification_scope_guard','PartnerClassificationIndustry_guard','PartnerClassification_required','PartnerClassificationIndustry_required',
   'AccountingCodeIndustry_pkey','AccountingCodeIndustry_baseId_fkey','AccountingCodeIndustry_systemIndustryId_fkey',
   'LedgerChangeAcknowledgement_entry_scope_fkey',
@@ -27609,6 +27613,7 @@ app.get("/partner-transaction-costs", async (req, res) => {
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
 registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
+registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{
   requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,
@@ -27744,6 +27749,7 @@ app.post("/business-partners", async (req, res) => {
         update: { ...partnerProfilePatch(req.body), code, representative: contactName, phone: contactPhone },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
+      await connectPartnerCompany(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if(Array.isArray(req.body?.serviceTypeIds))await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
       if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: partner.id, serviceTypeId, ownerOrgId: organization.id })) });
       return tx.organization.findUniqueOrThrow({ where: { id: partner.id }, include: BUSINESS_PARTNER_SERVICE_INCLUDE });
@@ -27797,6 +27803,7 @@ app.put("/business-partners/:id", async (req, res) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
       await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), code, name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
       await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
+      await connectPartnerCompany(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
         if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: id, serviceTypeId, ownerOrgId: organization.id })) });
@@ -29690,6 +29697,7 @@ app.post("/customers", async (req, res) => {
       return res.status(409).json({ ok: false, error: "code already exists" });
     }
 
+    await assertPartnerProfileEditable(tx,organization.id,targetOrganization);
     const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
     if (!nextTargetData.name) {
       return res.status(400).json({ ok: false, error: "name is required" });
@@ -29792,6 +29800,7 @@ app.post("/customers", async (req, res) => {
     include: { brand: true, manufacturer: true, systemIndustry: true },
   });
   await saveClassification(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body.classification);
+  await connectPartnerCompany(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
   if (!relationship.salesBucketSetVersionId || !relationship.timeBucketSetVersionId) {
       const actor = getCurrentRequestActor();
       const salesVersion = relationship.salesBucketSetVersionId
@@ -29900,6 +29909,7 @@ app.put("/customers/:id", async (req, res) => {
   }
 
   const refreshed=await prisma.$transaction(async tx=>{
+  await assertPartnerProfileEditable(tx,organization.id,targetOrganization);
   await tx.organization.update({
     where: { id: targetOrganizationId },
     data: {
@@ -29938,6 +29948,7 @@ app.put("/customers/:id", async (req, res) => {
   });
 
   await saveClassification(tx,organization.id,targetOrganizationId,getCurrentRequestActorEmployeeId(),req.body?.classification);
+  await connectPartnerCompany(tx,organization.id,targetOrganizationId,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
   return tx.orgRelationship.findUnique({
     where: { id: existing.id },
     include: { brand: true, manufacturer: true, systemIndustry: true },

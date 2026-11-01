@@ -170,6 +170,9 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  outgoingCompanyLinks CompanyPartnerLink[] @relation("CompanyLinkSource")
+  incomingCompanyLinks CompanyPartnerLink[] @relation("CompanyLinkTarget")
+  localCompanyLinks CompanyPartnerLink[] @relation("CompanyLinkEntity")
   ownedPartnerClassifications PartnerClassification[] @relation("PartnerClassificationOwner")
   partnerClassifications PartnerClassification[] @relation("PartnerClassificationEntity")
   ledgerAccounts BankLedgerAccount[]
@@ -293,6 +296,21 @@ model Organization {
   @@unique([id, ownerOrgId])
   @@unique([ownerOrgId, type, name])
   @@index([ownerOrgId, type, isActive])
+}
+
+model CompanyPartnerLink {
+ orgId Int
+ entityId Int
+ targetOrgId Int
+ createdByEmployeeId Int
+ matchMethod String
+ createdAt DateTime @default(now())
+ source Organization @relation("CompanyLinkSource",fields:[orgId],references:[id],onDelete:Restrict)
+ entity Organization @relation("CompanyLinkEntity",fields:[entityId],references:[id],onDelete:Restrict)
+ target Organization @relation("CompanyLinkTarget",fields:[targetOrgId],references:[id],onDelete:Restrict)
+ createdByEmployee Employee @relation(fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"CompanyPartnerLink_actor_scope_fkey")
+ @@id([orgId,entityId])
+ @@index([targetOrgId])
 }
 
 model Currency {
@@ -642,6 +660,7 @@ model Warehouse {
 
 
 model Employee {
+  createdCompanyLinks CompanyPartnerLink[]
   updatedPartnerClassifications PartnerClassification[]
   payableExpenseRequests ExpenseRequest[] @relation("ExpenseEmployeePayee")
   payableExpenseCosts PartnerTransactionCost[] @relation("ExpenseCostEmployeePayee")
