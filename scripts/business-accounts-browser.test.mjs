@@ -9,12 +9,12 @@ import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.j
 const fixture=path.resolve('frontend/business-accounts-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import{MemoryRouter,useLocation,useNavigate}from'react-router-dom';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Accounts from'/src/components/EntityBankAccounts.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';import Approval from'/src/components/ExpenseApprovalActions.jsx';import Entry from'/src/pages/App/BankLedgerEntry.jsx';
-const p=new URLSearchParams(location.search);function Screen(){window.testNavigate=useNavigate();const loc=useLocation();return loc.pathname==='/bank-ledger/new'?React.createElement(Entry):p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')});}createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Screen))));</script></body></html>`);
+import Organization from '/src/pages/App/organization/OrganizationBoard.jsx';const p=new URLSearchParams(location.search);function Screen(){window.testNavigate=useNavigate();const loc=useLocation();return loc.pathname==='/bank-ledger/new'?React.createElement(Entry):p.get('screen')==='organization'?React.createElement(Organization):p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,version:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')});}createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Screen))));</script></body></html>`);
 const port=43254,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/business-accounts-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const lang of ['ko','en','vi']){
+ for(const lang of (process.env.ACCOUNTS_SERVICE_ONLY?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],writes=[],labels=ENTITY_TEXT[lang],money=bankLedgerMessages[lang];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeProfile:{orgRole:'ADMIN',orgName:'Company'}});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const a={setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{},navigateToPath:path=>window.testNavigate(path)};export const useAppActions=()=>a;`}));
@@ -47,8 +47,26 @@ try{
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   const et=ledgerEvidenceText[lang];
   let approved=false;await page.route('**/expense-requests/1/approval?*',r=>{if(r.request().method()==='POST')approved=true;return r.fulfill({headers,json:{version:1,steps:[{id:'s1',position:1,employee:{name:'Approver'},approved}],approved,canApprove:!approved}});});
-  await page.goto(`http://127.0.0.1:${port}/business-accounts-acceptance.html?lang=${lang}&screen=approval`);await page.getByRole('button',{name:et.approve,exact:true}).click();await page.getByText(et.approval+' '+String.fromCharCode(183)+' '+et.approved,{exact:true}).waitFor();
+  await page.goto(`http://127.0.0.1:${port}/business-accounts-acceptance.html?lang=${lang}&screen=approval`);await page.getByRole('button',{name:et.approve,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:et.approve,exact:true}).click();await page.getByText(et.approved,{exact:true}).first().waitFor();
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Business accounts: ko/en/vi cash registration, same-currency accounts, keyboard ordering and explicit save; approval actions rendered; ledger workspace has separate coverage.');
+ const service=await browser.newPage({viewport:{width:1440,height:1000}}),serviceErrors=[],requested=[];let fail=true;
+ service.on('pageerror',e=>serviceErrors.push(e.message));
+ await service.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from'/node_modules/.vite/deps/react.js';let org=1;const listeners=new Set();window.switchCompany=()=>{org=1845;listeners.forEach(fn=>fn());};export const useAuth=()=>{const id=React.useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn);},()=>org);return{activeOrgId:id,activeProfile:{orgType:id===1?'MANUFACTURER':'SERVICE',orgRole:'ADMIN'},updateActiveProfile:()=>{}};};`}));
+ await service.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
+ await service.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useLanguage=()=>({languageCode:'en'});"}));
+ const serviceHeaders={'Access-Control-Allow-Origin':'*'};
+ await service.route('**/organizations/primary*',r=>{const id=Number(new URL(r.request().url()).searchParams.get('orgId'));return r.fulfill({headers:serviceHeaders,json:{id,name:id===1?'BARO GARMENT':'DEX LOGIS',type:id===1?'MANUFACTURER':'SERVICE',code:id===1?'BARO':'DEXLOG'}});});
+ await service.route('**/employees**',r=>r.fulfill({headers:serviceHeaders,json:[]}));
+ await service.route('**/entities/*/bank-accounts*',r=>{const url=new URL(r.request().url());requested.push({entity:Number(url.pathname.split('/')[2]),org:Number(url.searchParams.get('orgId'))});return r.fulfill({headers:serviceHeaders,status:fail?503:200,json:fail?{error:'temporary failure'}:{accounts:[],currencies:[{id:1,code:'USD'},{id:2,code:'VND'},{id:3,code:'KRW'}]}});});
+ await service.goto(`http://127.0.0.1:${port}/business-accounts-acceptance.html?screen=organization`);
+ await service.getByRole('button',{name:'Reload',exact:true}).waitFor({timeout:10000}).catch(async error=>{console.log(JSON.stringify({serviceErrors,requested,body:(await service.locator('body').innerText()).slice(0,1800)}));throw error;});assert.equal(await service.getByRole('button',{name:ENTITY_TEXT.en.add,exact:true}).isDisabled(),true);
+ fail=false;await service.getByRole('button',{name:'Reload',exact:true}).click();await service.waitForFunction(()=>!document.querySelector('[role=progressbar]'));
+ await service.evaluate(()=>window.switchCompany());
+ await service.waitForFunction(()=>Array.from(document.querySelectorAll('input')).some(n=>n.value==='DEX LOGIS'));
+ await service.getByRole('button',{name:ENTITY_TEXT.en.add,exact:true}).click();const serviceDialog=service.getByRole('dialog');
+ await serviceDialog.getByLabel(ENTITY_TEXT.en.currency,{exact:true}).click();
+ for(const currency of ['USD','VND','KRW'])await service.getByRole('option',{name:currency,exact:true}).waitFor();
+ assert.ok(requested.some(r=>r.entity===1845&&r.org===1845));assert.ok(requested.every(r=>r.entity===r.org));assert.deepEqual(serviceErrors,[]);await service.close();
+ console.log('Business accounts: ko/en/vi accounts and ordering; failed loading blocks empty registration and retries; BARO to DEX switch reloads scoped entity and shared USD/VND/KRW choices.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

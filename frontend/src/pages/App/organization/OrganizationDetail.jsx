@@ -124,7 +124,7 @@ const getLocalText = (languageCode) => {
 const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const { languageCode } = useLanguage();
   const { showNotification } = useAppActions();
-  const { updateActiveProfile, activeProfile } = useAuth();
+  const { updateActiveProfile, activeProfile, activeOrgId } = useAuth();
   const [organizationId, setOrganizationId] = useState(null);
   const [formData, setFormData] = useState(buildCompanyInfo());
   const [savedFormData, setSavedFormData] = useState(buildCompanyInfo());
@@ -166,7 +166,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
     const fetchOrganization = async () => {
       try {
-        const data = await requestJSON('/organizations/primary');
+        const data = await requestJSON(`/organizations/primary${activeOrgId?`?orgId=${activeOrgId}`:''}`);
         if (!active || !data) return;
         const nextFormData = buildCompanyInfo(data);
         setOrganizationId(data.id ?? null);
@@ -186,7 +186,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   useEffect(() => {
     let active = true;
     setEmployeesLoading(true);
-    requestJSON('/employees')
+    requestJSON(`/employees${activeOrgId?`?orgId=${activeOrgId}`:''}`)
       .then((data) => {
         if (!active) return;
         const safeEmployees = (Array.isArray(data) ? data : []).sort((left, right) =>
@@ -458,7 +458,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid></Grid>
       </EntityDetailSection>
-      <EntityBankAccounts entityId={organizationId} languageCode={languageCode}/>
+      <EntityBankAccounts entityId={organizationId} orgId={activeOrgId} languageCode={languageCode}/>
       {formData.industry === ORGANIZATION_TYPE_KEYS.BRAND && (
         <EntityDetailSection title={localText.orderTitle}>
           <TextField fullWidth select size="small" label={localText.sizeSet} name="defaultSizeSetCode" value={formData.defaultSizeSetCode} onChange={handleInputChange} sx={{ maxWidth: 480 }}>

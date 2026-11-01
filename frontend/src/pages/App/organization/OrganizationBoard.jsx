@@ -12,7 +12,8 @@ import FactoryBoard from './FactoryBoard';
 
 const OrganizationBoard = () => {
   const { languageCode } = useLanguage();
-  const isService=useAuth().activeProfile?.orgType==='SERVICE';
+  const {activeProfile,activeOrgId}=useAuth();
+  const isService=activeProfile?.orgType==='SERVICE';
   const [headerActionsTarget,setHeaderActionsTarget] = useState(null);
   const [currentTab, setCurrentTab] = useState('business');
   const [loadedTabs, setLoadedTabs] = useState({
@@ -69,7 +70,7 @@ const OrganizationBoard = () => {
       {loadedTabs.business && (
         <RequestScopeBoundary scopeId="business" active={currentTab === 'business'}>
           <Box sx={{ display: currentTab === 'business' ? 'block' : 'none' }}>
-            <OrganizationDetail headerActionsTarget={headerActionsTarget} />
+            <OrganizationDetail key={activeOrgId} headerActionsTarget={headerActionsTarget} />
           </Box>
         </RequestScopeBoundary>
       )}
