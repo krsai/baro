@@ -18,7 +18,7 @@ export default function TradePartners({initialType='ALL'}){
  useEffect(()=>{if(location.state?.partnerType)setSelected(location.state.partnerType);},[location.key]);
  const current=data.roles.find(role=>role.code===selected);
  const items=[{id:'ALL',label:labels.all,count:data.rows.length},...data.roles.map(role=>({id:role.code,label:classificationName(role,languageCode),count:data.rows.filter(row=>row.classification.roleIds.includes(role.id)).length}))];
- const initialPartnerType=['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(selected)?selected:'PROCESS_OUTSOURCING';
+ const initialPartnerType=auth.activeProfile?.orgType==='SERVICE'?'LOGISTICS_PROVIDER':['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(selected)?selected:'PROCESS_OUTSOURCING';
  return <AppPageContainer title={getUiMessage('menu.partners','Partners',languageCode)}>
   <HierarchyPanel label={labels.type} items={items} selectedId={selected} onSelect={setSelected}>
    <BusinessPartners key={auth.activeOrgId} embedded unified category={selected==='ALL'?null:current?.id??-1} type={initialPartnerType} onDirectoryLoaded={onDirectoryLoaded}/>

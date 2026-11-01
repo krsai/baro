@@ -1,3 +1,4 @@
+import { SERVICE_FEATURES, SERVICE_ROLE_DEFAULTS } from './serviceCompany.mjs';
 export const ORG_TYPE_KEYS = {
   MANUFACTURER: 'MANUFACTURER',
   BRAND: 'BRAND',
@@ -42,7 +43,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 13;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 14;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
@@ -56,7 +57,7 @@ const POLICY_FEATURES = Object.values(ACCESS_FEATURE_KEYS).filter(
 );
 
 const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
-  [ORG_TYPE_KEYS.SERVICE]: Object.freeze({ADMIN:Object.freeze(['BANK_LEDGER']),ACCOUNTANT:Object.freeze(['BANK_LEDGER']),OPERATOR:Object.freeze([]),WORKER:Object.freeze([])}),
+  [ORG_TYPE_KEYS.SERVICE]: Object.freeze(SERVICE_ROLE_DEFAULTS),
   [ORG_TYPE_KEYS.MANUFACTURER]: Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([...POLICY_FEATURES]),
     [ORG_ROLE_KEYS.OPERATOR]: Object.freeze([
@@ -317,6 +318,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   }
 
   if (sourceSchemaVersion < 13) for (const roles of Object.values(base)) for (const role of ['ADMIN','ACCOUNTANT']) {if (!roles[role].includes('BANK_LEDGER')) roles[role].push('BANK_LEDGER');}
+  if(sourceSchemaVersion<14&&candidate.SERVICE&&['ADMIN','ACCOUNTANT','OPERATOR','WORKER'].every(role=>JSON.stringify(candidate.SERVICE[role])===JSON.stringify(['ADMIN','ACCOUNTANT'].includes(role)?['BANK_LEDGER']:[])))base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
   if (!candidate.SERVICE) base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
   return base;
 };
@@ -344,9 +346,8 @@ export const getAllowedFeaturesForRole = ({ orgType, orgRole, policy = null }) =
   const normalizedOrgType = normalizeOrgTypeKey(orgType);
   const normalizedOrgRole = normalizeRoleKey(orgRole);
   if (!normalizedOrgType || !normalizedOrgRole) return [];
-  return sanitizeFeatureArray(
-    resolvedPolicy?.[normalizedOrgType]?.[normalizedOrgRole]
-  );
+  const features=sanitizeFeatureArray(resolvedPolicy?.[normalizedOrgType]?.[normalizedOrgRole]);
+  return normalizedOrgType==='SERVICE'?features.filter(key=>SERVICE_FEATURES.includes(key)):features;
 };
 
 export const getPolicyOrgTypes = () => [...POLICY_ORG_TYPES];

@@ -3,6 +3,9 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {normalizeLocalizedName,validLocalizedName} from '../utils/localizedName';
 import {createHash} from 'node:crypto';
 import {resolvePartnerCode} from './entityProfile';
+import {copyAdministrationTemplate} from './companyAdministrationTemplate';
+import {normalizeFactoryManagementStartDateKey} from '../factories/factoryManagementStart';
+import {generateNextEmployeeNo} from '../employees/employeeNumber';
 const tenantTypes=['MANUFACTURER','BRAND','SERVICE'];
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim()&&value.trim().length<=max?value.trim():fail('COMPANY_INVALID_INPUT');
@@ -39,17 +42,45 @@ export async function createServiceCompany(db:any,email:string,body:any){
   const {name,nameKo,nameVi}=normalizeLocalizedName(body,'name');
   const code=resolvePartnerCode(body.code,name),key=text(body.clientKey,60);
   if(!/^[-0-9a-f]{36}$/i.test(key))return fail('COMPANY_INVALID_INPUT');
-  const requestHash=createHash('sha256').update(JSON.stringify({name,nameKo,nameVi,code})).digest('hex');
+  const setup=body.managementStartDate!==undefined;
+  const managementStartDate=setup?normalizeFactoryManagementStartDateKey(body.managementStartDate):null;
+  if(setup&&(!managementStartDate||!['VN','KR'].includes(body.country)||!['VND','USD','KRW'].includes(body.currencyCode)||typeof body.adminName!=='string'||!body.adminName.trim()))return fail('COMPANY_INVALID_INPUT');
+  const adminName=body.adminName===undefined?email:text(body.adminName,160);
+  for(const field of ['adminPayrollExcluded','adminAlwaysFullAttendance'])if(body[field]!==undefined&&typeof body[field]!=='boolean')return fail('COMPANY_INVALID_INPUT');
+  const adminPayrollExcluded=body.adminPayrollExcluded??true;
+  const adminAlwaysFullAttendance=body.adminAlwaysFullAttendance??false;
+  const templateOrgId=body.templateOrgId==null||body.templateOrgId===''?null:Number(body.templateOrgId);
+  if(templateOrgId!==null&&(!Number.isSafeInteger(templateOrgId)||templateOrgId<=0))return fail('INVALID_COMPANY_TEMPLATE');
+  const setupData={...(setup?{managementStartDate,country:body.country,currencyCode:body.currencyCode}:{}),...(body.adminName!==undefined?{adminName}:{}),...(templateOrgId?{templateOrgId}:{})};
+  const requestHash=createHash('sha256').update(JSON.stringify({name,nameKo,nameVi,code,...setupData,...(body.adminPayrollExcluded!==undefined?{adminPayrollExcluded}:{}),...(body.adminAlwaysFullAttendance!==undefined?{adminAlwaysFullAttendance}:{})})).digest('hex');
   return retryEditTransaction(db,async(tx:any)=>{
     if(!(await companyChoices(tx,email)).canCreateCompany)return fail('COMPANY_ADMIN_REQUIRED',403);
     const previous=await tx.companyWorkspaceRegistration.findUnique({where:{actorEmail_clientKey:{actorEmail:email,clientKey:key}},include:{organization:true}});
     if(previous){if(previous.requestHash!==requestHash)return fail('COMPANY_RETRY_CONFLICT',409);return previous.organization;}
+    if(templateOrgId){
+      const system=await tx.systemUser.findUnique({where:{email},select:{systemRole:true}});
+      if(system?.systemRole!=='SYSTEM_ADMIN'){
+        const member=await tx.employee.findUnique({where:{orgId_email:{orgId:templateOrgId,email}}});
+        if(member?.status!=='ACTIVE'||member?.orgRole!=='ADMIN')return fail('COMPANY_TEMPLATE_ACCESS_DENIED',403);
+      }
+    }
     if(await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'}}}))return fail('COMPANY_CODE_EXISTS',409);
-    const organization=await tx.organization.create({data:{type:'SERVICE',name,nameKo,nameVi,code,industry:'LOGISTICS',createdBy:email}});
+    const currency=setup?await tx.currency.findUnique({where:{code:body.currencyCode}}):null;
+    if(setup&&!currency)return fail('COMPANY_CURRENCY_NOT_FOUND');
+    const organization=await tx.organization.create({data:{type:'SERVICE',name,nameKo,nameVi,code,industry:'LOGISTICS',createdBy:email,...(setup?{country:body.country,salaryCurrencyId:currency!.id}:{})}});
     const now=new Date();
     await tx.organizationSubscription.create({data:{orgId:organization.id,status:'TRIAL',membershipEmail:email,billingEmail:email,trialStartedAt:now,trialEndsAt:new Date(now.getTime()+30*86400000),createdBy:email}});
-    const gradeId=await gradeForCompany(tx,organization.id);
-    await tx.employee.create({data:{orgId:organization.id,email,name:email,orgRole:'ADMIN',status:'ACTIVE',gradeId,approvedAt:now,approvedBy:email,payrollExcluded:true,createdBy:email}});
+    let gradeId=templateOrgId?await copyAdministrationTemplate(tx,templateOrgId,organization.id,managementStartDate||undefined):await gradeForCompany(tx,organization.id);
+    if(templateOrgId){
+      const ownSource=await tx.employee.findUnique({where:{orgId_email:{orgId:templateOrgId,email}},include:{grade:true}});
+      if(ownSource?.status==='ACTIVE'&&ownSource.grade?.isActive){
+        const ownGrade=await tx.employeeGrade.findUnique({where:{orgId_code:{orgId:organization.id,code:ownSource.grade.code}}});
+        if(ownGrade?.isActive)gradeId=ownGrade.id;
+      }
+    }
+    const workplace=setup?await tx.factory.create({data:{orgId:organization.id,name,factoryCode:'HQ',managementStartDate,country:body.country,salaryCurrencyId:currency!.id,createdBy:email}}):null;
+    const employeeNo=setup?await generateNextEmployeeNo(tx,organization.id):undefined;
+    await tx.employee.create({data:{orgId:organization.id,email,name:adminName,orgRole:'ADMIN',status:'ACTIVE',gradeId,approvedAt:now,approvedBy:email,payrollExcluded:adminPayrollExcluded,alwaysFullAttendance:adminAlwaysFullAttendance,createdBy:email,...(setup?{factoryId:workplace!.id,employeeNo,joinedAt:new Date(managementStartDate!+'T00:00:00+07:00')}:{})}});
     await tx.companyWorkspaceRegistration.create({data:{actorEmail:email,clientKey:key,orgId:organization.id,requestHash}});
     return organization;
   });
@@ -57,6 +88,11 @@ export async function createServiceCompany(db:any,email:string,body:any){
 export function registerCompanyWorkspaceRoutes(app:any,db:any,gates:any){
   const email=(req:any)=>{const value=gates.getEmail(req);if(!value||!value.includes('@'))return fail('AUTHENTICATION_REQUIRED',401);return value;};
   app.get('/auth/workspaces',async(req:any,res:any)=>res.json(await companyChoices(db,email(req))));
+  app.get('/auth/workspace-templates',async(req:any,res:any)=>{
+    const actor=email(req),system=await db.systemUser.findUnique({where:{email:actor},select:{systemRole:true}});
+    const memberships=system?.systemRole==='SYSTEM_ADMIN'?null:await db.employee.findMany({where:{email:actor,status:'ACTIVE',orgRole:'ADMIN'},select:{orgId:true}});
+    res.json(await db.organization.findMany({where:{ownerOrgId:null,isActive:true,type:{in:tenantTypes},...(memberships?{id:{in:memberships.map((row:any)=>row.orgId)}}:{})},select:{id:true,name:true,nameKo:true,nameVi:true},orderBy:{name:'asc'}}));
+  });
   app.post('/auth/workspaces',async(req:any,res:any)=>res.status(201).json(await createServiceCompany(db,email(req),req.body)));
   app.get('/company-members',async(req:any,res:any)=>{
     const scope=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!scope)return;

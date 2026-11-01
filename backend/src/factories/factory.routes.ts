@@ -8,7 +8,7 @@ import {
   normalizeFactoryManagementStartDateKey,
   parseFactoryManagementStartDateInput,
 } from "./factoryManagementStart";
-import { getOrganizationByQuery } from "../middleware/access";
+import { getOrganizationByQuery, requireOrgRole } from "../middleware/access";
 import { ensureArray, toNumberOrNull, toPositiveIntOrNull } from "../utils/common";
 import { createHttpError } from "../utils/http";
 
@@ -259,7 +259,8 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });
     }
-    if (!isManufacturerOrg(organization)) {
+    if(organization.type==='SERVICE'&&!await requireOrgRole(req,res,{allowedRoles:['ADMIN'],allowSystemAdmin:false}))return;
+    if (!isManufacturerOrg(organization) && organization.type!=='SERVICE') {
       return res.status(400).json({ ok: false, error: "brand organizations have no factories" });
     }
     const {
@@ -291,6 +292,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (codeConflict) {
       return res.status(409).json({ ok: false, error: "factoryCode already in use" });
     }
+    if(organization.type==='SERVICE'&&(targetMonthlyWage!=null||wagePerSecond!=null))return res.status(400).json({ok:false,error:'production allowance is not available for service companies'});
     const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
@@ -345,7 +347,7 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
               : null,
         },
       });
-      await tx.warehouse.create({
+      if(organization.type!=='SERVICE')await tx.warehouse.create({
         data: {
           orgId: organization.id,
           factoryId: createdFactory.id,
@@ -384,7 +386,8 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });
     }
-    if (!isManufacturerOrg(organization)) {
+    if(organization.type==='SERVICE'&&!await requireOrgRole(req,res,{allowedRoles:['ADMIN'],allowSystemAdmin:false}))return;
+    if (!isManufacturerOrg(organization) && organization.type!=='SERVICE') {
       return res.status(400).json({ ok: false, error: "brand organizations have no factories" });
     }
     const existing = await prisma.factory.findFirst({

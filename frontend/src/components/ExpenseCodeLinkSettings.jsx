@@ -21,7 +21,7 @@ const HIERARCHY_TEXT={
 export const EXPENSE_CODE_LINK_TEXT=Object.fromEntries(Object.entries(BASE_TEXT).map(([language,text])=>[language,{...text,...HIERARCHY_TEXT[language]}]));
 
 export default function ExpenseCodeLinkSettings(){
- const {activeOrgId,activeOrgRole}=useAuth(),{languageCode}=useLanguage();
+ const {activeOrgId,activeOrgRole,activeProfile}=useAuth(),{languageCode}=useLanguage();
  const text=EXPENSE_CODE_LINK_TEXT[languageCode]||EXPENSE_CODE_LINK_TEXT.en,scope=useRef(activeOrgId);scope.current=activeOrgId;
  const [rows,setRows]=useState([]),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(false),[saved,setSaved]=useState(false),[reload,setReload]=useState(0);
  const canEdit=activeOrgRole==='ADMIN';
@@ -49,6 +49,6 @@ export default function ExpenseCodeLinkSettings(){
     </TableCell><TableCell><Button disabled={saving} onClick={()=>setEditingId(row.id)}>{text.target}</Button></TableCell></TableRow>)}
    {!rows.length&&<TableRow><TableCell colSpan={4}>{loading?text.loading:text.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>
- <Dialog open={Boolean(editing)} onClose={()=>!saving&&setEditingId(null)} fullWidth maxWidth="sm"><DialogTitle>{editing?.code} · {serviceName(editing,languageCode)}</DialogTitle><DialogContent>{editing&&<AccountingInputSettings value={editing.inputSettings} onChange={update} languageCode={languageCode} disabled={!canEdit||saving}/>}</DialogContent><DialogActions><Button onClick={()=>setEditingId(null)}>{languageCode==='ko'?'닫기':languageCode==='vi'?'Đóng':'Close'}</Button>{canEdit&&<Button disabled={saving||!editing||editing.original===fingerprint(editing)} onClick={()=>save(editing)}>{text.save}</Button>}</DialogActions></Dialog>
+ <Dialog open={Boolean(editing)} onClose={()=>!saving&&setEditingId(null)} fullWidth maxWidth="sm"><DialogTitle>{editing?.code} · {serviceName(editing,languageCode)}</DialogTitle><DialogContent>{editing&&<AccountingInputSettings productionEnabled={activeProfile?.orgType!=='SERVICE'} value={editing.inputSettings} onChange={update} languageCode={languageCode} disabled={!canEdit||saving}/>}</DialogContent><DialogActions><Button onClick={()=>setEditingId(null)}>{languageCode==='ko'?'닫기':languageCode==='vi'?'Đóng':'Close'}</Button>{canEdit&&<Button disabled={saving||!editing||editing.original===fingerprint(editing)} onClick={()=>save(editing)}>{text.save}</Button>}</DialogActions></Dialog>
  </Stack></Paper>;
 }

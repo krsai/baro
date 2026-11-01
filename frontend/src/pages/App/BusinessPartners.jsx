@@ -121,7 +121,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     >
       {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}
       <BusinessPartnerDialog
-        allowCustomerCreation={unified}
+        allowCustomerCreation={unified && auth.activeProfile?.orgType!=='SERVICE'}
         open={createOpen || Boolean(editingPartner)}
         onClose={() => { setCreateOpen(false); setEditingPartner(null); }}
         onSaved={loadPartners}

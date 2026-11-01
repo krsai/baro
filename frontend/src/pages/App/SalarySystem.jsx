@@ -242,7 +242,8 @@ const FormulaCursorSlot = ({ position, active, onSelect }) => (
 );
 
 const SalarySystem = () => {
-  const { activeOrgId } = useAuth();
+  const { activeOrgId, activeProfile } = useAuth();
+  const isService=activeProfile?.orgType==='SERVICE', availablePayTypes=isService?['GENERAL']:PAY_TYPE_ORDER;
   const isRouteActive = useLocation().pathname === '/salary-system';
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
@@ -252,7 +253,7 @@ const SalarySystem = () => {
   const [factoryId, setFactoryId] = useState(null);
   const [rates, setRates] = useState({});
   const [currencyCode, setCurrencyCode] = useState('VND');
-  const [items, setItems] = useState(DEFAULT_ITEMS);
+  const [items, setItems] = useState(()=>isService?DEFAULT_ITEMS.filter(row=>row.category!=='INCENTIVE').map(row=>({...row,payTypes:['GENERAL']})):DEFAULT_ITEMS);
   const [selectedId, setSelectedId] = useState('baseSalary');
   const [dialogOpen, setDialogOpen] = useState(false);
   // 저장(=버전 확정)할 때마다 그 시점의 항목/단가 스냅샷이 쌓인다. 공정 버전 관리처럼
@@ -304,7 +305,7 @@ const SalarySystem = () => {
       ]);
       if (sequence !== loadSequence.current || scope !== loadScope.current) return null;
       setGrades((Array.isArray(sets) ? sets : []).flatMap((set) => set.grades || []).filter((grade) => grade.isActive));
-      const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).map((row) => row.id === 'incentiveTotal'
+      const loadedItems = (Array.isArray(salarySystem?.items) && salarySystem.items.length ? salarySystem.items : DEFAULT_ITEMS).filter(row=>!isService||row.category!=='INCENTIVE').map(row=>isService?{...row,payTypes:['GENERAL']}:row).map((row) => row.id === 'incentiveTotal'
         ? { ...row, ...normalizeLocalizedName(row), payTypes: ['OUTPUT'], formula: ['PRODUCTION_ALLOWANCE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '', required: true }
         : { ...row, ...normalizeLocalizedName(row), paymentMonths: Array.isArray(row.paymentMonths) ? row.paymentMonths : PAYMENT_MONTHS_BY_CYCLE[row.payCycle], capValue: optionalMoney(row.capValue) });
       const next = {};
@@ -348,7 +349,7 @@ const SalarySystem = () => {
   };
   const addItem = () => {
     if (!hasLocalizedName(draft)) return;
-    const next = { ...draft, ...normalizeLocalizedName(draft), id: `draft-${Date.now()}`, payTypes: defaultPayTypesForCategory(draft.category) };
+    const next = { ...draft, ...normalizeLocalizedName(draft), id: `draft-${Date.now()}`, payTypes: isService?['GENERAL']:defaultPayTypesForCategory(draft.category) };
     setItems((rows) => [...rows, next]);
     setSelectedId(next.id);
     setDialogOpen(false);
@@ -522,10 +523,10 @@ const SalarySystem = () => {
     </Stack>}
     {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
 
-    <SalaryRateMatrix items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onEdit={openFormulaDialog} onReorder={reorderItems} onChangeRate={changeRate} disabled={saving || versionBusy || edit.stale || savedSnapshot === null} />
+    <SalaryRateMatrix payTypes={availablePayTypes} items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onEdit={openFormulaDialog} onReorder={reorderItems} onChangeRate={changeRate} disabled={saving || versionBusy || edit.stale || savedSnapshot === null} />
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Stack spacing={2}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field,value)=>setFormulaSettingsDraft(previous=>({...previous,[field]:value}))}/><Alert severity="info">{languageCode === 'ko' ? '이름은 변경할 수 있으며, 생산수당 자동 계산 규칙은 유지됩니다.' : languageCode === 'vi' ? 'Có thể đổi tên. Quy tắc tự động tính phụ cấp sản lượng được giữ nguyên.' : 'You can rename this item. Its automatic production allowance calculation remains unchanged.'}</Alert></Stack> : <Stack spacing={2}>
       <LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field, value) => setFormulaSettingsDraft(prev => ({ ...prev, [field]: value }))} />
-      <Box><Typography variant="body2" fontWeight={600}>{languageCode === 'ko' ? '적용 대상' : languageCode === 'vi' ? 'Đối tượng áp dụng' : 'Applies to'}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{PAY_TYPE_ORDER.map(payType=><FormControlLabel key={payType} label={getPayTypeLabel(payType,payType,languageCode)} control={<Checkbox size="small" checked={(formulaSettingsDraft.payTypes||[]).includes(payType)} disabled={formulaSettingsDraft.category==='INCENTIVE'} onChange={()=>toggleDraftPayType(payType)} inputProps={{'aria-label':getPayTypeLabel(payType,payType,languageCode)}}/>}/>)}</Stack></Box>
+      <Box><Typography variant="body2" fontWeight={600}>{languageCode === 'ko' ? '적용 대상' : languageCode === 'vi' ? 'Đối tượng áp dụng' : 'Applies to'}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{availablePayTypes.map(payType=><FormControlLabel key={payType} label={getPayTypeLabel(payType,payType,languageCode)} control={<Checkbox size="small" checked={(formulaSettingsDraft.payTypes||[]).includes(payType)} disabled={formulaSettingsDraft.category==='INCENTIVE'} onChange={()=>toggleDraftPayType(payType)} inputProps={{'aria-label':getPayTypeLabel(payType,payType,languageCode)}}/>}/>)}</Stack></Box>
       <Paper variant="outlined" sx={{ p: 2, minHeight: 80, bgcolor: 'background.default' }}>
         <Stack direction="row" alignItems="center" sx={{ mb: 1.5 }}>
           <FunctionsIcon fontSize="small" color="primary" sx={{ mr: 1 }} />
@@ -561,7 +562,7 @@ const SalarySystem = () => {
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography fontWeight={700} sx={{ mb: 1.5 }}>{t('파라미터 모듈')}</Typography>
           <Stack spacing={1.5}>
-            {FORMULA_PARAMETER_GROUPS.filter((group) => !group.incentiveOnly || formulaSettingsDraft.category === 'INCENTIVE').map((group) => <Box key={group.label}>
+            {FORMULA_PARAMETER_GROUPS.filter((group) => !group.incentiveOnly || !isService&&formulaSettingsDraft.category === 'INCENTIVE').map((group) => <Box key={group.label}>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{t(group.label)}</Typography>
               <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{group.keys.filter(key=>key!=='BASE_SALARY'||formulaSettingsDraft.category!=='BASE').map((key) => {
                 const unit = formulaParameterUnit(FORMULA_PARAMETERS[key], currencyCode);
@@ -606,7 +607,7 @@ const SalarySystem = () => {
 
     <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('급여 항목 추가')}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
       <LocalizedNameFields value={draft} languageCode={languageCode} autoFocus onChange={(field, value) => setDraft(prev => ({ ...prev, [field]: value }))} />
-      <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
+      <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key])=>!isService||key!=='INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
     </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || !hasLocalizedName(draft)}>{t('추가')}</Button></DialogActions></Dialog>
 

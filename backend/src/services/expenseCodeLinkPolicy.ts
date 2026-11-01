@@ -13,7 +13,7 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
     styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings||{})}};
 }
 
-export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any) {
+export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string) {
   if (edit?.cost || edit?.record) {
     // Old rows have no snapshot. Their actual production FK is authoritative.
     const target=edit.record?'PROCESS':edit.cost.linkTarget ?? 'NONE';
@@ -22,7 +22,7 @@ export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, 
   }
   if (!code?.baseId) return code;
   const policy=await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId:code.baseId}}});
-  const result=effectiveExpenseCode(code,policy);
+  const result=effectiveExpenseCode(code,policy,orgType);
   if(!policy?.inputSettings && tx.expenseCodeLinkAudit?.create){
    const audit=await tx.expenseCodeLinkAudit.create({data:{orgId,baseId:code.baseId,target:result.linkTarget,source:policy?'COMPANY_SNAPSHOT':'SYSTEM_DEFAULT',inputSettings:accountingInputs(result.base)}});
    result.linkPolicyAuditId=audit.id;
@@ -30,10 +30,10 @@ export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, 
   return result;
 }
 
-export function effectiveExpenseCode(code:any,policy?:any){
+export function effectiveExpenseCode(code:any,policy?:any,orgType?:string){
  if(!code)return code;
- const settings=policy?.inputSettings??(!policy?accountingInputs(code.base):undefined);
- return applyExpenseCodeLinkPolicy(code,policy?.target??accountingInputTarget(settings),policy?.auditId??null,false,undefined,settings);
+ const settings=orgType==='SERVICE'?{...accountingInputs(policy?.inputSettings||code.base),orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN'}:policy?.inputSettings??(!policy?accountingInputs(code.base):undefined);
+ return applyExpenseCodeLinkPolicy(code,orgType==='SERVICE'?'NONE':policy?.target??accountingInputTarget(settings),policy?.auditId??null,false,undefined,settings);
 }
 
 export async function saveExpenseCodeLinkPolicy(tx: any, orgId: number, actorId: number, baseId: number, target: string, inputSettings?:any) {
@@ -61,12 +61,13 @@ export function registerExpenseCodeLinkPolicyRoutes(app: any, db: any, gates: an
     ]);
     const byId=new Map(policies.map((row: any)=>[row.baseId,row]));
     res.json(bases.map((base: any)=>({id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi,
-      inputSettings:accountingInputs(effectiveExpenseCode({...base,base},byId.get(base.id)).base),
-      target:(byId.get(base.id) as any)?.target ?? accountingInputTarget(accountingInputs(base)),updatedAt:(byId.get(base.id) as any)?.updatedAt ?? null})));
+      inputSettings:accountingInputs(effectiveExpenseCode({...base,base},byId.get(base.id),access.organization.type).base),
+      target:access.organization.type==='SERVICE'?'NONE':(byId.get(base.id) as any)?.target ?? accountingInputTarget(accountingInputs(base)),updatedAt:(byId.get(base.id) as any)?.updatedAt ?? null})));
   });
   app.put(path,async(req: any,res: any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;
     const {baseId,target,inputSettings}=req.body ?? {};
+    if(access.organization.type==='SERVICE'&&(target&&target!=='NONE'||['orderInput','styleInput','processInput'].some(key=>inputSettings?.[key]&&inputSettings[key]!=='HIDDEN')))throw createHttpError(400,'INVALID_INPUT_OPTION');
     res.json(await db.$transaction((tx: any)=>saveExpenseCodeLinkPolicy(tx,access.organization.id,gates.actorId(),baseId,target,inputSettings),{isolationLevel:'Serializable'}));
   });
 }

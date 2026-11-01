@@ -1,3 +1,4 @@
+import {SERVICE_ROLE_DEFAULTS,SERVICE_FEATURES,supportsWorkplaces} from './services/serviceCompany';
 import {loadIssuedOrderSalesValues} from './services/issuedOrderSalesValue';
 import {employeePayee,registerExpensePayeeRoutes} from './services/expensePayee';
 import { loadAssignmentStyleDetails } from './services/assignmentStyleLoading';
@@ -1242,7 +1243,7 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 13;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 14;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "BANK_LEDGER",
@@ -1284,7 +1285,7 @@ const ROLE_ACCESS_POLICY_FEATURE_SET = new Set<string>(
   ROLE_ACCESS_POLICY_FEATURES
 );
 const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
-  SERVICE:{ADMIN:["BANK_LEDGER"],ACCOUNTANT:["BANK_LEDGER"],OPERATOR:[],WORKER:[]},
+  SERVICE: JSON.parse(JSON.stringify(SERVICE_ROLE_DEFAULTS)),
   MANUFACTURER: {
     ADMIN: [...ROLE_ACCESS_POLICY_FEATURES],
     OPERATOR: [
@@ -1502,6 +1503,8 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     }
   }
   if (sourceSchemaVersion < 13) for (const roles of Object.values(policy)) for (const role of ["ADMIN","ACCOUNTANT"] as const) {if (!roles[role].includes("BANK_LEDGER")) roles[role].push("BANK_LEDGER");}
+  const service=(value as any)?.SERVICE;
+  if(sourceSchemaVersion<14&&service&&['ADMIN','ACCOUNTANT','OPERATOR','WORKER'].every(role=>JSON.stringify(service[role])===JSON.stringify(['ADMIN','ACCOUNTANT'].includes(role)?['BANK_LEDGER']:[])))policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
   if (!(value as any)?.SERVICE) policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
   return policy;
 };
@@ -1568,13 +1571,14 @@ const hasRoleAccessPolicyFeature = async ({
     .toUpperCase() as OrganizationTypeKey;
   if (
     normalizedOrgType !== ORGANIZATION_TYPE_KEYS.MANUFACTURER &&
-    normalizedOrgType !== ORGANIZATION_TYPE_KEYS.BRAND
+    normalizedOrgType !== ORGANIZATION_TYPE_KEYS.BRAND &&
+    normalizedOrgType !== ORGANIZATION_TYPE_KEYS.SERVICE
   ) {
     return false;
   }
 
   const { policy } = await loadRoleAccessPolicySetting();
-  return policy[normalizedOrgType][orgRole].includes(feature);
+  return (normalizedOrgType !== 'SERVICE' || SERVICE_FEATURES.includes(feature)) && policy[normalizedOrgType][orgRole].includes(feature);
 };
 const ONBOARDING_ORGANIZATION_TYPE_TOKENS: Record<string, OrganizationTypeKey> = {
   manufacturer: ORGANIZATION_TYPE_KEYS.MANUFACTURER,
@@ -16357,6 +16361,7 @@ const resolveEmployeeStoredPayType = async ({
   role?: { code?: string | null; defaultPayType?: string | null } | null | undefined;
 }): Promise<EmployeePayType> => {
   if (membershipRole !== "WORKER") return EMPLOYEE_PAY_TYPE.GENERAL;
+  if(providedRole?.code==='WORKER_GENERAL')return EMPLOYEE_PAY_TYPE.GENERAL;
 
   const normalizedRoleId = Number(roleId);
   if (Number.isSafeInteger(normalizedRoleId) && normalizedRoleId > 0) {
@@ -18365,6 +18370,8 @@ const syncStyleProcessNamesFromMaster = async ({
 };
 
 const ensureDefaultEmployeeRoles = async (orgId: number) => {
+  const org=await prisma.organization.findUnique({where:{id:orgId},select:{type:true}});
+  if(org?.type==='SERVICE')return [await prisma.attrRole.upsert({where:{orgId_code:{orgId,code:'WORKER_GENERAL'}},create:{orgId,code:'WORKER_GENERAL',name:'직원',defaultPayType:'GENERAL',sortOrder:0},update:{}})];
   const existingRoles = await prisma.attrRole.findMany({
     where: { orgId },
     select: { id: true, code: true, name: true, defaultPayType: true, sortOrder: true },
@@ -18546,7 +18553,7 @@ const ensureDefaultEmployeeRoles = async (orgId: number) => {
 const resolveDefaultEmployeeRoleId = async (orgId: number) => {
   const roles = await ensureDefaultEmployeeRoles(orgId);
   const sewingRole = roles.find((role) => role.code === DEFAULT_EMPLOYEE_ROLE_CODE_SEWING);
-  return sewingRole?.id ?? null;
+  return sewingRole?.id ?? roles.find(role=>role.code==='WORKER_GENERAL')?.id ?? null;
 };
 
 const normalizeManagedAttributeCode = (value: any): string =>
@@ -19546,7 +19553,7 @@ app.use(
 app.use(
   createOrgMembershipRouter({
     hasOrgFeatureAccess: hasRoleAccessPolicyFeature,
-    isManufacturerOrg,
+    isManufacturerOrg: supportsWorkplaces,
     resolveDefaultEmployeeRoleId,
     resolveEmployeeStoredPayType,
     resolveRole,
@@ -19557,7 +19564,7 @@ app.use(
 app.use(
   createEmployeeRouter({
     hasOrgFeatureAccess: hasRoleAccessPolicyFeature,
-    isManufacturerOrg,
+    isManufacturerOrg: supportsWorkplaces,
     resolveDefaultEmployeeRoleId,
     resolveEmployeeStoredPayType,
   })

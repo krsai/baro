@@ -124,7 +124,7 @@ const getLocalText = (languageCode) => {
 const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const { languageCode } = useLanguage();
   const { showNotification } = useAppActions();
-  const { updateActiveProfile } = useAuth();
+  const { updateActiveProfile, activeProfile } = useAuth();
   const [organizationId, setOrganizationId] = useState(null);
   const [formData, setFormData] = useState(buildCompanyInfo());
   const [savedFormData, setSavedFormData] = useState(buildCompanyInfo());
@@ -327,7 +327,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               onChange={handleInputChange}
             >
               <MenuItem value="">-</MenuItem>
-              {Object.entries(localText.industryOptions).map(([value, label]) => (
+              {Object.entries(activeProfile?.orgType==='SERVICE'?{LOGISTICS:({ko:'물류',en:'Logistics',vi:'Logistics'})[languageCode]||'Logistics'}:localText.industryOptions).map(([value, label]) => (
                 <MenuItem key={value} value={value}>
                   {label}
                 </MenuItem>

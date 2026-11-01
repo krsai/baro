@@ -9,7 +9,7 @@ const GROUPS = [
   ['SETTINGS', 'settings', ['/business', '/employee-system', '/salary-system', '/approval-settings', '/personal-settings', '/app-settings', '/system-setting/access-policy']],
 ];
 
-export function organizeCompanyMenu(items, translate) {
+export function organizeCompanyMenu(items, translate, orgType) {
   const leaves = new Map();
   const groups = new Map();
   for (const item of items) {
@@ -26,7 +26,7 @@ export function organizeCompanyMenu(items, translate) {
       used.add(path);
       return leaves.get(path);
     }).filter(Boolean);
-    if (source && children.length) result.push({ ...source, label: translate(`menu.${labelKey}`), children });
+    if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'partners':labelKey}`), children });
   }
   // Preserve every unassigned menu, including all SYSTEM reference/admin routes.
   for (const item of items.filter(item => item.isParent)) {

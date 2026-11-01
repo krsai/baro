@@ -460,7 +460,7 @@ const MainLayout = () => {
     [authState]
   );
   const canViewEmployeeMenu = hasPathAccess('/employee');
-  const canViewCustomerMenu = hasPathAccess('/customer');
+  const canViewCustomerMenu = activeProfile?.orgType!=='SERVICE' && hasPathAccess('/customer');
   const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
   const isSystemAdminProfile =
@@ -878,8 +878,8 @@ const MainLayout = () => {
   ]);
 
   const menuStructureBlueprint = useMemo(
-    () => organizeCompanyMenu(baseMenuBlueprint, key => getUiMessage(key, key, languageCode)),
-    [baseMenuBlueprint, languageCode]
+    () => organizeCompanyMenu(baseMenuBlueprint, key => getUiMessage(key, key, languageCode), activeProfile?.orgType),
+    [baseMenuBlueprint, languageCode, activeProfile?.orgType]
   );
 
   const accessPolicyMenuBlueprint = useMemo(

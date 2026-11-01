@@ -1,3 +1,4 @@
+import {useAuth} from '../../context/AuthContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useEffect, useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Paper, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
@@ -27,6 +28,7 @@ const TEXT = {
 // 기준은 공장이 아니라 조직 전체에 적용되는 값이라, 급여 설정 화면의 공장 탭 선택과
 // 무관하게 항상 같은 값을 조회/저장한다.
 const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, showNotification }) => {
+  const isService=useAuth().activeProfile?.orgType==='SERVICE';
   const text = TEXT[languageCode] || TEXT.en;
   const [policies, setPolicies] = useState([]);
   const [baseline, setBaseline] = useState('');
@@ -73,7 +75,7 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
     <DialogContent dividers sx={{ bgcolor: 'grey.50' }}>
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">{text.help}</Typography>
-        {policies.map((row) => {
+        {policies.filter(row=>!isService||row.payType==='GENERAL').map((row) => {
           const palette = LABEL_PALETTE[PAY_TYPE_PALETTE[row.payType]] || LABEL_PALETTE.blue;
           const hours = dailyMinutes(row) / 60;
           return <Paper key={row.payType} variant="outlined" sx={{ p: 2, borderRadius: 2, borderLeft: 4, borderLeftColor: palette.border, bgcolor: 'background.paper' }}>

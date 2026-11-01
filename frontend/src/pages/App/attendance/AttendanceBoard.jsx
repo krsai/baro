@@ -1,3 +1,4 @@
+import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
 import QueryFeedback from '../../../components/QueryFeedback';
@@ -240,8 +241,9 @@ const AttendanceBoard = ({
   initialWorkDate = '',
 }) => {
   const { showNotification } = useAppActions();
-  const { activeOrgId, activeFactoryId } = useAuth();
+  const { activeOrgId, activeFactoryId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const text=(bundle,lang,fallback)=>workplaceText(resolveText(bundle,lang,fallback),activeProfile?.orgType);
   const [queryError, setQueryError] = useState(false);
   const [selectedDate, setSelectedDate] = useState(() => resolveInitialDate(initialWorkDate));
   const [factories, setFactories] = useState([]);
@@ -365,7 +367,7 @@ const AttendanceBoard = ({
         const rows = await requestJSON('/employees' + query);
         if (cancelled) return;
         const list = Array.isArray(rows) ? rows : [];
-        const workerNameTemplate = resolveText(
+        const workerNameTemplate = text(
           TEXT.workerFallbackName,
           languageCode,
           'Worker {id}'
@@ -433,7 +435,7 @@ const AttendanceBoard = ({
         setEntriesByWorker({});
         setSavedEntriesSignature('[]');
         showNotification(
-          resolveText(TEXT.fetchEntriesError, languageCode, 'Failed to load attendance entries.'),
+          text(TEXT.fetchEntriesError, languageCode, 'Failed to load attendance entries.'),
           'error'
         );
       } finally {
@@ -488,10 +490,10 @@ const AttendanceBoard = ({
       }, {});
       setEntriesByWorker(nextEntriesByWorker);
       setSavedEntriesSignature(buildAttendanceEntriesSignature(nextEntriesByWorker));
-      showNotification(resolveText(TEXT.saveSuccess, languageCode, 'Attendance entries saved.'), 'success');
+      showNotification(text(TEXT.saveSuccess, languageCode, 'Attendance entries saved.'), 'success');
     } catch (error) {
       showNotification(
-        error?.message || resolveText(TEXT.saveFailed, languageCode, 'Failed to save attendance entries.'),
+        error?.message || text(TEXT.saveFailed, languageCode, 'Failed to save attendance entries.'),
         'error'
       );
     } finally {
@@ -525,7 +527,7 @@ const AttendanceBoard = ({
 
   return (
     <AppPageContainer
-      title={resolveText(TEXT.title, languageCode, 'Attendance Detail')}
+      title={text(TEXT.title, languageCode, 'Attendance Detail')}
       titleActions={(
         <Stack direction="row" spacing={1}>
           <SaveButton
@@ -541,11 +543,11 @@ const AttendanceBoard = ({
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={resolveText(TEXT.searchWorker, languageCode, 'Search worker')}
+              placeholder={text(TEXT.searchWorker, languageCode, 'Search worker')}
             />
           )}
           controls={<><CustomDatePicker
-                label={resolveText(TEXT.workDate, languageCode, 'Work date')}
+                label={text(TEXT.workDate, languageCode, 'Work date')}
                 value={managedDate}
                 minDate={operationStartDay}
                 disabled={loadingFactories || !selectedFactoryId}
@@ -557,19 +559,19 @@ const AttendanceBoard = ({
               /></>}
           filters={<><FormControl size="small" sx={{ minWidth: 200 }}>
                 <InputLabel id="attendance-factory-select-label">
-                  {resolveText(TEXT.factory, languageCode, 'Factory')}
+                  {text(TEXT.factory, languageCode, 'Factory')}
                 </InputLabel>
                 <Select
                   labelId="attendance-factory-select-label"
                   value={selectedFactoryId}
-                  label={resolveText(TEXT.factory, languageCode, 'Factory')}
+                  label={text(TEXT.factory, languageCode, 'Factory')}
                   onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
                   disabled={loadingFactories || factories.length === 0}
                 >
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name ||
-                        formatTemplate(resolveText(TEXT.factoryFallback, languageCode, 'Factory {id}'), {
+                        formatTemplate(text(TEXT.factoryFallback, languageCode, 'Factory {id}'), {
                           id: factory.id,
                         })}
                     </MenuItem>
@@ -584,11 +586,11 @@ const AttendanceBoard = ({
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>{resolveText(TEXT.colWorker, languageCode, 'Worker')}</TableCell>
-                <TableCell align="center">{resolveText(TEXT.colClockIn, languageCode, 'Clock In')}</TableCell>
-                <TableCell align="center">{resolveText(TEXT.colClockOut, languageCode, 'Clock Out')}</TableCell>
-                <TableCell align="center">{resolveText(TEXT.colWorked, languageCode, 'Worked')}</TableCell>
-                <TableCell>{resolveText(TEXT.colNote, languageCode, 'Note')}</TableCell>
+                <TableCell>{text(TEXT.colWorker, languageCode, 'Worker')}</TableCell>
+                <TableCell align="center">{text(TEXT.colClockIn, languageCode, 'Clock In')}</TableCell>
+                <TableCell align="center">{text(TEXT.colClockOut, languageCode, 'Clock Out')}</TableCell>
+                <TableCell align="center">{text(TEXT.colWorked, languageCode, 'Worked')}</TableCell>
+                <TableCell>{text(TEXT.colNote, languageCode, 'Note')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -598,15 +600,15 @@ const AttendanceBoard = ({
                 onRetry={() => { setQueryError(false); setReloadToken(value => value + 1); }}
                 message={
                   loadingEmployees
-                    ? resolveText(TEXT.loadingWorkers, languageCode, 'Loading workers...')
+                    ? text(TEXT.loadingWorkers, languageCode, 'Loading workers...')
                     : loadingEntries
-                      ? resolveText(TEXT.loadingEntries, languageCode, 'Loading attendance entries...')
+                      ? text(TEXT.loadingEntries, languageCode, 'Loading attendance entries...')
                     : !selectedFactoryId
-                      ? resolveText(TEXT.selectFactoryFirstForTable, languageCode, 'Select a factory first.')
+                      ? text(TEXT.selectFactoryFirstForTable, languageCode, 'Select a factory first.')
                       : filteredEmployees.length === 0
                         ? searchTerm
-                          ? resolveText(TEXT.emptySearch, languageCode, 'No matching workers found.')
-                          : resolveText(TEXT.emptyWorkers, languageCode, 'No workers registered.')
+                          ? text(TEXT.emptySearch, languageCode, 'No matching workers found.')
+                          : text(TEXT.emptyWorkers, languageCode, 'No workers registered.')
                         : ''
                 }
                 sx={{
@@ -660,7 +662,7 @@ const AttendanceBoard = ({
                         <TextField
                           size="small"
                           fullWidth
-                          placeholder={resolveText(TEXT.notePlaceholder, languageCode, 'Note')}
+                          placeholder={text(TEXT.notePlaceholder, languageCode, 'Note')}
                           value={entry.note}
                           onChange={(event) =>
                             handleEntryChange(workerId, 'note', event.target.value)
@@ -679,7 +681,7 @@ const AttendanceBoard = ({
         <Chip
           variant="outlined"
           label={formatTemplate(
-            resolveText(TEXT.summaryWorkerCount, languageCode, 'Workers {count}'),
+            text(TEXT.summaryWorkerCount, languageCode, 'Workers {count}'),
             {
               count: formatNumberWithCommas(summary.workerCount, {
                 fallback: '0',
@@ -691,7 +693,7 @@ const AttendanceBoard = ({
         <Chip
           variant="outlined"
           label={formatTemplate(
-            resolveText(TEXT.summaryEnteredCount, languageCode, 'Entered {count}'),
+            text(TEXT.summaryEnteredCount, languageCode, 'Entered {count}'),
             {
               count: formatNumberWithCommas(summary.enteredCount, {
                 fallback: '0',
@@ -704,7 +706,7 @@ const AttendanceBoard = ({
           color="primary"
           variant="outlined"
           label={formatTemplate(
-            resolveText(TEXT.summaryWorkedTotal, languageCode, 'Total worked {hours}'),
+            text(TEXT.summaryWorkedTotal, languageCode, 'Total worked {hours}'),
             { hours: formatWorkedHours(summary.workedMinutesTotal) }
           )}
         />

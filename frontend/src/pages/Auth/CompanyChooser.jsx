@@ -1,5 +1,5 @@
-import React,{useRef,useState} from 'react';
-import {Alert,Button,Dialog,DialogActions,DialogContent,DialogTitle,Stack,TextField,Typography} from '@mui/material';
+import React,{useEffect,useRef,useState} from 'react';
+import {Alert,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import {useAuth} from '../../context/AuthContext';
 import {requestJSON} from '../../utils/apiClient';
 import {ENTITY_CODE_TEXT,entityCodeError} from '../../utils/entityCode.mjs';
@@ -10,8 +10,11 @@ const copy={
  vi:{choose:'Chọn công ty đăng nhập',hint:'Chỉ hiển thị công ty bạn được phép truy cập.',add:'Đăng ký công ty logistics',name:'Tên công ty (tiếng Anh)',nameKo:'Tên công ty (tiếng Hàn)',code:'Mã công ty',create:'Đăng ký',cancel:'Hủy',failed:'Không thể đăng ký công ty.',uncertain:'Chưa xác nhận kết quả. Hãy thử lại với cùng nội dung.',retry:'Thử lại'},
 };
 export default function CompanyChooser({languageCode,managementOnly=false}){
- const {workspaces,selectWorkspace,canCreateCompany,reloadWorkspaces,loading}=useAuth(),t=copy[languageCode]||copy.en;
- const [open,setOpen]=useState(false),[form,setForm]=useState({name:'DEXS LOGIS',nameKo:'덱스로지스',nameVi:'',code:'DEXS'}),[saving,setSaving]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
+ const {user,workspaces,selectWorkspace,canCreateCompany,reloadWorkspaces,loading}=useAuth(),t=copy[languageCode]||copy.en;
+ const [open,setOpen]=useState(false),[form,setForm]=useState({name:'DEX LOGIS',nameKo:'덱스로지스',nameVi:'',code:'',adminName:user?.email==='krsailer82@gmail.com'?'정동원':user?.user_metadata?.name||'',managementStartDate:'2026-11-01',country:'VN',currencyCode:'VND',templateOrgId:''}),[saving,setSaving]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
+ const [templates,setTemplates]=useState([]);
+ useEffect(()=>{let alive=true;if(open)requestJSON('/auth/workspace-templates').then(rows=>{if(alive)setTemplates(rows);}).catch(()=>{if(alive)setTemplates([]);});return()=>{alive=false;};},[open]);
+ const details=({ko:{adminName:'관리자 이름',managementStartDate:'관리 시작일',country:'국가 코드',currencyCode:'기본 통화',templateOrgId:'직급·근태·결재 기준 회사',none:'기본 기준 사용'},en:{adminName:'Administrator name',managementStartDate:'Management start date',country:'Country code',currencyCode:'Currency',templateOrgId:'Administration template company',none:'Use defaults'},vi:{adminName:'Tên quản trị viên',managementStartDate:'Ngày bắt đầu quản lý',country:'Mã quốc gia',currencyCode:'Tiền tệ',templateOrgId:'Công ty mẫu quản trị',none:'Dùng mặc định'}})[languageCode]||{};
  const key=useRef(crypto.randomUUID()),busy=useRef(false);
  const submit=async()=>{
   if(busy.current)return;busy.current=true;setSaving(true);setError('');
@@ -27,8 +30,10 @@ export default function CompanyChooser({languageCode,managementOnly=false}){
   <Dialog open={open} onClose={()=>{if(!saving&&!uncertain)setOpen(false);}} fullWidth maxWidth="sm">
    <DialogTitle>{t.add}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
     {['name','nameKo','nameVi','code'].map(field=><TextField key={field} label={field==='nameVi'?(languageCode==='ko'?'회사명 (베트남어)':languageCode==='vi'?'Tên công ty (tiếng Việt)':'Company name (Vietnamese)'):t[field]} value={form[field]} disabled={saving||uncertain} helperText={field==='code'?(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help:undefined} inputProps={{maxLength:field==='code'?40:160}} onChange={e=>{setForm(previous=>({...previous,[field]:e.target.value}));key.current=crypto.randomUUID();}}/>)}
+    {['adminName','managementStartDate','country','currencyCode'].map(field=><TextField key={field} label={details[field]} type={field==='managementStartDate'?'date':'text'} InputLabelProps={field==='managementStartDate'?{shrink:true}:undefined} required value={form[field]} disabled={saving||uncertain} onChange={e=>{setForm(previous=>({...previous,[field]:e.target.value}));key.current=crypto.randomUUID();}}/>)}
+    <TextField select label={details.templateOrgId} value={form.templateOrgId} disabled={saving||uncertain} onChange={e=>{setForm(previous=>({...previous,templateOrgId:e.target.value}));key.current=crypto.randomUUID();}}><MenuItem value="">{details.none}</MenuItem>{templates.map(row=><MenuItem key={row.id} value={row.id}>{languageCode==='ko'?row.nameKo||row.name:languageCode==='vi'?row.nameVi||row.name:row.name}</MenuItem>)}</TextField>
     {error&&<Alert severity="error">{error}</Alert>}
-   </Stack></DialogContent><DialogActions><Button disabled={saving||uncertain} onClick={()=>setOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={saving||![form.name,form.nameKo,form.nameVi].some(value=>value.trim())} onClick={submit}>{uncertain?t.retry:t.create}</Button></DialogActions>
+   </Stack></DialogContent><DialogActions><Button disabled={saving||uncertain} onClick={()=>setOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={saving||!form.adminName.trim()||!form.managementStartDate||![form.name,form.nameKo,form.nameVi].some(value=>value.trim())} onClick={submit}>{uncertain?t.retry:t.create}</Button></DialogActions>
   </Dialog>
  </Stack>;
 }

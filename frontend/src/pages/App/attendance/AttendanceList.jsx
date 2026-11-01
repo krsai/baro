@@ -1,3 +1,4 @@
+import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryManagementStart';
@@ -291,8 +292,9 @@ const buildWorkTypeText = ({ isSunday, isHoliday, hasEntries, languageCode }) =>
 const AttendanceList = () => {
   const pageDialogs = usePageDialogs();
   const { navigateToPath, showNotification } = useAppActions();
-  const { activeOrgId, activeFactoryId } = useAuth();
+  const { activeOrgId, activeFactoryId, activeProfile } = useAuth();
   const { languageCode } = useLanguage();
+  const text=(bundle,lang,fallback)=>workplaceText(resolveText(bundle,lang,fallback),activeProfile?.orgType);
 
   const [dateFrom,setDateFrom]=useState(()=>dayjs().startOf('month').format('YYYY-MM-DD')),[dateTo,setDateTo]=useState(()=>dayjs().endOf('month').format('YYYY-MM-DD'));
   const [factories, setFactories] = useState([]);
@@ -403,7 +405,7 @@ const AttendanceList = () => {
         setEmployees([]);
         setLoadError(true);
         showNotification(
-          resolveText(TEXT.fetchError, languageCode, '출퇴근 기록을 불러오지 못했습니다.'),
+          text(TEXT.fetchError, languageCode, '출퇴근 기록을 불러오지 못했습니다.'),
           'error'
         );
       } finally {
@@ -539,7 +541,7 @@ const AttendanceList = () => {
       if (!selectedFactoryId || !workDate) return;
 
       const confirmed = await pageDialogs.confirm(
-        resolveText(
+        text(
           TEXT.deleteConfirm,
           languageCode,
           'Delete all attendance records for this day?'
@@ -563,12 +565,12 @@ const AttendanceList = () => {
           prev.filter((item) => String(item?.workDate || '').trim() !== workDate)
         );
         showNotification(
-          resolveText(TEXT.deleteSuccess, languageCode, 'Attendance records deleted.'),
+          text(TEXT.deleteSuccess, languageCode, 'Attendance records deleted.'),
           'success'
         );
       } catch (_error) {
         showNotification(
-          resolveText(
+          text(
             TEXT.deleteError,
             languageCode,
             'Failed to delete attendance records.'
@@ -584,7 +586,7 @@ const AttendanceList = () => {
 
   const handleClickImport = useCallback(() => {
     if (!selectedFactoryId) {
-      setImportError(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'));
+      setImportError(text(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'));
       return;
     }
     fileInputRef.current?.click();
@@ -620,7 +622,7 @@ const AttendanceList = () => {
       }
 
       refreshRows();
-      const doneTemplate = resolveText(
+      const doneTemplate = text(
         TEXT.importDone,
         languageCode,
         'Import done: {dayCount} days, matched {matchedCount}, unmatched {unmatchedCount}'
@@ -644,7 +646,7 @@ const AttendanceList = () => {
       if (!file) return;
 
       if (!selectedFactoryId) {
-        setImportError(resolveText(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'));
+        setImportError(text(TEXT.selectFactoryFirst, languageCode, 'Select a factory first.'));
         return;
       }
 
@@ -652,13 +654,13 @@ const AttendanceList = () => {
       try {
         const parsed = await parseAttendanceImportFile(file);
         if (!parsed.events.length) {
-          setImportError(resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
+          setImportError(text(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
           return;
         }
 
         const workers = await loadWorkersForFactory();
         if (!workers.length) {
-          setImportError(resolveText(TEXT.importNoWorkers, languageCode, 'No workers found. Cannot import this file.'));
+          setImportError(text(TEXT.importNoWorkers, languageCode, 'No workers found. Cannot import this file.'));
           return;
         }
 
@@ -668,14 +670,14 @@ const AttendanceList = () => {
           languageCode,
         });
         if (!importPlan.dailyEntries.length && !importPlan.unmatchedDetails.length) {
-          setImportError(resolveText(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
+          setImportError(text(TEXT.importNoRows, languageCode, 'No importable attendance rows found.'));
           return;
         }
 
         setImportReview({ importPlan });
       } catch (error) {
         setImportError(error?.message ||
-            resolveText(TEXT.importFail, languageCode, 'Failed to import file.'));
+            text(TEXT.importFail, languageCode, 'Failed to import file.'));
       } finally {
         setImportingFile(false);
       }
@@ -696,7 +698,7 @@ const AttendanceList = () => {
     try {
       await commitImportPlan(importPlan);
     } catch (error) {
-      setImportError(error?.message || resolveText(TEXT.importFail, languageCode, 'Failed to import file.'));
+      setImportError(error?.message || text(TEXT.importFail, languageCode, 'Failed to import file.'));
     } finally {
       setImportingFile(false);
     }
@@ -709,18 +711,18 @@ const AttendanceList = () => {
       titleActions={(
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setSettingsOpen(true)} disabled={!activeOrgId || importingFile}>
-            {resolveText({ ko: '관리 대상 설정', en: 'Manage Employees', vi: 'Đối tượng quản lý' }, languageCode)}
+            {text({ ko: '관리 대상 설정', en: 'Manage Employees', vi: 'Đối tượng quản lý' }, languageCode)}
           </Button>
           <Button
             variant="outlined"
             startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}
             onClick={handleClickImport}
             disabled={!selectedFactoryId || importingFile}
-            title={resolveText(TEXT.importHint, languageCode, '')}
+            title={text(TEXT.importHint, languageCode, '')}
           >
             {importingFile
-              ? resolveText(TEXT.importing, languageCode, 'Importing')
-              : resolveText(TEXT.import, languageCode, 'Import File')}
+              ? text(TEXT.importing, languageCode, 'Importing')
+              : text(TEXT.import, languageCode, 'Import File')}
           </Button>
           <Button
             variant="contained"
@@ -728,7 +730,7 @@ const AttendanceList = () => {
             onClick={handleAdd}
             disabled={!selectedFactoryId || importingFile}
           >
-            {resolveText(TEXT.add, languageCode, 'Add Entry')}
+            {text(TEXT.add, languageCode, 'Add Entry')}
           </Button>
         </Stack>
       )}
@@ -738,18 +740,18 @@ const AttendanceList = () => {
             <SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder={resolveText(TEXT.searchPlaceholder, languageCode, 'Search date')}
+              placeholder={text(TEXT.searchPlaceholder, languageCode, 'Search date')}
             />
           )}
           controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom?dayjs(dateFrom):null} endValue={dateTo?dayjs(dateTo):null} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value.format('YYYY-MM-DD'))}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value.format('YYYY-MM-DD'))}} disabled={loadingRows}/>}
           filters={<><FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
               <InputLabel id="attendance-list-factory-label">
-                {resolveText(TEXT.factory, languageCode, 'Factory')}
+                {text(TEXT.factory, languageCode, 'Factory')}
               </InputLabel>
               <Select
                 labelId="attendance-list-factory-label"
                 value={selectedFactoryId}
-                label={resolveText(TEXT.factory, languageCode, 'Factory')}
+                label={text(TEXT.factory, languageCode, 'Factory')}
                 onChange={(event) => setSelectedFactoryId(String(event.target.value || ''))}
                 disabled={loadingFactories || factories.length === 0}
               >
@@ -776,16 +778,16 @@ const AttendanceList = () => {
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>{resolveText(TEXT.workDate, languageCode, 'Work Date')}</TableCell>
-                <TableCell>{resolveText(TEXT.workType, languageCode, 'Type')}</TableCell>
+                <TableCell>{text(TEXT.workDate, languageCode, 'Work Date')}</TableCell>
+                <TableCell>{text(TEXT.workType, languageCode, 'Type')}</TableCell>
                 <TableCell align="right">
-                  {resolveText(TEXT.enteredWorkers, languageCode, 'Entered Workers')}
+                  {text(TEXT.enteredWorkers, languageCode, 'Entered Workers')}
                 </TableCell>
                 <TableCell align="right">
-                  {resolveText(TEXT.workedHoursAverage, languageCode, 'Avg Worked')}
+                  {text(TEXT.workedHoursAverage, languageCode, 'Avg Worked')}
                 </TableCell>
                 <TableCell align="right">
-                  {resolveText(TEXT.noteCount, languageCode, 'Notes')}
+                  {text(TEXT.noteCount, languageCode, 'Notes')}
                 </TableCell>
                 <TableCell align="right">&nbsp;</TableCell>
               </TableRow>
@@ -871,18 +873,18 @@ const AttendanceList = () => {
     </AppPageContainer>
     <PayrollSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} />
     <Dialog open={Boolean(importError)} onClose={() => setImportError(null)} maxWidth="md" fullWidth>
-      <DialogTitle>{resolveText(TEXT.importFail, languageCode)}</DialogTitle>
+      <DialogTitle>{text(TEXT.importFail, languageCode)}</DialogTitle>
       <DialogContent dividers><Typography sx={{ whiteSpace: 'pre-wrap' }}>{importError}</Typography></DialogContent>
-      <DialogActions><Button onClick={() => setImportError(null)}>{resolveText(TEXT.importReviewCancel, languageCode)}</Button></DialogActions>
+      <DialogActions><Button onClick={() => setImportError(null)}>{text(TEXT.importReviewCancel, languageCode)}</Button></DialogActions>
     </Dialog>
     <Dialog open={Boolean(importReview)} onClose={handleCancelImportReview} maxWidth="md" fullWidth>
-      <DialogTitle>{resolveText(TEXT.importReviewTitle, languageCode, 'Review import')}</DialogTitle>
+      <DialogTitle>{text(TEXT.importReviewTitle, languageCode, 'Review import')}</DialogTitle>
       <DialogContent dividers>
         {importReview?.importPlan && (
           <Stack spacing={1.5}>
             <Typography variant="body2">
               {formatTemplate(
-                resolveText(
+                text(
                   TEXT.importReviewSummary,
                   languageCode,
                   '{matchedCount} of {rawCount} events matched, {unmatchedCount} unmatched ({dayCount} days).'
@@ -897,7 +899,7 @@ const AttendanceList = () => {
             </Typography>
             {importReview.importPlan.unmatchedDetails.length > 0 && <>
             <Typography variant="body2" color="text.secondary">
-              {resolveText(
+              {text(
                 TEXT.importReviewUnmatchedHint,
                 languageCode,
                 'The rows below have no code or no matching employee and will be skipped.'
@@ -907,10 +909,10 @@ const AttendanceList = () => {
               <Table size="small" stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>{resolveText(TEXT.importReviewColumnCode, languageCode, 'Code (Excel)')}</TableCell>
-                    <TableCell>{resolveText(TEXT.importReviewColumnName, languageCode, 'Name (Excel)')}</TableCell>
-                    <TableCell>{resolveText(TEXT.importReviewColumnTime, languageCode, 'Time')}</TableCell>
-                    <TableCell>{resolveText(TEXT.importReviewColumnReason, languageCode, 'Reason')}</TableCell>
+                    <TableCell>{text(TEXT.importReviewColumnCode, languageCode, 'Code (Excel)')}</TableCell>
+                    <TableCell>{text(TEXT.importReviewColumnName, languageCode, 'Name (Excel)')}</TableCell>
+                    <TableCell>{text(TEXT.importReviewColumnTime, languageCode, 'Time')}</TableCell>
+                    <TableCell>{text(TEXT.importReviewColumnReason, languageCode, 'Reason')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -940,14 +942,14 @@ const AttendanceList = () => {
       </DialogContent>
       <DialogActions>
         <Button onClick={handleCancelImportReview}>
-          {resolveText(TEXT.importReviewCancel, languageCode, 'Cancel')}
+          {text(TEXT.importReviewCancel, languageCode, 'Cancel')}
         </Button>
         <Button
           variant="contained"
           onClick={handleConfirmImportReview}
           disabled={!importReview?.importPlan?.dailyEntries.length}
         >
-          {resolveText(importReview?.importPlan?.unmatchedEventCount ? TEXT.importReviewProceed : TEXT.importReviewAll, languageCode)}
+          {text(importReview?.importPlan?.unmatchedEventCount ? TEXT.importReviewProceed : TEXT.importReviewAll, languageCode)}
         </Button>
       </DialogActions>
     </Dialog>

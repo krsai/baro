@@ -1,3 +1,4 @@
+import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -259,7 +260,7 @@ const ORG_ROLE_SORT_ORDER = {
 const getRoleOptionsByOrgType = (orgType, languageCode = 'ko') =>
   String(orgType || '').toUpperCase() === 'BRAND'
     ? getOrgRoleOptions(languageCode).filter((option) => option.value !== 'WORKER')
-    : getOrgRoleOptions(languageCode);
+    : getOrgRoleOptions(languageCode).map(option=>String(orgType).toUpperCase()==='SERVICE'&&option.value==='WORKER'?{...option,label:({ko:'직원',en:'Employee',vi:'Nhân viên'})[languageCode]||'Employee'}:option);
 const LOGIN_REQUIRED_ROLES = new Set(['ADMIN', 'OPERATOR', 'ACCOUNTANT']);
 const ORG_MEMBERSHIPS_UPDATED_EVENT = 'baro:org-memberships-updated';
 const resolveDefaultInviteRole = (roleOptions = []) => {
@@ -286,6 +287,7 @@ const getOrgRoleLabel = (value, languageCode = 'ko') =>
   getStaticOptionLabel('orgRole', value, '-', languageCode);
 const getJobRoleLabel = (role, languageCode = 'ko', fallback = '-') => {
   const code = String(role?.code || role?.roleCode || '').trim().toUpperCase();
+  if(code==='WORKER_GENERAL')return ({ko:'직원',en:'Employee',vi:'Nhân viên'})[languageCode]||'Employee';
   const storedName = String(role?.name || role?.roleName || '').trim();
   return getStaticOptionLabel(
     'jobRole',
@@ -658,6 +660,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
   const activeOrgType = overrideOrgType != null ? overrideOrgType : authOrgType;
+  const tenantText=(key,lang)=>workplaceText(text(key,lang),activeOrgType);
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
   // overrideOrgId가 있으면 시스템 관리자가 특정 조직을 직접 조회하는 상황 — systemOnly 적용 안 함
   const isBrowsingOrgAsSystemAdmin = isSystemProfile && overrideOrgId != null;
@@ -734,7 +737,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     (factories.length === 1 ? String(factories[0].id) : '') ||
     '';
   const currentUserName = String(activeProfile?.employeeName || '').trim();
-  const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode), [languageCode]);
+  const payTypeOptions = useMemo(() => getPayTypeOptions(languageCode).filter(option=>activeOrgType!=='SERVICE'||option.value==='GENERAL'), [languageCode,activeOrgType]);
 
   const employeeByMembership = useMemo(() => {
     const map = new Map();
@@ -779,7 +782,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       emitMembershipUpdated({ orgId, pendingCount: pendingList.length });
     } catch (_error) {
       emitMembershipUpdated({ orgId, pendingCount: 0 });
-      setStatusMessage({ type: 'error', text: text('errLoadMembership', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errLoadMembership', languageCode) });
     }
   }, [isBrowsingOrgAsSystemAdmin, isSystemProfile, languageCode]);
 
@@ -795,7 +798,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       const allFactories = Array.isArray(data) ? data : [];
       setFactories(allFactories);
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: text('errLoadFactory', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errLoadFactory', languageCode) });
     }
   }, [languageCode]);
 
@@ -812,7 +815,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       );
       setEmployees(Array.isArray(data) ? data : []);
     } catch (_error) {
-      setStatusMessage({ type: 'error', text: text('errLoadEmployee', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errLoadEmployee', languageCode) });
     }
   }, [isBrowsingOrgAsSystemAdmin, isSystemProfile, languageCode]);
 
@@ -831,7 +834,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setJobRoleOptions(sortJobRoleOptions(roles.filter(isWorkerJobRoleOption)));
     } catch (_error) {
       setJobRoleOptions([]);
-      setStatusMessage({ type: 'error', text: text('errLoadJobRole', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errLoadJobRole', languageCode) });
     }
   }, [languageCode]);
 
@@ -888,13 +891,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         activeOrgType !== 'BRAND' &&
         !factoryId
       ) {
-        setStatusMessage({ type: 'error', text: text('errNeedFactoryBeforeApprove', languageCode) });
+        setStatusMessage({ type: 'error', text: tenantText('errNeedFactoryBeforeApprove', languageCode) });
         setApprovingId(null);
         return;
       }
 
       if (!selectedRole) {
-        setStatusMessage({ type: 'error', text: text('errNeedRoleBeforeApprove', languageCode) });
+        setStatusMessage({ type: 'error', text: tenantText('errNeedRoleBeforeApprove', languageCode) });
         setApprovingId(null);
         return;
       }
@@ -914,11 +917,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           fetchMemberships(activeOrgId),
           fetchEmployees(activeOrgId, selectedFactoryFilterId),
         ]);
-        setStatusMessage({ type: 'success', text: text('approveSuccess', languageCode) });
+        setStatusMessage({ type: 'success', text: tenantText('approveSuccess', languageCode) });
       } catch (error) {
         setStatusMessage({
           type: 'error',
-          text: error?.message || text('approveError', languageCode),
+          text: error?.message || tenantText('approveError', languageCode),
         });
       } finally {
         setApprovingId(null);
@@ -952,11 +955,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       });
 
       await fetchMemberships(activeOrgId);
-      setStatusMessage({ type: 'success', text: text('rejectSuccess', languageCode) });
+      setStatusMessage({ type: 'success', text: tenantText('rejectSuccess', languageCode) });
     } catch (error) {
       setStatusMessage({
         type: 'error',
-        text: error?.message || text('rejectError', languageCode),
+        text: error?.message || tenantText('rejectError', languageCode),
       });
     } finally {
       setRejectingId(null);
@@ -1091,12 +1094,12 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           employeeIds: [savedEmployee?.id || member?.id],
           source: 'employee-save',
         });
-        setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
+        setStatusMessage({ type: 'success', text: tenantText('employeeSaved', languageCode) });
         return true;
       } catch (error) {
         setStatusMessage({
           type: 'error',
-          text: error?.message || text('employeeSaveError', languageCode),
+          text: error?.message || tenantText('employeeSaveError', languageCode),
         });
         return false;
       } finally {
@@ -1118,7 +1121,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   const defaultWorkerJobRoleId = useMemo(() => {
     const matchedRole = jobRoleOptions.find(
-      (role) => String(role?.code || '').trim().toUpperCase() === DEFAULT_WORKER_JOB_ROLE_CODE
+      (role) => String(role?.code || '').trim().toUpperCase() === (activeOrgType==='SERVICE'?'WORKER_GENERAL':DEFAULT_WORKER_JOB_ROLE_CODE)
     );
     return matchedRole?.id ? String(matchedRole.id) : '';
   }, [jobRoleOptions]);
@@ -1139,7 +1142,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       orgRole: defaultRole,
       jobRoleId: defaultRole === 'WORKER' ? defaultWorkerJobRoleId : '',
       gradeId: String(gradeOptions.find((grade) => grade.isDefault)?.id || ''),
-      payType: defaultRole === 'WORKER'
+      payType: defaultRole === 'WORKER' && activeOrgType!=='SERVICE'
         ? PAY_TYPE_KEYS.OUTPUT
         : PAY_TYPE_KEYS.GENERAL,
       factoryId: defaultFactoryId,
@@ -1212,7 +1215,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     if (isDrawerSaving || !activeOrgId) return;
 
     if (!canManageMembers) {
-      setStatusMessage({ type: 'error', text: text('errNoEditPermission', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errNoEditPermission', languageCode) });
       return;
     }
 
@@ -1224,7 +1227,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       : '';
     const normalizedPayType = String(
       drawerDraft.payType || (
-        isWorker ? PAY_TYPE_KEYS.OUTPUT : PAY_TYPE_KEYS.GENERAL
+        isWorker && activeOrgType!=='SERVICE' ? PAY_TYPE_KEYS.OUTPUT : PAY_TYPE_KEYS.GENERAL
       )
     ).toUpperCase();
     const normalizedStatus = String(drawerDraft.status || 'ACTIVE').toUpperCase();
@@ -1236,36 +1239,36 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const selectedFactoryId = drawerDraft.factoryId;
 
     if (!normalizedName) {
-      setStatusMessage({ type: 'error', text: text('errNameRequired', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errNameRequired', languageCode) });
       return;
     }
     if (roleNeedsLoginEmail && !normalizedDrawerEmail) {
-      setStatusMessage({ type: 'error', text: text('errNeedLoginEmail', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errNeedLoginEmail', languageCode) });
       return;
     }
     if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
-      setStatusMessage({ type: 'error', text: text('errInvalidEmail', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errInvalidEmail', languageCode) });
       return;
     }
     if (!isValidDateInput(normalizedJoinedAt) || !isValidDateInput(normalizedLeftAt)) {
-      setStatusMessage({ type: 'error', text: text('errInvalidDateRange', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errInvalidDateRange', languageCode) });
       return;
     }
     if (normalizedJoinedAt && normalizedLeftAt && normalizedJoinedAt > normalizedLeftAt) {
-      setStatusMessage({ type: 'error', text: text('errLeftBeforeJoin', languageCode) });
+      setStatusMessage({ type: 'error', text: tenantText('errLeftBeforeJoin', languageCode) });
       return;
     }
 
     if (activeOrgType !== 'BRAND') {
       if (!selectedFactoryId) {
-        setStatusMessage({ type: 'error', text: text('errNeedFactory', languageCode) });
+        setStatusMessage({ type: 'error', text: tenantText('errNeedFactory', languageCode) });
         return;
       }
       if (
         selectedFactoryId &&
         !Number.isFinite(Number(selectedFactoryId))
       ) {
-        setStatusMessage({ type: 'error', text: text('errInvalidFactory', languageCode) });
+        setStatusMessage({ type: 'error', text: tenantText('errInvalidFactory', languageCode) });
         return;
       }
     }
@@ -1282,7 +1285,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             (member) => normalizeEmail(member?.email) === normalizedDrawerEmail
           );
           if (duplicatedMember) {
-            throw new Error(text('errEmailAlreadyRegisteredDetail', languageCode));
+            throw new Error(tenantText('errEmailAlreadyRegisteredDetail', languageCode));
           }
         }
 
@@ -1322,13 +1325,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           employeeIds: [targetMember?.employee?.id || targetMember?.id],
           source: 'employee-create',
         });
-        setStatusMessage({ type: 'success', text: text('employeeSaved', languageCode) });
+        setStatusMessage({ type: 'success', text: tenantText('employeeSaved', languageCode) });
         closeEmployeeDrawer();
         return;
       } else {
         targetMember = activeMembers.find((member) => member.id === selectedMemberId) || null;
         if (!targetMember) {
-          throw new Error(text('errMemberNotFound', languageCode));
+          throw new Error(tenantText('errMemberNotFound', languageCode));
         }
 
         const currentMemberEmail = normalizeEmail(targetMember.email);
@@ -1339,11 +1342,11 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               && normalizeEmail(member?.email) === normalizedDrawerEmail
           );
           if (duplicatedMember) {
-            throw new Error(text('errEmailAlreadyRegistered', languageCode));
+            throw new Error(tenantText('errEmailAlreadyRegistered', languageCode));
           }
           membershipEmailForSave = normalizedDrawerEmail;
         } else if (!normalizedDrawerEmail && roleNeedsLoginEmail) {
-          throw new Error(text('errNeedLoginEmail', languageCode));
+          throw new Error(tenantText('errNeedLoginEmail', languageCode));
         } else if (!normalizedDrawerEmail && !roleNeedsLoginEmail && currentMemberEmail) {
           membershipEmailForSave = '';
         }
@@ -1377,8 +1380,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       setStatusMessage({
         type: 'error',
         text: isConflict
-          ? text('errEmployeeNoDuplicate', languageCode)
-          : error?.message || text('errEmployeeSaveFailed', languageCode),
+          ? tenantText('errEmployeeNoDuplicate', languageCode)
+          : error?.message || tenantText('errEmployeeSaveFailed', languageCode),
       });
     } finally {
       setIsDrawerSaving(false);
@@ -1526,7 +1529,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
 
   return (
     <AppPageContainer
-      title={text('pageTitle', languageCode)}
+      title={tenantText('pageTitle', languageCode)}
       titleActions={(
         canManageMembers ? (
           <Button
@@ -1534,21 +1537,21 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             onClick={openAddDrawer}
             disabled={!activeOrgId}
           >
-            {text('addEmployee', languageCode)}
+            {tenantText('addEmployee', languageCode)}
           </Button>
         ) : null
       )}
       toolbar={(
         <SearchPanel onReset={()=>{setSearchTerm('');setSelectedStatusFilter('ACTIVE');setSelectedFactoryFilterId('');}}
-          search={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={text('searchPlaceholder', languageCode)} sx={{ width: { xs: '100%', md: 320 } }} />}
+          search={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={tenantText('searchPlaceholder', languageCode)} sx={{ width: { xs: '100%', md: 320 } }} />}
           filters={(
             <>
-              <TextField select label={text('statusLabel', languageCode)} size="small" value={selectedStatusFilter} onChange={(e) => setSelectedStatusFilter(e.target.value)} sx={{ minWidth: 160 }}>
+              <TextField select label={tenantText('statusLabel', languageCode)} size="small" value={selectedStatusFilter} onChange={(e) => setSelectedStatusFilter(e.target.value)} sx={{ minWidth: 160 }}>
                 {employeeStatusFilterOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
               </TextField>
               {canFilterByFactory && (
-                <TextField select label={text('factoryLabel', languageCode)} size="small" value={selectedFactoryFilterId} onChange={(e) => setSelectedFactoryFilterId(e.target.value)} sx={{ minWidth: 220 }} SelectProps={{ displayEmpty: true, renderValue: (value) => factories.find((factory) => String(factory?.id) === String(value || ''))?.name || text('allFactory', languageCode) }} InputLabelProps={{ shrink: true }}>
-                  <MenuItem value="">{text('allFactory', languageCode)}</MenuItem>
+                <TextField select label={tenantText('factoryLabel', languageCode)} size="small" value={selectedFactoryFilterId} onChange={(e) => setSelectedFactoryFilterId(e.target.value)} sx={{ minWidth: 220 }} SelectProps={{ displayEmpty: true, renderValue: (value) => factories.find((factory) => String(factory?.id) === String(value || ''))?.name || tenantText('allFactory', languageCode) }} InputLabelProps={{ shrink: true }}>
+                  <MenuItem value="">{tenantText('allFactory', languageCode)}</MenuItem>
                   {factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{factory.name}</MenuItem>)}
                 </TextField>
               )}
@@ -1590,15 +1593,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             >
               <Typography variant="h6">
                 {isCreateDrawerMode
-                  ? text('drawerAddTitle', languageCode)
-                  : text('drawerEditTitle', languageCode)}
+                  ? tenantText('drawerAddTitle', languageCode)
+                  : tenantText('drawerEditTitle', languageCode)}
               </Typography>
               <Typography variant="caption" color="error.main">
-                {text('requiredHint', languageCode)}
+                {tenantText('requiredHint', languageCode)}
               </Typography>
               <TextField
                 size="small"
-                label={text('loginEmailLabel', languageCode)}
+                label={tenantText('loginEmailLabel', languageCode)}
                 required={drawerNeedsLoginEmail}
                 value={drawerEmail}
                 onChange={(e) => setDrawerEmail(e.target.value)}
@@ -1614,35 +1617,35 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               />
               <TextField
                 size="small"
-                label={text('employeeNoLabel', languageCode)}
+                label={tenantText('employeeNoLabel', languageCode)}
                 value={isCreateDrawerMode ? '' : drawerDraft.employeeNo}
                 disabled={isDrawerSaving}
                 placeholder={isCreateDrawerMode
-                  ? text('employeeNoAutoPlaceholder', languageCode)
+                  ? tenantText('employeeNoAutoPlaceholder', languageCode)
                   : ''}
-                helperText={isCreateDrawerMode ? text('employeeNoAutoHint', languageCode) : ''}
+                helperText={isCreateDrawerMode ? tenantText('employeeNoAutoHint', languageCode) : ''}
                 InputProps={{ readOnly: true }}
                 inputProps={{ style: { letterSpacing: 1 } }}
               />
               <TextField
                 size="small"
-                label={text('nameLabel', languageCode)}
+                label={tenantText('nameLabel', languageCode)}
                 required
                 value={drawerDraft.name}
                 onChange={(e) => handleDrawerDraftChange({ name: e.target.value })}
                 disabled={isDrawerSaving}
-                helperText={text('requiredInput', languageCode)}
+                helperText={tenantText('requiredInput', languageCode)}
               />
               <TextField
                 size="small"
-                label={text('bankLabel', languageCode)}
+                label={tenantText('bankLabel', languageCode)}
                 value={drawerDraft.bankName}
                 onChange={(e) => handleDrawerDraftChange({ bankName: e.target.value })}
                 disabled={isDrawerSaving}
               />
               <TextField
                 size="small"
-                label={text('accountLabel', languageCode)}
+                label={tenantText('accountLabel', languageCode)}
                 value={drawerDraft.bankAccountNumber}
                 onChange={(e) => handleDrawerDraftChange({ bankAccountNumber: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1650,7 +1653,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label={text('roleLabel', languageCode)}
+                label={tenantText('roleLabel', languageCode)}
                 value={drawerDraft.orgRole}
                 onChange={(e) => handleDrawerDraftChange({ orgRole: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1665,7 +1668,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 <TextField
                   select
                   size="small"
-                  label={text('jobLabel', languageCode)}
+                  label={tenantText('jobLabel', languageCode)}
                   value={drawerDraft.jobRoleId || defaultWorkerJobRoleId}
                   onChange={(e) => handleDrawerDraftChange({ jobRoleId: e.target.value })}
                   disabled={isDrawerSaving}
@@ -1680,7 +1683,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label={text('gradeLabel', languageCode)}
+                label={tenantText('gradeLabel', languageCode)}
                 value={drawerDraft.gradeId || ''}
                 onChange={(e) => handleDrawerDraftChange({ gradeId: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1695,14 +1698,14 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 <TextField
                   select
                   size="small"
-                  label={text('factoryLabel', languageCode)}
+                  label={tenantText('factoryLabel', languageCode)}
                   required
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
                   disabled={isDrawerSaving}
-                  helperText={text('requiredInput', languageCode)}
+                  helperText={tenantText('requiredInput', languageCode)}
                 >
-                  <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
+                  <MenuItem value="">{tenantText('factorySelect', languageCode)}</MenuItem>
                   {factories.map((factory) => (
                     <MenuItem key={factory.id} value={String(factory.id)}>
                       {factory.name}
@@ -1713,7 +1716,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label={text('payTypeLabel', languageCode)}
+                label={tenantText('payTypeLabel', languageCode)}
                 value={drawerDraft.payType}
                 onChange={(e) => handleDrawerDraftChange({ payType: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1727,7 +1730,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 type="date"
-                label={text('joinedAtLabel', languageCode)}
+                label={tenantText('joinedAtLabel', languageCode)}
                 value={drawerDraft.joinedAt || ''}
                 onChange={(e) => handleDrawerDraftChange({ joinedAt: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1736,7 +1739,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 type="date"
-                label={text('leftAtLabel', languageCode)}
+                label={tenantText('leftAtLabel', languageCode)}
                 value={drawerDraft.leftAt || ''}
                 onChange={(e) => handleDrawerDraftChange({ leftAt: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1745,7 +1748,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 select
                 size="small"
-                label={text('statusLabel', languageCode)}
+                label={tenantText('statusLabel', languageCode)}
                 value={drawerDraft.status}
                 onChange={(e) => handleDrawerDraftChange({ status: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1757,7 +1760,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 ))}
               </TextField>
               <Typography variant="caption" color="text.secondary">
-                {text('drawerHint', languageCode)}
+                {tenantText('drawerHint', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
                 <Button
@@ -1765,7 +1768,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   onClick={closeEmployeeDrawer}
                   disabled={isDrawerSaving}
                 >
-                  {text('cancelButton', languageCode)}
+                  {tenantText('cancelButton', languageCode)}
                 </Button>
                 <SaveButton
                   onClick={handleDrawerSave}
@@ -1780,18 +1783,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         {canManageMembers && pendingMembers.length > 0 && (
           <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
             <Typography variant="h6" sx={{ mb: 2 }}>
-              {text('pendingTitle', languageCode)}
+              {tenantText('pendingTitle', languageCode)}
             </Typography>
 
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>{text('nameColumn', languageCode)}</TableCell>
-                    <TableCell>{text('emailColumn', languageCode)}</TableCell>
-                    <TableCell>{text('factoryLabel', languageCode)}</TableCell>
-                    <TableCell>{text('roleLabel', languageCode)}</TableCell>
-                    <TableCell>{text('requestDateColumn', languageCode)}</TableCell>
+                    <TableCell>{tenantText('nameColumn', languageCode)}</TableCell>
+                    <TableCell>{tenantText('emailColumn', languageCode)}</TableCell>
+                    <TableCell>{tenantText('factoryLabel', languageCode)}</TableCell>
+                    <TableCell>{tenantText('roleLabel', languageCode)}</TableCell>
+                    <TableCell>{tenantText('requestDateColumn', languageCode)}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -1803,7 +1806,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       <TableCell>
                         {activeOrgType === 'BRAND' ? (
                           <Typography variant="body2" color="text.secondary">
-                            {text('noFactory', languageCode)}
+                            {tenantText('noFactory', languageCode)}
                           </Typography>
                         ) : (
                           <TextField
@@ -1818,7 +1821,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                             }
                             sx={{ minWidth: 150 }}
                           >
-                            <MenuItem value="">{text('factorySelect', languageCode)}</MenuItem>
+                            <MenuItem value="">{tenantText('factorySelect', languageCode)}</MenuItem>
                             {factories.map((factory) => (
                               <MenuItem key={factory.id} value={String(factory.id)}>
                                 {factory.name}
@@ -1862,8 +1865,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                               disabled={Boolean(approvingId) || Boolean(rejectingId)}
                             >
                               {approvingId === member.id
-                                ? text('approving', languageCode)
-                                : text('approve', languageCode)}
+                                ? tenantText('approving', languageCode)
+                                : tenantText('approve', languageCode)}
                             </Button>
                             <Button
                               variant="outlined"
@@ -1873,8 +1876,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                               disabled={Boolean(approvingId) || Boolean(rejectingId)}
                             >
                               {rejectingId === member.id
-                                ? text('rejecting', languageCode)
-                                : text('reject', languageCode)}
+                                ? tenantText('rejecting', languageCode)
+                                : tenantText('reject', languageCode)}
                             </Button>
                           </Box>
                         </Box>
@@ -1888,22 +1891,22 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
         )}
 
         <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
-          <Typography variant="h6" sx={{ mb: 2 }}>{text('activeListTitle', languageCode)}</Typography>
+          <Typography variant="h6" sx={{ mb: 2 }}>{tenantText('activeListTitle', languageCode)}</Typography>
           <TableContainer>
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>{text('nameColumn', languageCode)}</TableCell>
-                  <TableCell>{text('employeeNoColumn', languageCode)}</TableCell>
-                  <TableCell>{text('emailOrCodeColumn', languageCode)}</TableCell>
-                  <TableCell>{text('factoryLabel', languageCode)}</TableCell>
-                  <TableCell>{text('roleLabel', languageCode)}</TableCell>
-                  <TableCell>{text('jobLabel', languageCode)}</TableCell>
-                  <TableCell>{text('gradeLabel', languageCode)}</TableCell>
-                  <TableCell>{text('payTypeColumn', languageCode)}</TableCell>
-                  <TableCell>{text('statusLabel', languageCode)}</TableCell>
-                  <TableCell>{text('joinedAtColumn', languageCode)}</TableCell>
-                  <TableCell>{text('leftAtColumn', languageCode)}</TableCell>
+                  <TableCell>{tenantText('nameColumn', languageCode)}</TableCell>
+                  <TableCell>{tenantText('employeeNoColumn', languageCode)}</TableCell>
+                  <TableCell>{tenantText('emailOrCodeColumn', languageCode)}</TableCell>
+                  <TableCell>{tenantText('factoryLabel', languageCode)}</TableCell>
+                  <TableCell>{tenantText('roleLabel', languageCode)}</TableCell>
+                  <TableCell>{tenantText('jobLabel', languageCode)}</TableCell>
+                  <TableCell>{tenantText('gradeLabel', languageCode)}</TableCell>
+                  <TableCell>{tenantText('payTypeColumn', languageCode)}</TableCell>
+                  <TableCell>{tenantText('statusLabel', languageCode)}</TableCell>
+                  <TableCell>{tenantText('joinedAtColumn', languageCode)}</TableCell>
+                  <TableCell>{tenantText('leftAtColumn', languageCode)}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -1912,8 +1915,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                     colSpan={11}
                     message={
                       searchTerm
-                        ? text('noSearchResult', languageCode)
-                        : text('noEmployeeRows', languageCode)
+                        ? tenantText('noSearchResult', languageCode)
+                        : tenantText('noEmployeeRows', languageCode)
                     }
                     sx={{ py: 2 }}
                   />

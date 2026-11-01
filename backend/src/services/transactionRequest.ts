@@ -44,7 +44,7 @@ export function calculateRequestAmounts(unitPrice: unknown, quantity: unknown, c
   if (subtotal.lte(0) || amount.gte('10000000000000000')) return invalid('INVALID_TRANSACTION_AMOUNT');
   return { unitPrice: price, quantity: qty, subtotal, vatRate: rate, vatAmount, amount };
 }
-export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any; request?: { id: number; line: number } }) {
+export async function registerTransactionRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>, useSystemMaster = false, edit?: { cost?: any; record?: any; request?: { id: number; line: number } }, orgType?: string) {
   const id = (value: unknown, optional = false): number | null => optional && (value == null || value === '') ? null : typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : invalid('INVALID_REQUEST_REFERENCE');
   const payeeIds=expensePayeeIds(body),partnerOrgId=payeeIds.partnerOrgId,transactionCodeId=id(body?.transactionCodeId)!;
   const workOrderId = id(body?.workOrderId, true), styleId = id(body?.styleId, true), styleProcessId = id(body?.styleProcessId, true);
@@ -81,7 +81,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   }
   const localCode = await tx.transactionCode.findFirst({ where: { id: transactionCodeId, ownerOrgId: orgId, isActive: true, base: { isActive: true, OR:[{expenseTypeId:null},{expenseType:{isActive:true}}] } }, include: useSystemMaster ? ACCOUNTING_CODE_INCLUDE : { serviceType: true, base: { include: { expenseType: true } } } });
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
-  const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit);
+  const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
   if(useSystemMaster)description=edit?.cost?.description || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');

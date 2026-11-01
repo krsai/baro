@@ -1,9 +1,9 @@
+import {companyBusinessTimeZone} from './serviceCompany';
 import { requirePayeeBankAccount } from './entityBankAccount';
 import {expensePayeeIds,employeePayee,expenseApplicationDate} from './expensePayee';
 import {allocateDocumentNumber,normalizeDocumentNumber,legacyExpenseNumber} from './documentNumber';
 import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateApprovalSettings, defaultApprovalSettings, replaceExpenseApprovers, resolveExpenseApproval, approvalSettingKey } from './expenseApproval';
 import { createHash } from 'node:crypto';
-import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { validateCostDate } from './partnerTransactionCost';
@@ -90,6 +90,8 @@ export function expenseEditorForm(source: any) {
 }
 
 export async function saveExpenseEditor(tx: any, orgId: number, actorId: number, kind: string, id: string, body: any, appendQuantityRemark?: any) {
+  const organization=await tx.organization.findFirst({where:{id:orgId},select:{type:true,country:true}});
+  const orgType=organization?.type,timeZone=companyBusinessTimeZone(organization);
   if (!/^[\w-]{8,64}$/.test(body?.clientKey || '') || typeof body?.revision !== 'string') return fail(400,'INVALID_TRANSACTION_KEY');
   const key = `EXPENSE_REQUEST_EDIT:${orgId}:${body.clientKey}`;
   const inputHash = hash({kind,id,body});
@@ -112,7 +114,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   if ((source.document && source.document.version !== body.version) || expenseEditorRevision(source) !== body.revision) return fail(409,'EXPENSE_REQUEST_CHANGED');
   // Transaction-local capability, verified by database guards and a deferred
   // check that the matching audit event was saved before commit.
-  await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
+  await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${timeZone},true)`;
   const before = snapshot(source);
   if(source.document&&body.requestDate!==undefined&&body.requestDate!==source.document.requestDate)return fail(409,'EXPENSE_REQUEST_DATE_LOCKED');
   const requestDate = validateCostDate(source.document?.requestDate||source.costs[0]?.transactionDate||(body.automaticRequestDate?expenseApplicationDate():body.requestDate??expenseApplicationDate())), remark = typeof body.remark==='string' ? body.remark.trim() : '';
@@ -147,7 +149,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
     const record = cost?.outsourcedWorkRecord || (source.record && item.sourceRecordId===source.record.id ? source.record : null);
     const input = { ...item, transactionDate: requestDate, ...payeeIds, clientKey: `${body.clientKey}-${index+1}` };
     let saved;
-    try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}}); }
+    try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}},orgType); }
     catch(error: any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
     if (saved.outsourcedWorkRecord) assignmentPlanIds.push(saved.outsourcedWorkRecord.assignmentPlanId);
   }

@@ -132,6 +132,7 @@ const PayrollBoard = () => {
   const pageDialogs = usePageDialogs();
   const { navigateToPath, showNotification } = useAppActions();
   const { activeOrgId, activeProfile } = useAuth();
+  const isService=activeProfile?.orgType==='SERVICE';
   const { languageCode } = useLanguage();
   const [queryFailed, setQueryFailed] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
@@ -438,7 +439,7 @@ const PayrollBoard = () => {
     >
       <Box sx={{ width: '100%' }}>
         <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
-          {languageCode === 'ko' ? '선택 기간에 포함되는 월별·공장별 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
+          {isService?({ko:'선택 기간의 사업장별 급여를 계산하고 확정합니다.',en:'Calculate and confirm payroll by month and workplace.',vi:'Tính và xác nhận lương theo tháng và nơi làm việc.'})[languageCode]:languageCode === 'ko' ? '선택 기간에 포함되는 월별·공장별 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
         </Box>
         <Typography variant="body2" color="text.secondary">{periodMonthNote[languageCode]||periodMonthNote.en}</Typography>
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
@@ -446,18 +447,18 @@ const PayrollBoard = () => {
             <Table stickyHeader size="small">
               <TableHead><TableRow>
                 <TableCell sx={{ fontWeight: 700 }}>{text.month}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }}>{resolveText(languageCode, 'factory')}</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>{isService?({ko:'사업장',en:'Workplace',vi:'Nơi làm việc'})[languageCode]:resolveText(languageCode, 'factory')}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.people}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.generalPayroll}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.fixedOutputPayroll}</TableCell>
-                <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPayroll}</TableCell>
+                {!isService&&<TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.fixedOutputPayroll}</TableCell>}
+                {!isService&&<TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.outputPayroll}</TableCell>}
                 <TableCell sx={{ fontWeight: 700 }} align="right">{payrollSummaryText.totalPayroll}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{text.status}</TableCell>
                 <TableCell sx={{ fontWeight: 700 }} align="center">{payrollSummaryText.lock}</TableCell>
               </TableRow></TableHead>
               <TableBody>
-                {loading ? <TableStatusRow colSpan={9} state="loading" />
-                  : queryFailed || filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={9} state={queryFailed ? 'error' : 'empty'} onRetry={() => load()} />
+                {loading ? <TableStatusRow colSpan={isService?7:9} state="loading" />
+                  : queryFailed || filteredMonthFactoryRows.length === 0 ? <TableStatusRow colSpan={isService?7:9} state={queryFailed ? 'error' : 'empty'} onRetry={() => load()} />
                     : filteredMonthFactoryRows.map((row) => {
                       const { month, factory, snapshot } = row;
                       const key = rowKey(month, factory.id);
@@ -491,10 +492,10 @@ const PayrollBoard = () => {
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
                           <TableCell>{factoryLabel || '-'}</TableCell>
-                          <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}({generalEmployees.length}, {fixedOutputEmployees.length}, {outputEmployees.length})</TableCell>
+                          <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}{!isService&&`(${generalEmployees.length}, ${fixedOutputEmployees.length}, ${outputEmployees.length})`}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>
-                          <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>
+                          {!isService&&<TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? fixedOutputPayroll || '-' : payrollSummaryText.pending}</TableCell>}
+                          {!isService&&<TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? outputPayroll || '-' : payrollSummaryText.pending}</TableCell>}
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">

@@ -1,3 +1,5 @@
+import WorkplaceBoard from './WorkplaceBoard';
+import {useAuth} from '../../../context/AuthContext';
 import React, { useState } from 'react';
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -10,6 +12,7 @@ import FactoryBoard from './FactoryBoard';
 
 const OrganizationBoard = () => {
   const { languageCode } = useLanguage();
+  const isService=useAuth().activeProfile?.orgType==='SERVICE';
   const [headerActionsTarget,setHeaderActionsTarget] = useState(null);
   const [currentTab, setCurrentTab] = useState('business');
   const [loadedTabs, setLoadedTabs] = useState({
@@ -57,7 +60,7 @@ const OrganizationBoard = () => {
               aria-label={text.toggleAriaLabel}
             >
               <ToggleButton value="business">{text.tabBusiness}</ToggleButton>
-              <ToggleButton value="factory">{text.tabFactory}</ToggleButton>
+              <ToggleButton value="factory">{isService?({ko:'사업장',en:'Workplaces',vi:'Nơi làm việc'})[languageCode]||'Workplaces':text.tabFactory}</ToggleButton>
             </ToggleButtonGroup>
           )}
         />
@@ -73,7 +76,7 @@ const OrganizationBoard = () => {
       {loadedTabs.factory && (
         <RequestScopeBoundary scopeId="factory" active={currentTab === 'factory'}>
           <Box sx={{ display: currentTab === 'factory' ? 'block' : 'none' }}>
-            <FactoryBoard embedded />
+            {isService?<WorkplaceBoard/>:<FactoryBoard embedded />}
           </Box>
         </RequestScopeBoundary>
       )}

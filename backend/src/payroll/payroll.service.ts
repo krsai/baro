@@ -263,7 +263,7 @@ const employeeExpectedOnDate = (employee: any, dateKey: string) => {
   return true;
 };
 
-export const getPayrollMonthReadiness = async (orgId: number, monthInput: string, factoryIdInput: number) => {
+export const getPayrollMonthReadiness = async (orgId: number, monthInput: string, factoryIdInput: number, {timeZone=process.env.BUSINESS_TIME_ZONE||"Asia/Seoul"}: {timeZone?:string}={}) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
   const factoryId = toPositiveIntOrNull(factoryIdInput);
@@ -272,7 +272,6 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   }
   const period = await loadManagementPeriod(prisma,orgId,factoryId);
   assertManagedDate(month,period.startDate,true);
-  const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
   const completedMonth = month < currentMonth;
   const monthStart = [`${month}-01`,period.startDate].sort().at(-1)!;
@@ -505,7 +504,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
   let salaryCalculationError: string | null = null;
   if (snapshot) {
     try {
-      currentCalculatedEmployees = (await getPayrollByMonth(orgId, month, factoryId, { ignoreSnapshot: true })).employees;
+      currentCalculatedEmployees = (await getPayrollByMonth(orgId, month, factoryId, { ignoreSnapshot: true, timeZone })).employees;
     } catch (error: any) {
       salaryCalculationError = String(error?.message || "salary calculation prerequisites are incomplete");
     }
@@ -884,8 +883,8 @@ export const listPayrollSnapshots = async (orgId: number) => {
   }));
 };
 
-export const getPayrollSettings = async (orgId: number, monthInput?: unknown) => {
-  const month = String(monthInput || resolveCurrentPayrollMonthKey({ timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul" }));
+export const getPayrollSettings = async (orgId: number, monthInput?: unknown, timeZone=process.env.BUSINESS_TIME_ZONE||"Asia/Seoul") => {
+  const month = String(monthInput || resolveCurrentPayrollMonthKey({ timeZone }));
   assertPayrollMonth(month);
   const employees = await prisma.employee.findMany({
     where: { orgId, status: { notIn: ["PENDING", "REJECTED"] } },
@@ -963,7 +962,7 @@ export const getPayrollByMonth = async (
   orgId: number,
   monthInput: string,
   factoryIdInput: number,
-  { ignoreSnapshot = false }: { ignoreSnapshot?: boolean } = {}
+  { ignoreSnapshot = false, timeZone=process.env.BUSINESS_TIME_ZONE||"Asia/Seoul" }: { ignoreSnapshot?: boolean; timeZone?:string } = {}
 ) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
@@ -974,7 +973,7 @@ export const getPayrollByMonth = async (
   const period = await loadManagementPeriod(prisma,orgId,factoryId);
   assertManagedDate(month,period.startDate,true);
   const monthReady = isPayrollMonthReady(month, {
-    timeZone: process.env.BUSINESS_TIME_ZONE || "Asia/Seoul",
+    timeZone,
   });
 
   const snapshot = ignoreSnapshot
@@ -1298,12 +1297,14 @@ export const savePayrollSnapshot = async ({
   factoryId: factoryIdInput,
   savedBy,
   employees: _employees,
+  timeZone=process.env.BUSINESS_TIME_ZONE||"Asia/Seoul",
 }: {
   orgId: number;
   month: string;
   factoryId: number;
   savedBy: string;
   employees?: any;
+  timeZone?: string;
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
@@ -1311,7 +1312,6 @@ export const savePayrollSnapshot = async ({
   if (factoryId === null) {
     throw createHttpError(400, "factoryId is required");
   }
-  const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
   const currentMonth = resolveCurrentPayrollMonthKey({ timeZone });
   if (month >= currentMonth) {
     throw createHttpError(409, "production allowance can only be calculated through the previous month");
@@ -1322,7 +1322,7 @@ export const savePayrollSnapshot = async ({
   if (existingSnapshot && !existingSnapshot.isProvisional) {
     throw createHttpError(409, "unlock payroll before recalculation");
   }
-  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId);
+  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId,{timeZone});
   if (readiness.invalidPayrollAttendance.length > 0) {
     throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
   }
@@ -1599,11 +1599,13 @@ export const lockPayrollSnapshot = async ({
   month: monthInput,
   factoryId: factoryIdInput,
   lockedBy,
+  timeZone=process.env.BUSINESS_TIME_ZONE||"Asia/Seoul",
 }: {
   orgId: number;
   month: string;
   factoryId: number;
   lockedBy: string;
+  timeZone?: string;
 }) => {
   const month = String(monthInput || "");
   assertPayrollMonth(month);
@@ -1623,7 +1625,7 @@ export const lockPayrollSnapshot = async ({
   // What matters for an
   // already-calculated snapshot is that it isn't stale (needsRecalculation) and that
   // no cross-factory attendance integrity error has appeared since it was calculated.
-  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId);
+  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId,{timeZone});
   if (readiness.invalidPayrollAttendance.length > 0) {
     throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
   }

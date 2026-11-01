@@ -52,12 +52,13 @@ export default function TransactionRequestEntry() {
   const editing = Boolean(sourceKind && sourceId);
   const formPath = editing ? `/outsourcing-record/edit/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}` : '/outsourcing-record/new';
   const editorPath = editing ? `/expense-request-editor/${encodeURIComponent(sourceKind)}/${encodeURIComponent(sourceId)}` : '/expense-requests';
-  const { activeOrgId } = useAuth(), { languageCode } = useLanguage();
+  const { activeOrgId, activeProfile } = useAuth(), { languageCode } = useLanguage();
   const period = useManagementPeriod(), { navigateToPath, showNotification } = useAppActions();
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const header = EXPENSE_HEADER_TEXT[languageCode] || EXPENSE_HEADER_TEXT.en;
   const formText=FORM_TEXT[languageCode]||FORM_TEXT.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
+  const isServiceCompany=activeProfile?.orgType==='SERVICE';
   const approvalRef=useRef(null),saveLock=useRef(false);
   const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
   const [bankReload,setBankReload] = useState(0);
@@ -92,7 +93,7 @@ export default function TransactionRequestEntry() {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
     Promise.all([
-      ...['expense-payees','transaction-codes','app-settings','orders','expense-units'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
+      ...['expense-payees','transaction-codes','app-settings','orders','expense-units'].map(path => isServiceCompany && path==='orders' ? Promise.resolve([]) : requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
       editing ? requestJSON(`${editorPath}${query}`,{skipCache:true}).then(loaded=>{
         if(alive){
           const draft={...loaded,approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};
@@ -107,7 +108,7 @@ export default function TransactionRequestEntry() {
       } })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [activeOrgId, reload,editing,editorPath]);
+  }, [activeOrgId, reload,editing,editorPath,isServiceCompany]);
   const update = patch => {setValidation('');setForm(current => ({ ...current, ...patch }));};
   const changeLine = useCallback((key, patch) => {setValidation('');setForm(current => ({ ...current,
     items: current.items.map(line => line.key === key ? { ...line, ...patch } : line) }));}, []);

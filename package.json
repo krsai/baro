@@ -94,6 +94,7 @@
     "test:work-list-date-range": "node --test scripts/work-list-date-range-regression.test.mjs",
     "test:line-removal-transition": "node --test scripts/line-removal-transition-regression.test.mjs",
     "test:month-selector": "node --test scripts/month-selector-regression.test.mjs",
+    "test:service-company": "npm --prefix backend run build && node --test scripts/service-company.test.mjs scripts/bank-ledger.test.mjs scripts/system-tenant-login.test.mjs scripts/company-menu-layout.test.mjs && node scripts/service-company-browser.test.mjs",
     "test:date-range-browser": "node scripts/date-range-browser.test.mjs && node scripts/date-range-month-shift-browser.test.mjs",
     "test:date-picker-theme-browser": "node scripts/date-picker-theme-browser.test.mjs",
     "test:entity-profile-browser": "node scripts/entity-profile-browser.test.mjs",

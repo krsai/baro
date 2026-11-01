@@ -1,3 +1,4 @@
+import {companyBusinessTimeZone} from '../services/serviceCompany';
 import { type Request, type Response } from "express";
 import { requireOrgRole } from "../middleware/access";
 import { resolveOptionalString } from "../utils/common";
@@ -19,7 +20,7 @@ const PAYROLL_ROLES = ["ADMIN", "OPERATOR", "ACCOUNTANT"] as const;
 export const getPayrollSettingsController = async (req: Request, res: Response) => {
   const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
   if (!accessContext) return;
-  return res.json(await getPayrollSettings(accessContext.organization.id, req.query.month));
+  return res.json(await getPayrollSettings(accessContext.organization.id, req.query.month,companyBusinessTimeZone(accessContext.organization)));
 };
 
 export const updatePayrollSettingsController = async (req: Request, res: Response) => {
@@ -49,7 +50,7 @@ export const getPayrollCalendarController = async (req: Request, res: Response) 
   if (!accessContext) return;
   const { organization } = accessContext;
 
-  const timeZone = process.env.BUSINESS_TIME_ZONE || "Asia/Seoul";
+  const timeZone = companyBusinessTimeZone(organization);
   const factories = await prisma.factory.findMany({
     where: { orgId: organization.id },
     select: { id: true, name: true, nameKo: true, nameVi: true, managementStartDate: true },
@@ -104,7 +105,8 @@ export const getPayrollController = async (req: Request, res: Response) => {
   const payroll = await getPayrollByMonth(
     organization.id,
     String(req.query.month || ""),
-    Number(req.query.factoryId)
+    Number(req.query.factoryId),
+    {timeZone:companyBusinessTimeZone(organization)}
   );
   return res.json(payroll);
 };
@@ -116,7 +118,8 @@ export const getPayrollReadinessController = async (req: Request, res: Response)
   const readiness = await getPayrollMonthReadiness(
     organization.id,
     String(req.query.month || ""),
-    Number(req.query.factoryId)
+    Number(req.query.factoryId),
+    {timeZone:companyBusinessTimeZone(organization)}
   );
   return res.json(readiness);
 };
@@ -137,6 +140,7 @@ export const savePayrollSnapshotController = async (req: Request, res: Response)
       accessContext.requesterEmail ??
       "unknown",
     employees: req.body?.employees,
+    timeZone:companyBusinessTimeZone(accessContext.organization),
   });
 
   return res.json(snapshot);
@@ -191,6 +195,7 @@ export const lockPayrollSnapshotController = async (req: Request, res: Response)
   const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
   assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
   const result = await lockPayrollSnapshot({
+    timeZone:companyBusinessTimeZone(accessContext.organization),
     orgId: accessContext.organization.id,
     month: String(req.params.month || ""),
     factoryId: Number(req.body?.factoryId),

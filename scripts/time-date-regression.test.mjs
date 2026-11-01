@@ -131,13 +131,12 @@ test('payroll stays unavailable while the selected month is still in progress', 
 
 test('production allowance board uses the server business calendar instead of browser local month', () => {
   assert.match(payrollControllerSource, /resolveLatestCompletedPayrollMonthKey\(\{ timeZone \}\)/);
-  assert.match(payrollControllerSource, /process\.env\.BUSINESS_TIME_ZONE \|\| "Asia\/Seoul"/);
+  assert.match(payrollControllerSource, /companyBusinessTimeZone\(organization\)/);
   assert.match(payrollBoardSource, /requestJSON\('\/payroll\/calendar'/);
   assert.match(payrollBoardSource, /calendarPayload\?\.latestCompletedMonthKey/);
-  assert.match(payrollBoardSource, /const \[selectedMonth, setSelectedMonth\] = useState\(''\)/);
+  assert.match(payrollBoardSource, /<DateRangeSelector/);
+  assert.match(payrollBoardSource, /periodMonthKeys\(dateFrom/);
   assert.match(payrollBoardSource, /month <= latestCompletedMonth/);
-  assert.match(payrollBoardSource, /<MenuItem value="">/);
-  assert.match(payrollBoardSource, /renderValue: \(value\) => value \|\| allMonthsLabel/);
 });
 
 test('payroll save rejects current month, missing factory and locked snapshots before calculation', async () => {

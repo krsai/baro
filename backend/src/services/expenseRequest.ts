@@ -1,3 +1,4 @@
+import {companyBusinessTimeZone} from './serviceCompany';
 import { requirePayeeBankAccount } from './entityBankAccount';
 import {expensePayeeIds,expenseApplicationDate} from './expensePayee';
 import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
@@ -9,7 +10,6 @@ import { validateCostDate } from './partnerTransactionCost';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { registerTransactionRequest, REQUEST_INCLUDE } from './transactionRequest';
 import { loadExpenseEditorSource } from './expenseRequestEditor';
-import { env } from 'node:process';
 
 export const EXPENSE_REQUEST_INCLUDE = {
   payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}},
@@ -39,6 +39,8 @@ export function expenseRequestTotals(items: any[]) {
 }
 
 export async function registerExpenseRequest(tx: any, orgId: number, actorId: number, body: any, appendQuantityRemark?: (args: any) => Promise<string | null>) {
+  const organization=await tx.organization.findFirst({where:{id:orgId},select:{type:true,country:true}});
+  const orgType=organization?.type,timeZone=companyBusinessTimeZone(organization);
   const fail = (message: string): never => { throw createHttpError(400, message); };
   const previous = typeof body?.clientKey==='string'?await tx.expenseRequest.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: { ...EXPENSE_REQUEST_INCLUDE, approvalSteps:{orderBy:{position:'asc'}} } }):null;
   const requestDate = validateCostDate(body?.automaticRequestDate ? previous?.requestDate||expenseApplicationDate() : body?.requestDate??previous?.requestDate??expenseApplicationDate());
@@ -76,7 +78,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   if(requestedNumber)throw createHttpError(400,'DOCUMENT_NUMBER_AUTOMATIC');
   await requirePayeeBankAccount(tx,orgId,payeeIds.partnerOrgId,payeeIds.payeeEmployeeId);
   const auditKey = `EXPENSE_REQUEST_CREATE:${orgId}:${body.clientKey}`;
-  await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${env.BUSINESS_TIME_ZONE || 'Asia/Seoul'},true)`;
+  await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${auditKey},true),set_config('baro.expense_editor_timezone',${timeZone},true)`;
   const managementNumber=await allocateDocumentNumber(tx,orgId,'EXP',requestDate,requestedNumber);
   const document = await tx.expenseRequest.create({ data: { orgId, managementNumber, ...payeeIds, createdByEmployeeId: actorId, updatedByEmployeeId: actorId, updatedAt: new Date(),
     requestDate, remark, currency: items.every((item: any) => item.currency === items[0].currency) ? items[0].currency : null, clientKey: body.clientKey, submissionHash } });
@@ -84,7 +86,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
     try {
-      await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}});
+      await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}},orgType);
     } catch(error: any) {
       error.expenseLine=index+1;
       error.message=`EXPENSE_LINE:${index+1}:${error.message}`;

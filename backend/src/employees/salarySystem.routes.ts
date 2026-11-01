@@ -66,7 +66,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     };
     return { ...result, defaultVersionStartMonth: defaultVersionStartMonth(), editRevision: editRevision(result) };
   };
-  const ensureInitialDraft = async (orgId: number, factoryId: number) => {
+  const ensureInitialDraft = async (orgId: number, factoryId: number, service=false) => {
     if (await prisma.salaryItem.findFirst({ where: { orgId, factoryId }, select: { id: true } })) return;
     const legacy = await prisma.employeeCompensationPolicy.findMany({ where: { orgId } });
     const definitions = [
@@ -75,8 +75,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       { code: "incentiveTotal", name: "Production Allowance", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng", category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], required: true },
     ];
     await prisma.$transaction(async (tx) => {
-      for (const [sortOrder, definition] of definitions.entries()) {
-        const item = await tx.salaryItem.create({ data: { orgId, factoryId, ...definition, payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, sortOrder } });
+      for (const [sortOrder, definition] of definitions.filter(row=>!service||row.category!=='INCENTIVE').entries()) {
+        const item = await tx.salaryItem.create({ data: { orgId, factoryId, ...definition, ...(service?{payTypes:['GENERAL']}:{}), payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, sortOrder } });
         const field = definition.code === "baseSalary" ? "baseSalary" : definition.code === "allowanceTotal" ? "allowance" : "incentive";
         const rows = definition.category === "INCENTIVE" ? [] : legacy.map((row) => ({ orgId, factoryId, payType: row.payType, gradeId: row.gradeId, salaryItemId: item.id, amount: row[field] }));
         if (rows.length) await tx.salaryItemRate.createMany({ data: rows });
@@ -86,7 +86,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
   // Only the single item coded "incentiveTotal" is the fixed production-allowance
   // passthrough. Other INCENTIVE-category items (e.g. a production-ST-excess bonus)
   // are ordinary user-managed items and must not be touched here.
-  const ensureFixedIncentiveItem = async (orgId: number, factoryId: number) => {
+  const ensureFixedIncentiveItem = async (orgId: number, factoryId: number, service=false) => {
+    if(service)return;
     const fixedItem = await prisma.salaryItem.findFirst({ where: { orgId, factoryId, code: "incentiveTotal" } });
     const names = { name: "Production Allowance", nameKo: "생산수당", nameEn: "Production Allowance", nameVi: "Phụ cấp sản lượng" };
     const data = { category: "INCENTIVE", payTypes: ["OUTPUT"], formula: ["PRODUCTION_ALLOWANCE"], payCycle: "MONTHLY", paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: null, required: true, isActive: true };
@@ -113,8 +114,8 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     if (!(await requireSalarySystemManager(req, res, org.id))) return;
     const factory = await resolveFactory(org.id, req.query.factoryId);
     if (!factory) return res.status(404).json({ ok: false, error: "factory not found" });
-    await ensureInitialDraft(org.id, factory.id);
-    await ensureFixedIncentiveItem(org.id, factory.id);
+    await ensureInitialDraft(org.id, factory.id,org.type==='SERVICE');
+    await ensureFixedIncentiveItem(org.id, factory.id,org.type==='SERVICE');
     await ensureV1(org.id, factory.id, getRequesterEmail(req) || "system@baro.local");
     res.json(await state(org.id, factory.id));
   });
@@ -149,13 +150,14 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
       const capValue = raw?.capValue === "" || raw?.capValue == null ? null : Number(raw.capValue);
       const expectedMonthCount = PAYMENT_MONTHS_BY_CYCLE[payCycle as keyof typeof PAYMENT_MONTHS_BY_CYCLE]?.length;
       if (!code || codes.has(code) || !validLocalizedName(raw) || !["BASE", "ALLOWANCE", "INCENTIVE"].includes(category) || payTypes.length < 1 || new Set(payTypes).size !== payTypes.length || payTypes.some((value) => !PAY_TYPES.includes(value)) || (category === "INCENTIVE" && (payTypes.length !== 1 || payTypes[0] !== "OUTPUT")) || !expectedMonthCount || paymentMonths.length !== expectedMonthCount || new Set(paymentMonths).size !== paymentMonths.length || paymentMonths.some((month) => !Number.isInteger(month) || month < 1 || month > 12) || (category === "INCENTIVE" && paymentMonths.some((month, index) => month !== PAYMENT_MONTHS_BY_CYCLE.MONTHLY[index])) || (capValue !== null && (!Number.isSafeInteger(capValue) || capValue < 0)) || !validateSalaryFormula(raw?.formula, category)) return res.status(400).json({ ok: false, error: "invalid salary item" });
+      if(org.type==='SERVICE'&&(category==='INCENTIVE'||payTypes.some(type=>type!=='GENERAL')||JSON.stringify(raw.formula).includes('PRODUCTION_')))return res.status(400).json({ok:false,error:'invalid salary item'});
       codes.add(code);
       payTypesByCode.set(code, payTypes);
     }
     // Exactly one item must be the fixed production-allowance passthrough (code
     // "incentiveTotal"); other INCENTIVE-category items are optional and user-defined
     // (e.g. a production-ST-excess bonus), so they are not counted here.
-    if (items.filter((raw) => String(raw?.code || raw?.id || "").trim() === "incentiveTotal").length !== 1) return res.status(400).json({ ok: false, error: "exactly one fixed incentive item is required" });
+    if (org.type!=='SERVICE' && items.filter((raw) => String(raw?.code || raw?.id || "").trim() === "incentiveTotal").length !== 1) return res.status(400).json({ ok: false, error: "exactly one fixed incentive item is required" });
     const gradeIds = new Set((await prisma.employeeGrade.findMany({ where: { orgId: org.id, isActive: true }, select: { id: true } })).map((row) => row.id));
     const rateKeys = rates.map((r) => `${r.payType}:${Number(r.gradeId)}:${String(r.salaryItemCode)}`);
     if (new Set(rateKeys).size !== rateKeys.length || rates.some((r) => !codes.has(String(r.salaryItemCode)) || String(r.salaryItemCode) === "incentiveTotal" || !PAY_TYPES.includes(r.payType) || !payTypesByCode.get(String(r.salaryItemCode))?.includes(r.payType) || !gradeIds.has(Number(r.gradeId)) || !Number.isSafeInteger(Number(r.amount)) || Number(r.amount) < 0)) return res.status(400).json({ ok: false, error: "invalid salary rate" });

@@ -107,7 +107,7 @@ test('running balance carries over page boundaries and repeated void requests re
 });
 test('service accountants can use banking without gaining manufacturing menus; current explicit denials are retained',()=>{
  const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:'ACCOUNTANT',accessPolicy:getDefaultRoleAccessPolicy()}};
- assert.equal(canAccessPath('/bank-ledger',state),true);for(const path of ['/order','/style','/assignment','/payroll'])assert.equal(canAccessPath(path,state),false);
+ assert.equal(canAccessPath('/bank-ledger',state),true);for(const path of ['/order','/style','/assignment'])assert.equal(canAccessPath(path,state),false);
  state.accessProfile.accessPolicy={__schemaVersion:ROLE_ACCESS_POLICY_SCHEMA_VERSION,SERVICE:{ACCOUNTANT:[]}};
  assert.equal(canAccessPath('/bank-ledger',state),false);
 });
@@ -121,14 +121,14 @@ test('bank query bounds use the account opening date without inheriting factory 
 });
 test('frontend and backend access-policy defaults and upgrades stay aligned for both production and service tenants',()=>{
  const names=['ORGANIZATION_TYPE_KEYS','ORG_ACCESS_ROLES','ROLE_ACCESS_POLICY_SCHEMA_VERSION','ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY','ROLE_ACCESS_POLICY_FEATURES','ROLE_ACCESS_POLICY_FEATURE_SET','DEFAULT_ROLE_ACCESS_POLICY','cloneRoleAccessPolicy','sanitizeRoleAccessPolicyFeatureList','getRoleAccessPolicySchemaVersion','applyLegacyDashboardDefault','applyLegacyProductionAnalysisDefault','applyLegacyOutsourcingRecordDefault','applyLegacyBusinessPartnerSplitDefault','applyLegacyRevenueAnalysisDefault','applyLegacyRevenueForecastSplitDefault','applyLegacyEmployeeFactoryScopeAccessDefault','applyLegacyEmployeeSystemDefault','applyLegacySalarySystemDefault','sanitizeRoleAccessPolicy'];
- const backend=loadSourceBindings('backend/src/index.ts',names,{ensureArray:value=>Array.isArray(value)?value:[]});
+ const backend=loadSourceBindings('backend/src/index.ts',names,{ensureArray:value=>Array.isArray(value)?value:[],SERVICE_ROLE_DEFAULTS:require('../backend/dist/services/serviceCompany.js').SERVICE_ROLE_DEFAULTS});
  const canonical=policy=>Object.fromEntries(Object.entries(policy).map(([type,roles])=>[type,Object.fromEntries(Object.entries(roles).map(([role,features])=>[role,[...features].sort()]))]));
  assert.equal(backend.ROLE_ACCESS_POLICY_SCHEMA_VERSION,ROLE_ACCESS_POLICY_SCHEMA_VERSION);
  assert.deepEqual(canonical(backend.DEFAULT_ROLE_ACCESS_POLICY),canonical(getDefaultRoleAccessPolicy()));
  for(const version of [0,12,13]){
   const value={__schemaVersion:version,MANUFACTURER:{ACCOUNTANT:['INVOICE']},BRAND:{ADMIN:['STYLE']}};
   const result=backend.sanitizeRoleAccessPolicy(value);
-  assert.deepEqual(result.SERVICE,{ADMIN:['BANK_LEDGER'],ACCOUNTANT:['BANK_LEDGER'],OPERATOR:[],WORKER:[]});
+  assert.deepEqual(result.SERVICE,getDefaultRoleAccessPolicy().SERVICE);
   assert.equal(result.MANUFACTURER.ACCOUNTANT.includes('BANK_LEDGER'),version<13);
  }
 });

@@ -1,3 +1,4 @@
+import ServiceDashboard from './ServiceDashboard';
 import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
 import LedgerChangesDashboardCard from '../../components/LedgerChangesDashboardCard';
 import PageContentStack from '../../components/PageContentStack';
@@ -864,4 +865,4 @@ const WorkspaceDashboard = () => {
   );
 };
 
-export default WorkspaceDashboard;
+export default function CompanyDashboard(){const {activeProfile}=useAuth();return activeProfile?.orgType==='SERVICE'?<ServiceDashboard/>:<WorkspaceDashboard/>;}
