@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { createHttpError } from "../utils/http";
 
 const EMPLOYEE_NUMBER_WIDTH = 4;
 const EMPLOYEE_NUMBER_LOCK_NAMESPACE = 20421;
@@ -18,7 +19,7 @@ export const normalizeEmployeeNo = (value: unknown): string | null => {
   return match[1]!.padStart(EMPLOYEE_NUMBER_WIDTH, "0");
 };
 
-// 조직 코드(Organization.code, 4자리 대문자)가 있으면 사번은 "{조직 코드}{4자리 순번}"
+// 현재 회사 코드(길이 제한 없음)가 있으면 사번은 "{회사 코드}{4자리 순번}"
 // (예: BRVN0001) 형태다. 순번은 조직 코드 유무와 무관하게 기존 사번 끝의 숫자를
 // 그대로 이어받는다 - 조직 코드 도입 이전 사번("0024")과 이후 사번("BRVN0025")이
 // 섞여 있어도 최댓값을 정확히 찾아 다음 순번을 이어가며, 조직 코드가 없는 조직은
@@ -47,6 +48,7 @@ export const resolveNextEmployeeNo = (
     }
   });
 
+  if(maxSequence>=9999)throw createHttpError(409,'EMPLOYEE_NUMBER_SEQUENCE_EXHAUSTED');
   const nextDigits = String(maxSequence + 1).padStart(EMPLOYEE_NUMBER_WIDTH, "0");
   return normalizedOrgCode ? `${normalizedOrgCode}${nextDigits}` : nextDigits;
 };

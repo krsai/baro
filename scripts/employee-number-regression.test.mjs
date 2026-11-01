@@ -25,14 +25,16 @@ test('generates the next sequence across all factories in an organization', () =
   );
 });
 
-test('allows organization sequences to grow beyond four digits', () => {
-  assert.equal(resolveNextEmployeeNo(['9999']), '10000');
+test('does not silently exceed the four-digit employee sequence', () => {
+  assert.throws(()=>resolveNextEmployeeNo(['9999']),/EMPLOYEE_NUMBER_SEQUENCE_EXHAUSTED/);
+  assert.throws(()=>resolveNextEmployeeNo(['BARO9999'],'BARO'),/EMPLOYEE_NUMBER_SEQUENCE_EXHAUSTED/);
 });
 
 test('prefixes generated numbers with the organization code when set', () => {
   assert.equal(resolveNextEmployeeNo(['0001', '0024'], 'BRVN'), 'BRVN0025');
   const existing=['BRVN0001','BRVN0024'];
   assert.equal(resolveNextEmployeeNo(existing,'BAROGA'),'BAROGA0025');
+  assert.equal(resolveNextEmployeeNo(['BRVN0027','BARO0028'],'BARO'),'BARO0029');
   assert.deepEqual(existing,['BRVN0001','BRVN0024']);
 });
 
