@@ -5,8 +5,8 @@ import MonthRangeSelector from './MonthRangeSelector';
 export default function DateRangeSelector({onShift,startValue,endValue,onStartChange,onEndChange,slotProps,...props}) {
  const shift=amount=>{
   if(!startValue||!endValue)return;
-  onStartChange?.(dayjs(startValue).add(amount,'month'));
-  onEndChange?.(dayjs(endValue).add(amount,'month'));
+  onStartChange?.(dayjs(startValue).add(amount,'month').startOf('month'));
+  onEndChange?.(dayjs(endValue).add(amount,'month').endOf('month').startOf('day'));
  };
  return <MonthRangeSelector {...props} monthOnly={false} startValue={startValue} endValue={endValue} onStartChange={onStartChange} onEndChange={onEndChange} onShift={onShift||shift} slotProps={{...slotProps,textField:{...slotProps?.textField,sx:{width:140,minWidth:140,...slotProps?.textField?.sx}}}}/>;
 }

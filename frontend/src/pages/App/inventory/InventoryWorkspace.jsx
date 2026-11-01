@@ -153,8 +153,8 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const [historyStartMonth, setHistoryStartMonth] = useState(() => dayjs('2026-08-01'));
   const [historyEndMonth, setHistoryEndMonth] = useState(() => dayjs('2026-08-01').endOf('month'));
   const shiftHistoryRange = (amount) => {
-    setHistoryStartMonth((previous) => previous.add(amount, 'month'));
-    setHistoryEndMonth((previous) => previous.add(amount, 'month'));
+    setHistoryStartMonth((previous) => previous.add(amount, 'month').startOf('month'));
+    setHistoryEndMonth((previous) => previous.add(amount, 'month').endOf('month').startOf('day'));
   };
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>거래 등록</Button>

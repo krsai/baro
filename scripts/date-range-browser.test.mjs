@@ -46,12 +46,12 @@ try {
   await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[]}));
   await page.route('**/outsourcing-requests?*', route => route.fulfill({ headers, json: ['2026-09-01', '2026-10-01', '2026-10-31', '2026-11-30', '2026-12-01'].map((date, id) => ({ id, transactionDate: date, partner: { name: `Partner${id}` }, expenseRequest:{remark:`Cost${id}`}, description: `Legacy title${id}`, currency: 'VND', amount: '100' })) }));
   await page.goto(`http://127.0.0.1:${port}/date-range-acceptance.html?costs`);
-  await page.getByText('Cost1', { exact: true }).waitFor();
+  await page.getByText('Partner1', { exact: true }).waitFor();
   assert.equal(await page.locator('tbody tr').count(), 2);
   await page.getByRole('button', { name: '시작일을 이전 달 1일로', exact: true }).click();
-  await page.getByText('Cost0', { exact: true }).waitFor();
+  await page.getByText('Partner0', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), true);
-  assert.equal(await page.getByText('Cost3', { exact: true }).count(), 0);
+  assert.equal(await page.getByText('Partner3', { exact: true }).count(), 0);
   assert.equal(await page.locator('tbody tr').count(), 3);
   await page.getByPlaceholder(/신청번호/).fill('Partner2');
   assert.equal(await page.locator('tbody tr').count(), 1);
