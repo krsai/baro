@@ -23,6 +23,8 @@ try {
   for(const mode of (process.env.EXPENSE_EDITOR_MODES?.split(',')||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS']))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
     console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
+    let releaseDocument,releaseCatalog,settingsReads=0;
+    const documentGate=new Promise(resolve=>{releaseDocument=resolve;}),catalogGate=new Promise(resolve=>{releaseCatalog=resolve;});
     page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
     await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,accessProfile:{orgName:"BARO",employeeName:"Current editor"}});'}));
@@ -36,7 +38,10 @@ try {
       'transaction-codes':[{id:7,code:'BTHE',nameKo:'Buttonhole',nameEn:'Buttonhole',nameVi:'Buttonhole',isActive:true,vatEnabled:false,serviceTypeId:4,base:service}],
       'orders':[{id:'public-30',dbId:30,ownerOrgId:1,orderNumber:'L17-1'}], 'app-settings':{defaultVatRate:'10'} };
     await page.route('**/expense-payees?*',r=>r.fulfill({headers,json:mocks['business-partners']}));
-    for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json}));
+    const role={id:3,code:'PROCESS_OUTSOURCING',nameEn:'Production outsourcing'},industry={id:4,code:'BUTTONHOLE',nameEn:'Buttonhole',partnerRoleId:3,partnerRole:role};
+    await page.route('**/partner-classifications/options?*',r=>r.fulfill({headers,json:{roles:[role],industries:[industry]}}));
+    await page.route('**/partner-classifications/11?*',r=>r.fulfill({headers,json:{revision:2,roleIds:[3],industryIds:[4],industries:[industry],legacyGeneral:[]}}));
+    for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,async r=>{if(mode==='SAVED'&&endpoint==='orders')await catalogGate;return r.fulfill({headers,json});});
     await page.route('**/outsourcing-service-types?*',r=>r.fulfill({headers,json:mocks['business-partners'][0].serviceTypes}));
     const profileWrites=[];
     await page.route('**/business-partners/11?*',r=>{
@@ -48,15 +53,35 @@ try {
     await page.route('**/expense-request-editor/legacy/78?*',async r=>{
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
-      return r.fulfill({headers,json:{managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
+      if(mode==='SAVED')await documentGate;
+      return r.fulfill({headers,json:{managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:mode==='SAVED'?{kind:'request',id:'18'}:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
     await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
     await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currencyId:1,currency:{id:1,code:'VND'},isDefault:true,isActive:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
-    await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'}]}}));
+    await page.route('**/expense-approval-settings?*',r=>{settingsReads++;return r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'}]}});});
+    await page.route('**/expense-requests/18/approval?*',r=>r.fulfill({headers,json:{version:3,exempt:true,exemptionReason:'SAVED_POLICY',steps:[]}}));
     await page.route('**/expense-approval-preview?*',r=>{const selection=r.request().postDataJSON()?.selection||{};return r.fulfill({headers,json:{complete:selection.seniorEmployeeId===21,ids:selection.seniorEmployeeId?[21]:[],drafter:{id:20,name:'Current editor'},stages:[{key:'senior',employeeId:selection.seniorEmployeeId||null,name:selection.seniorEmployeeId?'First approver':null,candidates:[{id:21,name:'First approver'}]}],policy:{totals:[{currency:'VND',amount:'510000'}]}}});});
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`,{timeout:90000});
+    if(mode==='SAVED'){
+      const strip=page.getByTestId('expense-approval-stages');await strip.waitFor();
+      assert.equal(await strip.locator('[data-approval-state]').count(),0,'No guessed author or self-approval before document response');
+      assert.equal(settingsReads,0,'Saved documents do not fetch current editor settings on entry');
+      releaseDocument();
+      await strip.getByText('Original author',{exact:true}).first().waitFor();
+      await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-approval-stages"] [data-approval-state="approved"]').length===2);
+      assert.equal(await strip.getByText('Current editor',{exact:true}).count(),0);
+      assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),true,'References are still loading');
+      assert.equal(await page.getByTestId('expense-line').getByLabel(EXPENSE_REQUEST_TEXT[lang].quantity,{exact:false}).inputValue(),'170','Document content does not wait for reference data');
+      assert.equal(settingsReads,0);
+      releaseCatalog();await page.waitForFunction(()=>!document.querySelector('[data-testid="expense-approval-button"]').disabled);
+      await page.getByTestId('expense-approval-button').click();
+      const reference=page.getByRole('dialog');await reference.waitFor();
+      assert.deepEqual(await reference.getByRole('textbox').evaluateAll(elements=>elements.map(el=>el.value)),['Original author','Original author']);
+      assert.equal(settingsReads,0,'Read-only saved approval reference needs no current editor settings');
+      await page.keyboard.press('Escape');await reference.waitFor({state:'hidden'});
+    }
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
@@ -102,7 +127,7 @@ try {
       await profile.getByLabel(b.businessNumber,{exact:true}).fill('TAX-123');await profile.getByLabel(b.email,{exact:true}).fill('updated@example.com');await profile.getByLabel(b.address,{exact:true}).fill('Updated address');await profile.getByRole('button',{name:b.save,exact:true}).click();
       if(lang==='ko'){await profile.getByRole('alert').filter({hasText:'temporary profile error'}).waitFor();assert.equal(await profile.getByLabel(b.email,{exact:true}).inputValue(),'updated@example.com');await profile.getByRole('button',{name:b.save,exact:true}).click();}
       await page.getByRole('dialog').last().getByText(/TAX-123/).waitFor();
-      assert.deepEqual(profileWrites.at(-1).serviceTypeIds,[44]);assert.equal(submitted,undefined);
+      assert.deepEqual(profileWrites.at(-1).classification,{revision:2,roleIds:[3],industryIds:[4]});assert.equal(submitted,undefined);
       await picker.getByRole('button',{name:h.cancel,exact:true}).click();assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Preserve this draft');await page.getByLabel('REMARK',{exact:true}).fill('');
     }
     assert.equal(await page.getByTestId('expense-line').count(),1);
@@ -177,7 +202,7 @@ try {
         assert.equal(await page.evaluate(()=>window.expenseNavigations?.length || 0),0,'A background save must not reopen its closed workspace');
         assert.deepEqual(errors,[]);await page.close();continue;
       }
-      if(mode==='PROCESS'&&lang==='ko'){await page.getByRole('button',{name:l.retry,exact:true}).click();assert.deepEqual(attempts[0],attempts[1]);}
+      if(mode==='PROCESS'&&lang==='ko'){await Promise.all([page.waitForResponse(response=>response.request().method()==='PUT'&&response.url().includes('/expense-request-editor/')),page.getByRole('button',{name:l.retry,exact:true}).click()]);assert.equal(attempts.length,2);assert.deepEqual(attempts[0],attempts[1]);}
       await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
       assert.equal(await page.evaluate(()=>window.expenseNavigations.length),1);
       await page.evaluate(()=>window.changeWorkspace('/dashboard'));await page.waitForTimeout(100);

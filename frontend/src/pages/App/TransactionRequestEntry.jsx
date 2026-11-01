@@ -79,23 +79,31 @@ export default function TransactionRequestEntry() {
     return()=>{alive=false;unsubscribe();};
   },[activeOrgId]);
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
+  const documentScope = `${activeOrgId}:${editorPath}:${reload}`;
+  const [loadedDocumentScope, setLoadedDocumentScope] = useState(null);
+  const documentLoading = editing && loadedDocumentScope !== documentScope;
   const [saving, setSaving] = useState(false), [error, setError] = useState(''), [submission, setSubmission] = useState(null), [statuses, setStatuses] = useState({});
   const [validationAttempt,setValidationAttempt]=useState(0),[validation,setValidation]=useState(''),[approvalStatus,setApprovalStatus]=useState(null);
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
   const dirty = documentSnapshot(form) !== initialSnapshot;
   useUnsavedChanges(dirty);
-  useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId]);
+  useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setApprovalStatus(null); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId]);
   useEffect(() => {
     let alive = true; setLoading(true); setLoadError(false);
     const query = buildQueryString({ orgId: activeOrgId });
     Promise.all([
       ...['expense-payees','transaction-codes','app-settings','orders','expense-units'].map(path => requestJSON(`/${path}${path === 'transaction-codes' ? buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}) : query}`, { skipCache: true })),
-      editing ? requestJSON(`${editorPath}${query}`,{skipCache:true}) : Promise.resolve(null),
+      editing ? requestJSON(`${editorPath}${query}`,{skipCache:true}).then(loaded=>{
+        if(alive){
+          const draft={...loaded,approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};
+          setForm(draft);setInitialSnapshot(documentSnapshot(draft));setLoadedDocumentScope(documentScope);
+        }
+        return loaded;
+      }) : Promise.resolve(null),
     ])
       .then(([partners,codes,settings,orders,units,loaded]) => { if (alive) {
         if (loaded?.partner && !partners.some(row=>row.id===loaded.partner.id)) partners=[...partners,{...loaded.partner,isActive:false}];
         setData({ partners, codes, settings, units, orders: orders.filter(row => row.ownerOrgId === Number(activeOrgId)) });
-        if (loaded) {const draft={...loaded,approvalSelection:loaded.approvalSelection||null,clientKey:crypto.randomUUID(),items:loaded.items.map(item=>({...newExpenseLine(),...item,key:crypto.randomUUID()}))};setForm(draft);setInitialSnapshot(documentSnapshot(draft));}
       } })
       .catch(() => { if (alive) setLoadError(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
@@ -219,8 +227,8 @@ export default function TransactionRequestEntry() {
       {form.readOnly && <Alert severity="info">{form.bankReconciled?(ledgerEvidenceErrors[languageCode]||ledgerEvidenceErrors.en).EXPENSE_ALREADY_RECONCILED:LOCKED_TEXT[languageCode] || LOCKED_TEXT.en}</Alert>}
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2.5 }}>
         <DocumentEntryHeader approval={<Stack spacing={1}>
-          <ExpenseApprovalSettings horizontalStages ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}/>
-          <ExpenseApprovalActions compact requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
+          <ExpenseApprovalSettings horizontalStages existingDocument={editing && (documentLoading || Boolean(form.version))} documentLoading={documentLoading} ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}/>
+          <ExpenseApprovalActions compact requestId={!documentLoading&&form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
         </Stack>}>
           <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
             onChange={(selected,accounts)=>{update({partnerOrgId:selected?.employeeId?null:selected?.id||null,payeeEmployeeId:selected?.employeeId||null});setPayeeBanks({entityId:selected?.id,accounts,loaded:true});}}
