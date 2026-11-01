@@ -113,11 +113,9 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     if (!value?.isValid?.() || context?.validationError || setter === setDateFrom && value.isAfter(dateTo,'day') || setter === setDateTo && value.isBefore(dateFrom,'day')) return;
     setter(value.startOf('day'));
   };
-  const shiftRange = amount => {
-    const month = (amount > 0 ? dateTo : dateFrom).add(amount,'month');
-    const start = month.startOf('month');
-    setDateFrom(period.startDate && start.isBefore(dayjs(period.startDate),'day') ? dayjs(period.startDate) : start);
-    setDateTo(month.endOf('month').startOf('day'));
+  const shiftRange = (_amount,range) => {
+    setDateFrom(range.startValue);
+    setDateTo(range.endValue);
   };
   const editRow = row => {
     if (row.expenseRequestId) return onOpenRequest?.('request',String(row.expenseRequestId));

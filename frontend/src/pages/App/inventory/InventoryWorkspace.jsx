@@ -152,10 +152,6 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const [historyStartMonth, setHistoryStartMonth] = useState(() => dayjs('2026-08-01'));
   const [historyEndMonth, setHistoryEndMonth] = useState(() => dayjs('2026-08-01').endOf('month'));
-  const shiftHistoryRange = (amount) => {
-    setHistoryStartMonth((previous) => previous.add(amount, 'month').startOf('month'));
-    setHistoryEndMonth((previous) => previous.add(amount, 'month').endOf('month').startOf('day'));
-  };
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>거래 등록</Button>
   ) : view === 'materials' ? (
@@ -171,7 +167,7 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   ) : view === 'history' ? (
     <SearchPanel
       search={<SearchInput placeholder="문서번호, 자재, 처리자 검색" />}
-      controls={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="거래 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><DateRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} onShift={shiftHistoryRange} /></Stack>}
+      controls={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="거래 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><DateRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} /></Stack>}
     />
   ) : view === 'materials' ? (
     <SearchPanel search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />

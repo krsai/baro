@@ -17,11 +17,22 @@ try{
   await page.clock.install({time:new Date(end+'T12:00:00+07:00')});
   await page.goto(`http://127.0.0.1:${port}/date-range-month-shift-acceptance.html?`+new URLSearchParams({start,end,today:end,lang}));
   await page.getByRole('button',{name:'M-',exact:true}).click();assert.equal(await page.locator('output').textContent(),expected);
-  // A full previous month shifts forward to another full month; future dates
-  // beyond the configured current-day ceiling remain unavailable.
+  // The current partial month remains reachable; only dates after its ceiling
+  // are excluded, rather than disabling the whole month.
+  assert.equal(await page.getByRole('button',{name:'M+',exact:true}).isDisabled(),false);
+  await page.getByRole('button',{name:'M+',exact:true}).click();assert.equal(await page.locator('output').textContent(),end.slice(0,7)+'-01 / '+end);
   assert.equal(await page.getByRole('button',{name:'M+',exact:true}).isDisabled(),true);
+  await page.getByRole('button',{name:'M-',exact:true}).click();assert.equal(await page.locator('output').textContent(),expected);
   await page.getByRole('button',{name:'M-',exact:true}).click();await page.getByRole('button',{name:'M+',exact:true}).click();assert.equal(await page.locator('output').textContent(),expected);
-  await page.setViewportSize({width:390,height:700});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
+  await page.setViewportSize({width:390,height:700});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+  await page.getByRole('button',{name:'M+',exact:true}).click();assert.equal(await page.locator('output').textContent(),end.slice(0,7)+'-01 / '+end);
+  assert.equal(await page.getByRole('button',{name:'M+',exact:true}).isDisabled(),true);
+  await page.getByRole('button',{name:'M-',exact:true}).click();assert.equal(await page.locator('output').textContent(),expected);
+  assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Global month shifting ko/en/vi: November first, year boundary, February/leap year, partial dates, full-month M+ round trip, future ceiling and mobile passed.');
+ const emptyPage=await browser.newPage();
+ await emptyPage.goto(`http://127.0.0.1:${port}/date-range-month-shift-acceptance.html?`+new URLSearchParams({start:'',end:'',today:'2026-11-01',lang:'ko'}));
+ for(const name of ['M-','M+'])assert.equal(await emptyPage.getByRole('button',{name,exact:true}).isDisabled(),true);
+ await emptyPage.close();
+ console.log('Global month shifting ko/en/vi: November first, year boundary, February/leap year, partial dates, full-month M+ round trip, future ceiling, empty dates and mobile passed.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

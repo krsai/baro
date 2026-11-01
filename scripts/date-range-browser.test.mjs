@@ -35,7 +35,7 @@ try {
   await page.getByRole('button', { name: '시작일을 이전 달 1일로', exact: true }).click();
   assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2026-10-11');
   assert.equal(await page.getByRole('button', { name: /Extend end|종료일을/, exact: false }).isDisabled(), true);
-  assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), false);
   assert.equal(await page.locator('output').textContent(), '2026-09-01 / 2026-10-11');
   for(const width of [390,740]){await page.setViewportSize({width,height:600});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await page.goto('http://127.0.0.1:'+port+'/date-range-acceptance.html?limit');
@@ -50,7 +50,7 @@ try {
   assert.equal(await page.locator('tbody tr').count(), 2);
   await page.getByRole('button', { name: '시작일을 이전 달 1일로', exact: true }).click();
   await page.getByText('Partner0', { exact: true }).waitFor();
-  assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: 'M+', exact: true }).isDisabled(), false);
   assert.equal(await page.getByText('Partner3', { exact: true }).count(), 0);
   assert.equal(await page.locator('tbody tr').count(), 3);
   await page.getByPlaceholder(/신청번호/).fill('Partner2');

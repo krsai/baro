@@ -61,6 +61,14 @@ const MonthRangeSelector = ({
   const end = dayjs(endValue);
   const previous = start.subtract(1, 'month').startOf('month');
   const next = end.add(1, 'month').endOf('month').startOf('day');
+  const shiftedRange = amount => {
+    let startDate=start.add(amount,'month').startOf('month');
+    let endDate=end.add(amount,'month').endOf('month').startOf('day');
+    if(floor && startDate.isBefore(floor,'day'))startDate=floor;
+    if(maxDate && endDate.isAfter(dayjs(maxDate),'day'))endDate=dayjs(maxDate).startOf('day');
+    return {startValue:startDate,endValue:endDate};
+  };
+  const forwardRange=shiftedRange(1),backwardRange=shiftedRange(-1);
   const buttonSx = { minWidth: ui.control.dateNavigationWidth, width: ui.control.dateNavigationWidth, height: ui.control.height, minHeight: ui.control.height, p: 0, flexShrink: 0, alignSelf: 'center' };
   return (
   <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
@@ -97,8 +105,8 @@ const MonthRangeSelector = ({
       <Button
         size="small"
         variant="outlined"
-        onClick={() => onShift?.(1)}
-        disabled={disabled || Boolean(maxDate && end.add(1,'month').endOf('month').isAfter(dayjs(maxDate),'day'))}
+        onClick={() => onShift?.(1,forwardRange)}
+        disabled={disabled || !startValue || !endValue || !start.isValid() || !end.isValid() || forwardRange.startValue.isAfter(forwardRange.endValue,'day')}
         sx={{ minWidth: 32, height: ui.control.shiftHeight, minHeight: ui.control.shiftHeight, px: 0.5, py: 0, fontSize: 11, lineHeight: 1 }}
       >
         M+
@@ -106,8 +114,8 @@ const MonthRangeSelector = ({
       <Button
         size="small"
         variant="outlined"
-        onClick={() => onShift?.(-1)}
-        disabled={disabled || Boolean(floor && start.subtract(1,'month').startOf('month').isBefore(floor, monthOnly ? 'month' : 'day'))}
+        onClick={() => onShift?.(-1,backwardRange)}
+        disabled={disabled || !startValue || !endValue || !start.isValid() || !end.isValid() || Boolean(floor && start.subtract(1,'month').startOf('month').isBefore(floor, monthOnly ? 'month' : 'day'))}
         sx={{ minWidth: 32, height: ui.control.shiftHeight, minHeight: ui.control.shiftHeight, px: 0.5, py: 0, fontSize: 11, lineHeight: 1 }}
       >
         M-
