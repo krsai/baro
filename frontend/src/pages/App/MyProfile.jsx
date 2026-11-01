@@ -67,8 +67,8 @@ const COPY = { ko: {
 } };
 
 const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
-  <Box sx={{ py: 1.5, borderBottom: '1px solid #eee' }}>
-    <Typography variant="subtitle2" sx={{ color: 'text.secondary', mb: 0.5 }}>
+  <Box sx={{ minWidth: 0, gridColumn: name ? 'auto' : '1 / -1' }}>
+    <Typography component="label" htmlFor={`personal-profile-${name || 'email'}`} variant="subtitle2" sx={{ display: 'block', color: 'text.secondary', mb: 0.5 }}>
       {label}
       {disabled && (
         <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.disabled' }}>
@@ -78,6 +78,7 @@ const InfoRow = ({ label, value, name, disabled, onChange, readOnlyText }) => (
     </Typography>
     <TextField
       fullWidth
+      id={`personal-profile-${name || 'email'}`}
       name={name}
       inputProps={{ 'aria-label': label }}
       value={value}
@@ -175,7 +176,7 @@ const MyProfile = () => {
   };
 
   return (
-    <Paper variant="outlined" sx={{ width: '100%', p: 3, borderRadius: 2 }}>
+    <Paper variant="outlined" sx={{ minWidth: 0, p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
     <PageSectionHeader
       title={TEXT.title}
       titleVariant="h6"
@@ -187,6 +188,7 @@ const MyProfile = () => {
         />
       )}
     />
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' }, gap: 2.5, mt: 2.5 }}>
         <InfoRow
           label={TEXT.email}
           value={formData.email}
@@ -221,6 +223,7 @@ const MyProfile = () => {
           onChange={handleInputChange}
           readOnlyText={TEXT.readOnly}
         />
+      </Box>
       </Paper>
   );
 };
