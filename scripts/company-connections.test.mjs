@@ -61,11 +61,13 @@ test('SQL enforces real companies, own vendor and active company actor; connecti
  await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,"businessNumber" TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,code TEXT,country TEXT DEFAULT 'VN');CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
  INSERT INTO "Organization"(id,"ownerOrgId",type) VALUES(1,NULL,'MANUFACTURER'),(2,NULL,'SERVICE'),(3,NULL,'MANUFACTURER'),(11,1,'LOGISTICS_PROVIDER'),(12,3,'LOGISTICS_PROVIDER');INSERT INTO "Employee" VALUES(101,1,'ACTIVE','ADMIN'),(102,2,'ACTIVE','ADMIN');`);
  await db.exec(readFileSync('backend/prisma/migrations/20261101230000_company_partner_links/migration.sql','utf8'));
+ await db.exec(readFileSync('backend/prisma/migrations/20261101231000_company_links_self_owned_tenants/migration.sql','utf8'));
+ await db.exec('UPDATE "Organization" SET "dataOwnerOrgId"=id WHERE id IN(1,2)');
  await db.exec(`UPDATE "Organization" SET name='DEX LOGIS' WHERE id=2;UPDATE "Organization" SET name='DEX%' WHERE id=3;INSERT INTO "Employee" VALUES(103,3,'ACTIVE','ADMIN');INSERT INTO "Organization"(id,type,"dataOwnerOrgId",name) VALUES(22,'BRAND',1,'DEX LOGIS');INSERT INTO "Employee" VALUES(122,22,'ACTIVE','ADMIN');`);
  const queryDb={$queryRawUnsafe:async(sql,...params)=>(await db.query(sql,params)).rows};
  assert.deepEqual((await companyConnectionCandidates(queryDb,1,{name:'dex logis',country:'VN'})).map(row=>row.id),[2]);
  assert.deepEqual((await companyConnectionCandidates(queryDb,1,{name:'DEX%',country:'VN'})).map(row=>row.id),[3]);
- for(const values of ['1,11,1,101','1,12,2,101','1,11,2,102','1,11,12,101'])await assert.rejects(db.exec(`INSERT INTO "CompanyPartnerLink"("orgId","entityId","targetOrgId","createdByEmployeeId","matchMethod") VALUES(${values},'SELECTED')`));
+ for(const values of ['1,11,1,101','1,12,2,101','1,11,2,102','1,11,12,101','1,11,22,101'])await assert.rejects(db.exec(`INSERT INTO "CompanyPartnerLink"("orgId","entityId","targetOrgId","createdByEmployeeId","matchMethod") VALUES(${values},'SELECTED')`));
  await db.exec(`INSERT INTO "CompanyPartnerLink"("orgId","entityId","targetOrgId","createdByEmployeeId","matchMethod") VALUES(1,11,2,101,'SELECTED')`);
  await assert.rejects(db.exec('UPDATE "CompanyPartnerLink" SET "targetOrgId"=3'),/IMMUTABLE/);await assert.rejects(db.exec('DELETE FROM "CompanyPartnerLink"'),/IMMUTABLE/);
  assert.equal((await db.query('SELECT * FROM "CompanyPartnerLink"')).rows.length,1);
