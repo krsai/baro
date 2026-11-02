@@ -4,8 +4,6 @@ import {
   Alert,
   Box,
   Chip,
-  Checkbox,
-  FormControlLabel,
   Collapse,
   IconButton,
   LinearProgress,
@@ -589,10 +587,10 @@ const FactoryMonthCapacityBoard = ({
   error = false,
   languageCode = 'en',
   searchTerm = '',
+  includeManagementClosed = false,
   onOpenContextMenu,
 }) => {
   const [expandedFactoryIds, setExpandedFactoryIds] = useState(() => new Set());
-  const [includeManagementClosed, setIncludeManagementClosed] = useState(false);
 
   const lowerSearchTerm = useMemo(
     () => String(searchTerm || '').trim().toLowerCase(),
@@ -649,7 +647,6 @@ const FactoryMonthCapacityBoard = ({
 
   return (
     <Paper variant="outlined" sx={{ width: '100%', maxWidth: '100%', minWidth: 0 }}>
-      <FormControlLabel sx={{ ml: 1 }} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event => setIncludeManagementClosed(event.target.checked)} />} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)} />
       <TableContainer sx={{ overflowX: 'auto' }}>
         <Table size="small" sx={{ width: '100%', minWidth: tableMinWidth }}>
           <TableHead>

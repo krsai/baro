@@ -1,7 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const require=createRequire(import.meta.url),{accountBalanceReport,outstandingReport}=require('../backend/dist/services/accountOverview.js');
+const require=createRequire(import.meta.url),{accountBalanceReport,outstandingReport,loadAccountOverview,accountReportToday,shiftReportDate}=require('../backend/dist/services/accountOverview.js');
+const {Prisma}=require('../backend/node_modules/@prisma/client');
+
+function validateQuery(modelName,query){
+ const model=Prisma.dmmf.datamodel.models.find(row=>row.name===modelName);
+ for(const kind of ['select','include'])for(const [key,value] of Object.entries(query?.[kind]||{})){
+  const field=model.fields.find(row=>row.name===key);
+  assert.ok(field,`${modelName}.${key} does not exist`);
+  if(kind==='include')assert.equal(field.kind,'object',`${modelName}.${key} is not a relation`);
+  if(value&&typeof value==='object')validateQuery(field.type,value);
+ }
+}
+
+test('overview reads real Prisma relations and resolves daily counterparties only within the authenticated company',async()=>{
+ const asOf=accountReportToday(),yesterday=shiftReportDate(asOf,-1),orgId=7,lookups=[];
+ const entries=[
+  {id:'file',accountId:'a',direction:'IN',amount:'10',purpose:'File',allocations:[],settlementLines:[]},
+  {id:'invoice',accountId:'a',direction:'IN',amount:'20',purpose:'Invoice',allocations:[{invoiceId:'inv'}],settlementLines:[{id:'fee',kind:'FEE',amount:'1.25',purpose:'Fee'}]},
+  {id:'expense',accountId:'a',direction:'OUT',amount:'30',purpose:'Expense',allocations:[{expenseItemId:'cost'},{expenseItemId:'cost'}],settlementLines:[]},
+  {id:'missing',accountId:'a',direction:'IN',amount:'1',purpose:'Missing',allocations:[{invoiceId:'foreign'},{expenseItemId:'missing'}],settlementLines:[]},
+ ];
+ const tx={
+  bankLedgerAccount:{findMany:async query=>{assert.equal(query.where.orgId,orgId);return [{id:'a',currencyCode:'USD',openingDate:'2026-01-01',openingBalance:'100',bankName:'Bank',createdAt:new Date(),entityAccount:null}];}},
+  organizationBankAccount:{findMany:async query=>{assert.deepEqual(query.where,{orgId,entityId:orgId});return [];}},
+  bankLedgerEntry:{groupBy:async query=>{assert.equal(query.where.orgId,orgId);assert.equal(query.where.voidedAt,null);return [];},findMany:async query=>{validateQuery('BankLedgerEntry',query);assert.deepEqual(query.where,{orgId,voidedAt:null,transactionDate:yesterday});return entries;}},
+  invoice:{findMany:async query=>{validateQuery('Invoice',query);assert.equal(query.where.sellerOrgId,orgId);if(!query.where.id)return [];lookups.push('invoice');assert.deepEqual(query.where.id.in,['inv','foreign']);return [{id:'inv',buyer:{name:'Buyer'}}];}},
+  partnerTransactionCost:{findMany:async query=>{validateQuery('PartnerTransactionCost',query);assert.equal(query.where.orgId,orgId);assert.deepEqual(query.where.id.in,['cost','missing']);lookups.push('expense');return [{id:'cost',expenseRequest:{payeeEmployee:{name:'Employee'}}}];}},
+  expenseRequest:{findMany:async query=>{validateQuery('ExpenseRequest',query);assert.equal(query.where.orgId,orgId);return [];}},
+  bankLedgerEvidenceAllocation:{findMany:async query=>{validateQuery('BankLedgerEvidenceAllocation',query);assert.equal(query.where.orgId,orgId);return [];}},
+ };
+ const db={$transaction:async callback=>callback(tx)};
+ const report=await loadAccountOverview(db,orgId);
+ assert.equal(report.orgId,orgId);assert.equal(report.transactions[0].counterparty,'');assert.equal(report.transactions[1].counterparty,'Buyer');assert.equal(report.transactions[2].counterparty,'Employee');assert.equal(report.transactions[3].counterparty,'');assert.equal(report.transactions[1].settlementLines[0].amount,'1.25');assert.deepEqual(lookups.sort(),['expense','invoice']);
+ entries.splice(0);lookups.splice(0);assert.equal((await loadAccountOverview(db,orgId)).transactions.length,0);assert.deepEqual(lookups,[]);
+});
 test('account report uses actual closing balances, fills all 30 days and keeps opening balances and currencies separate',()=>{
  const accounts=[{id:'usd',currencyCode:'USD',bankName:'Bank',accountNumber:'1',openingDate:'2026-01-01',openingBalance:'100',currentBalance:'1090'},{id:'vnd',currencyCode:'VND',displayName:'Cash',openingDate:'2026-10-20',openingBalance:'1000',currentBalance:'1500'}];
  const flows=[{accountId:'usd',transactionDate:'2026-10-29',direction:'IN',_sum:{amount:'990'}},{accountId:'vnd',transactionDate:'2026-10-22',direction:'IN',_sum:{amount:'500'}}];

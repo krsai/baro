@@ -154,7 +154,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
           {groups.map(group=><tr key={group.key}><td>{group.name}</td><td>{group.currency}</td><td className="cc-number">{group.count}</td><td className="cc-number cc-amount">{money(group.amount,group.currency)}</td><td><div className="cc-share"><span><i style={{width:`${group.share}%`}} /></span>{group.share.toFixed(1)}%</div></td></tr>)}{!groups.length && <tr><td colSpan={5} className="cc-empty">{text.empty}</td></tr>}
         </tbody></table>}
       </div>}
-      <div className="cc-footer"><span>{text.results}: {loading || error ? '—' : view==='items'?requests.length:view==='documents'?filteredDocuments.length:groups.length} · {text.fullRange}</span><span>BARO GARMENT</span></div>
+      <div className="cc-footer"><span>{text.results}: {loading || error ? '—' : view==='items'?requests.length:view==='documents'?filteredDocuments.length:groups.length} · {text.fullRange}</span></div>
     </section>
   </div></AppPageContainer>;
 }

@@ -5,12 +5,12 @@ import path from 'node:path';
 import { chromium } from 'playwright-core';
 const fixture=path.resolve('frontend/invoice-workflow-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import{createRoot}from'react-dom/client';import{DndContext}from'@dnd-kit/core';import Board from '/src/pages/App/assign/components/FactoryMonthCapacityBoard.jsx';
+import React from 'react';import{createRoot}from'react-dom/client';import{DndContext}from'@dnd-kit/core';import Board from '/src/pages/App/assign/components/FactoryMonthCapacityBoard.jsx';import SearchPanel from '/src/components/SearchPanel.jsx';import {LanguageProvider} from '/src/context/LanguageContext.jsx';
 const base={factoryId:'1',orderNo:'PO-1',quantity:100,isCompleted:true,queueStatus:'completed'};
 const closed={...base,id:'closed',label:'ARCHIVED-STYLE',isManagementClosed:true};
 const open={...base,id:'open',label:'UNBILLED-STYLE',isManagementClosed:false};
-function App(){const[restored,setRestored]=React.useState(false);const row={factoryId:'1',factoryName:'FACTORY',headcount:1,months:[],queuedAssignments:[],reviewRequiredAssignments:[],zeroQuantityOverflowAssignments:[],completedAssignments:[{...closed,isManagementClosed:!restored},open]};return React.createElement(DndContext,null,React.createElement('button',{onClick:()=>setRestored(true)},'Cancel invoice'),React.createElement(Board,{rows:[row],monthKeys:['2026-10'],languageCode:window.testLang}));}
-createRoot(document.getElementById('root')).render(React.createElement(App));</script></body></html>`);
+function App(){const[restored,setRestored]=React.useState(false);const[includeManagementClosed,setIncludeManagementClosed]=React.useState(false);const row={factoryId:'1',factoryName:'FACTORY',headcount:1,months:[],queuedAssignments:[],reviewRequiredAssignments:[],zeroQuantityOverflowAssignments:[],completedAssignments:[{...closed,isManagementClosed:!restored},open]};return React.createElement(DndContext,null,React.createElement('button',{onClick:()=>setRestored(true)},'Cancel invoice'),React.createElement(SearchPanel,{filters:React.createElement('label',null,React.createElement('input',{type:'checkbox',checked:includeManagementClosed,onChange:e=>setIncludeManagementClosed(e.target.checked)}),'Include closed assignments')}),React.createElement(Board,{rows:[row],monthKeys:['2026-10'],includeManagementClosed,languageCode:window.testLang}));}
+createRoot(document.getElementById('root')).render(React.createElement(LanguageProvider,null,React.createElement(App)));</script></body></html>`);
 const port=43229,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch('http://127.0.0.1:'+port+'/invoice-workflow-acceptance.html')).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -20,7 +20,7 @@ try{
   await page.goto('http://127.0.0.1:'+port+'/invoice-workflow-acceptance.html');await page.getByText('FACTORY',{exact:true}).waitFor();
   await page.getByRole('button').filter({has:page.locator('svg[data-testid="KeyboardArrowRightIcon"]')}).click();
   await page.getByText('UNBILLED-STYLE',{exact:true}).waitFor();assert.equal(await page.getByText('ARCHIVED-STYLE',{exact:true}).count(),0);
-  await page.getByRole('checkbox').check();await page.getByText('ARCHIVED-STYLE',{exact:true}).waitFor();
+  assert.equal(await page.locator('[data-search-panel]').getByRole('checkbox').count(),1);await page.getByRole('checkbox').check();await page.getByText('ARCHIVED-STYLE',{exact:true}).waitFor();
   assert.equal(await page.getByText({ko:'관리 종료',en:'Management closed',vi:'Đã kết thúc quản lý'}[lang],{exact:true}).count(),1);
   await page.getByRole('checkbox').uncheck();assert.equal(await page.getByText('ARCHIVED-STYLE',{exact:true}).count(),0);
   await page.getByRole('button',{name:'Cancel invoice',exact:true}).click();await page.getByText('ARCHIVED-STYLE',{exact:true}).waitFor();

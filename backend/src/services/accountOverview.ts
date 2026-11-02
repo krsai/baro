@@ -1,3 +1,4 @@
+import type {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {ledgerDate,ledgerScale4,ledgerMoney,readLedgerAccounts} from './bankLedger';
@@ -32,11 +33,18 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
   const accounts=await readLedgerAccounts(tx,orgId,asOf),monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,-29),start=[monthStart,yesterday,historyStart].sort()[0];
   const [flows,dailyEntries,outstanding]=await Promise.all([
    tx.bankLedgerEntry.groupBy({by:['accountId','transactionDate','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:asOf}},_sum:{amount:true}}),
-   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:{include:{invoice:{select:{buyer:{select:{name:true}}}},expenseItem:{select:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}}},settlementLines:true},orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
+   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:true,settlementLines:true} satisfies Prisma.BankLedgerEntryInclude,orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
    loadOutstanding(tx,orgId,asOf),
   ]);
+  const invoiceIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.invoiceId).filter(Boolean)))];
+  const expenseIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.expenseItemId).filter(Boolean)))];
+  const [invoices,expenses]=await Promise.all([
+   invoiceIds.length?tx.invoice.findMany({where:{sellerOrgId:orgId,id:{in:invoiceIds}},select:{id:true,buyer:{select:{name:true}}} satisfies Prisma.InvoiceSelect}):[],
+   expenseIds.length?tx.partnerTransactionCost.findMany({where:{orgId,id:{in:expenseIds}},select:{id:true,partner:{select:{name:true}},payeeEmployee:{select:{name:true}},expenseRequest:{select:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}} satisfies Prisma.PartnerTransactionCostSelect}):[],
+  ]);
+  const invoiceNames=new Map<string,string>(invoices.map((row:any)=>[row.id,row.buyer?.name||''])),expenseNames=new Map<string,string>(expenses.map((row:any)=>[row.id,row.expenseRequest?.partner?.name||row.expenseRequest?.payeeEmployee?.name||row.partner?.name||row.payeeEmployee?.name||'']));
   const known=new Map<string,any>(accounts.map((row:any)=>[row.id,row]));
-  const transactions=dailyEntries.map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:[...new Set(row.allocations.map((a:any)=>a.invoice?.buyer?.name||a.expenseItem?.partner?.name||a.expenseItem?.payeeEmployee?.name).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
+  const transactions=dailyEntries.map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:[...new Set(row.allocations.map((a:any)=>invoiceNames.get(a.invoiceId)||expenseNames.get(a.expenseItemId)).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
   return {orgId,...accountBalanceReport(accounts,flows,asOf),transactions,...outstanding};
  },60000);
 }

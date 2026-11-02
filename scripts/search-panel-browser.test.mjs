@@ -21,6 +21,8 @@ try{
   await page.addInitScript(lang=>localStorage.setItem('baro_language_override',lang),lang);
   await page.goto(`http://127.0.0.1:${port}/search-panel-acceptance.html`);
   const panel=page.getByRole('region',{name:'Orders'});
+  assert.equal(await panel.locator('[data-search-body] [data-search-filters]').count(),1);
+  const filterBand=await panel.locator('[data-search-filters]').evaluate(el=>({background:getComputedStyle(el).backgroundColor,border:getComputedStyle(el).borderTopWidth}));assert.equal(filterBand.background,'rgba(0, 0, 0, 0)');assert.equal(filterBand.border,'0px');
   await page.getByPlaceholder('Find order').fill('PO-7');
   await page.getByRole('combobox',{name:'Status'}).click();await page.getByRole('option',{name:'Open',exact:true}).click();
   assert.equal(await page.locator('output').textContent(),'PO-7:open');

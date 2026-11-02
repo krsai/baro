@@ -11,6 +11,8 @@ import {
   Box,
   Button,
   Chip,
+  Checkbox,
+  FormControlLabel,
   CircularProgress,
   Divider,
   Dialog,
@@ -3011,6 +3013,7 @@ const AssignBoard = () => {
   const { languageCode } = useLanguage();
   const location = useLocation();
   const [queryError, setQueryError] = useState(false);
+  const [includeManagementClosed, setIncludeManagementClosed] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [selectedCardId, setSelectedCardId] = useState(null);
@@ -6877,7 +6880,7 @@ const AssignBoard = () => {
         </Box>
       }
       toolbar={
-        <SearchPanel search={<SearchInput
+        <SearchPanel filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event=>setIncludeManagementClosed(event.target.checked)}/>} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)}/>} search={<SearchInput
             placeholder={getUiMessage(
               'assign.searchPlaceholder',
               '스타일/고객사/색상 검색',
@@ -6990,6 +6993,7 @@ const AssignBoard = () => {
                 loading={factoryMonthCapacityLoading}
                 error={factoryMonthCapacityError}
                 languageCode={languageCode}
+                includeManagementClosed={includeManagementClosed}
                 searchTerm={deferredSearchTerm}
                 onOpenContextMenu={handleContextMenuOpen}
               />
