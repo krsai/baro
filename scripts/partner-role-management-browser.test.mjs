@@ -28,6 +28,7 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-role-acceptance.html`);
+  await page.getByText({ko:'거래 구분 > 세부 유형 > 회계 코드',en:'Transaction category > Subtype > Accounting code',vi:'Nhóm giao dịch > Loại chi tiết > Mã kế toán'}[lang],{exact:true}).waitFor();
   await page.getByRole('navigation',{name:{ko:'거래 구분',en:'Transaction category',vi:'Nhóm giao dịch'}[lang]}).waitFor();
   await page.getByRole('button',{name:{ko:'거래 구분 등록',en:'Add transaction category',vi:'Thêm nhóm giao dịch'}[lang],exact:true}).click();
   let dialog=page.getByRole('dialog');const inputs=dialog.locator('input');

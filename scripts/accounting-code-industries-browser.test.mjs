@@ -29,8 +29,9 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('/code-bases')?bases:url.pathname.endsWith('/partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-code-industries-acceptance.html`);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
+  await page.getByText({ko:'거래 구분 > 세부 유형 > 회계 코드',en:'Transaction category > Subtype > Accounting code',vi:'Nhóm giao dịch > Loại chi tiết > Mã kế toán'}[lang],{exact:true}).waitFor();
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
-  const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 업종':lang==='vi'?'Ngành chi tiết':'Industry';
+  const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 유형':lang==='vi'?'Loại chi tiết':'Subtype';
   await page.getByRole('button',{name:edit,exact:true}).click();const dialog=page.getByRole('dialog'),selector=dialog.getByRole('combobox',{name:industry,exact:true});
   const mode=lang==='ko'?'입력 방식':lang==='vi'?'Cách nhập':'Input method';await dialog.getByText(mode,{exact:true}).first().waitFor();assert.equal(await dialog.locator('input[value="GENERAL"]').isDisabled(),true);
   await selector.fill('BUTTON');await page.getByRole('option',{name:'BUTTON',exact:true}).click();await page.keyboard.press('Escape');await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
