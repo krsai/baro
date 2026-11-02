@@ -14,6 +14,7 @@ import {listApprovalOverview} from './approvalOverview';
 export const LEDGER_ZERO_START='0001-01-01';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim()&&value.trim().length<=max?value.trim():fail('LEDGER_INVALID_INPUT');
+const ledgerRemark=(value:any)=>text(value,1000);
 export const ledgerDate=(value:any)=>{
   if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return fail('LEDGER_INVALID_DATE');
   const date=new Date(`${value}T00:00:00.000Z`);
@@ -77,8 +78,9 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
     if(transactionDate<account.openingDate)return fail('LEDGER_BEFORE_OPENING');
     if(!['IN','OUT'].includes(body.direction))return fail('LEDGER_INVALID_DIRECTION');
     const codeId=accountingCodeId(body.accountingCodeId);
-    const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT';
-    const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),purpose:generatedPurpose?'':text(body.purpose,1000),...(codeId===null?{}:{accountingCodeId:codeId})};
+    const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT'&&body.remark===undefined;
+    const purpose=body.remark!==undefined?(body.evidenceType==='ADJUSTMENT'?text(body.remark,1000):ledgerRemark(body.remark)):generatedPurpose?'':text(body.purpose,1000);
+    const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),purpose,...(codeId===null?{}:{accountingCodeId:codeId})};
     const previous=await tx.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId,clientKey:data.clientKey}},include:{allocations:true}});
     if(previous){
       if((previous.accountingCodeId??null)!==codeId)return fail('LEDGER_RETRY_CONFLICT',409);
@@ -135,7 +137,7 @@ export async function postLedgerBatch(db:any,orgId:number,actor:string,body:any)
  const keys=rows.map((row:any)=>clientKey(row.clientKey));
  if(new Set(keys).size!==keys.length)return fail('LEDGER_INVALID_BATCH');
  // UI-only labels never identify financial records or change retry identity.
- const canonical=rows.map((r:any)=>({accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
+ const canonical=rows.map((r:any)=>({accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
  const requestHash=createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
@@ -156,7 +158,7 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
  if(!Array.isArray(rows)||!rows.length||rows.length>50)return fail('LEDGER_INVALID_BATCH');
  const normalized:any[]=rows.map((r:any)=>{
   if(!r||!['BANK','FEE','WRITEOFF'].includes(r.entryKind))return fail('LEDGER_INVALID_SETTLEMENT');
-  const base={clientKey:clientKey(r.clientKey),entryKind:r.entryKind,amount:r.amount,purpose:r.entryKind==='BANK'&&r.accountingCodeId&&r.evidenceType!=='ADJUSTMENT'?'':r.purpose,...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})};
+  const base={clientKey:clientKey(r.clientKey),entryKind:r.entryKind,amount:r.amount,purpose:r.entryKind==='BANK'&&r.accountingCodeId&&r.evidenceType!=='ADJUSTMENT'?'':r.purpose,...(r.entryKind==='BANK'&&r.remark!==undefined?{remark:ledgerRemark(r.remark)}:{}),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})};
   if(r.entryKind!=='BANK')return {...base,parentClientKey:clientKey(r.parentClientKey)};
   if(typeof r.accountId!=='string'||r.accountId.length>100||r.bankFee&&ledgerScale4(r.bankFee)!==0n||r.writeOffAmount&&ledgerScale4(r.writeOffAmount)!==0n)return fail('LEDGER_INVALID_SETTLEMENT');
   if(r.expenseItems!==undefined&&!Array.isArray(r.expenseItems))return fail('LEDGER_INVALID_SETTLEMENT');

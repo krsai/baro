@@ -190,6 +190,22 @@ function ledgerDatabase(pg){
  return db;
 }
 const batchRow=(extra={})=>({clientKey:randomUUID(),accountId:'a',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'scan.pdf',...extra});
+
+test('explicit remarks stay separate from code descriptions through batch retry and replacement',async()=>{
+ const pg=await fixture(),db=ledgerDatabase(pg);try{
+  const row=batchRow({entryKind:'BANK',accountingCodeId:100,purpose:'Ignored code description',remark:'Original bank remark'});
+  const body={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[row]};
+  const original=await postLedgerBatch(db,1,'actor',body),id=original.entryIds[0];
+  const read=async id=>(await pg.query('SELECT purpose,"accountingCodeId","voidedAt" FROM "BankLedgerEntry" WHERE id=$1',[id])).rows[0];
+  assert.equal((await read(id)).purpose,'Original bank remark');
+  await pg.exec(`UPDATE "TransactionCode" SET "nameEn"='Changed catalogue description' WHERE id=100`);
+  assert.deepEqual(await postLedgerBatch(db,1,'actor',body),original);
+  await assert.rejects(postLedgerBatch(db,1,'actor',{...body,rows:[{...row,remark:'Changed retry remark'}]}),/RETRY_CONFLICT/);
+  const replacement=await replaceLedgerEntry(db,1,'actor',id,{...body,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),accountingCodeId:101,remark:'Edited bank remark'}]});
+  assert.equal((await read(replacement.entryIds[0])).purpose,'Edited bank remark');assert.equal((await read(replacement.entryIds[0])).accountingCodeId,101);assert.equal((await read(id)).purpose,'Original bank remark');assert.ok((await read(id)).voidedAt);
+  for(const remark of ['',null,'x'.repeat(1001)])await assert.rejects(postLedgerBatch(db,1,'actor',{...body,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),remark}]}),/INVALID_INPUT/);
+ }finally{await pg.close();}
+});
 test('approval overview filters date, company, participant and current status in SQL before paging',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
   await pg.exec(await readFile('backend/prisma/migrations/20261030120000_expense_approval_rejection/migration.sql','utf8'));

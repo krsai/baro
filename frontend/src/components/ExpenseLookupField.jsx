@@ -5,7 +5,7 @@ import { EXPENSE_LOOKUP_TEXT } from '../constants/expenseLookup';
 import { exactLookupCode, normalizeLookupText } from '../utils/expenseLookup.mjs';
 import '../pages/App/expenseRequests.css';
 
-export default function ExpenseLookupField({ label, options, value, onChange, columns, languageCode, directCode = false, disabled = false, required = false }) {
+export default function ExpenseLookupField({ label, options, value, onChange, columns, languageCode, directCode = false, disabled = false, required = false, hideLabel = false }) {
   const text = EXPENSE_LOOKUP_TEXT[languageCode] || EXPENSE_LOOKUP_TEXT.ko;
   const [draft,setDraft] = useState(directCode ? value?.code || '' : value?.name || '');
   const [open,setOpen] = useState(false), [query,setQuery] = useState('');
@@ -28,11 +28,11 @@ export default function ExpenseLookupField({ label, options, value, onChange, co
   const filtered=eligible.filter(option=>searchable(option,query));
   const searchAdornment=<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><Tooltip title={title+' (F2)'}><span><IconButton type="button" tabIndex={-1} size="small" aria-label={title} disabled={disabled} sx={{width:28,height:28,p:.5,m:0}} onMouseDown={event=>event.preventDefault()} onClick={event=>{event.stopPropagation();showSearch();}}><SearchIcon fontSize="small"/></IconButton></span></Tooltip></InputAdornment>;
   return <>
-    <TextField size="small" fullWidth required={required} disabled={disabled} label={label} value={draft} placeholder={directCode?text.codeHint:text.partnerHint}
+    <TextField size="small" fullWidth required={required} disabled={disabled} label={hideLabel?undefined:label} value={draft} placeholder={hideLabel?'':directCode?text.codeHint:text.partnerHint}
       onClick={directCode?undefined:showSearch} onKeyDown={confirm}
       onChange={event=>{const input=event.target.value;setDraft(input);const match=exactLookupCode(eligible,input);if(match){if(match.id!==value?.id)onChange(match);}else if(value)onChange(null);}}
-      sx={{minWidth:directCode?120:0,'& .MuiOutlinedInput-root':{pr:.5,gap:0},'& .MuiInputBase-input':{minWidth:directCode?'5ch':0,flex:'1 1 0',width:0,textOverflow:'clip'}}}
-      inputProps={{spellCheck:false,autoCapitalize:directCode?'characters':undefined}}
+      sx={{minWidth:directCode&&!hideLabel?120:0,'& .MuiOutlinedInput-root':{pr:.5,gap:0},'& .MuiInputBase-input':{minWidth:directCode?'5ch':0,flex:'1 1 0',width:0,textOverflow:'clip'}}}
+      inputProps={{'aria-label':hideLabel?label:undefined,spellCheck:false,autoCapitalize:directCode?'characters':undefined}}
       InputProps={{readOnly:!directCode,endAdornment:searchAdornment}}
     />
     <Dialog open={open} onClose={()=>setOpen(false)} fullWidth maxWidth="md" aria-label={title}>
