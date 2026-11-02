@@ -51,6 +51,7 @@ export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
 };
 
 const buildFormFromPartner = (partner, initialType) => ({
+  partyKind:partner?.id?partner.partyKind||'':'CORPORATE',
   code: partner?.code || '',
   name: partner?.name || '',
   type: partner?.type || initialType,
@@ -104,6 +105,7 @@ export default function BusinessPartnerDialog({
     setError('');
     try {
       const body = {
+        partyKind:form.partyKind||null,
         name: normalizeLocalizedName(form, 'name').name, type: form.type,
         ...Object.fromEntries(['code','nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
         contactName: form.contactName.trim() || null,
@@ -130,7 +132,7 @@ export default function BusinessPartnerDialog({
       (onSaved || onCreated)?.(savedPartner);
       onClose?.();
     } catch (saveError) {
-      setError(saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error));
+      setError(saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind));
     } finally {
       setSaving(false);
     }

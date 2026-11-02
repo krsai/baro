@@ -242,7 +242,7 @@ const CustomerDetail = () => {
         });
       }
     } catch (error) {
-      showNotification(entityCodeError(error,languageCode,t('saveError')), 'error');
+      showNotification(entityCodeError(error,languageCode,t('saveError'),customerFormData.partyKind), 'error');
     } finally {
       setSavingCustomer(false);
     }

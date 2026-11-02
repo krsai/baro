@@ -14,14 +14,33 @@ export const resolvePartnerCode = (value: any, englishName: unknown): string => 
   if(!generated)throw Object.assign(new Error('PARTNER_CODE_REQUIRED'),{status:400});
   return generated;
 };
+export const normalizePartyKind=(value:any):'INDIVIDUAL'|'CORPORATE'|null=>{
+  if(value==null)return null;
+  if(value==='INDIVIDUAL'||value==='CORPORATE')return value;
+  throw Object.assign(new Error('INVALID_PARTY_KIND'),{status:400});
+};
+export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any)=>{
+  const partyKind=normalizePartyKind(body?.partyKind===undefined?previous?.partyKind:body.partyKind);
+  if((!previous||previous.partyKind)&&!partyKind)throw Object.assign(new Error('PARTNER_PARTY_KIND_REQUIRED'),{status:400});
+  const value=body?.code===undefined?previous?.code:body.code;
+  if(partyKind==='CORPORATE'){
+    const code=normalizePartnerCode(value);
+    if(!code||!/^[A-Z0-9]{4}$/.test(code))throw Object.assign(new Error('CORPORATE_PARTNER_CODE_INVALID'),{status:400});
+    const number=body?.businessNumber===undefined?previous?.businessNumber:body.businessNumber;
+    if(typeof number!=='string'||!number.trim()||number.trim().length>100)throw Object.assign(new Error('PARTNER_BUSINESS_NUMBER_REQUIRED'),{status:400});
+    return {partyKind,code};
+  }
+  return {partyKind,code:partyKind==='INDIVIDUAL'?normalizePartnerCode(value):resolvePartnerCode(value,englishName)};
+};
 export const entityProfile = (entity:any) => ({
   entityId:entity.id,name:entity.name,nameKo:entity.nameKo ?? null,nameVi:entity.nameVi ?? null,
-  code:entity.code ?? null,businessNumber:entity.businessNumber ?? null,
+  code:entity.code ?? null,partyKind:entity.partyKind??null,businessNumber:entity.businessNumber ?? null,
   country:entity.country ?? null,countryCode:entity.countryCode ?? null,address:entity.address ?? null,
   contactName:entity.representative ?? null,contactPhone:entity.phone ?? null,email:entity.email ?? null,
 });
 export const partnerProfilePatch = (body:any) => {
   const result:any={};
+  if(body?.partyKind!==undefined)result.partyKind=normalizePartyKind(body.partyKind);
   if(body?.code!==undefined)result.code=normalizePartnerCode(body.code);
   for(const [field,max] of Object.entries({nameKo:200,nameVi:200,businessNumber:100,country:2,countryCode:10,address:2000,email:254})) {
     if(body?.[field]===undefined)continue;

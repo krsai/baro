@@ -10,7 +10,7 @@ import { toStyleListResponse } from './services/styleListResponse';
 import { coalesceInFlightRead } from './services/inFlightRead';
 import { contentMemo } from './services/contentMemo';
 import { normalizeLocalizedName } from './utils/localizedName';
-import { entityProfile, partnerProfilePatch, resolvePartnerCode } from './services/entityProfile';
+import { entityProfile, partnerProfilePatch, resolvePartnerCode, resolvePartnerIdentity } from './services/entityProfile';
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
@@ -758,6 +758,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'BankLedgerEntry',columnNam
   {tableName:'SettingServiceDefault',columnName:'expenseTypeId'},
   {tableName:'OrganizationBankAccount',columnName:'entityId'},
   {tableName:'OrganizationBankAccount',columnName:'currencyId'},
+  {tableName:'Organization',columnName:'partyKind'},
   {tableName:'EntitySchemaMigration',columnName:'version'},
   { tableName: "Style", columnName: "categoryId" },
   { tableName: "StyleProcessComponent", columnName: "styleProcessId" },
@@ -1062,7 +1063,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerEntry_revision_scope_fk
   'CodeDefaultRenamePropagation',
   'BankLedgerEntry_accountId_orgId_fkey',
   'BankLedgerAccount_orgId_fkey',
-  'OrganizationBankAccount_identity_sync','baro_sync_corrected_account_identity','BankLedgerAccount_entityAccountId_orgId_currencyCode_key',
+  'Organization_party_kind_check','Organization_corporate_profile_check','OrganizationBankAccount_identity_sync','baro_sync_corrected_account_identity','BankLedgerAccount_entityAccountId_orgId_currencyCode_key',
   'BankLedgerAccount_entity_account_fkey','BankLedgerAccount_master_guard','OrganizationBankAccount_ledger_identity_guard',
   'CompanyWorkspaceRegistration_orgId_fkey',
   'BankLedgerEntry_amount_check',
@@ -1884,10 +1885,7 @@ const buildSharedCustomerOrganizationData = (
 ) => {
   return {
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
-    code:
-      payload?.code !== undefined
-        ? resolvePartnerCode(payload.code,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name)
-        : fallbackOrganization?.code || resolvePartnerCode(null,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name),
+    ...resolvePartnerIdentity(payload,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,fallbackOrganization),
     name:
       normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,
     nameKo:
@@ -1928,7 +1926,7 @@ const buildSharedCustomerOrganizationData = (
 const toCustomerResponse = (relationship: any, perspective: string = "MANUFACTURER") => {
   const targetOrg =
     perspective === "BRAND" ? relationship.manufacturer ?? {} : relationship.brand ?? {};
-  const targetCode = targetOrg.code ?? relationship.customerCode ?? "";
+  const targetCode = targetOrg.partyKind==='INDIVIDUAL'?targetOrg.code??'':targetOrg.code ?? relationship.customerCode ?? "";
   const phone = combineOrganizationPhone(
     (targetOrg as any)?.countryCode ?? null,
     targetOrg.phone ?? relationship.managerPhone ?? null
@@ -27741,13 +27739,13 @@ app.post("/business-partners", async (req, res) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
 
       const retained=await tx.organization.findUnique({where:{ownerOrgId_type_name:{ownerOrgId:organization.id,type:type as any,name}}});
-      const code=resolvePartnerCode(req.body?.code===undefined?retained?.code:req.body.code,name);
-      if(await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},...(retained?{id:{not:retained.id}}:{})}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
+      const identity=resolvePartnerIdentity(req.body,name,retained),{code}=identity;
+      if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},...(retained?{id:{not:retained.id}}:{})}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
 
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ...partnerProfilePatch(req.body), code, ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
-        update: { ...partnerProfilePatch(req.body), code, representative: contactName, phone: contactPhone },
+        create: { ...partnerProfilePatch(req.body), ...identity, ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
+        update: { ...partnerProfilePatch(req.body), ...identity, representative: contactName, phone: contactPhone },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       await connectPartnerCompany(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
@@ -27798,11 +27796,11 @@ app.put("/business-partners/:id", async (req, res) => {
       const locked = await tx.$queryRawUnsafe<{ id: number; type: string }[]>('SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, organization.id);
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
-      const code=resolvePartnerCode(req.body?.code===undefined?existing.code:req.body.code,name);
-      if(await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},id:{not:id}}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
+      const identity=resolvePartnerIdentity(req.body,name,existing),{code}=identity;
+      if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},id:{not:id}}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
-      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), code, name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
+      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), ...identity, name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
       await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       await connectPartnerCompany(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if (hasServiceTypeSelection) {
@@ -29710,6 +29708,7 @@ app.post("/customers", async (req, res) => {
         nameKo: nextTargetData.nameKo,
         nameVi: nextTargetData.nameVi,
         code: normalizedCode,
+        partyKind: nextTargetData.partyKind,
         businessNumber: nextTargetData.businessNumber,
         address: nextTargetData.address,
         country: nextTargetData.country,
@@ -29741,6 +29740,7 @@ app.post("/customers", async (req, res) => {
           nameKo: nextTargetData.nameKo,
           nameVi: nextTargetData.nameVi,
           code: normalizedCode,
+          partyKind: nextTargetData.partyKind,
           businessNumber: nextTargetData.businessNumber,
           address: nextTargetData.address,
           country: nextTargetData.country,
@@ -29882,7 +29882,7 @@ app.put("/customers/:id", async (req, res) => {
     : existing.manufacturerOrgId;
   const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
   const normalizedCode =
-    code !== undefined || !targetOrganization.code ? resolvePartnerCode(code,nextTargetData.name) : undefined;
+    code !== undefined || req.body?.partyKind!==undefined || !targetOrganization.code ? nextTargetData.code : undefined;
 
   if (name !== undefined) {
     if (typeof name !== "string" || !name.trim()) {
@@ -29917,6 +29917,7 @@ app.put("/customers/:id", async (req, res) => {
       name: nextTargetData.name ?? targetOrganization?.name ?? "",
       nameKo: nextTargetData.nameKo,
       nameVi: nextTargetData.nameVi,
+      partyKind: nextTargetData.partyKind,
       ...(normalizedCode !== undefined ? { code: normalizedCode } : {}),
       businessNumber: nextTargetData.businessNumber,
       address: nextTargetData.address,

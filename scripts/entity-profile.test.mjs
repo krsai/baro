@@ -39,3 +39,28 @@ test('a bank in another tenant or a different payee cannot satisfy the payee sav
   }}};
   await assert.rejects(requirePayeeBankAccount(tx,1,44),error=>error.status===400&&error.message==='PAYEE_BANK_ACCOUNT_REQUIRED');
 });
+
+test('party identity requires manual corporate codes and tax numbers while individuals can clear codes',()=>{
+ const {resolvePartnerIdentity:r}=require('../backend/dist/services/entityProfile.js');
+ assert.deepEqual(r({partyKind:'INDIVIDUAL',code:''},'??',{id:44,code:'MRCUON'}),{partyKind:'INDIVIDUAL',code:null});
+ assert.deepEqual(r({},'Person',{id:44,partyKind:'INDIVIDUAL',code:null}),{partyKind:'INDIVIDUAL',code:null});
+ assert.deepEqual(r({partyKind:'CORPORATE',code:' dexl ',businessNumber:'VN-1'},'DEX'),{partyKind:'CORPORATE',code:'DEXL'});
+ for(const code of ['',null,'DEX','DEXLOG','AB-C'])assert.throws(()=>r({partyKind:'CORPORATE',code,businessNumber:'VN-1'},'Company'),/CORPORATE_PARTNER_CODE_INVALID/);
+ for(const businessNumber of ['',null,undefined])assert.throws(()=>r({partyKind:'CORPORATE',code:'DEXL',businessNumber},'DEX'),/PARTNER_BUSINESS_NUMBER_REQUIRED/);
+ assert.throws(()=>r({code:'DEXL'},'DEX'),/PARTNER_PARTY_KIND_REQUIRED/);
+ assert.deepEqual(r({},'Legacy',{id:44,code:'LEGACY'}),{partyKind:null,code:'LEGACY'});
+});
+
+test('party migration preserves legacy identities and FKs while enforcing corporate profiles',async()=>{
+ const {PGlite}=await import('@electric-sql/pglite');const {readFileSync}=await import('node:fs');const db=new PGlite();
+ try{
+ await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,code TEXT UNIQUE,"businessNumber" TEXT);INSERT INTO "Organization" VALUES(1,'LEGACY',NULL);CREATE TABLE "History"(id INT REFERENCES "Organization"(id));INSERT INTO "History" VALUES(1);`);
+ const sql=readFileSync('backend/prisma/migrations/20261102130000_partner_party_kind/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+ assert.deepEqual((await db.query('SELECT * FROM "Organization"')).rows,[{id:1,code:'LEGACY',businessNumber:null,partyKind:null}]);
+ await db.exec(`INSERT INTO "Organization" VALUES(2,NULL,NULL,'INDIVIDUAL'),(3,NULL,NULL,'INDIVIDUAL'),(4,'DEXL','VN-1','CORPORATE')`);
+ await assert.rejects(db.exec(`INSERT INTO "Organization" VALUES(5,'ABCDE','VN-1','CORPORATE')`));
+ await assert.rejects(db.exec(`INSERT INTO "Organization" VALUES(5,'ABCD',NULL,'CORPORATE')`));
+ await assert.rejects(db.exec(`INSERT INTO "Organization" VALUES(5,'DEXL','VN-2','CORPORATE')`));
+ assert.deepEqual((await db.query('SELECT * FROM "History"')).rows,[{id:1}]);
+ }finally{await db.close();}
+});

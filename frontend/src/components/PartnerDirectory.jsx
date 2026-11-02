@@ -1,4 +1,5 @@
 import SearchPanel from './SearchPanel';
+import {PARTY_KIND_TEXT} from '../constants/partyKind';
 import React,{useMemo,useState} from 'react';
 import {Button,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import AppPageContainer from './AppPageContainer';
@@ -38,6 +39,7 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
         <Button variant="text" disabled={!canOpen} onClick={()=>onOpen(row.source)} sx={{p:0,minWidth:0,justifyContent:'flex-start',textAlign:'left',textTransform:'none'}}>{row.name||'-'}</Button>
         {row.attentionLabel && <NotificationIndicator label={row.attentionLabel} />}
        </Stack>
+       {row.source?.partyKind&&<Typography variant="caption" color="text.secondary" display="block">{(PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en)[row.source.partyKind]}</Typography>}
        {row.subtitle && <Typography variant="caption" color="text.secondary">{row.subtitle}</Typography>}
       </TableCell>
       <TableCell>{row.country?getStaticOptionLabel('country',row.country,row.country,languageCode):'-'}</TableCell><TableCell>{row.contactName||'-'}</TableCell><TableCell>{row.phone||'-'}</TableCell><TableCell>{row.email||'-'}</TableCell>

@@ -55,6 +55,7 @@ export const buildCustomerFormData = (customer = {}) => {
     String(customer?.countryCode || '').trim() || resolveDefaultCountryCode(country);
 
   return {
+    partyKind:customer?.id?customer.partyKind||'':'CORPORATE',
     classification:customer.classification||emptyPartnerClassification(),
     systemIndustryId: customer?.systemIndustryId ?? null,
     systemIndustry: customer?.systemIndustry ?? null,
@@ -82,6 +83,7 @@ export const buildCustomerFormData = (customer = {}) => {
 export const createEmptyCustomerFormData = () => buildCustomerFormData();
 
 export const buildCustomerPayload = (formData = {}) => ({
+  partyKind:formData.partyKind||null,
   classification:classificationPayload(formData.classification),
   businessNumber: String(formData.businessNumber || '').trim() || null,
   code: String(formData.code || '').trim().toUpperCase(),

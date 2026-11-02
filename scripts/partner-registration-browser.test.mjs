@@ -35,18 +35,18 @@ try{
   const industry=page.getByRole('combobox',{name:'Category > '+PARTNER_CLASSIFICATION_TEXT[lang].industry,exact:true});
   if(screen==='customer'){
    await page.locator(`input[name=${lang==='ko'?'nameKo':lang==='vi'?'nameVi':'name'}]`).fill('New customer');
-   assert.equal(await page.locator('input[name=code]').getAttribute('required'),null);
-   if(lang==='vi')await page.locator('input[name=code]').fill('CUS-001');
+   assert.equal(await page.locator('input[name=code]').getAttribute('required'),'');
+   await page.locator('input[name=code]').fill('CUST');await page.locator('input[name=businessNumber]').fill('VN-001');
    assert.equal(customerReads,0,'A static /customer/new route must not fetch an empty customer ID');
    assert.equal(await page.locator('input[name=systemIndustryId]').count(),0);
    await industry.fill('Detail');await page.getByRole('option',{name:'Detail',exact:true}).click();await page.keyboard.press('Escape');
    await page.locator('.app-page-header button.MuiButton-contained').click();
    await page.waitForFunction(()=>window.notifications.some(row=>row.level==='success'));
-   assert.equal(payload.name,'New customer');assert.ok(!('systemIndustryId'in payload));assert.deepEqual(payload.classification.industryIds,[31]);assert.equal(payload.code,lang==='vi'?'CUS-001':'');
+   assert.equal(payload.name,'New customer');assert.ok(!('systemIndustryId'in payload));assert.deepEqual(payload.classification.industryIds,[31]);assert.equal(payload.code,'CUST');
   }else{
    await page.locator(`input[name=${lang==='ko'?'nameKo':lang==='vi'?'nameVi':'name'}]`).fill('New vendor');
    await page.locator('input[name=contactName]').fill('Contact person');
-   if(lang==='vi')await page.locator('input[name=code]').fill('VEN-001');
+   await page.locator('input[name=code]').fill('VEND');await page.locator('input[name=businessNumber]').fill('VN-002');
    await page.setViewportSize({width:390,height:540});
    await page.waitForTimeout(300);
    for(const selector of ['.MuiDialog-paper','.MuiDialogTitle-root','.MuiDialogActions-root']){
@@ -58,7 +58,7 @@ try{
    await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
    assert.equal(requestedCatalogue.searchParams.get('orgId'),'1');assert.equal(requestedCatalogue.pathname,'/partner-classifications/options');
    assert.ok(!('serviceTypeIds'in payload));assert.deepEqual(payload.classification,{revision:0,roleIds:[1],industryIds:[1]});assert.equal(payload.type,screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING');
-   assert.equal(payload.name,'New vendor');assert.equal(payload.contactName,'Contact person');assert.equal(payload.code,lang==='vi'?'VEN-001':null);
+   assert.equal(payload.name,'New vendor');assert.equal(payload.contactName,'Contact person');assert.equal(payload.code,'VEND');
   }
   assert.deepEqual(await page.evaluate(()=>window.notifications.filter(row=>row.level==='error')),[]);assert.deepEqual(errors,[]);await page.close();
  }
