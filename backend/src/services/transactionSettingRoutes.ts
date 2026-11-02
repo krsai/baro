@@ -10,6 +10,7 @@ import {registerExpenseUnitRoutes} from './expenseMetadata';
 import {saveCatalogueOrder} from './catalogueOrder';
 import {partnerRoleCatalogue} from './partnerRoleCatalogue';
 import {registerPartnerRoleManagement} from './partnerRoleManagement';
+import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse} from './systemIndustryUsage';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -113,14 +114,9 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       // Organization administrators can read the catalogue to explicitly adopt defaults.
       if (req.query.catalogue === '1') { if (!await admin(req,res)) return; }
       else if (!await gates.requireSystemAdmin(req,res)) return;
-      const rows = await defaults.findMany({ include: service ? {
-        partnerRole: true,
-        expenseType: true,
-        _count: { select: { codes: true, codeBases: true,customerIndustries:true,productionPolicies:true,partnerClassifications:true,accountingCodeLinks:true } },
-        services: { select: { isOverridden: true, _count: { select: { transactionCosts: true, transactionCodes: true, partners: true } } } },
-      } : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
+      const rows = await defaults.findMany({ include: service ? {...SYSTEM_INDUSTRY_USAGE_INCLUDE,partnerRole:true,expenseType:true} : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
       res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: service
-        ? Object.values(row._count).some((count:any)=>Number(count)>0) || row.services.some((local: any) => local.isOverridden || Object.values(local._count).some((count: any) => count > 0))
+        ? systemIndustryInUse(row)
         : row.codes.some((local: any) => local.isOverridden || Object.values(local._count).some((count:any)=>Number(count)>0)) })));
     });
     app.get(localPath, async (req: any,res: any) => {

@@ -14,14 +14,18 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:null});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});`}));
-  let roles=[{id:1,code:'CUSTOMER',nameEn:'Customer',nameKo:'Customer',nameVi:'Customer'}];
+  let roles=[{id:1,code:'CUSTOMER',nameEn:'Customer',nameKo:'Customer',nameVi:'Customer'}],sources=[],rejectDelete=false,industryDeletes=0;
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/system-setting-defaults/**',r=>{
    const req=r.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(req.method()==='DELETE'&&url.pathname.includes('/services/')){
+    industryDeletes++;if(rejectDelete){rejectDelete=false;sources[0].hasUsageHistory=true;return r.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});}
+    sources=sources.filter(row=>row.id!==Number(url.pathname.split('/').pop()));return r.fulfill({headers,json:{ok:true}});
+   }
    if(req.method()==='POST'){assert.equal('code' in req.postDataJSON(),false);roles.push({id:2,code:'ROLE_internal',...req.postDataJSON()});return r.fulfill({headers,status:201,json:roles[1]});}
    if(req.method()==='PUT'){assert.equal('code' in req.postDataJSON(),false);Object.assign(roles[1],req.postDataJSON());return r.fulfill({headers,json:roles[1]});}
    if(req.method()==='DELETE'){roles=roles.filter(row=>row.id!==2);return r.fulfill({headers,json:{ok:true}});}
-   return r.fulfill({headers,json:url.pathname.endsWith('partner-roles')?roles:[]});
+   return r.fulfill({headers,json:url.pathname.endsWith('partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-role-acceptance.html`);
   await page.getByRole('navigation',{name:{ko:'거래 구분',en:'Transaction category',vi:'Nhóm giao dịch'}[lang]}).waitFor();
@@ -39,6 +43,14 @@ try{
   await page.getByRole('button',{name:{ko:'삭제',en:'Delete',vi:'Xóa'}[lang],exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:{ko:'삭제',en:'Delete',vi:'Xóa'}[lang],exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});await page.getByRole('navigation').getByRole('button',{name:'Customer 0',exact:true}).waitFor();assert.equal(roles.length,1);
+  const removeName={ko:'삭제',en:'Delete',vi:'Xóa'}[lang];
+  sources=[{id:10,code:'UNUSED',nameEn:'Unused',nameKo:'Unused',nameVi:'Unused',partnerRoleId:1,isActive:true,hasUsageHistory:false},{id:11,code:'USED',nameEn:'Used',nameKo:'Used',nameVi:'Used',partnerRoleId:1,isActive:true,hasUsageHistory:true},{id:12,code:'UNKNOWN',nameEn:'Unknown',nameKo:'Unknown',nameVi:'Unknown',partnerRoleId:1,isActive:true}];
+  await page.reload();const unused=page.getByRole('row').filter({has:page.getByRole('cell',{name:'UNUSED',exact:true})});
+  await unused.waitFor();assert.equal(await unused.getByRole('button',{name:removeName,exact:true}).isEnabled(),true);
+  for(const code of ['USED','UNKNOWN'])assert.equal(await page.getByRole('row').filter({has:page.getByRole('cell',{name:code,exact:true})}).getByRole('button',{name:removeName,exact:true}).isDisabled(),true);
+  rejectDelete=true;await unused.getByRole('button',{name:removeName,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:removeName,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>document.querySelector('[role=alert]'));await page.waitForFunction(label=>Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('UNUSED'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
+  sources[0].hasUsageHistory=false;await page.reload();await unused.getByRole('button',{name:removeName,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:removeName,exact:true}).click();await unused.waitFor({state:'hidden'});assert.equal(industryDeletes,2);assert.equal(sources.length,2);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   assert.deepEqual(errors,[]);await page.close();
  }
