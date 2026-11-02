@@ -38,7 +38,7 @@ try{
   else{
    await page.getByText('THE SAN',{exact:true}).waitFor();assert.deepEqual(reads,['customers']);
    const headers=await page.locator('[data-testid=partner-directory] thead th').allTextContents();
-   assert.equal(headers.length,9);
+   assert.equal(headers.length,10);
    await page.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.partnerNavigation),'/customer/7','Customer relationship FK must remain intact');
    await branches.nth(2).click();await page.getByText('Vendor A',{exact:true}).waitFor();
    assert.deepEqual(await page.locator('[data-testid=partner-directory] thead th').allTextContents(),headers);

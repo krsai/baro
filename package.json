@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:partner-party-kind": "node --test scripts/entity-profile.test.mjs && node scripts/partner-party-kind-browser.test.mjs",
     "test:system-industry-deletion": "npm --prefix backend run build && node --test scripts/system-industry-deletion.test.mjs scripts/code-bases-tax.test.mjs && node scripts/partner-role-management-browser.test.mjs",
     "test:partner-role-management": "npm --prefix backend run build && node --test scripts/partner-role-management.test.mjs scripts/industry-hierarchy.test.mjs scripts/remove-management-role.test.mjs && node scripts/partner-role-management-browser.test.mjs",
     "test:company-connections": "npm --prefix backend run build && node --test scripts/company-connections.test.mjs scripts/business-partner-deletion.test.mjs scripts/partner-classification.test.mjs scripts/railway-schema-preflight.test.mjs scripts/system-tenant-login.test.mjs && node scripts/company-connections-browser.test.mjs",
