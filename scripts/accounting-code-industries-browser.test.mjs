@@ -34,7 +34,9 @@ try{
   const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 유형':lang==='vi'?'Loại chi tiết':'Subtype';
   await page.getByRole('button',{name:edit,exact:true}).click();const dialog=page.getByRole('dialog'),selector=dialog.getByRole('combobox',{name:industry,exact:true});
   const mode=lang==='ko'?'입력 방식':lang==='vi'?'Cách nhập':'Input method';await dialog.getByText(mode,{exact:true}).first().waitFor();assert.equal(await dialog.locator('input[value="GENERAL"]').isDisabled(),true);
-  await selector.fill('BUTTON');await page.getByRole('option',{name:'BUTTON',exact:true}).click();await page.keyboard.press('Escape');await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await selector.fill('no-matching-subtype');await page.getByText({ko:'일치하는 세부 유형이 없습니다.',en:'No matching subtypes.',vi:'Không có loại chi tiết phù hợp.'}[lang],{exact:true}).waitFor();
+  await selector.fill('BUTTON');assert.equal(await page.getByRole('option').count(),1);assert.ok((await page.getByRole('listbox').boundingBox()).height<=241);
+  await selector.press('ArrowDown');await selector.press('Enter');await page.keyboard.press('Escape');await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
   assert.deepEqual(writes[0].industryIds,[10,20]);assert.equal(writes[0].industryRevision,1);
   await nav.getByRole('button',{name:'SUPPLIER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1,'a shared code is counted once in its parent category');await nav.getByRole('button',{name:'BUTTON 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
   const add=lang==='ko'?'기본 코드 등록':lang==='vi'?'Thêm mã gốc':'Add base code';await page.getByRole('button',{name:add,exact:true}).click();assert.equal(await dialog.getByText('BUTTON',{exact:true}).count(),1);

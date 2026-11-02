@@ -21,8 +21,14 @@ const TEXT={
  vi:{title:'Mã kế toán',all:'Tất cả mã',category:'Nhóm giao dịch > loại chi tiết',industry:'Loại chi tiết',add:'Thêm mã gốc',code:'Mã gốc',name:'Nội dung',active:'Cho phép sử dụng',edit:'Sửa',save:'Lưu',cancel:'Hủy',empty:'Chưa có mã gốc.',error:'Không thể tải hoặc lưu cài đặt.',conflict:'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại. Vui lòng nhập mã khác.',stale:'Loại chi tiết liên kết đã thay đổi. Tải lại trước khi lưu.',mode:'Cách nhập',PROCESS:'Sản lượng gia công',LOGISTICS:'Chi phí vận chuyển',GENERAL:'Chi phí chung'},
 };
 const path='/system-setting-defaults/code-bases';
+const SUBTYPE_SEARCH={
+ ko:{placeholder:'세부 유형 이름으로 검색',help:'이름이나 거래 구분을 입력해 찾고 여러 유형을 선택하세요.',empty:'일치하는 세부 유형이 없습니다.'},
+ en:{placeholder:'Search subtype names',help:'Search by name or transaction category and select multiple subtypes.',empty:'No matching subtypes.'},
+ vi:{placeholder:'Tìm tên loại chi tiết',help:'Tìm theo tên hoặc nhóm giao dịch và chọn nhiều loại chi tiết.',empty:'Không có loại chi tiết phù hợp.'},
+};
 export default function AccountingCodeSettings(){
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
+ const subtypeSearch=SUBTYPE_SEARCH[languageCode]||SUBTYPE_SEARCH.en;
  const [rows,setRows]=useState([]),[industries,setIndustries]=useState([]),[roles,setRoles]=useState([]),[selected,setSelected]=useState('ALL');
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[form,setForm]=useState(null);
  const load=useCallback(async()=>{
@@ -77,11 +83,11 @@ export default function AccountingCodeSettings(){
     <Box sx={{display:'flex',justifyContent:'space-between',gap:2}}><TextField required label={text.code} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/><FormControlLabel label={text.active} control={<Checkbox checked={form.isActive} disabled={saving||form.legacyUsageDisabled} onChange={event=>setForm({...form,isActive:event.target.checked})}/>}/></Box>
     {form.legacyUsageDisabled&&<Typography variant="caption" color="text.secondary">{languageCode==='ko'?'기존 사용 중지 설정 유지':languageCode==='vi'?'Giữ cài đặt ngừng sử dụng hiện có':'Existing disabled setting preserved'}</Typography>}
     <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
-    <Autocomplete multiple disableCloseOnSelect options={options} value={options.filter(row=>form.industryIds.includes(row.id))} disabled={saving} groupBy={row=>name(roles.find(role=>role.id===row.partnerRoleId))} getOptionLabel={name} isOptionEqualToValue={(row,value)=>row.id===value.id}
-     filterOptions={createFilterOptions({stringify:row=>[row.code,row.nameKo,row.nameEn,row.nameVi,name(row.partnerRole)].join(' ')})}
+    <Autocomplete multiple disableCloseOnSelect autoHighlight openOnFocus limitTags={3} noOptionsText={subtypeSearch.empty} slotProps={{listbox:{sx:{maxHeight:'min(240px, 35dvh)'}}}} options={options} value={options.filter(row=>form.industryIds.includes(row.id))} disabled={saving} groupBy={row=>name(roles.find(role=>role.id===row.partnerRoleId))} getOptionLabel={name} isOptionEqualToValue={(row,value)=>row.id===value.id}
+     filterOptions={createFilterOptions({stringify:row=>{const role=roles.find(role=>role.id===row.partnerRoleId);return [row.nameKo,row.nameEn,row.nameVi,role?.nameKo,role?.nameEn,role?.nameVi].join(' ');}})}
      onChange={(_,selection)=>setForm({...form,industryIds:selection.map(row=>row.id),...(!form.id&&!form.industryIds.length&&selection.length?{entryMode:selection[0].entryMode}:{})})}
-     renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
-     renderInput={params=><TextField {...params} required={!form.id||form.isActive} label={text.industry}/>}/>
+     renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={row.id} {...rest}><Checkbox checked={selected} tabIndex={-1} disableRipple/>{name(row)}</li>;}}
+     renderInput={params=><TextField {...params} required={!form.id||form.isActive} label={text.industry} placeholder={subtypeSearch.placeholder} helperText={subtypeSearch.help}/>}/>
     <TextField select label={text.mode} value={form.entryMode} disabled={saving||form.hasUsageHistory} onChange={event=>setForm({...form,entryMode:event.target.value})}>{[...new Set(['GENERAL','LOGISTICS','PROCESS',form.entryMode])].filter(Boolean).map(mode=><MenuItem key={mode} value={mode}>{text[mode]||mode}</MenuItem>)}</TextField>
     <AccountingInputSettings value={form} onChange={setForm} languageCode={languageCode} disabled={saving}/>
    </Stack>}</DialogContent>
