@@ -19,6 +19,11 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/system-setting-defaults/**',r=>{
    const req=r.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(['POST','PUT'].includes(req.method())&&url.pathname.includes('/services')){
+    const body=req.postDataJSON();assert.equal('code' in body,false);
+    if(req.method()==='POST')sources.push({id:20,code:'TYPE_internal',...body,hasUsageHistory:false});else Object.assign(sources.find(row=>row.id===20),body);
+    return r.fulfill({headers,json:{ok:true}});
+   }
    if(req.method()==='DELETE'&&url.pathname.includes('/services/')){
     industryDeletes++;if(rejectDelete){rejectDelete=false;sources[0].hasUsageHistory=true;return r.fulfill({headers,status:409,json:{error:'SETTING_IN_USE'}});}
     sources=sources.filter(row=>row.id!==Number(url.pathname.split('/').pop()));return r.fulfill({headers,json:{ok:true}});
@@ -45,22 +50,30 @@ try{
   await page.getByRole('button',{name:{ko:'삭제',en:'Delete',vi:'Xóa'}[lang],exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:{ko:'삭제',en:'Delete',vi:'Xóa'}[lang],exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});await page.getByRole('navigation').getByRole('button',{name:'Customer 0',exact:true}).waitFor();assert.equal(roles.length,1);
+  await page.getByRole('button',{name:{ko:'세부 유형 등록',en:'Add subtype',vi:'Thêm loại chi tiết'}[lang],exact:true}).click();
+  dialog=page.getByRole('dialog');assert.equal(await dialog.locator('input:not([aria-hidden="true"])').count(),3);
+  for(let i=0;i<3;i++)await dialog.locator('input:not([aria-hidden="true"])').nth(i).fill('Subtype');
+  await dialog.locator('button').last().click();await dialog.waitFor({state:'hidden'});
+  const subtypeRow=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Subtype',exact:true})});await subtypeRow.waitFor();assert.equal(await page.getByRole('cell',{name:'TYPE_internal',exact:true}).count(),0);
+  await subtypeRow.getByRole('button',{name:{ko:'수정',en:'Edit',vi:'Sửa'}[lang],exact:true}).click();dialog=page.getByRole('dialog');
+  assert.equal(await dialog.locator('input:not([aria-hidden="true"]):not([type="checkbox"])').count(),3);
+  await dialog.locator('input:not([aria-hidden="true"]):not([type="checkbox"])').first().fill('Renamed subtype');await dialog.locator('button').last().click();await dialog.waitFor({state:'hidden'});
   const removeName={ko:'삭제',en:'Delete',vi:'Xóa'}[lang];
   sources=[{id:10,code:'UNUSED',nameEn:'Unused',nameKo:'Unused',nameVi:'Unused',partnerRoleId:1,isActive:true,hasUsageHistory:false},{id:11,code:'USED',nameEn:'Used',nameKo:'Used',nameVi:'Used',partnerRoleId:1,isActive:true,hasUsageHistory:true,_count:{customerIndustries:1},services:[]},{id:12,code:'UNKNOWN',nameEn:'Unknown',nameKo:'Unknown',nameVi:'Unknown',partnerRoleId:1,isActive:true}];
-  await page.reload();const unused=page.getByRole('row').filter({has:page.getByRole('cell',{name:'UNUSED',exact:true})});
+  await page.reload();const unused=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Unused',exact:true})});
   await unused.waitFor();assert.equal(await unused.getByRole('button',{name:removeName,exact:true}).isEnabled(),true);
-  for(const code of ['USED','UNKNOWN'])assert.equal(await page.getByRole('row').filter({has:page.getByRole('cell',{name:code,exact:true})}).getByRole('button',{name:removeName,exact:true}).isDisabled(),true);
-  const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:'USED',exact:true})});
+  for(const code of ['Used','Unknown'])assert.equal(await page.getByRole('row').filter({has:page.getByRole('cell',{name:code,exact:true})}).getByRole('button',{name:removeName,exact:true}).isDisabled(),true);
+  const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Used',exact:true})});
   await used.getByRole('button',{name:removeName,exact:true}).locator('..').hover();
   await page.getByRole('tooltip').filter({hasText:{ko:'기존 고객 유형 연결 (1)',en:'Legacy customer type links (1)',vi:'Liên kết loại khách hàng cũ (1)'}[lang]}).waitFor();
   sources[1].hasUsageHistory=false;sources[1]._count.customerIndustries=0;
   await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{topics:['customers'],orgId:1}})));
-  await page.waitForFunction(label=>!Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('USED')&&!row.textContent.includes('UNUSED'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
+  await page.waitForFunction(label=>!Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('Used')&&!row.textContent.includes('Unused'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
   await page.evaluate(()=>window.setTestTabActive(false));sources[1].hasUsageHistory=true;sources[1]._count.customerIndustries=1;
   await page.evaluate(()=>window.setTestTabActive(true));
-  await page.waitForFunction(label=>Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('USED')&&!row.textContent.includes('UNUSED'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
+  await page.waitForFunction(label=>Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('Used')&&!row.textContent.includes('Unused'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
   rejectDelete=true;await unused.getByRole('button',{name:removeName,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:removeName,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
-  await page.waitForFunction(()=>document.querySelector('[role=alert]'));await page.waitForFunction(label=>Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('UNUSED'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
+  await page.waitForFunction(()=>document.querySelector('[role=alert]'));await page.waitForFunction(label=>Array.from(document.querySelectorAll('tbody tr')).find(row=>row.textContent.includes('Unused'))?.querySelector('button[aria-label="'+label+'"]')?.disabled,removeName);
   sources[0].hasUsageHistory=false;await page.reload();await unused.getByRole('button',{name:removeName,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:removeName,exact:true}).click();await unused.waitFor({state:'hidden'});assert.equal(industryDeletes,2);assert.equal(sources.length,2);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   assert.deepEqual(errors,[]);await page.close();

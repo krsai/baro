@@ -11,6 +11,7 @@ import {saveCatalogueOrder} from './catalogueOrder';
 import {partnerRoleCatalogue} from './partnerRoleCatalogue';
 import {registerPartnerRoleManagement} from './partnerRoleManagement';
 import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse} from './systemIndustryUsage';
+import {randomUUID} from 'node:crypto';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -158,7 +159,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
           const id = Number(req.params.id);
           const existing = update && Number.isSafeInteger(id) ? await model.findFirst({ where: { id, ...(!global ? { ownerOrgId: orgId } : {}) } }) : null;
           if (update && !existing) return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
-          const data: any = { ...(service ? validateServiceDefinition(req.body) : validateTransactionCode(req.body, Boolean(existing && existing.code === req.body?.code && !existing.taxTreatmentId))), isActive: req.body.isActive !== false };
+          const data: any = { ...(service ? validateServiceDefinition({...req.body,code:existing?.code||'TYPE_'+randomUUID().replace(/-/g,'').toUpperCase()}) : validateTransactionCode(req.body, Boolean(existing && existing.code === req.body?.code && !existing.taxTreatmentId))), isActive: req.body.isActive !== false };
           if(service && global){
             const partnerRoleId=req.body?.partnerRoleId;
             if(!Number.isSafeInteger(partnerRoleId)||partnerRoleId<=0||!await db.partnerRole.findUnique({where:{id:partnerRoleId}}))throw createHttpError(400,'PARTNER_ROLE_REQUIRED');

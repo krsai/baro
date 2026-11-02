@@ -54,10 +54,21 @@ test('SYSTEM industry writes require an explicit valid category FK and keep cost
  const db={partnerRole:{findUnique:async({where})=>where.id===2?{id:2,code:'PROCESS_OUTSOURCING'}:null},$transaction:async fn=>fn(tx)};
  registerTransactionSettingRoutes(app,db,{requireSystemAdmin:async()=>true,requireOrgRole:async()=>null});
  const fn=handlers.get('post /system-setting-defaults/services');
- const body={code:'CUSTOM',nameKo:'Custom',nameEn:'Custom',nameVi:'Custom',entryMode:'PROCESS',requiredFields:[]};
+ const body={nameKo:'Custom',nameEn:'Custom',nameVi:'Custom',entryMode:'PROCESS',requiredFields:[]};
  const response={status(){return this;},json(){}};
  for(const partnerRoleId of [undefined,null,'2',999])await assert.rejects(fn({params:{},body:{...body,partnerRoleId}},response),error=>error.status===400&&error.message==='PARTNER_ROLE_REQUIRED');
- await fn({params:{},body:{...body,partnerRoleId:2}},response);assert.equal(saved.partnerRoleId,2);assert.equal(saved.entryMode,'PROCESS');
+ await fn({params:{},body:{...body,partnerRoleId:2}},response);assert.equal(saved.partnerRoleId,2);assert.equal(saved.entryMode,'PROCESS');assert.match(saved.code,/^TYPE_[A-F0-9]{32}$/);
+ const firstKey=saved.code;await fn({params:{},body:{...body,partnerRoleId:2,code:'CUSTOM'}},response);assert.notEqual(saved.code,'CUSTOM');assert.notEqual(saved.code,firstKey);
+});
+
+test('subtype edits without codes preserve legacy source and local technical keys and IDs',async()=>{
+ const handlers=new Map();let data;
+ const existing={id:9,code:'MIXED',entryMode:'PROCESS'};
+ const tx={$queryRawUnsafe:async()=>[],settingServiceDefault:{findFirst:async()=>existing,update:async args=>{assert.equal(args.where.id,9);data=args.data;return {...existing,...data};}}};
+ const db={settingServiceDefault:tx.settingServiceDefault,partnerRole:{findUnique:async()=>({id:2})},$transaction:async fn=>fn(tx)};
+ registerTransactionSettingRoutes(Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)])),db,{requireSystemAdmin:async()=>true});
+ for(const code of [undefined,'CLIENT_RENAME'])await handlers.get('put/system-setting-defaults/services/:id')({params:{id:'9'},body:{nameEn:'Renamed',entryMode:'PROCESS',requiredFields:[],partnerRoleId:2,...(code?{code}:{})}},{status(){return this;},json(){}});
+ assert.equal(data.code,'MIXED');assert.equal(data.nameEn,'Renamed');
 });
 
 test('logistics is a separate partner role, with stable industry IDs and expense classification',async()=>{
