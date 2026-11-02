@@ -1,12 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {systemIndustryUsageReason} from '../frontend/src/utils/systemIndustryUsage.mjs';
 const require=createRequire(import.meta.url);
 const {systemIndustryInUse,SYSTEM_INDUSTRY_USAGE_INCLUDE}=require('../backend/dist/services/systemIndustryUsage.js');
 const {deleteSetting}=require('../backend/dist/services/codeBaseManagement.js');
 const {registerTransactionSettingRoutes}=require('../backend/dist/services/transactionSettingRoutes.js');
 const counts=()=>Object.fromEntries(Object.keys(SYSTEM_INDUSTRY_USAGE_INCLUDE._count.select).map(key=>[key,0]));
 const localCounts=()=>({transactionCosts:0,transactionCodes:0,partners:0});
+test('deletion reason identifies legacy customer links separately from current classification and real local references',()=>{
+ for(const [language,expected] of [['ko','기존 고객 유형 연결'],['en','Legacy customer type links'],['vi','Liên kết loại khách hàng cũ']]){
+  const reason=systemIndustryUsageReason({_count:{customerIndustries:1,partnerClassifications:0},services:[{_count:{transactionCosts:2}},{_count:{transactionCosts:3}}]},language);
+  assert.ok(reason.includes(expected+' (1)'));assert.ok(reason.includes('(5)'));assert.equal(reason.includes('(0)'),false);
+ }
+ assert.equal(systemIndustryUsageReason({_count:{customerIndustries:0},services:[]}), '');
+});
 test('industry usage depends on actual source/local links, not active status, provisioning or metadata overrides',()=>{
  const row={isActive:true,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]};
  assert.equal(systemIndustryInUse(row),false);

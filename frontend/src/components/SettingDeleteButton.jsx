@@ -8,7 +8,7 @@ export const SETTING_DELETE_TEXT = {
   en: { remove: 'Delete', cancel: 'Cancel', confirm: 'Delete this setting?', used: 'Usage history or linked settings prevent deletion. Edit or deactivate it instead.', error: 'Could not delete the setting.' },
   vi: { remove: 'Xóa', cancel: 'Hủy', confirm: 'Xóa cài đặt này?', used: 'Không thể xóa do có lịch sử sử dụng hoặc cài đặt liên kết. Hãy sửa hoặc ngừng sử dụng.', error: 'Không thể xóa cài đặt.' },
 };
-export default function SettingDeleteButton({ path, id, name, orgId, languageCode = 'ko', disabled, used, onDeleted, onError }) {
+export default function SettingDeleteButton({ path, id, name, orgId, languageCode = 'ko', disabled, used, usedReason, onDeleted, onError }) {
   const labels = SETTING_DELETE_TEXT[languageCode] || SETTING_DELETE_TEXT.ko;
   const [open, setOpen] = useState(false), [saving, setSaving] = useState(false);
   const remove = async () => {
@@ -17,5 +17,5 @@ export default function SettingDeleteButton({ path, id, name, orgId, languageCod
     catch (error) { setOpen(false); onError?.(error?.status === 409 ? labels.used : labels.error); }
     finally { setSaving(false); }
   };
-  return <><Tooltip title={used ? labels.used : labels.remove}><span><DeleteActionButton title={labels.remove} disabled={disabled || used || saving || !id} onClick={() => setOpen(true)} /></span></Tooltip><Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="xs"><DialogTitle>{labels.confirm}</DialogTitle><DialogContent>{name}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setOpen(false)}>{labels.cancel}</Button><Button color="error" variant="contained" disabled={saving} onClick={remove}>{labels.remove}</Button></DialogActions></Dialog></>;
+  return <><Tooltip title={used ? usedReason||labels.used : labels.remove}><span><DeleteActionButton title={labels.remove} disabled={disabled || used || saving || !id} onClick={() => setOpen(true)} /></span></Tooltip><Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="xs"><DialogTitle>{labels.confirm}</DialogTitle><DialogContent>{name}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setOpen(false)}>{labels.cancel}</Button><Button color="error" variant="contained" disabled={saving} onClick={remove}>{labels.remove}</Button></DialogActions></Dialog></>;
 }

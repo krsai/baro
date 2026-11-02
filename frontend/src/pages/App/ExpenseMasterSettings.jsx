@@ -3,7 +3,7 @@ import {PARTNER_CLASSIFICATION_TEXT} from '../../utils/partnerClassification.mjs
 import SettingDeleteButton from '../../components/SettingDeleteButton';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
 import { hasLocalizedName } from '../../utils/localizedName.mjs';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback,useEffect,useRef,useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Typography, TableContainer, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Paper, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField } from '@mui/material';
 import ChevronRight from '@mui/icons-material/ChevronRight';
 import StatusLabel from '../../components/StatusLabel';
@@ -17,10 +17,15 @@ import OutsourcingServiceDialog, { serviceName, TRANSACTION_TEXT } from '../../c
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
+import {useRequestScopeContext} from '../../context/RequestScopeContext';
+import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
+import {systemIndustryUsageReason} from '../../utils/systemIndustryUsage.mjs';
 
 export default function ExpenseMasterSettings({ units = false }) {
   const industries=!units;
   const { languageCode } = useLanguage(), { activeOrgId } = useAuth();
+  const {active}=useRequestScopeContext();
+  const loadSequence=useRef(0);
   const original = EXPENSE_TEXT[languageCode] || EXPENSE_TEXT.ko, common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const unitLabels={ko:{types:'단위 관리',type:'단위',add:'단위 등록'},en:{types:'Units',type:'Unit',add:'Add unit'},vi:{types:'Quản lý đơn vị',type:'Đơn vị',add:'Thêm đơn vị'}}[languageCode]||{types:'Units',type:'Unit',add:'Add unit'};
   const text=units?{...original,...unitLabels}:original;
@@ -36,15 +41,20 @@ export default function ExpenseMasterSettings({ units = false }) {
   };
   const [types,setTypes] = useState([]), [category,setCategory] = useState(null), [loading,setLoading] = useState(true);
   const [rows,setRows] = useState([]), [form,setForm] = useState(null), [industryId,setIndustryId] = useState(null), [open,setOpen] = useState(false), [error,setError] = useState(''), [saving,setSaving] = useState(false);
-  const load = async () => {
+  const load = useCallback(async () => {
+    const sequence=++loadSequence.current;
     setLoading(true);setError('');
     try {
       const [items,parents]=await Promise.all([requestJSON(path,{skipCache:true}),industries?requestJSON('/system-setting-defaults/partner-roles',{skipCache:true}):Promise.resolve([])]);
+      if(sequence!==loadSequence.current)return;
       setRows(items);setTypes(parents);
       if(industries)setCategory(current=>parents.some(row=>row.id===current)?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||null);
-    }catch{setError(common.loadError);}finally{setLoading(false);}
-  };
-  useEffect(() => { load(); }, [path]);
+    }catch{if(sequence===loadSequence.current)setError(common.loadError);}finally{if(sequence===loadSequence.current)setLoading(false);}
+  },[path,industries,common.loadError]);
+  useEffect(() => {if(active)load();return()=>{loadSequence.current++;};}, [active,load]);
+  useEffect(()=>subscribeWorkspaceDataChanged(detail=>{
+    if(active&&detail?.topics?.some(topic=>['customers','business-partners','accounting-codes'].includes(topic)))load();
+  }),[active,load]);
   const save = async () => {
     setSaving(true); setError('');
     try { await requestJSON(`${path}${form.id?'/'+form.id:''}`, { method: form.id?'PUT':'POST',headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) }); setForm(null); await load(); }
@@ -59,7 +69,7 @@ export default function ExpenseMasterSettings({ units = false }) {
   const selected=parents.find(row=>row.id===category);
   const visible=industries?rows.filter(row=>(row.partnerRoleId||0)===category&&row.code!=='GENERAL'):rows;
   const table=<TableContainer><Table size="small"><TableHead><TableRow><TableCell>{common.code}</TableCell><TableCell>{industries ? tree.industry : text.type}</TableCell><TableCell>{tree.active}</TableCell><TableCell /></TableRow></TableHead><TableBody>
-    {visible.map((row,index)=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{industries?partnerIndustryLabel(row,languageCode):serviceName(row,languageCode)}</TableCell><TableCell><StatusLabel tone={row.isActive?'blue':'gray'} label={row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><Stack direction="row" justifyContent="flex-end"><IconButton disabled={saving} color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton>{industries&&<SettingDeleteButton path={path} id={row.id} name={serviceName(row,languageCode)} used={row.hasUsageHistory!==false} disabled={loading} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>}</Stack></TableCell></TableRow>)}
+    {visible.map((row,index)=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{industries?partnerIndustryLabel(row,languageCode):serviceName(row,languageCode)}</TableCell><TableCell><StatusLabel tone={row.isActive?'blue':'gray'} label={row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><Stack direction="row" justifyContent="flex-end"><IconButton disabled={saving} color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton>{industries&&<SettingDeleteButton path={path} id={row.id} name={serviceName(row,languageCode)} used={row.hasUsageHistory!==false} usedReason={systemIndustryUsageReason(row,languageCode)} disabled={loading||Boolean(error)} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>}</Stack></TableCell></TableRow>)}
     {!visible.length&&<TableRow><TableCell colSpan={4}>{tree.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>;
   return <AppPageContainer title={industries ? text.industries : text.types} titleActions={units?<Button variant="contained" disabled={loading} onClick={()=>setForm({code:'',nameEn:'',nameKo:'',nameVi:'',isActive:true,sortOrder:0})}>{unitLabels.add}</Button>:industries && <Stack direction="row" spacing={1}><Button variant="outlined" disabled={loading||saving} onClick={()=>{setRoleError('');setRoleForm({nameEn:'',nameKo:'',nameVi:''});}}>{roleText.add}</Button><Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button></Stack>}>
