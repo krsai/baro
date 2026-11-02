@@ -1,4 +1,5 @@
 import {requireLedgerAdjustmentAccess} from './ledgerAdjustmentAccess';
+import {reconcileLedgerBalances} from './ledgerBalance';
 import {listLedgerChanges,acknowledgeLedgerChange} from './ledgerChanges';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -260,6 +261,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
     return {orgId:context.organization.id,actor:context.requesterEmail,actorId:context.employee?.id,role:context.employee?.orgRole};
   };
   app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json({accounts:await listLedgerAccounts(db,scope.orgId)});});
+  app.post('/bank-ledger/balance-adjustments',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;if(scope.role!=='ADMIN'||!scope.actorId)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);res.json(await reconcileLedgerBalances(db,scope,req.body));});
   app.post('/bank-ledger/changes/:entryId/acknowledge',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await acknowledgeLedgerChange(db,scope.orgId,scope.actorId,req.params.entryId));});
   app.get('/bank-ledger/changes',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerChanges(db,scope.orgId,req.query));});
   app.get('/bank-ledger/overview',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await loadAccountOverview(db,scope.orgId,req.query));});

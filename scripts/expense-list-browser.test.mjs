@@ -51,7 +51,7 @@ try {
     const resetToAll=async()=>{await page.getByRole('button',{name:text.reset,exact:true}).click();await left.click();};
     assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
     await left.click();assert.deepEqual(await dates(),['2026-09-01','2026-10-31']);
-    assert.equal(await page.getByRole('button',{name:'M+',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:'M+',exact:true}).isDisabled(),false);await page.getByRole('button',{name:'M+',exact:true}).click();assert.deepEqual(await dates(),['2026-10-01','2026-10-31']);
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await page.getByRole('button',{name:'M-',exact:true}).click();assert.deepEqual(await dates(),['2026-09-01','2026-09-30']);
     await right.click();assert.deepEqual(await dates(),['2026-09-01','2026-10-31']);
@@ -66,7 +66,7 @@ try {
     assert.equal(headings.length,10);
     assert.ok((await page.locator('.is-dense th, .is-dense td').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).padding))).every(padding=>padding==='8px 12px'),'Header and body share compact spacing');
     assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
-    assert.equal(headings.includes(text.remark),false);assert.equal(headings.includes(text.source),false);assert.equal(await page.locator('[data-search-filters] select').count(),3);assert.doesNotMatch(await page.locator('tbody').innerText(),/Delivery note/);
+    assert.equal(headings.includes(text.remark),false);assert.equal(headings.includes(text.source),false);assert.equal(await page.locator('[data-search-filters]').getByRole('combobox').count(),3);assert.doesNotMatch(await page.locator('tbody').innerText(),/Delivery note/);
     assert.equal(await page.locator('[data-expense-row="cost"] td').nth(3).textContent(),{ko:'봉제',en:'Sewing',vi:'May'}[lang]);
     assert.equal(await page.locator('[data-expense-row="old"] td').nth(3).textContent(),text.unclassified);
     assert.equal(headings.includes(text.style),false);
@@ -75,8 +75,11 @@ try {
     await page.getByRole('textbox',{name:text.search}).fill('NEW-42');assert.equal(await grouped.locator('td').nth(6).innerText(),'2');await page.getByRole('textbox',{name:text.search}).fill('');
     assert.equal(await page.locator('tbody .cc-code').count(),0);
     assert.equal(headings.includes(text.category),false);assert.equal(headings[3],text.industry);assert.equal(headings[5],text.order);assert.equal(headings[6],text.count);
-    assert.equal(await page.locator('[data-search-filters] select').nth(0).locator('option').first().textContent(),text.allIndustries);
-    assert.equal(await page.locator('[data-search-filters] select').nth(1).locator('option').first().textContent(),text.allPartners);
+    assert.equal(await page.locator('[data-search-filters]').getByRole('combobox').nth(0).innerText(),text.allIndustries);
+    const filterSelect=async(index,name)=>{await page.locator('[data-search-filters]').getByRole('combobox').nth(index).click();await page.getByRole('option',{name,exact:true}).click();};
+    const panelBody=page.locator('[data-search-body]');const bodyBoxes=await panelBody.locator(':scope > *').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().y));assert.ok(bodyBoxes.every(y=>Math.abs(y-bodyBoxes[0])<3));
+    assert.equal(await page.locator('[data-search-filters] .MuiInputLabel-shrink').count(),3);
+    assert.equal(await page.locator('[data-search-filters]').getByRole('combobox').nth(1).innerText(),text.allPartners);
     const historicalRow=page.locator('[data-expense-row="old"]');
     await historicalRow.locator('td').nth(2).dblclick();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
@@ -90,7 +93,7 @@ try {
     assert.deepEqual(await page.locator('[data-search-controls] .MuiPickersInputBase-root').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height)),[36,36]);
     assert.equal((await page.getByRole('button',{name:'M+',exact:true}).boundingBox()).height,17);
     assert.equal(await page.getByRole('button',{name:'M+',exact:true}).evaluate(el=>getComputedStyle(el).fontSize),'11px');
-    for(const selector of ['.cc-primary','[data-search-panel] input[type="text"]','[data-search-filters] select','tbody td']) {
+    for(const selector of ['.cc-primary','[data-search-panel] input[type="text"]','[data-search-filters] [role="combobox"]','tbody td']) {
       assert.equal(await page.locator(selector).first().evaluate(el=>getComputedStyle(el).fontSize),'13px',selector+' uses global text size');
     }
     assert.equal((await page.locator('[data-search-controls] [data-testid="ChevronLeftIcon"]').boundingBox()).width,16);
@@ -108,8 +111,8 @@ try {
     await page.getByRole('tab',{name:text.partnerSummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
     await page.getByRole('tab',{name:text.industrySummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
     await page.getByRole('tab',{name:text.detail,exact:true}).click();
-    await page.locator('[data-search-filters] select').nth(1).selectOption('12');assert.equal(await page.locator('tbody tr').count(),2);
-    await page.locator('[data-search-filters] select').nth(2).selectOption('USD');assert.equal(await page.locator('tbody tr').count(),1);
+    await filterSelect(1,'New Vendor');assert.equal(await page.locator('tbody tr').count(),2);
+    await filterSelect(2,'USD');assert.equal(await page.locator('tbody tr').count(),1);
     await page.locator('[data-expense-row="document-item"] button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
     await page.getByRole('tab',{name:text.documents,exact:true}).click();
@@ -117,7 +120,7 @@ try {
     assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).locator('span').getAttribute('title'),{ko:'물류, 봉제',en:'Logistics, Sewing',vi:'Vận chuyển, May'}[lang]);
     await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
-    await page.locator('[data-search-filters] select').nth(2).selectOption('USD');
+    await filterSelect(2,'USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
     assert.equal(await page.getByText('EXP-2026-000041',{exact:true}).count(),1);await page.locator('.cc-table-scroll tbody button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();

@@ -4,7 +4,7 @@ import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
 import { expenseLineDescription, expenseRequestSummary } from '../../utils/expenseCodePresentation.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, CircularProgress } from '@mui/material';
+import { Alert, Box, Button, CircularProgress,MenuItem,TextField } from '@mui/material';
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -126,14 +126,14 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
       <Button variant="contained" disableElevation className="cc-primary" disabled={loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
-    <SearchPanel title={text.query} disabled={loading} onReset={reset}
+    <SearchPanel title={text.query} searchWidth={260} disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
       controls={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
-      filters={<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',xl:'repeat(3,minmax(0,1fr))'},gap:1.5,width:'100%'}}>
-        <label><span>{text.industry}</span><select value={industry} onChange={event=>setIndustry(event.target.value)}><option value="">{text.allIndustries}</option>{industryOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
-        <label><span>{labels.partner}</span><select value={partner} onChange={event=>setPartner(event.target.value)}><option value="">{text.allPartners}</option>{partnerOptions.map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label>
-        <label><span>{labels.currency}</span><select value={currency} onChange={event=>setCurrency(event.target.value)}><option value="">{text.allCurrencies}</option>{currencies.map(code=><option key={code}>{code}</option>)}</select></label>
-      </Box>}
+      filters={<>
+        <TextField select size="small" label={text.industry} value={industry} onChange={event=>setIndustry(event.target.value)} InputLabelProps={{shrink:true}} SelectProps={{displayEmpty:true}} sx={{width:120}}><MenuItem value="">{text.allIndustries}</MenuItem>{industryOptions.map(([id,name])=><MenuItem key={id} value={id}>{name}</MenuItem>)}</TextField>
+        <TextField select size="small" label={labels.partner} value={partner} onChange={event=>setPartner(event.target.value)} InputLabelProps={{shrink:true}} SelectProps={{displayEmpty:true}} sx={{width:140}}><MenuItem value="">{text.allPartners}</MenuItem>{partnerOptions.map(([id,name])=><MenuItem key={id} value={id}>{name}</MenuItem>)}</TextField>
+        <TextField select size="small" label={labels.currency} value={currency} onChange={event=>setCurrency(event.target.value)} InputLabelProps={{shrink:true}} SelectProps={{displayEmpty:true}} sx={{width:100}}><MenuItem value="">{text.allCurrencies}</MenuItem>{currencies.map(code=><MenuItem key={code} value={code}>{code}</MenuItem>)}</TextField>
+      </>}
     />
     <section className="cc-panel cc-results">
       <div className="cc-tabs" role="tablist">{[['items',text.detail],['partner',text.partnerSummary],['industry',text.industrySummary],['documents',text.documents]].map(([key,label])=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{label}</button>)}<span>{text.basis}: {view==='documents' ? docText.date : labels.date}</span></div>

@@ -1,3 +1,5 @@
+import LedgerBalanceDialog from '../../components/LedgerBalanceDialog';
+import {ledgerBalanceText} from '../../constants/ledgerBalance';
 import {accountingCodeDescription} from '../../utils/accountingCode.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Box,Button,Checkbox,FormControlLabel,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
@@ -21,7 +23,9 @@ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',yea
 export const ledgerAccountName=row=>row.displayName||[row.bankName,row.accountNumber].filter(Boolean).join(' / ');
 export default function BankLedger(){const {activeOrgId}=useAuth();return <LedgerList key={activeOrgId} orgId={activeOrgId}/>;}
 function LedgerList({orgId}){
- const {navigateToPath}=useAppActions(),{languageCode}=useLanguage(),t=bankLedgerMessages[languageCode]||bankLedgerMessages.en,w=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
+ const {navigateToPath}=useAppActions(),{activeOrgRole}=useAuth(),{languageCode}=useLanguage(),t=bankLedgerMessages[languageCode]||bankLedgerMessages.en,w=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
+ const [balanceOpen,setBalanceOpen]=useState(false);
+ const b=ledgerBalanceText[languageCode]||ledgerBalanceText.en;
  const [includeDeleted,setIncludeDeleted]=useState(false),[accountId,setAccountId]=useState(''),[data,setData]=useState(null),[start,setStart]=useState(()=>today().slice(0,7)+'-01'),[end,setEnd]=useState(today),[page,setPage]=useState(0),[reload,setReload]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState('');
  const [voidRow,setVoidRow]=useState(null),[reason,setReason]=useState(''),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[voidError,setVoidError]=useState('');const busy=useRef(false);
  useUnsavedChanges(!!voidRow&&(!!reason||uncertain));
@@ -36,7 +40,7 @@ function LedgerList({orgId}){
  const cancelEntry=async event=>{event.preventDefault();if(busy.current)return;busy.current=true;setSaving(true);setVoidError('');try{
   await requestJSON('/bank-ledger/entries/'+voidRow.id+buildQueryString({orgId}),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})});setVoidRow(null);setUncertain(false);emitWorkspaceDataChanged({orgId,source:'bank-ledger',topics:['bank-ledger']});
  }catch(e){const unknown=!e.status||e.status>=500;setUncertain(unknown);setVoidError(unknown?t.uncertain:t.errors[e.message]||t.failed);}finally{busy.current=false;setSaving(false);}};
- return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={!accounts.length} onClick={()=>navigateToPath('/bank-ledger/new'+buildQueryString({accountId:accountId||undefined}))}>{t.addEntry}</Button></Stack>}><PageContentStack>
+ return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}>{activeOrgRole==='ADMIN'&&<Button variant="outlined" onClick={()=>setBalanceOpen(true)}>{b.title}</Button>}<Button variant="contained" disabled={!accounts.length} onClick={()=>navigateToPath('/bank-ledger/new'+buildQueryString({accountId:accountId||undefined}))}>{t.addEntry}</Button></Stack>}><PageContentStack>
   <SearchPanel search={<TextField select fullWidth size="small" label={t.account} SelectProps={{displayEmpty:true}} InputLabelProps={{shrink:true}} value={accountId} onChange={e=>{setAccountId(e.target.value);setPage(0);}} sx={{minWidth:220}}><MenuItem value="">{w.all}</MenuItem>{accounts.map(a=><MenuItem key={a.id} value={a.id}>{ledgerAccountName(a)} / {a.currencyCode}</MenuItem>)}</TextField>} filters={<FormControlLabel control={<Checkbox checked={includeDeleted} onChange={e=>{setIncludeDeleted(e.target.checked);setPage(0);}}/>} label={l.includeDeleted}/>} controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dayjs(start)} endValue={dayjs(end)} onStartChange={d=>{if(d?.isValid()){setStart(d.format('YYYY-MM-DD'));setPage(0);}}} onEndChange={d=>{if(d?.isValid()){setEnd(d.format('YYYY-MM-DD'));setPage(0);}}} minDate={selected?dayjs(selected.openingDate):undefined} maxDate={dayjs(today())}/>}/>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{error}</Alert>}
   <Paper variant="outlined"><TableContainer><Table size="small" sx={{minWidth:1000}}><TableHead><TableRow>{[t.transactionDate,t.account,w.currency,t.IN,t.OUT,t.purpose,t.balance,t.createdBy,''].map((label,index)=><TableCell key={index} align={[2,3,4,6].includes(index)?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
@@ -45,5 +49,6 @@ function LedgerList({orgId}){
   </TableBody></Table></TableContainer><Stack direction="row" spacing={1} justifyContent="flex-end" sx={{p:1}}><Button disabled={!page||loading} onClick={()=>setPage(n=>n-1)}>{t.previous}</Button><Button disabled={!data?.hasMore||loading} onClick={()=>setPage(n=>n+1)}>{t.next}</Button></Stack></Paper>
  </PageContentStack>
  <Dialog open={!!voidRow} onClose={closeVoid} fullWidth maxWidth="sm"><Box component="form" onSubmit={cancelEntry}><DialogTitle>{l.delete}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}><TextField required fullWidth label={l.deleteReason} value={reason} disabled={saving||uncertain} multiline minRows={2} inputProps={{maxLength:1000}} onChange={e=>setReason(e.target.value)}/>{voidError&&<Alert severity="error">{voidError}</Alert>}</Stack></DialogContent><DialogActions><Button disabled={saving||uncertain} onClick={closeVoid}>{t.cancel}</Button><Button type="submit" variant="contained" disabled={saving}>{uncertain?t.retry:l.delete}</Button></DialogActions></Box></Dialog>
+ {balanceOpen&&activeOrgRole==='ADMIN'&&<LedgerBalanceDialog orgId={orgId} languageCode={languageCode} onClose={()=>setBalanceOpen(false)}/>}
  </AppPageContainer>;
 }

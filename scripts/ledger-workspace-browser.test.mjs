@@ -1,3 +1,4 @@
+import {ledgerBalanceText} from '../frontend/src/constants/ledgerBalance.js';
 import {ACCOUNTING_CODE_TEXT} from '../frontend/src/constants/accountingCode.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -17,7 +18,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/ledger-workspace-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi']){
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],posts=[],queries=[],t=bankLedgerMessages[lang],w=ledgerWorkspaceText[lang],e=ledgerEvidenceText[lang],l=ledgerEntryText[lang],o=accountOverviewText[lang];let failOnce=true,saved=false,edited=false,deleted=false;
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],posts=[],balancePosts=[],queries=[],t=bankLedgerMessages[lang],w=ledgerWorkspaceText[lang],e=ledgerEvidenceText[lang],l=ledgerEntryText[lang],o=accountOverviewText[lang],b=ledgerBalanceText[lang];let failOnce=true,saved=false,edited=false,deleted=false;
   page.setDefaultTimeout(30000);page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeOrgRole:window.testRole||'ACCOUNTANT',activeProfile:{orgName:'Company'}});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const actions={navigateToPath:path=>window.testNavigate(path),setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;`}));
@@ -28,6 +29,7 @@ try{
   await page.route('**/bank-ledger/**',r=>{
    const url=new URL(r.request().url());if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
    assert.equal(url.searchParams.get('orgId'),'1');
+   if(url.pathname.endsWith('/balance-adjustments')){const body=r.request().postDataJSON();balancePosts.push(body);assert.equal(body.accounts[0].targetBalance,'-5.25');assert.equal(body.accounts[0].expectedBalance,'100.00');assert.equal(body.accounts[1].targetBalance,'0');assert.equal(body.reason,'Reconcile balance');if(balancePosts.length===1)return r.fulfill({headers,status:409,json:{error:'LEDGER_BALANCE_CHANGED'}});if(balancePosts.length===2)return r.fulfill({headers,status:500,json:{error:'Unknown result'}});return r.fulfill({headers,json:{entryIds:['balance-adjustment']}});}
    if(url.pathname.endsWith('/overview'))return r.fulfill({headers,json:{orgId:1,asOf:'2026-10-30',yesterday:'2026-10-29',monthStart:'2026-10-01',historyStart:'2026-10-01',accounts:accounts.map(a=>({...a,name:a.displayName||a.bankName,beginningBalance:'0',change:a.currentBalance,yesterdayIn:a.totalIn,yesterdayOut:a.totalOut})),currencyTotals:accounts.map(a=>({...a,beginningBalance:'0',change:a.currentBalance,yesterdayIn:a.totalIn,yesterdayOut:a.totalOut})),history:Array.from({length:30},(_,i)=>({date:'2026-10-'+String(i+1).padStart(2,'0'),accounts:accounts.map(a=>({accountId:a.id,balance:a.currentBalance})),currencyTotals:accounts.map(a=>({currencyCode:a.currencyCode,balance:a.currentBalance}))})),transactions:[],receivables:[],payables:[],outstandingTotals:[]}});
    if(url.pathname.endsWith('/accounts'))return r.fulfill({headers,json:{accounts}});
    if(url.pathname.endsWith('/evidence/search'))return r.fulfill({headers,json:{documents:url.searchParams.get('type')==='INVOICE'?[{id:'invoice',reference:url.searchParams.get('search')==='INV-2'?'INV-2':'INV-1',payee:'Buyer',amount:'1000',remaining:'1000'}]:[{id:1,version:2,reference:'EXP-000001',payee:'Vendor',amount:'100',remaining:'100',items:[{id:'cost1',description:'Approved item',remaining:'100'}]}]}});
@@ -39,7 +41,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/ledger-workspace-acceptance.html`);
   await page.evaluate(()=>window.testNavigate('/account-overview'));await page.getByTestId('account-balance-chart').waitFor();assert.equal(await page.getByText('Company',{exact:true}).count(),0);assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('thead').first().locator('th').nth(1).evaluate(el=>getComputedStyle(el).textAlign),'right');await page.evaluate(()=>window.testNavigate('/bank-ledger'));await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();
-  assert.equal(await page.getByText('Company',{exact:true}).count(),0);
+  assert.equal(await page.getByText('Company',{exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:b.title,exact:true}).count(),0);
   assert.equal(await page.getByRole('columnheader',{name:t.evidenceNumber,exact:true}).count(),0);assert.ok((await page.getByLabel(t.account,{exact:true}).innerText()).includes(w.all));
   await page.getByRole('button',{name:t.addEntry,exact:true}).click();assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByText(w.batchHint,{exact:true}).count(),0);
   const row=index=>page.locator(`[data-ledger-entry-row="${index}"]`);
@@ -68,13 +70,15 @@ try{
   await page.setViewportSize({width:1720,height:1000});
   assert.equal(await page.getByRole('button',{name:w.overview,exact:true}).count(),0);
   await page.evaluate(()=>{window.testRole='ADMIN';window.testNavigate('/bank-ledger/new');});
-  await row(0).getByLabel(t.account,{exact:true}).click();await page.getByRole('option',{name:'USD cash / USD',exact:true}).click();
-  await row(0).getByLabel(t.direction,{exact:true}).click();await page.getByRole('option',{name:w.BALANCE_IN,exact:true}).click();
-  await row(0).getByLabel(w.adjustAmount).waitFor();assert.equal(await row(0).getByLabel(l.evidenceKind,{exact:true}).evaluate(el=>el.closest('.MuiInputBase-root').classList.contains('Mui-disabled')),true);assert.equal(await row(0).getByLabel(e.reference).count(),0);
-  await row(0).getByLabel(w.adjustAmount).fill('50');await chooseCode(0);await row(0).getByLabel(w.adjustReason).fill('Reconcile balance');
-  assert.equal(await page.locator('.MuiTableContainer-root').evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
-  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();
-  assert.equal(posts.at(-1).rows[0].evidenceType,'ADJUSTMENT');assert.equal(posts.at(-1).rows[0].remark,'Reconcile balance');assert.equal(posts.at(-1).rows[0].amount,'50');
+  await row(0).getByLabel(t.direction,{exact:true}).click();assert.equal(await page.getByRole('option',{name:w.BALANCE_IN,exact:true}).count(),0);assert.equal(await page.getByRole('option',{name:w.BALANCE_OUT,exact:true}).count(),0);await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:t.cancel,exact:true}).click();await page.getByRole('button',{name:b.title,exact:true}).click();
+  const balanceDialog=page.getByRole('dialog'),usd=balanceDialog.getByLabel(b.actual+' USD cash',{exact:true}),vnd=balanceDialog.getByLabel(b.actual+' 001',{exact:true});
+  await usd.fill('-5.25');await vnd.fill('1.5');await balanceDialog.getByLabel(b.reason,{exact:false}).fill('Reconcile balance');assert.equal(await balanceDialog.getByRole('button',{name:b.save,exact:true}).isDisabled(),true);await vnd.fill('0');
+  assert.ok((await balanceDialog.innerText()).includes('USD -105.25'));assert.ok((await balanceDialog.innerText()).includes('VND -500'));
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.equal(await balanceDialog.locator('.MuiTableContainer-root').evaluate(el=>el.scrollWidth>el.clientWidth),true);await page.setViewportSize({width:1720,height:1000});
+  await balanceDialog.getByRole('button',{name:b.save,exact:true}).click();await balanceDialog.getByText(b.changed,{exact:true}).waitFor();await balanceDialog.getByRole('button',{name:b.reload,exact:true}).click();await usd.waitFor();assert.equal(await usd.inputValue(),'');
+  await usd.fill('-5.25');await vnd.fill('0');await balanceDialog.getByRole('button',{name:b.save,exact:true}).click();await balanceDialog.getByText(b.uncertain,{exact:true}).waitFor();assert.equal(await usd.isDisabled(),true);assert.equal(await balanceDialog.getByRole('button',{name:b.cancel,exact:true}).isDisabled(),true);
+  await balanceDialog.getByRole('button',{name:b.retry,exact:true}).click();await balanceDialog.waitFor({state:'hidden'});assert.equal(balancePosts.length,3);assert.deepEqual(balancePosts[1],balancePosts[2]);assert.notEqual(balancePosts[0].clientKey,balancePosts[1].clientKey);
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Ledger workspace ko/en/vi: all accounts, currency-separated overview, searched document links, eight bank/fee/write-off rows, safe batch retry, hidden reference column and responsive overflow passed.');

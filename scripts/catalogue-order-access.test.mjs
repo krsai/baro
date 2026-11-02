@@ -55,7 +55,7 @@ test('all ledger write routes enforce adjustment permissions using the actual em
  const db={bankLedgerEntry:{findFirst:async({where})=>{assert.equal(where.orgId,7);return {evidenceType:'ADJUSTMENT'};}}};
  registerBankLedgerRoutes(Object.fromEntries(['get','put','post','delete'].map(method=>[method,(path,fn)=>handlers.set(method+':'+path,fn)])),db,{requireOrgRole:async()=>({organization:{id:7},employee:{id:3,orgRole:'ACCOUNTANT'},systemUser:{systemRole:'SYSTEM_ADMIN'}})});
  const res={json:()=>{},status(){return this;}};
- for(const route of ['post:/bank-ledger/entries/batch','post:/bank-ledger/accounts/:accountId/entries','put:/bank-ledger/entries/:entryId','delete:/bank-ledger/entries/:entryId','post:/bank-ledger/accounts/:accountId/entries/:entryId/void']){
+ for(const route of ['post:/bank-ledger/balance-adjustments','post:/bank-ledger/entries/batch','post:/bank-ledger/accounts/:accountId/entries','put:/bank-ledger/entries/:entryId','delete:/bank-ledger/entries/:entryId','post:/bank-ledger/accounts/:accountId/entries/:entryId/void']){
   await assert.rejects(handlers.get(route)({params:{accountId:'a',entryId:'existing'},body:{evidenceType:'ADJUSTMENT',role:'ADMIN',reason:'test'}},res),/LEDGER_ADJUSTMENT_ADMIN_REQUIRED/);
  }
 });

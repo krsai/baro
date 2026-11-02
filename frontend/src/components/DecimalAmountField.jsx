@@ -2,10 +2,10 @@ import React from 'react';
 import { TextField } from '@mui/material';
 import { formatEditableDecimal } from '../utils/editableDecimal.mjs';
 
-export default function DecimalAmountField({ value, onValueChange, inputProps, ...props }) {
+export default function DecimalAmountField({ value, onValueChange, inputProps, allowNegative=false, ...props }) {
   return <TextField {...props} value={formatEditableDecimal(value)} inputProps={{ ...inputProps, inputMode: 'decimal' }} onChange={event => {
     const input = event.target, raw = input.value.replace(/,/g, '');
-    if (!/^\d*(?:\.\d*)?$/.test(raw)) return;
+    if (!(allowNegative?/^-?\d*(?:\.\d*)?$/:/^\d*(?:\.\d*)?$/).test(raw)) return;
     const offset = input.value.slice(0, input.selectionStart ?? input.value.length).replace(/,/g, '').length;
     onValueChange(raw);
     requestAnimationFrame(() => {

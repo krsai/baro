@@ -9,6 +9,7 @@ const {resolveEvidence,approveExpense}=require('../backend/dist/services/bankEvi
 const {postLedgerEntry,postLedgerBatch,listLedgerActivity}=require('../backend/dist/services/bankLedger.js');
 const {replaceLedgerEntry,deleteLedgerEntry}=require('../backend/dist/services/bankLedgerEdit.js');
 const {listApprovalOverview}=require('../backend/dist/services/approvalOverview.js');
+const {reconcileLedgerBalances}=require('../backend/dist/services/ledgerBalance.js');
 async function fixture(){
  const db=new PGlite();await db.exec("SET TIME ZONE 'UTC'");
  await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY);INSERT INTO "Organization" VALUES(1),(2);
@@ -190,6 +191,32 @@ function ledgerDatabase(pg){
  return db;
 }
 const batchRow=(extra={})=>({clientKey:randomUUID(),accountId:'a',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'scan.pdf',...extra});
+
+test('target balance reconciliation appends exact differences atomically, including zero/negative targets and safe retries',async()=>{
+ const pg=await fixture(),db=ledgerDatabase(pg);try{
+  db.employee={findFirst:async({where})=>(await pg.query('SELECT id FROM "Employee" WHERE id=$1 AND "orgId"=$2 AND status=$3 AND "orgRole"=$4',[where.id,where.orgId,where.status,where.orgRole])).rows[0]};
+  await pg.exec(`INSERT INTO "BankLedgerAccount"(id,"orgId","clientKey","bankName","accountNumber","accountHolder","currencyCode","openingDate","openingBalance","createdBy") VALUES('vnd',1,'vnd','B','002','C','VND','2026-01-01',0,'actor'),('krw',1,'krw','B','003','C','KRW','2026-01-01',0,'actor');`);
+  const scope={orgId:1,actorId:10,actor:'admin@example.com'},body={clientKey:randomUUID(),reason:'Bank reconciliation',accounts:[{accountId:'a',currencyCode:'USD',expectedBalance:'1.00',targetBalance:'1000.25'},{accountId:'vnd',currencyCode:'VND',expectedBalance:'0',targetBalance:'0'},{accountId:'krw',currencyCode:'KRW',expectedBalance:'0',targetBalance:'-10'}]};
+  const result=await reconcileLedgerBalances(db,scope,body);assert.equal(result.entryIds.length,2);
+  const rows=(await pg.query('SELECT "accountId",direction,amount::text,purpose,"evidenceType","accountingCodeId","createdBy","transactionDate" FROM "BankLedgerEntry" WHERE id=ANY($1::text[]) ORDER BY "accountId"',[result.entryIds])).rows;
+  assert.deepEqual(rows.map(row=>[row.accountId,row.direction,row.amount]),[['a','IN','999.2500'],['krw','OUT','10.0000']]);assert.ok(rows.every(row=>row.purpose===body.reason&&row.evidenceType==='ADJUSTMENT'&&row.accountingCodeId===null&&row.createdBy===scope.actor));
+  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());assert.ok(rows.every(row=>row.transactionDate===today));
+  assert.deepEqual(await reconcileLedgerBalances(db,scope,body),result);
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...body,reason:'Changed retry'}),/RETRY_CONFLICT/);
+  const count=async()=>Number((await pg.query('SELECT count(*) AS n FROM "BankLedgerEntry"')).rows[0].n),before=await count();
+  // A later stale account must roll back the entire request, including an earlier valid one.
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...body,clientKey:randomUUID(),accounts:[{accountId:'a',currencyCode:'USD',expectedBalance:'1000.25',targetBalance:'0'},{accountId:'krw',currencyCode:'KRW',expectedBalance:'0',targetBalance:'5'}]}),/BALANCE_CHANGED/);assert.equal(await count(),before);
+  const zero={...body,clientKey:randomUUID(),accounts:[{accountId:'a',currencyCode:'USD',expectedBalance:'1000.25',targetBalance:'0'}]};await reconcileLedgerBalances(db,scope,zero);
+  assert.deepEqual(await reconcileLedgerBalances(db,scope,body),result,'a successful retry must not reset later balances');
+  const noop={...body,clientKey:randomUUID(),accounts:[{accountId:'a',currencyCode:'USD',expectedBalance:'0',targetBalance:'0'}]};assert.deepEqual(await reconcileLedgerBalances(db,scope,noop),{entryIds:[]});assert.deepEqual(await reconcileLedgerBalances(db,scope,noop),{entryIds:[]});
+  for(const actorId of [11,999])await assert.rejects(reconcileLedgerBalances(db,{...scope,actorId},body),/ADMIN_REQUIRED/);
+  await pg.exec('UPDATE "Employee" SET status=\'INACTIVE\' WHERE id=10');await assert.rejects(reconcileLedgerBalances(db,scope,body),/ADMIN_REQUIRED/);await pg.exec('UPDATE "Employee" SET status=\'ACTIVE\' WHERE id=10');
+  await assert.rejects(reconcileLedgerBalances(db,{...scope,orgId:2},body),/ADMIN_REQUIRED/);
+  for(const account of [{...noop.accounts[0],accountId:'foreign'},{...noop.accounts[0],currencyCode:'VND'}])await assert.rejects(reconcileLedgerBalances(db,scope,{...noop,clientKey:randomUUID(),accounts:[account]}),/ACCOUNT_NOT_FOUND/);
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...noop,accounts:[noop.accounts[0],noop.accounts[0]]}),/INVALID_BATCH/);
+  for(const targetBalance of ['1.001','NaN','1e2'])await assert.rejects(reconcileLedgerBalances(db,scope,{...noop,accounts:[{...noop.accounts[0],targetBalance}]}),/INVALID_AMOUNT/);
+ }finally{await pg.close();}
+});
 
 test('explicit remarks stay separate from code descriptions through batch retry and replacement',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{

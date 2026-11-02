@@ -13,7 +13,7 @@ const TEXT = {
 
 // Screens own query state, defaults and requests. This shared shell owns only
 // presentation and disclosure; collapsing never clears or unmounts filters.
-export default function SearchPanel({ title, search, controls, filters, onReset, disabled = false, sx, className }) {
+export default function SearchPanel({ title, search, searchWidth=400, controls, filters, onReset, disabled = false, sx, className }) {
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
   const [expanded, setExpanded] = useState(true);
@@ -31,12 +31,9 @@ export default function SearchPanel({ title, search, controls, filters, onReset,
         sx={{ color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}>{expanded ? text.collapse : text.expand}</Button>}
     </Stack>
     <Box data-search-body sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, p: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
-      {search && <Box sx={{ flex: { xs: '1 1 100%', md: '0 1 400px' }, minWidth: 0, '& > .MuiFormControl-root': { width: '100%', maxWidth: 'none', minWidth: 0 } }}>{search}</Box>}
+      {search && <Box sx={{ flex: { xs: '1 1 100%', md: `0 1 ${searchWidth}px` }, minWidth: 0, '& > .MuiFormControl-root': { width: '100%', maxWidth: 'none', minWidth: 0 } }}>{search}</Box>}
       {filters && <Box id={filterId} data-search-filters hidden={!expanded} sx={{ minWidth: 0, maxWidth: '100%', flex: { xs: '1 1 100%', md: '0 1 auto' },
         '& > .MuiStack-root': { flexWrap: 'wrap', gap: 1.5 },
-        '& label:not(.MuiFormLabel-root):not(.MuiFormControlLabel-root)': { display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 },
-        '& label:not(.MuiFormLabel-root):not(.MuiFormControlLabel-root) > span': { color: 'text.secondary', minWidth: 72, whiteSpace: 'nowrap' },
-        '& select:not(.MuiSelect-nativeInput)': { height: 'var(--ui-control-height, 36px)', border: '1px solid', borderColor: 'divider', borderRadius: 'var(--ui-control-radius, 8px)', bgcolor: 'background.paper', color: 'text.primary', px: 1, minWidth: 0, width: '100%', font: 'inherit' },
       }}><Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" spacing={1.5}>{filters}</Stack></Box>}
       {controls && <Stack data-search-controls direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{ ml: { md: 'auto' }, minWidth: 0, maxWidth: '100%', '& > .MuiStack-root': { flexWrap: 'wrap', rowGap: 1, maxWidth: '100%' } }}>{controls}</Stack>}
       {onReset && <Button variant="outlined" size="small" startIcon={<RestartAltOutlined />} disabled={disabled} onClick={onReset} sx={{ ml: !controls ? 'auto' : 0, whiteSpace: 'nowrap', flexShrink: 0 }}>{text.reset}</Button>}
