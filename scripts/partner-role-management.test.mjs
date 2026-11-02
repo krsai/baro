@@ -15,21 +15,24 @@ function fixture(){
  return {call,rows,links,deny:()=>authorized=false};
 }
 test('SYSTEM creates, renames and deletes categories while preserving IDs, codes, order and industry references',async()=>{
- const {call,rows,links}=fixture();const body={code:'CUSTOM',nameEn:'Custom',nameKo:'',nameVi:''};
+ const {call,rows,links}=fixture();const body={nameEn:'Custom',nameKo:'',nameVi:''};
  assert.equal((await call('post',undefined,body)).status,201);assert.equal(rows[1].sortOrder,1);
  await call('put',2,{...body,nameEn:'Renamed',sortOrder:999});assert.equal(rows[1].nameEn,'Renamed');assert.equal(rows[1].sortOrder,1);
  links.add(2);await assert.rejects(call('delete',2),/SETTING_IN_USE/);assert.equal(rows.length,2);
- await assert.rejects(call('put',2,{...body,code:'CHANGED'}),/CODE_IMMUTABLE/);
+ const internalKey=rows[1].code;assert.match(internalKey,/^ROLE_[0-9a-f-]+$/);
+ await call('put',2,{...body,code:'CHANGED'});assert.equal(rows[1].code,internalKey);
+ await call('put',1,{nameEn:'Renamed customer'});assert.equal(rows[0].code,'CUSTOMER');
  links.delete(2);await call('delete',2);assert.equal(rows.length,1);assert.equal(rows[0].id,1);
 });
-test('category writes reject unauthorized, malformed, duplicate, reserved and missing references',async()=>{
+test('category names require no code; client codes cannot select legacy behavior and unauthorized writes are denied',async()=>{
  const {call,rows,deny}=fixture();
  const body={code:'CUSTOMER',nameEn:'Customer'};
- await assert.rejects(call('post',undefined,body),/CODE_EXISTS/);
- for(const code of ['',123,'bad code'])await assert.rejects(call('post',undefined,{...body,code}),/INVALID_PARTNER_ROLE/);
- await assert.rejects(call('post',undefined,{code:'CUSTOM',nameEn:''}),/INVALID_PARTNER_ROLE/);
- await assert.rejects(call('post',undefined,{...body,code:'MANAGEMENT'}),/RESERVED/);
+ for(const code of [undefined,'',123,'bad code','MANAGEMENT','CUSTOMER']){
+  const {result}=await call('post',undefined,{...body,code});assert.match(result.code,/^ROLE_/);assert.notEqual(result.code,code);
+ }
+ assert.equal(new Set(rows.map(row=>row.code)).size,rows.length);
+ for(const nameEn of ['',123,'x'.repeat(101)])await assert.rejects(call('post',undefined,{nameEn}),/INVALID_PARTNER_ROLE/);
  await assert.rejects(call('put',999,body),/NOT_FOUND/);
  await assert.rejects(call('delete','invalid'),/INVALID_SETTING_REFERENCE/);
- deny();await call('post',undefined,{...body,code:'CUSTOM'});await call('put',1,body);await call('delete',1);assert.equal(rows.length,1);
+ const count=rows.length;deny();await call('post',undefined,{nameEn:'Custom'});await call('put',1,body);await call('delete',1);assert.equal(rows.length,count);
 });

@@ -11,7 +11,7 @@ import {classificationName} from '../../utils/partnerClassification.mjs';
 
 export default function TradePartners({initialType='ALL'}){
  const auth=useAuth(),{languageCode}=useLanguage(),location=useLocation();
- const labels={ko:{type:'거래처 구분',all:'전체 거래처'},en:{type:'Partner category',all:'All partners'},vi:{type:'Nhóm đối tác',all:'Tất cả đối tác'}}[languageCode]||{type:'Partner category',all:'All partners'};
+ const labels={ko:{type:'거래 구분',all:'전체 거래처'},en:{type:'Transaction category',all:'All partners'},vi:{type:'Nhóm giao dịch',all:'Tất cả đối tác'}}[languageCode]||{type:'Transaction category',all:'All partners'};
  const [data,setData]=useState({roles:[],rows:[]}),[selected,setSelected]=useState(()=>location.state?.partnerType||initialType);
  const onDirectoryLoaded=useCallback(value=>setData(value),[]);
  useEffect(()=>{setData({roles:[],rows:[]});},[auth.activeOrgId]);

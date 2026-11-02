@@ -339,7 +339,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
               onChange={handleInputChange}
               disabled={industryLoading||industryError}
               error={industryError}
-              helperText={industryError?({ko:'공통 거래처 구분을 불러오지 못했습니다.',en:'Unable to load shared partner categories.',vi:'Không thể tải nhóm đối tác dùng chung.'})[languageCode]:undefined}
+              helperText={industryError?({ko:'공통 거래 구분을 불러오지 못했습니다.',en:'Unable to load shared transaction categories.',vi:'Không thể tải nhóm giao dịch dùng chung.'})[languageCode]:undefined}
             >
               <MenuItem value="">-</MenuItem>
               {formData.industry&&!currentIndustryRole&&<MenuItem value={formData.industry}>{localText.industryOptions[formData.industry]||formData.industry}</MenuItem>}
