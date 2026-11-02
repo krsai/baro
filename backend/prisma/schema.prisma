@@ -356,7 +356,7 @@ model BankLedgerAccount {
   entries BankLedgerEntry[]
   @@unique([id, orgId])
   @@unique([orgId, clientKey])
-  @@unique([entityAccountId,orgId])
+  @@unique([entityAccountId,orgId,currencyCode])
   @@index([orgId, createdAt])
 }
 

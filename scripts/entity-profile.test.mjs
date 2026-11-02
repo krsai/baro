@@ -23,13 +23,13 @@ test('common profiles preserve actual entity FK and omitted partner fields canno
 test('bank account API uses authorized tenant and actual entity scope; unauthorized access cannot read accounts',async()=>{
   const routes=new Map();let allowed=false,seen;
   const app=Object.fromEntries(['get','post','put'].map(method=>[method,(path,fn)=>routes.set(`${method} ${path}`,fn)]));
-  const db={organization:{findFirst:async query=>{seen=query.where;return query.where.id===44?{id:44}:null;}},organizationBankAccount:{findMany:async({where})=>{assert.deepEqual(where,{orgId:1,entityId:44});return [{id:'bank'}];}},currency:{findMany:async()=>[]}};
+  const db={organization:{findFirst:async query=>{seen=query.where;return query.where.id===44?{id:44}:null;}},organizationBankAccount:{findMany:async({where})=>{assert.deepEqual(where,{orgId:1,entityId:44});return [{id:'bank',ledgerAccounts:[]}];}},currency:{findMany:async()=>[]}};
   registerEntityBankRoutes(app,db,{requireOrgRole:async()=>allowed?{organization:{id:1}}:null,getActor:()=>21});
   const get=routes.get('get /entities/:entityId/bank-accounts');
   const res={json(value){this.body=value;}};
   await get({params:{entityId:'44'},query:{orgId:999}},res);assert.equal(res.body,undefined);assert.equal(seen,undefined);
   allowed=true;await get({params:{entityId:'44'},query:{orgId:999}},res);
-  assert.equal(seen.id,44);assert.deepEqual(res.body.accounts,[{id:'bank'}]);
+  assert.equal(seen.id,44);assert.deepEqual(res.body.accounts,[{id:'bank',ledgerAccounts:[]}]);
   await assert.rejects(get({params:{entityId:'45'}},res),error=>error.status===404);
 });
 

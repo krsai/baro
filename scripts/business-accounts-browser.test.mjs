@@ -16,14 +16,14 @@ try{
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of (process.env.ACCOUNTS_SERVICE_ONLY?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],writes=[],labels=ENTITY_TEXT[lang],money=bankLedgerMessages[lang];page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeProfile:{orgRole:'ADMIN',orgName:'Company'}});`}));
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:1,activeOrgRole:window.testRole||'ADMIN',activeProfile:{orgRole:'ADMIN',orgName:'Company'}});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const a={setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{},navigateToPath:path=>window.testNavigate(path)};export const useAppActions=()=>a;`}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  const currencies=[{id:1,code:'VND'},{id:2,code:'USD'},{id:3,code:'KRW'}];let accounts=[1,1,2,3].map((currencyId,index)=>({id:'a'+index,displayName:'Cash '+index,accountKind:'CASH',currencyId,currency:currencies.find(c=>c.id===currencyId),ledgerAccounts:[]}));
+  const currencies=[{id:1,code:'VND'},{id:2,code:'USD'},{id:3,code:'KRW'}];let accounts=[1,1,2,3].map((currencyId,index)=>({id:'a'+index,displayName:'Cash '+index,accountKind:'CASH',currencyId,currency:currencies.find(c=>c.id===currencyId),ledgerAccounts:[{id:'l'+index,openingBalance:'0'}]}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/entities/1/bank-accounts**',r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(r.request().method()==='PUT'){const body=r.request().postDataJSON();writes.push(body);accounts=body.ids.map(id=>accounts.find(a=>a.id===id));return r.fulfill({headers,json:{ok:true}});}
+   if(r.request().method()==='PUT'){const body=r.request().postDataJSON();writes.push(body);if(body.ids)accounts=body.ids.map(id=>accounts.find(a=>a.id===id));else accounts=accounts.map(a=>a.id===body.id?{...a,...body,currency:currencies.find(c=>c.id===body.currencyId)}:a);return r.fulfill({headers,json:{ok:true}});}
    if(r.request().method()==='POST'){const body=r.request().postDataJSON();writes.push(body);accounts.push({id:'a4',...body,currency:currencies.find(c=>c.id===body.currencyId),ledgerAccounts:[]});return r.fulfill({headers,status:201,json:{id:'a4'}});}
    return r.fulfill({headers,json:{accounts,currencies,revision:'r1',canLedger:true}});
   });
@@ -40,10 +40,18 @@ try{
    await page.getByRole('button',{name:'순서 저장',exact:true}).click();await page.waitForTimeout(200);
   }
   await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
-  assert.equal(await dialog.getByLabel(labels.bank,{exact:true}).count(),0);assert.equal(await dialog.getByRole('checkbox').count(),0);
+  assert.equal(await dialog.getByRole('textbox',{name:labels.bank,exact:false}).count(),1);assert.equal(await dialog.getByRole('textbox',{name:labels.number,exact:false}).count(),1);assert.equal(await dialog.getByRole('textbox',{name:labels.holder,exact:false}).count(),1);assert.equal(await dialog.getByRole('checkbox').count(),0);
+  await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).click();await page.getByRole('option',{name:{ko:'현금',en:'Cash',vi:'Tiền mặt'}[lang],exact:true}).click();
   await dialog.getByLabel(new RegExp({ko:'계좌명',en:'Account name',vi:'Tên tài khoản'}[lang])).fill('VND cash extra');
   assert.equal(await dialog.getByLabel(money.openingDate,{exact:true}).count(),0);assert.equal(await dialog.getByLabel(money.openingBalance).count(),0);
   await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).accountKind,'CASH');assert.equal(writes.at(-1).currencyId,1);assert.equal('isDefault' in writes.at(-1),false);assert.equal('isActive' in writes.at(-1),false);
+  await page.locator('[data-account-id="a0"]').getByRole('button',{name:labels.edit,exact:true}).click();
+  assert.equal(await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).getAttribute('aria-disabled'),null);
+  await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).click();await page.getByRole('option',{name:{ko:'은행',en:'Bank',vi:'Ngân hàng'}[lang],exact:true}).click();
+  await dialog.getByLabel(labels.currency,{exact:true}).click();await page.getByRole('option',{name:'USD',exact:true}).click();await dialog.getByRole('textbox',{name:labels.bank,exact:false}).fill('VCB');await dialog.getByRole('textbox',{name:labels.number,exact:false}).fill('001234');await dialog.getByRole('textbox',{name:labels.holder,exact:false}).fill('DEX LOGIS');
+  await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).id,'a0');assert.equal(writes.at(-1).accountKind,'BANK');assert.equal(writes.at(-1).currencyId,2);assert.equal(writes.at(-1).accountHolder,'DEX LOGIS');assert.equal(accounts.length,5);assert.equal(accounts.find(a=>a.id==='a0').ledgerAccounts[0].id,'l0');
+  await page.locator('[data-account-id="a1"]').getByRole('button',{name:labels.edit,exact:true}).click();assert.equal(await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).getAttribute('aria-disabled'),null);await dialog.getByRole('button',{name:labels.cancel,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await page.addInitScript(()=>{window.testRole='ACCOUNTANT';});await page.reload();await page.locator('[data-account-id="a0"]').waitFor();assert.equal(await page.getByRole('button',{name:labels.add,exact:true}).isDisabled(),true);assert.equal(await page.locator('[data-account-id="a0"]').getByRole('button',{name:labels.edit,exact:true}).isDisabled(),true);assert.equal(await page.locator('[data-rfd-drag-handle-draggable-id]').count(),0);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   const et=ledgerEvidenceText[lang];
   let approved=false;await page.route('**/expense-requests/1/approval?*',r=>{if(r.request().method()==='POST')approved=true;return r.fulfill({headers,json:{version:1,steps:[{id:'s1',position:1,employee:{name:'Approver'},approved}],approved,canApprove:!approved}});});
@@ -52,7 +60,7 @@ try{
  }
  const service=await browser.newPage({viewport:{width:1440,height:1000}}),serviceErrors=[],requested=[];let fail=true;
  service.on('pageerror',e=>serviceErrors.push(e.message));
- await service.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from'/node_modules/.vite/deps/react.js';let org=1;const listeners=new Set();window.switchCompany=()=>{org=1845;listeners.forEach(fn=>fn());};export const useAuth=()=>{const id=React.useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn);},()=>org);return{activeOrgId:id,activeProfile:{orgType:id===1?'MANUFACTURER':'SERVICE',orgRole:'ADMIN'},updateActiveProfile:()=>{}};};`}));
+ await service.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from'/node_modules/.vite/deps/react.js';let org=1;const listeners=new Set();window.switchCompany=()=>{org=1845;listeners.forEach(fn=>fn());};export const useAuth=()=>{const id=React.useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn);},()=>org);return{activeOrgId:id,activeOrgRole:'ADMIN',activeProfile:{orgType:id===1?'MANUFACTURER':'SERVICE',orgRole:'ADMIN'},updateActiveProfile:()=>{}};};`}));
  await service.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
  await service.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useLanguage=()=>({languageCode:'en'});"}));
  const serviceHeaders={'Access-Control-Allow-Origin':'*'};

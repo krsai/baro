@@ -1,7 +1,7 @@
 import {requireLedgerAdjustmentAccess} from './ledgerAdjustmentAccess';
 import {reconcileLedgerBalances} from './ledgerBalance';
 import {listLedgerChanges,acknowledgeLedgerChange} from './ledgerChanges';
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {resolveEvidence,approvalState,approveExpense,listExpenseApprovalInbox,attachExpenseApprovalStates} from './bankEvidence';
@@ -67,10 +67,10 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
       await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
       const master=await tx.organizationBankAccount.findFirst({where:{id:masterId,orgId,entityId:orgId},include:{currency:true}});
       if(!master)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
-      account=await tx.bankLedgerAccount.findFirst({where:{orgId,entityAccountId:masterId}});
+      account=await tx.bankLedgerAccount.findFirst({where:{orgId,entityAccountId:masterId,currencyCode:master.currency.code}});
       if(!account){
         const openingDate=LEDGER_ZERO_START,openingBalance='0';
-        account=await tx.bankLedgerAccount.create({data:{orgId,entityAccountId:masterId,clientKey:accountId,bankName:master.bankName,accountNumber:master.accountNumber,accountHolder:master.accountHolder,currencyCode:master.currency.code,openingDate,openingBalance,createdBy:actor}});
+        account=await tx.bankLedgerAccount.create({data:{orgId,entityAccountId:masterId,clientKey:randomUUID(),bankName:master.bankName,accountNumber:master.accountNumber,accountHolder:master.accountHolder,currencyCode:master.currency.code,openingDate,openingBalance,createdBy:actor}});
       }
     }
     if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
@@ -104,7 +104,7 @@ export async function readLedgerAccounts(tx:any,orgId:number,asOf?:string){
     const masters=await tx.organizationBankAccount.findMany({where:{orgId,entityId:orgId},include:{currency:true},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
     const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,...(asOf?{transactionDate:{lte:asOf}}:{})},_sum:{amount:true}});
     const result=accounts.map((account:any)=>({...account,displayName:account.entityAccount?.displayName,accountKind:account.entityAccount?.accountKind||'BANK',sortOrder:account.entityAccount?.sortOrder??0,openingBalance:ledgerMoney(ledgerScale4(account.openingBalance),account.currencyCode),currentBalance:ledgerMoney((!asOf||account.openingDate<=asOf?ledgerScale4(account.openingBalance):0n)+delta(totals.filter((row:any)=>row.accountId===account.id)),account.currencyCode)}));
-    for(const master of masters)if(!accounts.some((a:any)=>a.entityAccountId===master.id))result.push({...master,id:'entity:'+master.id,currencyCode:master.currency.code,openingDate:LEDGER_ZERO_START,openingBalance:'0',currentBalance:'0',setupRequired:true} as any);
+    for(const master of masters)if(!accounts.some((a:any)=>a.entityAccountId===master.id&&a.currencyCode===master.currency.code))result.push({...master,id:'entity:'+master.id,currencyCode:master.currency.code,openingDate:LEDGER_ZERO_START,openingBalance:'0',currentBalance:'0',setupRequired:true} as any);
     return result.sort((a:any,b:any)=>a.sortOrder-b.sortOrder||new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime()||a.id.localeCompare(b.id));
 }
 export async function listLedgerEntries(db:any,orgId:number,accountId:string,query:any){
