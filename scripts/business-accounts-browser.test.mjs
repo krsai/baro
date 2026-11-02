@@ -9,7 +9,7 @@ import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.j
 const fixture=path.resolve('frontend/business-accounts-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import{MemoryRouter,useLocation,useNavigate}from'react-router-dom';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Accounts from'/src/components/EntityBankAccounts.jsx';import Ledger from'/src/pages/App/BankLedger.jsx';import Approval from'/src/components/ExpenseApprovalActions.jsx';import Entry from'/src/pages/App/BankLedgerEntry.jsx';
-import Organization from '/src/pages/App/organization/OrganizationBoard.jsx';const p=new URLSearchParams(location.search);function Screen(){window.testNavigate=useNavigate();const loc=useLocation();return loc.pathname==='/bank-ledger/new'?React.createElement(Entry):p.get('screen')==='organization'?React.createElement(Organization):p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,version:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:1,languageCode:p.get('lang')});}createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Screen))));</script></body></html>`);
+import Organization from '/src/pages/App/organization/OrganizationBoard.jsx';const p=new URLSearchParams(location.search);function Screen(){window.testNavigate=useNavigate();const loc=useLocation();return loc.pathname==='/bank-ledger/new'?React.createElement(Entry):p.get('screen')==='organization'?React.createElement(Organization):p.get('screen')==='approval'?React.createElement(Approval,{requestId:1,version:1,orgId:1,languageCode:p.get('lang')}):p.get('screen')==='ledger'?React.createElement(Ledger):React.createElement(Accounts,{entityId:Number(p.get('entity')||1),languageCode:p.get('lang')});}createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Screen))));</script></body></html>`);
 const port=43254,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/business-accounts-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
@@ -21,7 +21,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   const currencies=[{id:1,code:'VND'},{id:2,code:'USD'},{id:3,code:'KRW'}];let accounts=[1,1,2,3].map((currencyId,index)=>({id:'a'+index,displayName:'Cash '+index,accountKind:'CASH',currencyId,currency:currencies.find(c=>c.id===currencyId),ledgerAccounts:[{id:'l'+index,openingBalance:'0'}]}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-  await page.route('**/entities/1/bank-accounts**',r=>{
+  await page.route('**/entities/*/bank-accounts**',r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(r.request().method()==='PUT'){const body=r.request().postDataJSON();writes.push(body);if(body.ids)accounts=body.ids.map(id=>accounts.find(a=>a.id===id));else accounts=accounts.map(a=>a.id===body.id?{...a,...body,currency:currencies.find(c=>c.id===body.currencyId)}:a);return r.fulfill({headers,json:{ok:true}});}
    if(r.request().method()==='POST'){const body=r.request().postDataJSON();writes.push(body);accounts.push({id:'a4',...body,currency:currencies.find(c=>c.id===body.currencyId),ledgerAccounts:[]});return r.fulfill({headers,status:201,json:{id:'a4'}});}
@@ -52,6 +52,17 @@ try{
   await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).id,'a0');assert.equal(writes.at(-1).accountKind,'BANK');assert.equal(writes.at(-1).currencyId,2);assert.equal(writes.at(-1).accountHolder,'DEX LOGIS');assert.equal(accounts.length,5);assert.equal(accounts.find(a=>a.id==='a0').ledgerAccounts[0].id,'l0');
   await page.locator('[data-account-id="a1"]').getByRole('button',{name:labels.edit,exact:true}).click();assert.equal(await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).getAttribute('aria-disabled'),null);await dialog.getByRole('button',{name:labels.cancel,exact:true}).click();await dialog.waitFor({state:'hidden'});
   await page.addInitScript(()=>{window.testRole='ACCOUNTANT';});await page.reload();await page.locator('[data-account-id="a0"]').waitFor();assert.equal(await page.getByRole('button',{name:labels.add,exact:true}).isDisabled(),true);assert.equal(await page.locator('[data-account-id="a0"]').getByRole('button',{name:labels.edit,exact:true}).isDisabled(),true);assert.equal(await page.locator('[data-rfd-drag-handle-draggable-id]').count(),0);
+  for(const role of ['ACCOUNTANT','OPERATOR']){
+   await page.addInitScript(value=>{window.testRole=value;},role);
+   await page.goto(`http://127.0.0.1:${port}/business-accounts-acceptance.html?lang=${lang}&entity=2`);
+   await page.locator('[data-account-id="a0"]').waitFor();
+   assert.equal(await page.getByRole('button',{name:labels.add,exact:true}).isEnabled(),true);
+   await page.locator('[data-account-id="a0"]').getByRole('button',{name:labels.edit,exact:true}).click();
+   await dialog.getByRole('textbox',{name:labels.number,exact:false}).fill('access-'+role);
+   await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});
+   assert.equal(writes.at(-1).accountNumber,'access-'+role);
+   assert.ok(await page.locator('[data-rfd-drag-handle-draggable-id]').count()>0);
+  }
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   const et=ledgerEvidenceText[lang];
   let approved=false;await page.route('**/expense-requests/1/approval?*',r=>{if(r.request().method()==='POST')approved=true;return r.fulfill({headers,json:{version:1,steps:[{id:'s1',position:1,employee:{name:'Approver'},approved}],approved,canApprove:!approved}});});

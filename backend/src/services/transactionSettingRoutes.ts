@@ -9,6 +9,7 @@ import {partnerIndustryOption, saveSystemIndustry} from './partnerIndustry';
 import {registerExpenseUnitRoutes} from './expenseMetadata';
 import {saveCatalogueOrder} from './catalogueOrder';
 import {partnerRoleCatalogue} from './partnerRoleCatalogue';
+import {registerPartnerRoleManagement} from './partnerRoleManagement';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
 export const codeFields = ['code','nameKo','nameEn','nameVi','vatEnabled','isActive','taxTreatmentId','baseId'];
@@ -63,6 +64,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 }
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
+  registerPartnerRoleManagement(app,db,gates);
   registerExpenseUnitRoutes(app,db,gates);
   registerCodeBaseRoutes(app,db,gates);
   registerExpenseCodeLinkPolicyRoutes(app,db,gates);

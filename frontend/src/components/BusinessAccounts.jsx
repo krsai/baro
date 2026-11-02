@@ -18,7 +18,7 @@ const COPY={
 };
 const LOAD_COPY={ko:{retry:'다시 불러오기',empty:'공통 통화 목록을 불러오지 못했습니다. 다시 불러온 뒤 계좌를 등록해 주세요.'},en:{retry:'Reload',empty:'The shared currency list is unavailable. Reload before adding an account.'},vi:{retry:'Tải lại',empty:'Không thể tải danh sách tiền tệ dùng chung. Hãy tải lại trước khi thêm tài khoản.'}};
 export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAccountsChange}){
- const {activeOrgId,activeOrgRole}=useAuth(),canManage=activeOrgRole==='ADMIN',scope=orgId||activeOrgId||entityId,labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,t=COPY[languageCode]||COPY.en,money=bankLedgerMessages[languageCode]||bankLedgerMessages.en;
+ const {activeOrgId,activeOrgRole}=useAuth(),scope=orgId||activeOrgId||entityId,canManage=activeOrgRole==='ADMIN'||(Number(entityId)!==Number(scope)&&['ACCOUNTANT','OPERATOR'].includes(activeOrgRole)),labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,t=COPY[languageCode]||COPY.en,money=bankLedgerMessages[languageCode]||bankLedgerMessages.en;
  const {active}=useRequestScopeContext();
  const [ready,setReady]=useState(false);
  const loadText=LOAD_COPY[languageCode]||LOAD_COPY.en;

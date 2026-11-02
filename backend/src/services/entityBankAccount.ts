@@ -4,8 +4,8 @@ import {retryEditTransaction,editRevision,assertEditRevision} from '../utils/edi
 import {LEDGER_ZERO_START} from './bankLedger';
 
 export const BANK_INCLUDE = {currency:{select:{id:true,code:true,name:true}},ledgerAccounts:{select:{id:true,openingDate:true,openingBalance:true,currencyCode:true}}};
-async function requireAccountAdministrator(tx:any,orgId:number,actorId:number){
- if(!actorId||!await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:'ADMIN'},select:{id:true}}))throw createHttpError(403,'BANK_ACCOUNT_ADMIN_REQUIRED');
+async function requireAccountEditor(tx:any,orgId:number,actorId:number,entityId:number){
+ if(!actorId||!await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:entityId===orgId?'ADMIN':{in:['ADMIN','ACCOUNTANT','OPERATOR']}},select:{id:true}}))throw createHttpError(403,entityId===orgId?'BANK_ACCOUNT_ADMIN_REQUIRED':'BANK_ACCOUNT_ACCESS_DENIED');
 }
 export async function requireEntityAccess(db:any,orgId:number,entityId:number) {
   if(!Number.isSafeInteger(entityId)||entityId<=0)throw createHttpError(400,'INVALID_ENTITY');
@@ -25,7 +25,7 @@ export async function requirePayeeBankAccount(tx:any,orgId:number,entityId:numbe
   if(!account)throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');
 }
 export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,entityId:number,id:string|null,body:any) {
-  await requireAccountAdministrator(tx,orgId,actorId);
+  await requireAccountEditor(tx,orgId,actorId,entityId);
   if(body.openingDate!==undefined||body.openingBalance!==undefined)throw createHttpError(409,'LEDGER_OPENING_LOCKED');
   await requireEntityAccess(tx,orgId,entityId);
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
@@ -51,7 +51,7 @@ export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,e
 }
 export function registerEntityBankRoutes(app:any,db:any,gates:any) {
   const access=async(req:any,res:any)=>{
-    const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!auth)return null;
+    const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!auth)return null;
     const orgId=auth.organization.id,entityId=Number(req.params.entityId);
     await requireEntityAccess(db,orgId,entityId);
     const role=auth.employee?.orgRole,type=auth.organization.type;
@@ -63,9 +63,9 @@ export function registerEntityBankRoutes(app:any,db:any,gates:any) {
   });
   app.put('/entities/:entityId/bank-accounts/order',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;
     if(!scope.actorId)return res.status(403).json({error:'EMPLOYEE_REQUIRED'});
-    if(scope.role!=='ADMIN')return res.status(403).json({error:'BANK_ACCOUNT_ADMIN_REQUIRED'});
+    if(scope.entityId===scope.orgId&&scope.role!=='ADMIN')return res.status(403).json({error:'BANK_ACCOUNT_ADMIN_REQUIRED'});
     await retryEditTransaction(db,async(tx:any)=>{
-      await requireAccountAdministrator(tx,scope.orgId,scope.actorId);
+      await requireAccountEditor(tx,scope.orgId,scope.actorId,scope.entityId);
       await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',scope.entityId);
       const accounts=await tx.organizationBankAccount.findMany({where:{orgId:scope.orgId,entityId:scope.entityId},include:BANK_INCLUDE,orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
       assertEditRevision(req.body.revision,editRevision(accounts));
@@ -76,7 +76,7 @@ export function registerEntityBankRoutes(app:any,db:any,gates:any) {
   });
   for(const method of ['post','put'])app[method](method==='post'?'/entities/:entityId/bank-accounts':'/entities/:entityId/bank-accounts/:id',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;
     if(!scope.actorId)return res.status(403).json({error:'EMPLOYEE_REQUIRED'});
-    if(scope.role!=='ADMIN')return res.status(403).json({error:'BANK_ACCOUNT_ADMIN_REQUIRED'});
+    if(scope.entityId===scope.orgId&&scope.role!=='ADMIN')return res.status(403).json({error:'BANK_ACCOUNT_ADMIN_REQUIRED'});
     if(req.body.openingDate!==undefined||req.body.openingBalance!==undefined){
       if(!scope.canLedger)return res.status(403).json({error:'LEDGER_ACCESS_DENIED'});
     }

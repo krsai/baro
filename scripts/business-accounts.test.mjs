@@ -10,7 +10,7 @@ const {editRevision}=require('../backend/dist/utils/editRevision.js');
 function memory(){
  const accounts=[],ledgers=[],staff=[{id:7,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},{id:8,orgId:1,status:'ACTIVE',orgRole:'ACCOUNTANT'}],currencies=[{id:1,code:'VND'},{id:2,code:'USD'},{id:3,code:'KRW'}];
  const include=row=>row?{...row,currency:currencies.find(c=>c.id===row.currencyId),ledgerAccounts:ledgers.filter(a=>a.entityAccountId===row.id).map(a=>({...a,_count:{entries:a.entryCount||0}}))}:null;
- const match=(row,where)=>Object.entries(where).every(([key,value])=>row[key]===value);
+ const match=(row,where)=>Object.entries(where).every(([key,value])=>(value?.in?value.in.includes(row[key]):row[key]===value));
  const db={organization:{findFirst:async({where})=>where.id===1?{id:1}:null},employee:{findUnique:async()=>({email:'actor@example.com'}),findFirst:async({where})=>staff.find(row=>match(row,where))||null},currency:{findUnique:async({where})=>currencies.find(c=>c.id===where.id),findMany:async()=>currencies},$queryRawUnsafe:async()=>[],bankLedgerEntry:{groupBy:async()=>[]},bankLedgerAccount:{findFirst:async({where})=>ledgers.find(r=>match(r,where))||null,findMany:async()=>ledgers.map(row=>({...row,entityAccount:accounts.find(a=>a.id===row.entityAccountId)})),create:async({data})=>{const row={id:'ledger-'+ledgers.length,...data};ledgers.push(row);return row;}},organizationBankAccount:{
   findFirst:async({where})=>include(accounts.find(r=>match(r,where))),count:async()=>accounts.length,
   findMany:async({where})=>accounts.filter(r=>match(r,where)).sort((a,b)=>a.sortOrder-b.sortOrder||a.id.localeCompare(b.id)).map(include),
@@ -43,7 +43,7 @@ test('administrators edit all bank metadata; used currency ledgers and opening b
  ledgers[0].entryCount=1;ledgers[0].openingBalance='100';
  await saveEntityBankAccount(db,1,7,1,created.id,{...bank,currencyId:1,accountNumber:'changed'});assert.equal(accounts[0].currencyId,1);assert.equal(ledgers.length,2);assert.equal(ledgers[0].currencyCode,'USD');assert.equal(ledgers[0].openingBalance,'100');assert.equal(ledgers[0].id,ledgerId);assert.equal(ledgers[1].currencyCode,'VND');assert.equal(ledgers[1].openingBalance,'0');
  await saveEntityBankAccount(db,1,7,1,created.id,bank);assert.equal(ledgers.length,2,'returning to a prior currency reuses its ledger');
- await assert.rejects(saveEntityBankAccount(db,2,7,1,created.id,bank),/ADMIN_REQUIRED/);
+ await assert.rejects(saveEntityBankAccount(db,2,7,1,created.id,bank),/ACCESS_DENIED/);
  await assert.rejects(saveEntityBankAccount(db,1,8,1,created.id,bank),/ADMIN_REQUIRED/);
  await assert.rejects(saveEntityBankAccount(db,1,999,1,created.id,bank),/ADMIN_REQUIRED/);
  staff[0].status='INACTIVE';await assert.rejects(saveEntityBankAccount(db,1,7,1,created.id,bank),/ADMIN_REQUIRED/);
@@ -93,4 +93,22 @@ test('account schema preserves old ledgers, permits two cash accounts, and enfor
   await assert.rejects(db.exec(`UPDATE "BankLedgerAccount" SET "openingBalance"=99 WHERE id='a'`),/OPENING_LOCKED/);
   assert.equal((await db.query(`SELECT amount::text FROM "BankLedgerEntry" WHERE id='old'`)).rows[0].amount,'123');
  }finally{await db.close();}
+});
+
+
+test('partner accounts allow active accountants and operators to create, edit and reorder within entity access',async()=>{
+ for(const role of ['ACCOUNTANT','OPERATOR']){
+  const {db,accounts,staff}=memory();staff[1].orgRole=role;
+  db.organization.findFirst=async({where})=>[1,2].includes(where.id)?{id:where.id}:null;
+  const routes=new Map();
+  registerEntityBankRoutes(Object.fromEntries(['get','post','put'].map(method=>[method,(p,f)=>routes.set(method+p,f)])),db,{requireOrgRole:async(req,res,options)=>{assert.equal(options.allowSystemAdmin,false);return {organization:{id:1,type:'SERVICE'},employee:staff[1]};},getActor:()=>8,loadPolicy:async()=>({policy:{SERVICE:{}}})});
+  let response,status;const res={status(value){status=value;return this;},json(value){response=value;}};
+  const body={accountKind:'BANK',displayName:'Partner',currencyId:1,bankName:'Bank',accountNumber:'123',accountHolder:'Holder'};
+  await routes.get('post/entities/:entityId/bank-accounts')({params:{entityId:'2'},body},res);assert.equal(status,201);const id=response.id;
+  await routes.get('put/entities/:entityId/bank-accounts/:id')({params:{entityId:'2',id},body:{...body,accountNumber:'456'}},res);assert.equal(response.accountNumber,'456');assert.equal(accounts[0].updatedByEmployeeId,8);
+  await routes.get('put/entities/:entityId/bank-accounts/order')({params:{entityId:'2'},body:{ids:[id],revision:editRevision(await db.organizationBankAccount.findMany({where:{orgId:1,entityId:2}}))}},res);assert.deepEqual(response,{ok:true});
+  await assert.rejects(saveEntityBankAccount(db,1,8,3,null,body),/ENTITY_NOT_FOUND/);
+  staff[1].status='INACTIVE';await assert.rejects(saveEntityBankAccount(db,1,8,2,id,body),/ACCESS_DENIED/);
+  await assert.rejects(saveEntityBankAccount(db,2,8,1,id,body),/ACCESS_DENIED/);
+ }
 });

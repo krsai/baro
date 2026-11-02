@@ -1,3 +1,12 @@
+# 2026-11-02 거래처 구분 관리
+
+- SYSTEM 거래처 업종 관리에서 구분을 등록하고 다국어 이름을 수정하며 미연결 구분을 삭제한다. 기존 구분 코드·ID·업종 FK·정렬은 수정 시 유지한다. GENERAL을 포함한 업종 연결이 하나라도 있으면 삭제를 막는다. SYSTEM 권한과 공통 정렬 잠금을 사용하고 빈 MANAGEMENT를 재생성하지 않는다.
+- 검증: npm run test:partner-role-management. DB migration 및 운영 자료 직접 수정은 없다.
+
+# 2026-11-02 Partner account access correction
+
+- Partner account creation, editing and ordering use existing company/entity access for ACTIVE ADMIN, ACCOUNTANT and OPERATOR employees. Only own-company accounts remain ADMIN-only. Preserve company isolation, actual membership checks and ledger/currency history protections; no SYSTEM-only bypass.
+
 # 2026-11-02 동일 회사의 SaaS·거래처 연결과 운영자 비용 결재
 
 - SaaS 가입 DEX와 BARO 거래처 DEX는 같은 실제 회사다. CompanyPartnerLink로 연결하고 가입 회사의 공식 코드 DEXL을 표시한다. 별도 네 자리 코드를 요구하지 않는다. 로컬 행·기존 식별자·거래 FK는 보존하고 연결된 공개 회사 식별 정보만 조회한다. 업무 자료 공유는 명시적으로 허용한 범위로 제한하며 연결 자체로 급여·계좌·회계 접근 권한을 부여하지 않는다.
