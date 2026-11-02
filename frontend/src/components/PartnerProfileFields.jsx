@@ -25,7 +25,7 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
    <Box sx={grid}>
     {field('partyKind',party.label,{select:true,InputLabelProps:{shrink:true},SelectProps:{displayEmpty:true},children:[...(!value.partyKind?[<MenuItem key="legacy" value="" disabled>{party.legacy}</MenuItem>]:[]),...['INDIVIDUAL','CORPORATE'].map(kind=><MenuItem key={kind} value={kind}>{party[kind]}</MenuItem>)]})}
     {field('name',text.name,{autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}
-    {field('code',value.partyKind==='CORPORATE'?party.codeLabel:text.code,{required:value.partyKind==='CORPORATE',helperText:value.partyKind==='INDIVIDUAL'?party.codeHelp:value.partyKind==='CORPORATE'?party.corporateCodeHelp:(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help,inputProps:{maxLength:value.partyKind==='CORPORATE'?4:40}})}{field('businessNumber',common.businessNumber,{required:value.partyKind==='CORPORATE'})}
+    {value.linkedCompany?<TextField fullWidth size="small" label={party.codeLabel} value={value.linkedCompany.code||''} InputProps={{readOnly:true}}/>:field('code',value.partyKind==='CORPORATE'?party.codeLabel:text.code,{required:value.partyKind==='CORPORATE',helperText:value.partyKind==='INDIVIDUAL'?party.codeHelp:value.partyKind==='CORPORATE'?party.corporateCodeHelp:(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help,inputProps:{maxLength:value.partyKind==='CORPORATE'?4:40}})}{field('businessNumber',common.businessNumber,{required:value.partyKind==='CORPORATE'})}
    </Box>
   </EntityDetailSection>
   <EntityDetailSection title={common.contact}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>

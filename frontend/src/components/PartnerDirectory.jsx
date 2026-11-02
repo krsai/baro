@@ -25,7 +25,7 @@ const registeredDate=(value,languageCode)=>{
 export default function PartnerDirectory({embedded=false,title,rows,loading,error,onRetry,onAdd,canAdd=true,onOpen,canOpen=true,renderActions,languageCode='ko',children}){
  const Container=embedded?PartnerListPanel:AppPageContainer,labels=PARTNER_DIRECTORY_TEXT[languageCode]||PARTNER_DIRECTORY_TEXT.en;
  const [search,setSearch]=useState('');
- const filtered=useMemo(()=>{const term=search.trim().toLocaleLowerCase();return term?rows.filter(row=>[row.code,row.name,row.subtitle,row.contactName,row.phone,row.email,row.searchText,getStaticOptionLabel('country',row.country,row.country||'',languageCode)].filter(Boolean).join(' ').toLocaleLowerCase().includes(term)):rows;},[rows,search,languageCode]);
+ const filtered=useMemo(()=>{const term=search.trim().toLocaleLowerCase();return term?rows.filter(row=>[row.source?.linkedCompany?.code,row.code,row.name,row.subtitle,row.contactName,row.phone,row.email,row.searchText,getStaticOptionLabel('country',row.country,row.country||'',languageCode)].filter(Boolean).join(' ').toLocaleLowerCase().includes(term)):rows;},[rows,search,languageCode]);
  return <Container title={title} titleActions={<Button variant="contained" disabled={!canAdd} onClick={onAdd}>{labels.add}</Button>} toolbar={<SearchPanel title={title} onReset={()=>setSearch('')} search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={labels.search}/>} />}>
   <Paper variant="outlined" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}><TableContainer>
    <Table size="small" sx={{minWidth:1040,tableLayout:'fixed'}} data-testid="partner-directory">
@@ -33,7 +33,7 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
     <TableHead><TableRow>{['code','name','country','contact','phone','email','status','registered','actions'].map(key=><TableCell key={key} align={key==='actions'?'right':'left'}>{labels[key]}</TableCell>)}</TableRow></TableHead>
     <TableBody>
      {loading?<TableStatusRow colSpan={9} state="loading"/>:error||!filtered.length?<TableStatusRow colSpan={9} state={error?'error':'empty'} onRetry={onRetry}/>:filtered.map(row=><TableRow key={row.id} hover onDoubleClick={()=>canOpen&&onOpen(row.source)} sx={{cursor:canOpen?'pointer':'default','& td':{py:1,overflowWrap:'anywhere'}}}>
-      <TableCell>{row.code||'-'}</TableCell>
+      <TableCell>{row.source?.linkedCompany?.code||row.code||'-'}</TableCell>
       <TableCell>
        <Stack direction="row" alignItems="center" spacing={.75}>
         <Button variant="text" disabled={!canOpen} onClick={()=>onOpen(row.source)} sx={{p:0,minWidth:0,justifyContent:'flex-start',textAlign:'left',textTransform:'none'}}>{row.name||'-'}</Button>

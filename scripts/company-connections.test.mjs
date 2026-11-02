@@ -5,6 +5,33 @@ import {readFileSync} from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url);
 const {companyConnectionCandidates,connectPartnerCompany,registerCompanyConnectionRoutes,companyIdentityRevision,assertPartnerProfileEditable}=require('../backend/dist/services/companyConnections');
+test('connected partners use public subscriber identity while retaining local IDs and historical codes',async()=>{
+ const {attachLinkedCompanies,linkedPartnerCompany}=require('../backend/dist/services/companyConnections');
+ const company={id:1845,name:'DEX LOGIS',code:'DEXL',country:'VN',businessNumber:null};
+ const db={companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
+ const [row]=await attachLinkedCompanies(db,1,[{entityId:1846,id:1846,code:'DEX'}]);
+ assert.equal(row.code,'DEX');assert.equal(row.entityId,1846);assert.equal(row.linkedCompany.code,'DEXL');
+ assert.equal((await linkedPartnerCompany(db,1,1846)).id,1845);
+ const matching={...db,$queryRawUnsafe:async()=>[{...company,businessNumber:'VN123'}]};
+ assert.equal((await linkedPartnerCompany(matching,1,undefined,undefined,{name:'DEX LOGIS',country:'VN',businessNumber:'VN123'})).id,1845);
+ const {resolvePartnerIdentity}=require('../backend/dist/services/entityProfile');
+ assert.deepEqual(resolvePartnerIdentity({partyKind:'CORPORATE',businessNumber:'VN-1'},'DEX LOGIS',{id:1846,code:'DEX'},company),{partyKind:'CORPORATE',code:'DEX'});
+ assert.deepEqual(resolvePartnerIdentity({partyKind:'CORPORATE',businessNumber:'VN-1'},'DEX LOGIS',undefined,company),{partyKind:'CORPORATE',code:null});
+});
+
+test('linked corporate code guard supports atomic registration and preserves unlinked code and tax requirements',async()=>{
+ const db=new PGlite();try{
+ await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,code TEXT UNIQUE,"businessNumber" TEXT);CREATE TABLE "CompanyPartnerLink"("entityId" INT REFERENCES "Organization"(id));`);
+ await db.exec(readFileSync('backend/prisma/migrations/20261102130000_partner_party_kind/migration.sql','utf8'));
+ const sql=readFileSync('backend/prisma/migrations/20261102150000_linked_partner_identity/migration.sql','utf8');await db.exec(sql);await db.exec(sql);
+ await assert.rejects(db.exec(`INSERT INTO "Organization" VALUES(1,NULL,'VN-1','CORPORATE')`),/CORPORATE_PARTNER_CODE_INVALID/);
+ await db.exec(`BEGIN;INSERT INTO "Organization" VALUES(1,NULL,'VN-1','CORPORATE');INSERT INTO "CompanyPartnerLink" VALUES(1);COMMIT;`);
+ await assert.rejects(db.exec(`INSERT INTO "Organization" VALUES(2,'ABCD',NULL,'CORPORATE')`));
+ await assert.rejects(db.exec(`INSERT INTO "Organization" VALUES(2,'ABCDE','VN-2','CORPORATE')`));
+ await db.exec(`INSERT INTO "Organization" VALUES(2,'ABCD','VN-2','CORPORATE')`);
+ assert.equal((await db.query('SELECT code FROM "Organization" WHERE id=1')).rows[0].code,null);
+ }finally{await db.close();}
+});
 test('a customer relationship cannot authorize rewriting another SaaS subscriber or another company-owned profile',async()=>{
  const db={employee:{findFirst:async()=>({id:125})}};
  await assert.rejects(assertPartnerProfileEditable(db,1,{id:2,ownerOrgId:null,dataOwnerOrgId:null}),/PROFILE_IS_PRIVATE/);

@@ -14,7 +14,7 @@ import { entityProfile, partnerProfilePatch, resolvePartnerCode, resolvePartnerI
 import {validateCustomerIndustry} from './services/partnerIndustry';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
-import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable} from './services/companyConnections';
+import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany} from './services/companyConnections';
 import { displayProductionProgress } from './services/productionProgress';
 import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow } from './services/invoiceWorkflow';
 import { loadOrderWorkflowStatuses, orderWorkflowStatus, orderAssignmentPlans } from "./services/orderWorkflow";
@@ -1063,7 +1063,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerEntry_revision_scope_fk
   'CodeDefaultRenamePropagation',
   'BankLedgerEntry_accountId_orgId_fkey',
   'BankLedgerAccount_orgId_fkey',
-  'Organization_party_kind_check','Organization_corporate_profile_check','OrganizationBankAccount_identity_sync','baro_sync_corrected_account_identity','BankLedgerAccount_entityAccountId_orgId_currencyCode_key',
+  'Organization_linked_corporate_code_guard','baro_partner_has_company_link','Organization_party_kind_check','Organization_corporate_profile_check','OrganizationBankAccount_identity_sync','baro_sync_corrected_account_identity','BankLedgerAccount_entityAccountId_orgId_currencyCode_key',
   'BankLedgerAccount_entity_account_fkey','BankLedgerAccount_master_guard','OrganizationBankAccount_ledger_identity_guard',
   'CompanyWorkspaceRegistration_orgId_fkey',
   'BankLedgerEntry_amount_check',
@@ -1881,11 +1881,11 @@ const combineOrganizationPhone = (countryCode: unknown, phoneNumber: unknown) =>
 
 const buildSharedCustomerOrganizationData = (
   payload: any = {},
-  fallbackOrganization: any = null
+  fallbackOrganization: any = null, linkedCompany:any = null
 ) => {
   return {
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
-    ...resolvePartnerIdentity(payload,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,fallbackOrganization),
+    ...resolvePartnerIdentity(payload,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,fallbackOrganization,linkedCompany),
     name:
       normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,
     nameKo:
@@ -27739,7 +27739,7 @@ app.post("/business-partners", async (req, res) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
 
       const retained=await tx.organization.findUnique({where:{ownerOrgId_type_name:{ownerOrgId:organization.id,type:type as any,name}}});
-      const identity=resolvePartnerIdentity(req.body,name,retained),{code}=identity;
+      const identity=resolvePartnerIdentity(req.body,name,retained,await linkedPartnerCompany(tx,organization.id,retained?.id,req.body?.companyConnection,req.body)),{code}=identity;
       if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},...(retained?{id:{not:retained.id}}:{})}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
 
       const partner = await tx.organization.upsert({
@@ -27796,7 +27796,7 @@ app.put("/business-partners/:id", async (req, res) => {
       const locked = await tx.$queryRawUnsafe<{ id: number; type: string }[]>('SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, organization.id);
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
-      const identity=resolvePartnerIdentity(req.body,name,existing),{code}=identity;
+      const identity=resolvePartnerIdentity(req.body,name,existing,await linkedPartnerCompany(tx,organization.id,id,req.body?.companyConnection,req.body)),{code}=identity;
       if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},id:{not:id}}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
@@ -29653,7 +29653,8 @@ app.post("/customers", async (req, res) => {
   await requireClassificationActor(tx,organization.id,getCurrentRequestActorEmployeeId());
   const systemIndustryId = await validateCustomerIndustry(tx,req.body?.systemIndustryId);
   const { brandOrgId, customerOrgId, memo } = req.body ?? {};
-  const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {});
+  const linkedCompany=await linkedPartnerCompany(tx,organization.id,toPositiveIntOrNull(req.body?.customerOrgId??req.body?.brandOrgId)??undefined,req.body?.companyConnection,req.body);
+  const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {},null,linkedCompany);
   const normalizedCode = sharedOrganizationData.code;
   if (normalizedCode && !/^[A-Z0-9._-]{1,40}$/.test(normalizedCode)) {
     return res.status(400).json({
@@ -29697,7 +29698,7 @@ app.post("/customers", async (req, res) => {
     }
 
     await assertPartnerProfileEditable(tx,organization.id,targetOrganization);
-    const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
+    const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization,await linkedPartnerCompany(tx,organization.id,targetOrganization.id,req.body?.companyConnection,req.body));
     if (!nextTargetData.name) {
       return res.status(400).json({ ok: false, error: "name is required" });
     }
@@ -29728,7 +29729,7 @@ app.post("/customers", async (req, res) => {
 
     const nextTargetData = buildSharedCustomerOrganizationData(
       req.body ?? {},
-      existingCodeOwner ?? null
+      existingCodeOwner ?? null,linkedCompany
     );
     if (!nextTargetData.name) {
       return res.status(400).json({ ok: false, error: "name is required" });
@@ -29880,7 +29881,7 @@ app.put("/customers/:id", async (req, res) => {
   const targetOrganizationId = isManufacturerPerspective
     ? existing.brandOrgId
     : existing.manufacturerOrgId;
-  const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization);
+  const nextTargetData = buildSharedCustomerOrganizationData(req.body ?? {}, targetOrganization,await linkedPartnerCompany(prisma,organization.id,targetOrganizationId,req.body?.companyConnection,req.body));
   const normalizedCode =
     code !== undefined || req.body?.partyKind!==undefined || !targetOrganization.code ? nextTargetData.code : undefined;
 

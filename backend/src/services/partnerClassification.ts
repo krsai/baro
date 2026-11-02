@@ -1,3 +1,4 @@
+import {attachLinkedCompanies} from './companyConnections';
 import {createHttpError} from '../utils/http';
 import {entityProfile} from './entityProfile';
 import type {Prisma} from '@prisma/client';
@@ -29,7 +30,7 @@ export async function attachPartnerClassifications(db:any,orgId:number,rows:any[
   if(!rows.length)return rows;
   const legacyIds=[...new Set(rows.flatMap(row=>[row.systemIndustryId,...(row.serviceTypes||[]).map((s:any)=>s.systemDefaultId)].filter(Boolean)))];
   const [stored,sources]=await Promise.all([db.partnerClassification.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:CLASSIFICATION_INCLUDE}),db.settingServiceDefault.findMany({where:{id:{in:legacyIds}},include:{partnerRole:true}})]);
-  return rows.map(row=>({...row,classification:effectiveClassification(stored.find((s:any)=>s.entityId===row.entityId),sources.filter((s:any)=>s.id===row.systemIndustryId||(row.serviceTypes||[]).some((local:any)=>local.systemDefaultId===s.id)))}));
+  return attachLinkedCompanies(db,orgId,rows.map(row=>({...row,classification:effectiveClassification(stored.find((s:any)=>s.entityId===row.entityId),sources.filter((s:any)=>s.id===row.systemIndustryId||(row.serviceTypes||[]).some((local:any)=>local.systemDefaultId===s.id)))})));
 }
 export async function validateClassification(db:any,body:any,orgId:number,entityId?:number){
   if(!body||!Number.isSafeInteger(body.revision)||body.revision<0)throw createHttpError(400,'PARTNER_CLASSIFICATION_REQUIRED');
@@ -82,6 +83,7 @@ export function registerPartnerClassificationRoutes(app:any,db:any,gates:any){
       ...customers.map((r:any)=>{const entity=r.manufacturerOrgId===orgId?r.brand:r.manufacturer;return {entity:{...entity,code:entity.code||r.customerCode,representative:entity.representative||r.managerName,phone:entity.phone||r.managerPhone,email:entity.email||r.managerEmail,createdAt:r.createdAt},kind:'CUSTOMER',relationshipId:r.id,legacy:r.systemIndustry?[r.systemIndustry]:[]};})]
       .map((row:any)=>({...row,classification:effectiveClassification(documents.get(row.entity.id),row.legacy)}));
     const [vendorUsage,customerUsage,pricing]=await Promise.all([gates.getBusinessPartnerUsage(db,vendors.map((row:any)=>row.id)),gates.getCustomerUsage(db,customers.map((row:any)=>row.id)),gates.loadCustomerPricingCounts?.(ctx.organization,customers.map((row:any)=>row.id))||new Map()]);
-    res.json({roles,rows:rows.map(({legacy,...row}:any)=>({...row,entity:{...entityProfile(row.entity),id:row.entity.id,type:row.entity.type,isActive:row.entity.isActive,createdAt:row.entity.createdAt,representative:row.entity.representative,phone:row.entity.phone,outsourcingServiceAssignments:row.kind==='BUSINESS'?row.entity.outsourcingServiceAssignments:undefined},hasUsageHistory:row.kind==='CUSTOMER'?customerUsage.has(row.relationshipId):vendorUsage.has(row.entity.id),missingSalesPriceStyleCount:row.kind==='CUSTOMER'?pricing.get(row.relationshipId)??0:0}))});
+    const linkedRows=await attachLinkedCompanies(db,orgId,rows.map((row:any)=>({...row,entityId:row.entity.id})));
+    res.json({roles,rows:linkedRows.map(({legacy,...row}:any)=>({...row,entity:{...entityProfile(row.entity),id:row.entity.id,linkedCompany:row.linkedCompany,type:row.entity.type,isActive:row.entity.isActive,createdAt:row.entity.createdAt,representative:row.entity.representative,phone:row.entity.phone,outsourcingServiceAssignments:row.kind==='BUSINESS'?row.entity.outsourcingServiceAssignments:undefined},hasUsageHistory:row.kind==='CUSTOMER'?customerUsage.has(row.relationshipId):vendorUsage.has(row.entity.id),missingSalesPriceStyleCount:row.kind==='CUSTOMER'?pricing.get(row.relationshipId)??0:0}))});
   });
 }

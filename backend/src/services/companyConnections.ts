@@ -60,3 +60,23 @@ export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
   res.json(await retryEditTransaction(db,tx=>connectPartnerCompany(tx,orgId,entityId,gates.getActor(),req.body?.companyConnection)));
  });
 }
+
+/** A local relationship keeps its FK; public identity comes from the connected subscriber. */
+export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,requested?:any,profile?:any){
+ const link=entityId?await db.companyPartnerLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{target:{select:publicSelect}}}):null;
+ if(link)return link.target;
+ if(!requested){
+  if(!normalizedBusinessNumber(profile?.businessNumber)||!profile?.country)return null;
+  const candidates=await companyConnectionCandidates(db,orgId,profile);
+  return candidates.length===1?candidates[0]:null;
+ }
+ if(!Number.isSafeInteger(requested.targetOrgId)||requested.targetOrgId===orgId)throw createHttpError(400,'INVALID_COMPANY_CONNECTION');
+ const target=await db.organization.findFirst({where:{...tenantScope,id:requested.targetOrgId,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:requested.targetOrgId}]},select:publicSelect});
+ if(!target||requested.revision!==companyIdentityRevision(target))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
+ return target;
+}
+export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
+ if(!rows.length)return rows;
+ const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,target:{select:publicSelect}}});
+ return rows.map(row=>({...row,linkedCompany:links.find((link:any)=>link.entityId===row.entityId)?.target??null}));
+}

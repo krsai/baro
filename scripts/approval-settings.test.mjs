@@ -39,8 +39,20 @@ test('vacant or inactive lead escalates to administrator without skipping senior
  const {db,config,people}=fixture();people[2].status='INACTIVE';
  assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')])).ids,[2,4]);
  config.leadEmployeeId=3;people[2].status='INACTIVE';assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')])).ids,[2,4]);
- people[1].status='INACTIVE';assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('1000')])).ids,[4]);
+ people[1].status='INACTIVE';await assert.rejects(resolveExpenseApproval(db,7,1,[item('1000')]),/EXPENSE_APPROVER_REQUIRED/);
+ const preview=await resolveExpenseApproval(db,7,1,[item('1000')],{adminEmployeeId:4},true);assert.equal(preview.complete,false);assert.ok(preview.stages.some(stage=>stage.key==='accountant'&&stage.required));
  people[3].orgId=99;await assert.rejects(resolveExpenseApproval(db,7,1,[item('1000')]),/EXPENSE_APPROVER_REQUIRED/);
+});
+test('operator requests always retain an actual accountant before higher approvals',async()=>{
+ const {db,people}=fixture();people[1].status='INACTIVE';
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('1000')])).ids,[3]);
+ people[2].status='INACTIVE';
+ for(const amount of ['1000','30000000','100000001']){
+  await assert.rejects(resolveExpenseApproval(db,7,1,[item(amount)],{adminEmployeeId:4}),/EXPENSE_APPROVER_REQUIRED/);
+  const preview=await resolveExpenseApproval(db,7,1,[item(amount)],{adminEmployeeId:4},true);
+  assert.equal(preview.complete,false);assert.equal(preview.policy.exempt,false);
+ }
+ assert.equal((await resolveExpenseApproval(db,7,4,[item('1000')])).policy.exempt,true);
 });
 test('accountant drafting skips own and lower stages but higher limits still require higher approvals',async()=>{
  const {db}=fixture();

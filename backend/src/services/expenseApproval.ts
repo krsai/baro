@@ -44,11 +44,17 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     if(!limits?.senior||!limits?.lead)throw createHttpError(400,'APPROVAL_CURRENCY_LIMIT_REQUIRED');
     level=Math.max(level,amount.lte(limits.senior)?0:amount.lte(limits.lead)?1:2);
   }
+  let accountantConfirmed=false;
   const ownLevel=drafter.orgRole==='ADMIN'?2:drafter.orgRole==='ACCOUNTANT'&&drafter.grade?.isActive&&drafter.grade.set?.isActive ? drafter.gradeId===config.leadGradeId?1:!config.seniorGradeId||drafter.gradeId===config.seniorGradeId?0:-1 : -1;
   const ids:number[]=[],skipped:string[]=[],stages:any[]=[];let requiredLevel=level,complete=true;
   for(let index=0;index<=requiredLevel;index++){
     if(index<=ownLevel)continue;
     const key=['senior','lead','admin'][index]!;
+    // An operator may escalate a vacancy, but never bypass accounting entirely.
+    if(index===2&&drafter.orgRole==='OPERATOR'&&!accountantConfirmed){
+      complete=false;stages.push({key:'accountant',employeeId:null,candidates:[],vacant:true,required:true});
+      if(!allowIncomplete)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
+    }
     const gradeId=config[`${key}GradeId`];
     const where={orgId,status:'ACTIVE',orgRole:index===2?'ADMIN':'ACCOUNTANT',...(index<2?{...(gradeId?{gradeId}:{}),grade:{isActive:true,set:{isActive:true}}}:{})};
     const candidates=await tx.employee.findMany({where:{...where,id:{notIn:[drafterId,...ids]}},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameEn:true,nameKo:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
@@ -69,6 +75,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     }
     if(employeeId===drafterId)throw createHttpError(400,'EXPENSE_SELF_APPROVAL');
     if(ids.includes(employeeId))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+    if(index<2)accountantConfirmed=true;
     ids.push(employeeId);stages.push({key,employeeId,name:employee.name,candidates});
   }
   return {ids,complete,stages,drafter,policy:{drafterId,exempt:complete&&!ids.length&&ownLevel>=level,...(drafter.orgRole==='ADMIN'?{exemptionReason:'ADMIN_DRAFTER'}:{}),config,skipped,level,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};

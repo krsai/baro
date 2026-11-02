@@ -12,7 +12,7 @@ const {resolvePartnerCode,resolvePartnerIdentity}=require('../backend/dist/servi
 function sourceRoute(method,path,dependencies){
  const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const node=tree.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(tree)===`app.${method}`&&node.expression.arguments[0]?.text===path);
- let handler;const bindings={assertPartnerProfileEditable:async()=>{},app:{[method]:(_path,fn)=>handler=fn},resolvePartnerCode,resolvePartnerIdentity,ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),...dependencies};
+ let handler;const bindings={linkedPartnerCompany:async()=>null,assertPartnerProfileEditable:async()=>{},app:{[method]:(_path,fn)=>handler=fn},resolvePartnerCode,resolvePartnerIdentity,ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),...dependencies};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));return handler;
 }
 const validator=(stored=null)=>({partnerClassification:{findUnique:async()=>stored},settingServiceDefault:{findMany:async({where})=>sources.filter(row=>where.id.in.includes(row.id))}});

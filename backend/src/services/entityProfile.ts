@@ -19,17 +19,18 @@ export const normalizePartyKind=(value:any):'INDIVIDUAL'|'CORPORATE'|null=>{
   if(value==='INDIVIDUAL'||value==='CORPORATE')return value;
   throw Object.assign(new Error('INVALID_PARTY_KIND'),{status:400});
 };
-export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any)=>{
+export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any,linkedCompany?:any)=>{
   const partyKind=normalizePartyKind(body?.partyKind===undefined?previous?.partyKind:body.partyKind);
   if((!previous||previous.partyKind)&&!partyKind)throw Object.assign(new Error('PARTNER_PARTY_KIND_REQUIRED'),{status:400});
   const value=body?.code===undefined?previous?.code:body.code;
   if(partyKind==='CORPORATE'){
-    const code=normalizePartnerCode(value);
+    const code=normalizePartnerCode(linkedCompany?linkedCompany.code:value);
     if(!code||!/^[A-Z0-9]{4}$/.test(code))throw Object.assign(new Error('CORPORATE_PARTNER_CODE_INVALID'),{status:400});
     const number=body?.businessNumber===undefined?previous?.businessNumber:body.businessNumber;
     if(typeof number!=='string'||!number.trim()||number.trim().length>100)throw Object.assign(new Error('PARTNER_BUSINESS_NUMBER_REQUIRED'),{status:400});
-    return {partyKind,code};
+    return {partyKind,code:linkedCompany?previous?.code??null:code};
   }
+  if(linkedCompany)return {partyKind,code:previous?.code??null};
   return {partyKind,code:partyKind==='INDIVIDUAL'?normalizePartnerCode(value):resolvePartnerCode(value,englishName)};
 };
 export const entityProfile = (entity:any) => ({

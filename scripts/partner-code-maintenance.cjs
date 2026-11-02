@@ -23,6 +23,18 @@ async function run(input){
  }
  if(!db)throw Error('CODE_NOT_CONNECTED');
  if(input.op==='audit')return db.$transaction(async tx=>{await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');return snapshot(tx);},{timeout:30000});
+
+ if(input.op==='link-company')return db.$transaction(async tx=>{
+  const {companyIdentityRevision,connectPartnerCompany}=require('../backend/dist/services/companyConnections');
+  const actor=await tx.employee.findFirst({where:{id:input.actorId,orgId:input.orgId,email:'krsailer82@gmail.com',orgRole:'ADMIN',status:'ACTIVE'},select:{id:true}});
+  if(!actor)throw Error('CODE_ADMIN_REQUIRED');
+  const select={id:true,name:true,nameKo:true,nameVi:true,code:true,country:true,businessNumber:true};
+  const local=await tx.organization.findUnique({where:{id:input.entityId},select});
+  const target=await tx.organization.findUnique({where:{id:input.targetOrgId},select});
+  if(!local||!target||local.name!==input.expectedName||target.name!==input.expectedName||target.code!==input.expectedCode)throw Error('CODE_TARGET_CHANGED');
+  const link=await connectPartnerCompany(tx,input.orgId,input.entityId,input.actorId,{targetOrgId:target.id,revision:companyIdentityRevision(target)});
+  return {linked:true,link,company:target};
+ },{isolationLevel:'Serializable',timeout:30000});
  if(input.op!=='apply')throw Error('CODE_INVALID_OPERATION');
  if(!Array.isArray(input.changes)||!input.changes.length||input.changes.some(row=>!Number.isSafeInteger(row.id)||!/^[A-Z0-9]{4}$/.test(row.code)))throw Error('CODE_INVALID_PLAN');
  if(new Set(input.changes.map(row=>row.id)).size!==input.changes.length||new Set(input.changes.map(row=>row.code)).size!==input.changes.length)throw Error('CODE_DUPLICATE_PLAN');

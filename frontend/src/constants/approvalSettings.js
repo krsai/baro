@@ -1,7 +1,7 @@
 export const approvalSettingsText={
  ko:{
   title:'결재선 설정',drafter:'기안자',approver:'승인자',none:'추가 승인 불필요',
-  hint:'금액에 따라 선임 → 책임 → 관리자 순서로 승인합니다. 담당자가 없는 단계는 상위 승인자로 우회합니다.',
+  hint:'금액에 따라 선임 → 책임 → 관리자 순서로 승인합니다. 운영자 기안에는 회계사 확인이 필수이며, 회계사 공석을 관리자만으로 우회할 수 없습니다.',
   save:'저장',saved:'금액 한도를 저장했습니다.',error:'금액 한도를 확인해 주세요.',missing:'필요한 승인자를 선택해 주세요.',
   senior:'선임 회계사',lead:'책임 회계사',admin:'관리자',limit:'승인 한도 (이하)',grade:'직급',vacant:'담당자 없음 · 상위 승인으로 우회',
   amountHint:'VAT 포함 통화별 합계를 각 한도와 비교합니다. 혼합 통화는 가장 높은 승인 단계를 적용합니다. USD·KRW 한도는 사용 전에 설정하세요.',
@@ -11,7 +11,7 @@ export const approvalSettingsText={
  },
  en:{
   title:'Approval settings',drafter:'Drafter',approver:'Approver',none:'No further approval',
-  hint:'Approvals accumulate: senior accountant → lead accountant → administrator. Vacant stages escalate to the next level.',
+  hint:'Approvals accumulate: senior accountant → lead accountant → administrator. Operator requests require accountant confirmation; administrator approval alone cannot replace it.',
   save:'Save',saved:'Amount limits saved.',error:'Check the amount limits.',missing:'Select the required approvers.',
   senior:'Senior accountant',lead:'Lead accountant',admin:'Administrator',limit:'Approval limit (inclusive)',grade:'Grade',vacant:'Vacant · escalate',
   amountHint:'Compare tax-inclusive totals separately by currency. Mixed currencies use the highest required approval level. Configure USD and KRW limits before use.',
@@ -21,7 +21,7 @@ export const approvalSettingsText={
  },
  vi:{
   title:'Cài đặt phê duyệt',drafter:'Người lập',approver:'Người duyệt',none:'Không cần duyệt thêm',
-  hint:'Duyệt lần lượt: kế toán cấp cao → kế toán phụ trách → quản trị viên. Nếu thiếu người duyệt, chuyển lên cấp trên.',
+  hint:'Duyệt lần lượt: kế toán cấp cao → kế toán phụ trách → quản trị viên. Đề nghị của nhân viên vận hành bắt buộc có kế toán xác nhận; không thể chỉ chuyển cho quản trị viên.',
   save:'Lưu',saved:'Đã lưu hạn mức.',error:'Kiểm tra hạn mức.',missing:'Chọn người phê duyệt cần thiết.',
   senior:'Kế toán cấp cao',lead:'Kế toán phụ trách',admin:'Quản trị viên',limit:'Hạn mức duyệt (trở xuống)',grade:'Chức danh',vacant:'Chưa có · chuyển cấp trên',
   amountHint:'So sánh tổng gồm VAT theo từng loại tiền. Đề nghị nhiều loại tiền dùng cấp duyệt cao nhất. Thiết lập hạn mức USD và KRW trước khi sử dụng.',
@@ -30,3 +30,6 @@ export const approvalSettingsText={
   selfError:'Người lập cũng là quản trị viên phê duyệt. Chọn quản trị viên khác.',notReady:'Nhập số tiền để xem luồng phê duyệt.',readonly:'Chỉ quản trị viên được thay đổi quy tắc của công ty.'
  }
 };
+approvalSettingsText.ko.accountantRequired='운영자 기안은 회계사 확인이 필수입니다. 활성 회계 담당자를 등록해 주세요.';
+approvalSettingsText.en.accountantRequired='Operator requests require accountant confirmation. Register an active accountant.';
+approvalSettingsText.vi.accountantRequired='Đề nghị của nhân viên vận hành bắt buộc có kế toán xác nhận. Hãy đăng ký kế toán đang hoạt động.';

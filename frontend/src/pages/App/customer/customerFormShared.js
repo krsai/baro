@@ -55,6 +55,7 @@ export const buildCustomerFormData = (customer = {}) => {
     String(customer?.countryCode || '').trim() || resolveDefaultCountryCode(country);
 
   return {
+    linkedCompany:customer?.linkedCompany||null,
     partyKind:customer?.id?customer.partyKind||'':'CORPORATE',
     classification:customer.classification||emptyPartnerClassification(),
     systemIndustryId: customer?.systemIndustryId ?? null,
