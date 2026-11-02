@@ -1,5 +1,5 @@
 import React,{useCallback,useEffect,useState} from 'react';
-import {Alert,Autocomplete,Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,createFilterOptions} from '@mui/material';
+import {Alert,Autocomplete,Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,createFilterOptions} from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageContentStack from '../../components/PageContentStack';
@@ -51,7 +51,7 @@ export default function AccountingCodeSettings(){
  const visible=selected==='ALL'?rows:rows.filter(row=>kind==='role'?inRole(row,selectedId):inIndustry(row,selectedId));
  const openCreate=()=>{
   const initial=kind==='industry'?sourceRows.find(row=>row.id===selectedId):null;
-  setForm({code:'',nameKo:'',nameEn:'',nameVi:'',industryIds:initial?[initial.id]:[],entryMode:initial?.entryMode||'GENERAL',requiredFields:[],orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true});
+  setForm({code:'',nameKo:'',nameEn:'',nameVi:'',industryIds:initial?[initial.id]:[],entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true});
  };
  const save=async()=>{
   setSaving(true);setError('');
@@ -85,10 +85,9 @@ export default function AccountingCodeSettings(){
     <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
     <Autocomplete multiple disableCloseOnSelect autoHighlight openOnFocus limitTags={3} noOptionsText={subtypeSearch.empty} slotProps={{listbox:{sx:{maxHeight:'min(240px, 35dvh)'}}}} options={options} value={options.filter(row=>form.industryIds.includes(row.id))} disabled={saving} groupBy={row=>name(roles.find(role=>role.id===row.partnerRoleId))} getOptionLabel={name} isOptionEqualToValue={(row,value)=>row.id===value.id}
      filterOptions={createFilterOptions({stringify:row=>{const role=roles.find(role=>role.id===row.partnerRoleId);return [row.nameKo,row.nameEn,row.nameVi,role?.nameKo,role?.nameEn,role?.nameVi].join(' ');}})}
-     onChange={(_,selection)=>setForm({...form,industryIds:selection.map(row=>row.id),...(!form.id&&!form.industryIds.length&&selection.length?{entryMode:selection[0].entryMode}:{})})}
+     onChange={(_,selection)=>setForm({...form,industryIds:selection.map(row=>row.id)})}
      renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={row.id} {...rest}><Checkbox checked={selected} tabIndex={-1} disableRipple/>{name(row)}</li>;}}
      renderInput={params=><TextField {...params} required={!form.id||form.isActive} label={text.industry} placeholder={subtypeSearch.placeholder} helperText={subtypeSearch.help}/>}/>
-    <TextField select label={text.mode} value={form.entryMode} disabled={saving||form.hasUsageHistory} onChange={event=>setForm({...form,entryMode:event.target.value})}>{[...new Set(['GENERAL','LOGISTICS','PROCESS',form.entryMode])].filter(Boolean).map(mode=><MenuItem key={mode} value={mode}>{text[mode]||mode}</MenuItem>)}</TextField>
     <AccountingInputSettings value={form} onChange={setForm} languageCode={languageCode} disabled={saving}/>
    </Stack>}</DialogContent>
    <DialogActions sx={{px:3,py:2}}><Button disabled={saving} onClick={()=>setForm(null)}>{text.cancel}</Button><SaveButton loading={saving} onClick={save} disabled={saving||!form||!/^[A-Z]{3}$/.test(form.code)||(!form.industryIds.length&&(!form.id||form.isActive))||!hasLocalizedName(form)}>{text.save}</SaveButton></DialogActions>

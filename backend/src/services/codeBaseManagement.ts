@@ -30,16 +30,15 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   if (id) {
     await tx.$queryRawUnsafe('SELECT id FROM "TransactionCodeBase" WHERE id=$1 FOR UPDATE', id);
   }
-  const source = await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } });
-  data.entryMode=body.entryMode??previous?.entryMode??source.entryMode;
+  data.entryMode=body.entryMode??previous?.entryMode??'GENERAL';
   if(!['PROCESS','LOGISTICS','GENERAL'].includes(data.entryMode)&&data.entryMode!==previous?.entryMode)throw createHttpError(400,'INVALID_ENTRY_MODE');
   if (previous?.entryMode && previous.entryMode !== data.entryMode && (await getCodeBaseUsage(tx,[id!])).has(id!)) throw createHttpError(409,'USED_CODE_ENTRY_MODE_IMMUTABLE');
   // Legacy type/source FKs remain unchanged. They no longer define new code families.
   if(previous&&selection.supplied)data.industryRevision={increment:1};
-  data.requiredFields = body.requiredFields ?? previous?.requiredFields ?? source.requiredFields;
+  data.requiredFields = body.requiredFields ?? previous?.requiredFields ?? [];
   if (!Array.isArray(data.requiredFields) || data.requiredFields.some((field: any) => !COST_DETAIL_FIELDS.includes(field))) throw createHttpError(400,'INVALID_REQUIRED_FIELDS');
   for (const key of ['orderInput','styleInput','processInput']) {
-    data[key] = body[key] ?? previous?.[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
+    data[key] = body[key] ?? previous?.[key] ?? 'HIDDEN';
     if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(data[key])) throw createHttpError(400,'INVALID_INPUT_OPTION');
   }
   if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');

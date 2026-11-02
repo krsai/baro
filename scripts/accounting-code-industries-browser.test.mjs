@@ -33,15 +33,17 @@ try{
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
   const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 유형':lang==='vi'?'Loại chi tiết':'Subtype';
   await page.getByRole('button',{name:edit,exact:true}).click();const dialog=page.getByRole('dialog'),selector=dialog.getByRole('combobox',{name:industry,exact:true});
-  const mode=lang==='ko'?'입력 방식':lang==='vi'?'Cách nhập':'Input method';await dialog.getByText(mode,{exact:true}).first().waitFor();assert.equal(await dialog.locator('input[value="GENERAL"]').isDisabled(),true);
+  const mode=lang==='ko'?'입력 방식':lang==='vi'?'Cách nhập':'Input method';assert.equal(await dialog.getByText(mode,{exact:true}).count(),0);
   await selector.fill('no-matching-subtype');await page.getByText({ko:'일치하는 세부 유형이 없습니다.',en:'No matching subtypes.',vi:'Không có loại chi tiết phù hợp.'}[lang],{exact:true}).waitFor();
   await selector.fill('BUTTON');assert.equal(await page.getByRole('option').count(),1);assert.ok((await page.getByRole('listbox').boundingBox()).height<=241);
   await selector.press('ArrowDown');await selector.press('Enter');await page.keyboard.press('Escape');await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
   assert.deepEqual(writes[0].industryIds,[10,20]);assert.equal(writes[0].industryRevision,1);
   await nav.getByRole('button',{name:'SUPPLIER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1,'a shared code is counted once in its parent category');await nav.getByRole('button',{name:'BUTTON 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
   const add=lang==='ko'?'기본 코드 등록':lang==='vi'?'Thêm mã gốc':'Add base code';await page.getByRole('button',{name:add,exact:true}).click();assert.equal(await dialog.getByText('BUTTON',{exact:true}).count(),1);
+  assert.equal(await dialog.locator('input[value="HIDDEN"]').count(),7,'all general-cost inputs default to disabled');
+  await dialog.getByRole('table').getByRole('combobox').first().click();await page.getByRole('option',{name:{ko:'필수',en:'Required',vi:'Bắt buộc'}[lang],exact:true}).click();
   await dialog.getByRole('textbox',{name:lang==='ko'?'기본 코드':lang==='vi'?'Mã gốc':'Base code',exact:true}).fill('BNC');await dialog.getByRole('textbox',{name:lang==='ko'?'이름 (영어 · 대표)':lang==='vi'?'Tên (tiếng Anh · chính)':'Name (English · primary)',exact:true}).fill('Button cost');
-  await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes.at(-1).industryIds,[20]);assert.equal(writes.at(-1).entryMode,'GENERAL');
+  await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes.at(-1).industryIds,[20]);assert.equal(writes.at(-1).entryMode,'GENERAL');assert.equal(writes.at(-1).orderInput,'REQUIRED');
   await page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'ZIP',exact:true})}).getByRole('button',{name:edit,exact:true}).click();
   await selector.fill('SHIPPING');await page.getByRole('option',{name:'SHIPPING',exact:true}).click();await page.keyboard.press('Escape');await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
   await nav.getByRole('button',{name:'SHIPPING 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
@@ -49,7 +51,7 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await page.reload();await nav.getByRole('button',{name:'SHIPPING 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
   bases.push({...bases[0],id:9,code:'OLD',nameKo:'Old cost',nameEn:'Old cost',nameVi:'Old cost',isAvailable:false,legacyUsageDisabled:true,entryMode:'PURCHASE',industryIds:[10],industries:[sources[0]]});await page.reload();
-  const old=page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'OLD',exact:true})});await old.waitFor();assert.equal(await old.locator('td').nth(3).innerText(),'—');await old.getByRole('button',{name:edit,exact:true}).click();assert.equal(await dialog.locator('input[type="checkbox"]').isDisabled(),true);assert.equal(await dialog.locator('input[type="checkbox"]').isChecked(),false);assert.equal(await dialog.locator('input[value="PURCHASE"]').isDisabled(),true);await dialog.getByRole('button',{name:cancel,exact:true}).click();
+  const old=page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'OLD',exact:true})});await old.waitFor();assert.equal(await old.locator('td').nth(3).innerText(),'—');await old.getByRole('button',{name:edit,exact:true}).click();assert.equal(await dialog.locator('input[type="checkbox"]').isDisabled(),true);assert.equal(await dialog.locator('input[type="checkbox"]').isChecked(),false);assert.equal(await dialog.locator('input[value="PURCHASE"]').count(),0);await dialog.getByRole('button',{name:cancel,exact:true}).click();
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Accounting code industries ko/en/vi: N:M edit, unique category counts, source-prefilled creation, fixed used input mode/FKs, stale edit recovery, persistence and mobile passed.');

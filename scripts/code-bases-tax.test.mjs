@@ -91,7 +91,8 @@ test('expense input settings copy once by FK and stay independent of partner ind
     const [purchase]=(await db.query(`SELECT id FROM "ExpenseType" WHERE code='MATERIAL'`)).rows;
     const [industry]=(await db.query(`SELECT * FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows;
     const base=await db.transaction(tx=>service.saveCodeBase(adapter(tx),{code:'FAB',nameKo:'원단',nameEn:'Fabric',nameVi:'Vải',serviceTypeId:industry.id,requiredFields:[],taxTreatmentIds:[1,2,3]}));
-    assert.equal(base.entryMode,industry.entryMode);assert.equal(base.expenseTypeId,null);
+    assert.equal(base.entryMode,'GENERAL');assert.equal(base.expenseTypeId,null);
+    assert.equal(base.orderInput,'HIDDEN');assert.equal(base.styleInput,'HIDDEN');assert.equal(base.processInput,'HIDDEN');assert.deepEqual(base.requiredFields,[]);
   }finally{await db.close();}
 });
 

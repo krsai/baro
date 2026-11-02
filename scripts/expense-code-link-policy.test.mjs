@@ -6,6 +6,11 @@ import policy from '../backend/dist/services/expenseCodeLinkPolicy.js';
 import {expenseCodeForLine,inputMode,validExpenseLine} from '../frontend/src/utils/expenseRequest.mjs';
 const sql=readFileSync('backend/prisma/migrations/20261023140000_expense_code_link_policy/migration.sql','utf8');
 const seed=readFileSync('backend/prisma/migrations/20261023140100_baro_expense_code_links/migration.sql','utf8');
+test('missing input settings default to disabled independently of technical entry mode',async()=>{
+ const {accountingInputs}=await import('../backend/dist/services/accountingInputs.js');
+ for(const entryMode of [undefined,'GENERAL','LOGISTICS','PROCESS'])assert.deepEqual(accountingInputs({entryMode}),{requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN'});
+ assert.equal(accountingInputs({orderInput:'REQUIRED'}).orderInput,'REQUIRED');
+});
 
 test('company input settings override system defaults, validate hierarchy and retain saved document settings',async()=>{
  const {accountingInputs}=await import('../backend/dist/services/accountingInputs.js');
