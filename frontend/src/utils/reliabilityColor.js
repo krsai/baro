@@ -1,8 +1,8 @@
-import { getLabelPalette } from '../theme/labelPalette';
+import { getLabelPalette } from '../theme/labelPalette.js';
 
 // Shared thresholds for style list and process detail labels.
-export const RELIABILITY_HIGH_PERCENT = 90;
-export const RELIABILITY_MEDIUM_PERCENT = 70;
+export const RELIABILITY_HIGH_PERCENT = 70;
+export const RELIABILITY_MEDIUM_PERCENT = 50;
 export const resolveReliabilityRiskColor = (value) => {
   const percent = value == null ? NaN : Number(value);
   const tone = Number.isFinite(percent) && percent >= RELIABILITY_HIGH_PERCENT ? 'green'

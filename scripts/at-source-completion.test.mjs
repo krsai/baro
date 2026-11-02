@@ -66,7 +66,13 @@ test('real SQL excludes incomplete factories, current months and foreign organiz
   const sql=new PGlite();try{
     await sql.exec(`CREATE TABLE "Factory"(id INT PRIMARY KEY,"orgId" INT,"managementStartDate" TEXT);
       CREATE TABLE "WorkLog"(id INT PRIMARY KEY,"orgId" INT,"factoryId" INT,"workDate" TEXT,"coverageEndDate" TEXT,"recordKind" TEXT,"updatedAt" TIMESTAMP DEFAULT NOW());
-      CREATE TABLE "WorkRecord"(id INT PRIMARY KEY,"workLogId" INT,quantity INT,"assignmentPlanId" INT,"updatedAt" TIMESTAMP DEFAULT NOW());
+      CREATE TABLE "WorkRecord"(id INT PRIMARY KEY,"workLogId" INT,quantity INT,"assignmentPlanId" INT,"styleProcessId" INT,"workerId" INT,"updatedAt" TIMESTAMP DEFAULT NOW());
+      CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,"orgRole" TEXT,status TEXT,"joinedAt" TIMESTAMP,"leftAt" TIMESTAMP,"leaveStartAt" TIMESTAMP,"leaveEndAt" TIMESTAMP,"alwaysFullAttendance" BOOLEAN,"payrollExcluded" BOOLEAN);
+      CREATE TABLE "EmployeePayrollManagementVersion"(id INT PRIMARY KEY,"orgId" INT,"employeeId" INT,"effectiveMonth" TEXT,"alwaysFullAttendance" BOOLEAN,"payrollExcluded" BOOLEAN);
+      CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"timeBucketSetVersionId" INT);
+      CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"orgId" INT,"styleId" INT,"productionStage" TEXT,"genderScope" TEXT,"ptSeconds" FLOAT,"isActive" BOOLEAN);
+      CREATE TABLE "StyleProcessStandard"("styleProcessId" INT,"orgId" INT,"quantityBucketSetVersionId" INT,"quantityBucketEntryId" INT,"bucketStSeconds" FLOAT);
+      CREATE TABLE "QuantityBucketEntry"(id INT PRIMARY KEY,"bucketQuantity" INT);
       CREATE TABLE "AttendanceEntry"(id INT PRIMARY KEY,"orgId" INT,"factoryId" INT,"workerId" INT,"workDate" TEXT,"workedSeconds" INT,"managementExcluded" BOOLEAN DEFAULT FALSE,"updatedAt" TIMESTAMP DEFAULT NOW());
       CREATE TABLE "AtTrainingBucket"(id INT,"orgId" INT,"factoryId" INT,"monthKey" TEXT,"workDate" TEXT);
       INSERT INTO "Factory" VALUES(1,1,'2026-04-01'),(2,1,'2026-04-01'),(3,2,'2026-04-01');
@@ -90,6 +96,22 @@ test('real SQL excludes incomplete factories, current months and foreign organiz
     await sql.exec('UPDATE "AttendanceEntry" SET "workedSeconds"=32000 WHERE id=1');
     const changedAttendance=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
     assert.notEqual(atSourceSignature(changedAttendance),atSourceSignature(changedWork));
+    await sql.exec(`INSERT INTO "Style" VALUES(10,1,1);INSERT INTO "StyleProcess" VALUES(11,1,10,'SEWING','UNISEX',30,true);INSERT INTO "QuantityBucketEntry" VALUES(1,1000);INSERT INTO "StyleProcessStandard" VALUES(11,1,1,1,30);UPDATE "WorkRecord" SET "styleProcessId"=11 WHERE id=1;`);
+    const withDefinition=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    await sql.exec('UPDATE "StyleProcessStandard" SET "bucketStSeconds"=45');
+    const changedSt=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    assert.notEqual(atSourceSignature(changedSt),atSourceSignature(withDefinition),'ST corrections must invalidate the allocation seed even with unchanged work/attendance');
+    await sql.exec(`UPDATE "StyleProcess" SET "productionStage"='IRONING'`);
+    const changedStage=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    assert.notEqual(atSourceSignature(changedStage),atSourceSignature(changedSt),'explicit stage corrections must invalidate training');
+    await sql.exec(`ALTER TABLE "StyleProcess" ADD COLUMN "atParams" JSONB;UPDATE "StyleProcess" SET "atParams"='{"a":45,"b":0}'`);
+    const changedDerived=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    assert.equal(atSourceSignature(changedDerived),atSourceSignature(changedStage),'writing derived AT must not cause endless retraining');
+    await sql.exec(`INSERT INTO "Employee"(id,"orgId","orgRole",status,"alwaysFullAttendance","payrollExcluded") VALUES(10,1,'WORKER','ACTIVE',false,false);UPDATE "WorkRecord" SET "workerId"=10 WHERE id=1;`);
+    const withWorker=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    await sql.exec(`INSERT INTO "EmployeePayrollManagementVersion" VALUES(1,1,10,'2026-09',false,true)`);
+    const excludedWorker=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
+    assert.notEqual(atSourceSignature(excludedWorker),atSourceSignature(withWorker),'effective employee management changes must invalidate training');
     await sql.exec('DELETE FROM "AttendanceEntry" WHERE id=1');
     const after=await loadCompletedAtFactoryMonths(db,1,'2026-10',new Date('2026-10-19T00:00:00Z'));
     assert.equal(after.length,0);assert.notEqual(atSourceSignature(after),oldSignature);

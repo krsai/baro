@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { loadManagementPeriod } from '../factories/factoryManagementStart';
 import { normalizeEmployeePayTypePolicy, isPolicyWorkday } from '../employees/employeePayTypePolicy';
 
-export const AT_SOURCE_POLICY_VERSION = 'completed-factory-month-actual-attendance-v2';
+export const AT_SOURCE_POLICY_VERSION = 'completed-factory-month-actual-attendance-v3-definitions';
 export type AtFactoryMonth = { factoryId: number; monthKey: string; startDate: string; endDate: string; sourceRevision?: string };
 export const atFactoryMonthKey = (factoryId: number, monthKey: string) => `${factoryId}:${monthKey}`;
 export const atSourceSignature = (scopes: AtFactoryMonth[]) => JSON.stringify([...scopes].sort((a,b)=>atFactoryMonthKey(a.factoryId,a.monthKey).localeCompare(atFactoryMonthKey(b.factoryId,b.monthKey))));
@@ -46,9 +46,24 @@ export async function loadCompletedAtFactoryMonths(db: any, orgId: number, maxMo
         SELECT wl."factoryId", LEFT(wl."workDate",7) AS "monthKey",
           MAX(COALESCE(wl."coverageEndDate",wl."workDate")) AS "workThrough",
           COUNT(wr.id)::int AS "workRecordCount",MAX(wl."updatedAt") AS "workUpdatedAt",MAX(wr."updatedAt") AS "recordUpdatedAt",
-          md5(string_agg(md5(to_jsonb(wl)::text || '|' || to_jsonb(wr)::text),'' ORDER BY wr.id)) AS "workRevision"
+          md5(string_agg(md5(to_jsonb(wl)::text || '|' || to_jsonb(wr)::text || '|' || COALESCE(definition.revision,'missing') || '|' || COALESCE(worker.revision,'missing')),'' ORDER BY wr.id)) AS "workRevision"
         FROM "WorkLog" wl JOIN "Factory" f ON f.id=wl."factoryId" AND f."orgId"=wl."orgId"
           JOIN "WorkRecord" wr ON wr."workLogId"=wl.id AND wr.quantity>0 AND wr."assignmentPlanId" IS NOT NULL
+          LEFT JOIN LATERAL (
+            SELECT md5(jsonb_build_array(sp."styleId",sp."productionStage",sp."genderScope",sp."ptSeconds",sp."isActive",s."timeBucketSetVersionId",
+              (SELECT jsonb_agg(jsonb_build_array(st."quantityBucketEntryId",st."bucketStSeconds",q."bucketQuantity") ORDER BY st."quantityBucketEntryId")
+               FROM "StyleProcessStandard" st JOIN "QuantityBucketEntry" q ON q.id=st."quantityBucketEntryId"
+               WHERE st."styleProcessId"=sp.id AND st."orgId"=wl."orgId" AND st."quantityBucketSetVersionId"=s."timeBucketSetVersionId"))::text) AS revision
+            FROM "StyleProcess" sp JOIN "Style" s ON s.id=sp."styleId" AND s."orgId"=sp."orgId"
+            WHERE sp.id=wr."styleProcessId" AND sp."orgId"=wl."orgId"
+          ) definition ON true
+          LEFT JOIN LATERAL (
+            SELECT md5(jsonb_build_array(e."orgRole",e.status,e."joinedAt",e."leftAt",e."leaveStartAt",e."leaveEndAt",e."alwaysFullAttendance",e."payrollExcluded",
+              (SELECT jsonb_build_array(v."effectiveMonth",v."alwaysFullAttendance",v."payrollExcluded")
+               FROM "EmployeePayrollManagementVersion" v WHERE v."employeeId"=e.id AND v."orgId"=e."orgId" AND v."effectiveMonth"<=LEFT(wl."workDate",7)
+               ORDER BY v."effectiveMonth" DESC,v.id DESC LIMIT 1))::text) AS revision
+            FROM "Employee" e WHERE e.id=wr."workerId" AND e."orgId"=wl."orgId"
+          ) worker ON true
         WHERE wl."orgId"=${orgId} AND wl."recordKind"='EMPLOYEE'
           AND wl."workDate">=${period.startDate} AND LEFT(wl."workDate",7)<=${maxMonthKey}
           AND wl."workDate">=COALESCE(f."managementStartDate",${period.startDate})

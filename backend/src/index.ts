@@ -4406,6 +4406,7 @@ const buildAtTrainingBucketDraftsFromRawSource = async ({
           styleCode: sampleBase.styleCode,
           processCode,
           processName,
+          productionStage,
           effectiveCoverageStartDate,
           effectiveCoverageEndDate,
         };
