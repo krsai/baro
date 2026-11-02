@@ -11,7 +11,6 @@ import { coalesceInFlightRead } from './services/inFlightRead';
 import { contentMemo } from './services/contentMemo';
 import { normalizeLocalizedName } from './utils/localizedName';
 import { entityProfile, partnerProfilePatch, resolvePartnerCode, resolvePartnerIdentity } from './services/entityProfile';
-import {validateCustomerIndustry} from './services/partnerIndustry';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
 import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany} from './services/companyConnections';
@@ -29651,7 +29650,6 @@ app.post("/customers", async (req, res) => {
 
   await validateClassification(tx,req.body?.classification,organization.id);
   await requireClassificationActor(tx,organization.id,getCurrentRequestActorEmployeeId());
-  const systemIndustryId = await validateCustomerIndustry(tx,req.body?.systemIndustryId);
   const { brandOrgId, customerOrgId, memo } = req.body ?? {};
   const linkedCompany=await linkedPartnerCompany(tx,organization.id,toPositiveIntOrNull(req.body?.customerOrgId??req.body?.brandOrgId)??undefined,req.body?.companyConnection,req.body);
   const sharedOrganizationData = buildSharedCustomerOrganizationData(req.body ?? {},null,linkedCompany);
@@ -29780,7 +29778,6 @@ app.post("/customers", async (req, res) => {
       },
     },
     update: {
-      ...(systemIndustryId !== undefined ? {systemIndustryId} : {}),
       customerCode: normalizedCode,
       defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(req.body?.defaultSizeSetCode),
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
@@ -29791,7 +29788,6 @@ app.post("/customers", async (req, res) => {
     create: {
       manufacturerOrgId,
       brandOrgId: brandOrgIdForRelationship,
-      ...(systemIndustryId !== undefined ? {systemIndustryId} : {}),
       customerCode: normalizedCode,
       defaultSizeSetCode: normalizeCustomerDefaultSizeSetCode(req.body?.defaultSizeSetCode),
       managerName: resolveOptionalString(sharedOrganizationData.representative, null),
@@ -29872,7 +29868,6 @@ app.put("/customers/:id", async (req, res) => {
     return res.status(404).json({ ok: false, error: "customer not found" });
   }
 
-  const systemIndustryId = await validateCustomerIndustry(prisma,req.body?.systemIndustryId,existing.systemIndustryId);
   const { code, memo } = req.body ?? {};
   const name = ['name','nameKo','nameVi'].some(key => req.body?.[key] !== undefined) ? normalizeLocalizedName(req.body, "name").name : undefined;
   const targetOrganization = isManufacturerPerspective
@@ -29931,7 +29926,6 @@ app.put("/customers/:id", async (req, res) => {
   });
 
   const relationshipUpdateData: any = {
-    ...(systemIndustryId !== undefined ? {systemIndustryId} : {}),
     managerName: resolveOptionalString(nextTargetData.representative, existing.managerName),
     managerPhone: resolveOptionalString(nextTargetData.phone, existing.managerPhone),
     managerEmail: resolveOptionalString(nextTargetData.email, existing.managerEmail),

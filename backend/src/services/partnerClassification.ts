@@ -44,7 +44,7 @@ export async function validateClassification(db:any,body:any,orgId:number,entity
   return {revision:body.revision,roleIds,industryIds};
 }
 export async function saveClassification(db:any,orgId:number,entityId:number,employeeId:number|null,body:any){
-  await classificationTarget(db,orgId,entityId);
+  const target=await classificationTarget(db,orgId,entityId);
   await requireClassificationActor(db,orgId,employeeId);
   await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
   const data=await validateClassification(db,body,orgId,entityId);
@@ -54,6 +54,9 @@ export async function saveClassification(db:any,orgId:number,entityId:number,emp
   }else await db.partnerClassification.create({data:{orgId,entityId,updatedByEmployeeId:employeeId}});
   await db.partnerClassificationIndustry.deleteMany({where:{orgId,entityId}});
   await db.partnerClassificationIndustry.createMany({data:data.industryIds.map(systemIndustryId=>({orgId,entityId,systemIndustryId}))});
+  // Explicit classification replaces the old single customer type. Retaining
+  // that duplicate FK keeps removed types falsely in use after an edit.
+  if(target.kind==='CUSTOMER')await db.orgRelationship.update({where:{id:target.relationshipId},data:{systemIndustryId:null}});
   return readClassification(db,orgId,entityId);
 }
 export async function requireClassificationActor(db:any,orgId:number,employeeId:number|null){

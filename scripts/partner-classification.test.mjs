@@ -37,6 +37,14 @@ test('saving uses the authenticated company/active employee, serializes the enti
  const result=await saveClassification(db,1,7,8,body);assert.deepEqual(result.industryIds,[10,11]);assert.equal(result.revision,1);assert.deepEqual(writes,['header','industries']);assert.ok(selected.every(row=>row.orgId===1&&row.entityId===7));assert.equal(actor.status,'ACTIVE');assert.deepEqual(actor.orgRole.in,['ADMIN','OPERATOR','ACCOUNTANT']);
  await assert.rejects(saveClassification(db,2,7,8,body),/PARTNER_NOT_FOUND/);await assert.rejects(saveClassification(db,1,7,99,{...body,revision:1}),/ACTIVE_EMPLOYEE_REQUIRED/);
 });
+test('saving a customer classification clears only its obsolete single type FK after revision validation',async()=>{
+ let legacy=96,stored=null;const writes=[];
+ const db={...validator(),organization:{findFirst:async()=>null},orgRelationship:{findFirst:async()=>({id:2,manufacturerOrgId:1,brandOrgId:7,brand:{id:7},systemIndustry:legacy?{id:legacy}:null}),update:async({where,data})=>{assert.deepEqual(where,{id:2});assert.deepEqual(data,{systemIndustryId:null});legacy=null;writes.push('legacy');}},employee:{findFirst:async()=>({id:8})},$queryRawUnsafe:async()=>[],
+ partnerClassification:{findUnique:async()=>stored,create:async()=>{stored={revision:1,industries:[]};},updateMany:async()=>({count:0})},partnerClassificationIndustry:{deleteMany:async()=>{},createMany:async({data})=>{stored.industries=data.map(row=>({...row,industry:sources.find(s=>s.id===row.systemIndustryId)}));writes.push('classification');}}};
+ const result=await saveClassification(db,1,7,8,body);assert.equal(legacy,null);assert.deepEqual(result.industryIds,[10,11]);assert.deepEqual(writes,['classification','legacy']);
+ legacy=96;await assert.rejects(saveClassification(db,1,7,8,body),/PARTNER_CLASSIFICATION_CHANGED/);assert.equal(legacy,96);
+});
+
 test('classification read routes enforce membership first and ignore a forged orgId in favor of authenticated context',async()=>{
  const handlers=new Map();let allowed=false,reads=0;
  const db={partnerRole:{findMany:async()=>{reads++;return[];}},settingServiceDefault:{findMany:async()=>[]}};

@@ -1,3 +1,9 @@
+# 2026-11-02 고객 레거시 유형 참조 정리 (사용자 명시 정정)
+
+- 고객의 명시적 분류 저장은 PartnerClassificationIndustry를 현재 기준으로 사용하고 같은 트랜잭션에서 해당 OrgRelationship.systemIndustryId를 NULL로 정리한다. 구 클라이언트가 보내는 단일 systemIndustryId로 이 참조를 다시 생성하지 않는다. 아직 명시 분류가 없는 기존 고객의 읽기 호환은 유지한다. 고객 관계 행·ID·실제 주문/가격/청구/문서 FK와 snapshot은 보존한다. 앞선 레거시 유형 참조 보존 지시의 명시적 예외다.
+- 운영 정리는 사용자 지정 BARO→우리들 관계(id=2)의 이전 MIXED 참조만 대상으로 하며 현재 명시 WOVEN 분류·revision 및 기존 참조를 잠금 하에 재검증한다. 종합 유형 자체와 고객 관계 행을 자동 삭제하지 않는다.
+- 운영 적용 완료: OrgRelationship(id=2).systemIndustryId 96→NULL, 현재 WOVEN(id=94) 분류 revision=2 유지. 사후 읽기 전용 조회에서 MIXED(id=96)의 source/local 사용 참조 0건과 삭제 가능 상태를 확인했다. 영수증은 LEGACY_CUSTOMER_TYPE_CLEANUP:BARO_URIDEUL:2026-11-02다. backend/scripts/cleanup-urideul-legacy-type.js는 기본 읽기 전용이며 --apply와 일치하는 --revision에서만 적용한다.
+
 # 2026-11-02 세부 유형 코드 입력·표시 제거
 
 - 세부 유형도 다국어 이름으로 등록·수정하고 코드 입력·필수 검증·중복 안내·목록 코드 열을 제공하지 않는다. 기존 SettingServiceDefault/OutsourcingServiceType.code는 레거시 호환용 내부 식별자로 보존하고 새 유형은 이름과 무관한 내부 식별자를 발급한다. API의 사용자 code 입력으로 기존 식별자를 변경하지 않는다. 실제 회계 코드는 계속 관리하며 기존 유형·업무 FK·문서 snapshot·입력 방식·사용 여부 삭제 보호를 유지한다.
