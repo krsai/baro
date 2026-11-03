@@ -1,6 +1,7 @@
 import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
 import {useAuth} from '../../../context/AuthContext';
 import PartnerProfileFields from '../../../components/PartnerProfileFields';
+import {CompanyConnectionField} from '../../../components/CompanyConnections';
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
 import { ENTITY_TEXT } from '../../../constants/entityProfile';
 import EntityDetailSection from '../../../components/EntityDetailSection';
@@ -57,6 +58,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
           const event={target:{name,value}};
           if(key==='country')onCountryChange(event);else onBasicFieldChange(event);
         }}/>
+      <CompanyConnectionField orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
       <EntityDetailSection title={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).role}>
         <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode} initialRoleCode={!customerFormData.id?'CUSTOMER':undefined}/>
       </EntityDetailSection>

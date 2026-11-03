@@ -4,6 +4,7 @@ const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
 export async function getCustomerUsage(db: any, ids: number[]): Promise<Set<number>> {
   if (!ids.length) return new Set();
   const sources = [
+    ['CompanyIdentityLink', '(linked."orgId" = r."manufacturerOrgId" AND linked."entityId" = r."brandOrgId") OR (linked."orgId" = r."brandOrgId" AND linked."entityId" = r."manufacturerOrgId")'],
     ['CompanyPartnerLink', '(linked."orgId" = r."manufacturerOrgId" AND linked."entityId" = r."brandOrgId") OR (linked."orgId" = r."brandOrgId" AND linked."entityId" = r."manufacturerOrgId")'],
     ['Style', 'linked."orgId" = r."manufacturerOrgId" AND linked."customerOrgId" = r."brandOrgId"'],
     ['WorkOrder', 'linked."sellerOrgId" = r."manufacturerOrgId" AND linked."buyerOrgId" = r."brandOrgId"'],

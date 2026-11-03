@@ -86,6 +86,7 @@ export const createEmptyCustomerFormData = () => buildCustomerFormData();
 export const buildCustomerPayload = (formData = {}) => ({
   partyKind:formData.partyKind||null,
   classification:classificationPayload(formData.classification),
+  ...(formData.companyConnection?{companyConnection:formData.companyConnection}:{}),
   businessNumber: String(formData.businessNumber || '').trim() || null,
   code: String(formData.code || '').trim().toUpperCase(),
   name: normalizeLocalizedName(formData, 'name').name,

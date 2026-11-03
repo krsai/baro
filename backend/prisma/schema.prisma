@@ -170,6 +170,9 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  identityAnchor CompanyIdentity? @relation("CompanyIdentityAnchor")
+  ownedIdentityLinks CompanyIdentityLink[] @relation("CompanyIdentityOwner")
+  identityLinks CompanyIdentityLink[] @relation("CompanyIdentityEntity")
   outgoingCompanyLinks CompanyPartnerLink[] @relation("CompanyLinkSource")
   incomingCompanyLinks CompanyPartnerLink[] @relation("CompanyLinkTarget")
   localCompanyLinks CompanyPartnerLink[] @relation("CompanyLinkEntity")
@@ -312,6 +315,36 @@ model CompanyPartnerLink {
  createdByEmployee Employee @relation(fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"CompanyPartnerLink_actor_scope_fkey")
  @@id([orgId,entityId])
  @@index([targetOrgId])
+}
+
+model CompanyIdentity {
+ id Int @id @default(autoincrement())
+ anchorEntityId Int @unique
+ code String @unique
+ name String
+ nameKo String?
+ nameVi String?
+ country String
+ businessNumber String
+ address String?
+ createdAt DateTime @default(now())
+ anchor Organization @relation("CompanyIdentityAnchor",fields:[anchorEntityId],references:[id],onDelete:Restrict)
+ links CompanyIdentityLink[]
+ @@index([country,businessNumber])
+}
+
+model CompanyIdentityLink {
+ orgId Int
+ entityId Int
+ identityId Int
+ createdByEmployeeId Int
+ createdAt DateTime @default(now())
+ owner Organization @relation("CompanyIdentityOwner",fields:[orgId],references:[id],onDelete:Restrict)
+ entity Organization @relation("CompanyIdentityEntity",fields:[entityId],references:[id],onDelete:Restrict)
+ identity CompanyIdentity @relation(fields:[identityId],references:[id],onDelete:Restrict)
+ actor Employee @relation(fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"CompanyIdentityLink_actor_scope_fkey")
+ @@id([orgId,entityId])
+ @@index([identityId])
 }
 
 model Currency {
@@ -661,6 +694,7 @@ model Warehouse {
 
 
 model Employee {
+  companyIdentityLinks CompanyIdentityLink[]
   createdCompanyLinks CompanyPartnerLink[]
   updatedPartnerClassifications PartnerClassification[]
   payableExpenseRequests ExpenseRequest[] @relation("ExpenseEmployeePayee")

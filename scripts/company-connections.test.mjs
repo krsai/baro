@@ -8,12 +8,12 @@ const {companyConnectionCandidates,connectPartnerCompany,registerCompanyConnecti
 test('connected partners use public subscriber identity while retaining local IDs and historical codes',async()=>{
  const {attachLinkedCompanies,linkedPartnerCompany}=require('../backend/dist/services/companyConnections');
  const company={id:1845,name:'DEX LOGIS',code:'DEXL',country:'VN',businessNumber:null};
- const db={companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
+ const db={companyIdentity:{findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
  const [row]=await attachLinkedCompanies(db,1,[{entityId:1846,id:1846,code:'DEX'}]);
  assert.equal(row.code,'DEX');assert.equal(row.entityId,1846);assert.equal(row.linkedCompany.code,'DEXL');
  assert.equal((await linkedPartnerCompany(db,1,1846)).id,1845);
  const matching={...db,$queryRawUnsafe:async()=>[{...company,businessNumber:'VN123'}]};
- assert.equal((await linkedPartnerCompany(matching,1,undefined,undefined,{name:'DEX LOGIS',country:'VN',businessNumber:'VN123'})).id,1845);
+ await assert.rejects(linkedPartnerCompany(matching,1,undefined,undefined,{name:'DEX LOGIS',country:'VN',businessNumber:'VN123'}),/CONFIRMATION_REQUIRED/);
  const {resolvePartnerIdentity}=require('../backend/dist/services/entityProfile');
  assert.deepEqual(resolvePartnerIdentity({partyKind:'CORPORATE',businessNumber:'VN-1'},'DEX LOGIS',{id:1846,code:'DEX'},company),{partyKind:'CORPORATE',code:'DEX'});
  assert.deepEqual(resolvePartnerIdentity({partyKind:'CORPORATE',businessNumber:'VN-1'},'DEX LOGIS',undefined,company),{partyKind:'CORPORATE',code:null});
@@ -46,13 +46,13 @@ test('candidate identity revision is stable across SQL and Prisma field order',(
 function memory(){
  const target={id:2,name:'DEX LOGIS',nameKo:'덱스로지스',nameVi:null,code:'DEXLOG',country:'VN',businessNumber:'123-456'},links=[];
  const local={id:11,name:'DEX LOGIS',nameKo:null,nameVi:null,code:'DEX',country:'VN',businessNumber:'123456'};
- const db={organization:{findUnique:async()=>local,findFirst:async({where})=>where.id===11?{...local,outsourcingServiceAssignments:[]}:where.id===2?target:null,findMany:async()=>[target]},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>where.orgId===1&&where.id===101?{id:101}:null},companyPartnerLink:{findUnique:async()=>links[0]||null,create:async({data})=>{links.push(data);return data;},findMany:async()=>links.map(row=>({...row,source:{id:1,name:'BARO',code:'BARO'},target,createdAt:new Date()}))},$queryRawUnsafe:async(sql)=>sql.startsWith('SELECT id,name')?[target]:[]};
+ const db={companyIdentity:{findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},organization:{findUnique:async()=>local,findFirst:async({where})=>where.id===11?{...local,outsourcingServiceAssignments:[]}:where.id===2?target:null,findMany:async()=>[target]},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>where.orgId===1&&where.id===101?{id:101}:null},companyPartnerLink:{findUnique:async()=>links[0]||null,create:async({data})=>{links.push(data);return data;},findMany:async()=>links.map(row=>({...row,source:{id:1,name:'BARO',code:'BARO'},target,createdAt:new Date()}))},$queryRawUnsafe:async(sql)=>sql.startsWith('SELECT id,name')?[target]:[]};
  db.$transaction=async fn=>fn(db);return {db,target,local,links};
 }
 test('business-number match uses only public identity and connects local vendor to separate SaaS tenant',async()=>{
  const {db,links}=memory();const candidates=await companyConnectionCandidates(db,1,{businessNumber:'123 456',country:'VN'});
  assert.equal(candidates[0].id,2);assert.ok(candidates[0].revision);assert.equal('email' in candidates[0],false);
- await connectPartnerCompany(db,1,11,101);assert.deepEqual(links,[{orgId:1,entityId:11,targetOrgId:2,createdByEmployeeId:101,matchMethod:'BUSINESS_NUMBER'}]);
+ await assert.rejects(connectPartnerCompany(db,1,11,101),/CONFIRMATION_REQUIRED/);await connectPartnerCompany(db,1,11,101,{targetOrgId:2,revision:candidates[0].revision});assert.deepEqual(links,[{orgId:1,entityId:11,targetOrgId:2,createdByEmployeeId:101,matchMethod:'SELECTED'}]);
  await connectPartnerCompany(db,1,11,101);assert.equal(links.length,1);
 });
 test('name-only match requires explicit selected identity and rejects stale/mismatched identity and forged employee',async()=>{
@@ -66,16 +66,16 @@ test('name-only match requires explicit selected identity and rejects stale/mism
 });
 test('ambiguous business numbers do not create a guessed relationship',async()=>{
  const {db,target}=memory();db.$queryRawUnsafe=async sql=>sql.startsWith('SELECT id,name')?[target,{...target,id:3}]:[];
- assert.equal(await connectPartnerCompany(db,1,11,101),null);
+ await assert.rejects(connectPartnerCompany(db,1,11,101),/CONFIRMATION_REQUIRED/);
 });
 test('DEX can register BARO in the reverse direction using its own local partner and employee',async()=>{
  const {db,links}=memory(),target={id:1,name:'BARO GARMENT',nameKo:null,nameVi:null,code:'BARO',country:'VN',businessNumber:'998877'};
  db.organization.findUnique=async()=>({...target,id:21,code:'BAROPARTNER'});
- db.organization.findFirst=async()=>({...target,id:21,outsourcingServiceAssignments:[]});
+ db.organization.findFirst=async({where})=>where.id===21?{...target,id:21,outsourcingServiceAssignments:[]}:target;
  db.employee.findFirst=async({where})=>where.orgId===2&&where.id===125?{id:125}:null;
  db.$queryRawUnsafe=async sql=>sql.startsWith('SELECT id,name')?[target]:[];
- await connectPartnerCompany(db,2,21,125);
- assert.deepEqual(links[0],{orgId:2,entityId:21,targetOrgId:1,createdByEmployeeId:125,matchMethod:'BUSINESS_NUMBER'});
+ await connectPartnerCompany(db,2,21,125,{targetOrgId:1,revision:companyIdentityRevision(target)});
+ assert.deepEqual(links[0],{orgId:2,entityId:21,targetOrgId:1,createdByEmployeeId:125,matchMethod:'SELECTED'});
 });
 test('incoming connection exposes counterpart public identity without its local vendor ID or employees',async()=>{
  const {db}=memory();db.employee.findFirst=async()=>({id:102});db.companyPartnerLink.findMany=async({where})=>{assert.deepEqual(where,{OR:[{orgId:2},{targetOrgId:2}]});return [{orgId:1,entityId:11,targetOrgId:2,source:{id:1,name:'BARO',code:'BARO'},target:{id:2,name:'DEX'},createdAt:new Date()}];};
@@ -85,7 +85,7 @@ test('incoming connection exposes counterpart public identity without its local 
 });
 test('SQL enforces real companies, own vendor and active company actor; connection cannot be repointed or deleted',async()=>{
  const db=new PGlite();try{
- await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,"businessNumber" TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,code TEXT,country TEXT DEFAULT 'VN');CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
+ await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,"businessNumber" TEXT,address TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,code TEXT,country TEXT DEFAULT 'VN');CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
  INSERT INTO "Organization"(id,"ownerOrgId",type) VALUES(1,NULL,'MANUFACTURER'),(2,NULL,'SERVICE'),(3,NULL,'MANUFACTURER'),(11,1,'LOGISTICS_PROVIDER'),(12,3,'LOGISTICS_PROVIDER');INSERT INTO "Employee" VALUES(101,1,'ACTIVE','ADMIN'),(102,2,'ACTIVE','ADMIN');`);
  await db.exec(readFileSync('backend/prisma/migrations/20261101230000_company_partner_links/migration.sql','utf8'));
  await db.exec(readFileSync('backend/prisma/migrations/20261101231000_company_links_self_owned_tenants/migration.sql','utf8'));

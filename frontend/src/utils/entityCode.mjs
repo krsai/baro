@@ -7,6 +7,8 @@ export const ENTITY_CODE_TEXT={
 export function entityCodeError(error,languageCode,fallback,partyKind){
  const t=ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en;
  const p=PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en;
+ const connection={ko:'같은 사업자·세금 번호의 업체를 확인하고, 같은 업체 연결 또는 별도 등록을 선택해 주세요.',en:'Review the matching company and choose to connect or register separately.',vi:'Hãy kiểm tra công ty trùng mã số và chọn kết nối hoặc đăng ký riêng.'};
+ if(['COMPANY_CONNECTION_CONFIRMATION_REQUIRED','COMPANY_CONNECTION_CHANGED'].includes(error?.message))return connection[languageCode]||connection.en;
  if(error?.message==='CORPORATE_PARTNER_CODE_INVALID')return p.codeInvalid;
  if(error?.message==='PARTNER_BUSINESS_NUMBER_REQUIRED')return p.businessRequired;
  if(['PARTNER_PARTY_KIND_REQUIRED','INVALID_PARTY_KIND'].includes(error?.message))return p.kindRequired;

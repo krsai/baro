@@ -25,7 +25,7 @@ export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any,
   const value=body?.code===undefined?previous?.code:body.code;
   if(partyKind==='CORPORATE'){
     const code=normalizePartnerCode(linkedCompany?linkedCompany.code:value);
-    if(!code||!/^[A-Z0-9]{4}$/.test(code))throw Object.assign(new Error('CORPORATE_PARTNER_CODE_INVALID'),{status:400});
+    if(!code||!linkedCompany&&!/^[A-Z0-9]{4}$/.test(code))throw Object.assign(new Error('CORPORATE_PARTNER_CODE_INVALID'),{status:400});
     const number=body?.businessNumber===undefined?previous?.businessNumber:body.businessNumber;
     if(typeof number!=='string'||!number.trim()||number.trim().length>100)throw Object.assign(new Error('PARTNER_BUSINESS_NUMBER_REQUIRED'),{status:400});
     return {partyKind,code:linkedCompany?previous?.code??null:code};

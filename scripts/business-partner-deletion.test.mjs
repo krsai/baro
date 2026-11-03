@@ -8,7 +8,7 @@ test('customer deletion checks every business source and keeps shared organizati
   try {
     await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY); INSERT INTO "Organization" VALUES(1),(2);
       CREATE TABLE "OrgRelationship"(id INT PRIMARY KEY,"manufacturerOrgId" INT REFERENCES "Organization","brandOrgId" INT REFERENCES "Organization");
-      CREATE TABLE "CompanyPartnerLink"("orgId" INT,"entityId" INT);
+      CREATE TABLE "CompanyPartnerLink"("orgId" INT,"entityId" INT);CREATE TABLE "CompanyIdentityLink"("orgId" INT,"entityId" INT);
       INSERT INTO "OrgRelationship" VALUES(7,1,2);`);
     const tx = {
       $queryRawUnsafe: async (sql,...args) => (await db.query(sql,args)).rows,

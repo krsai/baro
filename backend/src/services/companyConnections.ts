@@ -1,32 +1,39 @@
 import {createHttpError} from '../utils/http';
 import {editRevision,retryEditTransaction} from '../utils/editRevision';
 import {classificationTarget,requireClassificationActor} from './partnerClassification';
+import {identityFields,identityCandidates,resolveIdentityChoice,saveIdentityChoice,identityDto} from './companyIdentity';
 
 const tenantTypes=['MANUFACTURER','BRAND','SERVICE'];
 const tenantScope={ownerOrgId:null,isActive:true,type:{in:tenantTypes},employees:{some:{status:'ACTIVE'}}};
-const publicSelect={id:true,name:true,nameKo:true,nameVi:true,code:true,country:true,businessNumber:true};
+const publicSelect=identityFields;
 export const normalizedBusinessNumber=(value:any)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export const companyIdentityRevision=(row:any)=>editRevision(Object.fromEntries(Object.keys(publicSelect).map(key=>[key,row[key]??null])));
 const identity=(row:any)=>({...row,revision:companyIdentityRevision(row)});
 export async function companyConnectionCandidates(db:any,orgId:number,input:any){
  const name=String(input.name||'').trim(),number=normalizedBusinessNumber(input.businessNumber),country=String(input.country||'').trim();
+ if(number)return identityCandidates(db,orgId,input);
  if((!number&&name.length<3)||name.length>200||number.length>100)throw createHttpError(400,'COMPANY_LOOKUP_INPUT_REQUIRED');
  const predicate=number?`regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g')=$2`:`(lower(name)=lower($2) OR lower("nameKo")=lower($2) OR lower("nameVi")=lower($2))`;
- const rows=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber" FROM "Organization" o WHERE id<>$1 AND "ownerOrgId" IS NULL AND ("dataOwnerOrgId" IS NULL OR "dataOwnerOrgId"=o.id) AND "isActive" AND type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND ${predicate} AND ($3='' OR country=$3) ORDER BY id LIMIT 21`,orgId,number||name,country);
+ const rows=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address FROM "Organization" o WHERE id<>$1 AND "ownerOrgId" IS NULL AND ("dataOwnerOrgId" IS NULL OR "dataOwnerOrgId"=o.id) AND "isActive" AND type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND ${predicate} AND ($3='' OR country=$3) ORDER BY id LIMIT 21`,orgId,number||name,country);
  return rows.filter((row:any)=>!number||normalizedBusinessNumber(row.businessNumber)===number).map(identity);
 }
 export async function connectPartnerCompany(tx:any,orgId:number,entityId:number,actorId:number|null,requested?:any){
  await requireClassificationActor(tx,orgId,actorId);
- await classificationTarget(tx,orgId,entityId);
+ if(entityId!==orgId)await classificationTarget(tx,orgId,entityId);
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
  const entity=await tx.organization.findUnique({where:{id:entityId},select:publicSelect});
  const existing=await tx.companyPartnerLink.findUnique({where:{orgId_entityId:{orgId,entityId}}});
  if(existing){
+  if(requested?.separate||requested?.identityId||requested?.sourceEntityId&&requested.sourceEntityId!==existing.targetOrgId)throw createHttpError(409,'COMPANY_CONNECTION_ALREADY_LINKED');
   if(requested&&requested.targetOrgId!==existing.targetOrgId)throw createHttpError(409,'COMPANY_CONNECTION_ALREADY_LINKED');
   const linked=await tx.organization.findFirst({where:{id:existing.targetOrgId},select:publicSelect});
   const a=normalizedBusinessNumber(entity.businessNumber),b=normalizedBusinessNumber(linked?.businessNumber);
   if(a&&b&&a!==b||entity.country&&linked?.country&&entity.country!==linked.country)throw createHttpError(409,'COMPANY_CONNECTION_IDENTITY_MISMATCH');
   return existing;
+ }
+ if(!requested||requested.separate||requested.identityId||requested.sourceEntityId){
+  const choice=await resolveIdentityChoice(tx,orgId,entityId,requested,entity);
+  return choice?saveIdentityChoice(tx,orgId,entityId,actorId!,choice):null;
  }
  let target:any;
  if(requested){
@@ -35,13 +42,8 @@ export async function connectPartnerCompany(tx:any,orgId:number,entityId:number,
   if(!target||requested.revision!==companyIdentityRevision(target))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
   const number=normalizedBusinessNumber(entity.businessNumber),targetNumber=normalizedBusinessNumber(target.businessNumber);
   if(number&&targetNumber&&number!==targetNumber||entity.country&&target.country&&entity.country!==target.country)throw createHttpError(409,'COMPANY_CONNECTION_IDENTITY_MISMATCH');
- }else{
-  if(!normalizedBusinessNumber(entity.businessNumber)||!entity.country)return null;
-  const candidates=await companyConnectionCandidates(tx,orgId,entity);
-  if(candidates.length!==1)return null;
-  target=candidates[0];
  }
- return tx.companyPartnerLink.create({data:{orgId,entityId,targetOrgId:target.id,createdByEmployeeId:actorId,matchMethod:requested?'SELECTED':'BUSINESS_NUMBER'}});
+ return tx.companyPartnerLink.create({data:{orgId,entityId,targetOrgId:target.id,createdByEmployeeId:actorId,matchMethod:'SELECTED'}});
 }
 // Customer organization FKs can predate tenant registration. A relationship
 // never authorizes rewriting an independently registered company's profile.
@@ -54,7 +56,8 @@ export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
  app.get('/company-connections/candidates',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;res.json(await companyConnectionCandidates(db,orgId,req.query));});
  app.get('/company-connections',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;
   const rows=await db.companyPartnerLink.findMany({where:{OR:[{orgId},{targetOrgId:orgId}]},include:{source:{select:publicSelect},target:{select:publicSelect}},orderBy:{createdAt:'asc'}});
-  res.json(rows.map((row:any)=>({company:row.orgId===orgId?row.target:row.source,entityId:row.orgId===orgId?row.entityId:null,direction:row.orgId===orgId?'OUTGOING':'INCOMING',createdAt:row.createdAt})));
+  const common=await db.companyIdentityLink.findMany({where:{orgId},include:{identity:true}});
+  res.json([...common.map((row:any)=>({company:identityDto(row.identity,true),entityId:row.entityId,direction:'OUTGOING',createdAt:row.createdAt})),...rows.filter((row:any)=>!common.some((c:any)=>c.entityId===row.entityId&&row.orgId===orgId)).map((row:any)=>({company:row.orgId===orgId?row.target:row.source,entityId:row.orgId===orgId?row.entityId:null,direction:row.orgId===orgId?'OUTGOING':'INCOMING',createdAt:row.createdAt}))]);
  });
  app.post('/company-connections',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;const entityId=Number(req.body?.entityId);if(!Number.isSafeInteger(entityId)||entityId<=0)throw createHttpError(400,'INVALID_PARTNER_ID');
   res.json(await retryEditTransaction(db,tx=>connectPartnerCompany(tx,orgId,entityId,gates.getActor(),req.body?.companyConnection)));
@@ -63,13 +66,11 @@ export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
 
 /** A local relationship keeps its FK; public identity comes from the connected subscriber. */
 export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,requested?:any,profile?:any){
+ const common=entityId?await db.companyIdentityLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{identity:true}}):null;
+ if(common)return resolveIdentityChoice(db,orgId,entityId,requested,profile);
  const link=entityId?await db.companyPartnerLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{target:{select:publicSelect}}}):null;
  if(link)return link.target;
- if(!requested){
-  if(!normalizedBusinessNumber(profile?.businessNumber)||!profile?.country)return null;
-  const candidates=await companyConnectionCandidates(db,orgId,profile);
-  return candidates.length===1?candidates[0]:null;
- }
+ if(!requested||requested.separate||requested.identityId||requested.sourceEntityId)return resolveIdentityChoice(db,orgId,entityId,requested,profile);
  if(!Number.isSafeInteger(requested.targetOrgId)||requested.targetOrgId===orgId)throw createHttpError(400,'INVALID_COMPANY_CONNECTION');
  const target=await db.organization.findFirst({where:{...tenantScope,id:requested.targetOrgId,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:requested.targetOrgId}]},select:publicSelect});
  if(!target||requested.revision!==companyIdentityRevision(target))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
@@ -78,5 +79,6 @@ export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,
 export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
  if(!rows.length)return rows;
  const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,target:{select:publicSelect}}});
- return rows.map(row=>({...row,linkedCompany:links.find((link:any)=>link.entityId===row.entityId)?.target??null}));
+ const common=await db.companyIdentityLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:{identity:true}});
+ return rows.map(row=>({...row,linkedCompany:common.some((link:any)=>link.entityId===row.entityId)?identityDto(common.find((link:any)=>link.entityId===row.entityId).identity,true):links.find((link:any)=>link.entityId===row.entityId)?.target??null}));
 }
