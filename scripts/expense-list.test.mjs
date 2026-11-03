@@ -22,12 +22,17 @@ test('request rows count mixed units and sum exact amounts per currency without 
 test('request classification summaries count distinct FKs and preserve first-item order in all languages', () => {
   const item=(serviceTypeId,expenseTypeId,label)=>({serviceTypeId,transactionCode:{base:{expenseTypeId}},label});
   const rows=[item(1,7,'Buttonhole'),item(1,7,'Buttonhole'),item(2,7,'Sewing'),item(3,8,'Buttonhole')];
-  for(const [lang,expected] of [['ko','Buttonhole 외 2개'],['en','Buttonhole and 2 more'],['vi','Buttonhole và 2 mục khác']]){
+  for(const [lang,expected] of [['ko','Buttonhole 외 2건'],['en','Buttonhole and 2 more'],['vi','Buttonhole và 2 mục khác']]){
     assert.deepEqual(summarizeExpenseDimensions(rows,row=>row.label,lang),{text:expected,title:'Buttonhole, Sewing, Buttonhole',count:3});
   }
   assert.equal(summarizeExpenseDimensions(rows.slice(0,2),row=>row.label,'ko').text,'Buttonhole');
   assert.equal(summarizeExpenseDimensions([{},{}],()=> 'Unclassified').count,1);
   assert.equal(summarizeExpenseDimensions([],()=> '').text,'—');
+});
+test('largest individual line represents the request; ties preserve original order and amounts stay exact',()=>{
+ const rows=[{serviceTypeId:1,label:'Old first',currency:'VND',amount:'100'},{serviceTypeId:2,label:'Largest',currency:'VND',amount:'9007199254740993.0001'},{serviceTypeId:3,label:'Smaller',currency:'VND',amount:'9007199254740993.0000'},{serviceTypeId:4,label:'Tied',currency:'VND',amount:'9007199254740993.0001'}];
+ assert.equal(summarizeExpenseDimensions(rows,row=>row.label,'ko').text,'Largest 외 3건');
+ assert.equal(rows[0].label,'Old first');
 });
 
 test('expense summaries preserve decimal amounts and separate currencies', () => {

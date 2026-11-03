@@ -27,15 +27,21 @@ export const expenseIndustryKey = row => row.serviceTypeId != null ? `service:${
 // Labels can be identical or translated; only the related FK identifies a value.
 export function summarizeExpenseDimensions(items, getLabel, language = 'ko') {
   const values = new Map();
+  // Compare exact amounts only within one currency; never infer exchange rates.
+  const currency=items?.[0]?.currency;
+  const representative=(items||[]).filter(item=>item.currency===currency).reduce((best,item)=>
+    !best||amountUnits(item.amount)>amountUnits(best.amount)?item:best,null);
+  const representativeId=representative?.serviceTypeId??representative?.serviceType?.id;
+  const representativeKey=representativeId==null?'unclassified':String(representativeId);
   for (const item of items || []) {
     const id = item.serviceTypeId ?? item.serviceType?.id;
     const key = id == null ? 'unclassified' : String(id);
     if (!values.has(key)) values.set(key, getLabel(item));
   }
-  const labels = [...values.values()];
+  const labels = [...values.entries()].sort(([a],[b])=>a===representativeKey?-1:b===representativeKey?1:0).map(([,label])=>label);
   const count = Math.max(0, labels.length - 1);
   const first = labels[0] || '—';
-  const text = !count ? first : language === 'ko' ? `${first} 외 ${count}개`
+  const text = !count ? first : language === 'ko' ? `${first} 외 ${count}건`
     : language === 'vi' ? `${first} và ${count} mục khác` : `${first} and ${count} more`;
   return { text, title: labels.join(', '), count: labels.length };
 }

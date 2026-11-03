@@ -51,6 +51,12 @@
 
 - Partner account creation, editing and ordering use existing company/entity access for ACTIVE ADMIN, ACCOUNTANT and OPERATOR employees. Only own-company accounts remain ADMIN-only. Preserve company isolation, actual membership checks and ledger/currency history protections; no SYSTEM-only bypass.
 
+# 2026-11-03 미승인 비용 지급 차단·결재 표시·목록 세부 유형
+
+- 비용 증빙은 현재 문서 버전의 전체 결재가 끝났거나 유효한 저장 전결일 때만 입출금에 연결한다. 기존 서버·DB 승인 검사와 문서 잠금을 유지한다. 다중 행의 미승인 비용은 전체 저장을 롤백하고 LEDGER_ROW 행 번호와 사유를 표시하며 화면의 실패 행을 강조하고 스크롤한다. 미승인·반려·변경 버전을 파일 증빙으로 추정 변환하지 않는다.
+- 결재선은 실제 첫 미승인 결재자만 노란색 결재 대기, 이후 결재자는 회색 차례 대기, 승인 완료는 초록색, 반려는 빨간색, 중단과 미요청은 별도 문구로 표시한다. 이름과 상태 문구를 함께 표시하고 긴 이름이 상태를 가리지 않게 한다. 실제 승인·현재 버전·전결 규칙은 변경하지 않는다.
+- 비용 목록의 세부 유형은 실제 serviceType.systemDefault의 현재 공통 이름을 우선 조회하고 없는 과거 관계는 기존 이름을 보존한다. 저장된 FK·금액·snapshot은 재작성하지 않는다. 신청서의 가장 금액이 큰 개별 항목 유형을 대표로 쓰고 동액이면 기존 첫 항목을 유지하며 ‘외 N건’으로 표시한다. 유형 건수는 실제 서로 다른 유형 FK 기준이다. 다른 통화의 금액은 환산하거나 직접 비교하지 않는다.
+
 # 2026-11-02 동일 회사의 SaaS·거래처 연결과 운영자 비용 결재
 
 - SaaS 가입 DEX와 BARO 거래처 DEX는 같은 실제 회사다. CompanyPartnerLink로 연결하고 가입 회사의 공식 코드 DEXL을 표시한다. 별도 네 자리 코드를 요구하지 않는다. 로컬 행·기존 식별자·거래 FK는 보존하고 연결된 공개 회사 식별 정보만 조회한다. 업무 자료 공유는 명시적으로 허용한 범위로 제한하며 연결 자체로 급여·계좌·회계 접근 권한을 부여하지 않는다.

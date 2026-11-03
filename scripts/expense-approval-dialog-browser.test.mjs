@@ -4,6 +4,7 @@ import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {expenseHeaderActions} from '../frontend/src/constants/expenseHeaderActions.js';
+import {approvalStepLabels} from '../frontend/src/utils/approvalStepState.mjs';
 import {expenseApprovalActionsText} from '../frontend/src/constants/expenseApprovalActions.js';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
 const fixture=path.resolve('frontend/expense-approval-dialog-acceptance.html');assert.ok(!existsSync(fixture));
@@ -36,7 +37,7 @@ try{
   await page.evaluate(()=>window.setApprovalStatus({steps:[{employeeId:2,approved:true},{employeeId:3,approved:false},{employeeId:4,approved:false}]}));
   const progress=expenseApprovalActionsText[lang],approvalButton=page.getByTestId('expense-approval-button');
   const approved=approvalButton.locator('[data-approval-state="approved"]'),waiting=approvalButton.locator('[data-approval-state="pending"]');
-  await approved.getByText(names[0],{exact:true}).waitFor();await waiting.getByText(names[1],{exact:true}).waitFor();
+  await approved.getByText(names[0],{exact:true}).waitFor();await waiting.getByText(names[1],{exact:true}).waitFor();await approvalButton.locator('[data-approval-state="waiting"]').getByText(names[2],{exact:true}).waitFor();assert.equal(await waiting.count(),1);await waiting.getByText(approvalStepLabels[lang].pending,{exact:true}).waitFor();
   assert.equal(await approved.getAttribute('aria-label'),names[0]+' · '+progress.approved);
   await page.waitForFunction(()=>getComputedStyle(document.querySelector('[data-approval-state="approved"]')).backgroundColor==='rgb(232, 247, 239)');
   await page.waitForFunction(()=>[...document.querySelectorAll('[data-approval-state="pending"]')].every(el=>getComputedStyle(el).backgroundColor==='rgb(255, 246, 219)'));

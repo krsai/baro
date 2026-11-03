@@ -29,6 +29,7 @@ try {
       {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:5,serviceType:{...service,id:5,nameKo:'봉제',nameEn:'Sewing',nameVi:'May'},transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
       {id:'document-item',sourceKind:'COST_REQUEST',expenseRequestId:1,expenseRequest:{id:1,managementNumber:'EXP-2026-000041',remark:'Delivery note'},partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:4,serviceType:service,transactionDate:'2026-10-17',description:'Document cost',style:{id:42,name:'New shirt',code:'NEW-42'},transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'1',unitPrice:'10.25',amount:'10.25',subtotal:'10.25',vatRate:'0',vatAmount:'0',currency:'USD'},
     ];
+    rows[2].serviceType={...service,nameKo:'Obsolete label',nameEn:'Obsolete label',nameVi:'Obsolete label',systemDefault:service};
     rows.push({...rows[2],id:'document-item-2',quantity:'7',unit:{id:2,nameEn:'Meter'},amount:'20.50',subtotal:'20.50'});
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
     await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
@@ -116,7 +117,7 @@ try {
     await page.locator('[data-expense-row="document-item"] button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
     await page.getByRole('tab',{name:text.documents,exact:true}).click();
-    assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).textContent(),{ko:'물류 외 1개',en:'Logistics and 1 more',vi:'Vận chuyển và 1 mục khác'}[lang]);
+    assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).textContent(),{ko:'물류 외 1건',en:'Logistics and 1 more',vi:'Vận chuyển và 1 mục khác'}[lang]);
     assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).locator('span').getAttribute('title'),{ko:'물류, 봉제',en:'Logistics, Sewing',vi:'Vận chuyển, May'}[lang]);
     await page.getByRole('textbox',{name:text.search}).fill('NEW-42');
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);

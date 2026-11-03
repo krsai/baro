@@ -71,7 +71,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const documentsById = useMemo(()=>new Map(documents.map(row=>[row.id,row])),[documents]);
   const numberFor = row => {const document=documentsById.get(row.expenseRequestId)||row.expenseRequest;return document?expenseRequestNumber(document):'—';};
   const remarkFor = row => row.expenseRequest?.remark ?? documentsById.get(row.expenseRequestId)?.remark ?? '';
-  const industryLabel = row => serviceName(row.serviceType,languageCode) || text.unclassified;
+  const industryLabel = row => serviceName(row.serviceType?.systemDefault||row.serviceType,languageCode) || text.unclassified;
   const dimensionCell = (document,dimension) => {
     const summary = summarizeExpenseDimensions(document.items,industryLabel,languageCode);
     return <span title={summary.title}>{summary.text}</span>;

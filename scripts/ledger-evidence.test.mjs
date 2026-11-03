@@ -315,12 +315,16 @@ test('settlement lines require the same transaction, exact totals, document type
 
 test('expense fees are included in actual withdrawal, require current approval and do not increase item payments',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
-  await pg.exec(`UPDATE "ExpenseRequest" SET "createdByEmployeeId"=99; INSERT INTO "ExpenseApprovalDecision" VALUES('pay-1',1,1,1,1,10,now()),('pay-2',1,1,1,2,11,now());`);
+  await pg.exec(`UPDATE "ExpenseRequest" SET "createdByEmployeeId"=99; INSERT INTO "ExpenseApprovalDecision" VALUES('pay-1',1,1,1,1,10,now());`);
   db.partnerTransactionCost={findMany:async()=> (await pg.query(`SELECT * FROM "PartnerTransactionCost" WHERE id='c1'`)).rows,findFirst:async()=> (await pg.query(`SELECT * FROM "PartnerTransactionCost" WHERE id='c1'`)).rows[0]};
   db.expenseRequest={findFirst:async()=>{const row=(await pg.query(`SELECT * FROM "ExpenseRequest" WHERE id=1`)).rows[0];return {...row,approvalSteps:(await pg.query(`SELECT * FROM "ExpenseRequestApprovalStep" WHERE "requestId"=1 ORDER BY position`)).rows};}};
   db.expenseApprovalDecision={findMany:async({where})=>(await pg.query(`SELECT * FROM "ExpenseApprovalDecision" WHERE "requestId"=1 AND version=$1`,[where.version])).rows};
   db.bankLedgerEvidenceAllocation={findMany:async({where})=>(await pg.query(`SELECT a.* FROM "BankLedgerEvidenceAllocation" a JOIN "BankLedgerEntry" e ON e.id=a."entryId" WHERE a."expenseItemId"=$1 AND e."voidedAt" IS NULL`,[where.expenseItemId])).rows};
   const main=batchRow({entryKind:'BANK',direction:'OUT',evidenceType:'EXPENSE',evidenceNumber:'',amount:'101',expenseRequestId:1,expenseVersion:1,expenseItems:[{itemId:'c1',amount:'100'}]}),fee={entryKind:'FEE',clientKey:randomUUID(),parentClientKey:main.clientKey,amount:'1',purpose:'Transfer fee'};
+  const before=(await pg.query(`SELECT count(*)::int AS n FROM "BankLedgerEntry"`)).rows[0].n;
+  await assert.rejects(postLedgerBatch(db,1,'actor',{clientKey:randomUUID(),rows:[batchRow({entryKind:'BANK'}),main,fee]}),/LEDGER_ROW:2:LEDGER_EXPENSE_NOT_APPROVED/);
+  assert.equal((await pg.query(`SELECT count(*)::int AS n FROM "BankLedgerEntry"`)).rows[0].n,before,'an unapproved expense rolls back every row');
+  await pg.exec(`INSERT INTO "ExpenseApprovalDecision" VALUES('pay-2',1,1,1,2,11,now())`);
   await assert.rejects(postLedgerBatch(db,1,'actor',{clientKey:randomUUID(),rows:[{...main,expenseVersion:2},fee]}),/EXPENSE_REQUEST_CHANGED/);
   await assert.rejects(postLedgerBatch(db,1,'actor',{clientKey:randomUUID(),rows:[main,{...fee,entryKind:'WRITEOFF'}]}),/INVALID_SETTLEMENT/);
   await assert.rejects(postLedgerBatch(db,1,'actor',{clientKey:randomUUID(),rows:[main,{...fee,parentClientKey:randomUUID()}]}),/INVALID_SETTLEMENT/);
