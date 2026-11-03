@@ -10,6 +10,7 @@ import {loadAccountOverview} from './accountOverview';
 import {accountingCodeId,ledgerAccountingCode} from './accountingCode';
 import {readLedgerEdit,replaceLedgerEntry,deleteLedgerEntry} from './bankLedgerEdit';
 import {listApprovalOverview} from './approvalOverview';
+import {attachLedgerActorNames} from './ledgerActors';
 
 // Internal lower bound only; new accounts have no user-defined opening period.
 export const LEDGER_ZERO_START='0001-01-01';
@@ -226,7 +227,7 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
    const same=summary.filter((a:any)=>a.currencyCode===code),sum=(field:string)=>ledgerMoney(same.reduce((s:bigint,a:any)=>s+ledgerScale4(a[field]),0n),code);
    return {currencyCode:code,totalIn:sum('totalIn'),totalOut:sum('totalOut'),currentBalance:sum('currentBalance')};
   });
-  return {accounts:summary,currencyTotals,rows:result,selectedAccountId,page,hasMore:rows.length>100};
+  return {accounts:summary,currencyTotals,rows:await attachLedgerActorNames(tx,orgId,result),selectedAccountId,page,hasMore:rows.length>100};
  });
 }
 export async function searchLedgerEvidence(db:any,orgId:number,query:any){
@@ -251,12 +252,13 @@ export async function searchLedgerEvidence(db:any,orgId:number,query:any){
  return {documents};
 }
 export function registerBankLedgerRoutes(app:any,db:any,gates:any){
-  const access=async(req:any,res:any)=>{
-    const context=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT']});
+  const access=async(req:any,res:any,feature='BANK_LEDGER')=>{
+    const context=await gates.requireOrgRole(req,res,{allowedRoles:feature==='ACCOUNT_OVERVIEW'?['ADMIN']:['ADMIN','ACCOUNTANT']});
     if(!context)return null;
-    if(context.systemUser?.systemRole!=='SYSTEM_ADMIN'){
+    if(feature==='ACCOUNT_OVERVIEW'&&(context.employee?.orgRole!=='ADMIN'||!Number.isSafeInteger(context.employee?.id))){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}
+    if(feature==='ACCOUNT_OVERVIEW'||context.systemUser?.systemRole!=='SYSTEM_ADMIN'){
       const policy=(await gates.loadPolicy()).policy;
-      if(!policy?.[context.organization.type]?.[context.employee?.orgRole]?.includes('BANK_LEDGER')){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}
+      if(!policy?.[context.organization.type]?.[context.employee?.orgRole]?.includes(feature)){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}
     }
     return {orgId:context.organization.id,actor:context.requesterEmail,actorId:context.employee?.id,role:context.employee?.orgRole};
   };
@@ -264,7 +266,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   app.post('/bank-ledger/balance-adjustments',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;if(scope.role!=='ADMIN'||!scope.actorId)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);res.json(await reconcileLedgerBalances(db,scope,req.body));});
   app.post('/bank-ledger/changes/:entryId/acknowledge',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await acknowledgeLedgerChange(db,scope.orgId,scope.actorId,req.params.entryId));});
   app.get('/bank-ledger/changes',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerChanges(db,scope.orgId,req.query));});
-  app.get('/bank-ledger/overview',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await loadAccountOverview(db,scope.orgId,req.query));});
+  app.get('/bank-ledger/overview',async(req:any,res:any)=>{const scope=await access(req,res,'ACCOUNT_OVERVIEW');if(scope)res.json(await loadAccountOverview(db,scope.orgId,req.query));});
   app.get('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await readLedgerEdit(db,scope.orgId,req.params.entryId));});
   app.put('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body,req.params.entryId);res.json(await replaceLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body));}});
   app.delete('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,null,req.params.entryId);res.json(await deleteLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body.reason));}});

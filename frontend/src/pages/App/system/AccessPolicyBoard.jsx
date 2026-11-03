@@ -292,7 +292,7 @@ const AccessPolicyBoard = () => {
         : [];
       const featureSet = new Set(currentFeatures);
       if (checked) {
-        featureKeys.forEach(key => featureSet.add(key));
+        featureKeys.filter(key=>role==='ADMIN'||key!=='ACCOUNT_OVERVIEW').forEach(key => featureSet.add(key));
       } else {
         featureKeys.forEach(key => featureSet.delete(key));
       }
@@ -367,13 +367,6 @@ const AccessPolicyBoard = () => {
   return (
     <AppPageContainer title={pageTitle}>
       <PageContentStack>
-        <Alert severity="info">
-          {getUiMessage(
-            'accessPolicy.autoLinked',
-            resolveLocalizedText(ACCESS_POLICY_TEXT.autoLinked, languageCode),
-            languageCode
-          )}
-        </Alert>
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">
@@ -524,7 +517,7 @@ const AccessPolicyBoard = () => {
                         {EDITABLE_ROLE_ORDER.map((role) => (
                           <TableCell key={`${row.featureKey}:${role}`} align="center">
                             <Switch size="small" checked={row.fixedAccess || row.featureKeys.some(key => hasFeature(role, key))}
-                              disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess}
+                              disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess || (role!=='ADMIN'&&row.featureKeys.includes('ACCOUNT_OVERVIEW'))}
                               onChange={event=>setFeature(role,row.featureKeys,event.target.checked)}
                               inputProps={{'aria-label':row.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}} />
                           </TableCell>

@@ -24,7 +24,7 @@ test('service company common functions and hard production boundary agree on cli
 test('only the complete historical banking starter policy upgrades; saved custom denials survive',()=>{
  const old={ADMIN:['BANK_LEDGER'],ACCOUNTANT:['BANK_LEDGER'],OPERATOR:[],WORKER:[]};
  assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:old}).SERVICE,SERVICE_ROLE_DEFAULTS);
- const custom={...old,ACCOUNTANT:[]};assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:custom}).SERVICE,custom);
+ const custom={...old,ACCOUNTANT:[]};assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:custom}).SERVICE,{...custom,ADMIN:['BANK_LEDGER','ACCOUNT_OVERVIEW']});
  assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:ROLE_ACCESS_POLICY_SCHEMA_VERSION,SERVICE:old}).SERVICE,old);
  assert.equal(workplaceText('공장 선택','SERVICE'),'사업장 선택');assert.equal(workplaceText('Select Factory','SERVICE'),'Select Workplace');assert.equal(workplaceText('Chọn nhà máy','SERVICE'),'Chọn nơi làm việc');assert.equal(workplaceText('Factory','MANUFACTURER'),'Factory');
 });
@@ -40,7 +40,7 @@ test('service expense codes retain transport requirements without manufacturing 
  const resolved=effectiveExpenseCode(code,null,'SERVICE');
  assert.equal(resolved.linkTarget,'NONE');assert.equal(resolved.base.entryMode,'GENERAL');
  for(const key of ['orderInput','styleInput','processInput'])assert.equal(resolved.base[key],'HIDDEN');
- assert.deepEqual(resolved.base.requiredFields,['transportDate','origin']);assert.equal(effectiveExpenseCode(code).base.entryMode,'PROCESS');
+ assert.deepEqual(resolved.base.requiredFields,['transportDate','origin','reference']);assert.equal(effectiveExpenseCode(code).base.entryMode,'PROCESS');
  const retained=await resolveExpenseCodeLink({},2,code,{cost:{linkTarget:'PROCESS',styleProcessId:5}},'SERVICE');assert.equal(retained.linkTarget,'PROCESS');
 });
 test('grade template uses new company FKs and copies definitions without people or salary amounts',async()=>{

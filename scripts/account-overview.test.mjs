@@ -3,6 +3,25 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url),{accountBalanceReport,outstandingReport,loadAccountOverview,accountReportToday,shiftReportDate}=require('../backend/dist/services/accountOverview.js');
 const {Prisma}=require('../backend/node_modules/@prisma/client');
+const {registerBankLedgerRoutes}=require('../backend/dist/services/bankLedger');
+const {attachLedgerActorNames}=require('../backend/dist/services/ledgerActors');
+import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
+
+test('overview API requires a real company administrator and its separate policy feature',async()=>{
+ for(const [role,features,system,expected] of [['ADMIN',['ACCOUNT_OVERVIEW'],false,true],['ADMIN',['BANK_LEDGER'],false,false],['ACCOUNTANT',['ACCOUNT_OVERVIEW','BANK_LEDGER'],false,false],['ACCOUNTANT',['ACCOUNT_OVERVIEW'],true,false],[null,['ACCOUNT_OVERVIEW'],true,false]]){
+  const routes=new Map();let reached=0,status;
+  registerBankLedgerRoutes(new Proxy({},{get:(_,method)=>(path,handler)=>routes.set(method+' '+path,handler)}),{$transaction:async()=>{reached++;throw Error('REPORT_REACHED');}}, {requireOrgRole:async()=>({organization:{id:7,type:'MANUFACTURER'},employee:role?{id:10,orgRole:role}:null,systemUser:system?{systemRole:'SYSTEM_ADMIN'}:null}),loadPolicy:async()=>({policy:{MANUFACTURER:{[role||'ADMIN']:features}}})});
+  const response={status(code){status=code;return this;},json(){return this;}};
+  const run=routes.get('get /bank-ledger/overview')({query:{}},response);
+  if(expected)await assert.rejects(run,/REPORT_REACHED/);else {await run;assert.equal(status,403);}assert.equal(reached,expected?1:0);
+ }
+});
+test('ledger writers resolve only unambiguous employees in the current company, including inactive writers',async()=>{
+ let calls=0;const db={employee:{findMany:async({where,select})=>{calls++;assert.equal(where.orgId,7);assert.equal('status' in where,false);assert.deepEqual(select,{email:true,name:true});return [{email:'writer@example.com',name:'Writer name'},{email:'duplicate@example.com',name:'A'},{email:'DUPLICATE@example.com',name:'B'}];}}};
+ const result=await attachLedgerActorNames(db,7,[{createdBy:'WRITER@example.com',settlementLines:[{createdBy:'missing@example.com'}]},{createdBy:'duplicate@example.com'},{createdBy:'legacy-script'}]);
+ assert.equal(result[0].createdByName,'Writer name');assert.equal(result[0].createdBy,'WRITER@example.com');assert.equal(result[0].settlementLines[0].createdByName,null);assert.equal(result[1].createdByName,null);assert.equal(result[2].createdByName,null);assert.equal(calls,1);
+ assert.equal(formatLedgerAmount('12345678901234567890','VND'),'12,345,678,901,234,567,890');assert.equal(formatLedgerAmount('0','USD'),'0.00');
+});
 
 function validateQuery(modelName,query){
  const model=Prisma.dmmf.datamodel.models.find(row=>row.name===modelName);

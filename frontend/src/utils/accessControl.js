@@ -21,6 +21,7 @@ const FEATURE_KEYS = {
   ORDER: 'ORDER',
   INVOICE: 'INVOICE',
   BANK_LEDGER: 'BANK_LEDGER',
+  ACCOUNT_OVERVIEW: 'ACCOUNT_OVERVIEW',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
   SHIPMENT_REVIEW: 'SHIPMENT_REVIEW',
@@ -138,6 +139,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   const featureSet = resolveFeatureSetForContext(context);
 
   switch (featureKey) {
+    case FEATURE_KEYS.ACCOUNT_OVERVIEW:
+      return isOrgMember&&hasOrgRole(context,'ADMIN')&&featureSet.has(featureKey);
     case FEATURE_KEYS.INVOICE:
       return hasOrgType(context, ORG_TYPES.MANUFACTURER) && featureSet.has(featureKey);
     case FEATURE_KEYS.PROFILE:
@@ -155,7 +158,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
-  if (path.startsWith('/account-overview')) return FEATURE_KEYS.BANK_LEDGER;
+  if (path.startsWith('/account-overview')) return FEATURE_KEYS.ACCOUNT_OVERVIEW;
   if (path.startsWith('/bank-ledger')) return FEATURE_KEYS.BANK_LEDGER;
   if (path.startsWith('/approval-inbox')) return FEATURE_KEYS.OUTSOURCING_RECORD;
   if (path.startsWith('/approval-settings')) return FEATURE_KEYS.OUTSOURCING_RECORD;

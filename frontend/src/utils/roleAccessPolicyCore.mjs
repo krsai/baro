@@ -17,6 +17,7 @@ export const ACCESS_FEATURE_KEYS = {
   ORDER: 'ORDER',
   INVOICE: 'INVOICE',
   BANK_LEDGER: 'BANK_LEDGER',
+  ACCOUNT_OVERVIEW: 'ACCOUNT_OVERVIEW',
   STYLE: 'STYLE',
   ST_REVIEW: 'ST_REVIEW',
   SHIPMENT_REVIEW: 'SHIPMENT_REVIEW',
@@ -43,7 +44,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 14;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 15;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
@@ -94,6 +95,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
   }),
   [ORG_TYPE_KEYS.BRAND]: Object.freeze({
     [ORG_ROLE_KEYS.ADMIN]: Object.freeze([
+      ACCESS_FEATURE_KEYS.ACCOUNT_OVERVIEW,
       ACCESS_FEATURE_KEYS.BANK_LEDGER,
       ACCESS_FEATURE_KEYS.DASHBOARD,
       ACCESS_FEATURE_KEYS.ORDER,
@@ -320,6 +322,10 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   if (sourceSchemaVersion < 13) for (const roles of Object.values(base)) for (const role of ['ADMIN','ACCOUNTANT']) {if (!roles[role].includes('BANK_LEDGER')) roles[role].push('BANK_LEDGER');}
   if(sourceSchemaVersion<14&&candidate.SERVICE&&['ADMIN','ACCOUNTANT','OPERATOR','WORKER'].every(role=>JSON.stringify(candidate.SERVICE[role])===JSON.stringify(['ADMIN','ACCOUNTANT'].includes(role)?['BANK_LEDGER']:[])))base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
   if (!candidate.SERVICE) base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
+  for(const roles of Object.values(base)){
+    if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
+    for(const role of ['ACCOUNTANT','OPERATOR','WORKER'])roles[role]=roles[role].filter(feature=>feature!=='ACCOUNT_OVERVIEW');
+  }
   return base;
 };
 

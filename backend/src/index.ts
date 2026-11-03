@@ -1248,9 +1248,10 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 14;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 15;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
+  "ACCOUNT_OVERVIEW",
   "BANK_LEDGER",
   "INVOICE",
   "DASHBOARD",
@@ -1326,6 +1327,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
   },
   BRAND: {
     ADMIN: [
+      "ACCOUNT_OVERVIEW",
       "BANK_LEDGER",
       "DASHBOARD",
       "ORDER",
@@ -1511,6 +1513,10 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   const service=(value as any)?.SERVICE;
   if(sourceSchemaVersion<14&&service&&['ADMIN','ACCOUNTANT','OPERATOR','WORKER'].every(role=>JSON.stringify(service[role])===JSON.stringify(['ADMIN','ACCOUNTANT'].includes(role)?['BANK_LEDGER']:[])))policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
   if (!(value as any)?.SERVICE) policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
+  for(const roles of Object.values(policy)){
+    if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
+    for(const role of ['ACCOUNTANT','OPERATOR','WORKER'] as const)roles[role]=roles[role].filter(feature=>feature!=='ACCOUNT_OVERVIEW');
+  }
   return policy;
 };
 const serializeRoleAccessPolicy = (
