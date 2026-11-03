@@ -324,7 +324,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const saveAction = <SaveButton onClick={handleSave} disabled={!isDirty || isSaving || !isNameValid} loading={isSaving} />;
   return <>
     {headerActionsTarget && createPortal(saveAction,headerActionsTarget)}
-    <Container {...(embedded ? {sx:{minWidth:0}} : {title:text.title,titleActions:saveAction,sx:{maxWidth:1280,width:'100%'}})}>
+    <Container {...(embedded ? {sx:{minWidth:0,width:'100%'}} : {title:text.title,titleActions:saveAction})}>
       <PageContentStack  >
       <EntityDetailSection title={localText.identityTitle}>
         <Grid container spacing={2}>

@@ -39,7 +39,7 @@ export default function ExpenseCodeLinkSettings(){
    if(scope.current===orgId){setRows(previous=>previous.map(item=>item.id===row.id?{...item,original:JSON.stringify(row.inputSettings)}:item));setSaved(true);setEditingId(null);}
   }catch{if(scope.current===orgId)setError(true);}finally{if(scope.current===orgId)setSaving(false);}
  };
- return <Paper variant="outlined" sx={{p:'var(--ui-panel-padding, 16px)',maxWidth:1000,minWidth:0}}><Stack spacing={2} sx={{minWidth:0}}>
+ return <Paper variant="outlined" sx={{p:'var(--ui-panel-padding, 16px)',width:'100%',minWidth:0}}><Stack spacing={2} sx={{minWidth:0}}>
   <Typography variant="h6">{text.title}</Typography>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{text.retry}</Button>}>{text.error}</Alert>}
   {saved&&<Alert severity="success">{text.saved}</Alert>}

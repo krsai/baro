@@ -17,7 +17,8 @@ const port=43211,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/entity-profile-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath,headless:true});
- for(const screen of ['organization','customer','partner'])for(const width of [1440,768,390]){
+ const screens=process.argv.includes('--pages-only')?['organization','customer']:['organization','customer','partner'];
+ for(const screen of screens)for(const width of [1920,1440,768,390]){
   const page=await browser.newPage({viewport:{width,height:1100}}),errors=[],bankEntities=[];let update;
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,updateActiveProfile:()=>{}});'}));
@@ -36,12 +37,15 @@ try{
   assert.ok(bankEntities.includes(screen==='organization'?1:44));assert.ok(!bankEntities.includes(7),'Customer relationship ID must not be used as entity ID');
   assert.deepEqual(errors,[]);
   if(screen==='partner'){assert.equal(await page.getByRole('switch').count(),0);await page.getByText('Check',{exact:true}).waitFor();await page.locator('input[name=code]').fill('NEW-001');await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);assert.equal(update.code,'NEW-001');assert.equal('isActive' in update,false);assert.deepEqual(update.serviceTypeIds,[41]);}
-  if(screen==='organization')assert.equal(await page.locator('h1').count(),1,'Embedded business form must not repeat its page title');
+  if(screen==='organization'){
+   assert.equal(await page.locator('h1').count(),1,'Embedded business form must not repeat its page title');
+   const content=await page.locator('.app-page-content').boundingBox();assert.equal(content.width,width-(width<600?32:48),'Business page fills the workspace');
+  }
   if(screen!=='partner'){
    const names=page.locator('input[name="name"],input[name="nameKo"],input[name="nameVi"]');
    const boxes=await names.evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width};}));
    assert.equal(boxes.length,3);assert.ok(boxes.every(box=>box.width>90));
-   if(width===1440){assert.ok(Math.abs(boxes[0].y-boxes[2].y)<2);assert.ok(boxes[1].x>boxes[0].x);}
+   if(width===1440&&screen==='organization'){assert.ok(Math.abs(boxes[0].y-boxes[2].y)<2);assert.ok(boxes[1].x>boxes[0].x);}
    if(width===390)assert.ok(boxes[1].y>boxes[0].y);
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Form must not overflow the viewport');

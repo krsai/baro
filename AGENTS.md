@@ -1,3 +1,9 @@
+# 2026-11-03 전체 업무 페이지 작업 영역 너비 통일
+
+- BARO·DEX·SYSTEM 업무 페이지는 공통 AppPageContainer에서 작업 영역 전체 너비를 사용한다. 개별 sx/contentSx로 페이지 너비를 다시 제한하지 않는다. 사업체 목록/상세·앱 설정/VAT·회계 코드 입력 설정 카드의 고정 최대 너비와 page-wrapper의 1920px 제한을 제거했다. 입력 필드·검색창·표 열·대화상자·인쇄 문서의 목적별 너비는 페이지 제한과 구별한다.
+- 실제 앱 진입점의 정적 import·동적 import·라우트 참조를 확인해 미사용 CustomerList·InvoiceCreditDialog와 구 고객 목록 전용 브라우저 테스트를 삭제했다. 청구서 최종 검토 대화상자는 테스트에서만 사용하므로 acceptance 진입점과 함께 frontend/acceptance로 옮겨 검증을 유지한다. 현재 라우트·API·업무 데이터는 삭제하지 않는다.
+- 검증은 프런트 빌드·page-layout-browser(2560/1920/1440/768/390)·entity-profile-browser --pages-only(1920/1440/768/390)·invoice-browser-acceptance·entity-profile/page-naming 단위 검사와 번역/인코딩 검사다. 별도 DB 변경과 PNG 생성은 없다.
+
 # 2026-11-03 결재선 컴팩트 표시·결재자 선택 (사용자 최신 정정)
 
 - 비용 결재선 설정은 USD/KRW/VND를 한 화면의 금액 열로 표시한다. 같은 순서·결재 단계인 구간만 묶으며 통화별 결재 단계가 다르면 별도 행으로 보존한다. 금액 변경은 해당 통화에만 적용하고 묶인 행의 단계 변경은 표시된 통화에 함께 적용한다. 금액 구간 추가는 제목 줄에 둔다.

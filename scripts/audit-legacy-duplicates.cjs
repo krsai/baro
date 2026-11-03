@@ -7,7 +7,7 @@ const ts = require('../backend/node_modules/typescript');
 
 const walk = directory => fs.readdirSync(directory, { withFileTypes: true })
   .flatMap(entry => entry.isDirectory() ? walk(`${directory}/${entry.name}`) : [`${directory}/${entry.name}`]);
-const files = ['frontend/src', 'backend/src'].flatMap(walk)
+const files = ['frontend/src', 'frontend/acceptance', 'backend/src'].flatMap(walk)
   .filter(file => /\.(?:[cm]?js|jsx|ts|tsx)$/.test(file));
 const knownFiles = new Set(files);
 const edges = {};
@@ -79,7 +79,7 @@ for (const file of files) {
   }
 }
 // Include the two browser acceptance entrypoints to avoid calling them dead code.
-const roots = ['frontend/src/index.jsx', 'frontend/src/invoiceAcceptance.jsx',
+const roots = ['frontend/src/index.jsx', 'frontend/acceptance/invoiceAcceptance.jsx',
   'frontend/src/search-select-acceptance.jsx', 'backend/src/index.ts'];
 const reachable = new Set();
 const visitFile = file => {

@@ -50,7 +50,6 @@ const OrganizationBoard = () => {
     <AppPageContainer
       title={getUiMessage('menu.business', text.title, languageCode)}
       titleActions={<Box ref={setHeaderActionsTarget} sx={{display:currentTab==='business'?'flex':'none'}} />}
-      sx={{maxWidth:1280,width:'100%'}}
       toolbar={(
         <PageToolbar
           left={(

@@ -58,7 +58,7 @@ try {
     lines: Array.from({ length: 80 }, (_, index) => ({ orderId: 'o', quantity: 1, styleCode: `STYLE-${index}`, description: `재킷 Áo khoác ${index}`, color: '파랑 Xanh', gender: 'U', size: 'L', hsCode: '6201', origin: 'Việt Nam', unitPrice: '60', amount: '60', remark: '비고 Ghi chú' })),
   } };
   await printPage.setContent(buildIssuedInvoicePrintHtml(invoice), { waitUntil: 'load' });
-  assert.match(await printPage.locator('body').innerText(), /판매자 Công ty/); assert.match(await printPage.locator('body').innerText(), /STYLE-79/);
+  assert.match(await printPage.locator('body').innerText(), /판매자 Công ty/); assert.match(await printPage.locator('body').innerText(), /재킷 Áo khoác 79/);
   const pdfPath = path.join(temp, 'invoice.pdf'); await printPage.pdf({ path: pdfPath, format: 'A4', printBackground: true });
   const pdf = await readFile(pdfPath);
   // Byte length varies with OS fonts/subsetting/compression; it is not a correctness criterion.

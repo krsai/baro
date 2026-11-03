@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import InvoiceFinalReviewDialog from './pages/App/invoice/InvoiceFinalReviewDialog';
+import InvoiceFinalReviewDialog from './InvoiceFinalReviewDialog';
 
 const languageCode = new URLSearchParams(location.search).get('lang') || 'ko';
 const lines = Array.from({ length: 48 }, (_, index) => ({ key: `line-${index}`, style: `스타일 Áo ${index + 1}`,

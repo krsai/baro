@@ -43,6 +43,8 @@ const AppPageContainer = ({
       className="app-page"
       sx={{
         flexGrow: 1,
+        width: '100%',
+        maxWidth: 'none',
         p: 0,
         minWidth: 0,
         minHeight: '100%',
@@ -60,6 +62,9 @@ const AppPageContainer = ({
           pt: hasHeader ? 0 : ui.layout.pagePadding,
           minWidth: 0,
           ...sx,
+          width: '100%',
+          maxWidth: 'none',
+          boxSizing: 'border-box',
         }}
       >
         {/* Page Header */}
@@ -81,7 +86,7 @@ const AppPageContainer = ({
         )}
 
         {/* Page Content */}
-        <Box className="app-page-content" sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: ui.layout.sectionGap, ...contentSx }}>
+        <Box className="app-page-content" sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: ui.layout.sectionGap, ...contentSx, width: '100%', maxWidth: 'none', boxSizing: 'border-box' }}>
           {children}
         </Box>
 

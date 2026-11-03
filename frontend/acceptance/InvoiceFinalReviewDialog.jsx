@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Button, Checkbox, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Table, TableHead, TableBody, TableRow, TableCell, TextField, Typography } from '@mui/material';
-import { requestJSON, buildQueryString } from '../../../utils/apiClient';
+import { requestJSON, buildQueryString } from '../src/utils/apiClient';
 
 const labels = {
   ko: { title: '품목별 최종 마감 검토', notice: '문서 수량 합계는 출하량이 아닙니다. 비율 청구도 수량을 비례 차감하지 않습니다. 생산 실적은 품목별로 추정 배분하지 않습니다. 부족·초과가 있는 각 행에 사유를 입력하세요.', order: '주문 / 스타일 / 색상 / 성별 / 사이즈', ordered: '주문', billed: '유효 문서 수량 합계', current: '이번 문서', difference: '차이', recognized: '최종 인정', reason: '품목 사유', orderReason: '주문 마감 사유', reviewed: '품목별 차이를 확인하고 최종 마감을 승인합니다.', save: '승인 및 잠금', close: '닫기', error: '검토 내용을 확인하세요. 데이터가 변경됐다면 닫고 다시 열어 주세요.' },

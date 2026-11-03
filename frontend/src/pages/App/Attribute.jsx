@@ -51,7 +51,7 @@ const Attribute = () => {
   if (!PROCESS_MANAGEMENT_ENABLED && isProcessMasterRoute && !isSystemAdmin) {
     return (
       <AppPageContainer title="공정 관리">
-        <Alert severity="info" sx={{ maxWidth: 640 }}>
+        <Alert severity="info">
           공정 관리 페이지는 현재 비활성화되어 있습니다.
         </Alert>
       </AppPageContainer>

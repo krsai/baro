@@ -8,13 +8,13 @@ assert.ok(executablePath,'Chrome required');
 const fixture=path.resolve('frontend/page-layout-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Paper,Button,TextField,Table,TableBody,TableRow,TableCell} from '@mui/material';import theme from '/src/theme';import Container from '/src/components/AppPageContainer';import Sections from '/src/components/PageContentStack';import Toolbar from '/src/components/PageToolbar';
-const e=React.createElement;createRoot(document.getElementById('root')).render(e(ThemeProvider,{theme},e(CssBaseline),e(Container,{title:'Payment Request',description:'Shared page layout',titleActions:e(Button,{variant:'contained'},'Save'),toolbar:e(Toolbar,{showLastUpdater:false,left:e(TextField,{label:'Search',size:'small'}),right:e(Button,null,'Reset')}),footer:e(Button,null,'Close')},e(Sections,null,e(Paper,{'data-testid':'panel-one',variant:'outlined'},e(Table,null,e(TableBody,null,e(TableRow,null,e(TableCell,null,'Existing record'))))),e(Paper,{'data-testid':'panel-two',variant:'outlined'},'Second section')))));
+const e=React.createElement;createRoot(document.getElementById('root')).render(e(ThemeProvider,{theme},e(CssBaseline),e(Container,{sx:{maxWidth:700},contentSx:{maxWidth:800},title:'Payment Request',description:'Shared page layout',titleActions:e(Button,{variant:'contained'},'Save'),toolbar:e(Toolbar,{showLastUpdater:false,left:e(TextField,{label:'Search',size:'small'}),right:e(Button,null,'Reset')}),footer:e(Button,null,'Close')},e(Sections,null,e(Paper,{'data-testid':'panel-one',variant:'outlined'},e(Table,null,e(TableBody,null,e(TableRow,null,e(TableCell,null,'Existing record'))))),e(Paper,{'data-testid':'panel-two',variant:'outlined'},'Second section')))));
 </script></body></html>`);
 const port=43219,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/page-layout-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const width of [1440,768,390]){
+  for(const width of [2560,1920,1440,768,390]){
     const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto(`http://127.0.0.1:${port}/page-layout-acceptance.html`);await page.getByRole('heading',{name:'Payment Request',level:1}).waitFor();
     const padding=width<600?16:24;
