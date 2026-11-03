@@ -33,7 +33,17 @@ try{
   assert.equal(await rows.count(),3);assert.equal(await first.locator('[data-band-stage]').count(),1);
   assert.ok((await first.boundingBox()).height<110,'Approval rows remain compact');
   assert.equal(await page.getByText(band.future,{exact:true}).count(),0);
-  assert.equal(await page.locator('.app-page-header').getByRole('button',{name:band.addCondition,exact:true}).count(),1);
+  assert.equal(await page.locator('.app-page-header').getByRole('button',{name:band.addCondition,exact:true}).count(),0);
+  const tableHeader=page.getByTestId('approval-table-header');
+  assert.equal(await tableHeader.getByRole('button',{name:band.addCondition,exact:true}).count(),1);
+  const headingBoxes=await tableHeader.locator('[data-condition-heading],[data-currency-heading]').evaluateAll(elements=>elements.map(element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,height:r.height};}));
+  assert.ok(headingBoxes.every(box=>Math.abs(box.y+box.height/2-headingBoxes[0].y-headingBoxes[0].height/2)<1),'Condition and currencies share one header line');
+  for(const currency of ['USD','KRW','VND']){
+   const inputBox=await first.locator(`[data-cost-currency="${currency}"]`).boundingBox(),headingBox=await tableHeader.locator(`[data-currency-heading="${currency}"]`).boundingBox();
+   assert.ok(inputBox.width>=110,'Currency amounts have enough room');assert.ok(Math.abs(inputBox.x-headingBox.x)<1&&Math.abs(inputBox.width-headingBox.width)<1,'Currency headings align with amount inputs');
+  }
+  const addBox=await tableHeader.getByRole('button',{name:band.addCondition,exact:true}).boundingBox(),headerBox=await tableHeader.boundingBox();
+  assert.ok(headerBox.x+headerBox.width-addBox.x-addBox.width<=16,'Add band is at the far right of the table header');
   assert.equal(await page.getByRole('button',{name:/규칙 추가|예시|Add rule|Add example|Ví dụ/}).count(),0);
   assert.equal(await page.getByRole('dialog').count(),0);assert.equal(posts.length,0);
   const bounds=await page.getByTestId('approval-settings-page').boundingBox();assert.ok(bounds.width>=width-70,'Settings use the full work area');

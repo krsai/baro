@@ -29,7 +29,7 @@ export default function ApprovalSettings(){
   try{await requestJSON(path,{method:'PUT',body:JSON.stringify(payload)});if(scope.current===orgId){const next={...payload,revision:payload.revision+1};setForm(next);setInitial(JSON.stringify(next));setSaved(true);emitWorkspaceDataChanged({orgId,topics:['expense-approval-settings']});}}
   catch(failure){if(scope.current===orgId)setError(failure.message==='APPROVAL_SETTINGS_CHANGED'?messages.changed:messages.error);}finally{lock.current=false;setBusy(false);}
  };
- return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button startIcon={<Add/>} disabled={disabled||!form} onClick={()=>{if(editor.current?.addCondition()===false)setError(messages.error);}}>{band.addCondition}</Button><Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button></Stack>} contentSx={{flex:1,minWidth:0}}>
+ return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button>} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={2} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.title}</Button>}>{error}</Alert>}
    {saved&&<Alert severity="success">{t.saved}</Alert>}
@@ -37,7 +37,7 @@ export default function ApprovalSettings(){
    <Stack direction={{xs:'column',sm:'row'}} spacing={2} justifyContent="space-between" alignItems={{sm:'center'}}>
     {data&&<TextField select size="small" label={subject.label} value="EXPENSE" onChange={()=>{}} sx={{width:{xs:'100%',sm:320}}}>{(data.subjects||[{key:'EXPENSE',enabled:true}]).map(row=><MenuItem key={row.key} value={row.key} disabled={!row.enabled}>{subject[row.key]||row.key}</MenuItem>)}</TextField>}
    </Stack>
-   {form&&<ApprovalRuleEditor ref={editor} key={activeOrgId} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>{setForm(current=>({...current,drafterScope}));setSaved(false);}} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode}/>}
+   {form&&<ApprovalRuleEditor ref={editor} key={activeOrgId} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>{setForm(current=>({...current,drafterScope}));setSaved(false);}} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={disabled} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setError(messages.error);}}>{band.addCondition}</Button>}/>}
    {data&&!data.canEdit&&<Alert severity="info">{t.readonly}</Alert>}
   </Stack>
  </AppPageContainer>;

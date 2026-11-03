@@ -12,7 +12,7 @@ export const approvalRuleText={
  vi:{OPERATOR:'Vận hành',ACCOUNTANT:'Kế toán',ADMIN:'Quản trị viên',error:'Kiểm tra khoảng tiền, vai trò và chức danh người duyệt. Đề nghị vận hành cần kế toán duyệt.',changed:'Quản trị viên khác đã thay đổi cài đặt. Tải lại để kiểm tra.'},
 };
 const currencies=['USD','KRW','VND'];
-export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],onChange,disabled,languageCode,drafterScope={role:'ALL',gradeId:null},onScopeChange},ref){
+export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],onChange,disabled,languageCode,drafterScope={role:'ALL',gradeId:null},onScopeChange,headerActions},ref){
  const t=approvalBandText[languageCode]||approvalBandText.en;
  const role=drafterScope.role,gradeId=drafterScope.gradeId;
  const setScope=change=>onScopeChange?.({...drafterScope,...change});
@@ -43,7 +43,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
  const roleOptions=['OPERATOR','ACCOUNTANT','ADMIN'].map(value=><MenuItem key={value} value={value}>{t[value]}</MenuItem>);
  const gradeOptions=grades.map(row=><MenuItem key={row.id} value={row.id}>{gradeName(row)}</MenuItem>);
  const nodeSx={width:208,minWidth:208,height:70,boxSizing:'border-box',p:.75,borderRadius:1,bgcolor:'background.paper'};
- const columns='360px minmax(0,1fr)',costColumns='20px repeat(3,minmax(0,1fr)) 18px';
+ const columns='540px minmax(0,1fr)',costColumns='20px 120px repeat(3,minmax(0,1fr)) 18px';
  return <Paper variant="outlined" data-testid="approval-conditions" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}>
   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{p:1.5}}>
    <Typography variant="caption" color="text.secondary">{t.drafter}</Typography>
@@ -51,14 +51,15 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
    <TextField select size="small" label={t.drafterGrade} SelectProps={{inputProps:{'aria-label':t.drafterGrade}}} value={gradeId||''} disabled={disabled} sx={{width:180,minWidth:0}} onChange={event=>setScope({gradeId:event.target.value||null})} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}}><MenuItem value="">{t.allGrades}</MenuItem>{gradeOptions}</TextField>
   </Stack>
   <Box sx={{overflowX:'auto'}}><Box sx={{minWidth:880}}>
-   <Box sx={{display:'grid',gridTemplateColumns:columns,bgcolor:'action.hover',borderTop:1,borderBottom:1,borderColor:'divider'}}>
-    <Stack spacing={.25} sx={{px:1,py:.75}}><Typography variant="caption" fontWeight={600}>{t.condition}</Typography><Box sx={{display:'grid',gridTemplateColumns:costColumns,gap:.5}}><Box/>{currencies.map(currency=><Typography key={currency} data-currency-heading={currency} variant="caption" align="center">{currency}</Typography>)}</Box></Stack>
-    <Typography variant="subtitle2" sx={{px:1.5,alignSelf:'center'}}>{t.line}</Typography>
+   <Box data-testid="approval-table-header" sx={{display:'grid',gridTemplateColumns:columns,bgcolor:'action.hover',borderTop:1,borderBottom:1,borderColor:'divider'}}>
+    <Box sx={{display:'grid',gridTemplateColumns:costColumns,gap:.5,alignItems:'center',px:1,py:.75}}><Box/><Typography data-condition-heading variant="caption" fontWeight={600} sx={{whiteSpace:'nowrap'}}>{t.condition}</Typography>{currencies.map(currency=><Typography key={currency} data-currency-heading={currency} variant="caption" align="center">{currency}</Typography>)}<Box/></Box>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{px:1.5,py:.5}}><Typography variant="subtitle2">{t.line}</Typography>{headerActions}</Stack>
    </Box>
    <DragDropContext onDragEnd={onDragEnd}><Droppable droppableId="approval-bands" type="BANDS">{provided=><Box ref={provided.innerRef} {...provided.droppableProps}>
    {rows.map((row,index)=><Draggable key={row.key} draggableId={row.key} index={index} isDragDisabled={disabled||row.entries.some(entry=>!boundedApprovalBand(entry.rule))}>{drag=><Box ref={drag.innerRef} {...drag.draggableProps} data-approval-band={index} sx={{display:'grid',gridTemplateColumns:columns,borderBottom:1,borderColor:'divider',bgcolor:'background.paper'}}>
     <Box sx={{display:'grid',gridTemplateColumns:costColumns,alignItems:'center',gap:.5,px:1,py:.75,borderRight:1,borderColor:'divider'}}>
      <Box {...drag.dragHandleProps} aria-label={`${t.reorder} ${index+1}`} data-band-drag-handle={index} sx={{display:'flex',alignItems:'center',color:'text.disabled',touchAction:'none',cursor:drag.dragHandleProps?'grab':'default'}}><DragIndicator sx={{fontSize:18}}/></Box>
+     <Box/>
      {currencies.map(currency=>{const entry=row.entries.find(entry=>entry.currency===currency);if(!entry)return <Typography key={currency} align="center" color="text.disabled">—</Typography>;const rule=entry.rule;
       return <Box key={currency} data-cost-currency={currency} sx={{minWidth:0}}>
        {boundedApprovalBand(rule)?<DecimalAmountField currencyCode={currency} size="small" value={rule.max??''} disabled={disabled} error={orderErrors.has(rule.id)} onValueChange={max=>{const source=groups.find(group=>group.currency===currency);onChange(updateGroup(rules,currency,source.rows.map((item,i)=>i===entry.index?{...item,max,__bounded:true}:item),true));}} sx={{'& .MuiInputBase-root':{px:.75},'& input':{px:0,fontSize:12}}} InputProps={{startAdornment:<Typography component="span" sx={{fontSize:12,mr:.5,color:'text.secondary'}}>≤</Typography>}} inputProps={{'aria-label':`${t.amount} ${currency} ${entry.index+1}`,style:{textAlign:'right'}}}/>:<Typography variant="caption" align="right" sx={{display:'block',whiteSpace:'nowrap'}}>{rule.min==='0'?'—':`> ${formatEditableDecimal(previousApprovalAmount(rule.min,currency))}`}</Typography>}
