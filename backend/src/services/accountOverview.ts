@@ -9,8 +9,10 @@ export function shiftReportDate(value:string,days:number){const date=new Date(va
 const delta=(rows:any[])=>rows.reduce((sum:bigint,row:any)=>sum+(row.direction==='IN'?1n:-1n)*ledgerScale4(row._sum.amount||'0'),0n);
 const amountSum=(rows:any[],direction:string)=>rows.filter(row=>row.direction===direction).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row._sum.amount||'0'),0n);
 const accountName=(a:any)=>a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / ');
-export function accountBalanceReport(accounts:any[],flows:any[],asOf:string){
- const monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,-29);
+export function accountHistoryDays(value:unknown=30){const days=Number(value);if(![30,60,90,180].includes(days))throw createHttpError(400,'LEDGER_INVALID_RANGE');return days;}
+export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days=30){
+ days=accountHistoryDays(days);
+ const monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,1-days);
  const summaries=accounts.map(account=>{
   const code=account.currencyCode,own=flows.filter(row=>row.accountId===account.id),month=own.filter(row=>row.transactionDate>=monthStart&&row.transactionDate<=asOf),day=own.filter(row=>row.transactionDate===yesterday),balance=ledgerScale4(account.currentBalance),change=delta(month);
   return {id:account.id,name:accountName(account),currencyCode:code,openingDate:account.openingDate,beginningBalance:ledgerMoney(balance-change,code),totalIn:ledgerMoney(amountSum(month,'IN'),code),totalOut:ledgerMoney(amountSum(month,'OUT'),code),change:ledgerMoney(change,code),currentBalance:ledgerMoney(balance,code),yesterdayIn:ledgerMoney(amountSum(day,'IN'),code),yesterdayOut:ledgerMoney(amountSum(day,'OUT'),code)};
@@ -19,18 +21,19 @@ export function accountBalanceReport(accounts:any[],flows:any[],asOf:string){
  const fields=['beginningBalance','totalIn','totalOut','change','currentBalance','yesterdayIn','yesterdayOut'];
  const totals=currencies.map(code=>({currencyCode:code,...Object.fromEntries(fields.map(field=>[field,ledgerMoney(summaries.filter(row=>row.currencyCode===code).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row[field]),0n),code)]))}));
  const balances=new Map<string,bigint>(accounts.map(row=>[row.id,ledgerScale4(row.currentBalance)])),history:any[]=[];
- for(let index=0;index<30;index++){
+ const dailyChanges=new Map<string,bigint>();for(const row of flows){const key=JSON.stringify([row.accountId,row.transactionDate]);dailyChanges.set(key,(dailyChanges.get(key)||0n)+(row.direction==='IN'?1n:-1n)*ledgerScale4(row._sum.amount||'0'));}
+ for(let index=0;index<days;index++){
   const date=shiftReportDate(asOf,-index),dailyAccounts=accounts.map(account=>({accountId:account.id,balance:ledgerMoney(balances.get(account.id)!,account.currencyCode)}));
   history.unshift({date,accounts:dailyAccounts,currencyTotals:currencies.map(code=>({currencyCode:code,balance:ledgerMoney(accounts.filter(row=>row.currencyCode===code).reduce((sum:bigint,row)=>sum+balances.get(row.id)!,0n),code)}))});
-  for(const account of accounts){let balance=balances.get(account.id)!-delta(flows.filter(row=>row.accountId===account.id&&row.transactionDate===date));if(account.openingDate===date)balance-=ledgerScale4(account.openingBalance);balances.set(account.id,balance);}
+  for(const account of accounts){let balance=balances.get(account.id)!-(dailyChanges.get(JSON.stringify([account.id,date]))||0n);if(account.openingDate===date)balance-=ledgerScale4(account.openingBalance);balances.set(account.id,balance);}
  }
- return {asOf,monthStart,yesterday,historyStart,accounts:summaries,currencyTotals:totals,history};
+ return {asOf,monthStart,yesterday,historyStart,historyDays:days,accounts:summaries,currencyTotals:totals,history};
 }
 export async function loadAccountOverview(db:any,orgId:number,query:any={}){
- const today=accountReportToday(),asOf=ledgerDate(query.asOf||today);
+ const today=accountReportToday(),asOf=ledgerDate(query.asOf||today),days=accountHistoryDays(query.days??30);
  if(asOf!==today)throw createHttpError(400,'LEDGER_INVALID_RANGE');
  return retryEditTransaction(db,async(tx:any)=>{
-  const accounts=await readLedgerAccounts(tx,orgId,asOf),monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,-29),start=[monthStart,yesterday,historyStart].sort()[0];
+  const accounts=await readLedgerAccounts(tx,orgId,asOf),monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,1-days),start=[monthStart,yesterday,historyStart].sort()[0];
   const [flows,dailyEntries,outstanding]=await Promise.all([
    tx.bankLedgerEntry.groupBy({by:['accountId','transactionDate','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:asOf}},_sum:{amount:true}}),
    tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:true,settlementLines:true} satisfies Prisma.BankLedgerEntryInclude,orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
@@ -45,7 +48,7 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
   const invoiceNames=new Map<string,string>(invoices.map((row:any)=>[row.id,row.buyer?.name||''])),expenseNames=new Map<string,string>(expenses.map((row:any)=>[row.id,row.expenseRequest?.partner?.name||row.expenseRequest?.payeeEmployee?.name||row.partner?.name||row.payeeEmployee?.name||'']));
   const known=new Map<string,any>(accounts.map((row:any)=>[row.id,row]));
   const transactions=dailyEntries.map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:[...new Set(row.allocations.map((a:any)=>invoiceNames.get(a.invoiceId)||expenseNames.get(a.expenseItemId)).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
-  return {orgId,...accountBalanceReport(accounts,flows,asOf),transactions,...outstanding};
+  return {orgId,...accountBalanceReport(accounts,flows,asOf,days),transactions,...outstanding};
  },60000);
 }
 async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{

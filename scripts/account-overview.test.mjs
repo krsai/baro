@@ -13,7 +13,7 @@ test('overview API requires a real company administrator and its separate policy
   registerBankLedgerRoutes(new Proxy({},{get:(_,method)=>(path,handler)=>routes.set(method+' '+path,handler)}),{$transaction:async()=>{reached++;throw Error('REPORT_REACHED');}}, {requireOrgRole:async()=>({organization:{id:7,type:'MANUFACTURER'},employee:role?{id:10,orgRole:role}:null,systemUser:system?{systemRole:'SYSTEM_ADMIN'}:null}),loadPolicy:async()=>({policy:{MANUFACTURER:{[role||'ADMIN']:features}}})});
   const response={status(code){status=code;return this;},json(){return this;}};
   const run=routes.get('get /bank-ledger/overview')({query:{}},response);
-  if(expected)await assert.rejects(run,/REPORT_REACHED/);else {await run;assert.equal(status,403);}assert.equal(reached,expected?1:0);
+  if(expected)await assert.rejects(run,/REPORT_REACHED/);else {await run;assert.equal(status,403);status=null;await routes.get('get /bank-ledger/exchange-rates')({query:{}},response);assert.equal(status,403);}assert.equal(reached,expected?1:0);
  }
 });
 test('ledger writers resolve only unambiguous employees in the current company, including inactive writers',async()=>{
@@ -34,7 +34,7 @@ function validateQuery(modelName,query){
 }
 
 test('overview reads real Prisma relations and resolves daily counterparties only within the authenticated company',async()=>{
- const asOf=accountReportToday(),yesterday=shiftReportDate(asOf,-1),orgId=7,lookups=[];
+ const asOf=accountReportToday(),yesterday=shiftReportDate(asOf,-1),orgId=7,lookups=[],ranges=[];
  const entries=[
   {id:'file',accountId:'a',direction:'IN',amount:'10',purpose:'File',allocations:[],settlementLines:[]},
   {id:'invoice',accountId:'a',direction:'IN',amount:'20',purpose:'Invoice',allocations:[{invoiceId:'inv'}],settlementLines:[{id:'fee',kind:'FEE',amount:'1.25',purpose:'Fee'}]},
@@ -44,7 +44,7 @@ test('overview reads real Prisma relations and resolves daily counterparties onl
  const tx={
   bankLedgerAccount:{findMany:async query=>{assert.equal(query.where.orgId,orgId);return [{id:'a',currencyCode:'USD',openingDate:'2026-01-01',openingBalance:'100',bankName:'Bank',createdAt:new Date(),entityAccount:null}];}},
   organizationBankAccount:{findMany:async query=>{assert.deepEqual(query.where,{orgId,entityId:orgId});return [];}},
-  bankLedgerEntry:{groupBy:async query=>{assert.equal(query.where.orgId,orgId);assert.equal(query.where.voidedAt,null);return [];},findMany:async query=>{validateQuery('BankLedgerEntry',query);assert.deepEqual(query.where,{orgId,voidedAt:null,transactionDate:yesterday});return entries;}},
+  bankLedgerEntry:{groupBy:async query=>{ranges.push(query.where.transactionDate);assert.equal(query.where.orgId,orgId);assert.equal(query.where.voidedAt,null);return [];},findMany:async query=>{validateQuery('BankLedgerEntry',query);assert.deepEqual(query.where,{orgId,voidedAt:null,transactionDate:yesterday});return entries;}},
   invoice:{findMany:async query=>{validateQuery('Invoice',query);assert.equal(query.where.sellerOrgId,orgId);if(!query.where.id)return [];lookups.push('invoice');assert.deepEqual(query.where.id.in,['inv','foreign']);return [{id:'inv',buyer:{name:'Buyer'}}];}},
   partnerTransactionCost:{findMany:async query=>{validateQuery('PartnerTransactionCost',query);assert.equal(query.where.orgId,orgId);assert.deepEqual(query.where.id.in,['cost','missing']);lookups.push('expense');return [{id:'cost',expenseRequest:{payeeEmployee:{name:'Employee'}}}];}},
   expenseRequest:{findMany:async query=>{validateQuery('ExpenseRequest',query);assert.equal(query.where.orgId,orgId);return [];}},
@@ -53,7 +53,7 @@ test('overview reads real Prisma relations and resolves daily counterparties onl
  const db={$transaction:async callback=>callback(tx)};
  const report=await loadAccountOverview(db,orgId);
  assert.equal(report.orgId,orgId);assert.equal(report.transactions[0].counterparty,'');assert.equal(report.transactions[1].counterparty,'Buyer');assert.equal(report.transactions[2].counterparty,'Employee');assert.equal(report.transactions[3].counterparty,'');assert.equal(report.transactions[1].settlementLines[0].amount,'1.25');assert.deepEqual(lookups.sort(),['expense','invoice']);
- entries.splice(0);lookups.splice(0);assert.equal((await loadAccountOverview(db,orgId)).transactions.length,0);assert.deepEqual(lookups,[]);
+ entries.splice(0);lookups.splice(0);assert.equal((await loadAccountOverview(db,orgId,{days:180})).transactions.length,0);assert.deepEqual(lookups,[]);assert.equal(ranges.at(-1).gte,shiftReportDate(asOf,-179));assert.equal(ranges.at(-1).lte,asOf);
 });
 test('account report uses actual closing balances, fills all 30 days and keeps opening balances and currencies separate',()=>{
  const accounts=[{id:'usd',currencyCode:'USD',bankName:'Bank',accountNumber:'1',openingDate:'2026-01-01',openingBalance:'100',currentBalance:'1090'},{id:'vnd',currencyCode:'VND',displayName:'Cash',openingDate:'2026-10-20',openingBalance:'1000',currentBalance:'1500'}];

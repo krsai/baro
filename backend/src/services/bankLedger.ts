@@ -11,6 +11,7 @@ import {accountingCodeId,ledgerAccountingCode} from './accountingCode';
 import {readLedgerEdit,replaceLedgerEntry,deleteLedgerEntry} from './bankLedgerEdit';
 import {listApprovalOverview} from './approvalOverview';
 import {attachLedgerActorNames} from './ledgerActors';
+import {loadReferenceExchangeRates} from './referenceExchangeRates';
 
 // Internal lower bound only; new accounts have no user-defined opening period.
 export const LEDGER_ZERO_START='0001-01-01';
@@ -267,6 +268,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   app.post('/bank-ledger/changes/:entryId/acknowledge',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await acknowledgeLedgerChange(db,scope.orgId,scope.actorId,req.params.entryId));});
   app.get('/bank-ledger/changes',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerChanges(db,scope.orgId,req.query));});
   app.get('/bank-ledger/overview',async(req:any,res:any)=>{const scope=await access(req,res,'ACCOUNT_OVERVIEW');if(scope)res.json(await loadAccountOverview(db,scope.orgId,req.query));});
+  app.get('/bank-ledger/exchange-rates',async(req:any,res:any)=>{const scope=await access(req,res,'ACCOUNT_OVERVIEW');if(scope){try{res.json(await loadReferenceExchangeRates());}catch{res.status(503).json({error:'EXCHANGE_RATES_UNAVAILABLE'});}}});
   app.get('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await readLedgerEdit(db,scope.orgId,req.params.entryId));});
   app.put('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body,req.params.entryId);res.json(await replaceLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body));}});
   app.delete('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,null,req.params.entryId);res.json(await deleteLedgerEntry(db,scope.orgId,scope.actor,req.params.entryId,req.body.reason));}});
