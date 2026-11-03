@@ -13,12 +13,11 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
   const money=(value:any,empty=false)=>{if(empty&&(value===''||value==null))return null;if(typeof value!=='string'||!(row.currency==='USD'?/^\d{1,15}(\.\d{1,2})?$/:/^\d{1,15}$/).test(value))return fail();return new Prisma.Decimal(value).toFixed();};
   const min=subject.hasAmount?money(row.min):null,max=subject.hasAmount?money(row.max,true):null;if(max!=null&&new Prisma.Decimal(min!).gt(max))return fail();
   if(!Array.isArray(row.stages)||!row.stages.length||row.stages.length>10)return fail();
-  const stages=[];const seen=new Set();
+  const stages=[];
   for(const stage of row.stages){
    if(!stage||!roles.includes(stage.role))return fail();
    const gradeId=await grade(stage.gradeId);
    if(stage.role!=='ADMIN'&&!gradeId)return fail();
-   const key=stage.role+':'+(gradeId||'');if(seen.has(key))return fail();seen.add(key);
    stages.push({role:stage.role,gradeId});
   }
   if(subject.key==='EXPENSE'&&row.drafterRole==='OPERATOR'&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
@@ -26,20 +25,24 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
  }
  return rules;
 }
-export async function resolveApprovalRules(db:any,orgId:number,drafter:any,totals:Map<string,Prisma.Decimal>,config:any,selection:any,allowIncomplete:boolean,subject:ApprovalSubject=EXPENSE_APPROVAL_SUBJECT){
+export async function resolveApprovalRules(db:any,orgId:number,drafter:any,totals:Map<string,Prisma.Decimal>,config:any,selection:any,allowIncomplete:boolean,subject:ApprovalSubject=EXPENSE_APPROVAL_SUBJECT,fallback?:(currency:string)=>Promise<any[]>){
  if(config.version!==2||!config.rules?.length)return null;
  if(config.kind!==subject.key)return fail('INVALID_APPROVAL_SUBJECT');
  const matched=[];
  if(!subject.hasAmount){const rule=config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId));if(!rule)return fail('APPROVAL_RULE_NOT_FOUND');matched.push(rule);}
- for(const [currency,amount] of subject.hasAmount?totals:new Map<string,Prisma.Decimal>()){
-  const rule=config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId)&&row.currency===currency&&amount.gte(row.min)&&(row.max==null||amount.lte(row.max)));
-  if(!rule){if(!matched.length&&totals.size===1)return null;return fail('APPROVAL_RULE_NOT_FOUND');}
-  matched.push(rule);
+ if(subject.hasAmount){
+  const conditions=[...totals].map(([currency,amount])=>({currency,rule:config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId)&&row.currency===currency&&amount.gte(row.min)&&(row.max==null||amount.lte(row.max)))}));
+  if(!conditions.some(row=>row.rule))return null;
+  for(const {currency,rule} of conditions){
+   if(rule)matched.push(rule);
+   else if(fallback)matched.push({id:'fallback-'+currency,stages:await fallback(currency)});
+   else return fail('APPROVAL_RULE_NOT_FOUND');
+  }
  }
  // Merge currencies without comparing or converting their amounts. Keep every
  // chain's ordering; contradictory chains must be fixed rather than guessed.
  const nodes=new Map<string,any>(),edges=new Map<string,Set<string>>();
- for(const rule of matched){let previous:string|null=null;for(const stage of rule.stages){const key=stage.role+':'+(stage.gradeId||'');nodes.set(key,stage);if(!edges.has(key))edges.set(key,new Set());if(previous)edges.get(previous)!.add(key);previous=key;}}
+ for(const rule of matched){let previous:string|null=null;const occurrences=new Map<string,number>();for(const stage of rule.stages){const category=stage.role+':'+(stage.gradeId||''),occurrence=(occurrences.get(category)||0)+1;occurrences.set(category,occurrence);const key=category+':'+occurrence;nodes.set(key,stage);if(!edges.has(key))edges.set(key,new Set());if(previous)edges.get(previous)!.add(key);previous=key;}}
  const ordered:any[]=[];const remaining=new Set(nodes.keys());
  while(remaining.size){const key=[...remaining].find(key=>![...remaining].some(other=>edges.get(other)?.has(key)));if(!key)return fail('APPROVAL_RULE_ORDER_CONFLICT');remaining.delete(key);ordered.push(nodes.get(key));}
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[];let complete=true;

@@ -31,12 +31,27 @@ test('rules validate actual company grades, accountant requirement and exact dec
  assert.equal((await resolveExpenseApproval(db,7,10,[item('5000')],undefined)).ids[0],20);
  const below=await resolveExpenseApproval(db,7,10,[item('4999.99')],undefined);assert.deepEqual(below.ids,[30,31]);
 });
+test('two intermediate approvers can share a grade but must be different actual employees',async()=>{
+ const {db,rule,people}=fixture();people.push({...people[1],id:21,name:'Second operations lead'});
+ rule.stages=[{role:'OPERATOR',gradeId:3},{role:'OPERATOR',gradeId:3},{role:'ACCOUNTANT',gradeId:2},{role:'ADMIN',gradeId:null}];
+ assert.equal((await validateApprovalRules(db,7,[rule]))[0].stages.length,4);
+ const selection={step1EmployeeId:20,step2EmployeeId:21,step3EmployeeId:30,step4EmployeeId:40};
+ assert.deepEqual((await resolveExpenseApproval(db,7,10,[item('5500')],selection)).ids,[20,21,30,40]);
+ await assert.rejects(resolveExpenseApproval(db,7,10,[item('5500')],{...selection,step2EmployeeId:20}),/INVALID_EXPENSE_APPROVERS/);
+});
 test('mixed currencies merge required stages without FX and reject contradictory ordering',async()=>{
  const {db,config,rule}=fixture();
  const krw={...rule,id:'krw',currency:'KRW',min:'0',stages:[{role:'OPERATOR',gradeId:3},{role:'ACCOUNTANT',gradeId:2}]};config.rules.push(krw);
  const items=[item('5500'),{...item('1000000'),currency:'KRW'}];
  assert.deepEqual((await resolveExpenseApproval(db,7,10,items,undefined)).ids,[20,30,40]);
  krw.stages.reverse();await assert.rejects(resolveExpenseApproval(db,7,10,items,undefined),/APPROVAL_RULE_ORDER_CONFLICT/);
+});
+test('editing only USD conditions preserves untouched currency fallbacks and other drafter roles',async()=>{
+ const {db}=fixture();
+ const mixed=[item('5500'),{...item('1000000'),currency:'KRW'}];
+ assert.deepEqual((await resolveExpenseApproval(db,7,10,mixed,undefined)).ids,[20,30,40]);
+ // No accountant-specific condition exists: use their original own-grade limits.
+ assert.deepEqual((await resolveExpenseApproval(db,7,30,mixed,undefined)).ids,[31,40]);
 });
 test('non-financial subjects resolve without money and cannot reuse expense policy namespaces',async()=>{
  const {db,rule,people}=fixture();const subject={key:'LEAVE',menuPath:'/leave-requests',hasAmount:false,enabled:true};

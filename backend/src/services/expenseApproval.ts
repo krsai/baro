@@ -46,7 +46,13 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
       totals.set(item.currency,(totals.get(item.currency)||new Prisma.Decimal(0)).add(amount));
     }catch(error:any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
   }
-  const custom=await resolveApprovalRules(tx,orgId,drafter,totals,config,selection,allowIncomplete);
+  const custom=await resolveApprovalRules(tx,orgId,drafter,totals,config,selection,allowIncomplete,EXPENSE_APPROVAL_SUBJECT,async currency=>{
+    // Editing a USD band must not change untouched currencies or drafter groups.
+    // Resolve their existing fallback (including vacancies and own authority),
+    // then merge the required stages without converting unlike currencies.
+    const legacy=await resolveExpenseApproval(tx,orgId,drafterId,items.filter(item=>item.currency===currency),undefined,true,{...config,rules:[]});
+    return legacy.stages.filter((stage:any)=>!stage.vacant).map((stage:any)=>({role:stage.key==='admin'?'ADMIN':'ACCOUNTANT',gradeId:stage.key==='admin'?null:config[stage.key+'GradeId']||stage.candidates[0]?.gradeId||null}));
+  });
   if(custom)return custom;
   let level=0;
   for(const [currency,amount] of totals){
