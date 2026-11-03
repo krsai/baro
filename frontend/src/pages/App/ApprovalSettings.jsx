@@ -11,7 +11,7 @@ import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {approvalSettingsText} from '../../constants/approvalSettings';
 import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
-import {cleanApprovalBands,invalidApprovalBands} from '../../utils/approvalBands.mjs';
+import {approvalBandOrderErrors,cleanApprovalBands,invalidApprovalBands} from '../../utils/approvalBands.mjs';
 
 export default function ApprovalSettings(){
  const {activeOrgId}=useAuth(),{languageCode}=useLanguage();
@@ -33,7 +33,7 @@ export default function ApprovalSettings(){
   <Stack spacing={2} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.title}</Button>}>{error}</Alert>}
    {saved&&<Alert severity="success">{t.saved}</Alert>}
-   {invalid&&<Alert severity="error">{messages.error}</Alert>}
+   {form&&approvalBandOrderErrors(form.rules).size>0&&<Alert severity="warning">{band.orderError}</Alert>}
    <Stack direction={{xs:'column',sm:'row'}} spacing={2} justifyContent="space-between" alignItems={{sm:'center'}}>
     {data&&<TextField select size="small" label={subject.label} value="EXPENSE" onChange={()=>{}} sx={{width:{xs:'100%',sm:320}}}>{(data.subjects||[{key:'EXPENSE',enabled:true}]).map(row=><MenuItem key={row.key} value={row.key} disabled={!row.enabled}>{subject[row.key]||row.key}</MenuItem>)}</TextField>}
    </Stack>

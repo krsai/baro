@@ -4,3 +4,6 @@ export const approvalBandText={
  vi:{condition:'Điều kiện (chi phí)',line:'Luồng phê duyệt',role:'Vai trò',grade:'Chức danh',drafter:'Người lập',drafterRole:'Vai trò người lập',allGrades:'Tất cả chức danh',middle:'Duyệt trung gian',final:'Người duyệt cuối',addMiddle:'Thêm bước trung gian',addCondition:'Thêm khoảng tiền',amount:'Số tiền',under:'trở xuống',over:'trên',from:'từ',unlimited:'Không giới hạn tiền',selectGrade:'Chọn chức danh',remove:'Xóa',left:'Trước',right:'Sau',future:'Áp dụng cho đề nghị được tạo sau khi lưu.',selfPolicy:'Áp dụng quyền tự quyết theo chức danh và phê duyệt mặc định. Thêm khoảng tiền để chọn luồng cho điều kiện đó.',fallback:'Các khoản khác dùng phê duyệt mặc định.',OPERATOR:'Vận hành',ACCOUNTANT:'Kế toán',ADMIN:'Quản trị viên'},
 };
 approvalBandText.ko.role='보직';
+Object.assign(approvalBandText.ko,{addCondition:'구간 추가',drafterGrade:'기안자 직급',orderError:'금액 구간 순서를 확인해 주세요.',reorder:'구간 순서 변경'});
+Object.assign(approvalBandText.en,{addCondition:'Add band',drafterGrade:'Drafter grade',orderError:'Check the order of the amount bands.',reorder:'Reorder band'});
+Object.assign(approvalBandText.vi,{addCondition:'Thêm khoảng',drafterGrade:'Chức danh người lập',orderError:'Kiểm tra thứ tự các khoảng tiền.',reorder:'Sắp xếp khoảng'});

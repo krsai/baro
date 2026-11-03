@@ -32,6 +32,7 @@ export function replaceApprovalGroup(rules,group,rows){
 }
 export function invalidApprovalBands(rules){
  if(rules.length>30)return true;
+ if(approvalBandOrderErrors(rules).size)return true;
  return rules.some(row=>{
   const min=approvalAmountUnits(row.min,row.currency),max=boundedApprovalBand(row)?approvalAmountUnits(row.max,row.currency):null;
   if(min===null||boundedApprovalBand(row)&&(max===null||max<min)||!row.stages?.length||row.stages.length>10||row.drafterRole==='OPERATOR'&&!row.stages.some(stage=>stage.role==='ACCOUNTANT'))return true;
@@ -47,5 +48,31 @@ export function combineApprovalCurrencyRows(groups){
   if(!combined.has(key))combined.set(key,{index,stages:rule.stages,entries:[]});
   combined.get(key).entries.push({currency,index,rule});
  });
- return [...combined.values()].sort((a,b)=>a.index-b.index).map(row=>({...row,key:row.index+':'+row.entries.map(entry=>entry.currency).join('-')}));
+ return [...combined.values()].sort((a,b)=>a.index-b.index).map(row=>({...row,key:row.entries.map(entry=>entry.currency+':'+(entry.rule.id??entry.index)).join('|')}));
+}
+export function approvalBandOrderErrors(rules){
+ const groups=new Map(),errors=new Set();
+ for(const row of rules){const key=JSON.stringify([row.currency,row.drafterRole,row.drafterGradeId||null]);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
+ for(const rows of groups.values()){
+  let previous=null,unlimited=null;
+  for(const row of rows){
+   if(unlimited){errors.add(unlimited.id);errors.add(row.id);}
+   if(!boundedApprovalBand(row)){unlimited=row;continue;}
+   const amount=approvalAmountUnits(row.max,row.currency);if(amount===null)continue;
+   if(previous&&amount<=previous.amount){errors.add(previous.id);errors.add(row.id);}
+   previous={id:row.id,amount};
+  }
+ }
+ return errors;
+}
+export function reorderApprovalCurrencyBands(rules,groups,rows,from,to){
+ if(from===to||from<0||to<0||from>=rows.length||to>=rows.length)return rules;
+ const ordered=[...rows],moved=ordered.splice(from,1)[0];ordered.splice(to,0,moved);
+ let result=rules;
+ for(const source of groups){
+  const entries=ordered.flatMap(row=>row.entries.filter(entry=>entry.currency===source.currency));
+  const next=[...entries.filter(entry=>boundedApprovalBand(entry.rule)),...entries.filter(entry=>!boundedApprovalBand(entry.rule))].map(entry=>entry.rule);
+  if(next.some((row,index)=>row!==source.rows[index]))result=replaceApprovalGroup(result,source.group,reflowApprovalBands(next,source.currency));
+ }
+ return result;
 }

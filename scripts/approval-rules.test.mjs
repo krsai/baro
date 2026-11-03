@@ -13,6 +13,18 @@ function fixture(){
  return {db,rule,config,people};
 }
 const item=amount=>({unitPrice:amount,currency:'USD',quantity:'1',vatRate:'0'});
+test('operations, accounting and administrators can draft under any actual company grade scope',async()=>{
+ const {db,rule,config,people}=fixture();
+ for(const role of ['OPERATOR','ACCOUNTANT','ADMIN']){
+  const stages=role==='OPERATOR'?[{role:'ACCOUNTANT',gradeId:2}]:role==='ACCOUNTANT'?[{role:'ADMIN',gradeId:null}]:[{role:'ACCOUNTANT',gradeId:2}];
+  for(const grade of [null,1,2,3]){
+   const scoped={...rule,id:role+'-'+(grade||'all'),drafterRole:role,drafterGradeId:grade,min:'0',stages};
+   const [saved]=await validateApprovalRules(db,7,[scoped]);assert.equal(saved.drafterRole,role);assert.equal(saved.drafterGradeId,grade);
+  }
+  const drafter=people.find(person=>person.orgRole===role);config.rules=[{...rule,drafterRole:role,drafterGradeId:drafter.gradeId,min:'0',stages}];
+  const result=await resolveExpenseApproval(db,7,drafter.id,[item('100')],{});assert.equal(result.complete,true);assert.deepEqual(result.ids,role==='ACCOUNTANT'?[40]:[30]);
+ }
+});
 test('5500 USD request uses configurable operations lead, senior accountant and admin in exact order',async()=>{
  const {db,config,rule}=fixture();assert.equal((await validateApprovalRules(db,7,[rule])).length,1);
  const selection={step1EmployeeId:20,step2EmployeeId:30,step3EmployeeId:40};

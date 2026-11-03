@@ -38,7 +38,7 @@ try{
   assert.equal(await page.getByRole('dialog').count(),0);assert.equal(posts.length,0);
   const bounds=await page.getByTestId('approval-settings-page').boundingBox();assert.ok(bounds.width>=width-70,'Settings use the full work area');
   await first.getByRole('textbox',{name:band.amount+' USD 1',exact:true}).fill('1500');
-  await first.locator('[data-add-middle]').click();await first.locator('[data-add-middle]').click();
+  await first.locator('[data-add-middle]').last().click();await first.locator('[data-add-middle]').last().click();
   assert.equal(await first.locator('[data-band-stage]').count(),3);assert.equal(await page.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);
   const choose=async(control,name)=>{await control.click();await page.getByRole('option',{name,exact:true}).click();};
   const stage=(index,field)=>first.locator('[data-band-stage="'+index+'"]').getByRole('combobox').nth(field);
@@ -51,6 +51,10 @@ try{
   assert.equal(saved.revision,0);assert.equal(saved.rules.length,9);assert.equal(saved.rules[0].max,'1500');assert.equal(saved.rules[1].min,'1500.01');
   assert.deepEqual(saved.rules[0].stages,[{role:'OPERATOR',gradeId:20},{role:'ACCOUNTANT',gradeId:10},{role:'ADMIN',gradeId:null}]);
   assert.ok(saved.rules.every(row=>!('__bounded' in row)));assert.equal(saved.limits.USD.senior,'1000');
+  const nodes=await first.locator('[data-band-drafter],[data-band-stage]').evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return {x:rect.x,width:rect.width};}));
+  for(let i=1;i<nodes.length;i++)assert.ok(Math.abs(nodes[i].x-nodes[i-1].x-nodes[i-1].width-32)<1,'Every connection uses the same gap');
+  const connector=first.locator('[data-band-connector]').first(),arrow=await connector.locator('svg').first().boundingBox(),plus=await connector.getByRole('button').boundingBox();assert.ok(plus.y>=arrow.y+arrow.height,'Add button sits below the arrow');
+  assert.equal(await first.getByText(band.under,{exact:true}).count(),0);assert.equal(await first.getByText(band.over,{exact:true}).count(),0);
   assert.equal(await page.getByRole('tab').count(),0);assert.equal(await page.locator('[data-currency-heading]').count(),3);
   await first.getByRole('textbox',{name:band.amount+' VND 1',exact:true}).fill('25000000');
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
@@ -58,11 +62,21 @@ try{
   assert.equal(saved.rules.find(row=>row.currency==='USD').max,'1500');
   await page.getByRole('button',{name:band.addCondition,exact:true}).click();assert.equal(await rows.count(),4);
   assert.equal(await page.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);
-  const added=page.locator('[data-approval-band="2"]');for(const [currency,max] of [['USD','10000'],['KRW','10000000'],['VND','150000000']])await added.getByRole('textbox',{name:band.amount+' '+currency+' 3',exact:true}).fill(max);
-  await added.locator('[data-add-middle]').click();await choose(added.locator('[data-band-stage="0"]').getByRole('combobox').nth(0),band.ACCOUNTANT);await choose(added.locator('[data-band-stage="0"]').getByRole('combobox').nth(1),'Senior');
+  assert.equal(await page.getByText(band.orderError,{exact:true}).count(),0);assert.equal(await page.locator('.Mui-error').count(),0,'Adding an unfinished band does not show an error');
+  const added=page.locator('[data-approval-band="2"]');for(const [currency,max] of [['USD','750'],['KRW','500000'],['VND','15000000']])await added.getByRole('textbox',{name:band.amount+' '+currency+' 3',exact:true}).fill(max);
+  await page.getByText(band.orderError,{exact:true}).waitFor();
+  const handle=added.locator('[data-band-drag-handle]');await handle.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowUp');await page.keyboard.press('ArrowUp');await page.keyboard.press('Space');
+  await page.getByText(band.orderError,{exact:true}).waitFor({state:'hidden'});assert.equal(await page.locator('[data-approval-band="0"]').getByRole('textbox',{name:band.amount+' USD 1',exact:true}).inputValue(),'750');
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();assert.equal(saved.rules.length,12);
-  assert.equal(saved.rules.filter(row=>row.currency==='VND')[3].min,'150000001');
-  await added.getByRole('button',{name:band.remove,exact:true}).first().click();assert.equal(await rows.count(),3);
+  assert.equal(saved.rules.filter(row=>row.currency==='VND')[3].min,'100000001');assert.equal(saved.rules.find(row=>row.currency==='USD').max,'750');
+  await page.locator('[data-approval-band="0"]').getByRole('button',{name:band.remove,exact:true}).first().click();assert.equal(await rows.count(),3);
+  const scopes=page.getByRole('group',{name:band.drafterRole,exact:true});for(const role of ['OPERATOR','ACCOUNTANT','ADMIN'])assert.equal(await scopes.getByRole('button',{name:band[role],exact:true}).count(),1);
+  for(const [role,grade] of [['ACCOUNTANT','Staff'],['ADMIN','Lead']]){
+   await scopes.getByRole('button',{name:band[role],exact:true}).click();await choose(page.getByRole('combobox',{name:band.drafterGrade,exact:false}),grade);await page.getByRole('button',{name:band.addCondition,exact:true}).click();
+   const scoped=page.locator('[data-approval-band="0"]');for(const [currency,max] of [['USD','2000'],['KRW','2000000'],['VND','30000000']])await scoped.getByRole('textbox',{name:band.amount+' '+currency+' 1',exact:true}).fill(max);
+   assert.ok((await scoped.locator('[data-band-drafter]').innerText()).includes(band[role]));await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
+   assert.equal(saved.rules.filter(row=>row.drafterRole===role&&row.drafterGradeId===(role==='ACCOUNTANT'?1:20)).length,3);assert.equal(saved.rules.filter(row=>row.drafterRole==='OPERATOR').length,9);
+  }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);await page.close();
  }

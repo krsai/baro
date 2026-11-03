@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {approvalAmountUnits,boundedApprovalBand,cleanApprovalBands,combineApprovalCurrencyRows,defaultApprovalBands,invalidApprovalBands,previousApprovalAmount,reflowApprovalBands,replaceApprovalGroup} from '../frontend/src/utils/approvalBands.mjs';
+import {approvalAmountUnits,approvalBandOrderErrors,boundedApprovalBand,cleanApprovalBands,combineApprovalCurrencyRows,defaultApprovalBands,invalidApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,replaceApprovalGroup} from '../frontend/src/utils/approvalBands.mjs';
 const grades=[{id:1,code:'CL1'},{id:10,code:'CL2'},{id:20,code:'CL3'}];
 const settings={limits:{USD:{senior:'1000',lead:'5000'},VND:{senior:'20000000',lead:'100000000'}}};
 const group={role:'OPERATOR',gradeId:null,currency:'USD'};
@@ -33,4 +33,23 @@ test('unfinished amounts and invalid ranges block saving while repeated eligible
  const repeated={...rows[0],stages:[{role:'ACCOUNTANT',gradeId:10},{role:'ACCOUNTANT',gradeId:10}]};assert.equal(invalidApprovalBands([repeated]),false);
  assert.equal('__bounded' in cleanApprovalBands([{...rows[0],__bounded:true}])[0],false);
  assert.equal(approvalAmountUnits('1000.001','USD'),null);assert.equal(approvalAmountUnits('1000.1','VND'),null);
+});
+test('draft blanks stay quiet while descending and repeated limits report only their own scope',()=>{
+ const rows=defaultApprovalBands(settings,grades,group),blank={...rows[1],id:'blank',max:'',__bounded:true};
+ assert.equal(approvalBandOrderErrors([rows[0],blank,rows[2]]).size,0);assert.equal(invalidApprovalBands([rows[0],blank,rows[2]]),true);
+ assert.deepEqual([...approvalBandOrderErrors([rows[1],rows[0],rows[2]])],[rows[1].id,rows[0].id]);
+ assert.equal(approvalBandOrderErrors([rows[0],{...rows[1],drafterRole:'ACCOUNTANT',max:'500'}]).size,0);
+ assert.equal(approvalBandOrderErrors([rows[0],{...rows[1],max:'1000'}]).size,2);
+});
+test('dragging bands preserves workflow identities, currency scopes, grade scopes and the final open interval',()=>{
+ const groups=['USD','VND'].map(currency=>({currency,group:{...group,currency},rows:defaultApprovalBands(settings,grades,{...group,currency})}));
+ const foreign={...groups[0].rows[0],id:'accountant',drafterRole:'ACCOUNTANT',drafterGradeId:10};
+ const initial=[foreign,...groups.flatMap(source=>source.rows)],rows=combineApprovalCurrencyRows(groups);
+ const moved=reorderApprovalCurrencyBands(initial,groups,rows,1,0);
+ assert.equal(moved.find(row=>row.id==='accountant'),foreign);
+ for(const source of groups){const next=moved.filter(row=>row.currency===source.currency&&row.drafterRole==='OPERATOR');assert.deepEqual(next.map(row=>row.id),[source.rows[1].id,source.rows[0].id,source.rows[2].id]);assert.deepEqual(next[0].stages,source.rows[1].stages);assert.equal(next[0].min,'0');assert.equal(next[2].max,null);}
+ assert.ok(approvalBandOrderErrors(moved).size>0);
+ const regroup=groups.map(source=>({...source,rows:moved.filter(row=>row.currency===source.currency&&row.drafterRole==='OPERATOR')}));
+ const restored=reorderApprovalCurrencyBands(moved,regroup,combineApprovalCurrencyRows(regroup),0,1);
+ assert.equal(approvalBandOrderErrors(restored).size,0);assert.equal(invalidApprovalBands(restored),false);
 });
