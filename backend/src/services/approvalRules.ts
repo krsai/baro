@@ -49,7 +49,7 @@ export async function resolveApprovalRules(db:any,orgId:number,drafter:any,total
  for(const [index,stage] of ordered.entries()){
   const key='step'+(index+1),where={orgId,status:'ACTIVE',orgRole:stage.role,...(stage.gradeId?{gradeId:stage.gradeId,grade:{isActive:true,set:{isActive:true}}}:{})};
   const candidates=await db.employee.findMany({where:{...where,id:{notIn:[drafter.id,...ids]}},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameKo:true,nameEn:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
-  const employeeId=selection===undefined?(candidates.length===1?candidates[0].id:null):selection[key+'EmployeeId'];
+  const employeeId=selection?.[key+'EmployeeId']??(candidates.length===1?candidates[0].id:null);
   const chosen=candidates.find((candidate:any)=>candidate.id===employeeId);
   if(!chosen){complete=false;if(!allowIncomplete)return fail(employeeId?'INVALID_EXPENSE_APPROVERS':'EXPENSE_APPROVER_REQUIRED');}
   else {ids.push(chosen.id);resolvedStages.push({employeeId:chosen.id,role:stage.role,gradeId:stage.gradeId});}

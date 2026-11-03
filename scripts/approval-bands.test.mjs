@@ -1,9 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {approvalAmountUnits,boundedApprovalBand,cleanApprovalBands,defaultApprovalBands,invalidApprovalBands,previousApprovalAmount,reflowApprovalBands,replaceApprovalGroup} from '../frontend/src/utils/approvalBands.mjs';
+import {approvalAmountUnits,boundedApprovalBand,cleanApprovalBands,combineApprovalCurrencyRows,defaultApprovalBands,invalidApprovalBands,previousApprovalAmount,reflowApprovalBands,replaceApprovalGroup} from '../frontend/src/utils/approvalBands.mjs';
 const grades=[{id:1,code:'CL1'},{id:10,code:'CL2'},{id:20,code:'CL3'}];
 const settings={limits:{USD:{senior:'1000',lead:'5000'},VND:{senior:'20000000',lead:'100000000'}}};
 const group={role:'OPERATOR',gradeId:null,currency:'USD'};
+test('matching currency workflows share a compact row and different workflows stay separate',()=>{
+ const groups=['USD','VND'].map(currency=>({currency,rows:defaultApprovalBands(settings,grades,{...group,currency})}));
+ assert.equal(combineApprovalCurrencyRows(groups).length,3);
+ groups[1].rows[0]={...groups[1].rows[0],stages:[{role:'ACCOUNTANT',gradeId:20}]};
+ const rows=combineApprovalCurrencyRows(groups);assert.equal(rows.length,4);assert.equal(rows[0].entries.length,1);assert.equal(rows[1].entries[0].currency,'VND');
+});
 test('existing expense limits render as editable amount bands without writing or mutating them',()=>{
  const before=JSON.stringify(settings),rows=defaultApprovalBands(settings,grades,group);
  assert.deepEqual(rows.map(row=>[row.min,row.max]),[['0','1000'],['1000.01','5000'],['5000.01',null]]);

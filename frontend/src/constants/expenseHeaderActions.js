@@ -3,6 +3,6 @@ export const expenseHeaderActions={
  en:{approval:'Approval line',chooseApproval:'Select approval line',choosePayee:'Select payee',apply:'Apply',cancel:'Cancel',edit:'Change',drafter:'Drafter',senior:'Senior accountant',lead:'Lead accountant',admin:'Administrator',vacant:'Vacant → escalate',none:'No further approval',loading:'Checking approval line.',select:'Select an approver',amount:'Required approval stages follow the request amount.',noAccount:'No account is registered. Add information before selecting.',information:'Manage information and accounts',ready:'Ready to select',check:'Check information',payee:'Payee',search:'Search name or contact',error:'Could not load information.',retry:'Reload'},
  vi:{approval:'Luồng phê duyệt',chooseApproval:'Chọn luồng phê duyệt',choosePayee:'Chọn người nhận',apply:'Áp dụng',cancel:'Hủy',edit:'Thay đổi',drafter:'Người lập',senior:'Kế toán cấp cao',lead:'Kế toán phụ trách',admin:'Quản trị viên',vacant:'Chưa có → chuyển cấp trên',none:'Không cần duyệt thêm',loading:'Đang kiểm tra luồng phê duyệt.',select:'Chọn người phê duyệt',amount:'Các bước phê duyệt phụ thuộc số tiền đề nghị.',noAccount:'Chưa có tài khoản. Bổ sung thông tin trước khi chọn.',information:'Quản lý thông tin và tài khoản',ready:'Có thể chọn',check:'Kiểm tra thông tin',payee:'Người nhận',search:'Tìm tên hoặc liên hệ',error:'Không thể tải thông tin.',retry:'Tải lại'}
 };
-expenseHeaderActions.ko.confirmSave='결재선 확인 후 저장';
-expenseHeaderActions.en.confirmSave='Confirm approval line and save';
-expenseHeaderActions.vi.confirmSave='Xác nhận luồng duyệt và lưu';
+expenseHeaderActions.ko.confirmSave='저장';
+expenseHeaderActions.en.confirmSave='Save';
+expenseHeaderActions.vi.confirmSave='Lưu';

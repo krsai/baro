@@ -1,5 +1,6 @@
+import {Add} from '@mui/icons-material';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import {Alert,Button,MenuItem,Stack,TextField} from '@mui/material';
 import {approvalSubjectText} from '../../constants/approvalSubjects';
 import {approvalBandText} from '../../constants/approvalBands';
 import ApprovalRuleEditor,{approvalRuleText} from '../../components/ApprovalRuleEditor';
@@ -16,7 +17,7 @@ export default function ApprovalSettings(){
  const {activeOrgId}=useAuth(),{languageCode}=useLanguage();
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,band=approvalBandText[languageCode]||approvalBandText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
  const [data,setData]=useState(null),[form,setForm]=useState(null),[initial,setInitial]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
- const lock=useRef(false),scope=useRef(activeOrgId);scope.current=activeOrgId;
+ const lock=useRef(false),editor=useRef(null),scope=useRef(activeOrgId);scope.current=activeOrgId;
  useUnsavedChanges(!!form&&JSON.stringify(form)!==initial);
  const path=`/expense-approval-settings${buildQueryString({orgId:activeOrgId})}`;
  useEffect(()=>{let live=true;setData(null);setForm(null);setInitial('');setError('');setSaved(false);
@@ -28,16 +29,15 @@ export default function ApprovalSettings(){
   try{await requestJSON(path,{method:'PUT',body:JSON.stringify(payload)});if(scope.current===orgId){const next={...payload,revision:payload.revision+1};setForm(next);setInitial(JSON.stringify(next));setSaved(true);emitWorkspaceDataChanged({orgId,topics:['expense-approval-settings']});}}
   catch(failure){if(scope.current===orgId)setError(failure.message==='APPROVAL_SETTINGS_CHANGED'?messages.changed:messages.error);}finally{lock.current=false;setBusy(false);}
  };
- return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button>} contentSx={{flex:1,minWidth:0}}>
+ return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button startIcon={<Add/>} disabled={disabled||!form} onClick={()=>{if(editor.current?.addCondition()===false)setError(messages.error);}}>{band.addCondition}</Button><Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button></Stack>} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={2} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.title}</Button>}>{error}</Alert>}
    {saved&&<Alert severity="success">{t.saved}</Alert>}
    {invalid&&<Alert severity="error">{messages.error}</Alert>}
    <Stack direction={{xs:'column',sm:'row'}} spacing={2} justifyContent="space-between" alignItems={{sm:'center'}}>
     {data&&<TextField select size="small" label={subject.label} value="EXPENSE" onChange={()=>{}} sx={{width:{xs:'100%',sm:320}}}>{(data.subjects||[{key:'EXPENSE',enabled:true}]).map(row=><MenuItem key={row.key} value={row.key} disabled={!row.enabled}>{subject[row.key]||row.key}</MenuItem>)}</TextField>}
-    <Typography variant="caption" color="text.secondary">{band.future}</Typography>
    </Stack>
-   {form&&<ApprovalRuleEditor key={activeOrgId} rules={form.rules} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode}/>}
+   {form&&<ApprovalRuleEditor ref={editor} key={activeOrgId} rules={form.rules} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode}/>}
    {data&&!data.canEdit&&<Alert severity="info">{t.readonly}</Alert>}
   </Stack>
  </AppPageContainer>;

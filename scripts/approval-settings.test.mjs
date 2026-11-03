@@ -108,10 +108,12 @@ test('company rule updates require an active administrator and ignore forged ten
  await handlers.get('PUT /expense-approval-settings')({body:config},response);assert.equal(writes,0);
  current=4;await handlers.get('PUT /expense-approval-settings')({body:{...config,orgId:99,drafterId:9}},response);assert.equal(writes,1);
 });
-test('manual preview shows required vertical stages without global assignees and requires explicit selections',async()=>{
- const {db}=fixture();db.systemSetting.findUnique=async()=>null;
+test('multiple eligible people require selection while sole candidates are automatic',async()=>{
+ const {db,people}=fixture();db.systemSetting.findUnique=async()=>null;
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')],{})).ids,[2,3]);
+ people.push({...people[1],id:5});
  const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{},true);
- assert.equal(preview.complete,false);assert.deepEqual(preview.stages.map(stage=>stage.key),['senior','lead']);assert.deepEqual(preview.ids,[]);
+ assert.equal(preview.complete,false);assert.deepEqual(preview.stages.map(stage=>stage.key),['senior','lead']);assert.deepEqual(preview.ids,[3]);
  await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{}),/APPROVER_REQUIRED/);
  const chosen={seniorEmployeeId:2,leadEmployeeId:3};const result=await resolveExpenseApproval(db,7,1,[item('30000000')],chosen);
  assert.deepEqual(result.ids,[2,3]);assert.deepEqual(result.policy.selection,chosen);
@@ -119,8 +121,8 @@ test('manual preview shows required vertical stages without global assignees and
 });
 test('manual choices retain threshold, company, grade, duplicate and self-approval guards',async()=>{
  const {db}=fixture();
- for(const selection of [{seniorEmployeeId:4},{seniorEmployeeId:1},{seniorEmployeeId:99},{seniorEmployeeId:2,leadEmployeeId:2},{seniorEmployeeId:2,leadVacant:true}])await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],selection),/INVALID|SELF|REQUIRED/);
- await assert.rejects(resolveExpenseApproval(db,7,1,[item('100000001')],{seniorEmployeeId:2,leadEmployeeId:3}),/APPROVER_REQUIRED/);
+ for(const selection of [{seniorEmployeeId:4},{seniorEmployeeId:1},{seniorEmployeeId:99},{seniorEmployeeId:2,leadEmployeeId:2}])await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],selection),/INVALID|SELF|REQUIRED/);
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('100000001')],{seniorEmployeeId:2,leadEmployeeId:3})).ids,[2,3,4]);
  const recovery=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:99},true);assert.equal(recovery.complete,false);assert.equal(recovery.stages[0].invalid,true);assert.ok(recovery.stages[0].candidates.length);
 });
 test('missing lead automatically routes to administrator without any vacancy setting',async()=>{
@@ -128,7 +130,7 @@ test('missing lead automatically routes to administrator without any vacancy set
  const selection={seniorEmployeeId:2,adminEmployeeId:4};
  const result=await resolveExpenseApproval(db,7,1,[item('30000000')],selection);assert.deepEqual(result.ids,[2,4]);assert.deepEqual(result.policy.skipped,['lead']);
  assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('30000000')],{...selection,leadEmployeeId:3})).ids,[2,4]);
- const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:2},true);assert.deepEqual(preview.stages.map(row=>row.key),['senior','lead','admin']);assert.equal(preview.complete,false);
+ const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:2},true);assert.deepEqual(preview.stages.map(row=>row.key),['senior','lead','admin']);assert.equal(preview.complete,true);
 });
 test('legacy global person assignments do not determine expense approvers',async()=>{
  const {db,config}=fixture();config.seniorEmployeeId=99;config.leadEmployeeId=99;config.adminEmployeeId=99;

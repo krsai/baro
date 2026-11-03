@@ -39,3 +39,13 @@ export function invalidApprovalBands(rules){
  });
 }
 export const cleanApprovalBands=rules=>rules.map(({__bounded,...row})=>row);
+export function combineApprovalCurrencyRows(groups){
+ const combined=new Map();
+ for(const {currency,rows} of groups)rows.forEach((rule,index)=>{
+  const signature=JSON.stringify(rule.stages.map(stage=>[stage.role,stage.gradeId||null]));
+  const key=index+':'+boundedApprovalBand(rule)+':'+signature;
+  if(!combined.has(key))combined.set(key,{index,stages:rule.stages,entries:[]});
+  combined.get(key).entries.push({currency,index,rule});
+ });
+ return [...combined.values()].sort((a,b)=>a.index-b.index).map(row=>({...row,key:row.index+':'+row.entries.map(entry=>entry.currency).join('-')}));
+}

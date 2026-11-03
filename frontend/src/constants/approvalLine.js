@@ -6,3 +6,5 @@ export const approvalLineText={
 approvalLineText.ko.noCandidates='이 단계에 해당하는 같은 회사의 활성 결재자가 없습니다.';
 approvalLineText.en.noCandidates='No active approver in this company qualifies for this stage.';
 approvalLineText.vi.noCandidates='Không có người duyệt đang hoạt động cùng công ty phù hợp với bước này.';
+approvalLineText.ko.person='결재자';approvalLineText.en.person='Approver';approvalLineText.vi.person='Người duyệt';
+approvalLineText.ko.invalidAmount='금액을 확인해 주세요.';approvalLineText.en.invalidAmount='Check the amount.';approvalLineText.vi.invalidAmount='Kiểm tra số tiền.';

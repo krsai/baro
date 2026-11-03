@@ -31,7 +31,7 @@ export async function validateApprovalSettings(tx:any,orgId:number,value:any){
 }
 
 export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:number,items:any[]=[],selection?:any,allowIncomplete=false,savedConfig?:any) {
-  const drafter = await tx.employee.findFirst({where:{id:drafterId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{select:{code:true,isActive:true,set:{select:{isActive:true}}}}}});
+  const drafter = await tx.employee.findFirst({where:{id:drafterId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{select:{code:true,name:true,nameKo:true,nameEn:true,nameVi:true,isActive:true,set:{select:{isActive:true}}}}}});
   if(!drafter) throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
   const setting = await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
   const config=savedConfig||setting?.value||defaultApprovalSettings();
@@ -74,25 +74,26 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     const gradeId=config[`${key}GradeId`];
     const where={orgId,status:'ACTIVE',orgRole:index===2?'ADMIN':'ACCOUNTANT',...(index<2?{...(gradeId?{gradeId}:{}),grade:{...(!gradeId?{code:index===0?'CL2':'CL3'}:{}),isActive:true,set:{isActive:true}}}:{})};
     const candidates=await tx.employee.findMany({where:{...where,id:{notIn:[drafterId,...ids]}},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameEn:true,nameKo:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
-    const employeeId=selection===undefined?(candidates.length===1?candidates[0].id:null):selection[`${key}EmployeeId`];
+    const employeeId=selection?.[`${key}EmployeeId`]??(candidates.length===1?candidates[0].id:null);
+    const stageScope={role:index===2?'ADMIN':'ACCOUNTANT',gradeId:index===2?null:gradeId||candidates[0]?.gradeId||null};
     if(employeeId!=null&&(!Number.isSafeInteger(employeeId)||employeeId<=0))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
     if(index<2&&!candidates.length){
-      skipped.push(key);stages.push({key,employeeId:null,vacant:true,candidates});requiredLevel=Math.max(requiredLevel,index+1);continue;
+      skipped.push(key);stages.push({...stageScope,key,employeeId:null,vacant:true,candidates});requiredLevel=Math.max(requiredLevel,index+1);continue;
     }
     const employee=employeeId ? await tx.employee.findFirst({where:{...where,id:employeeId}}):null;
     if(selection!==undefined&&employeeId&&(!employee||employeeId===drafterId||ids.includes(employeeId))){
       if(!allowIncomplete)throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
-      complete=false;stages.push({key,employeeId:null,candidates,invalid:true});continue;
+      complete=false;stages.push({...stageScope,key,employeeId:null,candidates,invalid:true});continue;
     }
     if(!employee){
-      complete=false;stages.push({key,employeeId:null,candidates});
+      complete=false;stages.push({...stageScope,key,employeeId:null,candidates});
       if(!allowIncomplete)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
       continue;
     }
     if(employeeId===drafterId)throw createHttpError(400,'EXPENSE_SELF_APPROVAL');
     if(ids.includes(employeeId))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
     if(index<2)accountantConfirmed=true;
-    ids.push(employeeId);stages.push({key,employeeId,name:employee.name,candidates});
+    ids.push(employeeId);stages.push({...stageScope,key,employeeId,name:employee.name,candidates});
   }
   return {ids,complete,stages,drafter,policy:{drafterId,exempt:complete&&!ids.length&&ownLevel>=level,...(drafter.orgRole==='ADMIN'?{exemptionReason:'ADMIN_DRAFTER'}:{}),config,skipped,level,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
 }
