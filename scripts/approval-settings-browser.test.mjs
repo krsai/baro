@@ -22,7 +22,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-  const settings={limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
+  const settings={drafterScope:{role:'OPERATOR',gradeId:null},limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
   const data={settings,drafter:{id:1,name:'Current user',orgRole:'ADMIN'},canEdit:true,grades:[{id:1,code:'CL1',name:'Staff',nameEn:'Staff'},{id:10,code:'CL2',name:'Senior',nameEn:'Senior'},{id:20,code:'CL3',name:'Lead',nameEn:'Lead'}],candidates:[{id:2,name:'Senior accountant',orgRole:'ACCOUNTANT',gradeId:10},{id:3,name:'Lead accountant',orgRole:'ACCOUNTANT',gradeId:20},{id:4,name:'Administrator',orgRole:'ADMIN'}]};
   await page.route('**/expense-approval-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){saved=r.request().postDataJSON();posts.push(saved);return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
   await page.goto(`http://127.0.0.1:${port}/approval-settings-acceptance.html`);
@@ -79,12 +79,12 @@ try{
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();assert.equal(saved.rules.length,12);
   assert.equal(saved.rules.filter(row=>row.currency==='VND')[3].min,'100000001');assert.equal(saved.rules.find(row=>row.currency==='USD').max,'750');
   await page.locator('[data-approval-band="0"]').getByRole('button',{name:band.remove,exact:true}).first().click();assert.equal(await rows.count(),3);
-  const scopes=page.getByRole('group',{name:band.drafterRole,exact:true});for(const role of ['OPERATOR','ACCOUNTANT','ADMIN'])assert.equal(await scopes.getByRole('button',{name:band[role],exact:true}).count(),1);
+  const scopes=page.getByRole('combobox',{name:band.drafterRole,exact:false}).first();await scopes.click();for(const role of ['ALL','OPERATOR','ACCOUNTANT','ADMIN'])await page.getByRole('option',{name:band[role],exact:true}).waitFor();await page.keyboard.press('Escape');
   for(const [role,grade] of [['ACCOUNTANT','Staff'],['ADMIN','Lead']]){
-   await scopes.getByRole('button',{name:band[role],exact:true}).click();await choose(page.getByRole('combobox',{name:band.drafterGrade,exact:false}),grade);await page.getByRole('button',{name:band.addCondition,exact:true}).click();
+   await choose(scopes,band[role]);await choose(page.getByRole('combobox',{name:band.drafterGrade,exact:false}).first(),grade);await page.getByRole('button',{name:band.addCondition,exact:true}).click();
    const scoped=page.locator('[data-approval-band="0"]');for(const [currency,max] of [['USD','2000'],['KRW','2000000'],['VND','30000000']])await scoped.getByRole('textbox',{name:band.amount+' '+currency+' 1',exact:true}).fill(max);
-   assert.equal(await scoped.locator('[data-band-drafter]').getByRole('textbox').first().inputValue(),band[role]);await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
-   assert.equal(saved.rules.filter(row=>row.drafterRole===role&&row.drafterGradeId===(role==='ACCOUNTANT'?1:20)).length,3);assert.equal(saved.rules.filter(row=>row.drafterRole==='OPERATOR').length,9);
+   assert.equal(await scoped.locator('[data-band-drafter]').getByRole('combobox').first().textContent(),band[role]);await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
+   assert.deepEqual(saved.drafterScope,{role,gradeId:role==='ACCOUNTANT'?1:20});assert.equal(saved.rules.filter(row=>row.drafterRole===role&&row.drafterGradeId===(role==='ACCOUNTANT'?1:20)).length,3);assert.equal(saved.rules.filter(row=>row.drafterRole==='OPERATOR').length,9);
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);await page.close();

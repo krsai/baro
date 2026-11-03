@@ -10,3 +10,7 @@ Object.assign(approvalBandText.vi,{addCondition:'Thêm khoảng',drafterGrade:'C
 approvalBandText.ko.reorderStage='결재 순서 변경';
 approvalBandText.en.reorderStage='Reorder approval';
 approvalBandText.vi.reorderStage='Sắp xếp bước duyệt';
+
+Object.assign(approvalBandText.ko,{ALL:'전체 직종',allRoles:'전체 직종',drafterRole:'기안자 직종'});
+Object.assign(approvalBandText.en,{ALL:'All roles',allRoles:'All roles'});
+Object.assign(approvalBandText.vi,{ALL:'Tất cả vai trò',allRoles:'Tất cả vai trò'});

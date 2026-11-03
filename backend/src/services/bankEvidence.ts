@@ -13,6 +13,7 @@ function approvalExemption(request:any,decisions:any[],policy:any,orgId:number){
  return {exempt:admin,exemptionReason:admin?'ADMIN_DRAFTER':null};
 }
 export function expenseApprovalSummary(request:any,decisions:any[],exempt=false){
+ if(request.deletedAt)return {status:'DELETED',steps:[],exempt:false,approved:false,rejected:false,rejection:null};
  const current=decisions.filter(row=>row.requestId===request.id&&row.version===request.version);
  const steps=(request.approvalSteps||[]).map((step:any)=>{const record=current.find(row=>row.position===step.position&&row.employeeId===step.employeeId);const rejected=record?.decision==='REJECTED';return {...step,approved:!!record&&!rejected,rejected,approvedAt:record&&!rejected?record.createdAt:null,rejectedAt:rejected?record.createdAt:null,reason:rejected?record.reason:null};});
  const rejectedRecord=current.find(row=>row.decision==='REJECTED');
@@ -35,7 +36,7 @@ export async function approvalState(db:any,orgId:number,requestId:number,actorId
  const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}}}) : null;
  const operatorPolicy=actor?.orgRole==='OPERATOR'?(await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}))?.afterSnapshot?.approvalPolicy:null;
  const operatorAllowed=actor?.orgRole!=='OPERATOR'||operatorPolicy?.config?.version===2&&operatorPolicy.config.kind==='EXPENSE'&&operatorPolicy.resolvedStages?.some((stage:any)=>stage.employeeId===actorId&&stage.role==='OPERATOR'&&stage.gradeId===actor.gradeId);
- const canApprove=!!actor&&operatorAllowed&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId;
+ const canApprove=!request.deletedAt&&!!actor&&operatorAllowed&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId;
  return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),...summary,exemptionReason:exemption.exemptionReason,canApprove,canReject:canApprove};
 }
 export async function attachExpenseApprovalStates(db:any,orgId:number,requests:any[]){
@@ -53,7 +54,7 @@ export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:numbe
  const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}});
  if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
  const handled=view==='completed'?await db.expenseApprovalDecision.findMany({where:{orgId,employeeId:actorId},select:{requestId:true,version:true,decision:true,reason:true,createdAt:true}}):[];
- const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
+ const requests=await db.expenseRequest.findMany({where:{orgId,deletedAt:null,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
  if(!requests.length)return [];
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true,decision:true,reason:true,createdAt:true}});
  const auditIds=requests.filter((row:any)=>actor.orgRole==='OPERATOR'||view==='completed'||!row.approvalSteps.length).map((row:any)=>row.id);

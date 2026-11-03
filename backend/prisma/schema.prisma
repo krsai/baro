@@ -694,6 +694,10 @@ model Warehouse {
 
 
 model Employee {
+  expenseDeletionRequests ExpenseDeletionRequest[] @relation("ExpenseDeletionRequester")
+  expenseDeletionDecisions ExpenseDeletionRequest[] @relation("ExpenseDeletionDecider")
+  expenseDeletionFinals ExpenseDeletionRequest[] @relation("ExpenseDeletionFinal")
+  deletedExpenseRequests ExpenseRequest[] @relation("ExpenseRequestDeleter")
   companyIdentityLinks CompanyIdentityLink[]
   createdCompanyLinks CompanyPartnerLink[]
   updatedPartnerClassifications PartnerClassification[]
@@ -863,6 +867,7 @@ model EmployeeGradeSet {
 }
 
 model EmployeeGrade {
+  expenseDeletionRequests ExpenseDeletionRequest[]
   id        Int      @id @default(autoincrement())
   orgId     Int
   setId     Int
@@ -1739,6 +1744,11 @@ model ExpenseCostProcess {
 }
 
 model ExpenseRequest {
+  deletedAt DateTime?
+  deletedByEmployeeId Int?
+  deletionRequestId String? @unique
+  deletedBy Employee? @relation("ExpenseRequestDeleter",fields:[deletedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  deletionRequests ExpenseDeletionRequest[]
   payeeEmployeeId Int?
   payeeEmployee Employee? @relation("ExpenseEmployeePayee",fields:[payeeEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   id Int @id @default(autoincrement())
@@ -1787,6 +1797,33 @@ model EmployeeExpenseBankAccount {
   accountHolder String
   createdAt DateTime @default(now())
   @@unique([orgId,employeeId,currencyCode,bankName,accountNumber],map:"EmployeeExpenseBank_identity_key")
+}
+
+model ExpenseDeletionRequest {
+ id String @id @default(uuid())
+ orgId Int
+ requestId Int
+ version Int
+ clientKey String
+ requestedByEmployeeId Int
+ reason String
+ finalEmployeeId Int
+ finalGradeId Int
+ gradeSetId Int
+ finalGradeOrder Int
+ documentSnapshot Json
+ status String @default("PENDING")
+ decidedByEmployeeId Int?
+ decisionReason String?
+ createdAt DateTime @default(now())
+ decidedAt DateTime?
+ request ExpenseRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ requestedBy Employee @relation("ExpenseDeletionRequester",fields:[requestedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ decidedBy Employee? @relation("ExpenseDeletionDecider",fields:[decidedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ finalEmployee Employee @relation("ExpenseDeletionFinal",fields:[finalEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ finalGrade EmployeeGrade @relation(fields:[finalGradeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ @@unique([orgId,clientKey])
+ @@index([orgId,status,createdAt])
 }
 
 model ExpenseRequestAudit {

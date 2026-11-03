@@ -16,7 +16,7 @@ export async function listApprovalOverview(db:any,orgId:number,actorId:number,qu
    WHEN NOT EXISTS(SELECT 1 FROM "ExpenseRequestApprovalStep" s WHERE s."requestId"=r.id) THEN CASE WHEN baro_expense_approval_exempt(r.id,r."orgId",r.version) THEN 'APPROVED' ELSE 'UNKNOWN' END
    WHEN NOT EXISTS(SELECT 1 FROM "ExpenseRequestApprovalStep" s WHERE s."requestId"=r.id AND NOT EXISTS(SELECT 1 FROM "ExpenseApprovalDecision" d WHERE d."requestId"=r.id AND d.version=r.version AND d.position=s.position AND d."employeeId"=s."employeeId" AND d.decision='APPROVED')) THEN 'APPROVED'
    WHEN EXISTS(SELECT 1 FROM "ExpenseApprovalDecision" d JOIN "ExpenseRequestApprovalStep" s ON s."requestId"=d."requestId" AND s.position=d.position AND s."employeeId"=d."employeeId" WHERE d."requestId"=r.id AND d.version=r.version AND d.decision='APPROVED') THEN 'IN_REVIEW' ELSE 'REQUESTED' END AS status
-   FROM "ExpenseRequest" r WHERE r."orgId"=$1 AND r."requestDate">=$2 AND r."requestDate"<=$3 AND (r."createdByEmployeeId"=$4 OR ${assigned}))
+   FROM "ExpenseRequest" r WHERE r."orgId"=$1 AND r."deletedAt" IS NULL AND r."requestDate">=$2 AND r."requestDate"<=$3 AND (r."createdByEmployeeId"=$4 OR ${assigned}))
    SELECT * FROM scoped WHERE ($5='ALL' OR status=$5 OR $5='UNAPPROVED' AND status IN ('REQUESTED','IN_REVIEW','UNKNOWN'))`;
   const args=[orgId,start,end,actorId,status];
   const count=await tx.$queryRawUnsafe(`SELECT count(*)::integer AS total FROM (${cte}) filtered`,...args);

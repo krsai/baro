@@ -25,6 +25,7 @@ import { getCustomerUsage, deleteUnusedCustomer, deleteUnusedBusinessPartner, ge
 import { REQUEST_INCLUDE } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
 import {attachExpenseApprovalStates} from './services/bankEvidence';
+import {registerExpenseDeletionRoutes} from './services/expenseDeletion';
 import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
@@ -202,6 +203,7 @@ function assertGeneratedPrismaClientShape() {
   const staleSignals: string[] = [];
   for (const [model, fields] of Object.entries({
     AccountingCodeIndustry:['baseId','systemIndustryId'],
+    ExpenseDeletionRequest:['id','requestId','version','requestedByEmployeeId','status'],
     CompanyIdentity:['id','anchorEntityId','code','country','businessNumber'],
     CompanyIdentityLink:['orgId','entityId','identityId','createdByEmployeeId'],
     CompanyPartnerLink:['orgId','entityId','targetOrgId','createdByEmployeeId','matchMethod'],
@@ -737,7 +739,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
   "20261007_style_identity_fk_v1",
 ] as const;
-const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'BankLedgerEntry',columnName:'revisesEntryId'},{tableName:'ExpenseCodeLinkPolicy',columnName:'inputSettings'},{tableName:'ExpenseCodeLinkAudit',columnName:'inputSettings'},{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
+const STARTUP_REQUIRED_RUNTIME_COLUMNS = [...['deletedAt','deletedByEmployeeId','deletionRequestId'].map(columnName=>({tableName:'ExpenseRequest',columnName})),...["id","orgId","requestId","version","requestedByEmployeeId","status","finalGradeOrder"].map(columnName=>({tableName:'ExpenseDeletionRequest',columnName})),{tableName:'BankLedgerEntry',columnName:'revisesEntryId'},{tableName:'ExpenseCodeLinkPolicy',columnName:'inputSettings'},{tableName:'ExpenseCodeLinkAudit',columnName:'inputSettings'},{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
   {tableName:'BankLedgerEntry',columnName:'writeOffAmount'},{tableName:'BankLedgerEntry',columnName:'settlementMode'},{tableName:'BankLedgerSettlementLine',columnName:'entryId'},
   {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
   {tableName:'EmployeeExpenseBankAccount',columnName:'id'},{tableName:'ExpenseRequest',columnName:'payeeEmployeeId'},{tableName:'PartnerTransactionCost',columnName:'payeeEmployeeId'},{tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
@@ -1056,7 +1058,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -27620,11 +27622,12 @@ app.get("/partner-transaction-costs", async (req, res) => {
   if (!access) return;
   const period = await loadManagementPeriod(prisma,access.organization.id);
   const transactionDate = managedDateRange(period,req.query);
-  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
+  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}] }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
 registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
+registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{
   requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,
   syncProduction:async(orgId: number,assignmentPlanIds: number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'}),
@@ -27635,10 +27638,10 @@ app.get('/expense-requests', async (req, res) => {
   const orgId = access.organization.id;
   const period = await loadManagementPeriod(prisma, orgId);
   const requestDate = managedDateRange(period, req.query);
-  const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate }, include: EXPENSE_REQUEST_INCLUDE,
+  const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate,deletedAt:null }, include: EXPENSE_REQUEST_INCLUDE,
     orderBy: [{ requestDate: 'desc' }, { id: 'desc' }] });
   const approvedRows=await attachExpenseApprovalStates(prisma,orgId,rows);
-  return res.json(approvedRows.map(row => ({ ...row,partner:row.partner||employeePayee(row.payeeEmployee), ...expenseRequestTotals(row.items) })));
+  return res.json(approvedRows.map(row => ({ ...row,deletionPending:!row.approval.approved&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.approval.approved&&row.approvalSteps.length>0&&(access.employee?.orgRole==='ADMIN'||row.createdByEmployeeId===access.employee?.id||row.approvalSteps.some((step:any)=>step.employeeId===access.employee?.id)),partner:row.partner||employeePayee(row.payeeEmployee), ...expenseRequestTotals(row.items) })));
 });
 app.post('/expense-requests', async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
@@ -27658,7 +27661,7 @@ app.get("/outsourcing-requests", async (req, res) => {
   const period = await loadManagementPeriod(prisma,orgId);
   const transactionDate = managedDateRange(period,req.query);
   const [costs, records] = await Promise.all([
-    prisma.partnerTransactionCost.findMany({ where: { orgId, transactionDate }, include: REQUEST_INCLUDE }),
+    prisma.partnerTransactionCost.findMany({ where: { orgId, transactionDate,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}] }, include: REQUEST_INCLUDE }),
     prisma.outsourcedWorkRecord.findMany({ where: { orgId, transactionCost: null, workLog: { AND: [managedWorkLogWhere(period),{ displayDate: transactionDate }] } }, include: {
       outsourcingPartner: { select: { id: true, name: true } },
       workLog: { select: { displayDate: true } },
@@ -27863,7 +27866,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
   });
   res.json({
     partner: toBusinessPartnerResponse(partner),
-    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id, transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
+    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}], transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
     records: records.map((record) => ({
       id: record.id,
       workDate: record.workLog?.displayDate || null,

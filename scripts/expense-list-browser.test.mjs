@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {expenseDeletionText} from '../frontend/src/constants/expenseDeletion.js';
 import { spawn } from 'node:child_process';
 import { existsSync,writeFileSync,unlinkSync } from 'node:fs';
 import path from 'node:path';
@@ -32,9 +33,11 @@ try {
     rows[2].serviceType={...service,nameKo:'Obsolete label',nameEn:'Obsolete label',nameVi:'Obsolete label',systemDefault:service};
     rows.push({...rows[2],id:'document-item-2',quantity:'7',unit:{id:2,nameEn:'Meter'},amount:'20.50',subtotal:'20.50'});
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
-    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
+    await page.route('**/expense-approval-settings?*',route=>route.fulfill({headers,json:{canDraft:true}}));
+    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,version:1,canRequestDeletion:true,approval:{approved:false,status:'REQUESTED'},managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.locator('[data-expense-row="cost"]').waitFor();assert.equal(await page.locator('tbody tr').count(),2);
+    assert.equal(await page.locator('[data-expense-request="1"]').getByRole('button',{name:expenseDeletionText[lang].request,exact:true}).isDisabled(),false);
     assert.equal(await page.locator('.cc-kicker').count(),0);
     assert.equal(await page.locator('.cc-primary.MuiButton-containedPrimary').count(),1);
     assert.notEqual(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -64,7 +67,7 @@ try {
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,10);
+    assert.equal(headings.length,11);
     assert.ok((await page.locator('.is-dense th, .is-dense td').evaluateAll(elements=>elements.map(element=>getComputedStyle(element).padding))).every(padding=>padding==='8px 12px'),'Header and body share compact spacing');
     assert.doesNotMatch(await page.locator('tbody').innerText(),/Legacy work|Transport cost|Document cost|Document title/);
     assert.equal(headings.includes(text.remark),false);assert.equal(headings.includes(text.source),false);assert.equal(await page.locator('[data-search-filters]').getByRole('combobox').count(),3);assert.doesNotMatch(await page.locator('tbody').innerText(),/Delivery note/);
@@ -86,7 +89,7 @@ try {
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     await page.evaluate(()=>delete document.documentElement.dataset.destination);
-    await page.locator('[data-expense-row="old"] button[aria-label]').dblclick();
+    await page.locator('[data-expense-row="old"] .cc-cell-link[aria-label]').dblclick();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     assert.equal(await page.getByRole('dialog').count(),0);
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
@@ -105,7 +108,7 @@ try {
     assert.equal(await page.locator('th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(241, 242, 243)');
     await page.evaluate(()=>document.documentElement.style.removeProperty('--color-background-dark'));
     await page.getByRole('textbox',{name:text.search}).fill('OLD-40');assert.equal(await page.locator('tbody tr').count(),1);
-    await page.locator('[data-expense-row="old"] button[aria-label]').click();
+    await page.locator('[data-expense-row="old"] .cc-cell-link[aria-label]').click();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     await resetToAll();
     await page.getByRole('checkbox',{name:text.selectAll,exact:true}).check();assert.equal(await page.locator('tbody tr.is-selected').count(),3);
@@ -114,7 +117,7 @@ try {
     await page.getByRole('tab',{name:text.detail,exact:true}).click();
     await filterSelect(1,'New Vendor');assert.equal(await page.locator('tbody tr').count(),2);
     await filterSelect(2,'USD');assert.equal(await page.locator('tbody tr').count(),1);
-    await page.locator('[data-expense-row="document-item"] button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
+    await page.locator('[data-expense-row="document-item"] .cc-cell-link[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();
     await page.getByRole('tab',{name:text.documents,exact:true}).click();
     assert.equal(await page.locator('tbody tr').first().locator('td').nth(1).textContent(),{ko:'물류 외 1건',en:'Logistics and 1 more',vi:'Vận chuyển và 1 mục khác'}[lang]);
@@ -123,12 +126,12 @@ try {
     assert.equal(await page.locator('.cc-total-amount strong').count(),2);
     await filterSelect(2,'USD');
     assert.equal(await page.locator('.cc-total-amount strong').count(),1);
-    assert.equal(await page.getByText('EXP-2026-000041',{exact:true}).count(),1);await page.locator('.cc-table-scroll tbody button[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
+    assert.equal(await page.getByText('EXP-2026-000041',{exact:true}).count(),1);await page.locator('.cc-table-scroll tbody .cc-cell-link[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
     await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.
     for(let cycle=0;cycle<4;cycle++) {
-      for(const [name,count] of [[text.documents,8],[text.detail,10],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,10]]) {
+      for(const [name,count] of [[text.documents,9],[text.detail,11],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,11]]) {
         await page.getByRole('tab',{name,exact:true}).click();
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{

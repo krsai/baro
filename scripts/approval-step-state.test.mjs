@@ -6,5 +6,5 @@ test('only the current approver is pending, later approvers wait and rejected ch
  assert.deepEqual([1,2,3,4].map(id=>approvalStepState(approval,id)),['approved','pending','waiting','unconfirmed']);
  approval.rejected=true;approval.steps[1].rejected=true;
  assert.deepEqual([1,2,3].map(id=>approvalStepState(approval,id)),['approved','rejected','stopped']);
- for(const lang of ['ko','en','vi'])assert.equal(new Set(Object.values(approvalStepLabels[lang])).size,6);
+ for(const lang of ['ko','en','vi'])assert.equal(new Set(Object.values(approvalStepLabels[lang])).size,8);
 });

@@ -251,7 +251,7 @@ test('approval overview filters date, company, participant and current status in
  const pg=await fixture(),db=ledgerDatabase(pg);try{
   await pg.exec(await readFile('backend/prisma/migrations/20261030120000_expense_approval_rejection/migration.sql','utf8'));
   await pg.exec(await readFile('backend/prisma/migrations/20261030170000_admin_drafter_final_authority/migration.sql','utf8'));
-  await pg.exec(`ALTER TABLE "ExpenseRequest" ADD COLUMN "requestDate" TEXT,ADD COLUMN "managementNumber" TEXT;UPDATE "ExpenseRequest" SET "requestDate"='2026-10-10',"createdByEmployeeId"=99;
+  await pg.exec(`ALTER TABLE "ExpenseRequest" ADD COLUMN "deletedAt" TIMESTAMP,ADD COLUMN "requestDate" TEXT,ADD COLUMN "managementNumber" TEXT;UPDATE "ExpenseRequest" SET "requestDate"='2026-10-10',"createdByEmployeeId"=99;
    INSERT INTO "ExpenseRequest"(id,"orgId",version,"createdByEmployeeId","requestDate") VALUES(2,1,1,10,'2026-10-11'),(3,1,1,99,'2026-10-12'),(4,1,1,99,'2026-10-13'),(5,2,1,10,'2026-10-14'),(6,1,1,10,'2025-10-10');
    INSERT INTO "ExpenseRequestApprovalStep" VALUES('3a',1,3,1,10),('3b',1,3,2,11),('4a',1,4,1,10);
    INSERT INTO "ExpenseApprovalDecision"(id,"orgId","requestId",version,position,"employeeId",decision,reason) VALUES('progress',1,3,1,1,10,'APPROVED',NULL),('reject',1,4,1,1,10,'REJECTED','Incorrect');`);

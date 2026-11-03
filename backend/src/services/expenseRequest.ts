@@ -12,6 +12,7 @@ import { registerTransactionRequest, REQUEST_INCLUDE } from './transactionReques
 import { loadExpenseEditorSource } from './expenseRequestEditor';
 
 export const EXPENSE_REQUEST_INCLUDE = {
+  deletionRequests:{where:{status:'PENDING'},select:{version:true}},
   payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}},
   approvalSteps:{orderBy:{position:'asc' as const},include:{employee:{select:{id:true,name:true}}}},
   partner: { select: { id: true, name: true } },

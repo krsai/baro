@@ -7,7 +7,7 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
  if(!Array.isArray(input)||input.length>30)return fail();
  const rules=[];const ids=new Set();
  for(const row of input){
-  if(!row||typeof row.id!=='string'||!/^[\w-]{1,64}$/.test(row.id)||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>100||!roles.includes(row.drafterRole)||subject.hasAmount&&!['USD','VND','KRW'].includes(row.currency))return fail();
+  if(!row||typeof row.id!=='string'||!/^[\w-]{1,64}$/.test(row.id)||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>100||!['ALL',...roles].includes(row.drafterRole)||subject.hasAmount&&!['USD','VND','KRW'].includes(row.currency))return fail();
   ids.add(row.id);
   const grade=async(id:any)=>{if(id==null||id==='')return null;if(!Number.isSafeInteger(id)||!await db.employeeGrade.findFirst({where:{id,orgId,isActive:true,set:{isActive:true}}}))return fail();return id;};
   const money=(value:any,empty=false)=>{if(empty&&(value===''||value==null))return null;if(typeof value!=='string'||!(row.currency==='USD'?/^\d{1,15}(\.\d{1,2})?$/:/^\d{1,15}$/).test(value))return fail();return new Prisma.Decimal(value).toFixed();};
@@ -20,7 +20,7 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
    if(stage.role!=='ADMIN'&&!gradeId)return fail();
    stages.push({role:stage.role,gradeId});
   }
-  if(subject.key==='EXPENSE'&&row.drafterRole==='OPERATOR'&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
+  if(subject.key==='EXPENSE'&&['ALL','OPERATOR'].includes(row.drafterRole)&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
   rules.push({id:row.id,name:row.name.trim(),drafterRole:row.drafterRole,drafterGradeId:await grade(row.drafterGradeId),currency:subject.hasAmount?row.currency:null,min,max,stages});
  }
  return rules;
@@ -28,10 +28,12 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
 export async function resolveApprovalRules(db:any,orgId:number,drafter:any,totals:Map<string,Prisma.Decimal>,config:any,selection:any,allowIncomplete:boolean,subject:ApprovalSubject=EXPENSE_APPROVAL_SUBJECT,fallback?:(currency:string)=>Promise<any[]>){
  if(config.version!==2||!config.rules?.length)return null;
  if(config.kind!==subject.key)return fail('INVALID_APPROVAL_SUBJECT');
+ const applicable=config.rules.some((row:any)=>row.drafterRole==='ALL')?[...config.rules].sort((a:any,b:any)=>
+  (b.drafterRole===drafter.orgRole?2:0)+(b.drafterGradeId?1:0)-(a.drafterRole===drafter.orgRole?2:0)-(a.drafterGradeId?1:0)):config.rules;
  const matched=[];
- if(!subject.hasAmount){const rule=config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId));if(!rule)return fail('APPROVAL_RULE_NOT_FOUND');matched.push(rule);}
+ if(!subject.hasAmount){const rule=applicable.find((row:any)=>(row.drafterRole==='ALL'||row.drafterRole===drafter.orgRole)&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId));if(!rule)return fail('APPROVAL_RULE_NOT_FOUND');matched.push(rule);}
  if(subject.hasAmount){
-  const conditions=[...totals].map(([currency,amount])=>({currency,rule:config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId)&&row.currency===currency&&amount.gte(row.min)&&(row.max==null||amount.lte(row.max)))}));
+  const conditions=[...totals].map(([currency,amount])=>({currency,rule:applicable.find((row:any)=>(row.drafterRole==='ALL'||row.drafterRole===drafter.orgRole)&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId)&&row.currency===currency&&amount.gte(row.min)&&(row.max==null||amount.lte(row.max)))}));
   if(!conditions.some(row=>row.rule))return null;
   for(const {currency,rule} of conditions){
    if(rule)matched.push(rule);

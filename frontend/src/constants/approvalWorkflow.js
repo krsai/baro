@@ -8,3 +8,8 @@ export const approvalStatusTone=status=>({REQUESTED:'blue',IN_REVIEW:'yellow',AP
 approvalWorkflowText.ko.overview='승인 현황';approvalWorkflowText.en.overview='Approval status';approvalWorkflowText.vi.overview='Tình trạng phê duyệt';
 approvalWorkflowText.ko.unapproved='미승인만';approvalWorkflowText.en.unapproved='Unapproved only';approvalWorkflowText.vi.unapproved='Chỉ chưa duyệt';
 approvalWorkflowText.ko.all='전체';approvalWorkflowText.en.all='All';approvalWorkflowText.vi.all='Tất cả';
+
+approvalWorkflowText.ko.overview='결재 현황';
+Object.assign(approvalWorkflowText.ko.statuses,{DELETED:'삭제 완료'});
+Object.assign(approvalWorkflowText.en.statuses,{DELETED:'Deleted'});
+Object.assign(approvalWorkflowText.vi.statuses,{DELETED:'Đã xóa'});

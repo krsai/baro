@@ -13,6 +13,15 @@ function fixture(){
  return {db,rule,config,people};
 }
 const item=amount=>({unitPrice:amount,currency:'USD',quantity:'1',vatRate:'0'});
+test('all-role rules retain accountant approval and specific role/grade rules take precedence',async()=>{
+ const {db,rule,config}=fixture();
+ const common={...rule,id:'all-role',drafterRole:'ALL',drafterGradeId:null,min:'0',stages:[{role:'ACCOUNTANT',gradeId:2}]};
+ assert.equal((await validateApprovalRules(db,7,[common]))[0].drafterRole,'ALL');
+ await assert.rejects(validateApprovalRules(db,7,[{...common,stages:[{role:'ADMIN',gradeId:null}]}]),/ACCOUNTANT_REQUIRED/);
+ config.rules=[common,{...rule,min:'0'}];
+ const specific=await resolveExpenseApproval(db,7,10,[item('100')]);assert.deepEqual(specific.ids,[20,30,40]);
+ const generic=await resolveExpenseApproval(db,7,40,[item('100')]);assert.deepEqual(generic.ids,[30]);
+});
 test('operations, accounting and administrators can draft under any actual company grade scope',async()=>{
  const {db,rule,config,people}=fixture();
  for(const role of ['OPERATOR','ACCOUNTANT','ADMIN']){

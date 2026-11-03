@@ -1,5 +1,5 @@
 import React,{forwardRef,useImperativeHandle,useRef,useState} from 'react';
-import {Box,IconButton,MenuItem,Paper,Stack,TextField,ToggleButton,ToggleButtonGroup,Typography} from '@mui/material';
+import {Box,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
 import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
 import DecimalAmountField from './DecimalAmountField';
@@ -12,9 +12,10 @@ export const approvalRuleText={
  vi:{OPERATOR:'Vận hành',ACCOUNTANT:'Kế toán',ADMIN:'Quản trị viên',error:'Kiểm tra khoảng tiền, vai trò và chức danh người duyệt. Đề nghị vận hành cần kế toán duyệt.',changed:'Quản trị viên khác đã thay đổi cài đặt. Tải lại để kiểm tra.'},
 };
 const currencies=['USD','KRW','VND'];
-export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],onChange,disabled,languageCode},ref){
+export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],onChange,disabled,languageCode,drafterScope={role:'ALL',gradeId:null},onScopeChange},ref){
  const t=approvalBandText[languageCode]||approvalBandText.en;
- const [role,setRole]=useState('OPERATOR'),[gradeId,setGradeId]=useState(null);
+ const role=drafterScope.role,gradeId=drafterScope.gradeId;
+ const setScope=change=>onScopeChange?.({...drafterScope,...change});
  const groups=currencies.map(currency=>{const group={currency,role,gradeId},stored=rules.filter(row=>sameApprovalGroup(row,group));return {currency,group,stored,rows:stored.length?stored:defaultApprovalBands(settings,grades,group)};});
  const rows=combineApprovalCurrencyRows(groups),orderErrors=approvalBandOrderErrors(rules);
  const gradeName=row=>row?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row?.name||'';
@@ -33,7 +34,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
  const addCondition=()=>{
   if(disabled)return false;let result=rules;
   for(const source of groups){const next=[...source.rows],index=next.findIndex(row=>!boundedApprovalBand(row));
-   const stages=next[index<0?Math.max(0,next.length-1):index]?.stages||[{role:role==='OPERATOR'?'ACCOUNTANT':'ADMIN',gradeId:role==='OPERATOR'?grades.find(row=>row.code==='CL2')?.id||null:null}];
+   const stages=next[index<0?Math.max(0,next.length-1):index]?.stages||[{role:['ALL','OPERATOR'].includes(role)?'ACCOUNTANT':'ADMIN',gradeId:['ALL','OPERATOR'].includes(role)?grades.find(row=>row.code==='CL2')?.id||null:null}];
    next.splice(index<0?next.length:index,0,{id:crypto.randomUUID(),name:`${source.currency} / ${role}`,drafterRole:role,drafterGradeId:gradeId,currency:source.currency,min:'0',max:'',__bounded:true,stages:stages.map(stage=>({...stage}))});result=updateGroup(result,source.currency,next,true);
   }
   if(result.length>30)return false;onChange(result);return true;
@@ -46,8 +47,8 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
  return <Paper variant="outlined" data-testid="approval-conditions" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}>
   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" alignItems="center" sx={{p:1.5}}>
    <Typography variant="caption" color="text.secondary">{t.drafter}</Typography>
-   <ToggleButtonGroup exclusive size="small" aria-label={t.drafterRole} value={role} disabled={disabled} onChange={(_,next)=>{if(next){setRole(next);setGradeId(null);}}}>{['OPERATOR','ACCOUNTANT','ADMIN'].map(value=><ToggleButton key={value} value={value}>{t[value]}</ToggleButton>)}</ToggleButtonGroup>
-   <TextField select size="small" label={t.drafterGrade} value={gradeId||''} disabled={disabled} sx={{width:180,minWidth:0}} onChange={event=>setGradeId(event.target.value||null)} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}}><MenuItem value="">{t.allGrades}</MenuItem>{gradeOptions}</TextField>
+   <TextField select size="small" label={t.drafterRole} SelectProps={{inputProps:{'aria-label':t.drafterRole}}} value={role} disabled={disabled} sx={{width:180,minWidth:0}} onChange={event=>setScope({role:event.target.value})}><MenuItem value="ALL">{t.allRoles}</MenuItem>{roleOptions}</TextField>
+   <TextField select size="small" label={t.drafterGrade} SelectProps={{inputProps:{'aria-label':t.drafterGrade}}} value={gradeId||''} disabled={disabled} sx={{width:180,minWidth:0}} onChange={event=>setScope({gradeId:event.target.value||null})} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}}><MenuItem value="">{t.allGrades}</MenuItem>{gradeOptions}</TextField>
   </Stack>
   <Box sx={{overflowX:'auto'}}><Box sx={{minWidth:880}}>
    <Box sx={{display:'grid',gridTemplateColumns:columns,bgcolor:'action.hover',borderTop:1,borderBottom:1,borderColor:'divider'}}>
@@ -66,7 +67,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
      {row.entries.every(entry=>boundedApprovalBand(entry.rule))&&<IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>updateEntries(row,()=>[],true)}><Close sx={{fontSize:15}}/></IconButton>}
     </Box>
     <Stack direction="row" alignItems="center" spacing={0} sx={{px:1,py:.75,overflowX:'auto',minWidth:0}}>
-     <Paper variant="outlined" data-band-drafter sx={nodeSx}><Stack spacing={.25}><Typography variant="caption" color="text.secondary" sx={{height:18}}>{t.drafter}</Typography><Stack direction="row" spacing={.5}><TextField fullWidth size="small" value={t[role]} InputProps={{readOnly:true}}/><TextField fullWidth size="small" value={gradeId?gradeName(grades.find(row=>row.id===gradeId)):t.allGrades} InputProps={{readOnly:true}}/></Stack></Stack></Paper>
+     <Paper variant="outlined" data-band-drafter sx={nodeSx}><Stack spacing={.25}><Typography variant="caption" color="text.secondary" sx={{height:18}}>{t.drafter}</Typography><Stack direction="row" spacing={.5}><TextField fullWidth select size="small" value={role} disabled={disabled} onChange={event=>setScope({role:event.target.value})} slotProps={{select:{'aria-label':t.drafterRole}}}><MenuItem value="ALL">{t.allRoles}</MenuItem>{roleOptions}</TextField><TextField fullWidth select size="small" value={gradeId||''} disabled={disabled} onChange={event=>setScope({gradeId:event.target.value||null})} slotProps={{select:{displayEmpty:true,'aria-label':t.drafterGrade}}}><MenuItem value="">{t.allGrades}</MenuItem>{gradeOptions}</TextField></Stack></Stack></Paper>
      <Droppable droppableId={'approval-stages:'+row.key} type={'STAGES:'+row.key} direction="horizontal">{stagesProvided=><Stack ref={stagesProvided.innerRef} {...stagesProvided.droppableProps} direction="row" sx={{minWidth:0,flexShrink:0}}>
      {row.stages.map((stage,position)=>{const final=position===row.stages.length-1,key=stageKey(stage);return <Draggable key={key} draggableId={row.key+':'+key} index={position} isDragDisabled={disabled}>{stageDrag=><Stack ref={stageDrag.innerRef} {...stageDrag.draggableProps} direction="row" alignItems="center" sx={{flexShrink:0}}>
       <Box data-band-connector sx={{width:32,minWidth:32,height:70,position:'relative',display:'flex',justifyContent:'center',alignItems:'center'}}><ArrowForward sx={{color:'text.disabled',fontSize:16}}/><IconButton data-add-middle={index} size="small" title={t.addMiddle} aria-label={t.addMiddle} disabled={disabled||row.stages.length>=10} color="primary" sx={{position:'absolute',top:44,p:.25}} onClick={()=>addMiddle(row,position)}><Add sx={{fontSize:16}}/></IconButton></Box>

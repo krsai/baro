@@ -13,3 +13,7 @@ export const approvalStepLabels={
  en:{pending:'Awaiting approval',waiting:'Waiting turn',approved:'Approved',rejected:'Rejected',stopped:'Stopped',unconfirmed:'Not requested'},
  vi:{pending:'Chờ duyệt',waiting:'Chưa đến lượt',approved:'Đã duyệt',rejected:'Từ chối',stopped:'Đã dừng',unconfirmed:'Chưa gửi'},
 };
+
+Object.assign(approvalStepLabels.ko,{draft:'작성 중',submitted:'기안 완료'});
+Object.assign(approvalStepLabels.en,{draft:'Draft',submitted:'Submitted'});
+Object.assign(approvalStepLabels.vi,{draft:'Đang soạn',submitted:'Đã gửi'});

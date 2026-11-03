@@ -7,11 +7,18 @@ import {EXPENSE_APPROVAL_SUBJECT,approvalPolicyNamespace} from './approvalSubjec
 export const EXPENSE_APPROVAL_ROLES = ['ADMIN','ACCOUNTANT'];
 export const approvalSettingKey = (orgId:number) => approvalPolicyNamespace(EXPENSE_APPROVAL_SUBJECT,orgId);
 export const defaultApprovalSettings = () => ({limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}}});
+export const canDraftExpense=(drafter:any,config:any)=>!config?.drafterScope||
+ (config.drafterScope.role==='ALL'||config.drafterScope.role===drafter.orgRole)&&(!config.drafterScope.gradeId||config.drafterScope.gradeId===drafter.gradeId);
 
 export async function validateApprovalSettings(tx:any,orgId:number,value:any){
   if(!value||typeof value!=='object')throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
   if(value.kind!==undefined&&value.kind!=='EXPENSE')throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
   const result:any={limits:{}};
+  if(value.drafterScope!==undefined){
+    const scope=value.drafterScope;
+    if(!scope||!['ALL','OPERATOR','ACCOUNTANT','ADMIN'].includes(scope.role)||scope.gradeId!=null&&(!Number.isSafeInteger(scope.gradeId)||!await tx.employeeGrade.findFirst({where:{id:scope.gradeId,orgId,isActive:true,set:{isActive:true}}})))throw createHttpError(400,'INVALID_APPROVAL_RULE');
+    result.drafterScope={role:scope.role,gradeId:scope.gradeId??null};
+  }
   for(const currency of ['VND','USD','KRW']){
     const limits=value.limits?.[currency];
     if(currency!=='VND'&&!limits?.senior&&!limits?.lead){result.limits[currency]={senior:'',lead:''};continue;}
@@ -35,6 +42,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
   if(!drafter) throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
   const setting = await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
   const config=savedConfig||setting?.value||defaultApprovalSettings();
+  if(!savedConfig&&!canDraftExpense(drafter,config))throw createHttpError(403,'EXPENSE_DRAFTER_NOT_ALLOWED');
   if(selection!==undefined && (!selection||typeof selection!=='object'||Array.isArray(selection)))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
   if(selection?.drafterEmployeeId!==undefined&&selection.drafterEmployeeId!==drafterId)throw createHttpError(400,'EXPENSE_DRAFTER_FIXED');
   const totals=new Map<string,Prisma.Decimal>();

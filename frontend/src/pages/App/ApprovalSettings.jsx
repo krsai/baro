@@ -21,7 +21,7 @@ export default function ApprovalSettings(){
  useUnsavedChanges(!!form&&JSON.stringify(form)!==initial);
  const path=`/expense-approval-settings${buildQueryString({orgId:activeOrgId})}`;
  useEffect(()=>{let live=true;setData(null);setForm(null);setInitial('');setError('');setSaved(false);
-  requestJSON(path,{skipCache:true}).then(value=>{if(live){setData(value);const next={kind:'EXPENSE',limits:value.settings.limits,rules:value.settings.rules||[],revision:value.settings.revision||0};setForm(next);setInitial(JSON.stringify(next));}}).catch(()=>{if(live)setError(t.error);});return()=>{live=false;};
+  requestJSON(path,{skipCache:true}).then(value=>{if(live){setData(value);const next={kind:'EXPENSE',drafterScope:value.settings.drafterScope||{role:'ALL',gradeId:null},limits:value.settings.limits,rules:value.settings.rules||[],revision:value.settings.revision||0};setForm(next);setInitial(JSON.stringify(next));}}).catch(()=>{if(live)setError(t.error);});return()=>{live=false;};
  },[path,reload]);
  const change=rules=>{setForm(current=>({...current,rules}));setSaved(false);setError('');};
  const invalid=form&&invalidApprovalBands(form.rules),disabled=!data?.canEdit||busy;
@@ -37,7 +37,7 @@ export default function ApprovalSettings(){
    <Stack direction={{xs:'column',sm:'row'}} spacing={2} justifyContent="space-between" alignItems={{sm:'center'}}>
     {data&&<TextField select size="small" label={subject.label} value="EXPENSE" onChange={()=>{}} sx={{width:{xs:'100%',sm:320}}}>{(data.subjects||[{key:'EXPENSE',enabled:true}]).map(row=><MenuItem key={row.key} value={row.key} disabled={!row.enabled}>{subject[row.key]||row.key}</MenuItem>)}</TextField>}
    </Stack>
-   {form&&<ApprovalRuleEditor ref={editor} key={activeOrgId} rules={form.rules} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode}/>}
+   {form&&<ApprovalRuleEditor ref={editor} key={activeOrgId} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>{setForm(current=>({...current,drafterScope}));setSaved(false);}} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode}/>}
    {data&&!data.canEdit&&<Alert severity="info">{t.readonly}</Alert>}
   </Stack>
  </AppPageContainer>;

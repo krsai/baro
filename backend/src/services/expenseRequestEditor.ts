@@ -3,7 +3,7 @@ import {APPROVAL_SUBJECTS} from './approvalSubjects';
 import { requirePayeeBankAccount } from './entityBankAccount';
 import {expensePayeeIds,employeePayee,expenseApplicationDate} from './expensePayee';
 import {allocateDocumentNumber,normalizeDocumentNumber,legacyExpenseNumber} from './documentNumber';
-import { EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateApprovalSettings, defaultApprovalSettings, replaceExpenseApprovers, resolveExpenseApproval, approvalSettingKey } from './expenseApproval';
+import { canDraftExpense, EXPENSE_APPROVAL_INCLUDE, EXPENSE_APPROVAL_ROLES, validateApprovalSettings, defaultApprovalSettings, replaceExpenseApprovers, resolveExpenseApproval, approvalSettingKey } from './expenseApproval';
 import { createHash } from 'node:crypto';
 import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
@@ -32,6 +32,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
     if (!document) return fail(404,'EXPENSE_SOURCE_NOT_FOUND');
     const reconciled=db.bankLedgerEvidenceAllocation&&await db.bankLedgerEvidenceAllocation.findFirst({where:{orgId,expenseItemId:{in:document.items.map((item:any)=>item.id)},entry:{voidedAt:null}}});
     document.bankReconciled=!!reconciled;
+    if(document.deletedAt)return fail(409,'EXPENSE_REQUEST_DELETED');
     return { kind, id: String(document.id), document, costs: document.items, record: null };
   }
   if (kind === 'cost') {
@@ -176,7 +177,7 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const setting=await db.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
     const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true,orgRole:true,gradeId:true},orderBy:[{name:'asc'},{id:'asc'}]});
     const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},select:{id:true,code:true,name:true,nameKo:true,nameEn:true,nameVi:true},orderBy:{sortOrder:'asc'}});
-    res.json({drafter,candidates,grades,subjects:APPROVAL_SUBJECTS,subject:APPROVAL_SUBJECTS[0],settings:{fallbackGrades:{senior:setting?.value?.seniorGradeId||grades.find((grade:any)=>grade.code==='CL2')?.id||null,lead:setting?.value?.leadGradeId||grades.find((grade:any)=>grade.code==='CL3')?.id||null},limits:setting?.value?.limits||defaultApprovalSettings().limits,...(setting?.value?.version===2?{version:2,kind:'EXPENSE',revision:setting.value.revision,rules:setting.value.rules}: {})},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
+    res.json({drafter,candidates,grades,subjects:APPROVAL_SUBJECTS,subject:APPROVAL_SUBJECTS[0],canDraft:canDraftExpense(drafter,setting?.value),settings:{drafterScope:setting?.value?.drafterScope||{role:'ALL',gradeId:null},fallbackGrades:{senior:setting?.value?.seniorGradeId||grades.find((grade:any)=>grade.code==='CL2')?.id||null,lead:setting?.value?.leadGradeId||grades.find((grade:any)=>grade.code==='CL3')?.id||null},limits:setting?.value?.limits||defaultApprovalSettings().limits,...(setting?.value?.version===2?{version:2,kind:'EXPENSE',revision:setting.value.revision,rules:setting.value.rules}: {})},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
   });
   app.put('/expense-approval-settings',async(req:any,res:any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;
@@ -187,6 +188,7 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
       if(!actor)throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
       const value=await validateApprovalSettings(tx,orgId,req.body);
       const current=await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
+      if(req.body?.drafterScope===undefined&&current?.value?.drafterScope)value.drafterScope=current.value.drafterScope;
       if(current?.value?.version===2&&req.body?.rules===undefined||req.body?.rules!==undefined&&(req.body.revision!==(current?.value?.revision||0)))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
       if(value.version===2){
         value.revision=(current?.value?.revision||0)+1;
