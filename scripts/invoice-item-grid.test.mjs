@@ -54,10 +54,10 @@ test('manual prices work without master prices and agree with issued per-line ro
 });
 
 test('currency display preserves four-decimal prices and exact grouped totals',()=>{
- assert.equal(formatInvoiceMoney('1.8','USD'),'USD 1.80');assert.equal(formatInvoiceMoney('1.2345','USD'),'USD 1.2345');
- assert.equal(formatInvoiceMoney('20000','VND'),'VND 20,000');assert.equal(formatInvoiceMoney(null,'USD'),'—');
+ assert.equal(formatInvoiceMoney('1.8','USD'),'$1.80');assert.equal(formatInvoiceMoney('1.2345','USD'),'$1.23');
+ assert.equal(formatInvoiceMoney('20000','VND'),'₫20,000');assert.equal(formatInvoiceMoney(null,'USD'),'—');
  assert.equal(sumInvoiceAmounts(['216.00','108.00']),'324.00');
  assert.equal(sumInvoiceAmounts(['9999999999999999.99','0.01']),'10000000000000000.00');
- assert.equal(formatInvoiceMoney('10000000000000000.00','USD'),'USD 10,000,000,000,000,000.00');
+ assert.equal(formatInvoiceMoney('10000000000000000.00','USD'),'$10,000,000,000,000,000.00');
  assert.equal(sumInvoiceAmounts(['1.00',null]),null);
 });

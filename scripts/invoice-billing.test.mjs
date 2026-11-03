@@ -52,8 +52,8 @@ test('payment PDF contains amount and agreement but no garment quantity table', 
     pricingBasis: 'FINISHED_GOODS_PRICE', currencyCode: 'USD',
     fields: { number: 'DRAFT-1', seller: { name: 'Seller' }, buyer: { name: 'Buyer' } } });
   assert.match(html, /PAYMENT REQUEST/);
-  assert.match(html, /30% of agreed total USD 10000.00/);
-  assert.match(html, /3000.00/);
+  assert.match(html, /30% of agreed total \$10,000.00/);
+  assert.match(html, /\$3,000.00/);
   assert.match(html, /DRAFT — NOT ISSUED/);
   assert.ok(!html.includes('Qty (PCS)'));
   assert.ok(!html.includes('COMMERCIAL INVOICE'));

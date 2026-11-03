@@ -1,3 +1,4 @@
+import {formatCurrency} from '../../utils/currencyFormat';
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from '@mui/material';
 import { buildQueryString, requestJSON } from '../../utils/apiClient';
@@ -26,7 +27,7 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
       .then(value=>{if(!cancelled)setData(value);}).catch(()=>{if(!cancelled)setError(true);}).finally(()=>{if(!cancelled)setLoading(false);});
     return ()=>{cancelled=true;controller.abort();};
   },[open,orgId,month,all,reload]);
-  const money=value=>value===null?text.unknown:value===0?'—':Number(value).toLocaleString(languageCode);
+  const money=(value,currencyCode)=>value===null?text.unknown:value===0?'—':formatCurrency(value,{currencyCode,languageCode});
   const reasonText=reason=>({NOT_APPLICABLE:text.notApplicable,PAYROLL_EXCLUDED:text.excluded,NOT_PAYMENT_MONTH:text.unpaid,TENURE_INELIGIBLE:text.ineligible,TENURE_ZERO_YEARS:tenureText.zero,MISSING_RATE:text.missingRate,MISSING_BASE_SALARY:text.missingRate,MISSING_PRODUCTION_RATE:text.missingProduction,INVALID_FORMULA:text.badFormula}[reason] || '');
   const sticky={position:'sticky',left:0,zIndex:1,bgcolor:ui.color.surface,minWidth:160};
   return <Dialog open={open} onClose={onClose} fullWidth maxWidth="xl" aria-labelledby="employee-salary-preview-title">
@@ -52,8 +53,8 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
         </TableRow></TableHead><TableBody>{factory.employees.map(employee=><TableRow key={employee.id} hover data-preview-employee={employee.id}>
           <TableCell sx={sticky}><Typography variant="body2" fontWeight={600}>{employee.name}</Typography><Typography variant="caption" color="text.secondary">{employee.employeeNo}</Typography>{employee.payrollExcluded && <Typography variant="caption" display="block" color="text.secondary">{text.excluded}</Typography>}</TableCell>
           <TableCell sx={{whiteSpace:'nowrap'}}>{resolveLocalizedAttributeName(employee.grade || {},languageCode)}</TableCell><TableCell sx={{whiteSpace:'nowrap'}}>{getPayTypeLabel(employee.payType,employee.payType,languageCode)}</TableCell><TableCell align="right">{employee.scheduledWorkdays}</TableCell><TableCell align="right">{employee.regularHours}</TableCell><TableCell align="right" data-preview-tenure>{employee.tenureYears ?? '—'}</TableCell><TableCell>{employee.tenureEligible?text.yes:text.no}</TableCell>
-          {employee.salaryItems.map(item=><TableCell key={item.code} align="right" sx={{whiteSpace:'nowrap'}} data-preview-item={item.code}><Tooltip title={reasonText(item.reason)}><span>{money(item.amount)}</span></Tooltip>{item.amount===0&&['TENURE_INELIGIBLE','TENURE_ZERO_YEARS','NOT_PAYMENT_MONTH'].includes(item.reason)&&<Typography variant="caption" display="block" color="text.secondary">{reasonText(item.reason)}</Typography>}</TableCell>)}
-          <TableCell align="right" sx={{fontWeight:600,whiteSpace:'nowrap'}}>{money(employee.total)}{employee.total===null && <Typography variant="caption" display="block">{text.subtotal}: {money(employee.subtotal)}</Typography>}</TableCell>
+          {employee.salaryItems.map(item=><TableCell key={item.code} align="right" sx={{whiteSpace:'nowrap'}} data-preview-item={item.code}><Tooltip title={reasonText(item.reason)}><span>{money(item.amount,employee.currencyCode||factory.currencyCode)}</span></Tooltip>{item.amount===0&&['TENURE_INELIGIBLE','TENURE_ZERO_YEARS','NOT_PAYMENT_MONTH'].includes(item.reason)&&<Typography variant="caption" display="block" color="text.secondary">{reasonText(item.reason)}</Typography>}</TableCell>)}
+          <TableCell align="right" sx={{fontWeight:600,whiteSpace:'nowrap'}}>{money(employee.total,employee.currencyCode||factory.currencyCode)}{employee.total===null && <Typography variant="caption" display="block">{text.subtotal}: {money(employee.subtotal,employee.currencyCode||factory.currencyCode)}</Typography>}</TableCell>
         </TableRow>)}</TableBody></Table></TableContainer>
       </Paper>)}
     </DialogContent><DialogActions><Button onClick={onClose}>{text.close}</Button></DialogActions>

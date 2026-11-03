@@ -1,3 +1,5 @@
+import {currencySymbol} from '../constants/currencies.js';
+
 export const invoiceLineNote = line => [...new Set([line.remark, line.adjustmentReason]
   .map(value => String(value || '')).filter(value => value.trim()))].join('\n');
 
@@ -38,8 +40,7 @@ export function invoiceItemGrid(lines) {
   }) };
 }
 
-// Display exact decimal text, including up to four unit-price decimal places.
-// Currency formatting must not round or alter the values used for invoicing.
+// Round display text with integer arithmetic; source amounts stay unchanged.
 export function formatInvoiceMoney(value, currency) {
   if (value == null || !currency) return '—';
   const text = String(value);
@@ -47,9 +48,11 @@ export function formatInvoiceMoney(value, currency) {
   let digits;
   try { digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().minimumFractionDigits; }
   catch { return '—'; }
-  const [whole, fraction = ''] = text.split('.');
-  const decimal = fraction.padEnd(digits, '0');
-  return `${currency} ${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${decimal ? `.${decimal}` : ''}`;
+  digits=currency==='USD'?2:0;
+  const negative=text.startsWith('-'),[whole,fraction='']=(negative?text.slice(1):text).split('.');
+  const units=BigInt(whole+fraction.slice(0,digits).padEnd(digits,'0'))+(Number(fraction[digits]||0)>=5?1n:0n);
+  const padded=String(units).padStart(digits+1,'0'),integer=digits?padded.slice(0,-digits):padded;
+  return `${negative&&units!==0n?'-':''}${currencySymbol(currency)}${integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${digits?'.'+padded.slice(-digits):''}`;
 }
 
 export function sumInvoiceAmounts(values) {

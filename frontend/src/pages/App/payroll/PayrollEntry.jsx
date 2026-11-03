@@ -140,7 +140,7 @@ const TEXT = {
 };
 
 const formatDong = (value) =>
-  formatCurrency(value, { currencyCode: "VND", languageCode: "en", fallback: "VND 0" });
+  formatCurrency(value, { currencyCode: "VND", languageCode: "en", fallback: "₫0" });
 const productionAllowanceOf = (employee) => Number(employee?.productionAllowance ?? employee?.productionEarnings ?? 0) || 0;
 const EN_MONTH_ABBREVIATIONS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // 지급 월이 아닌 급여 항목(예: 반기 지급 근속수당의 7월 명세서)에 "다음 지급이 언제인지"를

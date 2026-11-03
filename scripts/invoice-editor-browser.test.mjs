@@ -75,7 +75,7 @@ try{
    assert.deepEqual(errors,[]);await page.close();continue;
   }
   assert.equal(await grid.locator('tbody tr[data-invoice-line]').count(),1);
-  assert.match(await grid.innerText(),/USD/);assert.equal(await grid.locator('input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
+  assert.match(await grid.innerText(),/\$/);assert.equal(await grid.locator('input[inputmode="decimal"]').nth(0).inputValue(),'2');await grid.locator('input[inputmode="decimal"]').nth(0).fill('2.3456');assert.match(await grid.innerText(),/Shirt/);assert.doesNotMatch(await grid.innerText(),/HS \/ Origin/);
   assert.equal(await page.getByRole('textbox',{name:'HS code',exact:true}).count(),0);assert.equal(await page.getByRole('textbox',{name:'Origin',exact:true}).count(),0);
   await grid.locator('input[inputmode="decimal"]').nth(1).fill('14');
   await page.getByLabel('REMARK',{exact:true}).fill('One missing piece');

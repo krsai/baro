@@ -230,7 +230,7 @@ const formatPriceForDisplay = (value, currencyCode, languageCode) => {
   const usd = currencyCode === 'USD';
   return new Intl.NumberFormat(resolveNumberLocale(languageCode), {
     minimumFractionDigits: usd ? 2 : 0,
-    maximumFractionDigits: usd ? 2 : 4,
+    maximumFractionDigits: usd ? 2 : 0,
   }).format(parsed);
 };
 

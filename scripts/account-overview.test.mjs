@@ -20,7 +20,7 @@ test('ledger writers resolve only unambiguous employees in the current company, 
  let calls=0;const db={employee:{findMany:async({where,select})=>{calls++;assert.equal(where.orgId,7);assert.equal('status' in where,false);assert.deepEqual(select,{email:true,name:true});return [{email:'writer@example.com',name:'Writer name'},{email:'duplicate@example.com',name:'A'},{email:'DUPLICATE@example.com',name:'B'}];}}};
  const result=await attachLedgerActorNames(db,7,[{createdBy:'WRITER@example.com',settlementLines:[{createdBy:'missing@example.com'}]},{createdBy:'duplicate@example.com'},{createdBy:'legacy-script'}]);
  assert.equal(result[0].createdByName,'Writer name');assert.equal(result[0].createdBy,'WRITER@example.com');assert.equal(result[0].settlementLines[0].createdByName,null);assert.equal(result[1].createdByName,null);assert.equal(result[2].createdByName,null);assert.equal(calls,1);
- assert.equal(formatLedgerAmount('12345678901234567890','VND'),'12,345,678,901,234,567,890');assert.equal(formatLedgerAmount('0','USD'),'0.00');
+ assert.equal(formatLedgerAmount('12345678901234567890','VND'),'₫12,345,678,901,234,567,890');assert.equal(formatLedgerAmount('0','USD'),'$0.00');
 });
 
 function validateQuery(modelName,query){

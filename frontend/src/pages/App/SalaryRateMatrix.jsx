@@ -1,3 +1,5 @@
+import {formatCurrency} from '../../utils/currencyFormat';
+import {currencySymbol} from '../../constants/currencies';
 import React from 'react';
 import { Box, IconButton, InputBase, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from '@mui/material';
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
@@ -19,7 +21,7 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   const labels = copy[languageCode] || copy.en;
   const name = row => resolveLocalizedAttributeName(row, languageCode);
   const amount = (row, type, grade) => Number(String(rates[`${type}:${grade.id}`]?.[row.id] || '0').replace(/,/g, ''));
-  const formatAmount = value => value === 0 ? '—' : value.toLocaleString(languageCode);
+  const formatAmount = value => value === 0 ? '—' : formatCurrency(value,{currencyCode,languageCode});
   const monthlyItems = items.filter(row=>isMonthlyBaseSalaryItem(row)&&(row.formula||[]).includes('GRADE_RATE'));
   const displayCategories = { BASE: categories.BASE, ALLOWANCE: '기본 수당', ADDITIONAL_ALLOWANCE: '추가 수당', INCENTIVE: categories.INCENTIVE };
   const units = [...new Set(monthlyItems.map(unitLabel))];
@@ -44,7 +46,7 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
                   </TableCell>
                   {payTypes.flatMap(type => {
                     const active = (row.payTypes || []).includes(type);
-                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : !(row.formula||[]).includes('GRADE_RATE') ? labels[2] : <InputBase fullWidth disabled={disabled} value={amount(row,type,grade)===0?'':amount(row,type,grade).toLocaleString(languageCode)} placeholder="—" onFocus={event=>event.target.select()} onChange={event=>onChangeRate(row.id,type,grade.id,event.target.value)} inputProps={{inputMode:'numeric','aria-label':`${name(row)} ${getPayTypeLabel(type,type,languageCode)} ${name(grade)} ${currencyCode}`}} sx={{fontSize:ui.table.fontSize,border:'1px solid transparent',borderRadius:1,'&:hover':{borderColor:ui.color.border},'&.Mui-focused':{borderColor:'primary.main',bgcolor:'background.paper'},'& input':{textAlign:'right',fontVariantNumeric:'tabular-nums',p:'4px',height:'auto'},'& input::placeholder':{opacity:1,color:'text.disabled'}}} />}</TableCell>) : <TableCell key={type}>—</TableCell>;
+                    return grades.length ? grades.map((grade, index) => <TableCell key={`${type}:${grade.id}`} align="right" sx={{ whiteSpace: 'nowrap', color: active ? 'text.primary' : 'text.disabled', ...gradeBorder(index) }}>{!active ? '—' : !(row.formula||[]).includes('GRADE_RATE') ? labels[2] : <InputBase startAdornment={<Typography component="span" variant="caption">{currencySymbol(currencyCode)}</Typography>} fullWidth disabled={disabled} value={amount(row,type,grade)===0?'':amount(row,type,grade).toLocaleString(languageCode)} placeholder="—" onFocus={event=>event.target.select()} onChange={event=>onChangeRate(row.id,type,grade.id,event.target.value)} inputProps={{inputMode:'numeric','aria-label':`${name(row)} ${getPayTypeLabel(type,type,languageCode)} ${name(grade)} ${currencyCode}`}} sx={{fontSize:ui.table.fontSize,border:'1px solid transparent',borderRadius:1,'&:hover':{borderColor:ui.color.border},'&.Mui-focused':{borderColor:'primary.main',bgcolor:'background.paper'},'& input':{textAlign:'right',fontVariantNumeric:'tabular-nums',p:'4px',height:'auto'},'& input::placeholder':{opacity:1,color:'text.disabled'}}} />}</TableCell>) : <TableCell key={type}>—</TableCell>;
                   })}
                 </TableRow>}
               </Draggable>)}

@@ -32,7 +32,7 @@ try{
   await page.getByRole('button',{name:'Save',exact:true}).click();let dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-step3').waitFor();
   assert.equal(await dialog.locator('#expense-stage-drafter').getAttribute('readonly'),'');assert.equal(await dialog.locator('#expense-stage-drafter').inputValue(),'Current user');
   assert.equal(await dialog.getByText(line.sameCompany,{exact:true}).count(),0);assert.equal(await dialog.getByText(line.self,{exact:true}).count(),0);
-  assert.equal(await dialog.getByTestId('approval-modal-amount').textContent(),'USD 5,500');
+  assert.equal(await dialog.getByTestId('approval-modal-amount').textContent(),'$5,500.00');
   assert.equal(await dialog.getByLabel(band.role,{exact:true}).count(),4);assert.equal(await dialog.getByLabel(band.grade,{exact:true}).count(),4);
   const flowCards=await dialog.locator('[data-approval-flow-card]').evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return {x:rect.x,y:rect.y,width:rect.width,title:element.querySelector('h6')?.textContent};}));
   assert.equal(flowCards.length,4);assert.equal(await dialog.locator('[data-flow-arrow]').count(),3);assert.ok(flowCards.every(card=>card.title),'Every card has a title');

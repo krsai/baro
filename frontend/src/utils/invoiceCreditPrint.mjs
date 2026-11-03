@@ -1,3 +1,4 @@
+import {formatInvoiceMoney} from './invoiceItemGrid.mjs';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 export function buildInvoiceCreditPrintHtml(credit) {
   const s = credit.snapshot;
@@ -9,7 +10,7 @@ export function buildInvoiceCreditPrintHtml(credit) {
     ${credit.invoiceStatus === 'CANCELLED' ? '<h2>Original invoice cancelled / 원청구 취소 — 감액 효력 없음 / Hóa đơn gốc đã hủy</h2>' : ''}
     <dl><dt>Document</dt><dd>${escape(credit.id)}</dd><dt>Invoice / Order</dt><dd>${escape(s.invoiceNumber)} / ${escape(s.sourceOrderNumber)}</dd>
     <dt>Seller / Buyer</dt><dd>${escape(s.seller?.name)} / ${escape(s.buyer?.name)}</dd>
-    <dt>Credit amount (debt reduction, not cash refund)</dt><dd>${escape(s.amount)} ${escape(s.currencyCode)}</dd>
+    <dt>Credit amount (debt reduction, not cash refund)</dt><dd>${escape(formatInvoiceMoney(s.amount,s.currencyCode))}</dd>
     <dt>Reason</dt><dd>${escape(s.reason)}</dd><dt>Issued by / At</dt><dd>${escape(credit.createdBy)} / ${escape(credit.createdAt)}</dd>
     ${credit.voidedAt ? `<dt>Void reason / By / At</dt><dd>${escape(credit.voidReason)} / ${escape(credit.voidedBy)} / ${escape(credit.voidedAt)}</dd>` : ''}</dl></body></html>`;
 }

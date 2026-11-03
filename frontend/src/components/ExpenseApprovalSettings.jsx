@@ -1,6 +1,6 @@
+import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
 import {approvalRuleText} from './ApprovalRuleEditor';
 import ApprovalStagePerson from './ApprovalStagePerson';
-import {formatEditableDecimal} from '../utils/editableDecimal.mjs';
 import {approvalLineText} from '../constants/approvalLine';
 import {approvalStepState,approvalStepLabels,approvalStepTone} from '../utils/approvalStepState.mjs';
 import ArrowForward from '@mui/icons-material/ArrowForward';
@@ -70,7 +70,7 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
    <Box sx={{display:'flex',alignItems:'center',gap:.5,overflowX:'auto',whiteSpace:'nowrap',width:'100%',scrollbarWidth:'none','&::-webkit-scrollbar':{display:'none'},'& .MuiChip-root':{flexShrink:0}}}><Typography variant="caption" sx={{flexShrink:0}}>{t.approval}</Typography><StatusLabel tone='blue' label={actualDrafter?.name||t.drafter} title={actualDrafter?.name||t.drafter} data-approval-state='drafter'/>{summary.map(step=>{const status=progressState(step.id),description=step.name+progress(step.id);return <React.Fragment key={step.id}><Typography>›</Typography><StatusLabel tone={approvalStepTone(status)} label={step.name+' / '+stateLabels[status]} title={description} aria-label={description} data-approval-state={status}/></React.Fragment>;})}{configured&&!summary.length&&<Typography variant="caption">› {emptySummary}</Typography>}</Box>
   </Button>)}
   <Dialog open={open} onClose={close} maxWidth={false} slotProps={{paper:{sx:{width:Math.min(1440,flowCardCount*240+(flowCardCount-1)*24+50),maxWidth:'calc(100% - 32px)',m:2}}}} aria-labelledby="expense-approval-title">
-   <DialogTitle id="expense-approval-title"><Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}><Typography component="span" variant="inherit">{t.approval}</Typography><Typography component="span" variant="body2" data-testid="approval-modal-amount">{preview?.policy?.totals?.map(row=>`${row.currency} ${formatEditableDecimal(row.amount)}`).join(' / ')}</Typography></Stack></DialogTitle>
+   <DialogTitle id="expense-approval-title"><Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}><Typography component="span" variant="inherit">{t.approval}</Typography><Typography component="span" variant="body2" data-testid="approval-modal-amount">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography></Stack></DialogTitle>
    <DialogContent dividers><Stack spacing={1.5}>
     {busy&&<LinearProgress/>}
     {error&&<Alert severity="warning">{error}</Alert>}

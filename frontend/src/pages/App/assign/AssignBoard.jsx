@@ -239,7 +239,7 @@ const LANGUAGE_LOCALE_MAP = {
 };
 const resolveLocale = (languageCode = 'en') => LANGUAGE_LOCALE_MAP[languageCode] || LANGUAGE_LOCALE_MAP.en;
 const formatCurrencyDong = (value, languageCode = 'en') =>
-  formatCurrency(value, { currencyCode: 'VND', languageCode, fallback: 'VND 0' });
+  formatCurrency(value, { currencyCode: 'VND', languageCode, fallback: '₫0' });
 const buildAssignableCardSearchText = (card) =>
   [
     card?.styleName,

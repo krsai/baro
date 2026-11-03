@@ -1,3 +1,4 @@
+import {formatCurrency} from '../../../utils/currencyFormat';
 import dayjs from 'dayjs';
 import DateRangeSelector from '../../../components/DateRangeSelector';
 import {periodMonthKeys,periodMonthNote} from '../../../utils/periodRange.mjs';
@@ -116,7 +117,7 @@ const payrollAmountSummary = (employees) => {
     totals.set(currency, (totals.get(currency) || 0) + Number(employee?.grossSalary || 0));
   });
   return Array.from(totals.entries()).sort(([left], [right]) => left.localeCompare(right))
-    .map(([currency, amount]) => `${amount.toLocaleString()} ${currency}`).join(' / ');
+    .map(([currency, amount]) => formatCurrency(amount,{currencyCode:currency})).join(' / ');
 };
 
 const resolveFactoryDisplayName = (factory, languageCode) => {

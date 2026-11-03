@@ -145,7 +145,7 @@ const formatOrderValue = (value, currencyCode = 'USD') => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: currencyCode || 'USD',
-      currencyDisplay: 'symbol',
+      currencyDisplay: 'narrowSymbol',
     }).format(amount);
   } catch {
     return `${currencyCode || ''} ${amount.toLocaleString('en-US', { maximumFractionDigits: 4 })}`.trim();

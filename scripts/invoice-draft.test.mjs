@@ -23,7 +23,7 @@ test('mixed order percentages default to 100 and change money without changing q
   }
   const html = buildInvoicePrintHtml({ source: { orderNumber: 'A, B' }, calculation: result,
     currencyCode: 'USD', fields: { seller: {}, buyer: {} } });
-  assert.match(html, /30%/); assert.match(html, /TOTAL USD 160.00/);
+  assert.match(html, /30%/); assert.match(html, /TOTAL \$160.00/);
 });
 
 test('settlement preview separates prior billing, receipts, deduction and new debt', () => {

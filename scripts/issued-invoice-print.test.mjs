@@ -13,7 +13,7 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
 
 test('issued HTML renders frozen document fields, public order numbers and settlement, not live masters or internal reasons', () => {
   const invoice = fixture(), before = structuredClone(invoice), html = buildIssuedInvoicePrintHtml(invoice);
-  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'Jacket', 'USD 80.00']) assert.ok(html.includes(text), text);
+  for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', '2026-10-28', 'FOB', '30 days', 'Frozen bank', 'ORDER-1', '80%', 'Jacket', '$80.00']) assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /CURRENT MASTER|internal-order-id|INTERNAL REASON|DRAFT|<script>/);
   assert.doesNotMatch(html,/STYLE123|Warehouse|Customer remark|HS123|Vietnam|Color \/ Gender \/ Size/);
   assert.match(html,/Authorized signature \/ Company seal/);

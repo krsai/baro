@@ -9,7 +9,7 @@ export const formatCurrency = (
   {
     currencyCode = 'VND',
     languageCode = 'en',
-    currencyDisplay = 'code',
+    currencyDisplay = 'narrowSymbol',
     fallback = '-',
   } = {}
 ) => {
