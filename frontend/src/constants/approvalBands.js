@@ -7,3 +7,6 @@ approvalBandText.ko.role='보직';
 Object.assign(approvalBandText.ko,{addCondition:'구간 추가',drafterGrade:'기안자 직급',orderError:'금액 구간 순서를 확인해 주세요.',reorder:'구간 순서 변경'});
 Object.assign(approvalBandText.en,{addCondition:'Add band',drafterGrade:'Drafter grade',orderError:'Check the order of the amount bands.',reorder:'Reorder band'});
 Object.assign(approvalBandText.vi,{addCondition:'Thêm khoảng',drafterGrade:'Chức danh người lập',orderError:'Kiểm tra thứ tự các khoảng tiền.',reorder:'Sắp xếp khoảng'});
+approvalBandText.ko.reorderStage='결재 순서 변경';
+approvalBandText.en.reorderStage='Reorder approval';
+approvalBandText.vi.reorderStage='Sắp xếp bước duyệt';

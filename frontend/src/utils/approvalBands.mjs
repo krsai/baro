@@ -76,3 +76,7 @@ export function reorderApprovalCurrencyBands(rules,groups,rows,from,to){
  }
  return result;
 }
+export function reorderApprovalStages(stages,from,to){
+ if(from===to||from<0||to<0||from>=stages.length||to>=stages.length)return stages;
+ const next=[...stages];next.splice(to,0,next.splice(from,1)[0]);return next;
+}

@@ -10,7 +10,7 @@ const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C
 const fixture=path.resolve('frontend/expense-approval-dialog-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Button,Stack,TextField} from '@mui/material';import theme from '/src/theme';import Approval from '/src/components/ExpenseApprovalSettings.jsx';
-function Screen(){const ref=React.useRef(),[value,setValue]=React.useState(null),[approvalStatus,setApprovalStatus]=React.useState(null);window.setApprovalStatus=setApprovalStatus;return React.createElement(Stack,{spacing:2,sx:{p:2,maxWidth:900}},React.createElement(TextField,{label:'Memo',defaultValue:'Preserved input'}),React.createElement(Approval,{ref,horizontalStages:true,orgId:7,languageCode:new URLSearchParams(location.search).get('lang'),value,approvalStatus,onChange:setValue,items:[{unitPrice:'5500',quantity:'1',vatRate:'0',currency:'USD'}]}),React.createElement(Button,{onClick:async()=>{const selection=await ref.current.prepare();if(selection)window.savedSelection=selection;}},'Save'));}
+function Screen(){const ref=React.useRef(),[value,setValue]=React.useState(null),[approvalStatus,setApprovalStatus]=React.useState(null),[dirty,setDirty]=React.useState(false);window.setApprovalStatus=setApprovalStatus;window.setDraftDirty=setDirty;return React.createElement(Stack,{spacing:2,sx:{p:2,maxWidth:900}},React.createElement(TextField,{label:'Memo',defaultValue:'Preserved input'}),React.createElement(Approval,{ref,horizontalStages:true,orgId:7,languageCode:new URLSearchParams(location.search).get('lang'),value,approvalStatus,draftDirty:dirty,onChange:setValue,items:[{unitPrice:'5500',quantity:'1',vatRate:'0',currency:'USD'}]}),React.createElement(Button,{onClick:async()=>{const selection=await ref.current.prepare();if(selection)window.savedSelection=selection;}},'Save'));}
 createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Screen)));</script></body></html>`);
 const port=43229,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -26,14 +26,17 @@ try{
    const selection=r.request().postDataJSON()?.selection||{},stages=exempt?[]:pools.map((candidates,i)=>{const key='step'+(i+1),employeeId=selection[key+'EmployeeId']??(candidates.length===1?candidates[0].id:null);return {key,role:['OPERATOR','ACCOUNTANT','ADMIN'][i],gradeId:i===1?2:3,candidates,employeeId,name:candidates.find(row=>row.id===employeeId)?.name};});
    return r.fulfill({headers,json:{drafter:exempt?{...drafter,orgRole:'ADMIN'}:drafter,stages,complete:stages.every(row=>row.employeeId),policy:{exempt,totals:[{currency:'USD',amount:'5500'}]}}});
   });
-  await page.goto(`http://127.0.0.1:${port}/expense-approval-dialog-acceptance.html?lang=${lang}`);
+  await page.goto(`http://127.0.0.1:${port}/expense-approval-dialog-acceptance.html?lang=${lang}`,{timeout:90000});
   const t=expenseHeaderActions[lang],line=approvalLineText[lang],band=approvalBandText[lang];
   await page.getByTestId('expense-approval-button').getByText('Current user',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Save',exact:true}).click();let dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-step3').waitFor();
   assert.equal(await dialog.locator('#expense-stage-drafter').getAttribute('readonly'),'');assert.equal(await dialog.locator('#expense-stage-drafter').inputValue(),'Current user');
   assert.equal(await dialog.getByText(line.sameCompany,{exact:true}).count(),0);assert.equal(await dialog.getByText(line.self,{exact:true}).count(),0);
   assert.equal(await dialog.getByTestId('approval-modal-amount').textContent(),'USD 5,500');
-  assert.equal(await dialog.getByLabel(band.role,{exact:true}).count(),3);assert.equal(await dialog.getByLabel(band.grade,{exact:true}).count(),3);
+  assert.equal(await dialog.getByLabel(band.role,{exact:true}).count(),4);assert.equal(await dialog.getByLabel(band.grade,{exact:true}).count(),4);
+  const flowCards=await dialog.locator('[data-approval-flow-card]').evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return {x:rect.x,y:rect.y,width:rect.width,title:element.querySelector('h6')?.textContent};}));
+  assert.equal(flowCards.length,4);assert.equal(await dialog.locator('[data-flow-arrow]').count(),3);assert.ok(flowCards.every(card=>card.title),'Every card has a title');
+  for(let i=1;i<flowCards.length;i++){assert.ok(Math.abs(flowCards[i].y-flowCards[0].y)<1);assert.ok(flowCards[i].x>flowCards[i-1].x);}
   assert.equal(await dialog.locator('#expense-stage-step1').inputValue(),'Operations lead');assert.equal(await dialog.locator('#expense-stage-step1').getAttribute('readonly'),'');
   assert.equal(await dialog.getByRole('combobox').count(),1);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).isDisabled(),true);
   await dialog.getByRole('button',{name:t.cancel,exact:true}).click();assert.equal(await page.evaluate(()=>window.savedSelection),undefined);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
@@ -41,11 +44,19 @@ try{
   assert.equal(await page.getByRole('option',{name:/Accountant [AB]/}).count(),2);await page.getByRole('option',{name:'Accountant B',exact:true}).click();
   await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
   assert.deepEqual(await page.evaluate(()=>window.savedSelection),{step1EmployeeId:2,step2EmployeeId:5,step3EmployeeId:4});
+  assert.equal(await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').count(),0,'Choosing a line is not approval');
   await page.evaluate(()=>window.setApprovalStatus({steps:[{employeeId:2,approved:true},{employeeId:5,approved:false},{employeeId:4,approved:false}]}));
   const header=page.getByTestId('expense-approval-button');await header.locator('[data-approval-state="approved"]').getByText('Operations lead',{exact:true}).waitFor();await header.locator('[data-approval-state="pending"]').getByText('Accountant B',{exact:true}).waitFor();await header.locator('[data-approval-state="waiting"]').getByText('Administrator',{exact:true}).waitFor();assert.equal(await header.locator('[data-approval-state="pending"]').count(),1);
+  assert.equal(await header.evaluate(element=>element.scrollWidth<=element.clientWidth),true);assert.equal(await page.getByTestId('expense-approval-stages').evaluate(element=>element.scrollWidth<=element.clientWidth),true);
+  const bounds=await header.boundingBox();for(const name of ['Operations lead','Accountant B','Administrator']){const badge=await header.getByText(name,{exact:true}).boundingBox();assert.ok(badge.x>=bounds.x&&badge.x+badge.width<=bounds.x+bounds.width+1,'Every approval is inside the header');}
+  await page.waitForFunction(()=>Object.entries({approved:'rgb(232, 247, 239)',pending:'rgb(255, 246, 219)',drafter:'rgb(234, 242, 255)'}).every(([state,color])=>getComputedStyle(document.querySelector(`[data-approval-state="${state}"]`)).backgroundColor===color));
+  assert.equal(await header.locator('[data-approval-state="approved"]').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(232, 247, 239)');assert.equal(await header.locator('[data-approval-state="pending"]').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(255, 246, 219)');assert.equal(await header.locator('[data-approval-state="drafter"]').evaluate(element=>getComputedStyle(element).backgroundColor),'rgb(234, 242, 255)');
+  await page.evaluate(()=>window.setDraftDirty(true));await header.locator('[data-approval-state="approved"]').waitFor({state:'hidden'});assert.equal(await header.locator('[data-approval-state="pending"]').count(),0);await page.evaluate(()=>window.setDraftDirty(false));await header.locator('[data-approval-state="approved"]').waitFor();
   exempt=true;await page.reload();await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-final-self').waitFor();
   assert.equal(await dialog.getByRole('combobox').count(),0);assert.equal(await dialog.getByText(line.self,{exact:true}).count(),0);assert.equal(await dialog.locator('#expense-stage-final-self').inputValue(),'Current user');
   await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  assert.equal(await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').count(),0,'Previewing self authority is not a stored approval');
+  await page.evaluate(()=>window.setApprovalStatus({exempt:true,steps:[]}));await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').waitFor();assert.equal(await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').count(),1);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);await page.close();console.log('PASS',lang,width);
  }
  console.log('PASS: immutable drafter, role/grade/person, automatic sole candidates, explicit multiple choice, save/cancel, amount header and approval states in ko/en/vi desktop/mobile.');

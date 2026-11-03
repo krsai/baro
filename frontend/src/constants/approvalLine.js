@@ -3,6 +3,9 @@ export const approvalLineText={
  en:{drafterSelect:'Select drafter',middle:'Intermediate approval',final:'Final approval',finalSelect:'Select final approver',middleSelect:'Select intermediate approver',notRequired:'Not required by policy',self:'Self-authorized',sameCompany:'The drafter is fixed to the original author. Only employees in this company who qualify for each stage can be selected as approvers.'},
  vi:{drafterSelect:'Chọn người lập',middle:'Duyệt trung gian',final:'Duyệt cuối',finalSelect:'Chọn người duyệt cuối',middleSelect:'Chọn người duyệt trung gian',notRequired:'Bỏ qua theo quy tắc',self:'Tự quyết',sameCompany:'Người lập được cố định là tác giả ban đầu. Chỉ chọn người duyệt cùng công ty đủ điều kiện cho từng bước.'},
 };
+Object.assign(approvalLineText.ko,{name:'성명'});
+Object.assign(approvalLineText.en,{name:'Name'});
+Object.assign(approvalLineText.vi,{name:'Họ tên'});
 approvalLineText.ko.noCandidates='이 단계에 해당하는 같은 회사의 활성 결재자가 없습니다.';
 approvalLineText.en.noCandidates='No active approver in this company qualifies for this stage.';
 approvalLineText.vi.noCandidates='Không có người duyệt đang hoạt động cùng công ty phù hợp với bước này.';

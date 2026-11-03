@@ -1,10 +1,10 @@
-import React,{forwardRef,useImperativeHandle,useState} from 'react';
+import React,{forwardRef,useImperativeHandle,useRef,useState} from 'react';
 import {Box,IconButton,MenuItem,Paper,Stack,TextField,ToggleButton,ToggleButtonGroup,Typography} from '@mui/material';
-import {Add,ArrowForward,ChevronLeft,ChevronRight,Close,DragIndicator} from '@mui/icons-material';
+import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
 import DecimalAmountField from './DecimalAmountField';
 import {approvalBandText} from '../constants/approvalBands';
-import {approvalBandOrderErrors,boundedApprovalBand,combineApprovalCurrencyRows,defaultApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,replaceApprovalGroup,sameApprovalGroup} from '../utils/approvalBands.mjs';
+import {approvalBandOrderErrors,boundedApprovalBand,combineApprovalCurrencyRows,defaultApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,reorderApprovalStages,replaceApprovalGroup,sameApprovalGroup} from '../utils/approvalBands.mjs';
 import {formatEditableDecimal} from '../utils/editableDecimal.mjs';
 export const approvalRuleText={
  ko:{OPERATOR:'운영',ACCOUNTANT:'회계',ADMIN:'관리자',error:'금액 구간과 결재자의 보직·직급을 확인해 주세요. 운영 기안에는 회계 결재가 필요합니다.',changed:'다른 관리자가 설정을 변경했습니다. 새로고침 후 다시 확인해 주세요.'},
@@ -23,7 +23,13 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
  const patchStages=(row,stages)=>updateEntries(row,rule=>[{...rule,stages}]);
  const patchStage=(row,position,change)=>patchStages(row,row.stages.map((stage,index)=>position===index?{...stage,...change}:stage));
  const addMiddle=(row,position)=>{const stages=[...row.stages];stages.splice(position,0,{role:'OPERATOR',gradeId:null});patchStages(row,stages);};
- const moveMiddle=(row,position,delta)=>{const stages=[...row.stages];[stages[position],stages[position+delta]]=[stages[position+delta],stages[position]];patchStages(row,stages);};
+ const stageKeys=useRef(new WeakMap());
+ const stageKey=stage=>{if(!stageKeys.current.has(stage))stageKeys.current.set(stage,crypto.randomUUID());return stageKeys.current.get(stage);};
+ const onDragEnd=({source,destination})=>{
+  if(!destination||disabled||source.droppableId!==destination.droppableId)return;
+  if(source.droppableId==='approval-bands')onChange(reorderApprovalCurrencyBands(rules,groups,rows,source.index,destination.index));
+  else {const row=rows.find(row=>'approval-stages:'+row.key===source.droppableId);if(row)patchStages(row,reorderApprovalStages(row.stages,source.index,destination.index));}
+ };
  const addCondition=()=>{
   if(disabled)return false;let result=rules;
   for(const source of groups){const next=[...source.rows],index=next.findIndex(row=>!boundedApprovalBand(row));
@@ -48,7 +54,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
     <Stack spacing={.25} sx={{px:1,py:.75}}><Typography variant="caption" fontWeight={600}>{t.condition}</Typography><Box sx={{display:'grid',gridTemplateColumns:costColumns,gap:.5}}><Box/>{currencies.map(currency=><Typography key={currency} data-currency-heading={currency} variant="caption" align="center">{currency}</Typography>)}</Box></Stack>
     <Typography variant="subtitle2" sx={{px:1.5,alignSelf:'center'}}>{t.line}</Typography>
    </Box>
-   <DragDropContext onDragEnd={({source,destination})=>{if(destination&&!disabled)onChange(reorderApprovalCurrencyBands(rules,groups,rows,source.index,destination.index));}}><Droppable droppableId="approval-bands">{provided=><Box ref={provided.innerRef} {...provided.droppableProps}>
+   <DragDropContext onDragEnd={onDragEnd}><Droppable droppableId="approval-bands" type="BANDS">{provided=><Box ref={provided.innerRef} {...provided.droppableProps}>
    {rows.map((row,index)=><Draggable key={row.key} draggableId={row.key} index={index} isDragDisabled={disabled||row.entries.some(entry=>!boundedApprovalBand(entry.rule))}>{drag=><Box ref={drag.innerRef} {...drag.draggableProps} data-approval-band={index} sx={{display:'grid',gridTemplateColumns:columns,borderBottom:1,borderColor:'divider',bgcolor:'background.paper'}}>
     <Box sx={{display:'grid',gridTemplateColumns:costColumns,alignItems:'center',gap:.5,px:1,py:.75,borderRight:1,borderColor:'divider'}}>
      <Box {...drag.dragHandleProps} aria-label={`${t.reorder} ${index+1}`} data-band-drag-handle={index} sx={{display:'flex',alignItems:'center',color:'text.disabled',touchAction:'none',cursor:drag.dragHandleProps?'grab':'default'}}><DragIndicator sx={{fontSize:18}}/></Box>
@@ -60,17 +66,19 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
      {row.entries.every(entry=>boundedApprovalBand(entry.rule))&&<IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>updateEntries(row,()=>[],true)}><Close sx={{fontSize:15}}/></IconButton>}
     </Box>
     <Stack direction="row" alignItems="center" spacing={0} sx={{px:1,py:.75,overflowX:'auto',minWidth:0}}>
-     <Paper variant="outlined" data-band-drafter sx={{...nodeSx,display:'flex',flexDirection:'column',justifyContent:'center'}}><Typography variant="caption" color="text.secondary">{t.drafter}</Typography><Typography variant="body2" sx={{fontSize:12}}>{t[role]} / {gradeId?gradeName(grades.find(row=>row.id===gradeId)):t.allGrades}</Typography></Paper>
-     {row.stages.map((stage,position)=>{const final=position===row.stages.length-1;return <React.Fragment key={position}>
+     <Paper variant="outlined" data-band-drafter sx={nodeSx}><Stack spacing={.25}><Typography variant="caption" color="text.secondary" sx={{height:18}}>{t.drafter}</Typography><Stack direction="row" spacing={.5}><TextField fullWidth size="small" value={t[role]} InputProps={{readOnly:true}}/><TextField fullWidth size="small" value={gradeId?gradeName(grades.find(row=>row.id===gradeId)):t.allGrades} InputProps={{readOnly:true}}/></Stack></Stack></Paper>
+     <Droppable droppableId={'approval-stages:'+row.key} type={'STAGES:'+row.key} direction="horizontal">{stagesProvided=><Stack ref={stagesProvided.innerRef} {...stagesProvided.droppableProps} direction="row" sx={{minWidth:0,flexShrink:0}}>
+     {row.stages.map((stage,position)=>{const final=position===row.stages.length-1,key=stageKey(stage);return <Draggable key={key} draggableId={row.key+':'+key} index={position} isDragDisabled={disabled}>{stageDrag=><Stack ref={stageDrag.innerRef} {...stageDrag.draggableProps} direction="row" alignItems="center" sx={{flexShrink:0}}>
       <Box data-band-connector sx={{width:32,minWidth:32,height:70,position:'relative',display:'flex',justifyContent:'center',alignItems:'center'}}><ArrowForward sx={{color:'text.disabled',fontSize:16}}/><IconButton data-add-middle={index} size="small" title={t.addMiddle} aria-label={t.addMiddle} disabled={disabled||row.stages.length>=10} color="primary" sx={{position:'absolute',top:44,p:.25}} onClick={()=>addMiddle(row,position)}><Add sx={{fontSize:16}}/></IconButton></Box>
       <Paper variant="outlined" data-band-stage={position} data-stage-final={final?'true':undefined} sx={nodeSx}><Stack spacing={.25}>
-       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{height:18}}><Typography variant="caption" color="text.secondary">{final?t.final:`${t.middle} ${position+1}`}</Typography>{!final&&<Stack direction="row"><IconButton size="small" aria-label={t.left} disabled={disabled||!position} sx={{p:.25}} onClick={()=>moveMiddle(row,position,-1)}><ChevronLeft sx={{fontSize:16}}/></IconButton><IconButton size="small" aria-label={t.right} disabled={disabled||position>=row.stages.length-2} sx={{p:.25}} onClick={()=>moveMiddle(row,position,1)}><ChevronRight sx={{fontSize:16}}/></IconButton><IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>patchStages(row,row.stages.filter((_,i)=>i!==position))}><Close sx={{fontSize:16}}/></IconButton></Stack>}</Stack>
+       <Stack direction="row" alignItems="center" spacing={.5} sx={{height:18}}><Box {...stageDrag.dragHandleProps} data-stage-drag-handle={position} aria-label={`${t.reorderStage} ${position+1}`} sx={{display:'flex',color:'text.disabled',touchAction:'none'}}><DragIndicator sx={{fontSize:15}}/></Box><Typography variant="caption" color="text.secondary" sx={{flex:1}}>{final?t.final:`${t.middle} ${position+1}`}</Typography>{row.stages.length>1&&<IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>patchStages(row,row.stages.filter((_,i)=>i!==position))}><Close sx={{fontSize:16}}/></IconButton>}</Stack>
        <Stack direction="row" spacing={.5}>
         <TextField fullWidth select size="small" value={stage.role} disabled={disabled} onChange={event=>patchStage(row,position,{role:event.target.value,...(event.target.value==='ADMIN'?{gradeId:null}:{})})} slotProps={{select:{'aria-label':`${t.role} ${index+1}-${position+1}`}}}>{roleOptions}</TextField>
         <TextField fullWidth select size="small" value={stage.gradeId||''} disabled={disabled} onChange={event=>patchStage(row,position,{gradeId:event.target.value||null})} slotProps={{select:{displayEmpty:true,'aria-label':`${t.grade} ${index+1}-${position+1}`}}}><MenuItem value="">{stage.role==='ADMIN'?t.allGrades:t.selectGrade}</MenuItem>{stage.gradeId&&!grades.some(row=>row.id===stage.gradeId)&&<MenuItem value={stage.gradeId} disabled>{t.selectGrade}</MenuItem>}{gradeOptions}</TextField>
        </Stack>
       </Stack></Paper>
-     </React.Fragment>;})}
+     </Stack>}</Draggable>;})}{stagesProvided.placeholder}
+     </Stack>}</Droppable>
     </Stack>
    </Box>}</Draggable>)}{provided.placeholder}
    </Box>}</Droppable></DragDropContext>

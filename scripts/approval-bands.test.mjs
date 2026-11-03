@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {approvalAmountUnits,approvalBandOrderErrors,boundedApprovalBand,cleanApprovalBands,combineApprovalCurrencyRows,defaultApprovalBands,invalidApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,replaceApprovalGroup} from '../frontend/src/utils/approvalBands.mjs';
+import {approvalAmountUnits,approvalBandOrderErrors,boundedApprovalBand,cleanApprovalBands,combineApprovalCurrencyRows,defaultApprovalBands,invalidApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,reorderApprovalStages,replaceApprovalGroup} from '../frontend/src/utils/approvalBands.mjs';
 const grades=[{id:1,code:'CL1'},{id:10,code:'CL2'},{id:20,code:'CL3'}];
 const settings={limits:{USD:{senior:'1000',lead:'5000'},VND:{senior:'20000000',lead:'100000000'}}};
 const group={role:'OPERATOR',gradeId:null,currency:'USD'};
+test('approval cards including the final card move without changing roles or grades',()=>{
+ const stages=[{role:'OPERATOR',gradeId:20},{role:'ACCOUNTANT',gradeId:10},{role:'ADMIN',gradeId:null}],before=JSON.stringify(stages);
+ const next=reorderApprovalStages(stages,2,0);assert.deepEqual(next,[stages[2],stages[0],stages[1]]);assert.equal(JSON.stringify(stages),before);assert.deepEqual(reorderApprovalStages(next,0,2),stages);
+ assert.equal(reorderApprovalStages(stages,-1,0),stages);
+});
 test('matching currency workflows share a compact row and different workflows stay separate',()=>{
  const groups=['USD','VND'].map(currency=>({currency,rows:defaultApprovalBands(settings,grades,{...group,currency})}));
  assert.equal(combineApprovalCurrencyRows(groups).length,3);

@@ -70,7 +70,7 @@ try {
       assert.equal(settingsReads,0,'Saved documents do not fetch current editor settings on entry');
       releaseDocument();
       await strip.getByText('Original author',{exact:true}).first().waitFor();
-      await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-approval-stages"] [data-approval-state="approved"]').length===2);
+      await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-approval-stages"] [data-approval-state="approved"]').length===1);
       assert.equal(await strip.getByText('Current editor',{exact:true}).count(),0);
       assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),true,'References are still loading');
       assert.equal(await page.getByTestId('expense-line').getByLabel(EXPENSE_REQUEST_TEXT[lang].quantity,{exact:false}).inputValue(),'170','Document content does not wait for reference data');
@@ -92,7 +92,12 @@ try {
     assert.equal(await page.getByTestId('expense-line').getByLabel(l.description,{exact:false}).evaluate(el=>el.readOnly),true);
     const entryHeader=page.getByTestId('document-entry-header'),approvalBox=await page.getByTestId('document-entry-approval').boundingBox(),payeeBox=await page.getByTestId('expense-payee-button').boundingBox();
     assert.ok(approvalBox.x>payeeBox.x+payeeBox.width);assert.equal(await page.getByTestId('expense-approval-stages').count(),1);
-    const approvalStrip=await page.getByTestId('expense-approval-stages').boundingBox();assert.ok(Math.abs(approvalStrip.height-36)<1);assert.ok(Math.abs((approvalStrip.y+approvalStrip.height/2)-(payeeBox.y+payeeBox.height/2))<1,'Payee and approval controls share the same vertical center');
+    const approvalStrip=await page.getByTestId('expense-approval-stages').boundingBox(),approvalBlock=await page.getByTestId('document-entry-approval').boundingBox(),currentPayeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(approvalStrip.height>=36);assert.ok(Math.abs((approvalBlock.y+approvalBlock.height/2)-(currentPayeeBox.y+currentPayeeBox.height/2))<1,'Payee and approval controls share the same vertical center');
+    assert.equal(await page.getByTestId('expense-approval-stages').evaluate(element=>element.scrollWidth<=element.clientWidth),true,'Approval states fit the header without scrolling');
+    if(mode==='GENERAL'&&lang==='ko'&&!locked){
+      const tableScroll=page.locator('.MuiTableContainer-root').filter({has:page.getByTestId('expense-line')}).first(),header=page.getByTestId('document-entry-header'),before=await header.boundingBox();
+      await tableScroll.evaluate(element=>{element.scrollLeft=500;});assert.ok(await tableScroll.evaluate(element=>element.scrollLeft)>0);assert.deepEqual(await header.boundingBox(),before,'Table scrolling does not move the approval header');await tableScroll.evaluate(element=>{element.scrollLeft=0;});
+    }
     const remarkBox=await page.getByTestId('expense-summary').getByLabel('REMARK',{exact:true}).locator('..').boundingBox(),totalsBox=await page.getByTestId('expense-totals').boundingBox();assert.ok(remarkBox.x<totalsBox.x);assert.ok(Math.abs(remarkBox.height-totalsBox.height)<3);
     if(mode==='GENERAL'&&lang==='ko'&&!locked){
       await page.setViewportSize({width:430,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -107,7 +112,7 @@ try {
     }
     const confirmLine=async()=>{
       const dialog=page.getByRole('dialog');await dialog.getByRole('heading',{name:h.approval,exact:true}).waitFor();
-      assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).inputValue(),mode==='SAVED'?'Original author':'Current editor');assert.equal(await dialog.getByLabel(h.drafter,{exact:true}).evaluate(el=>el.readOnly),true);
+      assert.equal(await dialog.locator('#expense-stage-drafter').inputValue(),mode==='SAVED'?'Original author':'Current editor');assert.equal(await dialog.locator('#expense-stage-drafter').evaluate(el=>el.readOnly),true);
       await dialog.getByRole('combobox').click();await page.getByRole('option',{name:'First approver',exact:true}).click();
       await dialog.getByRole('button',{name:h.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
     };

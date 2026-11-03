@@ -7,6 +7,7 @@ export function approvalStepState(approval, employeeId) {
  if(step.blocked||approval?.rejected)return 'stopped';
  return steps.find(row=>!row.approved)?.employeeId===employeeId?'pending':'waiting';
 }
+export const approvalStepTone=state=>({drafter:'blue',approved:'green',pending:'yellow',rejected:'red',stopped:'orange'})[state]||'gray';
 export const approvalStepLabels={
  ko:{pending:'결재 대기',waiting:'차례 대기',approved:'승인 완료',rejected:'반려',stopped:'중단',unconfirmed:'미요청'},
  en:{pending:'Awaiting approval',waiting:'Waiting turn',approved:'Approved',rejected:'Rejected',stopped:'Stopped',unconfirmed:'Not requested'},

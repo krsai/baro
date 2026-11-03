@@ -43,16 +43,25 @@ try{
   const choose=async(control,name)=>{await control.click();await page.getByRole('option',{name,exact:true}).click();};
   const stage=(index,field)=>first.locator('[data-band-stage="'+index+'"]').getByRole('combobox').nth(field);
   await choose(stage(0,1),'Lead');await choose(stage(1,0),band.ACCOUNTANT);await choose(stage(1,1),'Senior');await choose(stage(2,0),band.ADMIN);
-  await first.locator('[data-band-stage="1"]').getByRole('button',{name:band.left,exact:true}).click();
+  const dragStage=async(position,key)=>{
+   const controls=await first.locator('[data-band-stage] .MuiSelect-select').allTextContents(),pairs=Array.from({length:controls.length/2},(_,index)=>controls.slice(index*2,index*2+2));pairs.splice(position+(key==='ArrowLeft'?-1:1),0,pairs.splice(position,1)[0]);
+   const handle=first.locator(`[data-stage-drag-handle="${position}"]`);await handle.scrollIntoViewIfNeeded();await handle.focus();await page.keyboard.press('Space');await page.keyboard.press(key);await page.keyboard.press('Space');
+   await page.waitForFunction(expected=>JSON.stringify([...document.querySelectorAll('[data-approval-band="0"] [data-band-stage] .MuiSelect-select')].map(element=>element.textContent))===JSON.stringify(expected),pairs.flat());
+   await page.waitForFunction(()=>![...document.querySelectorAll('[data-stage-drag-handle]')].some(element=>getComputedStyle(element.closest('[data-rfd-draggable-id]')).transform!=='none'));
+  };
+  await dragStage(1,'ArrowLeft');
   assert.equal(await stage(0,0).textContent(),band.ACCOUNTANT);
-  await first.locator('[data-band-stage="0"]').getByRole('button',{name:band.right,exact:true}).click();
+  await dragStage(0,'ArrowRight');
+  await dragStage(2,'ArrowLeft');assert.equal(await stage(2,0).textContent(),band.ACCOUNTANT);await dragStage(1,'ArrowRight');
+  assert.equal(await first.getByRole('button',{name:band.left,exact:true}).count(),0);assert.equal(await first.getByRole('button',{name:band.right,exact:true}).count(),0);
   assert.equal(posts.length,0);assert.equal(page.url(),initialUrl);assert.equal(await page.getByRole('dialog').count(),0);
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
   assert.equal(saved.revision,0);assert.equal(saved.rules.length,9);assert.equal(saved.rules[0].max,'1500');assert.equal(saved.rules[1].min,'1500.01');
   assert.deepEqual(saved.rules[0].stages,[{role:'OPERATOR',gradeId:20},{role:'ACCOUNTANT',gradeId:10},{role:'ADMIN',gradeId:null}]);
   assert.ok(saved.rules.every(row=>!('__bounded' in row)));assert.equal(saved.limits.USD.senior,'1000');
+  await page.waitForFunction(()=>{const nodes=[...document.querySelectorAll('[data-approval-band="0"] [data-band-drafter],[data-approval-band="0"] [data-band-stage]')].map(element=>element.getBoundingClientRect());return nodes.every((node,index)=>!index||Math.abs(node.x-nodes[index-1].x-nodes[index-1].width-32)<1);});
   const nodes=await first.locator('[data-band-drafter],[data-band-stage]').evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return {x:rect.x,width:rect.width};}));
-  for(let i=1;i<nodes.length;i++)assert.ok(Math.abs(nodes[i].x-nodes[i-1].x-nodes[i-1].width-32)<1,'Every connection uses the same gap');
+  for(let i=1;i<nodes.length;i++)assert.ok(Math.abs(nodes[i].x-nodes[i-1].x-nodes[i-1].width-32)<1,'Every connection uses the same gap: '+JSON.stringify(nodes));
   const connector=first.locator('[data-band-connector]').first(),arrow=await connector.locator('svg').first().boundingBox(),plus=await connector.getByRole('button').boundingBox();assert.ok(plus.y>=arrow.y+arrow.height,'Add button sits below the arrow');
   assert.equal(await first.getByText(band.under,{exact:true}).count(),0);assert.equal(await first.getByText(band.over,{exact:true}).count(),0);
   assert.equal(await page.getByRole('tab').count(),0);assert.equal(await page.locator('[data-currency-heading]').count(),3);
@@ -74,7 +83,7 @@ try{
   for(const [role,grade] of [['ACCOUNTANT','Staff'],['ADMIN','Lead']]){
    await scopes.getByRole('button',{name:band[role],exact:true}).click();await choose(page.getByRole('combobox',{name:band.drafterGrade,exact:false}),grade);await page.getByRole('button',{name:band.addCondition,exact:true}).click();
    const scoped=page.locator('[data-approval-band="0"]');for(const [currency,max] of [['USD','2000'],['KRW','2000000'],['VND','30000000']])await scoped.getByRole('textbox',{name:band.amount+' '+currency+' 1',exact:true}).fill(max);
-   assert.ok((await scoped.locator('[data-band-drafter]').innerText()).includes(band[role]));await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
+   assert.equal(await scoped.locator('[data-band-drafter]').getByRole('textbox').first().inputValue(),band[role]);await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
    assert.equal(saved.rules.filter(row=>row.drafterRole===role&&row.drafterGradeId===(role==='ACCOUNTANT'?1:20)).length,3);assert.equal(saved.rules.filter(row=>row.drafterRole==='OPERATOR').length,9);
   }
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
