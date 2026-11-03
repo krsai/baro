@@ -32,8 +32,10 @@ export async function approvalState(db:any,orgId:number,requestId:number,actorId
  const exemption=approvalExemption(request,decisions,policy,orgId);
  const summary=expenseApprovalSummary(request,decisions,exemption.exempt);
  const next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
- const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}) : null;
- const canApprove=!!actor&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId;
+ const actor=actorId ? await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}}}) : null;
+ const operatorPolicy=actor?.orgRole==='OPERATOR'?(await db.expenseRequestAudit.findFirst({where:{orgId,requestId,version:request.version},orderBy:{id:'desc'}}))?.afterSnapshot?.approvalPolicy:null;
+ const operatorAllowed=actor?.orgRole!=='OPERATOR'||operatorPolicy?.config?.version===2&&operatorPolicy.config.kind==='EXPENSE'&&operatorPolicy.resolvedStages?.some((stage:any)=>stage.employeeId===actorId&&stage.role==='OPERATOR'&&stage.gradeId===actor.gradeId);
+ const canApprove=!!actor&&operatorAllowed&&!!next&&next.employeeId===actorId&&request.createdByEmployeeId!==actorId;
  return {version:request.version,managementNumber:request.managementNumber||legacyExpenseNumber(request.id),...summary,exemptionReason:exemption.exemptionReason,canApprove,canReject:canApprove};
 }
 export async function attachExpenseApprovalStates(db:any,orgId:number,requests:any[]){
@@ -50,12 +52,11 @@ export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:numbe
  if(!['pending','inProgress','completed','requested'].includes(view))return fail('INVALID_APPROVAL_VIEW');
  const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}});
  if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
- if(actor.orgRole==='OPERATOR'&&view!=='requested')return [];
  const handled=view==='completed'?await db.expenseApprovalDecision.findMany({where:{orgId,employeeId:actorId},select:{requestId:true,version:true,decision:true,reason:true,createdAt:true}}):[];
  const requests=await db.expenseRequest.findMany({where:{orgId,...(view==='requested'?{createdByEmployeeId:actorId}:view==='completed'?{id:{in:[...new Set(handled.map((row:any)=>row.requestId))]}}:{approvalSteps:{some:{employeeId:actorId}}})},select:{id:true,managementNumber:true,version:true,requestDate:true,createdByEmployeeId:true,partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,name:true,orgId:true,orgRole:true,status:true}},items:{select:{currency:true,amount:true}},approvalSteps:{orderBy:{position:'asc'},select:{position:true,employeeId:true}}},orderBy:[{requestDate:'asc'},{id:'asc'}]});
  if(!requests.length)return [];
  const decisions=await db.expenseApprovalDecision.findMany({where:{orgId,requestId:{in:requests.map((request:any)=>request.id)}},select:{requestId:true,version:true,position:true,employeeId:true,decision:true,reason:true,createdAt:true}});
- const auditIds=requests.filter((row:any)=>view==='completed'||!row.approvalSteps.length).map((row:any)=>row.id);
+ const auditIds=requests.filter((row:any)=>actor.orgRole==='OPERATOR'||view==='completed'||!row.approvalSteps.length).map((row:any)=>row.id);
  const audits=auditIds.length?await db.expenseRequestAudit.findMany({where:{orgId,requestId:{in:auditIds}},select:{requestId:true,version:true,afterSnapshot:true}}):[];
  const toRow=(request:any,status:string)=>{
   const totals=new Map<string,bigint>();for(const item of request.items||[])totals.set(item.currency,(totals.get(item.currency)||0n)+ledgerScale4(item.amount));
@@ -63,6 +64,7 @@ export async function listExpenseApprovalInbox(db:any,orgId:number,actorId:numbe
  };
  const rows=requests.flatMap((request:any)=>{
   const policy=audits.find((audit:any)=>audit.requestId===request.id&&audit.version===request.version)?.afterSnapshot?.approvalPolicy;
+  if(actor.orgRole==='OPERATOR'&&!['requested','completed'].includes(view)&&!(policy?.config?.version===2&&policy.config.kind==='EXPENSE'&&policy.resolvedStages?.some((stage:any)=>stage.employeeId===actorId&&stage.role==='OPERATOR'&&stage.gradeId===actor.gradeId)))return [];
   const summary=expenseApprovalSummary(request,decisions,approvalExemption(request,decisions,policy,orgId).exempt),next=summary.rejected?null:summary.steps.find((step:any)=>!step.approved);
   const pending=request.createdByEmployeeId!==actorId&&next?.employeeId===actorId;
   if(view==='pending'&&!pending||view==='inProgress'&&(pending||summary.rejected||summary.approved))return [];
@@ -82,7 +84,7 @@ export async function approveExpense(db:any,orgId:number,actorId:number,requestI
  if(decision==='REJECTED'&&(!normalized||normalized.length>1000))return fail('EXPENSE_REJECTION_REASON_REQUIRED');
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',requestId,orgId);
-  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}});
+  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}}});
   if(!actor)return fail('LEDGER_ACCESS_DENIED',403);
   const state=await approvalState(tx,orgId,requestId,actorId);
   if(state.version!==version)return fail('EXPENSE_REQUEST_CHANGED',409);

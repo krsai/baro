@@ -9,7 +9,8 @@ export async function listApprovalOverview(db:any,orgId:number,actorId:number,qu
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}}});
   if(!actor)throw createHttpError(403,'LEDGER_ACCESS_DENIED');
-  const assigned=actor.orgRole==='OPERATOR'?'FALSE':'EXISTS(SELECT 1 FROM "ExpenseRequestApprovalStep" own WHERE own."requestId"=r.id AND own."orgId"=r."orgId" AND own."employeeId"=$4)';
+  const customOperator=actor.orgRole==='OPERATOR'?` AND EXISTS(SELECT 1 FROM "ExpenseRequestAudit" a WHERE a."requestId"=r.id AND a."orgId"=r."orgId" AND a.version=r.version AND a."afterSnapshot"->'approvalPolicy'->'config'->>'version'='2' AND a."afterSnapshot"->'approvalPolicy'->'config'->>'kind'='EXPENSE' AND a."afterSnapshot"->'approvalPolicy'->'resolvedStages' @> jsonb_build_array(jsonb_build_object('employeeId',$4::integer,'role','OPERATOR')))` : '';
+  const assigned=`EXISTS(SELECT 1 FROM "ExpenseRequestApprovalStep" own WHERE own."requestId"=r.id AND own."orgId"=r."orgId" AND own."employeeId"=$4${customOperator})`;
   const cte=`WITH scoped AS (SELECT r.id,r."requestDate",CASE
    WHEN EXISTS(SELECT 1 FROM "ExpenseApprovalDecision" d WHERE d."orgId"=r."orgId" AND d."requestId"=r.id AND d.version=r.version AND d.decision='REJECTED') THEN 'REJECTED'
    WHEN NOT EXISTS(SELECT 1 FROM "ExpenseRequestApprovalStep" s WHERE s."requestId"=r.id) THEN CASE WHEN baro_expense_approval_exempt(r.id,r."orgId",r.version) THEN 'APPROVED' ELSE 'UNKNOWN' END

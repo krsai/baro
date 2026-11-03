@@ -33,7 +33,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "Organization"(id INT PRIMARY KEY,code TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,type "OrganizationType" DEFAULT 'MANUFACTURER',"ownerOrgId" INT,"dataOwnerOrgId" INT,"businessNumber" TEXT,"isActive" BOOL DEFAULT true,UNIQUE(id,"ownerOrgId"));
       CREATE TABLE "SettingServiceDefault"(id SERIAL PRIMARY KEY,code TEXT UNIQUE); CREATE TABLE "ExpenseType"(id INT PRIMARY KEY,code TEXT,"isActive" BOOL DEFAULT true); CREATE TABLE "TransactionCodeBase"("serviceTypeId" INT,"expenseTypeId" INT);
       CREATE TABLE "Currency"(id INT PRIMARY KEY); CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
-      CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',UNIQUE(id,"orgId"));
+      CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',"gradeId" INT,UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
       CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
       CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC,"outsourcedWorkRecordId" INT);

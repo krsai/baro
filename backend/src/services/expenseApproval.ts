@@ -1,13 +1,16 @@
 import { createHttpError } from '../utils/http';
 import { Prisma } from '@prisma/client';
 import { calculateRequestAmounts } from './transactionRequest';
+import {validateApprovalRules,resolveApprovalRules} from './approvalRules';
+import {EXPENSE_APPROVAL_SUBJECT,approvalPolicyNamespace} from './approvalSubjects';
 
 export const EXPENSE_APPROVAL_ROLES = ['ADMIN','ACCOUNTANT'];
-export const approvalSettingKey = (orgId:number) => `EXPENSE_APPROVAL_POLICY:${orgId}`;
+export const approvalSettingKey = (orgId:number) => approvalPolicyNamespace(EXPENSE_APPROVAL_SUBJECT,orgId);
 export const defaultApprovalSettings = () => ({limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}}});
 
 export async function validateApprovalSettings(tx:any,orgId:number,value:any){
   if(!value||typeof value!=='object')throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+  if(value.kind!==undefined&&value.kind!=='EXPENSE')throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
   const result:any={limits:{}};
   for(const currency of ['VND','USD','KRW']){
     const limits=value.limits?.[currency];
@@ -20,15 +23,20 @@ export async function validateApprovalSettings(tx:any,orgId:number,value:any){
     }
     if(new Prisma.Decimal(limits.senior).gte(limits.lead))throw createHttpError(400,'INVALID_APPROVAL_LIMIT');
   }
+  if(value.rules!==undefined){
+    if(!Number.isSafeInteger(value.revision)||value.revision<0)throw createHttpError(400,'INVALID_APPROVAL_RULE');
+    return {...result,version:2,kind:'EXPENSE',revision:value.revision,rules:await validateApprovalRules(tx,orgId,value.rules)};
+  }
   return result;
 }
 
-export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:number,items:any[]=[],selection?:any,allowIncomplete=false) {
-  const drafter = await tx.employee.findFirst({where:{id:drafterId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{select:{isActive:true,set:{select:{isActive:true}}}}}});
+export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:number,items:any[]=[],selection?:any,allowIncomplete=false,savedConfig?:any) {
+  const drafter = await tx.employee.findFirst({where:{id:drafterId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{select:{code:true,isActive:true,set:{select:{isActive:true}}}}}});
   if(!drafter) throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
   const setting = await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
-  const config=setting?.value||defaultApprovalSettings();
+  const config=savedConfig||setting?.value||defaultApprovalSettings();
   if(selection!==undefined && (!selection||typeof selection!=='object'||Array.isArray(selection)))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+  if(selection?.drafterEmployeeId!==undefined&&selection.drafterEmployeeId!==drafterId)throw createHttpError(400,'EXPENSE_DRAFTER_FIXED');
   const totals=new Map<string,Prisma.Decimal>();
   if(!Array.isArray(items)||!items.length||items.length>50)throw createHttpError(400,'EXPENSE_REQUEST_ITEMS_REQUIRED');
   for(const [index,item] of items.entries()){
@@ -38,6 +46,8 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
       totals.set(item.currency,(totals.get(item.currency)||new Prisma.Decimal(0)).add(amount));
     }catch(error:any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
   }
+  const custom=await resolveApprovalRules(tx,orgId,drafter,totals,config,selection,allowIncomplete);
+  if(custom)return custom;
   let level=0;
   for(const [currency,amount] of totals){
     const limits=config.limits?.[currency];
@@ -45,7 +55,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     level=Math.max(level,amount.lte(limits.senior)?0:amount.lte(limits.lead)?1:2);
   }
   let accountantConfirmed=false;
-  const ownLevel=drafter.orgRole==='ADMIN'?2:drafter.orgRole==='ACCOUNTANT'&&drafter.grade?.isActive&&drafter.grade.set?.isActive ? drafter.gradeId===config.leadGradeId?1:!config.seniorGradeId||drafter.gradeId===config.seniorGradeId?0:-1 : -1;
+  const ownLevel=drafter.orgRole==='ADMIN'?2:drafter.orgRole==='ACCOUNTANT'&&drafter.grade?.isActive&&drafter.grade.set?.isActive ? (config.leadGradeId?drafter.gradeId===config.leadGradeId:drafter.grade.code==='CL3')?1:(config.seniorGradeId?drafter.gradeId===config.seniorGradeId:drafter.grade.code==='CL2')?0:-1 : -1;
   const ids:number[]=[],skipped:string[]=[],stages:any[]=[];let requiredLevel=level,complete=true;
   for(let index=0;index<=requiredLevel;index++){
     if(index<=ownLevel)continue;
@@ -56,7 +66,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
       if(!allowIncomplete)throw createHttpError(400,'EXPENSE_APPROVER_REQUIRED');
     }
     const gradeId=config[`${key}GradeId`];
-    const where={orgId,status:'ACTIVE',orgRole:index===2?'ADMIN':'ACCOUNTANT',...(index<2?{...(gradeId?{gradeId}:{}),grade:{isActive:true,set:{isActive:true}}}:{})};
+    const where={orgId,status:'ACTIVE',orgRole:index===2?'ADMIN':'ACCOUNTANT',...(index<2?{...(gradeId?{gradeId}:{}),grade:{...(!gradeId?{code:index===0?'CL2':'CL3'}:{}),isActive:true,set:{isActive:true}}}:{})};
     const candidates=await tx.employee.findMany({where:{...where,id:{notIn:[drafterId,...ids]}},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameEn:true,nameKo:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
     const employeeId=selection===undefined?(candidates.length===1?candidates[0].id:null):selection[`${key}EmployeeId`];
     if(employeeId!=null&&(!Number.isSafeInteger(employeeId)||employeeId<=0))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');

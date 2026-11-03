@@ -8,8 +8,8 @@ const {registerExpenseEditorRoutes}=require('../backend/dist/services/expenseReq
 function fixture(){
  const config={...defaultApprovalSettings(),seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
  const people=[{id:1,orgId:7,status:'ACTIVE',orgRole:'OPERATOR',gradeId:1},{id:2,orgId:7,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:10},{id:3,orgId:7,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:20},{id:4,orgId:7,status:'ACTIVE',orgRole:'ADMIN',gradeId:30}];
- people.forEach(person=>person.grade={isActive:true,set:{isActive:true}});
- const matches=(person,where)=>Object.entries(where).every(([key,value])=>key==='grade'?person.grade.isActive&&person.grade.set.isActive:typeof value==='object'&&value?.notIn?!value.notIn.includes(person[key]):person[key]===value);
+ people.forEach(person=>person.grade={code:person.gradeId===10?'CL2':person.gradeId===20?'CL3':'CL1',isActive:true,set:{isActive:true}});
+ const matches=(person,where)=>Object.entries(where).every(([key,value])=>key==='grade'?person.grade.isActive&&person.grade.set.isActive&&(!value.code||person.grade.code===value.code):typeof value==='object'&&value?.notIn?!value.notIn.includes(person[key]):person[key]===value);
  const db={systemSetting:{findUnique:async({where})=>{assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');return {value:config};}},employee:{findFirst:async({where})=>people.find(p=>matches(p,where)),findMany:async({where})=>people.filter(p=>matches(p,where))},employeeGrade:{findFirst:async({where})=>[10,20].includes(where.id)&&where.orgId===7?{id:where.id}:null}};
  return {db,config,people};
 }
@@ -133,4 +133,27 @@ test('missing lead automatically routes to administrator without any vacancy set
 test('legacy global person assignments do not determine expense approvers',async()=>{
  const {db,config}=fixture();config.seniorEmployeeId=99;config.leadEmployeeId=99;config.adminEmployeeId=99;
  assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('100000001')])).ids,[2,3,4]);
+});
+test('drafter selection cannot impersonate another employee and default stages enforce actual grade codes',async()=>{
+ const {db,people}=fixture();db.systemSetting.findUnique=async()=>null;
+ const preview=await resolveExpenseApproval(db,7,1,[item('30000000')],{},true);
+ assert.deepEqual(preview.stages.map(stage=>stage.candidates.map(person=>person.id)),[[2],[3]]);
+ await assert.rejects(resolveExpenseApproval(db,7,1,[item('1000')],{drafterEmployeeId:4}),/EXPENSE_DRAFTER_FIXED/);
+ assert.deepEqual((await resolveExpenseApproval(db,7,1,[item('1000')],{drafterEmployeeId:1,seniorEmployeeId:2})).ids,[2]);
+ assert.equal((await resolveExpenseApproval(db,7,2,[item('1000')],{})).policy.exempt,true);
+ assert.equal((await resolveExpenseApproval(db,7,3,[item('30000000')],{})).policy.exempt,true);
+ await assert.rejects(resolveExpenseApproval(db,7,1,[item('30000000')],{seniorEmployeeId:3,leadEmployeeId:2}),/INVALID_EXPENSE_APPROVERS/);
+ people[1].orgId=8;
+ const scoped=await resolveExpenseApproval(db,7,1,[item('1000')],{},true);
+ assert.ok(scoped.stages.every(stage=>!stage.candidates.some(person=>person.id===2)));
+});
+test('rule settings enforce optimistic revision and refuse old clients overwriting saved rules',async()=>{
+ const {db,config}=fixture();config.version=2;config.kind='EXPENSE';config.rules=[];config.revision=1;let writes=0;
+ db.$transaction=async fn=>fn(db);db.systemSetting.upsert=async({update})=>{writes++;assert.equal(update.value.revision,2);};
+ const routes=new Map();registerExpenseEditorRoutes(Object.fromEntries(['get','put','post'].map(method=>[method,(path,fn)=>routes.set(method+path,fn)])),db,{actorId:()=>4,requireOrgRole:async()=>({organization:{id:7}})});
+ const save=routes.get('put/expense-approval-settings'),res={json:()=>{}};
+ await assert.rejects(save({body:{limits:config.limits,rules:[],revision:0}},res),/APPROVAL_SETTINGS_CHANGED/);
+ await assert.rejects(save({body:{limits:config.limits}},res),/APPROVAL_SETTINGS_CHANGED/);
+ await assert.rejects(save({body:{kind:'LEAVE',limits:config.limits,rules:[],revision:1}},res),/INVALID_APPROVAL_SUBJECT/);
+ assert.equal(writes,0);await save({body:{limits:config.limits,rules:[],revision:1}},res);assert.equal(writes,1);
 });

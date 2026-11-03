@@ -1062,7 +1062,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerEntry_revision_scope_fk
   'CodeDefaultRenamePropagation',
   'BankLedgerEntry_accountId_orgId_fkey',
   'BankLedgerAccount_orgId_fkey',
-  'Organization_linked_corporate_code_guard','baro_partner_has_company_link','Organization_party_kind_check','Organization_corporate_profile_check','OrganizationBankAccount_identity_sync','baro_sync_corrected_account_identity','BankLedgerAccount_entityAccountId_orgId_currencyCode_key',
+  'baro_expense_operator_authorized','Organization_linked_corporate_code_guard','baro_partner_has_company_link','Organization_party_kind_check','Organization_corporate_profile_check','OrganizationBankAccount_identity_sync','baro_sync_corrected_account_identity','BankLedgerAccount_entityAccountId_orgId_currencyCode_key',
   'BankLedgerAccount_entity_account_fkey','BankLedgerAccount_master_guard','OrganizationBankAccount_ledger_identity_guard',
   'CompanyWorkspaceRegistration_orgId_fkey',
   'BankLedgerEntry_amount_check',

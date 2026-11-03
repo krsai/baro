@@ -1,0 +1,56 @@
+import {Prisma} from '@prisma/client';
+import {createHttpError} from '../utils/http';
+import {EXPENSE_APPROVAL_SUBJECT,ApprovalSubject} from './approvalSubjects';
+const roles=['OPERATOR','ACCOUNTANT','ADMIN'];
+const fail=(code='INVALID_APPROVAL_RULE'):never=>{throw createHttpError(400,code);};
+export async function validateApprovalRules(db:any,orgId:number,input:any,subject:ApprovalSubject=EXPENSE_APPROVAL_SUBJECT){
+ if(!Array.isArray(input)||input.length>30)return fail();
+ const rules=[];const ids=new Set();
+ for(const row of input){
+  if(!row||typeof row.id!=='string'||!/^[\w-]{1,64}$/.test(row.id)||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>100||!roles.includes(row.drafterRole)||subject.hasAmount&&!['USD','VND','KRW'].includes(row.currency))return fail();
+  ids.add(row.id);
+  const grade=async(id:any)=>{if(id==null||id==='')return null;if(!Number.isSafeInteger(id)||!await db.employeeGrade.findFirst({where:{id,orgId,isActive:true,set:{isActive:true}}}))return fail();return id;};
+  const money=(value:any,empty=false)=>{if(empty&&(value===''||value==null))return null;if(typeof value!=='string'||!(row.currency==='USD'?/^\d{1,15}(\.\d{1,2})?$/:/^\d{1,15}$/).test(value))return fail();return new Prisma.Decimal(value).toFixed();};
+  const min=subject.hasAmount?money(row.min):null,max=subject.hasAmount?money(row.max,true):null;if(max!=null&&new Prisma.Decimal(min!).gt(max))return fail();
+  if(!Array.isArray(row.stages)||!row.stages.length||row.stages.length>10)return fail();
+  const stages=[];const seen=new Set();
+  for(const stage of row.stages){
+   if(!stage||!roles.includes(stage.role))return fail();
+   const gradeId=await grade(stage.gradeId);
+   if(stage.role!=='ADMIN'&&!gradeId)return fail();
+   const key=stage.role+':'+(gradeId||'');if(seen.has(key))return fail();seen.add(key);
+   stages.push({role:stage.role,gradeId});
+  }
+  if(subject.key==='EXPENSE'&&row.drafterRole==='OPERATOR'&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
+  rules.push({id:row.id,name:row.name.trim(),drafterRole:row.drafterRole,drafterGradeId:await grade(row.drafterGradeId),currency:subject.hasAmount?row.currency:null,min,max,stages});
+ }
+ return rules;
+}
+export async function resolveApprovalRules(db:any,orgId:number,drafter:any,totals:Map<string,Prisma.Decimal>,config:any,selection:any,allowIncomplete:boolean,subject:ApprovalSubject=EXPENSE_APPROVAL_SUBJECT){
+ if(config.version!==2||!config.rules?.length)return null;
+ if(config.kind!==subject.key)return fail('INVALID_APPROVAL_SUBJECT');
+ const matched=[];
+ if(!subject.hasAmount){const rule=config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId));if(!rule)return fail('APPROVAL_RULE_NOT_FOUND');matched.push(rule);}
+ for(const [currency,amount] of subject.hasAmount?totals:new Map<string,Prisma.Decimal>()){
+  const rule=config.rules.find((row:any)=>row.drafterRole===drafter.orgRole&&(!row.drafterGradeId||row.drafterGradeId===drafter.gradeId)&&row.currency===currency&&amount.gte(row.min)&&(row.max==null||amount.lte(row.max)));
+  if(!rule){if(!matched.length&&totals.size===1)return null;return fail('APPROVAL_RULE_NOT_FOUND');}
+  matched.push(rule);
+ }
+ // Merge currencies without comparing or converting their amounts. Keep every
+ // chain's ordering; contradictory chains must be fixed rather than guessed.
+ const nodes=new Map<string,any>(),edges=new Map<string,Set<string>>();
+ for(const rule of matched){let previous:string|null=null;for(const stage of rule.stages){const key=stage.role+':'+(stage.gradeId||'');nodes.set(key,stage);if(!edges.has(key))edges.set(key,new Set());if(previous)edges.get(previous)!.add(key);previous=key;}}
+ const ordered:any[]=[];const remaining=new Set(nodes.keys());
+ while(remaining.size){const key=[...remaining].find(key=>![...remaining].some(other=>edges.get(other)?.has(key)));if(!key)return fail('APPROVAL_RULE_ORDER_CONFLICT');remaining.delete(key);ordered.push(nodes.get(key));}
+ const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[];let complete=true;
+ for(const [index,stage] of ordered.entries()){
+  const key='step'+(index+1),where={orgId,status:'ACTIVE',orgRole:stage.role,...(stage.gradeId?{gradeId:stage.gradeId,grade:{isActive:true,set:{isActive:true}}}:{})};
+  const candidates=await db.employee.findMany({where:{...where,id:{notIn:[drafter.id,...ids]}},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameKo:true,nameEn:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
+  const employeeId=selection===undefined?(candidates.length===1?candidates[0].id:null):selection[key+'EmployeeId'];
+  const chosen=candidates.find((candidate:any)=>candidate.id===employeeId);
+  if(!chosen){complete=false;if(!allowIncomplete)return fail(employeeId?'INVALID_EXPENSE_APPROVERS':'EXPENSE_APPROVER_REQUIRED');}
+  else {ids.push(chosen.id);resolvedStages.push({employeeId:chosen.id,role:stage.role,gradeId:stage.gradeId});}
+  stages.push({key,role:stage.role,gradeId:stage.gradeId,employeeId:chosen?.id||null,name:chosen?.name,candidates,invalid:!!employeeId&&!chosen});
+ }
+ return {ids,complete,stages,drafter,policy:{drafterId:drafter.id,exempt:false,config,resolvedStages,ruleIds:matched.map(rule=>rule.id),skipped:[],level:ordered.length-1,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
+}

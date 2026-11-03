@@ -29,10 +29,10 @@ function harness() {
     return withDocumentNumbers({
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
-      employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{isActive:true,set:{isActive:true}}})},
+      employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{code:'CL2',isActive:true,set:{isActive:true}}})},
       factory: { findMany: async()=>[{id:1,managementStartDate:'2026-04-01'}], findFirst: async()=>({id:1,managementStartDate:'2026-04-01'}) },
       systemSetting: {findUnique:async({where})=>where.key.startsWith('EXPENSE_APPROVAL_POLICY:')?{value:{limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:1,leadGradeId:2}}:null},
-      expenseRequestAudit: {findMany:async({where,take})=>s.audits.filter(a=>a.orgId===where.orgId&&a.requestId===where.requestId&&(!where.version||a.version<where.version.lt)).sort((a,b)=>b.version-a.version).slice(0,take), findUnique: async({where})=>s.audits.find(x=>x.orgId===where.orgId_clientKey.orgId&&x.clientKey===where.orgId_clientKey.clientKey) || null, create: async({data})=>{s.audits.push(structuredClone(data));return data;} },
+      expenseRequestAudit: {findFirst:async({where})=>s.audits.find(row=>row.orgId===where.orgId&&row.requestId===where.requestId&&row.version===where.version)||null,findMany:async({where,take})=>s.audits.filter(a=>a.orgId===where.orgId&&a.requestId===where.requestId&&(!where.version||a.version<where.version.lt)).sort((a,b)=>b.version-a.version).slice(0,take), findUnique: async({where})=>s.audits.find(x=>x.orgId===where.orgId_clientKey.orgId&&x.clientKey===where.orgId_clientKey.clientKey) || null, create: async({data})=>{s.audits.push(structuredClone(data));return data;} },
       expenseRequest: {
         findFirst: async({where})=>document(s.documents.find(r=>matches(r,where))),
         create: async({data})=>{const row={id:s.documents.length+1,version:1,...data};s.documents.push(row);return row;},

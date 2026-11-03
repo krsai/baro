@@ -69,12 +69,13 @@ test('live FK descriptions and first-item summaries follow the language and item
   const code={id:7,base:{expenseType:{nameKo:'제작 외주',nameEn:'Production outsourcing',nameVi:'Gia công sản xuất'},entryMode:'PROCESS',nameKo:'단춧구멍',nameEn:'BUTTON HOLE',nameVi:'Thùa khuyết'}};
   const first={transactionCodeId:7,transactionCode:code,description:'Old copied text'};
   const second={transactionCodeId:8,transactionCode:{id:8,base:{expenseType:{nameEn:'Production outsourcing'},entryMode:'PROCESS',nameEn:'CUTTING'}}};
-  assert.equal(expenseLineDescription(first,'ko'),'제작 외주 - 단춧구멍');
-  assert.equal(expenseRequestSummary({items:[first,second]},'en'),'Production outsourcing - BUTTON HOLE and 1 more');
-  assert.equal(expenseRequestSummary({items:[first,second]},'ko'),'제작 외주 - 단춧구멍 외 1건');
-  assert.equal(expenseRequestSummary({items:[first,second]},'vi'),'Gia công sản xuất - Thùa khuyết và 1 mục khác');
-  assert.equal(expenseRequestSummary({items:[second,first]},'en'),'Production outsourcing - CUTTING and 1 more');
-  code.base.nameEn='Updated master';assert.equal(expenseLineDescription(first,'en'),'Production outsourcing - Updated master');
+  // Shared accounting-code descriptions use the code's own current name.
+  assert.equal(expenseLineDescription(first,'ko'),'단춧구멍');
+  assert.equal(expenseRequestSummary({items:[first,second]},'en'),'BUTTON HOLE and 1 more');
+  assert.equal(expenseRequestSummary({items:[first,second]},'ko'),'단춧구멍 외 1건');
+  assert.equal(expenseRequestSummary({items:[first,second]},'vi'),'Thùa khuyết và 1 mục khác');
+  assert.equal(expenseRequestSummary({items:[second,first]},'en'),'CUTTING and 1 more');
+  code.base.nameEn='Updated master';assert.equal(expenseLineDescription(first,'en'),'Updated master');
   assert.equal(first.description,'Old copied text');
 });
 test('lookup only resolves unique exact codes and supports Vietnamese search', () => {

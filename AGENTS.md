@@ -51,6 +51,15 @@
 
 - Partner account creation, editing and ordering use existing company/entity access for ACTIVE ADMIN, ACCOUNTANT and OPERATOR employees. Only own-company accounts remain ADMIN-only. Preserve company isolation, actual membership checks and ledger/currency history protections; no SYSTEM-only bypass.
 
+# 2026-11-03 메뉴별 결재 구분·조건별 단계와 기존 문서 규칙 보존
+
+- 결재 구분은 메뉴 단위 정책 namespace로 분리한다. 현재 EXPENSE(/outsourcing-record)만 활성화하며 기존 EXPENSE_APPROVAL_POLICY 키를 유지한다. 미래의 비금전 결재는 hasAmount=false로 통화·금액 없이 역할/직급 조건과 순서를 적용하는 공통 엔진을 사용한다. 비금전 결재의 실제 문서·메뉴·권한은 아직 활성화하지 않는다.
+- 회사 ADMIN이 기안자 역할/실제 회사 직급·통화·VAT 포함 최소/최대 금액 조건과 결재 단계별 역할/직급을 저장한다. 첫 일치 규칙 우선, 미일치는 기존 한도로 처리하며 혼합 통화의 규칙은 환산 없이 순서를 합친다. 충돌하는 순서는 거부한다. 중복 단계·외부 회사/비활성 직급·없는 직원을 허용하지 않고 revision으로 동시 수정을 검사한다. 명시적 새 규칙이 없는 관리자 본인 전결·회계사 본인 직급 한도 전결은 유지한다.
+- 대리기안은 사용자 확정으로 금지한다. 신규 기안자는 본인, 기존 문서는 원 기안자를 유지한다. 결재선 클릭은 인사 선택 창을 열고 저장 시에도 해당 금액/정책의 창을 연다. 중간 결재는 필요한 경우만 활성화하며 마지막 실제 단계를 최종 결재로 표시한다. 후보는 같은 회사의 실제 ACTIVE 역할·직급 직원이다. 기본 선임/책임은 CL2/CL3이며 명시된 기존 gradeId 설정은 보존한다.
+- 규칙 저장 후 새 결재건부터 설정을 적용한다. 생성 시 config·revision·ruleIds·실제 선택한 resolvedStages를 감사 snapshot에 저장하고 기존 문서의 수정/미리보기도 원 버전의 저장 규칙을 사용한다. 기존 문서·현재 승인·업무 금액·사번·FK는 설정 저장으로 재작성하지 않는다.
+- 비용의 운영자 기안에는 회계 결재가 필수다. 운영 책임자 등의 OPERATOR 결재는 version=2 snapshot의 해당 직원·역할·직급과 실제 지정 단계가 모두 일치할 때만 허용한다. 기존 OPERATOR 결재 제한을 전역으로 풀지 않는다. 순차 승인·본인 승인 금지·회사/활성 직원·현재 버전·반려/지급 차단은 유지한다. 결재 권한이 원장 쓰기 권한을 부여하지 않는다.
+- 20261103140000_configurable_expense_approvals는 새 불변 SQL로 공통 실행기·preflight·읽기 전용 시작 검사에 등록한다. 운영 DB 직접 실행은 하지 않는다. test:approval-settings에 조건별 규칙·비금전 기반·SQL 순차/권한·정책 snapshot 검사를 포함한다.
+
 # 2026-11-03 미승인 비용 지급 차단·결재 표시·목록 세부 유형
 
 - 비용 증빙은 현재 문서 버전의 전체 결재가 끝났거나 유효한 저장 전결일 때만 입출금에 연결한다. 기존 서버·DB 승인 검사와 문서 잠금을 유지한다. 다중 행의 미승인 비용은 전체 저장을 롤백하고 LEDGER_ROW 행 번호와 사유를 표시하며 화면의 실패 행을 강조하고 스크롤한다. 미승인·반려·변경 버전을 파일 증빙으로 추정 변환하지 않는다.

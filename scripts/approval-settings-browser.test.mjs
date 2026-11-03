@@ -22,19 +22,20 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   const settings={limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
-  const data={settings,drafter:{id:1,name:'Current user',orgRole:'ADMIN'},canEdit:true,grades:[{id:10,name:'Senior',nameEn:'Senior'},{id:20,name:'Lead',nameEn:'Lead'}],candidates:[{id:2,name:'Senior accountant',orgRole:'ACCOUNTANT',gradeId:10},{id:3,name:'Lead accountant',orgRole:'ACCOUNTANT',gradeId:20},{id:4,name:'Administrator',orgRole:'ADMIN'}]};
+  const data={settings,drafter:{id:1,name:'Current user',orgRole:'ADMIN'},canEdit:true,grades:[{id:1,code:'CL1',name:'Staff',nameEn:'Staff'},{id:10,code:'CL2',name:'Senior',nameEn:'Senior'},{id:20,code:'CL3',name:'Lead',nameEn:'Lead'}],candidates:[{id:2,name:'Senior accountant',orgRole:'ACCOUNTANT',gradeId:10},{id:3,name:'Lead accountant',orgRole:'ACCOUNTANT',gradeId:20},{id:4,name:'Administrator',orgRole:'ADMIN'}]};
   await page.route('**/expense-approval-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){saved=r.request().postDataJSON();return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
   await page.goto(`http://127.0.0.1:${port}/approval-settings-acceptance.html`);
   const t=approvalSettingsText[lang];
   await page.getByRole('heading',{name:t.title,exact:true}).waitFor();
-  assert.equal(await page.getByLabel(t.drafter,{exact:true}).count(),0);assert.equal(await page.getByRole('combobox').count(),0);assert.equal(await page.getByRole('textbox').count(),6);
+  assert.equal(await page.getByLabel(t.drafter,{exact:true}).count(),0);assert.equal(await page.getByRole('combobox').count(),1);assert.equal(await page.getByRole('textbox').count(),6);
   assert.deepEqual(await page.locator('thead th').allTextContents(),['','USD','KRW','VND']);
   assert.deepEqual(await page.locator('tbody th').allTextContents(),[t.senior,t.lead]);
   const limit=page.getByLabel(`${t.senior} VND`,{exact:true});assert.equal(await limit.evaluate(el=>getComputedStyle(el).textAlign),'right');await limit.fill('25000000');
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
-  assert.equal(saved.limits.VND.senior,'25000000');assert.equal(saved.limits.VND.lead,'100000000');assert.deepEqual(Object.keys(saved),['limits']);
+  assert.equal(saved.limits.VND.senior,'25000000');assert.equal(saved.limits.VND.lead,'100000000');assert.deepEqual(Object.keys(saved),['kind','limits','rules','revision']);assert.equal(saved.revision,0);
+  const ruleText=await page.evaluate(async lang=>(await import('/src/components/ApprovalRuleEditor.jsx')).approvalRuleText[lang],lang);await page.getByRole('button',{name:ruleText.example,exact:true}).click();assert.equal(await page.locator('[data-approval-rule-stage]').count(),3);await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();assert.equal(saved.revision,1);assert.equal(saved.rules[0].min,'5000');assert.deepEqual(saved.rules[0].stages,[{role:'OPERATOR',gradeId:20},{role:'ACCOUNTANT',gradeId:10},{role:'ADMIN',gradeId:null}]);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: ko/en/vi desktop/mobile approval settings, only editable currency limits, no person or grade controls, limits-only payload and explicit save.');
+ console.log('PASS: ko/en/vi desktop/mobile approval settings, conditional expense rules, actual grade selection, ordered operations/accounting/admin example, revisioned save and fallback limits.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

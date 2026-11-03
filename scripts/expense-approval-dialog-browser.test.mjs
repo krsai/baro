@@ -1,3 +1,4 @@
+import {approvalLineText} from '../frontend/src/constants/approvalLine.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -18,18 +19,18 @@ try{
  browser=await chromium.launch({executablePath,headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
-  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},keys=['senior','lead','admin'],names=['Senior approver','Lead approver','Admin approver'];let adminPreview=false;
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},keys=['senior','lead','admin'],names=['Senior approver','Lead approver','Admin approver'];let adminPreview=false,dynamicPreview=false;
   await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:{drafter:{id:1,name:'Current user'},candidates:names.map((name,i)=>({id:i+2,name}))}}));
-  await page.route('**/expense-approval-preview?*',r=>{if(adminPreview)return r.fulfill({headers,json:{complete:true,ids:[],stages:[],drafter:{id:1,name:'Current user'},policy:{drafterId:1,exempt:true,exemptionReason:'ADMIN_DRAFTER'}}});const selection=r.request().postDataJSON()?.selection||{},stages=keys.map((key,i)=>({key,employeeId:selection[`${key}EmployeeId`]||null,name:names[i],candidates:[{id:i+2,name:names[i]}]}));return r.fulfill({headers,json:{complete:stages.every(stage=>stage.employeeId),ids:stages.map(stage=>stage.employeeId).filter(Boolean),stages,drafter:{id:1,name:'Current user'},policy:{totals:[{currency:'VND',amount:'100000001'}]}}});});
+  await page.route('**/expense-approval-preview?*',r=>{if(dynamicPreview){const selection=r.request().postDataJSON()?.selection||{},stages=['step1','step2','step3'].map((key,i)=>({key,role:['OPERATOR','ACCOUNTANT','ADMIN'][i],gradeId:i===0?3:i===1?2:null,employeeId:selection[key+'EmployeeId']||null,name:['Operations lead','Senior accountant','Administrator'][i],candidates:[{id:i+2,name:['Operations lead','Senior accountant','Administrator'][i]}]}));return r.fulfill({headers,json:{complete:stages.every(stage=>stage.employeeId),ids:stages.map(stage=>stage.employeeId).filter(Boolean),stages,drafter:{id:1,name:'Current user'},policy:{config:{version:2,kind:'EXPENSE'},totals:[{currency:'USD',amount:'5500'}]}}});}if(adminPreview)return r.fulfill({headers,json:{complete:true,ids:[],stages:[],drafter:{id:1,name:'Current user'},policy:{drafterId:1,exempt:true,exemptionReason:'ADMIN_DRAFTER'}}});const selection=r.request().postDataJSON()?.selection||{},stages=keys.map((key,i)=>({key,employeeId:selection[`${key}EmployeeId`]||null,name:names[i],candidates:[{id:i+2,name:names[i]}]}));return r.fulfill({headers,json:{complete:stages.every(stage=>stage.employeeId),ids:stages.map(stage=>stage.employeeId).filter(Boolean),stages,drafter:{id:1,name:'Current user'},policy:{totals:[{currency:'VND',amount:'100000001'}]}}});});
   await page.goto(`http://127.0.0.1:${port}/expense-approval-dialog-acceptance.html?lang=${lang}`);const t=expenseHeaderActions[lang];
   assert.equal(await page.getByTestId('expense-approval-button').isDisabled(),false);
   await page.getByTestId('expense-approval-button').getByText('Current user',{exact:true}).waitFor();
-  await page.getByRole('button',{name:'Save',exact:true}).click();let dialog=page.getByRole('dialog');await dialog.getByRole('combobox',{name:`3. ${t.admin}`,exact:false}).waitFor();
-  const drafter=dialog.getByLabel(t.drafter,{exact:true});assert.equal(await drafter.inputValue(),'Current user');assert.equal(await drafter.evaluate(el=>el.readOnly),true);
-  const boxes=await Promise.all(keys.map((key,i)=>dialog.getByRole('combobox',{name:`${i+1}. ${t[key]}`,exact:false}).boundingBox()));assert.ok(boxes[0].y<boxes[1].y&&boxes[1].y<boxes[2].y);
+  await page.getByRole('button',{name:'Save',exact:true}).click();let dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-admin').waitFor();
+  const drafter=dialog.locator('#expense-stage-drafter');await drafter.click();assert.equal(await page.getByRole('option').filter({hasNot:page.locator('[aria-disabled=true]')}).count()>=1,true);assert.equal(await page.getByRole('option',{name:'Current user',exact:true}).count(),1);await page.getByRole('option',{name:'Current user',exact:true}).click();
+  const boxes=await Promise.all(keys.map((key,i)=>dialog.locator('#expense-stage-'+key).boundingBox()));assert.ok(boxes[0].y<boxes[1].y&&boxes[1].y<boxes[2].y);
   await dialog.getByRole('button',{name:t.cancel,exact:true}).click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.saved),undefined);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
   await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');
-  for(const [i,key] of keys.entries()){await dialog.getByRole('combobox',{name:`${i+1}. ${t[key]}`,exact:false}).click();await page.getByRole('option',{name:names[i],exact:true}).click();}
+  for(const [i,key] of keys.entries()){await dialog.locator('#expense-stage-'+key).click();await page.getByRole('option',{name:names[i],exact:true}).click();}
   await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>document.documentElement.dataset.saved),'true');
   for(const name of names)await page.getByTestId('expense-approval-button').getByText(name,{exact:true}).waitFor();
   const verticalBoxes=await Promise.all(names.map(name=>page.getByTestId('expense-approval-button').getByText(name,{exact:true}).boundingBox()));assert.ok(Math.abs(verticalBoxes[0].y-verticalBoxes[1].y)<2&&Math.abs(verticalBoxes[1].y-verticalBoxes[2].y)<2&&verticalBoxes[0].x<verticalBoxes[1].x&&verticalBoxes[1].x<verticalBoxes[2].x);assert.equal(await page.getByTestId('expense-approval-button').getByText('Current user',{exact:true}).count(),1);
@@ -44,15 +45,19 @@ try{
   await page.evaluate(()=>window.setApprovalStatus({steps:[{employeeId:2,approved:true},{employeeId:3,rejected:true},{employeeId:4,blocked:true}]}));
   await approvalButton.locator('[data-approval-state="rejected"]').waitFor();await approvalButton.locator('[data-approval-state="stopped"]').waitFor();
   assert.notEqual(await approvalButton.locator('[data-approval-state="rejected"]').evaluate(el=>getComputedStyle(el).backgroundColor),await approved.evaluate(el=>getComputedStyle(el).backgroundColor));
-  await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('combobox').count(),0);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).count(),0);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
+  await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-admin').waitFor();assert.equal(await dialog.getByRole('combobox').count(),4);assert.equal(await dialog.getByRole('button',{name:t.confirmSave,exact:true}).count(),1);assert.equal(await page.getByLabel('Memo').inputValue(),'Preserved input');
   adminPreview=true;await page.reload();await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});
   await page.getByTestId('expense-approval-button').locator('[data-approval-state="approved"]').getByText('Current user',{exact:true}).first().waitFor();
   await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);
   await page.keyboard.press('Escape');
   await page.evaluate(()=>window.setApprovalStatus({exempt:true,exemptionReason:'SAVED_POLICY',steps:[]}));
   assert.equal(await page.getByTestId('expense-approval-button').getByText('Current user',{exact:true}).count(),2);
-  await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');assert.equal(await dialog.getByRole('textbox').count(),2);assert.deepEqual(await dialog.getByRole('textbox').evaluateAll(elements=>elements.map(el=>[el.value,el.readOnly])),[['Current user',true],['Current user',true]]);
+  await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-final-self').waitFor();assert.equal(await dialog.getByRole('combobox').count(),2);assert.equal(await dialog.locator('#expense-stage-middle-disabled').isDisabled(),true);
+  await page.keyboard.press('Escape');dynamicPreview=true;adminPreview=false;await page.reload();await page.getByTestId('expense-approval-button').click();dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-step3').waitFor();
+  for(const [i,name] of ['Operations lead','Senior accountant','Administrator'].entries()){await dialog.locator('#expense-stage-step'+(i+1)).click();await page.getByRole('option',{name,exact:true}).click();}
+  await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>document.documentElement.dataset.saved),undefined);
+  await page.getByRole('button',{name:'Save',exact:true}).click();dialog=page.getByRole('dialog');await dialog.locator('#expense-stage-step3').waitFor();await dialog.getByRole('button',{name:t.confirmSave,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>document.documentElement.dataset.saved),'true');
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: save opens sequential vertical approvals, cancellation preserves inputs, confirmation saves, header opens a read-only reference, ko/en/vi desktop/mobile.');
+ console.log('PASS: save opens sequential vertical approvals, cancellation preserves inputs, confirmation saves, header edits eligible staff, fixed self drafter, policy-driven intermediate/final stages and configurable operations/accounting/admin chain, ko/en/vi desktop/mobile.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

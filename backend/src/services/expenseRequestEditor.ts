@@ -1,4 +1,5 @@
 import {companyBusinessTimeZone} from './serviceCompany';
+import {APPROVAL_SUBJECTS} from './approvalSubjects';
 import { requirePayeeBankAccount } from './entityBankAccount';
 import {expensePayeeIds,employeePayee,expenseApplicationDate} from './expensePayee';
 import {allocateDocumentNumber,normalizeDocumentNumber,legacyExpenseNumber} from './documentNumber';
@@ -133,7 +134,9 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   // Release only the document/payee composite FK inside this transaction; IDs and source FKs remain intact.
   if (source.document) await tx.partnerTransactionCost.updateMany({ where: { expenseRequestId: source.document.id, orgId }, data: { expenseRequestId: null, expenseRequestLine: null } });
   await requirePayeeBankAccount(tx,orgId,payeeIds.partnerOrgId,payeeIds.payeeEmployeeId);
-  const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection);
+  const savedAudit=source.document?await tx.expenseRequestAudit.findFirst({where:{orgId,requestId:source.document.id,version:source.document.version},orderBy:{id:'desc'}}):null;
+  const savedConfig=source.document?savedAudit?.afterSnapshot?.approvalPolicy?.config||defaultApprovalSettings():undefined;
+  const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection,false,savedConfig);
   const approvers = approval.ids;
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
   if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
@@ -172,7 +175,8 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     if(!drafter)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
     const setting=await db.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
     const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true,orgRole:true,gradeId:true},orderBy:[{name:'asc'},{id:'asc'}]});
-    res.json({drafter,candidates,settings:{limits:setting?.value?.limits||defaultApprovalSettings().limits},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
+    const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},select:{id:true,code:true,name:true,nameKo:true,nameEn:true,nameVi:true},orderBy:{sortOrder:'asc'}});
+    res.json({drafter,candidates,grades,subjects:APPROVAL_SUBJECTS,subject:APPROVAL_SUBJECTS[0],settings:{limits:setting?.value?.limits||defaultApprovalSettings().limits,...(setting?.value?.version===2?{version:2,kind:'EXPENSE',revision:setting.value.revision,rules:setting.value.rules}: {})},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
   });
   app.put('/expense-approval-settings',async(req:any,res:any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;
@@ -182,6 +186,12 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
       const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:'ADMIN'}});
       if(!actor)throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
       const value=await validateApprovalSettings(tx,orgId,req.body);
+      const current=await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
+      if(current?.value?.version===2&&req.body?.rules===undefined||req.body?.rules!==undefined&&(req.body.revision!==(current?.value?.revision||0)))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
+      if(value.version===2){
+        value.revision=(current?.value?.revision||0)+1;
+        for(const key of ['seniorGradeId','leadGradeId'])if(current?.value?.[key]!=null)value[key]=current.value[key];
+      }
       const data={value,updatedByEmployeeId:actorId};
       await tx.systemSetting.upsert({where:{key:approvalSettingKey(orgId)},create:{key:approvalSettingKey(orgId),...data},update:data});
     },{isolationLevel:'Serializable'});
@@ -190,9 +200,9 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
   app.post('/expense-approval-preview',async(req:any,res:any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!access)return;
     const actorId=gates.actorId();if(!actorId)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
-    let drafterId=actorId;
-    if(req.body?.sourceKind&&req.body?.sourceId){const source=await loadExpenseEditorSource(db,access.organization.id,req.body.sourceKind,String(req.body.sourceId));drafterId=source.document?.createdByEmployeeId||actorId;}
-    const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items,req.body?.selection,true);
+    let drafterId=actorId,savedConfig;
+    if(req.body?.sourceKind&&req.body?.sourceId){const source=await loadExpenseEditorSource(db,access.organization.id,req.body.sourceKind,String(req.body.sourceId));drafterId=source.document?.createdByEmployeeId||actorId;if(source.document){const audit=await db.expenseRequestAudit.findFirst({where:{orgId:access.organization.id,requestId:source.document.id,version:source.document.version},orderBy:{id:'desc'}});savedConfig=audit?.afterSnapshot?.approvalPolicy?.config||defaultApprovalSettings();}}
+    const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items,req.body?.selection,true,savedConfig);
     res.json(approval);
   });
   app.get(`${path}/history`,async(req: any,res: any)=>{
