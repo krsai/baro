@@ -63,7 +63,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   },[activeOrgId,labels.loadError]);
   useEffect(() => { load(); return () => {loadSequence.current++;}; },[load]);
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
-    if (['transaction-request','business-partner','expense-approval'].includes(detail?.source) && Number(detail.orgId) === Number(activeOrgId)) load();
+    if (Number(detail.orgId)===Number(activeOrgId)&&(['transaction-request','business-partner','expense-approval'].includes(detail?.source)||detail.topics?.some(topic=>['bank-ledger','ledger-entries','expense-approvals'].includes(topic)))) load();
   }),[activeOrgId,load]);
   useEffect(() => {setPartner('');setIndustry('');setCurrency('');setChecked([]);},[activeOrgId]);
   useEffect(() => {

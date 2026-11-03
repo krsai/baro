@@ -25,7 +25,7 @@ import { getCustomerUsage, deleteUnusedCustomer, deleteUnusedBusinessPartner, ge
 import { REQUEST_INCLUDE } from './services/transactionRequest';
 import { EXPENSE_REQUEST_INCLUDE, registerExpenseRequest, expenseRequestTotals } from './services/expenseRequest';
 import {attachExpenseApprovalStates} from './services/bankEvidence';
-import {registerExpenseDeletionRoutes} from './services/expenseDeletion';
+import {registerExpenseDeletionRoutes,attachExpenseDeletionAvailability} from './services/expenseDeletion';
 import { registerExpenseEditorRoutes } from './services/expenseRequestEditor';
 import { costInclude, historicalOutsourcingRows, registerPartnerCost } from './services/partnerTransactionCost';
 import { resolveStyleCategory, syncCategoryCopies } from './services/styleIdentity';
@@ -1058,7 +1058,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -27641,7 +27641,8 @@ app.get('/expense-requests', async (req, res) => {
   const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate,deletedAt:null }, include: EXPENSE_REQUEST_INCLUDE,
     orderBy: [{ requestDate: 'desc' }, { id: 'desc' }] });
   const approvedRows=await attachExpenseApprovalStates(prisma,orgId,rows);
-  return res.json(approvedRows.map(row => ({ ...row,deletionPending:!row.approval.approved&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.approval.approved&&row.approvalSteps.length>0&&(access.employee?.orgRole==='ADMIN'||row.createdByEmployeeId===access.employee?.id||row.approvalSteps.some((step:any)=>step.employeeId===access.employee?.id)),partner:row.partner||employeePayee(row.payeeEmployee), ...expenseRequestTotals(row.items) })));
+  const deletableRows=await attachExpenseDeletionAvailability(prisma,orgId,approvedRows,access.employee);
+  return res.json(deletableRows.map(row => ({ ...row,partner:row.partner||employeePayee(row.payeeEmployee), ...expenseRequestTotals(row.items) })));
 });
 app.post('/expense-requests', async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });

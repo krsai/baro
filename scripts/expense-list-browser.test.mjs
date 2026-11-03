@@ -25,6 +25,7 @@ try {
     await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/ManagementPeriodContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false,factories:[]});'}));
     const headers={'Access-Control-Allow-Origin':'*'},service={id:4,nameKo:'물류',nameEn:'Logistics',nameVi:'Vận chuyển'};
+    let paymentLinked=false;
     const rows=[
       {id:'old',sourceKind:'HISTORICAL_WORK_RECORD',partnerOrgId:11,partner:{id:11,name:'Old Vendor'},workLogId:77,outsourcedWorkRecordId:78,transactionDate:'2026-09-20',description:'Legacy work',style:{id:40,name:'Legacy shirt',code:'OLD-40'},styleProcess:{id:50,processName:'Buttonhole'},createdByEmployee:{name:'Former Worker'},quantity:3,unitPrice:'1.2345',amount:'3.7035',currency:'VND'},
       {id:'cost',sourceKind:'COST_REQUEST',partnerOrgId:12,partner:{id:12,name:'New Vendor'},serviceTypeId:5,serviceType:{...service,id:5,nameKo:'봉제',nameEn:'Sewing',nameVi:'May'},transactionDate:'2026-10-17',description:'Transport cost',transactionCode:{code:'TRKV',base:{expenseType:{id:7,nameKo:'물류 서비스',nameEn:'Logistics service',nameVi:'Dịch vụ vận chuyển'}}},quantity:'2',unitPrice:'100',amount:'200',currency:'VND'},
@@ -34,10 +35,14 @@ try {
     rows.push({...rows[2],id:'document-item-2',quantity:'7',unit:{id:2,nameEn:'Meter'},amount:'20.50',subtotal:'20.50'});
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
     await page.route('**/expense-approval-settings?*',route=>route.fulfill({headers,json:{canDraft:true}}));
-    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,version:1,canRequestDeletion:true,approval:{approved:false,status:'REQUESTED'},managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
+    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,version:1,canRequestDeletion:!paymentLinked,bankReconciled:paymentLinked,approval:{approved:true,status:'APPROVED'},managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.locator('[data-expense-row="cost"]').waitFor();assert.equal(await page.locator('tbody tr').count(),2);
     assert.equal(await page.locator('[data-expense-request="1"]').getByRole('button',{name:expenseDeletionText[lang].request,exact:true}).isDisabled(),false);
+    paymentLinked=true;await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
+    await page.waitForFunction(()=>document.querySelector('[data-expense-request="1"] .MuiIconButton-root')?.disabled===true);
+    paymentLinked=false;await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
+    await page.waitForFunction(()=>document.querySelector('[data-expense-request="1"] .MuiIconButton-root')?.disabled===false);
     assert.equal(await page.locator('.cc-kicker').count(),0);
     assert.equal(await page.locator('.cc-primary.MuiButton-containedPrimary').count(),1);
     assert.notEqual(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');

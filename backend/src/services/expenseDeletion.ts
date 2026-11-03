@@ -1,6 +1,5 @@
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {approvalState} from './bankEvidence';
 import {loadExpenseEditorSource} from './expenseRequestEditor';
 import {companyBusinessTimeZone} from './serviceCompany';
 
@@ -12,8 +11,6 @@ async function deletionSource(tx:any,orgId:number,requestId:number,version:numbe
  const source=await loadExpenseEditorSource(tx,orgId,'request',String(requestId));
  if(source.document.deletedAt)fail(409,'EXPENSE_REQUEST_DELETED');
  if(source.document.version!==version)fail(409,'EXPENSE_REQUEST_CHANGED');
- const state=await approvalState(tx,orgId,requestId);
- if(state.approved)fail(409,'EXPENSE_DELETE_ALREADY_APPROVED');
  if(source.document.bankReconciled)fail(409,'EXPENSE_ALREADY_RECONCILED');
  return source;
 }
@@ -30,8 +27,8 @@ export async function requestExpenseDeletion(db:any,orgId:number,actorId:number,
   if(actor.orgRole!=='ADMIN'&&source.document.createdByEmployeeId!==actorId&&!steps.some((s:any)=>s.employeeId===actorId))fail(403,'EXPENSE_DELETE_NOT_PARTICIPANT');
   const pending=await tx.expenseDeletionRequest.findFirst({where:{orgId,requestId,version:body.version,status:'PENDING'}});
   if(pending)fail(409,'EXPENSE_DELETE_PENDING');
-  const last=steps.at(-1);
-  const final=last?await tx.employee.findFirst({where:{id:last.employeeId,orgId},include:personInclude}):null;
+  const finalId=steps.at(-1)?.employeeId||source.document.createdByEmployeeId;
+  const final=await tx.employee.findFirst({where:{id:finalId,orgId},include:personInclude});
   if(!final?.grade?.isActive||!final.grade.set?.isActive)fail(409,'EXPENSE_DELETE_FINAL_GRADE_REQUIRED');
   return tx.expenseDeletionRequest.create({data:{orgId,requestId,version:body.version,clientKey:body.clientKey,requestedByEmployeeId:actorId,reason,
    finalEmployeeId:final.id,finalGradeId:final.gradeId,gradeSetId:final.grade.setId,finalGradeOrder:final.grade.sortOrder,documentSnapshot:JSON.parse(JSON.stringify(source))}});
@@ -67,6 +64,16 @@ export async function listExpenseDeletions(db:any,orgId:number,actorId:number){
  const live=await db.$queryRawUnsafe(`SELECT d.id FROM "ExpenseDeletionRequest" d WHERE d."orgId"=$1 AND d.status='PENDING' AND baro_expense_deletion_allowed(d."requestId",d."orgId",d.version)`,orgId);
  const rows=await db.expenseDeletionRequest.findMany({where:{id:{in:live.map((r:any)=>r.id)},orgId,status:'PENDING',request:{deletedAt:null}},include:{request:{select:{version:true,managementNumber:true}},requestedBy:{select:{name:true}}},orderBy:{createdAt:'asc'}});
  return rows.filter((row:any)=>row.version===row.request.version&&(row.requestedByEmployeeId===actorId||canApproveExpenseDeletion(actor,row))).map((row:any)=>({id:row.id,requestId:row.requestId,kind:'EXPENSE_DELETION',managementNumber:row.request.managementNumber||`EXP-${row.requestId}`,requestDate:row.createdAt.toISOString().slice(0,10),drafter:row.requestedBy.name,status:'REQUESTED',reason:row.reason,canDecide:!!canApproveExpenseDeletion(actor,row)}));
+}
+export async function attachExpenseDeletionAvailability(db:any,orgId:number,requests:any[],actor:any){
+ const itemIds=requests.flatMap(row=>row.items.map((item:any)=>item.id));
+ const allocations=itemIds.length?await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:{in:itemIds},entry:{voidedAt:null}},select:{expenseItemId:true}}):[];
+ const linked=new Set(allocations.map((row:any)=>row.expenseItemId));
+ return requests.map(row=>{
+  const bankReconciled=row.items.some((item:any)=>linked.has(item.id));
+  const participant=actor&&(actor.orgRole==='ADMIN'||row.createdByEmployeeId===actor.id||row.approvalSteps.some((step:any)=>step.employeeId===actor.id));
+  return {...row,bankReconciled,deletionPending:!bankReconciled&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.deletedAt&&!bankReconciled&&!!participant};
+ });
 }
 export function registerExpenseDeletionRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;const actorId=gates.actorId();if(!actorId)fail(403,'ACTIVE_EMPLOYEE_REQUIRED');return {orgId:ctx.organization.id,actorId};};
