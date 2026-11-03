@@ -3,7 +3,7 @@ const FIELDS=['transportDate','origin','destination','reference'];
 export function accountingInputs(value:any){
  const result:any={requiredFields:value?.requiredFields??[]};
  if(!Array.isArray(result.requiredFields)||result.requiredFields.some((field:any)=>!FIELDS.includes(field))||new Set(result.requiredFields).size!==result.requiredFields.length)throw createHttpError(400,'INVALID_REQUIRED_FIELDS');
- result.requiredFields=FIELDS.filter(field=>result.requiredFields.includes(field));
+ result.requiredFields=FIELDS.filter(field=>field==='reference'||result.requiredFields.includes(field));
  for(const key of ['orderInput','styleInput','processInput']){
   result[key]=value?.[key]??'HIDDEN';
   if(!['REQUIRED','OPTIONAL','HIDDEN'].includes(result[key]))throw createHttpError(400,'INVALID_INPUT_OPTION');

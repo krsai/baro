@@ -2,6 +2,17 @@ import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {ledgerScale4,ledgerMoney,validateLedgerMoney,readLedgerAccounts,postLedgerEntryInTransaction} from './bankLedger';
+import {provisionSettingDefaults} from './transactionSettingRoutes';
+import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from './accountingCode';
+
+export async function fundsAdjustmentCode(tx:any,orgId:number){
+ const read=()=>tx.transactionCode.findFirst({where:{ownerOrgId:orgId,code:'FADE',isActive:true},include:ACCOUNTING_CODE_INCLUDE});
+ let row=await read();
+ if(!row){await provisionSettingDefaults(tx,orgId,true);row=await read();}
+ const code=resolveAccountingCode(row);
+ if(!code||code.base?.code!=='FAD')throw createHttpError(400,'LEDGER_ACCOUNTING_CODE_INVALID');
+ return code.id;
+}
 
 export async function reconcileLedgerBalances(db:any,scope:{orgId:number,actorId?:number,actor:string},body:any){
  const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
@@ -30,10 +41,12 @@ export async function reconcileLedgerBalances(db:any,scope:{orgId:number,actorId
    if(!account||account.currencyCode!==row.currencyCode)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
    if(ledgerScale4(account.currentBalance)!==ledgerScale4(row.expectedBalance))return fail('LEDGER_BALANCE_CHANGED',409);
   }
+  let accountingCodeId:number|undefined;
   for(const row of rows){
    const difference=ledgerScale4(row.targetBalance)-ledgerScale4(row.expectedBalance);
    if(!difference)continue;
-   const entry=await postLedgerEntryInTransaction(tx,scope.orgId,scope.actor,row.accountId,{clientKey:randomUUID(),transactionDate,direction:difference>0n?'IN':'OUT',amount:ledgerMoney(difference>0n?difference:-difference,row.currencyCode),purpose:reason,evidenceType:'ADJUSTMENT',evidenceNumber:''});
+   accountingCodeId??=await fundsAdjustmentCode(tx,scope.orgId);
+   const entry=await postLedgerEntryInTransaction(tx,scope.orgId,scope.actor,row.accountId,{clientKey:randomUUID(),transactionDate,direction:difference>0n?'IN':'OUT',amount:ledgerMoney(difference>0n?difference:-difference,row.currencyCode),purpose:reason,evidenceType:'ADJUSTMENT',evidenceNumber:'',accountingCodeId});
    entryIds.push(entry.id);
   }
   await tx.bankLedgerBatch.create({data:{orgId:scope.orgId,clientKey:body.clientKey,requestHash,entryIds,createdBy:scope.actor}});

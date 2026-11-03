@@ -32,6 +32,7 @@ try{
    assert.equal(await page.locator('tbody tr').count(),2);
    await page.locator('tbody tr').first().getByRole('button').click();const dialog=page.getByRole('dialog');
    await dialog.waitFor();const select=dialog.getByRole('combobox',{name:t.process,exact:false});await select.waitFor();
+   assert.equal(await dialog.locator('.MuiInputLabel-root').count(),0);assert.equal(await dialog.getByRole('combobox',{name:t.reference,exact:true}).count(),0);
    if(role==='ADMIN'){
     assert.equal(await select.isDisabled(),false);await select.click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();
     await dialog.getByRole('combobox',{name:t.origin,exact:false}).click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();

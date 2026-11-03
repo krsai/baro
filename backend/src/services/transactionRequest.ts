@@ -108,7 +108,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const retainedProcess=retainedStyle && edit.cost.styleProcessId===styleProcessId;
   if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record && !retainedProcess ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
   await validateExpenseProcessLinks(tx,orgId,body,code,edit,processIds);
-  for (const field of service.requiredFields) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
+  for (const field of new Set(['reference',...service.requiredFields])) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
   const settings = await loadAppSettings(tx, orgId);
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
   if (!code.vatEnabled && body.vatRate != null && !validateVatRate(body.vatRate).isZero()) return invalid('VAT_NOT_ENABLED');

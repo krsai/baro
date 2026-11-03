@@ -27,7 +27,7 @@ try {
     const documentGate=new Promise(resolve=>{releaseDocument=resolve;}),catalogGate=new Promise(resolve=>{releaseCatalog=resolve;});
     page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
     page.on('request',r=>{if(r.url().includes('/work-logs'))requests.push(r.url());});
-    await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,accessProfile:{orgName:"BARO",employeeName:"Current editor"}});'}));
+    await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN",accessProfile:{orgName:"BARO",employeeName:"Current editor"}});'}));
     await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
     await page.route('**/src/context/ManagementPeriodContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useManagementPeriod=()=>({startDate:"2026-04-01",loading:false});'}));
     await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:(path,options)=>{document.documentElement.dataset.saved="true";window.expenseNavigations=(window.expenseNavigations||[]).concat([{path,options}]);},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
@@ -55,14 +55,14 @@ try {
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
       if(mode==='SAVED')await documentGate;
       return r.fulfill({headers,json:{managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:mode==='SAVED'?{kind:'request',id:'18'}:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
-        items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
+        items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{reference:'REF-001'},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
     await page.route('**/transaction-request-options?*',r=>r.fulfill({headers,json:{styles:[{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:51,processName:'Buttonhole second',processCode:'BH2'}]}],plans:[{id:61,styleId:40,processIds:[51],factoryName:'Factory A'}]}}));
     await page.route('**/entities/11/bank-accounts?*',async r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});if(r.request().method()==='POST'){registeredBanks=[{...r.request().postDataJSON(),id:'new-bank',currencyId:1,currency:{id:1,code:'VND'},isDefault:true,isActive:true}];return r.fulfill({headers,json:registeredBanks[0]});}return r.fulfill({headers,json:{accounts:mode==='BANKLESS'?registeredBanks:[{id:'bank-1',currencyId:1,currency:{id:1,code:'VND'},bankName:'Test bank',accountNumber:'001234',accountHolder:'Selected vendor',isActive:true,isDefault:true}],currencies:[{id:1,code:'VND'}]}});});
-    await page.route('**/expense-approval-settings?*',r=>{settingsReads++;return r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'}]}});});
+    await page.route('**/expense-approval-settings?*',r=>{settingsReads++;return r.fulfill({headers,json:{drafter:{id:20,name:'Current editor',orgRole:'ADMIN'},candidates:[{id:21,name:'First approver'},{id:22,name:'Second approver'}]}});});
     await page.route('**/expense-requests/18/approval?*',r=>r.fulfill({headers,json:{version:3,exempt:true,exemptionReason:'SAVED_POLICY',steps:[]}}));
-    await page.route('**/expense-approval-preview?*',r=>{const selection=r.request().postDataJSON()?.selection||{};return r.fulfill({headers,json:{complete:selection.seniorEmployeeId===21,ids:selection.seniorEmployeeId?[21]:[],drafter:{id:20,name:'Current editor'},stages:[{key:'senior',employeeId:selection.seniorEmployeeId||null,name:selection.seniorEmployeeId?'First approver':null,candidates:[{id:21,name:'First approver'}]}],policy:{totals:[{currency:'VND',amount:'510000'}]}}});});
+    await page.route('**/expense-approval-preview?*',r=>{const selection=r.request().postDataJSON()?.selection||{};return r.fulfill({headers,json:{complete:selection.seniorEmployeeId===21,ids:selection.seniorEmployeeId?[21]:[],drafter:{id:20,name:mode==='SAVED'?'Original author':'Current editor'},stages:[{key:'senior',employeeId:selection.seniorEmployeeId||null,name:selection.seniorEmployeeId?'First approver':null,candidates:[{id:21,name:'First approver'},{id:22,name:'Second approver'}]}],policy:{totals:[{currency:'VND',amount:'510000'}]}}});});
     await page.goto(`http://127.0.0.1:${port}/expense-editor-acceptance.html`,{timeout:90000});
     if(mode==='SAVED'){
       const strip=page.getByTestId('expense-approval-stages');await strip.waitFor();
@@ -78,8 +78,9 @@ try {
       releaseCatalog();await page.waitForFunction(()=>!document.querySelector('[data-testid="expense-approval-button"]').disabled);
       await page.getByTestId('expense-approval-button').click();
       const reference=page.getByRole('dialog');await reference.waitFor();
-      assert.deepEqual(await reference.getByRole('textbox').evaluateAll(elements=>elements.map(el=>el.value)),['Original author','Original author']);
-      assert.equal(settingsReads,0,'Read-only saved approval reference needs no current editor settings');
+      assert.equal(await reference.locator('#expense-stage-drafter').inputValue(),'Original author');
+      assert.equal(await reference.locator('#expense-stage-drafter').evaluate(el=>el.readOnly),true);
+      await reference.locator('#expense-stage-senior').waitFor();assert.ok(settingsReads>=1,'Opening the chooser loads candidate metadata without replacing the document author');
       await page.keyboard.press('Escape');await reference.waitFor({state:'hidden'});
     }
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
@@ -193,6 +194,7 @@ try {
         await page.getByLabel('REMARK',{exact:false}).fill('Updated request');
         await page.getByLabel(l.price,{exact:false}).fill('5000');assert.equal(await page.getByLabel(l.price,{exact:false}).inputValue(),'5,000');
       }
+      for(const reference of await page.getByRole('textbox',{name:({ko:'증빙·운송장 번호',en:'Document / tracking number',vi:'Số chứng từ / vận đơn'})[lang],exact:false}).all())if(!await reference.inputValue())await reference.fill('REF-002');
       if(mode==='GENERAL'){
         await save.click();const modal=page.getByRole('dialog');await modal.getByRole('heading',{name:h.approval,exact:true}).waitFor();await modal.getByRole('button',{name:h.cancel,exact:true}).click();assert.equal(submitted,undefined);assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Updated request');
       }

@@ -194,12 +194,13 @@ const batchRow=(extra={})=>({clientKey:randomUUID(),accountId:'a',transactionDat
 
 test('target balance reconciliation appends exact differences atomically, including zero/negative targets and safe retries',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
+  await pg.exec(`INSERT INTO "TransactionCode"(id,"ownerOrgId",code,"nameEn","isActive","baseId","taxTreatmentId") VALUES(104,1,'FADE','Funds adjustment',true,1,1);`);
   db.employee={findFirst:async({where})=>(await pg.query('SELECT id FROM "Employee" WHERE id=$1 AND "orgId"=$2 AND status=$3 AND "orgRole"=$4',[where.id,where.orgId,where.status,where.orgRole])).rows[0]};
   await pg.exec(`INSERT INTO "BankLedgerAccount"(id,"orgId","clientKey","bankName","accountNumber","accountHolder","currencyCode","openingDate","openingBalance","createdBy") VALUES('vnd',1,'vnd','B','002','C','VND','2026-01-01',0,'actor'),('krw',1,'krw','B','003','C','KRW','2026-01-01',0,'actor');`);
   const scope={orgId:1,actorId:10,actor:'admin@example.com'},body={clientKey:randomUUID(),reason:'Bank reconciliation',accounts:[{accountId:'a',currencyCode:'USD',expectedBalance:'1.00',targetBalance:'1000.25'},{accountId:'vnd',currencyCode:'VND',expectedBalance:'0',targetBalance:'0'},{accountId:'krw',currencyCode:'KRW',expectedBalance:'0',targetBalance:'-10'}]};
   const result=await reconcileLedgerBalances(db,scope,body);assert.equal(result.entryIds.length,2);
   const rows=(await pg.query('SELECT "accountId",direction,amount::text,purpose,"evidenceType","accountingCodeId","createdBy","transactionDate" FROM "BankLedgerEntry" WHERE id=ANY($1::text[]) ORDER BY "accountId"',[result.entryIds])).rows;
-  assert.deepEqual(rows.map(row=>[row.accountId,row.direction,row.amount]),[['a','IN','999.2500'],['krw','OUT','10.0000']]);assert.ok(rows.every(row=>row.purpose===body.reason&&row.evidenceType==='ADJUSTMENT'&&row.accountingCodeId===null&&row.createdBy===scope.actor));
+  assert.deepEqual(rows.map(row=>[row.accountId,row.direction,row.amount]),[['a','IN','999.2500'],['krw','OUT','10.0000']]);assert.ok(rows.every(row=>row.purpose===body.reason&&row.evidenceType==='ADJUSTMENT'&&row.accountingCodeId===104&&row.createdBy===scope.actor));
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());assert.ok(rows.every(row=>row.transactionDate===today));
   assert.deepEqual(await reconcileLedgerBalances(db,scope,body),result);
   await assert.rejects(reconcileLedgerBalances(db,scope,{...body,reason:'Changed retry'}),/RETRY_CONFLICT/);
@@ -215,6 +216,19 @@ test('target balance reconciliation appends exact differences atomically, includ
   for(const account of [{...noop.accounts[0],accountId:'foreign'},{...noop.accounts[0],currencyCode:'VND'}])await assert.rejects(reconcileLedgerBalances(db,scope,{...noop,clientKey:randomUUID(),accounts:[account]}),/ACCOUNT_NOT_FOUND/);
   await assert.rejects(reconcileLedgerBalances(db,scope,{...noop,accounts:[noop.accounts[0],noop.accounts[0]]}),/INVALID_BATCH/);
   for(const targetBalance of ['1.001','NaN','1e2'])await assert.rejects(reconcileLedgerBalances(db,scope,{...noop,accounts:[{...noop.accounts[0],targetBalance}]}),/INVALID_AMOUNT/);
+ }finally{await pg.close();}
+});
+test('classification backfill permits only whitelisted adjustment codes and preserves every financial field',async()=>{
+ const pg=await fixture();try{
+  const {classificationGuard}=require('../backend/scripts/setup-funds-adjustment.js');
+  const id=randomUUID();await pg.query(`INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","evidenceType","createdBy") VALUES($1,1,'a',$1,'2026-01-01','IN',10,'balancing','','ADJUSTMENT','krsailer82@gmail.com')`,[id]);
+  const original=(await pg.query(`SELECT pg_get_functiondef('baro_ledger_evidence_entry_guard()'::regprocedure) AS definition`)).rows[0].definition;
+  await pg.exec(classificationGuard(original,[{id,orgId:1,codeId:100}]));
+  for(const change of ['amount=11','purpose=\'Changed\'','"orgId"=2'])await assert.rejects(pg.query(`UPDATE "BankLedgerEntry" SET "accountingCodeId"=100,${change} WHERE id=$1`,[id]),/IMMUTABLE/);
+  await assert.rejects(pg.query(`UPDATE "BankLedgerEntry" SET "accountingCodeId"=101 WHERE id=$1`,[id]),/IMMUTABLE/);
+  await pg.query(`UPDATE "BankLedgerEntry" SET "accountingCodeId"=100 WHERE id=$1`,[id]);
+  assert.equal(Number((await pg.query(`SELECT amount FROM "BankLedgerEntry" WHERE id=$1`,[id])).rows[0].amount),10);
+  await pg.exec(original);await assert.rejects(pg.query(`UPDATE "BankLedgerEntry" SET "accountingCodeId"=101 WHERE id=$1`,[id]),/IMMUTABLE/);
  }finally{await pg.close();}
 });
 

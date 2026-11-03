@@ -87,7 +87,7 @@ export default function AccountingCodeSettings(){
      filterOptions={createFilterOptions({stringify:row=>{const role=roles.find(role=>role.id===row.partnerRoleId);return [row.nameKo,row.nameEn,row.nameVi,role?.nameKo,role?.nameEn,role?.nameVi].join(' ');}})}
      onChange={(_,selection)=>setForm({...form,industryIds:selection.map(row=>row.id)})}
      renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={row.id} {...rest}><Checkbox checked={selected} tabIndex={-1} disableRipple/>{name(row)}</li>;}}
-     renderInput={params=><TextField {...params} required={!form.id||form.isActive} label={text.industry} placeholder={subtypeSearch.placeholder} helperText={subtypeSearch.help}/>}/>
+     renderInput={params=><TextField {...params} required={!form.id||form.isActive} label={text.industry} placeholder={subtypeSearch.placeholder}/>}/>
     <AccountingInputSettings value={form} onChange={setForm} languageCode={languageCode} disabled={saving}/>
    </Stack>}</DialogContent>
    <DialogActions sx={{px:3,py:2}}><Button disabled={saving} onClick={()=>setForm(null)}>{text.cancel}</Button><SaveButton loading={saving} onClick={save} disabled={saving||!form||!/^[A-Z]{3}$/.test(form.code)||(!form.industryIds.length&&(!form.id||form.isActive))||!hasLocalizedName(form)}>{text.save}</SaveButton></DialogActions>

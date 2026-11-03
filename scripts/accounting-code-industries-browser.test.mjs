@@ -40,7 +40,8 @@ try{
   assert.deepEqual(writes[0].industryIds,[10,20]);assert.equal(writes[0].industryRevision,1);
   await nav.getByRole('button',{name:'SUPPLIER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1,'a shared code is counted once in its parent category');await nav.getByRole('button',{name:'BUTTON 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
   const add=lang==='ko'?'기본 코드 등록':lang==='vi'?'Thêm mã gốc':'Add base code';await page.getByRole('button',{name:add,exact:true}).click();assert.equal(await dialog.getByText('BUTTON',{exact:true}).count(),1);
-  assert.equal(await dialog.locator('input[value="HIDDEN"]').count(),7,'all general-cost inputs default to disabled');
+  assert.equal(await dialog.locator('input[value="HIDDEN"]').count(),6,'only configurable fields appear; evidence number is always required');
+  assert.equal(await dialog.getByRole('table').locator('.MuiInputLabel-root').count(),0,'field names already appear in the left column');
   await dialog.getByRole('table').getByRole('combobox').first().click();await page.getByRole('option',{name:{ko:'필수',en:'Required',vi:'Bắt buộc'}[lang],exact:true}).click();
   await dialog.getByRole('textbox',{name:lang==='ko'?'기본 코드':lang==='vi'?'Mã gốc':'Base code',exact:true}).fill('BNC');await dialog.getByRole('textbox',{name:lang==='ko'?'이름 (영어 · 대표)':lang==='vi'?'Tên (tiếng Anh · chính)':'Name (English · primary)',exact:true}).fill('Button cost');
   await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes.at(-1).industryIds,[20]);assert.equal(writes.at(-1).entryMode,'GENERAL');assert.equal(writes.at(-1).orderInput,'REQUIRED');

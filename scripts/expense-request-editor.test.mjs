@@ -66,8 +66,14 @@ function harness() {
 }
 async function input(db) {
   const form=expenseEditorForm(await db.source());
-  return {...form,remark:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,transactionCodeId:8}))};
+  return {...form,remark:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,details:{...item.details,reference:'REF-001'},transactionCodeId:8}))};
 }
+test('a missing evidence number identifies the invalid expense row and rolls back every item',async()=>{
+ const db=harness(),body=await input(db),before=structuredClone(db.state());
+ body.items.push({transactionCodeId:7,currency:'USD',description:'Missing evidence',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{}});
+ await assert.rejects(db.save(body),/EXPENSE_LINE:2:REQUIRED_TRANSACTION_FIELD:reference/);
+ assert.deepEqual(db.state(),before);
+});
 
 test('history is tenant-scoped, permission-gated and paged by version; serialization conflicts return a recoverable code',async()=>{
   const db=harness();await db.save(await input(db));
@@ -137,7 +143,7 @@ test('final invoice lock blocks all edits; completed production and confirmed pa
 });
 test('document and standalone-cost entry points resolve the saved form; item edits and removal preserve business identities',async()=>{
   const db=harness(), body=await input(db);
-  body.items.push({transactionCodeId:7,currency:'USD',description:'Additional expense',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{}});
+  body.items.push({transactionCodeId:7,currency:'USD',description:'Additional expense',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{reference:'REF-001'}});
   await db.save(body);
   const form=expenseEditorForm(await db.source());assert.equal(form.items.length,2);assert.equal(db.state().documents[0].currency,null);
   const firstId=form.items[0].itemId,secondId=form.items[1].itemId;
@@ -160,7 +166,7 @@ test('a legacy production source can select a general expense code without delet
 test('a completed legacy process can acquire its first code and share one request with another new process',async()=>{
   const db=harness();db.state().plan.isCompleted=true;
   const before=structuredClone(db.state().records),body=await input(db);
-  body.items.push({transactionCodeId:8,currency:'VND',description:'Second process',quantity:'200',unitPrice:'2500',vatRate:'0',workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:61,details:{}});
+  body.items.push({transactionCodeId:8,currency:'VND',description:'Second process',quantity:'200',unitPrice:'2500',vatRate:'0',workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:61,details:{reference:'REF-001'}});
   const result=await db.save(body);
   assert.equal(result.requestId,1);assert.equal(db.state().documents.length,1);assert.equal(db.state().costs.length,2);
   assert.deepEqual(db.state().records.slice(0,2),before);assert.equal(db.state().records[2].id,80);assert.equal(db.state().records[2].assignmentPlanId,61);

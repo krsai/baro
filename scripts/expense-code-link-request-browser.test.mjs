@@ -9,7 +9,7 @@ const require=createRequire(import.meta.url),{applyExpenseCodeLinkPolicy}=requir
 const fixture=path.resolve('frontend/expense-code-link-lines-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Table,TableBody} from '@mui/material';import theme from '/src/theme';import Line from '/src/components/ExpenseRequestLine.jsx';import {newExpenseLine} from '/src/utils/expenseRequest.mjs';import {EXPENSE_REQUEST_TEXT} from '/src/constants/expenseRequest.js';
-function App(){const[line,setLine]=React.useState({...newExpenseLine(),transactionCodeId:7,quantity:'2',unitPrice:'10',vatRate:'0',expandLinks:true,...(window.saved?{itemId:'old',linkTarget:'NONE'}:{})});const onChange=React.useCallback((key,patch)=>setLine(current=>({...current,...patch})),[]),onStatus=React.useCallback((key,valid)=>{document.documentElement.dataset.valid=String(valid)},[]);window.currentLine=line;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Table,null,React.createElement(TableBody,null,React.createElement(Line,{line,index:0,codes:window.codes,orders:[{dbId:30,orderNumber:'Order X'},{dbId:31,orderNumber:'Order Y'}],partner:{id:11,serviceTypes:[]},settings:{defaultVatRate:'0'},orgId:1,labels:EXPENSE_REQUEST_TEXT[window.lang],languageCode:window.lang,onChange,onStatus,onRemove:()=>{}}))));}createRoot(document.getElementById('root')).render(React.createElement(App));
+function App(){const[line,setLine]=React.useState({...newExpenseLine(),transactionCodeId:7,quantity:'2',unitPrice:'10',vatRate:'0',details:{reference:'REF-001'},expandLinks:true,...(window.saved?{itemId:'old',linkTarget:'NONE'}:{})});const onChange=React.useCallback((key,patch)=>setLine(current=>({...current,...patch})),[]),onStatus=React.useCallback((key,valid)=>{document.documentElement.dataset.valid=String(valid)},[]);window.currentLine=line;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Table,null,React.createElement(TableBody,null,React.createElement(Line,{line,index:0,codes:window.codes,orders:[{dbId:30,orderNumber:'Order X'},{dbId:31,orderNumber:'Order Y'}],partner:{id:11,serviceTypes:[]},settings:{defaultVatRate:'0'},orgId:1,labels:EXPENSE_REQUEST_TEXT[window.lang],languageCode:window.lang,onChange,onStatus,onRemove:()=>{}}))));}createRoot(document.getElementById('root')).render(React.createElement(App));
 </script></body></html>`);
 const port=43228,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -62,6 +62,8 @@ try{
     assert.equal(await page.getByRole('combobox',{name:labels.process,exact:false}).count(),1);
    }
    await page.getByTestId('expense-line').locator('input').first().fill('PRTV');await page.getByTestId('expense-line').locator('input').first().press('Tab');
+   await page.waitForFunction(()=>document.documentElement.dataset.valid==='false');
+   await page.getByRole('textbox',{name:({ko:'증빙·운송장 번호',en:'Document / tracking number',vi:'Số chứng từ / vận đơn'})[lang],exact:false}).fill('REF-002');
    await page.waitForFunction(()=>document.documentElement.dataset.valid==='true');
    assert.equal(await page.getByRole('combobox',{name:labels.process,exact:false}).count(),0);
   }

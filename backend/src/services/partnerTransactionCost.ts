@@ -94,7 +94,7 @@ export async function registerPartnerCost(tx: any, orgId: number, actorId: numbe
   const assignment = await tx.organizationOutsourcingServiceType.findFirst({ where: { ownerOrgId: orgId, partnerOrgId: input.partnerOrgId, serviceTypeId: input.serviceTypeId, partner: { isActive: true, type: 'PROCESS_OUTSOURCING' }, serviceType: { isActive: true } }, include: { serviceType: true } });
   if (!assignment) return fail('INVALID_PARTNER_SERVICE');
   if (assignment.serviceType.entryMode === 'PROCESS') return fail('PROCESS_WORK_RECORD_REQUIRED');
-  for (const key of assignment.serviceType.requiredFields) if (!input.details[key]) return fail(`REQUIRED_TRANSACTION_FIELD:${key}`);
+  for (const key of new Set(['reference',...assignment.serviceType.requiredFields])) if (!input.details[key]) return fail(`REQUIRED_TRANSACTION_FIELD:${key}`);
   if (input.workOrderId && !await tx.workOrder.findFirst({ where: { id: input.workOrderId, orgId }, select: { id: true } })) return fail('INVALID_TRANSACTION_ORDER');
   return tx.partnerTransactionCost.create({ data: { ...input, orgId, createdByEmployeeId: actorId }, include: costInclude });
 }

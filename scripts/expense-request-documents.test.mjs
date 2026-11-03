@@ -15,8 +15,8 @@ const {retryEditTransaction}=require('../backend/dist/utils/editRevision.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
 const ts = require('../backend/node_modules/typescript');
 const input = () => ({ remark: 'Factory expenses', requestDate: '2026-10-17', partnerOrgId: 11, currency: 'VND', clientKey: 'document-001', items: [
-  { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Transport', quantity: '2', unitPrice: '100000', vatRate: '10', details: {} },
-  { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {} },
+  { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Transport', quantity: '2', unitPrice: '100000', vatRate: '10', details: {reference:'REF-001'} },
+  { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {reference:'REF-001'} },
 ] });
 function harness({sourceEnabled=true}={}) {
   let state = { documents: [], costs: [], logs: [], production: [], audits: [] };

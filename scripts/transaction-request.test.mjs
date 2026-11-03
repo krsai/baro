@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import service from '../backend/dist/services/transactionRequest.js';
 const { calculateRequestAmounts: amounts, registerTransactionRequest: register, validateVatRate, loadAppSettings } = service;
-const input = () => ({ partnerOrgId: 11, transactionCodeId: 7, transactionDate: '2026-10-11', description: 'Trucking', unitPrice: '100000', quantity: '2', currency: 'VND', vatRate: '10', workOrderId: 30, styleId: null, styleProcessId: null, assignmentPlanId: null, details: {}, clientKey: 'request-001' });
+const input = () => ({ partnerOrgId: 11, transactionCodeId: 7, transactionDate: '2026-10-11', description: 'Trucking', unitPrice: '100000', quantity: '2', currency: 'VND', vatRate: '10', workOrderId: 30, styleId: null, styleProcessId: null, assignmentPlanId: null, details: {reference:'REF-001'}, clientKey: 'request-001' });
 function store(process = false) {
   const writes = [];
   const code = { id: 7, baseId: 1, taxTreatmentId: process ? 3 : 1, vatEnabled: !process, serviceType: { id: 4, entryMode: process ? 'PROCESS' : 'GENERAL', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } };
@@ -28,6 +28,11 @@ function store(process = false) {
     outsourcedWorkRecord: { create: async ({ data }) => { writes.push(['production',data]); return { id: 90 }; } },
   };
 }
+test('evidence reference is mandatory regardless of code settings and blank input creates no cost',async()=>{
+ for(const reference of [undefined,'','   ']){
+  const db=store();await assert.rejects(register(db,1,20,{...input(),details:reference===undefined?{}:{reference}}),/REQUIRED_TRANSACTION_FIELD:reference/);assert.equal(db.writes.length,0);
+ }
+});
 
 test('style-scope sewing selects zero or multiple processes without recording production or multiplying its cost',async()=>{
  for(const ids of [[],[50,51]]){
