@@ -74,7 +74,7 @@ try{
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');
     const nameLabels={ko:['이름 (한국어)','이름 (영어 · 대표)','이름 (베트남어)'],en:['Name (Korean)','Name (English · primary)','Name (Vietnamese)'],vi:['Tên (tiếng Hàn)','Tên (tiếng Anh · chính)','Tên (tiếng Việt)']}[lang];
     for(const [index,value] of ['항공','Air','Hàng không'].entries())await dialog.getByLabel(nameLabels[index],{exact:true}).fill(value);
-    await dialog.getByRole('combobox').nth(0).fill('LOGISTICS');assert.equal(await page.getByRole('option',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),0);await page.getByRole('option').first().click();
+    await dialog.locator('#accounting-subtype-toggle').click();const panel=dialog.locator('#accounting-subtype-panel');await panel.getByRole('textbox').fill('LOGISTICS');assert.equal(await panel.getByRole('checkbox',{name:lang==='ko'?'기타':lang==='en'?'Other':'Khác',exact:true}).count(),0);await panel.getByRole('checkbox',{name:industry[{ko:'nameKo',en:'nameEn',vi:'nameVi'}[lang]],exact:true}).check();
     assert.equal(await dialog.locator('.MuiAlert-standardInfo').count(),0);await dialog.getByRole('button',{name:labels.save,exact:true}).click();
     await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,2,3]);
     bases[0].hasUsageHistory=true;

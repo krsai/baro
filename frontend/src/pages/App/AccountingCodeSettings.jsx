@@ -1,6 +1,8 @@
 import React,{useCallback,useEffect,useState} from 'react';
-import {Alert,Autocomplete,Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,createFilterOptions} from '@mui/material';
+import {Alert,Box,Button,Checkbox,Chip,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
+import ViewSidebarOutlinedIcon from '@mui/icons-material/ViewSidebarOutlined';
+import AccountingSubtypePanel,{SUBTYPE_PICKER_TEXT} from '../../components/AccountingSubtypePanel';
 import AppPageContainer from '../../components/AppPageContainer';
 import PageContentStack from '../../components/PageContentStack';
 import HierarchyPanel from '../../components/HierarchyPanel';
@@ -21,16 +23,13 @@ const TEXT={
  vi:{title:'Mã kế toán',all:'Tất cả mã',category:'Nhóm giao dịch > loại chi tiết',industry:'Loại chi tiết',add:'Thêm mã gốc',code:'Mã gốc',name:'Nội dung',active:'Cho phép sử dụng',edit:'Sửa',save:'Lưu',cancel:'Hủy',empty:'Chưa có mã gốc.',error:'Không thể tải hoặc lưu cài đặt.',conflict:'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại. Vui lòng nhập mã khác.',stale:'Loại chi tiết liên kết đã thay đổi. Tải lại trước khi lưu.',mode:'Cách nhập',PROCESS:'Sản lượng gia công',LOGISTICS:'Chi phí vận chuyển',GENERAL:'Chi phí chung'},
 };
 const path='/system-setting-defaults/code-bases';
-const SUBTYPE_SEARCH={
- ko:{placeholder:'세부 유형 이름으로 검색',help:'이름이나 거래 구분을 입력해 찾고 여러 유형을 선택하세요.',empty:'일치하는 세부 유형이 없습니다.'},
- en:{placeholder:'Search subtype names',help:'Search by name or transaction category and select multiple subtypes.',empty:'No matching subtypes.'},
- vi:{placeholder:'Tìm tên loại chi tiết',help:'Tìm theo tên hoặc nhóm giao dịch và chọn nhiều loại chi tiết.',empty:'Không có loại chi tiết phù hợp.'},
-};
 export default function AccountingCodeSettings(){
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
- const subtypeSearch=SUBTYPE_SEARCH[languageCode]||SUBTYPE_SEARCH.en;
+ const subtypePicker=SUBTYPE_PICKER_TEXT[languageCode]||SUBTYPE_PICKER_TEXT.en;
  const [rows,setRows]=useState([]),[industries,setIndustries]=useState([]),[roles,setRoles]=useState([]),[selected,setSelected]=useState('ALL');
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[form,setForm]=useState(null);
+ const [pickerOpen,setPickerOpen]=useState(false);
+ useEffect(()=>{if(!form)setPickerOpen(false);},[form]);
  const load=useCallback(async()=>{
   setLoading(true);setError('');
   try{const [bases,sources,parents]=await Promise.all([requestJSON(path,{skipCache:true}),requestJSON('/system-setting-defaults/services',{skipCache:true}),requestJSON('/system-setting-defaults/partner-roles',{skipCache:true})]);setRows(bases);setIndustries(sources);setRoles(parents);}
@@ -53,6 +52,7 @@ export default function AccountingCodeSettings(){
   const initial=kind==='industry'?sourceRows.find(row=>row.id===selectedId):null;
   setForm({code:'',nameKo:'',nameEn:'',nameVi:'',industryIds:initial?[initial.id]:[],entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true});
  };
+ const closePicker=()=>{setPickerOpen(false);requestAnimationFrame(()=>document.getElementById('accounting-subtype-toggle')?.focus());};
  const save=async()=>{
   setSaving(true);setError('');
   try{
@@ -76,20 +76,15 @@ export default function AccountingCodeSettings(){
     </Table></TableContainer>
    </HierarchyPanel>
   </PageContentStack>
-  <Dialog open={Boolean(form)} onClose={()=>!saving&&setForm(null)} fullWidth maxWidth="md" slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)'}}}}>
+  <Dialog open={Boolean(form)} onClose={()=>!saving&&setForm(null)} fullWidth maxWidth={pickerOpen?'xl':'md'} slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)'}}}}>
    <DialogTitle>{form?.id?text.edit:text.add}</DialogTitle>
-   <DialogContent dividers>{form&&<Stack spacing={2.5} sx={{py:1}}>
-    {error&&<Alert severity="error">{error}</Alert>}
+   <DialogContent dividers>{form&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:pickerOpen?'minmax(0,1fr) 380px':'minmax(0,1fr)'},gap:2.5,alignItems:'start'}}>{error&&<Alert severity="error" sx={{gridColumn:'1 / -1'}}>{error}</Alert>}<Stack spacing={2.5} sx={{py:1,minWidth:0,display:{xs:pickerOpen?'none':'flex',md:'flex'}}}>
     <Box sx={{display:'flex',justifyContent:'space-between',gap:2}}><TextField required label={text.code} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/><FormControlLabel label={text.active} control={<Checkbox checked={form.isActive} disabled={saving||form.legacyUsageDisabled} onChange={event=>setForm({...form,isActive:event.target.checked})}/>}/></Box>
     {form.legacyUsageDisabled&&<Typography variant="caption" color="text.secondary">{languageCode==='ko'?'기존 사용 중지 설정 유지':languageCode==='vi'?'Giữ cài đặt ngừng sử dụng hiện có':'Existing disabled setting preserved'}</Typography>}
     <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
-    <Autocomplete multiple disableCloseOnSelect autoHighlight openOnFocus limitTags={3} noOptionsText={subtypeSearch.empty} slotProps={{listbox:{sx:{maxHeight:'min(240px, 35dvh)'}}}} options={options} value={options.filter(row=>form.industryIds.includes(row.id))} disabled={saving} groupBy={row=>name(roles.find(role=>role.id===row.partnerRoleId))} getOptionLabel={name} isOptionEqualToValue={(row,value)=>row.id===value.id}
-     filterOptions={createFilterOptions({stringify:row=>{const role=roles.find(role=>role.id===row.partnerRoleId);return [row.nameKo,row.nameEn,row.nameVi,role?.nameKo,role?.nameEn,role?.nameVi].join(' ');}})}
-     onChange={(_,selection)=>setForm({...form,industryIds:selection.map(row=>row.id)})}
-     renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={row.id} {...rest}><Checkbox checked={selected} tabIndex={-1} disableRipple/>{name(row)}</li>;}}
-     renderInput={params=><TextField {...params} required={!form.id||form.isActive} label={text.industry} placeholder={subtypeSearch.placeholder}/>}/>
+    <Box sx={{border:1,borderColor:'divider',borderRadius:1,p:1.5}}><Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1}><Typography variant="body2">{text.industry}{(!form.id||form.isActive)?' *':''} <Typography component="span" variant="caption" color="primary">{form.industryIds.length}</Typography></Typography><Button id="accounting-subtype-toggle" size="small" startIcon={<ViewSidebarOutlinedIcon/>} disabled={saving} aria-label={subtypePicker.title} aria-expanded={pickerOpen} aria-controls={pickerOpen?'accounting-subtype-panel':undefined} onClick={()=>setPickerOpen(open=>!open)}>{subtypePicker.select}</Button></Stack><Stack direction="row" useFlexGap flexWrap="wrap" spacing={.75} sx={{maxHeight:100,overflowY:'auto'}}>{options.filter(row=>form.industryIds.includes(row.id)).map(row=><Tooltip key={row.id} title={name(roles.find(role=>role.id===row.partnerRoleId))}><Chip size="small" label={name(row)} disabled={saving} sx={{maxWidth:'100%'}} onDelete={()=>setForm(current=>({...current,industryIds:current.industryIds.filter(id=>id!==row.id)}))}/></Tooltip>)}</Stack></Box>
     <AccountingInputSettings value={form} onChange={setForm} languageCode={languageCode} disabled={saving}/>
-   </Stack>}</DialogContent>
+   </Stack>{pickerOpen&&<Box sx={{position:{md:'sticky'},top:0,minWidth:0}}><AccountingSubtypePanel options={options} roles={roles} value={form.industryIds} onChange={industryIds=>setForm(current=>({...current,industryIds}))} onClose={closePicker} disabled={saving} languageCode={languageCode}/></Box>}</Box>}</DialogContent>
    <DialogActions sx={{px:3,py:2}}><Button disabled={saving} onClick={()=>setForm(null)}>{text.cancel}</Button><SaveButton loading={saving} onClick={save} disabled={saving||!form||!/^[A-Z]{3}$/.test(form.code)||(!form.industryIds.length&&(!form.id||form.isActive))||!hasLocalizedName(form)}>{text.save}</SaveButton></DialogActions>
   </Dialog>
  </AppPageContainer>;
