@@ -1,3 +1,5 @@
+import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
+import {changeApprovalText} from '../../constants/changeApprovals';
 import DocumentEntryHeader from '../../components/DocumentEntryHeader';
 import {ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
 import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
@@ -59,7 +61,7 @@ export default function TransactionRequestEntry() {
   const formText=FORM_TEXT[languageCode]||FORM_TEXT.en;
   const bankText = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const isServiceCompany=activeProfile?.orgType==='SERVICE';
-  const approvalRef=useRef(null),saveLock=useRef(false);
+  const approvalRef=useRef(null),changeRef=useRef(null),saveLock=useRef(false);
   const [payeeBanks, setPayeeBanks] = useState({ entityId: null, accounts: [], loaded: false });
   const [bankReload,setBankReload] = useState(0);
   useEffect(()=>subscribeWorkspaceDataChanged(detail=>{
@@ -181,15 +183,15 @@ export default function TransactionRequestEntry() {
     setValidation('');
     saveLock.current=true;
     try {
-    const selection=submission?submission.approvalSelection:await approvalRef.current?.prepare();
+    const selection=submission?submission.approvalSelection:editing?(form.approvalSelection||{}):await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
     const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
-      await requestJSON(`${editorPath}${buildQueryString({ orgId: activeOrgId })}`, { method: editing ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if(editing){const request=await changeRef.current.prepare({menu:'EXPENSE',operation:'UPDATE',sourceKind,sourceId,revision:form.revision,version:form.version,payload:body});if(!request){setSubmission(null);return;}}else await requestJSON(`${editorPath}${buildQueryString({orgId:activeOrgId})}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       emitWorkspaceDataChanged({ orgId: activeOrgId, topics: ['expense-approvals',WORKSPACE_DATA_TOPICS.ORDERS, WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD], source: 'transaction-request' });
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
-      setInitialSnapshot(documentSnapshot({...form,approvalSelection:selection})); showNotification(labels.saved, 'success');
+      setInitialSnapshot(documentSnapshot({...form,approvalSelection:selection})); showNotification(editing?(changeApprovalText[languageCode]||changeApprovalText.en).submitted:labels.saved, 'success');
       if (isTabActiveRef.current) navigateToPath('/outsourcing-record', {label:labels.document,closeTabId:formPath,skipUnsavedChangesCheck:true});
     } catch (failure) {
       if (organizationRef.current !== activeOrgId || !mountedRef.current) return;
@@ -216,7 +218,7 @@ export default function TransactionRequestEntry() {
     titleActions={<Stack direction="row" spacing={1}>
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
       <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
-        {submission ? labels.retry : getUiMessage('common.save', 'Save', languageCode)}
+        {submission ? labels.retry : editing?(changeApprovalText[languageCode]||changeApprovalText.en).requestUpdate:getUiMessage('common.save', 'Save', languageCode)}
       </SaveButton>
     </Stack>}
   >
@@ -271,5 +273,5 @@ export default function TransactionRequestEntry() {
       {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
       </Paper>
     </PageContentStack>
-  </AppPageContainer>;
+  <ChangeApprovalDialog ref={changeRef} orgId={activeOrgId} languageCode={languageCode}/></AppPageContainer>;
 }

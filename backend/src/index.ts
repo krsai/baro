@@ -1,3 +1,5 @@
+import {registerApprovalActionRoutes} from './services/approvalActions';
+import {registerChangeApprovalRoutes} from './services/changeApprovals';
 import {SERVICE_ROLE_DEFAULTS,SERVICE_FEATURES,supportsWorkplaces} from './services/serviceCompany';
 import {loadIssuedOrderSalesValues} from './services/issuedOrderSalesValue';
 import {employeePayee,registerExpensePayeeRoutes} from './services/expensePayee';
@@ -204,6 +206,7 @@ function assertGeneratedPrismaClientShape() {
   for (const [model, fields] of Object.entries({
     AccountingCodeIndustry:['baseId','systemIndustryId'],
     ExpenseDeletionRequest:['id','requestId','version','requestedByEmployeeId','status'],
+    ChangeApprovalRequest:['id','orgId','menu','operation','policy','status'],ChangeApprovalDecision:['id','requestId','orgId','position','employeeId'],
     CompanyIdentity:['id','anchorEntityId','code','country','businessNumber'],
     CompanyIdentityLink:['orgId','entityId','identityId','createdByEmployeeId'],
     CompanyPartnerLink:['orgId','entityId','targetOrgId','createdByEmployeeId','matchMethod'],
@@ -739,7 +742,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
   "20261007_style_identity_fk_v1",
 ] as const;
-const STARTUP_REQUIRED_RUNTIME_COLUMNS = [...['deletedAt','deletedByEmployeeId','deletionRequestId'].map(columnName=>({tableName:'ExpenseRequest',columnName})),...["id","orgId","requestId","version","requestedByEmployeeId","status","finalGradeOrder"].map(columnName=>({tableName:'ExpenseDeletionRequest',columnName})),{tableName:'BankLedgerEntry',columnName:'revisesEntryId'},{tableName:'ExpenseCodeLinkPolicy',columnName:'inputSettings'},{tableName:'ExpenseCodeLinkAudit',columnName:'inputSettings'},{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
+const STARTUP_REQUIRED_RUNTIME_COLUMNS = [...['counterpartyOrgId','counterpartyEmployeeId','counterpartyAccountId','counterpartyName'].map(columnName=>({tableName:'BankLedgerEntry',columnName})),{tableName:'ExpenseRequest',columnName:'deletedChangeRequestId'},{tableName:'ChangeApprovalRequest',columnName:'policy'},{tableName:'ChangeApprovalDecision',columnName:'position'},...['deletedAt','deletedByEmployeeId','deletionRequestId'].map(columnName=>({tableName:'ExpenseRequest',columnName})),...["id","orgId","requestId","version","requestedByEmployeeId","status","finalGradeOrder"].map(columnName=>({tableName:'ExpenseDeletionRequest',columnName})),{tableName:'BankLedgerEntry',columnName:'revisesEntryId'},{tableName:'ExpenseCodeLinkPolicy',columnName:'inputSettings'},{tableName:'ExpenseCodeLinkAudit',columnName:'inputSettings'},{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
   {tableName:'BankLedgerEntry',columnName:'writeOffAmount'},{tableName:'BankLedgerEntry',columnName:'settlementMode'},{tableName:'BankLedgerSettlementLine',columnName:'entryId'},
   {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
   {tableName:'EmployeeExpenseBankAccount',columnName:'id'},{tableName:'ExpenseRequest',columnName:'payeeEmployeeId'},{tableName:'PartnerTransactionCost',columnName:'payeeEmployeeId'},{tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
@@ -1058,7 +1061,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -27627,6 +27630,8 @@ app.get("/partner-transaction-costs", async (req, res) => {
 registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
+registerApprovalActionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
+registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
 registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{
   requireOrgRole, actorId:getCurrentRequestActorEmployeeId, appendQuantityRemark:appendWorkLogQuantityRemark,

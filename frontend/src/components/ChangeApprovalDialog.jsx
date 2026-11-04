@@ -1,0 +1,32 @@
+import React,{forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
+import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,TextField,Typography} from '@mui/material';
+import ApprovalStagePerson from './ApprovalStagePerson';
+import {changeApprovalText,changeApprovalError} from '../constants/changeApprovals';
+import {requestJSON,buildQueryString} from '../utils/apiClient';
+import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
+import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
+export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'},ref){
+ const t=changeApprovalText[languageCode]||changeApprovalText.en;
+ const [input,setInput]=useState(null),[selection,setSelection]=useState({}),[reason,setReason]=useState(''),[preview,setPreview]=useState(null),[grades,setGrades]=useState([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[uncertain,setUncertain]=useState(false);
+ const resolver=useRef(null),key=useRef(''),submitted=useRef(null),locked=useRef(false),scope=useRef(orgId);scope.current=orgId;
+ const finish=value=>{setInput(null);resolver.current?.(value);resolver.current=null;};
+ useImperativeHandle(ref,()=>({prepare:value=>new Promise(resolve=>{resolver.current?.(null);resolver.current=resolve;key.current=crypto.randomUUID();submitted.current=null;setSelection({});setReason(value.reason||'');setError('');setUncertain(false);setPreview(null);setInput(JSON.parse(JSON.stringify(value)));})}),[]);
+ useEffect(()=>{finish(null);setGrades([]);return()=>{resolver.current?.(null);resolver.current=null;};},[orgId]);
+ useEffect(()=>{if(!input)return;let alive=true;requestJSON('/approval-action-settings'+buildQueryString({orgId,menu:input.menu,operation:input.operation}),{skipCache:true}).then(data=>{if(alive)setGrades(data.grades);}).catch(()=>{if(alive)setError(t.error);});return()=>{alive=false;};},[orgId,input?.menu,input?.operation]);
+ const selected=JSON.stringify(selection);
+ useEffect(()=>{if(!input||uncertain)return;let alive=true;setLoading(true);setError('');const timer=setTimeout(()=>requestJSON('/change-approval-preview'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify({...input,selection})}).then(data=>{if(alive)setPreview(data);}).catch(e=>{if(alive){setPreview(null);setError(changeApprovalError(e,t));}}).finally(()=>{if(alive)setLoading(false);}),120);return()=>{alive=false;clearTimeout(timer);};},[orgId,input,selected,uncertain]);
+ const send=async()=>{if(locked.current)return;locked.current=true;setBusy(true);setError('');const company=orgId;
+  const chosen={...selection,...Object.fromEntries((preview?.stages||[]).filter(s=>s.employeeId).map(s=>[s.key+'EmployeeId',s.employeeId]))};
+  submitted.current=submitted.current||{...input,reason:reason.trim(),selection:chosen,clientKey:key.current};
+  try{const result=await requestJSON('/change-approval-requests'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(submitted.current)});emitWorkspaceDataChanged({orgId,source:'change-approval',topics:['change-approvals','bank-ledger','expense-requests']});if(scope.current===company)finish(result);}
+  catch(e){if(scope.current===company){const unknown=!e.status||e.status>=500;setUncertain(unknown);setError(unknown?t.uncertain:changeApprovalError(e,t));if(!unknown)submitted.current=null;}}
+  finally{locked.current=false;if(scope.current===company)setBusy(false);}
+ };
+ return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
+  {loading&&<LinearProgress/>}{error&&<Alert severity="error">{error}</Alert>}
+  <Typography variant="body2">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography>
+  <TextField fullWidth label={t.reason} required={input?.operation==='DELETE'} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();submitted.current=null;}}/>
+  <Box sx={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(220px,100%),1fr))',gap:2}}>{preview?.stages?.filter(s=>!s.vacant).map((stage,index,all)=><Paper variant="outlined" key={stage.key} sx={{p:2}}><Typography variant="subtitle2" sx={{mb:1}}>{index===all.length-1?t.final:`${t.stage} ${index+1}`}</Typography><ApprovalStagePerson stage={stage} grades={grades} personLabel={t.person} languageCode={languageCode} value={selection[stage.key+'EmployeeId']} disabled={busy||uncertain||loading} onChange={id=>{setSelection(current=>({...current,[stage.key+'EmployeeId']:id}));key.current=crypto.randomUUID();submitted.current=null;}}/></Paper>)}</Box>
+  {preview&&!preview.complete&&<Alert severity="warning">{t.required}</Alert>}
+ </Stack></DialogContent><DialogActions><Button disabled={busy||uncertain} onClick={()=>finish(null)}>{t.cancel}</Button><Button variant="contained" disabled={busy||loading||!uncertain&&(!preview?.complete||!!error||input?.operation==='DELETE'&&!reason.trim())} onClick={send}>{uncertain?t.retry:t.request}</Button></DialogActions></Dialog>;
+});

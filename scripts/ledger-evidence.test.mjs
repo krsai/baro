@@ -12,7 +12,7 @@ const {listApprovalOverview}=require('../backend/dist/services/approvalOverview.
 const {reconcileLedgerBalances}=require('../backend/dist/services/ledgerBalance.js');
 async function fixture(){
  const db=new PGlite();await db.exec("SET TIME ZONE 'UTC'");
- await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY);INSERT INTO "Organization" VALUES(1),(2);
+ await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,name TEXT,"ownerOrgId" INT,"isActive" BOOL DEFAULT true,"createdAt" TIMESTAMP DEFAULT now());INSERT INTO "Organization"(id) VALUES(1),(2);INSERT INTO "Organization"(id,name,"ownerOrgId","isActive") VALUES(3,'Party A',1,true),(4,'Party B',2,true);
  CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));INSERT INTO "Employee" VALUES(10,1,'ACTIVE','ADMIN'),(11,1,'ACTIVE','ACCOUNTANT');
  CREATE TABLE "ExpenseRequest"(id INT,"orgId" INT,version INT,UNIQUE(id,"orgId"));INSERT INTO "ExpenseRequest" VALUES(1,1,1);
  CREATE TABLE "ExpenseRequestApprovalStep"(id TEXT,"orgId" INT,"requestId" INT,position INT,"employeeId" INT);INSERT INTO "ExpenseRequestApprovalStep" VALUES('s1',1,1,1,10),('s2',1,1,2,11);
@@ -20,7 +20,9 @@ async function fixture(){
  CREATE TABLE "PartnerTransactionCost"(id TEXT PRIMARY KEY,"orgId" INT,"expenseRequestId" INT,"expenseRequestLine" INT,currency TEXT,amount NUMERIC,description TEXT);INSERT INTO "PartnerTransactionCost" VALUES('c1',1,1,1,'USD',100,'Expense');
  CREATE TABLE "TransactionCode"(id INT PRIMARY KEY,"ownerOrgId" INT,code TEXT,"nameEn" TEXT,"nameKo" TEXT,"nameVi" TEXT,"isActive" BOOLEAN,"baseId" INT,"taxTreatmentId" INT DEFAULT 1,"createdAt" TIMESTAMP DEFAULT now());
  INSERT INTO "TransactionCode"(id,"ownerOrgId",code,"nameEn","isActive") VALUES(100,1,'GENE','General',true),(101,1,'FEEE','Fee',true),(102,2,'GENE','Other company',true),(103,1,'OLDE','Inactive',false);`);
+ await db.exec('ALTER TABLE "Invoice" ADD COLUMN "buyerOrgId" INT DEFAULT 3; ALTER TABLE "PartnerTransactionCost" ADD COLUMN "partnerOrgId" INT DEFAULT 3,ADD COLUMN "payeeEmployeeId" INT;');
  await db.exec(await readFile('backend/prisma/migrations/20261027160100_bank_ledger/migration.sql','utf8'));
+ await db.exec('ALTER TABLE "BankLedgerEntry" ADD COLUMN "counterpartyOrgId" INT,ADD COLUMN "counterpartyEmployeeId" INT,ADD COLUMN "counterpartyAccountId" TEXT,ADD COLUMN "counterpartyName" TEXT;');
  // Old transactions are preserved without rewriting their evidence.
  await db.exec(`INSERT INTO "BankLedgerAccount"(id,"orgId","clientKey","bankName","accountNumber","accountHolder","currencyCode","openingDate","openingBalance","createdBy") VALUES('a',1,'a','B','001','C','USD','2026-01-01',0,'actor');
  INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy") VALUES('old',1,'a','old','2026-01-01','IN',1,'Legacy','old-ref','actor');`);
@@ -155,7 +157,8 @@ test('service validates invoice scope, actual receipt and fees without forcing f
 test('first transaction initializes an owned business account at zero without opening inputs, and retries keep one transaction',async()=>{
  let account=null,row=null;let creates=0;
  const tx={$queryRawUnsafe:async()=>[],organizationBankAccount:{findFirst:async({where})=>where.entityId===1&&where.orgId===1?{id:'master',currency:{code:'USD'},bankName:'',accountNumber:'',accountHolder:''}:null},bankLedgerAccount:{findFirst:async({where})=>account&&where.orgId===account.orgId&&(!where.id||where.id===account.id)&&(!where.entityAccountId||where.entityAccountId===account.entityAccountId)?account:null,create:async({data})=>account={id:'ledger',...data}},bankLedgerEntry:{findUnique:async()=>row,create:async({data})=>{creates++;return row={id:'entry',...data};}}};tx.$transaction=async fn=>fn(tx);
- const body={clientKey:'11111111-1111-4111-8111-111111111111',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Received',evidenceNumber:'receipt.pdf',evidenceType:'FILE',bankFee:'0'};
+ tx.organization={findFirst:async()=>({id:3,name:'Vendor',ownerOrgId:1,isActive:true})};
+ const body={clientKey:'11111111-1111-4111-8111-111111111111',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Received',evidenceNumber:'receipt.pdf',evidenceType:'FILE',bankFee:'0',counterparty:{kind:'PARTNER',id:3}};
  await postLedgerEntry(tx,1,'actor','entity:master',body);await postLedgerEntry(tx,1,'actor','entity:master',body);assert.equal(creates,1);assert.equal(account.openingBalance,'0');
  await assert.rejects(postLedgerEntry(tx,2,'actor','entity:master',body),/ACCOUNT_NOT_FOUND/);
  await assert.rejects(postLedgerEntry(tx,1,'actor','entity:master',{...body,evidenceNumber:'different.pdf'}),/RETRY_CONFLICT/);
@@ -186,11 +189,11 @@ function ledgerDatabase(pg){
   update:async({where,data})=>{const values=Object.values(data),sets=Object.keys(data).map((key,index)=>`"${key}"=$${index+1}`).join(',');return (await q(`UPDATE "${table}" SET ${sets} WHERE ${whereSql(where,values)} RETURNING *`,values))[0];},
   groupBy:async({by,where})=>{const args=[],fields=by.map(k=>'"'+k+'"').join(',');return (await q(`SELECT ${fields},sum(amount)::text AS total FROM "${table}" WHERE ${whereSql(where,args)} GROUP BY ${fields}`,args)).map(({total,...row})=>({...row,_sum:{amount:total}}));}
  });
- const db={transactionCode:{findFirst:async args=>{const row=await model('TransactionCode').findFirst(args);return row?{...row,taxTreatment:{code:'VAT',suffix:'E'},base:{code:row.code.slice(0,3),nameEn:row.nameEn,isActive:true,expenseType:{nameEn:'Expense',isActive:true},variants:[{id:1,taxTreatmentId:row.taxTreatmentId,isActive:true,isEnabled:true}]}}:null;}},bankLedgerAccount:model('BankLedgerAccount'),bankLedgerEntry:model('BankLedgerEntry'),bankLedgerBatch:model('BankLedgerBatch'),bankLedgerSettlementLine:model('BankLedgerSettlementLine'),organizationBankAccount:{findMany:async()=>[]},$queryRawUnsafe:async(sql,...args)=>q(sql,args)};
+ const db={changeApprovalRequest:{findMany:async()=>[]},organization:model('Organization'),transactionCode:{findFirst:async args=>{const row=await model('TransactionCode').findFirst(args);return row?{...row,taxTreatment:{code:'VAT',suffix:'E'},base:{code:row.code.slice(0,3),nameEn:row.nameEn,isActive:true,expenseType:{nameEn:'Expense',isActive:true},variants:[{id:1,taxTreatmentId:row.taxTreatmentId,isActive:true,isEnabled:true}]}}:null;}},bankLedgerAccount:model('BankLedgerAccount'),bankLedgerEntry:model('BankLedgerEntry'),bankLedgerBatch:model('BankLedgerBatch'),bankLedgerSettlementLine:model('BankLedgerSettlementLine'),organizationBankAccount:{findMany:async()=>[]},$queryRawUnsafe:async(sql,...args)=>q(sql,args)};
  db.$transaction=async run=>{await pg.exec('BEGIN ISOLATION LEVEL SERIALIZABLE');try{const result=await run(db);await pg.exec('COMMIT');return result;}catch(error){await pg.exec('ROLLBACK');throw error;}};
  return db;
 }
-const batchRow=(extra={})=>({clientKey:randomUUID(),accountId:'a',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'scan.pdf',...extra});
+const batchRow=(extra={})=>({clientKey:randomUUID(),accountId:'a',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',counterparty:extra.evidenceType&&extra.evidenceType!=='FILE'?null:{kind:'PARTNER',id:3},evidenceNumber:'scan.pdf',...extra});
 
 test('target balance reconciliation appends exact differences atomically, including zero/negative targets and safe retries',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
@@ -290,7 +293,7 @@ test('coded ledger edits replace atomically, preserve history and reject stale, 
 });
 test('net receipts and separate fees/write-offs settle invoices exactly without changing cash twice',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
-  db.invoice={findFirst:async({where})=>(await pg.query(`SELECT * FROM "Invoice" WHERE "sellerOrgId"=$1 AND ${where.id?'id':'"invoiceNumber"'}=$2 AND status='ISSUED' AND "currencyCode"=$3`,[where.sellerOrgId,where.id||where.invoiceNumber,where.currencyCode])).rows[0]};
+  db.invoice={findFirst:async({where})=>(await pg.query(`SELECT * FROM "Invoice" WHERE "sellerOrgId"=$1 AND ${where.id?'id':'"invoiceNumber"'}=$2 AND status='ISSUED' AND "currencyCode"=$3`,[where.sellerOrgId,where.id||where.invoiceNumber,(where.currencyCode||'USD')])).rows[0]};
   db.bankLedgerEvidenceAllocation={findMany:async({where})=>(await pg.query(`SELECT a.* FROM "BankLedgerEvidenceAllocation" a JOIN "BankLedgerEntry" e ON e.id=a."entryId" WHERE a."orgId"=$1 AND a."invoiceId"=$2 AND e."voidedAt" IS NULL`,[where.orgId,where.invoiceId])).rows};
   const main=batchRow({entryKind:'BANK',evidenceType:'INVOICE',evidenceNumber:'INV-1',amount:'990'}),fee={entryKind:'FEE',clientKey:randomUUID(),parentClientKey:main.clientKey,amount:'10',purpose:'Withheld bank fee'},body={clientKey:randomUUID(),rows:[main,fee]};
   const first=await postLedgerBatch(db,1,'actor',body);assert.deepEqual(await postLedgerBatch(db,1,'actor',body),first);

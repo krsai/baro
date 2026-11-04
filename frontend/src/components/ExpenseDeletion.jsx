@@ -1,3 +1,5 @@
+import ChangeApprovalDialog from './ChangeApprovalDialog';
+import {changeApprovalText} from '../constants/changeApprovals';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,Stack,TextField,Typography} from '@mui/material';
 import DeleteActionButton from './DeleteActionButton';
@@ -6,15 +8,8 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {emitWorkspaceDataChanged,subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 const changed=orgId=>emitWorkspaceDataChanged({orgId,source:'expense-approval',topics:['expense-approvals','expense-requests']});
 export function ExpenseDeletionButton({document,orgId,languageCode}){
- const t=expenseDeletionText[languageCode]||expenseDeletionText.en;
- const [open,setOpen]=useState(false),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(false),key=useRef(''),lock=useRef(false),scope=useRef(orgId);scope.current=orgId;
- useEffect(()=>{setOpen(false);setError(false);setBusy(false);lock.current=false;},[orgId,document?.id]);
- const send=async()=>{if(lock.current||!reason.trim())return;const org=orgId;lock.current=true;setBusy(true);setError(false);
-  try{await requestJSON(`/expense-requests/${document.id}/deletion-requests`+buildQueryString({orgId}),{method:'POST',body:JSON.stringify({version:document.version,reason:reason.trim(),clientKey:key.current})});changed(org);if(scope.current===org)setOpen(false);}
-  catch{if(scope.current===org)setError(true);}finally{lock.current=false;if(scope.current===org)setBusy(false);}
- };
- return <span onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>{document?.deletionPending?<Typography variant="caption">{t.pending}</Typography>:<DeleteActionButton disabled={!document?.canRequestDeletion} title={document?.bankReconciled?t.linked:t.request} aria-label={t.request} onClick={()=>{key.current=crypto.randomUUID();setReason('');setError(false);setOpen(true);}}/>}
- <Dialog open={open} onClose={()=>{if(!busy)setOpen(false);}} fullWidth maxWidth="sm"><DialogTitle>{t.title}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>{error&&<Alert severity="error">{t.error}</Alert>}<Typography>{document?.managementNumber}</Typography><TextField autoFocus fullWidth multiline minRows={3} label={t.reason} value={reason} disabled={busy} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();}}/></Stack></DialogContent><DialogActions><Button disabled={busy} onClick={()=>setOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={busy||!reason.trim()} onClick={send}>{t.send}</Button></DialogActions></Dialog></span>;
+ const t=expenseDeletionText[languageCode]||expenseDeletionText.en,approval=changeApprovalText[languageCode]||changeApprovalText.en,changeRef=useRef(null);
+ return <span onClick={e=>e.stopPropagation()} onDoubleClick={e=>e.stopPropagation()}>{document?.deletionPending?<Typography variant="caption">{t.pending}</Typography>:<DeleteActionButton disabled={!document?.canRequestDeletion||document?.changePending} title={document?.bankReconciled?t.linked:document?.changePending?approval.pending:t.request} aria-label={t.request} onClick={()=>changeRef.current.prepare({menu:'EXPENSE',operation:'DELETE',sourceKind:'request',sourceId:String(document.id),version:document.version,payload:{}})}/>}<ChangeApprovalDialog ref={changeRef} orgId={orgId} languageCode={languageCode}/></span>;
 }
 export function ExpenseDeletionInbox({orgId,languageCode,onNavigate}){
  const t=expenseDeletionText[languageCode]||expenseDeletionText.en;

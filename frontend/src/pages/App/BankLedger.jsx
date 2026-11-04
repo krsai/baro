@@ -1,3 +1,5 @@
+import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
+import {changeApprovalText} from '../../constants/changeApprovals';
 import LedgerActivityTable from '../../components/LedgerActivityTable';
 import LedgerBalanceDialog from '../../components/LedgerBalanceDialog';
 import {ledgerBalanceText} from '../../constants/ledgerBalance';
@@ -8,7 +10,6 @@ import AppPageContainer from '../../components/AppPageContainer';
 import PageContentStack from '../../components/PageContentStack';
 import SearchPanel from '../../components/SearchPanel';
 import DateRangeSelector from '../../components/DateRangeSelector';
-import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import {useAppActions} from '../../context/AppContext';
 import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
@@ -25,25 +26,21 @@ function LedgerList({orgId}){
  const [balanceOpen,setBalanceOpen]=useState(false);
  const b=ledgerBalanceText[languageCode]||ledgerBalanceText.en;
  const [includeDeleted,setIncludeDeleted]=useState(false),[accountId,setAccountId]=useState(''),[data,setData]=useState(null),[start,setStart]=useState(()=>today().slice(0,7)+'-01'),[end,setEnd]=useState(today),[page,setPage]=useState(0),[reload,setReload]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState('');
- const [voidRow,setVoidRow]=useState(null),[reason,setReason]=useState(''),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[voidError,setVoidError]=useState('');const busy=useRef(false);
- useUnsavedChanges(!!voidRow&&(!!reason||uncertain));
+ const changeRef=useRef(null),changeText=changeApprovalText[languageCode]||changeApprovalText.en;
  useEffect(()=>subscribeWorkspaceDataChanged(e=>{if(Number(e?.orgId)===Number(orgId)&&['bank-ledger','business-accounts'].includes(e.source))setReload(n=>n+1);}),[orgId]);
  useEffect(()=>{if(!orgId)return;let live=true;setLoading(true);setError('');
   requestJSON(`/bank-ledger/entries${buildQueryString({orgId,accountId:accountId||undefined,includeVoided:includeDeleted?1:0,start,end,page})}`,{skipCache:true}).then(result=>{if(live){setData(result);if(accountId&&result.selectedAccountId!==undefined&&result.selectedAccountId!==accountId)setAccountId(result.selectedAccountId);}}).catch(e=>{if(live)setError(t.errors[e.message]||`${t.failed} ${e.message}`);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};
  },[orgId,accountId,start,end,page,reload,includeDeleted]);
  const l=ledgerEntryText[languageCode]||ledgerEntryText.en;
- const accounts=data?.accounts||[],selected=accounts.find(a=>a.id===accountId),closeVoid=()=>{if(!saving&&!uncertain)setVoidRow(null);};
+ const accounts=data?.accounts||[],selected=accounts.find(a=>a.id===accountId);
  const editEntry=row=>{if(!row.voidedAt)navigateToPath('/bank-ledger/edit/'+row.id);};
  const editKey=(event,row)=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();editEntry(row);}};
- const cancelEntry=async event=>{event.preventDefault();if(busy.current)return;busy.current=true;setSaving(true);setVoidError('');try{
-  await requestJSON('/bank-ledger/entries/'+voidRow.id+buildQueryString({orgId}),{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({reason})});setVoidRow(null);setUncertain(false);emitWorkspaceDataChanged({orgId,source:'bank-ledger',topics:['bank-ledger']});
- }catch(e){const unknown=!e.status||e.status>=500;setUncertain(unknown);setVoidError(unknown?t.uncertain:t.errors[e.message]||t.failed);}finally{busy.current=false;setSaving(false);}};
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}>{activeOrgRole==='ADMIN'&&<Button variant="outlined" onClick={()=>setBalanceOpen(true)}>{b.title}</Button>}<Button variant="contained" disabled={!accounts.length} onClick={()=>navigateToPath('/bank-ledger/new'+buildQueryString({accountId:accountId||undefined}))}>{t.addEntry}</Button></Stack>}><PageContentStack>
   <SearchPanel search={<TextField select fullWidth size="small" label={t.account} SelectProps={{displayEmpty:true}} InputLabelProps={{shrink:true}} value={accountId} onChange={e=>{setAccountId(e.target.value);setPage(0);}} sx={{minWidth:220}}><MenuItem value="">{w.all}</MenuItem>{accounts.map(a=><MenuItem key={a.id} value={a.id}>{ledgerAccountName(a)} / {a.currencyCode}</MenuItem>)}</TextField>} filters={<FormControlLabel control={<Checkbox checked={includeDeleted} onChange={e=>{setIncludeDeleted(e.target.checked);setPage(0);}}/>} label={l.includeDeleted}/>} controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dayjs(start)} endValue={dayjs(end)} onStartChange={d=>{if(d?.isValid()){setStart(d.format('YYYY-MM-DD'));setPage(0);}}} onEndChange={d=>{if(d?.isValid()){setEnd(d.format('YYYY-MM-DD'));setPage(0);}}} minDate={selected?dayjs(selected.openingDate):undefined} maxDate={dayjs(today())}/>}/>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{error}</Alert>}
-  <Paper variant="outlined"><LedgerActivityTable rows={data?.rows||[]} loading={loading} text={t} labels={l} currencyLabel={w.currency} languageCode={languageCode} onEdit={editEntry} onEditKey={editKey} onDelete={row=>{setReason('');setVoidError('');setUncertain(false);setVoidRow(row);}}/><Stack direction="row" spacing={1} justifyContent="flex-end" sx={{p:1}}><Button disabled={!page||loading} onClick={()=>setPage(n=>n-1)}>{t.previous}</Button><Button disabled={!data?.hasMore||loading} onClick={()=>setPage(n=>n+1)}>{t.next}</Button></Stack></Paper>
+  <Paper variant="outlined"><LedgerActivityTable rows={data?.rows||[]} loading={loading} text={t} labels={{...l,delete:changeText.requestDelete}} currencyLabel={w.currency} languageCode={languageCode} onEdit={editEntry} onEditKey={editKey} onDelete={row=>changeRef.current.prepare({menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:row.id,payload:{}})}/><Stack direction="row" spacing={1} justifyContent="flex-end" sx={{p:1}}><Button disabled={!page||loading} onClick={()=>setPage(n=>n-1)}>{t.previous}</Button><Button disabled={!data?.hasMore||loading} onClick={()=>setPage(n=>n+1)}>{t.next}</Button></Stack></Paper>
  </PageContentStack>
- <Dialog open={!!voidRow} onClose={closeVoid} fullWidth maxWidth="sm"><Box component="form" onSubmit={cancelEntry}><DialogTitle>{l.delete}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}><TextField required fullWidth label={l.deleteReason} value={reason} disabled={saving||uncertain} multiline minRows={2} inputProps={{maxLength:1000}} onChange={e=>setReason(e.target.value)}/>{voidError&&<Alert severity="error">{voidError}</Alert>}</Stack></DialogContent><DialogActions><Button disabled={saving||uncertain} onClick={closeVoid}>{t.cancel}</Button><Button type="submit" variant="contained" disabled={saving}>{uncertain?t.retry:l.delete}</Button></DialogActions></Box></Dialog>
+ <ChangeApprovalDialog ref={changeRef} orgId={orgId} languageCode={languageCode}/>
  {balanceOpen&&activeOrgRole==='ADMIN'&&<LedgerBalanceDialog orgId={orgId} languageCode={languageCode} onClose={()=>setBalanceOpen(false)}/>}
  </AppPageContainer>;
 }

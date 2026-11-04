@@ -69,15 +69,17 @@ export async function attachExpenseDeletionAvailability(db:any,orgId:number,requ
  const itemIds=requests.flatMap(row=>row.items.map((item:any)=>item.id));
  const allocations=itemIds.length?await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:{in:itemIds},entry:{voidedAt:null}},select:{expenseItemId:true}}):[];
  const linked=new Set(allocations.map((row:any)=>row.expenseItemId));
+ const pending=requests.length?await db.changeApprovalRequest.findMany({where:{orgId,menu:'EXPENSE',status:'PENDING',expenseRequestId:{in:requests.map(row=>row.id)}},select:{expenseRequestId:true,operation:true}}):[];
  return requests.map(row=>{
   const bankReconciled=row.items.some((item:any)=>linked.has(item.id));
   const participant=actor&&(actor.orgRole==='ADMIN'||row.createdByEmployeeId===actor.id||row.approvalSteps.some((step:any)=>step.employeeId===actor.id));
-  return {...row,bankReconciled,deletionPending:!bankReconciled&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.deletedAt&&!bankReconciled&&!!participant};
+  const changePending=pending.find((request:any)=>request.expenseRequestId===row.id);
+  return {...row,bankReconciled,changePending:!!changePending,deletionPending:changePending?.operation==='DELETE'||!bankReconciled&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.deletedAt&&!bankReconciled&&!changePending&&!!participant};
  });
 }
 export function registerExpenseDeletionRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;const actorId=gates.actorId();if(!actorId)fail(403,'ACTIVE_EMPLOYEE_REQUIRED');return {orgId:ctx.organization.id,actorId};};
- app.post('/expense-requests/:requestId/deletion-requests',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const id=Number(req.params.requestId);if(!Number.isSafeInteger(id)||id<=0)fail(400,'INVALID_EXPENSE_SOURCE');res.json(await requestExpenseDeletion(db,scope.orgId,scope.actorId,id,req.body));});
+ app.post('/expense-requests/:requestId/deletion-requests',async(req:any,res:any)=>{const ctx=await access(req,res);if(ctx)res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});});
  app.get('/expense-deletion-requests',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listExpenseDeletions(db,scope.orgId,scope.actorId));});
  app.post('/expense-deletion-requests/:id/decision',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await decideExpenseDeletion(db,scope.orgId,scope.actorId,req.params.id,req.body));});
 }

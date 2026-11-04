@@ -5,6 +5,7 @@ import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
 import {approvalBandText} from '../frontend/src/constants/approvalBands.js';
+import {changeApprovalText} from '../frontend/src/constants/changeApprovals.js';
 const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
 assert.ok(executablePath);
 const fixture=path.resolve('frontend/approval-settings-acceptance.html');assert.ok(!existsSync(fixture));
@@ -25,11 +26,14 @@ try{
   const settings={drafterScope:{role:'OPERATOR',gradeId:null},limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
   const data={settings,drafter:{id:1,name:'Current user',orgRole:'ADMIN'},canEdit:true,grades:[{id:1,code:'CL1',name:'Staff',nameEn:'Staff'},{id:10,code:'CL2',name:'Senior',nameEn:'Senior'},{id:20,code:'CL3',name:'Lead',nameEn:'Lead'}],candidates:[{id:2,name:'Senior accountant',orgRole:'ACCOUNTANT',gradeId:10},{id:3,name:'Lead accountant',orgRole:'ACCOUNTANT',gradeId:20},{id:4,name:'Administrator',orgRole:'ADMIN'}]};
   await page.route('**/expense-approval-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){saved=r.request().postDataJSON();posts.push(saved);return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
+  const actionSaves=[];
+  await page.route('**/approval-action-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){actionSaves.push({url:r.request().url(),body:r.request().postDataJSON()});return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
   await page.goto(`http://127.0.0.1:${port}/approval-settings-acceptance.html`);
   const t=approvalSettingsText[lang],band=approvalBandText[lang],initialUrl=page.url();
   await page.getByRole('heading',{name:t.title,exact:true}).waitFor();
   const first=page.locator('[data-approval-band="0"]'),rows=page.locator('[data-approval-band]');
   await first.getByRole('textbox',{name:band.amount+' USD 1',exact:true}).waitFor();
+  assert.equal(await page.getByRole('combobox',{name:band.drafterRole,exact:false}).count(),await page.locator('[data-band-drafter]').count(),'Only amount-band drafter selectors remain');
   assert.equal(await rows.count(),3);assert.equal(await first.locator('[data-band-stage]').count(),1);
   assert.ok((await first.boundingBox()).height<110,'Approval rows remain compact');
   assert.equal(await page.getByText(band.future,{exact:true}).count(),0);
@@ -96,6 +100,16 @@ try{
    assert.equal(await scoped.locator('[data-band-drafter]').getByRole('combobox').first().textContent(),band[role]);await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
    assert.deepEqual(saved.drafterScope,{role,gradeId:role==='ACCOUNTANT'?1:20});assert.equal(saved.rules.filter(row=>row.drafterRole===role&&row.drafterGradeId===(role==='ACCOUNTANT'?1:20)).length,3);assert.equal(saved.rules.filter(row=>row.drafterRole==='OPERATOR').length,9);
   }
+  const actions=changeApprovalText[lang],menus=page.getByRole('combobox').first();
+  const registrationPosts=posts.length;
+  await choose(menus,actions.BANK_LEDGER);
+  await page.locator('[data-approval-band="0"]').waitFor();
+  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
+  assert.ok(actionSaves.at(-1).url.includes('operation=UPDATE'));
+  await choose(page.getByRole('combobox').nth(1),actions.DELETE);
+  await page.locator('[data-approval-band="0"]').waitFor();
+  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
+  assert.ok(actionSaves.at(-1).url.includes('operation=DELETE'));assert.equal(posts.length,registrationPosts);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
   assert.deepEqual(errors,[]);await page.close();
  }

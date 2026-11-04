@@ -91,7 +91,7 @@ export function expenseEditorForm(source: any) {
     canonicalSource: { kind: source.kind, id: source.id } };
 }
 
-export async function saveExpenseEditor(tx: any, orgId: number, actorId: number, kind: string, id: string, body: any, appendQuantityRemark?: any) {
+export async function saveExpenseEditor(tx: any, orgId: number, actorId: number, kind: string, id: string, body: any, appendQuantityRemark?: any,approvedChange?:any) {
   const organization=await tx.organization.findFirst({where:{id:orgId},select:{type:true,country:true}});
   const orgType=organization?.type,timeZone=companyBusinessTimeZone(organization);
   if (!/^[\w-]{8,64}$/.test(body?.clientKey || '') || typeof body?.revision !== 'string') return fail(400,'INVALID_TRANSACTION_KEY');
@@ -137,7 +137,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   await requirePayeeBankAccount(tx,orgId,payeeIds.partnerOrgId,payeeIds.payeeEmployeeId);
   const savedAudit=source.document?await tx.expenseRequestAudit.findFirst({where:{orgId,requestId:source.document.id,version:source.document.version},orderBy:{id:'desc'}}):null;
   const savedConfig=source.document?savedAudit?.afterSnapshot?.approvalPolicy?.config||defaultApprovalSettings():undefined;
-  const approval = await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection,false,savedConfig);
+  const approval = approvedChange||await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection,false,savedConfig);
   const approvers = approval.ids;
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
   if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
@@ -163,6 +163,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
   await tx.expenseRequestAudit.create({ data: { orgId, requestId: document.id, actorId, version: document.version,
     action: source.document ? 'UPDATE' : 'CREATE', clientKey:key, inputHash, beforeSnapshot: before, afterSnapshot:snapshot({...after,approvalPolicy:approval.policy}) } });
+  if(approvedChange)for(const [index,employeeId] of approval.ids.entries())await tx.expenseApprovalDecision.create({data:{orgId,requestId:document.id,version:document.version,position:index+1,employeeId,decision:'APPROVED'}});
   return { requestId: document.id, assignmentPlanIds: [...new Set(assignmentPlanIds)] };
 }
 
@@ -228,18 +229,6 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     }
     res.json(result);
   });
-  app.put(path,async(req: any,res: any)=>{
-    const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;
-    const actorId = gates.actorId(); if(!actorId)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
-    let result;
-    try {
-      result = await db.$transaction((tx: any)=>saveExpenseEditor(tx,access.organization.id,actorId,req.params.kind,req.params.id,req.body,gates.appendQuantityRemark),{isolationLevel:'Serializable',timeout:60000});
-    } catch(error) {
-      const conflict = (error as any)?.code==='P2034' || ['40001','40P01'].includes((error as any)?.meta?.code);
-      if(conflict)return res.status(409).json({error:'EXPENSE_REQUEST_CHANGED'});
-      throw error;
-    }
-    if(result.assignmentPlanIds.length) await gates.syncProduction?.(access.organization.id,result.assignmentPlanIds);
-    res.json(result);
-  });
+  app.put(path,async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(ctx)res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});});
+
 }

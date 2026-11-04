@@ -170,6 +170,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+ changeApprovalRequests ChangeApprovalRequest[] @relation("ChangeCompany")
+ ledgerCounterparties BankLedgerEntry[] @relation("LedgerPartyPartner")
   identityAnchor CompanyIdentity? @relation("CompanyIdentityAnchor")
   ownedIdentityLinks CompanyIdentityLink[] @relation("CompanyIdentityOwner")
   identityLinks CompanyIdentityLink[] @relation("CompanyIdentityEntity")
@@ -395,6 +397,14 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+ changeApprovalRequests ChangeApprovalRequest[] @relation("LedgerChangeSource")
+ counterpartyOrg Organization? @relation("LedgerPartyPartner",fields:[counterpartyOrgId],references:[id],onDelete:Restrict,map:"Ledger_counterparty_partner_fkey")
+ counterpartyEmployee Employee? @relation("LedgerPartyEmployee",fields:[counterpartyEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"Ledger_counterparty_employee_fkey")
+ counterpartyAccount OrganizationBankAccount? @relation("LedgerPartyAccount",fields:[counterpartyAccountId,orgId],references:[id,orgId],onDelete:Restrict,map:"Ledger_counterparty_account_fkey")
+  counterpartyOrgId Int?
+  counterpartyEmployeeId Int?
+  counterpartyAccountId String?
+  counterpartyName String?
   accountingCodeId Int?
   accountingCode TransactionCode? @relation("LedgerAccountingCode",fields:[accountingCodeId,orgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"BankLedgerEntry_accounting_code_scope_fkey")
   id String @id @default(uuid())
@@ -494,6 +504,7 @@ model ExpenseApprovalDecision {
 }
 
 model OrganizationBankAccount {
+ counterpartyEntries BankLedgerEntry[] @relation("LedgerPartyAccount")
   id String @id @default(uuid())
   orgId Int
   entityId Int
@@ -694,6 +705,10 @@ model Warehouse {
 
 
 model Employee {
+ requestedChanges ChangeApprovalRequest[] @relation("ChangeRequester")
+ decidedChanges ChangeApprovalRequest[] @relation("ChangeDecider")
+ changeApprovalDecisions ChangeApprovalDecision[] @relation("ChangeDecisionEmployee")
+ ledgerCounterparties BankLedgerEntry[] @relation("LedgerPartyEmployee")
   expenseDeletionRequests ExpenseDeletionRequest[] @relation("ExpenseDeletionRequester")
   expenseDeletionDecisions ExpenseDeletionRequest[] @relation("ExpenseDeletionDecider")
   expenseDeletionFinals ExpenseDeletionRequest[] @relation("ExpenseDeletionFinal")
@@ -1678,6 +1693,7 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+ changeApprovalRequests ChangeApprovalRequest[] @relation("CostChangeSource")
   payeeEmployeeId Int?
   payeeEmployee Employee? @relation("ExpenseCostEmployeePayee",fields:[payeeEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   processLinks ExpenseCostProcess[]
@@ -1744,6 +1760,9 @@ model ExpenseCostProcess {
 }
 
 model ExpenseRequest {
+ changeApprovalRequests ChangeApprovalRequest[] @relation("ExpenseChangeSource")
+ deletedChangeRequest ChangeApprovalRequest? @relation("ExpenseChangeDeletion",fields:[deletedChangeRequestId,orgId],references:[id,orgId],onDelete:Restrict,map:"ExpenseRequest_deleted_change_fkey")
+  deletedChangeRequestId String?
   deletedAt DateTime?
   deletedByEmployeeId Int?
   deletionRequestId String? @unique
@@ -2264,6 +2283,7 @@ model WorkRecord {
 // must sum this table together with WorkRecord - see
 // loadAssignmentPlanProgressWorkRows in src/index.ts.
 model OutsourcedWorkRecord {
+ changeApprovalRequests ChangeApprovalRequest[] @relation("RecordChangeSource")
   transactionCost PartnerTransactionCost?
   id                    Int      @id @default(autoincrement())
   orgId                 Int
@@ -2878,4 +2898,60 @@ model ExpenseItemReference {
   @@unique([costId,workOrderId,styleId])
   @@index([workOrderId,orgId])
   @@index([styleId,orgId])
+}
+
+// The immutable SQL migration enforces company/source/employee FKs and lifecycle guards.
+model ChangeApprovalRequest {
+ company Organization @relation("ChangeCompany",fields:[orgId],references:[id],onDelete:Restrict,map:"ChangeApprovalRequest_org_fkey")
+ requester Employee @relation("ChangeRequester",fields:[requestedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalRequest_requester_fkey")
+ decider Employee? @relation("ChangeDecider",fields:[decidedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalRequest_decider_fkey")
+ expenseRequest ExpenseRequest? @relation("ExpenseChangeSource",fields:[expenseRequestId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalRequest_expense_fkey")
+ ledgerEntry BankLedgerEntry? @relation("LedgerChangeSource",fields:[ledgerEntryId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalRequest_ledger_fkey")
+ legacyCost PartnerTransactionCost? @relation("CostChangeSource",fields:[legacyCostId],references:[id],onDelete:Restrict,map:"ChangeApprovalRequest_cost_fkey")
+ legacyRecord OutsourcedWorkRecord? @relation("RecordChangeSource",fields:[legacyRecordId],references:[id],onDelete:Restrict,map:"ChangeApprovalRequest_record_fkey")
+ deletedExpenses ExpenseRequest[] @relation("ExpenseChangeDeletion")
+ decisions ChangeApprovalDecision[]
+ id String @id @default(uuid())
+ orgId Int
+ clientKey String
+ requestHash String
+ menu String
+ operation String
+ sourceKind String
+ sourceId String
+ expenseRequestId Int?
+ ledgerEntryId String?
+ legacyCostId String?
+ legacyRecordId Int?
+ sourceVersion Int?
+ revision String
+ requestedByEmployeeId Int
+ reason String
+ beforeSnapshot Json
+ payload Json
+ policy Json
+ status String @default("PENDING")
+ decidedByEmployeeId Int?
+ decisionReason String?
+ createdAt DateTime @default(now())
+ decidedAt DateTime?
+ appliedAt DateTime?
+ result Json?
+ @@unique([orgId,clientKey])
+ @@unique([id,orgId])
+ @@index([orgId,status,createdAt])
+}
+model ChangeApprovalDecision {
+ request ChangeApprovalRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalDecision_request_fkey")
+ employee Employee @relation("ChangeDecisionEmployee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalDecision_employee_fkey")
+ id String @id @default(uuid())
+ requestId String
+ orgId Int
+ employeeId Int
+ position Int
+ decision String
+ reason String?
+ createdAt DateTime @default(now())
+ @@unique([requestId,position])
+ @@index([orgId,employeeId,createdAt])
 }

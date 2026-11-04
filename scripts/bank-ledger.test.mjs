@@ -30,11 +30,11 @@ function memoryLedger(){
   update:async({where,data})=>{const row=rows.find(row=>row.id===where.id);Object.assign(row,data);return row;},
   groupBy:async({by,where})=>{const groups=new Map();for(const row of rows.filter(row=>matches(row,where))){const key=JSON.stringify(by.map(field=>row[field]));const group=groups.get(key)||{...Object.fromEntries(by.map(field=>[field,row[field]])),minor:0n};group.minor+=ledgerScale4(row.amount);groups.set(key,group);}return [...groups.values()].map(({minor,...row})=>({...row,_sum:{amount:decimal(minor)}}));},
  });
- const db={organizationBankAccount:{findMany:async()=>[]},bankLedgerAccount:model(accounts),bankLedgerEntry:model(entries),$transaction:async run=>run(db)};
+ const db={organization:{findFirst:async({where})=>({id:where.id,name:'Party',ownerOrgId:where.id===22?2:1,isActive:true})},organizationBankAccount:{findMany:async()=>[]},bankLedgerAccount:model(accounts),bankLedgerEntry:model(entries),$transaction:async run=>run(db)};
  return {db,accounts,entries};
 }
 const accountBody=(extra={})=>({clientKey:randomUUID(),bankName:'Bank',accountNumber:'001',accountHolder:'Company',currencyCode:'USD',openingDate:'2026-10-01',openingBalance:'100.00',...extra});
-const entryBody=(extra={})=>({clientKey:randomUUID(),transactionDate:'2026-10-03',direction:'IN',amount:'0.10',purpose:'Customer payment',evidenceNumber:'BANK-001',...extra});
+const entryBody=(extra={})=>({clientKey:randomUUID(),transactionDate:'2026-10-03',direction:'IN',amount:'0.10',purpose:'Customer payment',counterparty:extra.evidenceType==='ADJUSTMENT'?null:{kind:'PARTNER',id:11},evidenceNumber:'BANK-001',...extra});
 
 test('accounting codes derive the description, validate company scope and retain the original retry after catalogue changes',async()=>{
  const {db,entries}=memoryLedger(),account=await saveLedgerAccount(db,1,'actor',accountBody());
@@ -57,7 +57,7 @@ test('zero-start account is balanced by an explicit adjustment and normal transa
  await assert.rejects(postLedgerEntry(db,1,'actor',account.id,entryBody({evidenceNumber:''})),/FILE_REQUIRED/);
 });
 test('money remains exact above Number precision and respects currency digits, signed opening balance and real dates',()=>{
- assert.equal(formatLedgerMoney('-10000000000000000.01','USD'),'USD -10,000,000,000,000,000.01');
+ assert.equal(formatLedgerMoney('-10000000000000000.01','USD'),'-$10,000,000,000,000,000.01');
  assert.equal(validateLedgerMoney('99999999999999999999.99','USD'),'99999999999999999999.99');
  assert.equal(ledgerMoney(ledgerScale4('9999999999999999.99')+ledgerScale4('0.01'),'USD'),'10000000000000000.00');
  assert.equal(validateLedgerMoney('-100','VND',true),'-100');
@@ -86,7 +86,7 @@ test('backdated entries, date filtering and voids produce the correct running an
  await postLedgerEntry(db,1,'staff',a.id,entryBody({transactionDate:'2026-10-05',amount:'0.20'}));
  await postLedgerEntry(db,1,'staff',a.id,entryBody({transactionDate:'2026-10-03',amount:'0.10'}));
  await postLedgerEntry(db,1,'staff',a.id,entryBody({transactionDate:'2026-10-05',direction:'OUT',amount:'10.00'}));
- await postLedgerEntry(db,2,'staff',foreign.id,entryBody({amount:'999.00'}));
+ await postLedgerEntry(db,2,'staff',foreign.id,entryBody({amount:'999.00',counterparty:{kind:'PARTNER',id:22}}));
  let result=await listLedgerEntries(db,1,a.id,{start:'2026-10-05',end:'2026-10-31'});
  assert.deepEqual(result.rows.map(row=>row.balance),['100.30','90.30']);assert.equal(result.currentBalance,'90.30');assert.equal(result.totalIn,'0.20');assert.equal(result.totalOut,'10.00');
  entries.find(row=>row.direction==='OUT').voidedAt=new Date();
@@ -101,9 +101,9 @@ test('running balance carries over page boundaries and repeated void requests re
  assert.equal(first.rows.length,100);assert.equal(first.hasMore,true);assert.equal(second.rows[0].balance,'110.10');assert.equal(second.hasMore,false);
  const routes=new Map(),app={get:(p,f)=>routes.set('GET '+p,f),post:(p,f)=>routes.set('POST '+p,f),put:(p,f)=>routes.set('PUT '+p,f),delete:(p,f)=>routes.set('DELETE '+p,f)};
  registerBankLedgerRoutes(app,db,{requireOrgRole:async()=>({organization:{id:1,type:'SERVICE'},employee:{orgRole:'ACCOUNTANT'},requesterEmail:'staff@example.com'}),loadPolicy:async()=>({policy:getDefaultRoleAccessPolicy()})});
- const handler=routes.get('POST /bank-ledger/accounts/:accountId/entries/:entryId/void'),req={params:{accountId:a.id,entryId:entries[0].id},body:{reason:'Wrong bank reference'}},res={json:()=>{}};
+ let status;const handler=routes.get('POST /bank-ledger/accounts/:accountId/entries/:entryId/void'),req={params:{accountId:a.id,entryId:entries[0].id},body:{reason:'Wrong bank reference'}},res={status:value=>{status=value;return res;},json:()=>{}};
  await handler(req,res);await handler({...req,body:{reason:'A changed reason'}},res);
- assert.equal(entries[0].voidReason,'Wrong bank reference');assert.equal(entries[0].voidedBy,'staff@example.com');
+ assert.equal(status,409);assert.equal(entries[0].voidedAt,null);assert.equal(entries[0].voidedBy,undefined);
 });
 test('service accountants can use banking without gaining manufacturing menus; current explicit denials are retained',()=>{
  const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:'ACCOUNTANT',accessPolicy:getDefaultRoleAccessPolicy()}};

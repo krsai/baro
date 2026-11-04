@@ -81,6 +81,7 @@ test('approved expenses may be deleted, but any live payment blocks both request
 });
 test('list availability follows live payments instead of approval status and re-enables after voiding payments',async()=>{
  const {db,document,people,payments}=fixture(),row={...document,approval:{approved:true,status:'APPROVED'},deletionRequests:[{version:1}]};
+ db.changeApprovalRequest={findMany:async()=>[]};
  const read=async actor=>(await attachExpenseDeletionAvailability(db,7,[row],actor||people[0]))[0];
  assert.equal((await read()).canRequestDeletion,true);assert.equal((await read()).deletionPending,true);
  payments.push({expenseItemId:'cost1',voidedAt:null});assert.equal((await read()).canRequestDeletion,false);assert.equal((await read()).bankReconciled,true);

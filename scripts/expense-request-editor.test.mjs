@@ -79,7 +79,7 @@ test('history is tenant-scoped, permission-gated and paged by version; serializa
   const db=harness();await db.save(await input(db));
   const handlers=new Map();let orgId=1,allowed=true;
   const app={get:(path,fn)=>handlers.set(`GET ${path}`,fn),put:(path,fn)=>handlers.set(`PUT ${path}`,fn),post:(path,fn)=>handlers.set(`POST ${path}`,fn)};
-  const gates={requireOrgRole:async(_req,_res,options)=>{assert.deepEqual(options.allowedRoles,['ADMIN','OPERATOR','ACCOUNTANT']);return allowed?{organization:{id:orgId}}:null;},actorId:()=>20};
+  const gates={requireOrgRole:async(_req,_res,options)=>{assert.deepEqual([...options.allowedRoles].sort(),['ADMIN','OPERATOR','ACCOUNTANT'].sort());return allowed?{organization:{id:orgId}}:null;},actorId:()=>20};
   registerExpenseEditorRoutes(app,{...db.client(),$transaction:async()=>{throw {code:'P2010',meta:{code:'40001'}};}},gates);
   const response=()=>({status(n){this.code=n;return this;},json(v){this.value=v;return this;}});
   const req={params:{kind:'request',id:'1'},query:{}};let res=response();
@@ -87,7 +87,7 @@ test('history is tenant-scoped, permission-gated and paged by version; serializa
   res=response();await handlers.get('GET /expense-request-editor/:kind/:id/history')({...req,query:{beforeVersion:'1'}},res);assert.deepEqual(res.value,[]);
   orgId=2;await assert.rejects(handlers.get('GET /expense-request-editor/:kind/:id/history')(req,response()),/NOT_FOUND/);
   orgId=1;allowed=false;res=response();await handlers.get('GET /expense-request-editor/:kind/:id/history')(req,res);assert.equal(res.value,undefined);
-  allowed=true;res=response();await handlers.get('PUT /expense-request-editor/:kind/:id')({...req,body:{}},res);assert.equal(res.code,409);assert.equal(res.value.error,'EXPENSE_REQUEST_CHANGED');
+  allowed=true;res=response();await handlers.get('PUT /expense-request-editor/:kind/:id')({...req,body:{}},res);assert.equal(res.code,409);assert.equal(res.value.error,'CHANGE_APPROVAL_REQUIRED');
 });
 test('historical editor loads only the selected source FK and never guesses its missing code/tax',async()=>{
   const db=harness(), form=expenseEditorForm(await db.source());
