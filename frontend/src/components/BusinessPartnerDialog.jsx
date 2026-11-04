@@ -149,7 +149,7 @@ export default function BusinessPartnerDialog({
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
-          <PartnerClassificationFields value={form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded} languageCode={languageCode} initialRoleCode={!isEdit?initialType:undefined} onReady={setOptionsReady}/>
+          <PartnerClassificationFields value={form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded} languageCode={languageCode} onReady={setOptionsReady}/>
 
           </Stack></EntityDetailSection>
         </Stack>

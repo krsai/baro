@@ -46,7 +46,7 @@ try{
   await page.waitForFunction(()=>window.customerPayload?.name==='DEX LOGIS');
   await page.waitForTimeout(800);assert.equal(await dialog.count(),0);
   assert.deepEqual((await page.evaluate(()=>window.customerPayload.companyConnection)),{sourceEntityId:2,revision:'reviewed-target'});
-  assert.equal(await page.locator('input[name="name"]').inputValue(),'DEX LOGIS');assert.equal(await page.locator('textarea[name="address"]').first().inputValue(),'Hanoi public address');
+  assert.equal(await page.locator('input[name="name"]').inputValue(),'DEX LOGIS');assert.equal(await page.locator('input[name="address"]').first().inputValue(),'Hanoi public address');
   assert.equal(await page.locator('input[name="defaultSizeSetCode"]').count(),0);assert.equal(await page.locator('.MuiFormHelperText-root').count(),0);
   const status=page.locator('.MuiChip-root').filter({hasText:'DEX LOGIS'}).first(),name=page.locator('input[name="name"]');assert.ok((await status.boundingBox()).y<(await name.boundingBox()).y);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);

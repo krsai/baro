@@ -54,15 +54,16 @@ try{
   await page.reload();await nav.getByRole('button',{name:new RegExp('^'+localized(roles[1])+' ')}).click();await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).click();await dialog.getByRole('combobox',{name:localized(roles[2])+' > '+text.industry,exact:true}).waitFor();assert.equal(await save.isEnabled(),true);
   await dialog.getByRole('button',{name:lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',exact:true}).click();
   await page.getByRole('button',{name:lang==='ko'?'거래처 등록':lang==='vi'?'Thêm đối tác':'Add partner',exact:true}).click();
+  assert.equal(await dialog.locator('.MuiChip-root').count(),0);
   await dialog.locator('input[name="name"]').fill('Dual partner');
   await choose(text.category,localized(roles[0]));await choose(localized(roles[0])+' > '+text.industry,localized(industries[3]));
-  // Supplier is preselected from the current directory category.
+  await choose(text.category,localized(roles[1]));
   await choose(localized(roles[1])+' > '+text.industry,localized(industries[0]));
   await dialog.getByRole('button',{name:lang==='ko'?'등록':lang==='vi'?'Thêm':'Add',exact:true}).click();await dialog.waitFor({state:'hidden'});
   assert.equal(writePaths.at(-1),'/customers');assert.equal(writes.at(-1).name,'Dual partner');assert.deepEqual(new Set(writes.at(-1).classification.roleIds),new Set([1,2]));assert.ok(!('type'in writes.at(-1)));
   await page.goto(`http://127.0.0.1:${port}/partner-classification-acceptance.html?customer`);
   const customerChoose=async(label,option)=>{await page.getByRole('combobox',{name:label,exact:true}).fill(option);await page.getByRole('option',{name:option,exact:true}).click();await page.keyboard.press('Escape');};
-  await page.getByRole('combobox',{name:localized(roles[0])+' > '+text.industry,exact:true}).waitFor();await customerChoose(localized(roles[0])+' > '+text.industry,localized(industries[3]));await customerChoose(text.category,localized(roles[1]));await customerChoose(localized(roles[1])+' > '+text.industry,localized(industries[0]));
+  await customerChoose(text.category,localized(roles[0]));await customerChoose(localized(roles[0])+' > '+text.industry,localized(industries[3]));await customerChoose(text.category,localized(roles[1]));await customerChoose(localized(roles[1])+' > '+text.industry,localized(industries[0]));
   const payload=JSON.parse(await page.getByTestId('payload').innerText());assert.deepEqual(payload.classification,{revision:0,roleIds:[1,2],industryIds:[13,10]});assert.ok(!('systemIndustryId'in payload));assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Partner classifications ko/en/vi: unified all/categories including management, required multi-category/industry edit and customer registration, GENERAL reference only, save/reload, unchanged legacy contract and mobile passed.');

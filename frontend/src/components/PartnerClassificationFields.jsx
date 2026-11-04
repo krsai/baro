@@ -3,20 +3,18 @@ import {Alert,Autocomplete,Button,Checkbox,Stack,TextField,Typography,createFilt
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {classificationName,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 
-export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',initialRoleCode,onReady}){
+export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady}){
  const text=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
  const [options,setOptions]=useState({roles:[],industries:[]}),[error,setError]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0);
- const callbacks=useRef({value,onChange,onReady});callbacks.current={value,onChange,onReady};
+ const readyCallback=useRef(onReady);readyCallback.current=onReady;
  useEffect(()=>{
   if(!enabled||!orgId)return;
-  let alive=true;setLoading(true);setError(false);callbacks.current.onReady?.(false);
+  let alive=true;setLoading(true);setError(false);readyCallback.current?.(false);
   requestJSON('/partner-classifications/options'+buildQueryString({orgId}),{skipCache:true}).then(data=>{
-   if(!alive)return;setOptions(data);callbacks.current.onReady?.(true);
-   const current=callbacks.current.value;
-   if(!current?.roleIds?.length&&initialRoleCode){const role=data.roles.find(row=>row.code===initialRoleCode);if(role)callbacks.current.onChange({...current,roleIds:[role.id]});}
+   if(!alive)return;setOptions(data);readyCallback.current?.(true);
   }).catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
- },[orgId,enabled,initialRoleCode,reload]);
+ },[orgId,enabled,reload]);
  const industries=[...options.industries,...(value?.industries||[]).filter(row=>!options.industries.some(option=>option.id===row.id))].filter(row=>row.code!=='GENERAL');
  const roles=options.roles;
  const name=row=>classificationName(row,languageCode);

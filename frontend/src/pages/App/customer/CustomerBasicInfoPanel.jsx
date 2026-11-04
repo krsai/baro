@@ -61,7 +61,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
         }}/>
 
       <EntityDetailSection title={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).role}>
-        <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode} initialRoleCode={!customerFormData.id?'CUSTOMER':undefined}/>
+        <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode}/>
       </EntityDetailSection>
       <EntityBankAccounts hideGuidance entityId={customerFormData.entityId} languageCode={languageCode}/>
       {isBrand && <EntityDetailSection title={text.order}>

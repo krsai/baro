@@ -31,6 +31,8 @@ try{
    payload=r.request().postDataJSON();return r.fulfill({headers,status:201,json:{...payload,id:7,entityId:44,type:'BRAND'}});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-registration-acceptance.html${screen==='customer'?'':'?'+screen}`);
+  const category=page.getByRole('combobox',{name:PARTNER_CLASSIFICATION_TEXT[lang].category,exact:true});
+  await category.fill('Category');await page.getByRole('option',{name:'Category',exact:true}).click();await page.keyboard.press('Escape');
   assert.equal(await page.evaluate(async()=>{const {resolveCustomerDisplayName}=await import('/src/utils/appLanguage.js');return resolveCustomerDisplayName({name:'English company',nameKo:'',nameVi:''},'${lang}');}),'English company');
   const industry=page.getByRole('combobox',{name:'Category > '+PARTNER_CLASSIFICATION_TEXT[lang].industry,exact:true});
   if(screen==='customer'){
