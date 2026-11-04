@@ -46,6 +46,18 @@ test('linked profiles read current public names and address without rewriting lo
  assert.equal(row.name,source.name);assert.equal(row.address,source.address);assert.equal(row.id,99);assert.equal(row.entityId,31);assert.equal(row.code,'LOCAL');assert.equal(row.amount,123);
  assert.equal(identities[0].name,'Customer B');assert.equal(row.linkedCompany.code,'BBBB');assert.equal('employees' in row.linkedCompany,false);
 });
+
+test('company review exposes public industry and contact fields without persisting them to the identity schema',async()=>{
+ const {db,source,identities}=memory(),profile={country:'VN',businessNumber:'123456'};
+ Object.assign(source,{industry:'LOGISTICS_PROVIDER',representative:'Public representative',phone:'+84 123456789',email:'public@example.com',employees:[{salary:999}],bankAccounts:['private']});
+ db.partnerRole={findUnique:async({where,select})=>{assert.equal(where.code,'LOGISTICS_PROVIDER');assert.deepEqual(Object.keys(select),['nameKo','nameEn','nameVi']);return {nameKo:'Logistics KO',nameEn:'Logistics',nameVi:'Logistics VI'};}};
+ const [candidate]=await identityCandidates(db,3,profile);
+ assert.equal(candidate.representative,source.representative);assert.equal(candidate.phone,source.phone);assert.equal(candidate.email,source.email);assert.equal(candidate.industryLabels.nameEn,'Logistics');
+ assert.equal('employees' in candidate,false);assert.equal('bankAccounts' in candidate,false);
+ await saveIdentityChoice(db,3,31,303,await resolveIdentityChoice(db,3,31,{sourceEntityId:11,revision:candidate.revision},profile));
+ for(const key of ['industry','representative','phone','email','industryLabels','employees','bankAccounts'])assert.equal(key in identities[0],false);
+ const [common]=await identityCandidates(db,4,profile);assert.equal(common.representative,source.representative);assert.equal(common.industryLabels.nameEn,'Logistics');
+});
 test('new SQL keeps original rows and FKs, enforces same identity/active actor and prevents reassigning links',async()=>{
  const db=new PGlite();try{
  await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,code TEXT UNIQUE,name TEXT,"nameKo" TEXT,"nameVi" TEXT,country TEXT,"businessNumber" TEXT,address TEXT,"partyKind" TEXT);CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);CREATE TABLE "CompanyPartnerLink"("entityId" INT,"targetOrgId" INT);INSERT INTO "Organization"(id,type,code,name,country,"businessNumber","partyKind","ownerOrgId") VALUES(1,'MANUFACTURER','AAAA','A','VN','A1','CORPORATE',NULL),(3,'MANUFACTURER','CCCC','C','VN','C1','CORPORATE',NULL),(11,'BRAND','BBBB','B','VN','123-456','CORPORATE',1),(31,'BRAND',NULL,'B local','VN','123456','CORPORATE',3),(32,'BRAND',NULL,'Other','KR','123456','CORPORATE',3);INSERT INTO "Employee" VALUES(303,3,'ACTIVE','OPERATOR');`);

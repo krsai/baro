@@ -51,7 +51,7 @@ function memory(){
 }
 test('business-number match uses only public identity and connects local vendor to separate SaaS tenant',async()=>{
  const {db,links}=memory();const candidates=await companyConnectionCandidates(db,1,{businessNumber:'123 456',country:'VN'});
- assert.equal(candidates[0].id,2);assert.ok(candidates[0].revision);assert.equal('email' in candidates[0],false);
+ assert.equal(candidates[0].id,2);assert.ok(candidates[0].revision);assert.equal(candidates[0].email,null);assert.equal('employees' in candidates[0],false);assert.equal('bankAccounts' in candidates[0],false);
  await assert.rejects(connectPartnerCompany(db,1,11,101),/CONFIRMATION_REQUIRED/);await connectPartnerCompany(db,1,11,101,{targetOrgId:2,revision:candidates[0].revision});assert.deepEqual(links,[{orgId:1,entityId:11,targetOrgId:2,createdByEmployeeId:101,matchMethod:'SELECTED'}]);
  await connectPartnerCompany(db,1,11,101);assert.equal(links.length,1);
 });
@@ -85,7 +85,7 @@ test('incoming connection exposes counterpart public identity without its local 
 });
 test('SQL enforces real companies, own vendor and active company actor; connection cannot be repointed or deleted',async()=>{
  const db=new PGlite();try{
- await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,"businessNumber" TEXT,address TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,code TEXT,country TEXT DEFAULT 'VN');CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
+ await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,"businessNumber" TEXT,address TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,code TEXT,country TEXT DEFAULT 'VN',industry TEXT,representative TEXT,phone TEXT,email TEXT);CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
  INSERT INTO "Organization"(id,"ownerOrgId",type) VALUES(1,NULL,'MANUFACTURER'),(2,NULL,'SERVICE'),(3,NULL,'MANUFACTURER'),(11,1,'LOGISTICS_PROVIDER'),(12,3,'LOGISTICS_PROVIDER');INSERT INTO "Employee" VALUES(101,1,'ACTIVE','ADMIN'),(102,2,'ACTIVE','ADMIN');`);
  await db.exec(readFileSync('backend/prisma/migrations/20261101230000_company_partner_links/migration.sql','utf8'));
  await db.exec(readFileSync('backend/prisma/migrations/20261101231000_company_links_self_owned_tenants/migration.sql','utf8'));

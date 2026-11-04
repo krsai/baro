@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,Chip,Dialog,DialogTitle,DialogContent,DialogActions,Paper,Stack,Typography} from '@mui/material';
+import {Alert,Box,Button,Chip,Dialog,DialogTitle,DialogContent,DialogActions,Paper,Stack,Typography} from '@mui/material';
+import {getStaticOptionOptions} from '../constants/staticOptionRegistry';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 export const COMPANY_CONNECTION_TEXT={
@@ -12,9 +13,22 @@ const CONFIRM={
  en:{title:'Is this the same company?',help:'An existing company has this business or tax number. Check its name, country, number and address.',same:'Same company · Connect',different:'Different company · Register separately',cancel:'Close',find:'Check existing company',selected:'Will connect to the existing company',separate:'Registering as a separate company.'},
  vi:{title:'Đây có phải cùng một công ty?',help:'Có công ty đã đăng ký số kinh doanh hoặc mã số thuế này. Hãy kiểm tra tên, quốc gia, số và địa chỉ.',same:'Cùng công ty · Kết nối',different:'Khác công ty · Đăng ký riêng',cancel:'Đóng',find:'Kiểm tra công ty đã có',selected:'Sẽ kết nối với công ty đã có',separate:'Đăng ký thành công ty riêng.'},
 };
+const PROFILE_LABELS={
+ ko:{name:'상호',industry:'업종',representative:'대표명',contact:'연락처',country:'국가',address:'주소',number:'사업자·세금 번호',same:'같은 업체',different:'다른 업체'},
+ en:{name:'Company name',industry:'Industry',representative:'Representative',contact:'Contact',country:'Country',address:'Address',number:'Business / tax number',same:'Same company',different:'Different company'},
+ vi:{name:'Tên công ty',industry:'Ngành nghề',representative:'Người đại diện',contact:'Liên hệ',country:'Quốc gia',address:'Địa chỉ',number:'Mã số doanh nghiệp / thuế',same:'Cùng công ty',different:'Khác công ty'},
+};
 export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId}){
  const text=COMPANY_CONNECTION_TEXT[languageCode]||COMPANY_CONNECTION_TEXT.en;
  const confirm=CONFIRM[languageCode]||CONFIRM.en;
+ const labels=PROFILE_LABELS[languageCode]||PROFILE_LABELS.en;
+ const profileRows=row=>[
+  ['name',[...new Set([languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.name,row.name].filter(Boolean))].join(' / ')],
+  ['industry',row.industryLabels?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.industryLabels?.nameEn||row.industry],
+  ['representative',row.representative],['contact',[row.phone,row.email].filter(Boolean).join(' · ')],
+  ['country',getStaticOptionOptions('country',languageCode).find(option=>option.value===row.country)?.label||row.country],
+  ['address',row.address],['number',row.businessNumber],
+ ];
  const [options,setOptions]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false),[checked,setChecked]=useState(false),[linked,setLinked]=useState(null);
  const [review,setReview]=useState(false),[selected,setSelected]=useState(null);
  const requestKey=`${orgId}:${businessNumber}:${country}`,current=useRef(requestKey);current.current=requestKey;
@@ -25,7 +39,17 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const accept=row=>{setSelected(row);setReview(false);onChange({...('identityId'in row?{identityId:row.identityId}:'sourceEntityId'in row?{sourceEntityId:row.sourceEntityId}:{targetOrgId:row.id}),revision:row.revision},row);};
  const separate=()=>{setSelected(null);setReview(false);onChange({separate:true,businessNumber:String(businessNumber||'').toUpperCase().replace(/[^A-Z0-9]/g,''),country},null);};
  return <Stack spacing={1}>{linked?<Chip label={`${text.connected}: ${linked.name} (${linked.code})`}/>:<><Button onClick={find} disabled={disabled||loading||(!businessNumber&&String(name||'').trim().length<3)}>{confirm.find}</Button>{selected&&<Chip label={`${confirm.selected}: ${selected.name} (${selected.code})`}/>}{value?.separate&&<Typography variant="caption">{confirm.separate}</Typography>}{checked&&!options.length&&<Typography variant="caption">{text.none}</Typography>}</>}{error&&<Alert severity="error">{error}</Alert>}
-  <Dialog open={review&&!disabled} onClose={()=>setReview(false)} fullWidth maxWidth="sm"><DialogTitle sx={{pb:1}}>{confirm.title}</DialogTitle><DialogContent><Stack spacing={2}><Typography>{confirm.help}</Typography>{options.map(row=><Paper variant="outlined" key={`${row.identityId?'identity':'source'}:${row.id}`} sx={{p:2.5,borderRadius:2,bgcolor:"grey.50"}}><Stack spacing={.5}><Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}><Typography variant="h6" sx={{overflowWrap:"anywhere"}}>{row.name}</Typography><Chip size="small" label={row.code}/></Stack>{[...new Set([row.nameKo,row.nameVi].filter(n=>n&&n!==row.name))].map(n=><Typography key={n} color="text.secondary">{n}</Typography>)}<Typography>{row.country||'—'} · {row.businessNumber||'—'}</Typography><Typography>{row.address||'—'}</Typography><Button variant="contained" fullWidth sx={{mt:2}} onClick={()=>accept(row)}>{confirm.same}</Button></Stack></Paper>)}</Stack></DialogContent><DialogActions><Button onClick={()=>setReview(false)}>{confirm.cancel}</Button><Button onClick={separate}>{confirm.different}</Button></DialogActions></Dialog>
+  <Dialog open={review&&!disabled} onClose={()=>setReview(false)} fullWidth maxWidth="sm" aria-labelledby="company-review-title">
+   <DialogTitle id="company-review-title" sx={{px:3,py:2.5}}>{confirm.title}</DialogTitle>
+   <DialogContent sx={{px:{xs:2,sm:3},pb:0}}><Stack spacing={2}>{options.map(row=><Paper variant="outlined" key={`${row.identityId?'identity':'source'}:${row.id}`} sx={{p:{xs:2,sm:2.5},borderRadius:2}}>
+    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} sx={{mb:2}}><Typography fontWeight={700} sx={{overflowWrap:'anywhere'}}>{row.name}</Typography><Chip size="small" label={row.code}/></Stack>
+    <Box component="dl" sx={{m:0,display:'grid',gridTemplateColumns:{xs:'88px minmax(0,1fr)',sm:'112px minmax(0,1fr)'},columnGap:2,rowGap:1.5}}>
+     {profileRows(row).map(([key,value])=><React.Fragment key={key}><Typography component="dt" variant="body2" color="text.secondary">{labels[key]}</Typography><Typography component="dd" variant="body2" sx={{m:0,overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{value||'—'}</Typography></React.Fragment>)}
+    </Box>
+    <Box sx={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:1.5,mt:3}}><Button variant="contained" onClick={()=>accept(row)} sx={{height:'100%'}}>{labels.same}</Button><Button variant="outlined" onClick={separate} sx={{height:'100%'}}>{labels.different}</Button></Box>
+   </Paper>)}</Stack></DialogContent>
+   <DialogActions sx={{px:3,py:2}}><Button onClick={()=>setReview(false)}>{confirm.cancel}</Button></DialogActions>
+  </Dialog>
  </Stack>;
 }
 export default function CompanyConnections({orgId,languageCode='ko'}){

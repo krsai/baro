@@ -52,7 +52,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
   return (
     <Stack spacing={2} >
       <CompanyConnectionField orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
-      <PartnerProfileFields languageCode={languageCode} disabled={savingCustomer}
+      <PartnerProfileFields hideGuidance languageCode={languageCode} disabled={savingCustomer}
         value={{...customerFormData,contactName:customerFormData.manager,contactPhone:customerFormData.phoneNumber}}
         onChange={(key,value)=>{
           const name={contactName:'manager',contactPhone:'phoneNumber'}[key]||key;
@@ -63,7 +63,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
       <EntityDetailSection title={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).role}>
         <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode} initialRoleCode={!customerFormData.id?'CUSTOMER':undefined}/>
       </EntityDetailSection>
-      <EntityBankAccounts entityId={customerFormData.entityId} languageCode={languageCode}/>
+      <EntityBankAccounts hideGuidance entityId={customerFormData.entityId} languageCode={languageCode}/>
       {isBrand && <EntityDetailSection title={text.order}>
         <TextField {...common} select label={text.sizeSet} name="defaultSizeSetCode" value={customerFormData.defaultSizeSetCode} onChange={onBasicFieldChange} sx={{ maxWidth: 480 }}>
           {sizeSetOptions.map((option) => <MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}

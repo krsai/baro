@@ -1,21 +1,26 @@
 import {createHttpError} from '../utils/http';
 import {editRevision} from '../utils/editRevision';
 export const identityFields={id:true,name:true,nameKo:true,nameVi:true,code:true,country:true,businessNumber:true,address:true};
+export const publicCompanyFields={...identityFields,industry:true,representative:true,phone:true,email:true};
 export const numberKey=(value:any)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export const publicIdentityRevision=(row:any)=>editRevision(Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])));
-export const identityDto=(row:any,common=false)=>({...Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])),...(common?{identityId:row.id}:{sourceEntityId:row.id}),revision:publicIdentityRevision(row)});
+export const identityDto=(row:any,common=false)=>({...Object.fromEntries([...Object.keys(publicCompanyFields),'industryLabels'].map(key=>[key,row[key]??null])),...(common?{identityId:row.id}:{sourceEntityId:row.id}),revision:publicIdentityRevision(row)});
+export async function publicCompanyDetails(db:any,row:any){
+ const industryLabels=row.industry?await db.partnerRole.findUnique({where:{code:row.industry},select:{nameKo:true,nameEn:true,nameVi:true}}):null;
+ return {...row,industryLabels};
+}
 // Read public names/address from the owning profile without rewriting local rows or snapshots.
 export async function currentIdentity(db:any,row:any){
  if(!row?.anchorEntityId)return row;
- const anchor=await db.organization.findFirst({where:{id:row.anchorEntityId,isActive:true},select:identityFields});
- return anchor?{...row,name:anchor.name,nameKo:anchor.nameKo,nameVi:anchor.nameVi,address:anchor.address}:row;
+ const anchor=await db.organization.findFirst({where:{id:row.anchorEntityId,isActive:true},select:publicCompanyFields});
+ return anchor?publicCompanyDetails(db,{...row,...Object.fromEntries(['name','nameKo','nameVi','address','industry','representative','phone','email'].map(key=>[key,anchor[key]??null]))}):row;
 }
 export async function identityCandidates(db:any,orgId:number,input:any){
  const number=numberKey(input.businessNumber),country=String(input.country||'').trim();
  if(number.length<3||number.length>100||!country||country.length>10)throw createHttpError(400,'COMPANY_LOOKUP_COUNTRY_NUMBER_REQUIRED');
  const common=await db.companyIdentity.findMany({where:{country,businessNumber:number},take:21,orderBy:{id:'asc'}});
- const sources=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address FROM "Organization" o WHERE id<>$1 AND "isActive" AND "partyKind" IS DISTINCT FROM 'INDIVIDUAL' AND code IS NOT NULL AND country=$3 AND regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g')=$2 AND NOT EXISTS(SELECT 1 FROM "CompanyIdentity" c WHERE (c."anchorEntityId"=o.id OR c.code=o.code)) AND NOT EXISTS(SELECT 1 FROM "CompanyIdentityLink" l WHERE l."entityId"=o.id) ORDER BY id LIMIT 21`,orgId,number,country);
- return [...(await Promise.all(common.map((r:any)=>currentIdentity(db,r)))).map((r:any)=>identityDto(r,true)),...sources.map((r:any)=>identityDto(r))].slice(0,21);
+ const sources=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address,industry,representative,phone,email FROM "Organization" o WHERE id<>$1 AND "isActive" AND "partyKind" IS DISTINCT FROM 'INDIVIDUAL' AND code IS NOT NULL AND country=$3 AND regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g')=$2 AND NOT EXISTS(SELECT 1 FROM "CompanyIdentity" c WHERE (c."anchorEntityId"=o.id OR c.code=o.code)) AND NOT EXISTS(SELECT 1 FROM "CompanyIdentityLink" l WHERE l."entityId"=o.id) ORDER BY id LIMIT 21`,orgId,number,country);
+ return [...(await Promise.all(common.map((r:any)=>currentIdentity(db,r)))).map((r:any)=>identityDto(r,true)),...(await Promise.all(sources.map((r:any)=>publicCompanyDetails(db,r)))).map((r:any)=>identityDto(r))].slice(0,21);
 }
 export async function resolveIdentityChoice(db:any,orgId:number,entityId:number|undefined,requested:any,profile:any){
  const existing=entityId?await db.companyIdentityLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{identity:true}}):null;
@@ -47,7 +52,8 @@ export async function saveIdentityChoice(tx:any,orgId:number,entityId:number,act
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',choice.sourceEntityId);
   const current=await tx.organization.findFirst({where:{id:choice.sourceEntityId,isActive:true,OR:[{partyKind:null},{partyKind:'CORPORATE'}]},select:identityFields});
   if(!current||publicIdentityRevision(current)!==choice.revision)throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
-  const {id,sourceEntityId,revision,...profile}=choice;
+ const {sourceEntityId}=choice;
+ const profile=Object.fromEntries(Object.keys(identityFields).filter(key=>key!=='id').map(key=>[key,choice[key]??null]));
   const canonical=await tx.companyIdentity.findUnique({where:{anchorEntityId:sourceEntityId}})||await tx.companyIdentity.create({data:{anchorEntityId:sourceEntityId,...profile,businessNumber:numberKey(profile.businessNumber)}});
   if(canonical.code!==choice.code||canonical.country!==choice.country||canonical.businessNumber!==numberKey(choice.businessNumber))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
   identityId=canonical.id;

@@ -23,7 +23,7 @@ try{
   await page.route('**/organizations/2',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});const body=r.request().postDataJSON();writes.push(body);return r.fulfill({headers,json:{id:2,...body}});});
   await page.route('**/employees*',r=>r.fulfill({headers,json:[]}));
   await page.route('**/entities/*/bank-accounts*',r=>r.fulfill({headers,json:{accounts:[],currencies:[{id:1,code:'VND'}]}}));
-  await page.route(/\/company-connections(?:\/candidates)?(?:\?|$)/,r=>r.fulfill({headers,json:r.request().url().includes('/candidates')?[{id:2,sourceEntityId:2,name:'DEX LOGIS',code:'DEXLOG',country:'VN',businessNumber:'0107995238',address:'Hanoi public address',revision:'reviewed-target'}]:[{company:{id:1,name:'BARO GARMENT',code:'BARO'},entityId:null,direction:'INCOMING'}]}));
+  await page.route(/\/company-connections(?:\/candidates)?(?:\?|$)/,r=>r.fulfill({headers,json:r.request().url().includes('/candidates')?[{id:2,sourceEntityId:2,name:'DEX LOGIS',code:'DEXLOG',country:'VN',businessNumber:'0107995238',address:'Hanoi public address',industry:'LOGISTICS_PROVIDER',industryLabels:{nameKo:'Logistics KO',nameEn:'Logistics',nameVi:'Logistics VI'},representative:'Public Representative',phone:'+84 123456789',email:'public@example.com',revision:'reviewed-target'}]:[{company:{id:1,name:'BARO GARMENT',code:'BARO'},entityId:null,direction:'INCOMING'}]}));
   await page.goto(`http://127.0.0.1:${port}/company-connections-acceptance.html?lang=${lang}&screen=organization`);
   await page.waitForFunction(()=>!document.querySelector('input[name="industry"]')?.closest('.MuiFormControl-root')?.querySelector('.Mui-disabled'));
   const industry=page.locator('input[name="industry"]').locator('..').getByRole('combobox');await industry.click({timeout:10000}).catch(async e=>{console.log(JSON.stringify({errors,body:(await page.locator('body').innerText()).slice(0,2400)}));throw e;});
@@ -32,7 +32,12 @@ try{
   await page.getByRole('button',{name:/^(저장|Save|Lưu)$/}).click();await page.waitForFunction(()=>document.querySelector('input[name="industry"]')?.value==='CUSTOM_ROLE');
   assert.equal(writes[0].industry,'CUSTOM_ROLE');assert.equal('type' in writes[0],false);assert.equal('subscription' in writes[0],false);
   await page.goto(`http://127.0.0.1:${port}/company-connections-acceptance.html?lang=${lang}&screen=field`);const text=await page.evaluate(()=>window.copy);
-  const dialog=page.getByRole('dialog');await dialog.waitFor();await dialog.getByText('Hanoi public address',{exact:true}).waitFor();await dialog.getByText('VN · 0107995238',{exact:true}).waitFor();
+  const dialog=page.getByRole('dialog');await dialog.waitFor();await dialog.getByText('Hanoi public address',{exact:true}).waitFor();await dialog.getByText('0107995238',{exact:true}).waitFor();
+  await dialog.getByText('Public Representative',{exact:true}).waitFor();await dialog.getByText('+84 123456789 · public@example.com',{exact:true}).waitFor();
+  assert.equal(await dialog.locator('dt').count(),7);
+  const firstBox=await dialog.getByRole('button').nth(0).boundingBox(),secondBox=await dialog.getByRole('button').nth(1).boundingBox();
+  assert.ok(Math.abs(firstBox.y-secondBox.y)<1);assert.ok(Math.abs(firstBox.width-secondBox.width)<1);
+  const columns=await dialog.locator('dd').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().x));assert.ok(columns.every(x=>Math.abs(x-columns[0])<1));
   const same=dialog.getByRole('button').nth(0);await same.click();
   assert.deepEqual(await page.evaluate(()=>window.selectedConnection),{sourceEntityId:2,revision:'reviewed-target'});
   await page.goto(`http://127.0.0.1:${port}/company-connections-acceptance.html?lang=${lang}&screen=customer`);
@@ -41,11 +46,11 @@ try{
   await page.waitForTimeout(800);assert.equal(await dialog.count(),0);
   assert.deepEqual((await page.evaluate(()=>window.customerPayload.companyConnection)),{sourceEntityId:2,revision:'reviewed-target'});
   assert.equal(await page.locator('input[name="name"]').inputValue(),'DEX LOGIS');assert.equal(await page.locator('textarea[name="address"]').first().inputValue(),'Hanoi public address');
-  assert.equal(await page.locator('input[name="defaultSizeSetCode"]').count(),0);
+  assert.equal(await page.locator('input[name="defaultSizeSetCode"]').count(),0);assert.equal(await page.locator('.MuiFormHelperText-root').count(),0);
   const status=page.locator('.MuiChip-root').filter({hasText:'DEX LOGIS'}).first(),name=page.locator('input[name="name"]');assert.ok((await status.boundingBox()).y<(await name.boundingBox()).y);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   await page.goto(`http://127.0.0.1:${port}/company-connections-acceptance.html?lang=${lang}&screen=field`);await dialog.waitFor();
-  await page.reload();await dialog.waitFor();await dialog.getByRole('button').last().click();
+  await page.reload();await dialog.waitFor();await dialog.getByRole('button').nth(1).click();
   assert.deepEqual(await page.evaluate(()=>window.selectedConnection),{separate:true,businessNumber:'0107995238',country:'VN'});
   await page.waitForTimeout(800);assert.equal(await dialog.count(),0);
   await page.goto(`http://127.0.0.1:${port}/company-connections-acceptance.html?lang=${lang}&screen=incoming`);await page.getByText(`BARO GARMENT (BARO) · ${text.incoming}`,{exact:true}).waitFor();
