@@ -62,8 +62,9 @@ export async function listExpenseDeletions(db:any,orgId:number,actorId:number){
  const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},include:personInclude});
  if(!actor)fail(403,'ACTIVE_EMPLOYEE_REQUIRED');
  const live=await db.$queryRawUnsafe(`SELECT d.id FROM "ExpenseDeletionRequest" d WHERE d."orgId"=$1 AND d.status='PENDING' AND baro_expense_deletion_allowed(d."requestId",d."orgId",d.version)`,orgId);
+ const admins=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'ADMIN'},include:personInclude});
  const rows=await db.expenseDeletionRequest.findMany({where:{id:{in:live.map((r:any)=>r.id)},orgId,status:'PENDING',request:{deletedAt:null}},include:{request:{select:{version:true,managementNumber:true}},requestedBy:{select:{name:true}}},orderBy:{createdAt:'asc'}});
- return rows.filter((row:any)=>row.version===row.request.version&&(row.requestedByEmployeeId===actorId||canApproveExpenseDeletion(actor,row))).map((row:any)=>({id:row.id,requestId:row.requestId,kind:'EXPENSE_DELETION',managementNumber:row.request.managementNumber||`EXP-${row.requestId}`,requestDate:row.createdAt.toISOString().slice(0,10),drafter:row.requestedBy.name,status:'REQUESTED',reason:row.reason,canDecide:!!canApproveExpenseDeletion(actor,row)}));
+ return rows.filter((row:any)=>row.version===row.request.version&&(row.requestedByEmployeeId===actorId||canApproveExpenseDeletion(actor,row))).map((row:any)=>({id:row.id,requestId:row.requestId,kind:'EXPENSE_DELETION',managementNumber:row.request.managementNumber||`EXP-${row.requestId}`,requestDate:row.createdAt.toISOString().slice(0,10),drafter:row.requestedBy.name,status:'REQUESTED',reason:row.reason,canDecide:!!canApproveExpenseDeletion(actor,row),blockedReason:actor.id===row.requestedByEmployeeId?'SELF_REQUEST':'HIGHER_ADMIN_REQUIRED',eligibleApprovers:admins.filter((person:any)=>canApproveExpenseDeletion(person,row)).map((person:any)=>({id:person.id,name:person.name}))}));
 }
 export async function attachExpenseDeletionAvailability(db:any,orgId:number,requests:any[],actor:any){
  const itemIds=requests.flatMap(row=>row.items.map((item:any)=>item.id));

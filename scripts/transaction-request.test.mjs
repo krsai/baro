@@ -33,6 +33,9 @@ test('evidence reference is mandatory regardless of code settings and blank inpu
   const db=store();await assert.rejects(register(db,1,20,{...input(),details:reference===undefined?{}:{reference}}),/REQUIRED_TRANSACTION_FIELD:reference/);assert.equal(db.writes.length,0);
  }
 });
+test('deposit-only accounting codes cannot create expense requests',async()=>{
+ const db=store();db.code.base.cashDirection='IN';await assert.rejects(register(db,1,20,input()),/ACCOUNTING_CODE_DIRECTION_MISMATCH/);assert.equal(db.writes.length,0);
+});
 
 test('style-scope sewing selects zero or multiple processes without recording production or multiplying its cost',async()=>{
  for(const ids of [[],[50,51]]){

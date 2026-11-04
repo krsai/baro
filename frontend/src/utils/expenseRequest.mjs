@@ -1,3 +1,4 @@
+import {permitsAccountingDirection} from '../constants/accountingDirection.js';
 import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 
 export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
@@ -33,7 +34,7 @@ export function expenseDocumentTotals(lines, currency) {
 }
 export function validExpenseLine(line, code, currency) {
   code = expenseCodeForLine(line,code);
-  if (!code || !expenseLineAmounts(line, currency)) return false;
+  if (!code || !permitsAccountingDirection(code,'OUT') || !expenseLineAmounts(line, currency)) return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
   if(line.styleProcessIds?.length&&(!line.workOrderId||!line.styleId||line.styleProcessIds.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(line.styleProcessIds).size!==line.styleProcessIds.length))return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;

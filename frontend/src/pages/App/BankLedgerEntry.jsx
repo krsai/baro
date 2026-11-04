@@ -1,3 +1,4 @@
+import {permitsAccountingDirection} from '../../constants/accountingDirection';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import React,{useEffect,useRef,useState} from 'react';
@@ -41,6 +42,8 @@ function Entry({orgId,entryId}){
  const submit=async event=>{event.preventDefault();if(busy.current)return;setError('');setErrorRow(null);
   const invalid=rows.findIndex(row=>!row.amount.trim()||!row.accountingCodeId||(row.entryKind==='BANK'||row.entryKind==='WRITEOFF')&&!row.purpose.trim()||row.entryKind==='BANK'&&(!accounts.some(a=>a.id===row.accountId)||row.evidenceType==='FILE'&&(!row.evidenceNumber.trim()||!row.counterparty)||['INVOICE','EXPENSE'].includes(row.evidenceType)&&!row.document||row.evidenceType==='EXPENSE'&&!row.expenseItems.length));
   if(invalid>=0){setErrorRow(rows[invalid].clientKey);setExpanded(current=>({...current,[rows[invalid].clientKey]:true}));setError(`${w.row} ${invalid+1}: ${w.rowError}`);return;}
+  const wrongDirection=rows.findIndex(row=>{const code=codes.find(code=>code.id===row.accountingCodeId);return code&&!permitsAccountingDirection(code,row.entryKind==='BANK'?row.direction:'OUT');});
+  if(wrongDirection>=0){setErrorRow(rows[wrongDirection].clientKey);setError(w.row+' '+(wrongDirection+1)+': '+t.errors.ACCOUNTING_CODE_DIRECTION_MISMATCH);document.querySelector('[data-ledger-entry-row="'+wrongDirection+'"]')?.scrollIntoView({block:'center',behavior:'smooth'});return;}
   busy.current=true;setSaving(true);try{
    const body={schemaVersion:2,accountingCodeVersion:1,clientKey:batchKey.current,rows:payload()};
    if(entryId){const result=await changeRef.current.prepare({menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entryId,revision:sourceRevision.current,payload:body});if(!result)return;}else await requestJSON('/bank-ledger/entries/batch'+buildQueryString({orgId}),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});

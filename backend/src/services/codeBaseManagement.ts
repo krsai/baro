@@ -30,6 +30,8 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   if (id) {
     await tx.$queryRawUnsafe('SELECT id FROM "TransactionCodeBase" WHERE id=$1 FOR UPDATE', id);
   }
+  data.cashDirection=body.cashDirection??previous?.cashDirection??'BOTH';
+  if(!['IN','OUT','BOTH'].includes(data.cashDirection))throw createHttpError(400,'INVALID_CASH_DIRECTION');
   data.entryMode=body.entryMode??previous?.entryMode??'GENERAL';
   if(!['PROCESS','LOGISTICS','GENERAL'].includes(data.entryMode)&&data.entryMode!==previous?.entryMode)throw createHttpError(400,'INVALID_ENTRY_MODE');
   if (previous?.entryMode && previous.entryMode !== data.entryMode && (await getCodeBaseUsage(tx,[id!])).has(id!)) throw createHttpError(409,'USED_CODE_ENTRY_MODE_IMMUTABLE');

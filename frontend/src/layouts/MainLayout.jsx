@@ -1,3 +1,4 @@
+import usePendingApprovals from '../hooks/usePendingApprovals';
 import { PageNamingProvider } from '../context/PageNamingContext';
 import { applyPageMenuNames, resolvePageNaming } from '../utils/pageNaming.mjs';
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
@@ -459,6 +460,7 @@ const MainLayout = () => {
     (options) => resolveFirstAccessiblePath(authState, options),
     [authState]
   );
+  const pendingApprovalCount=usePendingApprovals(activeOrgId,activeProfile?.entryType==='ORG'&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&hasPathAccess('/dashboard'));
   const canViewEmployeeMenu = hasPathAccess('/employee');
   const canViewCustomerMenu = activeProfile?.orgType!=='SERVICE' && hasPathAccess('/customer');
   const canViewSystemOnboardingMenu = hasPathAccess('/system-onboarding');
@@ -561,6 +563,7 @@ const MainLayout = () => {
         label: getUiMessage('menu.dashboard', 'Dashboard', languageCode),
         icon: <DashboardIcon />,
         path: '/dashboard',
+        notificationActive: pendingApprovalCount>0,
       },
       {
         label: getUiMessage('menu.operations', '\uC6B4\uC601 \uAD00\uB9AC', languageCode),
@@ -867,6 +870,7 @@ const MainLayout = () => {
     operationsOpen,
     orderOpen,
     pendingEmployeeCount,
+    pendingApprovalCount,
     pendingOnboardingCount,
     missingSalesPriceCustomerCount,
     processMasterOpen,
@@ -1641,7 +1645,7 @@ const MainLayout = () => {
                 >
                   <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
                     {item.label}
-                    {hasNotification && <NotificationIndicator />}
+                    {hasNotification && <NotificationIndicator label={item.path==='/dashboard'?`${languageCode==='ko'?'\uBBF8\uCC98\uB9AC \uACB0\uC7AC':languageCode==='vi'?'Ch\u1EDD duy\u1EC7t':'Pending approvals'}: ${pendingApprovalCount}`:undefined}/>}
                   </Box>
                 </Typography>
               </Box>
@@ -1676,7 +1680,7 @@ const MainLayout = () => {
               primary={(
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <span>{item.label}</span>
-                  {item.notificationActive && <NotificationIndicator />}
+                  {item.notificationActive && <NotificationIndicator label={item.path==='/dashboard'?`${languageCode==='ko'?'\uBBF8\uCC98\uB9AC \uACB0\uC7AC':languageCode==='vi'?'Ch\u1EDD duy\u1EC7t':'Pending approvals'}: ${pendingApprovalCount}`:undefined}/>}
                 </Box>
               )}
             />
@@ -1720,7 +1724,7 @@ const MainLayout = () => {
                 primary={(
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <span>{menu.label}</span>
-                    {hasNotification && <NotificationIndicator />}
+                    {hasNotification && <NotificationIndicator label={item.path==='/dashboard'?`${languageCode==='ko'?'\uBBF8\uCC98\uB9AC \uACB0\uC7AC':languageCode==='vi'?'Ch\u1EDD duy\u1EC7t':'Pending approvals'}: ${pendingApprovalCount}`:undefined}/>}
                   </Box>
                 )}
               />

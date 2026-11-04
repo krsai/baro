@@ -6,7 +6,7 @@ import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approva
 const require=createRequire(import.meta.url);
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
-const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
+const {requestChangeApproval,decideChangeApproval,listChangeApprovals}=require('../backend/dist/services/changeApprovals');
 const {approvalActionSettings,registerApprovalActionRoutes}=require('../backend/dist/services/approvalActions');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {loadExpenseEditorSource,expenseEditorRevision}=require('../backend/dist/services/expenseRequestEditor');
@@ -41,6 +41,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
   await t.test('deletion only applies on the designated approval; retries retain one request and source',async()=>{
    const input={menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:row.id,payload:{},reason:'Duplicate receipt',clientKey:randomUUID()};
    const request=await requestChangeApproval(db,org,actor,input);assert.equal((await requestChangeApproval(db,org,actor,input)).id,request.id);
+   assert.equal((await listChangeApprovals(db,org,actor)).some(item=>item.id===request.id),true);assert.equal((await listChangeApprovals(db,org,approver)).some(item=>item.id===request.id),true);assert.deepEqual(await listChangeApprovals(db,org,s.people.admin.id),[]);
    assert.equal((await db.bankLedgerEntry.findUnique({where:{id:row.id}})).voidedAt,null);
    await assert.rejects(requestChangeApproval(db,org,actor,{...input,clientKey:randomUUID()}),/CHANGE_ALREADY_PENDING/);
    await assert.rejects(decideChangeApproval(db,org,actor,request.id,{decision:'APPROVED'}),/CHANGE_APPROVER_REQUIRED/);

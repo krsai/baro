@@ -5,6 +5,7 @@ const NotificationIndicator = ({ label = 'attention', sx = {} }) => (
   <Box
     component="span"
     aria-label={label}
+    title={label}
     sx={{
       display: 'inline-block',
       flex: '0 0 auto',

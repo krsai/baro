@@ -2820,6 +2820,7 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  cashDirection String @default("BOTH")
   industryLinks AccountingCodeIndustry[]
   industryRevision Int @default(1)
   linkPolicies ExpenseCodeLinkPolicy[]

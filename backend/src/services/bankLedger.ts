@@ -96,7 +96,7 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
       if((previous.revisesEntryId||null)!==(settlement?.revisesEntryId||null)||(previous.createdBy&&previous.createdBy!==actor)||(previous.settlementMode||'LEGACY')!==(settlement?'ROWS':'LEGACY')||ledgerScale4(previous.writeOffAmount||'0')!==ledgerScale4(loss)||(previous.evidenceType||'FILE')!==type||ledgerScale4(previous.bankFee||'0')!==ledgerScale4(fee)||JSON.stringify(requested)!==JSON.stringify(saved)||(['FILE','INVOICE'].includes(type)&&previous.evidenceNumber!==String(body.evidenceNumber||'').trim()))return fail('LEDGER_RETRY_CONFLICT',409);
       return previous;
     }
-    if(codeId!==null){const selected=await ledgerAccountingCode(tx,orgId,codeId);if(generatedPurpose)data.purpose=selected.description;}
+    if(codeId!==null){const selected=await ledgerAccountingCode(tx,orgId,codeId,body.direction);if(generatedPurpose)data.purpose=selected.description;}
     const evidence=await resolveEvidence(tx,orgId,account,{...body,amount:data.amount,bankFee:settlement?.fee||body.bankFee,writeOffAmount:settlement?.writeOff||'0'});
     const {allocations,...fields}=evidence;
     const party=await resolveLedgerCounterparty(tx,orgId,account,body,allocations);
@@ -189,7 +189,7 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
     for(const child of children){
      if(!['INVOICE','EXPENSE'].includes(parent.evidenceType)||child.entryKind==='WRITEOFF'&&parent.evidenceType!=='INVOICE')return fail('LEDGER_INVALID_SETTLEMENT');
      child.amount=validateLedgerMoney(child.amount,account.currencyCode);
-     const selected=child.accountingCodeId?await ledgerAccountingCode(tx,orgId,child.accountingCodeId):null;
+     const selected=child.accountingCodeId?await ledgerAccountingCode(tx,orgId,child.accountingCodeId,'OUT'):null;
      child.purpose=text(child.purpose?.trim()||(child.entryKind==='FEE'?selected?.description:''),1000);
      if(child.entryKind==='FEE')fee+=ledgerScale4(child.amount);else loss+=ledgerScale4(child.amount);
     }

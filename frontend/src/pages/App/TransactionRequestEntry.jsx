@@ -1,3 +1,4 @@
+import {accountingDirectionText} from '../../constants/accountingDirection';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
 import ExpenseEditHistory from '../../components/ExpenseEditHistory';
 import {changeApprovalText} from '../../constants/changeApprovals';
@@ -199,6 +200,7 @@ export default function TransactionRequestEntry() {
       if ([400,403,404,409,422].includes(failure.status)) {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
+        if((line?.[2]||code)==='ACCOUNTING_CODE_DIRECTION_MISMATCH'){setError((line?labels.row+' '+line[1]+': ':'')+(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch);return;}
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
         const requiredDetail=line?.[2]?.match(/^REQUIRED_TRANSACTION_FIELD:(.+)$/);
         if(field||requiredDetail){

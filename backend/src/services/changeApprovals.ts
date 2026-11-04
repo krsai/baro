@@ -119,7 +119,7 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
  },60000);
 }
 export async function listChangeApprovals(db:any,orgId:number,actorId:number){
- const rows=await db.changeApprovalRequest.findMany({where:{orgId,status:'PENDING'},orderBy:{createdAt:'asc'},take:200});
+ const rows=await db.changeApprovalRequest.findMany({where:{orgId,status:'PENDING',OR:[{requestedByEmployeeId:actorId},{policy:{path:['resolvedStages'],array_contains:[{employeeId:actorId}]}}]},orderBy:{createdAt:'asc'},take:200});
  const decisions=rows.length?await db.changeApprovalDecision.findMany({where:{orgId,requestId:{in:rows.map((r:any)=>r.id)}},orderBy:{position:'asc'}}):[];
  const people=await db.employee.findMany({where:{orgId,id:{in:[...new Set(rows.map((r:any)=>r.requestedByEmployeeId))]}},select:{id:true,name:true}});
  return rows.filter((r:any)=>r.requestedByEmployeeId===actorId||r.policy.resolvedStages.some((s:any)=>s.employeeId===actorId)).map((r:any)=>{const accepted=decisions.filter((d:any)=>d.requestId===r.id);return {...r,requesterName:people.find((p:any)=>p.id===r.requestedByEmployeeId)?.name||'',decisions:accepted,canDecide:r.requestedByEmployeeId!==actorId&&r.policy.resolvedStages[accepted.length]?.employeeId===actorId};});
