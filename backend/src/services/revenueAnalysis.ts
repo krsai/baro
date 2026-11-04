@@ -1,9 +1,10 @@
 import {createHttpError} from '../utils/http';
 import {approvalState} from './bankEvidence';
 import {loadIssuedOrderSalesValues} from './issuedOrderSalesValue';
+import {loadReferenceExchangeRates} from './referenceExchangeRates';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
-const inputKeys=['currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode'];
+const inputKeys=['currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw'];
 export function validateProfitInputs(value:any){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!inputKeys.includes(k)))fail('INVALID_PROFIT_SCENARIO');
  const result:any={};
@@ -17,35 +18,37 @@ export function validateProfitInputs(value:any){
  }
  return result;
 }
-export async function profitCatalog(db:any,orgId:number,gates:any){
- const orders=await db.workOrder.findMany({where:{orgId},orderBy:{updatedAt:'desc'},take:501,include:{buyerOrg:{select:{name:true}},workOrderItems:{include:{style:{select:{id:true,code:true,name:true,orgId:true}}},orderBy:{sortOrder:'asc'}}}});
- const sales=await loadIssuedOrderSalesValues(db,orders.slice(0,500));
+export async function profitCatalog(db:any,orgId:number,gates:any,orderId?:number){
+ const orders=await db.workOrder.findMany({where:{orgId,...(orderId?{id:orderId}:{})},orderBy:{updatedAt:'desc'},take:501,include:{buyerOrg:{select:{name:true}},workOrderItems:{include:{style:{select:{id:true,code:true,name:true,orgId:true}}},orderBy:{sortOrder:'asc'}}}});
+ // Use the same current-price / frozen-invoice resolver as the saved orders page.
+ const sales=await (gates.loadSalesValues?gates.loadSalesValues(orders.slice(0,500),db):loadIssuedOrderSalesValues(db,orders.slice(0,500)));
  const rows:any[]=[];
  for(const order of orders.slice(0,500)){
   const groups=new Map<number,any[]>();
   for(const item of order.workOrderItems){if(item.style?.orgId!==orgId)continue;const group=groups.get(item.styleId)||[];group.push(item);groups.set(item.styleId,group);}
   for(const [styleId,items] of groups){
    const quantity=items.reduce((n:number,item:any)=>n+item.totalQuantity,0),issued=sales.get(order.id),lines=issued?.lines?.filter((line:any)=>line.styleId===styleId)||[];
-   const priceQuantity=lines.reduce((n:number,line:any)=>n+line.quantity,0),amount=lines.reduce((n:number,line:any)=>n+Number(line.amount),0);
+   const priceQuantity=lines.reduce((n:number,line:any)=>n+line.quantity,0),available=lines.length>0&&lines.every((line:any)=>line.amount!==null&&line.unitPrice!==null&&line.status==='AVAILABLE'),amount=available?lines.reduce((n:number,line:any)=>n+Number(line.amount),0):null;
    rows.push({key:`${order.id}:${styleId}`,orderId:order.id,orderNumber:order.orderNumber,styleId,styleCode:items[0].style.code,styleName:items[0].style.name,customer:order.buyerOrg?.name||'',quantity,
-    salePrice:priceQuantity===quantity&&quantity>0?amount/quantity:null,currency:priceQuantity===quantity?issued?.currencyCode:null,invoiceNumber:issued?.invoiceNumber||null});
+    salePrice:available&&priceQuantity===quantity&&quantity>0?amount/quantity:null,salesAmount:available&&priceQuantity===quantity?amount:null,currency:issued?.currencyCode||null,priceSource:issued?.source||null,invoiceNumber:issued?.invoiceNumber||null});
   }
  }
- return {rows,truncated:orders.length>500};
+ return {rows,orders:orders.slice(0,500).map((order:any)=>{const value=sales.get(order.id);return {id:order.id,orderNumber:order.orderNumber,customer:order.buyerOrg?.name||'',quantity:order.workOrderItems.reduce((sum:number,item:any)=>sum+item.totalQuantity,0),styleCount:new Set(order.workOrderItems.map((item:any)=>item.styleId).filter(Boolean)).size,salesAmount:value?.amount??null,currency:value?.currencyCode??null,priceStatus:value?.status||'MISSING_PRICE',priceSource:value?.source||null,invoiceNumber:value?.invoiceNumber||null,missingStyle:order.workOrderItems.some((item:any)=>item.totalQuantity>0&&item.style?.orgId!==orgId)};}),truncated:orders.length>500};
 }
-export async function profitSources(db:any,orgId:number,orderId:number,styleId:number,gates:any){
- const order=await db.workOrder.findFirst({where:{id:orderId,orgId},include:{workOrderItems:true}});
+export async function profitSources(db:any,orgId:number,orderId:number,styleId:number,gates:any,cache:any={}){
+ const order=cache.order||await db.workOrder.findFirst({where:{id:orderId,orgId},include:{workOrderItems:true}});cache.order=order;
  const items=order?.workOrderItems.filter((item:any)=>item.styleId===styleId)||[];
  if(!order||!items.length)fail('PROFIT_TARGET_NOT_FOUND',404);
  const version=await db.styleProcessVersion.findFirst({where:{orgId,styleId},orderBy:{versionNumber:'desc'}});
- const times=version&&gates.resolveTimes?gates.resolveTimes(version.processSnapshot,items):{ST:null,PT:null};
- const costs=await db.partnerTransactionCost.findMany({where:{orgId,OR:[{workOrderId:orderId},{referenceLinks:{some:{orgId,workOrderId:orderId}}}],AND:[{OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}]}]},include:{referenceLinks:true,partner:{select:{name:true}},unit:true,transactionCode:{select:{code:true,nameKo:true,nameEn:true,nameVi:true}},processLinks:true,expenseRequest:{select:{id:true,managementNumber:true}}},orderBy:{transactionDate:'desc'}});
- const states=new Map<number,boolean>();
+ const processSnapshot=version?.processSnapshot??(gates.loadCurrentProcesses?await gates.loadCurrentProcesses(db,orgId,styleId):null);
+ const times=processSnapshot&&gates.resolveTimes?gates.resolveTimes(processSnapshot,items):{ST:null,PT:null};
+ const costs=cache.costs||await db.partnerTransactionCost.findMany({where:{orgId,OR:[{workOrderId:orderId},{referenceLinks:{some:{orgId,workOrderId:orderId}}}],AND:[{OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}]}]},include:{referenceLinks:true,partner:{select:{name:true}},unit:true,transactionCode:{select:{code:true,nameKo:true,nameEn:true,nameVi:true}},processLinks:true,expenseRequest:{select:{id:true,managementNumber:true}}},orderBy:{transactionDate:'desc'}});cache.costs=costs;
+ const states:Map<number,boolean>=cache.states||new Map();cache.states=states;
  for(const cost of costs)if(cost.expenseRequestId&&!states.has(cost.expenseRequestId))states.set(cost.expenseRequestId,(await approvalState(db,orgId,cost.expenseRequestId)).approved);
  const rows=costs.map((cost:any)=>{
   const refs=cost.referenceLinks.length?cost.referenceLinks.map((r:any)=>[r.workOrderId,r.styleId]):[[cost.workOrderId,cost.styleId]];
   const exact=refs.length===1&&refs[0][0]===orderId&&refs[0][1]===styleId;
-  return {id:cost.id,date:cost.transactionDate,description:cost.description,code:cost.transactionCode,partnerId:cost.partnerOrgId,partner:cost.partner?.name||'',unit:cost.unit,currency:cost.currency,quantity:cost.quantity===null?null:String(cost.quantity),subtotal:cost.subtotal===null?null:String(cost.subtotal),amount:String(cost.amount),styleId:cost.styleId,processIds:[...new Set([cost.styleProcessId,...cost.processLinks.map((p:any)=>p.styleProcessId)].filter(Boolean))],reference:cost.expenseRequest?.managementNumber||'',requestId:cost.expenseRequestId,exact,approved:cost.expenseRequestId?states.get(cost.expenseRequestId):false};
+  return {id:cost.id,date:cost.transactionDate,description:cost.description,code:cost.transactionCode,partnerId:cost.partnerOrgId,partner:cost.partner?.name||'',unit:cost.unit,currency:cost.currency,quantity:cost.quantity===null?null:String(cost.quantity),subtotal:cost.subtotal===null?null:String(cost.subtotal),amount:String(cost.amount),styleId:cost.styleId,processIds:[...new Set([cost.styleProcessId,...cost.processLinks.map((p:any)=>p.styleProcessId)].filter(Boolean))],reference:cost.expenseRequest?.managementNumber||'',requestId:cost.expenseRequestId,withinOrder:refs.every((ref:any[])=>ref[0]===orderId),exact,approved:cost.expenseRequestId?states.get(cost.expenseRequestId):false};
  });
  // Groups are exact accounting code/vendor/unit/currency/style/process scopes.
  // Averages use pretax amount / quantity, never averages of row prices.
@@ -57,6 +60,12 @@ export async function profitSources(db:any,orgId:number,orderId:number,styleId:n
  }
  return {times,version:version?.versionNumber||null,costs:rows,averages:[...groups.values()].map(row=>({...row,unitPrice:row.subtotal/row.quantity}))};
 }
+export async function profitOrderReport(db:any,orgId:number,orderId:number,gates:any){
+ const catalog=await profitCatalog(db,orgId,gates,orderId),order=catalog.orders[0];if(!order)fail('PROFIT_TARGET_NOT_FOUND',404);
+ const cache:any={},styles:any[]=[];
+ for(const row of catalog.rows)styles.push({...row,sources:await profitSources(db,orgId,orderId,row.styleId,gates,cache)});
+ return {order,styles};
+}
 export function registerRevenueAnalysisRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{
   const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;
@@ -66,6 +75,8 @@ export function registerRevenueAnalysisRoutes(app:any,db:any,gates:any){
   return {orgId:ctx.organization.id,actorId};
  };
  app.get('/revenue-analysis/catalog',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await profitCatalog(db,scope.orgId,gates));});
+ app.get('/revenue-analysis/orders/:id',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const orderId=Number(req.params.id);if(!Number.isSafeInteger(orderId)||orderId<=0)fail('INVALID_PROFIT_SCENARIO');res.json(await db.$transaction((tx:any)=>profitOrderReport(tx,scope.orgId,orderId,gates),{isolationLevel:'RepeatableRead',timeout:60000}));});
+ app.get('/revenue-analysis/exchange-rates',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){try{res.json(await loadReferenceExchangeRates());}catch{res.status(503).json({error:'EXCHANGE_RATES_UNAVAILABLE'});}}});
  app.get('/revenue-analysis/sources',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const orderId=Number(req.query.orderId),styleId=Number(req.query.styleId);if(!Number.isSafeInteger(orderId)||orderId<=0||!Number.isSafeInteger(styleId)||styleId<=0)fail('INVALID_PROFIT_SCENARIO');res.json(await profitSources(db,scope.orgId,orderId,styleId,gates));});
  app.get('/revenue-analysis/scenarios',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){const stored=await db.systemSetting.findUnique({where:{key:key(scope.orgId)}});res.json(stored?.value||{revision:0,defaults:{},stylePackaging:{},scenarios:[]});}});
  app.put('/revenue-analysis/scenarios',async(req:any,res:any)=>{

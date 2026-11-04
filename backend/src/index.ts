@@ -27632,7 +27632,7 @@ registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestAc
 registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalActionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
-registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,resolveTimes:(snapshot:any,items:any[])=>{
+registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,loadSalesValues:(orders:any[],db:any)=>loadCurrentOrderValueByOrderDbId(orders,db),loadCurrentProcesses:async(db:any,orgId:number,styleId:number)=>(await loadStyleProcessMirrorMapForStyleIds([styleId],{processOrgId:orgId,db,includePredictions:false})).get(styleId)||[],resolveTimes:(snapshot:any,items:any[])=>{
  const processes=normalizeStyleProcesses(snapshot),quantity=items.reduce((sum,item)=>sum+item.totalQuantity,0);
  const quantities={total:quantity,male:items.filter(item=>item.gender==='M').reduce((sum,item)=>sum+item.totalQuantity,0),female:items.filter(item=>item.gender==='W').reduce((sum,item)=>sum+item.totalQuantity,0),unspecified:items.filter(item=>!item.gender).reduce((sum,item)=>sum+item.totalQuantity,0)};
  if(!quantity||!processes.length||findStyleProcessGenderScopeAmbiguity(processes,quantities))return {ST:null,PT:null};
