@@ -1,3 +1,4 @@
+import {readStylePackaging} from './stylePackaging';
 import {createHttpError} from '../utils/http';
 import {calculateOrderSalesValue} from '../utils/orderSalesValue';
 import {approvalState} from './bankEvidence';
@@ -24,5 +25,5 @@ export async function revenueStyleReport(db:any,orgId:number,styleId:number,quan
   const group=groups.get(cost.currency)||{currency:cost.currency,amount:0,orders:new Set<number>()};group.amount+=Number(cost.subtotal);group.orders.add(refs[0][0]);groups.set(cost.currency,group);
  }
  const estimatedPurchases=[...groups.values()].map(group=>{const quantityBasis=[...group.orders].reduce((sum:number,id:any)=>sum+(quantities.get(id)||0),0);return {currency:group.currency,unitCost:group.amount/quantityBasis,quantityBasis,orderCount:group.orders.size};});
- return {order:{id:null,orderNumber:style.code,customer:style.customerOrganization?.name||'',quantity,styleCount:1,salesAmount:sales.amount,currency:sales.currencyCode,priceSource:'CURRENT_PRICE',analysisMode:'STYLE'},styles:[{styleId,styleCode:style.code,styleName:style.name,quantity,salePrice:line?.unitPrice??null,salesAmount:line?.amount??null,currency:sales.currencyCode,analysisMode:'STYLE',sources:{times,version:version?.versionNumber||null,costs:history,averages:[],estimatedPurchases}}]};
+ return {order:{id:null,orderNumber:style.code,customer:style.customerOrganization?.name||'',quantity,styleCount:1,salesAmount:sales.amount,currency:sales.currencyCode,priceSource:'CURRENT_PRICE',analysisMode:'STYLE'},styles:[{styleId,styleCode:style.code,styleName:style.name,quantity,salePrice:line?.unitPrice??null,salesAmount:line?.amount??null,currency:sales.currencyCode,analysisMode:'STYLE',sources:{...await readStylePackaging(db,orgId,styleId),times,version:version?.versionNumber||null,costs:history,averages:[],estimatedPurchases}}]};
 }

@@ -1,5 +1,11 @@
-export const PACKAGING_KEYS=['polyUsage','boxCapacity','packWaste','polyPrice','boxPrice'];
-export const createProfitInputs=()=>({currency:'VND',quantity:'',salePrice:'',basis:'ST',stSeconds:'',ptSeconds:'',productivity:100,workers:10,targetDays:10,hoursDay:8,workdays:26,factoryWorkers:10,baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:'',productionPay:'',otherUnitCost:'',packaging:true,polyUsage:1,boxCapacity:50,packWaste:2,polyPrice:'',boxPrice:'',costMode:'estimate'});
+export const PACKAGING_KEYS=['boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice'];
+export function packagingGeometry(input){
+ const length=Number(input.boxLengthCm??60),width=Number(input.boxWidthCm??40),height=Number(input.boxHeightCm??40),piece=Number(input.packedCbmPerPiece);
+ const boxCbm=length>0&&width>0&&height>0?length*width*height/1000000:null;
+ const capacity=boxCbm!==null&&piece>0?Math.floor(Number((boxCbm/piece).toPrecision(12))):null;
+ return {boxCbm,capacity};
+}
+export const createProfitInputs=()=>({currency:'VND',quantity:'',salePrice:'',basis:'ST',stSeconds:'',ptSeconds:'',productivity:100,workers:10,targetDays:10,hoursDay:8,workdays:26,factoryWorkers:10,baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:'',productionPay:'',otherUnitCost:'',boxLengthCm:60,boxWidthCm:40,boxHeightCm:40,packedCbmPerPiece:'',packaging:true,polyUsage:1,boxCapacity:50,packWaste:2,polyPrice:'',boxPrice:'',costMode:'estimate'});
 export const trialProfitInputs=()=>({...createProfitInputs(),quantity:1000,salePrice:40000,stSeconds:600,ptSeconds:500,baseMonthly:6000000,allowanceMonthly:1000000,supportMonthly:9000000,rentMonthly:20000000,productionPay:3000,otherUnitCost:1000,polyPrice:400,boxPrice:20000});
 const number=value=>value===''||value==null||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
 export function calculateProfitScenario(input,{linkedAmount=0}={}){
@@ -21,6 +27,9 @@ export function calculateProfitScenario(input,{linkedAmount=0}={}){
  if(input.costMode==='linked'){direct=number(linkedAmount);if(direct===null)missing.push('linkedAmount');}
  else {const rate=read('otherUnitCost');direct=rate!==null&&quantity!==null?rate*quantity:null;}
  if(input.packaging){
+  const geometry=packagingGeometry(input);
+  const hasVolume=Number(input.packedCbmPerPiece)>0;
+  if(hasVolume){for(const key of ['boxLengthCm','boxWidthCm','boxHeightCm'])if(!(Number(input[key]??({boxLengthCm:60,boxWidthCm:40,boxHeightCm:40}[key]))>0))missing.push(key);input={...input,boxCapacity:geometry.capacity??''};}
   const usage=read('polyUsage'),boxCapacity=read('boxCapacity',true),waste=read('packWaste'),polyPrice=read('polyPrice'),boxPrice=read('boxPrice');
   poly=quantity!==null&&usage!==null&&waste!==null?Math.ceil(quantity*usage*(1+waste/100)):null;
   boxes=quantity!==null&&boxCapacity!==null&&waste!==null?Math.ceil(quantity/boxCapacity*(1+waste/100)):null;

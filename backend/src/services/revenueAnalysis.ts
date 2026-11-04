@@ -1,3 +1,4 @@
+import {readStylePackaging} from './stylePackaging';
 import {createHttpError} from '../utils/http';
 import {approvalState} from './bankEvidence';
 import {loadIssuedOrderSalesValues} from './issuedOrderSalesValue';
@@ -6,7 +7,7 @@ import {revenueLaborBasis} from './revenueLaborBasis';
 import {revenueStyles,revenueStyleReport} from './revenueStyleAnalysis';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
-const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
+const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
 export function validateProfitInputs(value:any){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!inputKeys.includes(k)))fail('INVALID_PROFIT_SCENARIO');
  const result:any={};
@@ -61,7 +62,7 @@ export async function profitSources(db:any,orgId:number,orderId:number,styleId:n
   const scope=JSON.stringify([row.code.code,row.partnerId,row.unit.id,row.currency,styleId,row.processIds.sort((a:number,b:number)=>a-b)]),group=groups.get(scope)||{key:scope,code:row.code,partner:row.partner,unit:row.unit,currency:row.currency,quantity:0,subtotal:0,count:0,processIds:row.processIds};
   group.quantity+=Number(row.quantity);group.subtotal+=Number(row.subtotal);group.count++;groups.set(scope,group);
  }
- return {times,version:version?.versionNumber||null,costs:rows,averages:[...groups.values()].map(row=>({...row,unitPrice:row.subtotal/row.quantity}))};
+ return {...await readStylePackaging(db,orgId,styleId),times,version:version?.versionNumber||null,costs:rows,averages:[...groups.values()].map(row=>({...row,unitPrice:row.subtotal/row.quantity}))};
 }
 export async function profitOrderReport(db:any,orgId:number,orderId:number,gates:any){
  const catalog=await profitCatalog(db,orgId,gates,orderId),order=catalog.orders[0];if(!order)fail('PROFIT_TARGET_NOT_FOUND',404);

@@ -1,4 +1,4 @@
-import {calculateProfitScenario,createProfitInputs,PACKAGING_KEYS} from './profitScenario.mjs';
+import {calculateProfitScenario,createProfitInputs,PACKAGING_KEYS,packagingGeometry} from './profitScenario.mjs';
 import {convertAccountBalances} from './accountBalanceConversion.mjs';
 export const orderCostDefaults=()=>({...createProfitInputs(),costMode:'linked',packaging:false,productionPay:0,otherUnitCost:0,usdVnd:'',usdKrw:'',laborSource:'AUTO',factoryId:''});
 export const orderStyleRecordId=(orderId,styleId)=>orderId?`order-${orderId}-style-${styleId}`:`style-${styleId}-analysis`;
@@ -22,6 +22,8 @@ export function orderStyleProfit(style,defaults,override={},pack={},rates={},lab
  const local={...override};
  if(local.currency&&local.currency!==input.currency)for(const key of ['baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','polyPrice','boxPrice'])delete local[key];
  Object.assign(input,local);
+ input.packedCbmPerPiece=override.packedCbmPerPiece??style.sources?.packedCbmPerPiece??input.packedCbmPerPiece;
+ if(Number(input.packedCbmPerPiece)>0)input.boxCapacity=packagingGeometry(input).capacity??'';
  input.costMode='linked';
  // Saved order quantities and prices are authoritative, never scenario inputs.
  input.quantity=style.quantity;input.currency=defaults.currency||'VND';

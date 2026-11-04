@@ -6,7 +6,7 @@ const dbModule=require.resolve('../backend/dist/db.js');require.cache[dbModule]=
 const {profitSources,profitCatalog,profitOrderReport,registerRevenueAnalysisRoutes,validateProfitInputs}=require('../backend/dist/services/revenueAnalysis.js');
 function harness(){
  let stored=null,writes=0;const handlers=new Map(),queries=[];
- const db={employee:{findFirst:async()=>({id:9,orgId:1,orgRole:'ADMIN'})},systemSetting:{findUnique:async()=>stored,upsert:async({create,update})=>{writes++;stored={value:stored?update.value:create.value};return stored;}},style:{findFirst:async({where})=>where.orgId===1&&where.id===3?{id:3}:null},workOrderItem:{findFirst:async({where})=>where.workOrderId===2&&where.styleId===3?{id:1}:null},$queryRawUnsafe:async(...args)=>{queries.push(args);},$transaction:async fn=>fn(db)};
+ const db={systemSetting:{findUnique:async()=>null},employee:{findFirst:async()=>({id:9,orgId:1,orgRole:'ADMIN'})},systemSetting:{findUnique:async()=>stored,upsert:async({create,update})=>{writes++;stored={value:stored?update.value:create.value};return stored;}},style:{findFirst:async({where})=>where.orgId===1&&where.id===3?{id:3}:null},workOrderItem:{findFirst:async({where})=>where.workOrderId===2&&where.styleId===3?{id:1}:null},$queryRawUnsafe:async(...args)=>{queries.push(args);},$transaction:async fn=>fn(db)};
  let allowed=true,active=true;
  db.employee.findFirst=async()=>active?{id:9,orgId:1,orgRole:'ADMIN'}:null;
  const gates={requireOrgRole:async(_req,_res,options)=>{assert.equal(options.allowSystemAdmin,false);return {organization:{id:1,type:'MANUFACTURER'}};},actorId:()=>9,loadPolicy:async()=>({policy:{MANUFACTURER:{ADMIN:allowed?['REVENUE_ANALYSIS']:[]}}})};
@@ -32,7 +32,7 @@ test('only approved single-target rows feed weighted unit prices; currencies, un
  const base={id:'a',orgId:1,workOrderId:2,styleId:3,referenceLinks:[],partner:{name:'Vendor'},partnerOrgId:7,unit:{id:1,nameEn:'Piece'},currency:'VND',quantity:'100',subtotal:'50000',amount:'55000',transactionCode:{code:'OUT'},processLinks:[],styleProcessId:4,expenseRequestId:10,expenseRequest:{managementNumber:'EXP-10'},transactionDate:'2026-11-01'};
  const costs=[base,{...base,id:'b',quantity:'900',subtotal:'270000'}, {...base,id:'shared',referenceLinks:[{workOrderId:2,styleId:3},{workOrderId:2,styleId:8}]},{...base,id:'pending',expenseRequestId:11}, {...base,id:'USD',currency:'USD'},{...base,id:'unit',unit:{id:2}},{...base,id:'vendor',partnerOrgId:9},{...base,id:'process',styleProcessId:5}];
  const queries=[];
- const db={workOrder:{findFirst:async({where})=>{assert.deepEqual(where,{id:2,orgId:1});return {workOrderItems:[{styleId:3,totalQuantity:1000}]};}},styleProcessVersion:{findFirst:async()=>({versionNumber:2,processSnapshot:[]})},partnerTransactionCost:{findMany:async query=>{queries.push(query);return costs;}},expenseRequest:{findFirst:async({where})=>({id:where.id,orgId:1,version:1,createdByEmployeeId:9,createdByEmployee:{id:9,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},approvalSteps:where.id===11?[{employeeId:8,position:1}]:[]})},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>({afterSnapshot:{approvalPolicy:{exempt:true,drafterId:9}}})}};
+ const db={systemSetting:{findUnique:async()=>null},workOrder:{findFirst:async({where})=>{assert.deepEqual(where,{id:2,orgId:1});return {workOrderItems:[{styleId:3,totalQuantity:1000}]};}},styleProcessVersion:{findFirst:async()=>({versionNumber:2,processSnapshot:[]})},partnerTransactionCost:{findMany:async query=>{queries.push(query);return costs;}},expenseRequest:{findFirst:async({where})=>({id:where.id,orgId:1,version:1,createdByEmployeeId:9,createdByEmployee:{id:9,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},approvalSteps:where.id===11?[{employeeId:8,position:1}]:[]})},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>({afterSnapshot:{approvalPolicy:{exempt:true,drafterId:9}}})}};
  const result=await profitSources(db,1,2,3,{resolveTimes:()=>({ST:600,PT:null})});
  assert.equal(result.times.PT,null);assert.equal(result.averages.length,5);const average=result.averages.find(row=>row.count===2);assert.equal(average.unitPrice,320);assert.equal(average.quantity,1000);
  assert.equal(result.costs.find(row=>row.id==='pending').approved,false);assert.equal(result.costs.find(row=>row.id==='shared').exact,false);assert.equal(result.costs.find(row=>row.id==='shared').withinOrder,true);
@@ -40,7 +40,7 @@ test('only approved single-target rows feed weighted unit prices; currencies, un
  await assert.rejects(profitSources(db,1,2,99,{}),/PROFIT_TARGET_NOT_FOUND/);
 });
 test('catalog groups order styles using relational items and never imports another company style',async()=>{
- const db={workOrder:{findMany:async({where})=>{assert.deepEqual(where,{orgId:1});return [{id:2,workOrderItems:[{styleId:3,totalQuantity:100,style:{id:3,code:'S',name:'Style',orgId:1}},{styleId:3,totalQuantity:50,style:{id:3,code:'S',name:'Style',orgId:1}},{styleId:99,totalQuantity:500,style:{id:99,orgId:8}}]}];}},invoiceOrder:{findMany:async()=>[]}};
+ const db={systemSetting:{findUnique:async()=>null},workOrder:{findMany:async({where})=>{assert.deepEqual(where,{orgId:1});return [{id:2,workOrderItems:[{styleId:3,totalQuantity:100,style:{id:3,code:'S',name:'Style',orgId:1}},{styleId:3,totalQuantity:50,style:{id:3,code:'S',name:'Style',orgId:1}},{styleId:99,totalQuantity:500,style:{id:99,orgId:8}}]}];}},invoiceOrder:{findMany:async()=>[]}};
  const result=await profitCatalog(db,1,{});assert.equal(result.rows.length,1);assert.equal(result.rows[0].quantity,150);assert.equal(result.rows[0].salePrice,null);
 });
 
@@ -57,15 +57,20 @@ test('real Prisma queries load scoped order styles and read-only sources; scenar
  const f=await changeApprovalFixture();try{
   const s=await seedChangeApproval(f.db),orgId=s.company.id;
   const style=await f.db.style.create({data:{orgId,customerOrgId:s.vendor.id,code:'PROFIT_STYLE',name:'Profit style'}});
+  const {saveStylePackaging,readStylePackaging,validatePackedCbm}=require('../backend/dist/services/stylePackaging.js');
+  assert.throws(()=>validatePackedCbm(-1),/INVALID_PACKED_CBM/);assert.throws(()=>validatePackedCbm('NaN'),/INVALID_PACKED_CBM/);
+  await f.db.$transaction(tx=>saveStylePackaging(tx,orgId,style.id,.002));assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.002);
+  await assert.rejects(saveStylePackaging(f.db,s.other.id,style.id,.004),/style not found/);assert.equal((await readStylePackaging(f.db,s.other.id,style.id)).packedCbmPerPiece,null);
+  await saveStylePackaging(f.db,orgId,style.id,undefined);assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.002);
   const order=await f.db.workOrder.create({data:{orgId,orderId:'profit-order',orderNumber:'PROFIT-1',buyerOrgId:s.vendor.id,sellerOrgId:orgId,workOrderItems:{create:[{styleId:style.id,totalQuantity:100},{styleId:style.id,totalQuantity:50}]}}});
   const catalog=await profitCatalog(f.db,orgId,{});assert.equal(catalog.rows[0].quantity,150);
-  const sources=await profitSources(f.db,orgId,order.id,style.id,{});assert.deepEqual(sources.times,{ST:null,PT:null});assert.deepEqual(sources.costs,[]);
+  const sources=await profitSources(f.db,orgId,order.id,style.id,{});assert.deepEqual(sources.times,{ST:null,PT:null});assert.deepEqual(sources.costs,[]);assert.equal(sources.packedCbmPerPiece,.002);
   const report=await profitOrderReport(f.db,orgId,order.id,{});assert.equal(report.order.id,order.id);assert.equal(report.styles[0].quantity,150);
   await assert.rejects(profitSources(f.db,s.other.id,order.id,style.id,{}),/PROFIT_TARGET_NOT_FOUND/);
   const routes=new Map();registerRevenueAnalysisRoutes({post:(p,fn)=>routes.set('POST '+p,fn),get:(p,fn)=>routes.set('GET '+p,fn),put:(p,fn)=>routes.set('PUT '+p,fn)},f.db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>s.people.admin.id,loadPolicy:async()=>({policy:{SERVICE:{ADMIN:['REVENUE_ANALYSIS']}}})});
   const reportResponse={json(value){this.value=value;}};await routes.get('GET /revenue-analysis/orders/:id')({params:{id:String(order.id)}},reportResponse);assert.equal(reportResponse.value.styles[0].quantity,150);
   const laborResponse={json(value){this.value=value;}};await routes.get('GET /revenue-analysis/labor-basis')({query:{month:'2026-11'}},laborResponse);assert.deepEqual(laborResponse.value.factories,[]);
-  const singleResponse={json(value){this.value=value;}};await routes.get('POST /revenue-analysis/style-analysis')({body:{styleId:style.id,quantity:200}},singleResponse);assert.equal(singleResponse.value.styles[0].quantity,200);assert.equal(singleResponse.value.styles[0].analysisMode,'STYLE');assert.equal(await f.db.workOrder.count(),1);
+  const singleResponse={json(value){this.value=value;}};await routes.get('POST /revenue-analysis/style-analysis')({body:{styleId:style.id,quantity:200}},singleResponse);assert.equal(singleResponse.value.styles[0].quantity,200);assert.equal(singleResponse.value.styles[0].analysisMode,'STYLE');assert.equal(singleResponse.value.styles[0].sources.packedCbmPerPiece,.002);assert.equal(await f.db.workOrder.count(),1);
   await routes.get('GET /revenue-analysis/styles')({query:{search:'Vendor'}},singleResponse);assert.equal(singleResponse.value.styles[0].id,style.id);
   await assert.rejects(routes.get('POST /revenue-analysis/style-analysis')({body:{styleId:style.id,quantity:0}},singleResponse),/INVALID_PROFIT_SCENARIO/);
   const styleSaved={revision:0,defaults:{currency:'VND'},stylePackaging:{},scenarios:[{id:'style-analysis-001',name:'Style only',orderId:null,styleId:style.id,inputs:{quantity:200,basis:'ST'}}]};

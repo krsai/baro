@@ -1,3 +1,4 @@
+import {packagingText} from '../../../constants/packaging';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
@@ -372,6 +373,9 @@ const StyleDetail = () => {
       JSON.stringify(buildDirtyCheckProcesses(styleFormData?.processes));
 
   const handleSave = async () => {
+    const packed=styleFormData.packedCbmPerPiece;
+    if(packed!==''&&packed!=null&&(!Number.isFinite(Number(packed))||Number(packed)<=0||Number(packed)>100)){showNotification((packagingText[languageCode]||packagingText.en).invalidVolume,'error');return;}
+
     if (!styleFormData.name?.trim()) {
       showNotification(getStyleDetailMessage(languageCode, 'nameRequired'), 'error');
       return;

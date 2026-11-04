@@ -1,3 +1,4 @@
+import {packagingText} from '../frontend/src/constants/packaging.js';
 import {revenueFlowText} from '../frontend/src/constants/revenueFlow.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -29,7 +30,7 @@ try{
   let settings={revision:0,defaults:common,stylePackaging:{},scenarios:[]},reject=false;
   const order={id:2,orderNumber:'SAVED-ORDER-2',customer:'Buyer',quantity:300,styleCount:2,salesAmount:'3000',currency:'USD',priceSource:'CURRENT_PRICE'};
   const costs=[{id:'cost-A',exact:true,approved:true,subtotal:'300000',amount:'330000',currency:'VND',requestId:18,reference:'EXP-18',description:'Outsourcing A'},{id:'cost-B',exact:true,approved:true,subtotal:'100000',amount:'110000',currency:'VND',requestId:19,reference:'EXP-19',description:'Outsourcing B'}];
-  const styles=[{styleId:3,styleCode:'STYLE-A',styleName:'First style',quantity:100,salesAmount:1000,salePrice:10,currency:'USD',sources:{times:{ST:600,PT:500},averages:[],costs:costs.map((row,index)=>({...row,exact:index===0}))}},{styleId:4,styleCode:'STYLE-B',styleName:'Second style',quantity:200,salesAmount:2000,salePrice:10,currency:'USD',sources:{times:{ST:300,PT:null},averages:[],costs:costs.map((row,index)=>({...row,exact:index===1}))}}];
+  const styles=[{styleId:3,styleCode:'STYLE-A',styleName:'First style',quantity:100,salesAmount:1000,salePrice:10,currency:'USD',sources:{packedCbmPerPiece:.002,times:{ST:600,PT:500},averages:[],costs:costs.map((row,index)=>({...row,exact:index===0}))}},{styleId:4,styleCode:'STYLE-B',styleName:'Second style',quantity:200,salesAmount:2000,salePrice:10,currency:'USD',sources:{times:{ST:300,PT:null},averages:[],costs:costs.map((row,index)=>({...row,exact:index===1}))}}];
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
@@ -72,7 +73,7 @@ try{
   await workers.fill('1.5');await next();assert.equal(await dialog.getByRole('button',{name:f.run,exact:true}).count(),1);assert.equal(await dialog.locator('#profit-labor-mode').count(),0);
   await dialog.getByText(f.monthlyPayroll+' ? VND',{exact:true}).waitFor();
   assert.equal(await dialog.getByRole('spinbutton',{name:p.baseMonthly,exact:true}).count(),0);
-  await dialog.getByRole('checkbox',{name:p.packaging,exact:true}).check();await dialog.getByRole('spinbutton',{name:p.polyPrice,exact:true}).first().fill('400');
+  await dialog.getByRole('checkbox',{name:p.packaging,exact:true}).check();const pk=packagingText[lang];assert.equal(await dialog.getByRole('spinbutton',{name:pk.boxLengthCm,exact:true}).first().inputValue(),'60');assert.equal(await dialog.getByRole('spinbutton',{name:pk.packedCbmPerPiece,exact:true}).first().inputValue(),'0.002');await dialog.getByRole('spinbutton',{name:pk.boxLengthCm,exact:true}).first().fill('30');await dialog.getByRole('spinbutton',{name:p.polyPrice,exact:true}).first().fill('400');
   await dialog.getByRole('checkbox',{name:p.packaging,exact:true}).uncheck();await dialog.getByRole('button',{name:f.run,exact:true}).click();
   assert.notEqual(await page.locator('[data-order-metric="profit"]').textContent(),'\u2014');await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();assert.equal(settings.defaults.workers,'1.5');assert.equal(settings.defaults.productivity,120);
   await openFlow();await next();await workers.fill('9.9');await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});

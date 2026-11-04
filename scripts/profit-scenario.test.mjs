@@ -20,6 +20,14 @@ test('packaging rounds purchasing quantities up and uses capacity rather than on
  assert.equal(result.poly,155);assert.equal(result.boxes,3);assert.equal(result.costs.polyCost,62000);assert.equal(result.costs.boxCost,60000);
  const off=calculateProfitScenario({...trialProfitInputs(),packaging:false,polyPrice:'',boxPrice:'',boxCapacity:''});assert.equal(off.ready,true);assert.equal(off.costs.polyCost,0);
 });
+test('box dimensions and packed garment volume determine capacity without changing missing-volume fallback',()=>{
+ const input={...trialProfitInputs(),quantity:101,packWaste:0,packedCbmPerPiece:.002};
+ const result=calculateProfitScenario(input);assert.equal(result.boxes,3);
+ assert.equal(calculateProfitScenario({...input,boxLengthCm:30}).boxes,5);
+ assert.equal(calculateProfitScenario({...input,packedCbmPerPiece:''}).boxes,3);
+ assert.equal(calculateProfitScenario({...input,packedCbmPerPiece:.2}).ready,false);
+ assert.equal(calculateProfitScenario({...input,boxHeightCm:0}).ready,false);
+});
 test('missing sources never become zero profit or a silently substituted ST/PT',()=>{
  const missing=calculateProfitScenario(createProfitInputs());assert.equal(missing.profit,null);assert.ok(missing.missing.includes('stSeconds'));
  const input={...trialProfitInputs(),basis:'PT',ptSeconds:''};assert.equal(calculateProfitScenario(input).workloadHours,null);

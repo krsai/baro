@@ -1,3 +1,4 @@
+import {readStylePackaging,saveStylePackaging,validatePackedCbm} from './services/stylePackaging';
 import {registerApprovalActionRoutes} from './services/approvalActions';
 import {registerRevenueAnalysisRoutes} from './services/revenueAnalysis';
 import {registerChangeApprovalRoutes} from './services/changeApprovals';
@@ -30161,7 +30162,7 @@ app.get("/styles/:styleId", async (req, res) => {
       })
     : new Map<number, any[]>();
 
-  res.json(toStyleResponse(style, { includeProcesses, processMirrorMap }));
+  res.json({...toStyleResponse(style, { includeProcesses, processMirrorMap }),...await readStylePackaging(prisma,style!.orgId,style!.id)});
 });
 
 app.post("/styles", async (req, res) => {
@@ -30213,6 +30214,7 @@ app.post("/styles", async (req, res) => {
       .json({ ok: false, error: "styleId already exists" });
   }
 
+  validatePackedCbm(req.body?.packedCbmPerPiece);
   const created = await prisma.$transaction(async (tx) => {
     const relationshipTimeVersion = includeProcesses
       ? await tx.orgRelationship.findUnique({
@@ -30268,6 +30270,7 @@ app.post("/styles", async (req, res) => {
         timeBucketSource: "CUSTOMER_DEFAULT",
       },
     });
+    await saveStylePackaging(tx,owner.ownerOrgId,createdStyle.id,req.body?.packedCbmPerPiece);
     if (includeProcesses) {
       await syncStyleProcessStorageForStyle({
         styleId: createdStyle.id,
@@ -30313,7 +30316,7 @@ app.post("/styles", async (req, res) => {
   );
   res
     .status(201)
-    .json(toStyleResponse(responseCreated, { includeProcesses, processMirrorMap }));
+    .json({...toStyleResponse(responseCreated, { includeProcesses, processMirrorMap }),...await readStylePackaging(prisma,created.orgId,created.id)});
 });
 
 app.put("/styles/:styleId", async (req, res) => {
@@ -30346,6 +30349,7 @@ app.put("/styles/:styleId", async (req, res) => {
     return res.status(403).json({ ok: false, error: "only owner manufacturer can edit style" });
   }
 
+  validatePackedCbm(req.body?.packedCbmPerPiece);
   // Style.processes JSON is no longer persisted (see Phase 2 above), so `existing.processes`
   // is not a usable "no change" fallback anymore. A request that omits `processes`
   // entirely means "leave the style's processes untouched", not "clear them".
@@ -30448,6 +30452,7 @@ app.put("/styles/:styleId", async (req, res) => {
         bomNotes: normalized.bomNotes,
       },
     });
+    await saveStylePackaging(tx,existing.orgId,existing.id,req.body?.packedCbmPerPiece);
     if (processesProvided) {
       await syncStyleProcessStorageForStyle({
         styleId: existing.id,
@@ -30491,7 +30496,7 @@ app.put("/styles/:styleId", async (req, res) => {
         }),
       })[0]
     : updated;
-  res.json(toStyleResponse(responseUpdated, { includeProcesses, processMirrorMap }));
+  res.json({...toStyleResponse(responseUpdated, { includeProcesses, processMirrorMap }),...await readStylePackaging(prisma,updated.orgId,updated.id)});
 });
 
 const confirmSavedStyleProcessVersion = (db: any, orgId: number, styleId: number, actor: string) => confirmCurrentProcessVersion(db, {

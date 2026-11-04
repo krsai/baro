@@ -49,6 +49,7 @@ const normalizeStyle = (value = {}) => ({
   processes: normalizeProcesses(value.processes),
   bom: normalizeArray(value.bom),
   bomNotes: value.bomNotes || '',
+  packedCbmPerPiece: value.packedCbmPerPiece ?? '',
   timeBucketSource: value.timeBucketSource || null,
   timeBucketSetVersionId: toPositiveOrgId(value.timeBucketSetVersionId),
   timeBucketQuantities: normalizeBucketQuantities(value.timeBucketQuantities),

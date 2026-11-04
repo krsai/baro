@@ -1,3 +1,4 @@
+import {packagingText} from '../../../../constants/packaging';
 import { usePageDialogs } from '../../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -23,7 +24,6 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
-import { GENDER_CODES, SIZE_CODES, getGenderLabel } from '../../../../constants/productAttributes';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { getUiMessage } from '../../../../constants/uiMessages';
@@ -34,8 +34,6 @@ import StyleAnalysis from './StyleAnalysis';
 
 const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
 const IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:']);
-const FABRIC_OPTIONS = ['Cotton', 'Polyester', 'Linen', 'Denim'];
-const COLORWAY_OPTIONS = ['Basic', 'Pastel', 'Vivid', 'Dark'];
 
 let customersCache = null;
 let customersCacheTimestamp = 0;
@@ -105,6 +103,7 @@ const StyleInfo = ({
 }) => {
   const pageDialogs = usePageDialogs();
   const { languageCode } = useLanguage();
+  const packText=packagingText[languageCode]||packagingText.en;
   const { imageUrls = [] } = formData;
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [imageInputMode, setImageInputMode] = useState('file');
@@ -300,21 +299,6 @@ const StyleInfo = ({
     }
   };
 
-  const [styleDetailsData, setStyleDetailsData] = useState({
-    Fabric: '',
-    Gender: '',
-    'Size Spec': '',
-    Colorway: '',
-  });
-  const sizeSpecOptions = useMemo(
-    () => [
-      SIZE_CODES.slice(1, 5).join(', '),
-      SIZE_CODES.slice(0, 6).join(', '),
-      SIZE_CODES.join(', '),
-      'FREE',
-    ],
-    []
-  );
   const customerOptions = useMemo(() => {
     const baseOptions = isBrandOrg ? [] : customers;
     if (!resolvedCustomerValue) return baseOptions;
@@ -370,10 +354,6 @@ const StyleInfo = ({
         value,
       },
     });
-  };
-
-  const handleDetailsChange = (name, value) => {
-    setStyleDetailsData((prev) => ({ ...prev, [name]: value || '' }));
   };
 
   const handleCustomerChange = (_event, nextCustomer) => {
@@ -749,57 +729,8 @@ const StyleInfo = ({
 
           <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
 
-          <Typography variant="h6" gutterBottom>{getUiMessage('styleInfo.detailsSection', '세부 정보', languageCode)}</Typography>
-          <Stack spacing={2} mt={2.5}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.fabric', 'Fabric', languageCode)}</Typography>
-              <SearchableSelect
-                size="small"
-                options={FABRIC_OPTIONS}
-                value={styleDetailsData.Fabric || null}
-                onChange={(_event, value) => handleDetailsChange('Fabric', value)}
-                getOptionLabel={(option) => option || ''}
-                sx={fieldControlSx}
-                textFieldProps={selectTextFieldProps}
-              />
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.sizeSpec', 'Size Spec', languageCode)}</Typography>
-              <SearchableSelect
-                size="small"
-                options={sizeSpecOptions}
-                value={styleDetailsData['Size Spec'] || null}
-                onChange={(_event, value) => handleDetailsChange('Size Spec', value)}
-                getOptionLabel={(option) => option || ''}
-                sx={fieldControlSx}
-                textFieldProps={selectTextFieldProps}
-              />
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.gender', 'Gender', languageCode)}</Typography>
-              <SearchableSelect
-                size="small"
-                options={GENDER_CODES}
-                value={styleDetailsData.Gender || null}
-                onChange={(_event, value) => handleDetailsChange('Gender', value)}
-                getOptionLabel={(option) => getGenderLabel(option, option, languageCode)}
-                sx={fieldControlSx}
-                textFieldProps={selectTextFieldProps}
-              />
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="body2" color="text.secondary">{getUiMessage('styleInfo.colorway', 'Colorway', languageCode)}</Typography>
-              <SearchableSelect
-                size="small"
-                options={COLORWAY_OPTIONS}
-                value={styleDetailsData.Colorway || null}
-                onChange={(_event, value) => handleDetailsChange('Colorway', value)}
-                getOptionLabel={(option) => option || ''}
-                sx={fieldControlSx}
-                textFieldProps={selectTextFieldProps}
-              />
-            </Box>
-          </Stack>
+          <Typography variant="h6" gutterBottom>{packText.section}</Typography>
+          <TextField fullWidth size="small" type="number" label={packText.packedCbmPerPiece} value={formData.packedCbmPerPiece??''} onChange={event=>emitInputChange('packedCbmPerPiece',event.target.value)} helperText={packText.volumeHint} slotProps={{htmlInput:{min:0,step:'any'},input:{endAdornment:<InputAdornment position="end">CBM</InputAdornment>}}}/>
           {showStyleAnalysis ? (
             <>
               <Box sx={{ mt: 'var(--ui-section-gap, 20px)' }} />
