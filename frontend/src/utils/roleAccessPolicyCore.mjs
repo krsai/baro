@@ -13,6 +13,7 @@ export const ORG_ROLE_KEYS = {
 };
 
 export const ACCESS_FEATURE_KEYS = {
+  FREIGHT: 'FREIGHT',
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   INVOICE: 'INVOICE',
@@ -44,7 +45,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 15;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 16;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
@@ -324,6 +325,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   if (!candidate.SERVICE) base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
   for(const roles of Object.values(base)){
     if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
+    if(sourceSchemaVersion<16&&!roles.ADMIN.includes('FREIGHT'))roles.ADMIN.push('FREIGHT');
   }
   return base;
 };

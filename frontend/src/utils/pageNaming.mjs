@@ -1,6 +1,7 @@
 // One screen identity for menus, workspace tabs and page headings. Route modes
 // describe the screen's purpose; dirty state and record IDs never rename it.
 export const PAGE_ROUTES = [
+  ['/freight','freight','page'],
   ['/account-overview','accountOverview','page'],
   ['/bank-ledger','bankLedger','list'],
   ['/dashboard','dashboard','page'], ['/business','business','list'],

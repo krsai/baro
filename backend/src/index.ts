@@ -1,3 +1,4 @@
+import {registerFreightRoutes} from './services/freightOperations';
 import {readStylePackaging,saveStylePackaging,validatePackedCbm} from './services/stylePackaging';
 import {registerApprovalActionRoutes} from './services/approvalActions';
 import {registerRevenueAnalysisRoutes} from './services/revenueAnalysis';
@@ -1260,9 +1261,10 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including production-analysis/outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 15;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 16;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
+  "FREIGHT",
   "ACCOUNT_OVERVIEW",
   "BANK_LEDGER",
   "INVOICE",
@@ -1527,6 +1529,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   if (!(value as any)?.SERVICE) policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
   for(const roles of Object.values(policy)){
     if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
+    if(sourceSchemaVersion<16&&!roles.ADMIN.includes('FREIGHT'))roles.ADMIN.push('FREIGHT');
   }
   return policy;
 };
@@ -27640,6 +27643,7 @@ registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReque
  const total=(basis:string)=>{let sum=0;for(const process of processes){const applicable=resolveStyleProcessRowApplicableQuantity(process,quantities);if(!applicable)continue;const seconds=basis==='ST'?resolveStyleProcessVersionStPerPieceSeconds(process,quantity):toOptionalProcessSeconds(process.pt);if(seconds===null||seconds<=0)return null;sum+=seconds*applicable;}return sum>0?sum/quantity:null;};
  return {ST:total('ST'),PT:total('PT')};
 }});
+registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
 registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{

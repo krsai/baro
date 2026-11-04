@@ -17,6 +17,7 @@ const ORG_ROLES = {
 };
 
 const FEATURE_KEYS = {
+  FREIGHT: 'FREIGHT',
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
   INVOICE: 'INVOICE',
@@ -139,6 +140,8 @@ const canAccessFeatureByContext = (featureKey, context) => {
   const featureSet = resolveFeatureSetForContext(context);
 
   switch (featureKey) {
+    case FEATURE_KEYS.FREIGHT:
+      return isOrgMember&&hasOrgRole(context,'ADMIN','ACCOUNTANT','OPERATOR')&&featureSet.has(featureKey);
     case FEATURE_KEYS.ACCOUNT_OVERVIEW:
       return isOrgMember&&hasOrgRole(context,'ADMIN','ACCOUNTANT','OPERATOR','WORKER')&&featureSet.has(featureKey);
     case FEATURE_KEYS.INVOICE:
@@ -158,6 +161,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
+  if (path.startsWith('/freight')) return FEATURE_KEYS.FREIGHT;
   if (path.startsWith('/account-overview')) return FEATURE_KEYS.ACCOUNT_OVERVIEW;
   if (path.startsWith('/bank-ledger')) return FEATURE_KEYS.BANK_LEDGER;
   if (path.startsWith('/approval-inbox')) return FEATURE_KEYS.OUTSOURCING_RECORD;

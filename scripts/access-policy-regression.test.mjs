@@ -16,10 +16,22 @@ const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   ...policy,
 });
+
+test('freight is independently configurable, defaults to administrators on upgrade and rejects SYSTEM/worker access',()=>{
+ assert.equal(resolveFeatureByPath('/freight'),'FREIGHT');
+ const legacy=sanitizeRoleAccessPolicy({__schemaVersion:15,SERVICE:{ADMIN:[],OPERATOR:[],ACCOUNTANT:[],WORKER:[]}});
+ assert.deepEqual(legacy.SERVICE.ADMIN,['FREIGHT']);assert.deepEqual(legacy.SERVICE.OPERATOR,[]);
+ for(const role of ['ADMIN','OPERATOR','ACCOUNTANT','WORKER']){
+  const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:role,accessPolicy:withCurrentPolicyVersion({SERVICE:{[role]:['FREIGHT']}})}};
+  assert.equal(canAccessPath('/freight',state),role!=='WORKER');
+  state.accessProfile.accessPolicy=withCurrentPolicyVersion({SERVICE:{[role]:[]}});assert.equal(canAccessPath('/freight',state),false);
+ }
+ assert.equal(canAccessPath('/freight',{isAuthenticated:true,accessProfile:{entryType:'SYSTEM',systemRole:'SYSTEM_ADMIN'}}),false);
+});
 test('account overview has an independent configurable permission and preserves current denials',()=>{
  assert.equal(resolveFeatureByPath('/account-overview'),'ACCOUNT_OVERVIEW');assert.equal(resolveFeatureByPath('/bank-ledger'),'BANK_LEDGER');
  const legacy=sanitizeRoleAccessPolicy({__schemaVersion:14,MANUFACTURER:{ADMIN:[],ACCOUNTANT:['BANK_LEDGER']}});
- assert.deepEqual(legacy.MANUFACTURER.ADMIN,['ACCOUNT_OVERVIEW']);assert.deepEqual(legacy.MANUFACTURER.ACCOUNTANT,['BANK_LEDGER']);
+ assert.deepEqual(legacy.MANUFACTURER.ADMIN,['ACCOUNT_OVERVIEW','FREIGHT']);assert.deepEqual(legacy.MANUFACTURER.ACCOUNTANT,['BANK_LEDGER']);
  for(const orgType of Object.values(ORG_TYPE_KEYS))for(const orgRole of Object.values(ORG_ROLE_KEYS)){
   assert.equal(getDefaultRoleAccessPolicy()[orgType][orgRole].includes('ACCOUNT_OVERVIEW'),orgRole==='ADMIN');
   const auth={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType,orgRole,accessPolicy:withCurrentPolicyVersion({[orgType]:{[orgRole]:['ACCOUNT_OVERVIEW']}})}};

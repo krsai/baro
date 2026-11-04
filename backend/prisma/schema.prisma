@@ -11,6 +11,109 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// Freight operations use explicit composite company FKs and immutable-history
+// triggers in 20261105030000_freight_operations. SQL services enforce revisions.
+model FreightJob {
+ id String @id
+ orgId Int
+ clientKey String
+ requestHash String
+ number String
+ customerId Int
+ masterId String?
+ mode String
+ service String
+ houseStatus String
+ houseNumber String?
+ status String
+ data Json
+ version Int @default(1)
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@unique([id,orgId])
+ @@unique([orgId,clientKey])
+ @@unique([orgId,number])
+ @@index([orgId,createdAt,id],map:"FreightJob_org_created_idx")
+ @@index([masterId,orgId],map:"FreightJob_master_idx")
+}
+model FreightMaster {
+ id String @id
+ orgId Int
+ clientKey String
+ requestHash String
+ number String
+ mode String
+ data Json
+ version Int @default(1)
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@unique([id,orgId])
+ @@unique([orgId,clientKey])
+}
+model FreightDispatch {
+ id String @id
+ orgId Int
+ clientKey String
+ requestHash String
+ number String
+ masterId String?
+ data Json
+ version Int @default(1)
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@unique([id,orgId])
+ @@unique([orgId,clientKey])
+ @@unique([orgId,number])
+}
+model FreightPackage {
+ id String @id
+ orgId Int
+ jobId String
+ dispatchId String?
+ label String
+ quantity Int
+ weightKg Decimal @db.Decimal(20,4)
+ cbm Decimal @db.Decimal(20,6)
+ version Int @default(1)
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ @@unique([id,orgId])
+ @@unique([jobId,label])
+ @@index([dispatchId,orgId],map:"FreightPackage_dispatch_idx")
+}
+model FreightDocument {
+ id String @id
+ orgId Int
+ jobId String?
+ dispatchId String?
+ clientKey String
+ kind String
+ number String
+ sourceVersion Int
+ snapshot Json
+ createdByEmployeeId Int
+ createdAt DateTime @default(now())
+ @@unique([orgId,clientKey])
+}
+model FreightAudit {
+ id String @id
+ orgId Int
+ entity String
+ sourceId String
+ version Int
+ actorId Int
+ before Json?
+ after Json
+ createdAt DateTime @default(now())
+ @@unique([orgId,entity,sourceId,version])
+}
+
 enum OrganizationType {
   MANUFACTURER
   BRAND

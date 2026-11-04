@@ -46,6 +46,7 @@ const lazyImportWithRetry = (importer) =>
   );
 
 const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
+const FreightWorkspace = lazyImportWithRetry(() => import('./pages/App/FreightWorkspace'));
 const AccountOverview = lazyImportWithRetry(() => import('./pages/App/AccountOverview'));
 const BankLedgerEntry = lazyImportWithRetry(() => import('./pages/App/BankLedgerEntry'));
 const BankLedger = lazyImportWithRetry(() => import('./pages/App/BankLedger'));
@@ -256,6 +257,7 @@ const router = createBrowserRouter([
         element: <MainLayout />,
         children: [
           {path:'account-overview',element:<AccountOverview/>},
+          {path:'freight',element:<FreightWorkspace/>},
           {path:'bank-ledger',element:<BankLedger/>},
           {path:'bank-ledger/new',element:<BankLedgerEntry/>},
           {path:'bank-ledger/edit/:entryId',element:<BankLedgerEntry/>},
