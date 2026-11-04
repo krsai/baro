@@ -1,8 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {orderCostDefaults,orderStyleProfit,orderProfitTotals,orderCommonPurchase} from '../frontend/src/utils/orderProfit.mjs';
+import {orderCostDefaults,orderStyleProfit,orderProfitTotals,orderCommonPurchase,companyPayroll,regularOrderCrew} from '../frontend/src/utils/orderProfit.mjs';
 const defaults={...orderCostDefaults(),currency:'VND',baseMonthly:6000000,allowanceMonthly:1000000,supportMonthly:9000000,rentMonthly:20000000,workdays:25};
 const style={quantity:100,salesAmount:1000,salePrice:10,currency:'USD',sources:{times:{ST:600,PT:null},costs:[{id:'a',exact:true,approved:true,subtotal:'100000',currency:'VND'},{id:'b',exact:true,approved:true,subtotal:'4',currency:'USD'},{id:'shared',exact:false,approved:true,subtotal:'999999',currency:'VND'},{id:'pending',exact:true,approved:false,subtotal:'999999',currency:'VND'}]}};
+test('regular crew uses every selected style and allows fractional estimates without replacing missing times',()=>{
+ const input={basis:'ST',hoursDay:8,targetDays:10,productivity:120};
+ assert.equal(regularOrderCrew([style,{...style,quantity:200}],input),300*600/3600/1.2/8/10);
+ assert.equal(regularOrderCrew([style],{...input,basis:'PT'}),null);
+ assert.equal(regularOrderCrew([style],{...input,basis:'PT'},()=>({ptSeconds:500})),100*500/3600/1.2/8/10);
+});
+test('saved payroll wins over manual input while missing monthly totals can be supplied',()=>{
+ const company={pools:[{currencyCode:'VND',officeFixedMonthly:100,productionFixedMonthly:null,variableBaseMonthly:200,variableAllowanceMonthly:0,variableProductionMonthly:300}]};
+ const loaded=companyPayroll(company,'VND',{}, {officeFixedMonthly:999,productionFixedMonthly:500});assert.equal(loaded.officeFixedMonthly,100);assert.equal(loaded.productionFixedMonthly,500);assert.equal(loaded.variableAllowanceMonthly,0);
+ assert.equal(companyPayroll(company,'VND').productionFixedMonthly,null);
+ const result=orderStyleProfit(style,{...defaults,workers:.5,productionFixedMonthly:500},{},{},{USD:'1',VND:'25000'},{company});
+ assert.equal(result.laborComplete,true);assert.equal(result.laborBreakdown.productionFixed,500*result.days/25);assert.equal(result.ready,true);
+});
 test('saved quantity and existing sales amount override arbitrary scenario values; purchases are not duplicated by payment',()=>{
  const r=orderStyleProfit(style,defaults,{quantity:999999,salePrice:999999},{},{USD:'1',VND:'25000'});
  assert.equal(r.input.quantity,100);assert.equal(r.revenue,25000000);assert.equal(r.purchase,200000);assert.equal(r.costs.direct,200000);assert.equal(r.ready,true);

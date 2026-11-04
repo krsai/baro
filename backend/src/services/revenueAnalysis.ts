@@ -6,7 +6,7 @@ import {revenueLaborBasis} from './revenueLaborBasis';
 import {revenueStyles,revenueStyleReport} from './revenueStyleAnalysis';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
-const inputKeys=['currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
+const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
 export function validateProfitInputs(value:any){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!inputKeys.includes(k)))fail('INVALID_PROFIT_SCENARIO');
  const result:any={};

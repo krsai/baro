@@ -2,6 +2,20 @@ import {calculateProfitScenario,createProfitInputs,PACKAGING_KEYS} from './profi
 import {convertAccountBalances} from './accountBalanceConversion.mjs';
 export const orderCostDefaults=()=>({...createProfitInputs(),costMode:'linked',packaging:false,productionPay:0,otherUnitCost:0,usdVnd:'',usdKrw:'',laborSource:'AUTO',factoryId:''});
 export const orderStyleRecordId=(orderId,styleId)=>orderId?`order-${orderId}-style-${styleId}`:`style-${styleId}-analysis`;
+export const PAYROLL_KEYS=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly'];
+export function companyPayroll(company,currency,rates={},fallback={}){
+ return Object.fromEntries(PAYROLL_KEYS.map(key=>{
+  let total=0,complete=Boolean(company?.pools?.length);
+  for(const pool of company?.pools||[]){const value=pool[key];if(value===null||value===undefined){complete=false;continue;}if(Number(value)===0)continue;const converted=convertAccountBalances([{balance:String(value),currencyCode:pool.currencyCode}],currency,rates);if(converted===null)complete=false;else total+=Number(converted);}
+  const manual=fallback[key];return [key,complete?total:manual!==''&&manual!=null&&Number.isFinite(Number(manual))?Number(manual):null];
+ }));
+}
+export function regularOrderCrew(styles,inputs,override=()=>({})){
+ const hours=Number(inputs.hoursDay),days=Number(inputs.targetDays),productivity=Number(inputs.productivity);
+ if(!styles?.length||!(hours>0&&days>0&&productivity>0))return null;
+ let seconds=0;for(const style of styles){const key=inputs.basis==='PT'?'ptSeconds':'stSeconds',value=override(style.styleId)[key]??style.sources?.times?.[inputs.basis];if(value===''||value==null||!(Number(value)>0))return null;seconds+=Number(value)*Number(style.quantity);}
+ return seconds/3600/(productivity/100)/hours/days;
+}
 export function orderStyleProfit(style,defaults,override={},pack={},rates={},laborBasis=null){
  const input={...orderCostDefaults(),...defaults};
  for(const key of PACKAGING_KEYS)if(pack[key]!==undefined&&(!['polyPrice','boxPrice'].includes(key)||pack.currency===input.currency))input[key]=pack[key];
@@ -15,10 +29,9 @@ export function orderStyleProfit(style,defaults,override={},pack={},rates={},lab
  input.ptSeconds=override.ptSeconds??style.sources?.times.PT??'';
  const convert=(amount,currency)=>amount===null||amount===undefined||!currency?null:convertAccountBalances([{balance:String(amount),currencyCode:currency}],input.currency,rates);
  let automaticLabor=false,companyMonthly=null;
- if(input.laborSource!=='MANUAL'&&laborBasis?.company){
+ if(input.laborSource!=='MANUAL'&&(laborBasis?.company||PAYROLL_KEYS.some(key=>input[key]!==undefined&&input[key]!==''))){
   automaticLabor=true;
-  const monthly=key=>{let sum=0;for(const pool of laborBasis.company.pools){const value=pool[key];if(value===null||value===undefined)return null;if(value===0)continue;const from=Number(rates[pool.currencyCode]),to=Number(rates[input.currency]);if(pool.currencyCode===input.currency)sum+=value;else if(from>0&&to>0)sum+=value*to/from;else return null;}return sum;};
-  companyMonthly=Object.fromEntries(['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly'].map(key=>[key,monthly(key)]));
+  companyMonthly=companyPayroll(laborBasis?.company,input.currency,rates,input);
   const perWorker=value=>value!==null&&Number(input.workers)>0?value/Number(input.workers):'';
   input.baseMonthly=perWorker(companyMonthly.variableBaseMonthly);input.allowanceMonthly=perWorker(companyMonthly.variableAllowanceMonthly);
   input.supportMonthly=companyMonthly.officeFixedMonthly!==null&&companyMonthly.productionFixedMonthly!==null?companyMonthly.officeFixedMonthly+companyMonthly.productionFixedMonthly:'';

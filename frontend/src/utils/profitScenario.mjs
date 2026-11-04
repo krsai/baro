@@ -6,7 +6,7 @@ export function calculateProfitScenario(input,{linkedAmount=0}={}){
  const missing=[];
  const read=(key,positive=false)=>{const value=number(input[key]);if(value===null||positive&&value<=0){missing.push(key);return null;}return value;};
  const quantity=read('quantity',true),seconds=read(input.basis==='PT'?'ptSeconds':'stSeconds',true),productivity=read('productivity',true),workers=read('workers',true),hours=read('hoursDay',true),workdays=read('workdays',true),capacity=read('factoryWorkers',true);
- for(const [key,value] of [['quantity',quantity],['workers',workers],['factoryWorkers',capacity]])if(value!==null&&!Number.isInteger(value))missing.push(key);
+ if(quantity!==null&&!Number.isInteger(quantity))missing.push('quantity');
  if(hours>24)missing.push('hoursDay');if(workdays>31)missing.push('workdays');
  const workloadHours=quantity!==null&&seconds!==null&&productivity!==null?quantity*seconds/3600/(productivity/100):null;
  const days=workloadHours!==null&&workers!==null&&hours!==null?workloadHours/workers/hours:null;

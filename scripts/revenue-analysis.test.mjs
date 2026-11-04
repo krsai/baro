@@ -25,6 +25,7 @@ test('company settings are explicit writes with revision locking; read does not 
 test('API rejects absent explicit feature access, inactive members and invalid numeric payloads',async()=>{
  const denied=harness();denied.deny();await assert.rejects(denied.call('GET','/revenue-analysis/scenarios'),/PROFIT_ACCESS_DENIED/);
  const inactive=harness();inactive.inactive();await assert.rejects(inactive.call('GET','/revenue-analysis/scenarios'),/PROFIT_ACCESS_DENIED/);
+ assert.deepEqual(validateProfitInputs({officeFixedMonthly:100,productionFixedMonthly:0,variableBaseMonthly:'',variableAllowanceMonthly:200,variableProductionMonthly:300,workers:.75}),{officeFixedMonthly:100,productionFixedMonthly:0,variableBaseMonthly:'',variableAllowanceMonthly:200,variableProductionMonthly:300,workers:.75});
  for(const inputs of [{quantity:-1},{quantity:'NaN'},{currency:'EUR'},{basis:'AT'},{unexpected:1},{quantity:true}])assert.throws(()=>validateProfitInputs(inputs),/INVALID_PROFIT_SCENARIO/);
 });
 test('only approved single-target rows feed weighted unit prices; currencies, units, vendors and processes stay separate',async()=>{

@@ -27,7 +27,7 @@ test('missing sources never become zero profit or a silently substituted ST/PT',
  assert.equal(calculateProfitScenario({...trialProfitInputs(),baseMonthly:0}).ready,true);
  assert.equal(calculateProfitScenario({...trialProfitInputs(),productivity:0}).days,null);
  assert.equal(calculateProfitScenario({...trialProfitInputs(),workers:11,factoryWorkers:10}).ready,false);
- assert.equal(calculateProfitScenario({...trialProfitInputs(),workers:1.5}).ready,false);
+ assert.equal(calculateProfitScenario({...trialProfitInputs(),workers:1.5}).ready,true);
  assert.equal(calculateProfitScenario({...trialProfitInputs(),hoursDay:25}).ready,false);
 });
 test('linked pretax direct costs replace the estimate; unavailable sources stay incomplete',()=>{

@@ -1,12 +1,12 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Radio,Stack,Tab,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tabs,TextField,Typography,useMediaQuery,useTheme,Stepper,Step,StepLabel,Box} from '@mui/material';
+import {Alert,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Radio,Stack,Tab,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tabs,TextField,Typography,Stepper,Step,StepLabel,Box} from '@mui/material';
 import {revenueFlowText} from '../constants/revenueFlow';
 import {revenueSelectionText} from '../constants/revenueSelection';
 import {orderProfitText} from '../constants/orderProfit';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {formatCurrency} from '../utils/currencyFormat';
-export default function RevenueTargetPicker({open,onClose,onSelect,orders,orderStyles=[],orgId,languageCode,selection,flowSteps=[]}){
- const t=revenueSelectionText[languageCode]||revenueSelectionText.en,o=orderProfitText[languageCode]||orderProfitText.en,theme=useTheme(),small=useMediaQuery(theme.breakpoints.down('sm'));
+export default function RevenueTargetPicker({open,onClose,onSelect,orders,orderStyles=[],orgId,languageCode,selection,onTargetChange,flowSteps=[]}){
+ const t=revenueSelectionText[languageCode]||revenueSelectionText.en,o=orderProfitText[languageCode]||orderProfitText.en;
  const f=revenueFlowText[languageCode]||revenueFlowText.en;
  const [step,setStep]=useState(0);
  const [mode,setMode]=useState('ORDER'),[search,setSearch]=useState(''),[order,setOrder]=useState(null),[style,setStyle]=useState(null),[quantity,setQuantity]=useState(''),[gender,setGender]=useState(''),[styles,setStyles]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(false),[reload,setReload]=useState(0);
@@ -18,9 +18,9 @@ export default function RevenueTargetPicker({open,onClose,onSelect,orders,orderS
  },[open,mode,orgId,search,reload]);
  const filtered=orders.filter(row=>`${row.orderNumber} ${row.customer}`.toLowerCase().includes(search.toLowerCase())),valid=Number.isSafeInteger(Number(quantity))&&Number(quantity)>0&&Number(quantity)<=1000000000;
  const choose=()=>{if(mode==='ORDER'&&order)onSelect({mode,orderId:order.id});else if(mode==='STYLE'&&style&&valid)onSelect({mode,style,quantity:Number(quantity),gender:gender||null});};
- return <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={small}>
+ return <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={false} sx={{'& .MuiDialog-paper':{m:{xs:1.5,sm:4},width:{xs:'calc(100% - 24px)',sm:'100%'},maxHeight:{xs:'calc(100% - 24px)',sm:'calc(100% - 64px)'}}}}>
   <DialogTitle>{flowSteps.length?f.input:t.title}</DialogTitle><DialogContent dividers><Stack spacing={2}>
-   {flowSteps.length>0&&<Stepper activeStep={step} alternativeLabel sx={{'& .MuiStepLabel-label':{fontSize:12}}}>{f.steps.map(label=><Step key={label}><StepLabel>{label}</StepLabel></Step>)}</Stepper>}
+   {flowSteps.length>0&&<Stepper activeStep={step} alternativeLabel sx={{'& .MuiStepLabel-label':{fontSize:12}}}>{f.steps.slice(0,flowSteps.length+1).map(label=><Step key={label}><StepLabel>{label}</StepLabel></Step>)}</Stepper>}
    {step>0&&<Typography variant="subtitle2">{mode==='ORDER'?order?.orderNumber:style?.code}{mode==='STYLE'?' / '+Number(quantity).toLocaleString(languageCode):''}</Typography>}
    <Box hidden={step!==0}><Stack spacing={2}>
    <Tabs value={mode} onChange={(_,value)=>{setMode(value);setSearch('');}} variant="fullWidth"><Tab value="ORDER" label={t.orders}/><Tab value="STYLE" label={t.styles}/></Tabs>
@@ -35,6 +35,6 @@ export default function RevenueTargetPicker({open,onClose,onSelect,orders,orderS
    {mode==='ORDER'&&order&&orderStyles.some(row=>row.orderId===order.id)&&<Stack spacing={.5}><Typography variant="subtitle2">{order.orderNumber}</Typography>{orderStyles.filter(row=>row.orderId===order.id).map(row=><Stack key={row.styleId} direction="row" justifyContent="space-between" spacing={2}><Typography variant="body2">{row.styleCode}</Typography><Typography variant="body2">{row.quantity.toLocaleString()} · {row.salesAmount==null?'—':formatCurrency(row.salesAmount,{currencyCode:row.currency,languageCode})}</Typography></Stack>)}</Stack>}
    {mode==='STYLE'&&<Stack spacing={1}><Typography variant="subtitle2">{style?`${style.code} · ${style.name}`:t.quantityHint}</Typography><Stack direction={{xs:'column',sm:'row'}} spacing={2}><TextField size="small" type="number" label={t.quantity} value={quantity} onChange={event=>setQuantity(event.target.value)} slotProps={{htmlInput:{min:1,step:1}}}/><TextField select id="revenue-style-gender" size="small" label={t.gender} value={gender} onChange={event=>setGender(event.target.value)} sx={{minWidth:180}} slotProps={{select:{displayEmpty:true},inputLabel:{shrink:true}}}>{[['',t.unspecified],['M',t.male],['W',t.female],['U',t.unisex]].map(([value,label])=><MenuItem key={value} value={value}>{label}</MenuItem>)}</TextField></Stack></Stack>}
   </Stack></Box>{flowSteps.map((content,index)=><Box key={index} hidden={step!==index+1}>{content}</Box>)}
-  </Stack></DialogContent><DialogActions><Button onClick={onClose}>{t.close}</Button><Button disabled={step===0} onClick={()=>setStep(value=>value-1)}>{f.back}</Button><Button variant="contained" disabled={mode==='ORDER'?!order:!style||!valid||busy} onClick={()=>step<flowSteps.length?setStep(value=>value+1):choose()}>{flowSteps.length?(step<flowSteps.length?f.next:f.run):t.apply}</Button></DialogActions>
+  </Stack></DialogContent><DialogActions><Button disabled={step===0} onClick={()=>setStep(value=>value-1)}>{f.back}</Button><Button variant="contained" disabled={mode==='ORDER'?!order:!style||!valid||busy} onClick={()=>{if(step<flowSteps.length){if(step===0)onTargetChange?.(mode==='ORDER'?{mode,orderId:order.id}:{mode,style,quantity:Number(quantity),gender:gender||null});setStep(value=>value+1);}else choose();}}>{flowSteps.length?(step<flowSteps.length?f.next:f.run):t.apply}</Button></DialogActions>
  </Dialog>;
 }
