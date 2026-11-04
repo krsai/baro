@@ -6,19 +6,17 @@ import { TRANSACTION_TEXT, serviceName } from './OutsourcingServiceDialog';
 import { formatCurrency } from '../utils/currencyFormat';
 
 export const expenseRequestNumber = document => document?.managementNumber || `EXP-${String(document?.id ?? document).padStart(6, '0')}`;
-export default function ExpenseRequestView({ document, languageCode, onClose }) {
+export function ExpenseRequestContent({ document, languageCode }) {
   const labels = EXPENSE_REQUEST_TEXT[languageCode] || EXPENSE_REQUEST_TEXT.ko;
   const common = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const money = (value, currency = document?.currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const totals = document?.currencyTotals || (document ? [document] : []);
   const unitPrice = value => Number(value).toLocaleString(languageCode === 'ko' ? 'ko-KR' : languageCode === 'vi' ? 'vi-VN' : 'en-US', { maximumFractionDigits: 4 });
-  return <Dialog open={Boolean(document)} onClose={onClose} fullWidth maxWidth="xl">
-    <DialogTitle>{labels.document}</DialogTitle>
-    {document && <DialogContent><Stack spacing={2}>
+  return document && <Stack spacing={2}>
       <Typography variant="subtitle1">{labels.numbering}: {expenseRequestNumber(document)}</Typography>
       <Typography variant="h6">{expenseRequestSummary(document,languageCode)}</Typography>
       {document.remark && <Typography>REMARK: {document.remark}</Typography>}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>{[[labels.payee,document.partner?.name],[labels.date,document.requestDate],[labels.applicant,document.createdByEmployee?.name]].map(([label,value]) => <Box key={label}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value || '—'}</Typography></Box>)}</Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>{[[labels.payee,document.payeeEmployee?.name||document.partner?.name],[labels.date,document.requestDate],[labels.applicant,document.createdByEmployee?.name]].map(([label,value]) => <Box key={label}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value || '—'}</Typography></Box>)}</Box>
       <Divider />
       <TableContainer><Table size="small" sx={{ minWidth: 1000 }}><TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.subtotal,labels.tax,labels.total].map((label,index) => <TableCell key={index} align={index > 3 ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{label}</TableCell>)}</TableRow></TableHead>
         <TableBody>{document.items.map((item,index) => <TableRow key={item.id} sx={{ '& td': { verticalAlign: 'top' } }}>
@@ -29,7 +27,6 @@ export default function ExpenseRequestView({ document, languageCode, onClose }) 
           </TableCell><TableCell>{item.currency || document.currency}</TableCell><TableCell align="right">{String(item.quantity)}{item.unit?' '+serviceName(item.unit,languageCode):''}</TableCell><TableCell align="right">{unitPrice(item.unitPrice)}</TableCell><TableCell align="right">{money(item.subtotal,item.currency || document.currency)}</TableCell><TableCell align="right">{money(item.vatAmount,item.currency || document.currency)} ({String(item.vatRate)}%)</TableCell><TableCell align="right" sx={{ fontWeight: 700 }}>{money(item.amount,item.currency || document.currency)}</TableCell>
         </TableRow>)}</TableBody></Table></TableContainer>
       <Stack alignItems="flex-end" spacing={1} sx={{ p: 2, bgcolor: 'grey.50' }}>{totals.map(total=><Stack key={total.currency} alignItems="flex-end" spacing={1}><Typography>{labels.subtotal}: {money(total.subtotal,total.currency)}</Typography><Typography>{labels.tax}: {money(total.vatAmount,total.currency)}</Typography><Typography variant="h6" fontWeight={700}>{labels.total}: {money(total.amount,total.currency)}</Typography></Stack>)}</Stack>
-    </Stack></DialogContent>}
-    <DialogActions><Button onClick={onClose}>{labels.close}</Button></DialogActions>
-  </Dialog>;
+    </Stack>;
 }
+export default function ExpenseRequestView({document,languageCode,onClose}){const labels=EXPENSE_REQUEST_TEXT[languageCode]||EXPENSE_REQUEST_TEXT.ko;return <Dialog open={Boolean(document)} onClose={onClose} fullWidth maxWidth="xl"><DialogTitle>{labels.document}</DialogTitle><DialogContent><ExpenseRequestContent document={document} languageCode={languageCode}/></DialogContent><DialogActions><Button onClick={onClose}>{labels.close}</Button></DialogActions></Dialog>;}

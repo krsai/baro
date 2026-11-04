@@ -23,7 +23,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'GET,POST,OPTIONS'};
   await page.route('**/orders?*',r=>{orderReads++;return r.fulfill({headers,json:[]});});
   for(const endpoint of ['assignment-board-view','org-memberships','customers'])await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json:endpoint==='assignment-board-view'?{assignments:[]}:[]}));
-  await page.route('**/expense-approval-overview?*',r=>r.fulfill({headers,json:{rows:[],total:0}}));
+  await page.route('**/approval-reviews?*',r=>r.fulfill({headers,json:{rows:[],total:0}}));
   const original={accountId:'account',accountName:'USD cash',currencyCode:'USD',transactionDate:'2020-01-01',direction:'IN',amount:'10.00',accountingCode:'GENE',purpose:'Original',evidenceType:'FILE',evidenceNumber:'old.pdf',bankFee:'0.00',writeOffAmount:'0.00',settlementLines:[],allocations:[]};
   await page.route('**/bank-ledger/changes/*/acknowledge?*',r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});assert.equal(r.request().method(),'POST');const url=new URL(r.request().url());assert.equal(url.searchParams.get('orgId'),'7');

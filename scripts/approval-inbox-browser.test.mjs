@@ -1,3 +1,4 @@
+import {approvalReviewText} from '../frontend/src/constants/approvalReview.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -24,17 +25,18 @@ try{
   for(const endpoint of ['assignment-board-view','org-memberships','customers'])await page.route(`**/${endpoint}?*`,r=>r.fulfill({headers,json:endpoint==='assignment-board-view'?{assignments:[]}:[]}));
   await page.route('**/bank-ledger/changes?*',r=>r.fulfill({headers,json:{rows:[],total:0}}));
   await page.route('**/expense-deletion-requests?*',r=>r.fulfill({headers,json:[]}));
-  await page.route('**/expense-approval-overview?*',async r=>{
+  await page.route('**/approval-reviews?*',async r=>{
    const url=new URL(r.request().url()),params=Object.fromEntries(url.searchParams);queries.push(params);const pageSize=Number(params.pageSize),offset=Number(params.page)*pageSize,total=params.orgId==='8'?0:55;
-   const rows=Array.from({length:Math.min(pageSize,Math.max(0,total-offset))},(_,i)=>({id:offset+i+1,kind:'EXPENSE_REQUEST',managementNumber:'EXP-'+String(offset+i+1).padStart(6,'0'),requestDate:'2026-10-29',drafter:'Author',status:params.status==='ALL'?(i%2?'REJECTED':'APPROVED'):params.status==='APPROVED'?'APPROVED':'REQUESTED'}));return r.fulfill({headers,json:{rows,total}});
+   const rows=Array.from({length:Math.min(pageSize,Math.max(0,total-offset))},(_,i)=>({id:offset+i+1,kind:'EXPENSE_REQUEST',menu:'EXPENSE',operation:'CREATE',managementNumber:'EXP-'+String(offset+i+1).padStart(6,'0'),requestDate:'2026-10-29',drafter:'Author',status:params.status==='ALL'?(i%2?'REJECTED':'APPROVED'):params.status==='APPROVED'?'APPROVED':'REQUESTED'}));return r.fulfill({headers,json:{rows,total}});
   });
+  await page.route('**/approval-reviews/EXPENSE_REQUEST/*?*',r=>r.fulfill({headers,json:{menu:'EXPENSE',operation:'CREATE',version:1,canDecide:false,before:{document:{id:21,items:[],currencyTotals:[]},costs:[]},drafter:{name:'Author'},approvalLine:[]}}));
   await page.goto(`http://127.0.0.1:${port}/approval-inbox-acceptance.html?lang=${lang}`);
   const card=page.getByTestId('approval-dashboard'),notifications=page.getByTestId('dashboard-notifications');await card.getByText('EXP-000001',{exact:true}).waitFor();await notifications.getByText('Style 29',{exact:false}).waitFor();
-  assert.equal(queries[0].status,'UNAPPROVED');assert.equal(queries[0].start,'2026-10-01');assert.equal(queries[0].end,'2026-10-30');assert.equal(await card.getByRole('tab').count(),0);assert.equal(await card.locator('thead th').count(),5);assert.equal(await card.locator('tbody tr').count(),20);
+  assert.equal(queries[0].status,'UNAPPROVED');assert.equal(queries[0].start,'2026-10-01');assert.equal(queries[0].end,'2026-10-30');assert.equal(await card.getByRole('tab').count(),0);assert.equal(await card.locator('thead th').count(),6);assert.equal(await card.locator('tbody tr').count(),20);
   const left=await notifications.boundingBox(),right=await card.boundingBox();assert.ok(left.x<right.x);assert.ok(Math.abs(left.y-right.y)<2);assert.ok(Math.abs(left.height-540)<2&&Math.abs(right.height-540)<2);
   assert.ok(await notifications.locator(':scope > .MuiBox-root').evaluate(el=>el.scrollHeight>el.clientHeight));assert.equal(await page.getByText(({ko:'빠른 이동',en:'Quick Actions',vi:'Di chuyen nhanh'})[lang],{exact:true}).count(),0);
-  await card.getByRole('button',{name:t.next,exact:true}).click();await card.getByRole('button',{name:'EXP-000021',exact:true}).click();assert.equal(await page.evaluate(()=>window.destination),'/outsourcing-record/edit/request/21');
-  await card.locator('#approval-overview-status').click();await page.getByRole('option',{name:t.all,exact:true}).click();await card.locator('[data-approval-status="APPROVED"]').first().waitFor();assert.equal(queries.at(-1).status,'ALL');assert.equal(queries.at(-1).page,'0');
+  await card.getByRole('button',{name:t.next,exact:true}).click();await card.locator('tbody tr').filter({hasText:'EXP-000021'}).getByRole('button',{name:approvalReviewText[lang].view,exact:true}).click();await page.getByRole('dialog').locator('#approval-review-title').waitFor();assert.equal(await page.evaluate(()=>window.destination),undefined);await page.getByRole('dialog').getByRole('button',{name:approvalReviewText[lang].close,exact:true}).click();
+  await card.locator('#approval-overview-status').click();await page.getByRole('option',{name:t.all,exact:true}).click();await card.getByText('EXP-000001',{exact:true}).waitFor();assert.equal(queries.at(-1).status,'ALL');assert.equal(queries.at(-1).page,'0');
   const before=orderReads;await card.getByText('M-',{exact:true}).click();await page.waitForFunction(()=>true);await page.waitForTimeout(300);assert.ok(queries.at(-1).end<'2026-10-01');assert.equal(orderReads,before,'approval date changes do not reload production summaries');
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);const mobileLeft=await notifications.boundingBox(),mobileRight=await card.boundingBox();assert.ok(mobileLeft.y<mobileRight.y);
   await page.evaluate(()=>window.setOrg(8));assert.equal(await card.getByRole('button',{name:'EXP-000001',exact:true}).count(),0);await card.getByText(t.empty,{exact:true}).waitFor();assert.deepEqual(errors,[]);await page.close();
