@@ -1,0 +1,33 @@
+export const PACKAGING_KEYS=['polyUsage','boxCapacity','packWaste','polyPrice','boxPrice'];
+export const createProfitInputs=()=>({currency:'VND',quantity:'',salePrice:'',basis:'ST',stSeconds:'',ptSeconds:'',productivity:100,workers:10,targetDays:10,hoursDay:8,workdays:26,factoryWorkers:10,baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:'',productionPay:'',otherUnitCost:'',packaging:true,polyUsage:1,boxCapacity:50,packWaste:2,polyPrice:'',boxPrice:'',costMode:'estimate'});
+export const trialProfitInputs=()=>({...createProfitInputs(),quantity:1000,salePrice:40000,stSeconds:600,ptSeconds:500,baseMonthly:6000000,allowanceMonthly:1000000,supportMonthly:9000000,rentMonthly:20000000,productionPay:3000,otherUnitCost:1000,polyPrice:400,boxPrice:20000});
+const number=value=>value===''||value==null||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
+export function calculateProfitScenario(input,{linkedAmount=0}={}){
+ const missing=[];
+ const read=(key,positive=false)=>{const value=number(input[key]);if(value===null||positive&&value<=0){missing.push(key);return null;}return value;};
+ const quantity=read('quantity',true),seconds=read(input.basis==='PT'?'ptSeconds':'stSeconds',true),productivity=read('productivity',true),workers=read('workers',true),hours=read('hoursDay',true),workdays=read('workdays',true),capacity=read('factoryWorkers',true);
+ for(const [key,value] of [['quantity',quantity],['workers',workers],['factoryWorkers',capacity]])if(value!==null&&!Number.isInteger(value))missing.push(key);
+ if(hours>24)missing.push('hoursDay');if(workdays>31)missing.push('workdays');
+ const workloadHours=quantity!==null&&seconds!==null&&productivity!==null?quantity*seconds/3600/(productivity/100):null;
+ const days=workloadHours!==null&&workers!==null&&hours!==null?workloadHours/workers/hours:null;
+ const target=number(input.targetDays),requiredWorkers=workloadHours!==null&&hours!==null&&target>0?Math.ceil(workloadHours/hours/target):null;
+ const share=workers!==null&&capacity!==null?workers/capacity:null;
+ if(share>1)missing.push('capacityExceeded');
+ const fraction=days!==null&&workdays!==null?days/workdays:null;
+ const prorate=(key,perWorker=false)=>{const value=read(key);return value!==null&&fraction!==null&&share!==null?value*fraction*(perWorker?workers:share):null;};
+ const base=prorate('baseMonthly',true),allowance=prorate('allowanceMonthly',true),support=prorate('supportMonthly'),rent=prorate('rentMonthly');
+ const piece=read('productionPay'),production=piece!==null&&quantity!==null?piece*quantity:null;
+ let direct=null,poly=0,boxes=0,polyCost=0,boxCost=0;
+ if(input.costMode==='linked'){direct=number(linkedAmount);if(direct===null)missing.push('linkedAmount');}
+ else {const rate=read('otherUnitCost');direct=rate!==null&&quantity!==null?rate*quantity:null;}
+ if(input.packaging){
+  const usage=read('polyUsage'),boxCapacity=read('boxCapacity',true),waste=read('packWaste'),polyPrice=read('polyPrice'),boxPrice=read('boxPrice');
+  poly=quantity!==null&&usage!==null&&waste!==null?Math.ceil(quantity*usage*(1+waste/100)):null;
+  boxes=quantity!==null&&boxCapacity!==null&&waste!==null?Math.ceil(quantity/boxCapacity*(1+waste/100)):null;
+  polyCost=poly!==null&&polyPrice!==null?poly*polyPrice:null;boxCost=boxes!==null&&boxPrice!==null?boxes*boxPrice:null;
+ }
+ const price=read('salePrice'),revenue=quantity!==null&&price!==null?quantity*price:null;
+ const costs={base,allowance,production,support,rent,direct,polyCost,boxCost};
+ const knownCost=Object.values(costs).reduce((sum,value)=>sum+(value??0),0),ready=missing.length===0,total=ready?knownCost:null,profit=ready?revenue-total:null;
+ return {missing:[...new Set(missing)],ready,quantity,workloadHours,days,requiredWorkers,share,poly,boxes,costs,knownCost,total,revenue,profit,unitCost:total!==null&&quantity?total/quantity:null,margin:profit!==null&&revenue>0?profit/revenue*100:null};
+}

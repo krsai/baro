@@ -1,4 +1,5 @@
 import {registerApprovalActionRoutes} from './services/approvalActions';
+import {registerRevenueAnalysisRoutes} from './services/revenueAnalysis';
 import {registerChangeApprovalRoutes} from './services/changeApprovals';
 import {SERVICE_ROLE_DEFAULTS,SERVICE_FEATURES,supportsWorkplaces} from './services/serviceCompany';
 import {loadIssuedOrderSalesValues} from './services/issuedOrderSalesValue';
@@ -27631,6 +27632,13 @@ registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestAc
 registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalActionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
+registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,resolveTimes:(snapshot:any,items:any[])=>{
+ const processes=normalizeStyleProcesses(snapshot),quantity=items.reduce((sum,item)=>sum+item.totalQuantity,0);
+ const quantities={total:quantity,male:items.filter(item=>item.gender==='M').reduce((sum,item)=>sum+item.totalQuantity,0),female:items.filter(item=>item.gender==='W').reduce((sum,item)=>sum+item.totalQuantity,0),unspecified:items.filter(item=>!item.gender).reduce((sum,item)=>sum+item.totalQuantity,0)};
+ if(!quantity||!processes.length||findStyleProcessGenderScopeAmbiguity(processes,quantities))return {ST:null,PT:null};
+ const total=(basis:string)=>{let sum=0;for(const process of processes){const applicable=resolveStyleProcessRowApplicableQuantity(process,quantities);if(!applicable)continue;const seconds=basis==='ST'?resolveStyleProcessVersionStPerPieceSeconds(process,quantity):toOptionalProcessSeconds(process.pt);if(seconds===null||seconds<=0)return null;sum+=seconds*applicable;}return sum>0?sum/quantity:null;};
+ return {ST:total('ST'),PT:total('PT')};
+}});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
 registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{
