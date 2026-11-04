@@ -1629,7 +1629,7 @@ const isBrandOrg = (org: { type?: string | null } | null | undefined) =>
 const resolveCustomerPerspective = (
   org: { type?: string | null } | null | undefined
 ): "MANUFACTURER" | "BRAND" | null => {
-  if (isManufacturerOrg(org)) return "MANUFACTURER";
+  if (isManufacturerOrg(org) || org?.type === "SERVICE") return "MANUFACTURER";
   if (isBrandOrg(org)) return "BRAND";
   return null;
 };
@@ -1894,6 +1894,7 @@ const buildSharedCustomerOrganizationData = (
   payload: any = {},
   fallbackOrganization: any = null, linkedCompany:any = null
 ) => {
+  if(linkedCompany)payload={...payload,...Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,linkedCompany[key]??null]))};
   return {
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
     ...resolvePartnerIdentity(payload,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,fallbackOrganization,linkedCompany),
@@ -27890,14 +27891,14 @@ app.get("/customers", async (req, res) => {
     return res.status(404).json({ ok: false, error: "organization not found" });
   }
 
-  if (!isManufacturerOrg(organization) && !isBrandOrg(organization)) {
+  if (!resolveCustomerPerspective(organization)) {
     return res.status(400).json({
       ok: false,
       error: "invalid organization type",
     });
   }
 
-  const where = isManufacturerOrg(organization)
+  const where = resolveCustomerPerspective(organization) === "MANUFACTURER"
     ? { manufacturerOrgId: organization.id }
     : { brandOrgId: organization.id };
   const relationships = await prisma.orgRelationship.findMany({
@@ -27906,7 +27907,7 @@ app.get("/customers", async (req, res) => {
     orderBy: { id: "asc" },
   });
 
-  const perspective = isManufacturerOrg(organization) ? "MANUFACTURER" : "BRAND";
+  const perspective = resolveCustomerPerspective(organization)!;
   const missingPriceCountByRelationship = isManufacturerOrg(organization)
     ? await loadMissingSalesPriceStyleCountByRelationship({
         manufacturerOrgId: organization.id,
@@ -29814,7 +29815,7 @@ app.post("/customers", async (req, res) => {
   });
   await saveClassification(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body.classification);
   await connectPartnerCompany(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
-  if (!relationship.salesBucketSetVersionId || !relationship.timeBucketSetVersionId) {
+  if (organization.type !== "SERVICE" && (!relationship.salesBucketSetVersionId || !relationship.timeBucketSetVersionId)) {
       const actor = getCurrentRequestActor();
       const salesVersion = relationship.salesBucketSetVersionId
         ? null

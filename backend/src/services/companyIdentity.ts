@@ -4,16 +4,23 @@ export const identityFields={id:true,name:true,nameKo:true,nameVi:true,code:true
 export const numberKey=(value:any)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export const publicIdentityRevision=(row:any)=>editRevision(Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])));
 export const identityDto=(row:any,common=false)=>({...Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])),...(common?{identityId:row.id}:{sourceEntityId:row.id}),revision:publicIdentityRevision(row)});
+// Read public names/address from the owning profile without rewriting local rows or snapshots.
+export async function currentIdentity(db:any,row:any){
+ if(!row?.anchorEntityId)return row;
+ const anchor=await db.organization.findFirst({where:{id:row.anchorEntityId,isActive:true},select:identityFields});
+ return anchor?{...row,name:anchor.name,nameKo:anchor.nameKo,nameVi:anchor.nameVi,address:anchor.address}:row;
+}
 export async function identityCandidates(db:any,orgId:number,input:any){
  const number=numberKey(input.businessNumber),country=String(input.country||'').trim();
  if(number.length<3||number.length>100||!country||country.length>10)throw createHttpError(400,'COMPANY_LOOKUP_COUNTRY_NUMBER_REQUIRED');
- const common=await db.companyIdentity.findMany({where:{country,businessNumber:number},select:identityFields,take:21,orderBy:{id:'asc'}});
+ const common=await db.companyIdentity.findMany({where:{country,businessNumber:number},take:21,orderBy:{id:'asc'}});
  const sources=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address FROM "Organization" o WHERE id<>$1 AND "isActive" AND "partyKind" IS DISTINCT FROM 'INDIVIDUAL' AND code IS NOT NULL AND country=$3 AND regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g')=$2 AND NOT EXISTS(SELECT 1 FROM "CompanyIdentity" c WHERE (c."anchorEntityId"=o.id OR c.code=o.code)) AND NOT EXISTS(SELECT 1 FROM "CompanyIdentityLink" l WHERE l."entityId"=o.id) ORDER BY id LIMIT 21`,orgId,number,country);
- return [...common.map((r:any)=>identityDto(r,true)),...sources.map((r:any)=>identityDto(r))].slice(0,21);
+ return [...(await Promise.all(common.map((r:any)=>currentIdentity(db,r)))).map((r:any)=>identityDto(r,true)),...sources.map((r:any)=>identityDto(r))].slice(0,21);
 }
 export async function resolveIdentityChoice(db:any,orgId:number,entityId:number|undefined,requested:any,profile:any){
  const existing=entityId?await db.companyIdentityLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{identity:true}}):null;
  if(existing){
+  existing.identity=await currentIdentity(db,existing.identity);
   if(requested&&(requested.separate||requested.identityId&&requested.identityId!==existing.identityId||requested.sourceEntityId&&requested.sourceEntityId!==existing.identity.anchorEntityId))throw createHttpError(409,'COMPANY_CONNECTION_ALREADY_LINKED');
   const number=numberKey(profile?.businessNumber),country=profile?.country;
   if(number&&number!==existing.identity.businessNumber||country&&country!==existing.identity.country)throw createHttpError(409,'COMPANY_CONNECTION_IDENTITY_MISMATCH');
@@ -29,7 +36,7 @@ export async function resolveIdentityChoice(db:any,orgId:number,entityId:number|
  }
  const common=Number.isSafeInteger(requested.identityId),id=common?requested.identityId:requested.sourceEntityId;
  if(!Number.isSafeInteger(id)||id<=0||!common&&id===orgId)throw createHttpError(400,'INVALID_COMPANY_CONNECTION');
- const row=common?await db.companyIdentity.findUnique({where:{id}}):await db.organization.findFirst({where:{id,isActive:true,OR:[{partyKind:null},{partyKind:'CORPORATE'}]},select:identityFields});
+ const row=common?await currentIdentity(db,await db.companyIdentity.findUnique({where:{id}})):await db.organization.findFirst({where:{id,isActive:true,OR:[{partyKind:null},{partyKind:'CORPORATE'}]},select:identityFields});
  if(!row||!row.code||requested.revision!==publicIdentityRevision(row))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
  if(!profile?.country||profile.country!==row.country||!numberKey(profile.businessNumber)||numberKey(profile.businessNumber)!==numberKey(row.businessNumber))throw createHttpError(409,'COMPANY_CONNECTION_IDENTITY_MISMATCH');
  return {...identityDto(row,common),...(common?{anchorEntityId:row.anchorEntityId}:{})};

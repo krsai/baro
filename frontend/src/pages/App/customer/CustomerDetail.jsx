@@ -188,7 +188,7 @@ const CustomerDetail = () => {
 
   const handleBasicFieldChange = useCallback((event) => {
     const { name, value } = event.target;
-    setCustomerFormData((prev) => ({ ...prev, [name]: value }));
+    setCustomerFormData((prev) => ({ ...prev, [name]: value, ...(name==='linkedCompany'&&value?Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,value[key]||''])):{}) }));
   }, []);
 
   const handleCountryChange = useCallback((event) => {

@@ -17,7 +17,7 @@ export const PARTNER_PROFILE_TEXT={
 export default function PartnerProfileFields({value,onChange,disabled=false,languageCode='ko',autoFocus=false}){
  const text=PARTNER_PROFILE_TEXT[languageCode]||PARTNER_PROFILE_TEXT.en,common=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en;
  const party=PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en;
- const field=(name,label,props={})=><TextField fullWidth size="small" disabled={disabled} name={name} label={label} value={value[name]||''} onChange={event=>onChange(name,event.target.value)} {...props}/>;
+ const field=(name,label,props={})=><TextField fullWidth size="small" disabled={disabled} InputProps={{readOnly:Boolean(value.linkedCompany&&['name','nameKo','nameVi','address','country','businessNumber'].includes(name))}} name={name} label={label} value={(['name','nameKo','nameVi','address','country','businessNumber'].includes(name)&&value.linkedCompany?value.linkedCompany[name]:value[name])||''} onChange={event=>onChange(name,event.target.value)} {...props}/>;
  const grid={display:'grid',gap:2,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',md:'repeat(3,minmax(0,1fr))'}};
  return <Stack spacing={2}>
   <EntityDetailSection title={common.identity}>

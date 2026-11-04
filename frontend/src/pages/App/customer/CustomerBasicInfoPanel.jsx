@@ -45,12 +45,13 @@ const getText = (languageCode) => {
 const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustomer, languageCode, onBasicFieldChange, onCountryChange, t }) => {
   const text = useMemo(() => getText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
-  const {activeOrgId}=useAuth();
+  const {activeOrgId,activeOrgType,activeProfile}=useAuth();
   const common = { fullWidth: true, disabled: savingCustomer, size: 'small' };
-  const isBrand = customerFormData.industry === 'BRAND';
+  const isBrand = ['MANUFACTURER','BRAND'].includes(activeOrgType||activeProfile?.orgType) && customerFormData.industry === 'BRAND';
 
   return (
     <Stack spacing={2} >
+      <CompanyConnectionField orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
       <PartnerProfileFields languageCode={languageCode} disabled={savingCustomer}
         value={{...customerFormData,contactName:customerFormData.manager,contactPhone:customerFormData.phoneNumber}}
         onChange={(key,value)=>{
@@ -58,7 +59,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
           const event={target:{name,value}};
           if(key==='country')onCountryChange(event);else onBasicFieldChange(event);
         }}/>
-      <CompanyConnectionField orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
+
       <EntityDetailSection title={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).role}>
         <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode} initialRoleCode={!customerFormData.id?'CUSTOMER':undefined}/>
       </EntityDetailSection>

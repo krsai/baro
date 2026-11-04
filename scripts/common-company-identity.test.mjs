@@ -28,6 +28,24 @@ test('separate registration is explicit and bound to the current identity input;
  await assert.rejects(resolveIdentityChoice(db,3,31,{sourceEntityId:11,revision:publicIdentityRevision(source)},{country:'KR',businessNumber:'123456'}),/MISMATCH/);
  await assert.rejects(identityCandidates(db,3,{businessNumber:'123456'}),/COUNTRY_NUMBER_REQUIRED/);
 });
+
+test('linked profiles read current public names and address without rewriting local identity, relationships or history',async()=>{
+ const {db,source,identities}=memory(),profile={country:'VN',businessNumber:'123456'};
+ const [candidate]=await identityCandidates(db,3,profile);
+ await saveIdentityChoice(db,3,31,303,await resolveIdentityChoice(db,3,31,{sourceEntityId:11,revision:candidate.revision},profile));
+ const [before]=await identityCandidates(db,4,profile);
+ source.name='Updated official name';source.nameKo='Updated localized name';source.address='Updated public address';
+ const [after]=await identityCandidates(db,4,profile);
+ assert.equal(after.name,source.name);assert.equal(after.address,source.address);assert.notEqual(after.revision,before.revision);
+ await assert.rejects(resolveIdentityChoice(db,4,41,{identityId:1,revision:before.revision},profile),/CHANGED/);
+ assert.equal((await resolveIdentityChoice(db,3,31,null,profile)).name,source.name);
+ const {attachLinkedCompanies}=require('../backend/dist/services/companyConnections');
+ db.companyPartnerLink={findMany:async()=>[]};
+ db.companyIdentityLink.findMany=async()=>[{entityId:31,identity:identities[0]}];
+ const [row]=await attachLinkedCompanies(db,3,[{id:99,entityId:31,name:'Local historical name',code:'LOCAL',amount:123}]);
+ assert.equal(row.name,source.name);assert.equal(row.address,source.address);assert.equal(row.id,99);assert.equal(row.entityId,31);assert.equal(row.code,'LOCAL');assert.equal(row.amount,123);
+ assert.equal(identities[0].name,'Customer B');assert.equal(row.linkedCompany.code,'BBBB');assert.equal('employees' in row.linkedCompany,false);
+});
 test('new SQL keeps original rows and FKs, enforces same identity/active actor and prevents reassigning links',async()=>{
  const db=new PGlite();try{
  await db.exec(`CREATE TABLE "Organization"(id INT PRIMARY KEY,"ownerOrgId" INT,"dataOwnerOrgId" INT,type TEXT,"isActive" BOOLEAN DEFAULT true,code TEXT UNIQUE,name TEXT,"nameKo" TEXT,"nameVi" TEXT,country TEXT,"businessNumber" TEXT,address TEXT,"partyKind" TEXT);CREATE TABLE "Employee"(id INT,"orgId" INT,status TEXT,"orgRole" TEXT,UNIQUE(id,"orgId"));CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);CREATE TABLE "CompanyPartnerLink"("entityId" INT,"targetOrgId" INT);INSERT INTO "Organization"(id,type,code,name,country,"businessNumber","partyKind","ownerOrgId") VALUES(1,'MANUFACTURER','AAAA','A','VN','A1','CORPORATE',NULL),(3,'MANUFACTURER','CCCC','C','VN','C1','CORPORATE',NULL),(11,'BRAND','BBBB','B','VN','123-456','CORPORATE',1),(31,'BRAND',NULL,'B local','VN','123456','CORPORATE',3),(32,'BRAND',NULL,'Other','KR','123456','CORPORATE',3);INSERT INTO "Employee" VALUES(303,3,'ACTIVE','OPERATOR');`);

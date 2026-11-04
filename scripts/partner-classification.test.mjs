@@ -16,6 +16,21 @@ function sourceRoute(method,path,dependencies){
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));return handler;
 }
 const validator=(stored=null)=>({partnerClassification:{findUnique:async()=>stored},settingServiceDefault:{findMany:async({where})=>sources.filter(row=>where.id.in.includes(row.id))}});
+
+test('SERVICE customer registration saves its own relationship and connection without production bucket defaults',async()=>{
+ const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
+ const names=['isManufacturerOrg','isBrandOrg','resolveCustomerPerspective','buildSharedCustomerOrganizationData'];
+ const code=tree.statements.filter(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(d=>names.includes(d.name.getText(tree)))).map(node=>node.getText(tree)).join('\n');
+ const helpers=new Function('normalizeLocalizedName','resolvePartnerIdentity','resolveOptionalString',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return {resolveCustomerPerspective,buildSharedCustomerOrganizationData};')(value=>({name:value.name}),resolvePartnerIdentity,(v,f)=>v??f);
+ assert.equal(helpers.resolveCustomerPerspective({type:'SERVICE'}),'MANUFACTURER');assert.equal(helpers.resolveCustomerPerspective({type:'SYSTEM'}),null);
+ const company={id:1845,type:'SERVICE'},canonical={name:'BARO GARMENT',nameKo:'Official localized name',address:'Official address',code:'BARO'};
+ let created,relationship,classificationSaved=false,connected=false;
+ const db={organization:{create:async({data})=>(created={id:77,...data})},orgRelationship:{upsert:async({create})=>(relationship={id:99,...create})},$transaction:async run=>run(db)};
+ const handler=sourceRoute('post','/customers',{...helpers,prisma:db,requireOrgRole:async()=>({organization:company}),validateClassification:async()=>{},requireClassificationActor:async()=>{},getCurrentRequestActorEmployeeId:()=>125,toPositiveIntOrNull:v=>Number(v)||null,linkedPartnerCompany:async()=>canonical,ORGANIZATION_TYPE_KEYS:{BRAND:'BRAND',MANUFACTURER:'MANUFACTURER'},resolveOptionalString:(v,f)=>v??f,normalizeCustomerDefaultSizeSetCode:()=> 'ALPHA',saveClassification:async(_db,org,entity)=>{assert.equal(org,1845);assert.equal(entity,77);classificationSaved=true;},connectPartnerCompany:async(_db,org,entity)=>{assert.equal(org,1845);assert.equal(entity,77);connected=true;},toCustomerResponse:r=>r,attachPartnerClassifications:async(_db,org,rows)=>rows});
+ let result;const res={headersSent:false,status(code){assert.equal(code,201);return this;},json(value){result=value;return this;}};
+ await handler({body:{name:'Untrusted name',partyKind:'CORPORATE',country:'VN',businessNumber:'0109423500',classification:body}},res);
+ assert.equal(created.name,canonical.name);assert.equal(created.address,canonical.address);assert.equal(created.code,null);assert.equal(relationship.manufacturerOrgId,1845);assert.equal(relationship.brandOrgId,77);assert.equal(result.id,99);assert.equal(classificationSaved,true);assert.equal(connected,true);assert.equal(company.type,'SERVICE');
+});
 test('legacy GENERAL stays an original reference and never becomes a selectable industry or inferred category',()=>{
  const value=effectiveClassification(null,[sources[0],sources[2]]);assert.deepEqual(value.roleIds,[2]);assert.deepEqual(value.industryIds,[10]);assert.deepEqual(value.legacyGeneral,[{id:12,code:'GENERAL'}]);assert.equal(value.revision,0);
  const explicit=effectiveClassification({revision:3,industries:[{industry:sources[1]}]},[sources[0],sources[2]]);assert.deepEqual(explicit.roleIds,[3]);assert.deepEqual(explicit.industryIds,[11]);assert.equal(explicit.revision,3);

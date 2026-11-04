@@ -1,7 +1,7 @@
 import {createHttpError} from '../utils/http';
 import {editRevision,retryEditTransaction} from '../utils/editRevision';
 import {classificationTarget,requireClassificationActor} from './partnerClassification';
-import {identityFields,identityCandidates,resolveIdentityChoice,saveIdentityChoice,identityDto} from './companyIdentity';
+import {identityFields,identityCandidates,resolveIdentityChoice,saveIdentityChoice,identityDto,currentIdentity} from './companyIdentity';
 
 const tenantTypes=['MANUFACTURER','BRAND','SERVICE'];
 const tenantScope={ownerOrgId:null,isActive:true,type:{in:tenantTypes},employees:{some:{status:'ACTIVE'}}};
@@ -57,6 +57,7 @@ export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
  app.get('/company-connections',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;
   const rows=await db.companyPartnerLink.findMany({where:{OR:[{orgId},{targetOrgId:orgId}]},include:{source:{select:publicSelect},target:{select:publicSelect}},orderBy:{createdAt:'asc'}});
   const common=await db.companyIdentityLink.findMany({where:{orgId},include:{identity:true}});
+  await Promise.all(common.map(async(row:any)=>{row.identity=await currentIdentity(db,row.identity);}));
   res.json([...common.map((row:any)=>({company:identityDto(row.identity,true),entityId:row.entityId,direction:'OUTGOING',createdAt:row.createdAt})),...rows.filter((row:any)=>!common.some((c:any)=>c.entityId===row.entityId&&row.orgId===orgId)).map((row:any)=>({company:row.orgId===orgId?row.target:row.source,entityId:row.orgId===orgId?row.entityId:null,direction:row.orgId===orgId?'OUTGOING':'INCOMING',createdAt:row.createdAt}))]);
  });
  app.post('/company-connections',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;const entityId=Number(req.body?.entityId);if(!Number.isSafeInteger(entityId)||entityId<=0)throw createHttpError(400,'INVALID_PARTNER_ID');
@@ -76,9 +77,11 @@ export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,
  if(!target||requested.revision!==companyIdentityRevision(target))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
  return target;
 }
+const publicProfile=(company:any)=>company?Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,company[key]??null])):{};
 export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
  if(!rows.length)return rows;
  const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,target:{select:publicSelect}}});
  const common=await db.companyIdentityLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:{identity:true}});
- return rows.map(row=>({...row,linkedCompany:common.some((link:any)=>link.entityId===row.entityId)?identityDto(common.find((link:any)=>link.entityId===row.entityId).identity,true):links.find((link:any)=>link.entityId===row.entityId)?.target??null}));
+ await Promise.all(common.map(async(link:any)=>{link.identity=await currentIdentity(db,link.identity);}));
+ return rows.map(row=>({...row,...publicProfile(common.find((link:any)=>link.entityId===row.entityId)?.identity||links.find((link:any)=>link.entityId===row.entityId)?.target),linkedCompany:common.some((link:any)=>link.entityId===row.entityId)?identityDto(common.find((link:any)=>link.entityId===row.entityId).identity,true):links.find((link:any)=>link.entityId===row.entityId)?.target??null}));
 }
