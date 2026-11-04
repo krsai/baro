@@ -38,6 +38,7 @@ try{
   const firstBox=await dialog.getByRole('button').nth(0).boundingBox(),secondBox=await dialog.getByRole('button').nth(1).boundingBox();
   assert.ok(Math.abs(firstBox.y-secondBox.y)<1);assert.ok(Math.abs(firstBox.width-secondBox.width)<1);
   const columns=await dialog.locator('dd').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().x));assert.ok(columns.every(x=>Math.abs(x-columns[0])<1));
+  const titleBox=await dialog.locator('#company-review-title').boundingBox(),cardBox=await dialog.locator('.MuiPaper-outlined').boundingBox();assert.ok(cardBox.y-titleBox.y-titleBox.height>=16);
   const same=dialog.getByRole('button').nth(0);await same.click();
   assert.deepEqual(await page.evaluate(()=>window.selectedConnection),{sourceEntityId:2,revision:'reviewed-target'});
   await page.goto(`http://127.0.0.1:${port}/company-connections-acceptance.html?lang=${lang}&screen=customer`);

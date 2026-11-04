@@ -18,13 +18,18 @@ const PROFILE_LABELS={
  en:{name:'Company name',industry:'Industry',representative:'Representative',contact:'Contact',country:'Country',address:'Address',number:'Business / tax number',same:'Same company',different:'Different company'},
  vi:{name:'Tên công ty',industry:'Ngành nghề',representative:'Người đại diện',contact:'Liên hệ',country:'Quốc gia',address:'Địa chỉ',number:'Mã số doanh nghiệp / thuế',same:'Cùng công ty',different:'Khác công ty'},
 };
+const INDUSTRY_FALLBACK={
+ ko:{MANUFACTURER:'제조업',BRAND:'브랜드',SERVICE:'서비스업'},
+ en:{MANUFACTURER:'Manufacturing',BRAND:'Brand',SERVICE:'Services'},
+ vi:{MANUFACTURER:'Sản xuất',BRAND:'Thương hiệu',SERVICE:'Dịch vụ'},
+};
 export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId}){
  const text=COMPANY_CONNECTION_TEXT[languageCode]||COMPANY_CONNECTION_TEXT.en;
  const confirm=CONFIRM[languageCode]||CONFIRM.en;
  const labels=PROFILE_LABELS[languageCode]||PROFILE_LABELS.en;
  const profileRows=row=>[
   ['name',[...new Set([languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.name,row.name].filter(Boolean))].join(' / ')],
-  ['industry',row.industryLabels?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.industryLabels?.nameEn||row.industry],
+  ['industry',row.industryLabels?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.industryLabels?.nameEn||(INDUSTRY_FALLBACK[languageCode]||INDUSTRY_FALLBACK.en)[row.industry]||row.industry],
   ['representative',row.representative],['contact',[row.phone,row.email].filter(Boolean).join(' · ')],
   ['country',getStaticOptionOptions('country',languageCode).find(option=>option.value===row.country)?.label||row.country],
   ['address',row.address],['number',row.businessNumber],
@@ -41,7 +46,7 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  return <Stack spacing={1}>{linked?<Chip label={`${text.connected}: ${linked.name} (${linked.code})`}/>:<><Button onClick={find} disabled={disabled||loading||(!businessNumber&&String(name||'').trim().length<3)}>{confirm.find}</Button>{selected&&<Chip label={`${confirm.selected}: ${selected.name} (${selected.code})`}/>}{value?.separate&&<Typography variant="caption">{confirm.separate}</Typography>}{checked&&!options.length&&<Typography variant="caption">{text.none}</Typography>}</>}{error&&<Alert severity="error">{error}</Alert>}
   <Dialog open={review&&!disabled} onClose={()=>setReview(false)} fullWidth maxWidth="sm" aria-labelledby="company-review-title">
    <DialogTitle id="company-review-title" sx={{px:3,py:2.5}}>{confirm.title}</DialogTitle>
-   <DialogContent sx={{px:{xs:2,sm:3},pb:0}}><Stack spacing={2}>{options.map(row=><Paper variant="outlined" key={`${row.identityId?'identity':'source'}:${row.id}`} sx={{p:{xs:2,sm:2.5},borderRadius:2}}>
+   <DialogContent sx={{px:{xs:2,sm:3},py:2.5,'&.MuiDialogContent-root':{pt:2.5}}}><Stack spacing={2}>{options.map(row=><Paper variant="outlined" key={`${row.identityId?'identity':'source'}:${row.id}`} sx={{p:{xs:2,sm:2.5},borderRadius:2}}>
     <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} sx={{mb:2}}><Typography fontWeight={700} sx={{overflowWrap:'anywhere'}}>{row.name}</Typography><Chip size="small" label={row.code}/></Stack>
     <Box component="dl" sx={{m:0,display:'grid',gridTemplateColumns:{xs:'88px minmax(0,1fr)',sm:'112px minmax(0,1fr)'},columnGap:2,rowGap:1.5}}>
      {profileRows(row).map(([key,value])=><React.Fragment key={key}><Typography component="dt" variant="body2" color="text.secondary">{labels[key]}</Typography><Typography component="dd" variant="body2" sx={{m:0,overflowWrap:'anywhere',whiteSpace:'pre-wrap'}}>{value||'—'}</Typography></React.Fragment>)}
