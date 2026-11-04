@@ -23,6 +23,7 @@ const INDUSTRY_FALLBACK={
  en:{MANUFACTURER:'Manufacturing',BRAND:'Brand',SERVICE:'Services'},
  vi:{MANUFACTURER:'Sản xuất',BRAND:'Thương hiệu',SERVICE:'Dịch vụ'},
 };
+const COUNTRY_REQUIRED={ko:'업체를 조회하려면 국가를 선택해 주세요.',en:'Select a country to look up the company.',vi:'Vui lòng chọn quốc gia để tìm công ty.'};
 export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId}){
  const text=COMPANY_CONNECTION_TEXT[languageCode]||COMPANY_CONNECTION_TEXT.en;
  const confirm=CONFIRM[languageCode]||CONFIRM.en;
@@ -39,7 +40,7 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const requestKey=`${orgId}:${businessNumber}:${country}`,current=useRef(requestKey);current.current=requestKey;
  useEffect(()=>{setOptions([]);setSelected(null);setReview(false);setChecked(false);setError('');setLoading(false);onChange(undefined,linked||null);},[orgId,businessNumber,country]);
  useEffect(()=>{let alive=true;setLinked(null);if(entityId)requestJSON('/company-connections'+buildQueryString({orgId}),{skipCache:true}).then(rows=>{if(alive){const company=rows.find(row=>row.entityId===entityId)?.company||null;setLinked(company);if(company)onChange(undefined,company);}}).catch(()=>{if(alive)setError(text.error);});return()=>{alive=false;};},[orgId,entityId]);
- const find=async()=>{const key=requestKey;setLoading(true);setError('');try{const rows=(await requestJSON('/company-connections/candidates'+buildQueryString({orgId,name,businessNumber,country}),{skipCache:true})).filter(row=>row.sourceEntityId!==entityId);if(current.current===key){setOptions(rows);setChecked(true);setReview(rows.length>0);}}catch{if(current.current===key)setError(text.error);}finally{if(current.current===key)setLoading(false);}};
+ const find=async()=>{if(businessNumber&&!country){setError(COUNTRY_REQUIRED[languageCode]||COUNTRY_REQUIRED.en);return;}const key=requestKey;setLoading(true);setError('');try{const rows=(await requestJSON('/company-connections/candidates'+buildQueryString({orgId,name,businessNumber,country}),{skipCache:true})).filter(row=>row.sourceEntityId!==entityId);if(current.current===key){setOptions(rows);setChecked(true);setReview(rows.length>0);}}catch{if(current.current===key)setError(text.error);}finally{if(current.current===key)setLoading(false);}};
  useEffect(()=>{if(linked||value||disabled||!country||String(businessNumber||'').replace(/[^A-Za-z0-9]/g,'').length<3)return;const timer=setTimeout(find,600);return()=>clearTimeout(timer);},[orgId,name,businessNumber,country,linked,disabled,value]);
  const accept=row=>{setSelected(row);setReview(false);onChange({...('identityId'in row?{identityId:row.identityId}:'sourceEntityId'in row?{sourceEntityId:row.sourceEntityId}:{targetOrgId:row.id}),revision:row.revision},row);};
  const separate=()=>{setSelected(null);setReview(false);onChange({separate:true,businessNumber:String(businessNumber||'').toUpperCase().replace(/[^A-Z0-9]/g,''),country},null);};

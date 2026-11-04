@@ -37,12 +37,27 @@ test('production ownership triggers reproduce the SERVICE failure; full linked c
   assert.deepEqual((await db.query('SELECT id,"dataOwnerOrgId" FROM "Organization" WHERE id IN(1,32,33) ORDER BY id')).rows,[{id:1,dataOwnerOrgId:1},{id:32,dataOwnerOrgId:1},{id:33,dataOwnerOrgId:3}]);
   await assert.rejects(db.exec(`UPDATE "Organization" SET "dataOwnerOrgId"=1845 WHERE id=31`),/data owner must be a manufacturer/);
   assert.equal((await db.query('SELECT count(*)::int n FROM "CompanyIdentityLink" WHERE "orgId"=1845')).rows[0].n,1);
+  const vendor=`INSERT INTO "Organization"(id,name,type,"ownerOrgId",country,"businessNumber","partyKind") VALUES(41,'BARO local vendor','LOGISTICS_PROVIDER',1845,'VN','0109423500','CORPORATE');`;
+  await assert.rejects(db.exec(vendor),/data owner must be a manufacturer/);
+  const vendorMigration=readFileSync('backend/prisma/migrations/20261104150000_service_partner_data_owner/migration.sql','utf8');
+  await db.exec(vendorMigration);await db.exec(vendorMigration);
+  await db.exec(`BEGIN;${vendor}
+   INSERT INTO "PartnerClassification"("orgId","entityId","updatedByEmployeeId") VALUES(1845,41,125);
+   INSERT INTO "PartnerClassificationIndustry" VALUES(1845,41,10);
+   INSERT INTO "CompanyIdentityLink"("orgId","entityId","identityId","createdByEmployeeId") SELECT 1845,41,id,125 FROM "CompanyIdentity" WHERE code='BARO';
+   SET CONSTRAINTS ALL IMMEDIATE;COMMIT;`);
+  assert.deepEqual((await db.query('SELECT "ownerOrgId","dataOwnerOrgId",code FROM "Organization" WHERE id=41')).rows,[{ownerOrgId:1845,dataOwnerOrgId:null,code:null}]);
+  await db.exec(`INSERT INTO "Organization"(id,name,code,type,"ownerOrgId") VALUES(42,'Factory vendor','VEN1','MATERIAL_SUPPLIER',1)`);
+  assert.equal((await db.query('SELECT "dataOwnerOrgId" FROM "Organization" WHERE id=42')).rows[0].dataOwnerOrgId,1);
+  await assert.rejects(db.exec('UPDATE "Organization" SET "dataOwnerOrgId"=1845 WHERE id=41'),/data owner must be a manufacturer/);
  }finally{await db.close();}
 });
 
 test('ownership fix is versioned and checked by deploy preflight and read-only startup',()=>{
  assert.ok(require('../backend/scripts/migrate-entity-profiles').versions.includes(version));
  assert.ok(require('../backend/scripts/railway-schema-preflight').constraints.includes('baro_customer_relationship_data_owner'));
- assert.match(readFileSync('backend/src/index.ts','utf8'),/STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = \['baro_customer_relationship_data_owner'/);
+ assert.match(readFileSync('backend/src/index.ts','utf8'),/STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = \[[^\n]*'baro_customer_relationship_data_owner'/);
+ assert.ok(require('../backend/scripts/migrate-entity-profiles').versions.includes('20261104150000_service_partner_data_owner'));
+ assert.ok(require('../backend/scripts/railway-schema-preflight').constraints.includes('baro_company_partner_data_owner'));
  assert.doesNotMatch(migration,/UPDATE "Organization"[\s\S]*WHERE[^;]*;[\s\S]*UPDATE "Organization"/);
 });
