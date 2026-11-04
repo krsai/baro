@@ -1,3 +1,4 @@
+import {isHighestCompanyApprover} from './expenseDeletion';
 import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
@@ -11,7 +12,7 @@ import {resolveLedgerCounterparty,entryCounterparty} from './ledgerCounterparty'
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
 const json=(v:any)=>JSON.parse(JSON.stringify(v));
 const digest=(v:any)=>createHash('sha256').update(JSON.stringify(json(v))).digest('hex');
-const person={id:true,name:true,orgRole:true,gradeId:true,status:true,grade:{select:{isActive:true,set:{select:{isActive:true}}}}};
+const person={orgId:true,id:true,name:true,orgRole:true,gradeId:true,status:true,grade:{select:{sortOrder:true,setId:true,isActive:true,set:{select:{isActive:true}}}}};
 async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  const menu=String(input.menu),operation=String(input.operation),kind=String(input.sourceKind||'request'),id=String(input.sourceId||'');
  approvalActionKey(orgId,menu,operation);if(operation==='CREATE'||!/^[-\w]{1,100}$/.test(id))fail('CHANGE_INVALID_SOURCE',400);
@@ -60,13 +61,16 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
  const excluded=[actorId,...(s.menu==='EXPENSE'&&s.operation==='UPDATE'&&s.expense.document?[s.expense.document.createdByEmployeeId]:[])];
  const resolver={systemSetting:db.systemSetting,employee:{findFirst:db.employee.findFirst.bind(db.employee),findMany:(args:any)=>db.employee.findMany({...args,where:{...args.where,id:{notIn:[...new Set([...(args.where.id?.notIn||[]),...excluded])]}}})}};
  const preview=await resolveExpenseApproval(resolver,orgId,actorId,amounts(s,input.payload),input.selection||{},true,config);
- if(preview.policy.exempt){
+ let highestSelfDeletion=false;
+ if(preview.policy.exempt&&s.menu==='EXPENSE'&&s.operation==='DELETE'&&s.expense.document&&await isHighestCompanyApprover(db,orgId,actor)){
+  highestSelfDeletion=true;preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:actor.gradeId,employeeId:actor.id,candidates:[{id:actor.id,name:actor.name,gradeId:actor.gradeId}]}];preview.ids=[actor.id];preview.complete=true;
+ }else if(preview.policy.exempt){
   const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'ADMIN',id:{notIn:excluded}},select:{id:true,name:true,gradeId:true},orderBy:{id:'asc'}});
   const id=input.selection?.changeAdminEmployeeId??(candidates.length===1?candidates[0].id:null),chosen=candidates.find((p:any)=>p.id===id);
   preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:null,employeeId:chosen?.id||null,candidates}];preview.ids=chosen?[chosen.id]:[];preview.complete=!!chosen;
  }
  const stages=preview.stages.filter((stage:any)=>!stage.vacant);
- const policy={...preview.policy,exempt:false,requestedByRole:actor.orgRole,requestedByGradeId:actor.gradeId??null,menu:s.menu,operation:s.operation,resolvedStages:stages.filter((stage:any)=>stage.employeeId).map((stage:any)=>({employeeId:stage.employeeId,role:stage.role,gradeId:stage.gradeId??null}))};
+ const policy={...preview.policy,highestSelfDeletion,exempt:false,requestedByRole:actor.orgRole,requestedByGradeId:actor.gradeId??null,menu:s.menu,operation:s.operation,resolvedStages:stages.filter((stage:any)=>stage.employeeId).map((stage:any)=>({employeeId:stage.employeeId,role:stage.role,gradeId:stage.gradeId??null}))};
  return {source:s,preview:{...preview,policy},policy};
 }
 export async function requestChangeApproval(db:any,orgId:number,actorId:number,input:any){
@@ -104,7 +108,7 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
  return retryEditTransaction(db,async(tx:any)=>{
   let row=await tx.changeApprovalRequest.findFirst({where:{id,orgId}});if(!row)fail('CHANGE_NOT_FOUND',404);
   await tx.$queryRawUnsafe('SELECT id FROM "ChangeApprovalRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);row=await tx.changeApprovalRequest.findFirst({where:{id,orgId}});
-  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},include:{grade:{include:{set:true}}}});if(!actor||row.requestedByEmployeeId===actorId)fail('CHANGE_APPROVER_REQUIRED',403);
+  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},include:{grade:{include:{set:true}}}});if(!actor||row.requestedByEmployeeId===actorId&&!(row.menu==='EXPENSE'&&row.operation==='DELETE'&&row.policy.highestSelfDeletion===true&&await isHighestCompanyApprover(tx,orgId,actor)))fail('CHANGE_APPROVER_REQUIRED',403);
   const decisions=await tx.changeApprovalDecision.findMany({where:{requestId:id,orgId},orderBy:{position:'asc'}});
   if(row.status!=='PENDING'){const old=decisions.find((d:any)=>d.employeeId===actorId);if(old?.decision===body.decision&&(old.reason||'')===reason)return row;fail('CHANGE_ALREADY_DECIDED');}
   const next=row.policy.resolvedStages[decisions.length];if(!next||next.employeeId!==actorId||next.role!==actor.orgRole||next.gradeId!=null&&(next.gradeId!==actor.gradeId||!actor.grade?.isActive||!actor.grade?.set?.isActive))fail('CHANGE_APPROVER_REQUIRED',403);
@@ -120,9 +124,10 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
 }
 export async function listChangeApprovals(db:any,orgId:number,actorId:number){
  const rows=await db.changeApprovalRequest.findMany({where:{orgId,status:'PENDING',OR:[{requestedByEmployeeId:actorId},{policy:{path:['resolvedStages'],array_contains:[{employeeId:actorId}]}}]},orderBy:{createdAt:'asc'},take:200});
+ const highestSelf=rows.some((row:any)=>row.requestedByEmployeeId===actorId&&row.policy.highestSelfDeletion===true)?await isHighestCompanyApprover(db,orgId,await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:person})):false;
  const decisions=rows.length?await db.changeApprovalDecision.findMany({where:{orgId,requestId:{in:rows.map((r:any)=>r.id)}},orderBy:{position:'asc'}}):[];
  const people=await db.employee.findMany({where:{orgId,id:{in:[...new Set(rows.map((r:any)=>r.requestedByEmployeeId))]}},select:{id:true,name:true}});
- return rows.filter((r:any)=>r.requestedByEmployeeId===actorId||r.policy.resolvedStages.some((s:any)=>s.employeeId===actorId)).map((r:any)=>{const accepted=decisions.filter((d:any)=>d.requestId===r.id);return {...r,requesterName:people.find((p:any)=>p.id===r.requestedByEmployeeId)?.name||'',decisions:accepted,canDecide:r.requestedByEmployeeId!==actorId&&r.policy.resolvedStages[accepted.length]?.employeeId===actorId};});
+ return rows.filter((r:any)=>r.requestedByEmployeeId===actorId||r.policy.resolvedStages.some((s:any)=>s.employeeId===actorId)).map((r:any)=>{const accepted=decisions.filter((d:any)=>d.requestId===r.id);return {...r,requesterName:people.find((p:any)=>p.id===r.requestedByEmployeeId)?.name||'',decisions:accepted,canDecide:(r.requestedByEmployeeId!==actorId||r.menu==='EXPENSE'&&r.operation==='DELETE'&&r.policy.highestSelfDeletion===true&&highestSelf)&&r.policy.resolvedStages[accepted.length]?.employeeId===actorId};});
 }
 export function registerChangeApprovalRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;const actorId=gates.actorId();if(!actorId||!await db.employee.findFirst({where:{id:actorId,orgId:ctx.organization.id,status:'ACTIVE'}}))fail('ACTIVE_EMPLOYEE_REQUIRED',403);return {orgId:ctx.organization.id,actorId,ctx};};

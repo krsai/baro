@@ -51,7 +51,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
     await db.exec('CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,UNIQUE(id,"styleId","orgId"))');
     await db.exec(['SalaryItemRate','EmployeeCompensationPolicy','EmployeePayTypePolicy'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,"payType" TEXT);`).join('\n'));
     await db.exec(['ProcessMasterOption','Factory','Warehouse','EmployeeGrade','SalaryItem','AttrColor','AttrCategory','AttrProcess','PriorCompletionReason','TaxTreatment'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,name TEXT);`).join('\n'));
-    await db.exec('ALTER TABLE "EmployeeGrade" ADD COLUMN "orgId" INT, ADD COLUMN "setId" INT, ADD COLUMN "sortOrder" INT,ADD COLUMN "isActive" BOOL DEFAULT true,ADD UNIQUE(id,"orgId"); CREATE TABLE "EmployeeGradeSet"(id INT PRIMARY KEY,"isActive" BOOL DEFAULT true)');
+    await db.exec('ALTER TABLE "EmployeeGrade" ADD COLUMN "orgId" INT, ADD COLUMN "setId" INT, ADD COLUMN "sortOrder" INT,ADD COLUMN "isActive" BOOL DEFAULT true,ADD UNIQUE(id,"orgId"); CREATE TABLE "EmployeeGradeSet"("orgId" INT,id INT PRIMARY KEY,"isActive" BOOL DEFAULT true)');
     await db.exec('ALTER TABLE "TaxTreatment" ADD COLUMN code TEXT,ADD COLUMN suffix TEXT');
     await db.exec(`UPDATE "Organization" SET name='Fixture organization '||id WHERE name IS NULL`);
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{

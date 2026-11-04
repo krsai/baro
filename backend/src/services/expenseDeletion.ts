@@ -5,7 +5,10 @@ import {companyBusinessTimeZone} from './serviceCompany';
 
 const fail=(status:number,code:string):never=>{throw createHttpError(status,code);};
 const personInclude={grade:{include:{set:true}}};
-export const canApproveExpenseDeletion=(actor:any,row:any)=>actor?.orgRole==='ADMIN'&&actor.status==='ACTIVE'&&actor.id!==row.requestedByEmployeeId&&actor.grade?.isActive&&actor.grade.set?.isActive&&actor.grade.setId===row.gradeSetId&&actor.grade.sortOrder>row.finalGradeOrder;
+export const canApproveExpenseDeletion=(actor:any,row:any,highestOrder?:number)=>actor?.orgRole==='ADMIN'&&actor.status==='ACTIVE'&&actor.grade?.isActive&&actor.grade.set?.isActive&&actor.grade.setId===row.gradeSetId&&((actor.id!==row.requestedByEmployeeId&&actor.grade.sortOrder>row.finalGradeOrder)||(highestOrder!==undefined&&actor.grade.sortOrder===highestOrder&&actor.grade.sortOrder>=row.finalGradeOrder));
+const highestDeletionGrade=async(db:any,orgId:number,setId:number)=>(await db.employeeGrade.findFirst({where:{orgId,setId,isActive:true,set:{isActive:true}},orderBy:{sortOrder:'desc'},select:{sortOrder:true}}))?.sortOrder;
+
+export const isHighestCompanyApprover=async(db:any,orgId:number,actor:any)=>actor?.orgId===orgId&&actor.orgRole==='ADMIN'&&actor.status==='ACTIVE'&&actor.grade?.isActive&&actor.grade.set?.isActive&&actor.grade.sortOrder===await highestDeletionGrade(db,orgId,actor.grade.setId);
 async function deletionSource(tx:any,orgId:number,requestId:number,version:number){
  await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',requestId,orgId);
  const source=await loadExpenseEditorSource(tx,orgId,'request',String(requestId));
@@ -41,11 +44,12 @@ export async function decideExpenseDeletion(db:any,orgId:number,actorId:number,i
  return retryEditTransaction(db,async(tx:any)=>{
   const row=await tx.expenseDeletionRequest.findFirst({where:{id,orgId}});if(!row)fail(404,'EXPENSE_SOURCE_NOT_FOUND');
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},include:personInclude});
-  if(!canApproveExpenseDeletion(actor,row))fail(403,'EXPENSE_DELETE_APPROVER_REQUIRED');
+  const highestOrder=await highestDeletionGrade(tx,orgId,row.gradeSetId);
+  if(!canApproveExpenseDeletion(actor,row,highestOrder))fail(403,'EXPENSE_DELETE_APPROVER_REQUIRED');
   if(row.status!=='PENDING'){if(row.status===body.decision&&row.decidedByEmployeeId===actorId&&row.decisionReason===(reason||null))return row;fail(409,'EXPENSE_APPROVAL_ALREADY_DECIDED');}
   const source=await deletionSource(tx,orgId,row.requestId,row.version);
   const final=await tx.employee.findFirst({where:{id:row.finalEmployeeId,orgId},include:personInclude});
-  if(final?.gradeId!==row.finalGradeId||final.grade?.setId!==row.gradeSetId||actor.grade.sortOrder<=Math.max(row.finalGradeOrder,final.grade.sortOrder))fail(409,'EXPENSE_REQUEST_CHANGED');
+  if(final?.gradeId!==row.finalGradeId||final.grade?.setId!==row.gradeSetId||!canApproveExpenseDeletion(actor,{...row,finalGradeOrder:Math.max(row.finalGradeOrder,final.grade.sortOrder)},highestOrder))fail(409,'EXPENSE_REQUEST_CHANGED');
   const result=await tx.expenseDeletionRequest.update({where:{id},data:{status:body.decision,decidedByEmployeeId:actorId,decisionReason:reason||null,decidedAt:new Date()}});
   if(body.decision==='APPROVED'){
    const before=JSON.parse(JSON.stringify(source));
@@ -53,7 +57,7 @@ export async function decideExpenseDeletion(db:any,orgId:number,actorId:number,i
    await tx.$queryRaw`SELECT set_config('baro.expense_editor_org',${String(orgId)},true),set_config('baro.expense_editor_actor',${String(actorId)},true),set_config('baro.expense_editor_key',${key},true),set_config('baro.expense_editor_timezone',${companyBusinessTimeZone(company)},true)`;
    const audit=await tx.expenseRequestAudit.findFirst({where:{orgId,requestId:row.requestId,version:row.version}});
    const document=await tx.expenseRequest.update({where:{id:row.requestId},data:{deletedAt:new Date(),deletedByEmployeeId:actorId,deletionRequestId:id,version:{increment:1},updatedAt:new Date(),updatedByEmployeeId:actorId}});
-   await tx.expenseRequestAudit.create({data:{orgId,requestId:row.requestId,version:document.version,actorId,action:'UPDATE',clientKey:key,inputHash:id,beforeSnapshot:before,afterSnapshot:JSON.parse(JSON.stringify({...source,document:{...source.document,...document},approvalPolicy:audit?.afterSnapshot?.approvalPolicy,deletion:{id,reason:row.reason,requestedByEmployeeId:row.requestedByEmployeeId,approvedByEmployeeId:actorId}}))}});
+   await tx.expenseRequestAudit.create({data:{orgId,requestId:row.requestId,version:document.version,actorId,action:'UPDATE',clientKey:key,inputHash:id,beforeSnapshot:before,afterSnapshot:JSON.parse(JSON.stringify({...source,document:{...source.document,...document},approvalPolicy:audit?.afterSnapshot?.approvalPolicy,deletion:{id,reason:row.reason,requestedByEmployeeId:row.requestedByEmployeeId,approvedByEmployeeId:actorId,highestAuthority:actor.grade.sortOrder===highestOrder}}))}});
   }
   return result;
  });
@@ -64,7 +68,8 @@ export async function listExpenseDeletions(db:any,orgId:number,actorId:number){
  const live=await db.$queryRawUnsafe(`SELECT d.id FROM "ExpenseDeletionRequest" d WHERE d."orgId"=$1 AND d.status='PENDING' AND baro_expense_deletion_allowed(d."requestId",d."orgId",d.version)`,orgId);
  const admins=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'ADMIN'},include:personInclude});
  const rows=await db.expenseDeletionRequest.findMany({where:{id:{in:live.map((r:any)=>r.id)},orgId,status:'PENDING',request:{deletedAt:null}},include:{request:{select:{version:true,managementNumber:true}},requestedBy:{select:{name:true}}},orderBy:{createdAt:'asc'}});
- return rows.filter((row:any)=>row.version===row.request.version&&(row.requestedByEmployeeId===actorId||canApproveExpenseDeletion(actor,row))).map((row:any)=>({id:row.id,requestId:row.requestId,kind:'EXPENSE_DELETION',managementNumber:row.request.managementNumber||`EXP-${row.requestId}`,requestDate:row.createdAt.toISOString().slice(0,10),drafter:row.requestedBy.name,status:'REQUESTED',reason:row.reason,canDecide:!!canApproveExpenseDeletion(actor,row),blockedReason:actor.id===row.requestedByEmployeeId?'SELF_REQUEST':'HIGHER_ADMIN_REQUIRED',eligibleApprovers:admins.filter((person:any)=>canApproveExpenseDeletion(person,row)).map((person:any)=>({id:person.id,name:person.name}))}));
+ const highestBySet=new Map(await Promise.all([...new Set(rows.map((row:any)=>row.gradeSetId))].map(async(setId:any)=>[setId,await highestDeletionGrade(db,orgId,setId)] as const)));
+ return rows.filter((row:any)=>row.version===row.request.version&&(row.requestedByEmployeeId===actorId||canApproveExpenseDeletion(actor,row,highestBySet.get(row.gradeSetId)))).map((row:any)=>({id:row.id,requestId:row.requestId,kind:'EXPENSE_DELETION',managementNumber:row.request.managementNumber||`EXP-${row.requestId}`,requestDate:row.createdAt.toISOString().slice(0,10),drafter:row.requestedBy.name,status:'REQUESTED',reason:row.reason,canDecide:!!canApproveExpenseDeletion(actor,row,highestBySet.get(row.gradeSetId)),blockedReason:actor.id===row.requestedByEmployeeId?'SELF_REQUEST':'HIGHER_ADMIN_REQUIRED',eligibleApprovers:admins.filter((person:any)=>canApproveExpenseDeletion(person,row,highestBySet.get(row.gradeSetId))).map((person:any)=>({id:person.id,name:person.name}))}));
 }
 export async function attachExpenseDeletionAvailability(db:any,orgId:number,requests:any[],actor:any){
  const itemIds=requests.flatMap(row=>row.items.map((item:any)=>item.id));
