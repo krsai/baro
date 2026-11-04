@@ -1687,7 +1687,7 @@ const MainLayout = () => {
           </ListItem>
         );
       }),
-    [currentPath, getMenuItemSx, handleMenuItemClick, activeOrgId, activeProfile?.orgRole]
+    [currentPath, getMenuItemSx, handleMenuItemClick, activeOrgId, activeProfile?.orgRole, languageCode, pendingApprovalCount]
   );
 
   const sidebarContent = (
@@ -1724,7 +1724,7 @@ const MainLayout = () => {
                 primary={(
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <span>{menu.label}</span>
-                    {hasNotification && <NotificationIndicator label={item.path==='/dashboard'?`${languageCode==='ko'?'\uBBF8\uCC98\uB9AC \uACB0\uC7AC':languageCode==='vi'?'Ch\u1EDD duy\u1EC7t':'Pending approvals'}: ${pendingApprovalCount}`:undefined}/>}
+                    {hasNotification && <NotificationIndicator label={menu.path==='/dashboard'?`${languageCode==='ko'?'\uBBF8\uCC98\uB9AC \uACB0\uC7AC':languageCode==='vi'?'Ch\u1EDD duy\u1EC7t':'Pending approvals'}: ${pendingApprovalCount}`:undefined}/>}
                   </Box>
                 )}
               />
