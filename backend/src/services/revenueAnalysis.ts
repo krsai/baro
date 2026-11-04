@@ -3,6 +3,7 @@ import {approvalState} from './bankEvidence';
 import {loadIssuedOrderSalesValues} from './issuedOrderSalesValue';
 import {loadReferenceExchangeRates} from './referenceExchangeRates';
 import {revenueLaborBasis} from './revenueLaborBasis';
+import {revenueStyles,revenueStyleReport} from './revenueStyleAnalysis';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
 const inputKeys=['currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
@@ -77,6 +78,8 @@ export function registerRevenueAnalysisRoutes(app:any,db:any,gates:any){
   return {orgId:ctx.organization.id,actorId};
  };
  app.get('/revenue-analysis/catalog',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await profitCatalog(db,scope.orgId,gates));});
+ app.get('/revenue-analysis/styles',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const search=String(req.query.search||'').trim();if(search.length>100)fail('INVALID_PROFIT_SCENARIO');res.json(await revenueStyles(db,scope.orgId,search));});
+ app.post('/revenue-analysis/style-analysis',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const styleId=Number(req.body?.styleId),quantity=Number(req.body?.quantity),gender=req.body?.gender??null;if(!Number.isSafeInteger(styleId)||styleId<=0||!Number.isSafeInteger(quantity)||quantity<=0||quantity>1000000000||gender!==null&&!['M','W','U'].includes(gender))fail('INVALID_PROFIT_SCENARIO');res.json(await db.$transaction((tx:any)=>revenueStyleReport(tx,scope.orgId,styleId,quantity,gender,gates),{isolationLevel:'RepeatableRead',timeout:60000}));});
  app.get('/revenue-analysis/labor-basis',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const month=String(req.query.month||'');if(!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month))fail('INVALID_PROFIT_SCENARIO');res.json(await revenueLaborBasis(db,scope.orgId,month));});
  app.get('/revenue-analysis/orders/:id',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const orderId=Number(req.params.id);if(!Number.isSafeInteger(orderId)||orderId<=0)fail('INVALID_PROFIT_SCENARIO');res.json(await db.$transaction((tx:any)=>profitOrderReport(tx,scope.orgId,orderId,gates),{isolationLevel:'RepeatableRead',timeout:60000}));});
  app.get('/revenue-analysis/exchange-rates',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){try{res.json(await loadReferenceExchangeRates());}catch{res.status(503).json({error:'EXCHANGE_RATES_UNAVAILABLE'});}}});
@@ -91,7 +94,8 @@ export function registerRevenueAnalysisRoutes(app:any,db:any,gates:any){
   for(const row of body.scenarios){
    if(typeof row.id!=='string'||!/^[-\w]{8,64}$/.test(row.id)||ids.has(row.id)||typeof row.name!=='string'||!row.name.trim()||row.name.length>120)fail('INVALID_PROFIT_SCENARIO');ids.add(row.id);
    const orderId=row.orderId??null,styleId=row.styleId??null;
-   if(orderId!==null||styleId!==null){if(!Number.isSafeInteger(orderId)||!Number.isSafeInteger(styleId)||!await db.workOrderItem.findFirst({where:{workOrderId:orderId,styleId,workOrder:{orgId:scope.orgId},style:{orgId:scope.orgId}}}))fail('PROFIT_TARGET_NOT_FOUND',404);}
+   if(orderId===null&&styleId!==null){if(!Number.isSafeInteger(styleId)||!await db.style.findFirst({where:{id:styleId,orgId:scope.orgId}}))fail('PROFIT_TARGET_NOT_FOUND',404);}
+   else if(orderId!==null||styleId!==null){if(!Number.isSafeInteger(orderId)||!Number.isSafeInteger(styleId)||!await db.workOrderItem.findFirst({where:{workOrderId:orderId,styleId,workOrder:{orgId:scope.orgId},style:{orgId:scope.orgId}}}))fail('PROFIT_TARGET_NOT_FOUND',404);}
    scenarios.push({id:row.id,name:row.name.trim(),orderId,styleId,inputs:validateProfitInputs(row.inputs)});
   }
   const value=await db.$transaction(async(tx:any)=>{

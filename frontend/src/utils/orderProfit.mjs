@@ -1,7 +1,7 @@
 import {calculateProfitScenario,createProfitInputs,PACKAGING_KEYS} from './profitScenario.mjs';
 import {convertAccountBalances} from './accountBalanceConversion.mjs';
 export const orderCostDefaults=()=>({...createProfitInputs(),costMode:'linked',packaging:false,productionPay:0,otherUnitCost:0,usdVnd:'',usdKrw:'',laborSource:'AUTO',factoryId:''});
-export const orderStyleRecordId=(orderId,styleId)=>`order-${orderId}-style-${styleId}`;
+export const orderStyleRecordId=(orderId,styleId)=>orderId?`order-${orderId}-style-${styleId}`:`style-${styleId}-analysis`;
 export function orderStyleProfit(style,defaults,override={},pack={},rates={},laborBasis=null){
  const input={...orderCostDefaults(),...defaults};
  for(const key of PACKAGING_KEYS)if(pack[key]!==undefined&&(!['polyPrice','boxPrice'].includes(key)||pack.currency===input.currency))input[key]=pack[key];
@@ -14,8 +14,21 @@ export function orderStyleProfit(style,defaults,override={},pack={},rates={},lab
  input.stSeconds=override.stSeconds??style.sources?.times.ST??'';
  input.ptSeconds=override.ptSeconds??style.sources?.times.PT??'';
  const convert=(amount,currency)=>amount===null||amount===undefined||!currency?null:convertAccountBalances([{balance:String(amount),currencyCode:currency}],input.currency,rates);
- let automaticLabor=false;
- if(input.laborSource!=='MANUAL'&&laborBasis?.directCount>0){
+ let automaticLabor=false,companyMonthly=null;
+ if(input.laborSource!=='MANUAL'&&laborBasis?.company){
+  automaticLabor=true;
+  const monthly=key=>{let sum=0;for(const pool of laborBasis.company.pools){const value=pool[key];if(value===null||value===undefined)return null;if(value===0)continue;const from=Number(rates[pool.currencyCode]),to=Number(rates[input.currency]);if(pool.currencyCode===input.currency)sum+=value;else if(from>0&&to>0)sum+=value*to/from;else return null;}return sum;};
+  companyMonthly=Object.fromEntries(['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly'].map(key=>[key,monthly(key)]));
+  const perWorker=value=>value!==null&&Number(input.workers)>0?value/Number(input.workers):'';
+  input.baseMonthly=perWorker(companyMonthly.variableBaseMonthly);input.allowanceMonthly=perWorker(companyMonthly.variableAllowanceMonthly);
+  input.supportMonthly=companyMonthly.officeFixedMonthly!==null&&companyMonthly.productionFixedMonthly!==null?companyMonthly.officeFixedMonthly+companyMonthly.productionFixedMonthly:'';
+  // The entire company's period payroll is charged. Crew size determines
+  // duration, never a discount on the monthly payroll or fixed costs.
+  input.factoryWorkers=input.workers;
+  const seconds=Number(input[input.basis==='PT'?'ptSeconds':'stSeconds']),denominator=Number(input.workers)*Number(input.hoursDay)*Number(input.workdays)*3600;
+  input.productionPay=companyMonthly.variableProductionMonthly!==null&&denominator>0?companyMonthly.variableProductionMonthly*seconds/denominator:'';
+ }
+ else if(input.laborSource!=='MANUAL'&&laborBasis?.directCount>0){
   automaticLabor=true;
   const convertRate=amount=>{
    if(amount===null||amount===undefined)return null;
@@ -31,12 +44,16 @@ export function orderStyleProfit(style,defaults,override={},pack={},rates={},lab
  const revenue=convert(style.salesAmount,style.currency);
  input.salePrice=revenue!==null&&style.quantity>0?Number(revenue)/style.quantity:'';
  const approved=(style.sources?.costs||[]).filter(row=>row.exact&&row.approved&&row.subtotal!==null);
- const converted=approved.map(row=>convert(row.subtotal,row.currency)),purchase=converted.some(value=>value===null)?null:converted.reduce((sum,value)=>sum+Number(value),0);
+ const converted=style.analysisMode==='STYLE'?(style.sources.estimatedPurchases||[]).map(row=>convert(Number(row.unitCost)*style.quantity,row.currency)):approved.map(row=>convert(row.subtotal,row.currency));
+ const purchase=converted.some(value=>value===null)?null:converted.reduce((sum,value)=>sum+Number(value),0);
  const extra=Number(input.otherUnitCost||0)*style.quantity;
  const result=calculateProfitScenario(input,{linkedAmount:purchase===null||!Number.isFinite(extra)?null:purchase+extra});
  const ready=result.ready&&revenue!==null;
  const laborItems=[result.costs.base,result.costs.allowance,result.costs.production,result.costs.support],laborComplete=laborItems.every(value=>value!==null),knownLabor=laborItems.reduce((sum,value)=>sum+(value??0),0);
- return {...result,ready,automaticLabor,laborComplete,labor:knownLabor,laborMissing:result.missing.filter(key=>['baseMonthly','allowanceMonthly','productionPay','supportMonthly','stSeconds','ptSeconds','workers','hoursDay','workdays','factoryWorkers'].includes(key)),total:ready?result.total:null,profit:ready?Number(revenue)-result.total:null,margin:ready&&Number(revenue)>0?(Number(revenue)-result.total)/Number(revenue)*100:null,revenue:revenue===null?null:Number(revenue),purchase,input,approvedCount:approved.length};
+ const fraction=result.days!==null&&Number(input.workdays)>0?result.days/Number(input.workdays):null;
+ const portion=value=>value!==null&&fraction!==null?value*fraction:null;
+ const laborBreakdown=companyMonthly?{officeFixed:portion(companyMonthly.officeFixedMonthly),productionFixed:portion(companyMonthly.productionFixedMonthly),variableBase:result.costs.base,variableAllowance:result.costs.allowance,variableProduction:result.costs.production}:null;
+ return {...result,ready,automaticLabor,laborBreakdown,laborComplete,labor:knownLabor,laborMissing:result.missing.filter(key=>['baseMonthly','allowanceMonthly','productionPay','supportMonthly','stSeconds','ptSeconds','workers','hoursDay','workdays','factoryWorkers'].includes(key)),total:ready?result.total:null,profit:ready?Number(revenue)-result.total:null,margin:ready&&Number(revenue)>0?(Number(revenue)-result.total)/Number(revenue)*100:null,revenue:revenue===null?null:Number(revenue),purchase,input,approvedCount:approved.length};
 }
 export function orderProfitTotals(rows,missingStyle=false,commonPurchase=0){
  const all=(field)=>rows.length&&!missingStyle&&rows.every(row=>row[field]!==null&&row[field]!==undefined)?rows.reduce((sum,row)=>sum+row[field],0):null;

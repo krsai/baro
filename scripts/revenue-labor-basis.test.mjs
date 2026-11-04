@@ -14,7 +14,15 @@ test('factory payroll uses confirmed salary formulas and regular hours, separate
  const result=await revenueLaborBasis(db,1,'2026-11'),basis=result.factories[0];
  assert.equal(basis.directCount,2);assert.equal(basis.supportCount,1);assert.equal(basis.employeeCount,3);
  assert.equal(basis.baseHourly,37500);assert.equal(basis.allowanceHourly,6250);assert.equal(basis.supportHourly,62500);assert.equal(basis.productionPerSecond,5);
+ assert.deepEqual(result.company.counts,{GENERAL:1,OUTPUT_FIXED:1,OUTPUT:1});assert.equal(result.company.employeeCount,3);assert.equal(result.company.excludedCount,1);assert.equal(result.company.unresolvedCount,0);
+ assert.deepEqual(result.company.pools[0],{currencyCode:'VND',officeFixedMonthly:10000000,productionFixedMonthly:7000000,variableBaseMonthly:6000000,variableAllowanceMonthly:1000000,variableProductionMonthly:5760000});
  assert.equal(JSON.stringify(result).includes('CONFIDENTIAL'),false);assert.equal('employees' in basis,false);
+ const originalFactories=db.factory.findMany;
+ db.employee.findMany=async()=>[...employees,{...employees[0],id:5,factoryId:2}];db.factory.findMany=async()=>[structuredClone(factory),{...structuredClone(factory),id:2,name:'Second factory'}];
+ const allFactories=await revenueLaborBasis(db,1,'2026-11');assert.equal(allFactories.company.employeeCount,4);assert.equal(allFactories.company.counts.GENERAL,2);assert.equal(allFactories.company.pools[0].officeFixedMonthly,20000000);
+ db.factory.findMany=originalFactories;
+ db.employee.findMany=async()=>[...employees,{...employees[0],id:5,factoryId:null}];
+ const unassigned=await revenueLaborBasis(db,1,'2026-11');assert.equal(unassigned.company.employeeCount,4);assert.equal(unassigned.company.unassignedCount,1);assert.equal(unassigned.company.unresolvedCount,1);assert.equal(unassigned.company.pools.find(pool=>pool.currencyCode==='UNKNOWN').officeFixedMonthly,null);
  db.factory.findMany=async()=>[{...factory,salarySystemVersions:[]}];
  const missing=(await revenueLaborBasis(db,1,'2026-11')).factories[0];assert.equal(missing.baseHourly,null);assert.equal(missing.allowanceHourly,null);
 });

@@ -4,6 +4,7 @@ import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {revenueUxText} from '../frontend/src/constants/revenueUx.js';
+import {revenueSelectionText} from '../frontend/src/constants/revenueSelection.js';
 import {orderProfitText} from '../frontend/src/constants/orderProfit.js';
 import {profitScenarioText} from '../frontend/src/constants/profitScenario.js';
 import {orderCostDefaults,orderStyleProfit,orderProfitTotals} from '../frontend/src/utils/orderProfit.mjs';
@@ -20,9 +21,10 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   console.log('Checking saved-order profit analysis',lang,width);
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
-  const t=orderProfitText[lang],p=profitScenarioText[lang],u=revenueUxText[lang],rates={USD:'1',VND:'25000',KRW:'1300'};
+  const t=orderProfitText[lang],p=profitScenarioText[lang],u=revenueUxText[lang],s=revenueSelectionText[lang],rates={USD:'1',VND:'25000',KRW:'1300'};
   const common={...orderCostDefaults(),baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:20000000,workdays:25};
   const laborBasis={id:1,name:'Factory payroll',currencyCode:'VND',directCount:10,employeeCount:12,supportCount:2,baseHourly:30000,allowanceHourly:5000,supportHourly:45000,productionPerSecond:0,versionNumber:1};
+  laborBasis.company={employeeCount:100,activeCount:100,excludedCount:0,unresolvedCount:0,counts:{GENERAL:10,OUTPUT_FIXED:30,OUTPUT:60},pools:[{currencyCode:'VND',officeFixedMonthly:30000000,productionFixedMonthly:60000000,variableBaseMonthly:90000000,variableAllowanceMonthly:15000000,variableProductionMonthly:30000000}]};
   let settings={revision:0,defaults:common,stylePackaging:{},scenarios:[]},reject=false;
   const order={id:2,orderNumber:'SAVED-ORDER-2',customer:'Buyer',quantity:300,styleCount:2,salesAmount:'3000',currency:'USD',priceSource:'CURRENT_PRICE'};
   const costs=[{id:'cost-A',exact:true,approved:true,subtotal:'300000',amount:'330000',currency:'VND',requestId:18,reference:'EXP-18',description:'Outsourcing A'},{id:'cost-B',exact:true,approved:true,subtotal:'100000',amount:'110000',currency:'VND',requestId:19,reference:'EXP-19',description:'Outsourcing B'}];
@@ -33,7 +35,13 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/revenue-analysis/catalog?*',r=>r.fulfill({headers,json:{orders:[order,{...order,id:5,orderNumber:'SAVED-ORDER-5',styleCount:0,salesAmount:null}],rows:[]}}));
   await page.route('**/revenue-analysis/orders/*?*',r=>{assert.equal(r.request().method(),'GET');const id=Number(new URL(r.request().url()).pathname.split('/').at(-1));return r.fulfill({headers,json:id===2?{order,styles}:{order:{...order,id:5,orderNumber:'SAVED-ORDER-5',salesAmount:null},styles:[]}});});
-  await page.route('**/revenue-analysis/labor-basis?*',r=>r.fulfill({headers,json:{factories:[laborBasis]}}));
+  await page.route('**/revenue-analysis/labor-basis?*',r=>r.fulfill({headers,json:{factories:[laborBasis],company:laborBasis.company}}));
+  await page.route('**/revenue-analysis/styles?*',r=>r.fulfill({headers,json:{styles:[{id:3,code:'STYLE-A',name:'First style',customer:'Buyer'}]}}));
+  await page.route('**/revenue-analysis/style-analysis?*',r=>{
+   if(r.request().method()==='OPTIONS')return r.fulfill({headers});
+   const body=r.request().postDataJSON();assert.equal(body.styleId,3);assert.ok(body.quantity>0);
+   return r.fulfill({headers,json:{order:{id:null,orderNumber:'STYLE-A',customer:'Buyer',quantity:body.quantity,currency:'USD',salesAmount:body.quantity*12,analysisMode:'STYLE'},styles:[{...styles[0],quantity:body.quantity,salePrice:12,salesAmount:body.quantity*12,analysisMode:'STYLE',sources:{times:{ST:400,PT:350},costs:[],averages:[],estimatedPurchases:[{currency:'VND',unitCost:300,quantityBasis:1000,orderCount:2}]}}]}});
+  });
   await page.route('**/revenue-analysis/exchange-rates?*',r=>r.fulfill({headers,json:{rates,date:'2026-11-04'}}));
   await page.route('**/revenue-analysis/scenarios?*',r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers});
@@ -49,6 +57,7 @@ try{
   assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),totalMoney(75000000));
   assert.equal(await page.locator('[data-order-metric="purchase"]').textContent(),totalMoney(400000));
   assert.equal(await page.locator('[data-order-metric="profit"]').textContent(),totalMoney(expected.profit));
+  assert.equal(await page.locator('[data-profit-totals]').count(),1);await page.getByText(`${s.office} 10 ${s.people}`,{exact:true}).waitFor();await page.getByText(`${s.productionFixed} 30 ${s.people}`,{exact:true}).waitFor();await page.getByText(`${s.productionVariable} 60 ${s.people}`,{exact:true}).waitFor();
   assert.equal(await page.getByRole('spinbutton',{name:p.quantity,exact:true}).count(),0);assert.equal(await page.getByRole('spinbutton',{name:p.salePrice,exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:p.trial,exact:true}).count(),0);
   const choose=async(name,value)=>{await page.getByRole('combobox',{name,exact:false}).click();await page.getByRole('option',{name:value,exact:true}).click();};
   await page.getByRole('spinbutton',{name:p.productivity,exact:true}).fill('120');
@@ -70,7 +79,16 @@ try{
   const storedProfit=await page.locator('[data-order-metric="profit"]').textContent();
   await page.reload();await page.locator('[data-style-id="4"]').waitFor();await page.waitForFunction(()=>document.querySelector('[data-order-metric="profit"]')?.textContent!=='—');assert.equal(await page.locator('[data-order-metric="profit"]').textContent(),storedProfit);
   reject=true;await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.changed,{exact:true}).waitFor();assert.equal(await page.getByRole('spinbutton',{name:p.productivity,exact:true}).inputValue(),'120');
-  await choose(u.order,/SAVED-ORDER-5/);await page.waitForFunction(()=>document.querySelectorAll('[data-style-id]').length===0);assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),'—');
+  await page.getByRole('button',{name:s.choose,exact:true}).click();
+  const picker=page.getByRole('dialog',{name:s.title});await picker.getByRole('tab',{name:s.styles,exact:true}).click();
+  await picker.locator('[data-style-option="3"]').click();assert.equal(await picker.getByRole('button',{name:s.apply,exact:true}).isDisabled(),true);
+  await picker.getByRole('spinbutton',{name:s.quantity,exact:true}).fill('500');await picker.getByRole('button',{name:s.apply,exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('[data-style-id]').length===1);assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),totalMoney(156000000));assert.equal(await page.locator('[data-order-metric="purchase"]').textContent(),totalMoney(150000));
+  await page.getByRole('button',{name:s.choose,exact:true}).click();await picker.getByRole('spinbutton',{name:s.quantity,exact:true}).fill('1000');await picker.getByRole('button',{name:s.apply,exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('[data-profit-totals]')?.textContent.includes('1,000')||document.querySelector('[data-profit-totals]')?.textContent.includes('1.000'));
+  assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),totalMoney(312000000));assert.equal(await page.locator('[data-order-metric="purchase"]').textContent(),totalMoney(300000));
+  await page.getByRole('button',{name:s.choose,exact:true}).click();await picker.getByRole('tab',{name:s.orders,exact:true}).click();await picker.locator('[data-order-option="5"]').click();await picker.getByRole('button',{name:s.apply,exact:true}).click();
+  await page.waitForFunction(()=>document.querySelectorAll('[data-style-id]').length===0);assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),'—');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: saved orders drive all styles, quantities and sales; automatic purchases, shared cost assumptions, periods, FX, missing PT, save/reload and conflicts; ko/en/vi desktop/mobile.');

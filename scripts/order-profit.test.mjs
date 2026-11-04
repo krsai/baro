@@ -37,3 +37,16 @@ test('automatic factory salary calculates independently of missing rent and uses
  assert.equal(r.laborComplete,true);assert.ok(r.labor>0);assert.equal(r.costs.rent,null);assert.equal(r.profit,null);
  const manual=orderStyleProfit(style,{...defaults,laborSource:'MANUAL'},{},{},{USD:'1',VND:'25000'},basis);assert.equal(manual.automaticLabor,false);
 });
+test('all company employees are charged for the production period without crew/headcount discount',()=>{
+ const company={employeeCount:100,counts:{GENERAL:10,OUTPUT_FIXED:30,OUTPUT:60},pools:[{currencyCode:'VND',officeFixedMonthly:30000000,productionFixedMonthly:60000000,variableBaseMonthly:90000000,variableAllowanceMonthly:15000000,variableProductionMonthly:30000000}]};
+ const input={...defaults,workers:10,factoryWorkers:100,workdays:30,productivity:100};
+ const target={...style,quantity:4800,salesAmount:48000};
+ const r=orderStyleProfit(target,input,{},{},{USD:'1',VND:'25000'},{company,directCount:90});
+ assert.equal(r.days,10);assert.equal(r.labor,75000000);assert.equal(r.laborBreakdown.officeFixed,10000000);assert.equal(r.laborBreakdown.productionFixed,20000000);assert.equal(r.costs.base,30000000);assert.equal(r.costs.allowance,5000000);assert.equal(r.costs.production,10000000);
+ assert.equal(r.input.factoryWorkers,10);assert.ok(Math.abs(r.costs.rent-20000000/3)<.001);
+ const faster=orderStyleProfit(target,{...input,productivity:120},{},{},{USD:'1',VND:'25000'},{company});assert.ok(faster.costs.support<r.costs.support);assert.ok(Math.abs(faster.costs.production-r.costs.production)<.001);
+});
+test('standalone style scales historical garment costs to entered quantity instead of reusing historical totals',()=>{
+ const standalone={...style,analysisMode:'STYLE',quantity:500,salesAmount:5000,sources:{...style.sources,estimatedPurchases:[{currency:'VND',unitCost:300,quantityBasis:1000,orderCount:2}]}};
+ const r=orderStyleProfit(standalone,defaults,{},{},{USD:'1',VND:'25000'});assert.equal(r.purchase,150000);assert.equal(r.input.quantity,500);assert.equal(r.revenue,125000000);
+});

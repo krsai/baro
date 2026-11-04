@@ -10,7 +10,7 @@ function harness(){
  let allowed=true,active=true;
  db.employee.findFirst=async()=>active?{id:9,orgId:1,orgRole:'ADMIN'}:null;
  const gates={requireOrgRole:async(_req,_res,options)=>{assert.equal(options.allowSystemAdmin,false);return {organization:{id:1,type:'MANUFACTURER'}};},actorId:()=>9,loadPolicy:async()=>({policy:{MANUFACTURER:{ADMIN:allowed?['REVENUE_ANALYSIS']:[]}}})};
- registerRevenueAnalysisRoutes({get:(p,f)=>handlers.set('GET '+p,f),put:(p,f)=>handlers.set('PUT '+p,f)},db,gates);
+ registerRevenueAnalysisRoutes({post:(p,f)=>handlers.set('POST '+p,f),get:(p,f)=>handlers.set('GET '+p,f),put:(p,f)=>handlers.set('PUT '+p,f)},db,gates);
  const call=async(method,path,body)=>{const res={json(value){this.value=value;}};await handlers.get(method+' '+path)({query:{},body},res);return res.value;};
  return {db,call,queries,writes:()=>writes,deny:()=>{allowed=false;},inactive:()=>{active=false;}};
 }
@@ -61,12 +61,17 @@ test('real Prisma queries load scoped order styles and read-only sources; scenar
   const sources=await profitSources(f.db,orgId,order.id,style.id,{});assert.deepEqual(sources.times,{ST:null,PT:null});assert.deepEqual(sources.costs,[]);
   const report=await profitOrderReport(f.db,orgId,order.id,{});assert.equal(report.order.id,order.id);assert.equal(report.styles[0].quantity,150);
   await assert.rejects(profitSources(f.db,s.other.id,order.id,style.id,{}),/PROFIT_TARGET_NOT_FOUND/);
-  const routes=new Map();registerRevenueAnalysisRoutes({get:(p,fn)=>routes.set('GET '+p,fn),put:(p,fn)=>routes.set('PUT '+p,fn)},f.db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>s.people.admin.id,loadPolicy:async()=>({policy:{SERVICE:{ADMIN:['REVENUE_ANALYSIS']}}})});
+  const routes=new Map();registerRevenueAnalysisRoutes({post:(p,fn)=>routes.set('POST '+p,fn),get:(p,fn)=>routes.set('GET '+p,fn),put:(p,fn)=>routes.set('PUT '+p,fn)},f.db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>s.people.admin.id,loadPolicy:async()=>({policy:{SERVICE:{ADMIN:['REVENUE_ANALYSIS']}}})});
   const reportResponse={json(value){this.value=value;}};await routes.get('GET /revenue-analysis/orders/:id')({params:{id:String(order.id)}},reportResponse);assert.equal(reportResponse.value.styles[0].quantity,150);
   const laborResponse={json(value){this.value=value;}};await routes.get('GET /revenue-analysis/labor-basis')({query:{month:'2026-11'}},laborResponse);assert.deepEqual(laborResponse.value.factories,[]);
-  const body={revision:0,defaults:{currency:'VND',workers:10},stylePackaging:{[style.id]:{currency:'VND',polyUsage:1,boxCapacity:50}},scenarios:[{id:'profit-scenario-001',name:'First estimate',orderId:order.id,styleId:style.id,inputs:{quantity:150,stSeconds:'',basis:'ST'}}]};
+  const singleResponse={json(value){this.value=value;}};await routes.get('POST /revenue-analysis/style-analysis')({body:{styleId:style.id,quantity:200}},singleResponse);assert.equal(singleResponse.value.styles[0].quantity,200);assert.equal(singleResponse.value.styles[0].analysisMode,'STYLE');assert.equal(await f.db.workOrder.count(),1);
+  await routes.get('GET /revenue-analysis/styles')({query:{search:'Vendor'}},singleResponse);assert.equal(singleResponse.value.styles[0].id,style.id);
+  await assert.rejects(routes.get('POST /revenue-analysis/style-analysis')({body:{styleId:style.id,quantity:0}},singleResponse),/INVALID_PROFIT_SCENARIO/);
+  const styleSaved={revision:0,defaults:{currency:'VND'},stylePackaging:{},scenarios:[{id:'style-analysis-001',name:'Style only',orderId:null,styleId:style.id,inputs:{quantity:200,basis:'ST'}}]};
+  await routes.get('PUT /revenue-analysis/scenarios')({body:styleSaved},singleResponse);assert.equal(singleResponse.value.scenarios[0].orderId,null);
+  const body={revision:1,defaults:{currency:'VND',workers:10},stylePackaging:{[style.id]:{currency:'VND',polyUsage:1,boxCapacity:50}},scenarios:[{id:'profit-scenario-001',name:'First estimate',orderId:order.id,styleId:style.id,inputs:{quantity:150,stSeconds:'',basis:'ST'}}]};
   const res={json(value){this.value=value;}};
-  await routes.get('PUT /revenue-analysis/scenarios')({body},res);assert.equal(res.value.revision,1);
+  await routes.get('PUT /revenue-analysis/scenarios')({body},res);assert.equal(res.value.revision,2);
   await assert.rejects(routes.get('PUT /revenue-analysis/scenarios')({body},res),/PROFIT_SETTINGS_CHANGED/);
   assert.equal(await f.db.expenseRequest.count(),0);assert.equal(await f.db.bankLedgerEntry.count(),0);assert.equal(await f.db.assignmentPlan.count(),0);
  }finally{await f.close();}

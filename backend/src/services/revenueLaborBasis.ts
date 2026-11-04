@@ -1,5 +1,29 @@
 import {buildSalaryPreview} from '../employees/salaryPreview';
-import {payrollManagementInclude} from '../employees/payrollManagement';
+import {payrollManagementInclude,resolvePayrollManagement} from '../employees/payrollManagement';
+import {resolveEmployeeEffectivePayType} from '../employees/employeeCompensation';
+export function companySalaryPools(preview:any,employees:any[],month:string){
+ const pools=new Map<string,any>(),counts:any={GENERAL:0,OUTPUT_FIXED:0,OUTPUT:0};let excludedCount=0,unresolvedCount=0,unassignedCount=0;
+ for(const employee of employees){
+  if(resolvePayrollManagement(employee,month).payrollExcluded){excludedCount++;continue;}
+  const type=resolveEmployeeEffectivePayType(employee);counts[type]++;
+  const group=preview.factories.find((factory:any)=>factory.employees.some((row:any)=>row.id===employee.id)),row=group?.employees.find((row:any)=>row.id===employee.id),currency=group?.currencyCode||'UNKNOWN';
+  const pool=pools.get(currency)||{currencyCode:currency,officeFixedMonthly:0,productionFixedMonthly:0,variableBaseMonthly:0,variableAllowanceMonthly:0,variableProductionMonthly:0};
+  const missing=!row||row.error==='MISSING_SALARY_VERSION';if(missing||row.salaryItems.some((item:any)=>item.amount===null))unresolvedCount++;if(!employee.factoryId)unassignedCount++;
+  const definitions=new Map((group?.items||[]).map((item:any)=>[String(item.code||item.id),item]));
+  const add=(key:string,items:any[])=>{if(missing||items.some(item=>item.amount===null))pool[key]=null;else if(pool[key]!==null)pool[key]+=items.reduce((sum,item)=>sum+item.amount,0);};
+  const items=row?.salaryItems||[];
+  if(type==='GENERAL')add('officeFixedMonthly',items);
+  else if(type==='OUTPUT_FIXED')add('productionFixedMonthly',items);
+  else {
+   const isProduction=(item:any)=>(definitions.get(item.code) as any)?.formula?.includes('PRODUCTION_ALLOWANCE');
+   add('variableBaseMonthly',items.filter((item:any)=>!isProduction(item)&&(definitions.get(item.code) as any)?.category==='BASE'));
+   add('variableAllowanceMonthly',items.filter((item:any)=>!isProduction(item)&&(definitions.get(item.code) as any)?.category!=='BASE'));
+   add('variableProductionMonthly',items.filter(isProduction));
+  }
+  pools.set(currency,pool);
+ }
+ return {employeeCount:counts.GENERAL+counts.OUTPUT_FIXED+counts.OUTPUT,activeCount:employees.length,excludedCount,unresolvedCount,unassignedCount,counts,pools:[...pools.values()]};
+}
 // Read confirmed payroll definitions, evaluate regular attendance using the same
 // engine as payroll previews, then return factory aggregates only.
 export async function revenueLaborBasis(db:any,orgId:number,month:string){
@@ -11,7 +35,7 @@ export async function revenueLaborBasis(db:any,orgId:number,month:string){
  ]);
  for(const factory of factories)factory.salarySystemVersions.sort((a:any,b:any)=>(b.effectiveMonth||'').localeCompare(a.effectiveMonth||'')||b.versionNumber-a.versionNumber);
  const preview=buildSalaryPreview({month,employees,factories,policies,holidays:holidays.map((row:any)=>row.holidayDate)});
- return {month,factories:factories.map((factory:any)=>{
+ return {month,company:companySalaryPools(preview,employees,month),factories:factories.map((factory:any)=>{
   const group=preview.factories.find(row=>row.id===factory.id),rows=group?.employees.filter(row=>!row.payrollExcluded)||[];
   const output=rows.filter(row=>['OUTPUT','OUTPUT_FIXED'].includes(row.payType)),direct=output.length?output:rows,support=output.length?rows.filter(row=>row.payType==='GENERAL'):[];
   const codes=new Map((group?.items||[]).map((item:any)=>[String(item.code||item.id),item]));
