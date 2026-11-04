@@ -29,7 +29,8 @@ try{
  await page.getByText('Sales',{exact:true}).waitFor();
  assert.equal(await page.getByText(/This tree mirrors the current SaaS/).count(),0);
  const overview=page.locator('tbody tr').filter({hasText:'/account-overview'}),ledger=page.locator('tbody tr').filter({hasText:'/bank-ledger'});
- assert.deepEqual(await overview.locator('input[type=checkbox]').evaluateAll(nodes=>nodes.map(node=>[node.checked,node.disabled])),[[true,false],[false,true],[false,true],[false,true]]);
+ assert.deepEqual(await overview.locator('input[type=checkbox]').evaluateAll(nodes=>nodes.map(node=>[node.checked,node.disabled])),[[true,false],[false,false],[false,false],[false,false]]);
+ await overview.locator('input[type=checkbox]').nth(1).click();await overview.locator('input[type=checkbox]').nth(2).click();await overview.locator('input[type=checkbox]').nth(3).click();await overview.locator('input[type=checkbox]').nth(3).click();
  await ledger.locator('input[type=checkbox]').first().click();assert.equal(await overview.locator('input[type=checkbox]').first().isChecked(),true,'Bank ledger and overview have independent switches');
  const before=await page.locator('tbody input[type=checkbox]').evaluateAll(nodes=>nodes.map(n=>n.checked));
  const checkedByPath=async path=>page.locator('tbody tr').filter({hasText:path}).locator('input[type=checkbox]').evaluateAll(nodes=>nodes.map(n=>n.checked));
@@ -57,6 +58,10 @@ try{
  await page.getByRole('button',{name:'Save',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('button.MuiButton-contained')?.disabled);
  assert.equal(writes,1);assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('OUTSOURCING_PARTNER'),changedStates[0]);assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('MATERIAL_SUPPLIER'),changedStates[0]);assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('CUSTOMER'),changedStates[0]);assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('LOGISTICS_PARTNER'),changedStates[0]);
- assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('ACCOUNT_OVERVIEW'),true);assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('BANK_LEDGER'),false);assert.equal(savedBody.policy.MANUFACTURER.ACCOUNTANT.includes('ACCOUNT_OVERVIEW'),false);
+ assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('ACCOUNT_OVERVIEW'),true);assert.equal(savedBody.policy.MANUFACTURER.ADMIN.includes('BANK_LEDGER'),false);assert.equal(savedBody.policy.MANUFACTURER.ACCOUNTANT.includes('ACCOUNT_OVERVIEW'),true);
+ assert.equal(savedBody.policy.MANUFACTURER.OPERATOR.includes('ACCOUNT_OVERVIEW'),true);assert.equal(savedBody.policy.MANUFACTURER.WORKER.includes('ACCOUNT_OVERVIEW'),false);
+ await page.reload();await overview.locator('input[type=checkbox]').nth(1).waitFor();
+ assert.deepEqual(await overview.locator('input[type=checkbox]').evaluateAll(nodes=>nodes.map(node=>[node.checked,node.disabled])),[[true,false],[true,false],[true,false],[false,false]]);
+ assert.equal(await ledger.locator('input[type=checkbox]').first().isChecked(),false);
  console.log('Menu policy passed: actual menu rows, one grouped partner switch per role, fixed personal settings, live menu rearrangement and explicit policy persistence.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

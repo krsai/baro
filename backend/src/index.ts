@@ -1522,7 +1522,6 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   if (!(value as any)?.SERVICE) policy.SERVICE=JSON.parse(JSON.stringify(DEFAULT_ROLE_ACCESS_POLICY.SERVICE));
   for(const roles of Object.values(policy)){
     if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
-    for(const role of ['ACCOUNTANT','OPERATOR','WORKER'] as const)roles[role]=roles[role].filter(feature=>feature!=='ACCOUNT_OVERVIEW');
   }
   return policy;
 };

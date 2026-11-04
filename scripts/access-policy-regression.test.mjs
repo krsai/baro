@@ -16,13 +16,15 @@ const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   ...policy,
 });
-test('account overview has an independent administrator-only permission and preserves current denials',()=>{
+test('account overview has an independent configurable permission and preserves current denials',()=>{
  assert.equal(resolveFeatureByPath('/account-overview'),'ACCOUNT_OVERVIEW');assert.equal(resolveFeatureByPath('/bank-ledger'),'BANK_LEDGER');
  const legacy=sanitizeRoleAccessPolicy({__schemaVersion:14,MANUFACTURER:{ADMIN:[],ACCOUNTANT:['BANK_LEDGER']}});
  assert.deepEqual(legacy.MANUFACTURER.ADMIN,['ACCOUNT_OVERVIEW']);assert.deepEqual(legacy.MANUFACTURER.ACCOUNTANT,['BANK_LEDGER']);
  for(const orgType of Object.values(ORG_TYPE_KEYS))for(const orgRole of Object.values(ORG_ROLE_KEYS)){
+  assert.equal(getDefaultRoleAccessPolicy()[orgType][orgRole].includes('ACCOUNT_OVERVIEW'),orgRole==='ADMIN');
   const auth={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType,orgRole,accessPolicy:withCurrentPolicyVersion({[orgType]:{[orgRole]:['ACCOUNT_OVERVIEW']}})}};
-  assert.equal(canAccessPath('/account-overview',auth),orgRole==='ADMIN');assert.equal(canAccessPath('/bank-ledger',auth),false);
+  assert.equal(canAccessPath('/account-overview',auth),true);assert.equal(canAccessPath('/bank-ledger',auth),false);
+  auth.accessProfile.accessPolicy[orgType][orgRole]=[];assert.equal(canAccessPath('/account-overview',auth),false);
  }
  const admin=buildOrgAuthState({orgRole:'ADMIN',policy:{MANUFACTURER:{ADMIN:['BANK_LEDGER']}}});assert.equal(canAccessPath('/bank-ledger',admin),true);assert.equal(canAccessPath('/account-overview',admin),false);
 });

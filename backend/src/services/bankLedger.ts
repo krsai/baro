@@ -254,9 +254,9 @@ export async function searchLedgerEvidence(db:any,orgId:number,query:any){
 }
 export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   const access=async(req:any,res:any,feature='BANK_LEDGER')=>{
-    const context=await gates.requireOrgRole(req,res,{allowedRoles:feature==='ACCOUNT_OVERVIEW'?['ADMIN']:['ADMIN','ACCOUNTANT']});
+    const context=await gates.requireOrgRole(req,res,{allowedRoles:feature==='ACCOUNT_OVERVIEW'?['ADMIN','ACCOUNTANT','OPERATOR','WORKER']:['ADMIN','ACCOUNTANT']});
     if(!context)return null;
-    if(feature==='ACCOUNT_OVERVIEW'&&(context.employee?.orgRole!=='ADMIN'||!Number.isSafeInteger(context.employee?.id))){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}
+    if(feature==='ACCOUNT_OVERVIEW'&&(!['ADMIN','ACCOUNTANT','OPERATOR','WORKER'].includes(context.employee?.orgRole)||!Number.isSafeInteger(context.employee?.id))){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}
     if(feature==='ACCOUNT_OVERVIEW'||context.systemUser?.systemRole!=='SYSTEM_ADMIN'){
       const policy=(await gates.loadPolicy()).policy;
       if(!policy?.[context.organization.type]?.[context.employee?.orgRole]?.includes(feature)){res.status(403).json({error:'LEDGER_ACCESS_DENIED'});return null;}

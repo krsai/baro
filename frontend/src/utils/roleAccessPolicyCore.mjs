@@ -324,7 +324,6 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   if (!candidate.SERVICE) base.SERVICE=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY.SERVICE);
   for(const roles of Object.values(base)){
     if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
-    for(const role of ['ACCOUNTANT','OPERATOR','WORKER'])roles[role]=roles[role].filter(feature=>feature!=='ACCOUNT_OVERVIEW');
   }
   return base;
 };

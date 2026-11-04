@@ -7,8 +7,8 @@ const {registerBankLedgerRoutes}=require('../backend/dist/services/bankLedger');
 const {attachLedgerActorNames}=require('../backend/dist/services/ledgerActors');
 import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
 
-test('overview API requires a real company administrator and its separate policy feature',async()=>{
- for(const [role,features,system,expected] of [['ADMIN',['ACCOUNT_OVERVIEW'],false,true],['ADMIN',['BANK_LEDGER'],false,false],['ACCOUNTANT',['ACCOUNT_OVERVIEW','BANK_LEDGER'],false,false],['ACCOUNTANT',['ACCOUNT_OVERVIEW'],true,false],[null,['ACCOUNT_OVERVIEW'],true,false]]){
+test('overview API requires a real company member and its separate configured policy feature',async()=>{
+ for(const [role,features,system,expected] of [['ADMIN',['ACCOUNT_OVERVIEW'],false,true],['ADMIN',['BANK_LEDGER'],false,false],['ACCOUNTANT',['ACCOUNT_OVERVIEW','BANK_LEDGER'],false,true],['ACCOUNTANT',['ACCOUNT_OVERVIEW'],true,true],['OPERATOR',['ACCOUNT_OVERVIEW'],false,true],['WORKER',['ACCOUNT_OVERVIEW'],false,true],['WORKER',['BANK_LEDGER'],false,false],['OPERATOR',[],false,false],['INVALID',['ACCOUNT_OVERVIEW'],false,false],[null,['ACCOUNT_OVERVIEW'],true,false]]){
   const routes=new Map();let reached=0,status;
   registerBankLedgerRoutes(new Proxy({},{get:(_,method)=>(path,handler)=>routes.set(method+' '+path,handler)}),{$transaction:async()=>{reached++;throw Error('REPORT_REACHED');}}, {requireOrgRole:async()=>({organization:{id:7,type:'MANUFACTURER'},employee:role?{id:10,orgRole:role}:null,systemUser:system?{systemRole:'SYSTEM_ADMIN'}:null}),loadPolicy:async()=>({policy:{MANUFACTURER:{[role||'ADMIN']:features}}})});
   const response={status(code){status=code;return this;},json(){return this;}};
