@@ -14,6 +14,7 @@ import {profitScenarioText} from '../../constants/profitScenario';
 import {orderProfitText} from '../../constants/orderProfit';
 import {revenueUxText} from '../../constants/revenueUx';
 import {revenueSelectionText} from '../../constants/revenueSelection';
+import {revenueFlowText} from '../../constants/revenueFlow';
 import RevenueTargetPicker from '../../components/RevenueTargetPicker';
 import {PACKAGING_KEYS} from '../../utils/profitScenario.mjs';
 import {orderCostDefaults,orderStyleRecordId,orderStyleProfit,orderProfitTotals,orderCommonPurchase} from '../../utils/orderProfit.mjs';
@@ -25,11 +26,13 @@ const monthNow=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_
 export default function RevenueAnalysis(){const {activeOrgId}=useAuth();return <OrderAnalysis key={activeOrgId} orgId={activeOrgId}/>;}
 function OrderAnalysis({orgId}){
  const {languageCode}=useLanguage(),{navigateToPath}=useAppActions(),t=orderProfitText[languageCode]||orderProfitText.en,p=profitScenarioText[languageCode]||profitScenarioText.en,u=revenueUxText[languageCode]||revenueUxText.en;
+ const f=revenueFlowText[languageCode]||revenueFlowText.en;
+ const flowSnapshot=useRef(null);
  const s=revenueSelectionText[languageCode]||revenueSelectionText.en;
  const [mode,setMode]=useState('ORDER'),[standalone,setStandalone]=useState(null),[pickerOpen,setPickerOpen]=useState(false);
  const [catalog,setCatalog]=useState({orders:[]}),[orderId,setOrderId]=useState(null),[report,setReport]=useState(null),[config,setConfig]=useState(null),[initial,setInitial]=useState('');
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[reload,setReload]=useState(0),[sourceReload,setSourceReload]=useState(0);
- const [commonOpen,setCommonOpen]=useState(false),[detail,setDetail]=useState(null),[fx,setFx]=useState(null),[costOpen,setCostOpen]=useState(false);
+ const [detail,setDetail]=useState(null),[fx,setFx]=useState(null),[costOpen,setCostOpen]=useState(false);
  const [month,setMonth]=useState(monthNow),[labor,setLabor]=useState(null),[laborBusy,setLaborBusy]=useState(false),[laborError,setLaborError]=useState(false);
  const live=useRef(true),lock=useRef(false),dirtyRef=useRef(false);
  dirtyRef.current=Boolean(config&&JSON.stringify(config)!==initial);useUnsavedChanges(dirtyRef.current);
@@ -71,19 +74,15 @@ function OrderAnalysis({orgId}){
  };
  const field=(key,value=defaults[key],onChange=next=>change(key,next))=><TextField key={key} fullWidth size="small" type="number" label={t[key]||p[key]} value={value??''} disabled={disabled||!config} onChange={event=>onChange(event.target.value)} slotProps={{htmlInput:{min:0,step:'any'},input:monetary.includes(key)?{endAdornment:<InputAdornment position="end">{{VND:'₫',USD:'$',KRW:'₩'}[currency]}</InputAdornment>}:undefined}}/>;
  const allCosts=[...new Map((report?.styles||[]).flatMap(row=>row.sources.costs).map(row=>[row.id,row])).values()];
- const openSettings=()=>{setDetail(null);setCommonOpen(true);};
+ const openSettings=()=>{flowSnapshot.current={config,month};setDetail(null);setPickerOpen(true);};
+ const cancelFlow=()=>{if(flowSnapshot.current){setConfig(flowSnapshot.current.config);setMonth(flowSnapshot.current.month);}setPickerOpen(false);};
  const drawerSx={width:{xs:'100vw',sm:540},maxWidth:'100vw',boxSizing:'border-box',p:2.5};
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button disabled={disabled} onClick={()=>setReload(value=>value+1)}>{t.refresh}</Button><SaveButton disabled={disabled||!config} loading={saving} onClick={()=>persist()}>{t.save}</SaveButton></Stack>}><PageContentStack>
   {error&&<Alert severity="error">{error}</Alert>}{saved&&<Alert severity="success">{t.saved}</Alert>}
-  <Paper variant="outlined" sx={{p:2}}><Stack direction={{xs:'column',md:'row'}} spacing={2} alignItems={{md:'center'}}>
-   <Box sx={{flex:1,minWidth:0}}><Typography variant="caption" color="text.secondary">{mode==='ORDER'?s.orders:s.standalone}</Typography><Typography variant="h6">{report?.order.orderNumber||t.select}</Typography></Box>
-   <Button variant="contained" disabled={disabled} onClick={()=>setPickerOpen(true)}>{s.choose}</Button>
-   <TextField size="small" type="month" label={u.month} value={month} disabled={disabled} onChange={event=>{if(/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value))setMonth(event.target.value);}} sx={{width:{xs:'100%',md:170}}} slotProps={{inputLabel:{shrink:true}}}/>
-  </Stack></Paper>
-  <Stack direction={{xs:'column',md:'row'}} spacing={2} alignItems={{md:'center'}}>
-   <Box sx={{flex:1,minWidth:0}}><Typography variant="h6">{report?.order.orderNumber||t.select}</Typography><Typography variant="body2" color="text.secondary">{report?.order.customer} {report?` · ${number(report.order.quantity)} · ${report.styles.length} ${t.styles}`:''}</Typography></Box>
-   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{'& .MuiTextField-root':{width:{xs:130,md:140}}}}><TextField select id="order-profit-basis" size="small" label={p.basis} value={defaults.basis} disabled={disabled||!config} onChange={event=>change('basis',event.target.value)}>{['ST','PT'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>{['productivity','workers'].map(key=>field(key))}<Button variant="outlined" onClick={openSettings}>{u.costBasis}</Button></Stack>
-  </Stack>
+  <Card title={f.input} actions={<Button variant="contained" disabled={disabled} onClick={openSettings}>{f.edit}</Button>}>
+   <Typography variant="body2" color="text.secondary">{f.hint}</Typography>
+   <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Chip label={report?.order.orderNumber||t.select}/><Chip variant="outlined" label={defaults.basis}/><Chip variant="outlined" label={p.productivity+': '+defaults.productivity+'%'}/><Chip variant="outlined" label={p.workers+': '+defaults.workers}/><Chip variant="outlined" label={u.month+': '+month}/></Stack>
+  </Card><Typography variant="h6">{f.result}</Typography>
   {(loading||busy)&&<CircularProgress size={24}/>}
   {report&&<>
    <Box sx={{display:'grid',gridTemplateColumns:{xs:'repeat(2,minmax(0,1fr))',lg:'repeat(4,minmax(0,1fr))'},gap:1.5}}>
@@ -100,17 +99,6 @@ function OrderAnalysis({orgId}){
    <Button sx={{alignSelf:'flex-start'}} onClick={()=>setCostOpen(value=>!value)}>{u.costs} · {allCosts.length}</Button>
    <Collapse in={costOpen}><Card title={u.costs}><Typography variant="caption" color="text.secondary">{mode==='STYLE'?s.historyOnly:t.costNote}</Typography><TableContainer><Table size="small" sx={{minWidth:700}}><TableHead><TableRow>{[p.date,p.reference,p.description,p.amount,p.status,t.source].map(header=><TableCell key={header}>{header}</TableCell>)}</TableRow></TableHead><TableBody>{allCosts.map(cost=>{const linked=rows.some(row=>row.sources.costs.some(item=>item.id===cost.id&&item.exact));return <TableRow key={cost.id}><TableCell>{cost.date}</TableCell><TableCell>{cost.reference}</TableCell><TableCell>{label(cost.code)||cost.description}</TableCell><TableCell>{money(cost.subtotal??cost.amount,cost.currency)}</TableCell><TableCell>{!cost.approved?t.pending:cost.subtotal===null?t.pretaxMissing:linked?t.included:t.shared}</TableCell><TableCell>{cost.requestId&&<Button onClick={()=>navigateToPath(`/outsourcing-record/edit/request/${cost.requestId}`)}>{t.source}</Button>}</TableCell></TableRow>;})}</TableBody></Table></TableContainer></Card></Collapse>
   </>}
-  <Drawer anchor="right" open={commonOpen} onClose={()=>setCommonOpen(false)} slotProps={{paper:{sx:drawerSx}}}><Stack spacing={2}>
-   <Stack direction="row" justifyContent="space-between"><Typography variant="h6">{u.costBasis}</Typography><Button onClick={()=>setCommonOpen(false)}>{t.close}</Button></Stack>
-   <TextField select id="profit-labor-mode" size="small" label={u.mode} value={defaults.laborSource||'AUTO'} disabled={disabled||!config} onChange={event=>change('laborSource',event.target.value)}><MenuItem value="AUTO">{s.companyPayroll}</MenuItem><MenuItem value="MANUAL">{u.manualOption}</MenuItem></TextField>
-   {laborError&&<Alert severity="warning">{u.salaryUnavailable}</Alert>}
-   {defaults.laborSource!=='MANUAL'&&labor?.company&&<Alert severity="info">{s.companyPayroll} · {month} · {labor.company.employeeCount} {s.people}<Typography variant="caption" display="block">{s.companyFormula}</Typography></Alert>}
-   <Grid><TextField select id="order-profit-currency" size="small" label={u.currency} value={currency} disabled={disabled||!config} onChange={event=>setConfig(current=>({...current,defaults:{...current.defaults,...Object.fromEntries(monetary.map(key=>[key,''])),currency:event.target.value}}))}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>{['hoursDay','workdays','targetDays','rentMonthly','otherUnitCost'].map(key=>field(key))}</Grid>
-   {(defaults.laborSource==='MANUAL'||!basis?.directCount)&&<Grid>{['factoryWorkers','baseMonthly','allowanceMonthly','productionPay','supportMonthly'].map(key=>field(key))}</Grid>}
-   <Typography variant="caption" color="text.secondary">{u.regular}</Typography>
-   <FormControlLabel control={<Checkbox checked={defaults.packaging} disabled={disabled||!config} onChange={event=>change('packaging',event.target.checked)}/>} label={p.packaging}/>{defaults.packaging&&<Grid>{PACKAGING_KEYS.map(key=>field(key))}</Grid>}<Typography variant="caption" color="text.secondary">{t.packNote}</Typography>
-   <Grid>{['usdVnd','usdKrw'].map(key=>field(key))}</Grid><Typography variant="caption">{t.fx}: 1 USD = {rates.VND||'—'} VND / {rates.KRW||'—'} KRW {fx?.date?` · ${fx.date}`:''}</Typography><SaveButton disabled={disabled||!config} loading={saving} onClick={()=>persist()}>{t.save}</SaveButton>
-  </Stack></Drawer>
   <Drawer anchor="right" open={Boolean(selected)} onClose={()=>setDetail(null)} slotProps={{paper:{sx:drawerSx}}}>{selected&&<Stack spacing={2}>
    <Stack direction="row" justifyContent="space-between"><Typography variant="h6">{selected.styleCode} · {t.detail}</Typography><Button onClick={()=>setDetail(null)}>{t.close}</Button></Stack>
    <Typography>{number(selected.quantity)} · {money(selected.result.revenue)}</Typography>
@@ -122,6 +110,17 @@ function OrderAnalysis({orgId}){
    {!selected.result.ready&&<Typography variant="body2" color="warning.main">{u.missing}: {selected.result.missing.map(key=>p[key]||t[key]||key).join(' · ')}</Typography>}
    <Typography variant="subtitle2">{p.averages}</Typography>{!selected.sources.averages.length&&<Typography variant="body2" color="text.secondary">{p.emptyAverage}</Typography>}{selected.sources.averages.map(avg=><Box key={avg.key}><Typography variant="body2">{label(avg.code)} · {avg.partner} · {label(avg.unit)} · {money(avg.unitPrice,avg.currency)}</Typography><Stack direction="row" spacing={1}>{[['polyPrice','usePoly'],['boxPrice','useBox']].map(([key,text])=><Button key={key} disabled={avg.currency!==currency||disabled} onClick={()=>changeStyle(selected,key,Number(avg.unitPrice.toFixed(4)))}>{p[text]}</Button>)}</Stack></Box>)}
   </Stack>}</Drawer>
-  <RevenueTargetPicker open={pickerOpen} onClose={()=>setPickerOpen(false)} orders={catalog.orders} orderStyles={catalog.rows||[]} orgId={orgId} languageCode={languageCode} selection={mode==='ORDER'?{mode,orderId}:{...standalone,mode}} onSelect={value=>{setMode(value.mode);if(value.mode==='ORDER')setOrderId(value.orderId);else setStandalone(value);setPickerOpen(false);setSaved(false);}}/>
+  <RevenueTargetPicker open={pickerOpen} onClose={cancelFlow} flowSteps={[
+ <Stack spacing={2} key="production"><Typography color="text.secondary">{f.production}</Typography><TextField select id="order-profit-basis" size="small" label={p.basis} value={defaults.basis} onChange={event=>change('basis',event.target.value)}>{['ST','PT'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField><Grid>{['productivity','workers','hoursDay','workdays','targetDays'].map(key=>field(key))}</Grid></Stack>,
+ <Stack spacing={2} key="payroll"><Typography color="text.secondary">{f.payroll}</Typography><TextField size="small" type="month" label={u.month} value={month} onChange={event=>{if(/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value))setMonth(event.target.value);}} slotProps={{inputLabel:{shrink:true}}}/>   <TextField select id="profit-labor-mode" size="small" label={u.mode} value={defaults.laborSource||'AUTO'} disabled={disabled||!config} onChange={event=>change('laborSource',event.target.value)}><MenuItem value="AUTO">{s.companyPayroll}</MenuItem><MenuItem value="MANUAL">{u.manualOption}</MenuItem></TextField>
+   {laborError&&<Alert severity="warning">{u.salaryUnavailable}</Alert>}
+   {defaults.laborSource!=='MANUAL'&&labor?.company&&<Alert severity="info">{s.companyPayroll} · {month} · {labor.company.employeeCount} {s.people}<Typography variant="caption" display="block">{s.companyFormula}</Typography></Alert>}
+   <Grid><TextField select id="order-profit-currency" size="small" label={u.currency} value={currency} disabled={disabled||!config} onChange={event=>setConfig(current=>({...current,defaults:{...current.defaults,...Object.fromEntries(monetary.map(key=>[key,''])),currency:event.target.value}}))}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField>{['rentMonthly','otherUnitCost'].map(key=>field(key))}</Grid>
+   {(defaults.laborSource==='MANUAL')&&<Grid>{['factoryWorkers','baseMonthly','allowanceMonthly','productionPay','supportMonthly'].map(key=>field(key))}</Grid>}
+   <Typography variant="caption" color="text.secondary">{u.regular}</Typography>
+</Stack>,
+ <Stack spacing={2} key="packing"><Typography color="text.secondary">{f.pack}</Typography>   <FormControlLabel control={<Checkbox checked={defaults.packaging} disabled={disabled||!config} onChange={event=>change('packaging',event.target.checked)}/>} label={p.packaging}/>{defaults.packaging&&<Grid>{PACKAGING_KEYS.map(key=>field(key))}</Grid>}<Typography variant="caption" color="text.secondary">{t.packNote}</Typography>
+   <Grid>{['usdVnd','usdKrw'].map(key=>field(key))}</Grid><Typography variant="caption">{t.fx}: 1 USD = {rates.VND||'—'} VND / {rates.KRW||'—'} KRW {fx?.date?` · ${fx.date}`:''}</Typography></Stack>
+ ]} orders={catalog.orders} orderStyles={catalog.rows||[]} orgId={orgId} languageCode={languageCode} selection={mode==='ORDER'?{mode,orderId}:{...standalone,mode}} onSelect={value=>{setMode(value.mode);if(value.mode==='ORDER')setOrderId(value.orderId);else setStandalone(value);setPickerOpen(false);setSaved(false);}}/>
  </PageContentStack></AppPageContainer>;
 }
