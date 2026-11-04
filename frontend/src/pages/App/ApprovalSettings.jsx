@@ -1,6 +1,6 @@
 import {Add} from '@mui/icons-material';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,MenuItem,Stack,TextField} from '@mui/material';
+import {Alert,Button,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import {approvalSubjectText} from '../../constants/approvalSubjects';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import {approvalBandText} from '../../constants/approvalBands';
@@ -15,12 +15,27 @@ import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import {approvalBandOrderErrors,cleanApprovalBands,invalidApprovalBands} from '../../utils/approvalBands.mjs';
 
 export default function ApprovalSettings(){
+ const {languageCode}=useLanguage();
+ const t=approvalSettingsText[languageCode]||approvalSettingsText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,actionText=changeApprovalText[languageCode]||changeApprovalText.en;
+ const [menu,setMenu]=useState('EXPENSE');
+ const drafts=useRef({});
+ return <AppPageContainer title={t.title} contentSx={{flex:1,minWidth:0}}>
+  <Stack spacing={3} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
+   <TextField select size="small" label={subject.label} slotProps={{select:{inputProps:{"aria-label":subject.label}}}} value={menu} onChange={e=>setMenu(e.target.value)} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER'].map(key=><MenuItem key={key} value={key}>{actionText[key]}</MenuItem>)}</TextField>
+   {['CREATE','UPDATE','DELETE'].map(operation=>menu==='BANK_LEDGER'&&operation==='CREATE'?<Stack key={operation} component="section" aria-label={actionText.CREATE} data-approval-operation={operation} spacing={1}>
+    <Typography component="h2" variant="h6">{actionText.CREATE}</Typography>
+    <Typography color="text.secondary">{actionText.noCreateApproval}</Typography>
+   </Stack>:<ApprovalOperationSettings key={operation} menu={menu} operation={operation} drafts={drafts} />)}
+  </Stack>
+ </AppPageContainer>;
+}
+
+function ApprovalOperationSettings({menu,operation,drafts}){
  const {activeOrgId}=useAuth(),{languageCode}=useLanguage();
- const t=approvalSettingsText[languageCode]||approvalSettingsText.en,band=approvalBandText[languageCode]||approvalBandText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
+ const t=approvalSettingsText[languageCode]||approvalSettingsText.en,band=approvalBandText[languageCode]||approvalBandText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
  const actionText=changeApprovalText[languageCode]||changeApprovalText.en;
- const [menu,setMenu]=useState('EXPENSE'),[operation,setOperation]=useState('CREATE');
  const [data,setData]=useState(null),[form,setForm]=useState(null),[initial,setInitial]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
- const lock=useRef(false),editor=useRef(null),scope=useRef(''),drafts=useRef({}),loadedPath=useRef('');
+ const lock=useRef(false),editor=useRef(null),scope=useRef(''),loadedPath=useRef('');
  useUnsavedChanges(!!form&&JSON.stringify(form)!==initial);
  const path=menu==='EXPENSE'&&operation==='CREATE'?`/expense-approval-settings${buildQueryString({orgId:activeOrgId})}`:`/approval-action-settings${buildQueryString({orgId:activeOrgId,menu,operation})}`;
  scope.current=path;
@@ -34,19 +49,15 @@ export default function ApprovalSettings(){
   try{await requestJSON(path,{method:'PUT',body:JSON.stringify(payload)});if(scope.current===path){const next={...payload,revision:payload.revision+1};delete drafts.current[path];setForm(next);setInitial(JSON.stringify(next));setSaved(true);emitWorkspaceDataChanged({orgId,topics:['expense-approval-settings']});}}
   catch(failure){if(scope.current===path)setError(failure.message==='APPROVAL_SETTINGS_CHANGED'?messages.changed:messages.error);}finally{lock.current=false;setBusy(false);}
  };
- return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button>} contentSx={{flex:1,minWidth:0}}>
-  <Stack spacing={2} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
+ return <Stack component="section" aria-label={actionText[operation]} data-approval-operation={operation} spacing={2} sx={{minWidth:0}}>
+   <Stack direction="row" justifyContent="space-between" alignItems="center">
+    <Typography component="h2" variant="h6">{actionText[operation]}</Typography>
+    <Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button>
+   </Stack>
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.title}</Button>}>{error}</Alert>}
    {saved&&<Alert severity="success">{t.saved}</Alert>}
    {form&&approvalBandOrderErrors(form.rules).size>0&&<Alert severity="warning">{band.orderError}</Alert>}
-   <Stack direction={{xs:'column',sm:'row'}} spacing={2} justifyContent="space-between" alignItems={{sm:'center'}}>
-    <Stack direction={{xs:'column',sm:'row'}} spacing={2} sx={{width:'100%'}}>
-     <TextField select size="small" label={subject.label} slotProps={{select:{inputProps:{"aria-label":subject.label}}}} value={menu} disabled={busy} onChange={e=>{setMenu(e.target.value);if(e.target.value==='BANK_LEDGER'&&operation==='CREATE')setOperation('UPDATE');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER'].map(key=><MenuItem key={key} value={key}>{actionText[key]}</MenuItem>)}</TextField>
-     <TextField select size="small" label={actionText.operation} slotProps={{select:{inputProps:{"aria-label":actionText.operation}}}} value={operation} disabled={busy} onChange={e=>setOperation(e.target.value)} sx={{width:{xs:'100%',sm:200}}}>{(menu==='EXPENSE'?['CREATE','UPDATE','DELETE']:['UPDATE','DELETE']).map(key=><MenuItem key={key} value={key}>{actionText[key]}</MenuItem>)}</TextField>
-    </Stack>
-   </Stack>
    {form&&<ApprovalRuleEditor ref={editor} key={path} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>{setForm(current=>({...current,drafterScope}));setSaved(false);}} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={disabled} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setError(messages.error);}}>{band.addCondition}</Button>}/>}
    {data&&!data.canEdit&&<Alert severity="info">{t.readonly}</Alert>}
-  </Stack>
- </AppPageContainer>;
+ </Stack>;
 }

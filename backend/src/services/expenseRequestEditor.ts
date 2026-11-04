@@ -137,7 +137,10 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   await requirePayeeBankAccount(tx,orgId,payeeIds.partnerOrgId,payeeIds.payeeEmployeeId);
   const savedAudit=source.document?await tx.expenseRequestAudit.findFirst({where:{orgId,requestId:source.document.id,version:source.document.version},orderBy:{id:'desc'}}):null;
   const savedConfig=source.document?savedAudit?.afterSnapshot?.approvalPolicy?.config||defaultApprovalSettings():undefined;
-  const approval = approvedChange||await resolveExpenseApproval(tx,orgId,source.document?.createdByEmployeeId || actorId,body.items,body.approvalSelection,false,savedConfig);
+  // The document author stays fixed; the editing actor is recorded separately.
+  const drafterId=source.document?.createdByEmployeeId ?? actorId;
+  if(body.approvalSelection?.drafterEmployeeId!==undefined&&body.approvalSelection.drafterEmployeeId!==drafterId)return fail(400,'EXPENSE_DRAFTER_FIXED');
+  const approval = approvedChange||await resolveExpenseApproval(tx,orgId,drafterId,body.items,body.approvalSelection,false,savedConfig);
   const approvers = approval.ids;
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
   if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
@@ -145,7 +148,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   const header = { remark, requestDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
-    await tx.expenseRequest.create({ data: { ...header, orgId, managementNumber, createdByEmployeeId: actorId, clientKey: body.clientKey, submissionHash: inputHash } });
+    await tx.expenseRequest.create({ data: { ...header, orgId, managementNumber, createdByEmployeeId: drafterId, clientKey: body.clientKey, submissionHash: inputHash } });
   await replaceExpenseApprovers(tx,orgId,document.id,approvers,source.document?.approvalSteps || []);
   const assignmentPlanIds: number[] = [];
   for (const [index,item] of body.items.entries()) {
@@ -162,7 +165,7 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   for (const cost of removed) await tx.partnerTransactionCost.delete({ where: { id: cost.id } });
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
   await tx.expenseRequestAudit.create({ data: { orgId, requestId: document.id, actorId, version: document.version,
-    action: source.document ? 'UPDATE' : 'CREATE', clientKey:key, inputHash, beforeSnapshot: before, afterSnapshot:snapshot({...after,approvalPolicy:approval.policy}) } });
+    action: source.document ? 'UPDATE' : 'CREATE', clientKey:key, inputHash, beforeSnapshot: before, afterSnapshot:snapshot({...after,approvalPolicy:{...approval.policy,drafterId}}) } });
   if(approvedChange)for(const [index,employeeId] of approval.ids.entries())await tx.expenseApprovalDecision.create({data:{orgId,requestId:document.id,version:document.version,position:index+1,employeeId,decision:'APPROVED'}});
   return { requestId: document.id, assignmentPlanIds: [...new Set(assignmentPlanIds)] };
 }

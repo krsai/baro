@@ -1,4 +1,5 @@
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
+import ExpenseEditHistory from '../../components/ExpenseEditHistory';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import DocumentEntryHeader from '../../components/DocumentEntryHeader';
 import {ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
@@ -216,6 +217,7 @@ export default function TransactionRequestEntry() {
   return <AppPageContainer
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
     titleActions={<Stack direction="row" spacing={1}>
+      {editing&&form.version&&!documentLoading&&<ExpenseEditHistory orgId={activeOrgId} requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} languageCode={languageCode} disabled={loading||loadError||saving}/>}
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
       <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
         {submission ? labels.retry : editing?(changeApprovalText[languageCode]||changeApprovalText.en).requestUpdate:getUiMessage('common.save', 'Save', languageCode)}

@@ -74,10 +74,16 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    const document=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[item]}),{timeout:30000});
    const source=await loadExpenseEditorSource(db,org,'request',String(document.id));
    const payload={partnerOrgId:s.vendor.id,requestDate:document.requestDate,revision:expenseEditorRevision(source),version:document.version,clientKey:randomUUID(),items:[{...item,itemId:document.items[0].id,unitPrice:'120'}]};
-   const change=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(document.id),payload,clientKey:randomUUID()});
+   const editor=(await db.employee.create({data:{orgId:org,name:'Another editor',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}})).id,editApprover=s.people.admin.id;
+   const change=await requestChangeApproval(db,org,editor,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(document.id),payload,selection:{changeAdminEmployeeId:editApprover},clientKey:randomUUID()});
    assert.equal((await db.expenseRequest.findUnique({where:{id:document.id}})).version,document.version);
-   await decideChangeApproval(db,org,approver,change.id,{decision:'APPROVED'});
+   await decideChangeApproval(db,org,editApprover,change.id,{decision:'APPROVED'});
    const edited=await db.expenseRequest.findUnique({where:{id:document.id},include:{items:true}});assert.equal(edited.version,document.version+1);assert.equal(edited.items[0].id,document.items[0].id);assert.equal(edited.items[0].amount.toString(),'120');assert.equal((await approvalState(db,org,edited.id)).approved,true);
+   assert.equal(edited.createdByEmployeeId,actor);assert.equal(edited.updatedByEmployeeId,editor);
+   const audit=await db.expenseRequestAudit.findFirst({where:{orgId:org,requestId:document.id,version:edited.version}});
+   assert.equal(audit.actorId,editor);assert.equal(audit.beforeSnapshot.document.createdByEmployeeId,actor);assert.equal(audit.afterSnapshot.document.createdByEmployeeId,actor);
+   assert.equal(audit.afterSnapshot.approvalPolicy.drafterId,actor);assert.equal(audit.afterSnapshot.approvalPolicy.changeRequestId,change.id);
+   assert.equal(audit.beforeSnapshot.costs[0].amount,'100');assert.equal(audit.afterSnapshot.costs[0].amount,'120');
    const removal=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'DELETE',sourceKind:'request',sourceId:String(document.id),version:edited.version,payload:{},reason:'Wrong expense',clientKey:randomUUID()});
    const payment=await postLedgerEntry(db,org,'junior@example.test',s.account.id,body({direction:'OUT',amount:'120',counterparty:null,evidenceType:'EXPENSE',evidenceNumber:'',expenseRequestId:edited.id,expenseVersion:edited.version,expenseItems:[{itemId:edited.items[0].id,amount:'120'}]}));assert.equal(payment.counterpartyOrgId,s.vendor.id);
    await assert.rejects(decideChangeApproval(db,org,approver,removal.id,{decision:'APPROVED'}),/EXPENSE_ALREADY_RECONCILED/);

@@ -62,12 +62,33 @@ function harness() {
     },s);
   };
   return { state:()=>state, client:()=>client(state), change:patch=>Object.assign(state,patch), source:()=>loadExpenseEditorSource(client(state),1,'legacy','78'),
-    save:async(body,kind='legacy',id='78',org=1)=>{const draft=structuredClone(state);const result=await saveExpenseEditor(client(draft),org,20,kind,id,body);state=draft;return result;} };
+    save:async(body,kind='legacy',id='78',org=1,actorId=20,approvedChange)=>{const draft=structuredClone(state);const result=await saveExpenseEditor(client(draft),org,actorId,kind,id,body,undefined,approvedChange);state=draft;return result;} };
 }
 async function input(db) {
   const form=expenseEditorForm(await db.source());
   return {...form,remark:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,details:{...item.details,reference:'REF-001'},transactionCodeId:8}))};
 }
+
+test('another employee edits a draft without replacing its author and records an immutable before/after version',async()=>{
+ const db=harness();await db.save(await input(db));
+ const original=structuredClone(db.state().audits[0]);
+ const form=expenseEditorForm(await loadExpenseEditorSource(db.client(),1,'request','1'));
+ const body={...form,clientKey:'other-editor-001',remark:'Changed by another employee',createdByEmployeeId:22,items:form.items.map(item=>({...item,quantity:'171'}))};
+ const approvedChange={ids:[],policy:{drafterId:22,changeRequestId:'change-001'}};
+ await db.save(body,'request','1',1,22,approvedChange);
+ const doc=db.state().documents[0],audit=db.state().audits.at(-1);
+ assert.equal(doc.createdByEmployeeId,20);assert.equal(doc.updatedByEmployeeId,22);
+ assert.equal(audit.actorId,22);assert.equal(audit.action,'UPDATE');assert.equal(audit.version,2);
+ assert.equal(audit.beforeSnapshot.document.createdByEmployeeId,20);assert.equal(audit.afterSnapshot.document.createdByEmployeeId,20);
+ assert.equal(audit.beforeSnapshot.costs[0].quantity,'170');assert.equal(audit.afterSnapshot.costs[0].quantity,'171');
+ assert.equal(audit.afterSnapshot.document.remark,body.remark);assert.equal(audit.afterSnapshot.approvalPolicy.drafterId,20);
+ assert.deepEqual(db.state().audits[0],original);
+ await db.save(body,'request','1',1,22,approvedChange);assert.equal(db.state().audits.length,2);
+ const next=expenseEditorForm(await loadExpenseEditorSource(db.client(),1,'request','1'));
+ const before=structuredClone(db.state());
+ await assert.rejects(db.save({...next,clientKey:'forged-drafter-001',approvalSelection:{drafterEmployeeId:22}},'request','1',1,22,approvedChange),/EXPENSE_DRAFTER_FIXED/);
+ assert.deepEqual(db.state(),before);
+});
 test('a missing evidence number identifies the invalid expense row and rolls back every item',async()=>{
  const db=harness(),body=await input(db),before=structuredClone(db.state());
  body.items.push({transactionCodeId:7,currency:'USD',description:'Missing evidence',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{}});
