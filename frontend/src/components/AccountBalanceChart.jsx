@@ -6,7 +6,13 @@ export default function AccountBalanceChart({points,currencyCode,label}){
  const values=points.map(row=>Number(row.balance)),minimum=Math.min(0,...values),maximum=Math.max(0,...values),span=maximum-minimum||1,low=minimum<0?minimum-span*.05:0,high=maximum+span*.05,plotWidth=width-left-right,plotHeight=height-top-bottom;
  const x=index=>left+index*plotWidth/Math.max(1,points.length-1),y=value=>top+(high-value)/(high-low)*plotHeight;
  const index=Math.min(selected??points.length-1,points.length-1),point=points[index];
- const choose=event=>{const rect=event.currentTarget.getBoundingClientRect(),at=(event.clientX-rect.left)/rect.width*width;setSelected(Math.max(0,Math.min(points.length-1,Math.round((at-left)/plotWidth*(points.length-1)))));};
+ const choose=event=>{
+  const svg=event.currentTarget,matrix=svg.getScreenCTM();
+  if(!matrix||!points.length)return;
+  const cursor=svg.createSVGPoint();cursor.x=event.clientX;cursor.y=event.clientY;
+  const at=cursor.matrixTransform(matrix.inverse()).x;
+  setSelected(Math.max(0,Math.min(points.length-1,Math.round((at-left)/plotWidth*(points.length-1)))));
+ };
  return <Box sx={{minWidth:0}} data-testid="account-balance-chart"><Stack direction="row" justifyContent="space-between" spacing={2} sx={{mb:1}}><Typography variant="caption" color="text.secondary">{point?.date}</Typography><Typography variant="body2" align="right" fontWeight={600}>{point?formatLedgerMoney(point.balance,currencyCode):'—'}</Typography></Stack>
  <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label} tabIndex={0} onPointerMove={choose} onKeyDown={event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setSelected(Math.max(0,Math.min(points.length-1,index+(event.key==='ArrowLeft'?-1:1))));}}} style={{display:'block',width:'100%',height:'auto',minHeight:180,maxHeight:320}}>
   {Array.from({length:5},(_,i)=>{const value=low+(high-low)*i/4;return <g key={i}><line x1={left} x2={width-right} y1={y(value)} y2={y(value)} stroke="var(--color-border, #e1e8ef)"/><text x={left-10} y={y(value)+4} textAnchor="end" fill="currentColor" fontSize="12">{Math.round(value).toLocaleString()}</text></g>;})}
