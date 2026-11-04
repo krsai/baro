@@ -3,6 +3,7 @@ import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
+import {revenueUxText} from '../frontend/src/constants/revenueUx.js';
 import {orderProfitText} from '../frontend/src/constants/orderProfit.js';
 import {profitScenarioText} from '../frontend/src/constants/profitScenario.js';
 import {orderCostDefaults,orderStyleProfit,orderProfitTotals} from '../frontend/src/utils/orderProfit.mjs';
@@ -19,8 +20,9 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   console.log('Checking saved-order profit analysis',lang,width);
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
-  const t=orderProfitText[lang],p=profitScenarioText[lang],rates={USD:'1',VND:'25000',KRW:'1300'};
-  const common={...orderCostDefaults(),baseMonthly:6000000,allowanceMonthly:1000000,supportMonthly:9000000,rentMonthly:20000000,workdays:25};
+  const t=orderProfitText[lang],p=profitScenarioText[lang],u=revenueUxText[lang],rates={USD:'1',VND:'25000',KRW:'1300'};
+  const common={...orderCostDefaults(),baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:20000000,workdays:25};
+  const laborBasis={id:1,name:'Factory payroll',currencyCode:'VND',directCount:10,employeeCount:12,supportCount:2,baseHourly:30000,allowanceHourly:5000,supportHourly:45000,productionPerSecond:0,versionNumber:1};
   let settings={revision:0,defaults:common,stylePackaging:{},scenarios:[]},reject=false;
   const order={id:2,orderNumber:'SAVED-ORDER-2',customer:'Buyer',quantity:300,styleCount:2,salesAmount:'3000',currency:'USD',priceSource:'CURRENT_PRICE'};
   const costs=[{id:'cost-A',exact:true,approved:true,subtotal:'300000',amount:'330000',currency:'VND',requestId:18,reference:'EXP-18',description:'Outsourcing A'},{id:'cost-B',exact:true,approved:true,subtotal:'100000',amount:'110000',currency:'VND',requestId:19,reference:'EXP-19',description:'Outsourcing B'}];
@@ -31,6 +33,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/revenue-analysis/catalog?*',r=>r.fulfill({headers,json:{orders:[order,{...order,id:5,orderNumber:'SAVED-ORDER-5',styleCount:0,salesAmount:null}],rows:[]}}));
   await page.route('**/revenue-analysis/orders/*?*',r=>{assert.equal(r.request().method(),'GET');const id=Number(new URL(r.request().url()).pathname.split('/').at(-1));return r.fulfill({headers,json:id===2?{order,styles}:{order:{...order,id:5,orderNumber:'SAVED-ORDER-5',salesAmount:null},styles:[]}});});
+  await page.route('**/revenue-analysis/labor-basis?*',r=>r.fulfill({headers,json:{factories:[laborBasis]}}));
   await page.route('**/revenue-analysis/exchange-rates?*',r=>r.fulfill({headers,json:{rates,date:'2026-11-04'}}));
   await page.route('**/revenue-analysis/scenarios?*',r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers});
@@ -42,26 +45,32 @@ try{
   await page.locator('[data-style-id="4"]').waitFor();
   await page.waitForFunction(()=>document.querySelector('[data-order-metric="profit"]')?.textContent!=='—');
   assert.equal(await page.locator('[data-style-id]').count(),2);assert.equal(writes.length,0);
-  const expected=orderProfitTotals(styles.map(style=>orderStyleProfit(style,common,{},undefined,rates)));
+  const expected=orderProfitTotals(styles.map(style=>orderStyleProfit(style,common,{},undefined,rates,laborBasis)));
   assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),totalMoney(75000000));
   assert.equal(await page.locator('[data-order-metric="purchase"]').textContent(),totalMoney(400000));
   assert.equal(await page.locator('[data-order-metric="profit"]').textContent(),totalMoney(expected.profit));
   assert.equal(await page.getByRole('spinbutton',{name:p.quantity,exact:true}).count(),0);assert.equal(await page.getByRole('spinbutton',{name:p.salePrice,exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:p.trial,exact:true}).count(),0);
   const choose=async(name,value)=>{await page.getByRole('combobox',{name,exact:false}).click();await page.getByRole('option',{name:value,exact:true}).click();};
   await page.getByRole('spinbutton',{name:p.productivity,exact:true}).fill('120');
-  const faster=orderProfitTotals(styles.map(style=>orderStyleProfit(style,{...common,productivity:120},{},undefined,rates)));
+  const faster=orderProfitTotals(styles.map(style=>orderStyleProfit(style,{...common,productivity:120},{},undefined,rates,laborBasis)));
   assert.equal(await page.locator('[data-order-metric="days"]').textContent(),faster.days.toLocaleString(lang,{maximumFractionDigits:2}));
   await choose(p.basis,'PT');assert.equal(await page.locator('[data-order-metric="profit"]').textContent(),'—');
   await page.locator('[data-style-id="4"]').getByRole('button',{name:t.detail,exact:true}).click();
   await page.getByRole('spinbutton',{name:p.ptSeconds,exact:true}).fill('250');assert.notEqual(await page.locator('[data-order-metric="profit"]').textContent(),'—');
-  await page.getByRole('button',{name:t.settings,exact:true}).first().click();
+  await page.getByRole('button',{name:t.close,exact:true}).click();
+  await page.getByRole('button',{name:u.costBasis,exact:true}).click();
+  const salaryBefore=await page.locator('[data-order-metric="salary"]').textContent();
+  await page.getByRole('spinbutton',{name:p.rentMonthly,exact:true}).fill('');
+  assert.equal(await page.locator('[data-order-metric="profit"]').textContent(),'—');assert.equal(await page.locator('[data-order-metric="salary"]').textContent(),salaryBefore);
+  await page.getByRole('spinbutton',{name:p.rentMonthly,exact:true}).fill('20000000');
   await page.getByRole('spinbutton',{name:t.usdVnd,exact:true}).fill('26000');assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),totalMoney(78000000));
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.saved,{exact:true}).waitFor();
   assert.equal(settings.defaults.productivity,'120');assert.equal(settings.scenarios[0].orderId,2);assert.equal(settings.scenarios[0].styleId,4);assert.equal(settings.scenarios[0].inputs.ptSeconds,'250');
+  assert.notEqual(await page.locator('[data-order-metric="salary"]').textContent(),'?');
   const storedProfit=await page.locator('[data-order-metric="profit"]').textContent();
   await page.reload();await page.locator('[data-style-id="4"]').waitFor();await page.waitForFunction(()=>document.querySelector('[data-order-metric="profit"]')?.textContent!=='—');assert.equal(await page.locator('[data-order-metric="profit"]').textContent(),storedProfit);
   reject=true;await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText(t.changed,{exact:true}).waitFor();assert.equal(await page.getByRole('spinbutton',{name:p.productivity,exact:true}).inputValue(),'120');
-  await page.locator('[data-order-id="5"]').getByRole('button',{name:t.analyze,exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-style-id]').length===0);assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),'—');
+  await choose(u.order,/SAVED-ORDER-5/);await page.waitForFunction(()=>document.querySelectorAll('[data-style-id]').length===0);assert.equal(await page.locator('[data-order-metric="sales"]').textContent(),'—');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: saved orders drive all styles, quantities and sales; automatic purchases, shared cost assumptions, periods, FX, missing PT, save/reload and conflicts; ko/en/vi desktop/mobile.');

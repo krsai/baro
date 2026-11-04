@@ -29,3 +29,11 @@ test('approved order-wide costs count once at order level; style-linked and cros
  const total=orderProfitTotals([row,row],false,common.amount);assert.equal(total.purchase,5000);assert.equal(total.profit,13000);assert.equal(total.total,7000);
  assert.equal(orderProfitTotals([row],false,null).profit,null);
 });
+test('automatic factory salary calculates independently of missing rent and uses ST/PT output pay without double-counting hourly payroll',()=>{
+ const basis={currencyCode:'VND',directCount:20,baseHourly:30000,allowanceHourly:5000,supportHourly:40000,productionPerSecond:2};
+ const r=orderStyleProfit(style,{...defaults,baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:''},{},{},{USD:'1',VND:'25000'},basis);
+ assert.equal(r.automaticLabor,true);assert.ok(Math.abs(r.costs.base-r.workloadHours*30000)<.001);assert.ok(Math.abs(r.costs.allowance-r.workloadHours*5000)<.001);
+ assert.ok(Math.abs(r.costs.support-r.workloadHours*40000/20)<.001);assert.equal(r.costs.production,100*600*2);
+ assert.equal(r.laborComplete,true);assert.ok(r.labor>0);assert.equal(r.costs.rent,null);assert.equal(r.profit,null);
+ const manual=orderStyleProfit(style,{...defaults,laborSource:'MANUAL'},{},{},{USD:'1',VND:'25000'},basis);assert.equal(manual.automaticLabor,false);
+});

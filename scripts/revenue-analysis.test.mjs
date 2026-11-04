@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
+const dbModule=require.resolve('../backend/dist/db.js');require.cache[dbModule]={id:dbModule,filename:dbModule,loaded:true,exports:{prisma:{}}};
 const {profitSources,profitCatalog,profitOrderReport,registerRevenueAnalysisRoutes,validateProfitInputs}=require('../backend/dist/services/revenueAnalysis.js');
 function harness(){
  let stored=null,writes=0;const handlers=new Map(),queries=[];
@@ -62,6 +63,7 @@ test('real Prisma queries load scoped order styles and read-only sources; scenar
   await assert.rejects(profitSources(f.db,s.other.id,order.id,style.id,{}),/PROFIT_TARGET_NOT_FOUND/);
   const routes=new Map();registerRevenueAnalysisRoutes({get:(p,fn)=>routes.set('GET '+p,fn),put:(p,fn)=>routes.set('PUT '+p,fn)},f.db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>s.people.admin.id,loadPolicy:async()=>({policy:{SERVICE:{ADMIN:['REVENUE_ANALYSIS']}}})});
   const reportResponse={json(value){this.value=value;}};await routes.get('GET /revenue-analysis/orders/:id')({params:{id:String(order.id)}},reportResponse);assert.equal(reportResponse.value.styles[0].quantity,150);
+  const laborResponse={json(value){this.value=value;}};await routes.get('GET /revenue-analysis/labor-basis')({query:{month:'2026-11'}},laborResponse);assert.deepEqual(laborResponse.value.factories,[]);
   const body={revision:0,defaults:{currency:'VND',workers:10},stylePackaging:{[style.id]:{currency:'VND',polyUsage:1,boxCapacity:50}},scenarios:[{id:'profit-scenario-001',name:'First estimate',orderId:order.id,styleId:style.id,inputs:{quantity:150,stSeconds:'',basis:'ST'}}]};
   const res={json(value){this.value=value;}};
   await routes.get('PUT /revenue-analysis/scenarios')({body},res);assert.equal(res.value.revision,1);

@@ -2,9 +2,10 @@ import {createHttpError} from '../utils/http';
 import {approvalState} from './bankEvidence';
 import {loadIssuedOrderSalesValues} from './issuedOrderSalesValue';
 import {loadReferenceExchangeRates} from './referenceExchangeRates';
+import {revenueLaborBasis} from './revenueLaborBasis';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
-const inputKeys=['currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw'];
+const inputKeys=['currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
 export function validateProfitInputs(value:any){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!inputKeys.includes(k)))fail('INVALID_PROFIT_SCENARIO');
  const result:any={};
@@ -12,6 +13,7 @@ export function validateProfitInputs(value:any){
   if(k==='currency'){if(!['USD','KRW','VND'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(k==='basis'){if(!['ST','PT'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(k==='costMode'){if(!['estimate','linked'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
+  else if(k==='laborSource'){if(!['AUTO','MANUAL'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(k==='packaging'){if(typeof v!=='boolean')fail('INVALID_PROFIT_SCENARIO');}
   else if(v!==''&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0||Number(v)>1e12))fail('INVALID_PROFIT_SCENARIO');
   result[k]=v;
@@ -19,7 +21,7 @@ export function validateProfitInputs(value:any){
  return result;
 }
 export async function profitCatalog(db:any,orgId:number,gates:any,orderId?:number){
- const orders=await db.workOrder.findMany({where:{orgId,...(orderId?{id:orderId}:{})},orderBy:{updatedAt:'desc'},take:501,include:{buyerOrg:{select:{name:true}},workOrderItems:{include:{style:{select:{id:true,code:true,name:true,orgId:true}}},orderBy:{sortOrder:'asc'}}}});
+ const orders=await db.workOrder.findMany({where:{orgId,...(orderId?{id:orderId}:{})},orderBy:{updatedAt:'desc'},take:501,include:{buyerOrg:{select:{name:true}},assignmentPlans:{where:{orgId},select:{factoryId:true}},workOrderItems:{include:{style:{select:{id:true,code:true,name:true,orgId:true}}},orderBy:{sortOrder:'asc'}}}});
  // Use the same current-price / frozen-invoice resolver as the saved orders page.
  const sales=await (gates.loadSalesValues?gates.loadSalesValues(orders.slice(0,500),db):loadIssuedOrderSalesValues(db,orders.slice(0,500)));
  const rows:any[]=[];
@@ -33,7 +35,7 @@ export async function profitCatalog(db:any,orgId:number,gates:any,orderId?:numbe
     salePrice:available&&priceQuantity===quantity&&quantity>0?amount/quantity:null,salesAmount:available&&priceQuantity===quantity?amount:null,currency:issued?.currencyCode||null,priceSource:issued?.source||null,invoiceNumber:issued?.invoiceNumber||null});
   }
  }
- return {rows,orders:orders.slice(0,500).map((order:any)=>{const value=sales.get(order.id);return {id:order.id,orderNumber:order.orderNumber,customer:order.buyerOrg?.name||'',quantity:order.workOrderItems.reduce((sum:number,item:any)=>sum+item.totalQuantity,0),styleCount:new Set(order.workOrderItems.map((item:any)=>item.styleId).filter(Boolean)).size,salesAmount:value?.amount??null,currency:value?.currencyCode??null,priceStatus:value?.status||'MISSING_PRICE',priceSource:value?.source||null,invoiceNumber:value?.invoiceNumber||null,missingStyle:order.workOrderItems.some((item:any)=>item.totalQuantity>0&&item.style?.orgId!==orgId)};}),truncated:orders.length>500};
+ return {rows,orders:orders.slice(0,500).map((order:any)=>{const value=sales.get(order.id);return {id:order.id,factoryIds:[...new Set((order.assignmentPlans||[]).map((plan:any)=>plan.factoryId))],orderNumber:order.orderNumber,customer:order.buyerOrg?.name||'',quantity:order.workOrderItems.reduce((sum:number,item:any)=>sum+item.totalQuantity,0),styleCount:new Set(order.workOrderItems.map((item:any)=>item.styleId).filter(Boolean)).size,salesAmount:value?.amount??null,currency:value?.currencyCode??null,priceStatus:value?.status||'MISSING_PRICE',priceSource:value?.source||null,invoiceNumber:value?.invoiceNumber||null,missingStyle:order.workOrderItems.some((item:any)=>item.totalQuantity>0&&item.style?.orgId!==orgId)};}),truncated:orders.length>500};
 }
 export async function profitSources(db:any,orgId:number,orderId:number,styleId:number,gates:any,cache:any={}){
  const order=cache.order||await db.workOrder.findFirst({where:{id:orderId,orgId},include:{workOrderItems:true}});cache.order=order;
@@ -75,6 +77,7 @@ export function registerRevenueAnalysisRoutes(app:any,db:any,gates:any){
   return {orgId:ctx.organization.id,actorId};
  };
  app.get('/revenue-analysis/catalog',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await profitCatalog(db,scope.orgId,gates));});
+ app.get('/revenue-analysis/labor-basis',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const month=String(req.query.month||'');if(!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month))fail('INVALID_PROFIT_SCENARIO');res.json(await revenueLaborBasis(db,scope.orgId,month));});
  app.get('/revenue-analysis/orders/:id',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const orderId=Number(req.params.id);if(!Number.isSafeInteger(orderId)||orderId<=0)fail('INVALID_PROFIT_SCENARIO');res.json(await db.$transaction((tx:any)=>profitOrderReport(tx,scope.orgId,orderId,gates),{isolationLevel:'RepeatableRead',timeout:60000}));});
  app.get('/revenue-analysis/exchange-rates',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){try{res.json(await loadReferenceExchangeRates());}catch{res.status(503).json({error:'EXCHANGE_RATES_UNAVAILABLE'});}}});
  app.get('/revenue-analysis/sources',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const orderId=Number(req.query.orderId),styleId=Number(req.query.styleId);if(!Number.isSafeInteger(orderId)||orderId<=0||!Number.isSafeInteger(styleId)||styleId<=0)fail('INVALID_PROFIT_SCENARIO');res.json(await profitSources(db,scope.orgId,orderId,styleId,gates));});

@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const dbModule=require.resolve('../backend/dist/db.js');require.cache[dbModule]={id:dbModule,filename:dbModule,loaded:true,exports:{prisma:{}}};
+const {revenueLaborBasis}=require('../backend/dist/services/revenueLaborBasis.js');
+test('factory payroll uses confirmed salary formulas and regular hours, separates fixed staff and production pay, and returns no personal data',async()=>{
+ const types=['GENERAL','OUTPUT','OUTPUT_FIXED'];
+ const employees=types.map((payType,index)=>({id:index+1,orgId:1,factoryId:1,gradeId:index+1,payType,status:'ACTIVE',name:'CONFIDENTIAL',joinedAt:'2020-01-01'}));
+ const items=[{code:'baseSalary',category:'BASE',payTypes:types,formula:['GRADE_RATE']},{code:'allowanceTotal',category:'ALLOWANCE',payTypes:types,formula:['GRADE_RATE']},{code:'incentiveTotal',category:'INCENTIVE',payTypes:['OUTPUT'],formula:['PRODUCTION_ALLOWANCE']}];
+ const rates=employees.flatMap(e=>[{salaryItemCode:'baseSalary',payType:e.payType,gradeId:e.gradeId,amount:e.payType==='GENERAL'?8000000:6000000},{salaryItemCode:'allowanceTotal',payType:e.payType,gradeId:e.gradeId,amount:e.payType==='GENERAL'?2000000:1000000}]);
+ const factory={id:1,name:'Factory',salarySystemVersions:[{versionNumber:1,effectiveMonth:'2026-01',snapshot:{currencyCode:'VND',items,rates}}],productionAllowanceRates:[{wagePerSecond:10}],_count:{productionAllowanceRates:1}};
+ const db={employee:{findMany:async({where})=>{assert.deepEqual(where,{orgId:1,status:'ACTIVE'});return [...employees,{...employees[1],id:4,payrollExcluded:true}];}},factory:{findMany:async({where})=>{assert.deepEqual(where,{orgId:1});return [structuredClone(factory)];}},employeePayTypePolicy:{findMany:async()=>types.map(payType=>({payType,workWeekdays:[1,2,3,4,5],standardClockIn:'08:00',standardClockOut:'17:00',breakMinutes:60}))},organizationHoliday:{findMany:async()=>[{holidayDate:'2026-11-09'}]}};
+ const result=await revenueLaborBasis(db,1,'2026-11'),basis=result.factories[0];
+ assert.equal(basis.directCount,2);assert.equal(basis.supportCount,1);assert.equal(basis.employeeCount,3);
+ assert.equal(basis.baseHourly,37500);assert.equal(basis.allowanceHourly,6250);assert.equal(basis.supportHourly,62500);assert.equal(basis.productionPerSecond,5);
+ assert.equal(JSON.stringify(result).includes('CONFIDENTIAL'),false);assert.equal('employees' in basis,false);
+ db.factory.findMany=async()=>[{...factory,salarySystemVersions:[]}];
+ const missing=(await revenueLaborBasis(db,1,'2026-11')).factories[0];assert.equal(missing.baseHourly,null);assert.equal(missing.allowanceHourly,null);
+});

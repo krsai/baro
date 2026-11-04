@@ -2,7 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
-    "test:revenue-analysis": "npm --prefix backend run build && node --test scripts/profit-scenario.test.mjs scripts/order-profit.test.mjs scripts/revenue-analysis.test.mjs && node scripts/revenue-analysis-browser.test.mjs",
+    "test:revenue-analysis": "npm --prefix backend run build && node --test scripts/profit-scenario.test.mjs scripts/order-profit.test.mjs scripts/revenue-analysis.test.mjs scripts/revenue-labor-basis.test.mjs && node scripts/revenue-analysis-browser.test.mjs",
     "test:change-approvals": "npm --prefix backend run build && node --test scripts/change-approvals.test.mjs scripts/expense-deletion.test.mjs scripts/expense-request-editor.test.mjs scripts/bank-ledger.test.mjs scripts/ledger-evidence.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/approval-settings-browser.test.mjs && node scripts/change-approvals-browser.test.mjs",
     "test:expense-deletion": "npm --prefix backend run build && node --test scripts/expense-deletion.test.mjs scripts/approval-rules.test.mjs scripts/approval-settings.test.mjs scripts/expense-approval-actions.test.mjs scripts/approval-step-state.test.mjs scripts/approval-bands.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/ledger-evidence.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/expense-deletion-browser.test.mjs",
     "test:at-input-quality": "npm --prefix backend run build && node --test scripts/at-input-quality.test.mjs",
