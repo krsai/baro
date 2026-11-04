@@ -8,7 +8,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
-import { CalendarMonthOutlined, QueryStatsOutlined, TaskAltOutlined } from '@mui/icons-material';
+import { Inventory2Outlined, LocalShippingOutlined, QueryStatsOutlined } from '@mui/icons-material';
 import { LOGIN_COPY } from './loginCopy';
 import './login.css';
 import AppVersionLabel from '../../components/AppVersionLabel';
@@ -150,11 +150,11 @@ const Login = () => {
     isOAuthReturnPending ||
     isNavigatingAfterAuth;
 
-  const featureIcons = [CalendarMonthOutlined, QueryStatsOutlined, TaskAltOutlined];
+  const featureIcons = [Inventory2Outlined, LocalShippingOutlined, QueryStatsOutlined];
   return (
     <Box component="main" className="lineos-login">
       <header className="lineos-login-header">
-        <div aria-label="LINEOS"><div className="lineos-login-brand">LINEOS</div><div className="lineos-login-brand-caption">PRODUCTION MANAGEMENT</div></div>
+        <div aria-label="LINEOS"><div className="lineos-login-brand">LINEOS</div><div className="lineos-login-brand-caption">BUSINESS OPERATIONS CLOUD</div></div>
         <LanguageSwitcher languageCode={languageCode} onChange={setLanguageCode} />
       </header>
       <div className="lineos-login-content">
