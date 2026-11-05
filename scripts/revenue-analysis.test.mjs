@@ -26,13 +26,13 @@ test('API rejects absent explicit feature access, inactive members and invalid n
  const denied=harness();denied.deny();await assert.rejects(denied.call('GET','/revenue-analysis/scenarios'),/PROFIT_ACCESS_DENIED/);
  const inactive=harness();inactive.inactive();await assert.rejects(inactive.call('GET','/revenue-analysis/scenarios'),/PROFIT_ACCESS_DENIED/);
  assert.deepEqual(validateProfitInputs({officeFixedMonthly:100,productionFixedMonthly:0,variableBaseMonthly:'',variableAllowanceMonthly:200,variableProductionMonthly:300,workers:.75}),{officeFixedMonthly:100,productionFixedMonthly:0,variableBaseMonthly:'',variableAllowanceMonthly:200,variableProductionMonthly:300,workers:.75});
- for(const inputs of [{quantity:-1},{quantity:'NaN'},{currency:'EUR'},{basis:'AT'},{unexpected:1},{quantity:true}])assert.throws(()=>validateProfitInputs(inputs),/INVALID_PROFIT_SCENARIO/);
+ for(const inputs of [{quantity:-1},{quantity:'NaN'},{currency:'EUR'},{basis:'UNKNOWN'},{unexpected:1},{quantity:true}])assert.throws(()=>validateProfitInputs(inputs),/INVALID_PROFIT_SCENARIO/);
 });
 test('only approved single-target rows feed weighted unit prices; currencies, units, vendors and processes stay separate',async()=>{
  const base={id:'a',orgId:1,workOrderId:2,styleId:3,referenceLinks:[],partner:{name:'Vendor'},partnerOrgId:7,unit:{id:1,nameEn:'Piece'},currency:'VND',quantity:'100',subtotal:'50000',amount:'55000',transactionCode:{code:'OUT'},processLinks:[],styleProcessId:4,expenseRequestId:10,expenseRequest:{managementNumber:'EXP-10'},transactionDate:'2026-11-01'};
  const costs=[base,{...base,id:'b',quantity:'900',subtotal:'270000'}, {...base,id:'shared',referenceLinks:[{workOrderId:2,styleId:3},{workOrderId:2,styleId:8}]},{...base,id:'pending',expenseRequestId:11}, {...base,id:'USD',currency:'USD'},{...base,id:'unit',unit:{id:2}},{...base,id:'vendor',partnerOrgId:9},{...base,id:'process',styleProcessId:5}];
  const queries=[];
- const db={systemSetting:{findUnique:async()=>null},workOrder:{findFirst:async({where})=>{assert.deepEqual(where,{id:2,orgId:1});return {workOrderItems:[{styleId:3,totalQuantity:1000}]};}},styleProcessVersion:{findFirst:async()=>({versionNumber:2,processSnapshot:[]})},partnerTransactionCost:{findMany:async query=>{queries.push(query);return costs;}},expenseRequest:{findFirst:async({where})=>({id:where.id,orgId:1,version:1,createdByEmployeeId:9,createdByEmployee:{id:9,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},approvalSteps:where.id===11?[{employeeId:8,position:1}]:[]})},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>({afterSnapshot:{approvalPolicy:{exempt:true,drafterId:9}}})}};
+ const db={style:{findFirst:async()=>({categoryId:null})},systemSetting:{findUnique:async()=>null},workOrder:{findFirst:async({where})=>{assert.deepEqual(where,{id:2,orgId:1});return {workOrderItems:[{styleId:3,totalQuantity:1000}]};}},styleProcessVersion:{findFirst:async()=>({versionNumber:2,processSnapshot:[]})},partnerTransactionCost:{findMany:async query=>{queries.push(query);return costs;}},expenseRequest:{findFirst:async({where})=>({id:where.id,orgId:1,version:1,createdByEmployeeId:9,createdByEmployee:{id:9,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},approvalSteps:where.id===11?[{employeeId:8,position:1}]:[]})},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>({afterSnapshot:{approvalPolicy:{exempt:true,drafterId:9}}})}};
  const result=await profitSources(db,1,2,3,{resolveTimes:()=>({ST:600,PT:null})});
  assert.equal(result.times.PT,null);assert.equal(result.averages.length,5);const average=result.averages.find(row=>row.count===2);assert.equal(average.unitPrice,320);assert.equal(average.quantity,1000);
  assert.equal(result.costs.find(row=>row.id==='pending').approved,false);assert.equal(result.costs.find(row=>row.id==='shared').exact,false);assert.equal(result.costs.find(row=>row.id==='shared').withinOrder,true);
@@ -62,6 +62,21 @@ test('real Prisma queries load scoped order styles and read-only sources; scenar
   await f.db.$transaction(tx=>saveStylePackaging(tx,orgId,style.id,.002));assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.002);
   await assert.rejects(saveStylePackaging(f.db,s.other.id,style.id,.004),/style not found/);assert.equal((await readStylePackaging(f.db,s.other.id,style.id)).packedCbmPerPiece,null);
   await saveStylePackaging(f.db,orgId,style.id,undefined);assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.002);
+  const {readCategoryPackaging,saveCategoryPackaging}=require('../backend/dist/services/categoryPackaging.js');
+  const category=await f.db.attrCategory.create({data:{orgId,code:'PROFIT_CATEGORY',name:'Category'}});
+  await f.db.style.update({where:{id:style.id},data:{categoryId:category.id}});
+  assert.equal((await readCategoryPackaging(f.db,orgId)).revision,0);
+  const categoryInput={revision:0,values:{[category.id]:.00125}};
+  await assert.rejects(saveCategoryPackaging(f.db,orgId,s.people.junior.id,categoryInput),/CATEGORY_PACKAGING_ADMIN_REQUIRED/);
+  await saveCategoryPackaging(f.db,orgId,s.people.admin.id,categoryInput);
+  await assert.rejects(saveCategoryPackaging(f.db,orgId,s.people.admin.id,categoryInput),/CATEGORY_PACKAGING_CHANGED/);
+  await assert.rejects(saveCategoryPackaging(f.db,s.other.id,s.people.admin.id,categoryInput),/CATEGORY_PACKAGING_ADMIN_REQUIRED/);
+  await assert.rejects(saveCategoryPackaging(f.db,orgId,s.people.admin.id,{revision:1,values:{999999:.001}}),/INVALID_CATEGORY_PACKAGING/);
+  assert.equal((await readStylePackaging(f.db,orgId,style.id)).packagingVolumeSource,'STYLE');
+  await saveStylePackaging(f.db,orgId,style.id,null);
+  assert.equal((await readStylePackaging(f.db,orgId,style.id)).packedCbmPerPiece,.00125);
+  assert.equal((await readStylePackaging(f.db,orgId,style.id)).packagingVolumeSource,'CATEGORY');
+  await saveStylePackaging(f.db,orgId,style.id,.002);
   const order=await f.db.workOrder.create({data:{orgId,orderId:'profit-order',orderNumber:'PROFIT-1',buyerOrgId:s.vendor.id,sellerOrgId:orgId,workOrderItems:{create:[{styleId:style.id,totalQuantity:100},{styleId:style.id,totalQuantity:50}]}}});
   const catalog=await profitCatalog(f.db,orgId,{});assert.equal(catalog.rows[0].quantity,150);
   const sources=await profitSources(f.db,orgId,order.id,style.id,{});assert.deepEqual(sources.times,{ST:null,PT:null});assert.deepEqual(sources.costs,[]);assert.equal(sources.packedCbmPerPiece,.002);
@@ -82,3 +97,5 @@ test('real Prisma queries load scoped order styles and read-only sources; scenar
   assert.equal(await f.db.expenseRequest.count(),0);assert.equal(await f.db.bankLedgerEntry.count(),0);assert.equal(await f.db.assignmentPlan.count(),0);
  }finally{await f.close();}
 });
+
+test('AT prediction uses the shared quantity curve and rejects missing or invalid values',()=>{const {sharedAtPerPieceSeconds:at}=require('../backend/dist/services/atSharedPrior.js');const p={version:'shared-at-v1',a:10,b:1000,smallQuantityBoundary:100};assert.equal(at(p,200),15);assert.equal(at(p,50),25);for(const value of [null,{...p,a:Infinity},{...p,b:-1},{...p,version:'unknown'}])assert.equal(at(value,200),null);assert.equal(at(p,0),null);});

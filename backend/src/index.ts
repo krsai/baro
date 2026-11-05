@@ -1,3 +1,4 @@
+import {registerCategoryPackagingRoutes} from './services/categoryPackaging';
 import {registerTenureRecognitionRoutes} from './employees/tenureRecognition';
 import {registerIndustryMenuRoutes,industryMenuMiddleware,companyIndustryMenuFeatures} from './services/industryMenuPolicy';
 import {registerCompanyIndustryRoutes} from './services/companyIndustries';
@@ -42,7 +43,7 @@ import { priorCompletionInclude, registerPriorCompletion, cancelPriorCompletion 
 import { planOrderItemWrites } from "./utils/orderItemIdentity";
 import { styleAccessWhere, canManageStyle } from "./utils/styleOwnership";
 import { reconcileAssignmentCards } from "./utils/reconcileAssignmentCards";
-import { buildValidatedSharedAtPrediction } from "./services/atSharedPrior";
+import { buildValidatedSharedAtPrediction, sharedAtPerPieceSeconds } from "./services/atSharedPrior";
 import { hasValidAssignmentProcessRefs, invalidAssignmentProcessRefIds, invalidProductionProcessRefIds, snapshotProcessIds, assertAssignmentProcessRefs, SNAPSHOT_REFERENCE_ERROR } from "./utils/assignmentSnapshotIntegrity";
 import { assignmentBoardRevision, assertEditRevision, editTransaction, retryEditTransaction, commitAssignmentCardRebuild, STALE_EDIT } from "./utils/editRevision";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -27645,17 +27646,18 @@ registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestAc
 registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalActionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
-registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,loadSalesValues:(orders:any[],db:any)=>loadCurrentOrderValueByOrderDbId(orders,db),loadCurrentProcesses:async(db:any,orgId:number,styleId:number)=>(await loadStyleProcessMirrorMapForStyleIds([styleId],{processOrgId:orgId,db,includePredictions:false})).get(styleId)||[],resolveTimes:(snapshot:any,items:any[])=>{
+registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,loadSalesValues:(orders:any[],db:any)=>loadCurrentOrderValueByOrderDbId(orders,db),loadCurrentProcesses:async(db:any,orgId:number,styleId:number)=>(await loadStyleProcessMirrorMapForStyleIds([styleId],{processOrgId:orgId,db,includePredictions:true})).get(styleId)||[],resolveTimes:(snapshot:any,items:any[])=>{
  const processes=normalizeStyleProcesses(snapshot),quantity=items.reduce((sum,item)=>sum+item.totalQuantity,0);
  const quantities={total:quantity,male:items.filter(item=>item.gender==='M').reduce((sum,item)=>sum+item.totalQuantity,0),female:items.filter(item=>item.gender==='W').reduce((sum,item)=>sum+item.totalQuantity,0),unspecified:items.filter(item=>!item.gender).reduce((sum,item)=>sum+item.totalQuantity,0)};
  if(!quantity||!processes.length||findStyleProcessGenderScopeAmbiguity(processes,quantities))return {ST:null,PT:null};
- const total=(basis:string)=>{let sum=0;for(const process of processes){const applicable=resolveStyleProcessRowApplicableQuantity(process,quantities);if(!applicable)continue;const seconds=basis==='ST'?resolveStyleProcessVersionStPerPieceSeconds(process,quantity):toOptionalProcessSeconds(process.pt);if(seconds===null||seconds<=0)return null;sum+=seconds*applicable;}return sum>0?sum/quantity:null;};
- return {ST:total('ST'),PT:total('PT')};
+ const total=(basis:string)=>{let sum=0;for(const process of processes){const applicable=resolveStyleProcessRowApplicableQuantity(process,quantities);if(!applicable)continue;const raw=ensureArray(snapshot).find((row:any)=>row.styleProcessId&&row.styleProcessId===process.styleProcessId)||process;const at=sharedAtPerPieceSeconds(raw.atSharedPrediction,quantity);const seconds=basis==='AT'?at:basis==='ST'?resolveStyleProcessVersionStPerPieceSeconds(process,quantity):toOptionalProcessSeconds(process.pt);if(seconds===null||seconds<=0)return null;sum+=seconds*applicable;}return sum>0?sum/quantity:null;};
+ return {ST:total('ST'),PT:total('PT'),AT:total('AT')};
 }});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
 registerTenureRecognitionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerIndustryMenuRoutes(app,prisma,{requireSystemAdmin});
+registerCategoryPackagingRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerCompanyIndustryRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalReviewRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});

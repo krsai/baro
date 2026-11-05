@@ -576,11 +576,7 @@ const MainLayout = () => {
             icon: <TrendingUpIcon />,
             path: '/production-analysis',
           },
-          {
-            label: getUiMessage('menu.revenueForecast', '예가 산출', languageCode),
-            icon: <TrendingUpIcon />,
-            path: '/revenue-forecast',
-          },
+
           {
             label: getUiMessage('menu.revenueAnalysis', '\uC218\uC775 \uBD84\uC11D', languageCode),
             icon: <TrendingUpIcon />,

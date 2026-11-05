@@ -37,6 +37,13 @@ const validationContexts = new WeakMap<Row[], {
 }>();
 const predictSeconds = (p: Row, q: number) => p.a + p.b *
   (q < p.smallQuantityBoundary ? (2 - q / p.smallQuantityBoundary) / p.smallQuantityBoundary : 1 / q);
+export const sharedAtPerPieceSeconds = (prediction: Row, quantity: number): number | null => {
+  const a = Number(prediction?.a), b = Number(prediction?.b), q = Number(quantity);
+  if (prediction?.version !== 'shared-at-v1' || !Number.isFinite(a) || a <= 0 || !Number.isFinite(b) || b < 0 || !Number.isFinite(q) || q <= 0) return null;
+  const boundary = Number(prediction.smallQuantityBoundary);
+  const value = predictSeconds({ a, b, smallQuantityBoundary: Number.isFinite(boundary) && boundary >= 100 ? boundary : 100 }, q);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
 export const buildValidatedSharedAtPrediction = (target: Row, candidates: Row[]) => {
   const prediction = buildSharedAtPrediction(target, candidates);
   if (!prediction) return null;

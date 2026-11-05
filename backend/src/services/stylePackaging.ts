@@ -8,7 +8,12 @@ export function validatePackedCbm(value:any){
 }
 export async function readStylePackaging(db:any,orgId:number,styleId:number){
  const row=await db.systemSetting.findUnique({where:{key:key(orgId,styleId)}});
- return {packedCbmPerPiece:row?.value?.packedCbmPerPiece??null};
+ if(row?.value?.packedCbmPerPiece)return {packedCbmPerPiece:row.value.packedCbmPerPiece,packagingVolumeSource:'STYLE'};
+ const style=await db.style.findFirst({where:{id:styleId,orgId},select:{categoryId:true}});
+ const categoryId=style?.categoryId??null;
+ const defaults=categoryId?await db.systemSetting.findUnique({where:{key:`CATEGORY_PACKAGING:${orgId}`}}):null;
+ const packedCbmPerPiece=defaults?.value?.values?.[String(categoryId)]??null;
+ return {packedCbmPerPiece,packagingCategoryId:categoryId,packagingVolumeSource:packedCbmPerPiece?'CATEGORY':null};
 }
 export async function saveStylePackaging(db:any,orgId:number,styleId:number,input:any){
  const packedCbmPerPiece=validatePackedCbm(input);if(packedCbmPerPiece===undefined)return;

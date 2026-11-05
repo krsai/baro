@@ -3,6 +3,34 @@ import assert from 'node:assert/strict';
 import {orderCostDefaults,orderStyleProfit,orderProfitTotals,orderCommonPurchase,companyPayroll,regularOrderCrew} from '../frontend/src/utils/orderProfit.mjs';
 const defaults={...orderCostDefaults(),currency:'VND',baseMonthly:6000000,allowanceMonthly:1000000,supportMonthly:9000000,rentMonthly:20000000,workdays:25};
 const style={quantity:100,salesAmount:1000,salePrice:10,currency:'USD',sources:{times:{ST:600,PT:null},costs:[{id:'a',exact:true,approved:true,subtotal:'100000',currency:'VND'},{id:'b',exact:true,approved:true,subtotal:'4',currency:'USD'},{id:'shared',exact:false,approved:true,subtotal:'999999',currency:'VND'},{id:'pending',exact:true,approved:false,subtotal:'999999',currency:'VND'}]}};
+
+test('AT uses the available prediction and cannot be fabricated with a scenario override',()=>{
+ const input={...defaults,basis:'AT'},rates={USD:1,VND:25000};
+ assert.equal(orderStyleProfit(style,input,{atSeconds:50},{},rates).profit,null);
+ const predicted={...style,sources:{...style.sources,times:{...style.sources.times,AT:450}}};
+ const result=orderStyleProfit(predicted,input,{atSeconds:50},{},rates);
+ assert.equal(result.input.atSeconds,450);assert.equal(result.workloadHours,12.5);
+ assert.equal(regularOrderCrew([predicted],input),100*450/3600/8/10);
+});
+
+test('category volume determines rounded box quantities and customer supplied packaging has no purchase charge',()=>{
+ const rates={USD:1,VND:25000};
+ const result=orderStyleProfit(style,defaults,{packaging:true,packedCbmPerPiece:.096/50.234,polyPayer:'CUSTOMER',boxPayer:'COMPANY',boxPrice:1000,polyPrice:'',packWaste:99},{},rates);
+ assert.equal(result.input.boxCapacity,51);assert.equal(result.boxes,2);assert.equal(result.poly,100);assert.equal(result.costs.polyCost,0);assert.equal(result.costs.boxCost,2000);
+ const missing=orderStyleProfit(style,defaults,{packaging:true,polyPrice:1,boxPrice:1},{},rates);assert.equal(missing.profit,null);
+ const supplied=orderStyleProfit(style,defaults,{packaging:true,polyPayer:'CUSTOMER',boxPayer:'CUSTOMER'},{},rates);
+ assert.equal(supplied.costs.boxCost,0);assert.equal(supplied.costs.polyCost,0);assert.notEqual(supplied.profit,null);
+});
+
+test('expense selections exclude payroll pools, linked materials and operating expenses independently',()=>{
+ const rates={USD:1,VND:25000};
+ assert.equal(companyPayroll({pools:[{currencyCode:'VND',officeFixedMonthly:500}]},'VND',rates,{includedPayroll:[]}).officeFixedMonthly,0);
+ const result=orderStyleProfit(style,{...defaults,excludedCostIds:['a'],includeRent:false,includeOther:false,includeOffice:true,officeMonthly:25000000},{},{},rates);
+ assert.equal(result.purchase,100000);assert.equal(result.costs.rent,0);assert.ok(result.costs.office>0);
+ assert.equal(orderStyleProfit(style,{...defaults,includePurchases:false},{},{},rates).purchase,0);
+ const historical={...style,analysisMode:'STYLE',sources:{...style.sources,estimatedPurchases:[{currency:'VND',sources:[{id:'a',subtotal:100,orderId:1,orderQuantity:100},{id:'b',subtotal:600,orderId:2,orderQuantity:200}]}]}};
+ assert.equal(orderStyleProfit(historical,{...defaults,excludedCostIds:['a']},{},{},rates).purchase,300);
+});
 test('regular crew uses every selected style and allows fractional estimates without replacing missing times',()=>{
  const input={basis:'ST',hoursDay:8,targetDays:10,productivity:120};
  assert.equal(regularOrderCrew([style,{...style,quantity:200}],input),300*600/3600/1.2/8/10);
@@ -30,7 +58,7 @@ test('every style contributes its own duration, purchases and fixed costs; incom
  assert.equal(orderProfitTotals([a,{...b,profit:null}]).profit,null);assert.equal(orderProfitTotals([a],true).profit,null);
 });
 test('style packaging uses matching currency rates and adds only explicitly enabled estimated consumption',()=>{
- const r=orderStyleProfit(style,defaults,{packaging:true,polyUsage:2,boxCapacity:50,packWaste:0,polyPrice:100,boxPrice:1000,currency:'VND'},{},{USD:'1',VND:'25000'});
+ const r=orderStyleProfit(style,defaults,{packaging:true,packedCbmPerPiece:.00192,polyUsage:2,boxCapacity:50,packWaste:0,polyPrice:100,boxPrice:1000,currency:'VND'},{},{USD:'1',VND:'25000'});
  assert.equal(r.poly,200);assert.equal(r.boxes,2);assert.equal(r.costs.polyCost,20000);assert.equal(r.costs.boxCost,2000);
  const changed=orderStyleProfit(style,{...defaults,currency:'USD',polyPrice:1,boxPrice:2},{currency:'VND',polyPrice:10000,boxPrice:10000},{});assert.equal(changed.input.polyPrice,1);
 });

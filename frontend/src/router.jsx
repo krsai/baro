@@ -84,7 +84,6 @@ const OutsourcingRecordList = lazyImportWithRetry(() => import('./pages/App/Outs
 const Payroll = lazyImportWithRetry(() => import('./pages/App/Payroll'));
 const PayrollEntry = lazyImportWithRetry(() => import('./pages/App/payroll/PayrollEntry'));
 const RevenueAnalysis = lazyImportWithRetry(() => import('./pages/App/RevenueAnalysis'));
-const RevenueForecast = lazyImportWithRetry(() => import('./pages/App/RevenueForecast'));
 const CustomerProductionReport = lazyImportWithRetry(() => import('./pages/App/CustomerProductionReport'));
 const TransactionRequestEntry = lazyImportWithRetry(() => import('./pages/App/TransactionRequestEntry'));
 const ApplicationSettings = lazyImportWithRetry(() => import('./pages/App/ApplicationSettings'));
@@ -500,7 +499,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'revenue-forecast',
-            element: <RevenueForecast />,
+            element: <Navigate to="/revenue-analysis" replace />,
           },
           { path: 'invoices', element: <Invoice /> },
           { path: 'invoices/list', element: <Navigate to="/invoices" replace /> },

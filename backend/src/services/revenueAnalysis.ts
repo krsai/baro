@@ -7,16 +7,19 @@ import {revenueLaborBasis} from './revenueLaborBasis';
 import {revenueStyles,revenueStyleReport} from './revenueStyleAnalysis';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const key=(orgId:number)=>`REVENUE_ANALYSIS_SCENARIOS:${orgId}`;
-const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId'];
+const inputKeys=['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly','currency','quantity','salePrice','basis','stSeconds','ptSeconds','productivity','workers','targetDays','hoursDay','workdays','factoryWorkers','baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','boxLengthCm','boxWidthCm','boxHeightCm','packedCbmPerPiece','packaging','polyUsage','boxCapacity','packWaste','polyPrice','boxPrice','costMode','usdVnd','usdKrw','laborSource','factoryId','atSeconds','includedPayroll','excludedCostIds','includePurchases','includeRent','includeOther','includeOffice','includeFactory','officeMonthly','factoryOtherMonthly','polyPayer','boxPayer'];
 export function validateProfitInputs(value:any){
  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!inputKeys.includes(k)))fail('INVALID_PROFIT_SCENARIO');
  const result:any={};
  for(const [k,v] of Object.entries(value)){
-  if(k==='currency'){if(!['USD','KRW','VND'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
-  else if(k==='basis'){if(!['ST','PT'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
+  if(k==='includedPayroll'){if(!Array.isArray(v)||v.length>5||v.some(key=>!['officeFixedMonthly','productionFixedMonthly','variableBaseMonthly','variableAllowanceMonthly','variableProductionMonthly'].includes(key))||new Set(v).size!==v.length)fail('INVALID_PROFIT_SCENARIO');}
+  else if(k==='excludedCostIds'){if(!Array.isArray(v)||v.length>2000||v.some(id=>typeof id!=='string'||!/^[-a-zA-Z0-9_]{1,80}$/.test(id)))fail('INVALID_PROFIT_SCENARIO');}
+  else if(k==='polyPayer'||k==='boxPayer'){if(!['COMPANY','CUSTOMER'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
+  else if(k==='currency'){if(!['USD','KRW','VND'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
+  else if(k==='basis'){if(!['ST','PT','AT'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(k==='costMode'){if(!['estimate','linked'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
   else if(k==='laborSource'){if(!['AUTO','MANUAL'].includes(String(v)))fail('INVALID_PROFIT_SCENARIO');}
-  else if(k==='packaging'){if(typeof v!=='boolean')fail('INVALID_PROFIT_SCENARIO');}
+  else if(['packaging','includePurchases','includeRent','includeOther','includeOffice','includeFactory'].includes(k)){if(typeof v!=='boolean')fail('INVALID_PROFIT_SCENARIO');}
   else if(v!==''&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0||Number(v)>1e12))fail('INVALID_PROFIT_SCENARIO');
   result[k]=v;
  }
@@ -44,8 +47,10 @@ export async function profitSources(db:any,orgId:number,orderId:number,styleId:n
  const items=order?.workOrderItems.filter((item:any)=>item.styleId===styleId)||[];
  if(!order||!items.length)fail('PROFIT_TARGET_NOT_FOUND',404);
  const version=await db.styleProcessVersion.findFirst({where:{orgId,styleId},orderBy:{versionNumber:'desc'}});
- const processSnapshot=version?.processSnapshot??(gates.loadCurrentProcesses?await gates.loadCurrentProcesses(db,orgId,styleId):null);
+ const liveProcesses=gates.loadCurrentProcesses?await gates.loadCurrentProcesses(db,orgId,styleId):null;
+ const processSnapshot=version?.processSnapshot??liveProcesses;
  const times=processSnapshot&&gates.resolveTimes?gates.resolveTimes(processSnapshot,items):{ST:null,PT:null};
+ if(liveProcesses&&gates.resolveTimes)times.AT=gates.resolveTimes(liveProcesses,items).AT??null;
  const costs=cache.costs||await db.partnerTransactionCost.findMany({where:{orgId,OR:[{workOrderId:orderId},{referenceLinks:{some:{orgId,workOrderId:orderId}}}],AND:[{OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}]}]},include:{referenceLinks:true,partner:{select:{name:true}},unit:true,transactionCode:{select:{code:true,nameKo:true,nameEn:true,nameVi:true}},processLinks:true,expenseRequest:{select:{id:true,managementNumber:true}}},orderBy:{transactionDate:'desc'}});cache.costs=costs;
  const states:Map<number,boolean>=cache.states||new Map();cache.states=states;
  for(const cost of costs)if(cost.expenseRequestId&&!states.has(cost.expenseRequestId))states.set(cost.expenseRequestId,(await approvalState(db,orgId,cost.expenseRequestId)).approved);

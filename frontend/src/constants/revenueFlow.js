@@ -6,3 +6,7 @@ export const revenueFlowText={
 Object.assign(revenueFlowText.ko,{crewFormula:'투입 인원 = 주문 전체 필요시간 ÷ 하루 정시 근무시간 ÷ 목표 작업일수. 소수점 인원으로 계산하며 직접 조정할 수 있습니다.',estimatedCrew:'정시 근무 기준 필요 인원',monthlyPayroll:'월 급여 합계',loaded:'불러옴',enterMissing:'자료가 없는 항목의 월 합계를 입력하세요. 비용이 없으면 0을 입력하세요.',payroll:'직원 급여는 저장된 기준으로 불러옵니다. 자료가 없는 급여·월세·포장비를 보완하세요.'});
 Object.assign(revenueFlowText.en,{crewFormula:'Crew = total order hours ÷ regular daily hours ÷ target workdays. Fractional estimates are allowed and can be adjusted.',estimatedCrew:'Required regular-hours crew',monthlyPayroll:'Monthly payroll totals',loaded:'Loaded',enterMissing:'Enter the missing monthly total. Enter 0 if no cost applies.',payroll:'Payroll uses saved employee data. Fill missing payroll, rent and packaging costs.'});
 Object.assign(revenueFlowText.vi,{crewFormula:'Nhân lực = tổng giờ đơn hàng ÷ giờ làm chính thức mỗi ngày ÷ số ngày mục tiêu. Cho phép số lẻ và điều chỉnh trực tiếp.',estimatedCrew:'Nhân lực cần theo giờ chính thức',monthlyPayroll:'Tổng lương tháng',loaded:'Đã tải',enterMissing:'Nhập tổng tháng còn thiếu. Nhập 0 nếu không phát sinh.',payroll:'Tải lương từ dữ liệu nhân viên đã lưu. Bổ sung lương, tiền thuê và bao bì còn thiếu.'});
+
+revenueFlowText.ko.steps=['대상 선택','생산 조건','반영할 비용','포장재'];
+revenueFlowText.en.steps=['Order or style','Production','Costs to include','Packaging'];
+revenueFlowText.vi.steps=['Đối tượng','Sản xuất','Chi phí đưa vào','Bao bì'];
