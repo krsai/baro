@@ -24,7 +24,7 @@ export default function ApprovalSettings(){
  return <AppPageContainer title={t.title} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={3} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
    <TextField select size="small" label={subject.label} slotProps={{select:{inputProps:{"aria-label":subject.label}}}} value={menu} onChange={e=>setMenu(e.target.value)} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER'].map(key=><MenuItem key={key} value={key}>{actionText[key]}</MenuItem>)}</TextField>
-   {['CREATE','UPDATE','DELETE'].map(operation=><ApprovalOperationSettings key={operation} menu={menu} operation={operation} drafts={drafts} />)}
+   {['CREATE','UPDATE','DELETE'].map(operation=><ApprovalOperationSettings key={`${menu}:${operation}`} menu={menu} operation={operation} drafts={drafts} />)}
   </Stack>
  </AppPageContainer>;
 }
@@ -41,7 +41,7 @@ function ApprovalOperationSettings({menu,operation,drafts}){
  scope.current=path;
  if(form&&loadedPath.current===path){if(JSON.stringify(form)!==initial)drafts.current[path]={form,initial};else delete drafts.current[path];}
  useEffect(()=>{let live=true;setData(null);setForm(null);setInitial('');setError('');setSaved(false);
-  requestJSON(path,{skipCache:true}).then(value=>{if(live){setData(value);const next={registrationStages:value.settings.registrationStages,kind:'EXPENSE',drafterScope:value.settings.drafterScope||{role:'ALL',gradeId:null},limits:value.settings.limits,rules:value.settings.rules||[],revision:value.settings.revision||0};loadedPath.current=path;setForm(drafts.current[path]?.form||next);setInitial(drafts.current[path]?.initial||JSON.stringify(next));}}).catch(()=>{if(live)setError(t.error);});return()=>{live=false;};
+  requestJSON(path,{skipCache:true}).then(value=>{if(live){if(!value?.settings||registration&&!Array.isArray(value.settings.registrationStages))throw new Error('INVALID_APPROVAL_SETTINGS');setData(value);const next={registrationStages:value.settings.registrationStages,kind:'EXPENSE',drafterScope:value.settings.drafterScope||{role:'ALL',gradeId:null},limits:value.settings.limits,rules:value.settings.rules||[],revision:value.settings.revision||0};loadedPath.current=path;setForm(drafts.current[path]?.form||next);setInitial(drafts.current[path]?.initial||JSON.stringify(next));}}).catch(()=>{if(live)setError(t.error);});return()=>{live=false;if(scope.current===path)scope.current='';};
  },[path,reload]);
  const change=rules=>{setForm(current=>({...current,rules}));setSaved(false);setError('');};
  const invalid=form&&(registration?(!form.registrationStages?.length||form.registrationStages.some(s=>s.gradeMatch!=='ANY'&&!s.gradeId)):invalidApprovalBands(form.rules)),disabled=!data?.canEdit||busy;

@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
+import {approvalBandText} from '../frontend/src/constants/approvalBands.js';
+import {changeApprovalText} from '../frontend/src/constants/changeApprovals.js';
+import {ledgerRegistrationText} from '../frontend/src/constants/ledgerRegistration.js';
+const fixture=path.resolve('frontend/approval-menu-switch-acceptance.html');assert.ok(!existsSync(fixture));
+writeFileSync(fixture,`<!doctype html><html><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Settings from '/src/pages/App/ApprovalSettings.jsx';createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,null,React.createElement(Settings))));</script></html>`);
+const port=43287,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/approval-menu-switch-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
+ browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+  const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[];page.setDefaultTimeout(7000);page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'const actions={showNotification:message=>window.toast=message,setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},grades=[{id:10,nameEn:'Senior',nameKo:'Senior',nameVi:'Senior'},{id:20,nameEn:'Lead',nameKo:'Lead',nameVi:'Lead'}];
+  const expense={revision:0,drafterScope:{role:'OPERATOR',gradeId:null},limits:{USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'},VND:{senior:'20000000',lead:'100000000'}},rules:[],seniorGradeId:10,leadGradeId:20};
+  let registration={revision:0,registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:10}]},release,waiting=false,first=true,bad=false;
+  const gate=new Promise(resolve=>release=resolve),reply=settings=>({settings,grades,canEdit:true,candidates:[],drafter:{id:1,name:'Drafter',orgRole:'OPERATOR'}});
+  await page.route('**/expense-approval-settings?*',route=>route.fulfill({headers,json:reply(expense)}));
+  await page.route('**/approval-action-settings?*',async route=>{if(route.request().method()==='OPTIONS')return route.fulfill({headers});const query=new URL(route.request().url()).searchParams,isRegistration=query.get('menu')==='BANK_LEDGER'&&query.get('operation')==='CREATE';if(route.request().method()==='PUT'){const body=route.request().postDataJSON();writes.push({menu:query.get('menu'),operation:query.get('operation'),body});registration={...body,revision:body.revision+1};return route.fulfill({headers,json:{ok:true}});}if(isRegistration&&first){first=false;waiting=true;await gate;}return route.fulfill({headers,json:reply(isRegistration?(bad?{revision:1}:registration):expense)});});
+  await page.goto(`http://127.0.0.1:${port}/approval-menu-switch-acceptance.html`);const t=approvalSettingsText[lang],a=changeApprovalText[lang],b=approvalBandText[lang],r=ledgerRegistrationText[lang],create=page.locator('[data-approval-operation="CREATE"]');
+  const amount=()=>create.getByRole('textbox',{name:b.amount+' USD 1',exact:true});await amount().fill('1234');
+  const choose=async label=>{await page.getByRole('combobox').first().click();await page.getByRole('option',{name:label,exact:true}).click();};
+  await choose(a.BANK_LEDGER);await page.waitForFunction(()=>document.querySelector('[data-approval-operation="CREATE"] button')?.disabled===true);assert.equal(waiting,true);assert.equal(await create.getByRole('combobox').count(),0);
+  await choose(a.EXPENSE);release();await amount().waitFor();assert.equal((await amount().inputValue()).replaceAll(',',''),'1234');
+  await choose(a.BANK_LEDGER);await create.getByRole('combobox').nth(1).waitFor();assert.equal(await create.locator('[data-cost-currency]').count(),0);
+  await create.getByRole('combobox').nth(3).click();await page.getByRole('option',{name:r.EXACT,exact:true}).click();await create.getByRole('combobox').nth(4).click();await page.getByRole('option',{name:'Lead',exact:true}).click();await create.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>Boolean(window.toast));
+  assert.equal(writes.length,1);assert.equal(writes[0].menu,'BANK_LEDGER');assert.equal(writes[0].operation,'CREATE');assert.deepEqual(writes[0].body.registrationStages,[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'EXACT',gradeId:20}]);
+  await choose(a.EXPENSE);await amount().waitFor();assert.equal((await amount().inputValue()).replaceAll(',',''),'1234');await choose(a.BANK_LEDGER);await create.getByRole('combobox').nth(3).waitFor();assert.equal(await create.getByRole('combobox').nth(3).innerText(),r.EXACT);
+  bad=true;await choose(a.EXPENSE);await amount().waitFor();await choose(a.BANK_LEDGER);await create.getByRole('alert').getByText(t.error,{exact:true}).waitFor();assert.equal(await create.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('Approval menu switching passed ko/en/vi desktop/mobile: distinct API shapes, delayed stale response, expense draft preservation, ledger stage save/reload, and malformed response protection.');
+}finally{await browser?.close();server.kill();unlinkSync(fixture);}

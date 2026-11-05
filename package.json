@@ -9,6 +9,7 @@
     "test:global-lookup": "node scripts/global-lookup-browser.test.mjs && node scripts/compact-lookup-browser.test.mjs",
     "test:document-entry-summary": "node --test scripts/ledger-entry-totals.test.mjs && node scripts/document-entry-summary-browser.test.mjs",
     "test:notification-toast": "node scripts/notification-toast-browser.test.mjs",
+    "test:approval-menu-switch": "node scripts/approval-menu-switch-browser.test.mjs",
     "test:linked-subscriber-profile": "npm --prefix backend run build && node --test scripts/company-connections.test.mjs scripts/common-company-identity.test.mjs scripts/entity-profile.test.mjs scripts/linked-subscriber-profile.test.mjs && node scripts/partner-profile-bank-review-browser.test.mjs && node scripts/invoice-editor-browser.test.mjs --bank-review-only",
     "test:company-industries": "npm --prefix backend run build && node --test scripts/company-industries.test.mjs scripts/partner-classification.test.mjs scripts/company-connections.test.mjs scripts/common-company-identity.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/company-industries-browser.test.mjs && node scripts/partner-classification-browser.test.mjs",
     "test:approval-review": "npm --prefix backend run build && node --test scripts/approval-review.test.mjs scripts/expense-deletion.test.mjs scripts/change-approvals.test.mjs scripts/highest-expense-deletion.test.mjs && node scripts/approval-review-browser.test.mjs && node scripts/approval-inbox-browser.test.mjs",
