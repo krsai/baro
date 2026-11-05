@@ -1,3 +1,4 @@
+import ActionNotice from '../../components/ActionNotice';
 import LedgerRegistrationPolicyEditor from '../../components/LedgerRegistrationPolicyEditor';
 import {Add} from '@mui/icons-material';
 import React,{useEffect,useRef,useState} from 'react';
@@ -54,7 +55,7 @@ function ApprovalOperationSettings({menu,operation,drafts}){
     <Button variant="contained" disabled={disabled||!form||invalid} onClick={save}>{t.save}</Button>
    </Stack>
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.title}</Button>}>{error}</Alert>}
-   {saved&&<Alert severity="success">{t.saved}</Alert>}
+   {saved&&<ActionNotice severity="success">{t.saved}</ActionNotice>}
    {form&&approvalBandOrderErrors(form.rules).size>0&&<Alert severity="warning">{band.orderError}</Alert>}
    {form&&registration&&<LedgerRegistrationPolicyEditor value={form.registrationStages} grades={data.grades} languageCode={languageCode} disabled={disabled} onChange={registrationStages=>{setForm(current=>({...current,registrationStages}));setSaved(false);}}/>}
    {form&&!registration&&<ApprovalRuleEditor ref={editor} key={path} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>{setForm(current=>({...current,drafterScope}));setSaved(false);}} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={change} disabled={disabled} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={disabled} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setError(messages.error);}}>{band.addCondition}</Button>}/>}

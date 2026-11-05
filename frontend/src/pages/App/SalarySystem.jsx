@@ -1,3 +1,4 @@
+import ActionNotice from '../../components/ActionNotice';
 import { applicableMonthVersion } from '../../utils/versionApplication.mjs';
 import MonthVersionBoard from '../../components/MonthVersionBoard';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
@@ -521,7 +522,7 @@ const SalarySystem = () => {
         <SaveButton onClick={saveDraft} loading={saving} disabled={!isDirty || edit.stale || !edit.revision || versionBusy}>{t('저장')}</SaveButton>
       </Stack>
     </Stack>}
-    {message && <Alert severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</Alert>}
+    {message && <ActionNotice eventKey={message} severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</ActionNotice>}
 
     <SalaryRateMatrix payTypes={availablePayTypes} items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onEdit={openFormulaDialog} onReorder={reorderItems} onChangeRate={changeRate} disabled={saving || versionBusy || edit.stale || savedSnapshot === null} />
     <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Stack spacing={2}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field,value)=>setFormulaSettingsDraft(previous=>({...previous,[field]:value}))}/><Alert severity="info">{languageCode === 'ko' ? '이름은 변경할 수 있으며, 생산수당 자동 계산 규칙은 유지됩니다.' : languageCode === 'vi' ? 'Có thể đổi tên. Quy tắc tự động tính phụ cấp sản lượng được giữ nguyên.' : 'You can rename this item. Its automatic production allowance calculation remains unchanged.'}</Alert></Stack> : <Stack spacing={2}>

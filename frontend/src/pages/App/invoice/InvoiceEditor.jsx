@@ -1,3 +1,4 @@
+import {useAppActions} from '../../../context/AppContext';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
 import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
 import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
@@ -104,6 +105,7 @@ const messages = {
 
 export default function InvoiceEditor({ open = true, onClose, onIssued, orderId, orderIds, orgId, buyerOrgId, draftId, revisionInvoice, renderSelection, languageCode = 'ko' }) {
   const pageDialogs = usePageDialogs();
+  const {showNotification}=useAppActions();
   const productionText = invoiceProductionMessages[languageCode] || invoiceProductionMessages.en;
   const [reviewAssignment,setReviewAssignment] = useState(null);
   const ui = invoiceUi[languageCode] || invoiceUi.en;
@@ -243,7 +245,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       });
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES], orgId });
       setDirty(false); setUncertain(false); setSavedDraft(null);
-      await pageDialogs.alert(storageText.issued); (onIssued || onClose)();
+      showNotification(storageText.issued,'success'); (onIssued || onClose)();
     } catch (e) {
       const unknown = !e.status || e.status >= 500;
       setUncertain(unknown);

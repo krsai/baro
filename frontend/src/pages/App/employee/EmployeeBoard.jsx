@@ -1,3 +1,4 @@
+import ActionNotice from '../../../components/ActionNotice';
 import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -1562,7 +1563,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, width: '100%' }}>
         {statusMessage && (
-          <Alert severity={statusMessage.type || 'info'}>{statusMessage.text}</Alert>
+          <ActionNotice eventKey={statusMessage} severity={statusMessage.type || 'info'}>{statusMessage.text}</ActionNotice>
         )}
 
         {canManageMembers && (

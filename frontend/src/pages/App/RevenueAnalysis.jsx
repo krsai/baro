@@ -1,3 +1,4 @@
+import ActionNotice from '../../components/ActionNotice';
 import {packagingText} from '../../constants/packaging';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Box,Button,Checkbox,Chip,CircularProgress,Collapse,Drawer,FormControlLabel,InputAdornment,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
@@ -86,7 +87,7 @@ function OrderAnalysis({orgId}){
  const cancelFlow=()=>{if(flowSnapshot.current){setConfig(flowSnapshot.current.config);setMonth(flowSnapshot.current.month);setMode(flowSnapshot.current.mode);setOrderId(flowSnapshot.current.orderId);setStandalone(flowSnapshot.current.standalone);}setPickerOpen(false);};
  const drawerSx={width:{xs:'100vw',sm:540},maxWidth:'100vw',boxSizing:'border-box',p:2.5};
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button disabled={disabled} onClick={()=>setReload(value=>value+1)}>{t.refresh}</Button><SaveButton disabled={disabled||!config} loading={saving} onClick={()=>persist()}>{t.save}</SaveButton></Stack>}><PageContentStack>
-  {error&&<Alert severity="error">{error}</Alert>}{saved&&<Alert severity="success">{t.saved}</Alert>}
+  {error&&<Alert severity="error">{error}</Alert>}{saved&&<ActionNotice severity="success">{t.saved}</ActionNotice>}
   <Card title={f.input} actions={<Button variant="contained" disabled={disabled} onClick={openSettings}>{f.edit}</Button>}>
    <Typography variant="body2" color="text.secondary">{f.hint}</Typography>
    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Chip label={report?.order.orderNumber||t.select}/><Chip variant="outlined" label={defaults.basis}/><Chip variant="outlined" label={p.productivity+': '+defaults.productivity+'%'}/><Chip variant="outlined" label={p.workers+': '+defaults.workers}/><Chip variant="outlined" label={u.month+': '+month}/></Stack>

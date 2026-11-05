@@ -1,3 +1,4 @@
+import ActionNotice from './ActionNotice';
 import AccountingInputSettings from './AccountingInputSettings';
 import React,{useEffect,useRef,useState} from 'react';
 import {Dialog,DialogTitle,DialogContent,DialogActions,Alert,Button,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TableContainer,TextField,Typography} from '@mui/material';
@@ -42,7 +43,7 @@ export default function ExpenseCodeLinkSettings(){
  return <Paper variant="outlined" sx={{p:'var(--ui-panel-padding, 16px)',width:'100%',minWidth:0}}><Stack spacing={2} sx={{minWidth:0}}>
   <Typography variant="h6">{text.title}</Typography>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{text.retry}</Button>}>{text.error}</Alert>}
-  {saved&&<Alert severity="success">{text.saved}</Alert>}
+  {saved&&<ActionNotice severity="success">{text.saved}</ActionNotice>}
   <TableContainer><Table size="small" sx={{minWidth:550}}><TableHead><TableRow>{[text.code,text.name,text.target,''].map((label,i)=><TableCell key={i}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
    {rows.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell>
     {text[row.target==='NONE'?'none':row.target.toLowerCase()]}

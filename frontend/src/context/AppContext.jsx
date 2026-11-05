@@ -1,3 +1,4 @@
+import NotificationToast from '../components/NotificationToast';
 import React, {
   createContext,
   useContext,
@@ -5,6 +6,7 @@ import React, {
   useCallback,
   useRef,
   useMemo,
+  useEffect,
 } from 'react';
 
 const AppStateContext = createContext(null);
@@ -239,13 +241,15 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   const notificationTimerRef = useRef(null);
+  const notificationSequenceRef=useRef(0);
+  useEffect(()=>()=>{if(notificationTimerRef.current)clearTimeout(notificationTimerRef.current);},[]);
 
   // Helper to show notifications
   const showNotification = useCallback((message, type = 'info') => {
     if (notificationTimerRef.current) {
       clearTimeout(notificationTimerRef.current);
     }
-    setNotification({ message, type, id: Date.now() });
+    setNotification({ message, type, id: ++notificationSequenceRef.current });
     const duration = TOAST_DURATION[type] ?? TOAST_DURATION.info;
     notificationTimerRef.current = setTimeout(() => {
       setNotification(null);
@@ -348,6 +352,7 @@ export const AppProvider = ({ children }) => {
     <AppActionsContext.Provider value={actionsValue}>
       <AppStateContext.Provider value={stateValue}>
         {children}
+        <NotificationToast notification={notification} onClose={dismissNotification}/>
       </AppStateContext.Provider>
     </AppActionsContext.Provider>
   );

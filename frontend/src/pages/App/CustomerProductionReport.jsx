@@ -1,3 +1,4 @@
+import ActionNotice from '../../components/ActionNotice';
 import SearchPanel from '../../components/SearchPanel';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -338,7 +339,7 @@ const CustomerProductionReport = () => {
         <Button variant="outlined" size="small" startIcon={<ContentCopyIcon />} disabled={copying} onClick={copyScheduleImage}>{copying ? text.copying : text.copy}</Button>
       </DialogTitle>
       <DialogContent dividers>
-        {copyResult ? <Alert severity={copyResult.severity} sx={{ mb: 2 }}>{copyResult.message}</Alert> : null}
+        {copyResult ? <ActionNotice eventKey={copyResult} severity={copyResult.severity} sx={{ mb: 2 }}>{copyResult.message}</ActionNotice> : null}
         <Box ref={scheduleCaptureRef} sx={{ bgcolor: '#fff', p: 1 }}>
         <Stack spacing={0.5} sx={{ mb: 2 }}>
           <Typography fontWeight={700}>{text.customer}: {rowCustomerLabel(dailyProducedRow, languageCode)}</Typography>

@@ -1,3 +1,4 @@
+import ActionNotice from '../../components/ActionNotice';
 import Autocomplete from '../../components/SearchableSelect';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -684,7 +685,7 @@ const Onboarding = () => {
             </Typography>
           </Box>
 
-          {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
+          {successMessage ? <ActionNotice severity="success">{successMessage}</ActionNotice> : null}
           {errorMessage ? <Alert severity="error">{errorMessage}</Alert> : null}
 
           <Paper
