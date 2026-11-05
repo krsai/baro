@@ -37,7 +37,7 @@ try{
   if(!process.argv.includes('--partners-only')){
   await page.goto(`http://127.0.0.1:${port}/ledger-registration-acceptance.html`);const t=bankLedgerMessages[lang],e=ledgerEvidenceText[lang],w=ledgerWorkspaceText[lang],l=ledgerEntryText[lang],c=changeApprovalText[lang];
   const header=page.getByTestId('document-entry-header');await header.getByRole('combobox').click();await page.getByRole('option',{name:'Bank B / USD',exact:true}).click();
-  await page.getByRole('button',{name:w.add,exact:true}).click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);
+  assert.ok(await header.getByTestId('document-entry-fields').evaluate(element=>{const fields=[...element.firstElementChild.children].filter(field=>field.getBoundingClientRect().width>0);return fields[0].getBoundingClientRect().width<=157&&fields[1].getBoundingClientRect().width<=261;}));assert.ok(await header.locator('[data-approval-summary-title]').evaluateAll(elements=>elements.length===3&&elements.every(element=>getComputedStyle(element).textAlign==='center')));await page.getByRole('button',{name:w.add,exact:true}).click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);
   assert.equal(await page.locator('[data-ledger-entry-row]').getByRole('combobox',{name:t.account,exact:true}).count(),0);
   for(const [i,amount] of ['10','20'].entries()){
    const row=page.locator('[data-ledger-entry-row="'+i+'"]');await row.getByRole('combobox',{name:c.party}).fill('BARO');await page.getByRole('option',{name:'BARO',exact:true}).click();await row.getByRole('textbox',{name:t.amount,exact:true}).fill(amount);

@@ -1,6 +1,6 @@
+import ApprovalStageFlow from './ApprovalStageFlow';
 import React,{forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,TextField,Typography} from '@mui/material';
-import ApprovalStagePerson from './ApprovalStagePerson';
 import {changeApprovalText,changeApprovalError} from '../constants/changeApprovals';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
@@ -27,7 +27,8 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
   {loading&&<LinearProgress/>}{error&&<Alert severity="error">{error}</Alert>}
   <Typography variant="body2">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography>
   <TextField fullWidth label={t.reason} required={input?.operation==='DELETE'} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();submitted.current=null;}}/>
-  <Box sx={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(220px,100%),1fr))',gap:2}}>{preview?.stages?.filter(s=>!s.vacant).map((stage,index,all)=><Paper variant="outlined" key={stage.key} sx={{p:2}}><Typography variant="subtitle2" sx={{mb:1}}>{index===all.length-1?t.final:`${t.stage} ${index+1}`}</Typography><ApprovalStagePerson stage={stage} grades={grades} personLabel={t.person} languageCode={languageCode} value={selection[stage.key+'EmployeeId']} disabled={busy||uncertain||loading} onChange={id=>{setSelection(current=>({...current,[stage.key+'EmployeeId']:id}));key.current=crypto.randomUUID();submitted.current=null;}}/></Paper>)}</Box>
+  <ApprovalStageFlow drafter={preview?.drafter} stages={preview?.stages?.filter(s=>!s.vacant)||[]} grades={grades} languageCode={languageCode} value={selection} disabled={busy||uncertain||loading} onChange={(stageKey,id)=>{setSelection(current=>({...current,[stageKey+'EmployeeId']:id}));key.current=crypto.randomUUID();submitted.current=null;}}/>
+
   {preview&&!preview.complete&&<Alert severity="warning">{t.required}</Alert>}
  </Stack></DialogContent><DialogActions><Button disabled={busy||uncertain} onClick={()=>finish(null)}>{t.cancel}</Button><Button variant="contained" disabled={busy||loading||!uncertain&&(!preview?.complete||!!error||input?.operation==='DELETE'&&!reason.trim())} onClick={send}>{uncertain?t.retry:t.request}</Button></DialogActions></Dialog>;
 });
