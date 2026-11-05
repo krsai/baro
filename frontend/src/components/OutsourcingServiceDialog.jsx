@@ -1,3 +1,4 @@
+import {systemIndustryUsageReason} from '../utils/systemIndustryUsage.mjs';
 import LocalizedNameFields from './LocalizedNameFields';
 import { hasLocalizedName } from '../utils/localizedName.mjs';
 import SettingInheritanceControls from './SettingInheritanceControls';
@@ -52,7 +53,7 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
       setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
     } catch (error) { setError(labels.error); } finally { setSaving(false); }
   };
-  return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="xs"><DialogTitle>{initialServiceId ? tree.edit : labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2} sx={{ pt: 1 }}>
+  return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="sm"><DialogTitle>{initialServiceId ? tree.edit : labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2}>
     {error && <Alert severity="error">{error}</Alert>}
     {!systemDefaults && !initialServiceId && <TextField select label={labels.industry} value={editingId} onChange={event => { const id = event.target.value; setEditingId(id); const service = services.find(item => item.id === id); setForm(service ? { ...service } : { code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [],partnerRoleId:initialPartnerRoleId||'' }); }}><MenuItem value="">{labels.addIndustry}</MenuItem>{services.map(service => <MenuItem key={service.id} value={service.id}>{serviceName(service, languageCode)}</MenuItem>)}</TextField>}
     {!systemDefaults && open && <SettingInheritanceControls kind="services" row={editingId ? form : null} orgId={orgId} languageCode={languageCode} onSaved={() => { onSaved?.(); onClose(); }} />}
@@ -63,5 +64,5 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
     </>}
     {editingId && <FormControlLabel label={languageCode === 'ko' ? '사용 중' : languageCode === 'vi' ? 'Đang sử dụng' : 'Active'} control={<Checkbox checked={form.isActive !== false} disabled={saving} onChange={event => setForm({ ...form, isActive: event.target.checked })} />} />}
     {!partnerIndustryOnly && ['orderInput','styleInput','processInput'].map(key => <TextField select key={key} disabled={saving || form.entryMode === 'PROCESS'} label={optionLabels[key]} value={form.entryMode === 'PROCESS' ? 'REQUIRED' : form[key] || (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN')} onChange={event => setForm({ ...form, [key]: event.target.value })}>{['REQUIRED','OPTIONAL','HIDDEN'].map(value => <MenuItem key={value} value={value}>{optionLabels[value]}</MenuItem>)}</TextField>)}
-  </Stack></DialogContent><DialogActions>{editingId && <SettingDeleteButton path={path} id={editingId} name={serviceName(form,languageCode)} used={form.hasUsageHistory} orgId={orgId} languageCode={languageCode} disabled={saving} onError={setError} onDeleted={() => { onSaved?.(); onClose(); }} />}<Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || systemDefaults && !form.partnerRoleId || !hasLocalizedName(form)} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
+  </Stack></DialogContent><DialogActions>{editingId && <SettingDeleteButton path={path} id={editingId} name={serviceName(form,languageCode)} used={form.hasUsageHistory} usedReason={systemIndustryUsageReason(form,languageCode)} orgId={orgId} languageCode={languageCode} disabled={saving} onError={setError} onDeleted={() => { onSaved?.(); onClose(); }} />}<Button disabled={saving} onClick={onClose}>{labels.cancel}</Button><Button disabled={saving || systemDefaults && !form.partnerRoleId || !hasLocalizedName(form)} onClick={save} variant="contained">{labels.save}</Button></DialogActions></Dialog>;
 }

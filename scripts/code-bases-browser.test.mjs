@@ -48,7 +48,7 @@ try{
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
     const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
     assert.equal(await page.locator('.MuiAlert-standardError').count(),0);
-    assert.equal(await page.locator('thead th').count(),5);
+    assert.equal(await page.locator('thead th').count(),6);
     assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).locator('[data-testid="DeleteOutlineIcon"]').count(),1);
     assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);
     await used.getByRole('button').filter({has:page.locator('[data-testid="EditIcon"]')}).click();
@@ -68,7 +68,7 @@ try{
     await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
     const modalSize=await dialog.boundingBox();assert.ok(modalSize.height<=952);
     assert.equal(await dialog.getByRole('button',{name:labels.save,exact:true}).evaluate(el=>getComputedStyle(el).borderRadius),'8px');
-    assert.equal(await dialog.locator('.MuiDialogTitle-root').evaluate(el=>getComputedStyle(el).borderBottomColor),'rgb(231, 236, 242)');
+    assert.equal(await dialog.locator('.MuiDialogTitle-root').evaluate(el=>getComputedStyle(el).borderBottomWidth),'0px');
     const savePosition=await dialog.getByRole('button',{name:labels.save,exact:true}).boundingBox();assert.ok(savePosition.y+savePosition.height<1000);
     await dialog.getByLabel(labels.code,{exact:false}).fill('air');
     assert.equal(await dialog.getByLabel(labels.code,{exact:false}).inputValue(),'AIR');

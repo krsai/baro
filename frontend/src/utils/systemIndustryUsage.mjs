@@ -7,5 +7,7 @@ export function systemIndustryUsageReason(row,language='ko'){
  const text=TEXT[language]||TEXT.en,counts={...row?._count};
  for(const local of row?.services||[])for(const [key,value] of Object.entries(local._count||{}))counts[key]=(counts[key]||0)+Number(value);
  const reasons=Object.entries(counts).filter(([key,value])=>text[key]&&Number(value)>0).map(([key,value])=>`${text[key]} (${value})`);
- return reasons.length?text.prefix+reasons.join(', '):'';
+ const name=row=>row?.[language==='ko'?'nameKo':language==='vi'?'nameVi':'name']||row?.name||'';
+ const references=(row?.partnerClassifications||[]).map(link=>{const owner=name(link.classification?.owner),entity=name(link.classification?.entity);return owner&&entity?(link.orgId===link.entityId?owner:`${owner} → ${entity}`):'';}).filter(Boolean);
+ return reasons.length?text.prefix+reasons.join(', ')+(references.length?' · '+references.join(', '):''):'';
 }

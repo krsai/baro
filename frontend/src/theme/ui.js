@@ -8,6 +8,6 @@ export const ui = {
   radius: { control: 8, panel: 12 },
   layout: { pagePadding: { xs: '16px', sm: '24px' }, pageGap: '20px', sectionGap: '20px', headerGap: '16px', actionGap: '8px', panelPadding: '16px' },
   table: { cellPadding: '11px 16px', compactPadding: '8px 12px', fitHorizontalPadding: '8px', fontSize: BODY_FONT_SIZE },
-  dialog: { titlePadding: '20px 24px 16px', contentPadding: '24px', actionsPadding: '16px 24px', actionsGap: 8 },
+  dialog: { titlePadding: '20px 24px 12px', contentPadding: '16px 24px 24px', actionsPadding: '16px 24px 20px', actionsGap: 8 },
   shadow: '0 2px 6px rgba(16, 24, 40, 0.025)',
 };

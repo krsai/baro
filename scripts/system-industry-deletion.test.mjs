@@ -14,6 +14,8 @@ test('deletion reason identifies legacy customer links separately from current c
   assert.ok(reason.includes(expected+' (1)'));assert.ok(reason.includes('(5)'));assert.equal(reason.includes('(0)'),false);
  }
  assert.equal(systemIndustryUsageReason({_count:{customerIndustries:0},services:[]}), '');
+ const details=systemIndustryUsageReason({_count:{partnerClassifications:2},partnerClassifications:[{orgId:10,entityId:10,classification:{owner:{name:'DEX'},entity:{name:'DEX'}}},{orgId:10,entityId:20,classification:{owner:{name:'DEX'},entity:{name:'BARO'}}}]},'en');
+ assert.ok(details.includes('DEX → BARO'));assert.ok(details.includes('(2)'));
 });
 test('industry usage depends on actual source/local links, not active status, provisioning or metadata overrides',()=>{
  const row={isActive:true,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]};
@@ -25,10 +27,17 @@ test('industry usage depends on actual source/local links, not active status, pr
 test('industry listing authenticates first and exposes an unused overridden definition as deletable',async()=>{
  const handlers=new Map();let allowed=false,reads=0,result;
  const app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)]));
- const db={settingServiceDefault:{findMany:async query=>{reads++;assert.deepEqual(query.include._count,SYSTEM_INDUSTRY_USAGE_INCLUDE._count);return [{id:1,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]},{id:2,_count:{...counts(),partnerClassifications:1},services:[]}];}}};
+ const db={settingServiceDefault:{findMany:async query=>{reads++;assert.deepEqual(query.include._count,SYSTEM_INDUSTRY_USAGE_INCLUDE._count);assert.ok(query.include.partnerClassifications);return [{id:1,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]},{id:2,_count:{...counts(),partnerClassifications:1},services:[]}];}}};
  registerTransactionSettingRoutes(app,db,{requireSystemAdmin:async()=>allowed});
  const run=()=>handlers.get('get/system-setting-defaults/services')({query:{}},{json(value){result=value;}});
  await run();assert.equal(reads,0);allowed=true;await run();assert.equal(result[0].hasUsageHistory,false);assert.equal(result[1].hasUsageHistory,true);
+});
+
+test('company catalogue does not request other companies classification details',async()=>{
+ const handlers=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)]));
+ const db={settingServiceDefault:{findMany:async query=>{assert.equal(query.include.partnerClassifications,undefined);return [];}}};
+ registerTransactionSettingRoutes(app,db,{requireOrgRole:async()=>({organization:{id:1}})});
+ await handlers.get('get/system-setting-defaults/services')({query:{catalogue:'1'}},{json:()=>{}});
 });
 test('deletion removes unused overridden copies but refuses every source/local reference on recheck',async()=>{
  const removed=[];let localUsage=localCounts();const sourceUsage=counts();
