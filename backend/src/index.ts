@@ -1,3 +1,4 @@
+import {registerCompanyIndustryRoutes} from './services/companyIndustries';
 import {registerApprovalReviewRoutes} from './services/approvalReview';
 import {registerFreightRoutes} from './services/freightOperations';
 import {readStylePackaging,saveStylePackaging,validatePackedCbm} from './services/stylePackaging';
@@ -225,7 +226,7 @@ function assertGeneratedPrismaClientShape() {
     Style: ["customerOrgId"],
     Organization: ["dataOwnerOrgId"],
     OutsourcingServiceType: ["systemDefaultId", "isOverridden"],
-    TransactionCode: ["systemDefaultId", "isOverridden", "taxTreatmentId", "baseId"],
+    TransactionCode: ["canBill", "systemDefaultId", "isOverridden", "taxTreatmentId", "baseId"],
     SettingServiceDefault: ["id", "orderInput", "requiredFields", "expenseTypeId"],
     SettingTransactionCodeDefault: ["id", "serviceTypeId", "vatEnabled", "baseId", "taxTreatmentId", "isEnabled"],
     TransactionCodeBase: ["id", "code", "serviceTypeId", "industryRevision"],
@@ -757,7 +758,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'TransactionCodeBase',colum
   {tableName:'BankLedgerEntry',columnName:'evidenceType'},
   ...['orgId','entityId','revision','updatedByEmployeeId'].map(columnName=>({tableName:'PartnerClassification',columnName})),
   ...['orgId','entityId','systemIndustryId'].map(columnName=>({tableName:'PartnerClassificationIndustry',columnName})),
-  {tableName:'TransactionCodeBase',columnName:'industryRevision'},
+  {tableName:'TransactionCode',columnName:'canBill'},{tableName:'TransactionCodeBase',columnName:'industryRevision'},
   ...['baseId','systemIndustryId'].map(columnName=>({tableName:'AccountingCodeIndustry',columnName})),
   {tableName:'LedgerChangeAcknowledgement',columnName:'employeeId'},
   {tableName:'LedgerChangeAcknowledgement',columnName:'confirmedAt'},
@@ -27646,6 +27647,7 @@ registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReque
 }});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
+registerCompanyIndustryRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalReviewRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseEditorRoutes(app,prisma,{

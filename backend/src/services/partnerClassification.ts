@@ -6,11 +6,20 @@ import {partnerRoleCatalogue} from './partnerRoleCatalogue';
 
 export const CLASSIFICATION_INCLUDE={industries:{include:{industry:{include:{partnerRole:true}}}}} satisfies Prisma.PartnerClassificationInclude;
 const vendorTypes=['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'];
+export function mergePartnerRelationships(rows:any[]){
+ const grouped=new Map<number,any>();
+ for(const row of rows){const previous=grouped.get(row.entity.id);if(!previous){grouped.set(row.entity.id,{...row,relationshipIds:row.relationshipId?[row.relationshipId]:[]});continue;}
+  const preferred=row.relationshipRoles.includes('CUSTOMER')&&!previous.relationshipRoles.includes('CUSTOMER')?row:previous;
+  grouped.set(row.entity.id,{...preferred,relationshipRoles:['CUSTOMER','SUPPLIER'].filter(role=>previous.relationshipRoles.includes(role)||row.relationshipRoles.includes(role)),relationshipIds:[...new Set([...previous.relationshipIds,...(row.relationshipId?[row.relationshipId]:[])])],hasUsageHistory:previous.hasUsageHistory||row.hasUsageHistory});
+ }
+ return [...grouped.values()];
+}
 const uniqueIds=(value:any)=>{
   if(!Array.isArray(value)||!value.length||value.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(value).size!==value.length)throw createHttpError(400,'PARTNER_CLASSIFICATION_REQUIRED');
   return value as number[];
 };
 export async function classificationTarget(db:any,orgId:number,entityId:number){
+  if(orgId===entityId){const entity=await db.organization.findFirst({where:{id:orgId,ownerOrgId:null,isActive:true,type:{in:['MANUFACTURER','BRAND','SERVICE']}}});if(!entity)throw createHttpError(404,'PARTNER_NOT_FOUND');return {kind:'COMPANY',entity,legacy:[]};}
   const vendor=await db.organization.findFirst({where:{id:entityId,ownerOrgId:orgId,type:{in:vendorTypes}},include:{outsourcingServiceAssignments:{include:{serviceType:{include:{systemDefault:{include:{partnerRole:true}}}}}}}});
   if(vendor)return {kind:'BUSINESS',entity:vendor,legacy:vendor.outsourcingServiceAssignments.map((row:any)=>row.serviceType.systemDefault).filter(Boolean)};
   const relationship=await db.orgRelationship.findFirst({where:{OR:[{manufacturerOrgId:orgId,brandOrgId:entityId},{brandOrgId:orgId,manufacturerOrgId:entityId}]},include:{brand:true,manufacturer:true,systemIndustry:{include:{partnerRole:true}}}});
@@ -46,6 +55,7 @@ export async function validateClassification(db:any,body:any,orgId:number,entity
 export async function saveClassification(db:any,orgId:number,entityId:number,employeeId:number|null,body:any){
   const target=await classificationTarget(db,orgId,entityId);
   await requireClassificationActor(db,orgId,employeeId);
+  if(entityId===orgId&&!await db.employee.findFirst({where:{id:employeeId,orgId,status:'ACTIVE',orgRole:'ADMIN'}}))throw createHttpError(403,'COMPANY_INDUSTRY_ADMIN_REQUIRED');
   await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
   const data=await validateClassification(db,body,orgId,entityId);
   if(data.revision){
@@ -82,11 +92,11 @@ export function registerPartnerClassificationRoutes(app:any,db:any,gates:any){
       db.orgRelationship.findMany({where:{OR:[{manufacturerOrgId:orgId},{brandOrgId:orgId}]},include:{brand:true,manufacturer:true,systemIndustry:{include:{partnerRole:true}}}}),
       db.partnerClassification.findMany({where:{orgId},include:CLASSIFICATION_INCLUDE}),partnerRoleCatalogue(db)]);
     const documents=new Map(stored.map((row:any)=>[row.entityId,row]));
-    const rows=[...vendors.map((entity:any)=>({entity,kind:'BUSINESS',legacy:entity.outsourcingServiceAssignments.map((a:any)=>a.serviceType.systemDefault).filter(Boolean)})),
-      ...customers.map((r:any)=>{const entity=r.manufacturerOrgId===orgId?r.brand:r.manufacturer;return {entity:{...entity,code:entity.code||r.customerCode,representative:entity.representative||r.managerName,phone:entity.phone||r.managerPhone,email:entity.email||r.managerEmail,createdAt:r.createdAt},kind:'CUSTOMER',relationshipId:r.id,legacy:r.systemIndustry?[r.systemIndustry]:[]};})]
+    const rows=[...vendors.map((entity:any)=>({entity,kind:'BUSINESS',relationshipRoles:['SUPPLIER'],legacy:entity.outsourcingServiceAssignments.map((a:any)=>a.serviceType.systemDefault).filter(Boolean)})),
+      ...customers.map((r:any)=>{const entity=r.manufacturerOrgId===orgId?r.brand:r.manufacturer;return {entity:{...entity,code:entity.code||r.customerCode,representative:entity.representative||r.managerName,phone:entity.phone||r.managerPhone,email:entity.email||r.managerEmail,createdAt:r.createdAt},kind:'CUSTOMER',relationshipRoles:[r.manufacturerOrgId===orgId?'CUSTOMER':'SUPPLIER'],relationshipId:r.id,legacy:r.systemIndustry?[r.systemIndustry]:[]};})]
       .map((row:any)=>({...row,classification:effectiveClassification(documents.get(row.entity.id),row.legacy)}));
     const [vendorUsage,customerUsage,pricing]=await Promise.all([gates.getBusinessPartnerUsage(db,vendors.map((row:any)=>row.id)),gates.getCustomerUsage(db,customers.map((row:any)=>row.id)),gates.loadCustomerPricingCounts?.(ctx.organization,customers.map((row:any)=>row.id))||new Map()]);
     const linkedRows=await attachLinkedCompanies(db,orgId,rows.map((row:any)=>({...row,entityId:row.entity.id})));
-    res.json({roles,rows:linkedRows.map(({legacy,...row}:any)=>({...row,entity:{...entityProfile(row.entity),id:row.entity.id,linkedCompany:row.linkedCompany,type:row.entity.type,isActive:row.entity.isActive,createdAt:row.entity.createdAt,representative:row.entity.representative,phone:row.entity.phone,outsourcingServiceAssignments:row.kind==='BUSINESS'?row.entity.outsourcingServiceAssignments:undefined},hasUsageHistory:row.kind==='CUSTOMER'?customerUsage.has(row.relationshipId):vendorUsage.has(row.entity.id),missingSalesPriceStyleCount:row.kind==='CUSTOMER'?pricing.get(row.relationshipId)??0:0}))});
+    res.json({roles,rows:mergePartnerRelationships(linkedRows.map(({legacy,...row}:any)=>({...row,entity:{...entityProfile(row.entity),id:row.entity.id,linkedCompany:row.linkedCompany,type:row.entity.type,isActive:row.entity.isActive,createdAt:row.entity.createdAt,representative:row.entity.representative,phone:row.entity.phone,outsourcingServiceAssignments:row.kind==='BUSINESS'?row.entity.outsourcingServiceAssignments:undefined},hasUsageHistory:row.kind==='CUSTOMER'?customerUsage.has(row.relationshipId):vendorUsage.has(row.entity.id),missingSalesPriceStyleCount:row.kind==='CUSTOMER'?pricing.get(row.relationshipId)??0:0})))});
   });
 }

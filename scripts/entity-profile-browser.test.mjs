@@ -26,6 +26,8 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*'};
   await page.route('**/organizations/primary*',r=>r.fulfill({headers,json:{id:1,type:'MANUFACTURER',name:'BARO GARMENT',nameKo:'BARO',nameVi:'BARO',code:'BRVN',country:'VN'}}));
+  await page.route('**/company-industries?*',r=>r.fulfill({headers,json:{canEdit:true,classification:{revision:0,roleIds:[],industryIds:[],industries:[]},codes:[]}}));
+  await page.route('**/partner-classifications/options?*',r=>r.fulfill({headers,json:{roles:[],industries:[]}}));
   await page.route('**/employees**',r=>r.fulfill({headers,json:[]}));
   await page.route('**/expense-types*',r=>r.fulfill({headers,json:[]}));
   await page.route('**/outsourcing-service-types*',r=>r.fulfill({headers,json:[]}));
@@ -34,10 +36,12 @@ try{
   await page.goto(`http://127.0.0.1:${port}/entity-profile-acceptance.html?screen=${screen}`);
   await page.getByRole('heading',{name:'Bank accounts',exact:true}).waitFor();
   await page.waitForFunction(()=>!document.querySelector('[role="progressbar"]'));
+  for(let attempt=0;attempt<100&&!bankEntities.includes(screen==='organization'?1:44);attempt++)await page.waitForTimeout(50);
   assert.ok(bankEntities.includes(screen==='organization'?1:44));assert.ok(!bankEntities.includes(7),'Customer relationship ID must not be used as entity ID');
   assert.deepEqual(errors,[]);
   if(screen==='partner'){assert.equal(await page.getByRole('switch').count(),0);await page.getByText('Check',{exact:true}).waitFor();await page.locator('input[name=code]').fill('NEW-001');await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);assert.equal(update.code,'NEW-001');assert.equal('isActive' in update,false);assert.deepEqual(update.serviceTypeIds,[41]);}
   if(screen==='organization'){
+   await page.getByRole('heading',{name:'Company industries & billing',exact:true}).waitFor();
    assert.equal(await page.locator('h1').count(),1,'Embedded business form must not repeat its page title');
    const content=await page.locator('.app-page-content').boundingBox();assert.equal(content.width,width-(width<600?32:48),'Business page fills the workspace');
   }

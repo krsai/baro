@@ -1,3 +1,4 @@
+import {companyIndustryText} from '../constants/companyIndustries';
 import PartnerClassificationFields from './PartnerClassificationFields';
 import {CompanyConnectionField} from './CompanyConnections';
 import {emptyPartnerClassification,classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
@@ -9,7 +10,7 @@ import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack,
+  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, MenuItem,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
@@ -75,11 +76,13 @@ export default function BusinessPartnerDialog({
   title,
   onAccountsChange,
   allowCustomerCreation = false,
+  initialRelation = 'SUPPLIER',
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const isEdit = Boolean(partner?.id);
-  const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
+  const relationshipText=companyIndustryText[languageCode]||companyIndustryText.en;
+  const [form, setForm] = useState(() => ({...buildFormFromPartner(partner, initialType),relationship:initialRelation}));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
@@ -87,7 +90,7 @@ export default function BusinessPartnerDialog({
 
   useEffect(() => {
     if (open) {
-      setForm(buildFormFromPartner(partner, initialType));
+      setForm({...buildFormFromPartner(partner, initialType),relationship:initialRelation});
       setError('');
     }
   }, [initialType, open, partner]);
@@ -115,7 +118,7 @@ export default function BusinessPartnerDialog({
         ...(form.companyConnection?{companyConnection:form.companyConnection}:{}),
 
       };
-      const creatingCustomer=allowCustomerCreation&&!isEdit&&form.classification.industries.some(row=>row.partnerRole?.code==='CUSTOMER'&&form.classification.industryIds.includes(row.id));
+      const creatingCustomer=allowCustomerCreation&&!isEdit&&form.relationship==='CUSTOMER';
       if(creatingCustomer){
         body.manager=body.contactName;body.phoneNumber=body.contactPhone;delete body.type;
       }
@@ -149,6 +152,7 @@ export default function BusinessPartnerDialog({
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
+          {allowCustomerCreation&&!isEdit&&<TextField select id="partner-relationship" size="small" label={relationshipText.relationship} value={form.relationship} disabled={saving} onChange={e=>setForm(current=>({...current,relationship:e.target.value}))}>{['CUSTOMER','SUPPLIER'].map(role=><MenuItem key={role} value={role}>{relationshipText[role]}</MenuItem>)}</TextField>}
           <PartnerClassificationFields value={form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded} languageCode={languageCode} onReady={setOptionsReady}/>
 
           </Stack></EntityDetailSection>

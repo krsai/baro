@@ -1,6 +1,6 @@
+import CompanyIndustrySettings from '../../../components/CompanyIndustrySettings';
 import { LOCALIZED_NAME_HELP } from '../../../components/LocalizedNameFields';
 import {ENTITY_CODE_TEXT,entityCodeError} from '../../../utils/entityCode.mjs';
-import {classificationName} from '../../../utils/partnerClassification.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
 import EntityBankAccounts from '../../../components/EntityBankAccounts';
 import { createPortal } from 'react-dom';
@@ -131,18 +131,6 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const [employees, setEmployees] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [industryRoles,setIndustryRoles]=useState([]);
-  const [industryLoading,setIndustryLoading]=useState(true);
-  const [industryError,setIndustryError]=useState(false);
-
-  useEffect(()=>{let alive=true;setIndustryLoading(true);setIndustryError(false);
-    requestJSON(`/partner-classifications/options${activeOrgId?`?orgId=${activeOrgId}`:''}`,{skipCache:true})
-      .then(data=>{if(alive)setIndustryRoles(data.roles||[]);})
-      .catch(()=>{if(alive)setIndustryError(true);})
-      .finally(()=>{if(alive)setIndustryLoading(false);});
-    return()=>{alive=false;};
-  },[activeOrgId]);
-
   const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
   const countryOptions = useMemo(() => getStaticOptionOptions('country', languageCode), [languageCode]);
@@ -254,7 +242,6 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   useUnsavedChanges(isDirty);
 
   const isNameValid = hasLocalizedName(formData, 'name');
-  const currentIndustryRole=industryRoles.find(role=>role.code===(formData.industry==='LOGISTICS'?'LOGISTICS_PROVIDER':formData.industry));
 
   const handleInputChange = (event) => {
     const { name, value } = event.target;
@@ -328,29 +315,12 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
       <PageContentStack  >
       <EntityDetailSection title={localText.identityTitle}>
         <Grid container spacing={2}>
-          <Grid size={{xs:12,sm:6,md:4}}>
-            <TextField
-              fullWidth
-              select
-              size="small"
-              label={text.industry}
-              name="industry"
-              value={currentIndustryRole?.code||formData.industry}
-              onChange={handleInputChange}
-              disabled={industryLoading||industryError}
-              error={industryError}
-              helperText={industryError?({ko:'공통 거래 구분을 불러오지 못했습니다.',en:'Unable to load shared transaction categories.',vi:'Không thể tải nhóm giao dịch dùng chung.'})[languageCode]:undefined}
-            >
-              <MenuItem value="">-</MenuItem>
-              {formData.industry&&!currentIndustryRole&&<MenuItem value={formData.industry}>{localText.industryOptions[formData.industry]||formData.industry}</MenuItem>}
-              {industryRoles.map(role=><MenuItem key={role.id} value={role.code}>{classificationName(role,languageCode)}</MenuItem>)}
-            </TextField>
-          </Grid>
 
-          <Grid size={{xs:12,sm:6,md:4}}>
+
+          <Grid size={{xs:12,sm:6,md:6}}>
             <TextField fullWidth size="small" label={localText.businessNumber} name="businessNumber" value={formData.businessNumber} onChange={handleInputChange} />
           </Grid>
-          <Grid size={{xs:12,sm:6,md:4}}>
+          <Grid size={{xs:12,sm:6,md:6}}>
             <TextField
               fullWidth
               size="small"
@@ -401,6 +371,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
 
 
+      <CompanyIndustrySettings orgId={activeOrgId} languageCode={languageCode}/>
       <EntityDetailSection title={localText.contactTitle}>
         <Grid container spacing={2}>
           <Grid size={{xs:12,md:4}}>

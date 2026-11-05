@@ -2001,6 +2001,7 @@ model CodeBaseUsageRollout {
 }
 
 model TransactionCode {
+  canBill Boolean @default(false)
   ledgerEntries BankLedgerEntry[] @relation("LedgerAccountingCode")
   settlementLines BankLedgerSettlementLine[] @relation("SettlementAccountingCode")
   @@unique([id,ownerOrgId])

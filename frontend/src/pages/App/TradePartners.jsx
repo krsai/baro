@@ -6,22 +6,22 @@ import BusinessPartners from './BusinessPartners';
 import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {getUiMessage} from '../../constants/uiMessages';
-import {classificationName} from '../../utils/partnerClassification.mjs';
+import {companyIndustryText} from '../../constants/companyIndustries';
 
 export default function TradePartners({initialType='ALL'}){
  const auth=useAuth(),{languageCode}=useLanguage(),location=useLocation();
- const labels={ko:{type:'거래 구분',all:'전체 거래처'},en:{type:'Transaction category',all:'All partners'},vi:{type:'Nhóm giao dịch',all:'Tất cả đối tác'}}[languageCode]||{type:'Transaction category',all:'All partners'};
- const [data,setData]=useState({roles:[],rows:[]}),[selected,setSelected]=useState(()=>location.state?.partnerType||initialType);
+ const labels=companyIndustryText[languageCode]||companyIndustryText.en;
+ const requestedType=location.state?.partnerType||initialType,providerTypes=['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'];
+ const [data,setData]=useState({roles:[],rows:[]}),[selected,setSelected]=useState(()=>providerTypes.includes(requestedType)?'SUPPLIER':requestedType);
  const onDirectoryLoaded=useCallback(value=>setData(value),[]);
  useEffect(()=>{setData({roles:[],rows:[]});},[auth.activeOrgId]);
- useEffect(()=>{if(data.roles.length&&selected!=='ALL'&&!data.roles.some(role=>role.code===selected))setSelected('ALL');},[data.roles,selected]);
- useEffect(()=>{if(location.state?.partnerType)setSelected(location.state.partnerType);},[location.key]);
- const current=data.roles.find(role=>role.code===selected);
- const items=[{id:'ALL',label:labels.all,count:data.rows.length},...data.roles.map(role=>({id:role.code,label:classificationName(role,languageCode),count:data.rows.filter(row=>row.classification.roleIds.includes(role.id)).length}))];
- const initialPartnerType=auth.activeProfile?.orgType==='SERVICE'?'LOGISTICS_PROVIDER':['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(selected)?selected:'PROCESS_OUTSOURCING';
+ useEffect(()=>{if(!['ALL','CUSTOMER','SUPPLIER'].includes(selected))setSelected('ALL');},[selected]);
+ useEffect(()=>{if(location.state?.partnerType)setSelected(providerTypes.includes(location.state.partnerType)?'SUPPLIER':location.state.partnerType);},[location.key]);
+ const items=[{id:'ALL',label:labels.all,count:data.rows.length},...['CUSTOMER','SUPPLIER'].map(role=>({id:role,label:labels[role],count:data.rows.filter(row=>row.relationshipRoles?.includes(role)).length}))];
+ const initialPartnerType=auth.activeProfile?.orgType==='SERVICE'?'LOGISTICS_PROVIDER':providerTypes.includes(requestedType)?requestedType:'PROCESS_OUTSOURCING';
  return <AppPageContainer title={getUiMessage('menu.partners','Partners',languageCode)}>
-  <HierarchyPanel label={labels.type} items={items} selectedId={selected} onSelect={setSelected}>
-   <BusinessPartners key={auth.activeOrgId} embedded unified category={selected==='ALL'?null:current?.id??-1} type={initialPartnerType} onDirectoryLoaded={onDirectoryLoaded}/>
+  <HierarchyPanel label={labels.relationship} items={items} selectedId={selected} onSelect={setSelected}>
+   <BusinessPartners key={auth.activeOrgId} embedded unified relationship={selected==='ALL'?null:selected} type={initialPartnerType} onDirectoryLoaded={onDirectoryLoaded}/>
   </HierarchyPanel>
  </AppPageContainer>;
 }

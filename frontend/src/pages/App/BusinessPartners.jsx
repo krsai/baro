@@ -1,3 +1,4 @@
+import {companyIndustryText} from '../../constants/companyIndustries';
 import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
@@ -42,7 +43,7 @@ const DELETE_TEXT = {
   vi: { remove: 'Xóa', blocked: 'Không thể xóa đối tác đã được sử dụng. Có thể chỉnh sửa hoặc ngừng sử dụng.', confirm: 'Xóa đối tác này?', cancel: 'Hủy', error: 'Không thể xóa đối tác.', help: 'Thông tin đối tác cập nhật được hiển thị trong hồ sơ liên kết. Thông tin kiểm toán ban đầu và chứng từ đã phát hành được giữ nguyên.' },
 };
 
-export default function BusinessPartners({ type, embedded=false,unified=false,category=null,onDirectoryLoaded }) {
+export default function BusinessPartners({ type, embedded=false,unified=false,category=null,relationship=null,onDirectoryLoaded }) {
   const auth=useAuth();
   const { activeOrgId, activeOrgRole, accessProfile } = auth;
   const {navigateToPath}=useAppActions();
@@ -82,7 +83,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
         const pathFor=row=>row.kind==='CUSTOMER'?'/customer':({PROCESS_OUTSOURCING:'/outsourcing-partner',MATERIAL_SUPPLIER:'/material-supplier',LOGISTICS_PROVIDER:'/logistics-partner'})[row.entity.type];
         const allowed=result.rows.filter(row=>canAccessPath(pathFor(row),auth));
         setDirectoryRoles(result.roles);onDirectoryLoaded?.({...result,rows:allowed});
-        setPartners(allowed.map(row=>({...row.entity,sourceKind:row.kind,relationshipId:row.relationshipId,classification:row.classification,hasUsageHistory:row.hasUsageHistory,missingSalesPriceStyleCount:row.missingSalesPriceStyleCount,contactName:row.entity.representative,contactPhone:row.entity.phone,serviceTypes:(row.entity.outsourcingServiceAssignments||[]).map(item=>item.serviceType)})));
+        setPartners(allowed.map(row=>({...row.entity,sourceKind:row.kind,relationshipRoles:row.relationshipRoles,officialClassification:row.officialClassification,relationshipId:row.relationshipId,classification:row.classification,hasUsageHistory:row.hasUsageHistory,missingSalesPriceStyleCount:row.missingSalesPriceStyleCount,contactName:row.entity.representative,contactPhone:row.entity.phone,serviceTypes:(row.entity.outsourcingServiceAssignments||[]).map(item=>item.serviceType)})));
       }else setPartners(Array.isArray(result) ? result : []);
     }
     catch (loadError) { if(generation===loadGeneration.current){setQueryFailed(true);setError(loadError?.message || labels.loadError);} }
@@ -90,7 +91,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
   }, [activeOrgId, labels.loadError, type,unified,onDirectoryLoaded,accessProfile,activeOrgRole]);
   useEffect(() => { loadPartners(); }, [loadPartners]);
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
-    if (Number(detail?.orgId) === Number(activeOrgId) && (['business-partner', 'transaction-request','customer-detail'].includes(detail.source)||detail.topics?.includes('customers'))) loadPartners();
+    if (Number(detail?.orgId) === Number(activeOrgId) && (['business-partner', 'transaction-request','customer-detail'].includes(detail.source)||detail.topics?.some(topic=>['customers','business-partners','company-industries'].includes(topic)))) loadPartners();
   }), [activeOrgId, loadPartners]);
   const removePartner = async () => {
     setDeleting(true); setError('');
@@ -108,7 +109,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     } finally { setDeleting(false); }
   };
   const serviceName = useCallback(item=>partnerIndustryLabel(item,languageCode),[languageCode]);
-  const directoryRows=useMemo(()=>partners.filter(partner=>!unified||!category||partner.classification?.roleIds?.includes(category)).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:partner.classification?classificationSummary(partner.classification,languageCode)||(partner.classification.legacyGeneral?.length?(PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en).legacy:''):[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' · '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address,partner.classification?.legacyGeneral?.length?'GENERAL':null].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category]);
+  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))&&(!relationship||partner.relationshipRoles?.includes(relationship))).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:partner.classification?[(partner.relationshipRoles||[]).map(role=>(companyIndustryText[languageCode]||companyIndustryText.en)[role]).join(' / '),partner.officialClassification?((companyIndustryText[languageCode]||companyIndustryText.en).official+': '+classificationSummary(partner.officialClassification,languageCode)):null,classificationSummary(partner.classification,languageCode)].filter(Boolean).join(' ? ')||(partner.classification.legacyGeneral?.length?(PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en).legacy:''):[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' · '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address,partner.classification?.legacyGeneral?.length?'GENERAL':null].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category,relationship]);
   const openHistory = async (partner) => {
     setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);
     try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }
@@ -116,12 +117,13 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     finally { setHistoryLoading(false); }
   };
   return (
-    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>unified&&directoryRoles.find(row=>row.id===category)?.code==='CUSTOMER'?navigateToPath('/customer/new'):setCreateOpen(true)} canAdd={canEdit} onOpen={partner=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer/'+partner.relationshipId):setEditingPartner(partner)} canOpen={canEdit}
+    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={partner=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer/'+partner.relationshipId):setEditingPartner(partner)} canOpen={canEdit}
       renderActions={partner=><><Button variant="contained" onClick={()=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer-pricing?customerId='+partner.relationshipId):openHistory(partner)}>{partner.sourceKind==='CUSTOMER'?({ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing'):listLabels.viewHistory}</Button><Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
     >
       {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}
       <BusinessPartnerDialog
         allowCustomerCreation={unified}
+        initialRelation={relationship||'SUPPLIER'}
         open={createOpen || Boolean(editingPartner)}
         onClose={() => { setCreateOpen(false); setEditingPartner(null); }}
         onSaved={loadPartners}

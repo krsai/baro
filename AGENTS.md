@@ -1,5 +1,9 @@
 # 2026-11-05 회사 자체 업종·거래처 고객 관계 (사용자 최신 정정)
 
+- 구현: 사업체 상세의 CompanyIndustrySettings는 자기 회사 분류(`PartnerClassification`의 orgId=entityId)와 회사별 `TransactionCode.canBill`을 revision 트랜잭션으로 저장한다. ACTIVE ADMIN만 수정하며 기존 단일 Organization.industry는 보존한다. 청구 가능 코드는 활성 자기 업종·유효 코드·IN/BOTH 성격을 모두 검사하고 기본은 false다. 실제 물류 청구 연동은 아직 별도 단계다.
+- 거래처 목록은 업종이 아닌 명시적 고객/공급처 관계로 필터한다. 신규 등록도 관계를 직접 선택하고 CUSTOMER 업종을 선택했다는 이유로 고객 API로 보내지 않는다. 관계 방향과 동일 entity의 복수 역할을 표시하되 기존 관계 ID·사용 이력·권한을 유지한다. 연결 회사 공식 업종은 로컬 분류와 구별한다.
+- 새 migration 20261105040000_company_industries_and_billing을 공통 실행기·preflight·읽기 전용 시작 검사에 등록한다. 운영 BARO/DEX 업종을 이름으로 자동 대입하지 않는다. test:company-industries·기존 연결/분류/결재/preflight 회귀·한영베 PC/모바일·양쪽 빌드·번역/인코딩을 사용한다.
+
 - 세부 업종은 회사 자체의 속성이다. BARO는 봉제 공장, DEX는 포워더이며 고객이라는 별도 업종/회사 타입을 만들지 않는다. 더산·우리들의 업종은 고객 관계로 추정하지 않는다. 복수 업종을 허용한다.
 - 고객 여부는 기준 회사와 상대 회사 사이의 업무상 거래처 연결 관계로 관리한다. BARO의 고객은 더산·우리들, DEX의 고객은 BARO·더산이다. 연결에는 고객/공급처 등 방향이 있으며 모든 거래처를 고객으로 간주하지 않는다. 같은 회사는 상대별·방향별 역할을 가질 수 있다.
 - CompanyPartnerLink/CompanyIdentityLink의 동일 회사 식별, 실제 거래처 관계, 업무 자료 공유는 별개다. SaaS 가입/식별 연결만으로 고객 관계나 자료 접근을 자동 생성하지 않는다. 기존 OrgRelationship·로컬 거래처·거래 FK·문서 snapshot은 보존한다.
