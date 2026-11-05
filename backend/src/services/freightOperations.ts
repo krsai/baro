@@ -1,3 +1,4 @@
+import {registerJobRoutes} from './freightJobs';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -42,9 +43,12 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
  }
  const customerId=Number(input.customerId);if(!Number.isSafeInteger(customerId)||customerId<=0)fail('FREIGHT_REQUIRED');data.customer=await scopedParty(tx,orgId,customerId);
  const masterId=input.masterId?clean(input.masterId,80):null;if(masterId&&(await get(tx,orgId,'masters',masterId,true)).mode!==mode)fail('FREIGHT_MASTER_MODE');
- const houseStatus=member(input.houseStatus,['NONE','HOUSE','UNKNOWN']),houseNumber=houseStatus==='HOUSE'?clean(input.houseNumber||'',120):null;if(houseStatus==='HOUSE'&&!houseNumber)fail('FREIGHT_REQUIRED');
+ const houseStatus=member(input.houseStatus||'NONE',['NONE','HOUSE','UNKNOWN']),houseNumber=houseStatus==='HOUSE'?clean(input.houseNumber||'',120):null;if(houseStatus==='HOUSE'&&!houseNumber)fail('FREIGHT_REQUIRED');
+ const assigneeId=d.assigneeId==null||d.assigneeId===''?null:Number(d.assigneeId);
+ if(assigneeId!==null&&(!Number.isSafeInteger(assigneeId)||!await tx.employee.findFirst({where:{id:assigneeId,orgId,status:'ACTIVE'}})))fail('FREIGHT_ASSIGNEE_SCOPE',403);
+ Object.assign(data,{assigneeId,jobType:member(d.jobType||'OTHER',['IMPORT','EXPORT','DOMESTIC','OTHER']),plannedDate:date(d.plannedDate)});
  Object.assign(data,{direction:member(d.direction||'OTHER',['IMPORT','EXPORT','OTHER']),shipper:optional(d.shipper,1000),consignee:optional(d.consignee,1000),notify:optional(d.notify,1000),billTo:optional(d.billTo,1000),cargo:optional(d.cargo,2000),marks:optional(d.marks,1000),quantity:decimal(d.quantity,0),unit:optional(d.unit||'PKG',30),weightKg:decimal(d.weightKg),cbm:decimal(d.cbm,6),freightTerms:optional(d.freightTerms,100),deliveryDate:date(d.deliveryDate),recipient:optional(d.recipient,200)});
- return {customerId,masterId,mode,service:member(input.service,['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};
+ return {customerId,masterId,mode,service:member(input.service||'GENERAL',['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};
 }
 export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof typeof tables,input:any,id?:string){
  if(!tables[type])fail('FREIGHT_NOT_FOUND',404);await freightActor(db,orgId,actorId);
@@ -67,7 +71,14 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
   if(before){
    rows=await tx.$queryRawUnsafe(`UPDATE "${tables[type]}" SET ${columns.map((k,i)=>`"${k}"=$${i+1}${k==='data'?'::jsonb':''}`).join(',')},version=version+1,"requestHash"=$${params.length+1},"updatedByEmployeeId"=$${params.length+2},"updatedAt"=CURRENT_TIMESTAMP WHERE id=$${params.length+3} AND "orgId"=$${params.length+4} RETURNING *`,...params,requestHash,actorId,sourceId,orgId);
   }else{
-   const number=type==='masters'?(value as any).number:`${type==='jobs'?'SHP':'DSP'}-${sourceId.slice(0,8).toUpperCase()}`;
+   let number=type==='masters'?(value as any).number:`DSP-${sourceId.slice(0,8).toUpperCase()}`;
+   if(type==='jobs'){
+    // Job history cannot be physically deleted. Serialize company numbering,
+    // including cancelled jobs, instead of relying on a short UUID collision.
+    await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))::text',`freight-job-number:${orgId}`);
+    const count=await tx.$queryRawUnsafe('SELECT count(*)::integer AS count FROM "FreightJob" WHERE "orgId"=$1',orgId);
+    number=`JOB-${String(count[0].count+1).padStart(6,'0')}`;
+   }
    const values:any={id:sourceId,orgId,clientKey,requestHash,...value,...(type!=='masters'?{number}:{}),createdByEmployeeId:actorId,updatedByEmployeeId:actorId};
    const cols=Object.keys(values);rows=await tx.$queryRawUnsafe(`INSERT INTO "${tables[type]}"(${cols.map(k=>`"${k}"`).join(',')}) VALUES(${cols.map((k,i)=>`$${i+1}${k==='data'?'::jsonb':''}`).join(',')}) RETURNING *`,...cols.map(k=>k==='data'?JSON.stringify(values[k]):values[k]));
   }
@@ -122,6 +133,7 @@ export async function issueFreightDocument(db:any,orgId:number,actorId:number,ty
 }
 export function registerFreightRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return null;const orgId=ctx.organization.id,actorId=gates.actorId();await freightActor(db,orgId,actorId);const setting=await gates.loadPolicy();if(!setting.policy?.[ctx.organization.type]?.[ctx.employee.orgRole]?.includes('FREIGHT'))fail('FREIGHT_ACCESS_DENIED',403);return {orgId,actorId};};
+ registerJobRoutes(app,db,access);
  const route=(method:string,path:string,work:any)=>app[method](path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','/freight/options',({orgId,actorId}:any)=>freightOptions(db,orgId,actorId));
  for(const type of Object.keys(tables) as (keyof typeof tables)[]){

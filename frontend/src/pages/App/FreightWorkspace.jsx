@@ -1,3 +1,4 @@
+import FreightJobs from './FreightJobs';
 import Autocomplete from '../../components/SearchableSelect';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
@@ -14,7 +15,7 @@ const types=['jobs','masters','dispatches'],statuses=['DRAFT','BOOKED','IN_TRANS
 const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:2};
 const blank=()=>({clientKey:crypto.randomUUID(),mode:'AIR',service:'GENERAL',houseStatus:'UNKNOWN',houseNumber:'',masterId:null,customerId:null,status:'DRAFT',data:{direction:'IMPORT',quantity:'0',unit:'PKG',weightKg:'0',cbm:'0'}});
 const dateText=v=>v?new Date(v).toLocaleString():'';
-export default function FreightWorkspace(){const {activeOrgId}=useAuth();return <Workspace key={activeOrgId} orgId={activeOrgId}/>;}
+export default function FreightWorkspace(){const {activeOrgId}=useAuth(),[params]=useSearchParams();return ['masters','dispatches'].includes(params.get('type'))?<Workspace key={activeOrgId} orgId={activeOrgId}/>:<FreightJobs/>;}
 export function Workspace({orgId}){
  const {languageCode}=useLanguage(),t=freightText[languageCode]||freightText.en,[params,setParams]=useSearchParams(),type=types.includes(params.get('type'))?params.get('type'):'jobs',id=params.get('id');
  const [result,setResult]=useState({rows:[],total:0}),[search,setSearch]=useState(''),[offset,setOffset]=useState(0),[reload,setReload]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState(''),[detail,setDetail]=useState(null),[editing,setEditing]=useState(null),[document,setDocument]=useState(null),[busy,setBusy]=useState(false),[packageEdit,setPackageEdit]=useState(null),[packageRows,setPackageRows]=useState([]),[packageSearch,setPackageSearch]=useState('');

@@ -13,6 +13,48 @@ datasource db {
 
 // Freight operations use explicit composite company FKs and immutable-history
 // triggers in 20261105030000_freight_operations. SQL services enforce revisions.
+// Job BLs and transport objects/tasks use composite SQL FKs in
+// 20261105140000_job_bills, matching the existing freight persistence pattern.
+model FreightBill {
+ id String @id
+ orgId Int
+ jobId String
+ kind String
+ number String
+ issuer String @default("")
+ masterId String?
+ masterKind String @default("MASTER")
+ deletedAt DateTime?
+ version Int @default(1)
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@unique([id,jobId,orgId,kind])
+ @@index([orgId,jobId],map:"FreightBill_job_idx")
+ @@index([orgId,kind,number,issuer],map:"FreightBill_number_idx")
+}
+model FreightTransportTarget {
+ id String @id
+ orgId Int
+ jobId String
+ kind String
+ number String?
+ description String @default("")
+ @@unique([id,jobId,orgId])
+}
+model FreightTransportTask {
+ id String @id
+ orgId Int
+ jobId String
+ targetId String?
+ kind String
+ partnerId Int?
+ vehicle String?
+ driver String?
+ plannedAt DateTime?
+ status String @default("PLANNED")
+}
 model FreightJob {
  id String @id
  orgId Int
