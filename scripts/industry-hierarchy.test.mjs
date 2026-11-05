@@ -102,12 +102,12 @@ test('customer catalogue adds woven, knit and combined without changing other pa
  }finally{await db.close();}
 });
 
-test('customer industry options are tenant-authorized and expose only active customer categories',async()=>{
+test('legacy customer industry URL is tenant-authorized and exposes all active industries without a customer category',async()=>{
  const handlers=new Map();let query,allow=false;
  const app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(`${method} ${path}`,fn)]));
  const db={settingServiceDefault:{findMany:async options=>{query=options;return [{id:94,code:'CUSTOMER_WOVEN'}]}}};
  registerTransactionSettingRoutes(app,db,{requireOrgRole:async()=>allow?{organization:{id:1}}:null});
  const fn=handlers.get('get /customer-industries');let result;const res={json:rows=>{result=rows}};
  await fn({query:{orgId:99}},res);assert.equal(query,undefined);
- allow=true;await fn({query:{orgId:1}},res);assert.deepEqual(query.where,{isActive:true,partnerRole:{code:'CUSTOMER'}});assert.equal(result[0].id,94);
+ allow=true;await fn({query:{orgId:1}},res);assert.deepEqual(query.where,{isActive:true,code:{not:'GENERAL'}});assert.equal(result[0].id,94);
 });

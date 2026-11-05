@@ -34,15 +34,15 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-role-acceptance.html`);
-  await page.getByText({ko:'거래 구분 > 세부 유형 > 회계 코드',en:'Transaction category > Subtype > Accounting code',vi:'Nhóm giao dịch > Loại chi tiết > Mã kế toán'}[lang],{exact:true}).waitFor();
-  await page.getByRole('navigation',{name:{ko:'거래 구분',en:'Transaction category',vi:'Nhóm giao dịch'}[lang]}).waitFor();
-  await page.getByRole('button',{name:{ko:'거래 구분 등록',en:'Add transaction category',vi:'Thêm nhóm giao dịch'}[lang],exact:true}).click();
+  await page.getByText({ko:'구분 > 세부 업종 > 회계 코드',en:'Category > Industry > Accounting code',vi:'Nhóm > Ngành nghề > Mã kế toán'}[lang],{exact:true}).waitFor();
+  await page.getByRole('navigation',{name:{ko:'구분',en:'Category',vi:'Nhóm'}[lang]}).waitFor();
+  await page.getByRole('button',{name:{ko:'구분 등록',en:'Add category',vi:'Thêm nhóm'}[lang],exact:true}).click();
   let dialog=page.getByRole('dialog');const inputs=dialog.locator('input');
   assert.equal(await inputs.count(),3);
   await inputs.nth(0).fill('Custom');await inputs.nth(1).fill('Custom');await inputs.nth(2).fill('Custom');
   await dialog.locator('button').last().click();await dialog.waitFor({state:'hidden'});
   await page.getByRole('navigation').getByRole('button',{name:'Custom 0',exact:true}).click();
-  await page.getByRole('button',{name:{ko:'거래 구분 수정',en:'Edit transaction category',vi:'Sửa nhóm giao dịch'}[lang],exact:true}).click();
+  await page.getByRole('button',{name:{ko:'구분 수정',en:'Edit category',vi:'Sửa nhóm'}[lang],exact:true}).click();
   dialog=page.getByRole('dialog');assert.equal(await dialog.locator('input').count(),3);
   for(let i=0;i<3;i++)await dialog.locator('input').nth(i).fill('Renamed');
   await dialog.locator('button').last().click();await dialog.waitFor({state:'hidden'});
@@ -50,7 +50,7 @@ try{
   await page.getByRole('button',{name:{ko:'삭제',en:'Delete',vi:'Xóa'}[lang],exact:true}).click();
   await page.getByRole('dialog').getByRole('button',{name:{ko:'삭제',en:'Delete',vi:'Xóa'}[lang],exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});await page.getByRole('navigation').getByRole('button',{name:'Customer 0',exact:true}).waitFor();assert.equal(roles.length,1);
-  await page.getByRole('button',{name:{ko:'세부 유형 등록',en:'Add subtype',vi:'Thêm loại chi tiết'}[lang],exact:true}).click();
+  await page.getByRole('button',{name:{ko:'세부 업종 등록',en:'Add industry',vi:'Thêm ngành nghề'}[lang],exact:true}).click();
   dialog=page.getByRole('dialog');assert.equal(await dialog.locator('input:not([aria-hidden="true"])').count(),3);
   for(let i=0;i<3;i++)await dialog.locator('input:not([aria-hidden="true"])').nth(i).fill('Subtype');
   await dialog.locator('button').last().click();await dialog.waitFor({state:'hidden'});

@@ -32,7 +32,7 @@ export default function ExpenseMasterSettings({ units = false }) {
   const path = units ? '/system-setting-defaults/expense-units' : '/system-setting-defaults/services';
   const tree = INDUSTRY_TREE_TEXT[languageCode] || INDUSTRY_TREE_TEXT.en;
   const rolePath='/system-setting-defaults/partner-roles';
-  const roleText=({ko:{add:'거래 구분 등록',edit:'거래 구분 수정'},en:{add:'Add transaction category',edit:'Edit transaction category'},vi:{add:'Thêm nhóm giao dịch',edit:'Sửa nhóm giao dịch'}})[languageCode]||{add:'Add transaction category',edit:'Edit transaction category'};
+  const roleText=({ko:{add:'구분 등록',edit:'구분 수정'},en:{add:'Add category',edit:'Edit category'},vi:{add:'Thêm nhóm',edit:'Sửa nhóm'}})[languageCode]||{add:'Add category',edit:'Edit category'};
   const [roleForm,setRoleForm]=useState(null),[roleError,setRoleError]=useState('');
   const saveRole=async()=>{
     setSaving(true);setRoleError('');

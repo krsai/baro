@@ -72,11 +72,12 @@ test('selectable industries require SYSTEM FKs and read current SYSTEM labels an
  assert.equal(partnerIndustryOption(row,'MATERIAL_SUPPLIER'),null);
  assert.equal(partnerIndustryOption({...row,systemDefault:{...source,isActive:false}},'PROCESS_OUTSOURCING'),null);
 });
-test('customer industry is optional, validated by source ID and customer role; retained inactive IDs survive',async()=>{
- const db={settingServiceDefault:{findFirst:async({where})=>where.id===3 && where.partnerRole.code==='CUSTOMER' && !where.isActive?{id:3}:null}};
+test('legacy industry validation accepts real industry groups without a customer role and retains inactive IDs',async()=>{
+ const db={settingServiceDefault:{findFirst:async({where})=>{assert.deepEqual(where.code,{not:'GENERAL'});assert.deepEqual(where.partnerRoleId,{not:null});assert.equal('partnerRole' in where,false);return where.id===4||where.id===3&&!where.isActive?{id:where.id}:null;}}};
  assert.equal(await validateCustomerIndustry(db,undefined),undefined);assert.equal(await validateCustomerIndustry(db,null),null);
  for(const value of ['Brand',0,-1,1.5,2])await assert.rejects(validateCustomerIndustry(db,value),/INVALID_CUSTOMER_INDUSTRY/);
  assert.equal(await validateCustomerIndustry(db,3,3),3);
+ assert.equal(await validateCustomerIndustry(db,4),4);
 });
 async function fixture(ambiguous=false){
  const db=new PGlite();

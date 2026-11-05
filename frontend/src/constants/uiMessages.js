@@ -113,7 +113,7 @@ export const UI_MESSAGES = {
     transactionMasters: { ko: '회계 코드 관리', en: 'Accounting codes', vi: 'Mã kế toán' },
     expenseUnits: { ko: '단위 관리', en: 'Units', vi: 'Quản lý đơn vị' },
     approvalInbox: { ko: '결재함', en: 'Approval inbox', vi: 'Hộp phê duyệt' },
-    partnerIndustries: { ko: '거래 구분·유형 관리', en: 'Transaction categories and subtypes', vi: 'Nhóm và loại giao dịch' },
+    partnerIndustries: { ko: '업종 구분 관리', en: 'Industry categories', vi: 'Phân nhóm ngành nghề' },
     accessPolicy: { ko: '접근 권한', en: 'Access Policy', vi: 'Chính sách truy cap' },
     attribute: { ko: '속성 관리', en: 'Attributes', vi: 'Thuoc tinh' },
     attributeColors: { ko: '색상 관리', en: 'Color Management', vi: 'Quản lý mau' },

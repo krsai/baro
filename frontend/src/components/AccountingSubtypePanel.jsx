@@ -5,9 +5,9 @@ import CloseIcon from '@mui/icons-material/Close';
 import {classificationName} from '../utils/partnerClassification.mjs';
 
 export const SUBTYPE_PICKER_TEXT={
- ko:{title:'세부 유형 선택',search:'세부 유형 검색',placeholder:'유형·거래 구분 검색',all:'전체',selected:'선택 항목',select:'선택',close:'선택창 닫기',empty:'일치하는 세부 유형이 없습니다.'},
- en:{title:'Select subtypes',search:'Search subtypes',placeholder:'Search subtypes or categories',all:'All',selected:'Selected',select:'Select',close:'Close subtype selection',empty:'No matching subtypes.'},
- vi:{title:'Chọn loại chi tiết',search:'Tìm loại chi tiết',placeholder:'Tìm loại chi tiết hoặc nhóm giao dịch',all:'Tất cả',selected:'Đã chọn',select:'Chọn',close:'Đóng chọn loại chi tiết',empty:'Không có loại chi tiết phù hợp.'},
+ ko:{title:'세부 업종 선택',search:'세부 업종 검색',placeholder:'업종·구분 검색',all:'전체',selected:'선택 항목',select:'선택',close:'선택창 닫기',empty:'일치하는 세부 업종이 없습니다.'},
+ en:{title:'Select industries',search:'Search industries',placeholder:'Search industries or categories',all:'All',selected:'Selected',select:'Select',close:'Close industry selection',empty:'No matching industries.'},
+ vi:{title:'Chọn ngành nghề',search:'Tìm ngành nghề',placeholder:'Tìm ngành nghề hoặc nhóm',all:'Tất cả',selected:'Đã chọn',select:'Chọn',close:'Đóng chọn ngành nghề',empty:'Không có ngành nghề phù hợp.'},
 };
 export default function AccountingSubtypePanel({options,roles,value,onChange,onClose,disabled,languageCode}){
  const t=SUBTYPE_PICKER_TEXT[languageCode]||SUBTYPE_PICKER_TEXT.en,name=row=>classificationName(row,languageCode);

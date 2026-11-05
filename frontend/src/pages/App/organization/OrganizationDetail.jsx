@@ -366,12 +366,14 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
 
+          <Grid size={{xs:12}}>
+            <CompanyIndustrySettings orgId={activeOrgId} languageCode={languageCode}/>
+          </Grid>
         </Grid>
       </EntityDetailSection>
 
 
 
-      <CompanyIndustrySettings orgId={activeOrgId} languageCode={languageCode}/>
       <EntityDetailSection title={localText.contactTitle}>
         <Grid container spacing={2}>
           <Grid size={{xs:12,md:4}}>

@@ -41,7 +41,7 @@ try{
   assert.deepEqual(errors,[]);
   if(screen==='partner'){assert.equal(await page.getByRole('switch').count(),0);await page.getByText('Check',{exact:true}).waitFor();await page.locator('input[name=code]').fill('NEW-001');await page.getByRole('button',{name:'Save',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('button.MuiButton-contained')?.disabled);assert.equal(update.code,'NEW-001');assert.equal('isActive' in update,false);assert.deepEqual(update.serviceTypeIds,[41]);}
   if(screen==='organization'){
-   await page.getByRole('heading',{name:'Company industries & billing',exact:true}).waitFor();
+   await page.getByTestId('company-industry-settings').waitFor();
    assert.equal(await page.locator('h1').count(),1,'Embedded business form must not repeat its page title');
    const content=await page.locator('.app-page-content').boundingBox();assert.equal(content.width,width-(width<600?32:48),'Business page fills the workspace');
   }

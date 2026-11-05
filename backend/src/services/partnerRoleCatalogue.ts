@@ -5,5 +5,5 @@ const query={orderBy:[{sortOrder:'asc'},{id:'asc'}],include:{_count:{select:{ind
 // visible if any real industry still uses it, even if that industry is inactive.
 export async function partnerRoleCatalogue(db:any){
  const rows=await db.partnerRole.findMany(query);
- return rows.filter((row:any)=>row.code!=='MANAGEMENT'||row._count?.industries!==0).map(({_count,...row}:any)=>row);
+ return rows.filter((row:any)=>!['MANAGEMENT','CUSTOMER'].includes(row.code)||row._count?.industries!==0).map(({_count,...row}:any)=>row);
 }

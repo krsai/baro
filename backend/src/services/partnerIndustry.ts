@@ -24,7 +24,7 @@ export async function validateCustomerIndustry(db: any, value: unknown, retained
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (!Number.isSafeInteger(value) || Number(value) <= 0) throw createHttpError(400,'INVALID_CUSTOMER_INDUSTRY');
-  const source = await db.settingServiceDefault.findFirst({where:{id:value,partnerRole:{code:'CUSTOMER'},...(value===retainedId?{}:{isActive:true})}});
+  const source = await db.settingServiceDefault.findFirst({where:{id:value,code:{not:'GENERAL'},partnerRoleId:{not:null},...(value===retainedId?{}:{isActive:true})}});
   if (!source) throw createHttpError(400,'INVALID_CUSTOMER_INDUSTRY');
   return Number(value);
 }
