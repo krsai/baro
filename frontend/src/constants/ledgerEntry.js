@@ -17,3 +17,6 @@ Object.assign(ledgerEntryText.ko,{netChange:'순증감',documentRemark:'REMARK'}
 Object.assign(ledgerEntryText.en,{netChange:'Net change',documentRemark:'REMARK'});
 Object.assign(ledgerEntryText.vi,{netChange:'Biến động ròng',documentRemark:'REMARK'});
 Object.assign(ledgerEntryText.vi,{codeDescription:'Diễn giải khoản mục',remark:'Ghi chú',evidenceKind:'Loại chứng từ'});
+Object.assign(ledgerEntryText.ko,{bankFeeLabel:'은행 수수료',removeFeeLabel:'은행 수수료 삭제'});
+Object.assign(ledgerEntryText.en,{bankFeeLabel:'Bank fee',removeFeeLabel:'Remove bank fee'});
+Object.assign(ledgerEntryText.vi,{bankFeeLabel:'Phí ngân hàng',removeFeeLabel:'Xóa phí ngân hàng'});
