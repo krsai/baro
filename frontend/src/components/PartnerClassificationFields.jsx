@@ -1,5 +1,6 @@
+import Autocomplete from './SearchableSelect';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Autocomplete,Button,Checkbox,Stack,TextField,Typography,createFilterOptions} from '@mui/material';
+import {Alert,Button,Checkbox,Stack,TextField,Typography,createFilterOptions} from '@mui/material';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {classificationName,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 
@@ -22,12 +23,12 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
  const change=(roleIds,industryIds)=>onChange({...value,roleIds,industryIds,industries:industries.filter(row=>industryIds.includes(row.id))});
  return <Stack spacing={2}>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{text.retry}</Button>}>{text.loadError}</Alert>}
-  <Autocomplete multiple disableCloseOnSelect options={roles} value={roles.filter(row=>value?.roleIds?.includes(row.id))} disabled={disabled||loading||error} loading={loading} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
+  <Autocomplete hideCode multiple disableCloseOnSelect options={roles} value={roles.filter(row=>value?.roleIds?.includes(row.id))} disabled={disabled||loading||error} loading={loading} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
    getOptionDisabled={row=>!industries.some(industry=>industry.partnerRoleId===row.id)}
    onChange={(_,selected)=>{const roleIds=selected.map(row=>row.id);change(roleIds,(value?.industryIds||[]).filter(id=>industries.some(row=>row.id===id&&roleIds.includes(row.partnerRoleId))));}}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
    renderInput={params=><TextField {...params} required size="small" label={text.category}/>}/>
-  {(value?.roleIds||[]).map(roleId=>{const role=roles.find(row=>row.id===roleId),choices=industries.filter(row=>row.partnerRoleId===roleId);return <Autocomplete key={roleId} multiple disableCloseOnSelect options={choices} value={choices.filter(row=>value.industryIds.includes(row.id))} disabled={disabled||loading||error} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
+  {(value?.roleIds||[]).map(roleId=>{const role=roles.find(row=>row.id===roleId),choices=industries.filter(row=>row.partnerRoleId===roleId);return <Autocomplete hideCode key={roleId} multiple disableCloseOnSelect options={choices} value={choices.filter(row=>value.industryIds.includes(row.id))} disabled={disabled||loading||error} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
    onChange={(_,selected)=>change(value.roleIds,[...value.industryIds.filter(id=>!choices.some(row=>row.id===id)),...selected.map(row=>row.id)])}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
    renderInput={params=><TextField {...params} required size="small" label={`${name(role)} > ${text.industry}`}/>}/>;})}

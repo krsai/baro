@@ -176,8 +176,9 @@ const baseTheme = createTheme({
     },
     MuiAutocomplete: {
       defaultProps: {
-        openOnFocus: true,
-        autoHighlight: true,
+        openOnFocus: false,
+        autoSelect: false,
+        autoHighlight: false,
         selectOnFocus: true,
         filterOptions: createAutocompleteFilterOptions(),
       },

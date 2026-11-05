@@ -1,8 +1,8 @@
+import Autocomplete from '../../components/SearchableSelect';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Alert,
-  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -15,8 +15,7 @@ import {
   Paper,
   Stack,
   TextField,
-  Typography,
-} from '@mui/material';
+  Typography} from '@mui/material';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import AddBusinessRoundedIcon from '@mui/icons-material/AddBusinessRounded';

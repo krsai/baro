@@ -1,8 +1,8 @@
+import Autocomplete from '../../../components/SearchableSelect';
 import PageContentStack from '../../../components/PageContentStack';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Autocomplete,
   Box,
   Button,
   Chip,
@@ -19,8 +19,7 @@ import {
   TableRow,
   TextField,
   Tooltip,
-  Typography,
-} from '@mui/material';
+  Typography} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import AppPageContainer from '../../../components/AppPageContainer';

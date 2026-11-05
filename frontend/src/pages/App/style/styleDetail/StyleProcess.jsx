@@ -1,3 +1,4 @@
+import Autocomplete from '../../../../components/SearchableSelect';
 import DeleteActionButton from '../../../../components/DeleteActionButton';
 import { getLabelPalette, labelChipSx } from '../../../../theme/labelPalette';
 import { usePageDialogs } from '../../../../components/PageDialogProvider';
@@ -6,7 +7,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useCallback, useDeferredValue } from 'react';
 import {
   Avatar,
-  Autocomplete,
   Box,
   Button,
   Checkbox,
@@ -25,8 +25,7 @@ import {
   TableRow,
   TextField,
   Tooltip,
-  Typography,
-} from '@mui/material';
+  Typography} from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';

@@ -1,3 +1,4 @@
+import Autocomplete from '../../../components/SearchableSelect';
 import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
 import {OrderColorDragHandle, OrderColorDropRow, OrderItemsTableContainer} from '../../../components/OrderColorDrag';
 import {reorderOrderColorItems} from '../../../utils/orderColorOrder.mjs';
@@ -26,7 +27,6 @@ import {
   Typography,
   IconButton,
   Alert,
-  Autocomplete,
   Stack,
   CircularProgress,
   Tooltip,
@@ -37,8 +37,7 @@ import {
   DialogContent,
   DialogActions,
   Chip,
-  GlobalStyles,
-} from '@mui/material';
+  GlobalStyles} from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
@@ -2397,7 +2396,7 @@ const OrderList = () => {
     window.requestAnimationFrame(() => {
       const activeElement = document.activeElement;
       if (rowElement && activeElement && rowElement.contains(activeElement)) return;
-      if (activeElement?.closest?.('.MuiAutocomplete-popper')) return;
+      if (activeElement?.closest?.('.MuiAutocomplete-popper, [data-lookup-dialog]')) return;
       if (activeElement?.closest?.('[role="listbox"]')) return;
       if (activeElement?.closest?.('[data-order-style-item-row="true"]')) return;
       sortStyleItemsForDisplay();

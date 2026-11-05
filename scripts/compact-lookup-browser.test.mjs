@@ -19,7 +19,7 @@ try{
   await page.route('**/entities/*/bank-accounts?*',route=>route.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{accounts:[]}}));
   await page.goto(`http://127.0.0.1:${port}/compact-lookup-acceptance.html?lang=${lang}`);
   const input=page.getByTestId('expense-payee-button').locator('input');await input.click();assert.equal(await page.getByRole('option').count(),0);
-  await input.fill('BARO');await page.waitForFunction(()=>window.selected?.id===1);await input.press('Enter');await page.waitForTimeout(200);assert.equal(await page.getByRole('dialog').count(),0);
+  await input.fill('BARO');assert.equal(await page.evaluate(()=>window.selected),null);await input.press('Enter');await page.waitForFunction(()=>window.selected?.id===1);await page.waitForTimeout(200);assert.equal(await page.getByRole('dialog').count(),0);
   await input.press('Tab');assert.equal(await page.getByRole('dialog').count(),0);
   await input.fill('BARO GARMENT');await input.press('Enter');assert.equal(await page.getByRole('dialog').count(),0);
   await input.fill('DUP');await input.press('Tab');await page.getByRole('dialog').waitFor();assert.equal(await page.evaluate(()=>window.selected),null);await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});

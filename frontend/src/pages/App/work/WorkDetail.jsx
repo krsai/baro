@@ -2829,7 +2829,7 @@ const WorkDetail = ({
         return;
       }
 
-      if (target.closest('.MuiAutocomplete-popper')) {
+      if (target.closest('.MuiAutocomplete-popper, [data-lookup-dialog]')) {
         return;
       }
 
