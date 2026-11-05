@@ -10,6 +10,7 @@ test('self industries, explicit billing, local classifications and directional c
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,admin=s.people.admin.id;
   const local=await db.outsourcingServiceType.findUnique({where:{id:s.code.serviceTypeId}}),industry=await db.settingServiceDefault.findUnique({where:{id:local.systemDefaultId}});
+  const category=await db.partnerRole.findUnique({where:{id:industry.partnerRoleId}});assert.equal(category.code,'MATERIAL_SUPPLIER');assert.equal(category.nameKo,'유통');assert.equal(category.nameEn,'Distribution');assert.equal(category.nameVi,'Phân phối');
   await db.accountingCodeIndustry.create({data:{baseId:s.code.baseId,systemIndustryId:industry.id}});
   const own={revision:0,roleIds:[industry.partnerRoleId],industryIds:[industry.id]};
   assert.equal((await readCompanyIndustries(db,org,admin)).classification.explicit,false);

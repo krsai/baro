@@ -33,11 +33,12 @@ try{
    return r.fulfill({headers,json:url.pathname==='/partner-directory'?{roles,rows}:url.pathname==='/partner-classifications/options'?{roles,industries}:url.pathname.startsWith('/partner-classifications/')?rows[0].classification:{accounts:[],currencies:[]}});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-classification-acceptance.html`);
-  const nav=page.getByRole('navigation'),roleName=row=>row[{ko:'nameKo',vi:'nameVi',en:'nameEn'}[lang]];
-  await nav.getByRole('button',{name:new RegExp('^'+relationshipText.SUPPLIER+' ')}).click();assert.equal(await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).count(),1);
-  await nav.getByRole('button',{name:new RegExp('^'+relationshipText.CUSTOMER+' ')}).click();await page.getByRole('button',{name:'Customer A',exact:true}).click();assert.equal(await page.evaluate(()=>window.lastPath),'/customer/8');
+  await page.getByRole('button',{name:'Customer A',exact:true}).waitFor();
+  assert.equal(await page.getByRole('navigation').count(),0);const roleName=row=>row[{ko:'nameKo',vi:'nameVi',en:'nameEn'}[lang]];
+  assert.equal(await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).count(),1);
+  await page.getByRole('button',{name:'Customer A',exact:true}).click();assert.equal(await page.evaluate(()=>window.lastPath),'/customer/8');
   await page.getByRole('button',{name:lang==='ko'?'단가':lang==='vi'?'Đơn giá':'Pricing',exact:true}).click();assert.equal(await page.evaluate(()=>window.lastPath),'/customer-pricing?customerId=8');
-  await nav.getByRole('button',{name:new RegExp('^'+({ko:'전체 거래처',en:'All partners',vi:'Tất cả đối tác'})[lang]+' ')}).click();
+
   await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).click();
   const dialog=page.getByRole('dialog');await dialog.getByText(text.legacy+': GENERAL',{exact:true}).waitFor();
   const save=dialog.getByRole('button',{name:lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',exact:true});assert.equal(await save.isDisabled(),true);
@@ -51,8 +52,8 @@ try{
   await dialog.getByRole('combobox',{name:localized(roles[1])+' > '+text.industry,exact:true}).click();assert.equal(await page.getByRole('option',{name:/GENERAL|^확인$|^Check$/}).count(),0);await page.keyboard.press('Escape');
   for(const width of [768,390]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await save.click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes[0].classification,{revision:0,roleIds:[2,3],industryIds:[10,11,12]});
-  await page.setViewportSize({width:1440,height:1000});await nav.getByRole('button',{name:new RegExp('^'+relationshipText.SUPPLIER+' ')}).click();await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).waitFor();
-  await page.reload();await nav.getByRole('button',{name:new RegExp('^'+relationshipText.SUPPLIER+' ')}).click();await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).click();await dialog.getByRole('combobox',{name:localized(roles[2])+' > '+text.industry,exact:true}).waitFor();assert.equal(await save.isEnabled(),true);
+  await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).waitFor();
+  await page.reload();await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).click();await dialog.getByRole('combobox',{name:localized(roles[2])+' > '+text.industry,exact:true}).waitFor();assert.equal(await save.isEnabled(),true);
   await dialog.getByRole('button',{name:lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',exact:true}).click();
   await page.getByRole('button',{name:lang==='ko'?'거래처 등록':lang==='vi'?'Thêm đối tác':'Add partner',exact:true}).click();
   assert.equal(await dialog.locator('.MuiChip-root').count(),0);
@@ -60,9 +61,8 @@ try{
   await choose(text.category,localized(roles[0]));await choose(localized(roles[0])+' > '+text.industry,localized(industries[3]));
   await choose(text.category,localized(roles[1]));
   await choose(localized(roles[1])+' > '+text.industry,localized(industries[0]));
-  await dialog.getByRole('combobox',{name:relationshipText.relationship,exact:false}).click();await page.getByRole('option',{name:relationshipText.CUSTOMER,exact:true}).click();
   await dialog.getByRole('button',{name:lang==='ko'?'등록':lang==='vi'?'Thêm':'Add',exact:true}).click();await dialog.waitFor({state:'hidden'});
-  assert.equal(writePaths.at(-1),'/customers');assert.equal(writes.at(-1).name,'Dual partner');assert.deepEqual(new Set(writes.at(-1).classification.roleIds),new Set([1,2]));assert.ok(!('type'in writes.at(-1)));
+  assert.equal(writePaths.at(-1),'/business-partners');assert.equal(writes.at(-1).name,'Dual partner');assert.deepEqual(new Set(writes.at(-1).classification.roleIds),new Set([1,2]));assert.ok('type'in writes.at(-1));
   await page.getByRole('button',{name:lang==='ko'?'거래처 등록':lang==='vi'?'Thêm đối tác':'Add partner',exact:true}).click();
   await dialog.locator('input[name="name"]').fill('Supplier with customer taxonomy');
   await choose(text.category,localized(roles[0]));await choose(localized(roles[0])+' > '+text.industry,localized(industries[3]));
@@ -73,5 +73,5 @@ try{
   await customerChoose(text.category,localized(roles[0]));await customerChoose(localized(roles[0])+' > '+text.industry,localized(industries[3]));await customerChoose(text.category,localized(roles[1]));await customerChoose(localized(roles[1])+' > '+text.industry,localized(industries[0]));
   const payload=JSON.parse(await page.getByTestId('payload').innerText());assert.deepEqual(payload.classification,{revision:0,roleIds:[1,2],industryIds:[13,10]});assert.ok(!('systemIndustryId'in payload));assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: relationship filters, independent industries, explicit customer creation and no customer inference from taxonomy in ko/en/vi mobile.');
+ console.log('PASS: one partner list, no relationship selector, independent industries and existing transaction links in ko/en/vi mobile.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

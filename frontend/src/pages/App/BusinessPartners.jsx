@@ -43,7 +43,7 @@ const DELETE_TEXT = {
   vi: { remove: 'Xóa', blocked: 'Không thể xóa đối tác đã được sử dụng. Có thể chỉnh sửa hoặc ngừng sử dụng.', confirm: 'Xóa đối tác này?', cancel: 'Hủy', error: 'Không thể xóa đối tác.', help: 'Thông tin đối tác cập nhật được hiển thị trong hồ sơ liên kết. Thông tin kiểm toán ban đầu và chứng từ đã phát hành được giữ nguyên.' },
 };
 
-export default function BusinessPartners({ type, embedded=false,unified=false,category=null,relationship=null,onDirectoryLoaded }) {
+export default function BusinessPartners({ type, embedded=false,unified=false,category=null,onDirectoryLoaded }) {
   const auth=useAuth();
   const { activeOrgId, activeOrgRole, accessProfile } = auth;
   const {navigateToPath}=useAppActions();
@@ -109,7 +109,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     } finally { setDeleting(false); }
   };
   const serviceName = useCallback(item=>partnerIndustryLabel(item,languageCode),[languageCode]);
-  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))&&(!relationship||partner.relationshipRoles?.includes(relationship))).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:partner.classification?[(partner.relationshipRoles||[]).map(role=>(companyIndustryText[languageCode]||companyIndustryText.en)[role]).join(' / '),partner.officialClassification?((companyIndustryText[languageCode]||companyIndustryText.en).official+': '+classificationSummary(partner.officialClassification,languageCode)):null,classificationSummary(partner.classification,languageCode)].filter(Boolean).join(' ? ')||(partner.classification.legacyGeneral?.length?(PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en).legacy:''):[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' · '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address,partner.classification?.legacyGeneral?.length?'GENERAL':null].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category,relationship]);
+  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:partner.classification?[partner.officialClassification?((companyIndustryText[languageCode]||companyIndustryText.en).official+': '+classificationSummary(partner.officialClassification,languageCode)):null,classificationSummary(partner.classification,languageCode)].filter(Boolean).join(' \u00b7 ')||(partner.classification.legacyGeneral?.length?(PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en).legacy:''):[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' · '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address,partner.classification?.legacyGeneral?.length?'GENERAL':null].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category]);
   const openHistory = async (partner) => {
     setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);
     try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }
@@ -122,8 +122,6 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     >
       {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}
       <BusinessPartnerDialog
-        allowCustomerCreation={unified}
-        initialRelation={relationship||'SUPPLIER'}
         open={createOpen || Boolean(editingPartner)}
         onClose={() => { setCreateOpen(false); setEditingPartner(null); }}
         onSaved={loadPartners}

@@ -1,4 +1,3 @@
-import {companyIndustryText} from '../constants/companyIndustries';
 import PartnerClassificationFields from './PartnerClassificationFields';
 import {CompanyConnectionField} from './CompanyConnections';
 import {emptyPartnerClassification,classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
@@ -10,7 +9,7 @@ import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack, TextField, MenuItem,
+  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
@@ -24,7 +23,7 @@ const TEXT = {
     cancel: '취소', save: '등록', saveEdit: '저장',
     required: '업체명을 입력해 주세요.',
     error: '거래처를 등록하지 못했습니다.', errorEdit: '거래처를 수정하지 못했습니다.',
-    outsourcing: '외주 업체', supplier: '공급 업체',
+    outsourcing: '외주 업체', supplier: '유통',
   },
   en: {
     titleCreate: 'Add Partner', titleEdit: 'Edit Partner',
@@ -32,7 +31,7 @@ const TEXT = {
     cancel: 'Cancel', save: 'Add', saveEdit: 'Save',
     required: 'Enter a company name.',
     error: 'Failed to add the partner.', errorEdit: 'Failed to update the partner.',
-    outsourcing: 'Outsourcing partner', supplier: 'Supplier',
+    outsourcing: 'Outsourcing partner', supplier: 'Distribution',
   },
   vi: {
     titleCreate: 'Thêm đối tác', titleEdit: 'Sửa đối tác',
@@ -40,7 +39,7 @@ const TEXT = {
     cancel: 'Hủy', save: 'Thêm', saveEdit: 'Lưu',
     required: 'Vui lòng nhập tên công ty.',
     error: 'Không thể thêm đối tác.', errorEdit: 'Không thể cập nhật đối tác.',
-    outsourcing: 'Đối tác gia công', supplier: 'Nhà cung cấp',
+    outsourcing: 'Đối tác gia công', supplier: 'Phân phối',
   },
 };
 
@@ -75,14 +74,11 @@ export default function BusinessPartnerDialog({
   partner = null,
   title,
   onAccountsChange,
-  allowCustomerCreation = false,
-  initialRelation = 'SUPPLIER',
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const isEdit = Boolean(partner?.id);
-  const relationshipText=companyIndustryText[languageCode]||companyIndustryText.en;
-  const [form, setForm] = useState(() => ({...buildFormFromPartner(partner, initialType),relationship:initialRelation}));
+  const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
@@ -90,7 +86,7 @@ export default function BusinessPartnerDialog({
 
   useEffect(() => {
     if (open) {
-      setForm({...buildFormFromPartner(partner, initialType),relationship:initialRelation});
+      setForm(buildFormFromPartner(partner, initialType));
       setError('');
     }
   }, [initialType, open, partner]);
@@ -118,14 +114,10 @@ export default function BusinessPartnerDialog({
         ...(form.companyConnection?{companyConnection:form.companyConnection}:{}),
 
       };
-      const creatingCustomer=allowCustomerCreation&&!isEdit&&form.relationship==='CUSTOMER';
-      if(creatingCustomer){
-        body.manager=body.contactName;body.phoneNumber=body.contactPhone;delete body.type;
-      }
       const savedPartner = await requestJSON(
         isEdit
           ? `/business-partners/${partner.id}${buildQueryString({ orgId: activeOrgId })}`
-          : `${creatingCustomer?'/customers':'/business-partners'}${buildQueryString({ orgId: activeOrgId })}`,
+          : `/business-partners${buildQueryString({ orgId: activeOrgId })}`,
         {
           method: isEdit ? 'PUT' : 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -152,7 +144,6 @@ export default function BusinessPartnerDialog({
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
-          {allowCustomerCreation&&!isEdit&&<TextField select id="partner-relationship" size="small" label={relationshipText.relationship} value={form.relationship} disabled={saving} onChange={e=>setForm(current=>({...current,relationship:e.target.value}))}>{['CUSTOMER','SUPPLIER'].map(role=><MenuItem key={role} value={role}>{relationshipText[role]}</MenuItem>)}</TextField>}
           <PartnerClassificationFields value={form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded} languageCode={languageCode} onReady={setOptionsReady}/>
 
           </Stack></EntityDetailSection>

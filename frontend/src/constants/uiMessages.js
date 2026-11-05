@@ -73,7 +73,7 @@ export const UI_MESSAGES = {
     businessPartnerManagement: { ko: '거래처 관리', en: 'Business Partners', vi: 'Quản lý đối tác' },
     outsourcingPartner: { ko: '외주 업체', en: 'Outsourcing Partner', vi: 'Đối tác gia công' },
     logisticsPartner: {ko:'물류 업체',en:'Logistics provider',vi:'Đơn vị logistics'},
-    materialSupplier: { ko: '공급 업체', en: 'Material Supplier', vi: 'Nhà cung cấp vật tư' },
+    materialSupplier: { ko: '유통', en: 'Distribution', vi: 'Phân phối' },
     style: { ko: '스타일', en: 'Styles', vi: 'Style' },
     production: { ko: '생산 관리', en: 'Production', vi: 'Sản xuất' },
     assignment: { ko: '배정', en: 'Assign', vi: 'Phân công' },
