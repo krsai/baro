@@ -31,7 +31,7 @@ try{
   page.on('request',r=>{if(/\/(orders|assignment-plans|work-logs|production-summary)(\?|$)/.test(r.url()))requests.push('PRODUCTION');});
   await page.clock.install({time:new Date('2026-11-01T12:00:00+07:00')});
   await page.goto(`http://127.0.0.1:${port}/service-company-acceptance.html?`+new URLSearchParams({screen,lang}));
-  if(screen==='dashboard'){await page.getByTestId('approval-dashboard').waitFor();await page.getByTestId('ledger-changes-dashboard').waitFor();}
+  if(screen==='dashboard'){await page.getByTestId('approval-dashboard').waitFor();assert.equal(await page.getByTestId('ledger-changes-dashboard').count(),0);assert.ok(!requests.includes('bank-ledger/changes'));}
   if(screen==='workplace'){
    await page.getByText('DEX LOGIS',{exact:true}).waitFor();await page.getByRole('button',{name:t.add,exact:true}).click();const dialog=page.getByRole('dialog');
    await dialog.getByLabel(t.name,{exact:false}).fill('DEX Office');await dialog.getByLabel(t.code,{exact:false}).fill('DN');await dialog.getByLabel(t.start,{exact:false}).fill('2026-11-01');await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes[0].managementStartDate,'2026-11-01');assert.ok(!('wagePerSecond' in writes[0]));

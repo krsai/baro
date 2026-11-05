@@ -1,6 +1,5 @@
 import ServiceDashboard from './ServiceDashboard';
 import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
-import LedgerChangesDashboardCard from '../../components/LedgerChangesDashboardCard';
 import PageContentStack from '../../components/PageContentStack';
 import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
 import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
@@ -855,7 +854,6 @@ const WorkspaceDashboard = () => {
 
 
 
-        {!isSystemProfile&&['ADMIN','ACCOUNTANT'].includes(activeProfile?.orgRole)&&canAccessPath('/bank-ledger',authState)&&<LedgerChangesDashboardCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode}/>}
       </PageContentStack>
       <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
       {recordAlert && <QuantityReviewDrawer externalId={recordAlert.id} orgId={activeOrgId} languageCode={languageCode}
