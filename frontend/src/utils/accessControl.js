@@ -61,7 +61,7 @@ const normalizePathname = (value) => {
   if (!raw) return '/';
   const withoutHash = raw.split('#')[0];
   const pathname = withoutHash.split('?')[0];
-  return pathname || '/';
+  return pathname.toLowerCase() || '/';
 };
 
 const hasOrgRole = (context, ...roles) =>
@@ -114,6 +114,7 @@ const buildAccessContext = ({
     orgType,
     orgRole,
     accessPolicy: sanitizeRoleAccessPolicy(baseProfile?.accessPolicy),
+    industryMenuFeatures: baseProfile?.industryMenuFeatures,
   };
 };
 
@@ -136,6 +137,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     );
   }
 
+  if (Array.isArray(context.industryMenuFeatures) && !context.industryMenuFeatures.includes(featureKey) && featureKey !== FEATURE_KEYS.PROFILE) return false;
   const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND, ORG_TYPES.SERVICE);
   const featureSet = resolveFeatureSetForContext(context);
 

@@ -24,7 +24,7 @@ test('service company common functions and hard production boundary agree on cli
 test('only the complete historical banking starter policy upgrades; saved custom denials survive',()=>{
  const old={ADMIN:['BANK_LEDGER'],ACCOUNTANT:['BANK_LEDGER'],OPERATOR:[],WORKER:[]};
  assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:old}).SERVICE,SERVICE_ROLE_DEFAULTS);
- const custom={...old,ACCOUNTANT:[]};assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:custom}).SERVICE,{...custom,ADMIN:['BANK_LEDGER','ACCOUNT_OVERVIEW']});
+ const custom={...old,ACCOUNTANT:[]};assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:custom}).SERVICE,{...custom,ADMIN:['BANK_LEDGER','ACCOUNT_OVERVIEW','FREIGHT']});
  assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:ROLE_ACCESS_POLICY_SCHEMA_VERSION,SERVICE:old}).SERVICE,old);
  assert.equal(workplaceText('공장 선택','SERVICE'),'사업장 선택');assert.equal(workplaceText('Select Factory','SERVICE'),'Select Workplace');assert.equal(workplaceText('Chọn nhà máy','SERVICE'),'Chọn nơi làm việc');assert.equal(workplaceText('Factory','MANUFACTURER'),'Factory');
 });

@@ -192,6 +192,7 @@ const normalizeAccessProfile = (profile) => {
     factoryId,
     subscription,
     accessPolicy,
+    industryMenuFeatures: profile.industryMenuFeatures === undefined ? undefined : Array.isArray(profile.industryMenuFeatures) ? profile.industryMenuFeatures.filter(value => typeof value === 'string') : [],
     subscriptionStatus,
     subscriptionBlocked,
     systemAdminContactEmail,
@@ -213,6 +214,18 @@ export const AuthProvider = ({ children }) => {
   const [workspaces, setWorkspaces] = useState([]);
   const [canCreateCompany, setCanCreateCompany] = useState(false);
   const [workspaceReload, setWorkspaceReload] = useState(0);
+  useEffect(() => {
+    const refresh = () => setWorkspaceReload(value => value + 1);
+    const changed = event => {
+      if (event.detail?.source === 'organization-profile') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('baro:workspace-data-changed', changed);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('baro:workspace-data-changed', changed);
+    };
+  }, []);
   const [accessLoading, setAccessLoading] = useState(false);
   const [accessError, setAccessError] = useState('');
   const [accessLookupEmail, setAccessLookupEmail] = useState('');

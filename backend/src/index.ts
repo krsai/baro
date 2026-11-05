@@ -1,3 +1,4 @@
+import {registerIndustryMenuRoutes,industryMenuMiddleware,companyIndustryMenuFeatures} from './services/industryMenuPolicy';
 import {registerCompanyIndustryRoutes} from './services/companyIndustries';
 import {registerApprovalReviewRoutes} from './services/approvalReview';
 import {registerFreightRoutes} from './services/freightOperations';
@@ -191,6 +192,8 @@ app.use(async (req, res, next) => {
     });
   }
 });
+
+app.use(industryMenuMiddleware(prisma,requireOrgRole));
 
 const WORK_LOG_RECORD_INCLUDE = WORK_RECORD_WITH_REFS_INCLUDE;
 const WORK_LOG_DETAIL_RECORD_SELECT = WORK_RECORD_WITH_REFS_INCLUDE;
@@ -19045,7 +19048,7 @@ app.get("/auth/context", async (req, res) => {
     const organization=await attachOrganizationSubscription(company.organization);
     return res.json({email:requesterEmail,entryType:'ORG',systemRole:'USER',orgId:organization.id,orgName:organization.name,orgType:organization.type,
       orgRole:company.orgRole,employeeName:company.employeeName,factoryId:company.factoryId,
-      subscription:buildSubscriptionResponse(organization.subscription),accessPolicy:roleAccessPolicy,systemAdminContactEmail:getSystemAdminContactEmail()});
+      subscription:buildSubscriptionResponse(organization.subscription),accessPolicy:roleAccessPolicy,industryMenuFeatures:await companyIndustryMenuFeatures(prisma,organization.id,organization.type),systemAdminContactEmail:getSystemAdminContactEmail()});
   }
 
   const employee = await prisma.employee.findFirst({
@@ -19105,6 +19108,7 @@ app.get("/auth/context", async (req, res) => {
     employeeName: employee.name ?? null,
     subscription: buildSubscriptionResponse(organization?.subscription),
     accessPolicy: roleAccessPolicy,
+    industryMenuFeatures: await companyIndustryMenuFeatures(prisma,organization.id,organization.type),
     systemAdminContactEmail: getSystemAdminContactEmail(),
   });
 });
@@ -27648,6 +27652,7 @@ registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReque
 }});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
+registerIndustryMenuRoutes(app,prisma,{requireSystemAdmin});
 registerCompanyIndustryRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalReviewRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerExpenseDeletionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
