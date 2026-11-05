@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {ACCOUNTING_CODE_TEXT} from '../frontend/src/constants/accountingCode.js';
+import {EXPENSE_LOOKUP_TEXT} from '../frontend/src/constants/expenseLookup.js';
+const fixture=path.resolve('frontend/selection-input-acceptance.html'),port=43451;assert.ok(!existsSync(fixture));
+writeFileSync(fixture,`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0"><div id="root"></div><script type="module">
+import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Stack,TextField,Autocomplete,Button} from '@mui/material';import theme from '/src/theme';import Accounting from '/src/components/AccountingCodeField';
+const codes=[{id:1,code:'GENE',nameKo:'일반 비용',nameEn:'General expense',nameVi:'Chi phí chung',isActive:true,cashDirection:'BOTH'},{id:2,code:'FRTE',nameKo:'운임',nameEn:'Freight',nameVi:'Cước vận chuyển',isActive:true,cashDirection:'OUT'},{id:3,code:'RECE',nameEn:'Receipt only',isActive:true,cashDirection:'IN'},{id:4,code:'OLDE',nameEn:'Inactive',isActive:false}];
+function App(){const[id,setId]=React.useState(null),[disabled,setDisabled]=React.useState(false);return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Stack,{spacing:2,sx:{p:2}},React.createElement(TextField,{label:'Before'}),React.createElement('div',{'data-testid':'code',style:{width:142}},React.createElement(Accounting,{codes,value:id,onChange:setId,languageCode:new URLSearchParams(location.search).get('lang'),disabled})),React.createElement(TextField,{label:'After'}),React.createElement(Autocomplete,{options:['Alpha','Beta'],renderInput:p=>React.createElement(TextField,{...p,label:'Common select'})}),React.createElement(Button,{onClick:()=>setId(null)},'Reset'),React.createElement(Button,{onClick:()=>setDisabled(v=>!v)},'Disable'),React.createElement('output',{'data-testid':'selected'},String(id))));}createRoot(document.getElementById('root')).render(React.createElement(App));</script></body></html>`);
+const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore'});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/selection-input-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+ browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+  const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(`http://127.0.0.1:${port}/selection-input-acceptance.html?lang=${lang}`);
+  const input=page.getByTestId('code').getByRole('combobox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true}),selected=page.getByTestId('selected');
+  await page.getByRole('textbox',{name:'Before',exact:true}).focus();await page.keyboard.press('Tab');await page.getByRole('listbox').waitFor();assert.equal(await input.evaluate(e=>e===document.activeElement),true);assert.equal(await page.getByRole('option').count(),2);const popup=await page.getByRole('listbox').boundingBox();assert.ok(popup.width>=Math.min(340,width-32));assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.equal(await page.getByRole('dialog').count(),0);
+  await input.press('Tab');assert.equal(await page.getByRole('textbox',{name:'After',exact:true}).evaluate(e=>e===document.activeElement),true);assert.equal(await selected.textContent(),'null');assert.equal(await page.getByRole('dialog').count(),0);
+  await input.focus();await input.fill('frte');await input.press('Enter');assert.equal(await selected.textContent(),'2');assert.equal(await input.inputValue(),'FRTE');
+  await input.fill('not-a-code');await input.press('Tab');assert.equal(await selected.textContent(),'null');assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('textbox',{name:'After',exact:true}).evaluate(e=>e===document.activeElement),true);
+  await input.focus();await input.fill('GEN');await input.evaluate(e=>e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',isComposing:true,keyCode:229,which:229,bubbles:true})));assert.equal(await selected.textContent(),'null');await input.press('Enter');assert.equal(await selected.textContent(),'1');
+  await input.focus();await input.fill(lang==='ko'?'일반':lang==='vi'?'chi phi':'General');await page.getByRole('option',{name:/GENE/}).waitFor();await input.press('Enter');assert.equal(await selected.textContent(),'1');
+  await input.press('Escape');await input.press('Tab');assert.equal(await page.getByRole('textbox',{name:'After',exact:true}).evaluate(e=>e===document.activeElement),true);await page.keyboard.press('Shift+Tab');assert.equal(await input.evaluate(e=>e===document.activeElement),true);
+  await input.press('F2');const dialog=page.getByRole('dialog');await dialog.getByRole('textbox',{name:EXPENSE_LOOKUP_TEXT[lang].keyword,exact:false}).fill('FRTE');await dialog.getByRole('button',{name:EXPENSE_LOOKUP_TEXT[lang].select,exact:true}).click();assert.equal(await selected.textContent(),'2');await dialog.waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Reset',exact:true}).click();assert.equal(await input.inputValue(),'');assert.equal(await selected.textContent(),'null');
+  const common=page.getByRole('combobox',{name:'Common select',exact:true});await common.focus();await page.getByRole('option',{name:'Alpha',exact:true}).waitFor();await common.press('Enter');assert.equal(await common.inputValue(),'Alpha');
+  await page.getByRole('button',{name:'Disable',exact:true}).click();assert.equal(await input.isDisabled(),true);assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);console.log('PASS shared focus / search / Enter / Tab / F2 '+lang+' '+width);await page.close();
+ }
+}finally{await browser?.close();server.kill();unlinkSync(fixture);}

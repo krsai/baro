@@ -49,7 +49,7 @@ try{
    if(index)await page.getByRole('button',{name:w.add,exact:true}).click();
    await row(index).getByLabel(l.evidenceKind,{exact:true}).click();await page.getByRole('option',{name:l.EXPENSE,exact:true}).click();
    await row(index).getByRole('button',{name:l.link,exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByRole('textbox',{name:l.search,exact:true}).fill('EXP');await dialog.getByRole('button',{name:l.select,exact:true}).click();
-   await row(index).getByLabel(t.amount).fill('100');const input=row(index).getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true});await input.fill('GENE');await input.press('Tab');await row(index).getByLabel(l.remark).fill('Expense payment');
+   await row(index).getByLabel(t.amount).fill('100');const input=row(index).getByRole('combobox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true});await input.fill('GENE');await input.press('Tab');await row(index).getByLabel(l.remark).fill('Expense payment');
   }
   await page.getByRole('button',{name:t.save,exact:true}).click();
   await page.getByRole('alert').filter({hasText:t.errors.LEDGER_EXPENSE_NOT_APPROVED}).waitFor();

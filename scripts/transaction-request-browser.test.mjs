@@ -46,9 +46,8 @@ try {
     const outlineSizes=await page.locator('.MuiOutlinedInput-root fieldset, .MuiPickersOutlinedInput-root fieldset').evaluateAll(els=>els.map(el=>el.getBoundingClientRect().height));
     assert.ok(Math.max(...outlineSizes)-Math.min(...outlineSizes)<=1,'Visible field borders share the same height: '+JSON.stringify(outlineSizes));
     assert.equal(await page.getByRole('columnheader',{name:l.useDate,exact:true}).count(),0);
-    await page.getByRole('textbox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BT':'TRK');
-    await page.getByRole('textbox',{name:labels.code,exact:false}).press('Enter');
-    await page.getByRole('dialog').getByRole('button',{name:EXPENSE_LOOKUP_TEXT[lang].select,exact:true}).click();
+    await page.getByRole('combobox',{name:labels.code,exact:false}).fill(kind==='PROCESS'?'BT':'TRK');
+    await page.getByRole('combobox',{name:labels.code,exact:false}).press('Enter');
     await page.getByRole('textbox',{name:labels.partner,exact:false}).click();await page.getByRole('dialog').getByRole('button',{name:EXPENSE_LOOKUP_TEXT[lang].select,exact:true}).click();
     await page.getByRole('alert').filter({hasText:lang==='ko'?'지급 대상':lang==='en'?'payee':'đối tác'}).waitFor();
     assert.equal(await page.getByLabel('VAT (%)',{exact:true}).isDisabled(),kind==='PROCESS');
@@ -77,7 +76,7 @@ try {
       assert.equal(await firstDelete.isDisabled(),true);assert.equal(await secondDelete.isEnabled(),true);
       assert.equal(await secondDelete.evaluate(el=>getComputedStyle(el).color),'rgb(196, 50, 50)');
       assert.notEqual(await firstDelete.evaluate(el=>getComputedStyle(el).color),await secondDelete.evaluate(el=>getComputedStyle(el).color));
-      await second.getByRole('textbox',{name:labels.code,exact:false}).fill('TRKV');await second.getByRole('textbox',{name:labels.code,exact:false}).press('Tab');
+      await second.getByRole('combobox',{name:labels.code,exact:false}).fill('TRKV');await second.getByRole('combobox',{name:labels.code,exact:false}).press('Tab');
       await second.getByLabel(labels.price,{exact:false}).fill('50000');await second.getByLabel(labels.qty,{exact:false}).fill('1');
       await page.getByRole('button',{name:l.add,exact:true}).click();await page.getByTestId('expense-line').nth(2).getByRole('button',{name:l.remove,exact:true}).click();
       assert.equal(await page.getByTestId('expense-line').count(),2);
@@ -85,7 +84,7 @@ try {
       const first=page.getByTestId('expense-line').nth(0);
       await first.getByLabel(l.description,{exact:false}).fill('First expense');
       await second.getByLabel(l.description,{exact:false}).fill('Second expense');
-      assert.ok((await first.getByRole('textbox',{name:labels.code,exact:false}).boundingBox()).width<=128);
+      assert.ok((await first.getByRole('combobox',{name:labels.code,exact:false}).boundingBox()).width<=128);
       const secondHandle=second.getByRole('button',{name:l.reorder+' 2',exact:true});
       await secondHandle.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowUp');await page.keyboard.press('Space');
       await page.waitForFunction(()=>document.querySelector('[data-testid="expense-line"] input')!=null);

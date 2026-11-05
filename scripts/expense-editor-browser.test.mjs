@@ -1,3 +1,4 @@
+const lookupOnly=process.argv.includes('--lookup-only')||process.env.EXPENSE_EDITOR_LOOKUP_ONLY==='1';
 import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -20,7 +21,7 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const mode of (process.env.EXPENSE_EDITOR_MODES?.split(',')||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS']))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+  for(const mode of (lookupOnly?['GENERAL','PROCESS']:(process.env.EXPENSE_EDITOR_MODES?.split(',')||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
     console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     let releaseDocument,releaseCatalog,settingsReads=0;
@@ -152,12 +153,12 @@ try {
       assert.equal(await page.getByLabel('REMARK',{exact:true}).inputValue(),'Conflicting edit');
       assert.deepEqual(errors,[]);await page.close();continue;
     }
+    if(locked&&lookupOnly){assert.equal(await page.getByTestId('expense-line').getByRole('combobox',{name:l.code,exact:false}).isDisabled(),true);assert.deepEqual(errors,[]);await page.close();continue;}
     if(locked){assert.equal(await page.getByLabel('REMARK',{exact:false}).isDisabled(),true);assert.equal(await page.getByTestId('expense-line').getByLabel(l.price,{exact:false}).isDisabled(),true);}
     else {
-      const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});
+      const code=page.getByTestId('expense-line').getByRole('combobox',{name:l.code,exact:false});
       await code.fill('BT');
-      await code.press('Tab');
-      await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
+      await code.press('Enter');
       assert.equal(await code.inputValue(),'BTHE');
       await code.fill('');
       await code.locator('..').getByRole('button',{name:new RegExp(lookup.search)}).click();
@@ -172,6 +173,7 @@ try {
       // A unique exact code resolves directly; no legacy work group is requested.
       if(await page.getByRole('dialog').count())await page.getByRole('dialog').getByRole('button',{name:lookup.select,exact:true}).click();
       assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));
+      if(lookupOnly){assert.deepEqual(errors,[]);console.log('PASS actual expense code focus/dropdown/F2 '+mode+' '+lang);await page.close();continue;}
       if(mode==='BANKLESS'){
         const b=ENTITY_TEXT[lang];await page.getByLabel('REMARK',{exact:true}).fill('Keep request while adding account');
         await page.getByRole('button',{name:h.choosePayee,exact:true}).click();const picker=page.getByRole('dialog');await picker.getByText(h.noAccount,{exact:true}).waitFor();assert.equal(await picker.getByRole('button',{name:h.apply,exact:true}).isDisabled(),true);
@@ -223,5 +225,5 @@ try {
     }
     assert.deepEqual(requests,[]);assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('Expense edit form passed: ko/en/vi, selected source values, immutable production FKs, PUT edits, automatic payee information, one-time save navigation, inactive-save completion and final-lock read-only.');
+  console.log(lookupOnly?'Expense lookup UI passed: ko/en/vi, general/process and disabled states.':'Expense edit form passed: ko/en/vi, selected source values, immutable production FKs, PUT edits, automatic payee information, one-time save navigation, inactive-save completion and final-lock read-only.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

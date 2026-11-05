@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:selection-input": "node scripts/selection-input-browser.test.mjs && node scripts/ledger-approval-row-browser.test.mjs && node scripts/expense-editor-browser.test.mjs --lookup-only",
     "test:company-industries": "npm --prefix backend run build && node --test scripts/company-industries.test.mjs scripts/partner-classification.test.mjs scripts/company-connections.test.mjs scripts/common-company-identity.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/company-industries-browser.test.mjs && node scripts/partner-classification-browser.test.mjs",
     "test:approval-review": "npm --prefix backend run build && node --test scripts/approval-review.test.mjs scripts/expense-deletion.test.mjs scripts/change-approvals.test.mjs scripts/highest-expense-deletion.test.mjs && node scripts/approval-review-browser.test.mjs && node scripts/approval-inbox-browser.test.mjs",
     "test:freight": "npm --prefix backend run build && node --test scripts/freight-operations.test.mjs scripts/access-policy-regression.test.mjs scripts/bank-ledger.test.mjs scripts/page-naming.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/freight-operations-browser.test.mjs",
