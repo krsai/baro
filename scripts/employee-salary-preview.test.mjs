@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 const require=createRequire(import.meta.url);
 const {buildSalaryPreview}=require('../backend/dist/employees/salaryPreview.js');
-const tenure=require('../backend/dist/employees/salaryTenure.js');
+const tenure={...require('../backend/dist/employees/salaryTenure.js'),...require('../backend/dist/employees/tenureRecognition.js')};
 const comp=require('../backend/dist/employees/employeeCompensation.js');
 const policy=require('../backend/dist/employees/employeePayTypePolicy.js');
 const attendance=require('../backend/dist/employees/salaryAttendanceParameters.js');
@@ -114,6 +114,11 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   const eligible=result.find(row=>row.workerId===2);
   assert.equal(eligible.parameters.TENURE_YEARS,2,'January 2024 to December 2026 has only two completed years');
   assert.equal(eligible.salaryItems.find(row=>row.code==='tenure').amount,200000);
+  const beforeCredit=JSON.stringify(result);
+  employees[1].tenureRecognitions=[{id:9,effectiveMonth:'2026-12',additionalYears:2}];
+  const credited=await fn(1,'2026-12',[],1),creditedEmployee=credited.find(row=>row.workerId===2);
+  assert.equal(creditedEmployee.parameters.ACTUAL_TENURE_YEARS,2);assert.equal(creditedEmployee.parameters.ADDITIONAL_TENURE_YEARS,2);assert.equal(creditedEmployee.parameters.TENURE_YEARS,4);assert.equal(creditedEmployee.salaryItems.find(row=>row.code==='tenure').amount,400000);
+  assert.equal(JSON.stringify(result),beforeCredit,'existing payroll result is never rewritten');
   const unpaid=await fn(1,'2026-10',[],1);const item=unpaid.find(row=>row.workerId===2).salaryItems.find(row=>row.code==='tenure');
   assert.equal(item.amount,0);assert.equal(item.isPaymentMonth,false);assert.equal(item.nextPaymentMonthKey,'2026-12');
   const custom={...items.find(item=>item.code==='tenure'),code:'draft-opaque',nameKo:'근속 수당',formula:['GRADE_RATE'],payCycle:'MONTHLY',paymentMonths:[1,2,3,4,5,6,7,8,9,10,11,12]};
@@ -147,7 +152,7 @@ test('preview route enforces salary access and company scope, validates month, a
   const section=src.slice(src.indexOf("  router.get('/salary-system/employee-preview'"),src.indexOf('  const resolveFactory'));
   let handler,allowed=false,calls=0;
   const scoped=(value)=>async args=>{calls++;assert.equal(args.where.orgId,17);return value;};
-  const deps={...management,router:{get:(_path,fn)=>{handler=fn;}},getOrganizationByQuery:async()=>({id:17}),requireSalarySystemManager:async(_req,res)=>{if(!allowed)res.status(403).json({error:'denied'});return allowed;},
+  const deps={...management,...tenure,router:{get:(_path,fn)=>{handler=fn;}},getOrganizationByQuery:async()=>({id:17}),requireSalarySystemManager:async(_req,res)=>{if(!allowed)res.status(403).json({error:'denied'});return allowed;},
     prisma:{employee:{findMany:scoped([{...employee,orgId:17}])},factory:{findMany:scoped([factory])},organizationHoliday:{findMany:scoped([])}},
     loadEmployeePayTypePolicies:async orgId=>{assert.equal(orgId,17);return [];},buildSalaryPreview};
   new Function(...Object.keys(deps),ts.transpileModule(section,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(deps));

@@ -941,6 +941,8 @@ model Employee {
   updatedEmployees                   Employee[]                        @relation("EmployeeUpdatedByEmployee")
   payrollManagementVersions          EmployeePayrollManagementVersion[] @relation("PayrollManagementEmployee")
   createdPayrollManagementVersions   EmployeePayrollManagementVersion[] @relation("PayrollManagementActor")
+  tenureRecognitions                EmployeeTenureRecognition[] @relation("TenureRecognitionEmployee")
+  createdTenureRecognitions         EmployeeTenureRecognition[] @relation("TenureRecognitionActor")
 
   @@unique([orgId, email])
   @@unique([orgId, employeeNo])
@@ -952,6 +954,22 @@ model Employee {
   @@index([status])
   @@index([orgId, status])
   @@unique([id, orgId])
+}
+
+model EmployeeTenureRecognition {
+  id                  Int @id @default(autoincrement())
+  orgId               Int
+  employeeId          Int
+  effectiveMonth      String
+  additionalYears     Int
+  reason              String
+  clientKey           String
+  createdAt           DateTime @default(now())
+  createdByEmployeeId Int
+  employee            Employee @relation("TenureRecognitionEmployee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict)
+  createdByEmployee   Employee @relation("TenureRecognitionActor",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict)
+  @@unique([orgId,clientKey])
+  @@index([orgId,employeeId,effectiveMonth,id])
 }
 
 model EmployeePayrollManagementVersion {

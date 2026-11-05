@@ -40,7 +40,7 @@ try{
     assert.match(await row.locator('[data-preview-item="production"]').innerText(),/1[,.]440[,.]000/);
     assert.equal(await row.locator('[data-preview-item="night"]').innerText(),'—');
     assert.match(await row.locator('[data-preview-item="tenure"]').innerText(),/200[,.]000/);
-    assert.equal(await row.locator('[data-preview-tenure]').innerText(),'2');
+    assert.equal(await row.locator('[data-preview-tenure]').innerText(),'2 / 2');
     await dialog.locator('[data-preview-employee="3"] [data-preview-item="tenure"]').getByText({ko:'근속 1년 미만',en:'Under one completed year',vi:'Chưa đủ 1 năm'}[lang],{exact:true}).waitFor();
     assert.doesNotMatch(await dialog.innerText(),/근속 0년|zero tenure years|thâm niên 0 năm/,'no forced-zero tenure assumption');
     assert.match(await dialog.locator('[data-preview-standard="OUTPUT"]').innerText(),/08:00–17:00/);

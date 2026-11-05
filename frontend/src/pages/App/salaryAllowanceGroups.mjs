@@ -1,4 +1,4 @@
-const ADDITIONAL_PARAMETERS = new Set(['OVERTIME_HOURS', 'HOLIDAY_HOURS', 'HOLIDAY_WORKDAYS', 'TENURE_YEARS']);
+const ADDITIONAL_PARAMETERS = new Set(['OVERTIME_HOURS', 'HOLIDAY_HOURS', 'HOLIDAY_WORKDAYS', 'TENURE_YEARS', 'ACTUAL_TENURE_YEARS', 'ADDITIONAL_TENURE_YEARS']);
 const ADDITIONAL_CODES = new Set(['holiday', 'overtime', 'night', 'seniority']);
 // Existing user-defined items can have opaque draft codes and a flat-rate formula.
 // Keep the three explicitly requested legacy names in the additional display group.

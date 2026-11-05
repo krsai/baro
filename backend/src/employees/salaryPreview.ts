@@ -1,8 +1,9 @@
+import {recognizedTenureParameters} from './tenureRecognition';
 import { resolveEmployeeEffectivePayType } from './employeeCompensation';
 import { normalizeEmployeePayTypePolicy } from './employeePayTypePolicy';
 import { resolveSalaryAttendanceParameters } from './salaryAttendanceParameters';
 import { evaluateSalaryFormula, resolveConfiguredBaseSalary } from './salaryFormula';
-import { employmentDateKey, hasPreviousYearSixMonthsService, isTenureSalaryItem, resolveSalaryTenureYears } from './salaryTenure';
+import { employmentDateKey, hasPreviousYearSixMonthsService, isTenureSalaryItem } from './salaryTenure';
 import { resolvePayrollManagement } from './payrollManagement';
 
 export const buildSalaryPreview = ({ month, employees, factories, policies, holidays, includeInactive = false, today = employmentDateKey(new Date()) }: {
@@ -30,7 +31,7 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
       const management = resolvePayrollManagement(employee, month);
       const tenureEligible = hasPreviousYearSixMonthsService(employee, month);
       const parameters = {
-        GRADE_RATE: 0, TENURE_YEARS: resolveSalaryTenureYears(employee.joinedAt ?? employee.approvedAt ?? employee.createdAt, month), ACTUAL_WORKDAYS: standard.scheduledWorkdays,
+        GRADE_RATE: 0, ...recognizedTenureParameters(employee,month), ACTUAL_WORKDAYS: standard.scheduledWorkdays,
         SCHEDULED_WORKDAYS: standard.scheduledWorkdays, FULL_ATTENDANCE_FACTOR: standard.scheduledWorkdays > 0 ? 1 : 0,
         HOLIDAY_WORKDAYS: 0, WORK_HOURS: standard.regularHours, OVERTIME_HOURS: 0, HOLIDAY_HOURS: 0,
         PRODUCTION_ALLOWANCE: payType === 'OUTPUT' ? standard.regularHours * 3600 * wage : 0,
@@ -66,7 +67,7 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
       const complete = Boolean(version && items.length) && salaryItems.every(item => item.amount !== null);
       return { id: employee.id, name: employee.name || employee.email || String(employee.id), employeeNo: employee.employeeNo,
         status: employee.status, grade: employee.grade, payType, payrollExcluded: management.payrollExcluded,
-        tenureEligible, tenureYears: parameters.TENURE_YEARS, scheduledWorkdays: standard.scheduledWorkdays, regularHours: standard.regularHours,
+        tenureEligible, tenureYears: parameters.TENURE_YEARS, actualTenureYears: parameters.ACTUAL_TENURE_YEARS, additionalTenureYears: parameters.ADDITIONAL_TENURE_YEARS, tenureRecognitionId: parameters.TENURE_RECOGNITION_ID, scheduledWorkdays: standard.scheduledWorkdays, regularHours: standard.regularHours,
         salaryItems, subtotal: salaryItems.reduce((sum, item) => sum + (item.amount || 0), 0), total: complete ? salaryItems.reduce((sum, item) => sum + (item.amount || 0), 0) : null,
         error: !version || !items.length ? 'MISSING_SALARY_VERSION' : !complete ? 'INCOMPLETE' : null };
     });

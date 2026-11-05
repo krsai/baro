@@ -1,3 +1,4 @@
+import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -469,20 +470,21 @@ const PayrollEntry = () => {
     [languageCode],
   );
   const formulaParameterLabels = useMemo(() => {
+    const tenure=tenureRecognitionText[languageCode]||tenureRecognitionText.en;
     if (languageCode === "ko") return {
-      GRADE_RATE: "직급별 단가", BASE_SALARY: "기본급", TENURE_YEARS: "근속 연수", ACTUAL_WORKDAYS: "실제 근무일수",
+      GRADE_RATE: "직급별 단가", BASE_SALARY: "기본급", TENURE_YEARS: tenure.recognized, ACTUAL_TENURE_YEARS: tenure.actual, ADDITIONAL_TENURE_YEARS: tenure.additional, ACTUAL_WORKDAYS: "실제 근무일수",
       SCHEDULED_WORKDAYS: "기준 근무일수", HOLIDAY_WORKDAYS: "휴일 근무일수", WORK_HOURS: "정규 근무시간",
       OVERTIME_HOURS: "연장근무시간", HOLIDAY_HOURS: "휴일 특근시간", FULL_ATTENDANCE_FACTOR: "만근 여부",
       PRODUCTION_ALLOWANCE: "생산수당", PRODUCTION_ST_EXCESS_PERCENT: "생산 ST 초과율",
     };
     if (languageCode === "vi") return {
-      GRADE_RATE: "Đơn giá theo cấp bậc", BASE_SALARY: "Lương cơ bản", TENURE_YEARS: "Thâm niên", ACTUAL_WORKDAYS: "Ngày làm thực tế",
+      GRADE_RATE: "Đơn giá theo cấp bậc", BASE_SALARY: "Lương cơ bản", TENURE_YEARS: tenure.recognized, ACTUAL_TENURE_YEARS: tenure.actual, ADDITIONAL_TENURE_YEARS: tenure.additional, ACTUAL_WORKDAYS: "Ngày làm thực tế",
       SCHEDULED_WORKDAYS: "Ngày làm tiêu chuẩn", HOLIDAY_WORKDAYS: "Ngày làm ngày nghỉ", WORK_HOURS: "Giờ làm chính thức",
       OVERTIME_HOURS: "Giờ tăng ca", HOLIDAY_HOURS: "Giờ làm ngày nghỉ", FULL_ATTENDANCE_FACTOR: "Đủ chuyên cần",
       PRODUCTION_ALLOWANCE: "Phụ cấp sản lượng", PRODUCTION_ST_EXCESS_PERCENT: "Tỷ lệ vượt ST sản xuất",
     };
     return {
-      GRADE_RATE: "Grade Rate", BASE_SALARY: "Base Salary", TENURE_YEARS: "Tenure Years", ACTUAL_WORKDAYS: "Actual Workdays",
+      GRADE_RATE: "Grade Rate", BASE_SALARY: "Base Salary", TENURE_YEARS: tenure.recognized, ACTUAL_TENURE_YEARS: tenure.actual, ADDITIONAL_TENURE_YEARS: tenure.additional, ACTUAL_WORKDAYS: "Actual Workdays",
       SCHEDULED_WORKDAYS: "Scheduled Workdays", HOLIDAY_WORKDAYS: "Holiday Workdays", WORK_HOURS: "Regular Hours",
       OVERTIME_HOURS: "Overtime Hours", HOLIDAY_HOURS: "Holiday Hours", FULL_ATTENDANCE_FACTOR: "Full Attendance",
       PRODUCTION_ALLOWANCE: "Production Allowance", PRODUCTION_ST_EXCESS_PERCENT: "Production ST Excess %",
@@ -500,7 +502,7 @@ const PayrollEntry = () => {
       if (token === "ACTUAL_WORKDAYS" || token === "SCHEDULED_WORKDAYS" || token === "HOLIDAY_WORKDAYS") {
         return `${formatNumberWithCommas(numeric)}${formulaUnitSuffixes.days}`;
       }
-      if (token === "TENURE_YEARS") {
+      if (["TENURE_YEARS","ACTUAL_TENURE_YEARS","ADDITIONAL_TENURE_YEARS"].includes(token)) {
         return `${formatNumberWithCommas(numeric, { maximumFractionDigits: 2 })}${formulaUnitSuffixes.years}`;
       }
       if (token === "WORK_HOURS" || token === "OVERTIME_HOURS" || token === "HOLIDAY_HOURS") {
@@ -612,7 +614,7 @@ const PayrollEntry = () => {
         [payslipInfoText.productionStHours, `${formatNumberWithCommas(Number(parameters.PRODUCTION_ST_HOURS || 0), { maximumFractionDigits: 1 })} ${payslipInfoText.hours}`],
       ] : []),
       [payslipInfoText.fullAttendance, Number(parameters.FULL_ATTENDANCE_FACTOR || 0) >= 1 ? payslipInfoText.yes : payslipInfoText.no],
-      [payslipInfoText.tenureYears, `${formatNumberWithCommas(Number(parameters.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} ${payslipInfoText.years}`],
+      ...[["actual",parameters.ACTUAL_TENURE_YEARS??parameters.TENURE_YEARS??0],["additional",parameters.ADDITIONAL_TENURE_YEARS??0],["recognized",parameters.TENURE_YEARS??0]].map(([key,value])=>[(tenureRecognitionText[languageCode]||tenureRecognitionText.en)[key],String(value)]),
       [payslipInfoText.salaryVersion, payslipEmployee.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"],
     ].map(([label, value]) => `<b>${escapePrintText(label)}</b><span>${escapePrintText(value)}</span>`).join("");
     const productionHtml = productionAllowanceOf(payslipEmployee) > 0
@@ -864,8 +866,9 @@ const PayrollEntry = () => {
                   <Typography variant="body2" color="text.secondary">{payslipInfoText.productionStHours}</Typography>
                   <Typography variant="body2">{formatNumberWithCommas(productionStHours, { maximumFractionDigits: 1 })} {payslipInfoText.hours} ({formatNumberWithCommas(productionStAchievedPercent, { maximumFractionDigits: 1 })}%)</Typography>
                 </Box>}
+                <Box sx={infoGridSx}>{[["actual",payslipEmployee?.parameters?.ACTUAL_TENURE_YEARS??payslipEmployee?.parameters?.TENURE_YEARS??0],["additional",payslipEmployee?.parameters?.ADDITIONAL_TENURE_YEARS??0]].map(([key,value])=><React.Fragment key={key}><Typography variant="body2" color="text.secondary">{(tenureRecognitionText[languageCode]||tenureRecognitionText.en)[key]}</Typography><Typography variant="body2">{value}</Typography></React.Fragment>)}</Box>
                 <Box sx={infoGridSx}>
-                  <Typography variant="body2" color="text.secondary">{payslipInfoText.tenureYears}</Typography>
+                  <Typography variant="body2" color="text.secondary">{(tenureRecognitionText[languageCode]||tenureRecognitionText.en).recognized}</Typography>
                   <Typography variant="body2">{formatNumberWithCommas(Number(payslipEmployee?.parameters?.TENURE_YEARS || 0), { maximumFractionDigits: 2 })} {payslipInfoText.years}</Typography>
                   <Typography variant="body2" color="text.secondary">{payslipInfoText.salaryVersion}</Typography>
                   <Typography variant="body2">{payslipEmployee?.salarySystemVersionNumber ? `Ver.${payslipEmployee.salarySystemVersionNumber}` : "-"}</Typography>

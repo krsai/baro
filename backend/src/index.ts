@@ -1,3 +1,4 @@
+import {registerTenureRecognitionRoutes} from './employees/tenureRecognition';
 import {registerIndustryMenuRoutes,industryMenuMiddleware,companyIndustryMenuFeatures} from './services/industryMenuPolicy';
 import {registerCompanyIndustryRoutes} from './services/companyIndustries';
 import {registerApprovalReviewRoutes} from './services/approvalReview';
@@ -885,6 +886,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:"Organization",columnName:"
   { tableName: "Employee", columnName: "alwaysFullAttendance" },
   { tableName: "Employee", columnName: "payrollExcluded" },
   { tableName: "EmployeePayrollManagementVersion", columnName: "effectiveMonth" },
+  ...["effectiveMonth","additionalYears","reason","createdByEmployeeId"].map(columnName=>({tableName:"EmployeeTenureRecognition",columnName})),
   { tableName: "AttendanceEntry", columnName: "managementExcluded" },
   { tableName: "Style", columnName: "id" },
   { tableName: "Style", columnName: "code" },
@@ -1070,7 +1072,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -27652,6 +27654,7 @@ registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReque
 }});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
+registerTenureRecognitionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerIndustryMenuRoutes(app,prisma,{requireSystemAdmin});
 registerCompanyIndustryRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalReviewRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});

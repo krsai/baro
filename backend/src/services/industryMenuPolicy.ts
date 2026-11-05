@@ -48,6 +48,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
 // lookups keep their existing permissions so permitted forms can still resolve FKs.
 export function industryMenuApiFeature(path:string){
  const rules:[RegExp,string][]=[
+  [/^\/employees\/\d+\/tenure-recognition\/?$/,'EMPLOYEE'],
   [/^\/freight(?:\/|$)/,'FREIGHT'],[/^\/bank-ledger\/(?:overview|exchange-rates)(?:\/|$)/,'ACCOUNT_OVERVIEW'],
   [/^\/bank-ledger(?:\/|$)/,'BANK_LEDGER'],[/^\/invoices(?:\/|$)/,'INVOICE'],
   [/^\/(?:orders|order-items)(?:\/|$)/,'ORDER'],[/^\/(?:styles|style-processes)(?:\/|$)/,'STYLE'],

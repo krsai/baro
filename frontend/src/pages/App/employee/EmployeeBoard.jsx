@@ -1,3 +1,5 @@
+import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
+import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import ActionNotice from '../../../components/ActionNotice';
 import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
@@ -683,6 +685,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [statusMessage, setStatusMessage] = useState(null);
   const [approvingId, setApprovingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
+  const [tenureOpen,setTenureOpen]=useState(false);
   const [isDrawerSaving, setIsDrawerSaving] = useState(false);
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState('create');
@@ -1728,6 +1731,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   </MenuItem>
                 ))}
               </TextField>
+              {drawerMode==='edit'&&employeeByMembership.get(selectedMemberId)?.id&&<Button variant="outlined" disabled={isDrawerSaving||isDrawerDirty} onClick={()=>setTenureOpen(true)}>{(tenureRecognitionText[languageCode]||tenureRecognitionText.en).title}</Button>}
               <TextField
                 size="small"
                 type="date"
@@ -1978,6 +1982,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
           </TableContainer>
         </Paper>
       </Box>
+    <TenureRecognitionDialog open={tenureOpen} onClose={()=>setTenureOpen(false)} orgId={activeOrgId} employeeId={employeeByMembership.get(selectedMemberId)?.id} languageCode={languageCode}/>
     </AppPageContainer>
   );
 };

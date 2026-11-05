@@ -1,3 +1,4 @@
+import {tenureRecognitionInclude,recognizedTenureParameters} from '../employees/tenureRecognition';
 import { defaultVersionStartMonth } from "../utils/versionApplication";
 import { payrollManagementInclude, resolvePayrollManagement } from "../employees/payrollManagement";
 import { prisma } from "../db";
@@ -28,7 +29,7 @@ import {
 } from "../work-records/workRecord.shared";
 import { loadManagementPeriod, assertManagedDate, normalizeFactoryManagementStartDateKey } from "../factories/factoryManagementStart";
 import { evaluateSalaryFormula, resolveConfiguredBaseSalary } from "../employees/salaryFormula";
-import { hasPreviousYearSixMonthsService, isTenureSalaryItem, resolveSalaryTenureYears } from "../employees/salaryTenure";
+import { hasPreviousYearSixMonthsService, isTenureSalaryItem } from "../employees/salaryTenure";
 import { resolveSalaryAttendanceParameters } from "../employees/salaryAttendanceParameters";
 import { employeePayTypePolicyMap, isPolicyWorkday, loadEmployeePayTypePolicies } from "../employees/employeePayTypePolicy";
 
@@ -612,7 +613,7 @@ const buildIntegratedPayrollEmployees = async (
   const [employees, attendance, holidays, factories, payTypePolicies] = await Promise.all([
     prisma.employee.findMany({
       where: { orgId, factoryId, status: { notIn: ["PENDING", "REJECTED"] } },
-      include: { role: true, payrollManagementVersions: payrollManagementInclude },
+      include: { role: true, payrollManagementVersions: payrollManagementInclude, tenureRecognitions: tenureRecognitionInclude },
     }),
     // Intentionally org-wide (not scoped to factoryId): the foreignFactoryAttendance
     // check below needs to see attendance recorded under a *different* factory than
@@ -714,11 +715,9 @@ const buildIntegratedPayrollEmployees = async (
         regularSeconds = attendanceParameters.SCHEDULED_WORKDAYS * payTypePolicy.standardWorkMinutes * 60;
         overtimeSeconds = 0;
       }
-      const joinedAt = employee.joinedAt ?? employee.approvedAt ?? employee.createdAt;
       // 만 근속연수(정수)다. 근속수당처럼 "만 1년을 채워야 그 해분을 지급한다"는
       // 항목이 소수 연차로 일부 지급되지 않도록 절사한다. 예: 11개월째는 0년,
       // 만 1년을 채우면 1년이다.
-      const tenureYears = resolveSalaryTenureYears(joinedAt, month);
       const production = productionByWorkerId.get(employee.id);
       const productionAllowance = payType === EMPLOYEE_PAY_TYPE.OUTPUT
         ? toPayrollAmount(production?.productionAllowance, 0)
@@ -741,7 +740,7 @@ const buildIntegratedPayrollEmployees = async (
         : 0;
       const parameters: Record<string, number> = {
         GRADE_RATE: 0,
-        TENURE_YEARS: tenureYears,
+        ...recognizedTenureParameters(employee,month),
         SENIORITY_PREVIOUS_YEAR_ELIGIBLE: hasPreviousYearSixMonthsService(employee, month) ? 1 : 0,
         ...attendanceParameters,
         WORK_HOURS: regularSeconds / 3600,

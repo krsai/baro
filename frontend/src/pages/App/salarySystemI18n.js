@@ -1,4 +1,10 @@
 const translations = {
+  '인정 근속연수': ['Recognized service years', 'Thâm niên công nhận'],
+  '실제 근속연수': ['Actual service years', 'Thâm niên thực tế'],
+  '추가 인정 근속연수': ['Additional credited years', 'Số năm công nhận thêm'],
+  '실제 만 근속연수에 적용월 기준 회사의 추가 인정 연수를 더합니다.': ['Completed actual service plus company credits effective in the payroll month.', 'Thâm niên thực tế cộng số năm công nhận thêm có hiệu lực trong tháng tính lương.'],
+  '입사일 기준 실제 만 근속연수입니다.': ['Completed actual years since the employment start date.', 'Số năm làm việc thực tế đã hoàn thành từ ngày vào làm.'],
+  '회사가 별도 이력으로 인정한 추가 연수입니다.': ['Additional years recorded by the company.', 'Số năm công nhận thêm được công ty ghi nhận riêng.'],
   '계산 기준': ['Calculation basis', 'Cơ sở tính'],
   '같은 적용 급여 버전의 급여 타입·직급에 설정된 기본급 단가입니다. 근무일수로 비례 계산하기 전의 금액을 사용합니다.': ['The configured base salary rate for the same effective salary version, pay type and grade, before attendance proration.', 'Đơn giá lương cơ bản theo cùng phiên bản có hiệu lực, loại lương và cấp bậc, trước khi tính tỷ lệ ngày công.'],
   '기본 수당': ['Regular allowances', 'Phụ cấp cơ bản'],

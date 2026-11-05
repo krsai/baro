@@ -84,7 +84,9 @@ const PAYMENT_MONTHS_BY_CYCLE = {
 const FORMULA_PARAMETERS = {
   GRADE_RATE: { label: '직급별 단가', currencyUnit: true, hint: '직원의 급여 타입과 직급에 지정된 이 급여 항목의 단가입니다.' },
   BASE_SALARY: { label: '기본급', currencyUnit: true, hint: '같은 적용 급여 버전의 급여 타입·직급에 설정된 기본급 단가입니다. 근무일수로 비례 계산하기 전의 금액을 사용합니다.' },
-  TENURE_YEARS: { label: '근속연수', unit: '년', hint: '급여 정산월 말일을 기준으로 계산한 직원의 만 근속연수(정수, 소수점 절사)입니다. 예: 입사 후 11개월째면 0, 만 1년을 채우면 1입니다.' },
+  TENURE_YEARS: { label: '인정 근속연수', unit: '년', hint: '실제 만 근속연수에 적용월 기준 회사의 추가 인정 연수를 더합니다.' },
+  ACTUAL_TENURE_YEARS: { label: '실제 근속연수', unit: '년', hint: '입사일 기준 실제 만 근속연수입니다.' },
+  ADDITIONAL_TENURE_YEARS: { label: '추가 인정 근속연수', unit: '년', hint: '회사가 별도 이력으로 인정한 추가 연수입니다.' },
   ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일', hint: '주말과 휴일 메뉴에 등록된 휴일을 제외한 정규 근무일 중 4시간 이상 근무한 날짜 수입니다. 휴일 근무는 포함하지 않습니다.' },
   SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '생산 급여 타입은 일요일과 등록 휴일을, 일반 급여 타입은 토·일요일과 등록 휴일을 제외한 해당 월의 날짜 수입니다.' },
   HOLIDAY_WORKDAYS: { label: '휴일 근무일수', unit: '일', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일 중 4시간 이상 근무한 날짜 수입니다. 실제 근무일수와 만근 여부에는 포함하지 않습니다.' },
@@ -102,7 +104,7 @@ const hasValidPaymentMonths = (item) => {
   return Boolean(expectedCount) && months.length === expectedCount && new Set(months).size === months.length && months.every((month) => Number.isInteger(Number(month)) && Number(month) >= 1 && Number(month) <= 12);
 };
 const FORMULA_PARAMETER_GROUPS = [
-  { label: '단가·근속', keys: ['GRADE_RATE', 'BASE_SALARY', 'TENURE_YEARS'] },
+  { label: '단가·근속', keys: ['GRADE_RATE', 'BASE_SALARY', 'TENURE_YEARS', 'ACTUAL_TENURE_YEARS', 'ADDITIONAL_TENURE_YEARS'] },
   { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS', 'HOLIDAY_WORKDAYS'] },
   { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
   { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },

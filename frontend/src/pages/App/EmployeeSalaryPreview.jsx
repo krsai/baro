@@ -1,3 +1,4 @@
+import {tenureRecognitionText} from '../../constants/tenureRecognition';
 import {formatCurrency} from '../../utils/currencyFormat';
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Checkbox, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from '@mui/material';
@@ -17,7 +18,7 @@ const TENURE_TEXT = {ko:{label:'근속연수',zero:'근속 1년 미만'},en:{lab
 
 export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode}) {
   const text=TEXT[languageCode] || TEXT.en;
-  const tenureText=TENURE_TEXT[languageCode] || TENURE_TEXT.en;
+  const tenureText={...(TENURE_TEXT[languageCode] || TENURE_TEXT.en),label:(tenureRecognitionText[languageCode]||tenureRecognitionText.en).actualRecognized};
   const [month,setMonth]=useState(currentVersionMonth),[all,setAll]=useState(false),[data,setData]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState(false),[reload,setReload]=useState(0);
   useEffect(()=>{
     if(!open || !orgId) return;
@@ -37,7 +38,7 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
         <TextField size="small" type="month" label={text.month} value={month} onChange={e=>{if(/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(e.target.value))setMonth(e.target.value);}} InputLabelProps={{shrink:true}} />
         <FormControlLabel control={<Checkbox checked={all} onChange={e=>setAll(e.target.checked)} />} label={text.all} />
       </Stack>
-      <Alert severity="info" sx={{mb:2}}>{text.notice}<br/>{text.tenureNote}<br/>{text.unsaved}</Alert>
+      <Alert severity="info" sx={{mb:2}}>{text.notice}<br/>{(tenureRecognitionText[languageCode]||tenureRecognitionText.en).calculation}<br/>{text.unsaved}</Alert>
       {loading && <Box sx={{p:3,textAlign:'center'}}><CircularProgress size={24}/></Box>}
       {error && <Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{text.retry}</Button>}>{text.error}</Alert>}
       {data?.unassigned?.length>0 && <Alert severity="warning" sx={{mb:2}}>{text.unassigned}{data.unassigned.map(row=>row.name).join(', ')}</Alert>}
@@ -52,7 +53,7 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
           {factory.items.map(item=><TableCell key={item.code || item.id} align="right">{resolveLocalizedAttributeName(item,languageCode)}</TableCell>)}<TableCell align="right">{text.total}</TableCell>
         </TableRow></TableHead><TableBody>{factory.employees.map(employee=><TableRow key={employee.id} hover data-preview-employee={employee.id}>
           <TableCell sx={sticky}><Typography variant="body2" fontWeight={600}>{employee.name}</Typography><Typography variant="caption" color="text.secondary">{employee.employeeNo}</Typography>{employee.payrollExcluded && <Typography variant="caption" display="block" color="text.secondary">{text.excluded}</Typography>}</TableCell>
-          <TableCell sx={{whiteSpace:'nowrap'}}>{resolveLocalizedAttributeName(employee.grade || {},languageCode)}</TableCell><TableCell sx={{whiteSpace:'nowrap'}}>{getPayTypeLabel(employee.payType,employee.payType,languageCode)}</TableCell><TableCell align="right">{employee.scheduledWorkdays}</TableCell><TableCell align="right">{employee.regularHours}</TableCell><TableCell align="right" data-preview-tenure>{employee.tenureYears ?? '—'}</TableCell><TableCell>{employee.tenureEligible?text.yes:text.no}</TableCell>
+          <TableCell sx={{whiteSpace:'nowrap'}}>{resolveLocalizedAttributeName(employee.grade || {},languageCode)}</TableCell><TableCell sx={{whiteSpace:'nowrap'}}>{getPayTypeLabel(employee.payType,employee.payType,languageCode)}</TableCell><TableCell align="right">{employee.scheduledWorkdays}</TableCell><TableCell align="right">{employee.regularHours}</TableCell><TableCell align="right" data-preview-tenure>{employee.actualTenureYears ?? employee.tenureYears ?? '—'} / {employee.tenureYears ?? '—'}</TableCell><TableCell>{employee.tenureEligible?text.yes:text.no}</TableCell>
           {employee.salaryItems.map(item=><TableCell key={item.code} align="right" sx={{whiteSpace:'nowrap'}} data-preview-item={item.code}><Tooltip title={reasonText(item.reason)}><span>{money(item.amount,employee.currencyCode||factory.currencyCode)}</span></Tooltip>{item.amount===0&&['TENURE_INELIGIBLE','TENURE_ZERO_YEARS','NOT_PAYMENT_MONTH'].includes(item.reason)&&<Typography variant="caption" display="block" color="text.secondary">{reasonText(item.reason)}</Typography>}</TableCell>)}
           <TableCell align="right" sx={{fontWeight:600,whiteSpace:'nowrap'}}>{money(employee.total,employee.currencyCode||factory.currencyCode)}{employee.total===null && <Typography variant="caption" display="block">{text.subtotal}: {money(employee.subtotal,employee.currencyCode||factory.currencyCode)}</Typography>}</TableCell>
         </TableRow>)}</TableBody></Table></TableContainer>

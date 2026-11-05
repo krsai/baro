@@ -1,3 +1,4 @@
+import {tenureRecognitionInclude} from './tenureRecognition';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { defaultVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { createHttpError } from "../utils/http";
@@ -30,7 +31,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     const month = String(req.query.month || '');
     if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) return res.status(400).json({ok:false,error:'month must be YYYY-MM'});
     const [employees, factories, policies, holidays] = await Promise.all([
-      prisma.employee.findMany({where:{orgId:org.id,status:{in:['ACTIVE','SUSPENDED','TERMINATED']}},include:{role:true,grade:true,payrollManagementVersions:payrollManagementInclude},orderBy:[{name:'asc'},{id:'asc'}]}),
+      prisma.employee.findMany({where:{orgId:org.id,status:{in:['ACTIVE','SUSPENDED','TERMINATED']}},include:{role:true,grade:true,payrollManagementVersions:payrollManagementInclude,tenureRecognitions:tenureRecognitionInclude},orderBy:[{name:'asc'},{id:'asc'}]}),
       prisma.factory.findMany({where:{orgId:org.id},include:{
         salaryCurrency:{select:{code:true}},organization:{select:{salaryCurrency:{select:{code:true}}}},
         salarySystemVersions:{where:{effectiveMonth:{lte:month}},orderBy:[{effectiveMonth:'desc'},{versionNumber:'desc'}],take:1},

@@ -25,17 +25,20 @@ export const hasPreviousYearSixMonthsService = (employee: { joinedAt?: unknown; 
 
 const TENURE_NAMES = new Set(['근속수당','seniorityallowance','phụcấpthâmniên']);
 export const isTenureSalaryItem = (item: any): boolean =>
-  String(item?.code || item?.id || '') === 'seniority' || (Array.isArray(item?.formula) && item.formula.includes('TENURE_YEARS'))
+  String(item?.code || item?.id || '') === 'seniority' || (Array.isArray(item?.formula) && item.formula.some((token:string)=>['TENURE_YEARS','ACTUAL_TENURE_YEARS','ADDITIONAL_TENURE_YEARS'].includes(token)))
   || (item?.category === 'ALLOWANCE' && [item.nameKo,item.nameEn,item.nameVi,item.name].some(name=>TENURE_NAMES.has(String(name || '').normalize('NFC').toLowerCase().replace(/\s/g,''))));
 
-export const resolveSalaryTenureYears = (joinedAt: unknown, month: string): number => {
+export const resolveSalaryTenureYears = (joinedAt: unknown, month: string, leftAt?: unknown): number => {
   const joined = employmentDateKey(joinedAt);
   if (!joined || !/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) return 0;
   const [year, monthNumber] = month.split('-').map(Number) as [number,number];
   const [joinedYear, joinedMonth, joinedDay] = joined.split('-').map(Number) as [number,number,number];
   const monthEnd = new Date(Date.UTC(year, monthNumber, 0));
+  const left = employmentDateKey(leftAt);
+  const cutoff = left && left < monthEnd.toISOString().slice(0,10) ? new Date(`${left}T00:00:00Z`) : monthEnd;
+  const cutoffYear = cutoff.getUTCFullYear();
   // Clamp a leap-day anniversary to the last day of February in non-leap years.
-  const anniversaryDay = Math.min(joinedDay, new Date(Date.UTC(year, joinedMonth, 0)).getUTCDate());
-  const anniversary = new Date(Date.UTC(year, joinedMonth - 1, anniversaryDay));
-  return Math.max(0, year - joinedYear - (monthEnd < anniversary ? 1 : 0));
+  const anniversaryDay = Math.min(joinedDay, new Date(Date.UTC(cutoffYear, joinedMonth, 0)).getUTCDate());
+  const anniversary = new Date(Date.UTC(cutoffYear, joinedMonth - 1, anniversaryDay));
+  return Math.max(0, cutoffYear - joinedYear - (cutoff < anniversary ? 1 : 0));
 };
