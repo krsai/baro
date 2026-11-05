@@ -1116,7 +1116,7 @@ const CustomerPricingBoard = () => {
             </Stack>
           ) : (
             <TableContainer>
-              <Table size="small" sx={{ minWidth: 1450 }}>
+              <Table data-table-layout="wide" size="small" sx={{ minWidth: 1450 }}>
                 <TableHead>
                   {selectedStyleId && (
                     <TableRow>

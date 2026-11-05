@@ -30,7 +30,7 @@ export default function SalaryRateMatrix({ items, grades, rates, languageCode, c
   return <Paper variant="outlined" sx={{ minWidth: 0 }}>
     <TableContainer sx={{ overflowX: 'auto' }} data-salary-rate-matrix>
       <DragDropContext onDragEnd={onReorder}>
-        <Table size="small" sx={{ minWidth: 220 + payTypes.length * Math.max(grades.length, 1) * 96 }}>
+        <Table data-table-layout="wide" size="small" sx={{ minWidth: 220 + payTypes.length * Math.max(grades.length, 1) * 96 }}>
           <TableHead>
             <TableRow><TableCell rowSpan={2} sx={{ ...sticky, zIndex: 2, bgcolor: ui.color.header }}>{t('항목명')}</TableCell>
               {payTypes.map(type => <TableCell key={type} colSpan={Math.max(grades.length, 1)} align="center" sx={gradeBorder(0)}>{getPayTypeLabel(type, type, languageCode)}</TableCell>)}

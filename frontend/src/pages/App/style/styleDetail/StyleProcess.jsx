@@ -3541,7 +3541,7 @@ const StyleProcess = ({
       <Paper variant="outlined" sx={{ borderRadius: 2 }}>
         <TableContainer>
           <DragDropContext onDragEnd={onDragEnd}>
-            <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
+            <Table data-table-layout="wide" stickyHeader size="small" sx={{ tableLayout: 'fixed', width: '100%' }}>
               <colgroup>
                 <col style={{ width: 70 }} />
                 <col style={{ width: `${PRODUCTION_STAGE_COLUMN_WIDTH}px` }} />

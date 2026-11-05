@@ -21,6 +21,7 @@ const DeleteActionButton = ({
   return (
     <IconButton
       {...props}
+      data-table-action="delete"
       size={size}
       color="error"
       disabled={disabled}

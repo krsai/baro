@@ -88,7 +88,7 @@ export default function QuantityImportReviewTable({ rows, items, approvedKeys, o
     <Stack spacing={0.25} sx={{ px: 1, py: 0.75 }}>
       <Typography sx={{ fontSize: 13, fontWeight: 700 }}>{group.orderNumber} / {group.styleName}</Typography>
     </Stack>
-    <TableContainer><Table size="small" sx={{ minWidth: 850, '& th, & td': { px: 1, py: 0.5, fontSize: 12, lineHeight: 1.4 }, '& th': { whiteSpace: 'nowrap' }, '& .MuiCheckbox-root': { p: 0.25 }, '& .MuiSvgIcon-root': { fontSize: 18 } }}>
+    <TableContainer><Table data-table-layout="wide" size="small" sx={{ minWidth: 850, '& th, & td': { px: 1, py: 0.5, fontSize: 12, lineHeight: 1.4 }, '& th': { whiteSpace: 'nowrap' }, '& .MuiCheckbox-root': { p: 0.25 }, '& .MuiSvgIcon-root': { fontSize: 18 } }}>
       <TableHead><TableRow>{['process', 'scope', 'target', 'previous', 'incoming', 'total', 'difference', 'remnants', 'approve'].map((key, index) => <TableCell key={key} align={index >= 2 && index <= 5 ? 'right' : 'left'}>{key === 'approve' ? <FormControlLabel sx={{ m: 0, '& .MuiTypography-root': { fontSize: 11 }, '& .MuiCheckbox-root': { p: 0.25 } }} label={genderText.all} control={<Checkbox size="small" disabled={disabled || !groupKeys.length} checked={allApproved} indeterminate={approvedCount > 0 && !allApproved} onChange={event => onToggleAll(groupKeys, event.target.checked)} />} /> : key === 'remnants' ? estimateText.remnants : text[key]}</TableCell>)}</TableRow></TableHead>
       <TableBody>{group.rows.map(row => {
         const review = items.find(item => item.styleProcessId === row.styleProcessId && item.orderId === row.orderId && item.styleId === row.styleId);

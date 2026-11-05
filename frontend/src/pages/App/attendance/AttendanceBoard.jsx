@@ -583,7 +583,7 @@ const AttendanceBoard = ({
     >
       <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
-          <Table size="small">
+          <Table data-table-layout="wide" size="small">
             <TableHead>
               <TableRow>
                 <TableCell>{text(TEXT.colWorker, languageCode, 'Worker')}</TableCell>

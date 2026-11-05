@@ -1,4 +1,5 @@
 import { ui } from './ui';
+import {responsiveTableStyles} from './tableLayout';
 import { getLabelPalette, LABEL_PALETTE } from './labelPalette';
 import { createTheme } from '@mui/material/styles';
 import { createAutocompleteFilterOptions } from '../utils/autocompleteSearch';
@@ -455,6 +456,7 @@ const theme = createTheme(baseTheme, {
       sizeMedium: { width: ui.control.height, height: ui.control.height, padding: 6 },
       sizeLarge: { width: ui.control.iconLargeHeight, height: ui.control.iconLargeHeight, padding: 8 },
     } },
+    MuiTable: {styleOverrides:{root:responsiveTableStyles}},
     MuiTableContainer: { styleOverrides: { root: { backgroundColor: ui.color.surface, borderRadius: ui.radius.control } } },
     MuiTableCell: { styleOverrides: {
       root: { padding: ui.table.cellPadding, borderBottom: '1px solid ' + ui.color.border, fontSize: ui.table.fontSize, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums' },

@@ -270,7 +270,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
           <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField}/>
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
-          <Box sx={{overflowX:'auto'}}><Table className="invoice-lines" size="small" sx={{minWidth:660,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,null,130,120,160].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
+          <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:660,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,null,130,120,160].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
             {[sheetText.row,sheetText.description,t.price,t.quantity,t.amount].map((label,index)=><TableCell key={label} align={index===0||index>=2&&index<=4?'right':'left'}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],production=invoiceProductionReview(source,first);return <TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
             <TableCell align="right">{invoiceNumber(index+1)}</TableCell>
@@ -290,7 +290,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
             <TextField size="small" label={billingText.percentage} placeholder="100" value={allPercentage} inputProps={{ inputMode: 'decimal', maxLength: 6 }} onChange={e => setAllPercentage(e.target.value)} />
             <Button onClick={() => changeBilling(setPercentages, Object.fromEntries(source.orders.map(order => [order.orderId, allPercentage])))}>{billingText.applyAll}</Button>
           </Stack>
-          <Box sx={{ overflowX: 'auto' }}><Table size="small" sx={{ minWidth: 650 }}><TableHead><TableRow>
+          <Box sx={{ overflowX: 'auto' }}><Table data-table-layout="document" size="small" sx={{ minWidth: 650 }}><TableHead><TableRow>
             {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, settlementLabels.deduction, ui.summary].map((label,index) => <TableCell key={label} align={index ? 'right' : 'left'}>{label}</TableCell>)}
           </TableRow></TableHead><TableBody>{calculation.orders.map(order => <TableRow key={order.orderId}>
             <TableCell>{order.orderNumber}</TableCell><TableCell align="right">{formatInvoiceMoney(order.subtotal,currency)}</TableCell>

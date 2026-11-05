@@ -3585,7 +3585,7 @@ const OrderList = () => {
               }}
             >
               {detailViewMode === ORDER_DETAIL_VIEW_MODES.VERTICAL ? (
-                <Table
+                <Table data-table-layout="wide"
                 size="small"
                 sx={{
                   width: '100%',
@@ -3927,7 +3927,7 @@ const OrderList = () => {
               </TableBody>
             </Table>
               ) : (
-                <Table
+                <Table data-table-layout="wide"
                   size="small"
                   sx={{
                     viewTransitionName: 'order-gender-table',

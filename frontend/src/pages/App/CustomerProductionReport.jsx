@@ -279,7 +279,7 @@ const CustomerProductionReport = () => {
       {error ? <Alert severity="error">{error}</Alert> : null}
       {loading ? <Box sx={{ py: 8, textAlign: 'center' }}><CircularProgress size={30} /></Box> : rows.length === 0 ? <Paper variant="outlined" sx={{ p: 5, textAlign: 'center' }}><Typography color="text.secondary">{text.empty}</Typography></Paper> :
         <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
+          <Table data-table-layout="wide" size="small">
             <TableHead><TableRow><TableCell>{text.customer}</TableCell><TableCell>{text.order}</TableCell><TableCell>{text.style}</TableCell><TableCell>{text.due}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell sx={{ minWidth: 150 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell><TableCell align="center">{text.schedule}</TableCell></TableRow></TableHead>
             <TableBody>{rows.map((row) => {
               const hasMultipleStyles = row.styles.length > 1;
@@ -394,7 +394,7 @@ const CustomerProductionReport = () => {
         <Box sx={{ mt: 3 }}>
           <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>{text.progress}</Typography>
           <TableContainer component={Paper} variant="outlined">
-            <Table size="small">
+            <Table data-table-layout="wide" size="small">
               <TableHead><TableRow><TableCell>{text.style}</TableCell><TableCell align="right">{text.quantity}</TableCell><TableCell sx={{ minWidth: 180 }}>{text.progress}</TableCell><TableCell>{text.status}</TableCell></TableRow></TableHead>
               <TableBody>
                 <TableRow sx={{ bgcolor: 'action.hover' }}>

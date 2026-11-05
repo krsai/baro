@@ -432,7 +432,7 @@ const WorkMonthlyBoard = () => {
         </Box>
 
         <TableContainer sx={{ display: { xs: 'none', sm: 'block' } }}>
-          <Table size="small">
+          <Table data-table-layout="wide" size="small">
             <TableHead>
               <TableRow>
                   <TableCell>{resolveText(TEXT.workMonth, languageCode, '작업월')}</TableCell>

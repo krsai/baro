@@ -40,7 +40,7 @@ try{
  };
  await assertHandlePositions();
  assert.equal(await rows.count(),15,'One horizontal row per color, genders remain together');
- assert.equal(await rows.first().getByRole('combobox').first().inputValue(),'Zulu','Stored style order replaces alphabetical sorting');
+ assert.equal(await rows.first().locator('input').first().inputValue(),'Zulu','Stored style order replaces alphabetical sorting');
  const header=scroll.locator('thead'),before=await header.boundingBox(),fields=await page.locator('input[name="orderNumber"]').boundingBox();
  await scroll.evaluate(node=>node.scrollTop=300);
  assert.ok(Math.abs((await header.locator('tr').first().locator('th').first().boundingBox()).y-before.y)<2);
@@ -63,7 +63,7 @@ try{
  assert.deepEqual(saved.items.filter(row=>row.styleId==='s1').slice(0,4).map(row=>row.id),['z-2-M','z-2-W','z-1-M','z-1-W']);
  assert.ok(saved.items.every(row=>row.sizeQuantities.S===10));
  await page.reload();await page.getByRole('button',{name:'Reorder style',exact:true}).first().waitFor();
- assert.equal(await rows.first().getByRole('combobox').first().inputValue(),'Alpha');
+ assert.equal(await rows.first().locator('input').first().inputValue(),'Alpha');
  await page.getByRole('button',{name:'Vertical',exact:true}).click();
  await page.waitForFunction(()=>document.querySelectorAll('[data-order-style-item-row]').length===29);
  await assertHandlePositions();

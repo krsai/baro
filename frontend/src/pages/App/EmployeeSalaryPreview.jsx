@@ -48,7 +48,7 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
         <Stack spacing={0.5} sx={{px:2,pb:2}}>{factory.standards.map(policy=><Typography key={policy.payType} variant="caption" color="text.secondary" data-preview-standard={policy.payType}>
           {getPayTypeLabel(policy.payType,policy.payType,languageCode)}: {(WEEKDAYS[languageCode] || WEEKDAYS.en).filter((_,index)=>policy.workWeekdays.includes(index+1)).join(' · ')} / {policy.standardClockIn}–{policy.standardClockOut} ({text.break} {policy.breakMinutes}{text.minutes}) / {policy.scheduledWorkdays}{text.daysUnit} · {policy.regularHours}{text.hoursUnit}
         </Typography>)}</Stack>
-        <TableContainer sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1000}}><TableHead><TableRow>
+        <TableContainer sx={{overflowX:'auto'}}><Table data-table-layout="wide" size="small" sx={{minWidth:1000}}><TableHead><TableRow>
           <TableCell sx={{...sticky,bgcolor:ui.color.header}}>{text.name}</TableCell><TableCell>{text.grade}</TableCell><TableCell>{text.type}</TableCell><TableCell align="right">{text.days}</TableCell><TableCell align="right">{text.hours}</TableCell><TableCell align="right">{tenureText.label}</TableCell><TableCell>{text.tenure}</TableCell>
           {factory.items.map(item=><TableCell key={item.code || item.id} align="right">{resolveLocalizedAttributeName(item,languageCode)}</TableCell>)}<TableCell align="right">{text.total}</TableCell>
         </TableRow></TableHead><TableBody>{factory.employees.map(employee=><TableRow key={employee.id} hover data-preview-employee={employee.id}>

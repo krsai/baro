@@ -7415,7 +7415,7 @@ const AssignBoard = () => {
                     </Typography>
                   ) : (
                     <TableContainer>
-                      <Table size="small">
+                      <Table data-table-layout="wide" size="small">
                         <TableHead>
                           <TableRow>
                             <TableCell align="right">#</TableCell>
@@ -7667,7 +7667,7 @@ const AssignBoard = () => {
                           : `Currently verifiable production: ${Number(detailAssignment.reviewReason.producedQuantity || 0).toLocaleString()}`}
                       </Typography>
                       <TableContainer component={Paper} variant="outlined">
-                        <Table size="small">
+                        <Table data-table-layout="wide" size="small">
                           <TableHead><TableRow>
                             <TableCell>{languageCode === 'ko' ? '공정' : 'Process'}</TableCell>
                             <TableCell align="right">{languageCode === 'ko' ? '목표 수량' : 'Target'}</TableCell>

@@ -45,7 +45,7 @@ export default function PartnerDirectory({embedded=false,title,rows,loading,erro
       </TableCell>
       <TableCell>{row.country?getStaticOptionLabel('country',row.country,row.country,languageCode):'-'}</TableCell><TableCell>{row.contactName||'-'}</TableCell><TableCell>{row.phone||'-'}</TableCell><TableCell>{row.email||'-'}</TableCell>
       <TableCell><StatusLabel tone={row.isActive===false?'gray':'green'} label={row.isActive===false?labels.inactive:labels.active}/></TableCell><TableCell>{registeredDate(row.registeredAt,languageCode)}</TableCell>
-      <TableCell align="right"><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}><Button variant="outlined" disabled={!canOpen} onClick={()=>onOpen(row.source)}>{labels.detail}</Button>{renderActions?.(row.source)}</Stack></TableCell>
+      <TableCell align="right" data-table-actions><Stack direction="row" spacing={1} justifyContent="flex-end" alignItems="center" onDoubleClick={event=>event.stopPropagation()}><Button variant="outlined" disabled={!canOpen} onClick={()=>onOpen(row.source)}>{labels.detail}</Button>{renderActions?.(row.source)}</Stack></TableCell>
      </TableRow>)}
     </TableBody>
    </Table>
