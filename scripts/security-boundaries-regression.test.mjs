@@ -13,7 +13,7 @@ const routeBody = (source, declaration) => {
 
 test('organization admins cannot mutate subscription fields through organization update', async () => {
   const source = await readSource('backend/src/organizations/organization.routes.ts');
-  const start = source.indexOf('organizationRouter.put("/organizations/:id"');
+  const start = source.indexOf('organizationRouter.put(["/organizations/:id"');
   const end = source.indexOf('organizationRouter.get("/organizations/:id/subscription"', start);
   const body = source.slice(start, end);
 

@@ -1,5 +1,8 @@
 import {businessLegalFormText} from '../../../constants/businessLegalForm';
-import CompanyIndustrySettings from '../../../components/CompanyIndustrySettings';
+import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
+import {classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../../../utils/partnerClassification.mjs';
+import {companyIndustryText} from '../../../constants/companyIndustries';
+import {emitWorkspaceDataChanged} from '../../../utils/workspaceDataEvents';
 import { LOCALIZED_NAME_HELP } from '../../../components/LocalizedNameFields';
 import {ENTITY_CODE_TEXT,entityCodeError} from '../../../utils/entityCode.mjs';
 import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
@@ -8,9 +11,9 @@ import { createPortal } from 'react-dom';
 import EntityDetailSection from '../../../components/EntityDetailSection';
 import Grid from '@mui/material/Grid';
 import PageContentStack from '../../../components/PageContentStack';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Box,
+  Alert, Button, Box,
   MenuItem,
   Paper,
   Stack,
@@ -133,6 +136,12 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const [employees, setEmployees] = useState([]);
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [industryProfile,setIndustryProfile]=useState(null),[classification,setClassification]=useState(null),[industryReady,setIndustryReady]=useState(false),[industryError,setIndustryError]=useState(''),[industryReload,setIndustryReload]=useState(0);
+  const saveLock=useRef(false),live=useRef(true),scope=useRef(activeOrgId);scope.current=activeOrgId;
+  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
+  const industryText=companyIndustryText[languageCode]||companyIndustryText.en,classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
+  useEffect(()=>{let active=true;setIndustryError('');requestJSON('/company-industries?orgId='+activeOrgId,{skipCache:true}).then(profile=>{if(active){setIndustryProfile(profile);setClassification(current=>current||profile.classification);}}).catch(()=>{if(active)setIndustryError(industryText.error);});return()=>{active=false;};},[activeOrgId,industryReload]);
+  const classificationDirty=!!industryProfile&&JSON.stringify(classificationPayload(classification))!==JSON.stringify(classificationPayload(industryProfile.classification));
   const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
   const countryOptions = useMemo(() => getStaticOptionOptions('country', languageCode), [languageCode]);
@@ -237,15 +246,17 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     formData.representativeEmployeeId,
   ]);
 
-  const isDirty = useMemo(
+  const profileDirty = useMemo(
     () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
     [formData, savedFormData]
   );
+  const isDirty=profileDirty||classificationDirty;
   useUnsavedChanges(isDirty);
 
   const isNameValid = hasLocalizedName(formData, 'name');
 
   const handleInputChange = (event) => {
+    if(isSaving)return;
     const { name, value } = event.target;
     if (name === 'representativeEmployeeId') {
       const representativeEmployeeId = normalizePositiveId(value);
@@ -266,11 +277,12 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   };
 
   const handleSave = async () => {
-    if (!isDirty || isSaving || !isNameValid) return;
+    if (!isDirty || saveLock.current || isSaving || !isNameValid || !organizationId || !industryProfile?.canEdit || !industryReady || !classificationComplete(classification)) return;
+    saveLock.current=true;const companyId=activeOrgId;
 
     setIsSaving(true);
     try {
-      const payload = {
+      const profilePayload = {
         code: formData.code?.trim() || '',
         name: normalizeLocalizedName(formData, 'name').name,
         nameKo: formData.nameKo?.trim() || null,
@@ -285,15 +297,19 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
         defaultSizeSetCode: formData.defaultSizeSetCode,
       };
 
+      const payload={...(profileDirty?profilePayload:{}),...(classificationDirty?{classification:classificationPayload(classification)}:{})};
       const saved = await requestJSON(
-        organizationId ? `/organizations/${organizationId}` : '/organizations',
+        `/organizations/${organizationId}/profile`,
         {
-          method: organizationId ? 'PUT' : 'POST',
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         }
       );
 
+      if(!live.current||scope.current!==companyId)return;
+      if(classificationDirty&&!saved.classification)throw new Error('PARTNER_CLASSIFICATION_CHANGED');
+      if(saved.classification){setClassification(saved.classification);setIndustryProfile(current=>({...current,classification:saved.classification}));}
       const nextFormData = buildCompanyInfo(saved);
       setOrganizationId(saved.id ?? null);
       setFormData(nextFormData);
@@ -301,21 +317,22 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
       updateActiveProfile({
         orgName: nextFormData.name?.trim() || null,
       });
+      emitWorkspaceDataChanged({orgId:companyId,source:'organization-profile',topics:['company-industries','partner-classifications','business-partners','customers','transaction-codes','accounting-codes']});
       showNotification(text.saveSuccess, 'success');
     } catch (error) {
-      showNotification(entityCodeError(error,languageCode,text.saveError), 'error');
+      if(live.current&&scope.current===companyId)showNotification(error.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:error.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(error,languageCode,text.saveError), 'error');
     } finally {
-      setIsSaving(false);
+      saveLock.current=false;if(live.current)setIsSaving(false);
     }
   };
 
   const embedded = headerActionsTarget !== undefined;
   const Container = embedded ? Box : AppPageContainer;
-  const saveAction = <SaveButton onClick={handleSave} disabled={!isDirty || isSaving || !isNameValid} loading={isSaving} />;
+  const saveAction = <SaveButton onClick={handleSave} disabled={!isDirty || isSaving || !isNameValid || !organizationId || !industryProfile?.canEdit || !industryReady || !classificationComplete(classification)} loading={isSaving} />;
   return <>
     {headerActionsTarget && createPortal(saveAction,headerActionsTarget)}
     <Container {...(embedded ? {sx:{minWidth:0,width:'100%'}} : {title:text.title,titleActions:saveAction})}>
-      <PageContentStack  >
+      <PageContentStack component="fieldset" disabled={isSaving} sx={{border:0,p:0,m:0,minWidth:0}}>
       <EntityDetailSection title={(businessLegalFormText[languageCode]||businessLegalFormText.en).title}>
         <Grid container spacing={2}>
 
@@ -376,7 +393,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
           </Grid>
 
           <Grid size={{xs:12}}>
-            <CompanyIndustrySettings orgId={activeOrgId} languageCode={languageCode}/>
+            <Stack spacing={2} data-testid="company-industry-settings">{industryError&&<Alert severity="error" action={<Button onClick={()=>setIndustryReload(value=>value+1)}>{industryText.retry}</Button>}>{industryError}</Alert>}{industryProfile&&<PartnerClassificationFields value={classification} onChange={setClassification} orgId={activeOrgId} languageCode={languageCode} disabled={isSaving||!industryProfile.canEdit} onReady={setIndustryReady}/>}</Stack>
           </Grid>
         </Grid>
       </EntityDetailSection>

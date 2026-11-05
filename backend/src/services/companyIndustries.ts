@@ -28,6 +28,14 @@ export async function saveCompanyIndustries(db:any,orgId:number,actorId:number,i
   return readCompanyIndustries(tx,orgId,actorId);
  });
 }
+export async function saveCompanyProfileAndClassification(db:any,orgId:number,actorId:number,data:any,classification:any){
+ return retryEditTransaction(db,async(tx:any)=>{
+  await actor(tx,orgId,actorId,true);
+  const organization=await tx.organization.update({where:{id:orgId},data,include:{representativeEmployee:true}});
+  const saved=await saveClassification(tx,orgId,orgId,actorId,classification);
+  return {organization,classification:saved};
+ });
+}
 // Billing accepts any active company code with a compatible cash direction.
 // Industry classification and the legacy canBill flag do not restrict it.
 export async function companyBillableCode(db:any,orgId:number,id:number){

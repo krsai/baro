@@ -1,4 +1,5 @@
 import {businessLegalForm} from '../services/businessLegalForm';
+import {saveCompanyProfileAndClassification} from '../services/companyIndustries';
 import { normalizeEntityNameInput } from '../utils/localizedName';
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
@@ -219,7 +220,7 @@ export const createOrganizationRouter = ({
     return res.status(201).json(toOrganizationResponse(withSubscription));
   });
 
-  organizationRouter.put("/organizations/:id", async (req, res) => {
+  organizationRouter.put(["/organizations/:id", "/organizations/:id/profile"], async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ ok: false, error: "invalid id" });
@@ -237,12 +238,14 @@ export const createOrganizationRouter = ({
       }),
       prisma.employee.findUnique({
         where: { orgId_email: { orgId: id, email: requesterEmail } },
-        select: { status: true, orgRole: true },
+        select: { id:true, status: true, orgRole: true },
       }),
     ]);
 
     const isSystemAdmin = systemUser?.systemRole === "SYSTEM_ADMIN";
     const isOrgAdmin = employee?.status === "ACTIVE" && employee?.orgRole === "ADMIN";
+    const isProfileUpdate=String(req.path||'').replace(/\/+$/,'').toLowerCase().endsWith('/profile');
+    if((isProfileUpdate||req.body?.classification!==undefined)&&!isOrgAdmin)return res.status(403).json({error:'COMPANY_INDUSTRY_ADMIN_REQUIRED'});
 
     if (!isSystemAdmin && !isOrgAdmin) {
       return res.status(403).json({ ok: false, error: "admin access required" });
@@ -283,7 +286,7 @@ export const createOrganizationRouter = ({
     if(!current)return res.status(404).json({error:'organization not found'});
     if(industry!==undefined&&industry!==null&&industry!==current.industry&&
       (typeof industry!=='string'||!await prisma.partnerRole.findUnique({where:{code:industry}})))return res.status(400).json({error:'INVALID_PARTNER_ROLE'});
-    const normalizedCode = code!==undefined || !current.code ? resolvePartnerCode(code,name??current.name) : undefined;
+    const normalizedCode = code!==undefined || !current.code&&!isProfileUpdate&&req.body?.classification===undefined ? resolvePartnerCode(code,name??current.name) : undefined;
 
     if (normalizedCode !== undefined) {
       const existingCodeOwner = await prisma.organization.findFirst({
@@ -353,7 +356,8 @@ export const createOrganizationRouter = ({
       ...(normalizedCode !== undefined ? { code: normalizedCode } : {}),
     };
 
-    const organization = await prisma.organization.update({
+    const combined=req.body?.classification!==undefined?await saveCompanyProfileAndClassification(prisma,id,employee!.id,organizationUpdateData,req.body.classification):null;
+    const organization = combined?.organization || await prisma.organization.update({
       where: { id },
       data: organizationUpdateData,
       include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
@@ -363,7 +367,7 @@ export const createOrganizationRouter = ({
       await applySubscriptionPayload(organization, req.body ?? {});
     }
     const withSubscription = await attachOrganizationSubscription(organization);
-    return res.json(toOrganizationResponse(withSubscription));
+    return res.json({...toOrganizationResponse(withSubscription),...(combined?{classification:combined.classification}:{})});
   });
 
   organizationRouter.get("/organizations/:id/subscription", async (req, res) => {

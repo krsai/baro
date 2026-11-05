@@ -8,11 +8,13 @@ const {resolvePartnerCode}=require('../backend/dist/services/entityProfile.js');
 const transpile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
 const response=()=>({statusCode:200,status(code){this.statusCode=code;return this;},json(value){this.body=value;return this;}});
 function organizationRoutes(db){
- const routes=new Map(),router={use(){},patch(){},get(path,fn){routes.set('get '+path,fn);},post(path,fn){routes.set('post '+path,fn);},put(path,fn){routes.set('put '+path,fn);}};
+ const routes=new Map(),router={use(){},patch(){},get(path,fn){routes.set('get '+path,fn);},post(path,fn){routes.set('post '+path,fn);},put(path,fn){for(const item of [].concat(path))routes.set('put '+item,fn);}};
  const exports={};new Function('require','exports',transpile(readFileSync('backend/src/organizations/organization.routes.ts','utf8')))(name=>{
   if(name==='../utils/localizedName')return {normalizeEntityNameInput(){}};
   if(name==='@prisma/client')return {};
   if(name==='express')return {Router:()=>router};
+  if(name==='../services/companyIndustries')return require('../backend/dist/services/companyIndustries');
+  if(name==='../services/businessLegalForm')return require('../backend/dist/services/businessLegalForm');
   if(name==='../db')return {prisma:db};
   if(name==='../services/entityProfile')return {resolvePartnerCode};
   if(name==='../middleware/access')return {getRequesterEmail:()=> 'admin@example.com',requireSystemAdmin:async()=>true,attachOrganizationSubscription:async o=>o};
@@ -21,8 +23,8 @@ function organizationRoutes(db){
  exports.createOrganizationRouter({applySubscriptionPayload:async()=>{},toOrganizationResponse:o=>o});return routes;
 }
 function organizationFixture(){
- const state={entity:{id:1,name:'BARO GARMENT',code:'BRVN'},allowed:true,conflict:false,writes:0};
- const db={systemUser:{findUnique:async()=>null},employee:{findUnique:async({where})=>state.allowed&&where.orgId_email.orgId===1?{status:'ACTIVE',orgRole:'ADMIN'}:null},organization:{
+ const state={entity:{id:1,name:'BARO GARMENT',code:'BRVN'},allowed:true,system:false,conflict:false,writes:0};
+ const db={systemUser:{findUnique:async()=>state.system?{systemRole:'SYSTEM_ADMIN'}:null},employee:{findUnique:async({where})=>state.allowed&&where.orgId_email.orgId===1?{status:'ACTIVE',orgRole:'ADMIN'}:null},organization:{
   findUnique:async()=>state.entity,findFirst:async({where})=>{assert.equal(where.code.mode,'insensitive');assert.equal(where.NOT?.id,1);return state.conflict?{id:2}:null;},
   update:async({where,data})=>{state.writes++;assert.equal(where.id,1);Object.assign(state.entity,data);return state.entity;},
  }};
@@ -58,4 +60,15 @@ test('a DB uniqueness race returns the partner code warning rather than a 500 or
  for(const originalUrl of ['/customers/7?orgId=1','/organizations/1','/business-partners/44','/auth/workspaces']){
   const res=response();handler({code:'P2002',meta:{target:['code']}},{originalUrl},res,()=>{});assert.equal(res.statusCode,409);assert.equal(res.body.error,'PARTNER_CODE_CONFLICT');
  }
+});
+
+test('profile delta does not generate or replace an unedited code; legacy organization update keeps its behavior',async()=>{
+ const {state,put}=organizationFixture();state.entity.code=null;
+ let res=response();await put({path:'/organizations/1/profile',params:{id:'1'},body:{name:'Updated company'}},res);assert.equal(res.statusCode,200);assert.equal(state.entity.code,null);
+ res=response();await put({path:'/organizations/1',params:{id:'1'},body:{name:'Updated company'}},res);assert.equal(state.entity.code,'UPDATE');
+});
+test('unified profile requires active company ADMIN even for SYSTEM, while legacy SYSTEM profile access is preserved',async()=>{
+ const {state,put}=organizationFixture();state.allowed=false;state.system=true;
+ let res=response();await put({path:'/organizations/1/PROFILE/',params:{id:'1'},body:{name:'Forbidden'}},res);assert.equal(res.statusCode,403);assert.equal(state.writes,0);
+ res=response();await put({path:'/organizations/1',params:{id:'1'},body:{name:'System update'}},res);assert.equal(res.statusCode,200);assert.equal(state.writes,1);
 });
