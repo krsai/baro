@@ -1,6 +1,6 @@
 import PageContentStack from '../../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Stack } from '@mui/material';
+import { Box,Stack } from '@mui/material';
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
@@ -103,6 +103,7 @@ const createMessageGetter = (languageCode) => {
 };
 
 const CustomerDetail = () => {
+  const [connectionActionsTarget,setConnectionActionsTarget]=useState(null);
   const { customerId: customerIdParam } = useParams();
   const location = useLocation();
   const { activeOrgId } = useAuth();
@@ -262,18 +263,18 @@ const CustomerDetail = () => {
   return (
     <AppPageContainer sx={{width:'100%'}}
       title={isNew ? t('titleNew') : t('titleDetail')}
-      titleActions={
+      titleActions={<Stack direction="row" spacing={1} alignItems="center"><Box component="span" ref={setConnectionActionsTarget} sx={{display:'inline-flex'}}/>
         <SaveButton
           onClick={handleCustomerSave}
           disabled={loadingCustomer || savingCustomer || !customerDirty}
           loading={savingCustomer}
         >
           {t('saveCustomer')}
-        </SaveButton>
+        </SaveButton></Stack>
       }
     >
       <PageContentStack>
-        <CustomerBasicInfoPanel
+        <CustomerBasicInfoPanel connectionActionsTarget={connectionActionsTarget}
           customerFormData={customerFormData}
           countryOptions={countryOptions}
           savingCustomer={savingCustomer}

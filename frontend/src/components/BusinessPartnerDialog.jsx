@@ -9,7 +9,7 @@ import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack,
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
@@ -78,6 +78,7 @@ export default function BusinessPartnerDialog({
   const labels = TEXT[languageCode] || TEXT.ko;
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
   const isEdit = Boolean(partner?.id);
+  const [connectionActionsTarget,setConnectionActionsTarget]=useState(null);
   const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -140,7 +141,7 @@ export default function BusinessPartnerDialog({
       <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <CompanyConnectionField orgId={activeOrgId} entityId={partner?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!partner?.id&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={saving} languageCode={languageCode}/>
+          <CompanyConnectionField actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={partner?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!partner?.id&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={saving} languageCode={languageCode}/>
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
@@ -149,9 +150,12 @@ export default function BusinessPartnerDialog({
           </Stack></EntityDetailSection>
         </Stack>
       </DialogContent>
-      <DialogActions sx={{flexShrink:0,px:3,py:2}}>
+      <DialogActions sx={{flexShrink:0,px:3,py:2,flexWrap:'wrap',gap:1,'& > :not(style) ~ :not(style)':{ml:0}}}>
         <Button onClick={onClose} disabled={saving}>{labels.cancel}</Button>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{maxWidth:'100%'}}>
+        <Box component="span" ref={setConnectionActionsTarget} sx={{display:'inline-flex'}}/>
         <Button variant="contained" onClick={save} disabled={saving || !hasLocalizedName(form, 'name') || !optionsReady || !classificationLoaded || !classificationComplete(form.classification)}>{isEdit ? labels.saveEdit : labels.save}</Button>
+        </Stack>
       </DialogActions>
     </Dialog>
   );

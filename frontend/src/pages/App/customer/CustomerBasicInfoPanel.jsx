@@ -42,7 +42,7 @@ const getText = (languageCode) => {
   return values[languageCode] || values.en;
 };
 
-const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustomer, languageCode, onBasicFieldChange, onCountryChange, t }) => {
+const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustomer, languageCode, onBasicFieldChange, onCountryChange, t, connectionActionsTarget }) => {
   const text = useMemo(() => getText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
   const {activeOrgId,activeOrgType,activeProfile}=useAuth();
@@ -51,7 +51,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
 
   return (
     <Stack spacing={2} >
-      <CompanyConnectionField orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
+      <CompanyConnectionField actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
       <PartnerProfileFields hideGuidance languageCode={languageCode} disabled={savingCustomer}
         value={{...customerFormData,contactName:customerFormData.manager,contactPhone:customerFormData.phoneNumber}}
         onChange={(key,value)=>{
