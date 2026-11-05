@@ -44,6 +44,10 @@ test('self industries, unrestricted compatible billing and local partner classif
   await saveCompanyIndustries(db,s.other.id,otherAdmin.id,{classification:own,billingCodeIds:[]});
   await db.companyPartnerLink.create({data:{orgId:org,entityId:s.vendor.id,targetOrgId:s.other.id,createdByEmployeeId:admin,matchMethod:'SELECTED'}});
   const connected=await attachLinkedCompanies(db,org,[{entityId:s.vendor.id}]);assert.deepEqual(connected[0].officialClassification.industryIds,[industry.id]);assert.equal('codes' in connected[0].officialClassification,false);
+  await db.organization.update({where:{id:s.other.id},data:{name:'Updated official company',address:'Updated official address',phone:'0900000000'}});
+  const refreshed=(await attachLinkedCompanies(db,org,[{entityId:s.vendor.id,name:'Stale local name',code:'KEEP'}]))[0];
+  assert.equal(refreshed.name,'Updated official company');assert.equal(refreshed.address,'Updated official address');assert.equal(refreshed.phone,'0900000000');assert.equal(refreshed.code,'KEEP');
+  assert.equal((await db.organization.findUnique({where:{id:s.vendor.id}})).name,'Vendor','read synchronization preserves local identity and financial references');
   assert.equal(await db.orgRelationship.count(),1,'identity linking does not create a customer');
   gates.requireOrgRole=async()=>({organization:s.other});await routes.get('/partner-directory')({},{json:value=>{directory=value;}});assert.deepEqual(directory.rows.find(r=>r.relationshipId===relationship.id).relationshipRoles,['SUPPLIER']);
   await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{cashDirection:'IN'}});

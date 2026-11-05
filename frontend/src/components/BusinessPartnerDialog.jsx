@@ -59,7 +59,7 @@ const buildFormFromPartner = (partner, initialType) => ({
   nameKo: partner?.nameKo || '', nameVi: partner?.nameVi || '',businessNumber:partner?.businessNumber || '',country:partner?.country || (partner?.id?'':'VN'),countryCode:partner?.countryCode || (partner?.id?'':'+84'),address:partner?.address || '',email:partner?.email || '',
   contactName: partner?.contactName || '',
   contactPhone: partner?.contactPhone || '',
-  classification: partner?.classification || emptyPartnerClassification(),
+  classification: partner?.localClassification || partner?.classification || emptyPartnerClassification(),
 });
 
 export default function BusinessPartnerDialog({
@@ -140,11 +140,11 @@ export default function BusinessPartnerDialog({
       <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {error ? <Alert severity="error">{error}</Alert> : null}
-          <CompanyConnectionField orgId={activeOrgId} entityId={partner?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,linkedCompany[key]||''])):{})}))} disabled={saving} languageCode={languageCode}/>
+          <CompanyConnectionField orgId={activeOrgId} entityId={partner?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!partner?.id&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={saving} languageCode={languageCode}/>
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
-          <PartnerClassificationFields value={form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded} languageCode={languageCode} onReady={setOptionsReady}/>
+          <PartnerClassificationFields value={form.linkedCompany?(partner?.officialClassification||form.linkedCompany.officialClassification||emptyPartnerClassification()):form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded||!!form.linkedCompany} languageCode={languageCode} onReady={setOptionsReady}/>
 
           </Stack></EntityDetailSection>
         </Stack>

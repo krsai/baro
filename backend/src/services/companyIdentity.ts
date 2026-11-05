@@ -4,10 +4,13 @@ export const identityFields={id:true,name:true,nameKo:true,nameVi:true,code:true
 export const publicCompanyFields={...identityFields,industry:true,representative:true,phone:true,email:true};
 export const numberKey=(value:any)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export const publicIdentityRevision=(row:any)=>editRevision(Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])));
-export const identityDto=(row:any,common=false)=>({...Object.fromEntries([...Object.keys(publicCompanyFields),'industryLabels'].map(key=>[key,row[key]??null])),...(common?{identityId:row.id}:{sourceEntityId:row.id}),revision:publicIdentityRevision(row)});
+export const identityDto=(row:any,common=false)=>({...Object.fromEntries([...Object.keys(publicCompanyFields),'industryLabels','officialClassification'].map(key=>[key,row[key]??null])),...(common?{identityId:row.id}:{sourceEntityId:row.id}),revision:publicIdentityRevision(row)});
 export async function publicCompanyDetails(db:any,row:any){
  const industryLabels=row.industry?await db.partnerRole.findUnique({where:{code:row.industry},select:{nameKo:true,nameEn:true,nameVi:true}}):null;
- return {...row,industryLabels};
+ const companyId=row.anchorEntityId||row.id;
+ const profile=db.partnerClassification?await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId:companyId,entityId:companyId}},include:{industries:{include:{industry:{include:{partnerRole:true}}}}}}):null;
+ const industries=profile?.industries.map((link:any)=>link.industry)||[];
+ return {...row,industryLabels,officialClassification:profile?{revision:profile.revision,industries,industryIds:industries.map((i:any)=>i.id),roleIds:[...new Set(industries.map((i:any)=>i.partnerRoleId))]}:null};
 }
 // Read public names/address from the owning profile without rewriting local rows or snapshots.
 export async function currentIdentity(db:any,row:any){

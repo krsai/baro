@@ -1,4 +1,5 @@
 import {createHttpError} from '../utils/http';
+import {attachLinkedCompanies} from './companyConnections';
 const fail=(code='LEDGER_COUNTERPARTY_REQUIRED'):never=>{throw createHttpError(400,code);};
 export const counterpartyInput=(value:any)=>{
  if(value==null)return null;
@@ -14,7 +15,8 @@ export async function ledgerCounterpartyOptions(db:any,orgId:number){
   db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),
   db.organizationBankAccount.findMany({where:{orgId,entityId:orgId,isActive:true},include:{currency:true},orderBy:{sortOrder:'asc'}}),
  ]);
- return [...partners.map((p:any)=>({...p,kind:'PARTNER'})),...employees.map((p:any)=>({...p,kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
+ const linked=await attachLinkedCompanies(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));
+ return [...linked.map((p:any)=>({...p,code:p.linkedCompany?.code||p.code,kind:'PARTNER'})),...employees.map((p:any)=>({...p,kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
 }
 export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,body:any,allocations:any[]){
  const supplied=counterpartyInput(body.counterparty);
@@ -32,7 +34,7 @@ export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,
  let name:string;
  if(party!.kind==='PARTNER'){
   const partner=await tx.organization.findFirst({where:{id:party!.id,...(!allocations.length?{isActive:true}:{})},select:{id:true,name:true,ownerOrgId:true}});if(!partner||partner.id===orgId)fail('LEDGER_COUNTERPARTY_INVALID');
-  if(partner.ownerOrgId!==orgId&&!await tx.orgRelationship.findFirst({where:{OR:[{manufacturerOrgId:orgId,brandOrgId:partner.id},{brandOrgId:orgId,manufacturerOrgId:partner.id}]},select:{id:true}}))fail('LEDGER_COUNTERPARTY_INVALID');name=partner.name;
+  if(partner.ownerOrgId!==orgId&&!await tx.orgRelationship.findFirst({where:{OR:[{manufacturerOrgId:orgId,brandOrgId:partner.id},{brandOrgId:orgId,manufacturerOrgId:partner.id}]},select:{id:true}}))fail('LEDGER_COUNTERPARTY_INVALID');name=tx.companyPartnerLink&&tx.companyIdentityLink?(await attachLinkedCompanies(tx,orgId,[{...partner,entityId:partner.id}]))[0].name:partner.name;
  }else if(party!.kind==='EMPLOYEE'){
   const employee=await tx.employee.findFirst({where:{id:party!.id,orgId,...(!allocations.length?{status:'ACTIVE'}:{})},select:{name:true}});if(!employee)fail('LEDGER_COUNTERPARTY_INVALID');name=employee.name;
  }else{

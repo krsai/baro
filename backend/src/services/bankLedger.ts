@@ -279,7 +279,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   app.put('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body,req.params.entryId);res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});}});
   app.delete('/bank-ledger/entries/:entryId',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,null,req.params.entryId);res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});}});
   app.get('/bank-ledger/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerActivity(db,scope.orgId,req.query));});
-  app.post('/bank-ledger/entries/batch',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body);res.status(201).json(await postLedgerBatch(db,scope.orgId,scope.actor,req.body));}});
+  app.post('/bank-ledger/entries/batch',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});});
   app.post('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(410).json({error:'REGISTER_ACCOUNT_IN_BUSINESS'});});
   app.get('/bank-ledger/evidence/search',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await searchLedgerEvidence(db,scope.orgId,req.query));});
   app.get('/bank-ledger/evidence/expenses',async(req:any,res:any)=>{
@@ -309,7 +309,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   });
   app.get('/expense-approval-overview',async(req:any,res:any)=>{const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});if(!auth)return;const actorId=auth.employee?.id;if(!actorId)return fail('LEDGER_ACCESS_DENIED',403);res.json(await listApprovalOverview(db,auth.organization.id,actorId,req.query));});
   app.get('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerEntries(db,scope.orgId,req.params.accountId,req.query));});
-  app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){await requireLedgerAdjustmentAccess(db,scope,req.body);res.status(201).json(await postLedgerEntry(db,scope.orgId,scope.actor,req.params.accountId,req.body));}});
+  app.post('/bank-ledger/accounts/:accountId/entries',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});});
   app.post('/bank-ledger/accounts/:accountId/entries/:entryId/void',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.status(409).json({error:'CHANGE_APPROVAL_REQUIRED'});});
 
 }

@@ -1,4 +1,4 @@
-import {expensePayeeIds,requireEmployeePayee} from './expensePayee';
+import {expensePayeeIds,requireEmployeePayee,expensePartnerScope} from './expensePayee';
 import { normalizeExpenseProcessIds, storedExpenseProcessIds, validateExpenseProcessLinks } from './expenseProcessLinks';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
@@ -87,7 +87,8 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if(useSystemMaster)description=edit?.cost?.description || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
-  const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: { id: partnerOrgId, ownerOrgId: orgId, isActive: true, type: { in: ['PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'] } } });
+  if(partnerOrgId===orgId)return invalid('INVALID_PARTNER_SERVICE');
+  const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: {...expensePartnerScope(orgId),id:partnerOrgId} });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
   if(payeeIds.payeeEmployeeId&&(process||edit?.record))return invalid('EMPLOYEE_PAYEE_PRODUCTION_NOT_ALLOWED');

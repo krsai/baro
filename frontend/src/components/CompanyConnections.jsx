@@ -1,3 +1,4 @@
+import {classificationSummary} from '../utils/partnerClassification.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Box,Button,Chip,Dialog,DialogTitle,DialogContent,DialogActions,Paper,Stack,Typography} from '@mui/material';
 import {getStaticOptionOptions} from '../constants/staticOptionRegistry';
@@ -30,7 +31,7 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const labels=PROFILE_LABELS[languageCode]||PROFILE_LABELS.en;
  const profileRows=row=>[
   ['name',[...new Set([languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.name,row.name].filter(Boolean))].join(' / ')],
-  ['industry',row.industryLabels?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.industryLabels?.nameEn||(INDUSTRY_FALLBACK[languageCode]||INDUSTRY_FALLBACK.en)[row.industry]||row.industry],
+  ['industry',classificationSummary(row.officialClassification,languageCode)||row.industryLabels?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row.industryLabels?.nameEn||(INDUSTRY_FALLBACK[languageCode]||INDUSTRY_FALLBACK.en)[row.industry]||row.industry],
   ['representative',row.representative],['contact',[row.phone,row.email].filter(Boolean).join(' · ')],
   ['country',getStaticOptionOptions('country',languageCode).find(option=>option.value===row.country)?.label||row.country],
   ['address',row.address],['number',row.businessNumber],

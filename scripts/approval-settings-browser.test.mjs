@@ -1,3 +1,4 @@
+import {ledgerRegistrationText} from '../frontend/src/constants/ledgerRegistration.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -23,7 +24,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-  const settings={drafterScope:{role:'OPERATOR',gradeId:null},limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
+  const settings={registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:10}],drafterScope:{role:'OPERATOR',gradeId:null},limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
   const data={settings,drafter:{id:1,name:'Current user',orgRole:'ADMIN'},canEdit:true,grades:[{id:1,code:'CL1',name:'Staff',nameEn:'Staff'},{id:10,code:'CL2',name:'Senior',nameEn:'Senior'},{id:20,code:'CL3',name:'Lead',nameEn:'Lead'}],candidates:[{id:2,name:'Senior accountant',orgRole:'ACCOUNTANT',gradeId:10},{id:3,name:'Lead accountant',orgRole:'ACCOUNTANT',gradeId:20},{id:4,name:'Administrator',orgRole:'ADMIN'}]};
   await page.route('**/expense-approval-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){saved=r.request().postDataJSON();posts.push(saved);return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
   const actionSaves=[];
@@ -106,7 +107,9 @@ try{
   const actions=changeApprovalText[lang],menus=page.getByRole('combobox').first();
   const registrationPosts=posts.length;
   await choose(menus,actions.BANK_LEDGER);
-  await page.getByText(actions.noCreateApproval,{exact:true}).waitFor();
+  const createSection=page.locator('[data-approval-operation="CREATE"]'),reg=ledgerRegistrationText[lang];
+  await createSection.getByText(reg.ANY,{exact:true}).waitFor();await createSection.getByText(reg.MINIMUM,{exact:true}).waitFor();
+  assert.equal(await createSection.locator('[data-cost-currency]').count(),0);await createSection.getByRole('button',{name:t.save,exact:true}).click();await createSection.getByText(t.saved,{exact:true}).waitFor();assert.deepEqual(actionSaves.at(-1).body.registrationStages,settings.registrationStages);assert.ok(actionSaves.at(-1).url.includes('operation=CREATE'));
   for(const operation of ['UPDATE','DELETE']){
    const actionSection=page.locator('[data-approval-operation="'+operation+'"]');
    await actionSection.locator('[data-approval-band="0"]').waitFor();

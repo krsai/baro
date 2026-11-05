@@ -1,3 +1,4 @@
+import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import {companyIndustryText} from '../../constants/companyIndustries';
 import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
 import DeleteActionButton from '../../components/DeleteActionButton';
@@ -44,7 +45,7 @@ const DELETE_TEXT = {
 };
 
 export default function BusinessPartners({ type, embedded=false,unified=false,category=null,onDirectoryLoaded }) {
-  const auth=useAuth();
+  const auth=useAuth(),{active}=useRequestScopeContext();
   const { activeOrgId, activeOrgRole, accessProfile } = auth;
   const {navigateToPath}=useAppActions();
   const isSystemAdmin = accessProfile?.systemRole === 'SYSTEM_ADMIN';
@@ -83,13 +84,14 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
         const pathFor=row=>row.kind==='CUSTOMER'?'/customer':({PROCESS_OUTSOURCING:'/outsourcing-partner',MATERIAL_SUPPLIER:'/material-supplier',LOGISTICS_PROVIDER:'/logistics-partner'})[row.entity.type];
         const allowed=result.rows.filter(row=>canAccessPath(pathFor(row),auth));
         setDirectoryRoles(result.roles);onDirectoryLoaded?.({...result,rows:allowed});
-        setPartners(allowed.map(row=>({...row.entity,sourceKind:row.kind,relationshipRoles:row.relationshipRoles,officialClassification:row.officialClassification,relationshipId:row.relationshipId,classification:row.classification,hasUsageHistory:row.hasUsageHistory,missingSalesPriceStyleCount:row.missingSalesPriceStyleCount,contactName:row.entity.representative,contactPhone:row.entity.phone,serviceTypes:(row.entity.outsourcingServiceAssignments||[]).map(item=>item.serviceType)})));
+        setPartners(allowed.map(row=>({...row.entity,code:row.linkedCompany?.code||row.entity.code,sourceKind:row.kind,relationshipRoles:row.relationshipRoles,officialClassification:row.officialClassification,relationshipId:row.relationshipId,localClassification:row.classification,classification:row.linkedCompany?(row.officialClassification||{roleIds:[],industryIds:[],industries:[]}):row.classification,hasUsageHistory:row.hasUsageHistory,missingSalesPriceStyleCount:row.missingSalesPriceStyleCount,contactName:row.entity.representative,contactPhone:row.entity.phone,serviceTypes:(row.entity.outsourcingServiceAssignments||[]).map(item=>item.serviceType)})));
       }else setPartners(Array.isArray(result) ? result : []);
     }
     catch (loadError) { if(generation===loadGeneration.current){setQueryFailed(true);setError(loadError?.message || labels.loadError);} }
     finally { if(generation===loadGeneration.current)setLoading(false); }
   }, [activeOrgId, labels.loadError, type,unified,onDirectoryLoaded,accessProfile,activeOrgRole]);
-  useEffect(() => { loadPartners(); }, [loadPartners]);
+  useEffect(() => { if(active)loadPartners(); }, [active,loadPartners]);
+  useEffect(()=>{const refresh=()=>{if(active)loadPartners();};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[active,loadPartners]);
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
     if (Number(detail?.orgId) === Number(activeOrgId) && (['business-partner', 'transaction-request','customer-detail'].includes(detail.source)||detail.topics?.some(topic=>['customers','business-partners','company-industries'].includes(topic)))) loadPartners();
   }), [activeOrgId, loadPartners]);
@@ -109,7 +111,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     } finally { setDeleting(false); }
   };
   const serviceName = useCallback(item=>partnerIndustryLabel(item,languageCode),[languageCode]);
-  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:partner.classification?[partner.officialClassification?((companyIndustryText[languageCode]||companyIndustryText.en).official+': '+classificationSummary(partner.officialClassification,languageCode)):null,classificationSummary(partner.classification,languageCode)].filter(Boolean).join(' \u00b7 ')||(partner.classification.legacyGeneral?.length?(PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en).legacy:''):[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' · '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address,partner.classification?.legacyGeneral?.length?'GENERAL':null].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category]);
+  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:partner.classification?classificationSummary(partner.classification,languageCode):[getBusinessPartnerTypeLabel(partner.type,languageCode),...(partner.serviceTypes||[]).map(serviceName)].filter(Boolean).join(' / '),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address,partner.classification?.legacyGeneral?.length?'GENERAL':null].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category]);
   const openHistory = async (partner) => {
     setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);
     try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }

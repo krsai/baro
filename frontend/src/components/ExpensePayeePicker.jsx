@@ -19,7 +19,7 @@ const DETAIL_TEXT={
 };
 const PAYEE_TEXT={ko:{employee:'직원',search:'지급 대상 코드·이름',save:'저장',currency:'통화'},en:{employee:'Employee',search:'Payee code or name',save:'Save',currency:'Currency'},vi:{employee:'Nhân viên',search:'Mã hoặc tên người nhận',save:'Lưu',currency:'Tiền tệ'}};
 export const payeeAccountPath=payee=>payee?.employeeId?`/expense-payees/employees/${payee.employeeId}/bank-accounts`:`/entities/${payee?.id}/bank-accounts`;
-const payeeTypeLabel=(payee,languageCode)=>payee.type==='EMPLOYEE'?(PAYEE_TEXT[languageCode]||PAYEE_TEXT.en).employee:getBusinessPartnerTypeLabel(payee.type,languageCode);
+const payeeTypeLabel=(payee,languageCode)=>payee.type==='EMPLOYEE'?(PAYEE_TEXT[languageCode]||PAYEE_TEXT.en).employee:(payee.serviceTypes?.map(row=>partnerIndustryLabel(row.systemDefault||row,languageCode)).filter(Boolean).join(', ')||getBusinessPartnerTypeLabel(payee.type,languageCode));
 const InformationRows=({rows})=><Box component="dl" sx={{m:0,display:'grid',gridTemplateColumns:'minmax(80px, .8fr) minmax(0, 1.5fr)',columnGap:1,rowGap:.5}}>{rows.map(([label,value])=><React.Fragment key={label}><Typography component="dt" variant="caption" color="text.secondary" sx={{pt:.25}}>{label}</Typography><Typography component="dd" variant="body2" sx={{m:0,overflowWrap:'anywhere',fontVariantNumeric:'tabular-nums',userSelect:'text'}}>{value||'—'}</Typography></React.Fragment>)}</Box>;
 
 function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t}){

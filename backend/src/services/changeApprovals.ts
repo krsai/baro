@@ -9,13 +9,17 @@ import {loadExpenseEditorSource,expenseEditorRevision,saveExpenseEditor} from '.
 import {replaceLedgerEntryApproved,ledgerEntryRevision} from './bankLedgerEdit';
 import {companyBusinessTimeZone} from './serviceCompany';
 import {resolveLedgerCounterparty,entryCounterparty} from './ledgerCounterparty';
+import {ledgerRegistrationSource,previewLedgerRegistration} from './ledgerRegistration';
+import {postLedgerSettlementBatch} from './bankLedger';
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
 const json=(v:any)=>JSON.parse(JSON.stringify(v));
 const digest=(v:any)=>createHash('sha256').update(JSON.stringify(json(v))).digest('hex');
 const person={orgId:true,id:true,name:true,orgRole:true,gradeId:true,status:true,grade:{select:{sortOrder:true,setId:true,isActive:true,set:{select:{isActive:true}}}}};
 async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  const menu=String(input.menu),operation=String(input.operation),kind=String(input.sourceKind||'request'),id=String(input.sourceId||'');
- approvalActionKey(orgId,menu,operation);if(operation==='CREATE'||!/^[-\w]{1,100}$/.test(id))fail('CHANGE_INVALID_SOURCE',400);
+ approvalActionKey(orgId,menu,operation);if(!/^[-\w]{1,100}$/.test(id))fail('CHANGE_INVALID_SOURCE',400);
+ if(menu==='BANK_LEDGER'&&operation==='CREATE')return ledgerRegistrationSource(db,orgId,{...input,allowIncomplete:!lock});
+ if(operation==='CREATE')fail('CHANGE_INVALID_SOURCE',400);
  if(menu==='BANK_LEDGER'){
   if(lock)await db.$queryRawUnsafe('SELECT id FROM "BankLedgerEntry" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);
   const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include:{account:true}});if(!entry)fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)fail('LEDGER_ENTRY_CHANGED');
@@ -60,7 +64,7 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
  const selected=await approvalActionSettings(db,orgId,s.menu,s.operation),config=selected.value||defaultApprovalSettings();if(!canDraftExpense(actor,config))fail('EXPENSE_DRAFTER_NOT_ALLOWED',403);
  const excluded=[actorId,...(s.menu==='EXPENSE'&&s.operation==='UPDATE'&&s.expense.document?[s.expense.document.createdByEmployeeId]:[])];
  const resolver={systemSetting:db.systemSetting,employee:{findFirst:db.employee.findFirst.bind(db.employee),findMany:(args:any)=>db.employee.findMany({...args,where:{...args.where,id:{notIn:[...new Set([...(args.where.id?.notIn||[]),...excluded])]}}})}};
- const preview=await resolveExpenseApproval(resolver,orgId,actorId,amounts(s,input.payload),input.selection||{},true,config);
+ const preview=s.menu==='BANK_LEDGER'&&s.operation==='CREATE'?await previewLedgerRegistration(db,orgId,actor,s,config,input.selection):await resolveExpenseApproval(resolver,orgId,actorId,amounts(s,input.payload),input.selection||{},true,config);
  let highestSelfDeletion=false;
  if(preview.policy.exempt&&s.menu==='EXPENSE'&&s.operation==='DELETE'&&s.expense.document&&await isHighestCompanyApprover(db,orgId,actor)){
   highestSelfDeletion=true;preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:actor.gradeId,employeeId:actor.id,candidates:[{id:actor.id,name:actor.name,gradeId:actor.gradeId}]}];preview.ids=[actor.id];preview.complete=true;
@@ -81,14 +85,15 @@ export async function requestChangeApproval(db:any,orgId:number,actorId:number,i
   const prior=await tx.changeApprovalRequest.findUnique({where:{orgId_clientKey:{orgId,clientKey:input.clientKey}}});if(prior){if(prior.requestHash!==requestHash||prior.requestedByEmployeeId!==actorId)fail('CHANGE_RETRY_CONFLICT');return prior;}
   const {source:s,preview,policy}=await previewChangeApproval(tx,orgId,actorId,input,true);if(!preview.complete||!policy.resolvedStages.length)fail('EXPENSE_APPROVER_REQUIRED',400);
   const pending=await tx.changeApprovalRequest.findFirst({where:{orgId,menu:s.menu,sourceKind:s.kind,sourceId:s.id,status:'PENDING'}});if(pending)fail('CHANGE_ALREADY_PENDING');
-  const payload=input.operation==='UPDATE'?json(input.payload):{};
+  const payload=input.operation!=='DELETE'?json(input.payload):{};
   if(s.menu==='EXPENSE'&&input.operation==='UPDATE'&&(payload.revision!==s.revision||payload.version!==s.version))fail('CHANGE_SOURCE_CHANGED');
-  return tx.changeApprovalRequest.create({data:{orgId,clientKey:input.clientKey,requestHash,menu:s.menu,operation:s.operation,sourceKind:s.kind,sourceId:s.id,expenseRequestId:s.expense?.document?.id??null,ledgerEntryId:s.menu==='BANK_LEDGER'?s.id:null,legacyCostId:s.kind==='cost'?s.id:null,legacyRecordId:s.kind==='legacy'?Number(s.id):null,sourceVersion:s.version,revision:s.revision,requestedByEmployeeId:actorId,reason,beforeSnapshot:s.snapshot,payload,policy}});
+  return tx.changeApprovalRequest.create({data:{orgId,clientKey:input.clientKey,requestHash,menu:s.menu,operation:s.operation,sourceKind:s.kind,sourceId:s.id,expenseRequestId:s.expense?.document?.id??null,ledgerEntryId:s.menu==='BANK_LEDGER'&&s.operation!=='CREATE'?s.id:null,legacyCostId:s.kind==='cost'?s.id:null,legacyRecordId:s.kind==='legacy'?Number(s.id):null,sourceVersion:s.version,revision:s.revision,requestedByEmployeeId:actorId,reason,beforeSnapshot:s.snapshot,payload,policy}});
  },60000);
 }
 async function applyChange(tx:any,db:any,orgId:number,actor:any,row:any,s:any,gates:any){
  await tx.$queryRawUnsafe("SELECT set_config('baro.change_request_id',$1,true),set_config('baro.change_approver',$2,true)",row.id,String(actor.id));
  if(row.menu==='BANK_LEDGER'){
+  if(row.operation==='CREATE'){const requester=await tx.employee.findFirst({where:{id:row.requestedByEmployeeId,orgId,status:'ACTIVE'}});return postLedgerSettlementBatch(db,orgId,requester.email||String(requester.id),row.payload,tx);}
   if(s.entry.evidenceType==='ADJUSTMENT'&&actor.orgRole!=='ADMIN')fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);
   if(row.operation==='UPDATE')return replaceLedgerEntryApproved(tx,db,orgId,actor.email||String(actor.id),row.sourceId,row.payload);
   return tx.bankLedgerEntry.update({where:{id:row.sourceId},data:{voidedAt:new Date(),voidedBy:actor.email||String(actor.id),voidReason:row.reason}});
@@ -112,6 +117,10 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
   const decisions=await tx.changeApprovalDecision.findMany({where:{requestId:id,orgId},orderBy:{position:'asc'}});
   if(row.status!=='PENDING'){const old=decisions.find((d:any)=>d.employeeId===actorId);if(old?.decision===body.decision&&(old.reason||'')===reason)return row;fail('CHANGE_ALREADY_DECIDED');}
   const next=row.policy.resolvedStages[decisions.length];if(!next||next.employeeId!==actorId||next.role!==actor.orgRole||next.gradeId!=null&&(next.gradeId!==actor.gradeId||!actor.grade?.isActive||!actor.grade?.set?.isActive))fail('CHANGE_APPROVER_REQUIRED',403);
+  if(row.operation==='CREATE'){
+   const rule=row.policy.config.registrationStages[decisions.length];
+   if(rule.gradeMatch!=='ANY'){const grade=await tx.employeeGrade.findFirst({where:{id:rule.gradeId,orgId,isActive:true,set:{isActive:true}}});if(!grade||!actor.grade?.isActive||actor.grade.setId!==grade.setId||(rule.gradeMatch==='MINIMUM'?actor.grade.sortOrder<grade.sortOrder:actor.gradeId!==grade.id))fail('CHANGE_APPROVER_REQUIRED',403);}
+  }
   const s=body.decision==='APPROVED'?await source(tx,orgId,row,true):null;if(s&&s.revision!==row.revision)fail('CHANGE_SOURCE_CHANGED');
   const requester=await tx.employee.findFirst({where:{id:row.requestedByEmployeeId,orgId,status:'ACTIVE'}});if(!requester||requester.orgRole!==row.policy.requestedByRole||(requester.gradeId??null)!==row.policy.requestedByGradeId)fail('CHANGE_SOURCE_CHANGED');
   await tx.changeApprovalDecision.create({data:{requestId:id,orgId,employeeId:actorId,position:decisions.length+1,decision:body.decision,reason:reason||null}});

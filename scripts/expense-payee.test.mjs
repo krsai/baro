@@ -12,8 +12,9 @@ test('payee identity requires exactly one real positive company or employee ID',
 test('payee routes scope employee lookup and bank registration to the authenticated company and actor',async()=>{
  const routes=new Map(),accounts=[],employees=[{id:20,orgId:1,status:'ACTIVE',orgRole:'ACCOUNTANT',name:'Actor'},{id:31,orgId:1,status:'ACTIVE',orgRole:'WORKER',name:'Employee',employeeNo:'E031',bankAccountNumber:'payroll'},{id:32,orgId:2,status:'ACTIVE',orgRole:'WORKER',name:'Other company'}];let allowed=true;
  const db={
+  companyPartnerLink:{findMany:async()=>[]},companyIdentityLink:{findMany:async()=>[]},
   employee:{findFirst:async({where})=>employees.find(row=>row.id===where.id&&row.orgId===where.orgId&&row.status===where.status&&(!where.orgRole||where.orgRole.in.includes(row.orgRole)))||null,findMany:async({where})=>employees.filter(row=>row.orgId===where.orgId&&row.status===where.status)},
-  organization:{findMany:async({where})=>{assert.equal(where.ownerOrgId,1);return [{id:11,name:'Vendor',code:null,type:'MATERIAL_SUPPLIER',isActive:true,outsourcingServiceAssignments:[]}];}},
+  organization:{findMany:async({where})=>{assert.equal(where.OR[0].ownerOrgId,1);assert.equal(where.isActive,true);assert.equal(where.type,undefined);return [{id:11,name:'Vendor',code:null,type:'MATERIAL_SUPPLIER',isActive:true,outsourcingServiceAssignments:[]}];}},
   employeeExpenseBankAccount:{findMany:async({where})=>accounts.filter(row=>row.orgId===where.orgId&&row.employeeId===where.employeeId),findFirst:async({where})=>accounts.find(row=>Object.entries(where).every(([key,value])=>row[key]===value))||null,create:async({data})=>{const row={id:'bank-1',...data};accounts.push(row);return row;}},
   $queryRawUnsafe:async()=>[],
  };
