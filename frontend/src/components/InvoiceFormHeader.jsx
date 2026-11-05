@@ -17,7 +17,7 @@ export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly
     </Box>
     <Box component="details" sx={{mt:1,'& summary':{cursor:'pointer',fontSize:12,color:'text.secondary'}}}><summary>{ui.parties}</summary>
       <Box className="invoice-parties">{['buyer','seller'].map(party=><Box className="invoice-party" key={party}><Typography component="h2" className="invoice-party-title">{text[party]}</Typography>
-        {['name','address','taxId','phone','email'].map(key=><InvoiceDocumentField key={key} label={ui[key]} value={fields[party]?.[key]} readOnly={readOnly} multiline={key==='address'} onChange={e=>onChange(party,{...fields[party],[key]:e.target.value})} maxLength={1000}/>)}
+        {['name','address','taxId','phone','email'].map(key=><InvoiceDocumentField key={key} label={ui[key]} value={fields[party]?.[key]} readOnly={readOnly} multiline={readOnly&&key==='address'} onChange={e=>onChange(party,{...fields[party],[key]:e.target.value})} maxLength={1000}/>)}
       </Box>)}</Box>
     </Box>
   </Box>;

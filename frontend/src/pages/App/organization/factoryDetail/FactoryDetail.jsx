@@ -697,8 +697,6 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                   name="address"
                   value={formData.address}
                   onChange={handleInputChange}
-                  multiline
-                  minRows={2}
                 />
               </Grid>
             </Grid>

@@ -442,8 +442,6 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
           <Grid size={{xs:12,sm:8,md:9}}>
             <TextField
               fullWidth
-              multiline
-              minRows={2}
               size="small"
               label={text.address}
               name="address"
