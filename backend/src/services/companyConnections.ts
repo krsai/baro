@@ -14,7 +14,7 @@ export async function companyConnectionCandidates(db:any,orgId:number,input:any)
  if(number)return identityCandidates(db,orgId,input);
  if((!number&&name.length<3)||name.length>200||number.length>100)throw createHttpError(400,'COMPANY_LOOKUP_INPUT_REQUIRED');
  const predicate=number?`regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g')=$2`:`(lower(name)=lower($2) OR lower("nameKo")=lower($2) OR lower("nameVi")=lower($2))`;
- const rows=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address,industry,representative,phone,email FROM "Organization" o WHERE id<>$1 AND "ownerOrgId" IS NULL AND ("dataOwnerOrgId" IS NULL OR "dataOwnerOrgId"=o.id) AND "isActive" AND type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND ${predicate} AND ($3='' OR country=$3) ORDER BY id LIMIT 21`,orgId,number||name,country);
+ const rows=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address,"partyKind","countryCode",industry,representative,phone,email FROM "Organization" o WHERE id<>$1 AND "ownerOrgId" IS NULL AND ("dataOwnerOrgId" IS NULL OR "dataOwnerOrgId"=o.id) AND "isActive" AND type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND ${predicate} AND ($3='' OR country=$3) ORDER BY id LIMIT 21`,orgId,number||name,country);
  return (await Promise.all(rows.filter((row:any)=>!number||normalizedBusinessNumber(row.businessNumber)===number).map((row:any)=>publicCompanyDetails(db,row)))).map(identity);
 }
 export async function connectPartnerCompany(tx:any,orgId:number,entityId:number,actorId:number|null,requested?:any){
@@ -58,7 +58,8 @@ export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
   const rows=await db.companyPartnerLink.findMany({where:{OR:[{orgId},{targetOrgId:orgId}]},include:{source:{select:publicSelect},target:{select:publicSelect}},orderBy:{createdAt:'asc'}});
   const common=await db.companyIdentityLink.findMany({where:{orgId},include:{identity:true}});
   await Promise.all(common.map(async(row:any)=>{row.identity=await currentIdentity(db,row.identity);}));
-  res.json([...common.map((row:any)=>({company:identityDto(row.identity,true),entityId:row.entityId,direction:'OUTGOING',createdAt:row.createdAt})),...rows.filter((row:any)=>!common.some((c:any)=>c.entityId===row.entityId&&row.orgId===orgId)).map((row:any)=>({company:row.orgId===orgId?row.target:row.source,entityId:row.orgId===orgId?row.entityId:null,direction:row.orgId===orgId?'OUTGOING':'INCOMING',createdAt:row.createdAt}))]);
+  await Promise.all(rows.map(async(row:any)=>{row.publicCompany=await publicCompanyDetails(db,row.orgId===orgId?row.target:row.source);}));
+  res.json([...common.map((row:any)=>({company:identityDto(row.identity,true),entityId:row.entityId,direction:'OUTGOING',createdAt:row.createdAt})),...rows.filter((row:any)=>!common.some((c:any)=>c.entityId===row.entityId&&row.orgId===orgId)).map((row:any)=>({company:row.publicCompany,entityId:row.orgId===orgId?row.entityId:null,direction:row.orgId===orgId?'OUTGOING':'INCOMING',createdAt:row.createdAt}))]);
  });
  app.post('/company-connections',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;const entityId=Number(req.body?.entityId);if(!Number.isSafeInteger(entityId)||entityId<=0)throw createHttpError(400,'INVALID_PARTNER_ID');
   res.json(await retryEditTransaction(db,tx=>connectPartnerCompany(tx,orgId,entityId,gates.getActor(),req.body?.companyConnection)));
@@ -70,19 +71,20 @@ export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,
  const common=entityId?await db.companyIdentityLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{identity:true}}):null;
  if(common)return resolveIdentityChoice(db,orgId,entityId,requested,profile);
  const link=entityId?await db.companyPartnerLink.findUnique({where:{orgId_entityId:{orgId,entityId}},include:{target:{select:publicSelect}}}):null;
- if(link)return link.target;
+ if(link)return publicCompanyDetails(db,link.target);
  if(!requested||requested.separate||requested.identityId||requested.sourceEntityId)return resolveIdentityChoice(db,orgId,entityId,requested,profile);
  if(!Number.isSafeInteger(requested.targetOrgId)||requested.targetOrgId===orgId)throw createHttpError(400,'INVALID_COMPANY_CONNECTION');
  const target=await db.organization.findFirst({where:{...tenantScope,id:requested.targetOrgId,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:requested.targetOrgId}]},select:publicSelect});
  if(!target||requested.revision!==companyIdentityRevision(target))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
- return target;
+ return publicCompanyDetails(db,target);
 }
-const publicProfile=(company:any)=>company?Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','businessLegalForm','representative','phone','email'].map(key=>[key,company[key]??null])):{};
+const publicProfile=(company:any)=>company?Object.fromEntries((company.subscriberOrgId?['name','nameKo','nameVi','address','country','businessNumber','businessLegalForm','partyKind','countryCode','representative','phone','email']:['name','nameKo','nameVi','address','country','businessNumber']).map(key=>[key,company[key]??null])):{};
 export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
  if(!rows.length)return rows;
  const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,target:{select:publicSelect}}});
  const common=await db.companyIdentityLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:{identity:true}});
  await Promise.all(common.map(async(link:any)=>{link.identity=await currentIdentity(db,link.identity);}));
+ await Promise.all(links.map(async(link:any)=>{link.target=await publicCompanyDetails(db,link.target);}));
  const targets=new Map<number,number>();for(const link of links)if(Number.isSafeInteger(link.target?.id))targets.set(link.entityId,link.target.id);for(const link of common)if(Number.isSafeInteger(link.identity.anchorEntityId))targets.set(link.entityId,link.identity.anchorEntityId);
  // Only self-declared public industries are shared. Local classifications and
  // billing codes remain private to the owning company.

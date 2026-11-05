@@ -1,3 +1,4 @@
+import {emptyPartnerClassification} from '../../../utils/partnerClassification.mjs';
 import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
 import {hasApparelBrandIndustry} from '../../../utils/orderDefaultsIndustry.mjs';
 import {useAuth} from '../../../context/AuthContext';
@@ -48,11 +49,13 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
   const {activeOrgId}=useAuth();
   const common = { fullWidth: true, disabled: savingCustomer, size: 'small' };
-  const isBrand = hasApparelBrandIndustry(customerFormData.classification);
+  const subscriber=Boolean(customerFormData.linkedCompany?.subscriberOrgId);
+  const classification=subscriber?customerFormData.linkedCompany.officialClassification||emptyPartnerClassification():customerFormData.classification;
+  const isBrand = hasApparelBrandIndustry(classification);
 
   return (
     <Stack spacing={2} >
-      <CompanyConnectionField actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
+      <CompanyConnectionField knownCompany={customerFormData.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={customerFormData.entityId} name={customerFormData.name} businessNumber={customerFormData.businessNumber} country={customerFormData.country} value={customerFormData.companyConnection} disabled={savingCustomer} languageCode={languageCode} onChange={(companyConnection,linkedCompany)=>{onBasicFieldChange({target:{name:'companyConnection',value:companyConnection}});if(linkedCompany!==undefined)onBasicFieldChange({target:{name:'linkedCompany',value:linkedCompany}});}}/>
       <PartnerProfileFields hideGuidance languageCode={languageCode} disabled={savingCustomer}
         value={{...customerFormData,contactName:customerFormData.manager,contactPhone:customerFormData.phoneNumber}}
         onChange={(key,value)=>{
@@ -62,7 +65,7 @@ const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustom
         }}/>
 
       <EntityDetailSection title={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).role}>
-        <PartnerClassificationFields value={customerFormData.classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer} languageCode={languageCode}/>
+        <PartnerClassificationFields value={classification} onChange={classification=>onBasicFieldChange({target:{name:'classification',value:classification}})} orgId={activeOrgId} disabled={savingCustomer||subscriber} languageCode={languageCode}/>
       </EntityDetailSection>
       <EntityBankAccounts hideGuidance entityId={customerFormData.entityId} languageCode={languageCode}/>
       {isBrand && <EntityDetailSection title={text.order}>

@@ -20,7 +20,7 @@ export const normalizePartyKind=(value:any):'INDIVIDUAL'|'CORPORATE'|null=>{
   throw Object.assign(new Error('INVALID_PARTY_KIND'),{status:400});
 };
 export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any,linkedCompany?:any)=>{
-  const partyKind=normalizePartyKind(body?.partyKind===undefined?previous?.partyKind:body.partyKind);
+  const partyKind=normalizePartyKind(linkedCompany?.subscriberOrgId?(linkedCompany.partyKind??previous?.partyKind??body?.partyKind):body?.partyKind===undefined?previous?.partyKind:body.partyKind);
   if((!previous||previous.partyKind)&&!partyKind)throw Object.assign(new Error('PARTNER_PARTY_KIND_REQUIRED'),{status:400});
   const value=body?.code===undefined?previous?.code:body.code;
   if(partyKind==='CORPORATE'){
@@ -33,6 +33,11 @@ export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any,
   if(linkedCompany)return {partyKind,code:previous?.code??null};
   return {partyKind,code:partyKind==='INDIVIDUAL'?normalizePartnerCode(value):resolvePartnerCode(value,englishName)};
 };
+// The caller supplies a server-resolved subscriber, never request metadata.
+export const subscriberProfilePatch=(company:any)=>company?.subscriberOrgId?{
+  ...Object.fromEntries(['name','nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,company[key]??null])),
+  representative:company.representative??null,phone:company.phone??null,
+}:{};
 export const entityProfile = (entity:any) => ({
   entityId:entity.id,name:entity.name,nameKo:entity.nameKo ?? null,nameVi:entity.nameVi ?? null,
   businessLegalForm:entity.businessLegalForm??null,code:entity.code ?? null,partyKind:entity.partyKind??null,businessNumber:entity.businessNumber ?? null,

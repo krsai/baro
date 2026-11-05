@@ -1,7 +1,8 @@
+import InvoiceBankConfirmation from '../../../components/InvoiceBankConfirmation';
 import {useAppActions} from '../../../context/AppContext';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
 import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
-import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
+import {invoiceBankInfo,invoiceBankChoices} from '../../../utils/invoiceBankInfo.mjs';
 import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -217,9 +218,14 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   };
   const revisionRequest = useRef(null);
   const revisionNeedsSave = useRef(false);
-  const issue = async () => {
+  const [bankConfirmationOpen,setBankConfirmationOpen]=useState(false);
+  const bankChoices=useMemo(()=>invoiceBankChoices(source?.sellerBankAccounts||[],currency),[source,currency]);
+  const issue = async (options={}) => {
     if (!source || saving || !reviewed || calculation?.issues.length || !fields?.date) return;
+    if(!uncertain&&bankChoices.length&&!options.confirmedBank){setBankConfirmationOpen(true);return;}
+    const issueFields=options.confirmedBank?{...fields,bank:options.confirmedBank}:fields;
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
+    if(options.confirmedBank&&fields.bank!==options.confirmedBank){setFields(current=>({...current,bank:options.confirmedBank}));setDirty(true);}
     if (revisionInvoice && !draftRef.current && !revisionRequest.current) {
       const reason = await pageDialogs.prompt(languageCode==='ko'?'개정 사유를 입력하세요.':languageCode==='vi'?'Nhập lý do sửa đổi.':'Enter a revision reason.');
       if (!reason?.trim()) return;
@@ -233,10 +239,10 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         clientKey.current=current.clientKey;
         draftRef.current=current; setSavedDraft(current); revisionNeedsSave.current=true;
       }
-      if (!current || revisionNeedsSave.current || (!uncertain && dirty)) {
+      if (!current || revisionNeedsSave.current || (!uncertain && (dirty||issueFields.bank!==fields.bank))) {
         current = await requestJSON(`/invoices/drafts${current ? `/${encodeURIComponent(current.id)}` : ''}${buildQueryString({ orgId })}`, {
           method: current ? 'PUT' : 'POST', body: JSON.stringify({ clientKey: clientKey.current, revision: current?.revision,
-            buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields, percentages, settlements }),
+            buyerOrgId: source.buyerOrgId, orders: source.orders, lines, basis, currency, fields:issueFields, percentages, settlements }),
         });
         draftRef.current = current; setSavedDraft(current); revisionNeedsSave.current=false; setDirty(false);
       }
@@ -303,6 +309,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         </Box>}
       </Stack>
     </InvoiceSheet>
+    <InvoiceBankConfirmation open={bankConfirmationOpen} onClose={()=>setBankConfirmationOpen(false)} accounts={bankChoices} currencyCode={currency} currentText={fields?.bank||''} languageCode={languageCode} onConfirm={bank=>{setBankConfirmationOpen(false);issue({confirmedBank:bank});}}/>
     <QuantityReviewDrawer externalId={reviewAssignment?.externalId} orgId={orgId} languageCode={languageCode} headerOrderNo={reviewAssignment?.orderNumber} headerStyleLabel={reviewAssignment?.styleLabel} headerQuantity={reviewAssignment?.quantity} onClose={()=>setReviewAssignment(null)}/>
   </AppPageContainer>;
 }

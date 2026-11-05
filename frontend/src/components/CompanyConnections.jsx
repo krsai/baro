@@ -26,7 +26,7 @@ const INDUSTRY_FALLBACK={
  vi:{MANUFACTURER:'Sản xuất',BRAND:'Thương hiệu',SERVICE:'Dịch vụ'},
 };
 const COUNTRY_REQUIRED={ko:'업체를 조회하려면 국가를 선택해 주세요.',en:'Select a country to look up the company.',vi:'Vui lòng chọn quốc gia để tìm công ty.'};
-export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId,actionsTarget}){
+export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId,actionsTarget,knownCompany=null}){
  const text=COMPANY_CONNECTION_TEXT[languageCode]||COMPANY_CONNECTION_TEXT.en;
  const confirm=CONFIRM[languageCode]||CONFIRM.en;
  const labels=PROFILE_LABELS[languageCode]||PROFILE_LABELS.en;
@@ -37,13 +37,13 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
   ['country',getStaticOptionOptions('country',languageCode).find(option=>option.value===row.country)?.label||row.country],
   ['address',row.address],['number',row.businessNumber],
  ];
- const [options,setOptions]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false),[checked,setChecked]=useState(false),[linked,setLinked]=useState(null);
+ const [options,setOptions]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false),[checked,setChecked]=useState(false),[linked,setLinked]=useState(knownCompany);
  const [review,setReview]=useState(false),[selected,setSelected]=useState(null);
  const buttonRef=useRef(null),[statusOpen,setStatusOpen]=useState(false);
  useEffect(()=>{if(!statusOpen)return;const close=event=>{if(event.key==='Escape')setStatusOpen(false);};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[statusOpen]);
  const requestKey=`${orgId}:${businessNumber}:${country}`,current=useRef(requestKey);current.current=requestKey;
  useEffect(()=>{setOptions([]);setSelected(null);setReview(false);setChecked(false);setError('');setStatusOpen(false);setLoading(false);onChange(undefined,linked||null);},[orgId,businessNumber,country]);
- useEffect(()=>{let alive=true;setLinked(null);if(entityId)requestJSON('/company-connections'+buildQueryString({orgId}),{skipCache:true}).then(rows=>{if(alive){const company=rows.find(row=>row.entityId===entityId)?.company||null;setLinked(company);if(company)onChange(undefined,company);}}).catch(()=>{if(alive)setError(text.error);});return()=>{alive=false;};},[orgId,entityId]);
+ useEffect(()=>{let alive=true;setLinked(knownCompany);if(entityId)requestJSON('/company-connections'+buildQueryString({orgId}),{skipCache:true}).then(rows=>{if(alive){const company=rows.find(row=>row.entityId===entityId)?.company||null;setLinked(company);if(company)onChange(undefined,company);}}).catch(()=>{if(alive)setError(text.error);});return()=>{alive=false;};},[orgId,entityId]);
  const find=async()=>{if(businessNumber&&!country){setError(COUNTRY_REQUIRED[languageCode]||COUNTRY_REQUIRED.en);setStatusOpen(true);return;}const key=requestKey;setLoading(true);setStatusOpen(false);setError('');try{const rows=(await requestJSON('/company-connections/candidates'+buildQueryString({orgId,name,businessNumber,country}),{skipCache:true})).filter(row=>!entityId||row.sourceEntityId!==entityId);if(current.current===key){setOptions(rows);setChecked(true);setReview(rows.length>0);setStatusOpen(rows.length===0);}}catch{if(current.current===key){setError(text.error);setStatusOpen(true);}}finally{if(current.current===key)setLoading(false);}};
  useEffect(()=>{if(linked||value||disabled||!country||String(businessNumber||'').replace(/[^A-Za-z0-9]/g,'').length<3)return;const timer=setTimeout(find,600);return()=>clearTimeout(timer);},[orgId,name,businessNumber,country,linked,disabled,value]);
  const accept=row=>{setSelected(row);setReview(false);setStatusOpen(true);onChange({...('identityId'in row?{identityId:row.identityId}:'sourceEntityId'in row?{sourceEntityId:row.sourceEntityId}:{targetOrgId:row.id}),revision:row.revision},row);};

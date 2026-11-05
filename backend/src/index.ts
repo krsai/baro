@@ -17,7 +17,7 @@ import { toStyleListResponse } from './services/styleListResponse';
 import { coalesceInFlightRead } from './services/inFlightRead';
 import { contentMemo } from './services/contentMemo';
 import { normalizeLocalizedName } from './utils/localizedName';
-import { entityProfile, partnerProfilePatch, resolvePartnerCode, resolvePartnerIdentity } from './services/entityProfile';
+import { entityProfile, partnerProfilePatch, subscriberProfilePatch, resolvePartnerCode, resolvePartnerIdentity } from './services/entityProfile';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
 import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany} from './services/companyConnections';
@@ -1905,7 +1905,7 @@ const buildSharedCustomerOrganizationData = (
   payload: any = {},
   fallbackOrganization: any = null, linkedCompany:any = null
 ) => {
-  if(linkedCompany)payload={...payload,...Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,linkedCompany[key]??null]))};
+  if(linkedCompany)payload={...payload,...Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,linkedCompany[key]??null])),...subscriberProfilePatch(linkedCompany),...(linkedCompany.subscriberOrgId?{manager:linkedCompany.representative,phoneNumber:linkedCompany.phone}:{})};
   return {
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
     ...resolvePartnerIdentity(payload,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,fallbackOrganization,linkedCompany),
@@ -27777,13 +27777,14 @@ app.post("/business-partners", async (req, res) => {
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type || "");
 
       const retained=await tx.organization.findUnique({where:{ownerOrgId_type_name:{ownerOrgId:organization.id,type:type as any,name}}});
-      const identity=resolvePartnerIdentity(req.body,name,retained,await linkedPartnerCompany(tx,organization.id,retained?.id,req.body?.companyConnection,req.body)),{code}=identity;
+      const linkedCompany=await linkedPartnerCompany(tx,organization.id,retained?.id,req.body?.companyConnection,req.body);
+      const identity=resolvePartnerIdentity(req.body,name,retained,linkedCompany),{code}=identity;
       if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},...(retained?{id:{not:retained.id}}:{})}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
 
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ...partnerProfilePatch(req.body), ...identity, ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor },
-        update: { ...partnerProfilePatch(req.body), ...identity, representative: contactName, phone: contactPhone },
+        create: { ...partnerProfilePatch(req.body), ...identity, ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor, ...subscriberProfilePatch(linkedCompany) },
+        update: { ...partnerProfilePatch(req.body), ...identity, representative: contactName, phone: contactPhone, ...subscriberProfilePatch(linkedCompany) },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       await connectPartnerCompany(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
@@ -27834,11 +27835,12 @@ app.put("/business-partners/:id", async (req, res) => {
       const locked = await tx.$queryRawUnsafe<{ id: number; type: string }[]>('SELECT id, type FROM "Organization" WHERE id = $1 AND "ownerOrgId" = $2 FOR UPDATE', id, organization.id);
       if (!locked[0] || locked[0].type !== existing.type) throw new Error('PARTNER_CHANGED');
       if (type !== existing.type && (await getBusinessPartnerUsage(tx, [id])).has(id)) throw new Error('PARTNER_HAS_TRANSACTION_HISTORY');
-      const identity=resolvePartnerIdentity(req.body,name,existing,await linkedPartnerCompany(tx,organization.id,id,req.body?.companyConnection,req.body)),{code}=identity;
+      const linkedCompany=await linkedPartnerCompany(tx,organization.id,id,req.body?.companyConnection,req.body);
+      const identity=resolvePartnerIdentity(req.body,name,existing,linkedCompany),{code}=identity;
       if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},id:{not:id}}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
-      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), ...identity, name, type: type as any, representative: contactName, phone: contactPhone, isActive } });
+      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), ...identity, name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...subscriberProfilePatch(linkedCompany) } });
       await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       await connectPartnerCompany(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if (hasServiceTypeSelection) {

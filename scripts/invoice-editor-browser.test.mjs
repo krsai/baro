@@ -1,3 +1,5 @@
+import {INVOICE_BANK_TEXT} from '../frontend/src/constants/invoiceBankConfirmation.js';
+const bankReviewOnly=process.argv.includes('--bank-review-only');
 import {invoiceDocumentText} from '../frontend/src/constants/invoiceDocument.js';
 import {combineInvoiceSources} from '../frontend/src/utils/invoiceDraft.mjs';
 import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
@@ -14,18 +16,19 @@ const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
 const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
  lines:[{key:'item1:S',itemId:1,styleId:10,styleCode:'S1',description:'Shirt',orderedQuantity:10,quantity:'10',adjustmentReason:'',remark:'',hsCode:'',origin:'',color:'Blue',size:'S'}]};
-source.sellerBankAccounts=[{bankName:'Company Bank',accountNumber:'USD-001',accountHolder:'BARO',currency:{code:'USD'}},{bankName:'Company Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}];
+source.sellerBankAccounts=[{id:1,bankName:'Company Bank',accountNumber:'USD-001',accountHolder:'BARO',currency:{code:'USD'}},{id:2,bankName:'Company Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}];
+if(bankReviewOnly)source.sellerBankAccounts.push({id:3,bankName:'Second bank',accountNumber:'USD-999',accountHolder:'Other holder',currency:{code:'USD'}});
 source.lines.push({...source.lines[0],key:'item1:M',size:'M',orderedQuantity:5,quantity:'5'});source.styles[0].orderedQuantity=15;source.styles[0].producedQuantity=15;
 const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of [['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']]){
+ for(const [lang,failure] of (bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(({lang,invoice})=>{window.testLang=lang;window.testInvoice=invoice;},{lang,invoice:failure==='detail'?{id:'i1',buyerOrgId:2,invoiceNumber:'INV-001',revisionNumber:1,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',orders:[{sourceOrderId:'o1',sourceUpdatedAt:source.sourceUpdatedAt,billingPercentage:'100',appliedDeductionAmount:'0'}],snapshot:{fields:{number:'INV-001',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'Saved bank USD-001'},lines:combineInvoiceSources([source]).lines.map(row=>({...row,lineKey:row.key,unitPrice:'2'}))}}:null});
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   if(failure==='detail')await page.route('**/src/components/PageDialogProvider.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const usePageDialogs=()=>({confirm:async()=>true,prompt:async()=>"Correction",alert:async()=>{}});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',r=>{
@@ -85,6 +88,7 @@ try{
   await review.check();
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await issue.click();
+  {const copy=INVOICE_BANK_TEXT[lang],bankDialog=page.getByRole('dialog');await bankDialog.getByRole('radio').first().check();await bankDialog.getByRole('checkbox').check();await bankDialog.getByRole('button',{name:copy.confirm,exact:true}).click();}
   if(['issue','save'].includes(failure)){
    await page.getByRole('alert').filter({hasText:'could not be confirmed'}).waitFor();assert.equal(await page.getByLabel('REMARK',{exact:true}).isDisabled(),true);await issue.click();
   }
@@ -92,10 +96,10 @@ try{
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
   if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
-  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001/);}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
+  assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001|USD-999/);}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of ['ko','en','vi']){
+ for(const lang of (bankReviewOnly?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],queries=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -130,7 +134,7 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await assertSeparateCards();}
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of ['ko','en','vi']){
+ for(const lang of (bankReviewOnly?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];let allowDiscard=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>allowDiscard?d.accept():d.dismiss());
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -160,5 +164,5 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Invoice editor passed ko/en/vi: compact customer/multi-order selection on the same form, discard protection, responsive layout, direct issue and retry recovery.');
+ console.log(bankReviewOnly?'Invoice bank confirmation and selected account payload passed, including ambiguous issue/save retry recovery.':'Invoice editor passed ko/en/vi: compact customer/multi-order selection on the same form, discard protection, responsive layout, direct issue and retry recovery.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}
