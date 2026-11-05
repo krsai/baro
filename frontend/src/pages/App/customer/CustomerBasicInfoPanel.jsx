@@ -1,4 +1,5 @@
 import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
+import {hasApparelBrandIndustry} from '../../../utils/orderDefaultsIndustry.mjs';
 import {useAuth} from '../../../context/AuthContext';
 import PartnerProfileFields from '../../../components/PartnerProfileFields';
 import {CompanyConnectionField} from '../../../components/CompanyConnections';
@@ -45,9 +46,9 @@ const getText = (languageCode) => {
 const CustomerBasicInfoPanel = ({ customerFormData, countryOptions, savingCustomer, languageCode, onBasicFieldChange, onCountryChange, t, connectionActionsTarget }) => {
   const text = useMemo(() => getText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
-  const {activeOrgId,activeOrgType,activeProfile}=useAuth();
+  const {activeOrgId}=useAuth();
   const common = { fullWidth: true, disabled: savingCustomer, size: 'small' };
-  const isBrand = ['MANUFACTURER','BRAND'].includes(activeOrgType||activeProfile?.orgType) && customerFormData.industry === 'BRAND';
+  const isBrand = hasApparelBrandIndustry(customerFormData.classification);
 
   return (
     <Stack spacing={2} >
