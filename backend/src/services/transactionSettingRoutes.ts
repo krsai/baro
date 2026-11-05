@@ -66,7 +66,6 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 }
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
-  registerPartnerRoleManagement(app,db,gates);
   registerExpenseUnitRoutes(app,db,gates);
   registerCodeBaseRoutes(app,db,gates);
   registerExpenseCodeLinkPolicyRoutes(app,db,gates);
@@ -80,6 +79,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
     if(!await gates.requireSystemAdmin(req,res))return;
     res.json(await db.$transaction((tx:any)=>saveCatalogueOrder(tx,'roles',req.body),{isolationLevel:'Serializable'}));
   });
+  registerPartnerRoleManagement(app,db,gates);
   app.get('/partner-roles',async(req:any,res:any)=>{
     if(!await member(req,res))return;
     res.json(await partnerRoleCatalogue(db));
