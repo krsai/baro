@@ -104,7 +104,7 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
     const matched=commitCode();if(event.key==='Enter'||!matched)event.preventDefault();
    }}
    renderOption={(props,row)=>{const {key,...rest}=props;return <Box component="li" key={row.id} {...rest}><Stack spacing={.25}><Typography variant="body2">{display(row)}</Typography><Typography variant="caption" color="text.secondary">{payeeTypeLabel(row,languageCode)}</Typography></Stack></Box>;}}
-   renderInput={params=><TextField {...params} label={t.payee} placeholder={text.search} InputProps={{...params.InputProps,endAdornment:<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><IconButton sx={{width:28,height:28,p:.5,m:0}} size="small" tabIndex={-1} disabled={disabled} aria-label={t.choosePayee} onClick={openSearch}><SearchOutlined fontSize="small"/></IconButton></InputAdornment>}}/>}/>
+   renderInput={params=><TextField {...params} required label={t.payee} inputProps={{...params.inputProps,'aria-label':t.payee}} InputLabelProps={{shrink:true}} placeholder={text.search} InputProps={{...params.InputProps,endAdornment:<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><IconButton sx={{width:28,height:28,p:.5,m:0}} size="small" tabIndex={-1} disabled={disabled} aria-label={t.choosePayee} onClick={openSearch}><SearchOutlined fontSize="small"/></IconButton></InputAdornment>}}/>}/>
   <Dialog open={open} onClose={()=>setOpen(false)} maxWidth="md" fullWidth slotProps={{paper:{sx:{maxWidth:800}}}} aria-labelledby="expense-payee-title">
    <DialogTitle id="expense-payee-title" sx={{px:2,py:1.5}}>{t.choosePayee}</DialogTitle>
    <DialogContent dividers sx={{p:2}}><Stack spacing={1.5}>

@@ -92,6 +92,8 @@ try {
     assert.equal(await page.getByLabel(l.date,{exact:true}).count(),0);
     assert.equal(await page.getByTestId('expense-line').getByLabel(l.description,{exact:false}).evaluate(el=>el.readOnly),true);
     const entryHeader=page.getByTestId('document-entry-header'),approvalBox=await page.getByTestId('document-entry-approval').boundingBox(),payeeBox=await page.getByTestId('expense-payee-button').boundingBox();
+    assert.equal(await page.getByTestId('expense-payee-button').getByRole('combobox').getAttribute('required'),'');
+    assert.equal(await page.getByTestId('expense-payee-button').locator('label').getAttribute('data-shrink'),'true','Payee label stays visible even when empty');
     assert.ok(approvalBox.x>payeeBox.x+payeeBox.width);assert.equal(await page.getByTestId('expense-approval-stages').count(),1);
     const approvalStrip=await page.getByTestId('expense-approval-stages').boundingBox(),approvalBlock=await page.getByTestId('document-entry-approval').boundingBox(),currentPayeeBox=await page.getByTestId('expense-payee-button').boundingBox();assert.ok(approvalStrip.height>=36);assert.ok(Math.abs((approvalBlock.y+approvalBlock.height/2)-(currentPayeeBox.y+currentPayeeBox.height/2))<1,'Payee and approval controls share the same vertical center');
     assert.equal(await page.getByTestId('expense-approval-stages').evaluate(element=>element.scrollWidth<=element.clientWidth),true,'Approval states fit the header without scrolling');

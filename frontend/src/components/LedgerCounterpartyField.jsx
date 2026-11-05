@@ -5,7 +5,6 @@ export default function LedgerCounterpartyField({row,parent,options,account,lang
  const t=changeApprovalText[languageCode]||changeApprovalText.en;
  if(row.entryKind!=='BANK')return <Typography variant="caption">{parent?.document?.payee||parent?.counterparty?.name||'—'}</Typography>;
  if(row.evidenceType==='ADJUSTMENT')return <Typography variant="body2">—</Typography>;
- if(row.evidenceType!=='FILE')return <Typography variant="body2" aria-label={t.party} sx={{overflowWrap:'anywhere'}}>{row.document?.payee||row.counterparty?.name||'—'}</Typography>;
  const choices=options.filter(p=>p.kind!=='ACCOUNT'||p.id!==account?.entityAccountId&&'entity:'+p.id!==account?.id);
  const current=choices.find(p=>p.kind===row.counterparty?.kind&&p.id===row.counterparty?.id)||row.counterparty||null;
  const name=p=>p?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'name']||p?.name||'';
