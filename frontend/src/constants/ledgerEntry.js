@@ -13,4 +13,7 @@ ledgerEntryText.ko.deleteReason='삭제 사유';ledgerEntryText.en.deleteReason=
 ledgerEntryText.ko.purpose="\uC6A9\uB3C4";ledgerEntryText.en.purpose="Purpose";ledgerEntryText.vi.purpose="M\u1ee5c \u0111\u00edch";
 Object.assign(ledgerEntryText.ko,{codeDescription:'항목 설명',remark:'리마크',evidenceKind:'증빙 종류'});
 Object.assign(ledgerEntryText.en,{codeDescription:'Item description',remark:'Remark',evidenceKind:'Evidence type'});
+Object.assign(ledgerEntryText.ko,{netChange:'순증감',documentRemark:'REMARK'});
+Object.assign(ledgerEntryText.en,{netChange:'Net change',documentRemark:'REMARK'});
+Object.assign(ledgerEntryText.vi,{netChange:'Biến động ròng',documentRemark:'REMARK'});
 Object.assign(ledgerEntryText.vi,{codeDescription:'Diễn giải khoản mục',remark:'Ghi chú',evidenceKind:'Loại chứng từ'});

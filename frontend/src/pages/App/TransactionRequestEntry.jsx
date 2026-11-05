@@ -15,7 +15,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom';
 import { Alert, Box, Button, CircularProgress, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
-import { Add } from '@mui/icons-material';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { getUiMessage } from '../../constants/uiMessages';
@@ -148,9 +147,15 @@ export default function TransactionRequestEntry() {
     form.requestDate && (!period.startDate || form.requestDate >= period.startDate) && form.items.every(line => statuses[line.key]);
   const money = (value, currency) => formatCurrency(value, { currencyCode: currency, languageCode });
   const close = () => navigateToPath('/outsourcing-record', { label: labels.document, closeTabId: formPath });
+  const addLine = sourceKey => {
+    if(disabled)return;
+    if(form.items.length>=50){showNotification(labels.limit,'warning');return;}
+    setForm(current=>{if(current.items.length>=50)return current;const index=current.items.findIndex(line=>line.key===sourceKey);return {...current,items:[...current.items.slice(0,index+1),newExpenseLine(),...current.items.slice(index+1)]};});
+  };
   const addProcess = sourceKey => {
-    if(disabled || form.items.length>=50)return;
+    if(disabled)return;if(form.items.length>=50){showNotification(labels.limit,'warning');return;}
     setForm(current=>{
+      if(current.items.length>=50)return current;
       const index=current.items.findIndex(line=>line.key===sourceKey),source=current.items[index];
       if(!source || data.codes.find(code=>code.id===source.transactionCodeId)?.base?.entryMode!=='PROCESS')return current;
       const next={...newExpenseLine(),transactionCodeId:source.transactionCodeId,description:source.description,currency:source.currency,vatRate:source.vatRate,
@@ -248,22 +253,18 @@ export default function TransactionRequestEntry() {
           dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);
         }} onDragEnd={reorderLines}>
           <Droppable droppableId="expense-items" isDropDisabled={disabled}>{provided => (
-            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1392, tableLayout: 'fixed' }}>
-              <colgroup>{[64,144,220,88,96,100,144,96,112,112,128,88].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
+            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1432, tableLayout: 'fixed' }}>
+              <colgroup>{[64,144,220,88,96,100,144,96,112,112,128,128].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
               <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
-                  <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAddProcess={addProcess} canAddProcess={form.items.length<50} />
+                  <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAdd={addLine} onAddProcess={addProcess} canAddProcess={!disabled} />
                 </TableBody>
               )}</Draggable>)}
               {provided.placeholder}
             </Table></TableContainer>
           )}</Droppable>
         </DragDropContext>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2} sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}>
-          <Typography variant="caption" color="text.secondary">{labels.limit}</Typography>
-          <Button startIcon={<Add />} sx={{ flexShrink:0 }} disabled={disabled || form.items.length >= 50} onClick={() => update({ items: [...form.items, newExpenseLine()] })}>{labels.add}</Button>
-        </Stack>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) 360px'},gap:3,p:3,bgcolor:'grey.50'}} data-testid="expense-summary">
           <TextField fullWidth multiline minRows={4} label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
         <Stack alignItems="flex-end" spacing={1} data-testid="expense-totals" sx={{minWidth:0}}>

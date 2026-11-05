@@ -12,7 +12,7 @@ import { expenseLineAmounts, expenseCodeForLine, inputMode,  validExpenseLine } 
 import { formatCurrency } from '../utils/currencyFormat';
 import { expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
-export default function ExpenseRequestLine({ line, index, codes, orders, units = [], settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
+export default function ExpenseRequestLine({ line, index, codes, orders, units = [], settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onAdd, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
   const currency = line.currency;
   const [referencesBusy,setReferencesBusy]=useState(false);
   const [expanded, setExpanded] = useState(Boolean(line.expandLinks));
@@ -90,7 +90,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.subtotal)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.vatAmount)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
-      <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
+      <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={labels.add}><span><IconButton aria-label={labels.add} disabled={disabled} onClick={()=>onAdd?.(line.key)}><Add/></IconButton></span></Tooltip><Tooltip title={expanded ? labels.hide : labels.detail}><IconButton aria-label={expanded ? labels.hide : labels.detail} onClick={() => setExpanded(value => !value)}>{expanded ? <ExpandLess /> : <ExpandMore />}</IconButton></Tooltip><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
     </TableRow>
     {(expanded || isProcess && currency !== 'VND') && <TableRow><TableCell colSpan={12} sx={{ bgcolor: 'grey.50', px: 3, py: 1.5 }}><Stack spacing={1.5}>
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
