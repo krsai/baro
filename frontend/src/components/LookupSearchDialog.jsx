@@ -1,0 +1,20 @@
+import React,{useEffect,useState} from 'react';
+import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {EXPENSE_LOOKUP_TEXT} from '../constants/expenseLookup';
+import {normalizeLookupText} from '../utils/expenseLookup.mjs';
+const paging={ko:{previous:'이전',next:'다음'},en:{previous:'Previous',next:'Next'},vi:{previous:'Trước',next:'Tiếp'}};
+export default function LookupSearchDialog({open,onClose,title,query,onQueryChange,options=[],columns=[],getSearchText,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[]}){
+ const t=EXPENSE_LOOKUP_TEXT[languageCode]||EXPENSE_LOOKUP_TEXT.en,p=paging[languageCode]||paging.en;
+ const [page,setPage]=useState(0);useEffect(()=>setPage(0),[query,open,options.length]);
+ const filtered=options.filter(row=>normalizeLookupText(getSearchText?getSearchText(row):columns.map(column=>column.value(row)).join(' ')).includes(normalizeLookupText(query))),pages=Math.max(1,Math.ceil(filtered.length/20)),current=Math.min(page,pages-1);
+ return <Dialog open={open} onClose={onClose} fullWidth maxWidth={details?'lg':'md'} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}>{title}</DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
+  <TextField autoFocus onFocus={event=>event.target.select()} fullWidth size="small" label={t.keyword} value={query} onChange={event=>onQueryChange(event.target.value)} onKeyDown={event=>{if(!event.nativeEvent?.isComposing&&event.key==='Enter'&&filtered.length===1){event.preventDefault();onSelect(filtered[0]);}}}/>
+  <Box sx={{display:'grid',gridTemplateColumns:details?{xs:'minmax(0,1fr)',md:'minmax(0,1fr) minmax(0,1fr)'}:'minmax(0,1fr)',gap:2,minWidth:0}}>
+   <Stack spacing={1} sx={{minWidth:0}}><TableContainer sx={{maxHeight:360,border:1,borderColor:'divider',borderRadius:1}}><Table size="small" stickyHeader><TableHead><TableRow>{columns.map(column=><TableCell key={column.key} sx={{whiteSpace:'nowrap'}}>{column.label}</TableCell>)}<TableCell sx={{width:64}}>{t.select}</TableCell></TableRow></TableHead><TableBody>
+   {filtered.slice(current*20,current*20+20).map(row=><TableRow key={getOptionKey(row)} hover selected={multiple?selected.some(item=>getOptionKey(item)===getOptionKey(row)):highlightedKey===getOptionKey(row)} onClick={()=>onHighlight?.(row)} onDoubleClick={()=>onSelect(row)}>{columns.map(column=><TableCell key={column.key} sx={{overflowWrap:'anywhere'}}>{column.render?column.render(row):column.value(row)||'—'}</TableCell>)}<TableCell>{multiple?<Checkbox size="small" checked={selected.some(item=>getOptionKey(item)===getOptionKey(row))} onChange={()=>onSelect(row)}/>:<Button size="small" onClick={()=>onSelect(row)}>{t.select}</Button>}</TableCell></TableRow>)}
+   {!filtered.length&&<TableRow><TableCell colSpan={columns.length+1}>{t.empty}</TableCell></TableRow>}
+   </TableBody></Table></TableContainer><Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end"><Typography variant="caption" sx={{mr:'auto'}}>{filtered.length}</Typography><Button size="small" disabled={current===0} onClick={()=>setPage(current-1)}>{p.previous}</Button><Typography variant="caption">{current+1} / {pages}</Typography><Button size="small" disabled={current+1>=pages} onClick={()=>setPage(current+1)}>{p.next}</Button></Stack></Stack>
+   {details&&<Box sx={{minWidth:0,maxHeight:440,overflow:'auto'}}>{details}</Box>}
+  </Box>
+ </Stack></DialogContent><DialogActions sx={{px:2.5,py:1.5}}><Button onClick={onClose}>{t.close}</Button>{onConfirm&&<Button variant="contained" disabled={confirmDisabled} onClick={onConfirm}>{confirmLabel||t.select}</Button>}</DialogActions></Dialog>;
+}
