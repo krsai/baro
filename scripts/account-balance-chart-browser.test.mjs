@@ -23,11 +23,15 @@ try{
    for(const index of [0,3,7,14,22,26,29]){
     // Pointer coordinates come from the actual rendered line, including SVG
     // aspect-ratio padding, CSS scaling and the current scroll position.
-    const cursor=await svg.evaluate((element,index)=>{const point=element.createSVGPoint();point.x=125+index*855/29;point.y=150;const screen=point.matrixTransform(element.getScreenCTM());return {x:screen.x,y:screen.y};},index);
+    const cursor=await svg.evaluate((element,index)=>{const point=element.createSVGPoint();const coordinates=element.querySelector('[data-balance-line]').points.getItem(index);point.x=coordinates.x;point.y=coordinates.y;const screen=point.matrixTransform(element.getScreenCTM());return {x:screen.x,y:screen.y};},index);
     await page.mouse.move(cursor.x,cursor.y);
     await chart.getByText('2026-10-'+String(index+1).padStart(2,'0'),{exact:true}).waitFor();
+    const tip=await chart.getByTestId('balance-chart-tooltip').boundingBox();assert.ok(cursor.x>=tip.x-24&&cursor.x<=tip.x+tip.width+190);assert.ok(Math.abs(cursor.y-tip.y)<100);
    }
   }
+  const lineRight=await svg.evaluate(element=>{const line=element.querySelector('[data-balance-line]');const p=element.createSVGPoint();p.x=line.points.getItem(29).x;p.y=0;return p.matrixTransform(element.getScreenCTM()).x;});
+  const bounds=await svg.boundingBox();assert.ok(bounds.x+bounds.width-lineRight<25);const parent=await chart.boundingBox();assert.ok(Math.abs(bounds.width-parent.width)<2);
+  const ticks=await svg.locator('[data-axis-tick]').allTextContents();assert.ok(ticks.every(text=>Number.isInteger(Number(text.replaceAll(',','')))));
   await svg.focus();await page.keyboard.press('ArrowLeft');await chart.getByText('2026-10-29',{exact:true}).waitFor();
   await page.keyboard.press('ArrowRight');await chart.getByText('2026-10-30',{exact:true}).waitFor();
   assert.deepEqual(errors,[]);await page.close();

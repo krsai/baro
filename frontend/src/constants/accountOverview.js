@@ -8,3 +8,7 @@ accountOverviewText.ko.credit='선수금';accountOverviewText.en.credit='Custome
 Object.assign(accountOverviewText.ko,{chart:'계좌 잔액',days:'기간',dayUnit:'일',totalBalance:'전체 계좌 잔액',fxDate:'환산 기준',fxUnavailable:'환율을 불러오지 못했습니다.',fxStale:'이전 환율',converted:'최신 환율 환산'});
 Object.assign(accountOverviewText.en,{chart:'Account balances',days:'Period',dayUnit:'days',totalBalance:'Total account balance',fxDate:'Rate date',fxUnavailable:'Could not load exchange rates.',fxStale:'Previous rates',converted:'Converted at latest rates'});
 Object.assign(accountOverviewText.vi,{chart:'Số dư tài khoản',days:'Thời gian',dayUnit:'ngày',totalBalance:'Tổng số dư tài khoản',fxDate:'Ngày tỷ giá',fxUnavailable:'Không tải được tỷ giá.',fxStale:'Tỷ giá trước',converted:'Quy đổi theo tỷ giá mới nhất'});
+
+Object.assign(accountOverviewText.ko,{capture:'이미지 저장',captureFailed:'이미지를 저장하지 못했습니다.',close:'닫기'});
+Object.assign(accountOverviewText.en,{capture:'Save image',captureFailed:'Could not save image.',close:'Close'});
+Object.assign(accountOverviewText.vi,{capture:'Lưu ảnh',captureFailed:'Không thể lưu ảnh.',close:'Đóng'});
