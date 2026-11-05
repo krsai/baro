@@ -1,7 +1,7 @@
 import {createHttpError} from '../utils/http';
 import {editRevision} from '../utils/editRevision';
 export const identityFields={id:true,name:true,nameKo:true,nameVi:true,code:true,country:true,businessNumber:true,address:true};
-export const publicCompanyFields={...identityFields,industry:true,representative:true,phone:true,email:true};
+export const publicCompanyFields={...identityFields,businessLegalForm:true,industry:true,representative:true,phone:true,email:true};
 export const numberKey=(value:any)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export const publicIdentityRevision=(row:any)=>editRevision(Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])));
 export const identityDto=(row:any,common=false)=>({...Object.fromEntries([...Object.keys(publicCompanyFields),'industryLabels','officialClassification'].map(key=>[key,row[key]??null])),...(common?{identityId:row.id}:{sourceEntityId:row.id}),revision:publicIdentityRevision(row)});
@@ -16,7 +16,7 @@ export async function publicCompanyDetails(db:any,row:any){
 export async function currentIdentity(db:any,row:any){
  if(!row?.anchorEntityId)return row;
  const anchor=await db.organization.findFirst({where:{id:row.anchorEntityId,isActive:true},select:publicCompanyFields});
- return anchor?publicCompanyDetails(db,{...row,...Object.fromEntries(['name','nameKo','nameVi','address','industry','representative','phone','email'].map(key=>[key,anchor[key]??null]))}):row;
+ return anchor?publicCompanyDetails(db,{...row,...Object.fromEntries(['name','nameKo','nameVi','address','businessLegalForm','industry','representative','phone','email'].map(key=>[key,anchor[key]??null]))}):row;
 }
 export async function identityCandidates(db:any,orgId:number,input:any){
  const number=numberKey(input.businessNumber),country=String(input.country||'').trim();

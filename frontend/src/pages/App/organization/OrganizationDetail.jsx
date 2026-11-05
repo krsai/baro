@@ -1,3 +1,4 @@
+import {businessLegalFormText} from '../../../constants/businessLegalForm';
 import CompanyIndustrySettings from '../../../components/CompanyIndustrySettings';
 import { LOCALIZED_NAME_HELP } from '../../../components/LocalizedNameFields';
 import {ENTITY_CODE_TEXT,entityCodeError} from '../../../utils/entityCode.mjs';
@@ -46,6 +47,7 @@ const buildCompanyInfo = (data = {}) => {
     nameVi: data.nameVi ?? '',
     code: data.code ?? '',
     businessNumber: data.businessNumber ?? '',
+    businessLegalForm:data.businessLegalForm??'',
     representativeEmployeeId: normalizePositiveId(data.representativeEmployeeId),
     representative: representativeEmployee?.name ?? data.representative ?? '',
     industry: data.industry ?? '',
@@ -274,6 +276,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
         nameKo: formData.nameKo?.trim() || null,
         nameVi: formData.nameVi?.trim() || null,
         businessNumber: formData.businessNumber?.trim() || null,
+        businessLegalForm:formData.businessLegalForm||null,
         representativeEmployeeId: formData.representativeEmployeeId || null,
         representative: formData.representative?.trim() || null,
         industry: formData.industry || null,
@@ -313,14 +316,20 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     {headerActionsTarget && createPortal(saveAction,headerActionsTarget)}
     <Container {...(embedded ? {sx:{minWidth:0,width:'100%'}} : {title:text.title,titleActions:saveAction})}>
       <PageContentStack  >
-      <EntityDetailSection title={localText.identityTitle}>
+      <EntityDetailSection title={(businessLegalFormText[languageCode]||businessLegalFormText.en).title}>
         <Grid container spacing={2}>
 
 
-          <Grid size={{xs:12,sm:6,md:6}}>
+          <Grid size={{xs:12,sm:6,md:4}}>
+            <TextField fullWidth select size="small" name="businessLegalForm" label={(businessLegalFormText[languageCode]||businessLegalFormText.en).label} value={formData.businessLegalForm} onChange={handleInputChange} disabled={isSaving} slotProps={{select:{displayEmpty:true,inputProps:{'aria-label':(businessLegalFormText[languageCode]||businessLegalFormText.en).label}},inputLabel:{shrink:true}}}>
+              <MenuItem value="">{(businessLegalFormText[languageCode]||businessLegalFormText.en).empty}</MenuItem>
+              {['CORPORATION','SOLE_PROPRIETOR'].map(value=><MenuItem key={value} value={value}>{(businessLegalFormText[languageCode]||businessLegalFormText.en)[value]}</MenuItem>)}
+            </TextField>
+          </Grid>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField fullWidth size="small" label={localText.businessNumber} name="businessNumber" value={formData.businessNumber} onChange={handleInputChange} />
           </Grid>
-          <Grid size={{xs:12,sm:6,md:6}}>
+          <Grid size={{xs:12,sm:6,md:4}}>
             <TextField
               fullWidth
               size="small"

@@ -988,7 +988,7 @@ export const UI_MESSAGES = {
 Object.assign(UI_MESSAGES, {
   organizationBoard: {
     title: { ko: '\uC870\uC9C1', en: 'Organization', vi: 'Tổ chức' },
-    tabBusiness: { ko: '\uBC95\uC778 \uC815\uBCF4', en: 'Business Info', vi: 'Thông tin doanh nghiep' },
+    tabBusiness: { ko: '\uC0AC\uC5C5\uCCB4 \uC815\uBCF4', en: 'Business Info', vi: 'Thông tin doanh nghiep' },
     tabFactory: { ko: '\uACF5\uC7A5 \uC815\uBCF4', en: 'Factory Info', vi: 'Thông tin nha may' },
     toggleAriaLabel: {
       ko: '\uC870\uC9C1 \uAD00\uB9AC \uD0ED',

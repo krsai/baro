@@ -35,7 +35,7 @@ export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any,
 };
 export const entityProfile = (entity:any) => ({
   entityId:entity.id,name:entity.name,nameKo:entity.nameKo ?? null,nameVi:entity.nameVi ?? null,
-  code:entity.code ?? null,partyKind:entity.partyKind??null,businessNumber:entity.businessNumber ?? null,
+  businessLegalForm:entity.businessLegalForm??null,code:entity.code ?? null,partyKind:entity.partyKind??null,businessNumber:entity.businessNumber ?? null,
   country:entity.country ?? null,countryCode:entity.countryCode ?? null,address:entity.address ?? null,
   contactName:entity.representative ?? null,contactPhone:entity.phone ?? null,email:entity.email ?? null,
 });

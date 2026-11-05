@@ -77,7 +77,7 @@ export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,
  if(!target||requested.revision!==companyIdentityRevision(target))throw createHttpError(409,'COMPANY_CONNECTION_CHANGED');
  return target;
 }
-const publicProfile=(company:any)=>company?Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','representative','phone','email'].map(key=>[key,company[key]??null])):{};
+const publicProfile=(company:any)=>company?Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','businessLegalForm','representative','phone','email'].map(key=>[key,company[key]??null])):{};
 export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
  if(!rows.length)return rows;
  const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,target:{select:publicSelect}}});

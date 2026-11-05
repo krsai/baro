@@ -1,3 +1,4 @@
+import {businessLegalForm} from '../services/businessLegalForm';
 import { normalizeEntityNameInput } from '../utils/localizedName';
 import { Prisma } from "@prisma/client";
 import { Router } from "express";
@@ -199,6 +200,7 @@ export const createOrganizationRouter = ({
         nameVi: normalizeOptionalOrganizationText(nameVi),
         code: normalizedCode,
         businessNumber,
+        businessLegalForm:businessLegalForm(req.body?.businessLegalForm)??null,
         representative,
         industry,
         country,
@@ -319,6 +321,7 @@ export const createOrganizationRouter = ({
     const organizationUpdateData: Prisma.OrganizationUpdateInput = {
       name,
       businessNumber,
+      ...(req.body?.businessLegalForm!==undefined?{businessLegalForm:businessLegalForm(req.body.businessLegalForm)??null}:{}),
       representative: representativeEmployeeResolved.hasInput
         ? representativeEmployeeName
         : representative,

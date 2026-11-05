@@ -313,6 +313,7 @@ model Organization {
   nameVi                   String?
   code                     String?          @unique
   partyKind                String?
+  businessLegalForm        String?
   businessNumber           String?
   representative           String?
   representativeEmployeeId Int?

@@ -1,3 +1,5 @@
+import {businessLegalFormText} from '../frontend/src/constants/businessLegalForm.js';
+const legalOnly=process.argv.includes('--legal-form-only');
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -17,15 +19,16 @@ const port=43211,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/entity-profile-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath,headless:true});
- const screens=process.argv.includes('--pages-only')?['organization','customer']:['organization','customer','partner'];
- for(const screen of screens)for(const width of [1920,1440,768,390]){
+ const screens=legalOnly?['organization']:process.argv.includes('--pages-only')?['organization','customer']:['organization','customer','partner'];
+ for(const language of (legalOnly?['ko','en','vi']:['en']))for(const screen of screens)for(const width of (legalOnly?[1440,390]:[1920,1440,768,390])){
   const page=await browser.newPage({viewport:{width,height:1100}}),errors=[],bankEntities=[];let update;
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,updateActiveProfile:()=>{}});'}));
-  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:"en"});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:'+JSON.stringify(language)+'});'}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
-  const headers={'Access-Control-Allow-Origin':'*'};
-  await page.route('**/organizations/primary*',r=>r.fulfill({headers,json:{id:1,type:'MANUFACTURER',name:'BARO GARMENT',nameKo:'BARO',nameVi:'BARO',code:'BRVN',country:'VN'}}));
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};let organization={id:1,type:'MANUFACTURER',name:'BARO GARMENT',nameKo:'BARO',nameVi:'BARO',code:'BRVN',country:'VN',businessLegalForm:null};let legalSave;
+  await page.route('**/organizations/1',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});legalSave=r.request().postDataJSON();organization={...organization,...legalSave};return r.fulfill({headers,json:organization});});
+  await page.route('**/organizations/primary*',r=>r.fulfill({headers,json:organization}));
   await page.route('**/company-industries?*',r=>r.fulfill({headers,json:{canEdit:true,classification:{revision:0,roleIds:[],industryIds:[],industries:[]},codes:[]}}));
   await page.route('**/partner-classifications/options?*',r=>r.fulfill({headers,json:{roles:[],industries:[]}}));
   await page.route('**/employees**',r=>r.fulfill({headers,json:[]}));
@@ -34,6 +37,7 @@ try{
   await page.route('**/entities/*/bank-accounts*',r=>{bankEntities.push(Number(new URL(r.request().url()).pathname.split('/')[2]));return r.fulfill({headers,json:{accounts:[],currencies:[{id:1,code:'VND'}]}});});
   await page.route('**/business-partners/44?*',r=>{update=r.request().postDataJSON();return r.fulfill({headers,json:{id:44,...update}});});
   await page.goto(`http://127.0.0.1:${port}/entity-profile-acceptance.html?screen=${screen}`);
+  if(legalOnly){page.setDefaultTimeout(8000);const t=businessLegalFormText[language],field=page.locator('input[name=businessLegalForm]').locator('..').getByRole('combobox');await field.waitFor();assert.equal(await page.locator('input[name=businessLegalForm]').inputValue(),'');for(const form of ['SOLE_PROPRIETOR','CORPORATION']){await field.click();await page.getByRole('option',{name:t[form],exact:true}).click();const saved=page.waitForResponse(response=>response.request().method()==='PUT'&&new URL(response.url()).pathname==='/organizations/1');saved.catch(()=>{});await page.locator('.app-page-header').getByRole('button').first().click();await saved;assert.equal(legalSave.businessLegalForm,form);await page.reload();await field.waitFor();assert.equal(await page.locator('input[name=businessLegalForm]').inputValue(),form);}assert.deepEqual(errors,[]);await page.close();continue;}
   await page.getByRole('heading',{name:'Bank accounts',exact:true}).waitFor();
   await page.waitForFunction(()=>!document.querySelector('[role="progressbar"]'));
   for(let attempt=0;attempt<100&&!bankEntities.includes(screen==='organization'?1:44);attempt++)await page.waitForTimeout(50);
