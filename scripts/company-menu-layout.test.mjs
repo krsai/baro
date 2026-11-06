@@ -49,13 +49,14 @@ test('company groups, direct entry, partner scopes and notifications follow the 
   assert.deepEqual(menu.filter(item => item.isParent).map(item => item.menuGroupKey),
     ['ORDER', 'RECORDS', 'INVENTORY', 'ADMIN', 'ACCOUNTING', 'OPERATIONS', 'SETTINGS', 'SYSTEM']);
   for (const [path, group] of [
-    ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'SETTINGS'],
+    ['/account-overview', 'OPERATIONS'], ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'SETTINGS'],
     ['/attendance', 'ADMIN'], ['/payroll', 'ADMIN'], ['/employee-system', 'SETTINGS'],
     ['/salary-system', 'SETTINGS'], ['/production-analysis', 'RECORDS'],
     ['/business', 'SETTINGS'], ['/inventory/stock', 'INVENTORY'],
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],
   ]) assert.equal(findMenuGroupForPath(menu, path), group);
+  assert.deepEqual(menu.find(item => item.menuGroupKey === 'ACCOUNTING').children.map(item => item.path), ['/invoices', '/outsourcing-record', '/bank-ledger']);
   const partner = menu.find(item => item.menuGroupKey === 'ORDER').children[0];
   assert.equal(partner.path, '/business-partner');
   assert.equal(partner.notificationActive, true);
