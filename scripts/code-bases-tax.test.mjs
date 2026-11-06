@@ -54,6 +54,11 @@ async function fixture(legacyCode = 'OLD_CODE') {
   await db.exec(`CREATE TABLE IF NOT EXISTS "SystemSetting"(key TEXT PRIMARY KEY,value JSONB);CREATE TABLE IF NOT EXISTS "PartnerRole"(id INT PRIMARY KEY,code TEXT);INSERT INTO "PartnerRole" VALUES(1,'TEST') ON CONFLICT DO NOTHING;`);
   await db.exec('ALTER TABLE "SettingServiceDefault" ADD COLUMN IF NOT EXISTS "partnerRoleId" INT DEFAULT 1 REFERENCES "PartnerRole"(id)');
   await db.exec(fs.readFileSync('backend/prisma/migrations/20261031220000_accounting_code_industries/migration.sql','utf8'));
+  await db.exec(`ALTER TABLE "TransactionCodeBase" ADD COLUMN "cashDirection" TEXT NOT NULL DEFAULT 'BOTH';
+    ALTER TABLE "PartnerTransactionCost" ADD COLUMN "orgId" INT DEFAULT 1, ADD COLUMN "expenseRequestId" INT;
+    CREATE TABLE "ExpenseRequest"(id INT,"orgId" INT,"deletedAt" TIMESTAMP);
+    CREATE TABLE "BankLedgerEntry"(id TEXT,"orgId" INT,"accountingCodeId" INT,"voidedAt" TIMESTAMP);
+    CREATE TABLE "BankLedgerSettlementLine"("orgId" INT,"entryId" TEXT,"accountingCodeId" INT);`);
   return db;
 }
 

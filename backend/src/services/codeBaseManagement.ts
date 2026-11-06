@@ -1,3 +1,4 @@
+import {accountingCodeUsage} from './accountingCodeUsage';
 import {accountingInputs} from './accountingInputs';
 import {codeIndustrySelection,codeIndustryDto,CODE_INDUSTRY_INCLUDE} from './accountingCodeIndustries';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
@@ -160,7 +161,8 @@ export function registerCodeBaseRoutes(app: any, db: any, gates: any) {
       },
     });
     const usedIds = await getCodeBaseUsage(db,bases.map((base: any)=>base.id));
-    res.json(bases.filter((base: any)=>base.expenseType?.code !== 'OTHER').map((base: any) => ({ ...codeIndustryDto(base), hasUsageHistory: usedIds.has(base.id) })));
+    const usage=req.query?.catalogue==='1'?new Map():await accountingCodeUsage(db,bases.map((base:any)=>base.id));
+    res.json(bases.filter((base: any)=>base.expenseType?.code !== 'OTHER').map((base: any) => ({ ...codeIndustryDto(base), hasUsageHistory: usedIds.has(base.id),...(usage.has(base.id)?{transactionUsage:usage.get(base.id)}:{}) })));
   });
   for (const update of [false,true]) app[update ? 'put' : 'post'](`${path}${update ? '/:id' : ''}`, async (req: any,res: any) => {
     if (!await gates.requireSystemAdmin(req,res)) return;

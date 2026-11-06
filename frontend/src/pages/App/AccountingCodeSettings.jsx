@@ -1,3 +1,4 @@
+import {accountingCodeUsageText} from '../../constants/accountingCodeUsage';
 import SelectionSummaryRow from '../../components/SelectionSummaryRow';
 import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
@@ -29,6 +30,8 @@ const TEXT={
 const path='/system-setting-defaults/code-bases';
 export default function AccountingCodeSettings(){
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
+ const usageText=accountingCodeUsageText[languageCode]||accountingCodeUsageText.en;
+ const usageTitle=row=>row.transactionUsage?[usageText.expense+': '+row.transactionUsage.expense,usageText.ledger+': '+row.transactionUsage.ledger,usageText.settlement+': '+row.transactionUsage.settlement,usageText.past+': '+row.transactionUsage.history].join(' / '):'';
  const directionText=accountingDirectionText[languageCode]||accountingDirectionText.en;
  const inputsText=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const [panelKind,setPanelKind]=useState('SUBTYPE');
@@ -74,17 +77,17 @@ export default function AccountingCodeSettings(){
  };
  const options=sourceRows.filter(row=>row.isActive||form?.industryIds.includes(row.id)).sort((a,b)=>(roles.findIndex(row=>row.id===a.partnerRoleId)-roles.findIndex(row=>row.id===b.partnerRoleId))||a.id-b.id);
  return <AppPageContainer title={text.title} titleActions={<Button variant="contained" disabled={loading||saving} onClick={openCreate}>{text.add}</Button>}>
-  <PageContentStack><Typography variant="body2" color="text.secondary">{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>{error&&<Alert severity="error">{error}</Alert>}
+  <PageContentStack><Typography variant="body2" color="text.secondary">{usageText.explanation}</Typography><Typography variant="body2" color="text.secondary">{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>{error&&<Alert severity="error">{error}</Alert>}
    <HierarchyPanel label={text.category} items={items} selectedId={selected} onSelect={setSelected}>
     <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography>{fundsSelected&&<Typography variant="caption" color="text.secondary">{internalFundsText[languageCode]||internalFundsText.en}</Typography>}</Stack>
-    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,directionText.label,text.active,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
+    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,directionText.label,text.active,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>
-      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{(row.isAvailable??row.isActive)?'✓':'—'}</TableCell><TableCell><Stack direction="row">
+      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{(row.isAvailable??row.isActive)?'✓':'—'}</TableCell><TableCell>{row.transactionUsage&&<Tooltip title={usageTitle(row)}><Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={(row.transactionUsage.current?usageText.current:row.transactionUsage.history?usageText.history:usageText.none)+(row.transactionUsage.current||row.transactionUsage.history?' '+(row.transactionUsage.current||row.transactionUsage.history)+' '+usageText.count:'')}/></Tooltip>}</TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
-       <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
-      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={6}>{text.empty}</TableCell></TableRow>}</TableBody>
+       <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={row.transactionUsage?.history&&!row.transactionUsage?.current?usageText.protected:usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
+      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={7}>{text.empty}</TableCell></TableRow>}</TableBody>
     </Table></TableContainer>
    </HierarchyPanel>
   </PageContentStack>

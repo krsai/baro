@@ -1,3 +1,4 @@
+import {accountingCodeUsageText} from '../frontend/src/constants/accountingCodeUsage.js';
 import {TRANSACTION_CLASSIFICATION_FLOW} from '../frontend/src/constants/industryHierarchy.js';
 import {accountingDirectionText} from '../frontend/src/constants/accountingDirection.js';
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   const roles=[named(1,'SUPPLIER'),named(2,'LOGISTICS')],sources=[{...named(10,'ZIPPER'),partnerRoleId:1,partnerRole:roles[0],entryMode:'GENERAL'},{...named(20,'BUTTON'),partnerRoleId:1,partnerRole:roles[0],entryMode:'GENERAL'},{...named(30,'SHIPPING'),partnerRoleId:2,partnerRole:roles[1],entryMode:'LOGISTICS'},{...named(99,'GENERAL'),partnerRoleId:1,partnerRole:roles[0]}];
   sources.push(...Array.from({length:80},(_,i)=>({...named(100+i,'Extra subtype '+String(i).padStart(2,'0')),partnerRoleId:i%2?2:1,partnerRole:roles[i%2?1:0]})));
-  let bases=[{...named(7,'ZIP'),nameKo:'Zipper cost',nameVi:'Zipper cost',nameEn:'Zipper cost',serviceTypeId:10,industryRevision:1,industryIds:[10],industries:[sources[0]],entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[],hasUsageHistory:true,variants:[]}],reject=false;
+  let bases=[{...named(7,'ZIP'),nameKo:'Zipper cost',nameVi:'Zipper cost',nameEn:'Zipper cost',serviceTypeId:10,industryRevision:1,industryIds:[10],industries:[sources[0]],entryMode:'GENERAL',orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[],hasUsageHistory:true,transactionUsage:{current:0,history:1,expense:0,ledger:0,settlement:0},variants:[]}],reject=false;
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/system-setting-defaults/**',r=>{
    const req=r.request(),url=new URL(req.url());assert.ok(!url.pathname.includes('expense-types'));
@@ -32,6 +33,7 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('/code-bases')?bases:url.pathname.endsWith('/partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-code-industries-acceptance.html`);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
+  const usageText=accountingCodeUsageText[lang];await page.getByText(usageText.history+' 1 '+usageText.count,{exact:true}).waitFor();
   await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).waitFor();
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
   const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 업종':lang==='vi'?'Ngành nghề':'Industry';
