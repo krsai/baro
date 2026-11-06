@@ -2,6 +2,7 @@ import React,{forwardRef,useImperativeHandle,useRef,useState} from 'react';
 import {Box,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
 import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
+import {approvalPolicyNodeSx,approvalPolicyConnectorSx} from './approvalPolicyLayout';
 import DecimalAmountField from './DecimalAmountField';
 import {approvalBandText} from '../constants/approvalBands';
 import {approvalBandOrderErrors,boundedApprovalBand,combineApprovalCurrencyRows,defaultApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,reorderApprovalStages,replaceApprovalGroup,sameApprovalGroup} from '../utils/approvalBands.mjs';
@@ -42,7 +43,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
  useImperativeHandle(ref,()=>({addCondition}));
  const roleOptions=['OPERATOR','ACCOUNTANT','ADMIN'].map(value=><MenuItem key={value} value={value}>{t[value]}</MenuItem>);
  const gradeOptions=grades.map(row=><MenuItem key={row.id} value={row.id}>{gradeName(row)}</MenuItem>);
- const nodeSx={width:208,minWidth:208,height:70,boxSizing:'border-box',p:.75,borderRadius:1,bgcolor:'background.paper'};
+ const nodeSx=approvalPolicyNodeSx;
  const drafterCard=<Paper variant="outlined" data-band-drafter sx={nodeSx}><Stack spacing={.25}><Typography variant="caption" color="text.secondary" sx={{height:18}}>{t.drafter}</Typography><Stack direction="row" spacing={.5}><TextField fullWidth select size="small" value={role} disabled={disabled} onChange={event=>setScope({role:event.target.value})} slotProps={{select:{inputProps:{'aria-label':t.drafterRole}}}}><MenuItem value="ALL">{t.allRoles}</MenuItem>{roleOptions}</TextField><TextField fullWidth select size="small" value={gradeId||''} disabled={disabled} onChange={event=>setScope({gradeId:event.target.value||null})} slotProps={{select:{displayEmpty:true,inputProps:{'aria-label':t.drafterGrade}}}}><MenuItem value="">{t.allGrades}</MenuItem>{gradeOptions}</TextField></Stack></Stack></Paper>;
  const columns='540px minmax(0,1fr)',costColumns='20px 120px repeat(3,minmax(0,1fr)) 18px';
  return <Paper variant="outlined" data-testid="approval-conditions" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}>
@@ -68,7 +69,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
      {drafterCard}
      <Droppable droppableId={'approval-stages:'+row.key} type={'STAGES:'+row.key} direction="horizontal">{stagesProvided=><Stack ref={stagesProvided.innerRef} {...stagesProvided.droppableProps} direction="row" sx={{minWidth:0,flexShrink:0}}>
      {row.stages.map((stage,position)=>{const final=position===row.stages.length-1,key=stageKey(stage);return <Draggable key={key} draggableId={row.key+':'+key} index={position} isDragDisabled={disabled}>{stageDrag=><Stack ref={stageDrag.innerRef} {...stageDrag.draggableProps} direction="row" alignItems="center" sx={{flexShrink:0}}>
-      <Box data-band-connector sx={{width:32,minWidth:32,height:70,position:'relative',display:'flex',justifyContent:'center',alignItems:'center'}}><ArrowForward sx={{color:'text.disabled',fontSize:16}}/><IconButton data-add-middle={index} size="small" title={t.addMiddle} aria-label={t.addMiddle} disabled={disabled||row.stages.length>=10} color="primary" sx={{position:'absolute',top:44,p:.25}} onClick={()=>addMiddle(row,position)}><Add sx={{fontSize:16}}/></IconButton></Box>
+      <Box data-band-connector sx={approvalPolicyConnectorSx}><ArrowForward sx={{color:'text.disabled',fontSize:16}}/><IconButton data-add-middle={index} size="small" title={t.addMiddle} aria-label={t.addMiddle} disabled={disabled||row.stages.length>=10} color="primary" sx={{position:'absolute',top:44,p:.25}} onClick={()=>addMiddle(row,position)}><Add sx={{fontSize:16}}/></IconButton></Box>
       <Paper variant="outlined" data-band-stage={position} data-stage-final={final?'true':undefined} sx={nodeSx}><Stack spacing={.25}>
        <Stack direction="row" alignItems="center" spacing={.5} sx={{height:18}}><Box {...stageDrag.dragHandleProps} data-stage-drag-handle={position} aria-label={`${t.reorderStage} ${position+1}`} sx={{display:'flex',color:'text.disabled',touchAction:'none'}}><DragIndicator sx={{fontSize:15}}/></Box><Typography variant="caption" color="text.secondary" sx={{flex:1}}>{final?t.final:`${t.middle} ${position+1}`}</Typography>{row.stages.length>1&&<IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>patchStages(row,row.stages.filter((_,i)=>i!==position))}><Close sx={{fontSize:16}}/></IconButton>}</Stack>
        <Stack direction="row" spacing={.5}>
