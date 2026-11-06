@@ -27488,10 +27488,7 @@ app.put("/assignment-board-state", async (req, res) => {
 // to Organization.representative/phone.
 const BUSINESS_PARTNER_SERVICE_INCLUDE = {
   partnerExpenseType: true,
-  outsourcingServiceAssignments: {
-    include: { serviceType: {include:{systemDefault:{include:{partnerRole:true}}}} },
-    orderBy: { serviceType: { sortOrder: "asc" as const } },
-  },
+
 };
 
 const toBusinessPartnerResponse = (organizationRow: any) => ({
@@ -27507,12 +27504,7 @@ const toBusinessPartnerResponse = (organizationRow: any) => ({
   createdAt: organizationRow.createdAt,
   createdBy: organizationRow.createdBy,
   updatedAt: organizationRow.updatedAt,
-  serviceTypes: ensureArray(organizationRow.outsourcingServiceAssignments).map(
-    (assignment: any) => {
-      const row=assignment.serviceType,source=row.systemDefault;
-      return source?{...row,nameKo:source.nameKo,nameEn:source.nameEn,nameVi:source.nameVi}:row;
-    }
-  ),
+  serviceTypes: [],
 });
 
 const resolvePartnerServiceTypeIds = async (
@@ -27665,6 +27657,8 @@ app.get("/business-partners", async (req, res) => {
     where: {
       ownerOrgId: organization.id,
       type: type ? (type as any) : { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'] },
+      // Production eligibility is a capability check, never an industry fallback.
+      ...(String(req.query.forProduction)==='1'?{type:'PROCESS_OUTSOURCING' as const,isActive:true,OR:[{outsourcingServiceAssignments:{none:{}}},{outsourcingServiceAssignments:{some:{serviceType:{entryMode:'PROCESS' as const}}}}]}:{}),
     },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
     include: BUSINESS_PARTNER_SERVICE_INCLUDE,
@@ -27808,7 +27802,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
     },
   });
   res.json({
-    partner: toBusinessPartnerResponse(partner),
+    partner: (await attachPartnerClassifications(prisma,organization.id,[toBusinessPartnerResponse(partner)]))[0],
     costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}], transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
     records: records.map((record) => ({
       id: record.id,

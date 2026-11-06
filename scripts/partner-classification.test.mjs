@@ -4,9 +4,18 @@ import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url);
-const {effectiveClassification,validateClassification,saveClassification,registerPartnerClassificationRoutes}=require('../backend/dist/services/partnerClassification.js');
+const {effectiveClassification,attachPartnerClassifications,validateClassification,saveClassification,registerPartnerClassificationRoutes}=require('../backend/dist/services/partnerClassification.js');
 const sources=[{id:10,code:'ZIPPER',partnerRoleId:2,isActive:true,partnerRole:{id:2,code:'MATERIAL_SUPPLIER'}},{id:11,code:'SHIPPING',partnerRoleId:3,isActive:true,partnerRole:{id:3,code:'LOGISTICS_PROVIDER'}},{id:12,code:'GENERAL',partnerRoleId:4,isActive:true},{id:13,code:'RETIRED',partnerRoleId:2,isActive:false}];
 const body={revision:0,roleIds:[2,3],industryIds:[10,11]};
+test('current classification attachment never queries legacy links or industry defaults',async()=>{
+ const forbidden=async()=>{throw Error('Legacy classification read');};
+ const db={partnerClassification:{findMany:async()=>[{entityId:7,revision:3,industries:[{industry:sources[1]}]}]},
+  settingServiceDefault:{findMany:forbidden},organizationOutsourcingServiceType:{findMany:forbidden},
+  companyPartnerLink:{findMany:async()=>[]},companyIdentityLink:{findMany:async()=>[]}};
+ const rows=await attachPartnerClassifications(db,1,[{entityId:7,serviceTypes:[sources[0]],systemIndustryId:10},{entityId:8,serviceTypes:[sources[0]],systemIndustryId:10}]);
+ assert.deepEqual(rows[0].classification.industryIds,[11]);assert.deepEqual(rows[0].serviceTypes,[sources[1]]);
+ assert.deepEqual(rows[1].classification.industryIds,[]);assert.deepEqual(rows[1].serviceTypes,[]);
+});
 const ts=require('../backend/node_modules/typescript');
 const {resolvePartnerCode,resolvePartnerIdentity,subscriberProfilePatch}=require('../backend/dist/services/entityProfile.js');
 function sourceRoute(method,path,dependencies){
@@ -15,6 +24,15 @@ function sourceRoute(method,path,dependencies){
  let handler;const bindings={linkedPartnerCompany:async()=>null,assertPartnerProfileEditable:async()=>{},app:{[method]:(_path,fn)=>handler=fn},resolvePartnerCode,resolvePartnerIdentity,ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),...dependencies};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));return handler;
 }
+test('production eligibility is checked independently of displayed industries',async()=>{
+ let where;
+ const route=sourceRoute('get','/business-partners',{getOrganizationByQuery:async()=>({id:1}),resolveOptionalString:value=>value||null,
+  prisma:{organization:{findMany:async query=>{where=query.where;return[];}}},BUSINESS_PARTNER_SERVICE_INCLUDE:{},getBusinessPartnerUsage:async()=>new Set(),attachPartnerClassifications:async()=>[]});
+ await route({query:{forProduction:'1'}},{json:()=>{}});
+ assert.equal(where.ownerOrgId,1);assert.equal(where.type,'PROCESS_OUTSOURCING');assert.equal(where.isActive,true);
+ assert.deepEqual(where.OR,[{outsourcingServiceAssignments:{none:{}}},{outsourcingServiceAssignments:{some:{serviceType:{entryMode:'PROCESS'}}}}]);
+ await route({query:{}},{json:()=>{}});assert.equal(where.OR,undefined);
+});
 const validator=(stored=null)=>({partnerClassification:{findUnique:async()=>stored},settingServiceDefault:{findMany:async({where})=>sources.filter(row=>where.id.in.includes(row.id))}});
 
 test('SERVICE customer registration saves its own relationship and connection without production bucket defaults',async()=>{
@@ -31,8 +49,8 @@ test('SERVICE customer registration saves its own relationship and connection wi
  await handler({body:{name:'Untrusted name',partyKind:'CORPORATE',country:'VN',businessNumber:'0109423500',classification:body}},res);
  assert.equal(created.name,canonical.name);assert.equal(created.address,canonical.address);assert.equal(created.code,null);assert.equal(relationship.manufacturerOrgId,1845);assert.equal(relationship.brandOrgId,77);assert.equal(result.id,99);assert.equal(classificationSaved,true);assert.equal(connected,true);assert.equal(company.type,'SERVICE');
 });
-test('legacy GENERAL stays an original reference and never becomes a selectable industry or inferred category',()=>{
- const value=effectiveClassification(null,[sources[0],sources[2]]);assert.deepEqual(value.roleIds,[2]);assert.deepEqual(value.industryIds,[10]);assert.deepEqual(value.legacyGeneral,[{id:12,code:'GENERAL'}]);assert.equal(value.revision,0);
+test('legacy links never become current industries, including when no explicit classification exists',()=>{
+ const value=effectiveClassification(null,[sources[0],sources[2]]);assert.deepEqual(value.roleIds,[]);assert.deepEqual(value.industryIds,[]);assert.equal(value.legacyGeneral,undefined);assert.equal(value.revision,0);
  const explicit=effectiveClassification({revision:3,industries:[{industry:sources[1]}]},[sources[0],sources[2]]);assert.deepEqual(explicit.roleIds,[3]);assert.deepEqual(explicit.industryIds,[11]);assert.equal(explicit.revision,3);
 });
 test('all selected categories require real industries; cross-category selection is allowed without an organization type restriction',async()=>{

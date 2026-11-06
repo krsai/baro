@@ -1187,6 +1187,7 @@ const WorkDetail = ({
       `/business-partners${buildQueryString({
         orgId: activeOrgId,
         type: 'PROCESS_OUTSOURCING',
+        forProduction: '1',
       })}`,
       { skipGlobalLoading: true, signal: abortController.signal }
     )
@@ -1892,7 +1893,7 @@ const WorkDetail = ({
     (row) => ensureOptionIncluded(
       isOutsourcingMode
         ? [
-            ...outsourcingPartners.filter(partner => (!requestedPartnerId || partner.id === requestedPartnerId) && (!partner.serviceTypes?.length || partner.serviceTypes.some(service => service.entryMode === 'PROCESS'))).map((partner) => ({
+            ...outsourcingPartners.filter(partner => (!requestedPartnerId || partner.id === requestedPartnerId)).map((partner) => ({
               id: `partner:${partner.id}`,
               partnerId: partner.id,
               name: buildOutsourceWorkerName(partner.name, languageCode),

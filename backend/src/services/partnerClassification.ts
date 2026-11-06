@@ -19,34 +19,33 @@ const uniqueIds=(value:any)=>{
   return value as number[];
 };
 export async function classificationTarget(db:any,orgId:number,entityId:number){
-  if(orgId===entityId){const entity=await db.organization.findFirst({where:{id:orgId,ownerOrgId:null,isActive:true,type:{in:['MANUFACTURER','BRAND','SERVICE']}}});if(!entity)throw createHttpError(404,'PARTNER_NOT_FOUND');return {kind:'COMPANY',entity,legacy:[]};}
-  const vendor=await db.organization.findFirst({where:{id:entityId,ownerOrgId:orgId,type:{in:vendorTypes}},include:{outsourcingServiceAssignments:{include:{serviceType:{include:{systemDefault:{include:{partnerRole:true}}}}}}}});
-  if(vendor)return {kind:'BUSINESS',entity:vendor,legacy:vendor.outsourcingServiceAssignments.map((row:any)=>row.serviceType.systemDefault).filter(Boolean)};
-  const relationship=await db.orgRelationship.findFirst({where:{OR:[{manufacturerOrgId:orgId,brandOrgId:entityId},{brandOrgId:orgId,manufacturerOrgId:entityId}]},include:{brand:true,manufacturer:true,systemIndustry:{include:{partnerRole:true}}}});
+  if(orgId===entityId){const entity=await db.organization.findFirst({where:{id:orgId,ownerOrgId:null,isActive:true,type:{in:['MANUFACTURER','BRAND','SERVICE']}}});if(!entity)throw createHttpError(404,'PARTNER_NOT_FOUND');return {kind:'COMPANY',entity};}
+  const vendor=await db.organization.findFirst({where:{id:entityId,ownerOrgId:orgId,type:{in:vendorTypes}}});
+  if(vendor)return {kind:'BUSINESS',entity:vendor};
+  const relationship=await db.orgRelationship.findFirst({where:{OR:[{manufacturerOrgId:orgId,brandOrgId:entityId},{brandOrgId:orgId,manufacturerOrgId:entityId}]},include:{brand:true,manufacturer:true}});
   if(!relationship)throw createHttpError(404,'PARTNER_NOT_FOUND');
-  return {kind:'CUSTOMER',relationshipId:relationship.id,entity:relationship.manufacturerOrgId===orgId?relationship.brand:relationship.manufacturer,legacy:relationship.systemIndustry?[relationship.systemIndustry]:[]};
+  return {kind:'CUSTOMER',relationshipId:relationship.id,entity:relationship.manufacturerOrgId===orgId?relationship.brand:relationship.manufacturer};
 }
-export function effectiveClassification(stored:any,legacy:any[]=[]){
-  const industries=stored?stored.industries.map((row:any)=>row.industry):legacy.filter(row=>row?.code!=='GENERAL'&&row?.partnerRoleId);
-  return {revision:stored?.revision??0,roleIds:[...new Set(industries.map((row:any)=>row.partnerRoleId))],industryIds:industries.map((row:any)=>row.id),industries,legacyGeneral:legacy.filter(row=>row?.code==='GENERAL').map(row=>({id:row.id,code:row.code})),explicit:Boolean(stored)};
+export function effectiveClassification(stored:any){
+  const industries=stored?.industries.map((row:any)=>row.industry)||[];
+  return {revision:stored?.revision??0,roleIds:[...new Set(industries.map((row:any)=>row.partnerRoleId))],industryIds:industries.map((row:any)=>row.id),industries,explicit:Boolean(stored)};
 }
-export async function readClassification(db:any,orgId:number,entityId:number,legacy?:any[]){
-  const target=legacy?null:await classificationTarget(db,orgId,entityId);
+export async function readClassification(db:any,orgId:number,entityId:number){
+  await classificationTarget(db,orgId,entityId);
   const stored=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId}},include:CLASSIFICATION_INCLUDE});
-  return effectiveClassification(stored,legacy||target?.legacy||[]);
+  return effectiveClassification(stored);
 }
 export async function attachPartnerClassifications(db:any,orgId:number,rows:any[]){
   if(!rows.length)return rows;
-  const legacyIds=[...new Set(rows.flatMap(row=>[row.systemIndustryId,...(row.serviceTypes||[]).map((s:any)=>s.systemDefaultId)].filter(Boolean)))];
-  const [stored,sources]=await Promise.all([db.partnerClassification.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:CLASSIFICATION_INCLUDE}),db.settingServiceDefault.findMany({where:{id:{in:legacyIds}},include:{partnerRole:true}})]);
-  return attachLinkedCompanies(db,orgId,rows.map(row=>({...row,classification:effectiveClassification(stored.find((s:any)=>s.entityId===row.entityId),sources.filter((s:any)=>s.id===row.systemIndustryId||(row.serviceTypes||[]).some((local:any)=>local.systemDefaultId===s.id)))})));
+  const stored=await db.partnerClassification.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:CLASSIFICATION_INCLUDE});
+  return attachLinkedCompanies(db,orgId,rows.map(row=>{const classification=effectiveClassification(stored.find((s:any)=>s.entityId===row.entityId));return {...row,classification,serviceTypes:classification.industries};}));
 }
 export async function validateClassification(db:any,body:any,orgId:number,entityId?:number){
   if(!body||!Number.isSafeInteger(body.revision)||body.revision<0)throw createHttpError(400,'PARTNER_CLASSIFICATION_REQUIRED');
   const roleIds=uniqueIds(body.roleIds),industryIds=uniqueIds(body.industryIds);
   const stored=entityId?await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId}},include:CLASSIFICATION_INCLUDE}):null;
   if((stored?.revision??0)!==body.revision)throw createHttpError(409,'PARTNER_CLASSIFICATION_CHANGED');
-  const retained=new Set(stored?stored.industries.map((row:any)=>row.systemIndustryId):entityId?(await classificationTarget(db,orgId,entityId)).legacy.filter((row:any)=>row.code!=='GENERAL').map((row:any)=>row.id):[]);
+  const retained=new Set(stored?.industries.map((row:any)=>row.systemIndustryId)||[]);
   const industries=await db.settingServiceDefault.findMany({where:{id:{in:industryIds}},include:{partnerRole:true}});
   if(industries.length!==industryIds.length||industries.some((row:any)=>row.code==='GENERAL'||!row.partnerRoleId||!row.isActive&&!retained.has(row.id))||
     roleIds.some(id=>!industries.some((row:any)=>row.partnerRoleId===id))||industries.some((row:any)=>!roleIds.includes(row.partnerRoleId)))throw createHttpError(400,'PARTNER_CLASSIFICATION_REQUIRED');
@@ -88,15 +87,15 @@ export function registerPartnerClassificationRoutes(app:any,db:any,gates:any){
   app.get('/partner-directory',async(req:any,res:any)=>{
     const ctx=await access(req,res);if(!ctx)return;const orgId=ctx.organization.id;
     const [vendors,customers,stored,roles]=await Promise.all([
-      db.organization.findMany({where:{ownerOrgId:orgId,type:{in:vendorTypes}},include:{outsourcingServiceAssignments:{include:{serviceType:{include:{systemDefault:{include:{partnerRole:true}}}}}}},orderBy:{name:'asc'}}),
-      db.orgRelationship.findMany({where:{OR:[{manufacturerOrgId:orgId},{brandOrgId:orgId}]},include:{brand:true,manufacturer:true,systemIndustry:{include:{partnerRole:true}}}}),
+      db.organization.findMany({where:{ownerOrgId:orgId,type:{in:vendorTypes}},orderBy:{name:'asc'}}),
+      db.orgRelationship.findMany({where:{OR:[{manufacturerOrgId:orgId},{brandOrgId:orgId}]},include:{brand:true,manufacturer:true}}),
       db.partnerClassification.findMany({where:{orgId},include:CLASSIFICATION_INCLUDE}),partnerRoleCatalogue(db)]);
     const documents=new Map(stored.map((row:any)=>[row.entityId,row]));
-    const rows=[...vendors.map((entity:any)=>({entity,kind:'BUSINESS',relationshipRoles:['SUPPLIER'],legacy:entity.outsourcingServiceAssignments.map((a:any)=>a.serviceType.systemDefault).filter(Boolean)})),
-      ...customers.map((r:any)=>{const entity=r.manufacturerOrgId===orgId?r.brand:r.manufacturer;return {entity:{...entity,code:entity.code||r.customerCode,representative:entity.representative||r.managerName,phone:entity.phone||r.managerPhone,email:entity.email||r.managerEmail,createdAt:r.createdAt},kind:'CUSTOMER',relationshipRoles:[r.manufacturerOrgId===orgId?'CUSTOMER':'SUPPLIER'],relationshipId:r.id,legacy:r.systemIndustry?[r.systemIndustry]:[]};})]
-      .map((row:any)=>({...row,classification:effectiveClassification(documents.get(row.entity.id),row.legacy)}));
+    const rows=[...vendors.map((entity:any)=>({entity,kind:'BUSINESS',relationshipRoles:['SUPPLIER']})),
+      ...customers.map((r:any)=>{const entity=r.manufacturerOrgId===orgId?r.brand:r.manufacturer;return {entity:{...entity,code:entity.code||r.customerCode,representative:entity.representative||r.managerName,phone:entity.phone||r.managerPhone,email:entity.email||r.managerEmail,createdAt:r.createdAt},kind:'CUSTOMER',relationshipRoles:[r.manufacturerOrgId===orgId?'CUSTOMER':'SUPPLIER'],relationshipId:r.id};})]
+      .map((row:any)=>({...row,classification:effectiveClassification(documents.get(row.entity.id))}));
     const [vendorUsage,customerUsage,pricing]=await Promise.all([gates.getBusinessPartnerUsage(db,vendors.map((row:any)=>row.id)),gates.getCustomerUsage(db,customers.map((row:any)=>row.id)),gates.loadCustomerPricingCounts?.(ctx.organization,customers.map((row:any)=>row.id))||new Map()]);
     const linkedRows=await attachLinkedCompanies(db,orgId,rows.map((row:any)=>({...row,entityId:row.entity.id})));
-    res.json({roles,rows:mergePartnerRelationships(linkedRows.map(({legacy,...row}:any)=>({...row,entity:{...entityProfile({...row.entity,...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','code','representative','phone','email'].filter(key=>key in row).map(key=>[key,row[key]]))}),id:row.entity.id,linkedCompany:row.linkedCompany,type:row.entity.type,isActive:row.entity.isActive,createdAt:row.entity.createdAt,representative:'representative' in row?row.representative:row.entity.representative,phone:'phone' in row?row.phone:row.entity.phone,outsourcingServiceAssignments:row.kind==='BUSINESS'?row.entity.outsourcingServiceAssignments:undefined},hasUsageHistory:row.kind==='CUSTOMER'?customerUsage.has(row.relationshipId):vendorUsage.has(row.entity.id),missingSalesPriceStyleCount:row.kind==='CUSTOMER'?pricing.get(row.relationshipId)??0:0})))});
+    res.json({roles,rows:mergePartnerRelationships(linkedRows.map((row:any)=>({...row,entity:{...entityProfile({...row.entity,...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','code','representative','phone','email'].filter(key=>key in row).map(key=>[key,row[key]]))}),id:row.entity.id,linkedCompany:row.linkedCompany,type:row.entity.type,isActive:row.entity.isActive,createdAt:row.entity.createdAt,representative:'representative' in row?row.representative:row.entity.representative,phone:'phone' in row?row.phone:row.entity.phone},hasUsageHistory:row.kind==='CUSTOMER'?customerUsage.has(row.relationshipId):vendorUsage.has(row.entity.id),missingSalesPriceStyleCount:row.kind==='CUSTOMER'?pricing.get(row.relationshipId)??0:0})))});
   });
 }

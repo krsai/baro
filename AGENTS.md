@@ -4648,3 +4648,9 @@ runtime 조회값:
 - 비용 지급 대상 업종은 현재 명시 PartnerClassification을 우선 표시한다. 업체 변경 시 지급 대상 목록을 재조회하되 문서 초안·과거 감사 snapshot은 유지한다.
 - 사용자 요청의 BARO 비용 19와 지급 c690df87-bd79-4ee8-9784-f46e032c93de만 PDF HANSIS26110018의 여섯 코드로 항목 정정한다. 기본 read-only·revision 일치·전체 실행 후 rollback 검증을 갖춘 correct-mj-debit-note.js를 사용한다. 정확한 범위·제약·보존 방식은 docs/mj-debit-note-correction-2026-11-06.md를 따른다. 일반적인 지급 연결 비용 수정 차단이나 결재 권한을 완화하지 않는다.
 
+# 2026-11-06 거래처 업종 레거시 조회 제거 (최신 정정)
+
+- 현재 업종은 PartnerClassification과 가입 회사의 명시적 공식 분류만 조회한다. OrganizationOutsourcingServiceType·OrgRelationship.systemIndustryId·기술적 Organization.type을 업종으로 대신 사용하는 fallback을 제거한다. 미등록 분류는 미지정으로 표시하며 추정하거나 조회만으로 이관하지 않는다. legacyGeneral 표시와 조회도 제거한다.
+- 생산 서비스 능력·비용·코드의 실제 FK 및 과거 문서 snapshot은 업종 표시와 별개로 보존한다. 명시 고객 분류 저장 시 예전 단일 유형 FK를 NULL로 정리하는 기존 처리는 유지한다.
+- 운영 읽기 전용 확인: BARO/MJ(1/1847)의 OrganizationOutsourcingServiceType 연결은 0건, 명시 업종은 포워더 105(revision 3)다. 삭제할 추가 연결이 없으므로 비용 19 및 기존/대체 지급은 수정하지 않는다. 업종·업체 편집·회사/SYSTEM 회귀와 글로벌 편집창 브라우저 검사, 양쪽 빌드·번역/인코딩으로 검증한다. DB migration은 없다.
+

@@ -59,6 +59,5 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
    getOptionDisabled={row=>deriveRoles&&row.isActive===false&&!value.industryIds.includes(row.id)} onChange={(_,selected)=>change(deriveRoles?[...new Set(selected.map(row=>row.partnerRoleId))]:value.roleIds,selected.map(row=>row.id))}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
    renderInput={params=><TextField {...params} required size="small" label={text.industry}/>}/></Box>
-  {Boolean(value?.legacyGeneral?.length)&&<Typography variant="caption" color="text.secondary">{text.legacy}: {value.legacyGeneral.map(row=>row.code).join(', ')}</Typography>}
  </Stack>;
 }
