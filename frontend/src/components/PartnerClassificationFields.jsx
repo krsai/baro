@@ -1,13 +1,14 @@
+import SelectionSummaryRow from './SelectionSummaryRow';
 import Autocomplete from './SearchableSelect';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Box,Button,Checkbox,Chip,FormControlLabel,IconButton,Stack,TextField,Typography,createFilterOptions} from '@mui/material';
+import {Alert,Box,Button,Checkbox,Chip,FormControlLabel,IconButton,Stack,TextField,Tooltip,Typography,createFilterOptions} from '@mui/material';
 import {Close,ViewSidebarOutlined} from '@mui/icons-material';
 import {createPortal} from 'react-dom';
 import {partnerClassificationPanelText} from '../constants/partnerClassificationPanel';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {classificationName,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 
-export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady,inline=false,expandable=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange,catalogue,deriveRoles=false}){
+export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady,inline=false,expandable=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange,catalogue,deriveRoles=false,title}){
  const text=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
  const [options,setOptions]=useState({roles:[],industries:[]}),[error,setError]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0);
  const [search,setSearch]=useState(''),panelText=partnerClassificationPanelText[languageCode]||partnerClassificationPanelText.en;
@@ -32,9 +33,10 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
   const visible=roles.filter(role=>!search||filterOptions([role],{inputValue:search,getOptionLabel:name}).length||matches.some(row=>row.partnerRoleId===role.id));
   return <Stack spacing={1}>
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{text.retry}</Button>}>{text.loadError}</Alert>}
-   <Button variant="outlined" startIcon={<ViewSidebarOutlined/>} disabled={disabled||loading||error} aria-expanded={sidePanelOpen} onClick={()=>{setSearch('');onPanelOpenChange(true);}}>{panelText.select}</Button>
-   {value.roleIds.map(id=><Box key={id}><Typography variant="caption" color="text.secondary">{name(roles.find(role=>role.id===id))}</Typography><Stack direction="row" useFlexGap flexWrap="wrap" gap={.5}>{industries.filter(row=>row.partnerRoleId===id&&value.industryIds.includes(row.id)).map(row=><Chip size="small" key={row.id} label={name(row)} onDelete={disabled?undefined:()=>toggleIndustry(row)}/>)}</Stack></Box>)}
-   {!value.roleIds.length&&<Typography variant="body2" color="text.secondary">{panelText.empty}</Typography>}
+   <SelectionSummaryRow title={title||text.industry} action={<Button size="small" startIcon={<ViewSidebarOutlined/>} disabled={disabled||loading||error} aria-label={panelText.select} aria-expanded={sidePanelOpen} onClick={()=>{setSearch('');onPanelOpenChange(!sidePanelOpen);}}>{panelText.select}</Button>}>
+    {industries.filter(row=>value.industryIds.includes(row.id)).map(row=><Tooltip key={row.id} title={name(roles.find(role=>role.id===row.partnerRoleId))}><Chip size="small" label={name(row)} onDelete={disabled?undefined:()=>toggleIndustry(row)}/></Tooltip>)}
+    {!value.industryIds.length&&<Typography variant="body2" color="text.secondary">—</Typography>}
+   </SelectionSummaryRow>
    {sidePanelTarget&&createPortal(<Box component="aside" aria-label={panelText.select} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();onPanelOpenChange(false);}}} sx={{border:1,borderColor:'divider',borderRadius:1,minWidth:0,display:'flex',flexDirection:'column',maxHeight:{xs:'60dvh',md:'70dvh'},position:{md:'sticky'},top:0}}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1,borderBottom:1,borderColor:'divider'}}><Typography variant="subtitle2">{panelText.select}</Typography><IconButton aria-label={panelText.close} onClick={()=>onPanelOpenChange(false)}><Close fontSize="small"/></IconButton></Stack>
     <Box sx={{p:1}}><TextField autoFocus fullWidth size="small" label={panelText.search} value={search} onChange={event=>setSearch(event.target.value)}/></Box>
