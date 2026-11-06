@@ -5,6 +5,20 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url),{saveFreight}=require('../backend/dist/services/freightOperations'),{saveJobBill,jobDetail}=require('../backend/dist/services/freightJobs');
+
+test('job registration validates scoped parties, preserves cargo details and starts received without BLs',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const routes=new Map();require('../backend/dist/services/freightJobs').registerJobRoutes({get:()=>{},post:(path,fn)=>routes.set(path,fn),put:()=>{},delete:()=>{}},db,async()=>({orgId:org,actorId:actor}));
+  const create=async body=>{let value;await routes.get('/freight/transport-jobs')({params:{},body},{json:row=>{value=row;}});return value;};
+  const body={clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',status:'DELIVERED',data:{shipperId:s.vendor.id,consigneeId:s.vendor.id,shipmentType:'FCL',incoterms:'FOB Hai Phong',cargo:'Garments',quantity:'20',weightKg:'250.5',cbm:'4.25',containerType:'40HC',containerCount:'2',pickupRequired:true,pickupAddress:'Separate warehouse',dangerousGoods:true,dangerousGoodsDetails:'UN 1993'}};
+  await assert.rejects(create({...body,data:{...body.data,shipperId:null}}),/FREIGHT_PARTIES_REQUIRED/);
+  await assert.rejects(create({...body,data:{...body.data,consigneeId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
+  await assert.rejects(create({...body,data:{...body.data,shipmentType:'AIR'}}),/FREIGHT_INVALID_INPUT/);
+  const saved=await create(body);assert.equal(saved.status,'DRAFT');assert.equal(saved.data.shipperParty.id,s.vendor.id);assert.equal(saved.data.pickupAddress,'Separate warehouse');assert.equal(saved.data.cbm,'4.25');assert.equal(saved.data.containerCount,'2');assert.equal(saved.data.dangerousGoods,true);assert.equal((await jobDetail(db,org,actor,saved.id)).bills.length,0);
+  assert.equal((await create(body)).id,saved.id,'retry does not create another job');
+ }finally{await f.close();}
+});
 test('jobs have independent optional BLs with scoped, mutable Master-House links and protected history',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;

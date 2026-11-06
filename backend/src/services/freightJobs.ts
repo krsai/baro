@@ -42,12 +42,14 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
 export function registerJobRoutes(app:any,db:any,access:any){
  const route=(method:string,path:string,work:any)=>app[method]('/freight/transport-jobs'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any,req:any)=>listFreight(db,orgId,actorId,'jobs',req.query));
- route('get','/options',async({orgId}:any)=>({employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true},orderBy:{name:'asc'}})}));
+ route('get','/options',async({orgId}:any)=>({employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}})}));
  route('get','/:id',({orgId,actorId}:any,req:any)=>jobDetail(db,orgId,actorId,req.params.id));
  const save=async({orgId,actorId}:any,req:any)=>{
   const previous=req.params.id?await job(db,orgId,req.params.id):null;
   // The new editor never writes legacy BL columns; preserve their historical values.
-  return saveFreight(db,orgId,actorId,'jobs',{...req.body,masterId:previous?.masterId??null,houseStatus:previous?.houseStatus??'NONE',houseNumber:previous?.houseNumber??null},req.params.id);
+  if(!req.body?.data?.shipperId||!req.body?.data?.consigneeId)fail('FREIGHT_PARTIES_REQUIRED');
+  // Registration receives the job; progress is owned by operational workflows.
+  return saveFreight(db,orgId,actorId,'jobs',{...req.body,status:previous?.status??'DRAFT',masterId:previous?.masterId??null,houseStatus:previous?.houseStatus??'NONE',houseNumber:previous?.houseNumber??null},req.params.id);
  };
  route('post','',save);route('put','/:id',save);
  route('post','/:id/bills',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body));
