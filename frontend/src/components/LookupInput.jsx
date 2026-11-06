@@ -3,11 +3,11 @@ import {IconButton,InputAdornment,TextField,Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import {normalizeLookupText,resolveLookupOption} from '../utils/expenseLookup.mjs';
 
-export default function LookupInput({options=[],value,onChange,onSearch,getLabel=row=>row.name||row.code||'',getCode,getValues,getSearchText,getOptionKey=row=>row.id,hasSelection=false,clearAfterChoose=false,label,hideLabel=false,searchLabel,placeholder,disabled,required,error,helperText,onEdit,onCommit,inputValue,onInputChange,textFieldProps={},...props}){
+export default function LookupInput({options=[],value,onChange,onSearch,getLabel=row=>row.name||row.code||'',getCode,getValues,getSearchText,getOptionKey=row=>row.id,hasSelection=false,clearAfterChoose=false,label,hideLabel=false,searchLabel,placeholder,disabled,required,error,helperText,onEdit,onCommit,resetKey,inputValue,onInputChange,textFieldProps={},...props}){
  const text=value?getLabel(value):'',[draft,setDraft]=useState(text),preserveDraft=useRef(false),skipBlur=useRef(false),composing=useRef(false);
  const key=value?getOptionKey(value):null,input=inputValue===undefined?draft:inputValue;
  const setInput=(next,event,reason)=>{setDraft(next);onInputChange?.(event,next,reason);};
- useEffect(()=>{if(!value&&preserveDraft.current){preserveDraft.current=false;return;}setDraft(text);},[key,text]);
+ useEffect(()=>{if(!value&&preserveDraft.current){preserveDraft.current=false;return;}setDraft(text);},[key,text,resetKey]);
  const eligible=options.filter(row=>row.isActive!==false&&row.base?.isActive!==false);
  const resolve=(query,exactOnly=false)=>resolveLookupOption(eligible,query,{getLabel,...(getCode?{getCode}:{}),...(getValues?{getValues}:{}),...(getSearchText?{getSearchText}:{}),exactOnly});
  const choose=(row,event)=>{preserveDraft.current=false;setInput(clearAfterChoose?'':getLabel(row),event,'reset');if(!value||getOptionKey(row)!==key)onChange(row,event);};

@@ -1,3 +1,4 @@
+import ReadOnlyField from './ReadOnlyField';
 import BankAccountEditorDialog from './BankAccountEditorDialog';
 import LookupInput from './LookupInput';
 import LookupSearchDialog from './LookupSearchDialog';
@@ -50,9 +51,9 @@ function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t
  </Paper>;
 }
 
-export default function ExpensePayeePicker({orgId,languageCode,options,value,disabled,lockSelection,onChange,onSaved}){
+export default function ExpensePayeePicker({orgId,languageCode,options,value,disabled,lockSelection,onChange,onSaved,...rootProps}){
  const t=expenseHeaderActions[languageCode]||expenseHeaderActions.en;
- const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[draftId,setDraftId]=useState(null),[profileOpen,setProfileOpen]=useState(false),[accounts,setAccounts]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(false),[reload,setReload]=useState(0);
+ const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[draftId,setDraftId]=useState(null),[profileOpen,setProfileOpen]=useState(false),[accounts,setAccounts]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(false),[reload,setReload]=useState(0),[confirming,setConfirming]=useState(false),[resetKey,setResetKey]=useState(0);
  const scope=useRef(orgId);scope.current=orgId;
  const draft=options.find(row=>row.id===draftId);
  const directRequest=useRef(0);
@@ -61,28 +62,29 @@ export default function ExpensePayeePicker({orgId,languageCode,options,value,dis
  const chooseDirect=async selected=>{
   if(lockSelection&&selected.id!==value?.id)return;
   const key=++directRequest.current,company=orgId;
-  onChange(selected,[]);
+  setConfirming(true);
   try{const result=await requestJSON(`${payeeAccountPath(selected)}${buildQueryString({orgId})}`,{skipCache:true});
    if(key!==directRequest.current||scope.current!==company)return;
-   onChange(selected,result.accounts||[]);
-  }catch{}
+   if(!result.accounts?.length){openSearch(selected.code||selected.name||'',selected);return false;}
+   onChange(selected,result.accounts);return true;
+  }catch{if(key===directRequest.current&&scope.current===company)openSearch(selected.code||selected.name||'',selected);return false;}finally{if(key===directRequest.current&&scope.current===company)setConfirming(false);}
  };
- const openSearch=(searchInput='')=>{
-  directRequest.current++;setAccounts([]);setDraftId(value?.id||null);
+ const openSearch=(searchInput='',candidate=value)=>{
+  directRequest.current++;setResetKey(n=>n+1);setConfirming(false);setAccounts([]);setDraftId(candidate?.id||null);
   setQuery(value&&normalizeLookupText(searchInput)===normalizeLookupText(display(value))?value.code||value.name||'':searchInput.trim());setOpen(true);
  };
- useEffect(()=>{setOpen(false);setProfileOpen(false);setDraftId(null);setAccounts([]);directRequest.current++;},[orgId]);
+ useEffect(()=>{setOpen(false);setProfileOpen(false);setDraftId(null);setAccounts([]);directRequest.current++;return()=>{directRequest.current++;};},[orgId]);
  useEffect(()=>{if(!open||!draftId)return;let alive=true;setBusy(true);setError(false);setAccounts([]);
 
   requestJSON(`${payeeAccountPath(draft)}${buildQueryString({orgId})}`,{skipCache:true}).then(result=>{if(alive){setAccounts(result.accounts||[]);}}).catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setBusy(false);});
   return()=>{alive=false;};
  },[open,draftId,orgId,reload]);
  return <>
-  <Stack direction="row" spacing={1} alignItems="center" sx={{minWidth:0}}>
-   <Box sx={{width:120,flexShrink:0}}><LookupInput data-testid="expense-payee-button" label={t.payee} required options={options} value={value} disabled={disabled||lockSelection} getLabel={row=>row.code||''} getCode={row=>row.code||''} getValues={row=>[row.name,row.nameEn,row.nameKo,row.nameVi]} onEdit={()=>{directRequest.current++;}} onChange={selected=>{if(selected)chooseDirect(selected);else onChange(null,[]);}} onSearch={openSearch} searchLabel={t.choosePayee}/></Box>
-   <Typography data-testid="expense-payee-name" variant="body2" sx={{minWidth:0,overflowWrap:'anywhere',color:disabled?'text.disabled':'text.primary'}}>{value?.name||'\u2014'}</Typography>
+  <Stack {...rootProps} direction="row" spacing={1} alignItems="center" sx={{minWidth:0}}>
+   <Box sx={{width:104,flexShrink:0}}><LookupInput resetKey={resetKey} data-testid="expense-payee-button" label={t.payee} required options={options} value={value} disabled={disabled||lockSelection} getLabel={row=>row.code||''} getCode={row=>row.code||''} getValues={row=>[row.name,row.nameEn,row.nameKo,row.nameVi]} onEdit={()=>{directRequest.current++;setConfirming(false);}} onChange={selected=>{if(selected)chooseDirect(selected);else onChange(null,[]);}} onSearch={openSearch} searchLabel={t.choosePayee}/></Box>
+   <ReadOnlyField data-testid="expense-payee-name" hideLabel label={({ko:'상호',en:'Company / employee',vi:'Tên đối tác'})[languageCode]||'Company / employee'} value={value?.name||''}/>
   </Stack>
-  <LookupSearchDialog open={open} onClose={()=>setOpen(false)} title={t.choosePayee} query={query} onQueryChange={setQuery} options={options.filter(row=>row.isActive!==false)} languageCode={languageCode} getSearchText={row=>[row.code,row.name,row.nameEn,row.nameKo,row.nameVi,row.contactName,row.contactPhone].filter(Boolean).join(' ')} columns={[{key:'payee',label:t.payee,value:display},{key:'type',label:'',value:row=>payeeTypeLabel(row,languageCode)}]} highlightedKey={draftId} onHighlight={row=>setDraftId(row.id)} onSelect={row=>{chooseDirect(row);setOpen(false);}} details={<PayeeDetails draft={draft} accounts={accounts} busy={busy} error={error} languageCode={languageCode} t={t} onRetry={()=>setReload(n=>n+1)} onManage={()=>setProfileOpen(true)}/>}/>
+  <LookupSearchDialog open={open} onClose={()=>{directRequest.current++;setResetKey(n=>n+1);setConfirming(false);setOpen(false);}} title={t.choosePayee} query={query} onQueryChange={next=>{directRequest.current++;setConfirming(false);setQuery(next);}} options={options.filter(row=>row.isActive!==false)} languageCode={languageCode} getSearchText={row=>[row.code,row.name,row.nameEn,row.nameKo,row.nameVi,row.contactName,row.contactPhone].filter(Boolean).join(' ')} columns={[{key:'code',label:({ko:'코드',en:'Code',vi:'Mã'})[languageCode]||'Code',width:'20%',value:row=>row.code||''},{key:'name',label:t.payee,width:'44%',value:row=>row.name},{key:'type',label:(INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en).industry,width:'22%',value:row=>payeeTypeLabel(row,languageCode)}]} highlightedKey={draftId} onHighlight={row=>{directRequest.current++;setConfirming(false);setDraftId(row.id);}} getOptionDisabled={row=>confirming||lockSelection&&row.id!==value?.id||row.id===draftId&&(busy||error||!accounts.length)} onSelect={async row=>{if(await chooseDirect(row))setOpen(false);}} details={<PayeeDetails draft={draft} accounts={accounts} busy={busy} error={error} languageCode={languageCode} t={t} onRetry={()=>setReload(n=>n+1)} onManage={()=>setProfileOpen(true)}/>}/>
   {draft?.employeeId?<EmployeePayeeBankDialog key={`${orgId}:${draft.id}`} open={profileOpen} onClose={()=>{if(scope.current===orgId)setProfileOpen(false);}} payee={draft} orgId={orgId} languageCode={languageCode} onSaved={account=>{if(scope.current!==orgId)return;setAccounts(current=>current.some(row=>row.id===account.id)?current:[...current,account]);}}/>:draft&&<BusinessPartnerDialog key={`${orgId}:${draft.id}`} open={profileOpen} onClose={()=>setProfileOpen(false)} partner={draft} activeOrgId={orgId} languageCode={languageCode} lockType title={t.information}
     onSaved={saved=>{if(scope.current===orgId)onSaved(saved);}}
     onAccountsChange={rows=>{if(scope.current===orgId){setAccounts(rows);}}}/>}

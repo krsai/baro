@@ -1,3 +1,4 @@
+import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -36,6 +37,7 @@ try{
   await page.route('**/change-approval-requests?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});requests.push(r.request().postDataJSON());return r.fulfill({headers,json:{id:'pending'}});});
   await page.route('**/bank-ledger/entries/batch?*',r=>{direct.push(r.request().method());return r.fulfill({headers,status:409,json:{error:'CHANGE_APPROVAL_REQUIRED'}});});
 
+  if(process.env.HEADER_ONLY!=='1'){
   await page.goto(`http://127.0.0.1:${port}/document-entry-summary-acceptance.html`);
   const t=bankLedgerMessages[lang],e=ledgerEvidenceText[lang],w=ledgerWorkspaceText[lang],l=ledgerEntryText[lang],c=changeApprovalText[lang];
   const account=page.getByTestId('document-entry-header').getByRole('textbox',{name:t.account,exact:true});await account.fill('Bank B / USD');await account.press('Enter');
@@ -55,8 +57,16 @@ try{
   if(process.env.REMARK_ONLY==='1'){assert.deepEqual(errors,[]);await page.close();continue;}
   await page.goto(`http://127.0.0.1:${port}/document-entry-summary-acceptance.html`);await page.locator('[data-ledger-entry-row]').waitFor();assert.equal(await page.getByText(l.limit,{exact:true}).count(),0);
   if(lang==='ko'&&width===1440){for(let i=1;i<50;i++)await page.getByRole('button',{name:w.add,exact:true}).first().click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),50);await page.getByRole('button',{name:w.add,exact:true}).first().click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),50);assert.equal(await page.evaluate(()=>window.toasts.length),1);}
+  }
   await reply('**/expense-payees?*',[{id:11,name:'BARO',code:'BARO',isActive:true,type:'BRAND',serviceTypes:[]}]);await reply('**/app-settings?*',{});await reply('**/expense-units?*',[]);await reply('**/orders?*',[]);await reply('**/expense-approval-settings?*',{drafter:{id:1,name:'Drafter',orgRole:'ADMIN'},settings:{},candidates:[]});
   await page.goto(`http://127.0.0.1:${port}/document-entry-summary-acceptance.html?expense=1`);const labels=EXPENSE_REQUEST_TEXT[lang];await page.getByRole('button',{name:labels.add,exact:true}).waitFor();assert.equal(await page.getByText(labels.limit,{exact:true}).count(),0);
+  const header=page.getByTestId('document-entry-fields'),date=header.getByRole('textbox',{name:labels.date,exact:true}),scheduled=header.getByLabel(cashScheduleText[lang].payment,{exact:true}),payee=header.getByTestId('expense-payee-button').locator('input'),company=header.getByTestId('expense-payee-name').locator('input');
+  assert.equal(await date.getAttribute('type'),'text');assert.equal(await date.getAttribute('readonly'),'');assert.equal(await company.getAttribute('readonly'),'');
+  const fields=await header.locator('[data-entry-field]').evaluateAll(rows=>rows.map(row=>row.dataset.entryField));assert.deepEqual(fields,['date','payee','date']);
+  const dateBox=await date.boundingBox(),plannedBox=await scheduled.boundingBox();assert.ok(Math.abs(dateBox.width-plannedBox.width)<2,'request and payment dates have equal widths');
+  if(width===1440){const codeBox=await payee.boundingBox(),nameBox=await company.boundingBox();assert.ok(dateBox.x<codeBox.x&&nameBox.x<plannedBox.x);assert.ok(Math.abs(dateBox.y-codeBox.y)<2);assert.ok(Math.abs(codeBox.y-nameBox.y)<2);}
+
+  if(process.env.HEADER_ONLY==='1'){assert.deepEqual(errors,[]);await page.close();continue;}
   assert.equal(await page.locator('tbody').getByRole('button',{name:labels.add,exact:true}).count(),1);await page.getByRole('button',{name:labels.add,exact:true}).click();assert.equal(await page.locator('tbody').getByRole('button',{name:labels.add,exact:true}).count(),2);
   if(lang==='ko'&&width===1440){for(let i=2;i<50;i++){await page.getByRole('button',{name:labels.add,exact:true}).first().evaluate(button=>button.click());await page.waitForFunction(expected=>document.querySelectorAll('tbody').length===expected,i+1);}await page.getByRole('button',{name:labels.add,exact:true}).first().evaluate(button=>button.click());assert.equal(await page.locator('tbody').getByRole('button',{name:labels.add,exact:true}).count(),50);assert.equal(await page.evaluate(()=>window.toasts.length),1);}
   assert.deepEqual(errors,[]);await page.close();

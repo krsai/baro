@@ -1,3 +1,4 @@
+import ReadOnlyField from './ReadOnlyField';
 import {ledgerEvidenceText} from '../constants/ledgerEvidence';
 import ExpenseLookupField from './ExpenseLookupField';
 import ExpenseReferenceFields from './ExpenseReferenceFields';
@@ -83,7 +84,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
     <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
       <TableCell sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center"><IconButton {...dragHandleProps} size="small" disabled={disabled} aria-label={labels.reorder + ' ' + (index + 1)} sx={{ cursor: disabled ? 'default' : 'grab', touchAction: 'none' }}><DragIndicator fontSize="small" /></IconButton>{index + 1}</Stack></TableCell>
       <TableCell><AccountingCodeField hideLabel codes={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false)} value={line.transactionCodeId} valueObject={code} disabled={disabled} languageCode={languageCode} onSelect={chooseCode}/></TableCell>
-      <TableCell><Box aria-label={labels.description} sx={{px:1.25,py:1,minHeight:36,bgcolor:"action.hover",borderRadius:1,fontSize:13,overflowWrap:"anywhere"}}>{expenseLineDescription(line,languageCode,codes)||"\u2014"}</Box></TableCell>
+      <TableCell><ReadOnlyField hideLabel label={labels.description} value={expenseLineDescription(line,languageCode,codes)}/></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} disabled={disabled || line.productionLocked} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell><TextField {...field} select label={labels.unit} value={line.unitId||''} onChange={change('unitId')}><MenuItem value="">—</MenuItem>{[...units,...(line.unit&&!units.some(unit=>unit.id===line.unit.id)?[line.unit]:[])].filter(unit=>unit.isActive||unit.id===line.unitId).map(unit=><MenuItem key={unit.id} value={unit.id}>{serviceName(unit,languageCode)}</MenuItem>)}</TextField></TableCell>

@@ -1,3 +1,4 @@
+import ReadOnlyField from '../../components/ReadOnlyField';
 import {cashScheduleText} from '../../constants/cashSchedule';
 import {accountingDirectionText} from '../../constants/accountingDirection';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
@@ -245,11 +246,11 @@ export default function TransactionRequestEntry() {
           <ExpenseApprovalSettings horizontalStages draftDirty={dirty} existingDocument={editing && (documentLoading || Boolean(form.version))} documentLoading={documentLoading} ref={approvalRef} orgId={activeOrgId} languageCode={languageCode} steps={form.approvalSteps} approvalStatus={approvalStatus} drafter={form.version?form.createdByEmployee:null} items={form.items.map(expenseLinePayload)} sourceKind={sourceKind} sourceId={sourceId} value={form.approvalSelection} onChange={approvalSelection=>update({approvalSelection})} disabled={loading||loadError||saving||Boolean(submission)}/>
           <ExpenseApprovalActions compact requestId={!documentLoading&&form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
         </Stack>}>
-          <Stack spacing={1.5}><TextField fullWidth size="small" type="date" label={labels.date} value={form.requestDate||today()} slotProps={{inputLabel:{shrink:true},input:{readOnly:true}}} inputProps={{readOnly:true}}/>
-          <TextField fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
-          <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
+          <Stack spacing={1.5}><ReadOnlyField data-entry-field="date" label={labels.date} value={form.requestDate||today()}/>
+          <ExpensePayeePicker data-entry-field="payee" orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
             onChange={(selected,accounts)=>{update({partnerOrgId:selected?.employeeId?null:selected?.id||null,payeeEmployeeId:selected?.employeeId||null});setPayeeBanks({entityId:selected?.id,accounts,loaded:true});}}
             onSaved={saved=>{if(organizationRef.current===activeOrgId&&mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
+          <TextField data-entry-field="date" fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
           </Stack>
         </DocumentEntryHeader>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
