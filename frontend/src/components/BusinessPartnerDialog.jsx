@@ -95,9 +95,9 @@ function PartnerEditorState({
   const [saving, setSaving] = useState(false);
   const locked=saving||loadingProfile||profileFailed;
   const [error, setError] = useState('');
-  const [pendingAccounts,setPendingAccounts]=useState([]),[panelOpen,setPanelOpen]=useState(false),[panelExiting,setPanelExiting]=useState(false),[panelTarget,setPanelTarget]=useState(null);
+  const [panelKind,setPanelKind]=useState('classification'),[pendingAccounts,setPendingAccounts]=useState([]),[panelOpen,setPanelOpen]=useState(false),[panelExiting,setPanelExiting]=useState(false),[panelTarget,setPanelTarget]=useState(null);
   const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelVisible=panelOpen||panelExiting;
-  const togglePanel=next=>{if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
+  const togglePanel=(next,kind='classification')=>{if(next)setPanelKind(kind);if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
   const classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
 
@@ -158,18 +158,18 @@ function PartnerEditorState({
 
   return (
     <Dialog open={open} onClose={() => !saving && onClose?.()} scroll="paper" fullWidth maxWidth={panelVisible?'lg':'md'} PaperProps={{sx:{m:{xs:1,sm:3},width:{xs:"calc(100% - 16px)",sm:"calc(100% - 48px)"},maxHeight:{xs:"calc(100dvh - 16px)",sm:"calc(100dvh - 48px)"},display:"flex",flexDirection:"column",overflow:"hidden",transition:reducedMotion?'none':'max-width 200ms ease'}}}>
-      <DialogTitle sx={{flexShrink:0}}>{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</DialogTitle>
+      <DialogTitle sx={{flexShrink:0}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><Box component="span">{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</Box><Box component="span" ref={setConnectionActionsTarget} sx={{display:'inline-flex',flexShrink:0}}/></Stack></DialogTitle>
       {loadingProfile&&<LinearProgress/>}
       {profileFailed&&<Alert severity="error" sx={{mx:3,mb:1}} action={<Button onClick={()=>setProfileReload(value=>value+1)}>{editorText.retry}</Button>}>{editorText.loadError}</Alert>}
       {profileLocked&&<Alert severity="info" sx={{mx:3,mb:1}}>{editorText.private}</Alert>}
       {error&&<Alert severity="error" sx={{mx:3,mb:1,flexShrink:0}}>{error}</Alert>}
       <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:panelVisible?'minmax(0,1fr) 340px':'minmax(0,1fr)'},gap:panelVisible?2:0,alignItems:'start'}}><Stack spacing={2} sx={{ pt: 1,minWidth:0 }}>
-          <CompanyConnectionField knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={record?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!isEdit&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={locked||profileLocked} languageCode={languageCode}/>
+          <CompanyConnectionField searchMode sidePanelTarget={panelKind==='connections'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='connections'} onPanelOpenChange={next=>togglePanel(next,'connections')} knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={record?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!isEdit&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={locked||(profileLocked&&!form.linkedCompany)} languageCode={languageCode}/>
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={locked||profileLocked} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={record?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={isEdit?undefined:setPendingAccounts} disabled={locked}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
-          <PartnerClassificationFields expandable sidePanelTarget={panelTarget} sidePanelOpen={panelOpen} onPanelOpenChange={togglePanel} value={form.linkedCompany?.subscriberOrgId?(form.linkedCompany.officialClassification||record?.officialClassification||emptyPartnerClassification()):form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||!!form.linkedCompany?.subscriberOrgId} languageCode={languageCode} onReady={setOptionsReady}/>
+          <PartnerClassificationFields expandable sidePanelTarget={panelKind==='classification'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='classification'} onPanelOpenChange={togglePanel} value={form.linkedCompany?.subscriberOrgId?(form.linkedCompany.officialClassification||record?.officialClassification||emptyPartnerClassification()):form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||!!form.linkedCompany?.subscriberOrgId} languageCode={languageCode} onReady={setOptionsReady}/>
 
           </Stack></EntityDetailSection>
           {record?.sourceKind==='CUSTOMER'&&hasApparelBrandIndustry(form.classification)&&<EntityDetailSection title={editorText.order}><TextField fullWidth select size="small" label={editorText.size} value={normalizeSizeSetCode(form.defaultSizeSetCode)} disabled={locked||profileLocked} onChange={event=>setForm(current=>({...current,defaultSizeSetCode:event.target.value}))}>{getSizeSetOptions(languageCode).map(option=><MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}</TextField></EntityDetailSection>}
@@ -178,7 +178,7 @@ function PartnerEditorState({
       <DialogActions sx={{flexShrink:0,px:3,py:2,flexWrap:'wrap',gap:1,'& > :not(style) ~ :not(style)':{ml:0}}}>
         <Button onClick={onClose} disabled={saving}>{labels.cancel}</Button>
         <Stack direction="row" spacing={1} alignItems="center" sx={{maxWidth:'100%'}}>
-        <Box component="span" ref={setConnectionActionsTarget} sx={{display:'inline-flex'}}/>
+
         <Button variant="contained" onClick={save} disabled={locked||profileLocked}>{isEdit ? labels.saveEdit : labels.save}</Button>
         </Stack>
       </DialogActions>

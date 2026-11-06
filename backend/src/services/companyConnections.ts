@@ -9,6 +9,16 @@ const publicSelect=publicCompanyFields;
 export const normalizedBusinessNumber=(value:any)=>String(value||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
 export const companyIdentityRevision=(row:any)=>editRevision(Object.fromEntries(Object.keys(identityFields).map(key=>[key,row[key]??null])));
 const identity=(row:any)=>({...row,revision:companyIdentityRevision(row)});
+// Search only published identities and independently registered active companies.
+// Never load accounts, prices, documents, relationship data or employee details.
+export async function searchPublicCompanies(db:any,orgId:number,input:any){
+ const query=typeof input.query==='string'?input.query.trim():'';
+ if(query.length<3||query.length>100)throw createHttpError(400,'COMPANY_LOOKUP_INPUT_REQUIRED');
+ const pattern='%'+query.replace(/[\\%_]/g,'\\$&')+'%',number=normalizedBusinessNumber(query);
+ const common=await db.$queryRawUnsafe(`SELECT c.* FROM "CompanyIdentity" c LEFT JOIN "Organization" a ON a.id=c."anchorEntityId" WHERE c."anchorEntityId"<>$1 AND a."isActive" AND (COALESCE(a.name,c.name) ILIKE $2 OR COALESCE(a."nameKo",c."nameKo") ILIKE $2 OR COALESCE(a."nameVi",c."nameVi") ILIKE $2 OR ($3<>'' AND c."businessNumber" LIKE '%'||$3||'%')) ORDER BY c.id LIMIT 21`,orgId,pattern,number);
+ const sources=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address,"partyKind","businessLegalForm","countryCode",industry,representative,phone,email FROM "Organization" o WHERE id<>$1 AND "ownerOrgId" IS NULL AND ("dataOwnerOrgId" IS NULL OR "dataOwnerOrgId"=o.id) AND "isActive" AND type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND (name ILIKE $2 OR "nameKo" ILIKE $2 OR "nameVi" ILIKE $2 OR ($3<>'' AND regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g') LIKE '%'||$3||'%')) AND NOT EXISTS(SELECT 1 FROM "CompanyIdentity" c WHERE c."anchorEntityId"=o.id) ORDER BY id LIMIT 21`,orgId,pattern,number);
+ return [...await Promise.all(common.map(async(row:any)=>identityDto(await currentIdentity(db,row),true))),...await Promise.all(sources.map(async(row:any)=>identityDto(await publicCompanyDetails(db,row))))].slice(0,21);
+}
 export async function companyConnectionCandidates(db:any,orgId:number,input:any){
  const name=String(input.name||'').trim(),number=normalizedBusinessNumber(input.businessNumber),country=String(input.country||'').trim();
  if(number)return identityCandidates(db,orgId,input);
@@ -54,6 +64,7 @@ export async function assertPartnerProfileEditable(tx:any,orgId:number,entity:an
 export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return null;await requireClassificationActor(db,ctx.organization.id,gates.getActor());return ctx.organization.id;};
  app.get('/company-connections/candidates',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;res.json(await companyConnectionCandidates(db,orgId,req.query));});
+ app.get('/company-connections/search',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;res.json(await searchPublicCompanies(db,orgId,req.query));});
  app.get('/company-connections',async(req:any,res:any)=>{const orgId=await access(req,res);if(!orgId)return;
   const rows=await db.companyPartnerLink.findMany({where:{OR:[{orgId},{targetOrgId:orgId}]},include:{source:{select:publicSelect},target:{select:publicSelect}},orderBy:{createdAt:'asc'}});
   const common=await db.companyIdentityLink.findMany({where:{orgId},include:{identity:true}});

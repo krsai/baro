@@ -1,3 +1,4 @@
+import CompanyPublicSearchPanel from './CompanyPublicSearchPanel';
 import {classificationSummary} from '../utils/partnerClassification.mjs';
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
@@ -26,7 +27,7 @@ const INDUSTRY_FALLBACK={
  vi:{MANUFACTURER:'Sản xuất',BRAND:'Thương hiệu',SERVICE:'Dịch vụ'},
 };
 const COUNTRY_REQUIRED={ko:'업체를 조회하려면 국가를 선택해 주세요.',en:'Select a country to look up the company.',vi:'Vui lòng chọn quốc gia để tìm công ty.'};
-export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId,actionsTarget,knownCompany=null}){
+export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId,actionsTarget,knownCompany=null,searchMode=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange}){
  const text=COMPANY_CONNECTION_TEXT[languageCode]||COMPANY_CONNECTION_TEXT.en;
  const confirm=CONFIRM[languageCode]||CONFIRM.en;
  const labels=PROFILE_LABELS[languageCode]||PROFILE_LABELS.en;
@@ -41,17 +42,19 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const [review,setReview]=useState(false),[selected,setSelected]=useState(null);
  const buttonRef=useRef(null),[statusOpen,setStatusOpen]=useState(false);
  useEffect(()=>{if(!statusOpen)return;const close=event=>{if(event.key==='Escape')setStatusOpen(false);};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[statusOpen]);
+ const acceptedProfileKey=useRef(null);
  const requestKey=`${orgId}:${businessNumber}:${country}`,current=useRef(requestKey);current.current=requestKey;
- useEffect(()=>{setOptions([]);setSelected(null);setReview(false);setChecked(false);setError('');setStatusOpen(false);setLoading(false);onChange(undefined,linked||null);},[orgId,businessNumber,country]);
+ useEffect(()=>{if(searchMode&&acceptedProfileKey.current===requestKey){acceptedProfileKey.current=null;return;}setOptions([]);setSelected(null);setReview(false);setChecked(false);setError('');setStatusOpen(false);setLoading(false);onChange(undefined,linked||null);},[orgId,businessNumber,country]);
  useEffect(()=>{let alive=true;setLinked(knownCompany);if(entityId)requestJSON('/company-connections'+buildQueryString({orgId}),{skipCache:true}).then(rows=>{if(alive){const company=rows.find(row=>row.entityId===entityId)?.company||null;setLinked(company);if(company)onChange(undefined,company);}}).catch(()=>{if(alive)setError(text.error);});return()=>{alive=false;};},[orgId,entityId]);
  const find=async()=>{if(businessNumber&&!country){setError(COUNTRY_REQUIRED[languageCode]||COUNTRY_REQUIRED.en);setStatusOpen(true);return;}const key=requestKey;setLoading(true);setStatusOpen(false);setError('');try{const rows=(await requestJSON('/company-connections/candidates'+buildQueryString({orgId,name,businessNumber,country}),{skipCache:true})).filter(row=>!entityId||row.sourceEntityId!==entityId);if(current.current===key){setOptions(rows);setChecked(true);setReview(rows.length>0);setStatusOpen(rows.length===0);}}catch{if(current.current===key){setError(text.error);setStatusOpen(true);}}finally{if(current.current===key)setLoading(false);}};
- useEffect(()=>{if(linked||value||disabled||!country||String(businessNumber||'').replace(/[^A-Za-z0-9]/g,'').length<3)return;const timer=setTimeout(find,600);return()=>clearTimeout(timer);},[orgId,name,businessNumber,country,linked,disabled,value]);
- const accept=row=>{setSelected(row);setReview(false);setStatusOpen(true);onChange({...('identityId'in row?{identityId:row.identityId}:'sourceEntityId'in row?{sourceEntityId:row.sourceEntityId}:{targetOrgId:row.id}),revision:row.revision},row);};
+ useEffect(()=>{if(searchMode||linked||value||disabled||!country||String(businessNumber||'').replace(/[^A-Za-z0-9]/g,'').length<3)return;const timer=setTimeout(find,600);return()=>clearTimeout(timer);},[orgId,name,businessNumber,country,linked,disabled,value,searchMode]);
+ const accept=row=>{if(searchMode){const nextKey=`${orgId}:${row.businessNumber||''}:${row.country||''}`;acceptedProfileKey.current=nextKey===requestKey?null:nextKey;setLinked(row);onPanelOpenChange(false);}setSelected(row);setReview(false);setStatusOpen(true);onChange({...('identityId'in row?{identityId:row.identityId}:'sourceEntityId'in row?{sourceEntityId:row.sourceEntityId}:{targetOrgId:row.id}),revision:row.revision},row);};
  const separate=()=>{setSelected(null);setReview(false);setStatusOpen(true);onChange({separate:true,businessNumber:String(businessNumber||'').toUpperCase().replace(/[^A-Z0-9]/g,''),country},null);};
  const status=error||(linked?`${text.connected}: ${linked.name} (${linked.code})`:selected?`${confirm.selected}: ${selected.name} (${selected.code})`:value?.separate?confirm.separate:checked&&!options.length?text.none:'');
- const button=<Button ref={buttonRef} variant="outlined" size="small" title={status||confirm.find} onClick={()=>linked?setStatusOpen(true):find()} disabled={disabled||loading||(!linked&&!businessNumber&&String(name||'').trim().length<3)} sx={{whiteSpace:'nowrap'}}>{confirm.find}</Button>;
+ const button=<Button ref={buttonRef} variant="outlined" size="small" title={status||confirm.find} onClick={()=>searchMode?onPanelOpenChange(!sidePanelOpen):linked?setStatusOpen(true):find()} disabled={disabled||loading||(!searchMode&&!linked&&!businessNumber&&String(name||'').trim().length<3)} sx={{whiteSpace:'nowrap'}}>{confirm.find}</Button>;
  return <>{actionsTarget?createPortal(button,actionsTarget):actionsTarget===undefined?button:null}
-  <Popper open={!!status&&statusOpen&&!!buttonRef.current&&!review&&!disabled} anchorEl={buttonRef.current} placement="bottom-end" sx={{zIndex:theme=>theme.zIndex.modal+1}} modifiers={[{name:'offset',options:{offset:[0,8]}}]}><ClickAwayListener onClickAway={()=>setStatusOpen(false)}><Paper elevation={3} sx={{p:1.5,maxWidth:'min(360px,calc(100vw - 32px))'}}><Box role="status" aria-live="polite" sx={{overflowWrap:'anywhere'}}>{error?<Alert severity="error">{error}</Alert>:<Typography variant="body2">{status}</Typography>}</Box></Paper></ClickAwayListener></Popper>
+  {searchMode&&sidePanelTarget&&createPortal(<CompanyPublicSearchPanel orgId={orgId} entityId={entityId} languageCode={languageCode} initialQuery={businessNumber||name} active={sidePanelOpen} onClose={()=>onPanelOpenChange(false)} onSelect={accept} profileRows={profileRows} labels={labels} currentCompany={linked||selected} fixed={Boolean(entityId&&linked&&!value)}/>,sidePanelTarget)}
+  <Popper open={!searchMode&&!!status&&statusOpen&&!!buttonRef.current&&!review&&!disabled} anchorEl={buttonRef.current} placement="bottom-end" sx={{zIndex:theme=>theme.zIndex.modal+1}} modifiers={[{name:'offset',options:{offset:[0,8]}}]}><ClickAwayListener onClickAway={()=>setStatusOpen(false)}><Paper elevation={3} sx={{p:1.5,maxWidth:'min(360px,calc(100vw - 32px))'}}><Box role="status" aria-live="polite" sx={{overflowWrap:'anywhere'}}>{error?<Alert severity="error">{error}</Alert>:<Typography variant="body2">{status}</Typography>}</Box></Paper></ClickAwayListener></Popper>
 
   <Dialog open={review&&!disabled} onClose={()=>setReview(false)} fullWidth maxWidth="sm" aria-labelledby="company-review-title">
    <DialogTitle id="company-review-title" sx={{px:3,py:2.5}}>{confirm.title}</DialogTitle>

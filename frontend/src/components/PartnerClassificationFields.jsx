@@ -25,8 +25,7 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
  const name=row=>classificationName(row,languageCode);
  const filterOptions=createFilterOptions({stringify:row=>[row.code,row.nameEn,row.nameKo,row.nameVi].join(' ')});
  const change=(roleIds,industryIds)=>onChange({...value,roleIds,industryIds,industries:industries.filter(row=>industryIds.includes(row.id))});
- const toggleRole=id=>{const roleIds=value.roleIds.includes(id)?value.roleIds.filter(item=>item!==id):[...value.roleIds,id];change(roleIds,value.industryIds.filter(item=>industries.some(row=>row.id===item&&roleIds.includes(row.partnerRoleId))));};
- const toggleIndustry=row=>change(value.roleIds.includes(row.partnerRoleId)?value.roleIds:[...value.roleIds,row.partnerRoleId],value.industryIds.includes(row.id)?value.industryIds.filter(id=>id!==row.id):[...value.industryIds,row.id]);
+ const toggleIndustry=row=>{const ids=value.industryIds.includes(row.id)?value.industryIds.filter(id=>id!==row.id):[...value.industryIds,row.id];change([...new Set(industries.filter(item=>ids.includes(item.id)).map(item=>item.partnerRoleId))],ids);};
  if(expandable){
   const matches=filterOptions(industries.map(row=>({...row,nameEn:[row.nameEn,roles.find(role=>role.id===row.partnerRoleId)?.nameEn].join(' '),nameKo:[row.nameKo,roles.find(role=>role.id===row.partnerRoleId)?.nameKo].join(' '),nameVi:[row.nameVi,roles.find(role=>role.id===row.partnerRoleId)?.nameVi].join(' ')})),{inputValue:search,getOptionLabel:name});
   const visible=roles.filter(role=>!search||filterOptions([role],{inputValue:search,getOptionLabel:name}).length||matches.some(row=>row.partnerRoleId===role.id));
@@ -39,7 +38,7 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1,borderBottom:1,borderColor:'divider'}}><Typography variant="subtitle2">{panelText.select}</Typography><IconButton aria-label={panelText.close} onClick={()=>onPanelOpenChange(false)}><Close fontSize="small"/></IconButton></Stack>
     <Box sx={{p:1}}><TextField autoFocus fullWidth size="small" label={panelText.search} value={search} onChange={event=>setSearch(event.target.value)}/></Box>
     <Box sx={{overflowY:'auto',minHeight:0}}>{visible.map(role=><Box key={role.id} sx={{borderTop:1,borderColor:'divider'}}>
-     <FormControlLabel sx={{m:0,px:1,bgcolor:'grey.50',display:'flex'}} control={<Checkbox checked={value.roleIds.includes(role.id)} disabled={disabled||!industries.some(row=>row.partnerRoleId===role.id)} onChange={()=>toggleRole(role.id)}/>} label={<Typography variant="subtitle2">{name(role)}</Typography>}/>
+     <Typography variant="subtitle2" sx={{px:2,py:1.25,bgcolor:'grey.50'}}>{name(role)}</Typography>
      {industries.filter(row=>row.partnerRoleId===role.id&&(!search||matches.some(item=>item.id===row.id))).map(row=><FormControlLabel key={row.id} sx={{display:'flex',m:0,pl:3,pr:1,'& .MuiFormControlLabel-label':{overflowWrap:'anywhere'}}} control={<Checkbox checked={value.industryIds.includes(row.id)} disabled={disabled} onChange={()=>toggleIndustry(row)}/>} label={name(row)}/>)}
     </Box>)}{!visible.length&&<Typography sx={{p:2}}>{panelText.noResults}</Typography>}</Box>
    </Box>,sidePanelTarget)}
