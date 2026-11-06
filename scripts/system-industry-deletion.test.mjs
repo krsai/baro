@@ -27,7 +27,7 @@ test('industry usage depends on actual source/local links, not active status, pr
 test('industry listing authenticates first and exposes an unused overridden definition as deletable',async()=>{
  const handlers=new Map();let allowed=false,reads=0,result;
  const app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)]));
- const db={$queryRawUnsafe:async()=>[],settingServiceDefault:{findMany:async query=>{reads++;assert.deepEqual(query.include._count,SYSTEM_INDUSTRY_USAGE_INCLUDE._count);assert.ok(query.include.partnerClassifications);return [{id:1,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]},{id:2,_count:{...counts(),partnerClassifications:1},services:[]}];}}};
+ const db={settingServiceDefault:{findMany:async query=>{reads++;assert.deepEqual(query.include._count,SYSTEM_INDUSTRY_USAGE_INCLUDE._count);assert.ok(query.include.partnerClassifications);return [{id:1,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]},{id:2,_count:{...counts(),partnerClassifications:1},services:[]}];}}};
  registerTransactionSettingRoutes(app,db,{requireSystemAdmin:async()=>allowed});
  const run=()=>handlers.get('get/system-setting-defaults/services')({query:{}},{json(value){result=value;}});
  await run();assert.equal(reads,0);allowed=true;await run();assert.equal(result[0].hasUsageHistory,false);assert.equal(result[1].hasUsageHistory,true);
@@ -42,7 +42,7 @@ test('company catalogue does not request other companies classification details'
 test('deletion removes unused overridden copies but refuses every source/local reference on recheck',async()=>{
  const removed=[];let localUsage=localCounts();const sourceUsage=counts();
  const countModel=key=>({count:async()=>sourceUsage[key]});
- const tx={$queryRawUnsafe:async sql=>sql.includes('WITH linked')?[]:[{id:9}],
+ const tx={$queryRawUnsafe:async()=>[{id:9}],
  settingServiceDefault:{delete:async()=>removed.push('source')},
  settingTransactionCodeDefault:countModel('codes'),transactionCodeBase:countModel('codeBases'),orgRelationship:countModel('customerIndustries'),industryProductionPolicy:countModel('productionPolicies'),partnerClassificationIndustry:countModel('partnerClassifications'),accountingCodeIndustry:countModel('accountingCodeLinks'),
  outsourcingServiceType:{findMany:async()=>[{id:90,ownerOrgId:1,isOverridden:true}],delete:async()=>removed.push('local')},
@@ -50,14 +50,4 @@ test('deletion removes unused overridden copies but refuses every source/local r
  for(const key of Object.keys(sourceUsage)){sourceUsage[key]=1;await assert.rejects(deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);sourceUsage[key]=0;}
  for(const key of Object.keys(localUsage)){localUsage[key]=1;await assert.rejects(deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);localUsage[key]=0;}
  assert.deepEqual(removed,[]);await deleteSetting(tx,'services',true,9);assert.deepEqual(removed,['local','source']);
-});
-
-
-test('SYSTEM list drops superseded local counts and names but still protects actual code usage',async()=>{
- const handlers=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)]));
- const stale=[{orgId:1,entityId:11,systemIndustryId:7},{orgId:1,entityId:12,systemIndustryId:7}];let result;
- const db={$queryRawUnsafe:async()=>stale,settingServiceDefault:{findMany:async()=>[{id:7,_count:{...counts(),partnerClassifications:2},partnerClassifications:stale,services:[]},{id:8,_count:{...counts(),codes:1},services:[]}]}};
- registerTransactionSettingRoutes(app,db,{requireSystemAdmin:async()=>true});
- await handlers.get('get/system-setting-defaults/services')({query:{}},{json:value=>result=value});
- assert.equal(result[0].hasUsageHistory,false);assert.equal(result[0]._count.partnerClassifications,0);assert.deepEqual(result[0].partnerClassifications,[]);assert.equal(result[1].hasUsageHistory,true);
 });

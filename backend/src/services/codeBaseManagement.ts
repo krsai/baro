@@ -1,4 +1,3 @@
-import {removeSupersededPartnerClassifications} from './supersededPartnerClassification';
 import {accountingInputs} from './accountingInputs';
 import {codeIndustrySelection,codeIndustryDto,CODE_INDUSTRY_INCLUDE} from './accountingCodeIndustries';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
@@ -98,7 +97,6 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
   if (global) {
     const local = service ? tx.outsourcingServiceType : tx.transactionCode;
     if (service && (await tx.settingTransactionCodeDefault.count({ where: { serviceTypeId: id } }) || await tx.transactionCodeBase.count({ where: { serviceTypeId: id } }))) throw createHttpError(409,'SETTING_IN_USE');
-    if(service)await removeSupersededPartnerClassifications(tx,id);
     if(service&&(await tx.orgRelationship?.count({where:{systemIndustryId:id}})||await tx.industryProductionPolicy?.count({where:{systemIndustryId:id}})||await tx.partnerClassificationIndustry?.count({where:{systemIndustryId:id}})||await tx.accountingCodeIndustry?.count({where:{systemIndustryId:id}})))throw createHttpError(409,'SETTING_IN_USE');
     const copies = await local.findMany({ where: { systemDefaultId: id } });
       // Unused local industry copies, including metadata overrides, may be

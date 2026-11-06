@@ -1,4 +1,3 @@
-import {effectiveIndustryUsage,supersededPartnerClassifications} from './supersededPartnerClassification';
 import { effectiveExpenseCode, registerExpenseCodeLinkPolicyRoutes } from './expenseCodeLinkPolicy';
 import { validateServiceDefinition } from './partnerTransactionCost';
 import { validateTransactionCode } from './transactionRequest';
@@ -114,8 +113,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       if (req.query.catalogue === '1') { if (!await admin(req,res)) return; }
       else if (!await gates.requireSystemAdmin(req,res)) return;
       const usageDetails=service&&req.query.catalogue!=='1'?{partnerClassifications:{select:{orgId:true,entityId:true,classification:{select:{owner:{select:{name:true,nameKo:true,nameVi:true}},entity:{select:{name:true,nameKo:true,nameVi:true}}}}}}}:{};
-      let rows = await defaults.findMany({ include: service ? {...SYSTEM_INDUSTRY_USAGE_INCLUDE,...usageDetails,partnerRole:true,expenseType:true} : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
-      if(service&&req.query.catalogue!=='1')rows=effectiveIndustryUsage(rows,await supersededPartnerClassifications(db,rows.filter((row:any)=>row._count?.partnerClassifications>0).map((row:any)=>row.id)));
+      const rows = await defaults.findMany({ include: service ? {...SYSTEM_INDUSTRY_USAGE_INCLUDE,...usageDetails,partnerRole:true,expenseType:true} : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
       res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: service
         ? systemIndustryInUse(row)
         : row.codes.some((local: any) => local.isOverridden || Object.values(local._count).some((count:any)=>Number(count)>0)) })));
