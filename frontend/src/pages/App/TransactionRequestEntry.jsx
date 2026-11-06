@@ -1,3 +1,4 @@
+import {cashScheduleText} from '../../constants/cashSchedule';
 import {accountingDirectionText} from '../../constants/accountingDirection';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
 import ExpenseEditHistory from '../../components/ExpenseEditHistory';
@@ -43,8 +44,8 @@ const FORM_TEXT={ko:{auto:'등록 시 자동 부여',required:'필수 입력 항
 
 export const REQUEST_FORM_TEXT = EXPENSE_REQUEST_TEXT;
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' });
-const newDocument = () => { const date = today(); return { managementNumber:'', remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
-const documentSnapshot = form => JSON.stringify({managementNumber:form.managementNumber,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,payeeEmployeeId:form.payeeEmployeeId,items:form.items.map(expenseLinePayload)});
+const newDocument = () => { const date = today(); return { managementNumber:'', scheduledPaymentDate:'', remark: '', approverEmployeeIds: [], approvalSelection:null, requestDate: date, partnerOrgId: '', clientKey: crypto.randomUUID(), items: [newExpenseLine()] }; };
+const documentSnapshot = form => JSON.stringify({managementNumber:form.managementNumber,scheduledPaymentDate:form.scheduledPaymentDate,remark:form.remark,approverEmployeeIds:form.approverEmployeeIds,approvalSelection:form.approvalSelection,requestDate:form.requestDate,partnerOrgId:form.partnerOrgId,payeeEmployeeId:form.payeeEmployeeId,items:form.items.map(expenseLinePayload)});
 
 export default function TransactionRequestEntry() {
   const { sourceKind, sourceId } = useParams();
@@ -192,7 +193,7 @@ export default function TransactionRequestEntry() {
     try {
     const selection=submission?submission.approvalSelection:editing?(form.approvalSelection||{}):await approvalRef.current?.prepare();
     if(selection==null||organizationRef.current!==activeOrgId||!mountedRef.current)return;
-    const body = submission || { remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
+    const body = submission || { scheduledPaymentDate:form.scheduledPaymentDate||null, remark: form.remark, approverEmployeeIds: form.approverEmployeeIds, approvalSelection:selection, automaticRequestDate:true, partnerOrgId:form.partnerOrgId||null,...(form.payeeEmployeeId?{payeeEmployeeId:form.payeeEmployeeId}:{}), clientKey: form.clientKey, ...(editing ? {revision:form.revision,version:form.version} : {}), items: form.items.map(expenseLinePayload) };
     setSubmission(body); setSaving(true); setError('');
     try {
       if(editing){const request=await changeRef.current.prepare({menu:'EXPENSE',operation:'UPDATE',sourceKind,sourceId,revision:form.revision,version:form.version,payload:body});if(!request){setSubmission(null);return;}}else await requestJSON(`${editorPath}${buildQueryString({orgId:activeOrgId})}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -206,6 +207,7 @@ export default function TransactionRequestEntry() {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
         if((line?.[2]||code)==='ACCOUNTING_CODE_DIRECTION_MISMATCH'){setError((line?labels.row+' '+line[1]+': ':'')+(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch);return;}
+        if(code==='INVALID_CASH_SCHEDULE_DATE'){setError((cashScheduleText[languageCode]||cashScheduleText.en).invalid);return;}
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
         const requiredDetail=line?.[2]?.match(/^REQUIRED_TRANSACTION_FIELD:(.+)$/);
         if(field||requiredDetail){
@@ -243,6 +245,7 @@ export default function TransactionRequestEntry() {
           <ExpenseApprovalActions compact requestId={!documentLoading&&form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
         </Stack>}>
           <Stack spacing={1.5}><TextField fullWidth size="small" type="date" label={labels.date} value={form.requestDate||today()} slotProps={{inputLabel:{shrink:true},input:{readOnly:true}}} inputProps={{readOnly:true}}/>
+          <TextField fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
           <ExpensePayeePicker orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
             onChange={(selected,accounts)=>{update({partnerOrgId:selected?.employeeId?null:selected?.id||null,payeeEmployeeId:selected?.employeeId||null});setPayeeBanks({entityId:selected?.id,accounts,loaded:true});}}
             onSaved={saved=>{if(organizationRef.current===activeOrgId&&mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>

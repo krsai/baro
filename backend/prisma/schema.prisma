@@ -1939,6 +1939,7 @@ model ExpenseRequest {
   orgId Int
   partnerOrgId Int?
   createdByEmployeeId Int
+  scheduledPaymentDate String?
   requestDate String
   legacyTitle String?
   remark String @default("")

@@ -1,3 +1,5 @@
+import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
+const scheduleOnly=process.argv.includes('--schedule-only');
 const lookupOnly=process.argv.includes('--lookup-only')||process.env.EXPENSE_EDITOR_LOOKUP_ONLY==='1';
 import {documentNumberText} from '../frontend/src/constants/documentNumber.js';
 import assert from 'node:assert/strict';
@@ -21,7 +23,7 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const mode of (lookupOnly?['GENERAL','PROCESS']:(process.env.EXPENSE_EDITOR_MODES?.split(',')||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+  for(const mode of (lookupOnly?['GENERAL','PROCESS']:((scheduleOnly?['SAVED']:process.env.EXPENSE_EDITOR_MODES?.split(','))||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
     console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     let releaseDocument,releaseCatalog,settingsReads=0;
@@ -55,7 +57,7 @@ try {
       if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
       if(r.request().method()==='PUT'){if(mode==='SAVED'){submitted=r.request().postDataJSON();return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});}submitted=r.request().postDataJSON();attempts.push(submitted);if(mode==='BACKGROUND')await saveGate;if(mode==='PROCESS'&&lang==='ko'&&attempts.length===1)return r.fulfill({headers,status:500,json:{error:'internal server error'}});return r.fulfill({headers,json:{requestId:1}});}
       if(mode==='SAVED')await documentGate;
-      return r.fulfill({headers,json:{managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:mode==='SAVED'?{kind:'request',id:'18'}:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
+      return r.fulfill({headers,json:{scheduledPaymentDate:scheduleOnly?'2026-12-10':null,managementNumber:mode==='SAVED'?'EXP-2026-000008':'',remark:'',approvalSelection:mode==='SAVED'?{seniorEmployeeId:21}:null,approverEmployeeIds:[],canonicalSource:mode==='SAVED'?{kind:'request',id:'18'}:{kind:'legacy',id:'78'},requestDate:'2026-07-31',partnerOrgId:11,partner:{id:11,name:'Selected vendor'},createdByEmployee:{id:21,name:'Original author'},revision:'server-revision',version:mode==='SAVED'?3:null,updatedAt:mode==='SAVED'?'2026-10-19T09:00:00Z':null,updatedByEmployee:mode==='SAVED'?{id:20,name:'Latest editor'}:null,readOnly:locked,
         items:[{sourceRecordId:78,itemId:null,transactionCodeId:mode==='SAVED'?7:'',currency:'VND',quantity:'170',unitPrice:'3000',vatRate:'0',description:'Original buttonhole expense',details:{reference:'REF-001'},workOrderId:30,styleId:40,styleProcessId:50,assignmentPlanId:60,productionLinked:true,productionLocked:mode==='PROCESS',enabled:{order:true,style:true,process:true},
           preservedReferences:{order:{id:30,orderNumber:'L17-1'},style:{id:40,name:'Shirt',code:'AM02058',styleProcesses:[{id:50,processName:'Buttonhole',processCode:'BH'}]},plan:{id:60,styleId:40,processIds:[50]}}}]}});
     });
@@ -83,6 +85,11 @@ try {
       assert.equal(await reference.locator('#expense-stage-drafter').evaluate(el=>el.readOnly),true);
       await reference.locator('#expense-stage-senior').waitFor();assert.ok(settingsReads>=1,'Opening the chooser loads candidate metadata without replacing the document author');
       await page.keyboard.press('Escape');await reference.waitFor({state:'hidden'});
+    }
+    if(scheduleOnly){
+      const date=page.getByLabel(cashScheduleText[lang].payment,{exact:true});await date.waitFor();assert.equal(await date.inputValue(),'2026-12-10');await date.fill('2026-12-20');assert.equal(await date.inputValue(),'2026-12-20');
+      for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await date.isVisible(),true);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
+      assert.deepEqual(errors,[]);await page.close();continue;
     }
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
     await page.getByLabel('REMARK',{exact:false}).waitFor();

@@ -4599,3 +4599,9 @@ runtime 조회값:
 - 계좌 입력은 BankAccountEditorDialog를 사용하되 업체 계좌와 직원 지급 계좌의 API·통화 ID/코드·권한은 각각 유지한다. 내 회사 프로필의 관리자 전용 업무와 외부 거래처 편집을 합치지 않는다. 과거 고객 패널은 acceptance fixture 전용이다.
 - 검증은 test:partner-editor, 양쪽 빌드, 번역/인코딩이다. 상세 범위는 docs/global-partner-editor-review-2026-11-06.md를 따른다. DB migration과 운영 원자료 변경은 없다.
 
+# 2026-11-06 회수·지급 예정일
+
+- 청구서의 expectedCollectionDate는 계약상 지급 기한(dueDate)과 구별하며 초안·발행 snapshot·개정본·목록 응답에 보존한다. 비용 신청의 scheduledPaymentDate는 문서 공통 일정이고 생성·조회·수정 결재·감사 snapshot에 포함한다. 일정 입력은 실제 입출금이나 지급 완료를 생성하지 않는다.
+- 날짜는 선택 입력이며 미입력은 미정이다. 과거 문서 날짜를 추정 채우지 않는다. YYYY-MM-DD의 실재 날짜만 허용한다. 기존 기안자·회사 범위·변경 결재·원장 연결 보호를 유지한다.
+- 20261106110000_cash_schedule_dates를 공통 실행기·preflight·읽기 전용 시작 검사에 등록한다. 운영 원자료와 이전 migration은 변경하지 않는다. 검증은 test:cash-schedule, 양쪽 빌드, 번역/인코딩이다.
+

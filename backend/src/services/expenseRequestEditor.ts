@@ -1,3 +1,4 @@
+import {cashScheduleDate} from './cashSchedule';
 import {companyBusinessTimeZone} from './serviceCompany';
 import {APPROVAL_SUBJECTS} from './approvalSubjects';
 import { requirePayeeBankAccount } from './entityBankAccount';
@@ -52,7 +53,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
 
 export function expenseEditorRevision(source: any) {
   return hash(snapshot({ kind: source.kind, id: source.id, document: source.document && {
-    id: source.document.id, version: source.document.version, remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
+    id: source.document.id, version: source.document.version, ...(source.document.scheduledPaymentDate?{scheduledPaymentDate:source.document.scheduledPaymentDate}:{}), remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
   }, costs: source.costs.map((cost: any) => ({...cost,partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
 }
 
@@ -80,6 +81,7 @@ function editorLine(cost: any, record: any) {
 export function expenseEditorForm(source: any) {
   const first = source.costs[0], record = source.record || first?.outsourcedWorkRecord;
   return { managementNumber:source.document?(source.document.managementNumber||legacyExpenseNumber(source.document.id)):'', approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
+    scheduledPaymentDate:source.document?.scheduledPaymentDate??'',
     requestDate: source.document?.requestDate || first?.transactionDate || record?.workLog.displayDate,
     partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId || null,
     payeeEmployeeId:source.document?.payeeEmployeeId||first?.payeeEmployeeId||null,
@@ -145,7 +147,8 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
   if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
   const managementNumber=source.document?.managementNumber||(!source.document?await allocateDocumentNumber(tx,orgId,'EXP',requestDate,body.managementNumber):null);
-  const header = { remark, requestDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
+  const scheduledPaymentDate=cashScheduleDate(body.scheduledPaymentDate===undefined?source.document?.scheduledPaymentDate:body.scheduledPaymentDate);
+  const header = { remark, requestDate, scheduledPaymentDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
   const document = source.document ? await tx.expenseRequest.update({ where: { id: source.document.id }, data: { ...header, version: { increment: 1 } } }) :
     await tx.expenseRequest.create({ data: { ...header, orgId, managementNumber, createdByEmployeeId: drafterId, clientKey: body.clientKey, submissionHash: inputHash } });

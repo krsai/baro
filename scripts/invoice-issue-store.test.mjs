@@ -61,7 +61,7 @@ const source = (orderId, orderNumber, unitPrice) => ({
   lines: [{ key: '11:', itemId: 11, styleId: 10, styleCode: 'S1', description: 'Jacket', color: 'Black', gender: 'U', size: '', orderedQuantity: 3 }],
 });
 const content = {
-  basis: 'MANUFACTURING_SERVICE_PRICE', currency: 'USD', fields: { number: 'INV-1', date: '2026-09-22' },
+  basis: 'MANUFACTURING_SERVICE_PRICE', currency: 'USD', fields: { number: 'INV-1', date: '2026-09-22', expectedCollectionDate:'2026-12-20' },
   orders: [{ orderId: 'o1' }, { orderId: 'o2' }], percentages: { o1: '100', o2: '50' },
   lines: [
     { key: JSON.stringify(['o1', '11:']), quantity: '3', remark: '', adjustmentReason: '', hsCode: '', origin: '' },
@@ -99,7 +99,7 @@ test('issued snapshot prices each order independently and stores per-order settl
 test('issued document fields are immutable copies and preserve every printable term', () => {
   const documentContent = structuredClone(content);
   documentContent.fields = {
-    number: 'INV-SNAPSHOT', date: '2026-09-22', shipTo: 'Warehouse A', shipmentDate: '2026-09-23',
+    number: 'INV-SNAPSHOT', date: '2026-09-22', expectedCollectionDate:'2026-12-20', shipTo: 'Warehouse A', shipmentDate: '2026-09-23',
     dueDate: '2026-10-22', incoterm: 'FOB', paymentTerms: '30 days', bank: 'Bank snapshot', notes: 'Frozen wording',
     seller: { name: 'Seller', address: 'Seller address', country: 'VN', taxId: 'S-1', email: 's@example.com', phone: '1' },
     buyer: { name: 'Buyer', address: 'Buyer address', country: 'KR', taxId: 'B-1', email: 'b@example.com', phone: '2' },
@@ -111,6 +111,7 @@ test('issued document fields are immutable copies and preserve every printable t
   assert.equal(result.snapshot.fields.buyer.address, 'Buyer address');
   assert.equal(result.snapshot.fields.paymentTerms, '30 days');
   assert.equal(result.snapshot.fields.notes, 'Frozen wording');
+  assert.equal(result.snapshot.fields.expectedCollectionDate,'2026-12-20');
   assert.equal(result.snapshot.currencyCode, 'USD');
   assert.equal(result.snapshot.lines[0].unitPrice, '1.00');
 });

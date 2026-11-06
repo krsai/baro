@@ -1,3 +1,4 @@
+import {cashScheduleDate} from './cashSchedule';
 import {isHighestCompanyApprover} from './expenseDeletion';
 import {createHash} from 'node:crypto';
 import {Prisma} from '@prisma/client';
@@ -86,6 +87,7 @@ export async function requestChangeApproval(db:any,orgId:number,actorId:number,i
   const {source:s,preview,policy}=await previewChangeApproval(tx,orgId,actorId,input,true);if(!preview.complete||!policy.resolvedStages.length)fail('EXPENSE_APPROVER_REQUIRED',400);
   const pending=await tx.changeApprovalRequest.findFirst({where:{orgId,menu:s.menu,sourceKind:s.kind,sourceId:s.id,status:'PENDING'}});if(pending)fail('CHANGE_ALREADY_PENDING');
   const payload=input.operation!=='DELETE'?json(input.payload):{};
+  if(s.menu==='EXPENSE'&&s.operation==='UPDATE')cashScheduleDate(payload?.scheduledPaymentDate);
   if(s.menu==='EXPENSE'&&input.operation==='UPDATE'&&(payload.revision!==s.revision||payload.version!==s.version))fail('CHANGE_SOURCE_CHANGED');
   return tx.changeApprovalRequest.create({data:{orgId,clientKey:input.clientKey,requestHash,menu:s.menu,operation:s.operation,sourceKind:s.kind,sourceId:s.id,expenseRequestId:s.expense?.document?.id??null,ledgerEntryId:s.menu==='BANK_LEDGER'&&s.operation!=='CREATE'?s.id:null,legacyCostId:s.kind==='cost'?s.id:null,legacyRecordId:s.kind==='legacy'?Number(s.id):null,sourceVersion:s.version,revision:s.revision,requestedByEmployeeId:actorId,reason,beforeSnapshot:s.snapshot,payload,policy}});
  },60000);

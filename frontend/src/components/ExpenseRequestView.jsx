@@ -1,3 +1,4 @@
+import {cashScheduleText} from '../constants/cashSchedule';
 import { expenseLineDescription, expenseRequestSummary } from '../utils/expenseCodePresentation.mjs';
 import React from 'react';
 import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Divider, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
@@ -16,7 +17,7 @@ export function ExpenseRequestContent({ document, languageCode }) {
       <Typography variant="subtitle1">{labels.numbering}: {expenseRequestNumber(document)}</Typography>
       <Typography variant="h6">{expenseRequestSummary(document,languageCode)}</Typography>
       {document.remark && <Typography>REMARK: {document.remark}</Typography>}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>{[[labels.payee,document.payeeEmployee?.name||document.partner?.name],[labels.date,document.requestDate],[labels.applicant,document.createdByEmployee?.name]].map(([label,value]) => <Box key={label}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value || '—'}</Typography></Box>)}</Box>
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2 }}>{[[labels.payee,document.payeeEmployee?.name||document.partner?.name],[labels.date,document.requestDate],[(cashScheduleText[languageCode]||cashScheduleText.en).payment,document.scheduledPaymentDate],[labels.applicant,document.createdByEmployee?.name]].map(([label,value]) => <Box key={label}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography>{value || '—'}</Typography></Box>)}</Box>
       <Divider />
       <TableContainer><Table size="small" sx={{ minWidth: 1000 }}><TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.subtotal,labels.tax,labels.total].map((label,index) => <TableCell key={index} align={index > 3 ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{label}</TableCell>)}</TableRow></TableHead>
         <TableBody>{document.items.map((item,index) => <TableRow key={item.id} sx={{ '& td': { verticalAlign: 'top' } }}>

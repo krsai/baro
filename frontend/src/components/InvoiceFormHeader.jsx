@@ -1,3 +1,4 @@
+import {cashScheduleText} from '../constants/cashSchedule';
 import React from 'react';
 import {Box,Typography} from '@mui/material';
 import InvoiceDocumentField from './InvoiceDocumentField';
@@ -12,6 +13,7 @@ export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly
       <InvoiceDocumentField label={text.number} value={fields.number} placeholder="INV-YYYY-000001" readOnly={readOnly} onChange={e=>onChange('number',e.target.value)} maxLength={200}/>
       <InvoiceDocumentField label={ui.date} type="date" value={fields.date} readOnly={readOnly} onChange={e=>onChange('date',e.target.value)}/>
       <InvoiceDocumentField label={ui.dueDate} type="date" value={fields.dueDate} readOnly={readOnly} onChange={e=>onChange('dueDate',e.target.value)}/>
+      <InvoiceDocumentField label={(cashScheduleText[languageCode]||cashScheduleText.en).collection} type="date" value={fields.expectedCollectionDate||''} readOnly={readOnly} onChange={e=>onChange('expectedCollectionDate',e.target.value)}/>
       <InvoiceDocumentField label={ui.paymentTerms} value={fields.paymentTerms} readOnly={readOnly} onChange={e=>onChange('paymentTerms',e.target.value)}/>
       <InvoiceDocumentField label={ui.incoterm} value={fields.incoterm} readOnly={readOnly} onChange={e=>onChange('incoterm',e.target.value)}/>
     </Box>

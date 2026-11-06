@@ -1,3 +1,4 @@
+import {cashScheduleDate} from './cashSchedule';
 import { createHttpError } from "../utils/http";
 import { editTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
@@ -38,7 +39,8 @@ export const normalizeInvoiceDraftContent = (body: any) => {
     ...(row.unitPriceOverride !== undefined ? { unitPriceOverride: text(row.unitPriceOverride, 32) } : {}),
   }));
   if (new Set(lines.map((row: any) => row.key)).size !== lines.length) return bad();
-  const fields = { ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
+  const expectedCollectionDate=cashScheduleDate(body.fields?.expectedCollectionDate);
+  const fields = { ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
     seller: pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
     buyer: pickText(body.fields.buyer, ["name", "address", "country", "taxId", "email", "phone"]),
   };

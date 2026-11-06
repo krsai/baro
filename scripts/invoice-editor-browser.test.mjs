@@ -1,3 +1,5 @@
+import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
+const scheduleOnly=process.argv.includes('--schedule-only');
 import {INVOICE_BANK_TEXT} from '../frontend/src/constants/invoiceBankConfirmation.js';
 const bankReviewOnly=process.argv.includes('--bank-review-only');
 import {invoiceDocumentText} from '../frontend/src/constants/invoiceDocument.js';
@@ -23,7 +25,7 @@ const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of (bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
+ for(const [lang,failure] of (scheduleOnly?[['ko','none'],['en','none'],['vi','none']]:bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(({lang,invoice})=>{window.testLang=lang;window.testInvoice=invoice;},{lang,invoice:failure==='detail'?{id:'i1',buyerOrgId:2,invoiceNumber:'INV-001',revisionNumber:1,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',orders:[{sourceOrderId:'o1',sourceUpdatedAt:source.sourceUpdatedAt,billingPercentage:'100',appliedDeductionAmount:'0'}],snapshot:{fields:{number:'INV-001',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'Saved bank USD-001'},lines:combineInvoiceSources([source]).lines.map(row=>({...row,lineKey:row.key,unitPrice:'2'}))}}:null});
@@ -46,6 +48,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html${failure==='revision'?'?draft=revision':''}`);
   const review=page.getByRole('checkbox');await review.waitFor();
+  if(scheduleOnly)await page.getByLabel(cashScheduleText[lang].collection,{exact:true}).fill('2026-12-20');
   const numberInput=page.getByLabel(invoiceDocumentText[lang].number,{exact:true});assert.equal(await numberInput.inputValue(),failure==='detail'?'INV-001-R2':'');if(failure==='save')await numberInput.fill('CUSTOM-2026-A');
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.getByRole('dialog').count(),0);
   assert.doesNotMatch(await page.locator('main').innerText(),/초안|draft|bản nháp/i);
@@ -93,13 +96,14 @@ try{
    await page.getByRole('alert').filter({hasText:'could not be confirmed'}).waitFor();assert.equal(await page.getByLabel('REMARK',{exact:true}).isDisabled(),true);await issue.click();
   }
   await page.waitForFunction(()=>window.issuedEditor===true);
+  if(scheduleOnly)assert.equal(saves[0].fields.expectedCollectionDate,'2026-12-20');
   assert.equal(saves.length,failure==='save'?2:1);assert.equal(issues.length,failure==='issue'?2:1);
   assert.equal(new Set(saves.map(s=>s.clientKey)).size,1);assert.ok(issues.every(i=>i.path==='/invoices/drafts/pending-1/issue'));
   if(failure==='advance')assert.equal(saves[0].percentages.o1,'30');
   assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,/USD-001/);assert.doesNotMatch(saves[0].fields.bank,/VND-001|USD-999/);}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of (bankReviewOnly?[]:['ko','en','vi'])){
+ for(const lang of ((bankReviewOnly||scheduleOnly)?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],queries=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -134,7 +138,7 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await assertSeparateCards();}
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of (bankReviewOnly?[]:['ko','en','vi'])){
+ for(const lang of ((bankReviewOnly||scheduleOnly)?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];let allowDiscard=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>allowDiscard?d.accept():d.dismiss());
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
@@ -164,5 +168,5 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log(bankReviewOnly?'Invoice bank confirmation and selected account payload passed, including ambiguous issue/save retry recovery.':'Invoice editor passed ko/en/vi: compact customer/multi-order selection on the same form, discard protection, responsive layout, direct issue and retry recovery.');
+ console.log(scheduleOnly?'Collection date: ko/en/vi entry and draft/issue payload passed.':bankReviewOnly?'Invoice bank confirmation and selected account payload passed, including ambiguous issue/save retry recovery.':'Invoice editor passed ko/en/vi: compact customer/multi-order selection on the same form, discard protection, responsive layout, direct issue and retry recovery.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}
