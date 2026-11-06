@@ -393,7 +393,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
           </Grid>
 
           <Grid size={{xs:12}}>
-            <Stack spacing={2} data-testid="company-industry-settings">{industryError&&<Alert severity="error" action={<Button onClick={()=>setIndustryReload(value=>value+1)}>{industryText.retry}</Button>}>{industryError}</Alert>}{industryProfile&&<PartnerClassificationFields value={classification} onChange={setClassification} orgId={activeOrgId} languageCode={languageCode} disabled={isSaving||!industryProfile.canEdit} onReady={setIndustryReady}/>}</Stack>
+            <Stack spacing={2} data-testid="company-industry-settings">{industryError&&<Alert severity="error" action={<Button onClick={()=>setIndustryReload(value=>value+1)}>{industryText.retry}</Button>}>{industryError}</Alert>}{industryProfile&&<PartnerClassificationFields inline value={classification} onChange={setClassification} orgId={activeOrgId} languageCode={languageCode} disabled={isSaving||!industryProfile.canEdit} onReady={setIndustryReady}/>}</Stack>
           </Grid>
         </Grid>
       </EntityDetailSection>
