@@ -119,7 +119,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     finally { setHistoryLoading(false); }
   };
   return (
-    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={partner=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer/'+partner.relationshipId):setEditingPartner(partner)} canOpen={canEdit}
+    <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={setEditingPartner} canOpen={canEdit}
       renderActions={partner=><><Button variant="contained" onClick={()=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer-pricing?customerId='+partner.relationshipId):openHistory(partner)}>{partner.sourceKind==='CUSTOMER'?({ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing'):listLabels.viewHistory}</Button><Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
     >
       {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}

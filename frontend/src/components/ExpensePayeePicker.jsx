@@ -1,8 +1,9 @@
+import BankAccountEditorDialog from './BankAccountEditorDialog';
 import LookupInput from './LookupInput';
 import LookupSearchDialog from './LookupSearchDialog';
 import {partnerIndustryLabel} from '../utils/partnerIndustry.mjs';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Alert,Box,Button,CircularProgress,Paper,Stack,Typography} from '@mui/material';
 import BusinessPartnerDialog,{getBusinessPartnerTypeLabel} from './BusinessPartnerDialog';
 import {expenseHeaderActions} from '../constants/expenseHeaderActions';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
@@ -90,8 +91,5 @@ function EmployeePayeeBankDialog({open,onClose,payee,orgId,languageCode,onSaved}
  const [form,setForm]=useState({currencyCode:'VND',bankName:payee.bankName||'',accountNumber:payee.bankAccountNumber||'',accountHolder:payee.name||''}),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const lock=useRef(false);
  const save=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const saved=await requestJSON(`${payeeAccountPath(payee)}${buildQueryString({orgId})}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)});onSaved(saved);onClose();}catch{setError(t.error);}finally{lock.current=false;setBusy(false);}};
- return <Dialog open={open} onClose={busy?undefined:onClose} fullWidth maxWidth="xs"><DialogTitle>{payee.name}</DialogTitle><DialogContent dividers><Stack spacing={2}>
-  {error&&<Alert severity="error">{error}</Alert>}
-  <TextField select label={text.currency} value={form.currencyCode} disabled={busy} onChange={event=>setForm(current=>({...current,currencyCode:event.target.value}))}>{['VND','USD','KRW'].map(code=><MenuItem key={code} value={code}>{code}</MenuItem>)}</TextField>
-  {[[labels.bank,'bankName'],[labels.number,'accountNumber'],[labels.holder,'accountHolder']].map(([label,key])=><TextField key={key} required label={label} value={form[key]} disabled={busy} inputProps={{maxLength:200}} onChange={event=>setForm(current=>({...current,[key]:event.target.value}))}/>)}</Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>{t.cancel}</Button><Button variant="contained" disabled={busy||['bankName','accountNumber','accountHolder'].some(key=>!form[key].trim())} onClick={save}>{text.save}</Button></DialogActions></Dialog>;
+ return <BankAccountEditorDialog open={open} title={payee.name} value={form} onChange={setForm} onSave={save} onClose={onClose} currencyKey="currencyCode" currencies={['VND','USD','KRW'].map(code=>({value:code,label:code}))} allowCash={false} showName={false} busy={busy} error={error} languageCode={languageCode} maxLengths={{bankName:200,accountNumber:200,accountHolder:200}}/>;
 }

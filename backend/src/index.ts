@@ -24,6 +24,7 @@ import { entityProfile, partnerProfilePatch, subscriberProfilePatch, resolvePart
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
 import {saveNewPartnerBankAccounts} from './services/newPartnerBankAccounts';
+import {registerPartnerEditorRoutes} from './services/partnerEditor';
 import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany} from './services/companyConnections';
 import { displayProductionProgress } from './services/productionProgress';
 import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow } from './services/invoiceWorkflow';
@@ -27644,6 +27645,7 @@ app.get("/partner-transaction-costs", async (req, res) => {
   return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}] }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
 });
 registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
+registerPartnerEditorRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerCompanyConnectionRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId});
 registerExpensePayeeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
 registerApprovalActionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});

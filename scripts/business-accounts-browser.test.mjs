@@ -61,7 +61,7 @@ try{
    await dialog.getByRole('textbox',{name:labels.number,exact:false}).fill('access-'+role);
    await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});
    assert.equal(writes.at(-1).accountNumber,'access-'+role);
-   assert.ok(await page.locator('[data-rfd-drag-handle-draggable-id]').count()>0);
+   await page.locator('[data-rfd-drag-handle-draggable-id]').first().waitFor();
   }
   await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   const et=ledgerEvidenceText[lang];

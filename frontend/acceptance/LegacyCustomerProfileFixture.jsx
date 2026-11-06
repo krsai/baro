@@ -1,15 +1,16 @@
-import {emptyPartnerClassification} from '../../../utils/partnerClassification.mjs';
-import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
-import {hasApparelBrandIndustry} from '../../../utils/orderDefaultsIndustry.mjs';
-import {useAuth} from '../../../context/AuthContext';
-import PartnerProfileFields from '../../../components/PartnerProfileFields';
-import {CompanyConnectionField} from '../../../components/CompanyConnections';
-import EntityBankAccounts from '../../../components/EntityBankAccounts';
-import { ENTITY_TEXT } from '../../../constants/entityProfile';
-import EntityDetailSection from '../../../components/EntityDetailSection';
+// Historical profile-field fixture only. Production uses BusinessPartnerDialog.
+import {emptyPartnerClassification} from '../src/utils/partnerClassification.mjs';
+import PartnerClassificationFields from '../src/components/PartnerClassificationFields';
+import {hasApparelBrandIndustry} from '../src/utils/orderDefaultsIndustry.mjs';
+import {useAuth} from '../src/context/AuthContext';
+import PartnerProfileFields from '../src/components/PartnerProfileFields';
+import {CompanyConnectionField} from '../src/components/CompanyConnections';
+import EntityBankAccounts from '../src/components/EntityBankAccounts';
+import { ENTITY_TEXT } from '../src/constants/entityProfile';
+import EntityDetailSection from '../src/components/EntityDetailSection';
 import React, { useMemo } from 'react';
 import { MenuItem, Stack, TextField } from '@mui/material';
-import { getSizeSetOptions } from '../../../constants/productAttributes';
+import { getSizeSetOptions } from '../src/constants/productAttributes';
 
 const getText = (languageCode) => {
   const values = {

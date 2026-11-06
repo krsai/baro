@@ -1,5 +1,6 @@
+import BankAccountEditorDialog from './BankAccountEditorDialog';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Alert,Box,Button,CircularProgress,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import DragIndicator from '@mui/icons-material/DragIndicator';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
@@ -37,10 +38,8 @@ export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAcc
   if(token!==scopeRef.current)return;setDraft(null);setReload(n=>n+1);emitWorkspaceDataChanged({orgId:scope,topics:['business-partners'],source:'business-accounts'});
  }catch(e){if(token===scopeRef.current)setError(money.errors[e.message]||`${labels.error} ${e.message||''}`);}finally{if(token===scopeRef.current)setSaving(false);}};
 
- const valid=draft&&draft.currencyId&&(draft.accountKind==='CASH'?draft.displayName?.trim():['bankName','accountNumber','accountHolder'].every(key=>draft[key]?.trim()));
  const edit=account=>{if(canManage&&!disabled)setDraft({...account});};
  const addBank=()=>edit({accountKind:'BANK',displayName:'',bankName:'',accountNumber:'',accountHolder:'',currencyId:draft?.currencyId||data.currencies.find(row=>row.code==='VND')?.id||data.currencies[0]?.id||''});
- const submit=()=>save(draft);
  return <EntityDetailSection title={labels.banks}>
   {pending&&<Typography variant="caption" color="text.secondary">{PENDING_COPY[languageCode]||PENDING_COPY.en}</Typography>}
   <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={1} sx={{mb:2}}><Box>{!hideGuidance&&<Typography variant="caption" color="text.secondary">{canManage?t.help:t.readOnly}</Typography>}</Box><Stack direction="row" spacing={1}>{dirty&&<Button onClick={()=>save({ids:data.accounts.map(row=>row.id),revision:data.revision},true)} disabled={saving||!canManage}>{t.order}</Button>}<Button disabled={(!entityId&&!pending)||!ready||loading||saving||disabled||dirty||!canManage||(pending&&data.accounts.length>=20)} onClick={addBank}>{labels.add}</Button></Stack></Stack>
@@ -49,13 +48,6 @@ export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAcc
    {data.accounts.map((account,index)=><Draggable key={account.id} draggableId={account.id} index={index} isDragDisabled={pending||saving||disabled||!canManage}>{drag=><TableRow ref={drag.innerRef} {...drag.draggableProps} data-account-id={account.id}><TableCell {...drag.dragHandleProps} aria-label={t.move}><DragIndicator fontSize="small"/></TableCell><TableCell>{account.currency.code}</TableCell><TableCell>{t[account.accountKind||'BANK']}</TableCell><TableCell>{account.displayName||'—'}</TableCell><TableCell>{account.accountKind==='CASH'?'—':account.bankName}</TableCell><TableCell>{account.accountKind==='CASH'?'—':account.accountNumber}</TableCell><TableCell>{account.accountKind==='CASH'?'—':account.accountHolder}</TableCell><TableCell><Button aria-label={labels.edit} disabled={saving||disabled||dirty||!canManage} onClick={()=>edit(account)} sx={{minWidth:32,p:.5}}><EditOutlined fontSize="small"/></Button></TableCell></TableRow>}</Draggable>)}{provided.placeholder}
    {!data.accounts.length&&<TableRow><TableCell colSpan={8}>{labels.empty}</TableCell></TableRow>}
   </TableBody>}</Droppable></Table></TableContainer></DragDropContext>}
-  <Dialog open={!!draft} onClose={()=>!saving&&setDraft(null)} scroll="paper" fullWidth maxWidth="sm"><DialogTitle>{draft?.id?labels.edit:labels.add}</DialogTitle><DialogContent dividers><Stack spacing={2} sx={{pt:1}}>
-   <TextField select label={t.kind} value={draft?.accountKind||'BANK'} disabled={saving||!canManage} onChange={e=>setDraft({...draft,accountKind:e.target.value})}>{['CASH','BANK'].map(kind=><MenuItem key={kind} value={kind}>{t[kind]}</MenuItem>)}</TextField>
-   <TextField label={t.name} required={draft?.accountKind==='CASH'} value={draft?.displayName||''} disabled={saving||!canManage} inputProps={{maxLength:160}} onChange={e=>setDraft({...draft,displayName:e.target.value})}/>
-   <TextField select label={labels.currency} value={draft?.currencyId||''} disabled={saving||!canManage} onChange={e=>setDraft({...draft,currencyId:Number(e.target.value)})}>{data.currencies.map(row=><MenuItem key={row.id} value={row.id}>{row.code}</MenuItem>)}</TextField>
-   {draft?.accountKind!=='CASH'&&['bankName','accountNumber','accountHolder'].map((key,index)=><TextField key={key} required disabled={saving||!canManage} label={labels[['bank','number','holder'][index]]} value={draft?.[key]||''} inputProps={{maxLength:{bankName:120,accountNumber:100,accountHolder:160}[key]}} onChange={e=>setDraft({...draft,[key]:e.target.value})}/>)}
-   {draft?.accountKind==='CASH'&&<Alert severity="info">{t.cashHint}</Alert>}
-   {error&&<Alert severity="error" action={!ready&&<Button color="inherit" onClick={()=>setReload(n=>n+1)}>{loadText.retry}</Button>}>{error}</Alert>}
-  </Stack></DialogContent><DialogActions><Button disabled={saving||!canManage} onClick={()=>setDraft(null)}>{labels.cancel}</Button><Button variant="contained" disabled={!valid||saving||!canManage} onClick={submit}>{labels.save}</Button></DialogActions></Dialog>
+  <BankAccountEditorDialog key={draft?.id||'new'+(!!draft)} open={!!draft} title={draft?.id?labels.edit:labels.add} value={draft} onChange={setDraft} onSave={save} onClose={()=>setDraft(null)} currencies={data.currencies.map(row=>({value:row.id,label:row.code}))} busy={saving} disabled={disabled||!canManage} error={error} languageCode={languageCode} errorAction={!ready&&<Button color="inherit" onClick={()=>setReload(n=>n+1)}>{loadText.retry}</Button>}/>
  </EntityDetailSection>;
 }
