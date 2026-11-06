@@ -11441,7 +11441,7 @@ const normalizeWorkLogPayload = (payload: any = {}, fallback: any = null) => {
     invalidWorkerRecordIndex: normalizedRecords.invalidWorkerRecordIndex,
   };
 };
-const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null, reviewItems = null, comparisonItems = null, approvedBy = null, approvedAt = null }: any) => {
+const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedWorkLogId = null, reviewItems = null, comparisonItems = null, approvedBy = null, approvedAt = null, lockOrders = true }: any) => {
   const cleaned = String(note || "").replace(/\n?\[생산 수량 확인\][\s\S]*?\[\/생산 수량 확인\]/g, '').trim();
   const planIds = collectWorkRecordAssignmentPlanIds(records);
   if (!planIds.length) return cleaned || null;
@@ -11450,7 +11450,7 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
   const orders = [...new Set(plans.map((p: any) => p.workOrderId).filter(Boolean))] as number[];
   if (!orders.length) return cleaned || null;
   // Serializes cumulative remarks with other writes on the same orders.
-  await db.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE "orgId"=$1 AND id=ANY($2::int[]) ORDER BY id FOR UPDATE', orgId, orders);
+  if (lockOrders) await db.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE "orgId"=$1 AND id=ANY($2::int[]) ORDER BY id FOR UPDATE', orgId, orders);
   const processIds = [...new Set(records.map((r: any) => r.styleProcessId).filter(Boolean))];
   const requiredIdsByPlan = new Map<number, number[]>();
   const completeRequiredPlanIds = new Set<number>();
@@ -11508,6 +11508,36 @@ const appendWorkLogQuantityRemark = async ({ db, orgId, records, note, excludedW
   // Rebuild just this automatic section when editing; user notes remain intact.
   return [cleaned, remarks.length ? `[생산 수량 확인]\n${remarks.join('\n')}\n[/생산 수량 확인]` : ""].filter(Boolean).join('\n') || null;
 };
+// A failed review rolls the entire write transaction back. Confirmation keys
+// include the freshly calculated quantities, so concurrent changes require review again.
+const reviewWorkLogQuantityBeforeSave = async (args: any, req: Request) => {
+ const reviewItems: any[] = [];
+ const note = await appendWorkLogQuantityRemark({...args, reviewItems});
+ const approved = new Set(ensureArray(req.body?.approvedQuantityKeys).filter(key => typeof key === 'string'));
+ const pending = reviewItems.filter(item => !approved.has(item.key));
+ if (!pending.length) return note;
+ const alternatives: any[] = [];
+ for (const item of pending) {
+  const plans = await args.db.assignmentPlan.findMany({where:{orgId:args.orgId,styleId:item.styleId,isCompleted:false,workOrderId:{not:item.orderId},factoryId:toPositiveIntOrNull(req.body?.factoryId)||undefined},select:{id:true,workOrderId:true,factoryId:true,assignmentCtSnapshot:true}});
+  const seen = new Set<number>();
+  const candidates = plans.filter((plan: any)=>{
+   if(!plan.workOrderId||seen.has(plan.workOrderId)||!ensureArray(resolveNormalizedAssignmentCtSnapshot(plan)?.processes).some((process: any)=>Number(process.styleProcessId)===item.styleProcessId))return false;
+   seen.add(plan.workOrderId);return true;
+  });
+  if(!candidates.length)continue;
+  const affected=(record: any)=>item.assignmentPlanIds.includes(record.assignmentPlanId)&&record.styleProcessId===item.styleProcessId;
+  const source=args.records.filter(affected),comparisonItems: any[]=[];
+  // Compare all alternative orders in one read rather than querying each order.
+  const mapped=[...args.records.filter((record: any)=>!affected(record)),...candidates.flatMap((plan: any)=>source.map((record: any)=>({...record,assignmentPlanId:plan.id})))];
+  await appendWorkLogQuantityRemark({...args,records:mapped,note:null,comparisonItems,lockOrders:false});
+  for(const plan of candidates){
+   const comparison=comparisonItems.find(row=>row.orderId===plan.workOrderId&&row.styleId===item.styleId&&row.styleProcessId===item.styleProcessId);
+   if(comparison)alternatives.push({...comparison,reviewKey:item.key,assignmentPlanId:plan.id,factoryId:plan.factoryId});
+  }
+ }
+ throw Object.assign(new Error('WORK_QUANTITY_REVIEW_REQUIRED'),{quantityReviewItems:pending,quantityAlternatives:alternatives});
+};
+
 
 const combineImportedWorkRecords = (records: any[]) => {
   const combined: any[] = [];
@@ -25539,7 +25569,7 @@ const handleCreateOutsourcedWorkLog = async ({
   } = normalized;
   const createWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
-      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
+      workLogData.note = await reviewWorkLogQuantityBeforeSave({ db: tx, orgId: organization.id, records, note: workLogData.note }, req);
       const next = await tx.workLog.create({
         data: {
           orgId: organization.id,
@@ -25718,7 +25748,7 @@ const handleUpdateOutsourcedWorkLog = async ({
   } = normalized;
   const updateWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
-      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note, excludedWorkLogId: existing.id });
+      workLogData.note = await reviewWorkLogQuantityBeforeSave({ db: tx, orgId: organization.id, records, note: workLogData.note, excludedWorkLogId: existing.id }, req);
       const next = await tx.workLog.update({
         where: { id: existing.id },
         data: {
@@ -25994,7 +26024,7 @@ app.post("/work-logs", async (req, res) => {
   } = normalized;
   const createWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
-      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note });
+      workLogData.note = await reviewWorkLogQuantityBeforeSave({ db: tx, orgId: organization.id, records, note: workLogData.note }, req);
       const next = await tx.workLog.create({
         data: {
           orgId: organization.id,
@@ -26319,7 +26349,7 @@ app.put("/work-logs/:id", async (req, res) => {
   } = normalized;
   const updateWorkLogTransaction = async (includeCoverage: boolean) =>
     prisma.$transaction(async (tx) => {
-      workLogData.note = await appendWorkLogQuantityRemark({ db: tx, orgId: organization.id, records, note: workLogData.note, excludedWorkLogId: existing.id });
+      workLogData.note = await reviewWorkLogQuantityBeforeSave({ db: tx, orgId: organization.id, records, note: workLogData.note, excludedWorkLogId: existing.id }, req);
       const next = await tx.workLog.update({
         where: { id: existing.id },
         data: {
@@ -31601,6 +31631,7 @@ app.use(quantitySettlementRouter);
 // ───────────────────────────────────────────────────────────────────────────
 
 app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
+  if (Array.isArray((error as any)?.quantityReviewItems)) return res.status(409).json({error:'WORK_QUANTITY_REVIEW_REQUIRED',quantityReviewItems:(error as any).quantityReviewItems,quantityAlternatives:(error as any).quantityAlternatives||[]});
   const shippingCode=error instanceof Error?error.message.match(/SHIPPING_[A-Z_]+/)?.[0]:null;
   if(shippingCode)return res.status(getErrorStatus(error)??(shippingCode.includes('DENIED')||shippingCode.includes('SCOPE')?403:409)).json({error:shippingCode});
   if (error instanceof Error && error.message.startsWith("ORDER_ITEM_ID_CONFLICT:")) {

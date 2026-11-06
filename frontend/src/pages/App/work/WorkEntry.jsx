@@ -186,6 +186,7 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
           label: buildWorkDetailTabLabel(payload?.workDate, languageCode, isOutsourcingMode),
         });
       } catch (error) {
+        if (error?.details?.quantityReviewItems) return error.details;
         console.error('[WorkEntry.handleSave] error', {
           mode: isEditMode ? 'update' : 'create',
           workLogId: routeWorkLogId ?? null,

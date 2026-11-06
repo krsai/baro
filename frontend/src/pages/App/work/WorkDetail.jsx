@@ -1,3 +1,4 @@
+import WorkQuantityReviewDialog from './WorkQuantityReviewDialog';
 import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
 import PageSectionHeader from '../../../components/PageSectionHeader';
@@ -2402,6 +2403,12 @@ const WorkDetail = ({
     setEditingField(null);
   }, [factoryScopeWorkers.length, selectedFactoryId]);
 
+  const [quantityReview,setQuantityReview]=useState(null);
+  const [reviewSaving,setReviewSaving]=useState(false);
+  const saveWithQuantityReview=useCallback(async payload=>{
+    const result=await onSave?.(payload);
+    setQuantityReview(result?.quantityReviewItems?{...result,payload,quantityAlternatives:(result.quantityAlternatives||[]).map(item=>({...item,selectable:sortedAssignmentOptionsByFactoryScope.some(option=>Number(option.dbId)===Number(item.assignmentPlanId))}))}:null);
+  },[onSave,sortedAssignmentOptionsByFactoryScope]);
   const handleSave = useCallback(() => {
     setFormError('');
     if (initialLog?.id && !isDirty) {
@@ -2468,7 +2475,7 @@ const WorkDetail = ({
       setFormError(missingAssignmentPlanLinkMessage);
       return;
     }
-    onSave?.({
+    saveWithQuantityReview({
       recordKind,
       workDate: workDateKey,
       coverageStartDate: coverageStartDateKey,
@@ -2490,7 +2497,7 @@ const WorkDetail = ({
         employmentAutoNote: savedEmploymentAutoNote,
       }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, onSave, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, saveWithQuantityReview, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -3106,7 +3113,15 @@ const WorkDetail = ({
                                 toText(option?.id || option?.dbId) ===
                                 toText(value?.id || value?.dbId)
                               }
-                              renderOption={renderStyleOption}
+                              lookupColumns={[
+ {key:'order',label:languageCode==='ko'?'주문 번호':languageCode==='vi'?'Đơn hàng':'Order',width:'24%',value:option=>option.orderNo},
+ {key:'style',label:LABELS.style,value:getStyleOptionLabel},
+ {key:'quantity',label:LABELS.orderQuantity,width:'18%',align:'right',value:option=>formatCount(resolveBaselineQuantity(option))},
+ {key:'factory',label:LABELS.factory,width:'20%',value:option=>option.factoryName}
+ ]}
+ getLookupCode={getStyleOptionLabel}
+ getLookupSearchText={option=>[getStyleOptionLabel(option),option.orderNo,option.factoryName].filter(Boolean).join(' ')}
+ renderOption={renderStyleOption}
                               inputSuffix={
                                 selectedStyleOrderLabel ? (
                                   <Typography
@@ -3166,7 +3181,14 @@ const WorkDetail = ({
                             handleHomeEndKeys
                             getOptionLabel={getProcessOptionLabel}
                             isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
-                            renderOption={renderProcessOption}
+                            lookupColumns={[
+ {key:'code',label:languageCode==='ko'?'공정 코드':languageCode==='vi'?'Mã công đoạn':'Process code',width:'24%',value:option=>buildDisplayProcessCode(option.process)},
+ {key:'name',label:languageCode==='ko'?'공정명':languageCode==='vi'?'Tên công đoạn':'Process name',value:option=>buildDisplayProcessName(option.process,languageCode)}
+ ]}
+ getLookupCode={option=>buildDisplayProcessCode(option.process)}
+ getLookupValues={option=>[buildDisplayProcessName(option.process,languageCode)]}
+ getLookupSearchText={option=>[buildDisplayProcessCode(option.process),buildDisplayProcessName(option.process,languageCode)].join(' ')}
+ renderOption={renderProcessOption}
                             inputSuffix={
                               selectedProcessMetaLabel ? (
                                 <Typography
@@ -3313,7 +3335,7 @@ const WorkDetail = ({
                       overflowY: 'visible',
                     }}
                   >
-                  <Table stickyHeader size="small" sx={{ tableLayout: 'fixed' }}>
+                  <Table stickyHeader size="small" sx={{ tableLayout: 'fixed', '& th:last-child, & td:last-child': { boxShadow: 'none !important' } }}>
                     <TableHead>
                       <TableRow>
                         <TableCell sx={{ width: 56 }} align="center">
@@ -3500,7 +3522,15 @@ const WorkDetail = ({
                                     toText(option?.id || option?.dbId) ===
                                     toText(value?.id || value?.dbId)
                                   }
-                                  renderOption={renderStyleOption}
+                                  lookupColumns={[
+ {key:'order',label:languageCode==='ko'?'주문 번호':languageCode==='vi'?'Đơn hàng':'Order',width:'24%',value:option=>option.orderNo},
+ {key:'style',label:LABELS.style,value:getStyleOptionLabel},
+ {key:'quantity',label:LABELS.orderQuantity,width:'18%',align:'right',value:option=>formatCount(resolveBaselineQuantity(option))},
+ {key:'factory',label:LABELS.factory,width:'20%',value:option=>option.factoryName}
+ ]}
+ getLookupCode={getStyleOptionLabel}
+ getLookupSearchText={option=>[getStyleOptionLabel(option),option.orderNo,option.factoryName].filter(Boolean).join(' ')}
+ renderOption={renderStyleOption}
                                   inputSuffix={
                                     selectedStyleOrderLabel ? (
                                       <Typography
@@ -3588,7 +3618,14 @@ const WorkDetail = ({
                                 handleHomeEndKeys
                                 getOptionLabel={getProcessOptionLabel}
                                 isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')}
-                                renderOption={renderProcessOption}
+                                lookupColumns={[
+ {key:'code',label:languageCode==='ko'?'공정 코드':languageCode==='vi'?'Mã công đoạn':'Process code',width:'24%',value:option=>buildDisplayProcessCode(option.process)},
+ {key:'name',label:languageCode==='ko'?'공정명':languageCode==='vi'?'Tên công đoạn':'Process name',value:option=>buildDisplayProcessName(option.process,languageCode)}
+ ]}
+ getLookupCode={option=>buildDisplayProcessCode(option.process)}
+ getLookupValues={option=>[buildDisplayProcessName(option.process,languageCode)]}
+ getLookupSearchText={option=>[buildDisplayProcessCode(option.process),buildDisplayProcessName(option.process,languageCode)].join(' ')}
+ renderOption={renderProcessOption}
                                 inputSuffix={
                                   selectedProcessMetaLabel ? (
                                     <Typography
@@ -3812,6 +3849,23 @@ const WorkDetail = ({
           </Box>
         </Paper>
       </PageContentStack>
+      <WorkQuantityReviewDialog review={quantityReview} languageCode={languageCode} busy={reviewSaving}
+       onClose={()=>setQuantityReview(null)}
+       onConfirm={async()=>{setReviewSaving(true);try{await saveWithQuantityReview({...quantityReview.payload,approvedQuantityKeys:[...new Set([...(quantityReview.payload.approvedQuantityKeys||[]),...quantityReview.quantityReviewItems.map(item=>item.key)])]});}finally{setReviewSaving(false);}}}
+       onChangeOrder={item=>{
+        const option=sortedAssignmentOptionsByFactoryScope.find(option=>Number(option.dbId)===Number(item.assignmentPlanId));
+        if(!option){setFormError(languageCode==='ko'?'해당 주문의 배정을 현재 공장에서 선택할 수 없습니다.':'This assignment is unavailable in the current factory.');setQuantityReview(null);return;}
+        const source=quantityReview.quantityReviewItems.find(review=>review.key===item.reviewKey);
+        const affected=new Set(quantityReview.payload.records.filter(record=>source.assignmentPlanIds.includes(record.assignmentPlanId)&&Number(record.styleProcessId)===Number(source.styleProcessId)).map(record=>record.rowId));
+        setRows(current=>current.map(row=>{
+          if(!affected.has(toText(row.id)))return row;
+          const next={...row,assignment:option,styleOptionId:toText(option.id||option.dbId)};
+          const processOptions=resolveProcessOptions({...next,id:'quantity-review:'+row.id,process:null});
+          const match=processOptions.find(candidate=>Number(candidate.process?.styleProcessId)===Number(source.styleProcessId));
+          return {...next,process:match?.process||null,quantity:match?row.quantity:''};
+        }));
+        setQuantityReview(null);
+       }}/>
       <BusinessPartnerDialog
         open={Boolean(outsourcePartnerRowId)}
         onClose={() => setOutsourcePartnerRowId(null)}
