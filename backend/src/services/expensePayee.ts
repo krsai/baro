@@ -1,5 +1,5 @@
 import {createHttpError} from '../utils/http';
-import {attachLinkedCompanies} from './companyConnections';
+import {attachPartnerClassifications} from './partnerClassification';
 
 export const EMPLOYEE_PAYEE_SELECT={id:true,name:true,employeeNo:true,orgId:true,status:true,phone:true,email:true,bankName:true,bankAccountNumber:true};
 export const employeePayee=(employee:any)=>employee&&({id:`EMP:${employee.id}`,employeeId:employee.id,name:employee.name||employee.employeeNo||String(employee.id),code:employee.employeeNo,type:'EMPLOYEE',isActive:employee.status==='ACTIVE',contactPhone:employee.phone,email:employee.email,bankName:employee.bankName,bankAccountNumber:employee.bankAccountNumber,serviceTypes:[]});
@@ -25,8 +25,8 @@ export function registerExpensePayeeRoutes(app:any,db:any,gates:any){
    db.organization.findMany({where:expensePartnerScope(orgId),include:{outsourcingServiceAssignments:{where:{ownerOrgId:orgId},include:{serviceType:true}}},orderBy:[{name:'asc'},{id:'asc'}]}),
    db.employee.findMany({where:{orgId,status:'ACTIVE'},select:EMPLOYEE_PAYEE_SELECT,orderBy:[{name:'asc'},{id:'asc'}]}),
   ]);
-  const linked=await attachLinkedCompanies(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));
-  res.json([...linked.map((p:any)=>({id:p.id,name:p.name,nameKo:p.nameKo,nameVi:p.nameVi,code:p.linkedCompany?.code||p.code,type:p.type,isActive:p.isActive,contactName:p.representative,contactPhone:p.phone,email:p.email,businessNumber:p.businessNumber,address:p.address,country:p.country,serviceTypes:p.linkedCompany?p.officialClassification?.industries||[]:p.outsourcingServiceAssignments.map((link:any)=>link.serviceType)})),...employees.map(employeePayee)]);
+  const linked=await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id,serviceTypes:p.outsourcingServiceAssignments.map((link:any)=>link.serviceType)})));
+  res.json([...linked.map((p:any)=>({id:p.id,name:p.name,nameKo:p.nameKo,nameVi:p.nameVi,code:p.linkedCompany?.code||p.code,type:p.type,isActive:p.isActive,contactName:p.representative,contactPhone:p.phone,email:p.email,businessNumber:p.businessNumber,address:p.address,country:p.country,serviceTypes:p.linkedCompany?.subscriberOrgId?p.officialClassification?.industries||[]:p.classification?.industries||[]})),...employees.map(employeePayee)]);
  });
  app.get('/expense-payees/employees/:id/bank-accounts',async(req:any,res:any)=>{
   const ctx=await access(req,res);if(!ctx)return;const orgId=ctx.organization.id,employeeId=Number(req.params.id);

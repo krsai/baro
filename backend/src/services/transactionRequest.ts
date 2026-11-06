@@ -84,7 +84,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
 
-  if(useSystemMaster)description=edit?.cost?.description || code.base.nameEn || code.nameEn || code.code;
+  if(useSystemMaster)description=(edit?.cost?.transactionCodeId===transactionCodeId?edit.cost.description:null) || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
   if(partnerOrgId===orgId)return invalid('INVALID_PARTNER_SERVICE');

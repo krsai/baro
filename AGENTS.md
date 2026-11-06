@@ -4643,3 +4643,8 @@ runtime 조회값:
 - 기존 설정과 원자료를 재작성하지 않는다. 과거 내역의 경고는 현재 설정 기준이며 당시의 오류로 확정하지 않는다. AccountingDirectionAnomaly는 현재 기준의 읽기 전용 projection이고 조회자는 반드시 orgId로 범위를 제한한다.
 - 20261107020000_cash_direction_anomalies에서 이전 방향 차단 트리거만 제거하고 공통 실행기·preflight·시작 검사에 새 조회 기준을 등록한다. 종전 허용/불허용 지시는 이 정정으로 대체한다. 검증은 test:accounting-direction, 양쪽 빌드, 번역/인코딩이다.
 
+# 2026-11-06 MJ debit note 정정 (사용자 지정 예외)
+
+- 비용 지급 대상 업종은 현재 명시 PartnerClassification을 우선 표시한다. 업체 변경 시 지급 대상 목록을 재조회하되 문서 초안·과거 감사 snapshot은 유지한다.
+- 사용자 요청의 BARO 비용 19와 지급 c690df87-bd79-4ee8-9784-f46e032c93de만 PDF HANSIS26110018의 여섯 코드로 항목 정정한다. 기본 read-only·revision 일치·전체 실행 후 rollback 검증을 갖춘 correct-mj-debit-note.js를 사용한다. 정확한 범위·제약·보존 방식은 docs/mj-debit-note-correction-2026-11-06.md를 따른다. 일반적인 지급 연결 비용 수정 차단이나 결재 권한을 완화하지 않는다.
+

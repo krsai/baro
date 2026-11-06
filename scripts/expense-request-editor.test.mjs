@@ -164,7 +164,7 @@ test('final invoice lock blocks all edits; completed production and confirmed pa
 });
 test('document and standalone-cost entry points resolve the saved form; item edits and removal preserve business identities',async()=>{
   const db=harness(), body=await input(db);
-  body.items.push({transactionCodeId:7,currency:'USD',description:'Additional expense',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{reference:'REF-001'}});
+  body.items.push({transactionCodeId:7,currency:'USD',description:'Additional expense',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{reference:'REF-001',evidenceFile:'supplier.pdf'}});
   await db.save(body);
   const form=expenseEditorForm(await db.source());assert.equal(form.items.length,2);assert.equal(db.state().documents[0].currency,null);
   const firstId=form.items[0].itemId,secondId=form.items[1].itemId;

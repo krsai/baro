@@ -77,7 +77,9 @@ export default function TransactionRequestEntry() {
   useEffect(()=>{
     let alive=true;
     const unsubscribe=subscribeWorkspaceDataChanged(detail=>{
-      if(Number(detail?.orgId)!==Number(activeOrgId)||!detail?.topics?.includes('expense-settings'))return;
+      if(Number(detail?.orgId)!==Number(activeOrgId))return;
+      if(detail?.topics?.includes('business-partners'))requestJSON('/expense-payees'+buildQueryString({orgId:activeOrgId}),{skipCache:true}).then(partners=>{if(alive)setData(previous=>({...previous,partners}));}).catch(()=>{});
+      if(!detail?.topics?.includes('expense-settings'))return;
       requestJSON(`/transaction-codes${buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'})}`,{skipCache:true})
         .then(codes=>{if(alive)setData(previous=>({...previous,codes}));}).catch(()=>{});
     });
