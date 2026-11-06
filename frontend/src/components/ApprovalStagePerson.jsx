@@ -14,13 +14,15 @@ export default function ApprovalStagePerson({stage,value,onChange,grades=[],lang
  const single=eligible.length===1?eligible[0]:null,chosen=eligible.find(row=>row.id===(value??stage.employeeId))||single;
  const availableGrades=[...new Map(candidates.filter(row=>row.gradeId).map(row=>[row.gradeId,row.grade||grades.find(grade=>grade.id===row.gradeId)])).entries()];
  useEffect(()=>{if(stage.invalid&&single&&value!==single.id)onChange(single.id);},[stage.invalid,single?.id,value]);
- const gradeValue=gradeName(grades.find(row=>row.id===fixedGrade)||candidates.find(row=>row.gradeId===fixedGrade)?.grade||chosen?.grade||availableGrades[0]?.[1]);
+ const minimumGrade=stage.minimumGradeId&&(stage.requiredGrade||grades.find(row=>row.id===stage.minimumGradeId));
+ const gradeValue=minimumGrade?gradeName(minimumGrade)+line.orAbove:gradeName(grades.find(row=>row.id===fixedGrade)||candidates.find(row=>row.gradeId===fixedGrade)?.grade||chosen?.grade||availableGrades[0]?.[1]);
+ const noCandidates=stage.unavailableReason==='GRADE_NOT_CONFIGURED'?line.gradeNotConfigured:stage.unavailableReason==='ALREADY_SELECTED'?line.alreadySelected:stage.unavailableReason==='DRAFTER_ONLY'?line.drafterOnly:line.noCandidates;
  const label=personLabel||line.person;
  return <Box data-approval-person-stage={stage.key} sx={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:1}}>
   <TextField size="small" label={t.role} value={t[role]||role} InputProps={{readOnly:true}}/>
   {fixedGrade||availableGrades.length<=1?<TextField size="small" label={t.grade} value={gradeValue} InputProps={{readOnly:true}}/>:<TextField size="small" select label={t.grade} value={gradeFilter} disabled={disabled} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}} onChange={event=>{const gradeId=event.target.value;setGradeFilter(gradeId);const pool=gradeId?candidates.filter(row=>row.gradeId===gradeId):candidates;onChange(pool.some(row=>row.id===value)?value:pool.length===1?pool[0].id:null);}}><MenuItem value="">{t.allGrades}</MenuItem>{availableGrades.map(([id,grade])=><MenuItem key={id} value={id}>{gradeName(grade)}</MenuItem>)}</TextField>}
   <Box sx={{gridColumn:'1 / -1',minWidth:0}}>
-   {single?<TextField fullWidth size="small" id={'expense-stage-'+stage.key} label={label} value={single.name} InputProps={{readOnly:true}}/>:<TextField fullWidth size="small" id={'expense-stage-'+stage.key} select label={label} value={value??stage.employeeId??''} disabled={disabled} error={stage.invalid||!eligible.length} helperText={!eligible.length?line.noCandidates:undefined} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}} onChange={event=>onChange(event.target.value||null)}>
+   {single?<TextField fullWidth size="small" id={'expense-stage-'+stage.key} label={label} value={single.name} InputProps={{readOnly:true}}/>:<TextField fullWidth size="small" id={'expense-stage-'+stage.key} select label={label} value={value??stage.employeeId??''} disabled={disabled||!eligible.length} error={stage.invalid||!eligible.length} helperText={!eligible.length?noCandidates:undefined} slotProps={{inputLabel:{shrink:true},select:{displayEmpty:true}}} onChange={event=>onChange(event.target.value||null)}>
     <MenuItem value="" disabled>{stage.final?line.finalSelect:line.middleSelect}</MenuItem>
     {value&&!eligible.some(row=>row.id===value)&&<MenuItem disabled value={value}>—</MenuItem>}
     {eligible.map(row=><MenuItem key={row.id} value={row.id}>{row.name}</MenuItem>)}

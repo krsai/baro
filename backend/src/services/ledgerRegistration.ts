@@ -45,10 +45,12 @@ export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[];
  for(const [index,stage] of config.registrationStages.entries()){
   const grade=stage.gradeId?await db.employeeGrade.findFirst({where:{id:stage.gradeId,orgId,isActive:true,set:{isActive:true}}}):null;
-  const candidates=stage.gradeMatch!=='ANY'&&!grade?[]:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,id:{notIn:[drafter.id,...ids]},...(grade?{grade:stage.gradeMatch==='MINIMUM'?{orgId,setId:grade.setId,sortOrder:{gte:grade.sortOrder},isActive:true,set:{isActive:true}}:{id:grade.id,isActive:true,set:{isActive:true}}}:{})},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameKo:true,nameEn:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
+  const pool=stage.gradeMatch!=='ANY'&&!grade?[]:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,...(grade?{grade:stage.gradeMatch==='MINIMUM'?{orgId,setId:grade.setId,sortOrder:{gte:grade.sortOrder},isActive:true,set:{isActive:true}}:{id:grade.id,isActive:true,set:{isActive:true}}}:{})},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameKo:true,nameEn:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
+  const candidates=pool.filter((person:any)=>person.id!==drafter.id&&!ids.includes(person.id));
+  const unavailableReason=stage.gradeMatch!=='ANY'&&!grade?'GRADE_NOT_CONFIGURED':candidates.length?null:pool.some((person:any)=>person.id!==drafter.id&&ids.includes(person.id))?'ALREADY_SELECTED':pool.some((person:any)=>person.id===drafter.id)?'DRAFTER_ONLY':'NO_ELIGIBLE';
   const key='step'+(index+1),chosen=candidates.find((p:any)=>p.id===(selection[key+'EmployeeId']??(candidates.length===1?candidates[0].id:null)));
   if(chosen){ids.push(chosen.id);resolvedStages.push({employeeId:chosen.id,role:stage.role,gradeId:chosen.gradeId});}
-  stages.push({key,role:stage.role,gradeId:stage.gradeMatch==='EXACT'?stage.gradeId:null,employeeId:chosen?.id||null,name:chosen?.name,candidates});
+  stages.push({key,role:stage.role,gradeId:stage.gradeMatch==='EXACT'?stage.gradeId:null,minimumGradeId:stage.gradeMatch==='MINIMUM'?stage.gradeId:null,requiredGrade:grade?{id:grade.id,name:grade.name,nameKo:grade.nameKo,nameEn:grade.nameEn,nameVi:grade.nameVi}:null,gradeMatch:stage.gradeMatch,unavailableReason,employeeId:chosen?.id||null,name:chosen?.name,candidates});
  }
  const total=source.items.reduce((sum:any,i:any)=>sum.add(i.unitPrice),new Prisma.Decimal(0));
  return {ids,stages,drafter,complete:ids.length===stages.length,policy:{config,exempt:false,resolvedStages,totals:[{currency:source.entry.account.currencyCode,amount:total.toString()}]}};

@@ -8,6 +8,25 @@ const {previewChangeApproval,requestChangeApproval,decideChangeApproval}=require
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {registerExpensePayeeRoutes}=require('../backend/dist/services/expensePayee');
+const {previewLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
+
+test('final approver shortage reports overlap or self-only without bypassing stage, grade or company rules',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),drafter=s.people.senior;
+  const config={registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:drafter.gradeId}]};
+  const source={items:[{unitPrice:'3553561'}],entry:{account:{currencyCode:'VND'}}};
+  const blocked=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.lead.id});
+  assert.equal(blocked.complete,false);assert.equal(blocked.stages[1].unavailableReason,'ALREADY_SELECTED');assert.deepEqual(blocked.stages[1].candidates,[]);assert.equal(blocked.stages[1].minimumGradeId,drafter.gradeId);assert.equal(blocked.stages[1].requiredGrade.id,drafter.gradeId);
+  const corrected=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.junior.id});
+  assert.equal(corrected.complete,true);assert.deepEqual(corrected.ids,[s.people.junior.id,s.people.lead.id]);
+  assert.equal(corrected.stages[1].candidates.some(p=>p.id===drafter.id||p.id===s.people.admin.id),false,'neither drafter nor an ADMIN qualifies for an ACCOUNTANT stage');
+  await db.employee.update({where:{id:s.people.lead.id},data:{status:'SUSPENDED'}});
+  const selfOnly=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.junior.id});assert.equal(selfOnly.complete,false);assert.equal(selfOnly.stages[1].unavailableReason,'DRAFTER_ONLY');
+  await db.employee.update({where:{id:drafter.id},data:{orgRole:'OPERATOR'}});
+  const none=await previewLedgerRegistration(db,s.company.id,{...drafter,orgRole:'OPERATOR'},source,config,{step1EmployeeId:s.people.junior.id});assert.equal(none.stages[1].unavailableReason,'NO_ELIGIBLE');assert.equal(none.complete,false);
+  const missing=await previewLedgerRegistration(db,s.company.id,drafter,source,{registrationStages:[{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:null}]});assert.equal(missing.stages[0].unavailableReason,'GRADE_NOT_CONFIGURED');assert.equal(missing.complete,false);
+ }finally{await f.close();}
+});
 test('single-account ledger registration uses two independent accounting approvals and preserves source scope',async()=>{
  const f=await changeApprovalFixture({registration:true}),db=f.db;
  try{
