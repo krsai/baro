@@ -35,6 +35,7 @@ export const UI_MESSAGES = {
     peoplePayroll: { ko: '인사·급여', en: 'People & payroll', vi: 'Nhân sự & tiền lương' },
     finance: { ko: '회계·자금', en: 'Accounting & finance', vi: 'Kế toán & tài chính' },
     managementAnalysis: { ko: '경영 분석', en: 'Business analysis', vi: 'Phân tích kinh doanh' },
+    transportExchange:{ko:'운송 의뢰·공유',en:'Transport exchange',vi:'Trao đổi vận chuyển'},
     freight:{ko:'운송 목록',en:'Transport list',vi:'Danh sách vận chuyển'},
     transportWorkflow:{ko:'운송·영업',en:'Transport & sales',vi:'Vận chuyển & kinh doanh'},
     transportList:{ko:'운송 목록',en:'Transport list',vi:'Danh sách vận chuyển'},

@@ -13,6 +13,36 @@ datasource db {
 
 // Freight operations use explicit composite company FKs and immutable-history
 // triggers in 20261105030000_freight_operations. SQL services enforce revisions.
+// Cross-company exchange stores only explicit operational projections. Composite
+// local-job FKs and append-only events are defined by 20261107040000_transport_exchange.
+model TransportExchange {
+ id String @id
+ senderOrgId Int
+ receiverOrgId Int
+ senderJobId String?
+ receiverJobId String?
+ clientKey String
+ status String @default("PENDING")
+ senderSnapshot Json
+ receiverSnapshot Json?
+ version Int @default(1)
+ createdBy Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@unique([senderOrgId,clientKey])
+ @@index([receiverOrgId,status,updatedAt],map:"TransportExchange_receiver_status")
+}
+model TransportExchangeEvent {
+ id String @id
+ exchangeId String
+ orgId Int
+ actorId Int
+ version Int
+ action String
+ snapshot Json
+ createdAt DateTime @default(now())
+ @@unique([exchangeId,version])
+}
 // Job BLs and transport objects/tasks use composite SQL FKs in
 // 20261105140000_job_bills, matching the existing freight persistence pattern.
 model FreightBill {

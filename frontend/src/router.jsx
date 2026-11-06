@@ -1,3 +1,4 @@
+import TransportExchange from './pages/App/TransportExchange';
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -259,6 +260,7 @@ const router = createBrowserRouter([
         element: <MainLayout />,
         children: [
           {path:'account-overview',element:<AccountOverview/>},
+          {path:'transport-exchange',element:<TransportExchange/>},
           {path:'freight',element:<FreightWorkspace/>},
           {path:'bank-ledger',element:<BankLedger/>},
           {path:'bank-ledger/new',element:<BankLedgerEntry/>},

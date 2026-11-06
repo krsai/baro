@@ -164,6 +164,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 export const resolveFeatureByPath = (pathname) => {
   const path = normalizePathname(pathname);
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
+  if (path.startsWith('/transport-exchange')) return FEATURE_KEYS.CUSTOMER;
   if (path.startsWith('/freight')) return FEATURE_KEYS.FREIGHT;
   if (path.startsWith('/account-overview')) return FEATURE_KEYS.ACCOUNT_OVERVIEW;
   if (path.startsWith('/bank-ledger')) return FEATURE_KEYS.BANK_LEDGER;

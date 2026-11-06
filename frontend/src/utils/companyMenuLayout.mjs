@@ -1,6 +1,6 @@
 // Move canonical nodes intact so route permissions, partner access keys and badges survive.
 const GROUPS = [
-  ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
+  ['ORDER', 'salesWorkflow', ['/business-partner', '/transport-exchange', '/style', '/order', '/customer-production-report']],
   ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/order-shipments', '/production-analysis']],
   ['INVENTORY', 'materialsInventory', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/inventory/settings']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/holiday', '/payroll']],
@@ -18,10 +18,12 @@ export function organizeCompanyMenu(items, translate, orgType) {
       for (const child of item.children || []) if (child.path) leaves.set(child.path, child);
     }
   }
+  const exchange=items.find(item=>item.path==='/transport-exchange');
+  if(exchange)leaves.set('/transport-exchange',exchange);
   const transport=orgType==='SERVICE'?items.find(item=>item.path==='/freight'):null;
   if(transport)leaves.set('/freight',{...transport,label:translate('menu.transportList')});
   const used = new Set();
-  const result = [...items.filter(item => !item.isParent && !(transport&&item.path==='/freight'))];
+  const result = [...items.filter(item => !item.isParent && item.path!=='/transport-exchange' && !(transport&&item.path==='/freight'))];
   for (const [key, labelKey, paths] of GROUPS) {
     const source = groups.get(key);
     const children = (transport&&key==='ORDER'?['/freight',...paths]:paths).map(path => {

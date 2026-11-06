@@ -2,6 +2,7 @@
 // describe the screen's purpose; dirty state and record IDs never rename it.
 export const PAGE_ROUTES = [
   ['/system-setting/industry-menus','industryMenus','page'],
+  ['/transport-exchange','transportExchange','page'],
   ['/freight','freight','page'],
   ['/account-overview','accountOverview','page'],
   ['/bank-ledger','bankLedger','list'],
