@@ -1,3 +1,4 @@
+import {accountingDirectionText,matchesAccountingDirection} from '../constants/accountingDirection';
 import React from 'react';
 import {Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import DeleteActionButton from './DeleteActionButton';
@@ -7,6 +8,7 @@ import {ACCOUNTING_CODE_TEXT} from '../constants/accountingCode';
 import {changeApprovalText} from '../constants/changeApprovals';
 
 export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,currencyLabel,languageCode,onEdit,onEditKey,onDelete}){
+ const warning=(code,direction)=>!matchesAccountingDirection(code,direction)&&<Typography role="status" variant="caption" display="block" color="warning.main">{(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch}</Typography>;
  const change=changeApprovalText[languageCode]||changeApprovalText.en;
  const amountWidth=Math.max(112,...rows.map(row=>formatLedgerAmount(row.amount,row.currencyCode).length*7+16));
  const columns=[{title:t.transactionDate,width:96},{title:t.account,width:'17%'},{title:change.party,width:'12%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:'16%',numeric:true},{title:t.OUT,width:'16%',numeric:true},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription,width:'10%'},{title:t.createdBy,width:88},{title:'',width:44}];
@@ -21,12 +23,12 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
      <TableCell sx={{whiteSpace:'nowrap'}}>{row.transactionDate}{row.voidedAt&&<Typography variant="caption" display="block">{l.deleted}</Typography>}</TableCell>
      <TableCell sx={{overflowWrap:'anywhere'}}>{row.accountName}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.counterpartyName||'—'}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
      {['IN','OUT'].map(direction=><TableCell key={direction} data-ledger-amount={direction} align="right" sx={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums',textDecoration:row.voidedAt?'line-through':undefined}}>{row.direction===direction?formatLedgerAmount(row.amount,row.currencyCode):'—'}</TableCell>)}
-     <TableCell>{row.accountingCode?.code||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{accountingCodeDescription(row.accountingCode,languageCode)||'—'}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell>
+     <TableCell>{row.accountingCode?.code||'—'}{warning(row.accountingCode,row.direction)}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{accountingCodeDescription(row.accountingCode,languageCode)||'—'}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell>
      <TableCell sx={{overflowWrap:'anywhere'}}>{row.createdByName||'—'}</TableCell>
      <TableCell data-table-actions onDoubleClick={event=>event.stopPropagation()}>{!row.voidedAt&&(row.changePending?<Typography variant="caption">{change.pending}</Typography>:<DeleteActionButton stopPropagation aria-label={change.requestDelete} title={change.requestDelete} onDoubleClick={event=>event.stopPropagation()} onClick={()=>onDelete(row)}/>)}</TableCell>
     </TableRow>
     {row.settlementLines?.map(detail=><TableRow key={detail.id} {...interaction(row)} sx={{...interaction(row).sx,bgcolor:'action.hover',textDecoration:row.voidedAt?'line-through':undefined}}>
-     <TableCell>↳</TableCell><TableCell>{row.accountName}</TableCell><TableCell>{row.counterpartyName||'—'}</TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">—</TableCell><TableCell align="right">—</TableCell><TableCell>{detail.accountingCode?.code||'—'}</TableCell>
+     <TableCell>↳</TableCell><TableCell>{row.accountName}</TableCell><TableCell>{row.counterpartyName||'—'}</TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">—</TableCell><TableCell align="right">—</TableCell><TableCell>{detail.accountingCode?.code||'—'}{warning(detail.accountingCode,'OUT')}</TableCell>
      <TableCell><Stack direction="row" spacing={1} justifyContent="space-between"><Typography variant="body2">{accountingCodeDescription(detail.accountingCode,languageCode)||l[detail.kind]}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{formatLedgerAmount(detail.amount,row.currencyCode)}</Typography></Stack><Typography variant="caption" color="text.secondary">{l.noncash}</Typography></TableCell><TableCell>{detail.createdByName||'—'}</TableCell><TableCell/>
     </TableRow>)}
    </React.Fragment>)}

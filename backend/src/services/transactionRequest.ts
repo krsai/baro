@@ -8,7 +8,7 @@ import { createHttpError } from '../utils/http';
 import { validateCostDate, COST_STORED_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
-import { assertAccountingDirection, resolveAccountingCode, ACCOUNTING_CODE_INCLUDE } from './accountingCode';
+import { resolveAccountingCode, ACCOUNTING_CODE_INCLUDE } from './accountingCode';
 import {prepareExpenseMetadata,saveExpenseReferences} from './expenseMetadata';
 
 export const REQUEST_INCLUDE = { linkPolicyAudit:{select:{inputSettings:true}}, payeeEmployee: { select: {id:true,name:true,employeeNo:true,status:true} }, processLinks: { orderBy: { styleProcessId: 'asc' }, include: { styleProcess: { select: { id: true, processCode: true, processName: true } } } }, unit:true, referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}},orderBy:{id:'asc' as const}}, expenseRequest: { select: { id: true, managementNumber: true, remark: true } }, outsourcedWorkRecord: { select: { id: true, assignmentPlanId: true, workLogId: true } }, partner: { select: { id: true, name: true } }, serviceType: {include:{systemDefault:true}}, transactionCode: { include: { base: { include: { expenseType: true } } } }, workOrder: { select: { id: true, orderNumber: true } }, style: { select: { id: true, name: true, code: true } }, styleProcess: { select: { id: true, processName: true, processCode: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
@@ -83,7 +83,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
-  assertAccountingDirection(rawCode,'OUT');
+
   if(useSystemMaster)description=edit?.cost?.description || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };

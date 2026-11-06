@@ -13,14 +13,14 @@ export function accountingCodeId(value:any,required=false):number|null{
  if(!Number.isSafeInteger(value)||value<=0)throw createHttpError(400,'LEDGER_ACCOUNTING_CODE_INVALID');
  return value;
 }
-export function assertAccountingDirection(code:any,direction:string){
- const allowed=code?.base?.cashDirection??code?.cashDirection??'BOTH';
- if(allowed!=='BOTH'&&allowed!==direction)throw createHttpError(400,'ACCOUNTING_CODE_DIRECTION_MISMATCH');
+export function accountingDirectionAnomaly(code:any,direction:string){
+ const expected=code?.base?.cashDirection??code?.cashDirection??'BOTH';
+ return expected!=='BOTH'&&expected!==direction;
 }
 export async function ledgerAccountingCode(tx:any,orgId:number,id:number,direction?:string){
  const code=resolveAccountingCode(await tx.transactionCode.findFirst({where:{id,ownerOrgId:orgId,isActive:true},include:ACCOUNTING_CODE_INCLUDE}));
  if(!code)throw createHttpError(400,'LEDGER_ACCOUNTING_CODE_INVALID');
- if(direction)assertAccountingDirection(code,direction);
+
  const description=code.base.nameEn||code.nameEn||code.code;
  return {id:code.id,description:description.slice(0,1000)};
 }

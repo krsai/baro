@@ -1,3 +1,4 @@
+import {accountingDirectionText,matchesAccountingDirection} from '../constants/accountingDirection';
 import {ledgerEvidenceText} from '../constants/ledgerEvidence';
 import {cashScheduleText} from '../constants/cashSchedule';
 import { expenseLineDescription, expenseRequestSummary } from '../utils/expenseCodePresentation.mjs';
@@ -22,7 +23,7 @@ export function ExpenseRequestContent({ document, languageCode }) {
       <Divider />
       <TableContainer><Table size="small" sx={{ minWidth: 1000 }}><TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.price,labels.subtotal,labels.tax,labels.total].map((label,index) => <TableCell key={index} align={index > 3 ? 'right' : 'left'} sx={{ whiteSpace: 'nowrap', fontWeight: 700 }}>{label}</TableCell>)}</TableRow></TableHead>
         <TableBody>{document.items.map((item,index) => <TableRow key={item.id} sx={{ '& td': { verticalAlign: 'top' } }}>
-          <TableCell>{index + 1}</TableCell><TableCell>{item.transactionCode?.code || '—'}</TableCell>
+          <TableCell>{index + 1}</TableCell><TableCell>{item.transactionCode?.code || '—'}{!matchesAccountingDirection(item.transactionCode,'OUT')&&<Typography role="status" variant="caption" color="warning.main">{(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch}</Typography>}</TableCell>
           <TableCell>{item.transactionDate !== document.requestDate && <Typography variant="caption" display="block">{labels.useDate}: {item.transactionDate}</Typography>}<Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{expenseLineDescription(item,languageCode)}</Typography>
             {[item.workOrder?.orderNumber, item.style?.name, item.styleProcess?.processName].filter(Boolean).length > 0 && <Typography variant="caption" color="text.secondary">{[...new Set([item.workOrder?.orderNumber,item.style?.name,item.styleProcess?.processName,...(item.referenceLinks||[]).flatMap(link=>[link.workOrder?.orderNumber,link.style?.name]),...(item.processLinks||[]).map(link=>link.styleProcess?.processName)])].filter(Boolean).join(' · ')}</Typography>}
             {Object.entries(item.details || {}).filter(([,value]) => value).map(([key,value]) => <Typography key={key} display="block" variant="caption" color="text.secondary">{key==='evidenceFile'?(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference:key==='reference'&&!item.outsourcedWorkRecordId?(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).supplierReference:common[key] || key}: {value}</Typography>)}

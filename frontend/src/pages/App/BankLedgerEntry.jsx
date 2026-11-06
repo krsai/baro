@@ -9,7 +9,6 @@ import CustomDatePicker from '../../components/CustomDatePicker';
 import {ledgerRegistrationText} from '../../constants/ledgerRegistration';
 import {approvalBandText} from '../../constants/approvalBands';
 import {ledgerDocumentPartyMismatch} from '../../utils/ledgerCounterparty.mjs';
-import {permitsAccountingDirection} from '../../constants/accountingDirection';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import React,{useEffect,useRef,useState} from 'react';
@@ -61,8 +60,6 @@ function Entry({orgId,entryId}){
   if(invalid>=0){setErrorRow(rows[invalid].clientKey);setExpanded(current=>({...current,[rows[invalid].clientKey]:true}));setError(`${w.row} ${invalid+1}: ${w.rowError}`);return;}
   const wrongParty=rows.findIndex(ledgerDocumentPartyMismatch);
   if(wrongParty>=0){setErrorRow(rows[wrongParty].clientKey);setError(w.row+' '+(wrongParty+1)+': '+t.errors.LEDGER_COUNTERPARTY_MISMATCH);document.querySelector('[data-ledger-entry-row="'+wrongParty+'"]')?.scrollIntoView({block:'center',behavior:'smooth'});return;}
-  const wrongDirection=rows.findIndex(row=>{const code=codes.find(code=>code.id===row.accountingCodeId);return code&&!permitsAccountingDirection(code,row.entryKind==='BANK'?row.direction:'OUT');});
-  if(wrongDirection>=0){setErrorRow(rows[wrongDirection].clientKey);setError(w.row+' '+(wrongDirection+1)+': '+t.errors.ACCOUNTING_CODE_DIRECTION_MISMATCH);document.querySelector('[data-ledger-entry-row="'+wrongDirection+'"]')?.scrollIntoView({block:'center',behavior:'smooth'});return;}
   busy.current=true;setSaving(true);try{
    const body={schemaVersion:2,accountingCodeVersion:1,clientKey:batchKey.current,rows:payload()};
    if(entryId){const result=await changeRef.current.prepare({menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entryId,revision:sourceRevision.current,payload:body});if(!result)return;}else {const result=await changeRef.current.prepare({menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:body.clientKey,payload:body,selection:approvalSelection});if(!result)return;}
