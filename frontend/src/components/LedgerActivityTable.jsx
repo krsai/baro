@@ -9,7 +9,7 @@ import {changeApprovalText} from '../constants/changeApprovals';
 export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,currencyLabel,languageCode,onEdit,onEditKey,onDelete}){
  const change=changeApprovalText[languageCode]||changeApprovalText.en;
  const amountWidth=Math.max(112,...rows.map(row=>formatLedgerAmount(row.amount,row.currencyCode).length*7+16));
- const columns=[{title:t.transactionDate,width:96},{title:t.account,width:'17%'},{title:change.party,width:'12%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:amountWidth,numeric:true},{title:t.OUT,width:amountWidth,numeric:true},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription},{title:t.createdBy,width:88},{title:'',width:44}];
+ const columns=[{title:t.transactionDate,width:96},{title:t.account,width:'17%'},{title:change.party,width:'12%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:'16%',numeric:true},{title:t.OUT,width:'16%',numeric:true},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription,width:'10%'},{title:t.createdBy,width:88},{title:'',width:44}];
  const interaction=row=>({hover:!row.voidedAt,tabIndex:row.voidedAt?undefined:0,onDoubleClick:()=>onEdit(row),onKeyDown:event=>onEditKey(event,row),sx:{cursor:row.voidedAt?'default':'pointer'}});
  return <TableContainer><Table size="small" data-testid="ledger-activity-table" data-table-layout="columns" sx={{minWidth:0,width:'100%',tableLayout:'auto','& [data-ledger-amount]':{minWidth:amountWidth}}}>
   <colgroup>{columns.map((column,index)=><col key={index} style={column.width?{width:column.width}:undefined}/>)}</colgroup>

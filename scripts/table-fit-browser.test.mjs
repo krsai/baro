@@ -22,6 +22,7 @@ try{
    const overflow=await table.evaluate(element=>{const container=element.closest('.MuiTableContainer-root');return {scroll:container.scrollWidth,width:container.clientWidth};});assert.ok(overflow.scroll<=overflow.width+1,`${lang} ${width}: unnecessary scroll ${JSON.stringify(overflow)}`);
   }
   const incoming=await ledger.locator('tbody tr').first().locator('[data-ledger-amount="IN"]').boundingBox(),outgoing=await ledger.locator('tbody tr').first().locator('[data-ledger-amount="OUT"]').boundingBox();assert.ok(Math.abs(incoming.width-outgoing.width)<2,'in/out keep equal columns even with no outgoing transactions');
+  const description=await ledger.locator('tbody tr').first().locator('td').nth(7).boundingBox();assert.ok(incoming.width>description.width,'money columns get more space than the short description');
   assert.ok(await ledger.locator('tbody td').first().evaluate(element=>parseFloat(getComputedStyle(element).fontSize)>=13));
   await ledger.locator('[data-table-action]').first().click();assert.equal(await page.evaluate(()=>window.deleted),true);
   await ledger.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.edited),true);
