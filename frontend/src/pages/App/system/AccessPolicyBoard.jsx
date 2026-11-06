@@ -1,3 +1,8 @@
+import useIndustryMenuPolicy from '../../../hooks/useIndustryMenuPolicy';
+import {INDUSTRY_SPECIFIC_FEATURES} from '../../../utils/industryMenuFeatures.mjs';
+import {accessPolicyLayoutText} from '../../../constants/accessPolicyLayout';
+import FactoryOutlined from '@mui/icons-material/FactoryOutlined';
+import LocalShippingOutlined from '@mui/icons-material/LocalShippingOutlined';
 import {subscriberMenuBlueprint} from '../../../utils/subscriberMenus.mjs';
 import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
@@ -220,6 +225,7 @@ const serializeComparablePolicy = (policy) => {
 };
 
 const RolePolicyBoard = ({orgType}) => {
+  const [scope,setScope]=React.useState('common');
   const { activeProfile } = useAuth();
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
@@ -235,6 +241,10 @@ const RolePolicyBoard = ({orgType}) => {
   const isSystemAdmin =
     activeProfile?.entryType === 'SYSTEM' && activeProfile?.systemRole === 'SYSTEM_ADMIN';
 
+  const menus=useIndustryMenuPolicy(isSystemAdmin);
+  const layout=accessPolicyLayoutText[languageCode]||accessPolicyLayoutText.en;
+  const menuText=subscriberAccessText[languageCode]||subscriberAccessText.en;
+  const [roleError,setRoleError]=React.useState(false);
   const menuBlueprint = useMenuBlueprint();
   const [savedPolicy, setSavedPolicy] = React.useState(() =>
     toEditablePolicy(getDefaultRoleAccessPolicy())
@@ -250,6 +260,7 @@ const RolePolicyBoard = ({orgType}) => {
 
     const loadPolicy = async () => {
       setLoadingPolicy(true);
+      setRoleError(false);
       try {
         const response = await fetchRoleAccessPolicy();
         const nextPolicy = response.policy;
@@ -259,6 +270,7 @@ const RolePolicyBoard = ({orgType}) => {
         setDraftPolicy(editable);
       } catch (error) {
         if (cancelled) return;
+        setRoleError(true);
         showNotification(error?.message || 'Failed to load access policy.', 'error');
       } finally {
         if (!cancelled) setLoadingPolicy(false);
@@ -271,10 +283,14 @@ const RolePolicyBoard = ({orgType}) => {
     };
   }, [showNotification]);
 
-  const rows = React.useMemo(
-    () => flattenMenuTree(buildMenuTree(subscriberMenuBlueprint(organizeCompanyMenu(menuBlueprint,key=>getUiMessage(key,key,languageCode),orgType),orgType))),
-    [menuBlueprint,orgType,languageCode]
-  );
+  const rows = React.useMemo(()=>{
+    const include=feature=>scope==='industry'?INDUSTRY_SPECIFIC_FEATURES.includes(feature):!INDUSTRY_SPECIFIC_FEATURES.includes(feature);
+    const filter=nodes=>nodes.flatMap(node=>{
+      if(node.type==='group'){const children=filter(node.children);if(!children.length)return [];const permissionGroups=children.flatMap(child=>child.type==='group'?child.permissionGroups:child.featureKeys.length?[child.featureKeys]:[]);return [{...node,children,permissionGroups,featureKeys:[...new Set(children.flatMap(child=>child.featureKeys))]}];}
+      const featureKeys=node.featureKeys.filter(include);return featureKeys.length||node.fixedAccess&&scope==='common'?[{...node,featureKeys}]:[];
+    });
+    return flattenMenuTree(filter(buildMenuTree(subscriberMenuBlueprint(organizeCompanyMenu(menuBlueprint,key=>getUiMessage(key,key,languageCode),orgType),orgType))));
+  },[menuBlueprint,orgType,languageCode,scope]);
 
   const hasFeature = React.useCallback(
     (role, featureKey) => {
@@ -315,30 +331,19 @@ const RolePolicyBoard = ({orgType}) => {
       serializeComparablePolicy(savedPolicy),
     [draftPolicy, savedPolicy]
   );
-  useUnsavedChanges(isDirty);
+  useUnsavedChanges(isDirty||menus.dirty);
 
-  const handleSave = React.useCallback(async () => {
-    if (!isDirty || savingPolicy) return;
+  const handleSave = async()=>{
+    if((!isDirty&&!menus.dirty)||savingPolicy||roleError)return;
     setSavingPolicy(true);
-    try {
-      const saved = await saveRoleAccessPolicy(draftPolicy);
-      const editable = toEditablePolicy(saved);
-      setSavedPolicy(editable);
-      setDraftPolicy(editable);
-      showNotification(
-        getUiMessage(
-          'accessPolicy.saved',
-          resolveLocalizedText(ACCESS_POLICY_TEXT.saved, languageCode),
-          languageCode
-        ),
-        'success'
-      );
-    } catch (error) {
-      showNotification(error?.message || 'Failed to save access policy.', 'error');
-    } finally {
-      setSavingPolicy(false);
-    }
-  }, [draftPolicy, isDirty, languageCode, savingPolicy, showNotification]);
+    try{
+      const results=await Promise.allSettled([
+        isDirty?saveRoleAccessPolicy(draftPolicy).then(saved=>{const editable=toEditablePolicy(saved);setSavedPolicy(editable);setDraftPolicy(editable);}):Promise.resolve(),
+        menus.dirty?menus.save():Promise.resolve(),
+      ]);
+      showNotification(results.some(result=>result.status==='rejected')?layout.partial:layout.saved,results.some(result=>result.status==='rejected')?'error':'success');
+    }finally{setSavingPolicy(false);}
+  };
 
   const handleReset = React.useCallback(() => {
     setDraftPolicy(previous=>({...previous,[orgType]:getDefaultRoleAccessPolicy()[orgType]}));
@@ -369,43 +374,52 @@ const RolePolicyBoard = ({orgType}) => {
   return (
     <Box>
       <PageContentStack>
-
+        <Paper variant="outlined" sx={{p:.5,borderRadius:2,bgcolor:'background.default'}}>
+          <Tabs value={scope} onChange={(_,value)=>setScope(value)} variant="fullWidth" sx={{'& .MuiTab-root':{minHeight:44},'& .Mui-selected':{bgcolor:'background.paper',borderRadius:1.5}}}>
+            <Tab value="common" label={layout.common}/><Tab value="industry" label={layout.industry}/>
+          </Tabs>
+        </Paper>
+        {menus.error&&<Alert severity="error" action={<Button color="inherit" onClick={menus.reload} disabled={savingPolicy}>{layout.reload}</Button>}>{menuText[menus.error]}</Alert>}
+        {roleError&&<Alert severity="error">{menuText.failed}</Alert>}
+        {scope==='industry'&&menus.loaded&&!menus.loaded.subscribers?.[orgType]&&Object.keys(menus.loaded.industries||{}).length>0&&<Alert severity="info">{menuText.legacy}</Alert>}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">
-            {(subscriberAccessText[languageCode]||subscriberAccessText.en)[orgType==='SERVICE'?'logistics':'factory']}
+            {scope==='common'?layout.commonNote:layout.industryNote}
           </Typography>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
+            {(isDirty||menus.dirty)&&<Chip size="small" color="warning" variant="outlined" label={layout.pending}/>}
             <Button
               variant="outlined"
               onClick={handleReset}
               disabled={loadingPolicy || savingPolicy}
             >
-              {getUiMessage('accessPolicy.resetButton', 'Reset', languageCode)}
+              {layout.resetRoles}
             </Button>
             <Button
               variant="contained"
               onClick={handleSave}
-              disabled={!isDirty || loadingPolicy || savingPolicy}
+              disabled={(!isDirty&&!menus.dirty) || loadingPolicy || savingPolicy || menus.loading || roleError || (!menus.loaded&&!!menus.error)}
             >
-              {getUiMessage('accessPolicy.save', 'Save', languageCode)}
+              {layout.save}
             </Button>
           </Stack>
         </Box>
 
-        <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+        <Paper variant="outlined" sx={{ overflow: 'hidden',borderRadius:2,'& th:first-of-type, & td:first-of-type':{position:'sticky',left:0,zIndex:1,bgcolor:'background.paper'},'& thead th:first-of-type':{zIndex:4} }}>
           <TableContainer sx={{ maxHeight: '70vh' }}>
             <Table stickyHeader size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell sx={{ minWidth: 360 }}>
+                  <TableCell sx={{ minWidth: {xs:200,md:280} }}>
                     {getUiMessage(
                       'accessPolicy.menuTree',
                       resolveLocalizedText(ACCESS_POLICY_TEXT.menuTree, languageCode),
                       languageCode
                     )}
                   </TableCell>
+                  <TableCell align="center" sx={{minWidth:120}}>{scope==='industry'?layout.provided:layout.commonProvided}</TableCell>
                   {EDITABLE_ROLE_ORDER.map((role) => (
-                    <TableCell key={role} align="center" sx={{ minWidth: 120 }}>
+                    <TableCell key={role} align="center" sx={{ minWidth: 104 }}>
                       {resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role], languageCode) || role}
                     </TableCell>
                   ))}
@@ -414,7 +428,7 @@ const RolePolicyBoard = ({orgType}) => {
               <TableBody>
                 {rows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={1 + EDITABLE_ROLE_ORDER.length}>
+                    <TableCell colSpan={2 + EDITABLE_ROLE_ORDER.length}>
                       {getUiMessage(
                         'accessPolicy.noMenu',
                         resolveLocalizedText(ACCESS_POLICY_TEXT.noMenu, languageCode),
@@ -447,6 +461,7 @@ const RolePolicyBoard = ({orgType}) => {
                             </Typography>
                           </Stack>
                         </TableCell>
+                        <TableCell/>
                         {EDITABLE_ROLE_ORDER.map((role) => (
                           <TableCell key={`${row.id}:${role}`} align="center">
                             <Typography variant="caption" color="text.secondary">
@@ -457,7 +472,7 @@ const RolePolicyBoard = ({orgType}) => {
                         ))}
                       </TableRow>
                     ) : (
-                      <TableRow key={row.id} hover>
+                      <TableRow key={row.id} data-menu-path={row.path} hover>
                         <TableCell>
                           <Stack
                             direction="row"
@@ -506,16 +521,14 @@ const RolePolicyBoard = ({orgType}) => {
                                   />
                                 )}
                               </Stack>
-                              <Typography variant="caption" color="text.secondary">
-                                {row.path}
-                              </Typography>
                             </Stack>
                           </Stack>
                         </TableCell>
+                        <TableCell align="center">{scope==='common'?<Chip size="small" label={layout.commonProvided} variant="outlined" sx={{borderColor:'divider',color:'text.secondary'}}/>:<Switch size="small" checked={row.featureKeys.every(feature=>menus.features(orgType).includes(feature))} disabled={!menus.loaded||menus.loading||savingPolicy||row.disabled} onChange={(_,checked)=>row.featureKeys.forEach(feature=>menus.toggle(orgType,feature,checked))} slotProps={{input:{role:'switch','aria-label':row.label+' '+layout.provided}}}/>}</TableCell>
                         {EDITABLE_ROLE_ORDER.map((role) => (
                           <TableCell key={`${row.featureKey}:${role}`} align="center">
                             <Switch size="small" checked={row.fixedAccess || row.featureKeys.some(key => hasFeature(role, key))}
-                              disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess}
+                              disabled={loadingPolicy || savingPolicy || roleError || row.disabled || row.fixedAccess || (scope==='industry'&&(!menus.loaded||!row.featureKeys.every(feature=>menus.features(orgType).includes(feature))))}
                               onChange={event=>setFeature(role,row.featureKeys,event.target.checked)}
                               slotProps={{input:{role:'switch','aria-label':row.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}}} />
                           </TableCell>
@@ -535,11 +548,14 @@ const RolePolicyBoard = ({orgType}) => {
 
 function AccessPolicyBoard(){
  const {languageCode}=useLanguage(),{activeProfile}=useAuth(),t=subscriberAccessText[languageCode]||subscriberAccessText.en;
+ const layout=accessPolicyLayoutText[languageCode]||accessPolicyLayoutText.en;
  const [orgType,setOrgType]=React.useState('MANUFACTURER');
  if(activeProfile?.entryType!=='SYSTEM'||activeProfile?.systemRole!=='SYSTEM_ADMIN')return <RolePolicyBoard orgType={orgType}/>;
  return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)}><Stack spacing={2}>
-  <Typography variant="body2" color="text.secondary">{t.roleNote}</Typography>
-  <Tabs value={orgType} onChange={(_event,value)=>setOrgType(value)}><Tab value="MANUFACTURER" label={t.factory}/><Tab value="SERVICE" label={t.logistics}/></Tabs>
+  <Typography variant="body2" color="text.secondary">{layout.intro}</Typography>
+  <Tabs value={orgType} onChange={(_event,value)=>setOrgType(value)} variant="fullWidth" sx={{minHeight:88,'& .MuiTabs-indicator':{display:'none'},'& .MuiTab-root':{border:1,borderColor:'divider',borderRadius:2,mr:1,alignItems:'flex-start',textAlign:'left',textTransform:'none',minHeight:84},'& .Mui-selected':{borderColor:'primary.main',bgcolor:'#EAF2FF'}}}>
+    {[['MANUFACTURER',t.factory,layout.factoryNote,<FactoryOutlined/>],['SERVICE',t.logistics,layout.logisticsNote,<LocalShippingOutlined/>]].map(([type,label,note,icon])=><Tab key={type} value={type} aria-label={label} icon={icon} iconPosition="start" label={<Stack spacing={.5}><Typography variant="subtitle2">{label}</Typography><Typography variant="caption" color="text.secondary">{note}</Typography></Stack>}/>)}
+  </Tabs>
   <RolePolicyBoard orgType={orgType}/>
  </Stack></AppPageContainer>;
 }

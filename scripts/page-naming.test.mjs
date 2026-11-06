@@ -9,9 +9,9 @@ const name = (path,lang='ko') => resolvePageNaming(path,lang,key=>({
   'menu.customer':'고객사','menu.personalSettings':'개인 설정',
 }[key] || key));
 
-test('industry menus have their own identity instead of inheriting subscription details',()=>{
- const page=resolvePageNaming('/system-setting/industry-menus','ko',key=>key==='menu.industryMenus'?'업종별 메뉴 관리':key);
- assert.equal(page.key,'industryMenus');assert.equal(page.title,'업종별 메뉴 관리');assert.equal(page.mode,'page');
+test('retired industry menu link inherits the unified access policy identity',()=>{
+ const page=resolvePageNaming('/system-setting/industry-menus','ko',key=>key==='menu.accessPolicy'?'접근 권한':key);
+ assert.equal(page.key,'accessPolicy');assert.equal(page.title,'접근 권한');assert.equal(page.mode,'page');
 });
 test('list, creation and editing use the same business name and one action vocabulary',()=>{
   assert.equal(name('/outsourcing-record').title,'비용 신청 목록');
