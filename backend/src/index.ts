@@ -1,3 +1,4 @@
+import {registerProductionExcessRoutes} from './services/productionExcess';
 import {registerOrderShipmentRoutes} from './services/orderShipments';
 import {registerCategoryPackagingRoutes} from './services/categoryPackaging';
 import {registerTenureRecognitionRoutes} from './employees/tenureRecognition';
@@ -19017,6 +19018,7 @@ app.get("/ready", (_req, res) => {
   return res.json({ ok: true, ready: true });
 });
 
+registerProductionExcessRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature,loadQuantities:loadStyleGenderQuantityMapForWorkOrderIds,targetForProcess:resolveStyleProcessRowApplicableQuantity});
 registerOrderShipmentRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerCompanyWorkspaceRoutes(app,prisma,{getEmail:getRequesterEmail,requireOrgRole});
 registerBankLedgerRoutes(app,prisma,{requireOrgRole,loadPolicy:loadRoleAccessPolicySetting});

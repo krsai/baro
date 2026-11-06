@@ -1,3 +1,4 @@
+import ProductionExcessCard from '../../components/ProductionExcessCard';
 import ServiceDashboard from './ServiceDashboard';
 import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
 import PageContentStack from '../../components/PageContentStack';
@@ -736,6 +737,7 @@ const WorkspaceDashboard = () => {
   return (
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <PageContentStack>
+        {!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'&&canAccessPath('/work-history',authState)&&<ProductionExcessCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>}
         <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(
