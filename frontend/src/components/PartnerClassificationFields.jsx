@@ -47,15 +47,15 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
  return <Stack spacing={2}>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{text.retry}</Button>}>{text.loadError}</Alert>}
   <Box data-testid={inline?'classification-inline':undefined} sx={{display:'grid',gridTemplateColumns:inline?{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}:'minmax(0,1fr)',gap:2,alignItems:'start'}}>
-  <Autocomplete hideCode multiple disableCloseOnSelect options={roles} value={roles.filter(row=>value?.roleIds?.includes(row.id))} disabled={disabled||loading||error} loading={loading} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
+  <Autocomplete chipsInside hideCode multiple disableCloseOnSelect options={roles} value={roles.filter(row=>value?.roleIds?.includes(row.id))} disabled={disabled||loading||error} loading={loading} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
    getOptionDisabled={row=>!industries.some(industry=>industry.partnerRoleId===row.id)}
    onChange={(_,selected)=>{const roleIds=selected.map(row=>row.id);change(roleIds,(value?.industryIds||[]).filter(id=>industries.some(row=>row.id===id&&roleIds.includes(row.partnerRoleId))));}}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
    renderInput={params=><TextField {...params} required size="small" label={text.category}/>}/>
-  <Stack spacing={2}>{(value?.roleIds||[]).map(roleId=>{const role=roles.find(row=>row.id===roleId),choices=industries.filter(row=>row.partnerRoleId===roleId);return <Autocomplete hideCode key={roleId} multiple disableCloseOnSelect options={choices} value={choices.filter(row=>value.industryIds.includes(row.id))} disabled={disabled||loading||error} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
-   onChange={(_,selected)=>change(value.roleIds,[...value.industryIds.filter(id=>!choices.some(row=>row.id===id)),...selected.map(row=>row.id)])}
+  <Autocomplete chipsInside hideCode multiple disableCloseOnSelect options={industries.filter(row=>value?.roleIds?.includes(row.partnerRoleId))} value={industries.filter(row=>value?.industryIds?.includes(row.id))} disabled={disabled||loading||error} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
+   onChange={(_,selected)=>change(value.roleIds,selected.map(row=>row.id))}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
-   renderInput={params=><TextField {...params} required size="small" label={`${name(role)} > ${text.industry}`}/>}/>;})}</Stack></Box>
+   renderInput={params=><TextField {...params} required size="small" label={text.industry}/>}/></Box>
   {Boolean(value?.legacyGeneral?.length)&&<Typography variant="caption" color="text.secondary">{text.legacy}: {value.legacyGeneral.map(row=>row.code).join(', ')}</Typography>}
  </Stack>;
 }
