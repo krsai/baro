@@ -1,3 +1,6 @@
+import {loadPayrollLeaves} from './employeeLeave';
+import {companySalaryCalendar} from './companySalaryCalendar';
+import {calendarSalaryFormula} from './calendarSalaryFormula';
 import {tenureRecognitionInclude} from './tenureRecognition';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { defaultVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
@@ -5,7 +8,7 @@ import { createHttpError } from "../utils/http";
 import { editRevision, assertEditRevision, editTransaction } from "../utils/editRevision";
 import { Router } from "express";
 import { prisma } from "../db";
-import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
+import { getOrganizationByQuery, getRequesterEmail, requireOrgRole } from "../middleware/access";
 import { validateSalaryFormula } from "./salaryFormula";
 import { normalizeCurrencyCode } from "../currency";
 import { buildSalaryPreview } from './salaryPreview';
@@ -24,6 +27,12 @@ const toJsonSnapshot = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) => {
   const router = Router();
+  router.get('/salary-system/month-calendar',async(req,res)=>{
+   const access=await requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!access)return;
+   const org=access.organization;
+   const month=String(req.query.month||'');if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(400).json({error:'month must be YYYY-MM'});
+   return res.json({month,calendars:await companySalaryCalendar(prisma,org.id,month)});
+  });
   router.get('/salary-system/employee-preview', async (req, res) => {
     const org = await getOrganizationByQuery(req);
     if (!org) return res.status(404).json({ok:false,error:'organization not found'});
@@ -39,9 +48,10 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
         _count:{select:{productionAllowanceRates:true}},
       },orderBy:{id:'asc'}}),
       loadEmployeePayTypePolicies(org.id),
-      prisma.organizationHoliday.findMany({where:{orgId:org.id,holidayDate:{gte:`${month}-01`,lt:`${month}-32`}},select:{holidayDate:true}}),
+      prisma.organizationHoliday.findMany({where:{orgId:org.id,holidayDate:{gte:`${month}-01`,lt:`${month}-32`}},select:{holidayDate:true,isPaid:true}}),
     ]);
-    return res.json(buildSalaryPreview({month,employees,factories,policies,holidays:holidays.map(row=>row.holidayDate),includeInactive:req.query.includeInactive==='1'}));
+    const leaves=await loadPayrollLeaves(prisma,org.id,month);
+    return res.json(buildSalaryPreview({month,employees,factories,policies,holidays,leaves,includeInactive:req.query.includeInactive==='1'}));
   });
   const resolveFactory = async (orgId: number, rawFactoryId: unknown) => {
     const requestedId = Number(rawFactoryId);
@@ -118,7 +128,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
     await ensureInitialDraft(org.id, factory.id,org.type==='SERVICE');
     await ensureFixedIncentiveItem(org.id, factory.id,org.type==='SERVICE');
     await ensureV1(org.id, factory.id, getRequesterEmail(req) || "system@baro.local");
-    res.json(await state(org.id, factory.id));
+    const result=await state(org.id,factory.id);res.json({...result,items:result.items.map((item:any)=>({...item,formula:calendarSalaryFormula(item.formula,item.category,item.payCycle)}))});
   });
 
   router.get("/salary-system/revision", async (req, res) => {
@@ -177,7 +187,7 @@ export const createSalarySystemRouter = ({ requireSalarySystemManager }: Args) =
         // forced to the INCENTIVE-wide rule (output-only, monthly).
         const isFixedIncentiveTotal = code === "incentiveTotal";
         const { nameKo, nameEn, nameVi } = normalizeLocalizedName(raw);
-        const data = { name: nameEn, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: isFixedIncentiveTotal ? ["PRODUCTION_ALLOWANCE"] : raw.formula, payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: isFixedIncentiveTotal ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: isFixedIncentiveTotal || raw.required === true, sortOrder, isActive: true };
+        const data = { name: nameEn, nameKo, nameEn, nameVi, category, payTypes: category === "INCENTIVE" ? ["OUTPUT"] : payTypesByCode.get(code)!, formula: isFixedIncentiveTotal ? ["PRODUCTION_ALLOWANCE"] : calendarSalaryFormula(raw.formula,category,raw.payCycle), payCycle: category === "INCENTIVE" ? "MONTHLY" : raw.payCycle, paymentMonths: category === "INCENTIVE" ? PAYMENT_MONTHS_BY_CYCLE.MONTHLY : raw.paymentMonths, capValue: isFixedIncentiveTotal ? null : raw.capValue === "" || raw.capValue == null ? null : Number(raw.capValue), required: isFixedIncentiveTotal || raw.required === true, sortOrder, isActive: true };
         const saved = await tx.salaryItem.upsert({ where: { factoryId_code: { factoryId: factory.id, code } }, create: { orgId: org.id, factoryId: factory.id, code, ...data }, update: data }); ids.set(code, saved.id);
       }
       await tx.salaryItem.updateMany({ where: { orgId: org.id, factoryId: factory.id, code: { notIn: [...codes] }, required: false }, data: { isActive: false } });

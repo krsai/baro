@@ -38,7 +38,7 @@ test('previous-year six calendar months includes July 1 through December 31, exc
 
 test('full-attendance preview uses actual workdays, holidays, actual tenure, zero overtime and 100% production',()=>{
   const result=buildSalaryPreview(fixture());const group=result.factories[0],row=group.employees[0];
-  assert.equal(group.standards.find(row=>row.payType==='OUTPUT').scheduledWorkdays,25);
+  assert.equal(group.standards.find(row=>row.payType==='OUTPUT').scheduledWorkdays,26);
   assert.equal(row.regularHours,200);
   assert.equal(row.salaryItems.find(item=>item.code==='base').amount,1000000);
   assert.equal(row.salaryItems.find(item=>item.code==='lunch').amount,250000);
@@ -48,7 +48,7 @@ test('full-attendance preview uses actual workdays, holidays, actual tenure, zer
   assert.equal(row.salaryItems.find(item=>item.code==='incentiveTotal').amount,1440000);
   assert.equal(row.total,2890000);
   const custom=buildSalaryPreview(fixture({policies:[{payType:'OUTPUT',workWeekdays:[1,2,3,4,5],standardClockIn:'09:00',standardClockOut:'17:00',breakMinutes:60,workdayMinimumMinutes:240}]}));
-  assert.equal(custom.factories[0].employees[0].scheduledWorkdays,21);
+  assert.equal(custom.factories[0].employees[0].scheduledWorkdays,22);
   assert.equal(custom.factories[0].employees[0].regularHours,147);
 });
 
@@ -101,7 +101,7 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   const section=src.slice(src.indexOf('const buildIntegratedPayrollEmployees ='),src.indexOf('export const listPayrollSnapshots'));
   const employees=[{...employee,payType:'GENERAL',joinedAt:'2025-07-02'},{...employee,id:2,payType:'GENERAL',joinedAt:'2024-01-01'}];
   const prisma={employee:{findMany:async()=>employees},attendanceEntry:{findMany:async()=>[]},organizationHoliday:{findMany:async()=>[]},factory:{findMany:async()=>[factory]}};
-  const deps={...comp,...policy,...attendance,...formula,...tenure,...management,...common,...service,prisma,resolveNextPaymentMonthKey:nextPayment,
+  const deps={loadPayrollLeaves:async()=>[],...require('../backend/dist/employees/calendarSalaryFormula.js'),...comp,...policy,...attendance,...formula,...tenure,...management,...common,...service,prisma,resolveNextPaymentMonthKey:nextPayment,
     loadManagementPeriod:async()=>({startDate:'2020-01-01'}),loadEmployeePayTypePolicies:async()=>[],
     employeePayTypePolicyMap:()=>new Map(['GENERAL','OUTPUT_FIXED','OUTPUT'].map(type=>[type,policy.normalizeEmployeePayTypePolicy(null,type)])),
     getPayrollMonthRange:month=>({start:new Date(`${month}-01T00:00:00Z`),endExclusive:new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),1))}),
@@ -131,7 +131,7 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   prisma.factory.findMany=async()=>[{...factory,salarySystemVersions:[{id:1,versionNumber:5,snapshot:{currencyCode:'VND',items:[base,overtime],rates:[{payType:'GENERAL',gradeId:7,salaryItemCode:'baseSalary',amount:2600000},{payType:'GENERAL',gradeId:7,salaryItemCode:'night',amount:999999}]}}]}];
   prisma.attendanceEntry.findMany=async()=>[{workerId:1,factoryId:1,workDate:'2026-12-01',workedSeconds:10*3600}];
   const calculated=await fn(1,'2026-12',[],1);const worker=calculated.find(row=>row.workerId===1),night=worker.salaryItems.find(row=>row.code==='night');
-  assert.equal(worker.parameters.BASE_SALARY,2600000);assert.equal(night.amount,37500);assert.equal(night.rate,null,'automatic allowance ignores dormant manual rate');
+  assert.equal(worker.parameters.BASE_SALARY,2600000);assert.equal(night.amount,Math.round(2600000/23/8*2*1.5));assert.equal(night.rate,null,'automatic allowance ignores dormant manual rate');
   assert.notEqual(worker.salaryItems.find(row=>row.code==='baseSalary').amount,2600000,'overtime uses configured base rather than attendance-prorated base');
 });
 
@@ -152,7 +152,7 @@ test('preview route enforces salary access and company scope, validates month, a
   const section=src.slice(src.indexOf("  router.get('/salary-system/employee-preview'"),src.indexOf('  const resolveFactory'));
   let handler,allowed=false,calls=0;
   const scoped=(value)=>async args=>{calls++;assert.equal(args.where.orgId,17);return value;};
-  const deps={...management,...tenure,router:{get:(_path,fn)=>{handler=fn;}},getOrganizationByQuery:async()=>({id:17}),requireSalarySystemManager:async(_req,res)=>{if(!allowed)res.status(403).json({error:'denied'});return allowed;},
+  const deps={loadPayrollLeaves:async()=>[],...management,...tenure,router:{get:(_path,fn)=>{handler=fn;}},getOrganizationByQuery:async()=>({id:17}),requireSalarySystemManager:async(_req,res)=>{if(!allowed)res.status(403).json({error:'denied'});return allowed;},
     prisma:{employee:{findMany:scoped([{...employee,orgId:17}])},factory:{findMany:scoped([factory])},organizationHoliday:{findMany:scoped([])}},
     loadEmployeePayTypePolicies:async orgId=>{assert.equal(orgId,17);return [];},buildSalaryPreview};
   new Function(...Object.keys(deps),ts.transpileModule(section,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(deps));

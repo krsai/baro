@@ -1210,6 +1210,7 @@ model AttendanceEntry {
 }
 
 model OrganizationHoliday {
+  isPaid              Boolean  @default(true)
   id                  Int      @id @default(autoincrement())
   orgId               Int
   holidayDate         String

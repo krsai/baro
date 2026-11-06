@@ -19,8 +19,8 @@ export async function copyAdministrationTemplate(tx:any,sourceOrgId:number,targe
   await tx.employeePayTypePolicy.create({data:{orgId:targetOrgId,...Object.fromEntries(['payType','workWeekdays','standardClockIn','standardClockOut','breakMinutes','workdayMinimumMinutes'].map(key=>[key,policy[key]]))}});
  }
  if(startDate){
-  const holidays=await tx.organizationHoliday.findMany({where:{orgId:sourceOrgId,holidayDate:{gte:startDate}},select:{holidayDate:true}});
-  if(holidays.length)await tx.organizationHoliday.createMany({data:holidays.map((row:any)=>({orgId:targetOrgId,holidayDate:row.holidayDate})),skipDuplicates:true});
+  const holidays=await tx.organizationHoliday.findMany({where:{orgId:sourceOrgId,holidayDate:{gte:startDate}},select:{holidayDate:true,isPaid:true}});
+  if(holidays.length)await tx.organizationHoliday.createMany({data:holidays.map((row:any)=>({orgId:targetOrgId,holidayDate:row.holidayDate,isPaid:row.isPaid})),skipDuplicates:true});
  }
  const settingKeys:[string,string][]=[[`APP_SETTINGS:${sourceOrgId}`,`APP_SETTINGS:${targetOrgId}`],[approvalSettingKey(sourceOrgId),approvalSettingKey(targetOrgId)]];
  for(const [sourceKey,targetKey] of settingKeys){

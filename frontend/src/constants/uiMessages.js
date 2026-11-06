@@ -1040,9 +1040,9 @@ Object.assign(UI_MESSAGES, {
     targetMonthlyWage: { ko: '월 목표 생산수당', en: 'Target Monthly Production Allowance', vi: 'Phụ cấp san luong muc tieu hang thang' },
     wagePerSecond: { ko: '생산수당 초당 단가', en: 'Production Allowance / sec', vi: 'Phụ cấp san luong/giay' },
     targetMonthlyWageHelper: {
-      ko: '월 26일, 일 8시간 기준으로 생산수당 초당 단가를 자동 계산합니다.',
-      en: 'Automatically converts using 26 days per month and 8 hours per day.',
-      vi: 'Tu dong quy doi theo 26 ngay moi thang va 8 gio moi ngay.',
+      ko: '해당 월의 실제 근무 일정과 급여 타입별 근무시간으로 생산수당 초당 단가를 계산합니다.',
+      en: 'Converts using the actual monthly work calendar and pay-type schedule.',
+      vi: 'Quy doi theo lich lam viec thuc te trong thang va loai luong.',
     },
     wagePerSecondHelper: {
       ko: '월 목표 생산수당에서 자동 계산되며 작업수량 × CT초에 곱합니다.',

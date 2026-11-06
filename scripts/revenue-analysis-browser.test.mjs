@@ -26,7 +26,7 @@ try{
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[];page.on('pageerror',e=>errors.push(e.message));
   const c=revenueCostsText[lang],f=revenueFlowText[lang],t=orderProfitText[lang],p=profitScenarioText[lang],u=revenueUxText[lang],s=revenueSelectionText[lang],rates={USD:'1',VND:'25000',KRW:'1300'};
   const common={...orderCostDefaults(),baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:20000000,workdays:25};
-  const laborBasis={id:1,name:'Factory payroll',currencyCode:'VND',directCount:10,employeeCount:12,supportCount:2,baseHourly:30000,allowanceHourly:5000,supportHourly:45000,productionPerSecond:0,versionNumber:1};
+  const laborBasis={calendar:{regularWorkdays:25,scheduledWorkdays:25,paidHolidayWorkdays:0,unpaidHolidayWorkdays:0,standardWorkMinutes:480},id:1,name:'Factory payroll',currencyCode:'VND',directCount:10,employeeCount:12,supportCount:2,baseHourly:30000,allowanceHourly:5000,supportHourly:45000,productionPerSecond:0,versionNumber:1};
   laborBasis.company={employeeCount:100,activeCount:100,excludedCount:0,unresolvedCount:0,counts:{GENERAL:10,OUTPUT_FIXED:30,OUTPUT:60},pools:[{currencyCode:'VND',officeFixedMonthly:30000000,productionFixedMonthly:60000000,variableBaseMonthly:90000000,variableAllowanceMonthly:15000000,variableProductionMonthly:30000000}]};
   let settings={revision:0,defaults:common,stylePackaging:{},scenarios:[]},reject=false;
   const order={id:2,orderNumber:'SAVED-ORDER-2',customer:'Buyer',quantity:300,styleCount:2,salesAmount:'3000',currency:'USD',priceSource:'CURRENT_PRICE'};

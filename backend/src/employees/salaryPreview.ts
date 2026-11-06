@@ -1,3 +1,5 @@
+import {calendarSalaryFormula} from './calendarSalaryFormula';
+import {type SalaryHoliday} from './salaryMonthCalendar';
 import {recognizedTenureParameters} from './tenureRecognition';
 import { resolveEmployeeEffectivePayType } from './employeeCompensation';
 import { normalizeEmployeePayTypePolicy } from './employeePayTypePolicy';
@@ -6,8 +8,8 @@ import { evaluateSalaryFormula, resolveConfiguredBaseSalary } from './salaryForm
 import { employmentDateKey, hasPreviousYearSixMonthsService, isTenureSalaryItem } from './salaryTenure';
 import { resolvePayrollManagement } from './payrollManagement';
 
-export const buildSalaryPreview = ({ month, employees, factories, policies, holidays, includeInactive = false, today = employmentDateKey(new Date()) }: {
-  month: string; employees: any[]; factories: any[]; policies: any[]; holidays: string[]; includeInactive?: boolean; today?: string;
+export const buildSalaryPreview = ({ month, employees, factories, policies, holidays, leaves = [], includeInactive = false, today = employmentDateKey(new Date()) }: {
+  month: string; employees: any[]; factories: any[]; policies: any[]; holidays: SalaryHoliday[]; leaves?: {employeeId:number;leaveDate:string;kind:string}[]; includeInactive?: boolean; today?: string;
 }) => {
   const visible = employees.filter(employee => ['ACTIVE', 'SUSPENDED', 'TERMINATED'].includes(employee.status)
     && (includeInactive || (employee.status === 'ACTIVE' && (!employmentDateKey(employee.joinedAt) || employmentDateKey(employee.joinedAt) <= today) && (!employmentDateKey(employee.leftAt) || employmentDateKey(employee.leftAt) >= today))));
@@ -23,18 +25,22 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
     const standards = ['GENERAL', 'OUTPUT_FIXED', 'OUTPUT'].map(payType => {
       const policy = normalizeEmployeePayTypePolicy(policies.find(row => row.payType === payType), payType);
       const attendance = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys: holidays, attendanceEntries: [], policy, alwaysFullAttendance: true });
-      return { ...policy, scheduledWorkdays: attendance.SCHEDULED_WORKDAYS, regularHours: attendance.SCHEDULED_WORKDAYS * policy.standardWorkMinutes / 60 };
+      return { ...policy, attendance, scheduledWorkdays: attendance.SCHEDULED_WORKDAYS, regularHours: attendance.REQUIRED_WORKDAYS * policy.standardWorkMinutes / 60 };
     });
     const rows = visible.filter(employee => employee.factoryId === factory.id).map(employee => {
       const payType = resolveEmployeeEffectivePayType(employee);
       const standard = standards.find(row => row.payType === payType)!;
       const management = resolvePayrollManagement(employee, month);
       const tenureEligible = hasPreviousYearSixMonthsService(employee, month);
+      const attendance=resolveSalaryAttendanceParameters({month,payType,holidayDateKeys:holidays,attendanceEntries:[],policy:standard,alwaysFullAttendance:true,employmentStart:employmentDateKey(employee.joinedAt)||null,employmentEnd:employmentDateKey(employee.leftAt)||null,leaveEntries:leaves.filter(row=>row.employeeId===employee.id)});
+      const target=productionVersion?.targetMonthlyWage??(factory._count?.productionAllowanceRates>0?null:factory.targetMonthlyWage);
+      const monthlyWage=target!=null?Math.round(Number(target)/standard.attendance.SCHEDULED_WORK_HOURS/3600*100)/100:wage;
+      const regularHours=(attendance.REQUIRED_WORKDAYS-attendance.PAID_LEAVE_WORKDAYS-attendance.UNPAID_LEAVE_WORKDAYS)*standard.standardWorkMinutes/60;
       const parameters = {
-        GRADE_RATE: 0, ...recognizedTenureParameters(employee,month), ACTUAL_WORKDAYS: standard.scheduledWorkdays,
-        SCHEDULED_WORKDAYS: standard.scheduledWorkdays, FULL_ATTENDANCE_FACTOR: standard.scheduledWorkdays > 0 ? 1 : 0,
-        HOLIDAY_WORKDAYS: 0, WORK_HOURS: standard.regularHours, OVERTIME_HOURS: 0, HOLIDAY_HOURS: 0,
-        PRODUCTION_ALLOWANCE: payType === 'OUTPUT' ? standard.regularHours * 3600 * wage : 0,
+        GRADE_RATE: 0, ...recognizedTenureParameters(employee,month), ...attendance,
+
+        HOLIDAY_WORKDAYS: 0, WORK_HOURS: regularHours, PAYABLE_WORK_HOURS:(attendance.PAYABLE_WORKDAYS * standard.standardWorkMinutes / 60), OVERTIME_HOURS: 0, HOLIDAY_HOURS: 0,
+        PRODUCTION_ALLOWANCE: payType === 'OUTPUT' ? regularHours * 3600 * monthlyWage : 0,
         PRODUCTION_ST_EXCESS_PERCENT: 0,
       };
       const salaryItems = items.map(item => {
@@ -48,7 +54,7 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
         if (reason) return { code, amount: 0, reason };
         const candidates = rates.filter(rate => rate.salaryItemCode === code && Number(rate.gradeId) === employee.gradeId);
         const rate = candidates.find(row => row.payType === payType) || (payType === 'OUTPUT_FIXED' ? candidates.find(row => row.payType === 'OUTPUT') : null);
-        const formula: string[] = Array.isArray(item.formula) ? item.formula : [];
+        const formula: string[] = calendarSalaryFormula(item.formula,item.category,item.payCycle);
         if (formula.includes('GRADE_RATE') && !rate) return { code, amount: null, reason: 'MISSING_RATE' };
         if (formula.includes('PRODUCTION_ALLOWANCE') && !Number.isFinite(parameters.PRODUCTION_ALLOWANCE)) return { code, amount: null, reason: 'MISSING_PRODUCTION_RATE' };
         try {
@@ -67,7 +73,7 @@ export const buildSalaryPreview = ({ month, employees, factories, policies, holi
       const complete = Boolean(version && items.length) && salaryItems.every(item => item.amount !== null);
       return { id: employee.id, name: employee.name || employee.email || String(employee.id), employeeNo: employee.employeeNo,
         status: employee.status, grade: employee.grade, payType, payrollExcluded: management.payrollExcluded,
-        tenureEligible, tenureYears: parameters.TENURE_YEARS, actualTenureYears: parameters.ACTUAL_TENURE_YEARS, additionalTenureYears: parameters.ADDITIONAL_TENURE_YEARS, tenureRecognitionId: parameters.TENURE_RECOGNITION_ID, scheduledWorkdays: standard.scheduledWorkdays, regularHours: standard.regularHours,
+        tenureEligible, tenureYears: parameters.TENURE_YEARS, actualTenureYears: parameters.ACTUAL_TENURE_YEARS, additionalTenureYears: parameters.ADDITIONAL_TENURE_YEARS, tenureRecognitionId: parameters.TENURE_RECOGNITION_ID, scheduledWorkdays: parameters.SCHEDULED_WORKDAYS, actualWorkdays:parameters.ACTUAL_WORKDAYS, payableWorkdays:parameters.PAYABLE_WORKDAYS, paidHolidayWorkdays:parameters.PAID_HOLIDAY_WORKDAYS, unpaidHolidayWorkdays:parameters.UNPAID_HOLIDAY_WORKDAYS, paidLeaveWorkdays:parameters.PAID_LEAVE_WORKDAYS,unpaidLeaveWorkdays:parameters.UNPAID_LEAVE_WORKDAYS,annualLeaveWorkdays:parameters.ANNUAL_LEAVE_WORKDAYS, regularHours,
         salaryItems, subtotal: salaryItems.reduce((sum, item) => sum + (item.amount || 0), 0), total: complete ? salaryItems.reduce((sum, item) => sum + (item.amount || 0), 0) : null,
         error: !version || !items.length ? 'MISSING_SALARY_VERSION' : !complete ? 'INCOMPLETE' : null };
     });

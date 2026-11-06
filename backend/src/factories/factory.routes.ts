@@ -1,3 +1,5 @@
+import {companySalaryCalendar} from '../employees/companySalaryCalendar';
+import {resolveCurrentPayrollMonthKey} from '../utils/payrollMonth';
 import { normalizeEntityNameInput } from '../utils/localizedName';
 import { defaultVersionStartMonth, compareVersionStarts } from "../utils/versionApplication";
 import { Router } from "express";
@@ -28,7 +30,7 @@ const FACTORY_MANAGER_EMPLOYEE_SELECT = {
   orgId: true,
 } as const;
 
-const FACTORY_WORK_SECONDS_PER_MONTH = 26 * 8 * 60 * 60;
+
 const roundToScale = (value: number, digits = 2): number => {
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
@@ -36,7 +38,8 @@ const roundToScale = (value: number, digits = 2): number => {
 
 const resolveFactoryWageFields = (
   targetMonthlyWageInput: unknown,
-  wagePerSecondInput: unknown
+  wagePerSecondInput: unknown,
+  monthSeconds: number
 ): { targetMonthlyWage: number | null; wagePerSecond: number | null } => {
   const targetMonthlyWage = toNumberOrNull(targetMonthlyWageInput);
   if (targetMonthlyWage === null) {
@@ -47,7 +50,7 @@ const resolveFactoryWageFields = (
   }
   return {
     targetMonthlyWage,
-    wagePerSecond: roundToScale(targetMonthlyWage / FACTORY_WORK_SECONDS_PER_MONTH, 2),
+    wagePerSecond: roundToScale(targetMonthlyWage / monthSeconds, 2),
   };
 };
 
@@ -56,6 +59,7 @@ const resolveFactoryWageUpdateFields = (params: {
   wagePerSecondInput: unknown;
   fallbackTargetMonthlyWage: unknown;
   fallbackWagePerSecond: unknown;
+  monthSeconds: number;
 }): { targetMonthlyWage: number | null; wagePerSecond: number | null } => {
   const {
     targetMonthlyWageInput,
@@ -71,8 +75,11 @@ const resolveFactoryWageUpdateFields = (params: {
     };
   }
 
+  if(toNumberOrNull(targetMonthlyWageInput)!==null&&toNumberOrNull(targetMonthlyWageInput)===toNumberOrNull(fallbackTargetMonthlyWage)){
+    return {targetMonthlyWage:toNumberOrNull(fallbackTargetMonthlyWage),wagePerSecond:toNumberOrNull(fallbackWagePerSecond)};
+  }
   if (targetMonthlyWageInput !== undefined) {
-    return resolveFactoryWageFields(targetMonthlyWageInput, wagePerSecondInput);
+    return resolveFactoryWageFields(targetMonthlyWageInput, wagePerSecondInput,params.monthSeconds);
   }
 
   return {
@@ -293,7 +300,8 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       return res.status(409).json({ ok: false, error: "factoryCode already in use" });
     }
     if(organization.type==='SERVICE'&&(targetMonthlyWage!=null||wagePerSecond!=null))return res.status(400).json({ok:false,error:'production allowance is not available for service companies'});
-    const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond);
+    const calendar=(await companySalaryCalendar(prisma,organization.id,resolveCurrentPayrollMonthKey())).find(row=>row.payType==='OUTPUT')!;
+    const wageFields = resolveFactoryWageFields(targetMonthlyWage, wagePerSecond,calendar.scheduledHours*3600);
     const phoneFields = resolveFactoryPhoneFields({
       countryInput: country,
       countryCodeInput: countryCode,
@@ -432,7 +440,9 @@ export const createFactoryRouter = ({ isManufacturerOrg }: FactoryRoutesDeps) =>
       resolvedCode = normalizedCode;
     }
 
+    const calendar=(await companySalaryCalendar(prisma,organization.id,resolveCurrentPayrollMonthKey())).find(row=>row.payType==='OUTPUT')!;
     const wageFields = resolveFactoryWageUpdateFields({
+      monthSeconds:calendar.scheduledHours*3600,
       targetMonthlyWageInput: targetMonthlyWage,
       wagePerSecondInput: wagePerSecond,
       fallbackTargetMonthlyWage: existing.targetMonthlyWage,

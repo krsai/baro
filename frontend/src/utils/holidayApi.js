@@ -1,3 +1,4 @@
+import {emitWorkspaceDataChanged} from './workspaceDataEvents';
 import { buildQueryString, requestJSON } from './apiClient';
 
 export const HOLIDAY_UPDATED_EVENT = 'baro:holidays-updated';
@@ -20,6 +21,7 @@ export const normalizeHolidayList = (list = []) =>
 
 const emitHolidayUpdated = (orgId, holidays) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  emitWorkspaceDataChanged({orgId,topics:['salary-system-settings','payroll-sources'],source:'holidays'});
   window.dispatchEvent(
     new CustomEvent(HOLIDAY_UPDATED_EVENT, {
       detail: {
@@ -87,3 +89,12 @@ export const saveHolidayKeys = async ({
     skipGlobalLoading,
     signal,
   });
+
+export const normalizeHolidayDetails = rows => (Array.isArray(rows)?rows:[]).map(row=>typeof row==='string'?{holidayDate:row,isPaid:true}:{holidayDate:row?.holidayDate,isPaid:row?.isPaid!==false}).filter(row=>normalizeHolidayKey(row.holidayDate)).sort((a,b)=>a.holidayDate.localeCompare(b.holidayDate));
+export const fetchHolidayDetails = async ({orgId,signal,forceRefresh=false}={}) => normalizeHolidayDetails(await requestJSON('/holidays'+buildQueryString({orgId,details:1}),{signal,forceRefresh,skipGlobalLoading:true}));
+export const saveHolidayDetails = async ({orgId,holidayDetails}={}) => {
+ const rows=normalizeHolidayDetails(holidayDetails);
+ const result=normalizeHolidayDetails(await requestJSON('/holidays'+buildQueryString({orgId,details:1}),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({holidays:rows.map(row=>row.holidayDate),holidayDetails:rows})}));
+ emitHolidayUpdated(orgId,result.map(row=>row.holidayDate));
+ return result;
+};

@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url),ts=require('../backend/node_modules
 const source=readFileSync('backend/src/payroll/payroll.service.ts','utf8');
 const start=source.indexOf('export const getPayrollMonthReadiness =');
 const code=ts.transpileModule(source.slice(start,source.indexOf('const buildIntegratedPayrollEmployees',start)).replace('export const','const'),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
-async function readiness({attendance=true,work=true,invalidBasis=false,invalidFactory=false,snapshot=false,attendanceAfter=false,workAfter=false,currentMonth=false}={}){
+async function readiness({attendance=true,work=true,invalidBasis=false,invalidFactory=false,snapshot=false,attendanceAfter=false,workAfter=false,currentMonth=false,leaves=[]}={}){
   const employee={id:1,factoryId:1,payType:'OUTPUT'},factory={id:1,employees:[employee]};
   const before=new Date('2026-08-10T00:00:00Z'),after=new Date('2026-09-02T00:00:00Z');
   const attendanceRows=attendance?[{workerId:1,factoryId:invalidFactory?2:1,workDate:'2026-08-03',createdAt:before,updatedAt:attendanceAfter?after:before}]:[];
@@ -15,7 +15,7 @@ async function readiness({attendance=true,work=true,invalidBasis=false,invalidFa
   const saved=snapshot?{isProvisional:true,lockedAt:new Date('2026-09-01T00:00:00Z'),data:[]}:null;
   const original=JSON.stringify({attendanceRows,logs,saved});
   const numeric=value=>Number(value)||0;
-  const deps={ ...managementPeriod,
+  const deps={loadPayrollLeaves:async()=>leaves,salaryMonthCalendar:()=>({scheduledHours:16}), ...managementPeriod,
     ...require('../backend/dist/employees/payrollManagement.js'),
     prisma:{factory:{findMany:async()=>[factory]},employee:{findMany:async()=>[employee]},organizationHoliday:{findMany:async()=>[]},attendanceEntry:{findMany:async()=>attendanceRows},workLog:{findMany:async()=>logs},payrollSnapshot:{findUnique:async()=>saved}},
     assertPayrollMonth:()=>{},toPositiveIntOrNull:Number,resolveCurrentPayrollMonthKey:()=>currentMonth?'2026-08':'2026-10',
@@ -45,3 +45,5 @@ test('later attendance or production updates flag a calculated partial month for
   assert.equal((await readiness({snapshot:true,attendanceAfter:true})).needsRecalculation,true);
   assert.equal((await readiness({snapshot:true,workAfter:true})).needsRecalculation,true);
 });
+
+test('a fully registered leave month does not require invented punches or production records',async()=>{const result=await readiness({attendance:false,work:false,leaves:[{employeeId:1,leaveDate:'2026-08-03',kind:'ANNUAL'},{employeeId:1,leaveDate:'2026-08-04',kind:'UNPAID'}]});assert.equal(result.ready,true);assert.equal(result.attendanceRequiredCount,0);assert.equal(result.hasWorkData,true);});

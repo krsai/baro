@@ -23,6 +23,7 @@ export function orderStyleProfit(style,defaults,override={},pack={},rates={},lab
  const local={...override};
  if(local.currency&&local.currency!==input.currency)for(const key of ['baseMonthly','allowanceMonthly','supportMonthly','rentMonthly','productionPay','otherUnitCost','polyPrice','boxPrice'])delete local[key];
  Object.assign(input,local);
+ if(laborBasis?.calendar){input.workdays=laborBasis.calendar.regularWorkdays;input.hoursDay=laborBasis.calendar.standardWorkMinutes/60;}
  input.packedCbmPerPiece=override.packedCbmPerPiece??pack.packedCbmPerPiece??style.sources?.packedCbmPerPiece??input.packedCbmPerPiece;
  if(Number(input.packedCbmPerPiece)>0)input.boxCapacity=packagingGeometry(input).capacity??'';
  input.costMode='linked';

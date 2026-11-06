@@ -1,3 +1,4 @@
+import {calendarPayrollText} from '../../constants/calendarPayroll';
 import ActionNotice from '../../components/ActionNotice';
 import { applicableMonthVersion } from '../../utils/versionApplication.mjs';
 import MonthVersionBoard from '../../components/MonthVersionBoard';
@@ -82,13 +83,22 @@ const PAYMENT_MONTHS_BY_CYCLE = {
 };
 // 파라미터를 성격별로 묶어서 보여준다 (단가/근속 -> 근무일수 -> 근무시간 -> 조건·외부 계산값).
 const FORMULA_PARAMETERS = {
+ PAID_LEAVE_WORKDAYS:{label:calendarPayrollText.ko.paidLeave,unit:'일'},
+ UNPAID_LEAVE_WORKDAYS:{label:calendarPayrollText.ko.unpaidLeave,unit:'일'},
+ ANNUAL_LEAVE_WORKDAYS:{label:calendarPayrollText.ko.annual,unit:'일'},
+ PAYABLE_WORKDAYS:{label:calendarPayrollText.ko.payable,unit:'일',hint:calendarPayrollText.ko.payableHint},
+ PAID_HOLIDAY_WORKDAYS:{label:calendarPayrollText.ko.paid,unit:'일'},
+ UNPAID_HOLIDAY_WORKDAYS:{label:calendarPayrollText.ko.unpaid,unit:'일'},
+ REQUIRED_WORKDAYS:{label:calendarPayrollText.ko.required,unit:'일',hint:calendarPayrollText.ko.requiredHint},
+ SCHEDULED_WORK_HOURS:{label:calendarPayrollText.ko.hours,unit:'시간'},
+ PAYABLE_WORK_HOURS:{label:calendarPayrollText.ko.payableHours,unit:'시간'},
   GRADE_RATE: { label: '직급별 단가', currencyUnit: true, hint: '직원의 급여 타입과 직급에 지정된 이 급여 항목의 단가입니다.' },
   BASE_SALARY: { label: '기본급', currencyUnit: true, hint: '같은 적용 급여 버전의 급여 타입·직급에 설정된 기본급 단가입니다. 근무일수로 비례 계산하기 전의 금액을 사용합니다.' },
   TENURE_YEARS: { label: '인정 근속연수', unit: '년', hint: '실제 만 근속연수에 적용월 기준 회사의 추가 인정 연수를 더합니다.' },
   ACTUAL_TENURE_YEARS: { label: '실제 근속연수', unit: '년', hint: '입사일 기준 실제 만 근속연수입니다.' },
   ADDITIONAL_TENURE_YEARS: { label: '추가 인정 근속연수', unit: '년', hint: '회사가 별도 이력으로 인정한 추가 연수입니다.' },
   ACTUAL_WORKDAYS: { label: '실제 근무일수', unit: '일', hint: '주말과 휴일 메뉴에 등록된 휴일을 제외한 정규 근무일 중 4시간 이상 근무한 날짜 수입니다. 휴일 근무는 포함하지 않습니다.' },
-  SCHEDULED_WORKDAYS: { label: '기준 근무일수', unit: '일', hint: '생산 급여 타입은 일요일과 등록 휴일을, 일반 급여 타입은 토·일요일과 등록 휴일을 제외한 해당 월의 날짜 수입니다.' },
+  SCHEDULED_WORKDAYS: {label:calendarPayrollText.ko.scheduled,unit:'일',hint:calendarPayrollText.ko.hint},
   HOLIDAY_WORKDAYS: { label: '휴일 근무일수', unit: '일', hint: '급여 타입별 주말 또는 휴일 메뉴에 등록된 휴일 중 4시간 이상 근무한 날짜 수입니다. 실제 근무일수와 만근 여부에는 포함하지 않습니다.' },
   WORK_HOURS: { label: '정규 근무시간', unit: '시간', hint: '휴일이 아닌 정규 근무일에 기록된 근무시간입니다.' },
   OVERTIME_HOURS: { label: '연장근무시간', unit: '시간', hint: '하루 기준 근무시간을 초과해 인정된 근무시간입니다. 최소 인정 단위와 승인 규칙은 추후 확정합니다.' },
@@ -105,14 +115,14 @@ const hasValidPaymentMonths = (item) => {
 };
 const FORMULA_PARAMETER_GROUPS = [
   { label: '단가·근속', keys: ['GRADE_RATE', 'BASE_SALARY', 'TENURE_YEARS', 'ACTUAL_TENURE_YEARS', 'ADDITIONAL_TENURE_YEARS'] },
-  { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'SCHEDULED_WORKDAYS', 'HOLIDAY_WORKDAYS'] },
-  { label: '근무시간', keys: ['WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
+  { label: '근무일수', keys: ['ACTUAL_WORKDAYS', 'PAYABLE_WORKDAYS', 'SCHEDULED_WORKDAYS', 'PAID_HOLIDAY_WORKDAYS', 'UNPAID_HOLIDAY_WORKDAYS', 'PAID_LEAVE_WORKDAYS', 'UNPAID_LEAVE_WORKDAYS', 'ANNUAL_LEAVE_WORKDAYS', 'REQUIRED_WORKDAYS', 'HOLIDAY_WORKDAYS'] },
+  { label: '근무시간', keys: ['WORK_HOURS', 'PAYABLE_WORK_HOURS', 'SCHEDULED_WORK_HOURS', 'OVERTIME_HOURS', 'HOLIDAY_HOURS'] },
   { label: '조건', keys: ['FULL_ATTENDANCE_FACTOR'] },
   // 성과급(INCENTIVE) 카테고리 항목을 편집할 때만 보여준다 - 일반/수당 항목에는 의미가 없다.
   { label: '생산 실적', keys: ['PRODUCTION_ST_EXCESS_PERCENT'], incentiveOnly: true },
 ];
 const FORMULA_OPERATORS = ['+', '−', '×', '÷', '(', ')'];
-const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'ACTUAL_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
+const DEFAULT_FORMULA = ['GRADE_RATE', '×', 'PAYABLE_WORKDAYS', '÷', 'SCHEDULED_WORKDAYS'];
 // 새 항목의 최초 급여 타입만 카테고리 기준으로 정하고, 이후에는 항목 목록의 체크박스로 직접 편집한다.
 const defaultPayTypesForCategory = (category) => (category === 'INCENTIVE' ? ['OUTPUT'] : PAY_TYPE_ORDER);
 const DEFAULT_DRAFT = { name: '', nameKo: '', nameEn: '', nameVi: '', category: 'ALLOWANCE', formula: ['GRADE_RATE'], payCycle: 'MONTHLY', paymentMonths: PAYMENT_MONTHS_BY_CYCLE.MONTHLY, capValue: '' };

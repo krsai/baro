@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calculateProfitScenario,createProfitInputs,trialProfitInputs} from '../frontend/src/utils/profitScenario.mjs';
+import {calculateProfitScenario,createProfitInputs,trialProfitInputs as sampleInputs} from '../frontend/src/utils/profitScenario.mjs';
+const trialProfitInputs=()=>({...sampleInputs(),workdays:26});
 test('ST/PT and productivity determine regular-hours labor, duration and staffing',()=>{
  const input={...trialProfitInputs(),quantity:5760,stSeconds:600,ptSeconds:500,workers:12,factoryWorkers:20,targetDays:10,workdays:30,packWaste:0};
  const a=calculateProfitScenario(input);assert.equal(a.ready,true);assert.equal(a.workloadHours,960);assert.equal(a.days,10);assert.equal(a.requiredWorkers,12);

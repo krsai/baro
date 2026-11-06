@@ -1,3 +1,7 @@
+import {loadPayrollLeaves} from '../employees/employeeLeave';
+import {salaryMonthCalendar} from '../employees/salaryMonthCalendar';
+import {companySalaryCalendar} from '../employees/companySalaryCalendar';
+import {calendarSalaryFormula} from '../employees/calendarSalaryFormula';
 import {tenureRecognitionInclude,recognizedTenureParameters} from '../employees/tenureRecognition';
 import { defaultVersionStartMonth } from "../utils/versionApplication";
 import { payrollManagementInclude, resolvePayrollManagement } from "../employees/payrollManagement";
@@ -76,8 +80,10 @@ const getPayrollMonthRange = (month: string) => {
   return { start, endExclusive };
 };
 
-const resolveFactoryProductionAllowanceRate = (factory: any): number => {
+const resolveFactoryProductionAllowanceRate = (factory: any, calendar?: {scheduledHours:number}): number => {
   const applicable = ensureArray(factory?.productionAllowanceRates)[0];
+  const target=applicable?.targetMonthlyWage??(!factory?._count?.productionAllowanceRates?factory?.targetMonthlyWage:null);
+  if(target!=null&&calendar){return calendar.scheduledHours>0?Math.round(Number(target)/calendar.scheduledHours/3600*100)/100:NaN;}
   if (applicable) return Number(applicable.wagePerSecond);
   // A versioned factory with no applicable version must not borrow a future
   // or explicitly unassigned rate from the editable master. Readiness reports
@@ -283,11 +289,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     prisma.factory.findMany({ where: { orgId, id: factoryId }, include: {
       employees: { include: { role: true, payrollManagementVersions: payrollManagementInclude } },
       _count: { select: { productionAllowanceRates: true } },
-      productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1, select: { wagePerSecond: true } },
+      productionAllowanceRates: { where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1, select: { wagePerSecond: true, targetMonthlyWage:true } },
     }}),
     prisma.organizationHoliday.findMany({
       where: { orgId, holidayDate: { gte: monthStart, lte: monthEnd } },
-      select: { holidayDate: true },
+      select: { holidayDate: true, isPaid: true },
     }),
     prisma.attendanceEntry.findMany({
       where: { managementExcluded: false, orgId, factoryId, workDate: { gte: monthStart, lte: monthEnd } },
@@ -305,11 +311,11 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         factoryWagePerSecond: true,
         factory: {
           select: {
-            wagePerSecond: true,
+            wagePerSecond: true, targetMonthlyWage:true,
             _count: { select: { productionAllowanceRates: true } },
             productionAllowanceRates: {
               where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1,
-              select: { wagePerSecond: true },
+              select: { wagePerSecond: true, targetMonthlyWage:true },
             },
           },
         },
@@ -344,10 +350,14 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     }),
     loadEmployeePayTypePolicies(orgId),
   ]);
+  const leaveDays=await loadPayrollLeaves(prisma,orgId,month);
+  const excusedKeys=new Set(leaveDays.map((row:any)=>row.employeeId+':'+row.leaveDate));
+  const expectsAttendance=(employee:any,dateKey:string)=>employeeExpectedOnDate(employee,dateKey)&&!excusedKeys.has(employee.id+':'+dateKey);
   const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
 
   const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
   const outputPolicy = payTypePolicyByType.get(EMPLOYEE_PAY_TYPE.OUTPUT)!;
+  const monthlyCalendar=salaryMonthCalendar(month,outputPolicy,holidays);
   const monthWorkingDates = enumerateMonthDateKeys(month).filter((dateKey) => isExpectedSalaryWorkDate(dateKey, outputPolicy, holidayDateKeys));
   const attendanceKeys = new Set(
     attendanceEntries.map((row) => `${row.factoryId}:${row.workerId}:${row.workDate}`)
@@ -382,7 +392,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     return allMonthDates
       .filter((dateKey) =>
         dateKey >= factoryStart &&
-        employeeExpectedOnDate(employee, dateKey) &&
+        expectsAttendance(employee, dateKey) &&
         isExpectedSalaryWorkDate(dateKey, payTypePolicy, holidayDateKeys)
       )
       .map((dateKey) => ({
@@ -441,7 +451,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
           ) {
             const quantity = Number(record.quantity);
             const ctSeconds = Number(record.ctSeconds);
-            const rate = resolveFactoryProductionAllowanceRate(workLog.factory);
+            const rate = resolveFactoryProductionAllowanceRate(workLog.factory,monthlyCalendar);
             if (quantity > 0 && ctSeconds > 0 && rate > 0) {
               productionAllowance += quantity * ctSeconds * rate;
             } else {
@@ -454,7 +464,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       const attendanceEmployees = employees.filter((employee) => !employee.alwaysFullAttendance && !employee.payrollExcluded);
       const missingAttendance = attendanceEmployees.flatMap((employee) =>
         expectedDates
-          .filter((dateKey) => employeeExpectedOnDate(employee, dateKey))
+          .filter((dateKey) => expectsAttendance(employee, dateKey))
           .filter((dateKey) => !attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`))
           .map((dateKey) => ({ workerId: employee.id, workerName: resolvePayrollEmployeeName(employee), date: dateKey }))
       );
@@ -463,23 +473,23 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
         factoryName: factory.name,
         factoryNameKo: factory.nameKo,
         factoryNameVi: factory.nameVi,
-        configuredWagePerSecond: resolveFactoryProductionAllowanceRate(factory),
+        configuredWagePerSecond: resolveFactoryProductionAllowanceRate(factory,monthlyCalendar),
         employeeCount: employees.length,
         expectedWorkingDayCount: expectedDates.length,
         workRecordedDayCount: workDateKeys.size,
         attendanceRequiredCount: attendanceEmployees.reduce(
-          (sum, employee) => sum + expectedDates.filter((dateKey) => employeeExpectedOnDate(employee, dateKey)).length, 0
+          (sum, employee) => sum + expectedDates.filter((dateKey) => expectsAttendance(employee, dateKey)).length, 0
         ),
         attendanceRecordedCount: attendanceEmployees.reduce(
           (sum, employee) => sum + expectedDates.filter(
-            (dateKey) => employeeExpectedOnDate(employee, dateKey) && attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`)
+            (dateKey) => expectsAttendance(employee, dateKey) && attendanceKeys.has(`${factory.id}:${employee.id}:${dateKey}`)
           ).length, 0
         ),
         missingWorkDates,
         missingAttendance,
         invalidCalculationBasisCount,
         productionAllowance: toPayrollAmount(productionAllowance, 0),
-        ready:
+        ready: !employees.some(employee=>expectedDates.some(dateKey=>expectsAttendance(employee,dateKey))) ||
           expectedDates.length > 0 &&
           workDateKeys.size > 0 &&
           invalidCalculationBasisCount === 0,
@@ -488,7 +498,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     .filter((group): group is NonNullable<typeof group> => group !== null);
 
   const hasOutputEmployees = relevantPayrollEmployees.some(
-    (employee) => resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT
+    (employee) => resolveEmployeeEffectivePayType(employee) === EMPLOYEE_PAY_TYPE.OUTPUT&&monthWorkingDates.some(dateKey=>expectsAttendance(employee,dateKey))
   );
   const groupsComplete = groups.every((group) => group.ready) && (!hasOutputEmployees || groups.length > 0);
   // A date without a punch may be a day off. Missing dates are informational;
@@ -624,7 +634,7 @@ const buildIntegratedPayrollEmployees = async (
     }),
     prisma.organizationHoliday.findMany({
       where: { orgId, holidayDate: { gte: monthStartKey, lte: monthEndKey } },
-      select: { holidayDate: true },
+      select: { holidayDate: true, isPaid: true },
     }),
     prisma.factory.findMany({
       where: { orgId, id: factoryId },
@@ -641,6 +651,7 @@ const buildIntegratedPayrollEmployees = async (
     }),
     loadEmployeePayTypePolicies(orgId),
   ]);
+  const leaveEntries=await loadPayrollLeaves(prisma,orgId,month);
   const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
   const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
   const attendanceByWorker = new Map<number, any[]>();
@@ -691,7 +702,8 @@ const buildIntegratedPayrollEmployees = async (
       }
       const workerAttendance = allWorkerAttendance;
       const alwaysFullAttendance = Boolean(employee.alwaysFullAttendance);
-      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys, attendanceEntries: workerAttendance, policy: payTypePolicy, alwaysFullAttendance });
+      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys: holidays, attendanceEntries: workerAttendance, policy: payTypePolicy, alwaysFullAttendance, employmentStart: employee.joinedAt ? new Date(employee.joinedAt).toISOString().slice(0,10) : null, employmentEnd: employee.leftAt ? new Date(employee.leftAt).toISOString().slice(0,10) : null, leaveEntries:leaveEntries.filter((row:any)=>row.employeeId===employee.id) });
+      if(attendanceParameters.LEAVE_CONFLICT_DAYS)throw createHttpError(409,`LEAVE_ATTENDANCE_CONFLICT: employee ${employee.id}`);
       let regularSeconds = 0;
       let overtimeSeconds = 0;
       let holidaySeconds = 0;
@@ -712,7 +724,7 @@ const buildIntegratedPayrollEmployees = async (
       if (alwaysFullAttendance) {
         // 실제 출퇴근 기록이 없어도 기준 근무일수만큼 정규 근무시간을 인정한다.
         // 연장근무는 실제 기록이 있어야만 인정되므로 여기서는 만들어내지 않는다.
-        regularSeconds = attendanceParameters.SCHEDULED_WORKDAYS * payTypePolicy.standardWorkMinutes * 60;
+        regularSeconds = (attendanceParameters.REQUIRED_WORKDAYS-attendanceParameters.PAID_LEAVE_WORKDAYS-attendanceParameters.UNPAID_LEAVE_WORKDAYS) * payTypePolicy.standardWorkMinutes * 60;
         overtimeSeconds = 0;
       }
       // 만 근속연수(정수)다. 근속수당처럼 "만 1년을 채워야 그 해분을 지급한다"는
@@ -733,7 +745,7 @@ const buildIntegratedPayrollEmployees = async (
         ? Number(production?.productionStSeconds) || 0
         : 0;
       const productionStBaselineSeconds = payType === EMPLOYEE_PAY_TYPE.OUTPUT
-        ? attendanceParameters.SCHEDULED_WORKDAYS * payTypePolicy.standardWorkMinutes * 60
+        ? attendanceParameters.REGULAR_WORKDAYS * payTypePolicy.standardWorkMinutes * 60
         : 0;
       const productionStExcessPercent = productionStBaselineSeconds > 0
         ? (Math.max(0, productionStSeconds - productionStBaselineSeconds) / productionStBaselineSeconds) * 100
@@ -744,6 +756,7 @@ const buildIntegratedPayrollEmployees = async (
         SENIORITY_PREVIOUS_YEAR_ELIGIBLE: hasPreviousYearSixMonthsService(employee, month) ? 1 : 0,
         ...attendanceParameters,
         WORK_HOURS: regularSeconds / 3600,
+        PAYABLE_WORK_HOURS: regularSeconds / 3600 + (attendanceParameters.PAID_HOLIDAY_WORKDAYS+attendanceParameters.PAID_LEAVE_WORKDAYS) * payTypePolicy.standardWorkMinutes / 60,
         OVERTIME_HOURS: overtimeSeconds / 3600,
         HOLIDAY_HOURS: holidaySeconds / 3600,
         PRODUCTION_ALLOWANCE: productionAllowance,
@@ -773,7 +786,7 @@ const buildIntegratedPayrollEmployees = async (
         const code = String(item?.code || item?.id || "");
         const itemPaymentMonths = ensureArray(item?.paymentMonths).map(Number);
         const isPaymentMonth = itemPaymentMonths.length === 0 || itemPaymentMonths.includes(monthNumber);
-        const formula = ensureArray(item?.formula).map(String);
+        const formula = calendarSalaryFormula(item?.formula,item?.category,item?.payCycle);
         let amount = 0;
         let rate: number | null = null;
         const tenureEligible = !isTenureSalaryItem(item) || parameters.SENIORITY_PREVIOUS_YEAR_ELIGIBLE === 1;
@@ -994,17 +1007,18 @@ export const getPayrollByMonth = async (
     };
   }
 
+  const monthlyCalendar=(await companySalaryCalendar(prisma,orgId,month)).find(row=>row.payType==='OUTPUT')!;
   const workLogRows = await prisma.workLog.findMany(
     {
       where: { orgId, factoryId, displayDate: { startsWith: month, gte: period.startDate } },
       include: {
         factory: {
           select: {
-            id: true, name: true, managementStartDate: true, wagePerSecond: true,
+            id: true, name: true, managementStartDate: true, wagePerSecond: true, targetMonthlyWage:true,
             _count: { select: { productionAllowanceRates: true } },
             productionAllowanceRates: {
               where: { effectiveMonth: { lte: month } }, orderBy: [{ effectiveMonth: "desc" }, { versionNumber: "desc" }], take: 1,
-              select: { wagePerSecond: true },
+              select: { wagePerSecond: true, targetMonthlyWage:true },
             },
           },
         },

@@ -120,7 +120,7 @@ test('work context uses direct factory employment and does not perform database 
 test('production allowance and ST totals are independent of former line membership', async () => {
   const worker={id:1,orgRole:'WORKER',name:'A',payType:'OUTPUT',factoryId:71};
   const records=[{workerId:1,ctSeconds:10,quantity:100,styleProcessId:8,assignmentPlan:{id:11}},{workerId:1,ctSeconds:10,quantity:40,styleProcessId:8,assignmentPlan:{id:12}}];
-  const subject=load(payroll,'getPayrollByMonth',{
+  const subject=load(payroll,'getPayrollByMonth',{companySalaryCalendar:async()=>[{payType:'OUTPUT',scheduledHours:208}],
     ...managementPeriod,
     ...require('../backend/dist/employees/payrollManagement.js'),
     ...common,assertPayrollMonth:()=>{},isPayrollMonthReady:()=>true,resolveFactoryManagementStartDateKey:()=> '2026-01-01',

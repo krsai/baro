@@ -1,3 +1,4 @@
+import {calendarPayrollText} from '../../constants/calendarPayroll';
 const translations = {
   '인정 근속연수': ['Recognized service years', 'Thâm niên công nhận'],
   '실제 근속연수': ['Actual service years', 'Thâm niên thực tế'],
@@ -60,6 +61,7 @@ const translations = {
 };
 
 export const salaryText = (text, languageCode) => {
+  const calendarKey=Object.keys(calendarPayrollText.ko).find(key=>calendarPayrollText.ko[key]===text);if(calendarKey)return (calendarPayrollText[languageCode]||calendarPayrollText.en)[calendarKey];
   if (languageCode === 'ko') return text === '급여 수당' ? '수당' : text;
   if (!translations[text]) return text;
   return translations[text][languageCode === 'vi' ? 1 : 0];

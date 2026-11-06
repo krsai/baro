@@ -1,3 +1,4 @@
+import {registerEmployeeLeaveRoutes,assertCompanyLeaveBalances} from './employees/employeeLeave';
 import {registerProductionExcessRoutes} from './services/productionExcess';
 import {registerOrderShipmentRoutes} from './services/orderShipments';
 import {registerCategoryPackagingRoutes} from './services/categoryPackaging';
@@ -780,7 +781,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'ExpenseRequest',columnName
   {tableName:'OrganizationBankAccount',columnName:'entityId'},
   {tableName:'OrganizationBankAccount',columnName:'currencyId'},
   {tableName:'Organization',columnName:'partyKind'},
-  {tableName:'EntitySchemaMigration',columnName:'version'},...Object.entries({"OrderShipment":["id","orgId","workOrderId","clientKey","requestHash","shipmentDate","remark","lines","createdByEmployeeId","createdAt","cancelledAt","cancelledByEmployeeId","cancellationReason","version"],"OrderShippingPolicy":["orgId","workOrderId","excluded","reason","version","updatedByEmployeeId","updatedAt"],"OrderShippingPolicyEvent":["id","orgId","workOrderId","clientKey","requestHash","snapshot","actorId","createdAt"]}).flatMap(([tableName,columns])=>columns.map(columnName=>({tableName,columnName}))),...['ExpenseApprovalDecision','ChangeApprovalDecision'].flatMap(tableName=>['actingEmployeeId','delegation'].map(columnName=>({tableName,columnName}))),
+  ...Object.entries({"EmployeeLeaveGrant":["id","orgId","employeeId","year","days","reason","clientKey","createdByEmployeeId"],"EmployeeLeaveDay":["id","orgId","employeeId","leaveDate","kind","reason","clientKey","requestHash","createdByEmployeeId","cancelledAt","cancelledByEmployeeId","cancellationReason"]}).flatMap(([tableName,columns])=>columns.map(columnName=>({tableName,columnName}))),{tableName:'OrganizationHoliday',columnName:'isPaid'},{tableName:'EntitySchemaMigration',columnName:'version'},...Object.entries({"OrderShipment":["id","orgId","workOrderId","clientKey","requestHash","shipmentDate","remark","lines","createdByEmployeeId","createdAt","cancelledAt","cancelledByEmployeeId","cancellationReason","version"],"OrderShippingPolicy":["orgId","workOrderId","excluded","reason","version","updatedByEmployeeId","updatedAt"],"OrderShippingPolicyEvent":["id","orgId","workOrderId","clientKey","requestHash","snapshot","actorId","createdAt"]}).flatMap(([tableName,columns])=>columns.map(columnName=>({tableName,columnName}))),...['ExpenseApprovalDecision','ChangeApprovalDecision'].flatMap(tableName=>['actingEmployeeId','delegation'].map(columnName=>({tableName,columnName}))),
   { tableName: "Style", columnName: "categoryId" },
   { tableName: "StyleProcessComponent", columnName: "styleProcessId" },
   { tableName: "StyleProcessComponent", columnName: "path" },
@@ -1077,7 +1078,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['OrderShipment_guard','baro_order_shipping_actor','WorkOrderItem_shipping_guard','OrderShippingPolicyEvent_guard','OrderShippingPolicy_guard','OrderShippingPolicy_audit_guard','baro_approval_delegate_allowed','baro_final_drafter_allowed','ExpenseDecision_acting_employee_fkey','ChangeDecision_acting_employee_fkey','ExpenseRequest_scheduled_payment_date_check','ExpenseRequest_schedule_audit_guard','FreightTransportTask_scope','FreightBill_guard','FreightBill_masterId_jobId_orgId_masterKind_fkey','EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['EmployeeLeaveDay_active_date','EmployeeLeaveDay_history_guard','EmployeeLeaveGrant_history_guard','baro_leave_history_guard','OrderShipment_guard','baro_order_shipping_actor','WorkOrderItem_shipping_guard','OrderShippingPolicyEvent_guard','OrderShippingPolicy_guard','OrderShippingPolicy_audit_guard','baro_approval_delegate_allowed','baro_final_drafter_allowed','ExpenseDecision_acting_employee_fkey','ChangeDecision_acting_employee_fkey','ExpenseRequest_scheduled_payment_date_check','ExpenseRequest_schedule_audit_guard','FreightTransportTask_scope','FreightBill_guard','FreightBill_masterId_jobId_orgId_masterKind_fkey','EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -8702,47 +8703,6 @@ const normalizeHolidayDateKeyList = (holidays: any): string[] =>
         .filter((value): value is string => Boolean(value))
     )
   ).sort((left, right) => left.localeCompare(right));
-const toHolidayDateKeyResponse = (rows: any) =>
-  ensureArray(rows)
-    .map((row) => normalizeDateKey(row?.holidayDate))
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => left.localeCompare(right));
-let organizationHolidayStorageReadyPromise: Promise<void> | null = null;
-const ensureOrganizationHolidayStorageReady = async () => {
-  if (organizationHolidayStorageReadyPromise) {
-    await organizationHolidayStorageReadyPromise;
-    return;
-  }
-
-  organizationHolidayStorageReadyPromise = (async () => {
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "OrganizationHoliday" (
-        "id" SERIAL NOT NULL,
-        "orgId" INTEGER NOT NULL,
-        "holidayDate" TEXT NOT NULL,
-        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "createdBy" TEXT NOT NULL DEFAULT 'system@baro.local',
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "OrganizationHoliday_pkey" PRIMARY KEY ("id")
-      )
-    `);
-    await prisma.$executeRawUnsafe(`
-      CREATE UNIQUE INDEX IF NOT EXISTS "OrganizationHoliday_orgId_holidayDate_key"
-      ON "OrganizationHoliday" ("orgId", "holidayDate")
-    `);
-    await prisma.$executeRawUnsafe(`
-      CREATE INDEX IF NOT EXISTS "OrganizationHoliday_orgId_holidayDate_idx"
-      ON "OrganizationHoliday" ("orgId", "holidayDate")
-    `);
-  })();
-
-  try {
-    await organizationHolidayStorageReadyPromise;
-  } catch (error) {
-    organizationHolidayStorageReadyPromise = null;
-    throw error;
-  }
-};
 const toAttendanceEntryResponse = (entry: any) => ({
   id: entry?.id ?? null,
   orgId: entry?.orgId ?? null,
@@ -23939,123 +23899,29 @@ app.patch("/assignment-plans/:externalId/reopen", async (req, res) => {
   });
 });
 
-app.get("/holidays", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_ACCESS_ROLES,
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-
-  try {
-    await ensureOrganizationHolidayStorageReady();
-  } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      error: getErrorMessage(error, "failed to initialize holiday storage"),
-    });
-  }
-
-  const holidayModel = (prisma as any).organizationHoliday;
-
-  let rows: Array<{ holidayDate: string }> = [];
-  try {
-    rows = await holidayModel.findMany({
-      where: { orgId: organization.id },
-      select: { holidayDate: true },
-      orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
-    });
-  } catch (error) {
-    if (getErrorCode(error) === "P2021") {
-      organizationHolidayStorageReadyPromise = null;
-      await ensureOrganizationHolidayStorageReady();
-      rows = await holidayModel.findMany({
-        where: { orgId: organization.id },
-        select: { holidayDate: true },
-        orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
-      });
-    } else {
-      throw error;
-    }
-  }
-
-  return res.json(toHolidayDateKeyResponse(rows));
+app.get('/holidays',async(req,res)=>{
+ const access=await requireOrgRole(req,res,{allowedRoles:ORG_MANAGEMENT_ROLES,allowSystemAdmin:false});if(!access)return;
+ const rows=await prisma.organizationHoliday.findMany({where:{orgId:access.organization.id},select:{holidayDate:true,isPaid:true},orderBy:{holidayDate:'asc'}});
+ return res.json(req.query.details==='1'?rows:rows.map(row=>row.holidayDate));
 });
-
-app.put("/holidays", async (req, res) => {
-  const accessContext = await requireOrgRole(req, res, {
-    allowedRoles: ORG_MANAGEMENT_ROLES,
-  });
-  if (!accessContext) return;
-  const { organization } = accessContext;
-
-  try {
-    await ensureOrganizationHolidayStorageReady();
-  } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      error: getErrorMessage(error, "failed to initialize holiday storage"),
-    });
-  }
-
-  const holidayModel = (prisma as any).organizationHoliday;
-
-  const holidayDateKeys = normalizeHolidayDateKeyList(req.body?.holidays);
-  let savedRows: Array<{ holidayDate: string }> = [];
-  try {
-    savedRows = await prisma.$transaction(async (tx) => {
-      const holidayTx = (tx as any).organizationHoliday;
-      await holidayTx.deleteMany({
-        where: { orgId: organization.id },
-      });
-
-      if (holidayDateKeys.length > 0) {
-        await holidayTx.createMany({
-          data: holidayDateKeys.map((holidayDate) => ({
-            orgId: organization.id,
-            holidayDate,
-          })),
-          skipDuplicates: true,
-        });
-      }
-
-      return holidayTx.findMany({
-        where: { orgId: organization.id },
-        select: { holidayDate: true },
-        orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
-      });
-    });
-  } catch (error) {
-    if (getErrorCode(error) === "P2021") {
-      organizationHolidayStorageReadyPromise = null;
-      await ensureOrganizationHolidayStorageReady();
-      savedRows = await prisma.$transaction(async (tx) => {
-        const holidayTx = (tx as any).organizationHoliday;
-        await holidayTx.deleteMany({
-          where: { orgId: organization.id },
-        });
-
-        if (holidayDateKeys.length > 0) {
-          await holidayTx.createMany({
-            data: holidayDateKeys.map((holidayDate) => ({
-              orgId: organization.id,
-              holidayDate,
-            })),
-            skipDuplicates: true,
-          });
-        }
-
-        return holidayTx.findMany({
-          where: { orgId: organization.id },
-          select: { holidayDate: true },
-          orderBy: [{ holidayDate: "asc" }, { id: "asc" }],
-        });
-      });
-    } else {
-      throw error;
-    }
-  }
-
-  return res.json(toHolidayDateKeyResponse(savedRows));
+app.put('/holidays',async(req,res)=>{
+ const access=await requireOrgRole(req,res,{allowedRoles:ORG_MANAGEMENT_ROLES,allowSystemAdmin:false});if(!access)return;
+ const orgId=access.organization.id,actorId=getCurrentRequestActorEmployeeId();
+ if(!actorId)return res.status(403).json({error:'active org membership is required'});
+ if(!Array.isArray(req.body?.holidays))return res.status(400).json({error:'INVALID_HOLIDAYS'});
+ const dates=normalizeHolidayDateKeyList(req.body.holidays);
+ if(dates.length!==req.body.holidays.length||req.body.holidays.some((value:any)=>typeof value!=='string'||!dates.includes(value)||Number.isNaN(new Date(value+'T00:00:00Z').getTime())||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value))return res.status(400).json({error:'INVALID_HOLIDAYS'});
+ const details=req.body.holidayDetails;
+ if(details!==undefined&&(!Array.isArray(details)||details.length!==dates.length||details.some((row:any)=>!dates.includes(row?.holidayDate)||typeof row?.isPaid!=='boolean')||new Set(details.map((row:any)=>row.holidayDate)).size!==dates.length))return res.status(400).json({error:'INVALID_HOLIDAY_PAY_STATUS'});
+ const payStatus=new Map<string,boolean>((details||[]).map((row:any)=>[row.holidayDate,row.isPaid]));
+ const rows=await prisma.$transaction(async tx=>{
+  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
+  await tx.organizationHoliday.deleteMany({where:{orgId,holidayDate:{notIn:dates}}});
+  for(const holidayDate of dates)await tx.organizationHoliday.upsert({where:{orgId_holidayDate:{orgId,holidayDate}},create:{orgId,holidayDate,isPaid:payStatus.get(holidayDate)??true,createdByEmployeeId:actorId,updatedByEmployeeId:actorId,createdBy:getRequesterEmail(req)||'system@baro.local'},update:{...(payStatus.has(holidayDate)?{isPaid:payStatus.get(holidayDate)!}:{}),updatedByEmployeeId:actorId}});
+  await assertCompanyLeaveBalances(tx,orgId);
+  return tx.organizationHoliday.findMany({where:{orgId},select:{holidayDate:true,isPaid:true},orderBy:{holidayDate:'asc'}});
+ });
+ return res.json(req.query.details==='1'?rows:rows.map(row=>row.holidayDate));
 });
 
 app.get('/management-period', async (req,res) => {
@@ -27692,6 +27558,7 @@ registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReque
 }});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
+registerEmployeeLeaveRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerTenureRecognitionRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerIndustryMenuRoutes(app,prisma,{requireSystemAdmin});
 registerCategoryPackagingRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});

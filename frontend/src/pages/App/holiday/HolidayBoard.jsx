@@ -1,3 +1,4 @@
+import {employeeLeaveText} from '../../../constants/employeeLeave';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
@@ -7,6 +8,8 @@ import {
   Paper,
   Stack,
   Typography,
+  TextField,
+  MenuItem,
 } from '@mui/material';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -24,7 +27,7 @@ import { getUiMessage } from '../../../constants/uiMessages';
 import { useAppActions } from '../../../context/AppContext';
 import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
-import { fetchHolidayKeys, normalizeHolidayList, saveHolidayKeys } from '../../../utils/holidayApi';
+import { fetchHolidayDetails, normalizeHolidayList, saveHolidayDetails } from '../../../utils/holidayApi';
 
 const getTodayStart = () => dayjs().startOf('day');
 const toDateKey = (value) => dayjs(value).format('YYYY-MM-DD');
@@ -95,6 +98,9 @@ const HolidayBoard = () => {
   const [selectedDate, setSelectedDate] = useState(dayjs());
   const [savedHolidayKeys, setSavedHolidayKeys] = useState([]);
   const [draftHolidayKeys, setDraftHolidayKeys] = useState([]);
+  const [savedPayStatus,setSavedPayStatus]=useState({});
+  const [draftPayStatus,setDraftPayStatus]=useState({});
+  const payText=({ko:{kind:'휴무 구분',paid:'유급 휴무',unpaid:'무급 휴무'},en:{kind:'Holiday pay',paid:'Paid holiday',unpaid:'Unpaid holiday'},vi:{kind:'Loại nghỉ',paid:'Nghỉ có lương',unpaid:'Nghỉ không lương'}})[languageCode]||{kind:'Holiday pay',paid:'Paid holiday',unpaid:'Unpaid holiday'};
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -186,8 +192,8 @@ const HolidayBoard = () => {
   const isSelectedHoliday = holidaySet.has(selectedKey);
   const isSelectedSunday = selectedDate.day() === 0;
   const isDirty = useMemo(
-    () => JSON.stringify(savedHolidayKeys) !== JSON.stringify(draftHolidayKeys),
-    [draftHolidayKeys, savedHolidayKeys]
+    () => JSON.stringify(savedHolidayKeys.map(holidayDate=>({holidayDate,isPaid:savedPayStatus[holidayDate]!==false}))) !== JSON.stringify(draftHolidayKeys.map(holidayDate=>({holidayDate,isPaid:draftPayStatus[holidayDate]!==false}))),
+    [draftHolidayKeys, savedHolidayKeys,draftPayStatus,savedPayStatus]
   );
 
   useUnsavedChanges(isDirty);
@@ -209,14 +215,16 @@ const HolidayBoard = () => {
 
     setIsLoading(true);
     setLoadError('');
-    fetchHolidayKeys({
+    fetchHolidayDetails({
       orgId: activeOrgId,
       signal: abortController.signal,
       forceRefresh: true,
     })
       .then((nextKeys) => {
         if (cancelled) return;
-        const normalizedKeys = normalizeHolidayList(nextKeys);
+        const normalizedKeys = normalizeHolidayList(nextKeys.map(row=>row.holidayDate));
+        const status=Object.fromEntries(nextKeys.map(row=>[row.holidayDate,row.isPaid]));
+        setSavedPayStatus(status);setDraftPayStatus(status);
         setSavedHolidayKeys(normalizedKeys);
         setDraftHolidayKeys(normalizedKeys);
       })
@@ -244,11 +252,6 @@ const HolidayBoard = () => {
 
   const handleToggleSelectedHoliday = useCallback(() => {
     if (!selectedDate || !selectedDate.isValid()) return;
-
-    if (isSelectedSunday) {
-      showNotification(text.sundayInfo, 'info');
-      return;
-    }
 
     if (isSelectedHoliday) {
       updateDraftHolidayKeys(draftHolidayKeys.filter((key) => key !== selectedKey));
@@ -285,26 +288,30 @@ const HolidayBoard = () => {
 
     setIsSaving(true);
     try {
-      const saved = await saveHolidayKeys({
+      const details = await saveHolidayDetails({
         orgId: activeOrgId,
-        holidays: draftHolidayKeys,
+        holidayDetails: draftHolidayKeys.map(holidayDate=>({holidayDate,isPaid:draftPayStatus[holidayDate]!==false})),
       });
+      const saved=details.map(row=>row.holidayDate),status=Object.fromEntries(details.map(row=>[row.holidayDate,row.isPaid]));
+      setSavedPayStatus(status);setDraftPayStatus(status);
       setSavedHolidayKeys(saved);
       setDraftHolidayKeys(saved);
       setLoadError('');
       showNotification(text.saveSuccess, 'success');
     } catch (_error) {
-      showNotification(text.saveError, 'error');
+      showNotification((employeeLeaveText[languageCode]||employeeLeaveText.en).errors[_error?.message]||text.saveError, 'error');
     } finally {
       setIsSaving(false);
     }
   }, [
     activeOrgId,
     draftHolidayKeys,
+    draftPayStatus,
     isDirty,
     isLoading,
     isSaving,
     loadError,
+    languageCode,
     showNotification,
     text.noChanges,
     text.saveError,
@@ -356,6 +363,7 @@ const HolidayBoard = () => {
           </LocalizationProvider>
 
           <Stack spacing={1.5} sx={{ mt: 1 }}>
+            <TextField select size="small" label={payText.kind} value={draftPayStatus[selectedKey]===false?'UNPAID':'PAID'} disabled={isLoading||isSaving||Boolean(loadError)} onChange={event=>setDraftPayStatus(current=>({...current,[selectedKey]:event.target.value==='PAID'}))}><MenuItem value="PAID">{payText.paid}</MenuItem><MenuItem value="UNPAID">{payText.unpaid}</MenuItem></TextField>
             <Typography variant="body2" color="text.secondary">
               {text.selectedDate}: {formatHolidayLabel(selectedKey, calendarLocale)}
             </Typography>
@@ -365,7 +373,6 @@ const HolidayBoard = () => {
               onClick={handleToggleSelectedHoliday}
               disabled={
                 isLoading ||
-                isSelectedSunday ||
                 isSaving ||
                 !activeOrgId ||
                 Boolean(loadError)
@@ -374,7 +381,7 @@ const HolidayBoard = () => {
               {isSelectedHoliday ? text.unregisterSelected : text.registerSelected}
             </Button>
 
-            {isSelectedSunday && (
+            {false && (
               <Typography variant="caption" color="text.secondary">
                 {text.sundayInfo}
               </Typography>
@@ -406,10 +413,11 @@ const HolidayBoard = () => {
                   <Chip
                     key={dateKey}
                     label={
-                      isPastHoliday
+                      (draftPayStatus[dateKey]===false?payText.unpaid:payText.paid)+' · '+ (isPastHoliday
                         ? `${formatHolidayLabel(dateKey, calendarLocale)} (${text.pastSuffix})`
-                        : formatHolidayLabel(dateKey, calendarLocale)
+                        : formatHolidayLabel(dateKey, calendarLocale))
                     }
+                    onClick={()=>setSelectedDate(dayjs(dateKey))}
                     onDelete={isSaving ? undefined : () => handleRemoveHoliday(dateKey)}
                     color="error"
                     variant="outlined"

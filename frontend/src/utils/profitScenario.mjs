@@ -5,7 +5,7 @@ export function packagingGeometry(input){
  const capacity=boxCbm!==null&&piece>0?(boxCbm<piece?0:Math.ceil(Number((boxCbm/piece).toPrecision(12)))):null;
  return {boxCbm,capacity};
 }
-export const createProfitInputs=()=>({currency:'VND',quantity:'',salePrice:'',basis:'ST',stSeconds:'',ptSeconds:'',productivity:100,workers:10,targetDays:10,hoursDay:8,workdays:26,factoryWorkers:10,baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:'',productionPay:'',otherUnitCost:'',boxLengthCm:60,boxWidthCm:40,boxHeightCm:40,packedCbmPerPiece:'',packaging:true,polyUsage:1,boxCapacity:50,packWaste:2,polyPrice:'',boxPrice:'',costMode:'estimate'});
+export const createProfitInputs=()=>({currency:'VND',quantity:'',salePrice:'',basis:'ST',stSeconds:'',ptSeconds:'',productivity:100,workers:10,targetDays:10,hoursDay:8,workdays:'',factoryWorkers:10,baseMonthly:'',allowanceMonthly:'',supportMonthly:'',rentMonthly:'',productionPay:'',otherUnitCost:'',boxLengthCm:60,boxWidthCm:40,boxHeightCm:40,packedCbmPerPiece:'',packaging:true,polyUsage:1,boxCapacity:50,packWaste:2,polyPrice:'',boxPrice:'',costMode:'estimate'});
 export const trialProfitInputs=()=>({...createProfitInputs(),quantity:1000,salePrice:40000,stSeconds:600,ptSeconds:500,baseMonthly:6000000,allowanceMonthly:1000000,supportMonthly:9000000,rentMonthly:20000000,productionPay:3000,otherUnitCost:1000,polyPrice:400,boxPrice:20000});
 const number=value=>value===''||value==null||!Number.isFinite(Number(value))||Number(value)<0?null:Number(value);
 export function calculateProfitScenario(input,{linkedAmount=0}={}){

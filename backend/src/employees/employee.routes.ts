@@ -1,3 +1,4 @@
+import {assertCompanyLeaveBalances} from './employeeLeave';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 ﻿import { type OrgUserRole } from "@prisma/client";
 import { Router } from "express";
@@ -168,11 +169,15 @@ export const createEmployeeRouter = ({
     if (policies.length !== 3 || new Set(keys).size !== 3 || !input.every(validateEmployeePayTypePolicy)) {
       return res.status(400).json({ ok: false, error: "valid GENERAL, OUTPUT_FIXED, and OUTPUT pay type policies are required" });
     }
-    await prisma.$transaction(policies.map((policy: ReturnType<typeof normalizeEmployeePayTypePolicy>) => prisma.employeePayTypePolicy.upsert({
+    await prisma.$transaction(async tx=>{
+      await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',organization.id);
+      for(const policy of policies)await tx.employeePayTypePolicy.upsert({
       where: { orgId_payType: { orgId: organization.id, payType: policy.payType } },
       create: { orgId: organization.id, payType: policy.payType, workWeekdays: policy.workWeekdays, standardClockIn: policy.standardClockIn, standardClockOut: policy.standardClockOut, breakMinutes: policy.breakMinutes, workdayMinimumMinutes: policy.workdayMinimumMinutes },
       update: { workWeekdays: policy.workWeekdays, standardClockIn: policy.standardClockIn, standardClockOut: policy.standardClockOut, breakMinutes: policy.breakMinutes, workdayMinimumMinutes: policy.workdayMinimumMinutes },
-    })));
+    });
+      await assertCompanyLeaveBalances(tx,organization.id);
+    });
     return res.json(await loadEmployeePayTypePolicies(organization.id));
   });
 

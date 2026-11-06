@@ -1,3 +1,5 @@
+import {calendarPayrollText} from '../../../../constants/calendarPayroll';
+import {useAuth} from '../../../../context/AuthContext';
 import { applicableMonthVersion } from '../../../../utils/versionApplication.mjs';
 import MonthVersionBoard from '../../../../components/MonthVersionBoard';
 import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields';
@@ -29,7 +31,7 @@ import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../../constants/layout';
 import { getStaticOptionOptions } from '../../../../constants/staticOptionRegistry';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { useLanguage } from '../../../../context/LanguageContext';
-import { requestJSON } from '../../../../utils/apiClient';
+import { requestJSON,buildQueryString } from '../../../../utils/apiClient';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../../utils/workspaceDataEvents';
 import {
   DEFAULT_FACTORY_MANAGEMENT_START_DATE_KEY,
@@ -40,9 +42,7 @@ import {
   parseNumberLike,
 } from '../../../../utils/numberFormat';
 import FactoryWarehouseSection from './FactoryWarehouseSection';
-const WORK_DAYS_PER_MONTH = 26;
-const HOURS_PER_DAY = 8;
-const SECONDS_PER_MONTH = WORK_DAYS_PER_MONTH * HOURS_PER_DAY * 60 * 60;
+
 const COUNTRY_CODE_BY_COUNTRY = {
   KR: '+82',
   VN: '+84',
@@ -240,6 +240,10 @@ const formatProductionAllowanceUpdatedAt = (value, languageCode) => {
 
 const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
   const { languageCode } = useLanguage();
+  const {activeOrgId}=useAuth();
+  const [monthCalendar,setMonthCalendar]=useState(null),[calendarError,setCalendarError]=useState(false);
+  const calendarText=calendarPayrollText[languageCode]||calendarPayrollText.en;
+  useEffect(()=>{if(!open||!activeOrgId)return;let live=true;setMonthCalendar(null);setCalendarError(false);requestJSON('/salary-system/month-calendar'+buildQueryString({orgId:activeOrgId,month:currentMonthKey()}),{forceRefresh:true}).then(result=>{if(live)setMonthCalendar(result.calendars.find(row=>row.payType==='OUTPUT'));}).catch(()=>{if(live)setCalendarError(true);});return()=>{live=false;};},[open,activeOrgId]);
   const countryOptions = useMemo(
     () => getStaticOptionOptions('country', languageCode),
     [languageCode]
@@ -310,7 +314,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
       ),
       targetMonthlyWageHelper: getUiMessage(
         'factoryDetail.targetMonthlyWageHelper',
-        'Converted using 26 days/month and 8 hours/day.',
+        'Converted using the selected month and pay-type work calendar.',
         languageCode
       ),
     }),
@@ -475,12 +479,12 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
   const computedWagePerSecond = useMemo(() => {
     const target = parseNumber(formData.targetMonthlyWage);
     if (Number.isFinite(target)) {
-      const value = target / SECONDS_PER_MONTH;
+      const value = target / (Number(monthCalendar?.scheduledHours)*3600);
       return Math.round(value * 100) / 100;
     }
     const fallback = parseNumber(formData.wagePerSecond);
     return Number.isFinite(fallback) ? fallback : Number.NaN;
-  }, [formData.targetMonthlyWage, formData.wagePerSecond]);
+  }, [formData.targetMonthlyWage, formData.wagePerSecond,monthCalendar]);
 
   const computedWageDisplay = Number.isFinite(computedWagePerSecond)
     ? computedWagePerSecond.toFixed(2)
@@ -716,7 +720,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                   value={formatDigitsWithCommas(formData.targetMonthlyWage)}
                   onChange={handleInputChange}
                   inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                  helperText={text.targetMonthlyWageHelper}
+                  helperText={calendarError?calendarText.error:monthCalendar?`${currentMonthKey()} · ${calendarText.scheduled}: ${monthCalendar.scheduledWorkdays} · ${calendarText.hours}: ${monthCalendar.scheduledHours}`:calendarText.calendar}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -752,7 +756,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
         <Box sx={{ mt: 4, display: 'flex', justifyContent: 'flex-end' }}>
           <SaveButton
             onClick={handleSave}
-            disabled={!hasLocalizedName(formData, 'name') || Boolean(factoryCodeError) || (!formDirty && !warehouseDirty)}
+            disabled={!hasLocalizedName(formData, 'name') || Boolean(factoryCodeError) || (parseNumber(formData.targetMonthlyWage)>0&&!monthCalendar) || (!formDirty && !warehouseDirty)}
           />
         </Box>
       </Box>
