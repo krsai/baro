@@ -1,3 +1,4 @@
+import {INDUSTRY_SPECIFIC_FEATURES} from './industryMenuFeatures.mjs';
 import {
   getAllowedFeaturesForRole,
   sanitizeRoleAccessPolicy,
@@ -137,7 +138,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     );
   }
 
-  if (Array.isArray(context.industryMenuFeatures) && !context.industryMenuFeatures.includes(featureKey) && featureKey !== FEATURE_KEYS.PROFILE) return false;
+  if (INDUSTRY_SPECIFIC_FEATURES.includes(featureKey) && Array.isArray(context.industryMenuFeatures) && !context.industryMenuFeatures.includes(featureKey) && featureKey !== FEATURE_KEYS.PROFILE) return false;
   const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND, ORG_TYPES.SERVICE);
   const featureSet = resolveFeatureSetForContext(context);
 

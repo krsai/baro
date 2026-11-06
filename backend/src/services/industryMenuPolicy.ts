@@ -5,6 +5,8 @@ import {retryEditTransaction} from '../utils/editRevision';
 export const INDUSTRY_MENU_KEY='INDUSTRY_MENU_POLICY:1';
 export const INDUSTRY_MENU_FEATURES=['FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','PRODUCTION_ANALYSIS','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
 export const SUBSCRIBER_TYPES=['MANUFACTURER','SERVICE'];
+export const INDUSTRY_SPECIFIC_FEATURES=['FREIGHT','ORDER','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','PRODUCTION_ANALYSIS','WORK_HISTORY','REVENUE_FORECAST','REVENUE_ANALYSIS'];
+export const COMMON_MENU_FEATURES=INDUSTRY_MENU_FEATURES.filter(feature=>!INDUSTRY_SPECIFIC_FEATURES.includes(feature));
 const required=['DASHBOARD','BUSINESS'];
 export async function readIndustryMenuPolicy(db:any){
  const row=await db.systemSetting.findUnique({where:{key:INDUSTRY_MENU_KEY}});
@@ -12,17 +14,17 @@ export async function readIndustryMenuPolicy(db:any){
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
  const policy=await readIndustryMenuPolicy(db);
- if(Object.hasOwn(policy.subscribers??{},orgType))return [...new Set([...required,...policy.subscribers[orgType]])];
+ if(Object.hasOwn(policy.subscribers??{},orgType))return [...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
  const classification=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId:orgId}},include:{industries:true}});
  const defaults=INDUSTRY_MENU_FEATURES.filter(feature=>orgType==='SERVICE'||feature!=='FREIGHT');
 
  const ids=(classification?.industries??[]).map((row:any)=>row.systemIndustryId);
  const selected=ids.length?ids.flatMap((id:number)=>policy.industries[String(id)]??defaults):defaults;
- return [...new Set([...required,...selected])];
+ return [...new Set([...COMMON_MENU_FEATURES,...selected])];
 }
 export function industryMenuMiddleware(db:any,requireOrgRole:any){
  return async(req:any,res:any,next:any)=>{
-  const feature=industryMenuApiFeature(req.path);if(!feature)return next();
+  const feature=industryMenuApiFeature(req.path);if(!feature||COMMON_MENU_FEATURES.includes(feature))return next();
   try{
    const context=await requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT','WORKER'],allowSystemAdmin:false});if(!context)return;
    const allowed=await companyIndustryMenuFeatures(db,context.organization.id,context.organization.type);

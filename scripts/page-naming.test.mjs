@@ -8,6 +8,11 @@ const name = (path,lang='ko') => resolvePageNaming(path,lang,key=>({
   'menu.invoice':'청구서','menu.appSettings':'앱 설정','menu.partners':'거래처',
   'menu.customer':'고객사','menu.personalSettings':'개인 설정',
 }[key] || key));
+
+test('industry menus have their own identity instead of inheriting subscription details',()=>{
+ const page=resolvePageNaming('/system-setting/industry-menus','ko',key=>key==='menu.industryMenus'?'업종별 메뉴 관리':key);
+ assert.equal(page.key,'industryMenus');assert.equal(page.title,'업종별 메뉴 관리');assert.equal(page.mode,'page');
+});
 test('list, creation and editing use the same business name and one action vocabulary',()=>{
   assert.equal(name('/outsourcing-record').title,'비용 신청 목록');
   assert.equal(name('/outsourcing-record/new').title,'비용 신청 등록');

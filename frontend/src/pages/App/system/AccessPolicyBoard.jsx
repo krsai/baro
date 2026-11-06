@@ -1,5 +1,4 @@
 import {subscriberMenuBlueprint} from '../../../utils/subscriberMenus.mjs';
-import SubscriberMenuSettings from './SubscriberMenuSettings';
 import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import PageContentStack from '../../../components/PageContentStack';
@@ -518,7 +517,7 @@ const RolePolicyBoard = ({orgType}) => {
                             <Switch size="small" checked={row.fixedAccess || row.featureKeys.some(key => hasFeature(role, key))}
                               disabled={loadingPolicy || savingPolicy || row.disabled || row.fixedAccess}
                               onChange={event=>setFeature(role,row.featureKeys,event.target.checked)}
-                              inputProps={{'aria-label':row.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}} />
+                              slotProps={{input:{role:'switch','aria-label':row.label+' '+resolveLocalizedText(ORG_ROLE_DEFAULT_LABELS[role],languageCode)}}} />
                           </TableCell>
                         ))}
                       </TableRow>
@@ -536,13 +535,12 @@ const RolePolicyBoard = ({orgType}) => {
 
 function AccessPolicyBoard(){
  const {languageCode}=useLanguage(),{activeProfile}=useAuth(),t=subscriberAccessText[languageCode]||subscriberAccessText.en;
- const [orgType,setOrgType]=React.useState('MANUFACTURER'),[section,setSection]=React.useState('roles');
+ const [orgType,setOrgType]=React.useState('MANUFACTURER');
  if(activeProfile?.entryType!=='SYSTEM'||activeProfile?.systemRole!=='SYSTEM_ADMIN')return <RolePolicyBoard orgType={orgType}/>;
  return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)}><Stack spacing={2}>
-  <Typography variant="body2" color="text.secondary">{t.note}</Typography>
+  <Typography variant="body2" color="text.secondary">{t.roleNote}</Typography>
   <Tabs value={orgType} onChange={(_event,value)=>setOrgType(value)}><Tab value="MANUFACTURER" label={t.factory}/><Tab value="SERVICE" label={t.logistics}/></Tabs>
-  <Tabs value={section} onChange={(_event,value)=>setSection(value)}><Tab value="roles" label={t.roles}/><Tab value="menus" label={t.menus}/></Tabs>
-  <Box sx={{display:section==='roles'?'block':'none'}}><RolePolicyBoard orgType={orgType}/></Box><Box sx={{display:section==='menus'?'block':'none'}}><SubscriberMenuSettings orgType={orgType}/></Box>
+  <RolePolicyBoard orgType={orgType}/>
  </Stack></AppPageContainer>;
 }
 export default AccessPolicyBoard;

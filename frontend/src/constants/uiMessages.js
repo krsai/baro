@@ -120,6 +120,7 @@ export const UI_MESSAGES = {
     approvalInbox: { ko: '결재함', en: 'Approval inbox', vi: 'Hộp phê duyệt' },
     partnerIndustries: { ko: '업종 구분 관리', en: 'Industry categories', vi: 'Phân nhóm ngành nghề' },
     accessPolicy: { ko: '접근 권한', en: 'Access Policy', vi: 'Chính sách truy cap' },
+    industryMenus: {ko:'업종별 메뉴 관리',en:'Industry menu management',vi:'Quản lý menu theo ngành'},
     attribute: { ko: '속성 관리', en: 'Attributes', vi: 'Thuoc tinh' },
     attributeColors: { ko: '색상 관리', en: 'Color Management', vi: 'Quản lý mau' },
     attributeCategories: {
