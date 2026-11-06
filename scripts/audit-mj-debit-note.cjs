@@ -1,4 +1,4 @@
-﻿// Explicitly scoped, read-only audit. Railway variables arrive only through stdin.
+// Explicitly scoped, read-only audit. Railway variables arrive only through stdin.
 const {PrismaClient}=require('../backend/node_modules/@prisma/client');
 const {assertSafeApplicationDatabaseEnv}=require('../backend/src/config/databaseTargetGuard');
 let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',chunk=>input+=chunk);
@@ -8,7 +8,7 @@ process.stdin.on('end',async()=>{let db;try{
   await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY');
   const org=await tx.organization.findFirst({where:{code:'BARO',ownerOrgId:null},select:{id:true,name:true,code:true}});if(!org)throw Error('BARO_NOT_FOUND');
   const partner=await tx.organization.findFirst({where:{ownerOrgId:org.id,code:'MJLG'},select:{id:true,name:true,code:true,type:true}});if(!partner)throw Error('MJ_NOT_FOUND');
-  const documents=await tx.expenseRequest.findMany({where:{orgId:org.id,partnerOrgId:partner.id,managementNumber:'EXP-2026-000001'},include:{items:true,approvalSteps:true}});
+  const documents=await tx.expenseRequest.findMany({where:{orgId:org.id,partnerOrgId:partner.id,managementNumber:'EXP-2026-000001'},include:{items:{orderBy:{expenseRequestLine:'asc'}},approvalSteps:true}});
   const entry=await tx.bankLedgerEntry.findFirst({where:{id:'c690df87-bd79-4ee8-9784-f46e032c93de',orgId:org.id},include:{allocations:true}});
   const classification=await tx.partnerClassification.findUnique({where:{orgId_entityId:{orgId:org.id,entityId:partner.id}},include:{industries:{include:{industry:true}}}});
   const codes=await tx.transactionCode.findMany({where:{ownerOrgId:org.id},include:{base:true,taxTreatment:true}});
@@ -23,4 +23,3 @@ process.stdin.on('end',async()=>{let db;try{
   return {org,partner,classification,documents,entry,units,policies,approvalPolicy:latestAudit?.afterSnapshot?.approvalPolicy,codes:codes.filter(c=>['DOF','DOC','CFS','THC','CIC','LSS','LOG'].includes(c.base?.code)&&c.taxTreatment?.code==='VAT').map(c=>({id:c.id,code:c.code,baseId:c.baseId,baseCode:c.base?.code,name:c.base?.nameEn,sourceTypeId:c.base?.serviceTypeId,localTypeId:c.serviceTypeId,isActive:c.isActive,tax:c.taxTreatment?.code})),admins,triggers:triggers.map(t=>t.tgname)};
  },{timeout:30000});console.log(JSON.stringify(result,null,2));
 }catch(error){console.error('Scoped MJ audit failed: '+(error.code||error.message?.replace(/postgres(?:ql)?:\/\/\S+/g,'[connection suppressed]')));process.exitCode=1;}finally{await db?.$disconnect();}});
-
