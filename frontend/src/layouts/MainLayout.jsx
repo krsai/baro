@@ -719,6 +719,7 @@ const MainLayout = () => {
                   icon: <TuneIcon />,
                   path: '/system-setting',
                 },
+                {label:getUiMessage('menu.systemEntities','All companies',languageCode),icon:<BusinessIcon/>,path:'/system-setting/entities'},
               ]
             : []),
           {

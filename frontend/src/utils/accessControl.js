@@ -208,6 +208,7 @@ export const resolveFeatureByPath = (pathname) => {
 export const canAccessPath = (pathname, authState) => {
   const context = buildAccessContext(authState || {});
   const path = normalizePathname(pathname);
+  if(path.startsWith('/system-setting/entities'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/order-shipments')&&(!context||context.entryType!=='ORG'||context.orgType!=='MANUFACTURER'))return false;
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
   if (path === '/') return Boolean(context);

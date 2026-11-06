@@ -66,6 +66,8 @@ test('empty retired customer groups are omitted; custom types keep their neutral
 
 test('customer taxonomy becomes industry groups without changing source IDs, company links or business records',async()=>{
  const f=await changeApprovalFixture();try{
+  // Replay the historical taxonomy migration before the later retirement guard.
+  await f.pg.exec('ALTER TABLE "SettingServiceDefault" DROP CONSTRAINT "SettingServiceDefault_legacy_logistics_retired"');
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,admin=s.people.admin.id;
   const customer=await db.partnerRole.findUnique({where:{code:'CUSTOMER'}});
   const apparel=await db.partnerRole.findUnique({where:{code:'APPAREL'}}),logistics=await db.partnerRole.findUnique({where:{code:'LOGISTICS_PROVIDER'}});

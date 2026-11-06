@@ -7,19 +7,20 @@ import {partnerClassificationPanelText} from '../constants/partnerClassification
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {classificationName,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 
-export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady,inline=false,expandable=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange}){
+export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady,inline=false,expandable=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange,catalogue,deriveRoles=false}){
  const text=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
  const [options,setOptions]=useState({roles:[],industries:[]}),[error,setError]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0);
  const [search,setSearch]=useState(''),panelText=partnerClassificationPanelText[languageCode]||partnerClassificationPanelText.en;
  const readyCallback=useRef(onReady);readyCallback.current=onReady;
  useEffect(()=>{
+  if(catalogue){setOptions(catalogue);setLoading(false);setError(false);readyCallback.current?.(true);return;}
   if(!enabled||!orgId)return;
   let alive=true;setLoading(true);setError(false);readyCallback.current?.(false);
   requestJSON('/partner-classifications/options'+buildQueryString({orgId}),{skipCache:true}).then(data=>{
    if(!alive)return;setOptions(data);readyCallback.current?.(true);
   }).catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
- },[orgId,enabled,reload]);
+ },[orgId,enabled,reload,catalogue]);
  const industries=[...options.industries,...(value?.industries||[]).filter(row=>!options.industries.some(option=>option.id===row.id))].filter(row=>row.code!=='GENERAL');
  const roles=options.roles;
  const name=row=>classificationName(row,languageCode);
@@ -47,13 +48,13 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
  return <Stack spacing={2}>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{text.retry}</Button>}>{text.loadError}</Alert>}
   <Box data-testid={inline?'classification-inline':undefined} sx={{display:'grid',gridTemplateColumns:inline?{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}:'minmax(0,1fr)',gap:2,alignItems:'start'}}>
-  <Autocomplete chipsInside hideCode multiple disableCloseOnSelect options={roles} value={roles.filter(row=>value?.roleIds?.includes(row.id))} disabled={disabled||loading||error} loading={loading} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
+  <Autocomplete chipsInside hideCode multiple disableCloseOnSelect options={roles} value={roles.filter(row=>value?.roleIds?.includes(row.id))} disabled={disabled||loading||error||deriveRoles} loading={loading} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
    getOptionDisabled={row=>!industries.some(industry=>industry.partnerRoleId===row.id)}
    onChange={(_,selected)=>{const roleIds=selected.map(row=>row.id);change(roleIds,(value?.industryIds||[]).filter(id=>industries.some(row=>row.id===id&&roleIds.includes(row.partnerRoleId))));}}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
    renderInput={params=><TextField {...params} required size="small" label={text.category}/>}/>
-  <Autocomplete chipsInside hideCode multiple disableCloseOnSelect options={industries.filter(row=>value?.roleIds?.includes(row.partnerRoleId))} value={industries.filter(row=>value?.industryIds?.includes(row.id))} disabled={disabled||loading||error} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
-   onChange={(_,selected)=>change(value.roleIds,selected.map(row=>row.id))}
+  <Autocomplete chipsInside hideCode multiple disableCloseOnSelect options={industries.filter(row=>deriveRoles||value?.roleIds?.includes(row.partnerRoleId))} value={industries.filter(row=>value?.industryIds?.includes(row.id))} disabled={disabled||loading||error} getOptionLabel={name} isOptionEqualToValue={(row,selected)=>row.id===selected.id} filterOptions={filterOptions}
+   getOptionDisabled={row=>deriveRoles&&row.isActive===false&&!value.industryIds.includes(row.id)} onChange={(_,selected)=>change(deriveRoles?[...new Set(selected.map(row=>row.partnerRoleId))]:value.roleIds,selected.map(row=>row.id))}
    renderOption={(props,row,{selected})=>{const {key,...rest}=props;return <li key={key} {...rest}><Checkbox checked={selected}/>{name(row)}</li>;}}
    renderInput={params=><TextField {...params} required size="small" label={text.industry}/>}/></Box>
   {Boolean(value?.legacyGeneral?.length)&&<Typography variant="caption" color="text.secondary">{text.legacy}: {value.legacyGeneral.map(row=>row.code).join(', ')}</Typography>}

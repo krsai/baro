@@ -4,7 +4,7 @@ const LABELS={
  vi:{ADMIN:'Tổ chức & đăng ký',ATTRIBUTE:'Dữ liệu dùng chung',PROCESS_MASTER:'Danh mục công đoạn',MISC:'Kế toán & đối tác',SYSTEM:'Cài đặt hệ thống'},
 };
 const GROUPS=[
- ['ADMIN',['/system-setting','/system-onboarding','/employee']],
+ ['ADMIN',['/system-setting','/system-setting/entities','/system-onboarding','/employee']],
  ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units']],
  ['PROCESS_MASTER',['/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs']],
  ['MISC',['/system-setting/partner-industries','/system-setting/transaction-codes']],

@@ -28,6 +28,7 @@ export const UI_MESSAGES = {
     },
   },
   menu: {
+    systemEntities:{ko:'전체 업체 관리',en:'All companies',vi:'Quản lý tất cả doanh nghiệp'},
     salesWorkflow: { ko: '영업·주문', en: 'Sales & orders', vi: 'Kinh doanh & đơn hàng' },
     productionWorkflow: { ko: '생산', en: 'Production', vi: 'Sản xuất' },
     materialsInventory: { ko: '자재·재고', en: 'Materials & inventory', vi: 'Vật tư & tồn kho' },

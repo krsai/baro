@@ -261,6 +261,7 @@ enum QcPassEventSourceType {
 }
 
 model SystemUser {
+  systemClassifications PartnerClassification[] @relation("ClassificationSystemEditor")
   id                  Int        @id @default(autoincrement())
   email               String     @unique
   systemRole          SystemRole @default(USER)
@@ -2887,13 +2888,15 @@ model SettingServiceDefault {
 model PartnerClassification {
   orgId Int
   entityId Int
+  updatedBySystemUserId Int?
+  updatedBySystemUser SystemUser? @relation("ClassificationSystemEditor",fields:[updatedBySystemUserId],references:[id],onDelete:Restrict,map:"PartnerClassification_system_editor_fkey")
   revision Int @default(1)
-  updatedByEmployeeId Int
+  updatedByEmployeeId Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   owner Organization @relation("PartnerClassificationOwner", fields:[orgId],references:[id],onDelete:Restrict)
   entity Organization @relation("PartnerClassificationEntity", fields:[entityId],references:[id],onDelete:Cascade)
-  updatedBy Employee @relation(fields:[updatedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PartnerClassification_actor_scope_fkey")
+  updatedBy Employee? @relation(fields:[updatedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PartnerClassification_actor_scope_fkey")
   industries PartnerClassificationIndustry[]
   @@id([orgId,entityId])
 }

@@ -14,13 +14,13 @@ export const PARTNER_PROFILE_TEXT={
 };
 
 // Canonical profile fields shared by customer relationships and supplier entities.
-export default function PartnerProfileFields({value,onChange,disabled=false,languageCode='ko',autoFocus=false,hideGuidance=false}){
+export default function PartnerProfileFields({value,onChange,disabled=false,languageCode='ko',autoFocus=false,hideGuidance=false,fieldLocks=[]}){
  const text=PARTNER_PROFILE_TEXT[languageCode]||PARTNER_PROFILE_TEXT.en,common=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en;
  const party=PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en;
  const subscriber=Boolean(value.linkedCompany?.subscriberOrgId);
  const officialNames=['name','nameKo','nameVi','address','country','businessNumber',...(subscriber?['partyKind','email','contactName','contactPhone','countryCode']:[])];
  const resolved=name=>{if(!value.linkedCompany||!officialNames.includes(name))return value[name]||'';return value.linkedCompany[{contactName:'representative',contactPhone:'phone'}[name]||name]||'';};
- const field=(name,label,props={})=>{const readOnly=Boolean(value.linkedCompany&&officialNames.includes(name));return <TextField fullWidth size="small" name={name} label={label} value={resolved(name)} {...props} disabled={disabled||Boolean(props.select&&readOnly)} InputProps={{...props.InputProps,readOnly}} SelectProps={props.select?{...props.SelectProps,readOnly}:undefined} onChange={event=>{if(!readOnly)onChange(name,event.target.value);}}/>;};
+ const field=(name,label,props={})=>{const readOnly=Boolean(fieldLocks.includes(name)||value.linkedCompany&&officialNames.includes(name));return <TextField fullWidth size="small" name={name} label={label} value={resolved(name)} {...props} disabled={disabled||Boolean(props.select&&readOnly)} InputProps={{...props.InputProps,readOnly}} SelectProps={props.select?{...props.SelectProps,readOnly}:undefined} onChange={event=>{if(!readOnly)onChange(name,event.target.value);}}/>;};
  const grid={display:'grid',gap:2,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(3,minmax(0,1fr))'}};
  return <Stack spacing={2}>
   <EntityDetailSection title={common.identity}>

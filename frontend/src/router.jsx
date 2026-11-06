@@ -59,6 +59,7 @@ const Permission = lazyImportWithRetry(() => import('./pages/App/Permission'));
 const Holiday = lazyImportWithRetry(() => import('./pages/App/Holiday'));
 const SystemBoard = lazyImportWithRetry(() => import('./pages/App/system/systemBoard'));
 const StaticOptionBoard = lazyImportWithRetry(() => import('./pages/App/system/StaticOptionBoard'));
+const SystemEntities = lazyImportWithRetry(() => import('./pages/App/system/SystemEntities'));
 const IndustryMenuSettings = lazyImportWithRetry(() => import('./pages/App/system/IndustryMenuSettings'));
 const AccessPolicyBoard = lazyImportWithRetry(() => import('./pages/App/system/AccessPolicyBoard'));
 const OnboardingBoard = lazyImportWithRetry(() => import('./pages/App/system/OnboardingBoard'));
@@ -301,6 +302,7 @@ const router = createBrowserRouter([
           {
             path: 'app-settings/transaction-codes', element: <TransactionCodeSettings />,
           },
+          { path: 'system-setting/entities', element: <SystemEntities /> },
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
           { path: 'app-settings', element: <ApplicationSettings />,
           },

@@ -8,7 +8,7 @@ const {effectiveClassification,validateClassification,saveClassification,registe
 const sources=[{id:10,code:'ZIPPER',partnerRoleId:2,isActive:true,partnerRole:{id:2,code:'MATERIAL_SUPPLIER'}},{id:11,code:'SHIPPING',partnerRoleId:3,isActive:true,partnerRole:{id:3,code:'LOGISTICS_PROVIDER'}},{id:12,code:'GENERAL',partnerRoleId:4,isActive:true},{id:13,code:'RETIRED',partnerRoleId:2,isActive:false}];
 const body={revision:0,roleIds:[2,3],industryIds:[10,11]};
 const ts=require('../backend/node_modules/typescript');
-const {resolvePartnerCode,resolvePartnerIdentity}=require('../backend/dist/services/entityProfile.js');
+const {resolvePartnerCode,resolvePartnerIdentity,subscriberProfilePatch}=require('../backend/dist/services/entityProfile.js');
 function sourceRoute(method,path,dependencies){
  const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const node=tree.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(tree)===`app.${method}`&&node.expression.arguments[0]?.text===path);
@@ -21,7 +21,7 @@ test('SERVICE customer registration saves its own relationship and connection wi
  const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const names=['isManufacturerOrg','isBrandOrg','resolveCustomerPerspective','buildSharedCustomerOrganizationData'];
  const code=tree.statements.filter(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(d=>names.includes(d.name.getText(tree)))).map(node=>node.getText(tree)).join('\n');
- const helpers=new Function('normalizeLocalizedName','resolvePartnerIdentity','resolveOptionalString',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return {resolveCustomerPerspective,buildSharedCustomerOrganizationData};')(value=>({name:value.name}),resolvePartnerIdentity,(v,f)=>v??f);
+ const helpers=new Function('normalizeLocalizedName','resolvePartnerIdentity','resolveOptionalString','subscriberProfilePatch',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return {resolveCustomerPerspective,buildSharedCustomerOrganizationData};')(value=>({name:value.name}),resolvePartnerIdentity,(v,f)=>v??f,subscriberProfilePatch);
  assert.equal(helpers.resolveCustomerPerspective({type:'SERVICE'}),'MANUFACTURER');assert.equal(helpers.resolveCustomerPerspective({type:'SYSTEM'}),null);
  const company={id:1845,type:'SERVICE'},canonical={name:'BARO GARMENT',nameKo:'Official localized name',address:'Official address',code:'BARO'};
  let created,relationship,classificationSaved=false,connected=false;

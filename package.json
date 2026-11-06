@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:system-entities": "npm --prefix backend run build && node --test scripts/system-entities.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/system-entities-browser.test.mjs",
     "test:retire-logistics-customer": "npm --prefix backend run build && node --test scripts/retire-logistics-customer.test.mjs scripts/railway-schema-preflight.test.mjs",
     "test:calendar-payroll": "npm --prefix backend run build && node --test scripts/calendar-payroll.test.mjs scripts/holiday-pay-status.test.mjs scripts/employee-leave.test.mjs scripts/employee-salary-preview.test.mjs scripts/payroll-partial-readiness.test.mjs && node scripts/holiday-leave-browser.test.mjs",
     "test:production-excess": "npm --prefix backend run build && node --test scripts/production-excess.test.mjs scripts/missing-process-records.test.mjs && node scripts/production-excess-browser.test.mjs",

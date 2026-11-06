@@ -59,7 +59,7 @@ export async function saveClassification(db:any,orgId:number,entityId:number,emp
   await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
   const data=await validateClassification(db,body,orgId,entityId);
   if(data.revision){
-    const updated=await db.partnerClassification.updateMany({where:{orgId,entityId,revision:data.revision},data:{revision:{increment:1},updatedByEmployeeId:employeeId}});
+    const updated=await db.partnerClassification.updateMany({where:{orgId,entityId,revision:data.revision},data:{revision:{increment:1},updatedByEmployeeId:employeeId,updatedBySystemUserId:null}});
     if(updated.count!==1)throw createHttpError(409,'PARTNER_CLASSIFICATION_CHANGED');
   }else await db.partnerClassification.create({data:{orgId,entityId,updatedByEmployeeId:employeeId}});
   await db.partnerClassificationIndustry.deleteMany({where:{orgId,entityId}});
