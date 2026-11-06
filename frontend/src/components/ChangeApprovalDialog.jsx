@@ -1,3 +1,4 @@
+import {approvalVacancyText} from '../constants/approvalVacancy';
 import ApprovalStageFlow from './ApprovalStageFlow';
 import React,{forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,TextField,Typography} from '@mui/material';
@@ -27,6 +28,7 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
   {loading&&<LinearProgress/>}{error&&<Alert severity="error">{error}</Alert>}
   <Typography variant="body2">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography>
   <TextField fullWidth label={t.reason} required={input?.operation==='DELETE'} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();submitted.current=null;}}/>
+  {preview?.policy?.autoApproved&&<Typography variant="body2">{(approvalVacancyText[languageCode]||approvalVacancyText.en).automatic}</Typography>}
   <ApprovalStageFlow drafter={preview?.drafter} stages={preview?.stages?.filter(s=>!s.vacant)||[]} grades={grades} languageCode={languageCode} value={selection} disabled={busy||uncertain||loading} onChange={(stageKey,id)=>{setSelection(current=>({...current,[stageKey+'EmployeeId']:id}));key.current=crypto.randomUUID();submitted.current=null;}}/>
 
   {preview&&!preview.complete&&<Alert severity="warning">{t.required}</Alert>}

@@ -57,6 +57,7 @@ export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,
   const result=await resolveApprovalRules(db,orgId,drafter,new Map([[source.entry.account.currencyCode,total]]),config,selection,true,subject);
   if(!result)fail('APPROVAL_RULE_NOT_FOUND');return result!;
  }
+ if(await canSkipApprovalStage(db,orgId,drafter,config.registrationStages[config.registrationStages.length-1],false))return {ids:[],stages:[],complete:true,drafter,policy:{config,drafterId:drafter.id,exempt:true,exemptionReason:'FINAL_DRAFTER',finalDrafterStage:config.registrationStages[config.registrationStages.length-1],resolvedStages:[],skipped:[],totals:[{currency:source.entry.account.currencyCode,amount:total.toString()}]}};
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],skipped:string[]=[],effectiveRegistrationStages:any[]=[];
  for(const [index,stage] of config.registrationStages.entries()){
   if(await canSkipApprovalStage(db,orgId,drafter,stage,index===config.registrationStages.length-1)){skipped.push('step'+(index+1));continue;}

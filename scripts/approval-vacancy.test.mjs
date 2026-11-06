@@ -24,7 +24,7 @@ test('minimum grade candidates, vacancy fallback and final reservation stay insi
   const fallback=await flexibleApprovalStages(db,org,s.people.admin,stages,{},true);assert.equal(fallback.stages.length,1);assert.equal(fallback.stages[0].employeeId,s.people.senior.id);assert.equal(fallback.policy.vacancy.effectiveGradeId,s.people.senior.gradeId);
   await db.employee.update({where:{id:s.people.senior.id},data:{status:'SUSPENDED'}});
   const junior=await flexibleApprovalStages(db,org,s.people.admin,stages,{},true);assert.equal(junior.stages.length,1);assert.equal(junior.stages[0].employeeId,s.people.junior.id);
-  const self=await flexibleApprovalStages(db,org,s.people.junior,stages,{},true);assert.equal(self.complete,false);assert.equal(self.stages.length,1);
+  const self=await flexibleApprovalStages(db,org,s.people.junior,stages,{},true);assert.equal(self.complete,true);assert.equal(self.policy.exempt,true);assert.equal(self.policy.exemptionReason,'FINAL_DRAFTER');assert.equal(self.stages.length,0);
  }finally{await f.close();}
 });
 

@@ -18,7 +18,7 @@ test('registration bands skip only qualified intermediate authority and preserve
   const source={items:[{unitPrice:'10'}],entry:{account:{currencyCode:'USD'}}};
   const junior=await previewLedgerRegistration(db,org,s.people.junior,source,config);assert.equal(junior.stages.length,2);
   const senior=await previewLedgerRegistration(db,org,s.people.senior,source,config);assert.deepEqual(senior.ids,[s.people.lead.id]);assert.deepEqual(senior.policy.skipped,['step1']);assert.equal(senior.stages[0].key,'step2');
-  const lead=await previewLedgerRegistration(db,org,s.people.lead,source,config);assert.equal(lead.complete,false);assert.equal(lead.stages.length,1,'final approval is never skipped');
+  const lead=await previewLedgerRegistration(db,org,s.people.lead,source,config);assert.equal(lead.complete,true);assert.equal(lead.policy.exempt,true);assert.equal(lead.policy.exemptionReason,'FINAL_DRAFTER');assert.equal(lead.stages.length,0);
   const bank={entryKind:'BANK',accountId:s.account.id,transactionDate:'2026-11-05',direction:'IN',amount:'10',remark:'Received',purpose:'Received',evidenceType:'FILE',evidenceNumber:'Receipt',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id},clientKey:randomUUID()};
   await db.systemSetting.create({data:{key:`APPROVAL_POLICY:BANK_LEDGER:CREATE:${org}`,value:config}});
   const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[bank]};
@@ -30,21 +30,20 @@ test('registration bands skip only qualified intermediate authority and preserve
  }finally{await f.close();}
 });
 
-test('final approver shortage reports overlap or self-only without bypassing stage, grade or company rules',async()=>{
+test('final drafter authority is automatic while a nonqualifying drafter still reports shortages',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),drafter=s.people.senior;
   const config={registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:drafter.gradeId}]};
   const source={items:[{unitPrice:'3553561'}],entry:{account:{currencyCode:'VND'}}};
-  const corrected=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.lead.id});
-  assert.equal(corrected.complete,true);assert.deepEqual(corrected.ids,[s.people.lead.id]);assert.deepEqual(corrected.policy.skipped,['step1']);assert.equal(corrected.stages[0].key,'step2');
-  assert.equal(corrected.stages[0].minimumGradeId,drafter.gradeId);assert.equal(corrected.stages[0].requiredGrade.id,drafter.gradeId);
-  await db.employee.update({where:{id:s.people.lead.id},data:{status:'SUSPENDED'}});
-  const selfOnly=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.junior.id});assert.equal(selfOnly.complete,false);assert.equal(selfOnly.stages[0].unavailableReason,'DRAFTER_ONLY');
-  await db.employee.update({where:{id:drafter.id},data:{orgRole:'OPERATOR'}});
-  const none=await previewLedgerRegistration(db,s.company.id,{...drafter,orgRole:'OPERATOR'},source,config,{step1EmployeeId:s.people.junior.id});assert.equal(none.stages[1].unavailableReason,'NO_ELIGIBLE');assert.equal(none.complete,false);
-  const missing=await previewLedgerRegistration(db,s.company.id,drafter,source,{registrationStages:[{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:null}]});assert.equal(missing.stages[0].unavailableReason,'GRADE_NOT_CONFIGURED');assert.equal(missing.complete,false);
+  const self=await previewLedgerRegistration(db,s.company.id,drafter,source,config);assert.equal(self.policy.exemptionReason,'FINAL_DRAFTER');assert.equal(self.complete,true);
+  const incomplete=await previewLedgerRegistration(db,s.company.id,s.people.junior,source,config);assert.equal(incomplete.complete,false);assert.equal(incomplete.stages[0].candidates.length,2);
+  const chosen=await previewLedgerRegistration(db,s.company.id,s.people.junior,source,config,{step2EmployeeId:s.people.lead.id});assert.deepEqual(chosen.ids,[s.people.lead.id]);
+  await db.employee.updateMany({where:{id:{in:[s.people.senior.id,s.people.lead.id]}},data:{status:'SUSPENDED'}});
+  const none=await previewLedgerRegistration(db,s.company.id,s.people.junior,source,config);assert.equal(none.complete,false);assert.equal(none.stages[0].unavailableReason,'NO_ELIGIBLE');
+  const missing=await previewLedgerRegistration(db,s.company.id,s.people.junior,source,{registrationStages:[{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:null}]});assert.equal(missing.complete,false);assert.equal(missing.stages[0].unavailableReason,'GRADE_NOT_CONFIGURED');
  }finally{await f.close();}
 });
+
 test('single-account ledger registration uses two independent accounting approvals and preserves source scope',async()=>{
  const f=await changeApprovalFixture({registration:true}),db=f.db;
  try{
