@@ -4,6 +4,27 @@ import {retryEditTransaction,editRevision,assertEditRevision} from '../utils/edi
 import {LEDGER_ZERO_START} from './bankLedger';
 
 export const BANK_INCLUDE = {currency:{select:{id:true,code:true,name:true}},ledgerAccounts:{select:{id:true,openingDate:true,openingBalance:true,currencyCode:true}}};
+// A verified relationship permits payment instructions, never the partner's
+// cash accounts, balances, ledger identifiers, or account mutation rights.
+export async function linkedAccountOwner(db:any,orgId:number,entityId:number){
+ if(entityId===orgId)return null;
+ const key={orgId_entityId:{orgId,entityId}};
+ const identity=await db.companyIdentityLink?.findUnique({where:key,select:{identity:{select:{anchorEntityId:true}}}});
+ const link=identity?null:await db.companyPartnerLink?.findUnique({where:key,select:{targetOrgId:true}});
+ const id=identity?.identity.anchorEntityId||link?.targetOrgId||entityId;
+ const subscriber=await db.organization.findFirst({where:{id,ownerOrgId:null,isActive:true,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:id}],type:{in:['MANUFACTURER','BRAND','SERVICE']},employees:{some:{status:'ACTIVE'}}},select:{id:true}});
+ return subscriber?.id??null;
+}
+export async function readPayeeAccounts(db:any,orgId:number,entityId:number){
+ await requireEntityAccess(db,orgId,entityId);
+ const owner=await linkedAccountOwner(db,orgId,entityId);
+ if(owner){
+  const accounts=await db.organizationBankAccount.findMany({where:{orgId:owner,entityId:owner,accountKind:'BANK'},select:{id:true,accountKind:true,displayName:true,bankName:true,accountNumber:true,accountHolder:true,currencyId:true,currency:{select:{id:true,code:true,name:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
+  return {accounts:accounts.map((row:any)=>({...row,ledgerAccounts:[]})),canEditAccounts:false};
+ }
+ return {accounts:await db.organizationBankAccount.findMany({where:{orgId,entityId},include:BANK_INCLUDE,orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]}),canEditAccounts:true};
+}
+async function requireLocalAccountOwner(db:any,orgId:number,entityId:number){if(await linkedAccountOwner(db,orgId,entityId))throw createHttpError(403,'LINKED_BANK_ACCOUNT_READ_ONLY');}
 async function requireAccountEditor(tx:any,orgId:number,actorId:number,entityId:number){
  if(!actorId||!await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:entityId===orgId?'ADMIN':{in:['ADMIN','ACCOUNTANT','OPERATOR']}},select:{id:true}}))throw createHttpError(403,entityId===orgId?'BANK_ACCOUNT_ADMIN_REQUIRED':'BANK_ACCOUNT_ACCESS_DENIED');
 }
@@ -20,14 +41,18 @@ export async function requirePayeeBankAccount(tx:any,orgId:number,entityId:numbe
     if(!await tx.employee.findFirst({where:{id:payeeEmployeeId,orgId,status:'ACTIVE'}})||!await tx.employeeExpenseBankAccount.findFirst({where:{orgId,employeeId:payeeEmployeeId}}))throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');
     return;
   }
+  if(!Number.isSafeInteger(entityId)||!entityId)throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
-  const account=await tx.organizationBankAccount.findFirst({where:{orgId,entityId},select:{id:true}});
+  await requireEntityAccess(tx,orgId,entityId!);
+  const owner=await linkedAccountOwner(tx,orgId,entityId!);
+  const account=await tx.organizationBankAccount.findFirst({where:owner?{orgId:owner,entityId:owner,accountKind:'BANK'}:{orgId,entityId},select:{id:true}});
   if(!account)throw createHttpError(400,'PAYEE_BANK_ACCOUNT_REQUIRED');
 }
 export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,entityId:number,id:string|null,body:any) {
   await requireAccountEditor(tx,orgId,actorId,entityId);
   if(body.openingDate!==undefined||body.openingBalance!==undefined)throw createHttpError(409,'LEDGER_OPENING_LOCKED');
   await requireEntityAccess(tx,orgId,entityId);
+  await requireLocalAccountOwner(tx,orgId,entityId);
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
   if(id)await tx.$queryRawUnsafe('SELECT id FROM "OrganizationBankAccount" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);
   const previous=id ? await tx.organizationBankAccount.findFirst({where:{id,orgId,entityId},include:BANK_INCLUDE}) : null;
@@ -59,19 +84,22 @@ export function registerEntityBankRoutes(app:any,db:any,gates:any) {
   const access=async(req:any,res:any)=>{
     const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!auth)return null;
     const orgId=auth.organization.id,entityId=Number(req.params.entityId);
+    const actorId=gates.getActor(req);
+    if(!actorId||!await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}},select:{id:true}}))throw createHttpError(403,'BANK_ACCOUNT_ACCESS_DENIED');
     await requireEntityAccess(db,orgId,entityId);
     const role=auth.employee?.orgRole,type=auth.organization.type;
     const canLedger=['ADMIN','ACCOUNTANT'].includes(role)&&!!(await gates.loadPolicy())?.policy?.[type]?.[role]?.includes('BANK_LEDGER');
     return {orgId,entityId,actorId:gates.getActor(req),role,type,canLedger};
   };
   app.get('/entities/:entityId/bank-accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;
-    const accounts=await db.organizationBankAccount.findMany({where:{orgId:scope.orgId,entityId:scope.entityId},include:BANK_INCLUDE,orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});res.json({accounts:accounts.map((row:any)=>({...row,ledgerAccounts:scope.canLedger?row.ledgerAccounts:row.ledgerAccounts.map((ledger:any)=>({id:ledger.id}))})),revision:editRevision(accounts),canLedger:scope.canLedger,currencies:await db.currency.findMany({orderBy:{code:'asc'}})});
+    const result=await readPayeeAccounts(db,scope.orgId,scope.entityId),accounts=result.accounts,canLedger=result.canEditAccounts&&scope.canLedger;res.json({accounts:accounts.map((row:any)=>({...row,ledgerAccounts:canLedger?row.ledgerAccounts:row.ledgerAccounts.map((ledger:any)=>({id:ledger.id}))})),revision:editRevision(accounts),canEditAccounts:result.canEditAccounts,canLedger,currencies:await db.currency.findMany({orderBy:{code:'asc'}})});
   });
   app.put('/entities/:entityId/bank-accounts/order',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;
     if(!scope.actorId)return res.status(403).json({error:'EMPLOYEE_REQUIRED'});
     if(scope.entityId===scope.orgId&&scope.role!=='ADMIN')return res.status(403).json({error:'BANK_ACCOUNT_ADMIN_REQUIRED'});
     await retryEditTransaction(db,async(tx:any)=>{
       await requireAccountEditor(tx,scope.orgId,scope.actorId,scope.entityId);
+      await requireLocalAccountOwner(tx,scope.orgId,scope.entityId);
       await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',scope.entityId);
       const accounts=await tx.organizationBankAccount.findMany({where:{orgId:scope.orgId,entityId:scope.entityId},include:BANK_INCLUDE,orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
       assertEditRevision(req.body.revision,editRevision(accounts));

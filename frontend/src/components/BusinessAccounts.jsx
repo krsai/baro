@@ -21,11 +21,12 @@ const LOAD_COPY={ko:{retry:'다시 불러오기',empty:'공통 통화 목록을 
 const PENDING_COPY={ko:'입력한 계좌는 거래처 등록 시 함께 저장됩니다.',en:'These accounts will be saved when you register the partner.',vi:'Các tài khoản sẽ được lưu cùng khi đăng ký đối tác.'};
 export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAccountsChange,hideGuidance=false,pendingAccounts=[],onPendingAccountsChange,disabled=false}){
  const pending=!entityId&&typeof onPendingAccountsChange==='function';
- const {activeOrgId,activeOrgRole}=useAuth(),scope=orgId||activeOrgId||entityId,canManage=activeOrgRole==='ADMIN'||(Number(entityId)!==Number(scope)&&['ACCOUNTANT','OPERATOR'].includes(activeOrgRole)),labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,t=COPY[languageCode]||COPY.en,money=bankLedgerMessages[languageCode]||bankLedgerMessages.en;
+ const {activeOrgId,activeOrgRole}=useAuth(),scope=orgId||activeOrgId||entityId,roleCanManage=activeOrgRole==='ADMIN'||(Number(entityId)!==Number(scope)&&['ACCOUNTANT','OPERATOR'].includes(activeOrgRole)),labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,t=COPY[languageCode]||COPY.en,money=bankLedgerMessages[languageCode]||bankLedgerMessages.en;
  const {active}=useRequestScopeContext();
  const [ready,setReady]=useState(false);
  const loadText=LOAD_COPY[languageCode]||LOAD_COPY.en;
  const [data,setData]=useState({accounts:[],currencies:[]}),[savedOrder,setSavedOrder]=useState(''),[loading,setLoading]=useState(false),[error,setError]=useState(''),[draft,setDraft]=useState(null),[saving,setSaving]=useState(false),[reload,setReload]=useState(0);
+ const canManage=roleCanManage&&data.canEditAccounts!==false;
  const callback=useRef(onAccountsChange);callback.current=onAccountsChange;const scopeRef=useRef('');scopeRef.current=`${scope}:${entityId}`;
  const query=buildQueryString({orgId:scope}),path=`/entities/${entityId}/bank-accounts`;
  const order=JSON.stringify(data.accounts.map(row=>row.id)),dirty=!pending&&!!savedOrder&&order!==savedOrder;useUnsavedChanges(dirty);

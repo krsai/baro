@@ -99,7 +99,7 @@ test('account schema preserves old ledgers, permits two cash accounts, and enfor
 test('partner accounts allow active accountants and operators to create, edit and reorder within entity access',async()=>{
  for(const role of ['ACCOUNTANT','OPERATOR']){
   const {db,accounts,staff}=memory();staff[1].orgRole=role;
-  db.organization.findFirst=async({where})=>[1,2].includes(where.id)?{id:where.id}:null;
+  db.organization.findFirst=async({where})=>where.ownerOrgId===null?null:[1,2].includes(where.id)?{id:where.id}:null;
   const routes=new Map();
   registerEntityBankRoutes(Object.fromEntries(['get','post','put'].map(method=>[method,(p,f)=>routes.set(method+p,f)])),db,{requireOrgRole:async(req,res,options)=>{assert.equal(options.allowSystemAdmin,false);return {organization:{id:1,type:'SERVICE'},employee:staff[1]};},getActor:()=>8,loadPolicy:async()=>({policy:{SERVICE:{}}})});
   let response,status;const res={status(value){status=value;return this;},json(value){response=value;}};
