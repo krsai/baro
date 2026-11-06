@@ -1,3 +1,4 @@
+import {registerOrderShipmentRoutes} from './services/orderShipments';
 import {registerCategoryPackagingRoutes} from './services/categoryPackaging';
 import {registerTenureRecognitionRoutes} from './employees/tenureRecognition';
 import {registerIndustryMenuRoutes,industryMenuMiddleware,companyIndustryMenuFeatures} from './services/industryMenuPolicy';
@@ -778,7 +779,7 @@ const STARTUP_REQUIRED_RUNTIME_COLUMNS = [{tableName:'ExpenseRequest',columnName
   {tableName:'OrganizationBankAccount',columnName:'entityId'},
   {tableName:'OrganizationBankAccount',columnName:'currencyId'},
   {tableName:'Organization',columnName:'partyKind'},
-  {tableName:'EntitySchemaMigration',columnName:'version'},...['ExpenseApprovalDecision','ChangeApprovalDecision'].flatMap(tableName=>['actingEmployeeId','delegation'].map(columnName=>({tableName,columnName}))),
+  {tableName:'EntitySchemaMigration',columnName:'version'},...Object.entries({"OrderShipment":["id","orgId","workOrderId","clientKey","requestHash","shipmentDate","remark","lines","createdByEmployeeId","createdAt","cancelledAt","cancelledByEmployeeId","cancellationReason","version"],"OrderShippingPolicy":["orgId","workOrderId","excluded","reason","version","updatedByEmployeeId","updatedAt"],"OrderShippingPolicyEvent":["id","orgId","workOrderId","clientKey","requestHash","snapshot","actorId","createdAt"]}).flatMap(([tableName,columns])=>columns.map(columnName=>({tableName,columnName}))),...['ExpenseApprovalDecision','ChangeApprovalDecision'].flatMap(tableName=>['actingEmployeeId','delegation'].map(columnName=>({tableName,columnName}))),
   { tableName: "Style", columnName: "categoryId" },
   { tableName: "StyleProcessComponent", columnName: "styleProcessId" },
   { tableName: "StyleProcessComponent", columnName: "path" },
@@ -1075,7 +1076,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['baro_approval_delegate_allowed','baro_final_drafter_allowed','ExpenseDecision_acting_employee_fkey','ChangeDecision_acting_employee_fkey','ExpenseRequest_scheduled_payment_date_check','ExpenseRequest_schedule_audit_guard','FreightTransportTask_scope','FreightBill_guard','FreightBill_masterId_jobId_orgId_masterKind_fkey','EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['OrderShipment_guard','baro_order_shipping_actor','WorkOrderItem_shipping_guard','OrderShippingPolicyEvent_guard','OrderShippingPolicy_guard','OrderShippingPolicy_audit_guard','baro_approval_delegate_allowed','baro_final_drafter_allowed','ExpenseDecision_acting_employee_fkey','ChangeDecision_acting_employee_fkey','ExpenseRequest_scheduled_payment_date_check','ExpenseRequest_schedule_audit_guard','FreightTransportTask_scope','FreightBill_guard','FreightBill_masterId_jobId_orgId_masterKind_fkey','EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -19016,6 +19017,7 @@ app.get("/ready", (_req, res) => {
   return res.json({ ok: true, ready: true });
 });
 
+registerOrderShipmentRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerCompanyWorkspaceRoutes(app,prisma,{getEmail:getRequesterEmail,requireOrgRole});
 registerBankLedgerRoutes(app,prisma,{requireOrgRole,loadPolicy:loadRoleAccessPolicySetting});
 app.get("/auth/context", async (req, res) => {
@@ -31597,6 +31599,8 @@ app.use(quantitySettlementRouter);
 // ───────────────────────────────────────────────────────────────────────────
 
 app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
+  const shippingCode=error instanceof Error?error.message.match(/SHIPPING_[A-Z_]+/)?.[0]:null;
+  if(shippingCode)return res.status(getErrorStatus(error)??(shippingCode.includes('DENIED')||shippingCode.includes('SCOPE')?403:409)).json({error:shippingCode});
   if (error instanceof Error && error.message.startsWith("ORDER_ITEM_ID_CONFLICT:")) {
     return res.status(409).json({ error: error.message });
   }

@@ -23,7 +23,7 @@ export const PAGE_ROUTES = [
   ['/business-partner','partners','list'], ['/customer','partners','list'],
   ['/outsourcing-partner','partners','list'], ['/material-supplier','partners','list'], ['/logistics-partner','partners','list'],
   ['/customer-pricing','customerPricing','page'],
-  ['/order','order','list','edit'], ['/style','style','list','edit'],
+  ['/order-shipments','orderShipments','page','detail'], ['/order','order','list','edit'], ['/style','style','list','edit'],
   ['/customer-production-report','customerProductionReport','page'],
   ['/st-review','standardReview','page'], ['/shipment-review','shipmentReview','page'],
   ['/qc-review','qcReview','page'], ['/assignment','assignment','page','detail'],

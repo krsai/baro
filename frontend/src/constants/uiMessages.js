@@ -83,6 +83,7 @@ export const UI_MESSAGES = {
     outsourcingRecord: { ko: '비용 신청', en: 'Payment Request', vi: 'Đề nghị thanh toán' },
     appSettings: { ko: '앱 설정', en: 'App settings', vi: 'Cài đặt ứng dụng' },
     transactionCodes: { ko: '회계 코드·입력 옵션', en: 'Accounting codes and inputs', vi: 'Mã kế toán và thông tin nhập' },
+    orderShipments: { ko: '출고 관리', en: 'Order shipments', vi: 'Quản lý xuất hàng' },
     shipmentReview: { ko: '수량 정산', en: 'Quantity Settlement', vi: 'Đối chiếu số lượng' },
     attendance: { ko: '출퇴근', en: 'Attendance', vi: 'Chấm công' },
     inventory: { ko: '재고 관리', en: 'Inventory', vi: 'Tồn kho' },

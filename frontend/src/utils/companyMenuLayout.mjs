@@ -1,7 +1,7 @@
 // Move canonical nodes intact so route permissions, partner access keys and badges survive.
 const GROUPS = [
   ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
-  ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/production-analysis']],
+  ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/order-shipments', '/production-analysis']],
   ['INVENTORY', 'materialsInventory', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/inventory/settings']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/holiday', '/payroll']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/account-overview', '/bank-ledger']],

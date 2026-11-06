@@ -1,0 +1,52 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {changeApprovalFixture} from './helpers/change-approval-fixture.mjs';
+const {shippingDetail,listShippingOrders,createOrderShipment,cancelOrderShipment,saveShippingPolicy,shippingActor,registerOrderShipmentRoutes}=createRequire(import.meta.url)('../backend/dist/services/orderShipments');
+
+test('split order shipments preserve color/size balances, explicit exclusions, cancellations and company scope',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,company=await db.organization.create({data:{name:'Factory',type:'MANUFACTURER'}}),org=company.id;
+  const set=await db.employeeGradeSet.create({data:{orgId:org,code:'SHIP',name:'Shipping'}}),grade=await db.employeeGrade.create({data:{orgId:org,setId:set.id,code:'CL1',name:'Staff',nameKo:'Staff',nameEn:'Staff',nameVi:'Staff',sortOrder:1}});
+  const actor=await db.employee.create({data:{orgId:org,name:'Shipping operator',gradeId:grade.id,orgRole:'OPERATOR',status:'ACTIVE'}});
+  await assert.rejects(shippingActor(db,org,undefined),/SHIPPING_ACCESS_DENIED/);await assert.rejects(shippingActor(db,org,999999),/SHIPPING_ACCESS_DENIED/);
+  const buyer=await db.organization.create({data:{name:'Customer',ownerOrgId:org,type:'BRAND'}});
+  const style=await db.style.create({data:{orgId:org,customerOrgId:buyer.id,code:'SHIRT',name:'Shirt'}});
+  const red=await db.attrColor.create({data:{code:'SHIP-RED',name:'Red'}}),blue=await db.attrColor.create({data:{code:'SHIP-BLUE',name:'Blue'}});
+  const order=await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:buyer.id,customerId:buyer.id,orderId:'shipping-test',orderNumber:'ORD-SHIP',totalQuantity:190,workOrderItems:{create:[{itemId:'red',styleId:style.id,colorId:red.id,gender:'M',sizeQuantities:{S:100,M:50},totalQuantity:150},{itemId:'blue',styleId:style.id,colorId:blue.id,gender:'M',sizeQuantities:{S:40},totalQuantity:40}]}} ,include:{workOrderItems:{orderBy:{id:'asc'}}}});
+  const [r,b]=order.workOrderItems,request=(lines)=>({clientKey:randomUUID(),shipmentDate:'2026-11-06',remark:'Partial shipment',lines});
+  const initial=await shippingDetail(db,org,actor.id,order.id);assert.equal(initial.totals.ordered,190);assert.equal(initial.totals.shipped,0);assert.equal(initial.policy.version,0);assert.equal(await db.$queryRawUnsafe('SELECT * FROM "OrderShippingPolicy"').then(rows=>rows.length),0,'reads do not create policies or fake historical shipments');
+  const firstInput=request([{itemId:r.id,size:'S',quantity:20},{itemId:r.id,size:'M',quantity:10}]);
+  const first=await createOrderShipment(db,org,actor.id,order.id,firstInput);
+  assert.equal((await createOrderShipment(db,org,actor.id,order.id,firstInput)).id,first.id);
+  await assert.rejects(createOrderShipment(db,org,actor.id,order.id,{...firstInput,remark:'Changed'}),/SHIPPING_CHANGED/);
+  const second=await createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'S',quantity:30},{itemId:b.id,size:'S',quantity:5}]));
+  const current=await shippingDetail(db,org,actor.id,order.id);assert.equal(current.totals.shipped,65);assert.equal(current.cells.find(c=>c.itemId===r.id&&c.size==='S').remaining,50);assert.equal(current.cells.find(c=>c.itemId===b.id).shipped,5);
+  await assert.rejects(createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'S',quantity:51},{itemId:b.id,size:'S',quantity:1}])),/SHIPPING_EXCEEDS_ORDER/);
+  await assert.rejects(db.$queryRawUnsafe('INSERT INTO "OrderShipment"(id,"orgId","workOrderId","clientKey","requestHash","shipmentDate",lines,"createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8) RETURNING *',randomUUID(),org,order.id,randomUUID(),'direct-test','2026-11-06',JSON.stringify([{itemId:r.id,size:'S',quantity:51}]),actor.id),/SHIPPING_EXCEEDS_ORDER/,'SQL also rejects bypassing remaining quantities');
+  await assert.rejects(createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'XL',quantity:1}])),/SHIPPING_INVALID_LINES/);
+  await assert.rejects(createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'S',quantity:1},{itemId:r.id,size:'S',quantity:1}])),/SHIPPING_INVALID_INPUT/);
+  await assert.rejects(db.workOrderItem.update({where:{id:r.id},data:{sizeQuantities:{S:49,M:50}}}),/SHIPPING_EXCEEDS_ORDER/);
+  await assert.rejects(db.workOrderItem.delete({where:{id:r.id}}),/SHIPPING_ORDER_ITEM_IN_USE/);
+  await assert.rejects(db.$executeRawUnsafe('DELETE FROM "OrderShipment" WHERE id=$1',first.id),/SHIPPING_HISTORY_IMMUTABLE/);
+  const exclusion={excluded:true,version:0,reason:'Historical order; no backfill',clientKey:randomUUID()};
+  assert.equal((await saveShippingPolicy(db,org,actor.id,order.id,exclusion)).version,1);await saveShippingPolicy(db,org,actor.id,order.id,exclusion);
+  await assert.rejects(createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'S',quantity:1}])),/SHIPPING_EXCLUDED/);
+  assert.equal((await createOrderShipment(db,org,actor.id,order.id,firstInput)).id,first.id,'retry remains safe after exclusion');
+  assert.equal((await listShippingOrders(db,org,actor.id,{mode:'TRACKED'})).rows.length,0);assert.equal((await listShippingOrders(db,org,actor.id,{mode:'EXCLUDED'})).rows[0].shipped,65);
+  const excluded=await shippingDetail(db,org,actor.id,order.id);assert.equal(excluded.totals.shipped,65);assert.equal(excluded.totals.remaining,125);assert.equal(excluded.events.length,1,'exclusion is not fabricated completion');
+  await assert.rejects(saveShippingPolicy(db,org,actor.id,order.id,{excluded:false,version:0,reason:'Resume',clientKey:randomUUID()}),/SHIPPING_CHANGED/);
+  await saveShippingPolicy(db,org,actor.id,order.id,{excluded:false,version:1,reason:'Resume',clientKey:randomUUID()});
+  await assert.rejects(db.$executeRawUnsafe('UPDATE "OrderShippingPolicy" SET excluded=true,reason=$1,version=version+1 WHERE "workOrderId"=$2','Without audit',order.id),/SHIPPING_POLICY_AUDIT_REQUIRED/);
+  await cancelOrderShipment(db,org,actor.id,order.id,second.id,{version:1,reason:'Wrong record'});await cancelOrderShipment(db,org,actor.id,order.id,second.id,{version:1,reason:'Wrong record'});
+  const final=await shippingDetail(db,org,actor.id,order.id);assert.equal(final.totals.shipped,30);assert.equal(final.shipments.length,2);assert.equal(final.events.length,2);assert.equal(final.cells.find(c=>c.itemId===r.id&&c.size==='S').remaining,80);
+  await db.attrColor.update({where:{id:red.id},data:{name:'Renamed red'}});assert.equal((await shippingDetail(db,org,actor.id,order.id)).shipments.find(s=>s.id===first.id).lines[0].color.name,'Red','historical color labels are snapshots');
+  const other=await db.organization.create({data:{name:'Other factory',type:'MANUFACTURER'}}),otherSet=await db.employeeGradeSet.create({data:{orgId:other.id,code:'OTHER',name:'Other'}}),otherGrade=await db.employeeGrade.create({data:{orgId:other.id,setId:otherSet.id,code:'CL1',name:'Staff',nameKo:'Staff',nameEn:'Staff',nameVi:'Staff',sortOrder:1}}),outsider=await db.employee.create({data:{orgId:other.id,name:'Other',gradeId:otherGrade.id,orgRole:'ADMIN',status:'ACTIVE'}});
+  await assert.rejects(shippingDetail(db,org,outsider.id,order.id),/SHIPPING_ACCESS_DENIED/);await assert.rejects(shippingDetail(db,other.id,outsider.id,order.id),/SHIPPING_NOT_FOUND/);
+  const worker=await db.employee.create({data:{orgId:org,name:'Worker',gradeId:grade.id,orgRole:'WORKER',status:'ACTIVE'}});await assert.rejects(shippingActor(db,org,worker.id),/SHIPPING_ACCESS_DENIED/);
+  const routes=new Map(),app=Object.fromEntries(['get','put','post'].map(method=>[method,(path,handler)=>routes.set(method+path,handler)]));
+  registerOrderShipmentRoutes(app,db,{requireOrgRole:async()=>({organization:company}),actorId:()=>actor.id,canAccess:async()=>false});
+  await assert.rejects(routes.get('get/orders/shipments')({query:{}},{json:()=>assert.fail('denied role policy must not return data')}),/SHIPPING_ACCESS_DENIED/);
+ }finally{await f.close();}
+});
