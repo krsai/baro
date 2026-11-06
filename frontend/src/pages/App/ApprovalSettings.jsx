@@ -1,4 +1,4 @@
-﻿import LedgerRegistrationPolicyEditor from '../../components/LedgerRegistrationPolicyEditor';
+import {ledgerApprovalBands} from '../../utils/ledgerApprovalBands.mjs';
 import {Add} from '@mui/icons-material';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Button,MenuItem,Stack,TextField,Typography} from '@mui/material';
@@ -21,10 +21,10 @@ const operations=['CREATE','UPDATE','DELETE'];
 const keyFor=(menu,operation)=>menu+':'+operation;
 const registrationFor=(menu,operation)=>menu==='BANK_LEDGER'&&operation==='CREATE';
 const formFrom=(settings,registration)=>{
- if(!settings||registration&&!Array.isArray(settings.registrationStages))throw new Error('INVALID_APPROVAL_SETTINGS');
- return {registrationStages:settings.registrationStages,kind:'EXPENSE',drafterScope:settings.drafterScope||{role:'ALL',gradeId:null},limits:settings.limits,rules:settings.rules||[],revision:settings.revision||0};
+ if(!settings)throw new Error('INVALID_APPROVAL_SETTINGS');
+ return {...(registration?{version:2}:{}),kind:registration?'BANK_LEDGER':'EXPENSE',drafterScope:settings.drafterScope||{role:'ALL',gradeId:null},limits:settings.limits,rules:registration?ledgerApprovalBands(settings):settings.rules||[],revision:settings.revision||0};
 };
-const invalidEntry=entry=>registrationFor(entry.menu,entry.operation)?!entry.form.registrationStages?.length||entry.form.registrationStages.some(stage=>stage.gradeMatch!=='ANY'&&!stage.gradeId):invalidApprovalBands(entry.form.rules);
+const invalidEntry=entry=>invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
 const dirtyEntry=entry=>Boolean(entry?.form&&JSON.stringify(entry.form)!==entry.initial);
 
 export default function ApprovalSettings(){const {activeOrgId}=useAuth();return <CompanyApprovalSettings key={activeOrgId} activeOrgId={activeOrgId}/>;}
@@ -73,8 +73,7 @@ function ApprovalOperationSettings({entry,menu,operation,disabled,onChange,onRel
   <Typography component="h2" variant="h6">{actions[operation]}</Typography>
   {(entry?.error||editorError)&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry?.error||editorError}</Alert>}
   {form&&approvalBandOrderErrors(form.rules).size>0&&<Alert severity="warning">{band.orderError}</Alert>}
-  {form&&registration&&<LedgerRegistrationPolicyEditor value={form.registrationStages} grades={data.grades} languageCode={languageCode} disabled={locked} onChange={registrationStages=>onChange({registrationStages})}/>}
-  {form&&!registration&&<ApprovalRuleEditor ref={editor} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>onChange({drafterScope})} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={rules=>onChange({rules})} disabled={locked} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={locked} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setEditorError(messages.error);}}>{band.addCondition}</Button>}/>}
+  {form&&<ApprovalRuleEditor allowGradeRange={registration} ref={editor} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>onChange({drafterScope})} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={rules=>onChange({rules})} disabled={locked} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={locked} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setEditorError(messages.error);}}>{band.addCondition}</Button>}/>}
   {data&&!data.canEdit&&<Alert severity="info">{t.readonly}</Alert>}
  </Stack>;
 }

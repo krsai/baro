@@ -8,20 +8,38 @@ const {previewChangeApproval,requestChangeApproval,decideChangeApproval}=require
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {registerExpensePayeeRoutes}=require('../backend/dist/services/expensePayee');
-const {previewLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
+const {previewLedgerRegistration,validateLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
+
+test('registration bands skip only qualified intermediate authority and preserve final approval snapshots',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const stages=[{role:'ACCOUNTANT',gradeMatch:'EXACT',gradeId:s.people.senior.gradeId},{role:'ACCOUNTANT',gradeMatch:'EXACT',gradeId:s.people.lead.gradeId}];
+  const config=await validateLedgerRegistration(db,org,{kind:'BANK_LEDGER',revision:0,drafterScope:{role:'ALL',gradeId:null},rules:['USD','VND','KRW'].map(currency=>({id:currency,name:currency,currency,min:'0',max:null,drafterRole:'ALL',drafterGradeId:null,stages}))});
+  const source={items:[{unitPrice:'10'}],entry:{account:{currencyCode:'USD'}}};
+  const junior=await previewLedgerRegistration(db,org,s.people.junior,source,config);assert.equal(junior.stages.length,2);
+  const senior=await previewLedgerRegistration(db,org,s.people.senior,source,config);assert.deepEqual(senior.ids,[s.people.lead.id]);assert.deepEqual(senior.policy.skipped,['step1']);assert.equal(senior.stages[0].key,'step2');
+  const lead=await previewLedgerRegistration(db,org,s.people.lead,source,config);assert.equal(lead.complete,false);assert.equal(lead.stages.length,1,'final approval is never skipped');
+  const bank={entryKind:'BANK',accountId:s.account.id,transactionDate:'2026-11-05',direction:'IN',amount:'10',remark:'Received',purpose:'Received',evidenceType:'FILE',evidenceNumber:'Receipt',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id},clientKey:randomUUID()};
+  await db.systemSetting.create({data:{key:`APPROVAL_POLICY:BANK_LEDGER:CREATE:${org}`,value:config}});
+  const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[bank]};
+  const pending=await requestChangeApproval(db,org,s.people.senior.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:payload.clientKey,payload,clientKey:randomUUID()});
+  assert.equal(pending.policy.resolvedStages.length,1);assert.equal(pending.policy.resolvedStages[0].gradeId,s.people.lead.gradeId);assert.deepEqual(pending.policy.effectiveRegistrationStages,[stages[1]]);assert.equal(await db.bankLedgerEntry.count(),0);
+  await db.systemSetting.update({where:{key:`APPROVAL_POLICY:BANK_LEDGER:CREATE:${org}`},data:{value:{...config,rules:[]}}});
+  await assert.rejects(decideChangeApproval(db,org,s.people.senior.id,pending.id,{decision:'APPROVED'}),/CHANGE_APPROVER_REQUIRED/);
+  const done=await decideChangeApproval(db,org,s.people.lead.id,pending.id,{decision:'APPROVED'});assert.equal(done.status,'APPROVED');assert.equal(await db.bankLedgerEntry.count(),1);
+ }finally{await f.close();}
+});
 
 test('final approver shortage reports overlap or self-only without bypassing stage, grade or company rules',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),drafter=s.people.senior;
   const config={registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:drafter.gradeId}]};
   const source={items:[{unitPrice:'3553561'}],entry:{account:{currencyCode:'VND'}}};
-  const blocked=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.lead.id});
-  assert.equal(blocked.complete,false);assert.equal(blocked.stages[1].unavailableReason,'ALREADY_SELECTED');assert.deepEqual(blocked.stages[1].candidates,[]);assert.equal(blocked.stages[1].minimumGradeId,drafter.gradeId);assert.equal(blocked.stages[1].requiredGrade.id,drafter.gradeId);
-  const corrected=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.junior.id});
-  assert.equal(corrected.complete,true);assert.deepEqual(corrected.ids,[s.people.junior.id,s.people.lead.id]);
-  assert.equal(corrected.stages[1].candidates.some(p=>p.id===drafter.id||p.id===s.people.admin.id),false,'neither drafter nor an ADMIN qualifies for an ACCOUNTANT stage');
+  const corrected=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.lead.id});
+  assert.equal(corrected.complete,true);assert.deepEqual(corrected.ids,[s.people.lead.id]);assert.deepEqual(corrected.policy.skipped,['step1']);assert.equal(corrected.stages[0].key,'step2');
+  assert.equal(corrected.stages[0].minimumGradeId,drafter.gradeId);assert.equal(corrected.stages[0].requiredGrade.id,drafter.gradeId);
   await db.employee.update({where:{id:s.people.lead.id},data:{status:'SUSPENDED'}});
-  const selfOnly=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.junior.id});assert.equal(selfOnly.complete,false);assert.equal(selfOnly.stages[1].unavailableReason,'DRAFTER_ONLY');
+  const selfOnly=await previewLedgerRegistration(db,s.company.id,drafter,source,config,{step1EmployeeId:s.people.junior.id});assert.equal(selfOnly.complete,false);assert.equal(selfOnly.stages[0].unavailableReason,'DRAFTER_ONLY');
   await db.employee.update({where:{id:drafter.id},data:{orgRole:'OPERATOR'}});
   const none=await previewLedgerRegistration(db,s.company.id,{...drafter,orgRole:'OPERATOR'},source,config,{step1EmployeeId:s.people.junior.id});assert.equal(none.stages[1].unavailableReason,'NO_ELIGIBLE');assert.equal(none.complete,false);
   const missing=await previewLedgerRegistration(db,s.company.id,drafter,source,{registrationStages:[{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:null}]});assert.equal(missing.stages[0].unavailableReason,'GRADE_NOT_CONFIGURED');assert.equal(missing.complete,false);

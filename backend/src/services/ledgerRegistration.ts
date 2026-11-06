@@ -2,6 +2,10 @@ import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {resolveLedgerCounterparty,entryCounterparty} from './ledgerCounterparty';
+import {validateApprovalRules,resolveApprovalRules} from './approvalRules';
+import {defaultApprovalSettings} from './expenseApproval';
+import {canSkipApprovalStage} from './approvalStageAuthority';
+const subject={key:'BANK_LEDGER',menuPath:'/bank-ledger',hasAmount:true,enabled:true};
 const fail=(code:string):never=>{throw createHttpError(400,code);};
 export async function defaultLedgerRegistration(db:any,orgId:number){
  const expense=await db.systemSetting.findUnique({where:{key:`EXPENSE_APPROVAL_POLICY:${orgId}`}});
@@ -9,6 +13,12 @@ export async function defaultLedgerRegistration(db:any,orgId:number){
  return {revision:0,drafterScope:{role:'ALL',gradeId:null},registrationStages:[{role:'ACCOUNTANT',gradeId:null,gradeMatch:'ANY'},{role:'ACCOUNTANT',gradeId:senior?.id||null,gradeMatch:'MINIMUM'}]};
 }
 export async function validateLedgerRegistration(db:any,orgId:number,input:any){
+ const scope=input?.drafterScope||{role:'ALL',gradeId:null};
+ if(!['ALL','ADMIN','ACCOUNTANT','OPERATOR'].includes(scope.role)||scope.gradeId!=null&&(!Number.isSafeInteger(scope.gradeId)||!await db.employeeGrade.findFirst({where:{id:scope.gradeId,orgId,isActive:true,set:{isActive:true}}})))fail('INVALID_APPROVAL_RULE');
+ if(input?.rules!==undefined&&input?.kind==='BANK_LEDGER'){
+  if(!Array.isArray(input.rules)||!input.rules.length)fail('INVALID_APPROVAL_RULE');
+  return {version:2,kind:'BANK_LEDGER',revision:input.revision,drafterScope:scope,limits:defaultApprovalSettings().limits,rules:await validateApprovalRules(db,orgId,input.rules,subject)};
+ }
  if(!Array.isArray(input?.registrationStages)||!input.registrationStages.length||input.registrationStages.length>10)fail('INVALID_APPROVAL_RULE');
  const stages=[];
  for(const stage of input.registrationStages){
@@ -16,7 +26,7 @@ export async function validateLedgerRegistration(db:any,orgId:number,input:any){
   if(stage.gradeMatch!=='ANY'&&(!Number.isSafeInteger(stage.gradeId)||!await db.employeeGrade.findFirst({where:{id:stage.gradeId,orgId,isActive:true,set:{isActive:true}}})))fail('INVALID_APPROVAL_RULE');
   stages.push({role:stage.role,gradeId:stage.gradeMatch==='ANY'?null:stage.gradeId,gradeMatch:stage.gradeMatch});
  }
- return {revision:input.revision,registrationStages:stages,drafterScope:{role:'ALL',gradeId:null}};
+ return {revision:input.revision,registrationStages:stages,drafterScope:scope};
 }
 export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
  const payload=input.payload,parents=payload?.rows?.filter((r:any)=>r.entryKind==='BANK');
@@ -42,8 +52,14 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
  return {menu:'BANK_LEDGER',operation:'CREATE',kind:'batch',id:input.sourceId,version:null,revision,snapshot,entry:{account,evidenceType:'FILE'},items:rows.map((r:any)=>({currency:account.currencyCode,unitPrice:/^\d+(\.\d{1,4})?$/.test(r.amount)?r.amount:'0',quantity:'1',vatRate:'0'}))};
 }
 export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,source:any,config:any,selection:any={}){
- const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[];
+ const total=source.items.reduce((sum:any,i:any)=>sum.add(i.unitPrice),new Prisma.Decimal(0));
+ if(config.version===2&&config.kind==='BANK_LEDGER'){
+  const result=await resolveApprovalRules(db,orgId,drafter,new Map([[source.entry.account.currencyCode,total]]),config,selection,true,subject);
+  if(!result)fail('APPROVAL_RULE_NOT_FOUND');return result!;
+ }
+ const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],skipped:string[]=[],effectiveRegistrationStages:any[]=[];
  for(const [index,stage] of config.registrationStages.entries()){
+  if(await canSkipApprovalStage(db,orgId,drafter,stage,index===config.registrationStages.length-1)){skipped.push('step'+(index+1));continue;}
   const grade=stage.gradeId?await db.employeeGrade.findFirst({where:{id:stage.gradeId,orgId,isActive:true,set:{isActive:true}}}):null;
   const pool=stage.gradeMatch!=='ANY'&&!grade?[]:await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,...(grade?{grade:stage.gradeMatch==='MINIMUM'?{orgId,setId:grade.setId,sortOrder:{gte:grade.sortOrder},isActive:true,set:{isActive:true}}:{id:grade.id,isActive:true,set:{isActive:true}}}:{})},select:{id:true,name:true,gradeId:true,grade:{select:{name:true,nameKo:true,nameEn:true,nameVi:true}}},orderBy:[{name:'asc'},{id:'asc'}]});
   const candidates=pool.filter((person:any)=>person.id!==drafter.id&&!ids.includes(person.id));
@@ -51,7 +67,7 @@ export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,
   const key='step'+(index+1),chosen=candidates.find((p:any)=>p.id===(selection[key+'EmployeeId']??(candidates.length===1?candidates[0].id:null)));
   if(chosen){ids.push(chosen.id);resolvedStages.push({employeeId:chosen.id,role:stage.role,gradeId:chosen.gradeId});}
   stages.push({key,role:stage.role,gradeId:stage.gradeMatch==='EXACT'?stage.gradeId:null,minimumGradeId:stage.gradeMatch==='MINIMUM'?stage.gradeId:null,requiredGrade:grade?{id:grade.id,name:grade.name,nameKo:grade.nameKo,nameEn:grade.nameEn,nameVi:grade.nameVi}:null,gradeMatch:stage.gradeMatch,unavailableReason,employeeId:chosen?.id||null,name:chosen?.name,candidates});
+  effectiveRegistrationStages.push(stage);
  }
- const total=source.items.reduce((sum:any,i:any)=>sum.add(i.unitPrice),new Prisma.Decimal(0));
- return {ids,stages,drafter,complete:ids.length===stages.length,policy:{config,exempt:false,resolvedStages,totals:[{currency:source.entry.account.currencyCode,amount:total.toString()}]}};
+ return {ids,stages,drafter,complete:ids.length===stages.length,policy:{config,exempt:false,resolvedStages,skipped,effectiveRegistrationStages,totals:[{currency:source.entry.account.currencyCode,amount:total.toString()}]}};
 }

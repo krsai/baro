@@ -12,7 +12,7 @@ export function defaultApprovalBands(settings,grades,group){
  const grade=code=>grades.find(row=>row.code===code)?.id||null;
  const senior={role:'ACCOUNTANT',gradeId:settings.fallbackGrades?.senior||settings.seniorGradeId||grade('CL2')};
  const lead={role:'ACCOUNTANT',gradeId:settings.fallbackGrades?.lead||settings.leadGradeId||grade('CL3')};
- const admin={role:'ADMIN',gradeId:null},limits=settings.limits[group.currency];
+ const admin={role:'ADMIN',gradeId:null},limits=settings.limits?.[group.currency];
  if(!limits?.senior||!limits?.lead)return [];
  // This is a view of the existing fallback, not a write or an inferred new rule.
  // Self-authority depends on the drafter's grade and stays with the server.
@@ -30,20 +30,20 @@ export function replaceApprovalGroup(rules,group,rows){
  if(!group.gradeId){const last=rest.findLastIndex(row=>row.currency===group.currency&&row.drafterRole===group.role&&row.drafterGradeId);if(last>=0)index=Math.max(index,last+1);}
  return [...rest.slice(0,index),...rows,...rest.slice(index)];
 }
-export function invalidApprovalBands(rules){
+export function invalidApprovalBands(rules,{requireAccountant=true}={}){
  if(rules.length>30)return true;
  if(approvalBandOrderErrors(rules).size)return true;
  return rules.some(row=>{
   const min=approvalAmountUnits(row.min,row.currency),max=boundedApprovalBand(row)?approvalAmountUnits(row.max,row.currency):null;
-  if(min===null||boundedApprovalBand(row)&&(max===null||max<min)||!row.stages?.length||row.stages.length>10||['ALL','OPERATOR'].includes(row.drafterRole)&&!row.stages.some(stage=>stage.role==='ACCOUNTANT'))return true;
-  return row.stages.some(stage=>!stage.role||stage.role!=='ADMIN'&&!stage.gradeId);
+  if(min===null||boundedApprovalBand(row)&&(max===null||max<min)||!row.stages?.length||row.stages.length>10||requireAccountant&&['ALL','OPERATOR'].includes(row.drafterRole)&&!row.stages.some(stage=>stage.role==='ACCOUNTANT'))return true;
+  return row.stages.some(stage=>!stage.role||stage.role!=='ADMIN'&&!stage.gradeId&&stage.gradeMatch!=='ANY');
  });
 }
 export const cleanApprovalBands=rules=>rules.map(({__bounded,...row})=>row);
 export function combineApprovalCurrencyRows(groups){
  const combined=new Map();
  for(const {currency,rows} of groups)rows.forEach((rule,index)=>{
-  const signature=JSON.stringify(rule.stages.map(stage=>[stage.role,stage.gradeId||null]));
+  const signature=JSON.stringify(rule.stages.map(stage=>[stage.role,stage.gradeId||null,stage.gradeMatch||'EXACT']));
   const key=index+':'+boundedApprovalBand(rule)+':'+signature;
   if(!combined.has(key))combined.set(key,{index,stages:rule.stages,entries:[]});
   combined.get(key).entries.push({currency,index,rule});

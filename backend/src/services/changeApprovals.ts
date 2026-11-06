@@ -75,7 +75,7 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
   preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:null,employeeId:chosen?.id||null,candidates}];preview.ids=chosen?[chosen.id]:[];preview.complete=!!chosen;
  }
  const stages=preview.stages.filter((stage:any)=>!stage.vacant);
- const policy={...preview.policy,highestSelfDeletion,exempt:false,requestedByRole:actor.orgRole,requestedByGradeId:actor.gradeId??null,menu:s.menu,operation:s.operation,resolvedStages:stages.filter((stage:any)=>stage.employeeId).map((stage:any)=>({employeeId:stage.employeeId,role:stage.role,gradeId:stage.gradeId??null}))};
+ const policy={...preview.policy,highestSelfDeletion,exempt:false,requestedByRole:actor.orgRole,requestedByGradeId:actor.gradeId??null,menu:s.menu,operation:s.operation,resolvedStages:stages.filter((stage:any)=>stage.employeeId).map((stage:any)=>({employeeId:stage.employeeId,role:stage.role,gradeId:(preview.policy as any).resolvedStages?.find((resolved:any)=>resolved.employeeId===stage.employeeId)?.gradeId??stage.gradeId??null}))};
  return {source:s,preview:{...preview,policy},policy};
 }
 export async function requestChangeApproval(db:any,orgId:number,actorId:number,input:any){
@@ -120,7 +120,7 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
   if(row.status!=='PENDING'){const old=decisions.find((d:any)=>d.employeeId===actorId);if(old?.decision===body.decision&&(old.reason||'')===reason)return row;fail('CHANGE_ALREADY_DECIDED');}
   const next=row.policy.resolvedStages[decisions.length];if(!next||next.employeeId!==actorId||next.role!==actor.orgRole||next.gradeId!=null&&(next.gradeId!==actor.gradeId||!actor.grade?.isActive||!actor.grade?.set?.isActive))fail('CHANGE_APPROVER_REQUIRED',403);
   if(row.operation==='CREATE'){
-   const rule=row.policy.config.registrationStages[decisions.length];
+   const rule=(row.policy.effectiveRegistrationStages||row.policy.config.registrationStages)[decisions.length];
    if(rule.gradeMatch!=='ANY'){const grade=await tx.employeeGrade.findFirst({where:{id:rule.gradeId,orgId,isActive:true,set:{isActive:true}}});if(!grade||!actor.grade?.isActive||actor.grade.setId!==grade.setId||(rule.gradeMatch==='MINIMUM'?actor.grade.sortOrder<grade.sortOrder:actor.gradeId!==grade.id))fail('CHANGE_APPROVER_REQUIRED',403);}
   }
   const s=body.decision==='APPROVED'?await source(tx,orgId,row,true):null;if(s&&s.revision!==row.revision)fail('CHANGE_SOURCE_CHANGED');
