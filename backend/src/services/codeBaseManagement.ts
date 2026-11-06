@@ -21,6 +21,9 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   await tx.$queryRawUnsafe('LOCK TABLE "TransactionCodeBase", "SettingTransactionCodeDefault", "TransactionCode" IN SHARE ROW EXCLUSIVE MODE');
   const previous = id ? await tx.transactionCodeBase.findUnique({ where: { id },include:{expenseType:true} }) : null;
   if(id&&!previous)throw createHttpError(404,'SETTING_NOT_FOUND');
+  // New families are usable immediately. Preserve deliberate historical retirement.
+  data.isActive=previous?.isActive??true;
+  body={...body,isActive:data.isActive};
   if(body.expenseTypeId!=null&&body.expenseTypeId!==previous?.expenseTypeId)throw createHttpError(410,'ACCOUNTING_TYPES_RETIRED');
   if(previous&&body.serviceTypeId!=null&&body.serviceTypeId!==previous.serviceTypeId)throw createHttpError(409,'CODE_BASE_IDENTITY_IMMUTABLE');
   if(previous?.expenseType?.code==='OTHER')throw createHttpError(410,'OTHER_EXPENSE_TYPE_RETIRED');

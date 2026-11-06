@@ -3,7 +3,7 @@ import SelectionSummaryRow from '../../components/SelectionSummaryRow';
 import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
 import React,{useCallback,useEffect,useState} from 'react';
-import {Alert,Box,Button,Checkbox,Chip,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
+import {Alert,Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewSidebarOutlinedIcon from '@mui/icons-material/ViewSidebarOutlined';
 import AccountingSubtypePanel,{SUBTYPE_PICKER_TEXT} from '../../components/AccountingSubtypePanel';
@@ -23,9 +23,9 @@ import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import {TRANSACTION_CLASSIFICATION_FLOW} from '../../constants/industryHierarchy';
 
 const TEXT={
- ko:{title:'회계 코드 관리',all:'전체 코드',category:'구분 · 세부 업종',industry:'세부 업종',add:'기본 코드 등록',code:'기본 코드',name:'거래 내용',active:'사용 설정',edit:'수정',save:'저장',cancel:'취소',empty:'등록된 기본 코드가 없습니다.',error:'설정을 불러오거나 저장하지 못했습니다.',conflict:'같은 기본 코드 또는 변경할 회사별 코드가 이미 있습니다. 다른 코드를 입력해 주세요.',stale:'연결 세부 업종이 변경되었습니다. 다시 조회한 후 저장하세요.',mode:'입력 방식',PROCESS:'생산 실적 연결',LOGISTICS:'운송 비용',GENERAL:'일반 비용'},
- en:{title:'Accounting codes',all:'All codes',category:'Categories > Industries',industry:'Industry',add:'Add base code',code:'Base code',name:'Description',active:'Enabled',edit:'Edit',save:'Save',cancel:'Cancel',empty:'No base codes registered.',error:'Could not load or save settings.',conflict:'The base code or a resulting company code already exists. Enter a different code.',stale:'Linked industries changed. Reload before saving.',mode:'Input method',PROCESS:'Production record',LOGISTICS:'Transport cost',GENERAL:'General cost'},
- vi:{title:'Mã kế toán',all:'Tất cả mã',category:'Nhóm > ngành nghề',industry:'Ngành nghề',add:'Thêm mã gốc',code:'Mã gốc',name:'Nội dung',active:'Cho phép sử dụng',edit:'Sửa',save:'Lưu',cancel:'Hủy',empty:'Chưa có mã gốc.',error:'Không thể tải hoặc lưu cài đặt.',conflict:'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại. Vui lòng nhập mã khác.',stale:'Ngành nghề liên kết đã thay đổi. Tải lại trước khi lưu.',mode:'Cách nhập',PROCESS:'Sản lượng gia công',LOGISTICS:'Chi phí vận chuyển',GENERAL:'Chi phí chung'},
+ ko:{title:'회계 코드 관리',all:'전체 코드',category:'구분 · 세부 업종',industry:'세부 업종',add:'기본 코드 등록',code:'기본 코드',name:'거래 내용',edit:'수정',save:'저장',cancel:'취소',empty:'등록된 기본 코드가 없습니다.',error:'설정을 불러오거나 저장하지 못했습니다.',conflict:'같은 기본 코드 또는 변경할 회사별 코드가 이미 있습니다. 다른 코드를 입력해 주세요.',stale:'연결 세부 업종이 변경되었습니다. 다시 조회한 후 저장하세요.',mode:'입력 방식',PROCESS:'생산 실적 연결',LOGISTICS:'운송 비용',GENERAL:'일반 비용'},
+ en:{title:'Accounting codes',all:'All codes',category:'Categories > Industries',industry:'Industry',add:'Add base code',code:'Base code',name:'Description',edit:'Edit',save:'Save',cancel:'Cancel',empty:'No base codes registered.',error:'Could not load or save settings.',conflict:'The base code or a resulting company code already exists. Enter a different code.',stale:'Linked industries changed. Reload before saving.',mode:'Input method',PROCESS:'Production record',LOGISTICS:'Transport cost',GENERAL:'General cost'},
+ vi:{title:'Mã kế toán',all:'Tất cả mã',category:'Nhóm > ngành nghề',industry:'Ngành nghề',add:'Thêm mã gốc',code:'Mã gốc',name:'Nội dung',edit:'Sửa',save:'Lưu',cancel:'Hủy',empty:'Chưa có mã gốc.',error:'Không thể tải hoặc lưu cài đặt.',conflict:'Mã gốc hoặc mã công ty sau khi đổi đã tồn tại. Vui lòng nhập mã khác.',stale:'Ngành nghề liên kết đã thay đổi. Tải lại trước khi lưu.',mode:'Cách nhập',PROCESS:'Sản lượng gia công',LOGISTICS:'Chi phí vận chuyển',GENERAL:'Chi phí chung'},
 };
 const path='/system-setting-defaults/code-bases';
 export default function AccountingCodeSettings(){
@@ -71,7 +71,7 @@ export default function AccountingCodeSettings(){
  const save=async()=>{
   setSaving(true);setError('');
   try{
-   const {expenseTypeId,expenseType,industryLinks,industries:oldIndustries,variants,...body}=form;
+   const {expenseTypeId,expenseType,industryLinks,industries:oldIndustries,variants,isActive,isAvailable,...body}=form;
    await requestJSON(path+(form.id?'/'+form.id:''),{method:form.id?'PUT':'POST',body:JSON.stringify({...body,taxTreatmentIds:[1,2,3]})});setForm(null);await load();
   }catch(failure){setError(failure?.message==='CODE_RENAME_CONFLICT'?text.conflict:failure?.message==='ACCOUNTING_INDUSTRY_CHANGED'?text.stale:text.error);}finally{setSaving(false);}
  };
@@ -80,21 +80,21 @@ export default function AccountingCodeSettings(){
   <PageContentStack><Typography variant="body2" color="text.secondary">{usageText.explanation}</Typography><Typography variant="body2" color="text.secondary">{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>{error&&<Alert severity="error">{error}</Alert>}
    <HierarchyPanel label={text.category} items={items} selectedId={selected} onSelect={setSelected}>
     <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography>{fundsSelected&&<Typography variant="caption" color="text.secondary">{internalFundsText[languageCode]||internalFundsText.en}</Typography>}</Stack>
-    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,directionText.label,text.active,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
+    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,directionText.label,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>
-      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{(row.isAvailable??row.isActive)?'✓':'—'}</TableCell><TableCell>{row.transactionUsage&&<Tooltip title={usageTitle(row)}><Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={(row.transactionUsage.current?usageText.current:row.transactionUsage.history?usageText.history:usageText.none)+(row.transactionUsage.current||row.transactionUsage.history?' '+(row.transactionUsage.current||row.transactionUsage.history)+' '+usageText.count:'')}/></Tooltip>}</TableCell><TableCell><Stack direction="row">
+      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Tooltip title={usageTitle(row)}><Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={(row.transactionUsage.current?usageText.current:row.transactionUsage.history?usageText.history:usageText.none)+(row.transactionUsage.current||row.transactionUsage.history?' '+(row.transactionUsage.current||row.transactionUsage.history)+' '+usageText.count:'')}/></Tooltip>}</TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
        <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={row.transactionUsage?.history&&!row.transactionUsage?.current?usageText.protected:usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
-      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={7}>{text.empty}</TableCell></TableRow>}</TableBody>
+      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={6}>{text.empty}</TableCell></TableRow>}</TableBody>
     </Table></TableContainer>
    </HierarchyPanel>
   </PageContentStack>
   <Dialog open={Boolean(form)} onClose={()=>!saving&&setForm(null)} fullWidth maxWidth={pickerOpen?'xl':'md'} slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)',transition:theme=>theme.transitions.create('max-width',{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}}}>
    <DialogTitle>{form?.id?text.edit:text.add}</DialogTitle>
    <DialogContent dividers>{form&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:pickerOpen?'minmax(0,1fr) 380px':'minmax(0,1fr) 0px'},columnGap:{xs:0,md:pickerOpen?2.5:0},rowGap:2.5,alignItems:'start',overflowX:'clip',transition:theme=>theme.transitions.create(['grid-template-columns','column-gap'],{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}>{error&&<Alert severity="error" sx={{gridColumn:'1 / -1'}}>{error}</Alert>}<Stack spacing={2.5} sx={{py:1,minWidth:0,display:{xs:showPicker?'none':'flex',md:'flex'}}}>
-    <Box sx={{display:'flex',justifyContent:'space-between',gap:2}}><TextField required label={text.code} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/><FormControlLabel label={text.active} control={<Checkbox checked={form.isActive} disabled={saving||form.legacyUsageDisabled} onChange={event=>setForm({...form,isActive:event.target.checked})}/>}/></Box>
+    <TextField required label={text.code} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/>
     {form.legacyUsageDisabled&&<Typography variant="caption" color="text.secondary">{languageCode==='ko'?'기존 사용 중지 설정 유지':languageCode==='vi'?'Giữ cài đặt ngừng sử dụng hiện có':'Existing disabled setting preserved'}</Typography>}
     <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
     <TextField select id="accounting-cash-direction" fullWidth size="small" label={directionText.label} value={form.cashDirection||'BOTH'} disabled={saving} helperText={directionText.hint} onChange={event=>setForm(current=>({...current,cashDirection:event.target.value}))}>{['IN','OUT','BOTH'].map(value=><MenuItem key={value} value={value}>{directionText[value]}</MenuItem>)}</TextField>

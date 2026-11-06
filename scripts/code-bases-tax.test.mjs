@@ -62,6 +62,18 @@ async function fixture(legacyCode = 'OLD_CODE') {
   return db;
 }
 
+test('new accounting families are immediately usable and ordinary saves preserve deliberate retirement',async()=>{
+ const db=await fixture();try{
+  const industry=(await db.query(`SELECT id FROM "SettingServiceDefault" WHERE code='LOGISTICS'`)).rows[0];
+  const body={code:'NWC',nameKo:'New code',nameEn:'New code',nameVi:'New code',serviceTypeId:industry.id,taxTreatmentIds:[1,2,3],isActive:false};
+  const created=await db.transaction(tx=>service.saveCodeBase(adapter(tx),body));assert.equal(created.isActive,true);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM "SettingTransactionCodeDefault" WHERE "baseId"=$1 AND "isActive"',[created.id])).rows[0].n,3);
+  assert.equal((await db.transaction(tx=>service.saveCodeBase(adapter(tx),body,created.id))).isActive,true);
+  await db.query('UPDATE "TransactionCodeBase" SET "isActive"=false WHERE id=$1',[created.id]);
+  assert.equal((await db.transaction(tx=>service.saveCodeBase(adapter(tx),{...body,isActive:true},created.id))).isActive,false);
+ }finally{await db.close();}
+});
+
 test('expense catalogue provisions all system variants despite legacy industry-code collisions, preserving existing FKs',async()=>{
   const db=await fixture();try {
     await db.exec(`INSERT INTO "Organization"(id,type) VALUES(1,'MANUFACTURER');
