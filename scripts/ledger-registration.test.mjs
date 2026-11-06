@@ -32,7 +32,7 @@ test('single-account ledger registration uses two independent accounting approva
  try{
   const s=await seedChangeApproval(db),org=s.company.id;
   const bank=(extra={})=>({entryKind:'BANK',accountId:s.account.id,transactionDate:'2026-11-05',direction:'IN',amount:'10',remark:'Received',purpose:'Received',evidenceType:'FILE',evidenceNumber:'Receipt',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id},clientKey:randomUUID(),...extra});
-  const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[bank(),bank({amount:'20'})]};
+  const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[bank({remark:'',purpose:''}),bank({amount:'20'})]};
   const input={menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:payload.clientKey,payload,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id}};
   const preview=(await previewChangeApproval(db,org,s.people.admin.id,input)).preview;
   assert.equal((await previewChangeApproval(db,org,s.people.admin.id,{...input,payload:{...payload,rows:[bank({amount:'',counterparty:null})]}})).preview.stages.length,2,'the amount-independent line can be selected before completing details');
@@ -45,6 +45,7 @@ test('single-account ledger registration uses two independent accounting approva
   await assert.rejects(decideChangeApproval(db,org,s.people.admin.id,request.id,{decision:'APPROVED'}),/CHANGE_APPROVER_REQUIRED/);
   await decideChangeApproval(db,org,s.people.junior.id,request.id,{decision:'APPROVED'});assert.equal(await db.bankLedgerEntry.count(),0);
   const done=await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});assert.equal(done.status,'APPROVED');assert.equal(done.result.entryIds.length,2);assert.equal(await db.bankLedgerEntry.count(),2);
+  assert.ok((await db.bankLedgerEntry.findUnique({where:{id:done.result.entryIds[0]}})).purpose,'blank optional remarks use the accounting description for the required ledger purpose');
   await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});assert.equal(await db.bankLedgerEntry.count(),2);
   const rejectPayload={...payload,clientKey:randomUUID(),rows:[bank()]};const rejected=await requestChangeApproval(db,org,s.people.admin.id,{...input,clientKey:randomUUID(),sourceId:rejectPayload.clientKey,payload:rejectPayload});await decideChangeApproval(db,org,s.people.junior.id,rejected.id,{decision:'REJECTED',reason:'Wrong receipt'});assert.equal(await db.bankLedgerEntry.count(),2);
   const correction={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[bank({amount:'15'})]};

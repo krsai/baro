@@ -19,6 +19,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/document-entry-summary-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
+  console.log('Checking document entry',lang,width);
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],requests=[],direct=[];page.setDefaultTimeout(9000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const auth={isAuthenticated:true,activeOrgId:1,activeOrgRole:'ADMIN',activeProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:'ADMIN'},accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:'ADMIN',accessPolicy:${JSON.stringify(getDefaultRoleAccessPolicy())}}};export const useAuth=()=>auth;`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAppActions=()=>({navigateToPath:()=>{},showNotification:(message)=>{window.toasts=(window.toasts||[]).concat(message);},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});`}));
@@ -40,7 +41,9 @@ try{
   const account=page.getByTestId('document-entry-header').getByRole('textbox',{name:t.account,exact:true});await account.fill('Bank B / USD');await account.press('Enter');
   await page.getByRole('button',{name:w.add,exact:true}).click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),2);
   assert.equal(await page.locator('[data-ledger-entry-row]').getByRole('textbox',{name:l.remark,exact:true}).count(),0);
-  await page.getByRole('textbox',{name:l.documentRemark,exact:false}).fill('Shared remark');
+  const sharedRemark=width===1440?'Shared remark':'';
+  assert.equal(await page.getByRole('textbox',{name:l.documentRemark,exact:false}).getAttribute('required'),null);
+  await page.getByRole('textbox',{name:l.documentRemark,exact:false}).fill(sharedRemark);
   for(const [i,amount] of ['10','20'].entries()){
    const row=page.locator('[data-ledger-entry-row="'+i+'"]');await row.getByRole('textbox',{name:c.party}).fill('BARO');await page.keyboard.press('Enter');await row.getByRole('textbox',{name:t.amount,exact:true}).fill(amount);
    if(i===1){await row.getByRole('combobox').first().click();await page.getByRole('option',{name:w.OUT||t.OUT,exact:true}).click();}
@@ -48,7 +51,8 @@ try{
   }
   const totals=page.getByTestId('ledger-totals');assert.ok((await totals.innerText()).includes('-$10.00'));assert.equal(await totals.getByText(l.netChange,{exact:true}).count(),1);
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:c.request,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
-  assert.equal(requests.length,1);assert.deepEqual(requests[0].payload.rows.map(row=>row.remark),['Shared remark','Shared remark']);assert.deepEqual(requests[0].payload.rows.map(row=>row.accountId),['b','b']);assert.equal(direct.length,0);
+  assert.equal(requests.length,1);assert.deepEqual(requests[0].payload.rows.map(row=>row.remark),[sharedRemark,sharedRemark]);assert.deepEqual(requests[0].payload.rows.map(row=>row.accountId),['b','b']);assert.equal(direct.length,0);
+  if(process.env.REMARK_ONLY==='1'){assert.deepEqual(errors,[]);await page.close();continue;}
   await page.goto(`http://127.0.0.1:${port}/document-entry-summary-acceptance.html`);await page.locator('[data-ledger-entry-row]').waitFor();assert.equal(await page.getByText(l.limit,{exact:true}).count(),0);
   if(lang==='ko'&&width===1440){for(let i=1;i<50;i++)await page.getByRole('button',{name:w.add,exact:true}).first().click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),50);await page.getByRole('button',{name:w.add,exact:true}).first().click();assert.equal(await page.locator('[data-ledger-entry-row]').count(),50);assert.equal(await page.evaluate(()=>window.toasts.length),1);}
   await reply('**/expense-payees?*',[{id:11,name:'BARO',code:'BARO',isActive:true,type:'BRAND',serviceTypes:[]}]);await reply('**/app-settings?*',{});await reply('**/expense-units?*',[]);await reply('**/orders?*',[]);await reply('**/expense-approval-settings?*',{drafter:{id:1,name:'Drafter',orgRole:'ADMIN'},settings:{},candidates:[]});
@@ -57,5 +61,5 @@ try{
   if(lang==='ko'&&width===1440){for(let i=2;i<50;i++){await page.getByRole('button',{name:labels.add,exact:true}).first().evaluate(button=>button.click());await page.waitForFunction(expected=>document.querySelectorAll('tbody').length===expected,i+1);}await page.getByRole('button',{name:labels.add,exact:true}).first().evaluate(button=>button.click());assert.equal(await page.locator('tbody').getByRole('button',{name:labels.add,exact:true}).count(),50);assert.equal(await page.evaluate(()=>window.toasts.length),1);}
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Document entry summary passed ko/en/vi desktop/mobile: one shared remark saved through approval, signed totals, per-row add and 50-row toast limits for both editors.');
+ console.log(process.env.REMARK_ONLY==='1'?'Optional remark focused browser checks passed.':'Document entry summary passed ko/en/vi desktop/mobile: one shared remark saved through approval, signed totals, per-row add and 50-row toast limits for both editors.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

@@ -18,7 +18,7 @@ import {loadReferenceExchangeRates} from './referenceExchangeRates';
 export const LEDGER_ZERO_START='0001-01-01';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(value:any,max:number)=>typeof value==='string'&&value.trim()&&value.trim().length<=max?value.trim():fail('LEDGER_INVALID_INPUT');
-const ledgerRemark=(value:any)=>text(value,1000);
+const ledgerRemark=(value:any)=>typeof value==='string'&&value.trim().length<=1000?value.trim():fail('LEDGER_INVALID_INPUT');
 export const ledgerDate=(value:any)=>{
   if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return fail('LEDGER_INVALID_DATE');
   const date=new Date(`${value}T00:00:00.000Z`);
@@ -82,7 +82,7 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
     if(transactionDate<account.openingDate)return fail('LEDGER_BEFORE_OPENING');
     if(!['IN','OUT'].includes(body.direction))return fail('LEDGER_INVALID_DIRECTION');
     const codeId=accountingCodeId(body.accountingCodeId);
-    const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT'&&body.remark===undefined;
+    const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT'&&(body.remark===undefined||ledgerRemark(body.remark)==='');
     const purpose=body.remark!==undefined?(body.evidenceType==='ADJUSTMENT'?text(body.remark,1000):ledgerRemark(body.remark)):generatedPurpose?'':text(body.purpose,1000);
     const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),purpose,...(codeId===null?{}:{accountingCodeId:codeId})};
     const previous=await tx.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId,clientKey:data.clientKey}},include:{allocations:true}});
