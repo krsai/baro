@@ -1,4 +1,5 @@
 import SelectionSummaryRow from '../../components/SelectionSummaryRow';
+import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
 import React,{useCallback,useEffect,useState} from 'react';
 import {Alert,Box,Button,Checkbox,Chip,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
@@ -53,6 +54,8 @@ export default function AccountingCodeSettings(){
   ...sourceRows.filter(row=>row.partnerRoleId===role.id).map(industry=>({id:'industry:'+industry.id,label:name(industry),depth:1,count:rows.filter(row=>inIndustry(row,industry.id)).length})),
  ])];
  const [kind,idText]=selected.split(':'),selectedId=Number(idText);
+ const fundsIndustry=sourceRows.find(row=>row.code==='FUNDS');
+ const fundsSelected=fundsIndustry&&(kind==='industry'?selectedId===fundsIndustry.id:kind==='role'&&selectedId===fundsIndustry.partnerRoleId);
  useEffect(()=>{if(!loading&&!items.some(item=>item.id===selected))setSelected('ALL');},[loading,roles,industries,selected]);
  const visible=selected==='ALL'?rows:rows.filter(row=>kind==='role'?inRole(row,selectedId):inIndustry(row,selectedId));
  const openCreate=()=>{
@@ -73,7 +76,7 @@ export default function AccountingCodeSettings(){
  return <AppPageContainer title={text.title} titleActions={<Button variant="contained" disabled={loading||saving} onClick={openCreate}>{text.add}</Button>}>
   <PageContentStack><Typography variant="body2" color="text.secondary">{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>{error&&<Alert severity="error">{error}</Alert>}
    <HierarchyPanel label={text.category} items={items} selectedId={selected} onSelect={setSelected}>
-    <Typography variant="subtitle2" sx={{mb:2}}>{items.find(item=>item.id===selected)?.label||text.all}</Typography>
+    <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography>{fundsSelected&&<Typography variant="caption" color="text.secondary">{internalFundsText[languageCode]||internalFundsText.en}</Typography>}</Stack>
     <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,directionText.label,text.active,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
