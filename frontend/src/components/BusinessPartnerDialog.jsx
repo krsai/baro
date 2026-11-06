@@ -7,9 +7,10 @@ import {entityCodeError} from '../utils/entityCode.mjs';
 import EntityDetailSection from './EntityDetailSection';
 import EntityBankAccounts from './EntityBankAccounts';
 import { ENTITY_TEXT } from '../constants/entityProfile';
+import {PARTY_KIND_TEXT} from '../constants/partyKind';
 import React, { useEffect, useState } from 'react';
 import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Stack,
+  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Slide, Stack, useMediaQuery,
 } from '@mui/material';
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
@@ -82,6 +83,9 @@ export default function BusinessPartnerDialog({
   const [form, setForm] = useState(() => buildFormFromPartner(partner, initialType));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [pendingAccounts,setPendingAccounts]=useState([]),[panelOpen,setPanelOpen]=useState(false),[panelExiting,setPanelExiting]=useState(false),[panelTarget,setPanelTarget]=useState(null);
+  const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelVisible=panelOpen||panelExiting;
+  const togglePanel=next=>{if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
   const classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
 
@@ -89,6 +93,7 @@ export default function BusinessPartnerDialog({
     if (open) {
       setForm(buildFormFromPartner(partner, initialType));
       setError('');
+      setPendingAccounts([]);setPanelOpen(false);setPanelExiting(false);
     }
   }, [initialType, open, partner]);
 
@@ -101,6 +106,7 @@ export default function BusinessPartnerDialog({
 
   const save = async () => {
     if (!hasLocalizedName(form, 'name')) return setError(labels.required);
+    if(form.partyKind==='CORPORATE'&&!form.businessNumber.trim())return setError((PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en).businessRequired);
     if(!classificationLoaded||!optionsReady||!classificationComplete(form.classification))return setError(classificationText.required);
     setSaving(true);
     setError('');
@@ -113,6 +119,7 @@ export default function BusinessPartnerDialog({
         contactPhone: form.contactPhone.trim() || null,
         classification: classificationPayload(form.classification),
         ...(form.companyConnection?{companyConnection:form.companyConnection}:{}),
+        ...(!isEdit&&pendingAccounts.length?{bankAccounts:pendingAccounts.map(account=>Object.fromEntries(['accountKind','displayName','bankName','accountNumber','accountHolder','currencyId'].map(key=>[key,account[key]])))}:{}),
 
       };
       const savedPartner = await requestJSON(
@@ -129,32 +136,32 @@ export default function BusinessPartnerDialog({
       (onSaved || onCreated)?.(savedPartner);
       onClose?.();
     } catch (saveError) {
-      setError(saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind));
+      setError(['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onClose={() => !saving && onClose?.()} scroll="paper" fullWidth maxWidth="md" PaperProps={{sx:{m:{xs:1,sm:3},width:{xs:"calc(100% - 16px)",sm:"calc(100% - 48px)"},maxHeight:{xs:"calc(100dvh - 16px)",sm:"calc(100dvh - 48px)"},display:"flex",flexDirection:"column",overflow:"hidden"}}}>
+    <Dialog open={open} onClose={() => !saving && onClose?.()} scroll="paper" fullWidth maxWidth={panelVisible?'lg':'md'} PaperProps={{sx:{m:{xs:1,sm:3},width:{xs:"calc(100% - 16px)",sm:"calc(100% - 48px)"},maxHeight:{xs:"calc(100dvh - 16px)",sm:"calc(100dvh - 48px)"},display:"flex",flexDirection:"column",overflow:"hidden",transition:reducedMotion?'none':'max-width 200ms ease'}}}>
       <DialogTitle sx={{flexShrink:0}}>{title || (isEdit ? labels.titleEdit : labels.titleCreate)}</DialogTitle>
+      {error&&<Alert severity="error" sx={{mx:3,mb:1,flexShrink:0}}>{error}</Alert>}
       <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
-        <Stack spacing={2} sx={{ pt: 1 }}>
-          {error ? <Alert severity="error">{error}</Alert> : null}
+        <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:panelVisible?'minmax(0,1fr) 340px':'minmax(0,1fr)'},gap:panelVisible?2:0,alignItems:'start'}}><Stack spacing={2} sx={{ pt: 1,minWidth:0 }}>
           <CompanyConnectionField knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={partner?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!partner?.id&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={saving} languageCode={languageCode}/>
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={saving} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
-          <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange}/>
+          <EntityBankAccounts hideGuidance entityId={partner?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={setPendingAccounts} disabled={saving}/>
           <EntityDetailSection title={common.role}><Stack spacing={2}>
-          <PartnerClassificationFields value={form.linkedCompany?.subscriberOrgId?(form.linkedCompany.officialClassification||partner?.officialClassification||emptyPartnerClassification()):form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded||!!form.linkedCompany?.subscriberOrgId} languageCode={languageCode} onReady={setOptionsReady}/>
+          <PartnerClassificationFields expandable sidePanelTarget={panelTarget} sidePanelOpen={panelOpen} onPanelOpenChange={togglePanel} value={form.linkedCompany?.subscriberOrgId?(form.linkedCompany.officialClassification||partner?.officialClassification||emptyPartnerClassification()):form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={saving||!classificationLoaded||!!form.linkedCompany?.subscriberOrgId} languageCode={languageCode} onReady={setOptionsReady}/>
 
           </Stack></EntityDetailSection>
-        </Stack>
+        </Stack><Slide direction="left" in={panelOpen} timeout={reducedMotion?0:200} mountOnEnter unmountOnExit onExited={()=>setPanelExiting(false)}><Box ref={setPanelTarget} sx={{minWidth:0}}/></Slide></Box>
       </DialogContent>
       <DialogActions sx={{flexShrink:0,px:3,py:2,flexWrap:'wrap',gap:1,'& > :not(style) ~ :not(style)':{ml:0}}}>
         <Button onClick={onClose} disabled={saving}>{labels.cancel}</Button>
         <Stack direction="row" spacing={1} alignItems="center" sx={{maxWidth:'100%'}}>
         <Box component="span" ref={setConnectionActionsTarget} sx={{display:'inline-flex'}}/>
-        <Button variant="contained" onClick={save} disabled={saving || !hasLocalizedName(form, 'name') || !optionsReady || !classificationLoaded || !classificationComplete(form.classification)}>{isEdit ? labels.saveEdit : labels.save}</Button>
+        <Button variant="contained" onClick={save} disabled={saving}>{isEdit ? labels.saveEdit : labels.save}</Button>
         </Stack>
       </DialogActions>
     </Dialog>

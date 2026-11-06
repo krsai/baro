@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:partner-registration-drafts": "npm --prefix backend run build && node --test scripts/new-partner-bank-accounts.test.mjs scripts/business-accounts.test.mjs && node scripts/partner-registration-drafts-browser.test.mjs",
     "test:company-connection-actions": "node scripts/company-connections-browser.test.mjs --lookup-only",
     "test:business-legal-form": "npm --prefix backend run build && node --test scripts/business-legal-form.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/entity-profile-browser.test.mjs --legal-form-only",
     "test:ledger-registration": "npm --prefix backend run build && node --test scripts/ledger-registration.test.mjs scripts/expense-payee.test.mjs scripts/company-industries.test.mjs scripts/company-connections.test.mjs scripts/change-approvals.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-registration-browser.test.mjs && node scripts/approval-candidate-shortage-browser.test.mjs && node scripts/approval-settings-browser.test.mjs",

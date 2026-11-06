@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {ENTITY_TEXT} from '../frontend/src/constants/entityProfile.js';
+import {PARTY_KIND_TEXT} from '../frontend/src/constants/partyKind.js';
+import {partnerClassificationPanelText} from '../frontend/src/constants/partnerClassificationPanel.js';
+const fixture=path.resolve('frontend/partner-registration-drafts-acceptance.html'),port=43469;assert.ok(!existsSync(fixture));
+writeFileSync(fixture,`<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Dialog from'/src/components/BusinessPartnerDialog';function App(){const[open,setOpen]=React.useState(true);return React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Dialog,{open,onClose:()=>setOpen(false),onCreated:()=>{window.saved=true;},activeOrgId:7,languageCode:new URLSearchParams(location.search).get('lang')})));}createRoot(document.getElementById('root')).render(React.createElement(App));</script></html>`);
+const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore'});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/partner-registration-drafts-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
+ browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+  console.log('Checking new partner draft',lang,width);const page=await browser.newPage({viewport:{width,height:900}}),errors=[],posts=[],banks=ENTITY_TEXT[lang],panel=partnerClassificationPanelText[lang];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(45000);
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgRole:"ADMIN",activeProfile:{orgRole:"ADMIN"}});'}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},role={id:1,nameEn:'Services',nameKo:'Services',nameVi:'Services'},industry={id:11,partnerRoleId:1,partnerRole:role,nameEn:'Office',nameKo:'Office',nameVi:'Office',isActive:true};let fail=true,bankWrites=0;
+  await page.route('**/partner-classifications/options?*',r=>r.fulfill({headers,json:{roles:[role],industries:[industry]}}));
+  await page.route('**/bank-account-currencies?*',r=>r.fulfill({headers,json:[{id:1,code:'USD'},{id:2,code:'VND'}]}));
+  await page.route('**/entities/*/bank-accounts*',r=>{bankWrites++;return r.fulfill({headers,status:500,json:{error:'Unexpected separate bank write'}});});
+  await page.route('**/business-partners?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});const body=r.request().postDataJSON();posts.push(body);if(fail){fail=false;return r.fulfill({headers,status:400,json:{error:'PARTNER_BUSINESS_NUMBER_REQUIRED'}});}return r.fulfill({headers,json:{id:55,...body}});});
+  await page.goto(`http://127.0.0.1:${port}/partner-registration-drafts-acceptance.html?lang=${lang}`);const dialog=page.getByRole('dialog').first(),register=dialog.getByRole('button',{name:{ko:'등록',en:'Add',vi:'Thêm'}[lang],exact:true});
+  await register.click();await dialog.getByRole('alert').waitFor();assert.equal(posts.length,0);let alert=await dialog.getByRole('alert').boundingBox();assert.ok(alert.y>=0&&alert.y+alert.height<900);
+  await dialog.locator('input[name=name]').fill('Vendor');await dialog.locator('input[name=code]').fill('VNDR');await dialog.locator('input[name=businessNumber]').fill('VN-12345');
+  for(const number of ['001','002']){await dialog.getByRole('button',{name:banks.add,exact:true}).click();const bank=page.getByRole('dialog').last();await bank.getByRole('textbox',{name:banks.bank,exact:false}).fill('Example Bank');await bank.getByRole('textbox',{name:banks.number,exact:false}).fill(number);await bank.getByRole('textbox',{name:banks.holder,exact:false}).fill('Vendor');await bank.getByRole('button',{name:banks.save,exact:true}).click();await dialog.getByText(number,{exact:true}).waitFor();}assert.equal(bankWrites,0);assert.equal(posts.length,0);
+  const before=await dialog.boundingBox();await dialog.getByRole('button',{name:panel.select,exact:true}).click();const aside=page.getByRole('complementary',{name:panel.select,exact:true});await aside.getByRole('checkbox',{name:'Services',exact:true}).check();await aside.getByRole('checkbox',{name:'Office',exact:true}).check();if(width===1440){const after=await dialog.boundingBox();assert.ok(after.width>before.width);assert.ok((await aside.boundingBox()).x>before.x);}
+  await aside.getByRole('textbox',{name:panel.search,exact:true}).fill('Office');assert.equal(await aside.getByRole('checkbox',{name:'Office',exact:true}).isChecked(),true);await aside.getByRole('button',{name:panel.close,exact:true}).click();await aside.waitFor({state:'hidden'});
+  await register.click();await dialog.getByRole('alert').getByText(PARTY_KIND_TEXT[lang].businessRequired,{exact:true}).waitFor();alert=await dialog.getByRole('alert').boundingBox();assert.ok(alert.y>=0&&alert.y+alert.height<900,'server errors remain visible above the scrolled form');assert.equal(await dialog.getByText('001',{exact:true}).count(),1);
+  await register.click();await page.waitForFunction(()=>window.saved===true);assert.equal(posts.length,2);assert.equal(bankWrites,0);assert.equal(posts[1].bankAccounts.length,2);assert.deepEqual(posts[1].classification,{revision:0,roleIds:[1],industryIds:[11]});assert.equal(posts[1].bankAccounts[0].accountNumber,'001');assert.equal('id' in posts[1].bankAccounts[0],false);assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.close();
+ }
+}finally{await browser?.close();server.kill();unlinkSync(fixture);}

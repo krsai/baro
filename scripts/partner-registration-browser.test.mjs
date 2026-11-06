@@ -1,3 +1,4 @@
+import {partnerClassificationPanelText} from '../frontend/src/constants/partnerClassificationPanel.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -15,15 +16,16 @@ const port=43223,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/partner-registration-acceptance.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath,headless:true});
- for(const lang of ['ko','en','vi'])for(const screen of ['customer','partner','supplier']){
+ for(const lang of ['ko','en','vi'])for(const screen of (process.env.PARTNER_REGISTRATION_SCREENS?.split(',')||['customer','partner','supplier'])){
   const page=await browser.newPage({viewport:{width:1400,height:1100}}),errors=[];page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message));let customerReads=0,payload,requestedCatalogue;
-  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeProfile:{orgRole:"ADMIN",entryType:"ORG"}});'}));
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN",activeProfile:{orgRole:"ADMIN",entryType:"ORG"}});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'window.notifications=[];const actions={navigateToPath:()=>{},showNotification:(message,level)=>window.notifications.push({message,level}),setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   const role={id:1,code:screen==='customer'?'CUSTOMER':screen==='supplier'?'MATERIAL_SUPPLIER':'PROCESS_OUTSOURCING',nameKo:'Category',nameEn:'Category',nameVi:'Category'};
   const source={id:screen==='customer'?31:1,code:'DETAIL',nameKo:'Detail',nameEn:'Detail',nameVi:'Detail',partnerRoleId:1,partnerRole:role,isActive:true};
   await page.route('**/partner-classifications/options?*',r=>{requestedCatalogue=new URL(r.request().url());return r.fulfill({headers,json:{roles:[role],industries:[source]}});});
+  await page.route('**/bank-account-currencies?*',r=>r.fulfill({headers,json:[{id:1,code:'VND'}]}));
   await page.route('**/entities/*/bank-accounts?*',r=>r.fulfill({headers,json:{accounts:[],currencies:[]}}));
   for(const endpoint of ['customers','business-partners'])await page.route(`**/${endpoint}?*`,r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
@@ -31,8 +33,9 @@ try{
    payload=r.request().postDataJSON();return r.fulfill({headers,status:201,json:{...payload,id:7,entityId:44,type:'BRAND'}});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-registration-acceptance.html${screen==='customer'?'':'?'+screen}`);
-  const category=page.getByRole('combobox',{name:PARTNER_CLASSIFICATION_TEXT[lang].category,exact:true});
-  await category.fill('Category');await page.getByRole('option',{name:'Category',exact:true}).click();await page.keyboard.press('Escape');
+  const panel=partnerClassificationPanelText[lang];
+  if(screen==='customer'){const category=page.getByRole('combobox',{name:PARTNER_CLASSIFICATION_TEXT[lang].category,exact:true});await category.fill('Category');await page.getByRole('option',{name:'Category',exact:true}).click();await page.keyboard.press('Escape');}
+  else{await page.getByRole('button',{name:panel.select,exact:true}).click();await page.getByRole('complementary').getByRole('checkbox',{name:'Category',exact:true}).check();}
   assert.equal(await page.evaluate(async()=>{const {resolveCustomerDisplayName}=await import('/src/utils/appLanguage.js');return resolveCustomerDisplayName({name:'English company',nameKo:'',nameVi:''},'${lang}');}),'English company');
   const industry=page.getByRole('combobox',{name:'Category > '+PARTNER_CLASSIFICATION_TEXT[lang].industry,exact:true});
   if(screen==='customer'){
@@ -55,7 +58,7 @@ try{
     const bounds=await page.locator(selector).boundingBox();assert.ok(bounds.y>=0 && bounds.y+bounds.height<=541,'Modal title and actions must stay inside viewport');
    }
    await page.setViewportSize({width:1280,height:600});
-   await industry.fill('Detail');assert.equal(await page.getByRole('option',{name:'Detail',exact:true}).count(),1);await page.getByRole('option',{name:'Detail',exact:true}).click();await page.keyboard.press('Escape');
+   await page.getByRole('complementary').getByRole('checkbox',{name:'Detail',exact:true}).check();await page.getByRole('button',{name:panel.close,exact:true}).click();await page.getByRole('complementary').waitFor({state:'hidden'});
    await page.getByRole('dialog').getByRole('button',{name:{ko:'등록',en:'Add',vi:'Thêm'}[lang],exact:true}).click();
    await page.waitForFunction(()=>document.documentElement.dataset.saved==='true');
    assert.equal(requestedCatalogue.searchParams.get('orgId'),'1');assert.equal(requestedCatalogue.pathname,'/partner-classifications/options');
@@ -64,5 +67,5 @@ try{
   }
   assert.deepEqual(await page.evaluate(()=>window.notifications.filter(row=>row.level==='error')),[]);assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Partner registration passed: ko/en/vi, static new customer route, SYSTEM industry IDs, canonical partner catalogue and SaaS partner creation.');
+ console.log('Partner registration passed in ko/en/vi: '+(process.env.PARTNER_REGISTRATION_SCREENS||'customer,partner,supplier'));
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}

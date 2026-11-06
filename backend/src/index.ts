@@ -23,6 +23,7 @@ import { normalizeLocalizedName } from './utils/localizedName';
 import { entityProfile, partnerProfilePatch, subscriberProfilePatch, resolvePartnerCode, resolvePartnerIdentity } from './services/entityProfile';
 import {registerPartnerClassificationRoutes,attachPartnerClassifications,validateClassification,saveClassification,requireClassificationActor} from './services/partnerClassification';
 import { registerEntityBankRoutes } from './services/entityBankAccount';
+import {saveNewPartnerBankAccounts} from './services/newPartnerBankAccounts';
 import {registerCompanyConnectionRoutes,connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany} from './services/companyConnections';
 import { displayProductionProgress } from './services/productionProgress';
 import { loadInvoiceBillingCoverage, billingCoversProduction, annotateAssignmentInvoiceWorkflow } from './services/invoiceWorkflow';
@@ -27797,6 +27798,7 @@ app.post("/business-partners", async (req, res) => {
         update: { ...partnerProfilePatch(req.body), ...identity, representative: contactName, phone: contactPhone, ...subscriberProfilePatch(linkedCompany) },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
+      if(req.body?.bankAccounts!==undefined)await saveNewPartnerBankAccounts(tx,organization.id,getCurrentRequestActorEmployeeId()!,partner.id,req.body.bankAccounts);
       await connectPartnerCompany(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if(Array.isArray(req.body?.serviceTypeIds))await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
       if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: partner.id, serviceTypeId, ownerOrgId: organization.id })) });

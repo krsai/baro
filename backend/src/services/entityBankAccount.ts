@@ -50,6 +50,12 @@ export async function saveEntityBankAccount(tx:any,orgId:number,actorId:number,e
   return result;
 }
 export function registerEntityBankRoutes(app:any,db:any,gates:any) {
+  app.get('/bank-account-currencies',async(req:any,res:any)=>{
+    const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!auth)return;
+    const actorId=gates.getActor(req);
+    if(!actorId||!await db.employee.findFirst({where:{id:actorId,orgId:auth.organization.id,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}},select:{id:true}}))throw createHttpError(403,'BANK_ACCOUNT_ACCESS_DENIED');
+    res.json(await db.currency.findMany({orderBy:{code:'asc'}}));
+  });
   const access=async(req:any,res:any)=>{
     const auth=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!auth)return null;
     const orgId=auth.organization.id,entityId=Number(req.params.entityId);
