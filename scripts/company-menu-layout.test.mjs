@@ -28,6 +28,17 @@ function source(system) {
   return vm.runInNewContext(`${code}; blueprint()`, context);
 }
 const flatten = items => items.flatMap(item => item.isParent ? flatten(item.children || []) : [item]);
+test('service transport starts in the sales group beside customer and partner management',()=>{
+ const menu=organizeCompanyMenu(source(false),key=>key,'SERVICE');
+ const group=menu.find(item=>item.menuGroupKey==='ORDER');
+ assert.equal(group.label,'menu.transportWorkflow');
+ assert.deepEqual(group.children.slice(0,2).map(row=>row.path),['/freight','/business-partner']);
+ assert.equal(group.children[0].label,'menu.transportList');
+ assert.equal(group.children[1].label,'menu.customerPartners');
+ assert.equal(flatten(menu).filter(row=>row.path==='/freight').length,1);
+ assert.equal(findMenuGroupForPath(menu,'/freight'),'ORDER');
+ assert.equal(group.children[1].accessChildren.length,4);
+});
 for (const system of [false, true]) {
   test(`actual canonical menus survive regrouping exactly once (SYSTEM=${system})`, () => {
     const original = source(system);

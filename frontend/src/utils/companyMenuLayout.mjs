@@ -18,15 +18,18 @@ export function organizeCompanyMenu(items, translate, orgType) {
       for (const child of item.children || []) if (child.path) leaves.set(child.path, child);
     }
   }
+  const transport=orgType==='SERVICE'?items.find(item=>item.path==='/freight'):null;
+  if(transport)leaves.set('/freight',{...transport,label:translate('menu.transportList')});
   const used = new Set();
-  const result = [...items.filter(item => !item.isParent)];
+  const result = [...items.filter(item => !item.isParent && !(transport&&item.path==='/freight'))];
   for (const [key, labelKey, paths] of GROUPS) {
     const source = groups.get(key);
-    const children = paths.map(path => {
+    const children = (transport&&key==='ORDER'?['/freight',...paths]:paths).map(path => {
       used.add(path);
-      return leaves.get(path);
+      const leaf=leaves.get(path);
+      return transport&&path==='/business-partner'&&leaf?{...leaf,label:translate('menu.customerPartners')}:leaf;
     }).filter(Boolean);
-    if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'partners':labelKey}`), children });
+    if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'transportWorkflow':labelKey}`), children });
   }
   // Preserve every unassigned menu, including all SYSTEM reference/admin routes.
   for (const item of items.filter(item => item.isParent)) {

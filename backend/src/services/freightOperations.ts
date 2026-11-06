@@ -57,6 +57,23 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
   const id=d[role+'Id'];
   if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id);}
  }
+ if(d.customerRole!==undefined){
+  data.customerRole=member(d.customerRole,['shipper','consignee']);
+  if(data[data.customerRole+'Id']!==customerId)fail('FREIGHT_CUSTOMER_ROLE');
+ }
+ if(d.workScope!==undefined&&d.workScope!==null){
+  const nodes=mode==='ROAD'?['ORIGIN_DOOR','DESTINATION_DOOR']:['ORIGIN_DOOR','ORIGIN_TERMINAL','DESTINATION_TERMINAL','DESTINATION_DOOR'];
+  if(typeof d.workScope!=='object'||Array.isArray(d.workScope))fail('FREIGHT_INVALID_INPUT');
+  const start=nodes.indexOf(d.workScope.start),end=nodes.indexOf(d.workScope.end);
+  if(start<0||end<=start)fail('FREIGHT_INVALID_INPUT');
+  data.workScope={start:nodes[start],end:nodes[end]};
+  if(d.pickupRequired===true&&(start!==0||!optional(d.pickupAddress,1000)))fail('FREIGHT_PICKUP_REQUIRED');
+ }
+ if(d.pickupPartyId!=null){
+  if(!Number.isSafeInteger(d.pickupPartyId)||d.pickupPartyId<=0)fail('FREIGHT_PARTY_SCOPE',403);
+  await scopedParty(tx,orgId,d.pickupPartyId);data.pickupPartyId=d.pickupPartyId;
+ }
+ data.incotermsPlace=optional(d.incotermsPlace,200);
  const shipmentType=member(d.shipmentType||(mode==='SEA'?'FCL':mode==='AIR'?'AIR':'ROAD'),['FCL','LCL','AIR','ROAD']);
  if((['FCL','LCL'].includes(shipmentType)?'SEA':shipmentType)!==mode)fail('FREIGHT_INVALID_INPUT');
  for(const key of ['pickupRequired','dangerousGoods'])if(d[key]!==undefined&&typeof d[key]!=='boolean')fail('FREIGHT_INVALID_INPUT');

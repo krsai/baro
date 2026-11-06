@@ -11,12 +11,23 @@ test('job registration validates scoped parties, preserves cargo details and sta
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const routes=new Map();require('../backend/dist/services/freightJobs').registerJobRoutes({get:()=>{},post:(path,fn)=>routes.set(path,fn),put:()=>{},delete:()=>{}},db,async()=>({orgId:org,actorId:actor}));
   const create=async body=>{let value;await routes.get('/freight/transport-jobs')({params:{},body},{json:row=>{value=row;}});return value;};
-  const body={clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',status:'DELIVERED',data:{shipperId:s.vendor.id,consigneeId:s.vendor.id,shipmentType:'FCL',incoterms:'FOB Hai Phong',cargo:'Garments',quantity:'20',weightKg:'250.5',cbm:'4.25',containerType:'40HC',containerCount:'2',pickupRequired:true,pickupAddress:'Separate warehouse',dangerousGoods:true,dangerousGoodsDetails:'UN 1993'}};
+  const body={clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',status:'DELIVERED',data:{customerRole:'shipper',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},billTo:'Destination forwarder',shipperId:s.vendor.id,consigneeId:s.vendor.id,shipmentType:'FCL',incoterms:'FOB Hai Phong',cargo:'Garments',quantity:'20',weightKg:'250.5',cbm:'4.25',containerType:'40HC',containerCount:'2',pickupRequired:true,pickupAddress:'Separate warehouse',dangerousGoods:true,dangerousGoodsDetails:'UN 1993'}};
   await assert.rejects(create({...body,data:{...body.data,shipperId:null}}),/FREIGHT_PARTIES_REQUIRED/);
   await assert.rejects(create({...body,data:{...body.data,consigneeId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
   await assert.rejects(create({...body,data:{...body.data,shipmentType:'AIR'}}),/FREIGHT_INVALID_INPUT/);
-  const saved=await create(body);assert.equal(saved.status,'DRAFT');assert.equal(saved.data.shipperParty.id,s.vendor.id);assert.equal(saved.data.pickupAddress,'Separate warehouse');assert.equal(saved.data.cbm,'4.25');assert.equal(saved.data.containerCount,'2');assert.equal(saved.data.dangerousGoods,true);assert.equal((await jobDetail(db,org,actor,saved.id)).bills.length,0);
+  await assert.rejects(create({...body,data:{...body.data,workScope:null}}),/FREIGHT_SCOPE_REQUIRED/);
+  await assert.rejects(create({...body,data:{...body.data,customerRole:'notify'}}),/FREIGHT_CUSTOMER_ROLE/);
+  await assert.rejects(create({...body,data:{...body.data,workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'}}}),/FREIGHT_PICKUP_REQUIRED/);
+  await assert.rejects(create({...body,data:{...body.data,pickupAddress:''}}),/FREIGHT_PICKUP_REQUIRED/);
+  await assert.rejects(create({...body,data:{...body.data,pickupPartyId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
+  const saved=await create(body);assert.deepEqual(saved.data.workScope,body.data.workScope);assert.equal(saved.data.billTo,'Destination forwarder');assert.equal(saved.data.incoterms,'FOB Hai Phong');assert.equal(saved.status,'DRAFT');assert.equal(saved.data.shipperParty.id,s.vendor.id);assert.equal(saved.data.pickupAddress,'Separate warehouse');assert.equal(saved.data.cbm,'4.25');assert.equal(saved.data.containerCount,'2');assert.equal(saved.data.dangerousGoods,true);assert.equal((await jobDetail(db,org,actor,saved.id)).bills.length,0);
   assert.equal((await create(body)).id,saved.id,'retry does not create another job');
+  const receiver=await db.organization.create({data:{name:'Receiver',type:'BRAND',ownerOrgId:org}});
+  await assert.rejects(create({...body,clientKey:randomUUID(),data:{...body.data,customerRole:'consignee',consigneeId:receiver.id}}),/FREIGHT_CUSTOMER_ROLE/);
+  const consignee=await create({...body,clientKey:randomUUID(),customerId:receiver.id,data:{...body.data,customerRole:'consignee',consigneeId:receiver.id,incoterms:'DDP',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'},pickupRequired:false}});
+  assert.equal(consignee.data.customerRole,'consignee');assert.deepEqual(consignee.data.workScope,{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'});assert.equal(consignee.data.billTo,'Destination forwarder');
+  await assert.rejects(create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_DOOR'}}}),/FREIGHT_INVALID_INPUT/);
+  const road=await create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}});assert.equal(road.mode,'ROAD');
  }finally{await f.close();}
 });
 test('jobs have independent optional BLs with scoped, mutable Master-House links and protected history',async()=>{
