@@ -2,7 +2,7 @@ import ExpenseLookupField from './ExpenseLookupField';
 import React,{useEffect,useMemo,useState} from 'react';
 import {Alert,Box} from '@mui/material';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
-export default function ExpenseReferenceFields({line,orders,orgId,labels,disabled,production,hiddenOrder,hiddenStyle,languageCode,onChange,onLoading}){
+export default function ExpenseReferenceFields({line,orders,orgId,labels,disabled,production,hiddenOrder,hiddenStyle,languageCode,inline=false,onChange,onLoading}){
  const ids=line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]);
  const links=line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]);
  const [state,setState]=useState({key:'',styles:[],loading:false,error:false});
@@ -38,7 +38,7 @@ export default function ExpenseReferenceFields({line,orders,orgId,labels,disable
  };
  const orderOptions=availableOrders.map(order=>({...order,label:order.orderNumber||String(order.dbId)}));
  const styleOptions=availableStyles.map(style=>({...style,label:`${style.name} (${style.code}) · ${availableOrders.find(order=>order.dbId===style.workOrderId)?.orderNumber||style.workOrderId}`}));
- return <><Box sx={{display:'flex',flexWrap:'wrap',gap:2,'& > *':{width:240,maxWidth:'100%'}}}>
+ return <><Box sx={{display:inline?'contents':'flex',flexWrap:'wrap',gap:2,'& > *':{width:220,maxWidth:'100%'}}}>
  {!hiddenOrder&&<ExpenseLookupField multiple label={labels.order} languageCode={languageCode} options={orderOptions} value={orderOptions.filter(order=>ids.includes(order.dbId))} disabled={disabled} getOptionKey={row=>row.dbId} getOptionLabel={row=>row.label} getCode={row=>row.orderNumber} columns={[{key:'order',label:labels.order,value:row=>row.label}]} onChange={values=>{const next=values.map(row=>row.dbId);apply(next,links.filter(ref=>next.includes(ref.workOrderId)));}}/>}
  {!hiddenStyle&&<ExpenseLookupField multiple label={labels.style} languageCode={languageCode} options={styleOptions} value={styleOptions.filter(style=>links.some(ref=>ref.workOrderId===style.workOrderId&&ref.styleId===style.id))} disabled={disabled||!ids.length||state.loading} getOptionKey={row=>row.workOrderId+':'+row.id} getOptionLabel={row=>row.label} getCode={row=>row.code} columns={[{key:'style',label:labels.style,value:row=>row.label}]} onChange={values=>apply(ids,values.map(row=>({workOrderId:row.workOrderId,styleId:row.id})))}/>}
  </Box>{state.error&&<Alert severity="error">{labels.loadError}</Alert>}</>;

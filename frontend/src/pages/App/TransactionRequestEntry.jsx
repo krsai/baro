@@ -4,7 +4,7 @@ import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
 import ExpenseEditHistory from '../../components/ExpenseEditHistory';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import DocumentEntryHeader from '../../components/DocumentEntryHeader';
-import {ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
+import {ledgerEvidenceText,ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
 import ExpenseApprovalActions from '../../components/ExpenseApprovalActions';
 import { useRequestScopeContext } from '../../context/RequestScopeContext';
 import ExpenseApprovalSettings from '../../components/ExpenseApprovalSettings';
@@ -172,7 +172,7 @@ export default function TransactionRequestEntry() {
       if(!form.requestDate||period.startDate&&form.requestDate<period.startDate)missing.push(labels.date);
       if(!partner?.isActive)missing.push(labels.payee);
       if(!hasPayeeBank)missing.push(bankText.required);
-      const detailLabels=TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en;
+      const detailLabels={...(TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en),reference:(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).supplierReference,evidenceFile:(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference};
       form.items.forEach((line,index)=>{
         if(statuses[line.key])return;
         const code=expenseCodeForLine(line,data.codes.find(code=>code.id===line.transactionCodeId)),fields=[];
@@ -180,6 +180,7 @@ export default function TransactionRequestEntry() {
         if(!Number(line.quantity)||Number(line.quantity)<0)fields.push(labels.quantity);
         if(!Number(line.unitPrice)||Number(line.unitPrice)<0)fields.push(labels.price);
         for(const key of ['order','style','process'])if(inputMode(code,key)==='REQUIRED'&&!line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]]&&!(key==='process'&&line.styleProcessIds?.length))fields.push(labels[key]);
+        if(!line.productionLinked&&code?.base?.entryMode!=='PROCESS'&&!line.details?.evidenceFile?.trim())fields.push((ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference);
         for(const key of new Set(['reference',...(code?.base?.requiredFields||[])]))if(!line.details?.[key]?.trim())fields.push(detailLabels[key]||key);
         if(code?.base?.entryMode==='PROCESS'&&!line.assignmentPlanId)fields.push(labels.assignment);
         missing.push(`${labels.row} ${index+1}: ${fields.join(', ')||labels.invalid}`);
@@ -211,7 +212,7 @@ export default function TransactionRequestEntry() {
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
         const requiredDetail=line?.[2]?.match(/^REQUIRED_TRANSACTION_FIELD:(.+)$/);
         if(field||requiredDetail){
-          const detailLabels=TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en;
+          const detailLabels={...(TRANSACTION_TEXT[languageCode]||TRANSACTION_TEXT.en),reference:(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).supplierReference,evidenceFile:(ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference};
           setValidationAttempt(value=>value+1);setError('');
           setValidation(`${formText.required}: ${labels.row} ${line[1]} · ${field?labels[field]:detailLabels[requiredDetail[1]]||requiredDetail[1]}`);
           return;

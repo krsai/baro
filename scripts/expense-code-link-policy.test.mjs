@@ -45,7 +45,7 @@ test('SQL input overrides enforce details and references while preserving earlie
 });
 
 test('hierarchy requires parent references while style scope supports an optional process set without production',()=>{
- const base={entryMode:'PROCESS',requiredFields:[]},line={quantity:'2',unitPrice:'10',vatRate:'0',details:{reference:'REF-001'},enabled:{},workOrderId:40,styleId:50,styleProcessIds:[55,56]};
+ const base={entryMode:'PROCESS',requiredFields:[]},line={quantity:'2',unitPrice:'10',vatRate:'0',details:{reference:'REF-001',evidenceFile:'server/receipt.pdf'},enabled:{},workOrderId:40,styleId:50,styleProcessIds:[55,56]};
  for(const [target,expected] of [['ORDER',['REQUIRED','HIDDEN','HIDDEN']],['STYLE',['REQUIRED','REQUIRED','OPTIONAL']],['PROCESS',['REQUIRED','REQUIRED','REQUIRED']]]){
   const code=policy.applyExpenseCodeLinkPolicy({base,vatEnabled:false},target);
   assert.deepEqual(['order','style','process'].map(key=>inputMode(code,key)),expected);
@@ -120,7 +120,7 @@ test('required process input does not turn a general cost into production; saved
  const db={expenseCodeLinkPolicy:{findUnique:async()=>({target:'PROCESS',auditId:6})}};
  const required=await policy.resolveExpenseCodeLink(db,1,code);
  assert.equal(required.base.entryMode,'GENERAL');assert.equal(inputMode(required,'process'),'REQUIRED');
- const line={quantity:'1.5',unitPrice:'10',vatRate:'0',details:{reference:'REF-001'},workOrderId:1,styleId:2,styleProcessId:3,enabled:{}};
+ const line={quantity:'1.5',unitPrice:'10',vatRate:'0',details:{reference:'REF-001',evidenceFile:'server/receipt.pdf'},workOrderId:1,styleId:2,styleProcessId:3,enabled:{}};
  assert.equal(validExpenseLine(line,required,'USD'),true);
  assert.equal(validExpenseLine({...line,styleProcessId:''},required,'USD'),false);
  const old=await policy.resolveExpenseCodeLink(db,1,code,{cost:{id:'old'}});

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import service from '../backend/dist/services/transactionRequest.js';
 const { calculateRequestAmounts: amounts, registerTransactionRequest: register, validateVatRate, loadAppSettings } = service;
-const input = () => ({ partnerOrgId: 11, transactionCodeId: 7, transactionDate: '2026-10-11', description: 'Trucking', unitPrice: '100000', quantity: '2', currency: 'VND', vatRate: '10', workOrderId: 30, styleId: null, styleProcessId: null, assignmentPlanId: null, details: {reference:'REF-001'}, clientKey: 'request-001' });
+const input = () => ({ partnerOrgId: 11, transactionCodeId: 7, transactionDate: '2026-10-11', description: 'Trucking', unitPrice: '100000', quantity: '2', currency: 'VND', vatRate: '10', workOrderId: 30, styleId: null, styleProcessId: null, assignmentPlanId: null, details: {reference:'REF-001',evidenceFile:'server/MJ/INV-001.pdf'}, clientKey: 'request-001' });
 function store(process = false) {
   const writes = [];
   const code = { id: 7, baseId: 1, taxTreatmentId: process ? 3 : 1, vatEnabled: !process, serviceType: { id: 4, entryMode: process ? 'PROCESS' : 'GENERAL', orderInput: 'OPTIONAL', styleInput: 'HIDDEN', processInput: 'HIDDEN', requiredFields: [] } };
@@ -237,4 +237,13 @@ test('repeatable SQL preserves old records and enforces production linkage, tota
     await assert.rejects(db.exec(`UPDATE "PartnerTransactionCost" SET amount=0 WHERE id='independent-payee'`));
     assert.equal((await db.query('SELECT count(*)::int AS n FROM "PartnerTransactionCost"')).rows[0].n,4);
   } finally { await db.close(); }
+});
+
+
+test('manual expense requires supplier evidence filename/path and keeps it separate from invoice number',async()=>{
+ for(const evidenceFile of [undefined,'','   ']){
+  const db=store();await assert.rejects(register(db,1,20,{...input(),details:{reference:'MJ-001',...(evidenceFile===undefined?{}:{evidenceFile})}}),/REQUIRED_TRANSACTION_FIELD:evidenceFile/);assert.equal(db.writes.length,0);
+ }
+ const db=store(),saved=await register(db,1,20,input());assert.deepEqual(saved.details,{reference:'REF-001',evidenceFile:'server/MJ/INV-001.pdf'});
+ for(const evidenceFile of ['bad\npath','bad\u0000path','x'.repeat(501)])await assert.rejects(register(store(),1,20,{...input(),details:{reference:'MJ-001',evidenceFile}}),/INVALID_TRANSACTION_DETAILS/);
 });

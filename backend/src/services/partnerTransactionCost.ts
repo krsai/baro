@@ -4,6 +4,7 @@ import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 
 export const COST_DETAIL_FIELDS = ['transportDate', 'origin', 'destination', 'reference'] as const;
+export const COST_STORED_DETAIL_FIELDS=[...COST_DETAIL_FIELDS,'evidenceFile'] as const;
 export const costInclude = { unit:true,referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}}}, partner: { select: { id: true, name: true } }, serviceType: true, workOrder: { select: { id: true, orderNumber: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 // Project historical production records for the unified request list without
 // migrating, recreating or approving the original production observations.
@@ -75,9 +76,10 @@ export function validateCostInput(body: any) {
   const details: Record<string, string> = {};
   if (!body.details || typeof body.details !== 'object' || Array.isArray(body.details)) return fail('INVALID_TRANSACTION_DETAILS');
   for (const [key, value] of Object.entries(body.details)) {
-    if (!COST_DETAIL_FIELDS.includes(key as any) || typeof value !== 'string' || value.length > 500) return fail('INVALID_TRANSACTION_DETAILS');
+    if (!COST_STORED_DETAIL_FIELDS.includes(key as any) || typeof value !== 'string' || value.length > 500) return fail('INVALID_TRANSACTION_DETAILS');
     details[key] = value.trim();
   }
+  if(details.evidenceFile&&/[\r\n\u0000]/.test(details.evidenceFile))return fail('INVALID_TRANSACTION_DETAILS');
   if (details.transportDate) validateCostDate(details.transportDate);
   return { partnerOrgId, serviceTypeId, workOrderId, transactionDate, description, amount, currency, clientKey: body.clientKey, details };
 }
@@ -87,14 +89,14 @@ export async function registerPartnerCost(tx: any, orgId: number, actorId: numbe
   const input = validateCostInput(body);
   const existing = await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: input.clientKey } }, include: costInclude });
   if (existing) {
-    const sameDetails = COST_DETAIL_FIELDS.every(key => (existing.details?.[key] || '') === (input.details[key] || ''));
+    const sameDetails = COST_STORED_DETAIL_FIELDS.every(key => (existing.details?.[key] || '') === (input.details[key] || ''));
     if (existing.partnerOrgId !== input.partnerOrgId || existing.serviceTypeId !== input.serviceTypeId || existing.workOrderId !== input.workOrderId || existing.transactionDate !== input.transactionDate || existing.description !== input.description || existing.currency !== input.currency || !new Prisma.Decimal(existing.amount).equals(input.amount) || !sameDetails || existing.createdByEmployeeId !== actorId) throw createHttpError(409, 'TRANSACTION_RETRY_MISMATCH');
     return existing;
   }
   const assignment = await tx.organizationOutsourcingServiceType.findFirst({ where: { ownerOrgId: orgId, partnerOrgId: input.partnerOrgId, serviceTypeId: input.serviceTypeId, partner: { isActive: true, type: 'PROCESS_OUTSOURCING' }, serviceType: { isActive: true } }, include: { serviceType: true } });
   if (!assignment) return fail('INVALID_PARTNER_SERVICE');
   if (assignment.serviceType.entryMode === 'PROCESS') return fail('PROCESS_WORK_RECORD_REQUIRED');
-  for (const key of new Set(['reference',...assignment.serviceType.requiredFields])) if (!input.details[key]) return fail(`REQUIRED_TRANSACTION_FIELD:${key}`);
+  for (const key of new Set(['reference','evidenceFile',...assignment.serviceType.requiredFields])) if (!input.details[key]) return fail(`REQUIRED_TRANSACTION_FIELD:${key}`);
   if (input.workOrderId && !await tx.workOrder.findFirst({ where: { id: input.workOrderId, orgId }, select: { id: true } })) return fail('INVALID_TRANSACTION_ORDER');
   return tx.partnerTransactionCost.create({ data: { ...input, orgId, createdByEmployeeId: actorId }, include: costInclude });
 }

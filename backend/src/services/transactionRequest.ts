@@ -5,7 +5,7 @@ import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
 import { Prisma } from '@prisma/client';
 import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
-import { validateCostDate, COST_DETAIL_FIELDS } from './partnerTransactionCost';
+import { validateCostDate, COST_STORED_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { assertAccountingDirection, resolveAccountingCode, ACCOUNTING_CODE_INCLUDE } from './accountingCode';
@@ -59,7 +59,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const details: Record<string,string> = {};
   if (!body.details || typeof body.details !== 'object' || Array.isArray(body.details)) return invalid('INVALID_TRANSACTION_DETAILS');
   for (const [key,value] of Object.entries(body.details)) {
-    if (!COST_DETAIL_FIELDS.includes(key as any) || typeof value !== 'string' || value.length > 500) return invalid('INVALID_TRANSACTION_DETAILS');
+    if (!COST_STORED_DETAIL_FIELDS.includes(key as any) || typeof value !== 'string' || value.length > 500) return invalid('INVALID_TRANSACTION_DETAILS');
     details[key] = value.trim();
   }
   if (details.transportDate) validateCostDate(details.transportDate);
@@ -75,7 +75,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
     if ((previous.payeeEmployeeId??null)!==(payeeIds.payeeEmployeeId??null)||JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
-    if (previous.transactionCodeId !== transactionCodeId || previous.partnerOrgId !== partnerOrgId || previous.workOrderId !== workOrderId || previous.styleId !== styleId || previous.styleProcessId !== styleProcessId || previous.transactionDate !== transactionDate || previous.description !== description || previous.currency !== body.currency || previous.createdByEmployeeId !== actorId || !previous.unitPrice.equals(amounts.unitPrice) || !previous.quantity.equals(amounts.quantity) || !previous.vatRate.equals(amounts.vatRate) || COST_DETAIL_FIELDS.some(key => (previous.details?.[key] || '') !== (details[key] || ''))) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
+    if (previous.transactionCodeId !== transactionCodeId || previous.partnerOrgId !== partnerOrgId || previous.workOrderId !== workOrderId || previous.styleId !== styleId || previous.styleProcessId !== styleProcessId || previous.transactionDate !== transactionDate || previous.description !== description || previous.currency !== body.currency || previous.createdByEmployeeId !== actorId || !previous.unitPrice.equals(amounts.unitPrice) || !previous.quantity.equals(amounts.quantity) || !previous.vatRate.equals(amounts.vatRate) || COST_STORED_DETAIL_FIELDS.some(key => (previous.details?.[key] || '') !== (details[key] || ''))) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if (assignmentPlanId && previous.outsourcedWorkRecord?.assignmentPlanId !== assignmentPlanId) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     return previous;
   }
@@ -91,6 +91,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: {...expensePartnerScope(orgId),id:partnerOrgId} });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
   const process = service.entryMode === 'PROCESS';
+  if(details.evidenceFile&&/[\r\n\u0000]/.test(details.evidenceFile))return invalid('INVALID_TRANSACTION_DETAILS');
   if(payeeIds.payeeEmployeeId&&(process||edit?.record))return invalid('EMPLOYEE_PAYEE_PRODUCTION_NOT_ALLOWED');
   if (edit?.record && (edit.record.orgId !== orgId ||
     edit.record.styleId !== styleId || edit.record.styleProcessId !== styleProcessId || edit.record.assignmentPlanId !== assignmentPlanId ||
@@ -111,6 +112,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if (styleProcessId && !await tx.styleProcess.findFirst({ where: { id: styleProcessId, styleId, orgId, ...(!edit?.record && !retainedProcess ? { isActive: true } : {}) }, select: { id: true } })) return invalid('INVALID_REQUEST_PROCESS');
   await validateExpenseProcessLinks(tx,orgId,body,code,edit,processIds);
   for (const field of new Set(['reference',...service.requiredFields])) if (!details[field]) return invalid(`REQUIRED_TRANSACTION_FIELD:${field}`);
+  if(!process&&!edit?.record&&!details.evidenceFile)return invalid('REQUIRED_TRANSACTION_FIELD:evidenceFile');
   const settings = await loadAppSettings(tx, orgId);
   const rate = code.vatEnabled ? body.vatRate ?? settings.defaultVatRate : '0';
   if (!code.vatEnabled && body.vatRate != null && !validateVatRate(body.vatRate).isZero()) return invalid('VAT_NOT_ENABLED');
