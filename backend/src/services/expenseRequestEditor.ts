@@ -214,15 +214,6 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const approval=await resolveExpenseApproval(db,access.organization.id,drafterId,req.body?.items,req.body?.selection,true,savedConfig);
     res.json(approval);
   });
-  app.get(`${path}/history`,async(req: any,res: any)=>{
-    const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;
-    const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);
-    if(!source.document)return res.json([]);
-    const beforeVersion = req.query.beforeVersion == null ? undefined : numericId(String(req.query.beforeVersion));
-    res.json(await db.expenseRequestAudit.findMany({where:{orgId:access.organization.id,requestId:source.document.id,
-      ...(beforeVersion ? {version:{lt:beforeVersion}} : {})},orderBy:{version:'desc'},take:50,
-      select:{id:true,version:true,action:true,createdAt:true,actor:{select:{id:true,name:true}},beforeSnapshot:true,afterSnapshot:true}}));
-  });
   app.get(path,async(req: any,res: any)=>{
     const access = await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']}); if(!access)return;
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);

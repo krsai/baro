@@ -1121,7 +1121,7 @@ const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['baro_linked_bank_owner','PartnerC
   'ExpenseRequestApprovalStep_write_guard',
   'ExpenseRequestApprovalStep_audit_guard',
   'ExpenseRequestAudit_append_only',
-  'baro_transaction_cost_guard',
+  'baro_current_expense_inputs','baro_transaction_cost_guard',
   'baro_request_production_guard',
   'ExpenseRequestEdit_cost_audit',
   'ExpenseRequestEdit_production_audit',

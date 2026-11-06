@@ -1,7 +1,6 @@
 import ReadOnlyField from '../../components/ReadOnlyField';
 import {cashScheduleText} from '../../constants/cashSchedule';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
-import ExpenseEditHistory from '../../components/ExpenseEditHistory';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import DocumentEntryHeader from '../../components/DocumentEntryHeader';
 import {ledgerEvidenceText,ledgerEvidenceErrors} from '../../constants/ledgerEvidence';
@@ -85,6 +84,13 @@ export default function TransactionRequestEntry() {
     });
     return()=>{alive=false;unsubscribe();};
   },[activeOrgId]);
+  useEffect(()=>{
+    if(!isTabActive||!activeOrgId)return;
+    let alive=true;
+    const refresh=()=>requestJSON('/transaction-codes'+buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}),{skipCache:true}).then(codes=>{if(alive)setData(previous=>({...previous,codes}));}).catch(()=>{});
+    refresh();window.addEventListener('focus',refresh);
+    return()=>{alive=false;window.removeEventListener('focus',refresh);};
+  },[activeOrgId,isTabActive]);
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
   const documentScope = `${activeOrgId}:${editorPath}:${reload}`;
   const [loadedDocumentScope, setLoadedDocumentScope] = useState(null);
@@ -228,7 +234,6 @@ export default function TransactionRequestEntry() {
   return <AppPageContainer
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
     titleActions={<Stack direction="row" spacing={1}>
-      {editing&&form.version&&!documentLoading&&<ExpenseEditHistory orgId={activeOrgId} requestId={form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} languageCode={languageCode} disabled={loading||loadError||saving}/>}
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>
       <SaveButton loading={saving} disabled={loading || loadError || form.readOnly || !submission && valid && editing && !dirty} onClick={save}>
         {submission ? labels.retry : editing?(changeApprovalText[languageCode]||changeApprovalText.en).requestUpdate:getUiMessage('common.save', 'Save', languageCode)}

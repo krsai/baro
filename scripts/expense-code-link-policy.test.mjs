@@ -12,16 +12,16 @@ test('missing input settings default to disabled independently of technical entr
  assert.equal(accountingInputs({orderInput:'REQUIRED'}).orderInput,'REQUIRED');
 });
 
-test('company input settings override system defaults, validate hierarchy and retain saved document settings',async()=>{
+test('company input settings override system defaults and current requirements replace old document settings',async()=>{
  const {accountingInputs}=await import('../backend/dist/services/accountingInputs.js');
  const settings={orderInput:'REQUIRED',styleInput:'OPTIONAL',processInput:'HIDDEN',requiredFields:['origin']};
  const code={baseId:30,base:{entryMode:'GENERAL',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',requiredFields:['destination']}};
  assert.equal(policy.effectiveExpenseCode(code).linkTarget,'PROCESS');
  assert.deepEqual(policy.effectiveExpenseCode(code,{target:'ORDER',auditId:7,inputSettings:settings}).base,{...code.base,...settings,entryMode:'GENERAL'});
  assert.throws(()=>accountingInputs({...settings,orderInput:'HIDDEN'}),/INVALID_INPUT_OPTION/);
- const edited=await policy.resolveExpenseCodeLink({expenseCodeLinkAudit:{findUnique:async()=>({inputSettings:settings})}},1,code,{cost:{linkTarget:'ORDER',linkPolicyAuditId:7}});
+ const edited=await policy.resolveExpenseCodeLink({expenseCodeLinkPolicy:{findUnique:async()=>({target:'ORDER',auditId:8,inputSettings:settings})}},1,code,{cost:{linkTarget:'ORDER',linkPolicyAuditId:7}});
  assert.deepEqual(edited.base.requiredFields,['origin']);assert.equal(edited.base.styleInput,'OPTIONAL');
- const line=expenseCodeForLine({itemId:'saved',inputSettings:settings,linkTarget:'ORDER'},code);
+ const line=expenseCodeForLine({itemId:'saved',inputSettings:settings,linkTarget:'ORDER'},policy.effectiveExpenseCode(code,{target:'ORDER',inputSettings:settings}));
  assert.equal(line.base.processInput,'HIDDEN');assert.equal(line.base.styleInput,'OPTIONAL');
 });
 
@@ -53,7 +53,7 @@ test('hierarchy requires parent references while style scope supports an optiona
    assert.equal(code.base.entryMode,'GENERAL');assert.equal(validExpenseLine(line,code,'USD'),true);
    assert.equal(validExpenseLine({...line,styleProcessIds:[]},code,'USD'),true);
    assert.equal(validExpenseLine({...line,workOrderId:''},code,'USD'),false);
-   assert.equal(expenseCodeForLine({...line,itemId:'saved',linkTarget:'STYLE'},policy.applyExpenseCodeLinkPolicy({base},'NONE')).linkTarget,'STYLE');
+   assert.equal(expenseCodeForLine({...line,itemId:'saved',linkTarget:'STYLE'},policy.applyExpenseCodeLinkPolicy({base},'NONE')).linkTarget,'NONE');
   }
  }
 });
@@ -115,7 +115,7 @@ test('base FK determines all E/V/Z variants; unset company settings inherit syst
  }
 });
 
-test('required process input does not turn a general cost into production; saved modes never follow later settings',async()=>{
+test('required process input does not turn a general cost into production; saved production identity stays separate from latest input requirements',async()=>{
  const code={baseId:30,vatEnabled:false,base:{entryMode:'GENERAL',requiredFields:[]}};
  const db={expenseCodeLinkPolicy:{findUnique:async()=>({target:'PROCESS',auditId:6})}};
  const required=await policy.resolveExpenseCodeLink(db,1,code);
@@ -127,7 +127,7 @@ test('required process input does not turn a general cost into production; saved
  assert.equal(old.linkTarget,'NONE');
  const linked=await policy.resolveExpenseCodeLink(db,1,code,{cost:{id:'old'},record:{id:1}});
  assert.equal(linked.base.entryMode,'PROCESS');
- assert.equal(expenseCodeForLine({...line,itemId:'old'},required).linkTarget,'NONE');
+ assert.equal(expenseCodeForLine({...line,itemId:'old'},required).linkTarget,'PROCESS');
  assert.equal(expenseCodeForLine({...line,itemId:'old',linkTarget:'PROCESS'},required).base.entryMode,'GENERAL');
 });
 

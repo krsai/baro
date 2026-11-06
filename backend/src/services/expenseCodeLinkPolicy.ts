@@ -13,12 +13,16 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
     styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings||{})}};
 }
 
-export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string) {
+export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string): Promise<any> {
+  if (!code) return code;
   if (edit?.cost || edit?.record) {
-    // Old rows have no snapshot. Their actual production FK is authoritative.
-    const target=edit.record?'PROCESS':edit.cost.linkTarget ?? 'NONE';
-    const snapshot=edit.cost?.linkPolicyAuditId?await tx.expenseCodeLinkAudit?.findUnique?.({where:{id:edit.cost.linkPolicyAuditId}}):null;
-    return applyExpenseCodeLinkPolicy(code,target,edit.cost?.linkPolicyAuditId ?? null,Boolean(edit.cost?.styleProcessId),Boolean(edit.record),snapshot?.inputSettings);
+    const policy=code.baseId?await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId:code.baseId}}}):null;
+    const current=effectiveExpenseCode(code,policy,orgType);
+    if(edit.record)return {...current,linkTarget:edit.cost?.linkTarget??'PROCESS',linkPolicyAuditId:edit.cost?.linkPolicyAuditId??null,base:{...current.base,entryMode:'PROCESS',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
+    const base={...current.base,entryMode:'GENERAL'};
+    for(const [key,present] of Object.entries({order:edit.cost.workOrderId||edit.cost.referenceLinks?.length,style:edit.cost.styleId||edit.cost.referenceLinks?.some((row:any)=>row.styleId),process:edit.cost.styleProcessId||edit.cost.processLinks?.length}))
+      if(present&&base[key+'Input']==='HIDDEN')base[key+'Input']='OPTIONAL';
+    return {...current,linkTarget:edit.cost.linkTarget??'NONE',linkPolicyAuditId:edit.cost.linkPolicyAuditId??null,base};
   }
   if (!code?.baseId) return code;
   const policy=await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId:code.baseId}}});

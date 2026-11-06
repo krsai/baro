@@ -4660,3 +4660,10 @@ runtime 조회값:
 - 통합 결재로 대체된 ChangeApprovalInbox·ExpenseApprovalInbox, 미사용 useApprovalInbox, systemExpenseCode 재수출 래퍼는 제거했다. 실제 운영 결재는 ApprovalDashboardCard/ApprovalReviewDialog와 ExpenseApprovalActions를 검증한다. 옛 고객 폼 helper와 검색 선택 browser 진입은 frontend/acceptance에 격리한다.
 - 원장·결재/급여 snapshot·유지보수 CLI·불변 migration은 유지하며 운영 DB 정리는 하지 않는다. 관련 단위 검사, 실제 결재/검색 선택 브라우저 검사, 양쪽 빌드 및 번역/인코딩으로 확인한다.
 
+# 2026-11-06 비용 신청 최신 입력 설정·선택 항목 추가
+
+- 비용 신청 편집·저장은 회계 코드의 현재 회사별 입력 설정을 적용한다. 과거 inputSettings로 필수 여부를 되돌리지 않는다. 설정 변경·탭 재활성화·창 포커스 때 현재 코드를 재조회한다. 저장된 입력값·실제 생산 연결·당시 감사 snapshot과 정책 ID는 보존한다.
+- 필수 항목과 이미 입력한 값만 기본 표시하며 빈 선택 항목은 항목 추가 메뉴로 연다. 공통 필수 증빙 번호·파일과 실제 생산 필수 연결은 유지한다. 기존 값이 있는 숨김 참조는 보존하되 원문·회사·생산·결재 보호를 우회하지 않는다.
+- 비용 수정 이력 버튼·전용 모달·문구·조회 API를 제거한다. 결재 검토에 필요한 원문/변경 내역 및 서버 감사 저장은 계속 유지한다.
+- 20261107030000_current_expense_inputs를 공통 실행기에 등록하며 preflight·읽기 전용 시작 검사는 baro_current_expense_inputs 함수를 확인한다. 기존 migration·운영 자료는 변경하지 않는다. 현재 설정 회귀·실제 수정 결재/DB 검사와 한/영/베 PC·모바일 입력창 검사, 양쪽 빌드·번역·인코딩을 검증한다.
+

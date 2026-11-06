@@ -96,20 +96,14 @@ test('a missing evidence number identifies the invalid expense row and rolls bac
  assert.deepEqual(db.state(),before);
 });
 
-test('history is tenant-scoped, permission-gated and paged by version; serialization conflicts return a recoverable code',async()=>{
-  const db=harness();await db.save(await input(db));
-  const handlers=new Map();let orgId=1,allowed=true;
-  const app={get:(path,fn)=>handlers.set(`GET ${path}`,fn),put:(path,fn)=>handlers.set(`PUT ${path}`,fn),post:(path,fn)=>handlers.set(`POST ${path}`,fn)};
-  const gates={requireOrgRole:async(_req,_res,options)=>{assert.deepEqual([...options.allowedRoles].sort(),['ADMIN','OPERATOR','ACCOUNTANT'].sort());return allowed?{organization:{id:orgId}}:null;},actorId:()=>20};
-  registerExpenseEditorRoutes(app,{...db.client(),$transaction:async()=>{throw {code:'P2010',meta:{code:'40001'}};}},gates);
-  const response=()=>({status(n){this.code=n;return this;},json(v){this.value=v;return this;}});
-  const req={params:{kind:'request',id:'1'},query:{}};let res=response();
-  await handlers.get('GET /expense-request-editor/:kind/:id/history')(req,res);assert.equal(res.value.length,1);
-  res=response();await handlers.get('GET /expense-request-editor/:kind/:id/history')({...req,query:{beforeVersion:'1'}},res);assert.deepEqual(res.value,[]);
-  orgId=2;await assert.rejects(handlers.get('GET /expense-request-editor/:kind/:id/history')(req,response()),/NOT_FOUND/);
-  orgId=1;allowed=false;res=response();await handlers.get('GET /expense-request-editor/:kind/:id/history')(req,res);assert.equal(res.value,undefined);
-  allowed=true;res=response();await handlers.get('PUT /expense-request-editor/:kind/:id')({...req,body:{}},res);assert.equal(res.code,409);assert.equal(res.value.error,'CHANGE_APPROVAL_REQUIRED');
+test('retired history route stays absent and direct edits still require change approval',async()=>{
+ const handlers=new Map(),app={get:(p,fn)=>handlers.set('GET '+p,fn),put:(p,fn)=>handlers.set('PUT '+p,fn),post:()=>{}};
+ registerExpenseEditorRoutes(app,{}, {requireOrgRole:async()=>({organization:{id:1}}),actorId:()=>20});
+ assert.equal(handlers.has('GET /expense-request-editor/:kind/:id/history'),false);
+ const res={status(n){this.code=n;return this},json(v){this.value=v;return this}};
+ await handlers.get('PUT /expense-request-editor/:kind/:id')({},res);assert.equal(res.code,409);assert.equal(res.value.error,'CHANGE_APPROVAL_REQUIRED');
 });
+
 test('historical editor loads only the selected source FK and never guesses its missing code/tax',async()=>{
   const db=harness(), form=expenseEditorForm(await db.source());
   assert.equal(form.items.length,1);assert.equal(form.items[0].sourceRecordId,78);assert.equal(form.items[0].transactionCodeId,'');
