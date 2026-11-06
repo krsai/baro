@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import {PGlite} from '@electric-sql/pglite';
 const require=createRequire(import.meta.url);
 const {resolveEvidence,approveExpense}=require('../backend/dist/services/bankEvidence.js');
-const {postLedgerEntry,postLedgerBatch,listLedgerActivity}=require('../backend/dist/services/bankLedger.js');
+const {readLedgerAccounts,postLedgerEntry,postLedgerBatch,listLedgerActivity}=require('../backend/dist/services/bankLedger.js');
 const {replaceLedgerEntry,deleteLedgerEntry}=require('../backend/dist/services/bankLedgerEdit.js');
 const {listApprovalOverview}=require('../backend/dist/services/approvalOverview.js');
 const {reconcileLedgerBalances}=require('../backend/dist/services/ledgerBalance.js');
@@ -379,5 +379,27 @@ test('all-account pagination includes the prior running balance and voided rows 
  const pg=await fixture(),db=ledgerDatabase(pg);try{
   await pg.exec(`INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy") SELECT 'bulk'||lpad(n::text,3,'0'),1,'a','bulk'||n,'2026-01-02','IN',1,'Batch','scan.pdf','actor' FROM generate_series(1,101) n;UPDATE "BankLedgerEntry" SET "voidedAt"=now(),"voidedBy"='actor',"voidReason"='wrong' WHERE id='bulk001'`);
   const result=await listLedgerActivity(db,1,{start:'2026-01-02',end:'2026-01-02',page:1});assert.equal(result.rows.length,1);assert.equal(result.rows[0].balance,'101.00');assert.equal(result.accounts[0].totalIn,'100.00');
+ }finally{await pg.close();}
+});
+
+
+test('dated reconciliation sets start-of-day balance and retains same-day and later cash movements',async()=>{
+ const pg=await fixture(),db=ledgerDatabase(pg);try{
+  await pg.exec(`INSERT INTO "TransactionCode"(id,"ownerOrgId",code,"nameEn","isActive","baseId","taxTreatmentId") VALUES(104,1,'FADE','Funds adjustment',true,1,1);`);
+  db.employee={findMany:async()=>[],findFirst:async({where})=>(await pg.query('SELECT id FROM "Employee" WHERE id=$1 AND "orgId"=$2 AND status=$3 AND "orgRole"=$4',[where.id,where.orgId,where.status,where.orgRole])).rows[0]};
+  await postLedgerBatch(db,1,'actor',{clientKey:randomUUID(),rows:[batchRow({amount:'20'}),batchRow({transactionDate:'2026-01-03',direction:'OUT',amount:'5'})]});
+  assert.equal((await readLedgerAccounts(db,1,'2026-01-02',true))[0].currentBalance,'1.00');
+  const scope={orgId:1,actorId:10,actor:'admin@example.com'},body={clientKey:randomUUID(),balanceDate:'2026-01-02',reason:'Opening actual cash',accounts:[{accountId:'a',currencyCode:'USD',expectedBalance:'1.00',targetBalance:'100.00'}]};
+  const result=await reconcileLedgerBalances(db,scope,body);
+  assert.equal((await readLedgerAccounts(db,1))[0].currentBalance,'115.00');
+  assert.equal((await readLedgerAccounts(db,1,'2026-01-02',true))[0].currentBalance,'100.00');
+  const activity=await listLedgerActivity(db,1,{start:'2026-01-02',end:'2026-01-03'});
+  assert.equal(activity.rows[0].id,result.entryIds[0]);assert.deepEqual(activity.rows.map(r=>r.balance),['100.00','120.00','115.00']);
+  assert.deepEqual(await reconcileLedgerBalances(db,scope,body),result);
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...body,clientKey:randomUUID()}),/BALANCE_CHANGED/);
+  const again={...body,clientKey:randomUUID(),accounts:[{...body.accounts[0],expectedBalance:'100',targetBalance:'100'}]};assert.deepEqual(await reconcileLedgerBalances(db,scope,again),{entryIds:[]});
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...body,balanceDate:'2999-01-01'}),/INVALID_DATE/);
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...body,balanceDate:'2026-02-30'}),/INVALID_DATE/);
+  await assert.rejects(reconcileLedgerBalances(db,scope,{...body,balanceDate:'2026-01-03'}),/RETRY_CONFLICT/);
  }finally{await pg.close();}
 });

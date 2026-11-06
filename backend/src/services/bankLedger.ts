@@ -105,10 +105,10 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
     return tx.bankLedgerEntry.create({data:{...data,...fields,...party,...(settlement?{settlementMode:'ROWS',...(settlement.revisesEntryId?{revisesEntryId:settlement.revisesEntryId}:{})}:{}),createdBy:actor,...(allocations.length?{allocations:{create:allocations.map(row=>({...row,orgId}))}}:{})}});
 }
 export async function listLedgerAccounts(db:any,orgId:number){return retryEditTransaction(db,tx=>readLedgerAccounts(tx,orgId));}
-export async function readLedgerAccounts(tx:any,orgId:number,asOf?:string){
+export async function readLedgerAccounts(tx:any,orgId:number,asOf?:string,beforeTransactions=false){
     const accounts=await tx.bankLedgerAccount.findMany({where:{orgId},include:{entityAccount:true},orderBy:[{createdAt:'asc'},{id:'asc'}]});
     const masters=await tx.organizationBankAccount.findMany({where:{orgId,entityId:orgId},include:{currency:true},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
-    const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,...(asOf?{transactionDate:{lte:asOf}}:{})},_sum:{amount:true}});
+    const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,...(asOf?(beforeTransactions?{OR:[{transactionDate:{lt:asOf}},{transactionDate:asOf,evidenceType:'ADJUSTMENT'}]}:{transactionDate:{lte:asOf}}):{})},_sum:{amount:true}});
     const result=accounts.map((account:any)=>({...account,displayName:account.entityAccount?.displayName,accountKind:account.entityAccount?.accountKind||'BANK',sortOrder:account.entityAccount?.sortOrder??0,openingBalance:ledgerMoney(ledgerScale4(account.openingBalance),account.currencyCode),currentBalance:ledgerMoney((!asOf||account.openingDate<=asOf?ledgerScale4(account.openingBalance):0n)+delta(totals.filter((row:any)=>row.accountId===account.id)),account.currencyCode)}));
     for(const master of masters)if(!accounts.some((a:any)=>a.entityAccountId===master.id&&a.currencyCode===master.currency.code))result.push({...master,id:'entity:'+master.id,currencyCode:master.currency.code,openingDate:LEDGER_ZERO_START,openingBalance:'0',currentBalance:'0',setupRequired:true} as any);
     return result.sort((a:any,b:any)=>a.sortOrder-b.sortOrder||new Date(a.createdAt).getTime()-new Date(b.createdAt).getTime()||a.id.localeCompare(b.id));
@@ -120,10 +120,10 @@ export async function listLedgerEntries(db:any,orgId:number,accountId:string,que
     const account=await tx.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
     if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
     const scope={orgId,accountId};
-    const rows=await tx.bankLedgerEntry.findMany({where:{...scope,transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+    const rows=await tx.bankLedgerEntry.findMany({where:{...scope,transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
     const allTotals=await sums(tx,scope),periodTotals=await sums(tx,{...scope,transactionDate:{gte:start,lte:end}});
     const first=rows[0];
-    const prefix=first?{OR:[{transactionDate:{lt:first.transactionDate}},{transactionDate:first.transactionDate,createdAt:{lt:first.createdAt}},{transactionDate:first.transactionDate,createdAt:first.createdAt,id:{lt:first.id}}]}:{transactionDate:{lt:start}};
+    const prefix=first?{OR:[{transactionDate:{lt:first.transactionDate}},{transactionDate:first.transactionDate,evidenceType:{lt:first.evidenceType}},{transactionDate:first.transactionDate,evidenceType:first.evidenceType,createdAt:{lt:first.createdAt}},{transactionDate:first.transactionDate,evidenceType:first.evidenceType,createdAt:first.createdAt,id:{lt:first.id}}]}:{transactionDate:{lt:start}};
     const carry=await sums(tx,{...scope,...prefix});
     let balance=ledgerScale4(account.openingBalance)+delta(carry);
     const result=rows.slice(0,100).map((row:any)=>{
@@ -215,13 +215,13 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const selectedAccountId=selectedAccount?.id||'';
   const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:end}},_sum:{amount:true}});
   const summary=accounts.map((account:any)=>({...account,totalIn:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='IN')?._sum.amount||'0'),account.currencyCode),totalOut:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='OUT')?._sum.amount||'0'),account.currencyCode)}));
-  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
   const pending=rows.length?await tx.changeApprovalRequest.findMany({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:rows.slice(0,100).map((row:any)=>row.id)}},select:{ledgerEntryId:true}}):[];
   const balances=new Map<string,bigint>();
   for(const row of rows.slice(0,100))if(!balances.has(row.accountId)){
    const account=accounts.find((a:any)=>a.id===row.accountId);
    if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
-   const prefix={OR:[{transactionDate:{lt:row.transactionDate}},{transactionDate:row.transactionDate,createdAt:{lt:row.createdAt}},{transactionDate:row.transactionDate,createdAt:row.createdAt,id:{lt:row.id}}]};
+   const prefix={OR:[{transactionDate:{lt:row.transactionDate}},{transactionDate:row.transactionDate,evidenceType:{lt:row.evidenceType}},{transactionDate:row.transactionDate,evidenceType:row.evidenceType,createdAt:{lt:row.createdAt}},{transactionDate:row.transactionDate,evidenceType:row.evidenceType,createdAt:row.createdAt,id:{lt:row.id}}]};
    balances.set(row.accountId,ledgerScale4(account.openingBalance)+delta(await sums(tx,{orgId,accountId:row.accountId,...prefix})));
   }
   const result=rows.slice(0,100).map((row:any)=>{
@@ -269,7 +269,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
     return {orgId:context.organization.id,actor:context.requesterEmail,actorId:context.employee?.id,role:context.employee?.orgRole};
   };
   app.get('/bank-ledger/counterparties',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;if(!scope.actorId||!await db.employee.findFirst({where:{id:scope.actorId,orgId:scope.orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}))return fail('LEDGER_ACCESS_DENIED',403);res.json(await ledgerCounterpartyOptions(db,scope.orgId));});
-  app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json({accounts:await listLedgerAccounts(db,scope.orgId)});});
+  app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){const date=req.query.balanceDate===undefined?undefined:ledgerDate(req.query.balanceDate);res.json({accounts:date?await retryEditTransaction(db,tx=>readLedgerAccounts(tx,scope.orgId,date,true)):await listLedgerAccounts(db,scope.orgId)});}});
   app.post('/bank-ledger/balance-adjustments',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;if(scope.role!=='ADMIN'||!scope.actorId)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);res.json(await reconcileLedgerBalances(db,scope,req.body));});
   app.post('/bank-ledger/changes/:entryId/acknowledge',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await acknowledgeLedgerChange(db,scope.orgId,scope.actorId,req.params.entryId));});
   app.get('/bank-ledger/changes',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listLedgerChanges(db,scope.orgId,req.query));});

@@ -16,22 +16,25 @@ const decimal=value=>`${value<0n?'-':''}${(value<0n?-value:value)/100n}.${String
 
 export default function LedgerBalanceDialog({orgId,languageCode,onClose}){
  const t=ledgerBalanceText[languageCode]||ledgerBalanceText.en;
+ const [balanceDate,setBalanceDate]=useState(()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
  const [accounts,setAccounts]=useState([]),[targets,setTargets]=useState({}),[reason,setReason]=useState(''),[reload,setReload]=useState(0),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[error,setError]=useState('');
  const request=useRef(null),busy=useRef(false),locked=loading||saving||uncertain;
  useUnsavedChanges(!!reason||Object.values(targets).some(value=>value!=='')||uncertain);
  useEffect(()=>{let live=true;setLoading(true);setAccounts([]);setTargets({});setError('');request.current=null;
-  requestJSON('/bank-ledger/accounts'+buildQueryString({orgId}),{skipCache:true}).then(data=>{if(live)setAccounts(data.accounts);}).catch(()=>{if(live)setError(t.failed);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};
- },[orgId,reload]);
- const edited=accounts.filter(account=>targets[account.id]!==undefined&&targets[account.id]!==''),valid=edited.length>0&&edited.length<=50&&edited.every(account=>scale(targets[account.id],account.currencyCode)!==null)&&reason.trim().length>0;
+  if(!balanceDate){setLoading(false);return()=>{live=false;};}
+  requestJSON('/bank-ledger/accounts'+buildQueryString({orgId,balanceDate}),{skipCache:true}).then(data=>{if(live)setAccounts(data.accounts);}).catch(()=>{if(live)setError(t.failed);}).finally(()=>{if(live)setLoading(false);});return()=>{live=false;};
+ },[orgId,reload,balanceDate]);
+ const edited=accounts.filter(account=>targets[account.id]!==undefined&&targets[account.id]!==''),valid=!!balanceDate&&edited.length>0&&edited.length<=50&&edited.every(account=>scale(targets[account.id],account.currencyCode)!==null)&&reason.trim().length>0;
  const save=async()=>{
   if(busy.current||loading)return;if(!request.current&&!valid){setError(t.invalid);return;}
   busy.current=true;setSaving(true);setError('');
-  if(!request.current)request.current={clientKey:crypto.randomUUID(),reason,accounts:edited.map(account=>({accountId:account.id,currencyCode:account.currencyCode,expectedBalance:account.currentBalance,targetBalance:targets[account.id]}))};
+  if(!request.current)request.current={clientKey:crypto.randomUUID(),reason,balanceDate,accounts:edited.map(account=>({accountId:account.id,currencyCode:account.currencyCode,expectedBalance:account.currentBalance,targetBalance:targets[account.id]}))};
   try{await requestJSON('/bank-ledger/balance-adjustments'+buildQueryString({orgId}),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.current)});emitWorkspaceDataChanged({orgId,source:'bank-ledger',topics:['bank-ledger']});onClose();}
   catch(e){const unknown=!e.status||e.status>=500;setUncertain(unknown);setError(unknown?t.uncertain:e.message==='LEDGER_BALANCE_CHANGED'?t.changed:t.failed);if(!unknown)request.current=null;}
   finally{busy.current=false;setSaving(false);}
  };
  return <Dialog open onClose={()=>{if(!saving&&!uncertain)onClose();}} fullWidth maxWidth="md"><DialogTitle>{t.title}</DialogTitle><DialogContent dividers><Stack spacing={2}>
+  <TextField type="date" label={t.date} value={balanceDate} disabled={saving||uncertain} sx={{width:180}} slotProps={{inputLabel:{shrink:true}}} onChange={event=>{setBalanceDate(event.target.value);setLoading(true);}}/>
   <Typography variant="body2" color="text.secondary">{t.hint}</Typography>
   {error&&<Alert severity="error" action={!saving&&!uncertain?<Button onClick={()=>setReload(value=>value+1)}>{t.reload}</Button>:undefined}>{error}</Alert>}
   {loading?<CircularProgress size={24}/>:<TableContainer><Table size="small" sx={{minWidth:680}}><TableHead><TableRow>{[t.account,t.currency,t.book,t.actual,t.difference].map((label,index)=><TableCell key={label} align={index>=2?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{accounts.map(account=>{

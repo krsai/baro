@@ -1,7 +1,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {ledgerScale4,ledgerMoney,validateLedgerMoney,readLedgerAccounts,postLedgerEntryInTransaction} from './bankLedger';
+import {ledgerDate,ledgerScale4,ledgerMoney,validateLedgerMoney,readLedgerAccounts,postLedgerEntryInTransaction} from './bankLedger';
 import {provisionSettingDefaults} from './transactionSettingRoutes';
 import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from './accountingCode';
 
@@ -25,20 +25,23 @@ export async function reconcileLedgerBalances(db:any,scope:{orgId:number,actorId
   return {accountId:row.accountId,currencyCode:row.currencyCode,expectedBalance:validateLedgerMoney(row.expectedBalance,row.currencyCode,true),targetBalance:validateLedgerMoney(row.targetBalance,row.currencyCode,true)};
  }).sort((a:any,b:any)=>a.accountId.localeCompare(b.accountId));
  if(new Set(rows.map((row:any)=>row.accountId)).size!==rows.length)return fail('LEDGER_INVALID_BATCH');
- const reason=body.reason.trim(),requestHash=createHash('sha256').update(JSON.stringify({kind:'BALANCE_TARGET',actorId:scope.actorId,reason,accounts:rows})).digest('hex');
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const balanceDate=body.balanceDate===undefined?undefined:ledgerDate(body.balanceDate);
+ if(balanceDate&&balanceDate>today)return fail('LEDGER_INVALID_DATE');
+ const reason=body.reason.trim(),requestHash=createHash('sha256').update(JSON.stringify({kind:'BALANCE_TARGET',...(balanceDate?{balanceDate}:{}),actorId:scope.actorId,reason,accounts:rows})).digest('hex');
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:scope.actorId,orgId:scope.orgId,status:'ACTIVE',orgRole:'ADMIN'},select:{id:true}});
   if(!actor)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',scope.orgId);
   const receipt=await tx.bankLedgerBatch.findUnique({where:{orgId_clientKey:{orgId:scope.orgId,clientKey:body.clientKey}}});
   if(receipt){if(receipt.requestHash!==requestHash||receipt.createdBy!==scope.actor)return fail('LEDGER_RETRY_CONFLICT',409);return {entryIds:receipt.entryIds};}
-  const transactionDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  const accounts=await readLedgerAccounts(tx,scope.orgId),entryIds:string[]=[];
+  const transactionDate=balanceDate||today;
+  const accounts=await readLedgerAccounts(tx,scope.orgId,balanceDate,!!balanceDate),entryIds:string[]=[];
   // Validate the entire snapshot before appending any adjustment. A concurrent
   // writer conflicts with these serializable reads and must reload the balance.
   for(const row of rows){
    const account=accounts.find((account:any)=>account.id===row.accountId);
-   if(!account||account.currencyCode!==row.currencyCode)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
+   if(!account||account.currencyCode!==row.currencyCode||account.openingDate>transactionDate)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
    if(ledgerScale4(account.currentBalance)!==ledgerScale4(row.expectedBalance))return fail('LEDGER_BALANCE_CHANGED',409);
   }
   let accountingCodeId:number|undefined;
