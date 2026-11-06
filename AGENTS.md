@@ -4654,3 +4654,9 @@ runtime 조회값:
 - 생산 서비스 능력·비용·코드의 실제 FK 및 과거 문서 snapshot은 업종 표시와 별개로 보존한다. 명시 고객 분류 저장 시 예전 단일 유형 FK를 NULL로 정리하는 기존 처리는 유지한다.
 - 운영 읽기 전용 확인: BARO/MJ(1/1847)의 OrganizationOutsourcingServiceType 연결은 0건, 명시 업종은 포워더 105(revision 3)다. 삭제할 추가 연결이 없으므로 비용 19 및 기존/대체 지급은 수정하지 않는다. 업종·업체 편집·회사/SYSTEM 회귀와 글로벌 편집창 브라우저 검사, 양쪽 빌드·번역/인코딩으로 검증한다. DB migration은 없다.
 
+# 2026-11-06 앱 레거시 이중 확인
+
+- 레거시 삭제는 운영 진입점/라우트 import 확인 후 CLI·fixture·테스트·대체 기능을 다시 확인한다. keyword·미도달·중복만으로 데이터 호환/금융/생산/권한 코드를 삭제하지 않는다. 항목별 근거는 docs/legacy-cleanup-audit-2026-11-06.md에 기록한다.
+- 통합 결재로 대체된 ChangeApprovalInbox·ExpenseApprovalInbox, 미사용 useApprovalInbox, systemExpenseCode 재수출 래퍼는 제거했다. 실제 운영 결재는 ApprovalDashboardCard/ApprovalReviewDialog와 ExpenseApprovalActions를 검증한다. 옛 고객 폼 helper와 검색 선택 browser 진입은 frontend/acceptance에 격리한다.
+- 원장·결재/급여 snapshot·유지보수 CLI·불변 migration은 유지하며 운영 DB 정리는 하지 않는다. 관련 단위 검사, 실제 결재/검색 선택 브라우저 검사, 양쪽 빌드 및 번역/인코딩으로 확인한다.
+

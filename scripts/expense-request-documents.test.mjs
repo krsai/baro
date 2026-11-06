@@ -240,7 +240,7 @@ test('VAT defaults inherit from system settings and organization overrides take 
 });
 
 test('expense inputs resolve SaaS masters by base and tax FKs without rewriting tenant identities', () => {
-  const {resolveSystemExpenseCode}=require('../backend/dist/services/systemExpenseCode.js');
+  const {resolveAccountingCode:resolveSystemExpenseCode}=require('../backend/dist/services/accountingCode.js');
   const row={id:7,isActive:true,baseId:40,taxTreatmentId:1,code:'LEGACY',nameEn:'Local',taxTreatment:{code:'VAT',suffix:'V'},base:{id:40,code:'TRK',nameEn:'Master trucking',isActive:true,expenseType:{isActive:true},variants:[{id:22,taxTreatmentId:1,isActive:true,isEnabled:true}]}};
   const result=resolveSystemExpenseCode(row);
   assert.equal(result.id,7);assert.equal(result.systemSourceId,22);assert.equal(result.code,'TRKV');assert.equal(result.nameEn,'Master trucking');assert.equal(row.code,'LEGACY');

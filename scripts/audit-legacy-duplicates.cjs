@@ -80,7 +80,7 @@ for (const file of files) {
 }
 // Include the two browser acceptance entrypoints to avoid calling them dead code.
 const roots = ['frontend/src/index.jsx', 'frontend/acceptance/invoiceAcceptance.jsx',
-  'frontend/src/search-select-acceptance.jsx', 'backend/src/index.ts'];
+  'frontend/acceptance/searchSelectAcceptance.jsx', 'backend/src/index.ts'];
 const reachable = new Set();
 const visitFile = file => {
   if (reachable.has(file)) return;

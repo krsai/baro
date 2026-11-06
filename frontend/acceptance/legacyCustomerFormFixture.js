@@ -1,6 +1,7 @@
-import { normalizeLocalizedName, hasLocalizedName } from '../../../utils/localizedName.mjs';
-import { DEFAULT_SIZE_SET_CODE, normalizeSizeSetCode } from '../../../constants/productAttributes';
-import {emptyPartnerClassification,classificationPayload} from '../../../utils/partnerClassification.mjs';
+// Historical customer form fixture; production uses BusinessPartnerDialog.
+import { normalizeLocalizedName, hasLocalizedName } from '../src/utils/localizedName.mjs';
+import { DEFAULT_SIZE_SET_CODE, normalizeSizeSetCode } from '../src/constants/productAttributes';
+import {emptyPartnerClassification,classificationPayload} from '../src/utils/partnerClassification.mjs';
 
 const COUNTRY_CODE_BY_COUNTRY = Object.freeze({
   KR: '+82',

@@ -24,19 +24,32 @@ try {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
     const page = await browser.newPage({ viewport });
     await page.goto(`http://127.0.0.1:${port}/search-select-acceptance.html`);
-    const input = page.getByRole('combobox');
-    await input.click();
-    await input.pressSequentially('URD', { delay: 100 });
-    const first = await page.getByRole('option').allTextContents();
-    await input.blur();
-    await input.click();
-    const reopened = await page.getByRole('option').allTextContents();
-    assert.equal(first.length, 2); assert.ok(first.every(s => s.includes('URD'))); assert.deepEqual(reopened, first);
-    await input.fill('AM');
-    assert.equal(await page.getByRole('option').count(), 6);
+    const input = page.getByRole('textbox', { name: 'Style', exact: true });
     await input.fill('URD');
-    assert.deepEqual(await page.getByRole('option').allTextContents(), first);
-    console.log(`Style search browser regression passed (${viewport.width}px): first input, reopen, and repeated search`);
+    await input.press('F2');
+    const dialog = page.getByRole('dialog');
+    const cells = () => dialog.getByRole('cell').filter({ hasText: /TKD|AM0/ });
+    await dialog.waitFor();
+    const first = await cells().allTextContents();
+    assert.equal(first.length, 2); assert.ok(first.every(s => s.includes('URD')));
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
+    await input.press('F2');
+    await dialog.waitFor();
+    assert.deepEqual(await cells().allTextContents(), first);
+    const search = dialog.getByRole('textbox');
+    await search.fill('AM');
+    await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] tbody tr')].length === 6);
+    assert.equal(await cells().count(), 6);
+    assert.equal(await dialog.getByRole('cell', { name: 'AM01622', exact: true }).count(), 4);
+    await search.fill('URD');
+    await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] tbody tr')].length === 2);
+    assert.deepEqual(await cells().allTextContents(), first);
+    await search.press('ArrowDown');
+    await search.press('Enter');
+    await dialog.waitFor({ state: 'hidden' });
+    assert.equal(await input.inputValue(), first[0]);
+    console.log(`Style lookup passed (${viewport.width}px): reopen, repeated search, duplicate labels, keyboard selection`);
     await page.close();
   }
 } finally { await browser?.close(); server.kill(); }

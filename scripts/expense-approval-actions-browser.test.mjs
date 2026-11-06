@@ -7,8 +7,8 @@ import {expenseApprovalActionsText} from '../frontend/src/constants/expenseAppro
 import {approvalWorkflowText} from '../frontend/src/constants/approvalWorkflow.js';
 const fixture=path.resolve('frontend/expense-approval-actions-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
-import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Actions from'/src/components/ExpenseApprovalActions.jsx';import Inbox from'/src/components/ExpenseApprovalInbox.jsx';
-const lang=new URLSearchParams(location.search).get('lang');function App(){const[version,setVersion]=React.useState(1),[dirty,setDirty]=React.useState(false),[orgId,setOrg]=React.useState(7),[compact,setCompact]=React.useState(false);window.setCompact=setCompact;window.setVersion=setVersion;window.setDirty=setDirty;window.setOrg=setOrg;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Inbox,{orgId,languageCode:lang,onOpenRequest:(...args)=>window.opened=args}),React.createElement(Actions,{compact,requestId:1,version,orgId,languageCode:lang,dirty,disabled:dirty,onRefresh:()=>setVersion(2)}));}createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
+import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Actions from'/src/components/ExpenseApprovalActions.jsx';
+const lang=new URLSearchParams(location.search).get('lang');function App(){const[version,setVersion]=React.useState(1),[dirty,setDirty]=React.useState(false),[orgId,setOrg]=React.useState(7),[compact,setCompact]=React.useState(false);window.setCompact=setCompact;window.setVersion=setVersion;window.setDirty=setDirty;window.setOrg=setOrg;return React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Actions,{compact,requestId:1,version,orgId,languageCode:lang,dirty,disabled:dirty,onRefresh:()=>setVersion(2)}));}createRoot(document.getElementById('root')).render(React.createElement(React.StrictMode,null,React.createElement(App)));
 </script></body></html>`);
 const port=43260,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -24,20 +24,17 @@ try{
    if(r.request().method()==='POST'){const body=r.request().postDataJSON();if(body.version!==version)return r.fulfill({headers,status:409,json:{error:'EXPENSE_REQUEST_CHANGED'}});posts.push(body);rejected=body.decision==='REJECTED';reason=body.reason||'';approved=!rejected;await new Promise(resolve=>setTimeout(resolve,150));}
    return r.fulfill({headers,json:state()});
   });
-  await page.route('**/expense-approval-inbox?*',r=>r.fulfill({headers,json:approved?[]:[{id:1,version,managementNumber:'EXP-2026-000001',requestDate:'2026-10-29',payee:'Vendor',drafter:'Author'}]}));
   await page.goto(`http://127.0.0.1:${port}/expense-approval-actions-acceptance.html?lang=${lang}`);
   const panel=page.getByTestId('expense-approval-actions'),button=panel.getByRole('button',{name:t.approve,exact:true});await button.waitFor();
   assert.equal(await page.getByRole('dialog').count(),0,'approve is visible without opening approval settings');
-  await page.getByRole('button',{name:t.inbox,exact:true}).click();let dialog=page.getByRole('dialog');await dialog.getByText('EXP-2026-000001').waitFor();await dialog.getByRole('button',{name:t.open,exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.opened),['request','1']);
   await page.evaluate(()=>window.setDirty(true));assert.equal(await button.isDisabled(),true);
-  await page.evaluate(()=>window.setDirty(false));await button.click();dialog=page.getByRole('dialog');await dialog.getByText('EXP-2026-000001').waitFor();await dialog.getByRole('button',{name:t.cancel,exact:true}).click();assert.equal(posts.length,0);
+  await page.evaluate(()=>window.setDirty(false));await button.click();let dialog=page.getByRole('dialog');await dialog.getByText('EXP-2026-000001').waitFor();await dialog.getByRole('button',{name:t.cancel,exact:true}).click();assert.equal(posts.length,0);
   await button.click();version=2;await page.getByRole('dialog').getByRole('button',{name:t.approve,exact:true}).click();await panel.getByRole('button',{name:t.refresh,exact:true}).waitFor();assert.equal(posts.length,0,'a server-side version conflict never approves unseen content');
   await page.evaluate(()=>window.setOrg(8));await panel.getByRole('button',{name:t.refresh,exact:true}).waitFor();assert.equal(await button.isDisabled(),true);assert.equal(posts.length,0,'unseen newer version cannot be approved');
   await panel.getByRole('button',{name:t.refresh,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-testid="expense-approval-actions"] .MuiAlert-standardWarning'));
   await button.click();dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:t.approve,exact:true}).click();
   await dialog.waitFor({state:'hidden'});await panel.getByText(t.approved,{exact:true}).first().waitFor();assert.deepEqual(posts,[{version:2}]);
   await panel.getByText(/2026/).waitFor();
-  await page.getByRole('button',{name:t.inbox,exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByText(t.empty).waitFor();await dialog.getByRole('button',{name:t.close,exact:true}).click();
   version=3;approved=false;await page.evaluate(()=>window.setVersion(3));const w=approvalWorkflowText[lang];
   await panel.getByRole('button',{name:w.reject,exact:true}).click();dialog=page.getByRole('dialog');
   const reject=dialog.getByRole('button',{name:w.reject,exact:true});assert.equal(await reject.isDisabled(),true);
@@ -51,5 +48,5 @@ try{
   await panel.getByRole('button',{name:w.reject,exact:true}).click();dialog=page.getByRole('dialog');await dialog.getByRole('textbox').fill('Compact rejection');await dialog.getByRole('button',{name:w.reject,exact:true}).click();await dialog.waitFor({state:'hidden'});await panel.getByText(w.resubmit).waitFor();assert.deepEqual(posts[2],{version:4,decision:'REJECTED',reason:'Compact rejection'});
   await page.setViewportSize({width:390,height:844});assert.equal(await panel.isVisible(),true);assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Approval actions passed: visible approval, inbox review, confirmation/cancel, unsaved and unseen-version blocking, exact reviewed version, timestamps, completion and ko/en/vi mobile.');
+ console.log('Approval actions passed: visible approval, confirmation/cancel, unsaved and unseen-version blocking, exact reviewed version, timestamps, completion and ko/en/vi mobile.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}
