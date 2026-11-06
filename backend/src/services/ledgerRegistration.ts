@@ -17,7 +17,7 @@ export async function validateLedgerRegistration(db:any,orgId:number,input:any){
  if(!['ALL','ADMIN','ACCOUNTANT','OPERATOR'].includes(scope.role)||scope.gradeId!=null&&(!Number.isSafeInteger(scope.gradeId)||!await db.employeeGrade.findFirst({where:{id:scope.gradeId,orgId,isActive:true,set:{isActive:true}}})))fail('INVALID_APPROVAL_RULE');
  if(input?.rules!==undefined&&input?.kind==='BANK_LEDGER'){
   if(!Array.isArray(input.rules)||!input.rules.length)fail('INVALID_APPROVAL_RULE');
-  return {version:2,kind:'BANK_LEDGER',revision:input.revision,drafterScope:scope,limits:defaultApprovalSettings().limits,rules:await validateApprovalRules(db,orgId,input.rules,subject)};
+  return {...(input.stageAuthorityVersion===1?{stageAuthorityVersion:1}:{}),version:2,kind:'BANK_LEDGER',revision:input.revision,drafterScope:scope,limits:defaultApprovalSettings().limits,rules:await validateApprovalRules(db,orgId,input.rules,subject)};
  }
  if(!Array.isArray(input?.registrationStages)||!input.registrationStages.length||input.registrationStages.length>10)fail('INVALID_APPROVAL_RULE');
  const stages=[];

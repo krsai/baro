@@ -1,4 +1,3 @@
-import {ledgerRegistrationText} from '../constants/ledgerRegistration';
 import React,{forwardRef,useImperativeHandle,useRef,useState} from 'react';
 import {Box,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
 import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
@@ -15,7 +14,7 @@ export const approvalRuleText={
 };
 const currencies=['USD','KRW','VND'];
 export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],onChange,disabled,languageCode,drafterScope={role:'ALL',gradeId:null},onScopeChange,headerActions,allowGradeRange=false},ref){
- const t=approvalBandText[languageCode]||approvalBandText.en,registration=ledgerRegistrationText[languageCode]||ledgerRegistrationText.en;
+ const t=approvalBandText[languageCode]||approvalBandText.en;
  const role=drafterScope.role,gradeId=drafterScope.gradeId;
  const setScope=change=>onScopeChange?.({...drafterScope,...change});
  const groups=currencies.map(currency=>{const group={currency,role,gradeId},stored=rules.filter(row=>sameApprovalGroup(row,group));return {currency,group,stored,rows:stored.length?stored:defaultApprovalBands(settings,grades,group)};});
@@ -75,7 +74,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
        <Stack direction="row" alignItems="center" spacing={.5} sx={{height:18}}><Box {...stageDrag.dragHandleProps} data-stage-drag-handle={position} aria-label={`${t.reorderStage} ${position+1}`} sx={{display:'flex',color:'text.disabled',touchAction:'none'}}><DragIndicator sx={{fontSize:15}}/></Box><Typography variant="caption" color="text.secondary" sx={{flex:1}}>{final?t.final:`${t.middle} ${position+1}`}</Typography>{row.stages.length>1&&<IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>patchStages(row,row.stages.filter((_,i)=>i!==position))}><Close sx={{fontSize:16}}/></IconButton>}</Stack>
        <Stack direction="row" spacing={.5}>
         <TextField fullWidth select size="small" value={stage.role} disabled={disabled} onChange={event=>patchStage(row,position,{role:event.target.value,...(event.target.value==='ADMIN'?{gradeId:null,...(allowGradeRange?{gradeMatch:'ANY'}:{})}:{})})} slotProps={{select:{'aria-label':`${t.role} ${index+1}-${position+1}`}}}>{roleOptions}</TextField>
-        <TextField fullWidth select size="small" value={allowGradeRange?(stage.gradeMatch==='MINIMUM'?'MINIMUM:'+stage.gradeId:stage.gradeId||'ANY'):stage.gradeId||''} disabled={disabled} onChange={event=>{const selected=event.target.value;patchStage(row,position,allowGradeRange?{gradeId:selected==='ANY'?null:Number(String(selected).replace('MINIMUM:','')),gradeMatch:selected==='ANY'?'ANY':String(selected).startsWith('MINIMUM:')?'MINIMUM':'EXACT'}:{gradeId:selected||null});}} slotProps={{select:{displayEmpty:true,'aria-label':`${t.grade} ${index+1}-${position+1}`}}}><MenuItem value={allowGradeRange?'ANY':''}>{allowGradeRange||stage.role==='ADMIN'?t.allGrades:t.selectGrade}</MenuItem>{stage.gradeId&&!grades.some(row=>row.id===stage.gradeId)&&<MenuItem value={stage.gradeMatch==='MINIMUM'?'MINIMUM:'+stage.gradeId:stage.gradeId} disabled>{t.selectGrade}</MenuItem>}{gradeOptions}{allowGradeRange&&grades.map(grade=><MenuItem key={'MINIMUM:'+grade.id} value={'MINIMUM:'+grade.id}>{gradeName(grade)+' '+registration.above}</MenuItem>)}</TextField>
+        <TextField fullWidth select size="small" value={allowGradeRange?(stage.gradeId||'ANY'):stage.gradeId||''} disabled={disabled} onChange={event=>{const selected=event.target.value;patchStage(row,position,allowGradeRange?{gradeId:selected==='ANY'?null:Number(String(selected).replace('MINIMUM:','')),gradeMatch:selected==='ANY'?'ANY':'MINIMUM'}:{gradeId:selected||null});}} slotProps={{select:{displayEmpty:true,'aria-label':`${t.grade} ${index+1}-${position+1}`}}}><MenuItem value={allowGradeRange?'ANY':''}>{allowGradeRange||stage.role==='ADMIN'?t.allGrades:t.selectGrade}</MenuItem>{stage.gradeId&&!grades.some(row=>row.id===stage.gradeId)&&<MenuItem value={stage.gradeMatch==='MINIMUM'?'MINIMUM:'+stage.gradeId:stage.gradeId} disabled>{t.selectGrade}</MenuItem>}{gradeOptions}</TextField>
        </Stack>
       </Stack></Paper>
      </Stack>}</Draggable>;})}{stagesProvided.placeholder}

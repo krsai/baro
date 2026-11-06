@@ -48,7 +48,7 @@ function CompanyApprovalSettings({activeOrgId}){
  const disabled=saving||loading,invalid=dirty.some(entry=>invalidEntry(entry)||!entry.data?.canEdit||entry.error);
  const save=async()=>{
   if(lock.current||disabled||!dirty.length||invalid)return;lock.current=true;setSaving(true);setError('');const orgId=activeOrgId;
-  const changes=dirty.map(entry=>({menu:entry.menu,operation:entry.operation,settings:{...entry.form,rules:cleanApprovalBands(entry.form.rules)}}));
+  const changes=dirty.map(entry=>({menu:entry.menu,operation:entry.operation,settings:{...entry.form,stageAuthorityVersion:1,rules:cleanApprovalBands(entry.form.rules)}}));
   try{const result=await requestJSON('/approval-action-settings/batch'+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify({changes})});if(!live.current||scope.current!==orgId)return;
    const expected=new Map(changes.map(row=>[keyFor(row.menu,row.operation),row.settings.revision+1]));
    if(!Array.isArray(result?.saved)||result.saved.length!==changes.length||new Set(result.saved.map(row=>keyFor(row.menu,row.operation))).size!==changes.length||result.saved.some(row=>!expected.has(keyFor(row.menu,row.operation))||expected.get(keyFor(row.menu,row.operation))!==row.settings?.revision))throw new Error('INVALID_APPROVAL_SETTINGS');
@@ -73,7 +73,7 @@ function ApprovalOperationSettings({entry,menu,operation,disabled,onChange,onRel
   <Typography component="h2" variant="h6">{actions[operation]}</Typography>
   {(entry?.error||editorError)&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry?.error||editorError}</Alert>}
   {form&&approvalBandOrderErrors(form.rules).size>0&&<Alert severity="warning">{band.orderError}</Alert>}
-  {form&&<ApprovalRuleEditor allowGradeRange={registration} ref={editor} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>onChange({drafterScope})} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={rules=>onChange({rules})} disabled={locked} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={locked} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setEditorError(messages.error);}}>{band.addCondition}</Button>}/>}
+  {form&&<ApprovalRuleEditor allowGradeRange ref={editor} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>onChange({drafterScope})} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={rules=>onChange({rules})} disabled={locked} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={locked} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setEditorError(messages.error);}}>{band.addCondition}</Button>}/>}
   {data&&!data.canEdit&&<Alert severity="info">{t.readonly}</Alert>}
  </Stack>;
 }

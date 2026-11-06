@@ -637,6 +637,8 @@ model BankLedgerEvidenceAllocation {
 }
 
 model ExpenseApprovalDecision {
+  actingEmployeeId Int?
+  delegation Json?
   decision String @default("APPROVED")
   reason String?
   id String @id @default(uuid())
@@ -3109,6 +3111,8 @@ model ChangeApprovalRequest {
  @@index([orgId,status,createdAt])
 }
 model ChangeApprovalDecision {
+ actingEmployeeId Int?
+ delegation Json?
  request ChangeApprovalRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalDecision_request_fkey")
  employee Employee @relation("ChangeDecisionEmployee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalDecision_employee_fkey")
  id String @id @default(uuid())

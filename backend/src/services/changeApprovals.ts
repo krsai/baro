@@ -1,3 +1,4 @@
+import {approvalDelegate,delegationData,delegatedChangeIds} from './approvalDelegation';
 import {cashScheduleDate} from './cashSchedule';
 import {isHighestCompanyApprover} from './expenseDeletion';
 import {createHash} from 'node:crypto';
@@ -101,7 +102,8 @@ async function applyChange(tx:any,db:any,orgId:number,actor:any,row:any,s:any,ga
   return tx.bankLedgerEntry.update({where:{id:row.sourceId},data:{voidedAt:new Date(),voidedBy:actor.email||String(actor.id),voidReason:row.reason}});
  }
  if(row.operation==='UPDATE'){
-  const result=await saveExpenseEditor(tx,orgId,row.requestedByEmployeeId,row.sourceKind,row.sourceId,row.payload,gates.appendQuantityRemark,{ids:row.policy.resolvedStages.map((p:any)=>p.employeeId),policy:{...row.policy,changeRequestId:row.id,drafterId:s.expense.document?.createdByEmployeeId||row.requestedByEmployeeId}});return result;
+  const decisions=await tx.changeApprovalDecision.findMany({where:{orgId,requestId:row.id},orderBy:{position:'asc'}});const actual=[] as any[];for(const [index,stage] of row.policy.resolvedStages.entries()){const id=decisions[index]?.actingEmployeeId||stage.employeeId;if(!actual.some((p:any)=>p.employeeId===id)){const person=await tx.employee.findFirst({where:{id,orgId,status:'ACTIVE'}});actual.push({...stage,employeeId:id,gradeId:person?.gradeId??stage.gradeId});}}
+ const result=await saveExpenseEditor(tx,orgId,row.requestedByEmployeeId,row.sourceKind,row.sourceId,row.payload,gates.appendQuantityRemark,{ids:actual.map((p:any)=>p.employeeId),policy:{...row.policy,originalResolvedStages:row.policy.resolvedStages,resolvedStages:actual,delegationDecisions:decisions.filter((d:any)=>d.actingEmployeeId),changeRequestId:row.id,drafterId:s.expense.document?.createdByEmployeeId||row.requestedByEmployeeId}});return result;
  }
  const original=s.expense,doc=original.document,key=`EXPENSE_REQUEST_EDIT:${orgId}:CHANGE_${row.id}`,company=await tx.organization.findUnique({where:{id:orgId},select:{type:true,country:true}});
  await tx.$queryRawUnsafe("SELECT set_config('baro.expense_editor_org',$1,true),set_config('baro.expense_editor_actor',$2,true),set_config('baro.expense_editor_key',$3,true),set_config('baro.expense_editor_timezone',$4,true)",String(orgId),String(actor.id),key,companyBusinessTimeZone(company));
@@ -117,15 +119,15 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
   await tx.$queryRawUnsafe('SELECT id FROM "ChangeApprovalRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);row=await tx.changeApprovalRequest.findFirst({where:{id,orgId}});
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},include:{grade:{include:{set:true}}}});if(!actor||row.requestedByEmployeeId===actorId&&!(row.menu==='EXPENSE'&&row.operation==='DELETE'&&row.policy.highestSelfDeletion===true&&await isHighestCompanyApprover(tx,orgId,actor)))fail('CHANGE_APPROVER_REQUIRED',403);
   const decisions=await tx.changeApprovalDecision.findMany({where:{requestId:id,orgId},orderBy:{position:'asc'}});
-  if(row.status!=='PENDING'){const old=decisions.find((d:any)=>d.employeeId===actorId);if(old?.decision===body.decision&&(old.reason||'')===reason)return row;fail('CHANGE_ALREADY_DECIDED');}
-  const next=row.policy.resolvedStages[decisions.length];if(!next||next.employeeId!==actorId||next.role!==actor.orgRole||next.gradeId!=null&&(next.gradeId!==actor.gradeId||!actor.grade?.isActive||!actor.grade?.set?.isActive))fail('CHANGE_APPROVER_REQUIRED',403);
-  if(row.operation==='CREATE'){
+  if(row.status!=='PENDING'){const old=[...decisions].reverse().find((d:any)=>(d.actingEmployeeId||d.employeeId)===actorId);if(old?.decision===body.decision&&(old.reason||'')===reason)return row;fail('CHANGE_ALREADY_DECIDED');}
+  const next=row.policy.resolvedStages[decisions.length];const delegated=!!next&&!(row.menu==='EXPENSE'&&row.operation==='DELETE')&&await approvalDelegate(tx,orgId,row.requestedByEmployeeId,next.employeeId,actorId);if(!next||!delegated&&(next.employeeId!==actorId||next.role!==actor.orgRole||next.gradeId!=null&&(next.gradeId!==actor.gradeId||!actor.grade?.isActive||!actor.grade?.set?.isActive)))fail('CHANGE_APPROVER_REQUIRED',403);
+  if(row.operation==='CREATE'&&!delegated){
    const rule=(row.policy.effectiveRegistrationStages||row.policy.config.registrationStages)[decisions.length];
    if(rule.gradeMatch!=='ANY'){const grade=await tx.employeeGrade.findFirst({where:{id:rule.gradeId,orgId,isActive:true,set:{isActive:true}}});if(!grade||!actor.grade?.isActive||actor.grade.setId!==grade.setId||(rule.gradeMatch==='MINIMUM'?actor.grade.sortOrder<grade.sortOrder:actor.gradeId!==grade.id))fail('CHANGE_APPROVER_REQUIRED',403);}
   }
   const s=body.decision==='APPROVED'?await source(tx,orgId,row,true):null;if(s&&s.revision!==row.revision)fail('CHANGE_SOURCE_CHANGED');
   const requester=await tx.employee.findFirst({where:{id:row.requestedByEmployeeId,orgId,status:'ACTIVE'}});if(!requester||requester.orgRole!==row.policy.requestedByRole||(requester.gradeId??null)!==row.policy.requestedByGradeId)fail('CHANGE_SOURCE_CHANGED');
-  await tx.changeApprovalDecision.create({data:{requestId:id,orgId,employeeId:actorId,position:decisions.length+1,decision:body.decision,reason:reason||null}});
+  await tx.changeApprovalDecision.create({data:{requestId:id,orgId,employeeId:next.employeeId,...delegationData(next.employeeId,actorId),position:decisions.length+1,decision:body.decision,reason:reason||null}});
   if(body.decision==='REJECTED')return tx.changeApprovalRequest.update({where:{id},data:{status:'REJECTED',decidedByEmployeeId:actorId,decisionReason:reason,decidedAt:new Date()}});
   if(decisions.length+1<row.policy.resolvedStages.length)return row;
   row=await tx.changeApprovalRequest.update({where:{id},data:{status:'APPROVED',decidedByEmployeeId:actorId,decidedAt:new Date(),appliedAt:new Date()}});
@@ -134,11 +136,13 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
  },60000);
 }
 export async function listChangeApprovals(db:any,orgId:number,actorId:number){
- const rows=await db.changeApprovalRequest.findMany({where:{orgId,status:'PENDING',OR:[{requestedByEmployeeId:actorId},{policy:{path:['resolvedStages'],array_contains:[{employeeId:actorId}]}}]},orderBy:{createdAt:'asc'},take:200});
+ const delegatedIds=await delegatedChangeIds(db,orgId,actorId);
+ const rows=await db.changeApprovalRequest.findMany({where:{orgId,status:'PENDING',OR:[{id:{in:delegatedIds}},{requestedByEmployeeId:actorId},{policy:{path:['resolvedStages'],array_contains:[{employeeId:actorId}]}}]},orderBy:{createdAt:'asc'},take:200});
  const highestSelf=rows.some((row:any)=>row.requestedByEmployeeId===actorId&&row.policy.highestSelfDeletion===true)?await isHighestCompanyApprover(db,orgId,await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:person})):false;
  const decisions=rows.length?await db.changeApprovalDecision.findMany({where:{orgId,requestId:{in:rows.map((r:any)=>r.id)}},orderBy:{position:'asc'}}):[];
  const people=await db.employee.findMany({where:{orgId,id:{in:[...new Set(rows.map((r:any)=>r.requestedByEmployeeId))]}},select:{id:true,name:true}});
- return rows.filter((r:any)=>r.requestedByEmployeeId===actorId||r.policy.resolvedStages.some((s:any)=>s.employeeId===actorId)).map((r:any)=>{const accepted=decisions.filter((d:any)=>d.requestId===r.id);return {...r,requesterName:people.find((p:any)=>p.id===r.requestedByEmployeeId)?.name||'',decisions:accepted,canDecide:(r.requestedByEmployeeId!==actorId||r.menu==='EXPENSE'&&r.operation==='DELETE'&&r.policy.highestSelfDeletion===true&&highestSelf)&&r.policy.resolvedStages[accepted.length]?.employeeId===actorId};});
+ const delegateNext=new Set<string>();for(const r of rows){const next=r.policy.resolvedStages[decisions.filter((d:any)=>d.requestId===r.id).length];if(next&&delegatedIds.includes(r.id)&&await approvalDelegate(db,orgId,r.requestedByEmployeeId,next.employeeId,actorId))delegateNext.add(r.id);}
+ return rows.filter((r:any)=>delegatedIds.includes(r.id)||r.requestedByEmployeeId===actorId||r.policy.resolvedStages.some((s:any)=>s.employeeId===actorId)).map((r:any)=>{const accepted=decisions.filter((d:any)=>d.requestId===r.id);return {...r,requesterName:people.find((p:any)=>p.id===r.requestedByEmployeeId)?.name||'',decisions:accepted,canDecide:(r.requestedByEmployeeId!==actorId||r.menu==='EXPENSE'&&r.operation==='DELETE'&&r.policy.highestSelfDeletion===true&&highestSelf)&&(r.policy.resolvedStages[accepted.length]?.employeeId===actorId||delegateNext.has(r.id))};});
 }
 export function registerChangeApprovalRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;const actorId=gates.actorId();if(!actorId||!await db.employee.findFirst({where:{id:actorId,orgId:ctx.organization.id,status:'ACTIVE'}}))fail('ACTIVE_EMPLOYEE_REQUIRED',403);return {orgId:ctx.organization.id,actorId,ctx};};

@@ -1,3 +1,4 @@
+import {flexibleApprovalStages} from './flexibleApprovalStages';
 import {canSkipApprovalStage} from './approvalStageAuthority';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
@@ -18,10 +19,10 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
   for(const stage of row.stages){
    if(!stage||!roles.includes(stage.role))return fail();
    const gradeId=await grade(stage.gradeId);
-   if(stage.role!=='ADMIN'&&!gradeId&&!(subject.key==='BANK_LEDGER'&&stage.gradeMatch==='ANY'))return fail();
-   if(subject.key==='BANK_LEDGER'&&stage.gradeMatch!==undefined&&!['ANY','EXACT','MINIMUM'].includes(stage.gradeMatch))return fail();
-   if(subject.key==='BANK_LEDGER'&&(stage.gradeMatch==='ANY'&&gradeId||['EXACT','MINIMUM'].includes(stage.gradeMatch)&&!gradeId))return fail();
-   stages.push({role:stage.role,gradeId,...(subject.key==='BANK_LEDGER'?{gradeMatch:stage.gradeMatch||(gradeId?'EXACT':'ANY')}: {})});
+   if(stage.role!=='ADMIN'&&!gradeId&&!(stage.gradeMatch==='ANY'))return fail();
+   if(stage.gradeMatch!==undefined&&!['ANY','EXACT','MINIMUM'].includes(stage.gradeMatch))return fail();
+   if((stage.gradeMatch==='ANY'&&gradeId||['EXACT','MINIMUM'].includes(stage.gradeMatch)&&!gradeId))return fail();
+   stages.push({role:stage.role,gradeId,...(stage.gradeMatch!==undefined||subject.key==='BANK_LEDGER'?{gradeMatch:stage.gradeMatch||(gradeId?'EXACT':'ANY')}: {})});
   }
   if(subject.key==='EXPENSE'&&['ALL','OPERATOR'].includes(row.drafterRole)&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
   rules.push({id:row.id,name:row.name.trim(),drafterRole:row.drafterRole,drafterGradeId:await grade(row.drafterGradeId),currency:subject.hasAmount?row.currency:null,min,max,stages});
@@ -50,6 +51,7 @@ export async function resolveApprovalRules(db:any,orgId:number,drafter:any,total
  for(const rule of matched){let previous:string|null=null;const occurrences=new Map<string,number>();for(const stage of rule.stages){const category=stage.role+':'+(stage.gradeId||'')+':'+(stage.gradeMatch||'EXACT'),occurrence=(occurrences.get(category)||0)+1;occurrences.set(category,occurrence);const key=category+':'+occurrence;nodes.set(key,stage);if(!edges.has(key))edges.set(key,new Set());if(previous)edges.get(previous)!.add(key);previous=key;}}
  const ordered:any[]=[];const remaining=new Set(nodes.keys());
  while(remaining.size){const key=[...remaining].find(key=>![...remaining].some(other=>edges.get(other)?.has(key)));if(!key)return fail('APPROVAL_RULE_ORDER_CONFLICT');remaining.delete(key);ordered.push(nodes.get(key));}
+ if(config.stageAuthorityVersion===1){const result=await flexibleApprovalStages(db,orgId,drafter,ordered,selection,allowIncomplete);return {...result,drafter,policy:{...result.policy,drafterId:drafter.id,exempt:false,config,ruleIds:matched.map(rule=>rule.id),level:ordered.length-1,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};}
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],skipped:string[]=[],effectiveRegistrationStages:any[]=[];let complete=true;
  for(const [index,stage] of ordered.entries()){
   const key='step'+(index+1);

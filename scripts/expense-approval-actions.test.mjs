@@ -6,7 +6,7 @@ const {approvalState,approveExpense,listExpenseApprovalInbox,attachExpenseApprov
 
 test('own administrator requests show the same completed status in detail, document lists and dashboard',async()=>{
  const request={id:1,version:1,orgId:7,createdByEmployeeId:11,createdByEmployee:{id:11,name:'Owner',orgId:7,orgRole:'ADMIN',status:'ACTIVE'},approvalSteps:[],items:[]};
- const db={employee:{findFirst:async()=>({id:11,orgRole:'ADMIN'})},expenseRequest:{findFirst:async()=>request,findMany:async({where})=>{assert.equal(where.orgId,7);assert.equal(where.createdByEmployeeId,11);return [request];}},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>null,findMany:async()=>[]}};
+ const db={$queryRawUnsafe:async()=>[],employee:{findFirst:async()=>({id:11,orgRole:'ADMIN'})},expenseRequest:{findFirst:async()=>request,findMany:async({where})=>{assert.equal(where.orgId,7);assert.equal(where.createdByEmployeeId,11);return [request];}},expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>null,findMany:async()=>[]}};
  assert.equal((await approvalState(db,7,1,11)).status,'APPROVED');
  assert.equal((await attachExpenseApprovalStates(db,7,[request]))[0].approval.status,'APPROVED');
  assert.equal((await listExpenseApprovalInbox(db,7,11,'requested'))[0].status,'APPROVED');
@@ -23,7 +23,7 @@ test('approval inbox includes only the current version and the actual next desig
  ];
  const decisions=[{requestId:1,version:1,position:1,employeeId:11},{requestId:3,version:1,position:1,employeeId:12},{requestId:5,version:1,position:1,employeeId:11}];
  let queried=false;
- const db={employee:{findFirst:async({where})=>where.orgId===7&&where.id===11?{id:11}:null},expenseRequest:{findMany:async({where})=>{queried=true;assert.equal(where.orgId,7);assert.equal(where.approvalSteps.some.employeeId,11);return requests;}},expenseApprovalDecision:{findMany:async({where})=>{assert.equal(where.orgId,7);return decisions;}}};
+ const db={$queryRawUnsafe:async()=>[],employee:{findFirst:async({where})=>where.orgId===7&&where.id===11?{id:11}:null},expenseRequest:{findMany:async({where})=>{queried=true;assert.equal(where.orgId,7);assert.equal(where.OR[0].approvalSteps.some.employeeId,11);return requests;}},expenseApprovalDecision:{findMany:async({where})=>{assert.equal(where.orgId,7);return decisions;}}};
  assert.deepEqual((await listExpenseApprovalInbox(db,7,11)).map(row=>row.id),[1,3]);
  queried=false;await assert.rejects(listExpenseApprovalInbox(db,8,11),/ACCESS_DENIED/);assert.equal(queried,false);
 });
@@ -62,7 +62,7 @@ test('rejection requires a reason, ends the reviewed version, preserves retry id
 test('inbox excludes rejected requests from pending and shows immutable reviewed amounts in handled history',async()=>{
  const requests=[{id:1,version:2,createdByEmployeeId:99,requestDate:'2026-10-30',partner:{name:'New payee'},items:[{currency:'USD',amount:'900'}],approvalSteps:[{position:1,employeeId:11},{position:2,employeeId:12}]}];
  const decisions=[{requestId:1,version:1,position:1,employeeId:11,decision:'REJECTED',reason:'Revise',createdAt:'2026-10-29'},{requestId:1,version:2,position:1,employeeId:11,decision:'REJECTED',reason:'Still wrong',createdAt:'2026-10-30'}];
- const db={employee:{findFirst:async()=>({orgRole:'ACCOUNTANT'})},expenseRequest:{findMany:async()=>requests},expenseApprovalDecision:{findMany:async()=>decisions},expenseRequestAudit:{findMany:async()=>[{requestId:1,version:1,afterSnapshot:{document:{...requests[0],version:1,requestDate:'2026-10-29',partner:{name:'Original payee'}},costs:[{currency:'USD',amount:'100.25'}]}}]}};
+ const db={$queryRawUnsafe:async()=>[],employee:{findFirst:async()=>({orgRole:'ACCOUNTANT'})},expenseRequest:{findMany:async()=>requests},expenseApprovalDecision:{findMany:async()=>decisions},expenseRequestAudit:{findMany:async()=>[{requestId:1,version:1,afterSnapshot:{document:{...requests[0],version:1,requestDate:'2026-10-29',partner:{name:'Original payee'}},costs:[{currency:'USD',amount:'100.25'}]}}]}};
  assert.deepEqual(await listExpenseApprovalInbox(db,7,11),[]);assert.deepEqual(await listExpenseApprovalInbox(db,7,11,'inProgress'),[]);
  const rows=await listExpenseApprovalInbox(db,7,11,'completed');assert.equal(rows[0].handledVersion,2);assert.equal(rows[1].payee,'Original payee');assert.deepEqual(rows[1].totals,[{currency:'USD',amount:'100.25'}]);
  assert.equal((await listExpenseApprovalInbox(db,7,11,'requested'))[0].status,'REJECTED');

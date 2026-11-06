@@ -32,7 +32,7 @@ export async function validateApprovalSettings(tx:any,orgId:number,value:any){
   }
   if(value.rules!==undefined){
     if(!Number.isSafeInteger(value.revision)||value.revision<0)throw createHttpError(400,'INVALID_APPROVAL_RULE');
-    return {...result,version:2,kind:'EXPENSE',revision:value.revision,rules:await validateApprovalRules(tx,orgId,value.rules)};
+    return {...result,...(value.stageAuthorityVersion===1?{stageAuthorityVersion:1}:{}),version:2,kind:'EXPENSE',revision:value.revision,rules:await validateApprovalRules(tx,orgId,value.rules)};
   }
   return result;
 }
