@@ -11,10 +11,26 @@ import {
 } from '../frontend/src/utils/roleAccessPolicyCore.mjs';
 import { canAccessPath,resolveFeatureByPath } from '../frontend/src/utils/accessControl.js';
 import {loadSourceBindings} from './helpers/source-bindings.mjs';
+import {normalizeOrganizationType} from '../frontend/src/constants/organizationType.js';
 
 const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   ...policy,
+});
+
+test('new SaaS registrations resolve only garment factories and logistics companies',()=>{
+ const {resolveOnboardingOrganizationType}=loadSourceBindings('backend/src/index.ts',['ORGANIZATION_TYPE_KEYS','ONBOARDING_ORGANIZATION_TYPE_OPTIONS','ONBOARDING_ORGANIZATION_TYPE_TOKENS','resolveOnboardingOrganizationType']);
+ for(const value of ['MANUFACTURER','factory'])assert.equal(resolveOnboardingOrganizationType(value),'MANUFACTURER');
+ assert.equal(resolveOnboardingOrganizationType('SERVICE'),'SERVICE');assert.equal(normalizeOrganizationType('SERVICE'),'SERVICE');
+ for(const value of ['BRAND','brand','PROCESS_OUTSOURCING','LOGISTICS_PROVIDER','MATERIAL_SUPPLIER'])assert.equal(resolveOnboardingOrganizationType(value),null);
+ assert.equal(normalizeOrganizationType('BRAND'),'BRAND','external partner classification remains available');
+});
+
+test('profile editor preserves saved logistics and archived brand roles instead of replacing them with defaults',()=>{
+ const {toEditablePolicy}=loadSourceBindings('frontend/src/pages/App/system/AccessPolicyBoard.jsx',['toEditablePolicy'],{getDefaultRoleAccessPolicy,ORG_TYPE_KEYS,ROLE_ACCESS_POLICY_SCHEMA_VERSION,ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY:'__schemaVersion'});
+ const original=withCurrentPolicyVersion({MANUFACTURER:{ADMIN:['DASHBOARD']},SERVICE:{ADMIN:['FREIGHT'],OPERATOR:[]},BRAND:{ADMIN:['DASHBOARD']}});
+ const editable=toEditablePolicy(original);
+ assert.deepEqual(editable.SERVICE.ADMIN,['FREIGHT']);assert.deepEqual(editable.SERVICE.OPERATOR,[]);assert.deepEqual(editable.BRAND.ADMIN,['DASHBOARD']);assert.deepEqual(editable.MANUFACTURER.ADMIN,['DASHBOARD']);
 });
 
 test('freight is independently configurable, defaults to administrators on upgrade and rejects SYSTEM/worker access',()=>{

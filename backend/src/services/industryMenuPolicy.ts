@@ -1,16 +1,21 @@
+import {SERVICE_FEATURES} from './serviceCompany';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 
 export const INDUSTRY_MENU_KEY='INDUSTRY_MENU_POLICY:1';
 export const INDUSTRY_MENU_FEATURES=['FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','PRODUCTION_ANALYSIS','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
+export const SUBSCRIBER_TYPES=['MANUFACTURER','SERVICE'];
 const required=['DASHBOARD','BUSINESS'];
 export async function readIndustryMenuPolicy(db:any){
  const row=await db.systemSetting.findUnique({where:{key:INDUSTRY_MENU_KEY}});
- return {revision:row?.value?.revision??0,industries:row?.value?.industries??{}};
+ return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.subscribers?{subscribers:row.value.subscribers}:{})};
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
- const [policy,classification]=await Promise.all([readIndustryMenuPolicy(db),db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId:orgId}},include:{industries:true}})]);
+ const policy=await readIndustryMenuPolicy(db);
+ if(Object.hasOwn(policy.subscribers??{},orgType))return [...new Set([...required,...policy.subscribers[orgType]])];
+ const classification=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId:orgId}},include:{industries:true}});
  const defaults=INDUSTRY_MENU_FEATURES.filter(feature=>orgType==='SERVICE'||feature!=='FREIGHT');
+
  const ids=(classification?.industries??[]).map((row:any)=>row.systemIndustryId);
  const selected=ids.length?ids.flatMap((id:number)=>policy.industries[String(id)]??defaults):defaults;
  return [...new Set([...required,...selected])];
@@ -28,6 +33,8 @@ export function industryMenuMiddleware(db:any,requireOrgRole:any){
 }
 export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
  if(!Number.isSafeInteger(input?.revision)||input.revision<0||!input.industries||typeof input.industries!=='object'||Array.isArray(input.industries))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
+ const subscribers=input.subscribers;
+ if(subscribers!==undefined&&(!subscribers||typeof subscribers!=='object'||Array.isArray(subscribers)||Object.entries(subscribers).some(([type,features]:any)=>!SUBSCRIBER_TYPES.includes(type)||!Array.isArray(features)||new Set(features).size!==features.length||features.some((feature:string)=>!INDUSTRY_MENU_FEATURES.includes(feature)||(type==='SERVICE'?!SERVICE_FEATURES.includes(feature):feature==='FREIGHT'))||required.some(feature=>!features.includes(feature)))))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
  const entries=Object.entries(input.industries);
  if(entries.length>2000||entries.some(([id,features])=>!/^\d+$/.test(id)||String(Number(id))!==id||!Number.isSafeInteger(Number(id))||Number(id)<=0||!Array.isArray(features)||features.length>INDUSTRY_MENU_FEATURES.length||new Set(features).size!==features.length||features.some(feature=>!INDUSTRY_MENU_FEATURES.includes(feature))||required.some(feature=>!features.includes(feature))))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
  return retryEditTransaction(db,async(tx:any)=>{
@@ -38,7 +45,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
   await tx.$queryRawUnsafe('SELECT key FROM "SystemSetting" WHERE key=$1 FOR UPDATE',INDUSTRY_MENU_KEY);
   const current=await readIndustryMenuPolicy(tx);
   if(current.revision!==input.revision)throw createHttpError(409,'INDUSTRY_MENU_POLICY_CHANGED');
-  const value={revision:current.revision+1,industries:Object.fromEntries(entries)};
+  const value={revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
   await tx.systemSetting.update({where:{key:INDUSTRY_MENU_KEY},data:{value,updatedBy:email}});
   return value;
  });
@@ -64,8 +71,8 @@ export function industryMenuApiFeature(path:string){
 export function registerIndustryMenuRoutes(app:any,db:any,gates:any){
  app.get('/system/industry-menu-policy',async(req:any,res:any)=>{
   if(!await gates.requireSystemAdmin(req,res))return;
-  const [policy,industries]=await Promise.all([readIndustryMenuPolicy(db),db.settingServiceDefault.findMany({where:{partnerRoleId:{gt:0},code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:{id:'asc'}})]);
-  res.json({...policy,catalogue:industries,features:INDUSTRY_MENU_FEATURES,required});
+  const policy=await readIndustryMenuPolicy(db);
+  res.json({...policy,features:INDUSTRY_MENU_FEATURES,required,subscriberTypes:SUBSCRIBER_TYPES});
  });
  app.put('/system/industry-menu-policy',async(req:any,res:any)=>{
   const actor=await gates.requireSystemAdmin(req,res);if(!actor)return;

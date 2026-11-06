@@ -6,6 +6,16 @@ import {canAccessPath} from '../frontend/src/utils/accessControl.js';
 import {getDefaultRoleAccessPolicy} from '../frontend/src/utils/roleAccessPolicyCore.mjs';
 const require=createRequire(import.meta.url);
 const {readIndustryMenuPolicy,saveIndustryMenuPolicy,companyIndustryMenuFeatures,industryMenuMiddleware,industryMenuApiFeature,registerIndustryMenuRoutes}=require('../backend/dist/services/industryMenuPolicy.js');
+
+test('subscriber profiles use two explicit company categories and bypass old partner classifications',async()=>{
+ let reads=0;
+ const db={systemSetting:{findUnique:async()=>({value:{revision:3,industries:{9:['DASHBOARD','BUSINESS','STYLE']},subscribers:{MANUFACTURER:['DASHBOARD','BUSINESS','STYLE'],SERVICE:['DASHBOARD','BUSINESS','FREIGHT']}}})},partnerClassification:{findUnique:async()=>{reads++;throw Error('legacy classification read');}}};
+ assert.deepEqual(await companyIndustryMenuFeatures(db,1,'SERVICE'),['DASHBOARD','BUSINESS','FREIGHT']);
+ assert.deepEqual(await companyIndustryMenuFeatures(db,1,'MANUFACTURER'),['DASHBOARD','BUSINESS','STYLE']);
+ assert.equal(reads,0);
+ for(const subscribers of [{BRAND:['DASHBOARD','BUSINESS']},{SERVICE:['DASHBOARD','BUSINESS','STYLE']},{MANUFACTURER:['DASHBOARD','BUSINESS','FREIGHT']},{SERVICE:['FREIGHT']}])
+  await assert.rejects(saveIndustryMenuPolicy(db,{revision:3,industries:{},subscribers},'system@test'),/INVALID_INDUSTRY_MENU_POLICY/);
+});
 test('client caps menu and direct routes without granting additional role privileges',()=>{
  const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',accessPolicy:getDefaultRoleAccessPolicy(),industryMenuFeatures:['DASHBOARD','BUSINESS','STYLE']}};
  assert.equal(canAccessPath('/style',state),true);
@@ -40,6 +50,12 @@ test('real DB: own industry, menu union, revisions, unknown values and retained 
   await db.partnerClassificationIndustry.create({data:{orgId,entityId:orgId,systemIndustryId:second.id}});
   const union=await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER');assert.ok(union.includes('STYLE')&&union.includes('FREIGHT'));assert.ok(!union.includes('PAYROLL'));
   assert.equal(await db.systemSetting.findUnique({where:{key:'INDUSTRY_MENU_POLICY:1'}}).then(row=>row.updatedBy),'system@example.test');
+  const current=await readIndustryMenuPolicy(db);
+  const profiles=await saveIndustryMenuPolicy(db,{...current,subscribers:{MANUFACTURER:[...common,'STYLE'],SERVICE:[...common,'FREIGHT']}},'system@example.test');
+  assert.deepEqual(profiles.industries,current.industries,'old explicit settings remain archived, not silently erased');
+  assert.deepEqual(await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER'),[...common,'STYLE']);
+  assert.deepEqual(await companyIndustryMenuFeatures(db,orgId,'SERVICE'),[...common,'FREIGHT']);
+  await assert.rejects(saveIndustryMenuPolicy(db,{...current,subscribers:{SERVICE:common}},'system@example.test'),/INDUSTRY_MENU_POLICY_CHANGED/);
  }finally{await fixture.close();}
 });
 test('API gate denies blocked data and requires membership, preserving existing role gates',async()=>{

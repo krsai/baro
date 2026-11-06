@@ -1,5 +1,4 @@
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
-import {industryMenuText} from '../constants/industryMenu';
 import usePendingApprovals from '../hooks/usePendingApprovals';
 import { PageNamingProvider } from '../context/PageNamingContext';
 import { applyPageMenuNames, resolvePageNaming } from '../utils/pageNaming.mjs';
@@ -845,8 +844,7 @@ const MainLayout = () => {
             icon: <TuneIcon />,
             path: '/system-setting/access-policy',
           },
-          {label:(industryMenuText[languageCode]||industryMenuText.en).title,icon:<TuneIcon/>,path:'/system-setting/industry-menus',
-          },
+
           { label: languageCode === 'ko' ? '앱 기본설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
           { label: getUiMessage('menu.transactionMasters', 'Accounting codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           { label: getUiMessage('menu.expenseUnits', 'Units', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-units' },

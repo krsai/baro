@@ -1,3 +1,7 @@
+import {subscriberMenuBlueprint} from '../../../utils/subscriberMenus.mjs';
+import SubscriberMenuSettings from './SubscriberMenuSettings';
+import {subscriberAccessText} from '../../../constants/subscriberAccess';
+import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
@@ -16,6 +20,8 @@ import {
   TableHead,
   TableRow,
   Typography,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
 import { ORG_ROLE_DEFAULT_LABELS } from '../../../constants/organizationAccess';
@@ -42,7 +48,7 @@ const EDITABLE_ROLE_ORDER = [
   ORG_ROLE_KEYS.ACCOUNTANT,
   ORG_ROLE_KEYS.WORKER,
 ];
-const EDITABLE_ORG_TYPE = ORG_TYPE_KEYS.MANUFACTURER;
+
 const NON_EDITABLE_FEATURE_KEYS = new Set([
   'SUBSCRIPTION',
   'SYSTEM_SETTING',
@@ -192,10 +198,7 @@ const toEditablePolicy = (policy) => {
         ? sourceSchemaVersion
         : ROLE_ACCESS_POLICY_SCHEMA_VERSION,
     ...defaults,
-    [EDITABLE_ORG_TYPE]: {
-      ...defaults[EDITABLE_ORG_TYPE],
-      ...(source[EDITABLE_ORG_TYPE] || {}),
-    },
+    ...Object.fromEntries(Object.values(ORG_TYPE_KEYS).map(type=>[type,{...defaults[type],...(source[type]||{})}])),
   };
 };
 
@@ -217,7 +220,7 @@ const serializeComparablePolicy = (policy) => {
   return JSON.stringify(comparable);
 };
 
-const AccessPolicyBoard = () => {
+const RolePolicyBoard = ({orgType}) => {
   const { activeProfile } = useAuth();
   const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
@@ -270,25 +273,25 @@ const AccessPolicyBoard = () => {
   }, [showNotification]);
 
   const rows = React.useMemo(
-    () => flattenMenuTree(buildMenuTree(menuBlueprint)),
-    [menuBlueprint]
+    () => flattenMenuTree(buildMenuTree(subscriberMenuBlueprint(organizeCompanyMenu(menuBlueprint,key=>getUiMessage(key,key,languageCode),orgType),orgType))),
+    [menuBlueprint,orgType,languageCode]
   );
 
   const hasFeature = React.useCallback(
     (role, featureKey) => {
-      const features = Array.isArray(draftPolicy?.[EDITABLE_ORG_TYPE]?.[role])
-        ? draftPolicy[EDITABLE_ORG_TYPE][role]
+      const features = Array.isArray(draftPolicy?.[orgType]?.[role])
+        ? draftPolicy[orgType][role]
         : [];
       return features.includes(featureKey);
     },
-    [draftPolicy]
+    [draftPolicy,orgType]
   );
 
   const setFeature = React.useCallback((role, featureKeys, checked) => {
     setDraftPolicy((prev) => {
       const next = toEditablePolicy(prev);
-      const currentFeatures = Array.isArray(next?.[EDITABLE_ORG_TYPE]?.[role])
-        ? next[EDITABLE_ORG_TYPE][role]
+      const currentFeatures = Array.isArray(next?.[orgType]?.[role])
+        ? next[orgType][role]
         : [];
       const featureSet = new Set(currentFeatures);
       if (checked) {
@@ -296,10 +299,10 @@ const AccessPolicyBoard = () => {
       } else {
         featureKeys.forEach(key => featureSet.delete(key));
       }
-      next[EDITABLE_ORG_TYPE][role] = Array.from(featureSet.values());
+      next[orgType][role] = Array.from(featureSet.values());
       return next;
     });
-  }, []);
+  }, [orgType]);
 
   const countGroupFeatures = React.useCallback(
     (role, permissionGroups) =>
@@ -339,7 +342,7 @@ const AccessPolicyBoard = () => {
   }, [draftPolicy, isDirty, languageCode, savingPolicy, showNotification]);
 
   const handleReset = React.useCallback(() => {
-    setDraftPolicy(toEditablePolicy(getDefaultRoleAccessPolicy()));
+    setDraftPolicy(previous=>({...previous,[orgType]:getDefaultRoleAccessPolicy()[orgType]}));
     showNotification(
       getUiMessage(
         'accessPolicy.reset',
@@ -348,7 +351,7 @@ const AccessPolicyBoard = () => {
       ),
       'info'
     );
-  }, [languageCode, showNotification]);
+  }, [languageCode, showNotification,orgType]);
 
   if (!isSystemAdmin) {
     return (
@@ -365,16 +368,12 @@ const AccessPolicyBoard = () => {
   }
 
   return (
-    <AppPageContainer title={pageTitle}>
+    <Box>
       <PageContentStack>
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="body2" color="text.secondary">
-            {getUiMessage(
-              'accessPolicy.targetScope',
-              resolveLocalizedText(ACCESS_POLICY_TEXT.targetScope, languageCode),
-              languageCode
-            )}
+            {(subscriberAccessText[languageCode]||subscriberAccessText.en)[orgType==='SERVICE'?'logistics':'factory']}
           </Typography>
           <Stack direction="row" spacing={1}>
             <Button
@@ -531,8 +530,19 @@ const AccessPolicyBoard = () => {
           </TableContainer>
         </Paper>
       </PageContentStack>
-    </AppPageContainer>
+    </Box>
   );
 };
 
+function AccessPolicyBoard(){
+ const {languageCode}=useLanguage(),{activeProfile}=useAuth(),t=subscriberAccessText[languageCode]||subscriberAccessText.en;
+ const [orgType,setOrgType]=React.useState('MANUFACTURER'),[section,setSection]=React.useState('roles');
+ if(activeProfile?.entryType!=='SYSTEM'||activeProfile?.systemRole!=='SYSTEM_ADMIN')return <RolePolicyBoard orgType={orgType}/>;
+ return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)}><Stack spacing={2}>
+  <Typography variant="body2" color="text.secondary">{t.note}</Typography>
+  <Tabs value={orgType} onChange={(_event,value)=>setOrgType(value)}><Tab value="MANUFACTURER" label={t.factory}/><Tab value="SERVICE" label={t.logistics}/></Tabs>
+  <Tabs value={section} onChange={(_event,value)=>setSection(value)}><Tab value="roles" label={t.roles}/><Tab value="menus" label={t.menus}/></Tabs>
+  <Box sx={{display:section==='roles'?'block':'none'}}><RolePolicyBoard orgType={orgType}/></Box><Box sx={{display:section==='menus'?'block':'none'}}><SubscriberMenuSettings orgType={orgType}/></Box>
+ </Stack></AppPageContainer>;
+}
 export default AccessPolicyBoard;

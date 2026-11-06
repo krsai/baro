@@ -17,7 +17,7 @@ const code = ts.transpileModule(`function blueprint(){${body}}`, {
 }).outputText;
 function source(system) {
   const context = {
-    React: { createElement: () => null }, languageCode: 'ko',industryMenuText:{en:{title:'Industry menus'}},
+    React: { createElement: () => null }, languageCode: 'ko',
     isSystemAdminProfile: system, isSystemProfile: system,activeProfile:{orgType:system?'SYSTEM':'MANUFACTURER'},pendingApprovalCount:1,
     pendingEmployeeCount: 1, missingSalesPriceCustomerCount: 1, pendingOnboardingCount: 1,
     getUiMessage: key => key, applyPageMenuNames: items => items,

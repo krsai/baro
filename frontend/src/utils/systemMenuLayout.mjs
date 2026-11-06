@@ -8,7 +8,7 @@ const GROUPS=[
  ['ATTRIBUTE',['/system-setting/static-options','/attribute/colors','/attribute/categories','/system-setting/expense-units']],
  ['PROCESS_MASTER',['/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs']],
  ['MISC',['/system-setting/partner-industries','/system-setting/transaction-codes']],
- ['SYSTEM',['/system-setting/access-policy','/system-setting/industry-menus','/system-setting/app-defaults','/employee-system','/salary-system','/personal-settings','/app-settings']],
+ ['SYSTEM',['/system-setting/access-policy','/system-setting/app-defaults','/employee-system','/salary-system','/personal-settings','/app-settings']],
 ];
 
 // Reuse the canonical menu nodes, including permission checks and badges.

@@ -239,8 +239,8 @@ const ONBOARDING_TEXT = {
   },
   close: { ko: '\ub2eb\uae30', en: 'Close', vi: 'Dong' },
   organizationType: { ko: '\uc5c5\uc885', en: 'Organization type', vi: 'Loai hinh to chuc' },
-  organizationTypeManufacturer: { ko: '\uacf5\uc7a5', en: 'Manufacturer', vi: 'Nhà máy' },
-  organizationTypeBrand: { ko: '\ube0c\ub79c\ub4dc', en: 'Brand', vi: 'Thuong hieu' },
+  organizationTypeManufacturer: { ko: '봉제 공장', en: 'Garment factory', vi: 'Nhà máy may' },
+  organizationTypeService: {ko:'\uBB3C\uB958 \uD68C\uC0AC',en:'Logistics company',vi:'C\u00F4ng ty logistics'},
   selectPrompt: { ko: '\uc120\ud0dd\ud574 \uc8fc\uc138\uc694', en: 'Please select', vi: 'Vui lòng chon' },
   companyName: { ko: '\ud68c\uc0ac\uba85', en: 'Company name', vi: 'Ten cong ty' },
   countryLabel: { ko: '\uad6d\uac00', en: 'Country', vi: 'Quoc gia' },
@@ -385,12 +385,12 @@ const Onboarding = () => {
   );
   const organizationTypeOptions = useMemo(
     () =>
-      ORGANIZATION_TYPE_OPTIONS.map((option) => ({
+      [...ORGANIZATION_TYPE_OPTIONS.filter(option=>option.value==='MANUFACTURER'),{value:'SERVICE'}].map((option) => ({
         ...option,
         label:
           option.value === 'MANUFACTURER'
             ? t('organizationTypeManufacturer')
-            : t('organizationTypeBrand'),
+            : t('organizationTypeService'),
       })),
     [languageCode]
   );

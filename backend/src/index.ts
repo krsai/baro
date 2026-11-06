@@ -1266,7 +1266,7 @@ type OrganizationTypeKey =
   (typeof ORGANIZATION_TYPE_KEYS)[keyof typeof ORGANIZATION_TYPE_KEYS];
 
 const ONBOARDING_ORGANIZATION_TYPE_OPTIONS = new Set<OrganizationTypeKey>(
-  Object.values(ORGANIZATION_TYPE_KEYS)
+  [ORGANIZATION_TYPE_KEYS.MANUFACTURER,ORGANIZATION_TYPE_KEYS.SERVICE]
 );
 const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // 2026-08-20: must stay in lockstep with frontend/src/utils/roleAccessPolicyCore.mjs's
@@ -2643,7 +2643,8 @@ const resolveOnboardingOrganizationType = (
     .replace(/[\s_-]+/g, "");
   if (!token) return null;
   if (ONBOARDING_ORGANIZATION_TYPE_TOKENS[token]) {
-    return ONBOARDING_ORGANIZATION_TYPE_TOKENS[token];
+    const mapped=ONBOARDING_ORGANIZATION_TYPE_TOKENS[token];
+    return ONBOARDING_ORGANIZATION_TYPE_OPTIONS.has(mapped)?mapped:null;
   }
   const normalized = token.toUpperCase() as OrganizationTypeKey;
   return ONBOARDING_ORGANIZATION_TYPE_OPTIONS.has(normalized)
@@ -19190,7 +19191,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
   if (!organizationType) {
     return res.status(400).json({
       ok: false,
-      error: `organizationType must be ${ORGANIZATION_TYPE_KEYS.MANUFACTURER} or ${ORGANIZATION_TYPE_KEYS.BRAND}`,
+      error: `organizationType must be ${ORGANIZATION_TYPE_KEYS.MANUFACTURER} or ${ORGANIZATION_TYPE_KEYS.SERVICE}`,
     });
   }
 
@@ -19427,16 +19428,17 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
     });
   }
 
+  if(companyRequest.organizationType&&!resolveOnboardingOrganizationType(companyRequest.organizationType))return res.status(400).json({ok:false,error:"invalid organization type"});
   const organizationType =
     resolveOnboardingOrganizationType(companyRequest.organizationType) ??
     ORGANIZATION_TYPE_KEYS.MANUFACTURER;
   // 2026-08-20 fail-closed check: onboarding approval creates a real tenant
   // (Organization + Employee login). resolveOnboardingOrganizationType can
-  // only resolve MANUFACTURER/BRAND today, but this stays an explicit
+  // only resolve MANUFACTURER/SERVICE, but this stays an explicit
   // assertion so a future change there can never silently create an
   // Employee login under a vendor-type Organization (PROCESS_OUTSOURCING/
   // MATERIAL_SUPPLIER, merged from BusinessPartner - see AGENTS.md).
-  if (organizationType !== "MANUFACTURER" && organizationType !== "BRAND") {
+  if (organizationType !== "MANUFACTURER" && organizationType !== "SERVICE") {
     return res.status(400).json({ ok: false, error: "invalid organization type" });
   }
   const organizationCountry = resolveOnboardingCountry(companyRequest.country);
