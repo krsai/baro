@@ -1,3 +1,4 @@
+import DashboardTodoSlot from '../../components/DashboardTodoSlot';
 import ProductionExcessCard from '../../components/ProductionExcessCard';
 import ServiceDashboard from './ServiceDashboard';
 import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
@@ -738,6 +739,7 @@ const WorkspaceDashboard = () => {
     <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
       <PageContentStack>
         {!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'&&canAccessPath('/work-history',authState)&&<ProductionExcessCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>}
+        <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gap:2,alignItems:'stretch'}}>
         <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
           <Typography variant="h6" sx={{ mb: 1.5 }}>
             {resolveText(
@@ -817,6 +819,9 @@ const WorkspaceDashboard = () => {
             ))}
           </Box>
         </Paper>
+
+        <DashboardTodoSlot/>
+        </Box>
 
         <Box data-testid="dashboard-workflow" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:isSystemProfile?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:2,alignItems:'start'}}>
         <Paper variant="outlined" data-testid="dashboard-notifications" sx={{p:2,borderRadius:`${ui.radius.panel}px`,height:540,minWidth:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
