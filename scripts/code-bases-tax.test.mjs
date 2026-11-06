@@ -333,7 +333,7 @@ test('tax rollout completes every active family and preserves existing IDs and h
 
 test('industry deletion refuses customer links and removes genuinely unused definitions',async()=>{
  let linked=1,deleted=false;
- const tx={$queryRawUnsafe:async()=>[{id:9}],settingServiceDefault:{delete:async()=>{deleted=true;}},settingTransactionCodeDefault:{count:async()=>0},transactionCodeBase:{count:async()=>0},orgRelationship:{count:async()=>linked},industryProductionPolicy:{count:async()=>0},outsourcingServiceType:{findMany:async()=>[]}};
+ const tx={$queryRawUnsafe:async sql=>sql.includes('WITH linked')?[]:[{id:9}],settingServiceDefault:{delete:async()=>{deleted=true;}},settingTransactionCodeDefault:{count:async()=>0},transactionCodeBase:{count:async()=>0},orgRelationship:{count:async()=>linked},industryProductionPolicy:{count:async()=>0},outsourcingServiceType:{findMany:async()=>[]}};
  await assert.rejects(service.deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);assert.equal(deleted,false);
  linked=0;await service.deleteSetting(tx,'services',true,9);assert.equal(deleted,true);
 });
