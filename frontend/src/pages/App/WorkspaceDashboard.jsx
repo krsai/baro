@@ -1,8 +1,8 @@
+import DashboardWidgets from '../../components/DashboardWidgets';
 import DashboardTodoSlot from '../../components/DashboardTodoSlot';
 import ProductionExcessCard from '../../components/ProductionExcessCard';
 import ServiceDashboard from './ServiceDashboard';
 import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
-import PageContentStack from '../../components/PageContentStack';
 import QuantityReviewDrawer from '../../components/QuantityReviewDrawer';
 import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orderWorkflow.mjs';
 import { ui } from '../../theme/ui';
@@ -26,7 +26,6 @@ import DnsIcon from '@mui/icons-material/Dns';
 import TuneIcon from '@mui/icons-material/Tune';
 import NotificationsNoneIcon from '@mui/icons-material/NotificationsNone';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import AppPageContainer from '../../components/AppPageContainer';
 import {
   STATIC_OPTION_GROUPS,
   countStaticOptionItems,
@@ -555,6 +554,7 @@ const WorkspaceDashboard = () => {
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
   const {
+    user,
     isAuthenticated,
     devBypass,
     devProfile,
@@ -714,117 +714,14 @@ const WorkspaceDashboard = () => {
     });
   }, [activeOrgId, isSystemProfile, loadSummaryData]);
 
-  const summaryCards = useMemo(
-    () =>
-      isSystemProfile
-        ? buildSystemSummaryCards({
-            languageCode,
-            summaryLoading,
-            systemSummaryData,
-          })
-        : buildSummaryCards({
-            languageCode,
-            summaryData,
-            summaryLoading,
-          }),
-    [isSystemProfile, languageCode, summaryData, summaryLoading, systemSummaryData]
-  );
-
   const notificationItems = useMemo(
     () => buildNotificationItems({ languageCode, isSystemProfile, summaryData, systemSummaryData }).filter((item) => canAccessPath(item.path, authState)),
     [authState, isSystemProfile, languageCode, summaryData, systemSummaryData]
   );
 
-  return (
-    <AppPageContainer title={resolveText(DASHBOARD_TEXT.title, languageCode)}>
-      <PageContentStack>
-        {!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'&&canAccessPath('/work-history',authState)&&<ProductionExcessCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>}
-        <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gap:2,alignItems:'stretch'}}>
-        <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: `${ui.radius.panel}px` }}>
-          <Typography variant="h6" sx={{ mb: 1.5 }}>
-            {resolveText(
-              isSystemProfile
-                ? DASHBOARD_TEXT.systemSummaryTitle
-                : DASHBOARD_TEXT.summaryTitle,
-              languageCode
-            )}
-          </Typography>
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                md: 'repeat(3, minmax(0, 1fr))',
-              },
-              gap: 1.5,
-            }}
-          >
-            {!queryError && summaryCards.map((card) => (
-              <Paper
-                key={card.key}
-                variant="outlined"
-                sx={SUMMARY_CARD_SX}
-              >
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  sx={{ mb: 0.75 }}
-                >
-                  <Typography variant="subtitle2" sx={SUMMARY_TITLE_SX}>
-                    {resolveText(card.title, languageCode)}
-                  </Typography>
-                  <Chip
-                    label={card.badge}
-                    size="small"
-                    variant="outlined"
-                    sx={SUMMARY_BADGE_SX}
-                  />
-                </Stack>
-                {Array.isArray(card.statusItems) && card.statusItems.length > 0 ? (
-                  <Stack spacing={0.5} sx={{ mb: 0.5 }}>
-                    {card.statusItems.map((status) => (
-                      <Stack
-                        key={status.key}
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="center"
-                      >
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          sx={SUMMARY_LABEL_SX}
-                        >
-                          {resolveText(status.label, languageCode)}
-                        </Typography>
-                        <Typography variant="body2" sx={SUMMARY_VALUE_SX}>
-                          {status.value}
-                        </Typography>
-                      </Stack>
-                    ))}
-                  </Stack>
-                ) : (
-                  <Typography variant="body2" sx={SUMMARY_VALUE_SX}>
-                    {card.value}
-                  </Typography>
-                )}
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  sx={SUMMARY_DESCRIPTION_SX}
-                >
-                  {resolveText(card.description, languageCode)}
-                </Typography>
-              </Paper>
-            ))}
-          </Box>
-        </Paper>
-
-        <DashboardTodoSlot/>
-        </Box>
-
-        <Box data-testid="dashboard-workflow" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',lg:isSystemProfile?'minmax(0,1fr)':'repeat(2,minmax(0,1fr))'},gap:2,alignItems:'start'}}>
-        <Paper variant="outlined" data-testid="dashboard-notifications" sx={{p:2,borderRadius:`${ui.radius.panel}px`,height:540,minWidth:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+  const widgets=[
+    ...(!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'&&canAccessPath('/work-history',authState)?[{id:'production-excess',label:({ko:'초과 생산 확인',en:'Production excess',vi:'Sản xuất vượt'})[languageCode]||'Production excess',width:'full',content:<ProductionExcessCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>}]:[]),
+    {id:'notifications',label:resolveText(DASHBOARD_TEXT.notificationTitle,languageCode),content:(<Paper variant="outlined" data-testid="dashboard-notifications" sx={{p:2,borderRadius:`${ui.radius.panel}px`,height:540,minWidth:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
             <NotificationsNoneIcon color="primary" />
             <Typography variant="h6">{resolveText(DASHBOARD_TEXT.notificationTitle, languageCode)}</Typography>
@@ -855,18 +752,17 @@ const WorkspaceDashboard = () => {
             </Stack>
           )}
           </Box>
-        </Paper>
-          {!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)&&<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}
-        </Box>
-
-
-
-      </PageContentStack>
+        </Paper>)},
+    ...(!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)?[{id:'approvals',label:({ko:'결재 현황',en:'Approvals',vi:'Phê duyệt'})[languageCode]||'Approvals',content:<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}]:[]),
+    {id:'todo',label:'TODO',content:<DashboardTodoSlot/>},
+  ];
+  return (
+    <DashboardWidgets title={resolveText(DASHBOARD_TEXT.title, languageCode)} widgets={widgets} companyId={activeOrgId} userId={user?.id||activeProfile?.employeeId} languageCode={languageCode} onSaved={message=>showNotification(message,'success')}>
       <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
       {recordAlert && <QuantityReviewDrawer externalId={recordAlert.id} orgId={activeOrgId} languageCode={languageCode}
         headerOrderNo={recordAlert.orderNo} headerStyleLabel={recordAlert.styleName} headerQuantity={recordAlert.plannedQuantity}
         onClose={() => setRecordAlert(null)} />}
-    </AppPageContainer>
+    </DashboardWidgets>
   );
 };
 

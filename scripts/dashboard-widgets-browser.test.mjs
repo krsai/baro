@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {writeFileSync,unlinkSync,existsSync} from 'node:fs';
+import {spawn} from 'node:child_process';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+const html='frontend/dashboard-widgets-test.html',jsx='frontend/dashboard-widgets-test.jsx';
+writeFileSync(html,'<div id="root"></div><script type="module" src="/dashboard-widgets-test.jsx"></script>');
+writeFileSync(jsx,`import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Paper} from '@mui/material';import theme from '/src/theme';import DashboardWidgets from '/src/components/DashboardWidgets';
+const params=new URLSearchParams(location.search),lang=params.get('lang');function Content({name}){React.useEffect(()=>{window.mounted??={};window.mounted[name]=(window.mounted[name]||0)+1;},[]);return <Paper sx={{p:2,height:180}}>{name}</Paper>;}
+function App(){const[company,setCompany]=React.useState(1);window.switchCompany=setCompany;const widgets=[{id:'excess',label:'Excess',width:'full',content:<Content name="excess"/>},{id:'alerts',label:'Alerts',content:<Content name="alerts"/>},{id:'todo',label:'TODO',content:<Content name="todo"/>}];return <ThemeProvider theme={theme}><CssBaseline/><DashboardWidgets title="Dashboard" companyId={company} userId="user-a" languageCode={lang} widgets={widgets} onSaved={()=>window.saved=true}/></ThemeProvider>;}createRoot(document.getElementById('root')).render(<App/>);`);
+const text={ko:{select:'위젯 선택',save:'저장',width:'너비',full:'전체 너비'},en:{select:'Select widgets',save:'Save',width:'Width',full:'Full width'},vi:{select:'Chọn tiện ích',save:'Lưu',width:'Chiều rộng',full:'Toàn chiều rộng'}};
+const port=43292,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
+try{
+ for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(html)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
+ browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+ for(const lang of ['ko','en','vi']){
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));const url=`http://127.0.0.1:${port}/${path.basename(html)}?lang=${lang}`;await page.goto(url,{timeout:45000});const t=text[lang],open=()=>page.getByRole('button',{name:t.select,exact:true}).click(),actual=page.locator('[data-dashboard-widget]');
+  await open();const dialog=page.getByRole('dialog');await dialog.waitFor();assert.equal(await dialog.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);
+  await dialog.getByRole('checkbox',{name:'Alerts',exact:true}).uncheck();await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert.equal(await actual.count(),3);
+  await open();await dialog.getByRole('checkbox',{name:'Alerts',exact:true}).uncheck();const todo=dialog.locator('[data-widget-preview="todo"]');await todo.getByRole('button',{name:'TODO',exact:true}).press('ArrowUp');assert.deepEqual(await dialog.locator('[data-widget-preview]').evaluateAll(nodes=>nodes.map(node=>node.dataset.widgetPreview)),['todo','excess']);
+  await todo.getByRole('combobox').click();await page.getByRole('option',{name:t.full,exact:true}).click();await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.saved),true);assert.deepEqual(await actual.evaluateAll(nodes=>nodes.map(node=>node.dataset.dashboardWidget)),['todo','excess']);assert.equal(await actual.first().evaluate(node=>getComputedStyle(node).gridColumnStart),'span 2');
+  await page.reload();await page.waitForFunction(()=>document.querySelectorAll('[data-dashboard-widget]').length===2);assert.equal(await page.evaluate(()=>window.mounted.alerts||0),0);
+  await page.evaluate(()=>window.switchCompany(2));await page.waitForFunction(()=>document.querySelectorAll('[data-dashboard-widget]').length===3);await page.evaluate(()=>window.switchCompany(1));await page.waitForFunction(()=>document.querySelectorAll('[data-dashboard-widget]').length===2);
+  await open();const handle=dialog.locator('[data-widget-preview="excess"]').getByRole('button',{name:'Excess',exact:true}),target=dialog.locator('[data-widget-preview="todo"]');const a=await handle.boundingBox(),b=await target.boundingBox();await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();await page.mouse.move(a.x+a.width/2,a.y-15,{steps:3});await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:12});await page.mouse.up();await page.waitForFunction(()=>document.querySelector('[data-widget-preview]')?.dataset.widgetPreview==='excess');
+  await page.setViewportSize({width:390,height:844});assert.equal(await dialog.evaluate(node=>node.scrollWidth>node.clientWidth+1),false);await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
+  if(lang==='en'){
+   await open();await dialog.getByRole('checkbox',{name:'Excess',exact:true}).uncheck();await dialog.getByRole('checkbox',{name:'TODO',exact:true}).uncheck();await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(await actual.count(),0);await page.reload();await page.getByText('Select widgets to display.',{exact:true}).waitFor();assert.equal(await actual.count(),0);
+   await open();await dialog.getByRole('checkbox',{name:'TODO',exact:true}).check();await page.evaluate(()=>{window.originalStorageSet=Storage.prototype.setItem;Storage.prototype.setItem=()=>{throw new Error('Blocked storage');};});await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.getByRole('alert').waitFor();assert.equal(await actual.count(),0);assert.equal(await dialog.locator('[data-widget-preview]').count(),1);await page.evaluate(()=>{Storage.prototype.setItem=window.originalStorageSet;});await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
+  }
+  assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('Dashboard widgets: ko/en/vi selection, draft cancellation, keyboard/pointer drag, width, persistence, company isolation, hidden mounting and mobile passed.');
+}finally{await browser?.close();server.kill();for(const file of[html,jsx])if(existsSync(file))unlinkSync(file);}
