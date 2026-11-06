@@ -11,4 +11,10 @@ Object.assign(accountOverviewText.vi,{chart:'Số dư tài khoản',days:'Thời
 
 Object.assign(accountOverviewText.ko,{capture:'이미지 저장',captureFailed:'이미지를 저장하지 못했습니다.',close:'닫기'});
 Object.assign(accountOverviewText.en,{capture:'Save image',captureFailed:'Could not save image.',close:'Close'});
+Object.assign(accountOverviewText.ko,{balances:'계좌 증감',month:'조회 월',previousMonth:'이전 달',nextMonth:'다음 달'});
+Object.assign(accountOverviewText.en,{balances:'Account movements',month:'Month',previousMonth:'Previous month',nextMonth:'Next month'});
+Object.assign(accountOverviewText.ko,{ending:'기말 잔액'});
+Object.assign(accountOverviewText.en,{ending:'Closing balance'});
+Object.assign(accountOverviewText.vi,{ending:'Số dư cuối kỳ'});
+Object.assign(accountOverviewText.vi,{balances:'Biến động tài khoản',month:'Tháng',previousMonth:'Tháng trước',nextMonth:'Tháng sau'});
 Object.assign(accountOverviewText.vi,{capture:'Lưu ảnh',captureFailed:'Không thể lưu ảnh.',close:'Đóng'});

@@ -7,6 +7,18 @@ const {registerBankLedgerRoutes}=require('../backend/dist/services/bankLedger');
 const {attachLedgerActorNames}=require('../backend/dist/services/ledgerActors');
 import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
 
+test('monthly movements use calendar boundaries, leap years and account names without changing current history',()=>{
+ const {accountMovementPeriod}=require('../backend/dist/services/accountOverview.js');
+ assert.deepEqual(accountMovementPeriod('2024-02','2026-11-06'),{month:'2024-02',start:'2024-02-01',end:'2024-02-29'});
+ assert.equal(accountMovementPeriod('2025-02','2026-11-06').end,'2025-02-28');
+ assert.equal(accountMovementPeriod('2026-11','2026-11-06').end,'2026-11-06');
+ for(const value of ['2026-12','2026-13','2026-1','invalid'])assert.throws(()=>accountMovementPeriod(value,'2026-11-06'),/LEDGER_INVALID_RANGE/);
+ const flows=[{accountId:'a',transactionDate:'2026-09-30',direction:'IN',_sum:{amount:'900'}},{accountId:'a',transactionDate:'2026-10-01',direction:'IN',_sum:{amount:'50'}},{accountId:'a',transactionDate:'2026-10-31',direction:'OUT',_sum:{amount:'20'}},{accountId:'a',transactionDate:'2026-11-01',direction:'IN',_sum:{amount:'700'}}];
+ const period=accountBalanceReport([{id:'a',displayName:'Operating account',bankName:'Bank',accountNumber:'123',currencyCode:'USD',openingDate:'2026-01-01',openingBalance:'0',currentBalance:'130'}],flows,'2026-10-31');
+ assert.equal(period.accounts[0].name,'Operating account');assert.equal(period.accounts[0].beginningBalance,'100.00');assert.equal(period.accounts[0].totalIn,'50.00');assert.equal(period.accounts[0].totalOut,'20.00');assert.equal(period.accounts[0].change,'30.00');assert.equal(period.accounts[0].currentBalance,'130.00');
+ const unnamed=accountBalanceReport([{id:'b',bankName:'Bank',accountNumber:'456',currencyCode:'VND',openingDate:'2026-01-01',openingBalance:'0',currentBalance:'0'}],[],'2026-10-31');assert.equal(unnamed.accounts[0].name,'Bank / 456');
+});
+
 test('overview API requires a real company member and its separate configured policy feature',async()=>{
  for(const [role,features,system,expected] of [['ADMIN',['ACCOUNT_OVERVIEW'],false,true],['ADMIN',['BANK_LEDGER'],false,false],['ACCOUNTANT',['ACCOUNT_OVERVIEW','BANK_LEDGER'],false,true],['ACCOUNTANT',['ACCOUNT_OVERVIEW'],true,true],['OPERATOR',['ACCOUNT_OVERVIEW'],false,true],['WORKER',['ACCOUNT_OVERVIEW'],false,true],['WORKER',['BANK_LEDGER'],false,false],['OPERATOR',[],false,false],['INVALID',['ACCOUNT_OVERVIEW'],false,false],[null,['ACCOUNT_OVERVIEW'],true,false]]){
   const routes=new Map();let reached=0,status;
