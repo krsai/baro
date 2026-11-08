@@ -3,6 +3,9 @@ import { retryEditTransaction } from '../utils/editRevision';
 
 export const STYLE_PRODUCT_FIELDS = ['code', 'name', 'registrationDate', 'designer', 'season', 'imageUrls'] as const;
 
+// Prisma binds numeric raw-query arguments as int8. Custom product permission
+// functions accept int4 IDs, so cast their bound numeric arguments explicitly.
+
 export function styleOwnershipDto(style: any) {
   return {
     productStyleId: style.productStyleId ?? null,
@@ -43,7 +46,7 @@ async function actor(db: any, orgId: number, actorId: number) {
 export async function readStyleProduct(db: any, orgId: number, actorId: number, id: number) {
   await actor(db, orgId, actorId);
   const product = (await db.$queryRawUnsafe(`SELECT p.id,p."ownerOrgId",p.revision,p.fields FROM "StyleProduct" p
-    WHERE p.id=$1 AND (p."ownerOrgId"=$2 OR baro_style_product_trade_connected($2,p."ownerOrgId"))`, id, orgId))[0];
+    WHERE p.id=$1 AND (p."ownerOrgId"=$2 OR baro_style_product_trade_connected($2::integer,p."ownerOrgId"))`, id, orgId))[0];
   if (!product) throw createHttpError(404, 'STYLE_PRODUCT_NOT_FOUND');
   return product;
 }
@@ -52,7 +55,7 @@ export async function listStyleProducts(db: any, orgId: number, actorId: number)
   await actor(db, orgId, actorId);
   return db.$queryRawUnsafe(`SELECT p.id,p."ownerOrgId",p.revision,p.fields-'imageUrls' AS fields,o.name AS "ownerOrgName",r."brandOrgId" AS "customerOrgId"
     FROM "StyleProduct" p JOIN "Organization" o ON o.id=p."ownerOrgId" AND o."isActive"
-    LEFT JOIN "OrgRelationship" r ON r."manufacturerOrgId"=$1 AND baro_style_product_trade_connected($1,p."ownerOrgId",r."brandOrgId")
+    LEFT JOIN "OrgRelationship" r ON r."manufacturerOrgId"=$1 AND baro_style_product_trade_connected($1::integer,p."ownerOrgId",r."brandOrgId")
     WHERE p."ownerOrgId"=$1 OR r."brandOrgId" IS NOT NULL ORDER BY p.id,r."brandOrgId"`, orgId);
 }
 
@@ -65,7 +68,7 @@ export async function takeStyleProduct(db: any, orgId: number, actorId: number, 
     const manufacturer = await tx.organization.findFirst({ where: { id: orgId, type: 'MANUFACTURER', isActive: true } });
     if (!manufacturer) throw createHttpError(403, 'STYLE_PRODUCT_ACCESS_DENIED');
     const rows = await tx.$queryRawUnsafe<any[]>(`SELECT p.* FROM "StyleProduct" p JOIN "Organization" o ON o.id=p."ownerOrgId" AND o."isActive"
-      WHERE p.id=$1 AND baro_style_product_trade_connected($2,p."ownerOrgId",$3) FOR UPDATE OF p`, id, orgId, input.customerOrgId);
+      WHERE p.id=$1 AND baro_style_product_trade_connected($2::integer,p."ownerOrgId",$3::integer) FOR UPDATE OF p`, id, orgId, input.customerOrgId);
     const product = rows[0];
     if (!product) throw createHttpError(404, 'STYLE_PRODUCT_NOT_FOUND');
     const previous = await tx.style.findFirst({ where: { orgId, productStyleId: id }, select: { id: true, productStyleId: true, appliedProductRevision: true } });
@@ -90,7 +93,7 @@ export async function updateStyleProduct(db: any, orgId: number, actorId: number
       Object.keys(input).some(key => !['fields', 'revision'].includes(key))) throw createHttpError(400, 'STYLE_PRODUCT_FIELDS_INVALID');
   return retryEditTransaction(db, async tx => {
     await actor(tx, orgId, actorId);
-    const rows = await tx.$queryRawUnsafe<any[]>('SELECT id,"ownerOrgId",revision,fields,fields=$3::jsonb AS matches FROM "StyleProduct" WHERE id=$1 AND baro_style_product_can_edit($2,"ownerOrgId") FOR UPDATE', id, orgId, JSON.stringify(fields));
+    const rows = await tx.$queryRawUnsafe<any[]>('SELECT id,"ownerOrgId",revision,fields,fields=$3::jsonb AS matches FROM "StyleProduct" WHERE id=$1 AND baro_style_product_can_edit($2::integer,"ownerOrgId") FOR UPDATE', id, orgId, JSON.stringify(fields));
     const previous = rows[0];
     if (!previous) throw createHttpError(404, 'STYLE_PRODUCT_NOT_FOUND');
     // An identical retry never creates a second revision; changed retries conflict.
@@ -115,7 +118,7 @@ export async function createStyleProduct(db: any, orgId: number, actorId: number
     let custodianOrgId: number | null = null;
     if (input.customerOrgId !== undefined) {
       if (!Number.isSafeInteger(input.customerOrgId) || input.customerOrgId < 1) throw createHttpError(400, 'STYLE_PRODUCT_FIELDS_INVALID');
-      const resolved = await tx.$queryRawUnsafe<any[]>('SELECT baro_style_product_resolve_owner($1,$2) AS "ownerOrgId"', orgId, input.customerOrgId);
+      const resolved = await tx.$queryRawUnsafe<any[]>('SELECT baro_style_product_resolve_owner($1::integer,$2::integer) AS "ownerOrgId"', orgId, input.customerOrgId);
       ownerOrgId = resolved[0].ownerOrgId;
       custodianOrgId = orgId;
     } else {

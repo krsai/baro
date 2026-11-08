@@ -27,15 +27,24 @@ CREATE TABLE "StyleProcessStandard"(id INT PRIMARY KEY,"styleProcessId" INT,"org
 INSERT INTO "StyleProcessStandard" VALUES(9,7,1,2500);
 CREATE TABLE "WorkOrder"(id INT PRIMARY KEY,"orgId" INT,snapshot JSONB);INSERT INTO "WorkOrder" VALUES(8,1,'{"amount":111,"version":3}');
 `;
-const q=async(db,s,args=[]) => (await db.query(s,args)).rows;
+// Prisma sends JS numeric raw-query parameters as PostgreSQL int8, unlike
+// PGlite's inferred parameter types. Keep that transport behavior in regressions.
+const prismaQuery=(db,s,args=[])=>db.query(s.replace(/\$(\d+)\b/g,(token,index)=>typeof args[Number(index)-1]==='number'?`${token}::bigint`:token),args);
+const q=async(db,s,args=[]) => (await prismaQuery(db,s,args)).rows;
 async function setup(){const db=new PGlite();await db.exec(fixture);return db;}
 async function migrate(db){await db.exec('BEGIN;'+sql+editSql+'COMMIT;');}
 async function product(db){return (await q(db,'SELECT * FROM "StyleProduct" ORDER BY id'))[0];}
+test('Prisma int8 function arguments require explicit int4 casts; real service calls remain compatible',async()=>{
+ const db=await setup();try{await migrate(db);
+  await assert.rejects(q(db,'SELECT baro_style_product_trade_connected($1,$2)',[1,2]),/function.*does not exist/);
+  assert.equal((await listStyleProducts(adapter(db),1,10)).length,1);
+ }finally{await db.close();}
+});
 const originalFields=async db=>(await product(db)).fields;
 function adapter(db){
  const tx={
   $queryRawUnsafe:(s,...args)=>q(db,s,args),
-  $executeRawUnsafe:async(s,...args)=>(await db.query(s,args)).affectedRows,
+  $executeRawUnsafe:async(s,...args)=>(await prismaQuery(db,s,args)).affectedRows,
   employee:{findFirst:async({where})=>(await q(db,`SELECT e.* FROM "Employee" e JOIN "Organization" o ON o.id=e."orgId" WHERE e.id=$1 AND e."orgId"=$2 AND e.status='ACTIVE' AND e."orgRole" IN ('ADMIN','OPERATOR','ACCOUNTANT') AND o."isActive"`,[where.id,where.orgId]))[0]},
   organization:{findFirst:async({where})=>(await q(db,`SELECT * FROM "Organization" WHERE id=$1 AND type=$2 AND "isActive" AND ($2<>'BRAND' OR "ownerOrgId" IS NULL AND ("dataOwnerOrgId" IS NULL OR "dataOwnerOrgId"=id))`,[where.id,where.type]))[0]},
   orgRelationship:{findUnique:async({where})=>(await q(db,`SELECT * FROM "OrgRelationship" WHERE "manufacturerOrgId"=$1 AND "brandOrgId"=$2`,[where.manufacturerOrgId_brandOrgId.manufacturerOrgId,where.manufacturerOrgId_brandOrgId.brandOrgId]))[0]},
