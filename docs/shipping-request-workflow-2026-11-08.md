@@ -30,6 +30,6 @@
 
 `npm run test:shipping-requests`로 실제 Prisma와 로컬 PostgreSQL 호환 DB의 회사 격리·접수·중복·공유 whitelist·정확한 금액·기존 자료 보존 검사 및 한영베 PC/모바일 브라우저 검사를 실행한다. 프런트/백엔드 빌드와 번역 키·인코딩 검사도 수행한다.
 
-운영 migration은 아직 적용하지 않았다. 운영 사전 검증은 자동 승인 검토에서 거절됐다. 공유 운영 DB의 15개 테이블에 잠금을 잡고 DDL을 실행하는 검증에 별도 승인이 필요하다는 이유다. 이에 운영 접속으로 우회하지 않고 로컬 이전 스키마 fixture를 이용해 자료 보존을 검증했다. `backend/scripts/rollout-shipping-requests.js`는 승인 후 사용할 사전 검증/적용 도구이며 기본 동작은 rollback하는 dry-run이다.
+2026-11-08 사용자 승인 후 Railway 운영 DB에 migration을 적용했다. 적용 직전 FreightJob·FreightMaster·FreightDispatch·TransportExchange는 모두 0건이었다. `backend/scripts/rollout-shipping-requests.js --dry-run`으로 실제 DDL 실행 후 rollback과 기존 15개 테이블 값 보존을 확인했고, `--apply`도 동일한 보존 검사를 통과했다. 적용 후 읽기 전용 검증에서 제조사·포워더 두 회사의 실제 Prisma 운송 목록 조회가 성공했다.
 
-변경은 운영 자동 배포를 유발하지 않는 검토 브랜치로 전달한다. 운영 migration과 main 통합은 승인 후 수행해야 한다.
+초기 변경은 검토 브랜치 `feat/shipping-request-workflow`의 `84d8f608`로 전달했다. 운영 승인 후 main에 통합하며 Railway 자동 배포로 반영한다. 기본 rollout 동작은 rollback하는 dry-run이며 이전 migration의 checksum을 변경하지 않는다.
