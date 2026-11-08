@@ -86,6 +86,12 @@ model FreightTransportTask {
  status String @default("PLANNED")
 }
 model FreightJob {
+ receiptStatus String @default("ACCEPTED")
+ requesterOrgId Int?
+ requestCreatedByOrgId Int?
+ requestCreatedByEmployeeId Int?
+ requestSnapshot Json?
+ sharedSnapshot Json?
  id String @id
  orgId Int
  clientKey String
@@ -100,8 +106,8 @@ model FreightJob {
  status String
  data Json
  version Int @default(1)
- createdByEmployeeId Int
- updatedByEmployeeId Int
+ createdByEmployeeId Int?
+ updatedByEmployeeId Int?
  createdAt DateTime @default(now())
  updatedAt DateTime @default(now())
  @@unique([id,orgId])
@@ -109,6 +115,45 @@ model FreightJob {
  @@unique([orgId,number])
  @@index([orgId,createdAt,id],map:"FreightJob_org_created_idx")
  @@index([masterId,orgId],map:"FreightJob_master_idx")
+}
+model ShippingRequestEvent {
+ id String @id
+ jobId String
+ orgId Int
+ actorOrgId Int
+ actorId Int
+ version Int
+ action String
+ snapshot Json
+ createdAt DateTime @default(now())
+ @@unique([jobId,version])
+ @@index([orgId,jobId])
+}
+model ShippingChargeDraft {
+ id String @id
+ orgId Int
+ jobId String
+ direction String
+ description String
+ currencyCode String
+ amount Decimal @db.Decimal(24,4)
+ version Int @default(1)
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@unique([id,orgId,jobId])
+ @@index([orgId,jobId])
+}
+model ShippingDocumentShare {
+ id String @id
+ orgId Int
+ jobId String
+ documentId String
+ snapshot Json
+ createdByEmployeeId Int
+ createdAt DateTime @default(now())
+ @@unique([jobId,documentId])
 }
 model FreightMaster {
  id String @id

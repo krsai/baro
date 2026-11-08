@@ -4,7 +4,7 @@ import path from 'node:path';
 import {prismaPGlite} from './prisma-pglite.mjs';
 const require=createRequire(import.meta.url);
 let schema;
-export async function changeApprovalFixture({registration=false}={}){
+export async function changeApprovalFixture({registration=false,beforeMigration}={}){
  schema??=execFileSync(process.execPath,[path.resolve('backend/node_modules/prisma/build/index.js'),'migrate','diff','--from-empty','--to-schema-datamodel',path.resolve('backend/prisma/schema.prisma'),'--script'],{encoding:'utf8',env:{...process.env,DIRECT_URL:'postgresql://test:local@127.0.0.1:5432/test'},maxBuffer:20*1024*1024});
  const f=await prismaPGlite();try{
   await f.pg.exec(schema);
@@ -12,6 +12,8 @@ export async function changeApprovalFixture({registration=false}={}){
   // The generated empty schema already has FKs added unconditionally by some
   // historical rollout steps. Start those steps from their original FK state.
   for(const migration of require('../../backend/scripts/migrate-entity-profiles').migrations()){
+   if(beforeMigration)await beforeMigration(f,migration);
+   if(migration.version==='20261108010000_style_product_ownership')await f.pg.exec('ALTER TABLE "Style" DROP COLUMN IF EXISTS "productStyleId" CASCADE, DROP COLUMN IF EXISTS "productOwnerOrgId" CASCADE, DROP COLUMN IF EXISTS "appliedProductRevision" CASCADE;');
    if(!registration&&migration.version==='20261105060000_ledger_registration_approvals')continue;
    for(const match of migration.sql.matchAll(/CREATE TABLE "([^"]+)"/g))await f.pg.exec(`DROP TABLE IF EXISTS "${match[1]}" CASCADE`);
    for(const match of migration.sql.matchAll(/CREATE (?:UNIQUE )?INDEX "([^"]+)"/g))await f.pg.exec(`DROP INDEX IF EXISTS "${match[1]}"`);

@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:shipping-requests": "npm --prefix backend run build && node --test scripts/shipping-requests.test.mjs scripts/freight-operations.test.mjs scripts/transport-exchange.test.mjs scripts/company-menu-layout.test.mjs scripts/railway-schema-preflight.test.mjs scripts/access-policy-regression.test.mjs scripts/page-naming.test.mjs && node scripts/shipping-requests-browser.test.mjs && node scripts/shipping-menu-browser.test.mjs",
     "test:transport-exchange": "npm --prefix backend run build && node --test scripts/transport-exchange.test.mjs scripts/freight-jobs.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/transport-exchange-browser.test.mjs",
     "test:linked-payee-accounts": "npm --prefix backend run build && node --test scripts/linked-payee-accounts.test.mjs scripts/business-accounts.test.mjs scripts/entity-profile.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/linked-payee-accounts-browser.test.mjs",
     "test:system-entities": "npm --prefix backend run build && node --test scripts/system-entities.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/system-entities-browser.test.mjs",

@@ -687,8 +687,7 @@ const MainLayout = () => {
           },
         ],
       },
-      {label:getUiMessage('menu.transportExchange','Transport exchange',languageCode),icon:<LocalShippingIcon/>,path:'/transport-exchange'},
-      {label:getUiMessage('menu.freight','Logistics',languageCode),icon:<LocalShippingIcon/>,path:'/freight'},
+      {label:getUiMessage('menu.transportList','Transport list',languageCode),icon:<LocalShippingIcon/>,path:'/shipping'},
       {label:getUiMessage('menu.accountManagement','Account management',languageCode),icon:<AccountBalanceWalletIcon/>,isParent:true,menuGroupKey:MENU_GROUP_KEYS.ACCOUNTS,isOpen:accountsOpen,children:[{label:getUiMessage('menu.accountOverview','Account overview',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/account-overview'},{label:getUiMessage('menu.bankLedger','Transactions',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/bank-ledger'}]},
       {
         label: getUiMessage('menu.organization', '\uC870\uC9C1 \uAD00\uB9AC', languageCode),

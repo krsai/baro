@@ -126,7 +126,7 @@ const resolveLocalizedText = (localizedText, languageCode) => {
   );
 };
 
-const buildMenuTree = (nodes = [], parentId = 'root') =>
+const buildMenuTree = (nodes = [], parentId = 'root', orgType = 'SERVICE') =>
   (Array.isArray(nodes) ? nodes : [])
     .map((node, index) => {
       const nodeLabel = String(node?.label || '').trim();
@@ -135,7 +135,7 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
 
       const childNodes=node?.children;
       if (Array.isArray(childNodes) && childNodes.length > 0) {
-        const children = buildMenuTree(childNodes, nodeId);
+        const children = buildMenuTree(childNodes, nodeId, orgType);
         if (children.length === 0) return null;
         return {
           id: nodeId,
@@ -151,9 +151,9 @@ const buildMenuTree = (nodes = [], parentId = 'root') =>
       }
 
       if (!path) return null;
-      const featureKey = resolveFeatureByPath(path);
+      const featureKey = resolveFeatureByPath(path,orgType);
       if (NON_EDITABLE_FEATURE_KEYS.has(featureKey) && featureKey !== 'PROFILE') return null;
-      const permissionOptions = (node.accessChildren || []).map(child => ({label:child.label,path:child.path,featureKey:resolveFeatureByPath(child.path)})).filter(child=>child.featureKey && !NON_EDITABLE_FEATURE_KEYS.has(child.featureKey));
+      const permissionOptions = (node.accessChildren || []).map(child => ({label:child.label,path:child.path,featureKey:resolveFeatureByPath(child.path,orgType)})).filter(child=>child.featureKey && !NON_EDITABLE_FEATURE_KEYS.has(child.featureKey));
       const featureKeys = permissionOptions.length ? [...new Set(permissionOptions.map(child=>child.featureKey))] : featureKey && !NON_EDITABLE_FEATURE_KEYS.has(featureKey) ? [featureKey] : [];
       if (!featureKey && !permissionOptions.length) return null;
       return {
@@ -289,7 +289,7 @@ const RolePolicyBoard = ({orgType}) => {
       if(node.type==='group'){const children=filter(node.children);if(!children.length)return [];const permissionGroups=children.flatMap(child=>child.type==='group'?child.permissionGroups:child.featureKeys.length?[child.featureKeys]:[]);return [{...node,children,permissionGroups,featureKeys:[...new Set(children.flatMap(child=>child.featureKeys))]}];}
       const featureKeys=node.featureKeys.filter(include);return featureKeys.length||node.fixedAccess&&scope==='common'?[{...node,featureKeys}]:[];
     });
-    return flattenMenuTree(filter(buildMenuTree(subscriberMenuBlueprint(organizeCompanyMenu(menuBlueprint,key=>getUiMessage(key,key,languageCode),orgType),orgType))));
+    return flattenMenuTree(filter(buildMenuTree(subscriberMenuBlueprint(organizeCompanyMenu(menuBlueprint,key=>getUiMessage(key,key,languageCode),orgType),orgType),'root',orgType)));
   },[menuBlueprint,orgType,languageCode,scope]);
 
   const hasFeature = React.useCallback(
