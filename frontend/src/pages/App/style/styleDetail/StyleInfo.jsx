@@ -26,43 +26,14 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import dayjs from 'dayjs';
 import SearchableSelect from '../../../../components/SearchableSelect';
 import { useLanguage } from '../../../../context/LanguageContext';
+import { useAuth } from '../../../../context/AuthContext';
 import { getUiMessage } from '../../../../constants/uiMessages';
 import { fetchAttributes } from '../../../../utils/attributeApi';
-import { requestJSON } from '../../../../utils/apiClient';
+import { buildQueryString, requestJSON } from '../../../../utils/apiClient';
 import { resolveCustomerDisplayName } from '../../../../utils/appLanguage';
 import StyleAnalysis from './StyleAnalysis';
 
-const CUSTOMERS_CACHE_TTL_MS = 30 * 1000;
 const IMAGE_URL_PROTOCOLS = new Set(['http:', 'https:']);
-
-let customersCache = null;
-let customersCacheTimestamp = 0;
-let customersInFlight = null;
-
-const loadCustomersOnce = async () => {
-  if (
-    Array.isArray(customersCache) &&
-    Date.now() - customersCacheTimestamp <= CUSTOMERS_CACHE_TTL_MS
-  ) {
-    return customersCache;
-  }
-  if (customersInFlight) {
-    return customersInFlight;
-  }
-
-  customersInFlight = requestJSON('/customers')
-    .then((data) => {
-      const normalized = Array.isArray(data) ? data : [];
-      customersCache = normalized;
-      customersCacheTimestamp = Date.now();
-      return normalized;
-    })
-    .finally(() => {
-      customersInFlight = null;
-    });
-
-  return customersInFlight;
-};
 
 const readFileAsDataUrl = (file) =>
   new Promise((resolve, reject) => {
@@ -103,6 +74,7 @@ const StyleInfo = ({
 }) => {
   const pageDialogs = usePageDialogs();
   const { languageCode } = useLanguage();
+  const { activeOrgId } = useAuth();
   const packText=packagingText[languageCode]||packagingText.en;
   const { imageUrls = [] } = formData;
   const [mainImageIndex, setMainImageIndex] = useState(0);
@@ -129,10 +101,11 @@ const StyleInfo = ({
         return;
       }
       setLoadingCustomers(true);
+      setCustomers([]);
       try {
-        const data = await loadCustomersOnce();
+        const data = await requestJSON('/customers' + buildQueryString({ orgId: activeOrgId }), { skipCache: true });
         if (!active) return;
-        setCustomers(data);
+        setCustomers(Array.isArray(data) ? data : []);
       } catch (_error) {
         if (!active) return;
         setCustomers([]);
@@ -147,15 +120,17 @@ const StyleInfo = ({
     return () => {
       active = false;
     };
-  }, [isBrandOrg]);
+  }, [isBrandOrg, activeOrgId]);
 
   useEffect(() => {
     let active = true;
 
     const loadCategories = async () => {
       setLoadingCategories(true);
+      setCategories([]);
       try {
         const data = await fetchAttributes({
+          orgId: activeOrgId,
           includeColors: false,
           includeCategories: true,
           includeRoles: false,
@@ -185,7 +160,7 @@ const StyleInfo = ({
     return () => {
       active = false;
     };
-  }, [languageCode]);
+  }, [languageCode, activeOrgId]);
 
   useEffect(() => {
     if (imageUrls.length === 0) {

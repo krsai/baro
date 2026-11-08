@@ -96,15 +96,17 @@ const useWorkspaceRefreshOnEvent = ({
       pendingRefreshRef.current = false;
       blockedNoticeShownRef.current = false;
 
+      let succeeded = false;
       try {
         await onRefreshRef.current();
+        succeeded = true;
         if (isTabVisibleRef.current) clearTabChanged(tabPathRef.current);
         else markTabChanged(tabPathRef.current);
       } catch (_error) {
         pendingRefreshRef.current = true;
       } finally {
         refreshInFlightRef.current = false;
-        if (pendingRefreshRef.current && isActiveRef.current && !isBlockedRef.current) {
+        if (succeeded && pendingRefreshRef.current && isActiveRef.current && !isBlockedRef.current) {
           void runRefresh();
         }
       }
@@ -161,8 +163,10 @@ const useWorkspaceRefreshOnEvent = ({
       pendingRefreshRef.current = false;
       blockedNoticeShownRef.current = false;
 
+      let succeeded = false;
       try {
         await onRefreshRef.current();
+        succeeded = true;
         if (isTabVisibleRef.current) clearTabChanged(tabPathRef.current);
         else markTabChanged(tabPathRef.current);
       } catch (_error) {
@@ -171,6 +175,7 @@ const useWorkspaceRefreshOnEvent = ({
         refreshInFlightRef.current = false;
         if (
           !cancelled &&
+          succeeded &&
           pendingRefreshRef.current &&
           isActiveRef.current &&
           !isBlockedRef.current

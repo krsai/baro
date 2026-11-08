@@ -25,11 +25,11 @@ test('a confirmation retry reuses the stored version after JSONB reorder and liv
 test('same-tick style save clicks issue one request and unlock after success/failure',async()=>{
  let calls=0,release;const lock={current:false};const states=[];
  const source=loadSourceBindings('frontend/src/pages/App/style/StyleDetail.jsx',['handleSaveRequest'],{
-  saveInFlight:lock,loadingStyle:false,isDirty:true,setSavingStyle:value=>states.push(value),handleSave:()=>{calls++;return new Promise(resolve=>release=resolve);},
+  saveInFlight:lock,loadingStyle:false,loadError:false,isDirty:true,setSavingStyle:value=>states.push(value),handleSave:()=>{calls++;return new Promise(resolve=>release=resolve);},
  });
  const first=source.handleSaveRequest();await source.handleSaveRequest();assert.equal(calls,1);assert.equal(lock.current,true);
  release();await first;assert.equal(lock.current,false);assert.deepEqual(states,[true,false]);
- const failing=loadSourceBindings('frontend/src/pages/App/style/StyleDetail.jsx',['handleSaveRequest'],{saveInFlight:lock,loadingStyle:false,isDirty:true,setSavingStyle:()=>{},handleSave:async()=>{throw Error('failed');}});
+ const failing=loadSourceBindings('frontend/src/pages/App/style/StyleDetail.jsx',['handleSaveRequest'],{saveInFlight:lock,loadingStyle:false,loadError:false,isDirty:true,setSavingStyle:()=>{},handleSave:async()=>{throw Error('failed');}});
  await assert.rejects(failing.handleSaveRequest(),/failed/);assert.equal(lock.current,false);
 });
 test('ordinary saves rely on atomic server confirmation; pending query uses the same signature',()=>{

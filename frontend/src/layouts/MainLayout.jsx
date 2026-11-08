@@ -21,7 +21,7 @@ import {
   CircularProgress,
   Drawer,
   List,
-  ListItem,
+  ListItemButton,
   ListItemIcon,
   ListItemText,
   Divider,
@@ -1659,8 +1659,7 @@ const MainLayout = () => {
         const isItemDisabled = Boolean(item.disabled);
 
         return (
-          <ListItem
-            button
+          <ListItemButton
             key={item.path}
             disabled={isItemDisabled}
             onClick={() => {
@@ -1683,7 +1682,7 @@ const MainLayout = () => {
                 </Box>
               )}
             />
-          </ListItem>
+          </ListItemButton>
         );
       }),
     [currentPath, getMenuItemSx, handleMenuItemClick, activeOrgId, activeProfile?.orgRole, languageCode, pendingApprovalCount]
@@ -1699,9 +1698,8 @@ const MainLayout = () => {
 
           return (
             <Box component="li" key={menu.menuGroupKey || menu.path} sx={{ listStyle: 'none', flexShrink: 0, mt: !isSystemProfile && menu.menuGroupKey === MENU_GROUP_KEYS.SETTINGS ? 'auto' : 0 }}>
-            <ListItem
+            <ListItemButton
               component="div"
-              button
               disabled={isMenuDisabled}
               onClick={() => {
                 if (isMenuDisabled) return;
@@ -1728,7 +1726,7 @@ const MainLayout = () => {
                 )}
               />
               {menu.isParent && (menu.isOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />)}
-            </ListItem>
+            </ListItemButton>
             {menu.isParent && (
               <Collapse in={menu.isOpen} timeout={120}>
                 <List component="div" disablePadding>
@@ -1743,7 +1741,7 @@ const MainLayout = () => {
 
       <Divider />
       <List>
-        <ListItem button onClick={handleLogout} sx={{ '&:hover': { backgroundColor: 'rgba(211, 47, 47, 0.08)' } }}>
+        <ListItemButton onClick={handleLogout} sx={{ '&:hover': { backgroundColor: 'rgba(211, 47, 47, 0.08)' } }}>
           <ListItemIcon sx={{ color: '#d32f2f' }}>
             <LogoutIcon />
           </ListItemIcon>
@@ -1751,7 +1749,7 @@ const MainLayout = () => {
             primary={getUiMessage('menu.logout', 'Logout', languageCode)}
             sx={{ color: '#d32f2f' }}
           />
-        </ListItem>
+        </ListItemButton>
       </List>
     </Box>
   );

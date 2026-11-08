@@ -14,6 +14,7 @@ try{
   const t=freightText[lang],page=await browser.newPage({viewport:{width,height:1000}}),errors=[],jobs=[],docs=[];let savedMaster,savedDispatch;
   page.setDefaultTimeout(10000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>a;'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/freight/**',async route=>{
    const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});const url=new URL(req.url()),p=url.pathname.split('/freight/')[1];let json;

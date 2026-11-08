@@ -1,5 +1,4 @@
 import DashboardWidgets from '../../components/DashboardWidgets';
-import DashboardTodoSlot from '../../components/DashboardTodoSlot';
 import ProductionExcessCard from '../../components/ProductionExcessCard';
 import ServiceDashboard from './ServiceDashboard';
 import ApprovalDashboardCard from '../../components/ApprovalDashboardCard';
@@ -754,7 +753,6 @@ const WorkspaceDashboard = () => {
           </Box>
         </Paper>)},
     ...(!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)?[{id:'approvals',label:({ko:'결재 현황',en:'Approvals',vi:'Phê duyệt'})[languageCode]||'Approvals',content:<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}]:[]),
-    {id:'todo',label:'TODO',content:<DashboardTodoSlot/>},
   ];
   return (
     <DashboardWidgets title={resolveText(DASHBOARD_TEXT.title, languageCode)} widgets={widgets} companyId={activeOrgId} userId={user?.id||activeProfile?.employeeId} languageCode={languageCode} onSaved={message=>showNotification(message,'success')}>

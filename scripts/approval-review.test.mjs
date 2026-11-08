@@ -14,7 +14,7 @@ const {loadExpenseEditorSource,expenseEditorRevision}=require('../backend/dist/s
 test('one approval list: legacy deletion, expense registration and changes share dates, pagination and authorized detail snapshots',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,admin=s.people.admin.id;
-  const create=(actorId=admin)=>db.$transaction(tx=>registerExpenseRequest(tx,org,actorId,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'DOC'}}]}),{timeout:30000});
+  const create=(actorId=admin)=>db.$transaction(tx=>registerExpenseRequest(tx,org,actorId,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{evidenceFile:'fixture-evidence.pdf',reference:'DOC'}}]}),{timeout:30000});
   const original=await create(),another=await create();
   const legacy=await requestExpenseDeletion(db,org,admin,original.id,{clientKey:randomUUID(),version:original.version,reason:'Old deletion'});
   const change=await requestChangeApproval(db,org,admin,{menu:'EXPENSE',operation:'DELETE',sourceKind:'request',sourceId:String(another.id),version:another.version,payload:{},reason:'New deletion',clientKey:randomUUID()});
@@ -42,7 +42,7 @@ test('one approval list: legacy deletion, expense registration and changes share
   assert.equal((await listApprovalReviews(db,org,s.people.senior.id,query)).rows.find(r=>r.id===ledgerChange.id).managementNumber,'LEDGER-REF');
   const authored=await create(s.people.junior.id),loaded=await loadExpenseEditorSource(db,org,'request',String(authored.id));
   const otherAdmin=await db.employee.create({data:{orgId:org,name:'Another admin',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}});
-  const payload={partnerOrgId:s.vendor.id,requestDate:authored.requestDate,revision:expenseEditorRevision(loaded),version:authored.version,clientKey:randomUUID(),items:[{itemId:authored.items[0].id,transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'120.005',vatRate:'0',details:{reference:'DOC'}}]};
+  const payload={partnerOrgId:s.vendor.id,requestDate:authored.requestDate,revision:expenseEditorRevision(loaded),version:authored.version,clientKey:randomUUID(),items:[{itemId:authored.items[0].id,transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'120.005',vatRate:'0',details:{evidenceFile:'fixture-evidence.pdf',reference:'DOC'}}]};
   const edited=await requestChangeApproval(db,org,admin,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(authored.id),payload,selection:{changeAdminEmployeeId:otherAdmin.id},clientKey:randomUUID()});
   const review=await approvalReviewDetail(db,org,otherAdmin.id,'CHANGE_APPROVAL',edited.id);assert.equal(review.canDecide,true);assert.equal(review.before.costs[0].amount,'100');assert.equal(review.after.costs[0].amount,'120.0100');assert.equal(review.after.costs[0].transactionCode.code,s.code.code);assert.equal(review.after.document.createdByEmployee.name,'junior');assert.equal(review.drafter.name,'admin');
   await db.employee.update({where:{id:admin},data:{status:'SUSPENDED'}});await assert.rejects(listApprovalReviews(db,org,admin,query),/ACTIVE_EMPLOYEE_REQUIRED/);

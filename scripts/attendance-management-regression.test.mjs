@@ -25,6 +25,7 @@ test('payroll readiness requires attendance only from managed employees, includi
     const deps = {
       ...managementPeriod,
       ...require('../backend/dist/employees/payrollManagement.js'),
+      ...require('../backend/dist/employees/salaryMonthCalendar.js'),
       prisma: {
         factory: { findMany: async () => [factory] },
         employee: { findMany: async () => employees },
@@ -35,7 +36,8 @@ test('payroll readiness requires attendance only from managed employees, includi
       assertPayrollMonth: () => {}, toPositiveIntOrNull: Number,
       resolveCurrentPayrollMonthKey: () => '2026-09',
       loadEmployeePayTypePolicies: async () => [],
-      employeePayTypePolicyMap: () => new Map([['GENERAL', {}], ['OUTPUT', {}]]),
+      loadPayrollLeaves: async () => [],
+      employeePayTypePolicyMap: () => new Map(['GENERAL', 'OUTPUT'].map(type => [type, {workWeekdays: [1,2,3,4,5,6], standardWorkMinutes: 480}])),
       EMPLOYEE_PAY_TYPE: { GENERAL: 'GENERAL', OUTPUT: 'OUTPUT' },
       enumerateMonthDateKeys: () => ['2026-04-01', '2026-04-02'],
       isExpectedSalaryWorkDate: () => true,

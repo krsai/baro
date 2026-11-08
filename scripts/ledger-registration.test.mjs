@@ -73,6 +73,6 @@ test('single-account ledger registration uses two independent accounting approva
   await db.organizationBankAccount.create({data:{orgId:org,entityId:baro.id,currencyId:s.currency.id,bankName:'BARO bank',accountNumber:'002',accountHolder:'BARO',createdByEmployeeId:s.people.admin.id,updatedByEmployeeId:s.people.admin.id}});
   const routes=new Map();registerExpensePayeeRoutes({get:(p,h)=>routes.set(p,h),post:()=>{},put:()=>{}},db,{requireOrgRole:async()=>({organization:s.company})});let payees;
   await routes.get('/expense-payees')({query:{}},{json:value=>payees=value});assert.ok(payees.some(p=>p.id===baro.id));
-  const document=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.junior.id,{partnerOrgId:baro.id,automaticRequestDate:true,clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'BARO-1'}}]}));assert.equal(document.partnerOrgId,baro.id);
+  const document=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.junior.id,{partnerOrgId:baro.id,automaticRequestDate:true,clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{evidenceFile:'fixture-evidence.pdf',reference:'BARO-1'}}]}));assert.equal(document.partnerOrgId,baro.id);
  }finally{await f.close();}
 });

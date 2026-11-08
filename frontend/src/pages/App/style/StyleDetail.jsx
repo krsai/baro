@@ -1,6 +1,8 @@
 import {packagingText} from '../../../constants/packaging';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Button,
   Box,
   Stack,
   ToggleButton,
@@ -40,6 +42,8 @@ const STYLE_DETAIL_MESSAGES = {
     tabBom: 'BOM',
     save: '저장',
     loading: '스타일 정보를 불러오는 중입니다.',
+    loadError: '스타일 정보를 불러오지 못했습니다. 다시 조회해 주세요.',
+    retry: '다시 조회',
     newTab: '스타일 추가',
     detailTab: '스타일: {name}',
     createSuccess: '새 스타일이 생성되었습니다.',
@@ -58,6 +62,8 @@ const STYLE_DETAIL_MESSAGES = {
     tabBom: 'BOM',
     save: 'Save',
     loading: 'Loading style details...',
+    loadError: 'Could not load the style. Try again.',
+    retry: 'Retry',
     newTab: 'Add Style',
     detailTab: 'Style: {name}',
     createSuccess: 'A new style has been created.',
@@ -76,6 +82,8 @@ const STYLE_DETAIL_MESSAGES = {
     tabBom: 'BOM',
     save: 'Luu',
     loading: 'Đang tải thong tin style...',
+    loadError: 'Không thể tải thông tin style. Vui lòng thử lại.',
+    retry: 'Thử lại',
     newTab: 'Them style',
     detailTab: 'Style: {name}',
     createSuccess: 'Da tao style moi.',
@@ -194,7 +202,7 @@ const StyleDetail = () => {
     [activeProfile?.orgName, isBrandOrg]
   );
 
-  const canViewProcessInfo = !isBrandOrg;
+  const canViewProcessInfo = activeOrgType === 'MANUFACTURER';
   const styleId = styleIdParam ?? 'new';
   const isNew = styleId === 'new';
 
@@ -208,6 +216,8 @@ const StyleDetail = () => {
   const [originalData, setOriginalData] = useState(createEmptyStyle);
   const [styleFormData, setStyleFormData] = useState(createEmptyStyle);
   const [loadingStyle, setLoadingStyle] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [loadRevision, setLoadRevision] = useState(0);
   const [savingStyle, setSavingStyle] = useState(false);
   const saveInFlight = useRef(false);
   const [processMasterReloadKey, setProcessMasterReloadKey] = useState(0);
@@ -252,6 +262,7 @@ const StyleDetail = () => {
     let active = true;
 
     const loadStyle = async () => {
+      setLoadError(false);
       if (isNew) {
         if (active) {
           const empty = createEmptyStyle();
@@ -271,6 +282,7 @@ const StyleDetail = () => {
         const style = await fetchStyleById(styleId, {
           orgId: activeOrgId,
           ownerOrgId: ownerOrgIdFromQuery,
+          forceRefresh: true,
         });
         const normalized = {
           ...createEmptyStyle(),
@@ -288,17 +300,7 @@ const StyleDetail = () => {
         setStyleFormData(normalized);
       } catch (error) {
         if (!active) return;
-        const fallback = {
-          ...createEmptyStyle(),
-          id: styleId,
-          styleCode: styleId,
-          ownerOrgId: ownerOrgIdFromQuery,
-          customerOrgId: isBrandOrg ? activeOrgId : null,
-          customer: isBrandOrg ? defaultBrandCustomerName : '',
-        };
-        setOriginalData(fallback);
-        setStyleFormData(fallback);
-        showNotification(error?.message || getStyleDetailMessage(languageCode, 'saveError'), 'error');
+        setLoadError(true);
       } finally {
         if (active) {
           setLoadingStyle(false);
@@ -316,10 +318,9 @@ const StyleDetail = () => {
     defaultBrandCustomerName,
     isBrandOrg,
     isNew,
-    languageCode,
     ownerOrgIdFromQuery,
-    showNotification,
     styleId,
+    loadRevision,
   ]);
 
   const originalSnapshot = useMemo(
@@ -330,7 +331,7 @@ const StyleDetail = () => {
     () => buildDirtyCheckSnapshot(styleFormData),
     [styleFormData]
   );
-  const isDirty = !loadingStyle && originalSnapshot !== formSnapshot;
+  const isDirty = !loadingStyle && !loadError && originalSnapshot !== formSnapshot;
   useUnsavedChanges(isDirty);
 
   const handleChange = (_event, newValue) => {
@@ -449,7 +450,7 @@ const StyleDetail = () => {
   };
 
   const handleSaveRequest = async () => {
-    if (saveInFlight.current || loadingStyle || !isDirty) return;
+    if (saveInFlight.current || loadingStyle || loadError || !isDirty) return;
     saveInFlight.current = true;
     setSavingStyle(true);
     try { await handleSave(); }
@@ -466,7 +467,7 @@ const StyleDetail = () => {
           <SaveButton
             onClick={handleSaveRequest}
             loading={savingStyle}
-            disabled={loadingStyle || !isDirty}
+            disabled={loadingStyle || loadError || !isDirty}
           />
         </Stack>
       )}
@@ -494,7 +495,7 @@ const StyleDetail = () => {
                   {getStyleDetailMessage(languageCode, 'tabTimeMatrix')}
                 </ToggleButton>
               ) : null}
-              <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>
+              {canViewProcessInfo && <ToggleButton value="bom">{getStyleDetailMessage(languageCode, 'tabBom')}</ToggleButton>}
             </ToggleButtonGroup>
           )}
         />
@@ -502,6 +503,10 @@ const StyleDetail = () => {
     >
       {loadingStyle && !isNew ? (
         <Typography color="text.secondary">{getStyleDetailMessage(languageCode, 'loading')}</Typography>
+      ) : loadError ? (
+        <Alert severity="error" action={<Button color="inherit" onClick={() => setLoadRevision(value => value + 1)}>{getStyleDetailMessage(languageCode, 'retry')}</Button>}>
+          {getStyleDetailMessage(languageCode, 'loadError')}
+        </Alert>
       ) : (
         <>
           {loadedTabs.basicInfo && (
@@ -550,7 +555,7 @@ const StyleDetail = () => {
             </RequestScopeBoundary>
           )}
 
-          {loadedTabs.bom && (
+          {canViewProcessInfo && loadedTabs.bom && (
             <RequestScopeBoundary scopeId="bom" active={currentTab === 'bom'}>
               <Box sx={{ display: currentTab === 'bom' ? 'block' : 'none' }}>
                 <StyleBom formData={styleFormData} handleInputChange={handleStyleInputChange} />

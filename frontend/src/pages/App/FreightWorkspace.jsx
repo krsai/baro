@@ -1,6 +1,6 @@
 import {useAppActions} from '../../context/AppContext';
 import {shippingText} from '../../constants/shippingRequests';
-import FreightJobs from './FreightJobs';
+import useShippingRefresh from '../../hooks/useShippingRefresh';
 import Autocomplete from '../../components/SearchableSelect';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams,Navigate} from 'react-router-dom';
@@ -24,9 +24,10 @@ export function Workspace({orgId}){
  const [result,setResult]=useState({rows:[],total:0}),[search,setSearch]=useState(''),[offset,setOffset]=useState(0),[reload,setReload]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState(''),[detail,setDetail]=useState(null),[editing,setEditing]=useState(null),[document,setDocument]=useState(null),[busy,setBusy]=useState(false),[packageEdit,setPackageEdit]=useState(null),[packageRows,setPackageRows]=useState([]),[packageSearch,setPackageSearch]=useState('');
  const alive=useRef(true),lock=useRef(false);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const api=useCallback((path,{query,...options}={})=>requestJSON('/freight/'+path+buildQueryString({orgId,...query}),{skipCache:true,...options}),[orgId]);
+ useShippingRefresh({orgId,blocked:!!editing||!!packageEdit||busy,onRefresh:()=>setReload(value=>value+1)});
  useEffect(()=>{let live=true;const controller=new AbortController();setLoading(true);setError('');const timer=setTimeout(()=>requestJSON('/freight/'+type+buildQueryString({orgId,search,offset}),{skipCache:true,signal:controller.signal}).then(data=>{if(live)setResult(data);}).catch(e=>{if(live&&e.name!=='AbortError')setError(freightError(e,t));}).finally(()=>{if(live)setLoading(false);}),200);return()=>{live=false;clearTimeout(timer);controller.abort();};},[orgId,type,search,offset,reload,t]);
  useEffect(()=>{setDetail(null);if(!id)return;let live=true;const controller=new AbortController();api(type+'/'+id,{signal:controller.signal}).then(row=>{if(live)setDetail(row);}).catch(e=>{if(live&&e.name!=='AbortError')setError(freightError(e,t));});return()=>{live=false;controller.abort();};},[api,type,id,reload,t]);
- const go=(nextType,nextId)=>{setError('');setDocument(null);setParams({type:nextType,...(nextId?{id:nextId}:{})});};
+ const go=(nextType,nextId)=>{setError('');setDocument(null);setParams({type:nextType,...(nextType==='jobs'?{view:'operations'}:{}),...(nextId?{id:nextId}:{})});};
  const mutate=async run=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{await run();if(alive.current)setReload(n=>n+1);}catch(e){if(alive.current)setError(freightError(e,t));}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const createDocument=kind=>mutate(async()=>{const doc=await api(type+'/'+id+'/documents',{method:'POST',body:JSON.stringify({clientKey:crypto.randomUUID(),kind,version:detail.version,revision:detail.revision})});if(alive.current)setDocument(doc);});
  const openDocument=doc=>mutate(async()=>{const full=await api('documents/'+doc.id);if(alive.current)setDocument(full);});

@@ -247,11 +247,20 @@ test('explicit remarks stay separate from code descriptions through batch retry 
   await assert.rejects(postLedgerBatch(db,1,'actor',{...body,rows:[{...row,remark:'Changed retry remark'}]}),/RETRY_CONFLICT/);
   const replacement=await replaceLedgerEntry(db,1,'actor',id,{...body,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),accountingCodeId:101,remark:'Edited bank remark'}]});
   assert.equal((await read(replacement.entryIds[0])).purpose,'Edited bank remark');assert.equal((await read(replacement.entryIds[0])).accountingCodeId,101);assert.equal((await read(id)).purpose,'Original bank remark');assert.ok((await read(id)).voidedAt);
-  for(const remark of ['',null,'x'.repeat(1001)])await assert.rejects(postLedgerBatch(db,1,'actor',{...body,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),remark}]}),/INVALID_INPUT/);
+  // The shared request REMARK is optional; blank preserves code-based descriptions.
+  const blank=await postLedgerBatch(db,1,'actor',{...body,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),remark:''}]});
+  assert.equal((await read(blank.entryIds[0])).purpose,'Changed catalogue description');
+  for(const remark of [null,'x'.repeat(1001)])await assert.rejects(postLedgerBatch(db,1,'actor',{...body,clientKey:randomUUID(),rows:[{...row,clientKey:randomUUID(),remark}]}),/INVALID_INPUT/);
  }finally{await pg.close();}
 });
 test('approval overview filters date, company, participant and current status in SQL before paging',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
+  await pg.exec(`ALTER TABLE "Employee" ADD COLUMN "gradeId" INTEGER;
+   CREATE TABLE "EmployeeGradeSet"(id INTEGER,"orgId" INTEGER,"isActive" BOOLEAN);
+   CREATE TABLE "EmployeeGrade"(id INTEGER,"orgId" INTEGER,"setId" INTEGER,"isActive" BOOLEAN,"sortOrder" INTEGER);
+   ALTER TABLE "ExpenseApprovalDecision" ADD COLUMN "actingEmployeeId" INTEGER;`);
+  const delegation=await readFile('backend/prisma/migrations/20261106150000_approval_vacancy_delegation/migration.sql','utf8');
+  await pg.exec(delegation.match(/CREATE OR REPLACE FUNCTION baro_approval_delegate_allowed[\s\S]*?\$\$;/)[0]);
   await pg.exec(await readFile('backend/prisma/migrations/20261030120000_expense_approval_rejection/migration.sql','utf8'));
   await pg.exec(await readFile('backend/prisma/migrations/20261030170000_admin_drafter_final_authority/migration.sql','utf8'));
   await pg.exec(`ALTER TABLE "ExpenseRequest" ADD COLUMN "deletedAt" TIMESTAMP,ADD COLUMN "requestDate" TEXT,ADD COLUMN "managementNumber" TEXT;UPDATE "ExpenseRequest" SET "requestDate"='2026-10-10',"createdByEmployeeId"=99;

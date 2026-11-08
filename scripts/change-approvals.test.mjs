@@ -71,7 +71,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    await assert.rejects(db.changeApprovalRequest.update({where:{id:request.id},data:{reason:'Rewritten history'}}),/CHANGE_HISTORY_IMMUTABLE/);
   });
   await t.test('expense edit approval applies a new audited version; linked payments block deletion at final approval',async()=>{
-   const item={transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'EXP-1'}};
+   const item={transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{evidenceFile:'fixture-evidence.pdf',reference:'EXP-1'}};
    const document=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[item]}),{timeout:30000});
    const source=await loadExpenseEditorSource(db,org,'request',String(document.id));
    const payload={partnerOrgId:s.vendor.id,requestDate:document.requestDate,revision:expenseEditorRevision(source),version:document.version,clientKey:randomUUID(),items:[{...item,itemId:document.items[0].id,unitPrice:'120'}]};

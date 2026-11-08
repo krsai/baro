@@ -8,6 +8,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {useAppActions} from '../../context/AppContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
+import useShippingRefresh from '../../hooks/useShippingRefresh';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {shippingText} from '../../constants/shippingRequests';
 import {freightText} from '../../constants/freight';
@@ -24,7 +25,7 @@ function CustomerRequests({orgId}){
  const [document,setDocument]=useState(null);
  const api=useCallback((path='',body)=>requestJSON('/shipping-requests'+path+buildQueryString({orgId}),{skipCache:true,...(body?{method:'POST',body:JSON.stringify(body)}:{})}),[orgId]);
  useEffect(()=>{let live=true;setDetail(null);Promise.all([api(id?'/'+encodeURIComponent(id):''),api('/options')]).then(([value,o])=>{if(live){if(id)setDetail(value);else setRows(value);setOptions(o.forwarders);}}).catch(()=>live&&setError(t.failed));return()=>{live=false;};},[api,id,reload]);
- useEffect(()=>{const refresh=()=>setReload(v=>v+1);window.addEventListener('focus',refresh);const timer=setInterval(refresh,30000);return()=>{window.removeEventListener('focus',refresh);clearInterval(timer);};},[]);
+ useShippingRefresh({orgId,blocked:!!form||busy,onRefresh:()=>setReload(v=>v+1)});
  const act=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const result=await api(form.id?'/'+form.id:'',form.id?{action:'EDIT',version:form.version,mode:form.mode,data:form.data}:{clientKey:form.clientKey,forwarderOrgId:form.forwarderOrgId,mode:form.mode,data:form.data});if(!alive.current)return;setForm(null);setParams({id:result.id});setReload(v=>v+1);showNotification(t.saved,'success');}catch(e){if(alive.current)setError(e.message==='SHIPPING_CUSTOMER_MAPPING_REQUIRED'?t.mapping:t.failed);}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const snapshot=(value,title)=><Paper variant="outlined" sx={{p:2}}><Typography variant="h6">{title}</Typography>{value?<Stack spacing={1}><Typography>{t[value.mode]} {'\u00b7'} {t[value.status]}</Typography>{fields.filter(key=>value.data?.[key]).map(key=><Box key={key}><Typography variant="caption">{t[key]}</Typography><Typography sx={{overflowWrap:'anywhere'}}>{value.data[key]}</Typography></Box>)}</Stack>:<Typography>—</Typography>}</Paper>;
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}>{id?<><Button onClick={()=>setParams({})}>{t.back}</Button><Button disabled={!detail||detail.receiptStatus!=='PENDING'} onClick={()=>{setError('');openForm({...detail.request,id:detail.id,version:detail.version});}}>{t.edit}</Button></>:<Button variant="contained" onClick={()=>{setError('');openForm({clientKey:crypto.randomUUID(),forwarderOrgId:null,mode:'SEA',data:{quantity:'0',unit:'PKG',weightKg:'0',cbm:'0',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}});}}>{t.new}</Button>}</Stack>}>

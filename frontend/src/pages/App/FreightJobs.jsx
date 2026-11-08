@@ -8,6 +8,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {useAppActions} from '../../context/AppContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
+import useShippingRefresh from '../../hooks/useShippingRefresh';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {freightText} from '../../constants/freight';
 import {jobText} from '../../constants/freightJobs';
@@ -26,6 +27,7 @@ function Jobs({orgId}){
  useEffect(()=>{let live=true;Promise.all([requestJSON('/freight/options'+buildQueryString({orgId}),{skipCache:true}),api('/options')]).then(([customers,value])=>live&&setOptions({customers,employees:value.employees})).catch(e=>live&&setError(message(e)));return()=>{live=false;};},[api]);
  useEffect(()=>{let live=true;setError('');setDetail(null);const timer=setTimeout(()=>{(id?api('/'+id):api('', 'GET',null,{search,offset})).then(value=>{if(!live)return;if(id)setDetail(value);else{setRows(value.rows);setTotal(value.total);}}).catch(e=>live&&setError(message(e)));},150);return()=>{live=false;clearTimeout(timer);};},[api,id,search,offset,reload]);
  const go=value=>setParams(value?{id:value}:{});
+ useShippingRefresh({orgId,blocked:!!edit||!!bill||busy,onRefresh:()=>setReload(value=>value+1)});
  useEffect(()=>{if(params.get('form')==='new')setEdit({clientKey:crypto.randomUUID(),mode:'SEA',service:'GENERAL',customerId:null,data:{shipmentType:'FCL',jobType:'OTHER'}});else if(params.get('form')==='edit'&&detail)setEdit({...detail,clientKey:crypto.randomUUID()});},[params,detail]);
 
  const mutate=async work=>{if(mutationLock.current)return;mutationLock.current=true;setBusy(true);setError('');try{await work();if(alive.current)setReload(value=>value+1);}catch(e){setError(message(e));throw e;}finally{mutationLock.current=false;setBusy(false);}};

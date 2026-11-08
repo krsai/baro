@@ -916,13 +916,6 @@ export const UI_MESSAGES = {
       vi: 'Xóa style that bai.',
     },
   },
-  styleInfo: {
-    detailsSection: { ko: '세부 정보', en: 'Details', vi: 'Chi tiết' },
-    fabric: { ko: '원단', en: 'Fabric', vi: 'Vai' },
-    sizeSpec: { ko: '사이즈 스펙', en: 'Size Spec', vi: 'Thong so kich co' },
-    gender: { ko: '성별', en: 'Gender', vi: 'Giới tính' },
-    colorway: { ko: '컬러웨이', en: 'Colorway', vi: 'Bo mau sac' },
-  },
   customerBoard: {
     title: { ko: '고객', en: 'Customer', vi: 'Khách hàng' },
     searchPlaceholder: {

@@ -97,3 +97,22 @@ test('tab states use compact separate indicators without recoloring the title', 
   assert.match(indicators, /저장하지 않은 변경사항/);
   assert.match(indicators, /자료가 갱신되었습니다/);
 });
+
+test('failed refresh stays pending without a request loop and succeeds on the next refresh event', async () => {
+  const source = fs.readFileSync('frontend/src/hooks/useWorkspaceRefreshOnEvent.js', 'utf8');
+  for (const pending of [false, true]) {
+    const start = source.indexOf(pending ? '    const runPendingRefresh = async' : '    const runRefresh = async');
+    const end = source.indexOf(pending ? '\n    void runPendingRefresh();' : '\n    const unsubscribe', start);
+    let calls = 0;
+    const context = vm.createContext({cancelled: false, pendingRefreshRef: {current: true}, isActiveRef: {current: true}, isBlockedRef: {current: false}, refreshInFlightRef: {current: false}, blockedNoticeShownRef: {current: false}, isTabVisibleRef: {current: true}, tabPathRef: {current: '/style'}, clearTabChanged: () => {}, markTabChanged: () => {}, onRefreshRef: {current: async () => { calls++; throw Error('offline'); }}});
+    const name = pending ? 'runPendingRefresh' : 'runRefresh';
+    await vm.runInContext(source.slice(start, end) + `\n${name}();`, context);
+    assert.equal(calls, 1);
+    assert.equal(context.pendingRefreshRef.current, true);
+    assert.equal(context.refreshInFlightRef.current, false);
+    context.onRefreshRef.current = async () => { calls++; };
+    await vm.runInContext(`${name}();`, context);
+    assert.equal(calls, 2);
+    assert.equal(context.pendingRefreshRef.current, false);
+  }
+});

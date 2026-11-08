@@ -21,7 +21,7 @@ try{
    const page=await browser.newPage({viewport:{width,height:1000}});page.setDefaultTimeout(18000);page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE_ERROR',e.message);});page.on('response',r=>{if(r.status()>=400&&r.url().includes('127.0.0.1'))console.error('LOAD_ERROR',r.status(),new URL(r.url()).pathname);});
    await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:${service?2:1},activeOrgType:'${service?'SERVICE':'MANUFACTURER'}'});`}));
    await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification:(message,level)=>window.notices.push({message,level}),setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
+   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={markTabChanged:()=>{},clearTabChanged:()=>{},showNotification:(message,level)=>window.notices.push({message,level}),setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    await page.route(/\/shipping-requests(?:[/?]|$)/,async r=>{
     const req=r.request(),p=new URL(req.url()).pathname;if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});let json;
@@ -53,7 +53,7 @@ try{
   const accept=owner.getByRole('button',{name:ownerText.accept,exact:true});await accept.waitFor();assert.equal(await owner.getByRole('button',{name:ownerText.addMaster,exact:true}).isDisabled(),true);
   await accept.evaluate(b=>{b.click();b.click();});await owner.getByRole('button',{name:ownerText.share,exact:true}).waitFor();assert.equal(accepts,1);assert.equal(job.id,'sr-1');
   await owner.getByRole('button',{name:ownerText.share,exact:true}).click();await owner.waitForFunction(()=>window.notices.length>=2);
-  await customer.reload();await customer.getByRole('button',{name:'SR-001',exact:true}).click();await customer.getByText('2026-12-01').waitFor();assert.equal(await customer.getByRole('button',{name:t.edit,exact:true}).isDisabled(),true);
+  await customer.evaluate(()=>window.dispatchEvent(new Event('focus')));await customer.getByText('2026-12-01').waitFor();assert.equal(await customer.getByRole('button',{name:t.edit,exact:true}).isDisabled(),true);
   await owner.getByRole('button',{name:ownerText.back,exact:true}).click();await owner.getByRole('button',{name:ownerText.new,exact:true}).click();
   const c=owner.getByRole('textbox',{name:ownerText.customer,exact:true});await c.fill('BARO');await c.press('Enter');const consignee=owner.getByRole('textbox',{name:freightJobEditorText[lang].consignee,exact:true});await consignee.fill('BUYER');await consignee.press('Enter');await owner.getByRole('button',{name:routeScopeText[lang].main,exact:true}).click();
   await owner.getByRole('button',{name:ownerText.save,exact:true}).click();await owner.getByRole('heading',{name:'SR-002',exact:true}).waitFor();assert.equal(job.receiptStatus,'ACCEPTED');

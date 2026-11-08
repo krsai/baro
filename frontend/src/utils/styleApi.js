@@ -176,7 +176,11 @@ export const fetchStyleById = async (styleId, options = {}) => {
     });
     const data = await requestJSON(`/styles/${encodeURIComponent(key)}${query}`, {
       skipGlobalLoading: Boolean(options?.skipGlobalLoading),
+      skipCache: forceRefresh,
     });
+    if (!data || typeof data !== 'object' || !data.id || typeof data.name !== 'string') {
+      throw createHttpError('STYLE_RESPONSE_INVALID', 502);
+    }
     const normalized = normalizeStyle(data);
     writeStyleToCache(normalized, {
       orgId: toPositiveOrgId(options?.orgId),
