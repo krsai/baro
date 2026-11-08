@@ -1,4 +1,5 @@
 import SearchPanel from '../../../components/SearchPanel';
+import StyleProductPicker from './StyleProductPicker';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { waitForAtSyncJob } from '../../../utils/atSyncJob.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -220,7 +221,7 @@ const StyleBoard = () => {
   const { activeOrgId, activeOrgType } = useAuth();
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
-  const canViewProcessSummary = true;
+  const canViewProcessSummary = activeOrgType === 'MANUFACTURER';
   const isStyleRouteActive = location.pathname === '/style';
   const [historyStyle, setHistoryStyle] = useState(null);
   const [orderHistory, setOrderHistory] = useState([]);
@@ -613,6 +614,7 @@ const StyleBoard = () => {
       title={getUiMessage('menu.style', '스타일', languageCode)}
       titleActions={(
         <Box sx={{ display: 'flex', gap: 1 }}>
+          {canViewProcessSummary && <StyleProductPicker orgId={activeOrgId} languageCode={languageCode} onTaken={async () => refreshStyles({ forceRefresh: true })} />}
           {canViewProcessSummary ? (
             <Tooltip title={atSyncButtonTooltip}>
               <span>

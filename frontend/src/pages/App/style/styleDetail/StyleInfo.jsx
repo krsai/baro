@@ -379,6 +379,12 @@ const StyleInfo = ({
 
   return (
     <Box>
+      {formData.productStyleId && (
+        <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 2 }}>
+          <Chip variant="outlined" size="small" label={`${({ ko: '제품 정보 소유', en: 'Product owner', vi: 'Chủ sở hữu sản phẩm' }[languageCode] || 'Product owner')}: ${formData.productOwnerOrgName || resolvedCustomerValue}`} />
+          <Chip variant="outlined" size="small" label={`${({ ko: '공정·시간 소유', en: 'Process and time owner', vi: 'Chủ sở hữu công đoạn và thời gian' }[languageCode] || 'Process and time owner')}: ${formData.productionOwnerOrgName || ''}`} />
+        </Stack>
+      )}
       <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems="stretch">
         <Paper sx={{ p: 2, width: sectionWidth, display: 'flex', flexDirection: 'column' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>

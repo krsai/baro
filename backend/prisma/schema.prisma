@@ -346,6 +346,9 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  ownedStyleProducts StyleProduct[] @relation("StyleProductOwner")
+  managedStyleProducts StyleProduct[] @relation("StyleProductCustodian")
+  styleProductRevisionActors StyleProductRevision[] @relation("StyleProductRevisionActor")
  changeApprovalRequests ChangeApprovalRequest[] @relation("ChangeCompany")
  ledgerCounterparties BankLedgerEntry[] @relation("LedgerPartyPartner")
   identityAnchor CompanyIdentity? @relation("CompanyIdentityAnchor")
@@ -1451,11 +1454,17 @@ model AttrProcess {
 }
 
 model Style {
+  /// Manufacturer-local production record. Product ownership is on StyleProduct.
+  productStyleId         Int @default(dbgenerated())
+  productOwnerOrgId       Int @default(dbgenerated())
+  appliedProductRevision Int @default(1)
+  productStyle           StyleProduct @relation(fields: [productStyleId, productOwnerOrgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict, map: "Style_product_owner_fkey")
+  appliedProductVersion  StyleProductRevision @relation(fields: [productStyleId, appliedProductRevision], references: [productId, revision], onDelete: Restrict, onUpdate: Restrict, map: "Style_product_revision_fkey")
   expenseReferences ExpenseItemReference[]
   transactionCosts PartnerTransactionCost[]
   priorCompletions PriorProductionCompletion[]
   id                     Int      @id @default(autoincrement())
-  /// Authoritative data owner; always a manufacturer.
+  /// Production data owner; never substitute the product owner's ID here.
   orgId                  Int
   customerOrgId          Int
   code                   String
@@ -1505,11 +1514,44 @@ model Style {
 
   @@unique([customerOrgId, code], map: "Style_orgId_code_key")
   @@unique([customerOrgId, name], map: "Style_orgId_name_key")
+  @@unique([orgId, productStyleId], map: "Style_manufacturer_product_key")
   @@unique([id, customerOrgId], map: "Style_id_org_key")
   @@index([orgId])
   @@index([timeBucketSetVersionId])
   @@index([customerOrgId])
   @@unique([id, orgId])
+}
+
+/// Brand-owned product identity. Existing Style fields remain the producer's
+/// applied product specification; processes, time, BOM and costs never move here.
+model StyleProduct {
+  id Int @id @default(autoincrement())
+  ownerOrgId Int
+  custodianOrgId Int?
+  sourceStyleId Int? @unique
+  revision Int @default(1)
+  fields Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  owner Organization @relation("StyleProductOwner", fields: [ownerOrgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  custodian Organization? @relation("StyleProductCustodian", fields: [custodianOrgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  productionStyles Style[]
+  revisions StyleProductRevision[]
+  @@unique([id, ownerOrgId], map: "StyleProduct_id_owner_key")
+  @@index([ownerOrgId])
+}
+
+model StyleProductRevision {
+  appliedStyles Style[]
+  productId Int
+  revision Int
+  ownerOrgId Int
+  actorOrgId Int
+  actorOrganization Organization @relation("StyleProductRevisionActor", fields: [actorOrgId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  fields Json
+  createdAt DateTime @default(now())
+  product StyleProduct @relation(fields: [productId, ownerOrgId], references: [id, ownerOrgId], onDelete: Restrict, onUpdate: Restrict)
+  @@id([productId, revision])
 }
 
 /// Immutable migration evidence; original entities may later be deleted.

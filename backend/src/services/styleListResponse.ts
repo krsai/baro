@@ -2,6 +2,10 @@
 // calculation as the detail page. Omit editable metadata and BOM payloads.
 export const toStyleListResponse = (style: any) => ({
   id: style.id, ownerOrgId: style.ownerOrgId, customerOrgId: style.customerOrgId,
+  productStyleId: style.productStyleId, productOwnerOrgId: style.productOwnerOrgId,
+  appliedProductRevision: style.appliedProductRevision,
+  productionOwnerOrgId: style.productionOwnerOrgId,
+  productOwnerOrgName: style.productOwnerOrgName, productionOwnerOrgName: style.productionOwnerOrgName,
   name: style.name, styleCode: style.styleCode, customer: style.customer,
   customerNameKo: style.customerNameKo, customerNameVi: style.customerNameVi,
   registrationDate: style.registrationDate, createdAt: style.createdAt,

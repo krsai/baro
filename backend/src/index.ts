@@ -1,4 +1,5 @@
 import {registerTransportExchangeRoutes} from './services/transportExchange';
+import {registerStyleProductRoutes,styleOwnershipDto} from './services/styleProducts';
 import {registerSystemEntityRoutes} from './services/systemEntities';
 import {registerEmployeeLeaveRoutes,assertCompanyLeaveBalances} from './employees/employeeLeave';
 import {registerProductionExcessRoutes} from './services/productionExcess';
@@ -760,7 +761,7 @@ const STARTUP_REQUIRED_MIGRATION_STATE_KEYS = [
   "20260723_clear_stale_at_params_v1",
   "20261007_style_identity_fk_v1",
 ] as const;
-const STARTUP_REQUIRED_RUNTIME_COLUMNS = [...Object.entries({"TransportExchange":["id","senderOrgId","receiverOrgId","senderJobId","receiverJobId","senderSnapshot","receiverSnapshot","status","version","clientKey","createdBy"],"TransportExchangeEvent":["id","exchangeId","orgId","actorId","version","snapshot","action"]}).flatMap(([tableName,columns])=>columns.map(columnName=>({tableName,columnName}))),{tableName:'AccountingDirectionAnomaly',columnName:'expectedDirection'},{tableName:'ExpenseRequest',columnName:'scheduledPaymentDate'},...['id','orgId','jobId','kind','number','issuer','masterId','deletedAt','version'].map(columnName=>({tableName:'FreightBill',columnName})),{tableName:'FreightTransportTarget',columnName:'jobId'},{tableName:'FreightTransportTask',columnName:'targetId'},{tableName:"Organization",columnName:"businessLegalForm"},{tableName:'TransactionCodeBase',columnName:'cashDirection'},...['counterpartyOrgId','counterpartyEmployeeId','counterpartyAccountId','counterpartyName'].map(columnName=>({tableName:'BankLedgerEntry',columnName})),{tableName:'ExpenseRequest',columnName:'deletedChangeRequestId'},{tableName:'ChangeApprovalRequest',columnName:'policy'},{tableName:'ChangeApprovalDecision',columnName:'position'},...['deletedAt','deletedByEmployeeId','deletionRequestId'].map(columnName=>({tableName:'ExpenseRequest',columnName})),...["id","orgId","requestId","version","requestedByEmployeeId","status","finalGradeOrder"].map(columnName=>({tableName:'ExpenseDeletionRequest',columnName})),{tableName:'BankLedgerEntry',columnName:'revisesEntryId'},{tableName:'ExpenseCodeLinkPolicy',columnName:'inputSettings'},{tableName:'ExpenseCodeLinkAudit',columnName:'inputSettings'},{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
+const STARTUP_REQUIRED_RUNTIME_COLUMNS = [...['productOwnerOrgId','appliedProductRevision'].map(columnName=>({tableName:'Style',columnName})),{tableName:'Style',columnName:'productStyleId'},...['id','ownerOrgId','custodianOrgId','sourceStyleId','revision','fields'].map(columnName=>({tableName:'StyleProduct',columnName})),...['productId','revision','ownerOrgId','actorOrgId','fields'].map(columnName=>({tableName:'StyleProductRevision',columnName})),...Object.entries({"TransportExchange":["id","senderOrgId","receiverOrgId","senderJobId","receiverJobId","senderSnapshot","receiverSnapshot","status","version","clientKey","createdBy"],"TransportExchangeEvent":["id","exchangeId","orgId","actorId","version","snapshot","action"]}).flatMap(([tableName,columns])=>columns.map(columnName=>({tableName,columnName}))),{tableName:'AccountingDirectionAnomaly',columnName:'expectedDirection'},{tableName:'ExpenseRequest',columnName:'scheduledPaymentDate'},...['id','orgId','jobId','kind','number','issuer','masterId','deletedAt','version'].map(columnName=>({tableName:'FreightBill',columnName})),{tableName:'FreightTransportTarget',columnName:'jobId'},{tableName:'FreightTransportTask',columnName:'targetId'},{tableName:"Organization",columnName:"businessLegalForm"},{tableName:'TransactionCodeBase',columnName:'cashDirection'},...['counterpartyOrgId','counterpartyEmployeeId','counterpartyAccountId','counterpartyName'].map(columnName=>({tableName:'BankLedgerEntry',columnName})),{tableName:'ExpenseRequest',columnName:'deletedChangeRequestId'},{tableName:'ChangeApprovalRequest',columnName:'policy'},{tableName:'ChangeApprovalDecision',columnName:'position'},...['deletedAt','deletedByEmployeeId','deletionRequestId'].map(columnName=>({tableName:'ExpenseRequest',columnName})),...["id","orgId","requestId","version","requestedByEmployeeId","status","finalGradeOrder"].map(columnName=>({tableName:'ExpenseDeletionRequest',columnName})),{tableName:'BankLedgerEntry',columnName:'revisesEntryId'},{tableName:'ExpenseCodeLinkPolicy',columnName:'inputSettings'},{tableName:'ExpenseCodeLinkAudit',columnName:'inputSettings'},{tableName:'BankLedgerEntry',columnName:'accountingCodeId'},{tableName:'BankLedgerSettlementLine',columnName:'accountingCodeId'},
   {tableName:'BankLedgerEntry',columnName:'writeOffAmount'},{tableName:'BankLedgerEntry',columnName:'settlementMode'},{tableName:'BankLedgerSettlementLine',columnName:'entryId'},
   {tableName:'ExpenseApprovalDecision',columnName:'decision'},{tableName:'ExpenseApprovalDecision',columnName:'reason'},
   {tableName:'EmployeeExpenseBankAccount',columnName:'id'},{tableName:'ExpenseRequest',columnName:'payeeEmployeeId'},{tableName:'PartnerTransactionCost',columnName:'payeeEmployeeId'},{tableName:'ExpenseUnit',columnName:'id'},{tableName:'PartnerTransactionCost',columnName:'unitId'},{tableName:'ExpenseItemReference',columnName:'costId'},
@@ -1080,7 +1081,7 @@ const STARTUP_FORBIDDEN_RUNTIME_COLUMNS = [
   { tableName: "WorkRecord", columnName: "outsourcingPartnerId" },
 ] as const;
 const STARTUP_FORBIDDEN_RUNTIME_TABLES = ["OrgMembership"] as const;
-const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['baro_linked_bank_owner','PartnerClassification_system_editor_fkey','SettingServiceDefault_legacy_logistics_retired','EmployeeLeaveDay_active_date','EmployeeLeaveDay_history_guard','EmployeeLeaveGrant_history_guard','baro_leave_history_guard','OrderShipment_guard','baro_order_shipping_actor','WorkOrderItem_shipping_guard','OrderShippingPolicyEvent_guard','OrderShippingPolicy_guard','OrderShippingPolicy_audit_guard','baro_approval_delegate_allowed','baro_final_drafter_allowed','ExpenseDecision_acting_employee_fkey','ChangeDecision_acting_employee_fkey','ExpenseRequest_scheduled_payment_date_check','ExpenseRequest_schedule_audit_guard','FreightTransportTask_scope','FreightBill_guard','FreightBill_masterId_jobId_orgId_masterKind_fkey','EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
+const STARTUP_REQUIRED_RUNTIME_CONSTRAINTS = ['baro_style_product_can_edit','baro_style_product_resolve_owner','Style_product_revision_fkey','Style_manufacturer_product_key','baro_style_product_trade_connected','Style_product_owner_fkey','StyleProduct_guard','StyleProduct_revision','StyleProductRevision_append_only','zz_Style_product_link','baro_linked_bank_owner','PartnerClassification_system_editor_fkey','SettingServiceDefault_legacy_logistics_retired','EmployeeLeaveDay_active_date','EmployeeLeaveDay_history_guard','EmployeeLeaveGrant_history_guard','baro_leave_history_guard','OrderShipment_guard','baro_order_shipping_actor','WorkOrderItem_shipping_guard','OrderShippingPolicyEvent_guard','OrderShippingPolicy_guard','OrderShippingPolicy_audit_guard','baro_approval_delegate_allowed','baro_final_drafter_allowed','ExpenseDecision_acting_employee_fkey','ChangeDecision_acting_employee_fkey','ExpenseRequest_scheduled_payment_date_check','ExpenseRequest_schedule_audit_guard','FreightTransportTask_scope','FreightBill_guard','FreightBill_masterId_jobId_orgId_masterKind_fkey','EmployeeTenureRecognition_guard','EmployeeTenureRecognition_values_check','EmployeeTenureRecognition_employeeId_orgId_fkey','EmployeeTenureRecognition_createdByEmployeeId_orgId_fkey','Organization_business_legal_form_check','Ledger_registration_approval_guard','Ledger_counterparty_guard','Ledger_counterparty_evidence_guard','ChangeApprovalRequest_guard','ChangeApprovalDecision_guard','ChangeApprovalRequest_applied_guard','Ledger_change_approval_guard','Expense_change_approval_guard','baro_company_partner_data_owner','baro_customer_relationship_data_owner','BankLedgerExpenseDeleted_guard','baro_expense_deletion_payment_clear','ExpenseDeletionRequest_guard','ExpenseRequest_deleted_guard','ExpenseDeletionApproval_guard','ExpenseDeletionRequest_applied_guard','ExpenseDeletionRequest_state_check','ExpenseDeletionRequest_grade_scope_fkey','BankLedgerEntry_revision_scope_fkey','BankLedgerEntry_revision_guard',
   "ExpenseCodeLinkPolicy_inputs_check","ExpenseCodeLinkAudit_inputs_check","ExpenseType_other_retired","SettingServiceDefault_category_required",'BankLedgerEntry_accounting_code_scope_fkey','BankLedgerSettlementLine_accounting_code_scope_fkey','BankLedgerEntry_accounting_code_guard','BankLedgerSettlementLine_accounting_code_guard',
   'baro_admin_drafter_exempt',
   'BankLedgerEntry_settlement_check','BankLedgerSettlementLine_entry_scope_fkey','BankLedgerSettlementLine_values_check','BankLedgerSettlementLine_guard','BankLedgerSettlementLine_append_only',
@@ -6486,7 +6487,9 @@ const findStyleConflict = async ({
   name,
   styleCode,
   excludeStyleId = null,
+  manufacturerOrgId,
 }: {
+  manufacturerOrgId?: number;
   orgId: number;
   name: string;
   styleCode: string;
@@ -6494,6 +6497,7 @@ const findStyleConflict = async ({
 }) => {
   const where: any = {
     customerOrgId: orgId,
+    ...(manufacturerOrgId ? { orgId: manufacturerOrgId } : {}),
     OR: [{ name }, { code: styleCode }],
   };
   if (Number.isFinite(excludeStyleId)) {
@@ -7883,6 +7887,7 @@ const toStyleResponse = (
     id: style.id,
     styleId: style.id,
     ownerOrgId: style.orgId ?? null,
+    ...styleOwnershipDto(style),
     customerOrgId: style.customerOrgId ?? null,
     ownerOrgName: style.organization?.name ?? "",
     code: style.code ?? "",
@@ -7893,25 +7898,27 @@ const toStyleResponse = (
     customerNameVi: resolveOptionalString(owner?.nameVi, "") ?? "",
     registrationDate: style.registrationDate ?? "",
     designer: style.designer ?? "",
-    categoryId: style.categoryId ?? null,
-    collection: style.collection ?? "",
+    categoryId: options.includeProcesses === false ? null : style.categoryId ?? null,
+    collection: options.includeProcesses === false ? "" : style.collection ?? "",
     season: style.season ?? "",
     imageUrls: ensureArray(style.imageUrls),
     processes:
       options.includeProcesses === false
         ? []
         : options.processMirrorMap?.get(Number(style.id)) ?? [],
-    bom: ensureArray(style.bom),
-    bomNotes: style.bomNotes ?? "",
-    revenueMemo: style.revenueMemo ?? "",
-    timeBucketSource: style.timeBucketSource ?? null,
-    timeBucketSetVersionId: style.timeBucketSetVersionId ?? null,
-    timeBucketQuantities: ensureArray(style.timeBucketSetVersion?.entries).map(
+    bom: options.includeProcesses === false ? [] : ensureArray(style.bom),
+    bomNotes: options.includeProcesses === false ? "" : style.bomNotes ?? "",
+    revenueMemo: options.includeProcesses === false ? "" : style.revenueMemo ?? "",
+    timeBucketSource: options.includeProcesses === false ? null : style.timeBucketSource ?? null,
+    timeBucketSetVersionId: options.includeProcesses === false ? null : style.timeBucketSetVersionId ?? null,
+    timeBucketQuantities: ensureArray(options.includeProcesses === false ? [] : style.timeBucketSetVersion?.entries).map(
       (entry) => entry.bucketQuantity
     ),
     createdAt: style.createdAt,
     updatedAt: style.updatedAt,
-    ...styleDeletionState(style._count),
+    ...(options.includeProcesses === false
+      ? { workRecordCount: 0, hasWorkRecords: false, canDelete: false, deleteBlockedReason: 'READ_ONLY' }
+      : styleDeletionState(style._count)),
   };
 };
 
@@ -27553,6 +27560,7 @@ registerRevenueAnalysisRoutes(app,prisma,{requireOrgRole,actorId:getCurrentReque
  return {ST:total('ST'),PT:total('PT'),AT:total('AT')};
 }});
 registerTransportExchangeRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
+registerStyleProductRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerFreightRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerChangeApprovalRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting,appendQuantityRemark:appendWorkLogQuantityRemark,syncProduction:async(orgId:number,assignmentPlanIds:number[])=>trySyncAssignmentPlanSideEffectsAfterWorkLogMutation({orgId,assignmentPlanIds,mode:'update'})});
 registerEmployeeLeaveRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
@@ -29961,6 +29969,9 @@ app.get("/styles", async (req, res) => {
         select: {
           id: true,
           customerOrgId: true, orgId: true,
+          productStyleId: true,
+          productOwnerOrgId: true,
+          appliedProductRevision: true,
           code: true,
           name: true,
           organization: { select: { id: true, name: true } },
@@ -30123,6 +30134,7 @@ app.post("/styles", async (req, res) => {
   }
 
   const conflictMessage = await findStyleConflict({
+    manufacturerOrgId: organization.id,
     orgId: owner.customerOrgId,
     name: payload.name,
     styleCode: payload.code,
@@ -30132,7 +30144,7 @@ app.post("/styles", async (req, res) => {
   }
 
   const existing = await prisma.style.findFirst({
-    where: { customerOrgId: owner.customerOrgId, code: payload.code },
+    where: { orgId: organization.id, customerOrgId: owner.customerOrgId, code: payload.code },
   });
   if (existing) {
     return res
@@ -30314,6 +30326,7 @@ app.put("/styles/:styleId", async (req, res) => {
   }
 
   const conflictMessage = await findStyleConflict({
+    manufacturerOrgId: organization.id,
     orgId: existing.customerOrgId,
     name: normalized.name,
     styleCode: normalized.code,
@@ -30881,6 +30894,7 @@ app.post("/styles/import", async (req, res) => {
   );
   const existingStyleRows = await prisma.style.findMany({
     where: {
+      orgId: organization.id,
       customerOrgId: { in: uniqueOwnerOrgIds },
       code: { in: uniqueStyleCodes },
     },
@@ -30895,6 +30909,7 @@ app.post("/styles/import", async (req, res) => {
 
   for (const item of rowsWithOwner) {
     const conflictMessage = await findStyleConflict({
+    manufacturerOrgId: organization.id,
       orgId: item.ownerOrgId,
       name: item.name,
       styleCode: item.code,
@@ -31627,6 +31642,8 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
     });
   }
   const rawErrorMessage = getErrorMessage(error, String(error));
+  const productError = rawErrorMessage.match(/STYLE_PRODUCT_(OWNER_REQUIRED|REVISION_CONFLICT|LINK_IMMUTABLE|LINK_INVALID|SPEC_MISMATCH|TRADING_RELATIONSHIP_REQUIRED|FIELDS_INVALID|DELETE_REQUIRES_SEPARATE_WORKFLOW|HISTORY_APPEND_ONLY)/)?.[0];
+  if (productError) return res.status(productError === 'STYLE_PRODUCT_OWNER_REQUIRED' ? 403 : 409).json({ ok: false, error: productError });
   if (rawErrorMessage.includes("INVOICE_FINAL_LOCKED")) {
     return res.status(409).json({
       ok: false,

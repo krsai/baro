@@ -1,4 +1,5 @@
-/** Manufacturer ownership and customer identity are separate foreign keys. */
+/** Access to manufacturer-local production styles. Product originals have their
+ * own brand owner and trading-relationship catalogue in services/styleProducts. */
 export const styleAccessWhere = (organization: { id: number; type: string }, ownerOrgId: number | null = null) => ({
   ...(organization.type === 'MANUFACTURER'
     ? { orgId: organization.id }

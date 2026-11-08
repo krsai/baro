@@ -60,7 +60,7 @@ export function industryMenuApiFeature(path:string){
   [/^\/employees\/\d+\/tenure-recognition\/?$/,'EMPLOYEE'],
   [/^\/freight(?:\/|$)/,'FREIGHT'],[/^\/bank-ledger\/(?:overview|exchange-rates)(?:\/|$)/,'ACCOUNT_OVERVIEW'],
   [/^\/bank-ledger(?:\/|$)/,'BANK_LEDGER'],[/^\/invoices(?:\/|$)/,'INVOICE'],
-  [/^\/(?:orders|order-items)(?:\/|$)/,'ORDER'],[/^\/(?:styles|style-processes)(?:\/|$)/,'STYLE'],
+  [/^\/(?:orders|order-items)(?:\/|$)/,'ORDER'],[/^\/(?:styles|style-processes|style-products)(?:\/|$)/,'STYLE'],
   [/^\/(?:assignment-board(?:-state|-view|-versions|-revision)?|assignment-plan-progress|assignment-plans|assignment-cards|factory-month-capacity)(?:\/|$)/,'ASSIGNMENT'],
   [/^\/inventory(?:\/|$)/,'INVENTORY'],[/^\/attendance-entries(?:\/|$)/,'ATTENDANCE'],
   [/^\/production-analysis(?:\/|$)/,'PRODUCTION_ANALYSIS'],[/^\/work-logs(?:\/|$)/,'WORK_HISTORY'],

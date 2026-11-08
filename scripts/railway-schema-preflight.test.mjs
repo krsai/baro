@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import { PGlite } from '@electric-sql/pglite';
 const require = createRequire(import.meta.url);
-const { runRailwayPreflight, columns, constraints } = require('../backend/scripts/railway-schema-preflight.js');
+const { runRailwayPreflight, missingSchema, columns, constraints } = require('../backend/scripts/railway-schema-preflight.js');
 const env = { RAILWAY_ENVIRONMENT_ID:'test-environment', RAILWAY_SERVICE_ID:'test-service', DATABASE_URL:'postgresql://test:secret@127.0.0.1/test' };
 const quiet = () => {};
 const {migrations,migrationSql}=require('../backend/scripts/migrate-expenses.js');
@@ -51,6 +51,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
     await db.exec('CREATE TABLE "WorkOrderItem"(id INT PRIMARY KEY,"workOrderId" INT,"styleId" INT,"colorId" INT,gender TEXT,"sizeQuantities" JSONB)');
     await db.exec('CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC)');
     await db.exec('CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,UNIQUE(id,"styleId","orgId"))');
+    await db.exec('ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerOrgId" INT, ADD COLUMN IF NOT EXISTS code TEXT, ADD COLUMN IF NOT EXISTS name TEXT, ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP DEFAULT now(), ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP DEFAULT now()');
     await db.exec(['SalaryItemRate','EmployeeCompensationPolicy','EmployeePayTypePolicy'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,"payType" TEXT);`).join('\n'));
     await db.exec(['ProcessMasterOption','Factory','Warehouse','EmployeeGrade','SalaryItem','AttrColor','AttrCategory','AttrProcess','PriorCompletionReason','TaxTreatment'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,name TEXT);`).join('\n'));
     await db.exec('ALTER TABLE "EmployeeGrade" ADD COLUMN "orgId" INT, ADD COLUMN "setId" INT, ADD COLUMN "sortOrder" INT,ADD COLUMN "isActive" BOOL DEFAULT true,ADD UNIQUE(id,"orgId"); CREATE TABLE "EmployeeGradeSet"("orgId" INT,id INT PRIMARY KEY,"isActive" BOOL DEFAULT true)');
@@ -60,7 +61,9 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);
       assert.match(options.input,/BEGIN;[\s\S]*pg_advisory_xact_lock[\s\S]*COMMIT;/);
       assert.ok([migrationSql(),entityMigration.migrationSql()].includes(options.input));
-      await db.exec(options.input);return {status:0};
+      await db.exec(options.input);
+      if(options.input===entityMigration.migrationSql())assert.deepEqual(await missingSchema({$queryRawUnsafe:async sql=>(await db.query(sql)).rows}),[]);
+      return {status:0};
     }};
     await runRailwayPreflight(dependencies); await runRailwayPreflight(dependencies);
     assert.equal(runs,2);assert.equal(closed,2);

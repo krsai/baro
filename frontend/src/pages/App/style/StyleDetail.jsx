@@ -111,6 +111,11 @@ const toOrgId = (value) => {
 const createEmptyStyle = () => ({
   id: '',
   ownerOrgId: null,
+  productStyleId: null,
+  productOwnerOrgId: null,
+  productionOwnerOrgId: null,
+  productOwnerOrgName: '',
+  productionOwnerOrgName: '',
   customerOrgId: null,
   styleCode: '',
   name: '',

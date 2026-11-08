@@ -82,6 +82,9 @@ test('BARO transfer keeps process IDs and ST values, archives unused duplicates,
     const schema = execFileSync(process.execPath, [require.resolve('../backend/node_modules/prisma/build/index.js'),
       'migrate', 'diff', '--from-empty', '--to-schema-datamodel', path.resolve('backend/prisma/schema.prisma'), '--script'], { encoding: 'utf8' });
     await db.exec(schema);
+    // Exercise the historical transfer against its original pre-product schema.
+    // The new split is applied after that transfer, in the real rollout order.
+    await db.exec('ALTER TABLE "Style" DROP COLUMN "productStyleId" CASCADE, DROP COLUMN "productOwnerOrgId" CASCADE, DROP COLUMN "appliedProductRevision" CASCADE; DROP TABLE "StyleProductRevision"; DROP TABLE "StyleProduct";');
     await db.exec(`
       INSERT INTO "Organization" (id,name,type,"updatedAt") VALUES (1,'BARO GARMENT','MANUFACTURER',now()),(2,'CUSTOMER','BRAND',now());
       INSERT INTO "OrgRelationship" ("manufacturerOrgId","brandOrgId","updatedAt") VALUES (1,2,now());
@@ -125,5 +128,8 @@ test('BARO transfer keeps process IDs and ST values, archives unused duplicates,
     assert.deepEqual((await db.query('SELECT id,"orgId" FROM "AssignmentCard"')).rows, [{ id: 1, orgId: 1 }]);
     const archive = (await db.query(`SELECT row FROM "ManufacturerDataArchive" WHERE "sourceTable"='StyleProcess'`)).rows[0].row;
     assert.equal(archive.id, 2); assert.equal(archive.orgId, 2); assert.equal(archive.ptSeconds, 20); assert.equal(archive.isActive, true);
+    await db.exec('BEGIN;'+readFileSync('backend/prisma/migrations/20261108010000_style_product_ownership/migration.sql','utf8')+'COMMIT;');
+    assert.deepEqual((await db.query('SELECT "ownerOrgId","custodianOrgId" FROM "StyleProduct"')).rows,[{ownerOrgId:2,custodianOrgId:1}]);
+    assert.equal((await db.query('SELECT "bucketStSeconds" FROM "StyleProcessStandard" WHERE id=1')).rows[0].bucketStSeconds,123.5);
   } finally { await db.close(); }
 });
