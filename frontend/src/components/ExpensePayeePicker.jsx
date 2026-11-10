@@ -26,16 +26,17 @@ const payeeTypeLabel=(payee,languageCode)=>payee.type==='EMPLOYEE'?(PAYEE_TEXT[l
 const InformationRows=({rows})=><Box component="dl" sx={{m:0,display:'grid',gridTemplateColumns:'minmax(80px, .8fr) minmax(0, 1.5fr)',columnGap:1,rowGap:.5}}>{rows.map(([label,value])=><React.Fragment key={label}><Typography component="dt" variant="caption" color="text.secondary" sx={{pt:.25}}>{label}</Typography><Typography component="dd" variant="body2" sx={{m:0,overflowWrap:'anywhere',fontVariantNumeric:'tabular-nums',userSelect:'text'}}>{value||'—'}</Typography></React.Fragment>)}</Box>;
 
 function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t}){
+ const employee=draft?.type==='EMPLOYEE'||Boolean(draft?.employeeId);
  const labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,detail=DETAIL_TEXT[languageCode]||DETAIL_TEXT.en,industry=INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en;
  return <Paper variant="outlined" data-testid="payee-details" sx={{minWidth:0,display:'flex',flexDirection:'column',maxHeight:{sm:360},overflow:'hidden'}}>
   <Box sx={{p:1.5,overflowY:'auto',minHeight:0}}><Stack spacing={1.25} divider={<Box sx={{borderBottom:1,borderColor:'divider'}}/>}>
    <Stack spacing={.75}>
     <Typography variant="subtitle2" fontWeight={700} color={draft?'text.primary':'text.secondary'} sx={{overflowWrap:'anywhere'}}>{draft?.name||t.payee}</Typography>
     {draft&&<Box><StatusLabel label={payeeTypeLabel(draft,languageCode)} tone="blue"/></Box>}
-    <Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={.5}><Typography variant="caption" color="text.secondary">{industry.industry}</Typography>{draft?.serviceTypes?.length?draft.serviceTypes.map(row=><StatusLabel key={row.id} label={partnerIndustryLabel(row.systemDefault||row,languageCode)||row.code||'—'} tone="gray"/>):<Typography variant="body2" color="text.secondary">—</Typography>}</Stack>
-    <InformationRows rows={[[labels.businessNumber,draft?.businessNumber]]}/>
+    {!employee&&<Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={.5}><Typography variant="caption" color="text.secondary">{industry.industry}</Typography>{draft?.serviceTypes?.length?draft.serviceTypes.map(row=><StatusLabel key={row.id} label={partnerIndustryLabel(row.systemDefault||row,languageCode)||row.code||'—'} tone="gray"/>):<Typography variant="body2" color="text.secondary">—</Typography>}</Stack>}
+     {!employee&&<InformationRows rows={[[labels.businessNumber,draft?.businessNumber]]}/>}
    </Stack>
-   <Stack spacing={.75}><Typography variant="subtitle2">{labels.contact}</Typography><InformationRows rows={[[detail.person,draft?.contactName],[detail.phone,draft?.contactPhone],[labels.email,draft?.email],[labels.address,draft?.address]]}/></Stack>
+    <Stack spacing={.75}><Typography variant="subtitle2">{labels.contact}</Typography><InformationRows rows={employee?[[detail.phone,draft?.contactPhone],[labels.email,draft?.email]]:[[detail.person,draft?.contactName],[detail.phone,draft?.contactPhone],[labels.email,draft?.email],[labels.address,draft?.address]]}/></Stack>
    <Stack spacing={.75} data-testid="payee-accounts">
     <Typography variant="subtitle2">{labels.banks}{draft&&!busy&&!error&&` · ${accounts.length}`}</Typography>
     {!draft?<InformationRows rows={[[labels.bank,null],[labels.number,null],[labels.holder,null]]}/>:busy?<Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={16}/><Typography variant="body2" color="text.secondary">{detail.loading}</Typography></Stack>:error?<Alert severity="error" action={<Button onClick={onRetry}>{t.retry}</Button>}>{t.error}</Alert>:!accounts.length?<Alert severity="warning">{t.noAccount}</Alert>:accounts.map(account=>{

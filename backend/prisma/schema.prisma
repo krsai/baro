@@ -396,6 +396,7 @@ model Organization {
   styleProductRevisionActors StyleProductRevision[] @relation("StyleProductRevisionActor")
  changeApprovalRequests ChangeApprovalRequest[] @relation("ChangeCompany")
  ledgerCounterparties BankLedgerEntry[] @relation("LedgerPartyPartner")
+  nameCaseAudit CompanyNameCaseAudit? @relation("NameCaseOrganization")
   identityAnchor CompanyIdentity? @relation("CompanyIdentityAnchor")
   ownedIdentityLinks CompanyIdentityLink[] @relation("CompanyIdentityOwner")
   identityLinks CompanyIdentityLink[] @relation("CompanyIdentityEntity")
@@ -544,7 +545,18 @@ model CompanyPartnerLink {
  @@index([targetOrgId])
 }
 
+model CompanyNameCaseAudit {
+  organizationId Int @id
+  identityId Int? @unique
+  beforeOrganization Json
+  beforeIdentity Json?
+  appliedAt DateTime @default(now())
+  organization Organization @relation("NameCaseOrganization",fields:[organizationId],references:[id],onDelete:Restrict)
+  identity CompanyIdentity? @relation(fields:[identityId],references:[id],onDelete:Restrict)
+}
+
 model CompanyIdentity {
+ nameCaseAudit CompanyNameCaseAudit?
  id Int @id @default(autoincrement())
  anchorEntityId Int @unique
  code String @unique
