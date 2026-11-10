@@ -177,7 +177,8 @@ test('both invoice customer pickers return local or official codes without chang
     await routes.get('/invoices/customers')({query:{documentKind}},response);
     assert.deepEqual(response.body.rows.map(({id,code})=>({id,code})),[{id:8,code:'CUST-008'},{id:9,code:'CUST-009'},{id:10,code:null}]);
     assert.equal(queries[0].select.code,true);
-    assert.ok(response.body.rows.every(row=>Object.keys(row).every(key=>['id','code','name','nameKo','nameVi'].includes(key))));
+    assert.ok(response.body.rows.every(row=>Object.keys(row).every(key=>['id','code','searchText','name','nameKo','nameVi'].includes(key))));
+    assert.equal(response.body.rows[0].searchText,'LOCAL CUST-008');
     assert.deepEqual(queries[0].where,documentKind==='GENERAL'?require('../backend/dist/services/generalInvoice').generalInvoiceBuyerScope(7):{buyerWorkOrders:{some:{sellerOrgId:7}}});
   }
 });

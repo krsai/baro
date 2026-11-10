@@ -78,6 +78,30 @@ test('Prisma/PostgreSQL: own-customer drafts, exact retries, issue, immutable sn
    await assert.rejects(db.invoice.create({data:{...invoice,id:randomUUID(),clientKey:randomUUID(),invoiceNumber:'INVALID-COPY',sequenceNumber:invoice.sequenceNumber+1,total:'1',receivableAdded:'1',snapshot:{...invoice.snapshot,total:'1'}}}),/TOTALS_INVALID/);
    assert.equal(await db.invoice.count(),before,'a header without its exact lines rolls back');
   });
+  await t.test('list and receipt search find local, linked and common customer codes without changing invoice snapshots or company scope',async()=>{
+   const {companyNameCodeSearch}=require('../backend/dist/services/companySearch');
+   const {registerInvoiceDraftRoutes}=require('../backend/dist/routes/invoiceDraft.routes');
+   const {searchLedgerEvidence}=require('../backend/dist/services/bankLedger');
+   const before=await db.invoice.findUnique({where:{id:invoice.id}});
+   await db.organization.update({where:{id:buyer},data:{code:'BARO',country:'VN',businessNumber:'123456789'}});
+   const set=await db.employeeGradeSet.create({data:{orgId:s.other.id,code:'SEARCH',name:'Search grades'}});
+   const grade=await db.employeeGrade.create({data:{orgId:s.other.id,setId:set.id,code:'ADMIN',name:'Admin',nameKo:'Admin',nameEn:'Admin',nameVi:'Admin',sortOrder:0}});
+   await db.employee.create({data:{orgId:s.other.id,name:'Other company member',orgRole:'ADMIN',status:'ACTIVE',gradeId:grade.id}});
+   await db.companyPartnerLink.create({data:{orgId:org,entityId:buyer,targetOrgId:s.other.id,createdByEmployeeId:s.people.admin.id,matchMethod:'CONFIRMED'}});
+   const anchor=await db.organization.create({data:{name:'Different public name',code:'IDEN',type:'SERVICE',country:'VN',businessNumber:'123456789'}});
+   const identity=await db.companyIdentity.create({data:{anchorEntityId:anchor.id,name:anchor.name,code:anchor.code,country:'VN',businessNumber:'123456789'}});
+   await db.companyIdentityLink.create({data:{orgId:org,entityId:buyer,identityId:identity.id,createdByEmployeeId:s.people.admin.id}});
+   const handlers=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)]));
+   registerInvoiceDraftRoutes(app,{db,requireAccess:async()=>({organization:{id:org}}),actor:()=> 'actor'});
+   for(const search of ['baro',s.other.code.toLowerCase(),'iden']){
+    let response;await handlers.get('get/invoices/issued')({query:{search}},{setHeader(){},json(body){response=body;}});
+    assert.deepEqual(response.rows.map(row=>row.id),[invoice.id]);assert.equal(response.rows[0].documentKind,'GENERAL');
+    assert.deepEqual((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search})).documents.map(row=>row.id),[invoice.id]);
+    assert.deepEqual(await db.invoice.findMany({where:{sellerOrgId:s.other.id,buyer:companyNameCodeSearch(s.other.id,search)}}),[]);
+   }
+   assert.deepEqual(await db.organization.findMany({where:{id:buyer,...companyNameCodeSearch(s.other.id,'IDEN')}}),[],'another company cannot search through our identity links');
+   assert.deepEqual((await db.invoice.findUnique({where:{id:invoice.id}})).snapshot,before.snapshot);
+  });
   await t.test('general invoices support existing partial receipt evidence and preserve receipt history through revisions',async()=>{
    const evidence=await db.$transaction(tx=>resolveEvidence(tx,org,{currencyCode:'USD'},{evidenceType:'INVOICE',direction:'IN',evidenceNumber:invoice.invoiceNumber,amount:'400.00',bankFee:'0'}));
    assert.equal(evidence.allocations[0].invoiceId,invoice.id);assert.equal(evidence.allocations[0].amount,'400.00');

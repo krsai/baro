@@ -31,7 +31,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',route=>{
    const req=route.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});
-   if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',name:'Customer'}]}});
+   if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',searchText:'BARO CUST-001',name:'Customer'}]}});
    if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{name:'Customer'},seller:{name:'BARO'},sellerBankAccounts:[{id:'bank',bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true}],currencies:['VND','USD','KRW']}});}
    if(req.method()==='GET'&&url.pathname.endsWith('/orders'))return route.fulfill({headers,json:{rows:[],hasMore:false}});
    if(req.method()==='POST'&&url.pathname.endsWith('/issue')){issues.push(req.postDataJSON());if(failure==='issue'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'issued'}});}
@@ -43,9 +43,9 @@ try{
   await page.getByRole('combobox',{name:new RegExp('^'+t.type)}).click();await page.getByRole('option',{name:t.general,exact:true}).click();
   const customer=page.getByRole('textbox',{name:invoiceMessages[lang].customer,exact:true});if(process.argv.includes('--customer-only')){
    await customer.press('F2');const dialog=page.getByRole('dialog'),lookup=EXPENSE_LOOKUP_TEXT[lang];await dialog.getByText('CUST-001',{exact:true}).waitFor();
-   await dialog.getByRole('textbox',{name:lookup.keyword,exact:true}).fill('CUST-001');await dialog.getByRole('button',{name:lookup.select,exact:true}).click();await dialog.waitFor({state:'hidden'});
+   await dialog.getByRole('textbox',{name:lookup.keyword,exact:true}).fill('BARO');await dialog.getByRole('button',{name:lookup.select,exact:true}).click();await dialog.waitFor({state:'hidden'});
    await page.getByTestId('general-invoice-line').waitFor();assert.equal(await customer.inputValue(),'Customer');
-   await customer.fill('CUST-001');await customer.press('Enter');assert.equal(await page.getByRole('dialog').count(),0);assert.deepEqual(errors,[]);await page.close();continue;
+   for(const query of ['BARO','CUST-001']){await customer.fill(query);await customer.press('Enter');assert.equal(await page.getByRole('dialog').count(),0);}assert.deepEqual(errors,[]);await page.close();continue;
   }
   await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line');await row.waitFor();

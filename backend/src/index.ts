@@ -29434,7 +29434,7 @@ app.get("/invoices/customers", async (req, res) => {
   });
   res.setHeader("Cache-Control", "no-store");
   const customers=await attachLinkedCompanies(prisma,access.organization.id,rows.map(row=>({...row,entityId:row.id})));
-  return res.json({ rows:customers.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,name:row.name,nameKo:row.nameKo,nameVi:row.nameVi})) });
+  return res.json({ rows:customers.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,searchText:[row.code,row.linkedCompany?.code].filter(Boolean).join(' '),name:row.name,nameKo:row.nameKo,nameVi:row.nameVi})) });
 });
 
 app.get("/invoices/orders", async (req, res) => {

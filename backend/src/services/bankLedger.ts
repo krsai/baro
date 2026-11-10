@@ -1,4 +1,5 @@
 import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
+import {companyNameCodeSearch} from './companySearch';
 import {counterpartyInput,entryCounterparty,resolveLedgerCounterparty,ledgerCounterpartyOptions} from './ledgerCounterparty';
 import {requireLedgerAdjustmentAccess} from './ledgerAdjustmentAccess';
 import {reconcileLedgerBalances} from './ledgerBalance';
@@ -260,7 +261,7 @@ export async function searchLedgerEvidence(db:any,orgId:number,query:any){
  if(!['INVOICE','EXPENSE'].includes(type)||search.length>200)return fail('LEDGER_INVALID_EVIDENCE');
  if(!search)return {documents:[]};
  if(type==='INVOICE'){
-  const invoices=await db.invoice.findMany({where:{sellerOrgId:orgId,status:'ISSUED',currencyCode:code,OR:[{invoiceNumber:{contains:search,mode:'insensitive'}},{buyer:{name:{contains:search,mode:'insensitive'}}}]},select:{id:true,invoiceNumber:true,buyerOrgId:true,total:true,issuedAt:true,buyer:{select:{name:true}}},orderBy:{issuedAt:'desc'},take:30});
+  const invoices=await db.invoice.findMany({where:{sellerOrgId:orgId,status:'ISSUED',currencyCode:code,OR:[{invoiceNumber:{contains:search,mode:'insensitive'}},{buyer:companyNameCodeSearch(orgId,search)},{snapshot:{path:['fields','buyer','name'],string_contains:search,mode:'insensitive'}},{snapshot:{path:['fields','buyer','code'],string_contains:search,mode:'insensitive'}}]},select:{id:true,invoiceNumber:true,buyerOrgId:true,total:true,issuedAt:true,buyer:{select:{name:true}}},orderBy:{issuedAt:'desc'},take:30});
   const used=await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,invoiceId:{in:invoices.map((row:any)=>row.id)},entry:{voidedAt:null}}});
   return {documents:invoices.map((row:any)=>{const remaining=ledgerScale4(row.total)-used.filter((a:any)=>a.invoiceId===row.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n);return {id:row.id,reference:row.invoiceNumber,date:row.issuedAt,payee:row.buyer?.name||'',counterparty:{kind:'PARTNER',id:row.buyerOrgId,name:row.buyer?.name||''},amount:ledgerMoney(ledgerScale4(row.total),code),remaining:ledgerMoney(remaining,code)};}).filter((row:any)=>ledgerScale4(row.remaining)>0n)};
  }

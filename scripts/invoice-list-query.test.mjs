@@ -13,6 +13,11 @@ test('invoice list searches before pagination and preserves seller scope and ori
  assert.equal(result.status,200);const query=app.calls[0];assert.equal(query.where.sellerOrgId,7);assert.equal(query.where.status,'ISSUED');assert.equal(query.skip,60);assert.equal(query.take,31);
  assert.ok(query.where.OR.some(item=>item.invoiceNumber?.contains==='PO-1'));assert.ok(query.where.OR.some(item=>item.orders?.some.sourceOrderNumber.contains==='PO-1'));
  assert.ok(query.where.OR.some(item=>item.snapshot?.path.join('.')==='fields.buyer.name'));
+ const buyer=query.where.OR.find(item=>item.buyer).buyer;
+ assert.ok(buyer.OR.some(item=>item.code?.contains==='PO-1'));
+ assert.equal(buyer.OR.find(item=>item.localCompanyLinks).localCompanyLinks.some.orgId,7);
+ assert.equal(buyer.OR.find(item=>item.identityLinks).identityLinks.some.orgId,7);
+ assert.ok(query.where.OR.some(item=>item.snapshot?.path.join('.')==='fields.buyer.code'));
 });
 test('invalid status or oversized search never queries invoices',async()=>{
  for(const query of [{status:'DRAFT'},{search:'x'.repeat(201)},{page:'-1'}]){const app=harness();assert.equal((await app.run(query)).status,400);assert.equal(app.calls.length,0);}

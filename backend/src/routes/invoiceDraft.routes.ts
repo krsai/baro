@@ -6,6 +6,7 @@ import { invoiceFamily, invoiceFamilyBalance } from '../services/invoiceSettleme
 import {generalInvoiceSource} from '../services/generalInvoice';
 import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from '../services/accountingCode';
 import { createInvoiceCredit, voidInvoiceCredit } from '../services/invoiceCredit';
+import {companyNameCodeSearch} from '../services/companySearch';
 
 const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[]) => {
   const total = payments.reduce((sum: bigint, payment: any) => {
@@ -92,8 +93,9 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       ...(status ? { status } : {}),
       ...(search ? { OR: [
         { invoiceNumber: { contains: search, mode: 'insensitive' } },
-        { buyer: { OR: ['name', 'nameKo', 'nameVi'].map(key => ({ [key]: { contains: search, mode: 'insensitive' } })) } },
+        { buyer: companyNameCodeSearch(access.organization.id,search) },
         { snapshot: { path: ['fields', 'buyer', 'name'], string_contains: search, mode: 'insensitive' } },
+        { snapshot: { path: ['fields', 'buyer', 'code'], string_contains: search, mode: 'insensitive' } },
         { orders: { some: { sourceOrderNumber: { contains: search, mode: 'insensitive' } } } },
       ] } : {}),
     },

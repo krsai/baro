@@ -27,6 +27,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[detail,setDetail]=useState(null),[pdfBusy,setPdfBusy]=useState(false);
   const labels=invoiceListUi[languageCode]||invoiceListUi.en;
+  const types=generalInvoiceText[languageCode]||generalInvoiceText.en;
   const common = invoiceMessages[languageCode] || invoiceMessages.en;
   const [issued, setIssued] = useState({ rows: [], hasMore: false });
   const [page, setPage] = useState(0), [reload, setReload] = useState(0);
@@ -64,13 +65,14 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
-      {[common.issuedDate,common.invoiceStatus,common.invoiceNumber,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,'PDF'].map((label,index)=><TableCell key={label} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
+      {[common.issuedDate,common.invoiceStatus,types.type,common.invoiceNumber,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,'PDF'].map((label,index)=><TableCell key={label} align={index>=6&&index<=8?'right':'left'}>{label}</TableCell>)}
     </TableRow></TableHead><TableBody>
-      {loading?<TableRow><TableCell colSpan={9} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={9} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
+      {loading?<TableRow><TableCell colSpan={10} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={10} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
         <TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/>{row.isFinalLocked&&<Typography variant="caption" color="success.main" display="block">{labels.locked}</Typography>}</TableCell>
+        <TableCell sx={{whiteSpace:'nowrap'}}>{row.documentKind==='GENERAL'?types.general:types.order}</TableCell>
         <TableCell><Typography variant="subtitle2">{row.invoiceNumber}</Typography></TableCell>
-        <TableCell>{row.buyerName}</TableCell><TableCell>{row.documentKind==='GENERAL'?(generalInvoiceText[languageCode]||generalInvoiceText.en).general:row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
+        <TableCell>{row.buyerName}</TableCell><TableCell>{row.documentKind==='GENERAL'?'—':row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography><Typography variant="caption" color="text.secondary">{labels.debt}: {amount(row.receivableAdded,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}<Typography variant="caption" display="block" color={row.familyBalanceKind==='CREDIT'?'warning.main':'text.secondary'}>{!row.isCurrentRevision?labels.historical:row.familyBalanceKind==='CREDIT'?labels.credit:row.familyBalanceKind==='SETTLED'?labels.settled:labels.due}</Typography></TableCell>
