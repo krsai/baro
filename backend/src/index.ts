@@ -143,6 +143,7 @@ import {
 } from "./services/relationshipTimeBuckets";
 import { partitionRelationshipBucketStyles } from "./services/relationshipBucketStyles";
 import {generalInvoiceBuyerScope} from './services/generalInvoice';
+import {attachLinkedCompanies} from './services/companyConnections';
 import { registerInvoiceDraftRoutes } from "./routes/invoiceDraft.routes";
 import { buildInvoiceSource } from "./services/invoiceSource";
 import { invoiceFamily, invoiceSettlement } from "./services/invoiceSettlement";
@@ -29428,11 +29429,12 @@ app.get("/invoices/customers", async (req, res) => {
   if (!access) return;
   const rows = await prisma.organization.findMany({
     where: req.query.documentKind==='GENERAL'?generalInvoiceBuyerScope(access.organization.id):{ buyerWorkOrders: { some: { sellerOrgId: access.organization.id } } },
-    select: { id: true, name: true, nameKo: true, nameVi: true },
+    select: { id: true, code: true, name: true, nameKo: true, nameVi: true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
   res.setHeader("Cache-Control", "no-store");
-  return res.json({ rows });
+  const customers=await attachLinkedCompanies(prisma,access.organization.id,rows.map(row=>({...row,entityId:row.id})));
+  return res.json({ rows:customers.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,name:row.name,nameKo:row.nameKo,nameVi:row.nameVi})) });
 });
 
 app.get("/invoices/orders", async (req, res) => {

@@ -1,3 +1,4 @@
+import {EXPENSE_LOOKUP_TEXT} from '../frontend/src/constants/expenseLookup.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {writeFileSync,unlinkSync,existsSync} from 'node:fs';
@@ -19,7 +20,9 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(html)}`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const [lang,width,failure] of [...['ko','en','vi'].flatMap(lang=>[1440,390].map(width=>[lang,width,'none'])),['en',1440,'save'],['en',1440,'issue']]){
+  if(process.argv.includes('--customer-only')&&failure!=='none')continue;
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],saves=[],issues=[],sourceReads=[];let failed=false;
+  await page.addInitScript(language=>localStorage.setItem('baro_language_override',language),lang);
   page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
   await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:"export const useAuth=()=>({activeOrgId:1,activeProfile:{orgType:'MANUFACTURER'}});"}));
   await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
@@ -28,7 +31,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',route=>{
    const req=route.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});
-   if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,name:'Customer'}]}});
+   if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',name:'Customer'}]}});
    if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{name:'Customer'},seller:{name:'BARO'},sellerBankAccounts:[{id:'bank',bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true}],currencies:['VND','USD','KRW']}});}
    if(req.method()==='GET'&&url.pathname.endsWith('/orders'))return route.fulfill({headers,json:{rows:[],hasMore:false}});
    if(req.method()==='POST'&&url.pathname.endsWith('/issue')){issues.push(req.postDataJSON());if(failure==='issue'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'issued'}});}
@@ -38,7 +41,13 @@ try{
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}`);
   const t=generalInvoiceText[lang],u=invoiceUi[lang];
   await page.getByRole('combobox',{name:new RegExp('^'+t.type)}).click();await page.getByRole('option',{name:t.general,exact:true}).click();
-  const customer=page.getByRole('textbox',{name:invoiceMessages[lang].customer,exact:true});await customer.fill('Customer');await customer.press('Enter');
+  const customer=page.getByRole('textbox',{name:invoiceMessages[lang].customer,exact:true});if(process.argv.includes('--customer-only')){
+   await customer.press('F2');const dialog=page.getByRole('dialog'),lookup=EXPENSE_LOOKUP_TEXT[lang];await dialog.getByText('CUST-001',{exact:true}).waitFor();
+   await dialog.getByRole('textbox',{name:lookup.keyword,exact:true}).fill('CUST-001');await dialog.getByRole('button',{name:lookup.select,exact:true}).click();await dialog.waitFor({state:'hidden'});
+   await page.getByTestId('general-invoice-line').waitFor();assert.equal(await customer.inputValue(),'Customer');
+   await customer.fill('CUST-001');await customer.press('Enter');assert.equal(await page.getByRole('dialog').count(),0);assert.deepEqual(errors,[]);await page.close();continue;
+  }
+  await customer.fill('Customer');await customer.press('Enter');
   const row=page.getByTestId('general-invoice-line');await row.waitFor();
   const code=row.getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:true});await code.fill('GENV');await code.press('Enter');
   await row.getByRole('textbox',{name:t.description,exact:true}).fill('Polybag agency purchase');
@@ -58,5 +67,5 @@ try{
   }
   await page.close();
  }
- console.log('General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
+ console.log(process.argv.includes('--customer-only')?'PASS: invoice customer code column, code search/selection and original buyer ID; ko/en/vi desktop/mobile.':'General invoice workspace: ko/en/vi desktop/mobile, customer without orders, codes/items/VAT, bank confirmation, issue and uncertain save/issue retries passed.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}

@@ -83,20 +83,20 @@ const ts = require('../backend/node_modules/typescript');
 const backend = readFileSync('backend/src/index.ts', 'utf8');
 const section = backend.slice(backend.indexOf('const requireInvoiceAccess ='), backend.indexOf('app.post("/orders/:orderId/modification-lock"'));
 const routeCode = ts.transpileModule(section, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, orders = [], plans = [], progress = [], issued = [] } = {}) => {
+const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, orders = [], plans = [], progress = [], issued = [], customers = [], linked = {} } = {}) => {
   const routes = new Map();
   const queries = [];
   const response = { statusCode: 200, body: null, status(code) { this.statusCode = code; return this; },
     json(body) { this.body = body; return this; }, setHeader() {} };
   const prisma = {
-    organization: { async findMany(query) { queries.push(query); return []; } },
+    organization: { async findMany(query) { queries.push(query); return customers.map(row=>Object.fromEntries(Object.keys(query.select).map(key=>[key,row[key]??null]))); } },
     workOrder: { async findFirst(query) { queries.push(query); return found ? { id: 10, orderId: 'o', buyerOrgId: null, workOrderItems: [] } : null; },
       async findMany(query) { queries.push(query); return orders; } },
     assignmentPlan: { async findMany(query) { queries.push(query); return plans; } },
     invoiceOrder: { async findMany(query) { queries.push(query); return issued; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
-  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', 'ORG_MANAGEMENT_ROLES','generalInvoiceBuyerScope',routeCode)(
+  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', 'ORG_MANAGEMENT_ROLES','generalInvoiceBuyerScope','attachLinkedCompanies',routeCode)(
     async () => ({ organization: { id: 7, type }, orgMembership: { role: 'ACCOUNTANT' } }),
     async ({ feature }) => { assert.equal(feature, 'INVOICE'); return allowed; }, prisma,
     () => ({ ready: false }), (orgId, ids) => { assert.equal(orgId, 7); assert.ok(ids.length); return progress; }, {},
@@ -105,7 +105,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     }])),
     require('../backend/dist/services/invoiceOrderProgress.js').invoiceOrderProgress,
     require('../backend/dist/routes/invoiceDraft.routes.js').registerInvoiceDraftRoutes,
-    () => 'invoice-test@example.com',['ADMIN','ACCOUNTANT','OPERATOR'],require('../backend/dist/services/generalInvoice').generalInvoiceBuyerScope);
+    () => 'invoice-test@example.com',['ADMIN','ACCOUNTANT','OPERATOR'],require('../backend/dist/services/generalInvoice').generalInvoiceBuyerScope,async (db,orgId,rows)=>{assert.equal(db,prisma);assert.equal(orgId,7);return rows.map(row=>({...row,linkedCompany:linked[row.id]||null}));});
   return { routes, response, queries };
 };
 test('invoice APIs reject missing permission and brand tenants before any order query', async () => {
@@ -166,8 +166,20 @@ test('customer options contain only buyers with orders sold by the active factor
   const { routes, response, queries } = createRoutes();
   await routes.get('/invoices/customers')({ query: {} }, response);
   assert.deepEqual(queries[0].where, { buyerWorkOrders: { some: { sellerOrgId: 7 } } });
-  assert.deepEqual(queries[0].select, { id: true, name: true, nameKo: true, nameVi: true });
+  assert.deepEqual(queries[0].select, { id: true, code: true, name: true, nameKo: true, nameVi: true });
   assert.deepEqual(response.body, { rows: [] });
+});
+
+test('both invoice customer pickers return local or official codes without changing buyer IDs or exposing profiles',async()=>{
+  for(const documentKind of ['ORDER','GENERAL']){
+    const customers=[{id:8,code:'LOCAL',name:'Linked customer'},{id:9,code:'CUST-009',name:'Local customer'},{id:10,code:null,name:'No code'}];
+    const {routes,response,queries}=createRoutes({customers,linked:{8:{id:999,code:'CUST-008',bankAccount:'private',email:'private'}}});
+    await routes.get('/invoices/customers')({query:{documentKind}},response);
+    assert.deepEqual(response.body.rows.map(({id,code})=>({id,code})),[{id:8,code:'CUST-008'},{id:9,code:'CUST-009'},{id:10,code:null}]);
+    assert.equal(queries[0].select.code,true);
+    assert.ok(response.body.rows.every(row=>Object.keys(row).every(key=>['id','code','name','nameKo','nameVi'].includes(key))));
+    assert.deepEqual(queries[0].where,documentKind==='GENERAL'?require('../backend/dist/services/generalInvoice').generalInvoiceBuyerScope(7):{buyerWorkOrders:{some:{sellerOrgId:7}}});
+  }
 });
 
 test('order list requires a valid selected customer before querying orders', async () => {
