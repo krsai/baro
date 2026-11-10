@@ -24,7 +24,21 @@ export default function LookupInput({options=[],value,onChange,onSearch,getLabel
   }
   event.preventDefault();event.stopPropagation();search();
  };
- const {inputProps={},InputProps={},onBlur,onFocus,onKeyDown:customKeyDown,...fieldProps}=textFieldProps;
+ const {inputProps={},InputProps={},InputLabelProps={},slotProps={},onBlur,onFocus,onKeyDown:customKeyDown,...fieldProps}=textFieldProps;
+ const labelSlot=slotProps.inputLabel;
+ const inputSlot=slotProps.input;
+ const lookupInputProps=state=>{
+  const extra=typeof inputSlot==='function'?inputSlot(state):inputSlot;
+  const merged={...InputProps,...extra};
+  const inputLayout={
+   '& > .MuiInputBase-input':{paddingRight:0,...(clearAfterChoose&&merged.startAdornment?{}:{minWidth:0,width:0,flex:'1 1 0'})},
+   '& > .MuiInputAdornment-root':{flexShrink:0},
+  };
+  return {...merged,...((state.variant||fieldProps.variant||props.variant||'outlined')==='outlined'?{notched:!hideLabel&&Boolean(label)}:{}),
+   sx:[...(Array.isArray(merged.sx)?merged.sx:[merged.sx]),inputLayout],
+   endAdornment:<>{merged.endAdornment}<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><Tooltip title={searchLabel||label||''}><span style={{display:'inline-flex'}}><IconButton type="button" tabIndex={-1} size="small" aria-label={searchLabel||label} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={search}><SearchIcon fontSize="small"/></IconButton></span></Tooltip></InputAdornment></>,
+  };
+ };
  return <TextField {...props} {...fieldProps} fullWidth size={fieldProps.size||'small'} value={input} disabled={disabled} required={required} error={error} helperText={helperText} label={hideLabel?undefined:label} placeholder={placeholder||fieldProps.placeholder} autoComplete="off"
   onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;}}
   onChange={event=>{skipBlur.current=false;setInput(event.target.value,event,'input');onEdit?.(event.target.value);}}
@@ -32,5 +46,5 @@ export default function LookupInput({options=[],value,onChange,onSearch,getLabel
   onBlur={event=>{if(!disabled&&!skipBlur.current&&!composing.current&&!event.nativeEvent?.isComposing){const selected=value&&normalizeLookupText(input)===normalizeLookupText(text),match=resolve(input,true);if(!selected&&match)choose(match,event);else if(!selected&&value){preserveDraft.current=true;onChange(null,event);}}skipBlur.current=false;onBlur?.(event);}}
   onKeyDown={event=>{keyDown(event);if(!event.defaultPrevented){inputProps.onKeyDown?.(event);if(!event.defaultPrevented)customKeyDown?.(event);}}}
   inputProps={{...inputProps,onKeyDown:undefined,'aria-label':inputProps['aria-label']||label,'aria-haspopup':'dialog',spellCheck:false}}
-  InputProps={{...InputProps,endAdornment:<>{InputProps.endAdornment}<InputAdornment position="end" sx={{m:0,ml:.5}}><Tooltip title={searchLabel||label||''}><span><IconButton type="button" tabIndex={-1} size="small" aria-label={searchLabel||label} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={search} sx={{width:28,height:28,p:.5}}><SearchIcon fontSize="small"/></IconButton></span></Tooltip></InputAdornment></>}}/>;
+  slotProps={{...slotProps,input:lookupInputProps,inputLabel:state=>({...InputLabelProps,...(typeof labelSlot==='function'?labelSlot(state):labelSlot),shrink:true,...(typeof label==='string'?{title:label}:{})})}}/>;
 }
