@@ -622,6 +622,11 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  internalTransferSourceId String?
+  internalTransferAmount Decimal? @db.Decimal(24,4)
+  internalTransferSource BankLedgerEntry? @relation("InternalLedgerTransfer",fields:[internalTransferSourceId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"Ledger_transfer_source_scope_fkey")
+  internalTransferMirror BankLedgerEntry? @relation("InternalLedgerTransfer")
+  @@unique([internalTransferSourceId,orgId],map:"Ledger_transfer_source_key")
  changeApprovalRequests ChangeApprovalRequest[] @relation("LedgerChangeSource")
  counterpartyOrg Organization? @relation("LedgerPartyPartner",fields:[counterpartyOrgId],references:[id],onDelete:Restrict,map:"Ledger_counterparty_partner_fkey")
  counterpartyEmployee Employee? @relation("LedgerPartyEmployee",fields:[counterpartyEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"Ledger_counterparty_employee_fkey")

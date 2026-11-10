@@ -39,6 +39,8 @@ export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,
   const employee=await tx.employee.findFirst({where:{id:party!.id,orgId,...(!allocations.length?{status:'ACTIVE'}:{})},select:{name:true}});if(!employee)fail('LEDGER_COUNTERPARTY_INVALID');name=employee.name;
  }else{
   const target=await tx.organizationBankAccount.findFirst({where:{id:party!.id,orgId,entityId:orgId,isActive:true},include:{currency:true}});if(!target||target.id===account.entityAccountId||'entity:'+target.id===account.id)fail('LEDGER_COUNTERPARTY_INVALID');name=target.displayName||[target.bankName,target.accountNumber].filter(Boolean).join(' / ');
+  if(body.evidenceType&&body.evidenceType!=='FILE'||allocations.length)fail('LEDGER_TRANSFER_EVIDENCE_INVALID');
+  if(!account.entityAccountId||!await tx.organizationBankAccount.findFirst({where:{id:account.entityAccountId,orgId,entityId:orgId,isActive:true}}))fail('LEDGER_COUNTERPARTY_INVALID');
  }
  return {counterpartyOrgId:party!.kind==='PARTNER'?party!.id:null,counterpartyEmployeeId:party!.kind==='EMPLOYEE'?party!.id:null,counterpartyAccountId:party!.kind==='ACCOUNT'?party!.id:null,counterpartyName:name!};
 }

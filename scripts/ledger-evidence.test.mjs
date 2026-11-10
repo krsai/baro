@@ -23,6 +23,7 @@ async function fixture(){
  await db.exec('ALTER TABLE "Invoice" ADD COLUMN "buyerOrgId" INT DEFAULT 3; ALTER TABLE "PartnerTransactionCost" ADD COLUMN "partnerOrgId" INT DEFAULT 3,ADD COLUMN "payeeEmployeeId" INT;');
  await db.exec(await readFile('backend/prisma/migrations/20261027160100_bank_ledger/migration.sql','utf8'));
  await db.exec('ALTER TABLE "BankLedgerEntry" ADD COLUMN "counterpartyOrgId" INT,ADD COLUMN "counterpartyEmployeeId" INT,ADD COLUMN "counterpartyAccountId" TEXT,ADD COLUMN "counterpartyName" TEXT;');
+ await db.exec('ALTER TABLE "BankLedgerEntry" ADD COLUMN "internalTransferSourceId" TEXT,ADD COLUMN "internalTransferAmount" NUMERIC;');
  // Old transactions are preserved without rewriting their evidence.
  await db.exec(`INSERT INTO "BankLedgerAccount"(id,"orgId","clientKey","bankName","accountNumber","accountHolder","currencyCode","openingDate","openingBalance","createdBy") VALUES('a',1,'a','B','001','C','USD','2026-01-01',0,'actor');
  INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy") VALUES('old',1,'a','old','2026-01-01','IN',1,'Legacy','old-ref','actor');`);

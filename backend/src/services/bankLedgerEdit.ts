@@ -2,12 +2,20 @@ import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
-export const ledgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).map(key=>[key,row[key]??null])))).digest('hex');
+export const ledgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['internalTransferSourceId','internalTransferAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
 import {legacyExpenseNumber} from './documentNumber';
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
+export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,row:any,reason:string){
+ // The organization lock also serializes requests opened from opposite legs.
+ await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
+ const peer=row.internalTransferSourceId?await tx.bankLedgerEntry.findFirst({where:{id:row.internalTransferSourceId,orgId}}):await tx.bankLedgerEntry.findFirst({where:{internalTransferSourceId:row.id,orgId}});
+ const voidedAt=new Date();
+ for(const entry of [row,peer].filter(Boolean))if(!entry.voidedAt)await tx.bankLedgerEntry.update({where:{id:entry.id},data:{voidedAt,voidedBy:actor,voidReason:reason}});
+ return {...row,voidedAt,voidedBy:actor,voidReason:reason};
+}
 export async function readLedgerEdit(db:any,orgId:number,id:string){
  const codeInclude={base:{include:{expenseType:true}}} satisfies Prisma.TransactionCodeInclude;
  const include={account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
@@ -35,7 +43,8 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
   document={...(requests.length===1?{id:requests[0].id,version:requests[0].version}:{}),reference:requests.length===1?requests[0].managementNumber||legacyExpenseNumber(requests[0].id):entry.evidenceNumber,payee:requests.map(r=>r.partner?.name||r.payeeEmployee?.name||'').join(', '),items,amount:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)};
  }
  if(document){document.counterparty=entryCounterparty(entry);if(entry.evidenceType==='EXPENSE'&&document.id)document.paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,document.id,id)).filter((row:any)=>row.currency===code);}
- return {...entry,paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
+ const peer=entry.internalTransferAmount!=null?await db.bankLedgerEntry.findFirst({where:{orgId,...(entry.internalTransferSourceId?{id:entry.internalTransferSourceId}:{internalTransferSourceId:entry.id})},include:{account:true}}):null;
+ return {...entry,...(peer?{transferAmount:ledgerMoney(ledgerScale4(peer.amount),peer.account.currencyCode),transferCurrencyCode:peer.account.currencyCode}:{}),paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
 }
 export async function replaceLedgerEntry(db:any,orgId:number,actor:string,id:string,body:any){
  if(!Array.isArray(body.rows)||body.rows.filter((r:any)=>r.entryKind==='BANK').length!==1)return fail('LEDGER_INVALID_BATCH',400);
@@ -47,15 +56,16 @@ export async function replaceLedgerEntryApproved(tx:any,db:any,orgId:number,acto
   const old=await tx.bankLedgerEntry.findFirst({where:{id,orgId}});if(!old)return fail('LEDGER_ENTRY_NOT_FOUND',404);
   const receipt=await tx.bankLedgerBatch.findUnique({where:{orgId_clientKey:{orgId,clientKey:body.clientKey}}});
   if(old.voidedAt&&!receipt)return fail('LEDGER_ENTRY_CHANGED');
-  if(!old.voidedAt)await tx.bankLedgerEntry.update({where:{id},data:{voidedAt:new Date(),voidedBy:actor,voidReason:'Corrected by replacement'}});
+  if(!old.voidedAt)await voidLedgerPairApproved(tx,orgId,actor,old,'Corrected by replacement');
   return postLedgerSettlementBatch(db,orgId,actor,body,tx,id);
 }
 export async function deleteLedgerEntry(db:any,orgId:number,actor:string,id:string,input:any){
  const reason=typeof input==='string'?input.trim():'';if(!reason||reason.length>1000)return fail('LEDGER_INVALID_INPUT',400);
  return retryEditTransaction(db,async(tx:any)=>{
+  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
   await tx.$queryRawUnsafe('SELECT id FROM "BankLedgerEntry" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);
   const row=await tx.bankLedgerEntry.findFirst({where:{id,orgId}});if(!row)return fail('LEDGER_ENTRY_NOT_FOUND',404);
   if(row.voidedAt)return row;
-  return tx.bankLedgerEntry.update({where:{id},data:{voidedAt:new Date(),voidedBy:actor,voidReason:reason}});
+  return voidLedgerPairApproved(tx,orgId,actor,row,reason);
  });
 }

@@ -64,7 +64,8 @@ export async function saveLedgerAccount(db:any,orgId:number,actor:string,body:an
   });
 }
 export async function postLedgerEntry(db:any,orgId:number,actor:string,accountId:string,body:any){return retryEditTransaction(db,tx=>postLedgerEntryInTransaction(tx,orgId,actor,accountId,body));}
-export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:string,accountId:string,body:any,settlement?:{fee:string,writeOff:string,revisesEntryId?:string|undefined}){
+export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:string,accountId:string,body:any,settlement?:{fee:string,writeOff:string,revisesEntryId?:string|undefined,internalTransferSourceId?:string}){
+    if(body.counterparty?.kind==='ACCOUNT'&&!body.evidenceNumber)body={...body,evidenceNumber:'IBT:'+body.clientKey};
     let account=await tx.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
     if(!account&&accountId.startsWith('entity:')){
       const masterId=accountId.slice(7);
@@ -82,12 +83,22 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
     if(transactionDate>ledgerToday())return fail('LEDGER_FUTURE_DATE');
     if(transactionDate<account.openingDate)return fail('LEDGER_BEFORE_OPENING');
     if(!['IN','OUT'].includes(body.direction))return fail('LEDGER_INVALID_DIRECTION');
+    let transferAmount:string|undefined;
+    if(body.counterparty?.kind==='ACCOUNT'&&(!body.evidenceType||body.evidenceType==='FILE')){
+      await tx.$queryRawUnsafe('SELECT id FROM "OrganizationBankAccount" WHERE id=$1 AND "orgId"=$2 FOR SHARE',body.counterparty.id,orgId);
+      const target=await tx.organizationBankAccount.findFirst({where:{id:body.counterparty.id,orgId,entityId:orgId,isActive:true},include:{currency:true}});
+      if(!target)return fail('LEDGER_COUNTERPARTY_INVALID');
+      if(body.transferCurrencyCode!==undefined&&body.transferCurrencyCode!==target.currency.code)return fail('LEDGER_TRANSFER_CURRENCY_CHANGED');
+      transferAmount=validateLedgerMoney(body.transferAmount??(target.currency.code===account.currencyCode?body.amount:undefined),target.currency.code);
+      if(target.currency.code===account.currencyCode&&ledgerScale4(transferAmount)!==ledgerScale4(body.amount))return fail('LEDGER_TRANSFER_AMOUNT_MISMATCH');
+    }else if(body.transferAmount!==undefined)return fail('LEDGER_TRANSFER_EVIDENCE_INVALID');
     const codeId=accountingCodeId(body.accountingCodeId);
     const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT'&&(body.remark===undefined||ledgerRemark(body.remark)==='');
     const purpose=body.remark!==undefined?(body.evidenceType==='ADJUSTMENT'?text(body.remark,1000):ledgerRemark(body.remark)):generatedPurpose?'':text(body.purpose,1000);
     const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),purpose,...(codeId===null?{}:{accountingCodeId:codeId})};
     const previous=await tx.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId,clientKey:data.clientKey}},include:{allocations:true}});
     if(previous){
+      if(ledgerScale4(previous.internalTransferAmount||'0')!==ledgerScale4(transferAmount||'0'))return fail('LEDGER_RETRY_CONFLICT',409);
       const requestedParty=counterpartyInput(body.counterparty),savedParty=entryCounterparty(previous);
       if(requestedParty&&(!savedParty||requestedParty.kind!==savedParty.kind||requestedParty.id!==savedParty.id))return fail('LEDGER_COUNTERPARTY_MISMATCH');
       if((previous.accountingCodeId??null)!==codeId)return fail('LEDGER_RETRY_CONFLICT',409);
@@ -103,7 +114,14 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
     const evidence=await resolveEvidence(tx,orgId,account,{...body,amount:data.amount,bankFee:settlement?.fee||body.bankFee,writeOffAmount:settlement?.writeOff||'0'});
     const {allocations,...fields}=evidence;
     const party=await resolveLedgerCounterparty(tx,orgId,account,body,allocations);
-    return tx.bankLedgerEntry.create({data:{...data,...fields,...party,...(settlement?{settlementMode:'ROWS',...(settlement.revisesEntryId?{revisesEntryId:settlement.revisesEntryId}:{})}:{}),createdBy:actor,...(allocations.length?{allocations:{create:allocations.map(row=>({...row,orgId}))}}:{})}});
+    const entry=await tx.bankLedgerEntry.create({data:{...data,...fields,...party,...(transferAmount?{internalTransferAmount:transferAmount}:{}),...(settlement?{settlementMode:'ROWS',...(settlement.revisesEntryId?{revisesEntryId:settlement.revisesEntryId}:{}),...(settlement.internalTransferSourceId?{internalTransferSourceId:settlement.internalTransferSourceId}:{})}:{}),createdBy:actor,...(allocations.length?{allocations:{create:allocations.map(row=>({...row,orgId}))}}:{})}});
+    if(party.counterpartyAccountId&&!settlement?.internalTransferSourceId){
+      if(ledgerScale4(fields.bankFee||'0')!==0n||ledgerScale4(settlement?.writeOff||'0')!==0n)return fail('LEDGER_TRANSFER_EVIDENCE_INVALID');
+      const old=settlement?.revisesEntryId?await tx.bankLedgerEntry.findFirst({where:{id:settlement.revisesEntryId,orgId}}):null;
+      const oldPeer=old?await tx.bankLedgerEntry.findFirst({where:{orgId,...(old.internalTransferSourceId?{id:old.internalTransferSourceId}:{internalTransferSourceId:old.id})}}):null;
+      await postLedgerEntryInTransaction(tx,orgId,actor,'entity:'+party.counterpartyAccountId,{clientKey:randomUUID(),transactionDate,direction:body.direction==='OUT'?'IN':'OUT',amount:transferAmount,transferAmount:data.amount,accountingCodeId:codeId,remark:data.purpose,evidenceType:'FILE',evidenceNumber:fields.evidenceNumber,counterparty:{kind:'ACCOUNT',id:account.entityAccountId}},{fee:'0',writeOff:'0',internalTransferSourceId:entry.id,...(oldPeer?{revisesEntryId:oldPeer.id}:{})});
+    }
+    return entry;
 }
 export async function listLedgerAccounts(db:any,orgId:number){return retryEditTransaction(db,tx=>readLedgerAccounts(tx,orgId));}
 export async function readLedgerAccounts(tx:any,orgId:number,asOf?:string,beforeTransactions=false){
@@ -121,7 +139,7 @@ export async function listLedgerEntries(db:any,orgId:number,accountId:string,que
     const account=await tx.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
     if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
     const scope={orgId,accountId};
-    const rows=await tx.bankLedgerEntry.findMany({where:{...scope,transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+    const rows=await tx.bankLedgerEntry.findMany({where:{...scope,transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
     const allTotals=await sums(tx,scope),periodTotals=await sums(tx,{...scope,transactionDate:{gte:start,lte:end}});
     const first=rows[0];
     const prefix=first?{OR:[{transactionDate:{lt:first.transactionDate}},{transactionDate:first.transactionDate,evidenceType:{lt:first.evidenceType}},{transactionDate:first.transactionDate,evidenceType:first.evidenceType,createdAt:{lt:first.createdAt}},{transactionDate:first.transactionDate,evidenceType:first.evidenceType,createdAt:first.createdAt,id:{lt:first.id}}]}:{transactionDate:{lt:start}};
@@ -145,7 +163,7 @@ export async function postLedgerBatch(db:any,orgId:number,actor:string,body:any)
  const keys=rows.map((row:any)=>clientKey(row.clientKey));
  if(new Set(keys).size!==keys.length)return fail('LEDGER_INVALID_BATCH');
  // UI-only labels never identify financial records or change retry identity.
- const canonical=rows.map((r:any)=>({...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
+ const canonical=rows.map((r:any)=>({...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
  const requestHash=createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
@@ -170,7 +188,7 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
   if(r.entryKind!=='BANK')return {...base,parentClientKey:clientKey(r.parentClientKey)};
   if(typeof r.accountId!=='string'||r.accountId.length>100||r.bankFee&&ledgerScale4(r.bankFee)!==0n||r.writeOffAmount&&ledgerScale4(r.writeOffAmount)!==0n)return fail('LEDGER_INVALID_SETTLEMENT');
   if(r.expenseItems!==undefined&&!Array.isArray(r.expenseItems))return fail('LEDGER_INVALID_SETTLEMENT');
-  return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount}))};
+  return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount}))};
  });
  if(new Set(normalized.map((r:any)=>r.clientKey)).size!==rows.length)return fail('LEDGER_INVALID_BATCH');
  const parents=normalized.filter((r:any)=>r.entryKind==='BANK');
@@ -216,8 +234,8 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const selectedAccountId=selectedAccount?.id||'';
   const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:end}},_sum:{amount:true}});
   const summary=accounts.map((account:any)=>({...account,totalIn:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='IN')?._sum.amount||'0'),account.currencyCode),totalOut:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='OUT')?._sum.amount||'0'),account.currencyCode)}));
-  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
-  const pending=rows.length?await tx.changeApprovalRequest.findMany({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:rows.slice(0,100).map((row:any)=>row.id)}},select:{ledgerEntryId:true}}):[];
+  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+  const pending=rows.length?await tx.changeApprovalRequest.findMany({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:rows.slice(0,100).flatMap((row:any)=>[row.id,row.internalTransferSourceId,row.internalTransferMirror?.id].filter(Boolean))}},select:{ledgerEntryId:true}}):[];
   const balances=new Map<string,bigint>();
   for(const row of rows.slice(0,100))if(!balances.has(row.accountId)){
    const account=accounts.find((a:any)=>a.id===row.accountId);
@@ -228,7 +246,7 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const result=rows.slice(0,100).map((row:any)=>{
    const account=accounts.find((a:any)=>a.id===row.accountId);let balance=balances.get(row.accountId)!;
    if(!row.voidedAt)balance+=(row.direction==='IN'?1n:-1n)*ledgerScale4(row.amount);balances.set(row.accountId,balance);
-   return {...row,changePending:pending.some((request:any)=>request.ledgerEntryId===row.id),currencyCode:account.currencyCode,accountName:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),balance:ledgerMoney(balance,account.currencyCode)};
+   return {...row,changePending:pending.some((request:any)=>[row.id,row.internalTransferSourceId,row.internalTransferMirror?.id].includes(request.ledgerEntryId)),currencyCode:account.currencyCode,accountName:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),balance:ledgerMoney(balance,account.currencyCode)};
   });
   const currencyTotals=[...new Set<string>(summary.map((a:any)=>a.currencyCode))].map(code=>{
    const same=summary.filter((a:any)=>a.currencyCode===code),sum=(field:string)=>ledgerMoney(same.reduce((s:bigint,a:any)=>s+ledgerScale4(a[field]),0n),code);

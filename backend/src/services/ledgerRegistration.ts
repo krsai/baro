@@ -5,6 +5,7 @@ import {resolveLedgerCounterparty,entryCounterparty} from './ledgerCounterparty'
 import {validateApprovalRules,resolveApprovalRules} from './approvalRules';
 import {defaultApprovalSettings} from './expenseApproval';
 import {canSkipApprovalStage} from './approvalStageAuthority';
+import {validateLedgerMoney,ledgerScale4} from './bankLedger';
 const subject={key:'BANK_LEDGER',menuPath:'/bank-ledger',hasAmount:true,enabled:true};
 const fail=(code:string):never=>{throw createHttpError(400,code);};
 export async function defaultLedgerRegistration(db:any,orgId:number){
@@ -38,26 +39,38 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
  const master=await db.organizationBankAccount.findFirst({where:{id:masterId,orgId,entityId:orgId,isActive:true},include:{currency:true}});
  if(!master)fail('LEDGER_ACCOUNT_NOT_FOUND');
  const account=ledger||{id:accountId,entityAccountId:master.id,currencyCode:master.currency.code};
- const rows=[];
+ const rows=[],items=[],transferTargets=[];
  for(const row of parents){
   const allocations:any[]=[];
   if(row.evidenceType==='INVOICE'){const invoice=await db.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:row.evidenceNumber,status:'ISSUED'},select:{id:true}});if(!invoice)fail('LEDGER_INVOICE_NOT_FOUND');allocations.push({invoiceId:invoice.id});}
   if(row.evidenceType==='EXPENSE')for(const item of row.expenseItems||[])allocations.push({expenseItemId:item.itemId});
   const party=input.allowIncomplete&&!row.counterparty&&!allocations.length?{}:await resolveLedgerCounterparty(db,orgId,account,row,allocations);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(row.transactionDate)||!input.allowIncomplete&&(!/^\d+(\.\d{1,4})?$/.test(row.amount)||!new Prisma.Decimal(row.amount).gt(0)))fail('LEDGER_INVALID_AMOUNT');
-  rows.push({...row,counterparty:entryCounterparty(party)});
+  let transfer:any={};
+  if(party.counterpartyAccountId){
+   const target=await db.organizationBankAccount.findFirst({where:{id:party.counterpartyAccountId,orgId,entityId:orgId,isActive:true},include:{currency:true}});
+   const currency=target.currency.code,value=row.transferAmount??(currency===account.currencyCode?row.amount:'');
+   if(row.transferCurrencyCode!==undefined&&row.transferCurrencyCode!==currency)fail('LEDGER_TRANSFER_CURRENCY_CHANGED');
+   transferTargets.push({id:target.id,currency});
+   if(!input.allowIncomplete){validateLedgerMoney(value,currency);if(currency===account.currencyCode&&ledgerScale4(value)!==ledgerScale4(row.amount))fail('LEDGER_TRANSFER_AMOUNT_MISMATCH');}
+   transfer={transferAmount:value,transferCurrencyCode:currency};
+   if(currency!==account.currencyCode)items.push({currency,unitPrice:/^\d+(\.\d{1,4})?$/.test(value)?value:'0',quantity:'1',vatRate:'0'});
+  }
+  items.push({currency:account.currencyCode,unitPrice:/^\d+(\.\d{1,4})?$/.test(row.amount)?row.amount:'0',quantity:'1',vatRate:'0'});
+  rows.push({...row,...transfer,counterparty:entryCounterparty(party)});
  }
  const snapshot={account:{name:master.displayName||[master.bankName,master.accountNumber].filter(Boolean).join(' / '),currencyCode:account.currencyCode},rows};
- const revision=createHash('sha256').update(JSON.stringify({accountId,masterId:master.id,currency:account.currencyCode})).digest('hex');
- return {menu:'BANK_LEDGER',operation:'CREATE',kind:'batch',id:input.sourceId,version:null,revision,snapshot,entry:{account,evidenceType:'FILE'},items:rows.map((r:any)=>({currency:account.currencyCode,unitPrice:/^\d+(\.\d{1,4})?$/.test(r.amount)?r.amount:'0',quantity:'1',vatRate:'0'}))};
+ const revision=createHash('sha256').update(JSON.stringify({accountId,masterId:master.id,currency:account.currencyCode,...(transferTargets.length?{transferTargets}:{})})).digest('hex');
+ return {menu:'BANK_LEDGER',operation:'CREATE',kind:'batch',id:input.sourceId,version:null,revision,snapshot,entry:{account,evidenceType:'FILE'},items};
 }
 export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,source:any,config:any,selection:any={}){
- const total=source.items.reduce((sum:any,i:any)=>sum.add(i.unitPrice),new Prisma.Decimal(0));
+ const currencyTotals=new Map<string,Prisma.Decimal>();for(const item of source.items)currencyTotals.set(item.currency||source.entry.account.currencyCode,(currencyTotals.get(item.currency||source.entry.account.currencyCode)||new Prisma.Decimal(0)).add(item.unitPrice));
+ const totals=[...currencyTotals].map(([currency,amount])=>({currency,amount:amount.toString()}));
  if(config.version===2&&config.kind==='BANK_LEDGER'){
-  const result=await resolveApprovalRules(db,orgId,drafter,new Map([[source.entry.account.currencyCode,total]]),config,selection,true,subject);
+  const result=await resolveApprovalRules(db,orgId,drafter,currencyTotals,config,selection,true,subject);
   if(!result)fail('APPROVAL_RULE_NOT_FOUND');return result!;
  }
- if(await canSkipApprovalStage(db,orgId,drafter,config.registrationStages[config.registrationStages.length-1],false))return {ids:[],stages:[],complete:true,drafter,policy:{config,drafterId:drafter.id,exempt:true,exemptionReason:'FINAL_DRAFTER',finalDrafterStage:config.registrationStages[config.registrationStages.length-1],resolvedStages:[],skipped:[],totals:[{currency:source.entry.account.currencyCode,amount:total.toString()}]}};
+ if(await canSkipApprovalStage(db,orgId,drafter,config.registrationStages[config.registrationStages.length-1],false))return {ids:[],stages:[],complete:true,drafter,policy:{config,drafterId:drafter.id,exempt:true,exemptionReason:'FINAL_DRAFTER',finalDrafterStage:config.registrationStages[config.registrationStages.length-1],resolvedStages:[],skipped:[],totals}};
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],skipped:string[]=[],effectiveRegistrationStages:any[]=[];
  for(const [index,stage] of config.registrationStages.entries()){
   if(await canSkipApprovalStage(db,orgId,drafter,stage,index===config.registrationStages.length-1)){skipped.push('step'+(index+1));continue;}
@@ -70,5 +83,5 @@ export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,
   stages.push({key,role:stage.role,gradeId:stage.gradeMatch==='EXACT'?stage.gradeId:null,minimumGradeId:stage.gradeMatch==='MINIMUM'?stage.gradeId:null,requiredGrade:grade?{id:grade.id,name:grade.name,nameKo:grade.nameKo,nameEn:grade.nameEn,nameVi:grade.nameVi}:null,gradeMatch:stage.gradeMatch,unavailableReason,employeeId:chosen?.id||null,name:chosen?.name,candidates});
   effectiveRegistrationStages.push(stage);
  }
- return {ids,stages,drafter,complete:ids.length===stages.length,policy:{config,exempt:false,resolvedStages,skipped,effectiveRegistrationStages,totals:[{currency:source.entry.account.currencyCode,amount:total.toString()}]}};
+ return {ids,stages,drafter,complete:ids.length===stages.length,policy:{config,exempt:false,resolvedStages,skipped,effectiveRegistrationStages,totals}};
 }

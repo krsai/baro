@@ -1,3 +1,4 @@
+import {ledgerFlowText} from '../frontend/src/constants/ledgerFlow.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -23,13 +24,13 @@ try{
   await page.goto(`http://127.0.0.1:${port}/bank-fees-acceptance.html?lang=${lang}`);
   const row=page.locator('[data-entry-kind="BANK"]').first();await row.waitFor();
   assert.equal(await page.getByTestId('ledger-bank-fees').count(),0);assert.equal(await page.locator('[data-ledger-details]').count(),0,'a single expense does not repeat payee, description or matching totals');
-  const party=row.getByRole('textbox',{name:changeApprovalText[lang].party,exact:true});assert.equal(await party.inputValue(),'MJLG');assert.equal(await row.getByTestId('ledger-counterparty-name').innerText(),'Vendor');
+  const party=row.getByRole('textbox',{name:ledgerFlowText[lang].to,exact:true});assert.equal(await party.inputValue(),'MJLG / Vendor');
   await party.fill('DUP');await party.press('Enter');await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
   await party.fill('MJLG');await party.press('Enter');assert.equal(await page.getByRole('dialog').count(),0);await party.press('Enter');assert.equal(await page.getByRole('dialog').count(),0);
   await row.getByRole('button',{name:ledgerWorkspaceText[lang].add,exact:true}).click();
   const fee=page.locator('[data-entry-kind="BANK"]').nth(1);await fee.getByRole('textbox',{name:bankLedgerMessages[lang].amount,exact:true}).fill('10');
   const feeCode=fee.getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[lang].code,exact:false});await feeCode.fill('FEEE');await feeCode.press('Enter');
-  const feeParty=fee.getByRole('textbox',{name:changeApprovalText[lang].party,exact:true});await feeParty.fill('BANK');await feeParty.press('Enter');assert.equal(await feeParty.inputValue(),'BANK');assert.equal(await fee.getByTestId('ledger-counterparty-name').innerText(),'Bank');
+  const feeParty=fee.getByRole('textbox',{name:ledgerFlowText[lang].to,exact:true});await feeParty.fill('BANK');await feeParty.press('Enter');assert.equal(await feeParty.inputValue(),'BANK / Bank');
   assert.deepEqual(await page.evaluate(()=>window.feeRows.map(row=>({kind:row.entryKind,parent:row.parentClientKey,amount:row.amount,code:row.accountingCodeId}))),[{kind:'BANK',parent:undefined,amount:'100',code:1},{kind:'BANK',parent:undefined,amount:'10',code:2}]);
   assert.equal(await page.locator('[data-ledger-details]').count(),0);
   assert.deepEqual(errors,[]);await page.close();
