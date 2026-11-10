@@ -3,6 +3,8 @@ import { cancelIssuedInvoice, createInvoiceRevisionDraft, issueInvoiceDraft, rec
 import { approveInvoiceFinalLock, unlockInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } from "../services/invoiceFinalLock";
 import { invoiceFinalReview } from '../services/invoiceFinalReview';
 import { invoiceFamily, invoiceFamilyBalance } from '../services/invoiceSettlement';
+import {generalInvoiceSource} from '../services/generalInvoice';
+import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from '../services/accountingCode';
 import { createInvoiceCredit, voidInvoiceCredit } from '../services/invoiceCredit';
 
 const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[]) => {
@@ -19,6 +21,15 @@ const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[
 };
 
 export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor }: any) {
+  app.get('/invoices/general-source',async(req:any,res:any)=>{
+    const access=await requireAccess(req,res);if(!access)return;
+    const orgId=access.organization.id;
+    const buyerOrgId=Number(req.query.buyerOrgId);
+    if(!Number.isSafeInteger(buyerOrgId)||buyerOrgId<=0)return res.status(400).json({error:'GENERAL_INVOICE_BUYER_INVALID'});
+    const [source,rawCodes]=await Promise.all([generalInvoiceSource(db,orgId,buyerOrgId),db.transactionCode.findMany({where:{ownerOrgId:orgId,isActive:true},include:ACCOUNTING_CODE_INCLUDE,orderBy:{id:'asc'}})]);
+    const codes=rawCodes.map(resolveAccountingCode).filter((row:any)=>row&&['IN','BOTH'].includes(row.cashDirection)).map((row:any)=>({id:row.id,code:row.code,nameKo:row.nameKo,nameEn:row.nameEn,nameVi:row.nameVi,vatEnabled:row.vatEnabled,cashDirection:row.cashDirection}));
+    res.setHeader('Cache-Control','no-store');res.json({...source,codes,currencies:['VND','USD','KRW']});
+  });
   app.post('/invoices/issued/:id/credits', async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
     const row = await createInvoiceCredit(db, access.organization.id, actor(req) || 'unknown', req.params.id, req.body);
@@ -99,7 +110,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true, credits: true,
         payments: { select: { amount: true, kind: true, voidedAt: true } } } }) : [];
     res.setHeader("Cache-Control", "no-store");
-    return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id, invoiceNumber: row.invoiceNumber,
+      return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
       expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
       receivableAdded: String(row.receivableAdded),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders,

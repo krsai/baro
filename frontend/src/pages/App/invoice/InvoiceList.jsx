@@ -14,6 +14,8 @@ import StatusLabel from '../../../components/StatusLabel';
 import {formatCurrency} from '../../../utils/currencyFormat';
 import InvoiceIssuedForm from './InvoiceIssuedForm';
 import InvoiceEditor from './InvoiceEditor';
+import GeneralInvoiceEditor from './GeneralInvoiceEditor';
+import {generalInvoiceText} from '../../../constants/generalInvoice';
 import InvoicePdfIcon from '../../../components/InvoicePdfIcon';
 
 
@@ -68,7 +70,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
         <TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/>{row.isFinalLocked&&<Typography variant="caption" color="success.main" display="block">{labels.locked}</Typography>}</TableCell>
         <TableCell><Typography variant="subtitle2">{row.invoiceNumber}</Typography></TableCell>
-        <TableCell>{row.buyerName}</TableCell><TableCell>{row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
+        <TableCell>{row.buyerName}</TableCell><TableCell>{row.documentKind==='GENERAL'?(generalInvoiceText[languageCode]||generalInvoiceText.en).general:row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography><Typography variant="caption" color="text.secondary">{labels.debt}: {amount(row.receivableAdded,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}<Typography variant="caption" display="block" color={row.familyBalanceKind==='CREDIT'?'warning.main':'text.secondary'}>{!row.isCurrentRevision?labels.historical:row.familyBalanceKind==='CREDIT'?labels.credit:row.familyBalanceKind==='SETTLED'?labels.settled:labels.due}</Typography></TableCell>
@@ -82,7 +84,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
       {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
       {loading?<CircularProgress size={22}/>:detail&&<>
         {detail.status==='ISSUED'
-          ? <InvoiceEditor orgId={orgId} revisionInvoice={detail} languageCode={languageCode} onClose={()=>navigateToPath('/invoices')} onIssued={()=>navigateToPath('/invoices')}/>
+          ? React.createElement(detail.documentKind==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor,{orgId,revisionInvoice:detail,languageCode,onClose:()=>navigateToPath('/invoices'),onIssued:()=>navigateToPath('/invoices')})
           : <AppPageContainer title={d.title}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
       </>}
     </>}

@@ -1,4 +1,5 @@
 import {cashScheduleDate} from './cashSchedule';
+import {generalInvoiceSource,normalizeGeneralInvoiceLines,validateGeneralInvoiceCodes} from './generalInvoice';
 import { createHttpError } from "../utils/http";
 import { editTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
@@ -20,7 +21,9 @@ const pickText = (value: any, keys: string[], max = 1000) => {
 export const normalizeInvoiceDraftContent = (body: any) => {
   object(body);
   if (!Number.isSafeInteger(body.buyerOrgId) || body.buyerOrgId <= 0) return bad();
-  if (!Array.isArray(body.orders) || !body.orders.length || body.orders.length > 100) return bad();
+  const general=body.documentKind==='GENERAL';
+  if(body.documentKind!==undefined&&!['GENERAL','ORDER'].includes(body.documentKind))return bad();
+  if (!Array.isArray(body.orders) || (!general&&!body.orders.length) || body.orders.length > 100 || general&&body.orders.length) return bad();
   const orders = body.orders.map((row: any) => {
     object(row);
     const orderId = text(row.orderId, 200), sourceUpdatedAt = text(row.sourceUpdatedAt, 40);
@@ -28,12 +31,12 @@ export const normalizeInvoiceDraftContent = (body: any) => {
     return { orderId, sourceUpdatedAt: new Date(sourceUpdatedAt).toISOString() };
   });
   if (new Set(orders.map((row: any) => row.orderId)).size !== orders.length) return bad();
-  if (!["MANUFACTURING_SERVICE_PRICE", "FINISHED_GOODS_PRICE"].includes(body.basis)) return bad();
+  if (!general&&!["MANUFACTURING_SERVICE_PRICE", "FINISHED_GOODS_PRICE"].includes(body.basis)) return bad();
   const currency = text(body.currency, 3);
   if (currency && !/^[A-Z]{3}$/.test(currency)) return bad();
   if (!Array.isArray(body.lines) || !body.lines.length || body.lines.length > 5000) return bad();
   // Incomplete numeric inputs may be saved, but are never issued or totaled here.
-  const lines = body.lines.map((row: any) => ({
+  const lines = general?normalizeGeneralInvoiceLines(body.lines):body.lines.map((row: any) => ({
     ...pickText(row, ["key", "remark", "adjustmentReason", "hsCode", "origin"]),
     quantity: text(row.quantity, 32),
     ...(row.unitPriceOverride !== undefined ? { unitPriceOverride: text(row.unitPriceOverride, 32) } : {}),
@@ -44,14 +47,14 @@ export const normalizeInvoiceDraftContent = (body: any) => {
     seller: pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
     buyer: pickText(body.fields.buyer, ["name", "address", "country", "taxId", "email", "phone"]),
   };
-  object(body.percentages);
+  if(!general)object(body.percentages);
   const percentages = Object.fromEntries(orders.map((row: any) => [row.orderId, text(body.percentages[row.orderId] ?? "", 32)]));
   const settlementInput = body.settlements == null ? {} : object(body.settlements);
   const settlements = Object.fromEntries(orders.map((row: any) => {
     const value = settlementInput[row.orderId] == null ? {} : object(settlementInput[row.orderId]);
     return [row.orderId, { deduction: text(value.deduction ?? "", 32), reason: text(value.reason ?? "", 1000) }];
   }));
-  return { version: 2, buyerOrgId: body.buyerOrgId, orders, basis: body.basis, currency, fields, percentages, settlements, lines };
+  return { version: 2,...(general?{documentKind:'GENERAL'}:{}), buyerOrgId: body.buyerOrgId, orders, basis: general?null:body.basis, currency, fields, percentages, settlements, lines };
 };
 
 export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: string, body: any, id?: string) {
@@ -64,7 +67,17 @@ export async function saveInvoiceDraft(db: any, sellerOrgId: number, actor: stri
     if (id && !existing) throw createHttpError(404, "INVOICE_DRAFT_NOT_FOUND");
     if (existing) {
       if (!id && isDeepStrictEqual(normalizeInvoiceDraftContent(existing.content), content)) return existing;
+      if(id&&content.documentKind==='GENERAL'&&existing.clientKey===clientKey&&existing.revision===body.revision+1&&isDeepStrictEqual(normalizeInvoiceDraftContent(existing.content),content))return existing;
       if (!id || existing.revision !== body.revision || existing.clientKey !== clientKey) throw createHttpError(409, STALE_EDIT);
+      if((existing.content?.documentKind||'ORDER')!==(content.documentKind||'ORDER'))return bad();
+    }
+    if(content.documentKind==='GENERAL'){
+      await generalInvoiceSource(tx,sellerOrgId,content.buyerOrgId);
+      await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines);
+      if(!id)return tx.invoiceDraft.create({data:{sellerOrgId,buyerOrgId:content.buyerOrgId,clientKey,content,createdBy:actor,updatedBy:actor}});
+      const result=await tx.invoiceDraft.updateMany({where:{id,sellerOrgId,revision:body.revision},data:{content,buyerOrgId:content.buyerOrgId,updatedBy:actor,revision:{increment:1}}});
+      if(result.count!==1)throw createHttpError(409,STALE_EDIT);
+      return tx.invoiceDraft.findFirst({where:{id,sellerOrgId}});
     }
     const rows = await tx.workOrder.findMany({
       where: { sellerOrgId, buyerOrgId: content.buyerOrgId, orderId: { in: content.orders.map((row: any) => row.orderId) } },

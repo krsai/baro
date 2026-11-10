@@ -13,6 +13,7 @@ export async function changeApprovalFixture({registration=false,beforeMigration}
   // historical rollout steps. Start those steps from their original FK state.
   for(const migration of require('../../backend/scripts/migrate-entity-profiles').migrations()){
    if(beforeMigration)await beforeMigration(f,migration);
+   if(migration.version==='20261110020000_general_invoices')await f.pg.exec('ALTER TABLE "Invoice" DROP COLUMN IF EXISTS "documentKind" CASCADE');
    if(migration.version==='20261108010000_style_product_ownership')await f.pg.exec('ALTER TABLE "Style" DROP COLUMN IF EXISTS "productStyleId" CASCADE, DROP COLUMN IF EXISTS "productOwnerOrgId" CASCADE, DROP COLUMN IF EXISTS "appliedProductRevision" CASCADE;');
    if(!registration&&migration.version==='20261105060000_ledger_registration_approvals')continue;
    for(const match of migration.sql.matchAll(/CREATE TABLE "([^"]+)"/g))await f.pg.exec(`DROP TABLE IF EXISTS "${match[1]}" CASCADE`);

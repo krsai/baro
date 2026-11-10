@@ -1,4 +1,5 @@
 import { createHttpError } from "../utils/http";
+import {issueGeneralInvoice} from './generalInvoice';
 import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
 import { editTransaction, retryEditTransaction, STALE_EDIT } from "../utils/editRevision";
 import { buildInvoiceSource } from "./invoiceSource";
@@ -142,6 +143,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     if (existing) return existing;
     if (draft.revision !== revision) throw createHttpError(409, STALE_EDIT);
     const content: any = draft.content;
+    if(content.documentKind==='GENERAL')return issueGeneralInvoice(tx,sellerOrgId,actor,draft,issueKey);
     const revisionReason = String(draft.revisionReason || "").trim();
     const revisedFrom = draft.revisionOfInvoiceId ? await tx.invoice.findFirst({
       where: { id: draft.revisionOfInvoiceId, sellerOrgId }, include: { orders: true },
@@ -375,7 +377,7 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
     const existingDraft = await tx.invoiceDraft.findFirst({ where: { revisionOfInvoiceId: invoiceId } });
     if (existingDraft) return existingDraft;
     const snapshot: any = invoice.snapshot || {};
-    const content = {
+    const content:any = invoice.documentKind==='GENERAL'?{documentKind:'GENERAL',basis:null,currency:invoice.currencyCode,fields:{...(snapshot.fields||{}),number:`${invoice.invoiceNumber}-R${Number(invoice.revisionNumber||1)+1}`},orders:[],percentages:{},settlements:{},lines:(snapshot.lines||[]).map((line:any)=>({key:line.lineKey,transactionCodeId:line.transactionCodeId,description:line.description,unit:line.unit||'',quantity:String(line.quantity),unitPrice:String(line.unitPrice),vatRate:String(line.vatRate),remark:line.remark||''}))}:{
       basis: invoice.pricingBasis, currency: invoice.currencyCode, fields: {
         ...(snapshot.fields || {}), number: `${invoice.invoiceNumber}-R${Number(invoice.revisionNumber || 1) + 1}`,
       },

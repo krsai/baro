@@ -1,4 +1,5 @@
 import React from 'react';
+import GeneralInvoiceDocument from '../../../components/GeneralInvoiceDocument';
 import {Box,Typography,Table,TableHead,TableBody,TableRow,TableCell,TextField} from '@mui/material';
 import InvoiceSheet from '../../../components/InvoiceSheet';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
@@ -10,6 +11,7 @@ import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {invoiceDetailText} from '../../../constants/invoiceDetail';
 
 export default function InvoiceIssuedForm({invoice,languageCode}){
+  if(invoice.snapshot?.documentKind==='GENERAL')return <GeneralInvoiceDocument invoice={invoice} languageCode={languageCode}/>;
   const snapshot=invoice.snapshot,fields=snapshot.fields||{},currency=snapshot.currencyCode;
   const ui=invoiceUi[languageCode]||invoiceUi.en,text=invoiceDocumentText[languageCode]||invoiceDocumentText.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const rows=invoiceStyleRows(snapshot.lines.filter(line=>line.quantity>0));

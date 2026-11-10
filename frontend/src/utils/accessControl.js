@@ -148,7 +148,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     case FEATURE_KEYS.ACCOUNT_OVERVIEW:
       return isOrgMember&&hasOrgRole(context,'ADMIN','ACCOUNTANT','OPERATOR','WORKER')&&featureSet.has(featureKey);
     case FEATURE_KEYS.INVOICE:
-      return hasOrgType(context, ORG_TYPES.MANUFACTURER) && featureSet.has(featureKey);
+      return isOrgMember&&hasOrgRole(context,'ADMIN','ACCOUNTANT','OPERATOR')&&[ORG_TYPES.MANUFACTURER,'SERVICE'].includes(context.orgType)&&featureSet.has(featureKey);
     case FEATURE_KEYS.PROFILE:
       return isOrgMember;
     case FEATURE_KEYS.SUBSCRIPTION:

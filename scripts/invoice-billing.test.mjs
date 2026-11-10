@@ -96,7 +96,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     invoiceOrder: { async findMany(query) { queries.push(query); return issued; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
-  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', routeCode)(
+  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', 'ORG_MANAGEMENT_ROLES','generalInvoiceBuyerScope',routeCode)(
     async () => ({ organization: { id: 7, type }, orgMembership: { role: 'ACCOUNTANT' } }),
     async ({ feature }) => { assert.equal(feature, 'INVOICE'); return allowed; }, prisma,
     () => ({ ready: false }), (orgId, ids) => { assert.equal(orgId, 7); assert.ok(ids.length); return progress; }, {},
@@ -105,7 +105,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     }])),
     require('../backend/dist/services/invoiceOrderProgress.js').invoiceOrderProgress,
     require('../backend/dist/routes/invoiceDraft.routes.js').registerInvoiceDraftRoutes,
-    () => 'invoice-test@example.com');
+    () => 'invoice-test@example.com',['ADMIN','ACCOUNTANT','OPERATOR'],require('../backend/dist/services/generalInvoice').generalInvoiceBuyerScope);
   return { routes, response, queries };
 };
 test('invoice APIs reject missing permission and brand tenants before any order query', async () => {

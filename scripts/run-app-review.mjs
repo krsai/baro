@@ -8,7 +8,7 @@ const suites = [
   'freight-jobs','freight-operations','shipping-requests','transport-exchange','railway-schema-preflight',
   'company-profile-save','company-connections','common-company-identity','linked-subscriber-profile','company-industries','partner-classification',
   'expense-payment-schedule','approval-settings-batch','approval-review','ledger-registration','change-approvals','bank-ledger','ledger-evidence','approval-vacancy',
-  'invoice-workflow','order-workflow','production-progress','issued-invoice-print','invoice-list-query','invoice-draft-store','invoice-issue-store','document-number','expense-request-editor',
+  'general-invoice','invoice-workflow','order-workflow','production-progress','issued-invoice-print','invoice-list-query','invoice-draft-store','invoice-issue-store','document-number','expense-request-editor',
   'employee-salary-preview','tenure-recognition','payroll-management-versions','calendar-payroll',
   'attendance-import-regression','attendance-employment-regression','attendance-management-regression','attendance-day-summary-import-regression',
   'currency-format-regression','dashboard-widgets',

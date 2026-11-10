@@ -1,4 +1,5 @@
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
+import {invoiceMessages} from '../frontend/src/constants/invoiceMessages.js';
 const scheduleOnly=process.argv.includes('--schedule-only');
 import {INVOICE_BANK_TEXT} from '../frontend/src/constants/invoiceBankConfirmation.js';
 const bankReviewOnly=process.argv.includes('--bank-review-only');
@@ -154,7 +155,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=workspace`);
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.locator('table').count(),0);
-  await page.getByRole('combobox').nth(0).click();await page.getByRole('option',{name:'Customer',exact:true}).click();
+  const customer=page.getByRole('textbox',{name:invoiceMessages[lang].customer,exact:true});await customer.fill('Customer');await customer.press('Enter');
   const orders=page.getByRole('button',{name:/^(청구 대상 주문|Orders to invoice|Đơn hàng cần lập hóa đơn)/});
   const apply=()=>page.getByRole('button',{name:lang==='ko'?'선택 적용':lang==='vi'?'Áp dụng':'Apply selection',exact:true}).click();
   await orders.click();await page.getByRole('dialog').getByRole('button',{name:/PO-1/}).click();await apply();

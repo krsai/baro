@@ -2207,6 +2207,7 @@ model CodeBaseUsageRollout {
 }
 
 model TransactionCode {
+  invoiceGeneralLines InvoiceGeneralLine[]
   canBill Boolean @default(false)
   ledgerEntries BankLedgerEntry[] @relation("LedgerAccountingCode")
   settlementLines BankLedgerSettlementLine[] @relation("SettlementAccountingCode")
@@ -2803,6 +2804,8 @@ enum InvoicePaymentKind {
 
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
+  documentKind String @default("ORDER")
+  generalLines InvoiceGeneralLine[]
   id String @id @default(cuid())
   sellerOrgId Int
   buyerOrgId Int
@@ -2810,7 +2813,7 @@ model Invoice {
   clientKey String
   sequenceNumber Int
   status InvoiceStatus @default(ISSUED)
-  pricingBasis SalesPricingBasis
+  pricingBasis SalesPricingBasis?
   currencyCode String
   subtotal Decimal @db.Decimal(24, 4)
   total Decimal @db.Decimal(24, 4)
@@ -2837,12 +2840,36 @@ model Invoice {
   finalLockedOrders WorkOrder[] @relation("InvoiceFinalLockBasis")
   finalLockEvents InvoiceFinalLockEvent[]
   @@unique([sellerOrgId, invoiceNumber])
+  @@unique([id,sellerOrgId])
   @@unique([sellerOrgId, clientKey])
   @@unique([sellerOrgId, sequenceNumber])
   @@index([sellerOrgId, issuedAt, id])
   @@index([buyerOrgId])
   @@index([status])
   @@index([rootInvoiceId, revisionNumber])
+}
+
+model InvoiceGeneralLine {
+  id String @id @default(cuid())
+  invoiceId String
+  sellerOrgId Int
+  lineKey String
+  transactionCodeId Int
+  code String
+  codeDescription String
+  description String
+  unit String @default("")
+  quantity Decimal @db.Decimal(24,4)
+  unitPrice Decimal @db.Decimal(24,4)
+  vatRate Decimal @db.Decimal(5,2)
+  subtotal Decimal @db.Decimal(24,4)
+  vatAmount Decimal @db.Decimal(24,4)
+  amount Decimal @db.Decimal(24,4)
+  remark String @default("")
+  invoice Invoice @relation(fields:[invoiceId,sellerOrgId],references:[id,sellerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"InvoiceGeneralLine_invoice_scope_fkey")
+  transactionCode TransactionCode @relation(fields:[transactionCodeId,sellerOrgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"InvoiceGeneralLine_code_scope_fkey")
+  @@unique([invoiceId,lineKey])
+  @@index([sellerOrgId,invoiceId])
 }
 
 model InvoiceOrder {

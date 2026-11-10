@@ -1,4 +1,5 @@
 import {escapeInvoiceHtml as e} from './invoiceDraft.mjs';
+import {buildGeneralInvoicePrintHtml} from './generalInvoicePrint.mjs';
 import {invoiceStyleRows,invoiceNumber} from './invoiceStyleRows.mjs';
 import {formatInvoiceMoney} from './invoiceItemGrid.mjs';
 import {invoiceDocumentCss} from './invoiceDocumentStyle.mjs';
@@ -11,6 +12,7 @@ export function buildIssuedInvoicePrintHtml(invoice,languageCode='en') {
   const s=invoice?.snapshot;
   if(!s||!Array.isArray(s.lines)||!Array.isArray(s.orders))throw new Error('INVOICE_SNAPSHOT_INVALID');
   if(s.templateVersion?s.templateVersion!=='BARO_INVOICE_V1':![1,2].includes(s.version))throw new Error('INVOICE_TEMPLATE_UNSUPPORTED');
+  if(s.documentKind==='GENERAL')return buildGeneralInvoicePrintHtml(invoice,languageCode);
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const text=invoiceDocumentText[languageCode]||invoiceDocumentText.en;
   const f=s.fields||{},money=value=>e(formatInvoiceMoney(value,s.currencyCode)),num=value=>e(invoiceNumber(value));

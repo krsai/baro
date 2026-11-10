@@ -49,7 +49,8 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       ${['WorkLog','WorkOrder','AssignmentPlan'].map(table=>`CREATE TABLE "${table}"(id INT);`).join('\n')}`);
     await db.exec('ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
     await db.exec('CREATE TABLE "WorkOrderItem"(id INT PRIMARY KEY,"workOrderId" INT,"styleId" INT,"colorId" INT,gender TEXT,"sizeQuantities" JSONB)');
-    await db.exec('CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC)');
+    await db.exec(`CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC,"pricingBasis" TEXT NOT NULL DEFAULT 'MANUFACTURING_SERVICE_PRICE')`);
+    await db.exec('CREATE TABLE "InvoiceOrder"(id INT PRIMARY KEY,"invoiceId" TEXT); CREATE TABLE "InvoiceLine"(id INT PRIMARY KEY,"invoiceId" TEXT)');
     await db.exec('CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,UNIQUE(id,"styleId","orgId"))');
     await db.exec('ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerOrgId" INT, ADD COLUMN IF NOT EXISTS code TEXT, ADD COLUMN IF NOT EXISTS name TEXT, ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP DEFAULT now(), ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP DEFAULT now()');
     await db.exec(['SalaryItemRate','EmployeeCompensationPolicy','EmployeePayTypePolicy'].map(table=>`CREATE TABLE "${table}"(id INT PRIMARY KEY,"payType" TEXT);`).join('\n'));
