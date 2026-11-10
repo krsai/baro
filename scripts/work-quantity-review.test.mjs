@@ -38,3 +38,45 @@ test('save review reports cumulative excess, alternative order quantities and co
 test('non-excess records save without requesting review',async()=>{
  const f=fixture();f.setPrior(20);assert.equal(await f.review(f.args,{body:{factoryId:2}}),'Manual note');assert.equal(f.scopes.length,1);
 });
+
+test('changing an order rebuilds excess remarks and preserves manual notes',async()=>{
+ const f=fixture();
+ f.args.note='Manual note\n[생산 수량 확인]\n주문 L16-1 old excess\n[/생산 수량 확인]\nAdditional note';
+ f.args.records[0].assignmentPlanId=8;
+ assert.equal(await f.review(f.args,{body:{factoryId:2}}),'Manual note\nAdditional note');
+ f.args.records[0].quantity=230;
+ let review;
+ try{await f.review(f.args,{body:{factoryId:2}});}catch(error){review=error;}
+ assert.equal(review.quantityReviewItems[0].orderNumber,'L16-2');
+ const note=await f.review(f.args,{body:{factoryId:2,approvedQuantityKeys:[review.quantityReviewItems[0].key]}});
+ assert.match(note,/Manual note\nAdditional note/);
+ assert.match(note,/주문 L16-2/);
+ assert.doesNotMatch(note,/L16-1|old excess/);
+ assert.equal(note.match(/\[생산 수량 확인\]/g).length,1);
+});
+
+const frontendSource=readFileSync('frontend/src/pages/App/work/WorkDetail.jsx','utf8');
+const frontendAst=ts.createSourceFile('WorkDetail.jsx',frontendSource,ts.ScriptTarget.Latest,true,ts.ScriptKind.JSX);
+const helperNames=['isSameProcess','mergeMatchedProcessOption','changeWorkRowAssignment'];
+const helpers=[];
+function visitFrontend(node){if(ts.isVariableDeclaration(node)&&helperNames.includes(node.name.getText(frontendAst)))helpers.push(`const ${node.getText(frontendAst)};`);ts.forEachChild(node,visitFrontend);}visitFrontend(frontendAst);
+assert.equal(helpers.length,helperNames.length);
+const changeAssignment=new Function('toPositiveIdOrNull','toText',`${helpers.join('\n')};return changeWorkRowAssignment;`)(value=>Number(value)>0?Number(value):null,value=>String(value??'').trim());
+
+test('order correction preserves process FK and quantity with the destination CT snapshot',()=>{
+ const row={id:'row-1',worker:{id:3},assignment:{dbId:7},process:{styleProcessId:648,code:'TS05',ctSeconds:115},quantity:350,outsourceUnitPrice:20};
+ const assignment={id:'L19-plan',dbId:8,processes:[{styleProcessId:648,code:'TS05',ctSeconds:120}]};
+ const next=changeAssignment(row,assignment);
+ assert.equal(next.assignment,assignment);assert.equal(next.styleOptionId,'L19-plan');
+ assert.equal(next.process.styleProcessId,648);assert.equal(next.process.ctSeconds,120);
+ assert.equal(next.quantity,350);assert.equal(next.worker,row.worker);assert.equal(next.outsourceUnitPrice,20);
+ assert.equal(row.process.ctSeconds,115);
+});
+
+test('a missing or ambiguous destination process cannot be linked by its code',()=>{
+ const row={process:{styleProcessId:648,code:'TS05'},quantity:350};
+ for(const assignment of [null,{dbId:8,processes:[{styleProcessId:999,code:'TS05'}]},{dbId:8,processes:[{styleProcessId:648},{styleProcessId:648}]}]){
+  const next=changeAssignment(row,assignment);
+  assert.equal(next.process,null);assert.equal(next.quantity,'');
+ }
+});

@@ -954,6 +954,20 @@ const resolveProcessOption = (rowProcess, assignment) => {
   // Preserve unresolved input for server validation; never substitute another FK by its label.
   return rowProcess;
 };
+const changeWorkRowAssignment = (row, nextOption) => {
+  const matches = (Array.isArray(nextOption?.processes) ? nextOption.processes : [])
+    .filter((process) => isSameProcess(process, row?.process));
+  const process = matches.length === 1
+    ? mergeMatchedProcessOption(row.process, matches[0])
+    : null;
+  return {
+    ...row,
+    styleOptionId: nextOption ? toText(nextOption.id || nextOption.dbId) : '',
+    assignment: nextOption || null,
+    process,
+    quantity: process ? row.quantity : '',
+  };
+};
 const mergeProcessWithCatalog = (
   process,
   processCatalogById
@@ -2334,15 +2348,7 @@ const WorkDetail = ({
   }, [handleWorkerChange]);
   const handleStyleChange = useCallback(
     (rowId, nextOption) =>
-      updateRow(rowId, (row) => ({
-        ...row,
-        styleOptionId: nextOption
-          ? toText(nextOption?.id || nextOption?.dbId)
-          : '',
-        assignment: nextOption || null,
-        process: null,
-        quantity: '',
-      })),
+      updateRow(rowId, (row) => changeWorkRowAssignment(row, nextOption)),
     [updateRow]
   );
   const handleProcessChange = useCallback(
