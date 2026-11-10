@@ -1,12 +1,13 @@
-import ExpensePaymentSchedule from './ExpensePaymentSchedule';
+import ExpensePaymentSchedule,{ExpensePaymentMode} from './ExpensePaymentSchedule';
+import AddActionButton from './AddActionButton';
 import ReadOnlyField from './ReadOnlyField';
 import {ledgerEvidenceText} from '../constants/ledgerEvidence';
 import ExpenseLookupField from './ExpenseLookupField';
 import ExpenseReferenceFields from './ExpenseReferenceFields';
 import DeleteActionButton from './DeleteActionButton';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Box, Button, IconButton, Menu, MenuItem, Stack, TableCell, TableRow, TextField, Tooltip, Typography } from '@mui/material';
-import { Add, DragIndicator } from '@mui/icons-material';
+import { Alert, Box, Button, IconButton, Menu, MenuItem, Stack, TableCell, TableRow, TextField, Typography } from '@mui/material';
+import { MoreHoriz, DragIndicator } from '@mui/icons-material';
 import AccountingCodeField from './AccountingCodeField';
 import DecimalAmountField from './DecimalAmountField';
 import { serviceName, TRANSACTION_TEXT } from './OutsourcingServiceDialog';
@@ -90,6 +91,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       <TableCell sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center"><IconButton {...dragHandleProps} size="small" disabled={disabled} aria-label={labels.reorder + ' ' + (index + 1)} sx={{ cursor: disabled ? 'default' : 'grab', touchAction: 'none' }}><DragIndicator fontSize="small" /></IconButton>{index + 1}</Stack></TableCell>
       <TableCell><AccountingCodeField hideLabel codes={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false)} value={line.transactionCodeId} valueObject={code} disabled={disabled} languageCode={languageCode} onSelect={chooseCode}/></TableCell>
       <TableCell><ReadOnlyField hideLabel label={labels.description} value={expenseLineDescription(line,languageCode,codes)}/></TableCell>
+      <TableCell><ExpensePaymentMode rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} hideLabel onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} disabled={disabled || line.productionLocked} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell><TextField {...field} select label={labels.unit} value={line.unitId||''} onChange={change('unitId')}><MenuItem value="">—</MenuItem>{[...units,...(line.unit&&!units.some(unit=>unit.id===line.unit.id)?[line.unit]:[])].filter(unit=>unit.isActive||unit.id===line.unitId).map(unit=><MenuItem key={unit.id} value={unit.id}>{serviceName(unit,languageCode)}</MenuItem>)}</TextField></TableCell>
@@ -98,13 +100,13 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.subtotal)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.vatAmount)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
-      <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={labels.add}><span><IconButton aria-label={labels.add} disabled={disabled} onClick={()=>onAdd?.(line.key)}><Add/></IconButton></span></Tooltip><Button size="small" startIcon={<Add/>} disabled={disabled||!code||!optionalKeys.length} onClick={event=>setAddAnchor(event.currentTarget)}>{addLabel}</Button><Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={()=>setAddAnchor(null)}>{optionalKeys.map(key=><MenuItem key={key} onClick={()=>{setAdded(previous=>[...previous,key,...(key==='process'?['order','style']:key==='style'?['order']:[])]);setAddAnchor(null);}}>{labels[key]||common[key]}</MenuItem>)}</Menu><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
+      <TableCell data-table-actions sx={{whiteSpace:'nowrap'}}><Stack direction="row" alignItems="center"><AddActionButton aria-label={labels.add} disabled={disabled} onClick={()=>onAdd?.(line.key)}/><DeleteActionButton aria-label={labels.remove} title={labels.remove} disabled={disabled||index===0||Boolean(line.sourceRecordId&&!line.itemId)} onClick={()=>onRemove(line.key)}/>{code&&optionalKeys.length>0&&<IconButton size="small" aria-label={addLabel} title={addLabel} disabled={disabled} onClick={event=>setAddAnchor(event.currentTarget)}><MoreHoriz fontSize="small"/></IconButton>}</Stack><Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={()=>setAddAnchor(null)}>{optionalKeys.map(key=><MenuItem key={key} onClick={()=>{setAdded(previous=>[...previous,key,...(key==='process'?['order','style']:key==='style'?['order']:[])]);setAddAnchor(null);}}>{labels[key]||common[key]}</MenuItem>)}</Menu></TableCell>
     </TableRow>
-    <TableRow><TableCell/><TableCell colSpan={11}><ExpensePaymentSchedule rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></TableCell></TableRow>
-    {(expanded || isProcess && currency !== 'VND') && <TableRow data-testid="expense-line-links"><TableCell sx={{verticalAlign:'top',pt:2,color:'text.secondary',textAlign:'right'}}><span aria-hidden="true">└</span></TableCell><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 1, py: 1.5 }}><Stack spacing={1.5}>
+    {line.paymentSchedule?.length>0&&<TableRow data-testid="expense-line-payment-details"><TableCell/><TableCell colSpan={12}><ExpensePaymentSchedule showMode={false} rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></TableCell></TableRow>}
+    {(expanded || isProcess && currency !== 'VND') && <TableRow data-testid="expense-line-links"><TableCell sx={{verticalAlign:'top',pt:2,color:'text.secondary',textAlign:'right'}}><span aria-hidden="true">└</span></TableCell><TableCell colSpan={12} sx={{ bgcolor: 'grey.50', px: 1, py: 1.5 }}><Stack spacing={1.5}>
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <>
-        {code?.base?.entryMode==='PROCESS' && <Box><Button startIcon={<Add />} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}>{labels.addProcess}</Button></Box>}
+        {code?.base?.entryMode==='PROCESS' && <Box><AddActionButton aria-label={labels.addProcess} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}/></Box>}
         <Box sx={{ display: 'flex', flexWrap:'wrap', gap: 2, '& > *':{width:220,maxWidth:'100%'} }}>
         <ExpenseReferenceFields inline languageCode={languageCode} line={line} orders={availableOrders} orgId={orgId} labels={isProcess?{...labels,order:labels.order+' · '+labels.options,style:labels.style+' · '+labels.options}:labels} disabled={disabled} production={isProcess} hiddenOrder={isProcess||!visible('order')} hiddenStyle={isProcess||!visible('style')} onChange={onChange} onLoading={setReferencesBusy}/>
           {isProcess&&visible('order')&&<ExpenseLookupField label={labels.order} required={mode('order')==='REQUIRED'} languageCode={languageCode} disabled={disabled||line.productionLinked} options={availableOrders} value={availableOrders.find(row=>row.dbId===line.workOrderId)||null} getOptionKey={row=>row.dbId} getOptionLabel={row=>row.orderNumber} getCode={row=>row.orderNumber} columns={[{key:'order',label:labels.order,value:row=>row.orderNumber}]} onChange={row=>onChange(line.key,{workOrderId:row?.dbId||'',styleId:'',styleProcessId:'',styleProcessIds:[],assignmentPlanId:''})}/>}

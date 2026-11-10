@@ -17,12 +17,15 @@ try{
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/api/**',route=>route.fulfill({contentType:'application/json',body:'[]'}));
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}?lang=${lang}`,{timeout:45000});
-  const t=expensePaymentText[lang],editors=page.getByTestId('expense-payment-schedule');
-  await editors.nth(0).getByRole('combobox',{name:t.mode}).click();await page.getByRole('option',{name:t.split,exact:true}).click();
+  const t=expensePaymentText[lang],lines=page.getByTestId('expense-line'),editors=page.getByTestId('expense-payment-schedule');
+  await lines.nth(0).getByTestId('expense-payment-mode').waitFor();assert.equal(await page.getByTestId('expense-line-payment-details').count(),0);assert.equal(await lines.getByRole('combobox',{name:t.mode}).count(),2);
+  await lines.nth(0).getByRole('combobox',{name:t.mode}).click();await page.getByRole('option',{name:t.split,exact:true}).click();
   await editors.nth(0).getByRole('textbox',{name:t.label,exact:true}).first().waitFor();
-  assert.equal(await editors.nth(1).getByRole('textbox',{name:t.label,exact:true}).count(),0);
+  assert.equal(await page.getByTestId('expense-line-payment-details').count(),1);assert.equal(await lines.nth(1).getByRole('combobox',{name:t.mode}).textContent(),t.single);assert.equal(await page.getByRole('combobox',{name:t.mode}).count(),2);
   await editors.nth(0).getByLabel(t.date,{exact:true}).nth(0).fill('2026-11-30');await editors.nth(0).getByLabel(t.date,{exact:true}).nth(1).fill('2026-12-10');
   await editors.nth(0).getByRole('textbox',{name:t.amount,exact:true}).nth(0).fill('40000000');await editors.nth(0).getByRole('textbox',{name:t.amount,exact:true}).nth(1).fill('60000000');
+  const originalIds=await page.evaluate(()=>window.items[0].paymentSchedule.map(row=>row.id));await editors.nth(0).getByRole('button',{name:t.add,exact:true}).first().click();
+  assert.equal(await page.evaluate(()=>window.items[0].paymentSchedule.length),3);assert.equal(await page.evaluate(()=>window.items[0].paymentSchedule[2].id),originalIds[1]);await editors.nth(0).getByRole('button',{name:t.remove,exact:true}).nth(1).click();assert.deepEqual(await page.evaluate(()=>window.items[0].paymentSchedule.map(row=>row.id)),originalIds);assert.equal(await editors.nth(0).getByRole('button',{name:t.remove,exact:true}).first().isDisabled(),true);
   await page.getByRole('button',{name:'Validate',exact:true}).click();assert.deepEqual(await page.evaluate(()=>window.errors),[null,null]);
   assert.equal(await page.evaluate(()=>window.serialized[0].paymentSchedule.length),2);assert.equal(await page.evaluate(()=>window.serialized[1].paymentSchedule.length),0);
   await page.getByRole('combobox',{name:new RegExp('^'+t.select)}).click();await page.getByRole('option',{name:/#1.*Advance/}).click();

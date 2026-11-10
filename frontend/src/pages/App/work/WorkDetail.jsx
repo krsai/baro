@@ -26,7 +26,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import AddIcon from '@mui/icons-material/Add';
+import AddActionButton from '../../../components/AddActionButton';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import dayjs from 'dayjs';
@@ -3295,7 +3295,7 @@ const WorkDetail = ({
                           </Stack>
                           <Stack direction="row" spacing={0.5} justifyContent="flex-end" alignItems="center">
                               <span title={LABELS.addBelow}>
-                                <IconButton
+                                <AddActionButton
                                   size="small"
                                   color="primary"
                                   onClick={(event) => {
@@ -3304,9 +3304,7 @@ const WorkDetail = ({
                                   }}
                                   disabled={isAggregateLegacyLog}
                                   aria-label={LABELS.addBelow}
-                                >
-                                  <AddIcon fontSize="small" />
-                                </IconButton>
+                                />
                               </span>
                               <span title={LABELS.remove}>
                                 <DeleteActionButton
@@ -3794,7 +3792,7 @@ const WorkDetail = ({
                               sx={{ minHeight: 40 }}
                             >
                                 <span title={LABELS.addBelow}>
-                                  <IconButton
+                                  <AddActionButton
                                     size="small"
                                     color="primary"
                                     onClick={(event) => {
@@ -3803,9 +3801,7 @@ const WorkDetail = ({
                                     }}
                                     disabled={isAggregateLegacyLog}
                                     aria-label={LABELS.addBelow}
-                                  >
-                                    <AddIcon fontSize="small" />
-                                  </IconButton>
+                                  />
                                 </span>
                                 <span title={LABELS.remove}>
                                   <DeleteActionButton

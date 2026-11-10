@@ -1,3 +1,5 @@
+import {expensePaymentText} from '../frontend/src/constants/expensePaymentSchedule.js';
+const layoutOnly=process.argv.includes('--layout-only');
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
 const scheduleOnly=process.argv.includes('--schedule-only');
 const lookupOnly=process.argv.includes('--lookup-only')||process.env.EXPENSE_EDITOR_LOOKUP_ONLY==='1';
@@ -23,7 +25,7 @@ const port=43209,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','-
 try {
   for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/expense-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
   browser=await chromium.launch({executablePath,headless:true});
-  for(const mode of (lookupOnly?['GENERAL','PROCESS']:((scheduleOnly?['SAVED']:process.env.EXPENSE_EDITOR_MODES?.split(','))||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of ['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
+  for(const mode of (layoutOnly?['GENERAL']:lookupOnly?['GENERAL','PROCESS']:((scheduleOnly?['SAVED']:process.env.EXPENSE_EDITOR_MODES?.split(','))||['GENERAL','PROCESS','SAVED','BACKGROUND','BANKLESS'])))for(const lang of mode==='BACKGROUND'?['ko']:['ko','en','vi'])for(const locked of layoutOnly||['SAVED','BACKGROUND','BANKLESS'].includes(mode)?[false]:[false,true]) {
     console.log('Checking expense editor',mode,lang,locked);
     const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[],requests=[],attempts=[];let submitted,releaseSave,registeredBanks=[];const saveGate=new Promise(resolve=>{releaseSave=resolve;});
     let releaseDocument,releaseCatalog,settingsReads=0;
@@ -85,6 +87,18 @@ try {
       assert.equal(await reference.locator('#expense-stage-drafter').evaluate(el=>el.readOnly),true);
       await reference.locator('#expense-stage-senior').waitFor();assert.ok(settingsReads>=1,'Opening the chooser loads candidate metadata without replacing the document author');
       await page.keyboard.press('Escape');await reference.waitFor({state:'hidden'});
+    }
+    if(layoutOnly){
+      const text=EXPENSE_REQUEST_TEXT[lang],payment=expensePaymentText[lang],row=page.getByTestId('expense-line').first();await row.waitFor();await page.waitForFunction(()=>{const b=document.querySelector('[data-testid="expense-line"] [data-table-action="add"]');return b&&!b.disabled;});
+      await row.getByRole('combobox',{name:payment.mode,exact:true}).waitFor();assert.equal(await row.getByRole('combobox',{name:payment.mode,exact:true}).count(),1);assert.equal(await page.getByTestId('expense-line-payment-details').count(),0);
+      const position=await row.getByRole('combobox',{name:payment.mode,exact:true}).evaluate(el=>el.closest('.MuiFormControl-root').getBoundingClientRect().top),quantityPosition=await row.getByLabel(text.quantity,{exact:false}).evaluate(el=>el.closest('.MuiFormControl-root').getBoundingClientRect().top);assert.ok(Math.abs(position-quantityPosition)<2);
+      const add=row.getByRole('button',{name:text.add,exact:true}),remove=row.getByRole('button',{name:text.remove,exact:true});assert.equal(await add.getAttribute('data-table-action'),'add');assert.equal(await remove.getAttribute('data-table-action'),'delete');assert.equal(await remove.isDisabled(),true);assert.equal(Math.round((await add.boundingBox()).width),28);assert.equal(Math.round((await remove.boundingBox()).width),28);
+      await page.setViewportSize({width:1920,height:1000});const scroll=page.locator('.MuiTableContainer-root').filter({has:row}).first();assert.equal(await scroll.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
+      await add.click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-line"]').length===2);await page.getByTestId('expense-line').nth(1).getByRole('button',{name:text.remove,exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-line"]').length===1);
+      await row.getByRole('combobox',{name:payment.mode,exact:true}).click();await page.getByRole('option',{name:payment.split,exact:true}).click();await page.getByTestId('expense-line-payment-details').waitFor();
+      await row.getByRole('combobox',{name:payment.mode,exact:true}).click();await page.getByRole('option',{name:payment.single,exact:true}).click();await page.getByTestId('expense-line-payment-details').waitFor({state:'hidden'});
+      for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.equal(await add.evaluate(el=>getComputedStyle(el.closest('td')).position),'sticky');}
+      assert.deepEqual(errors,[]);await page.close();continue;
     }
     if(scheduleOnly){
       const date=page.getByLabel(cashScheduleText[lang].payment,{exact:true});await date.waitFor();assert.equal(await date.inputValue(),'2026-12-10');await date.fill('2026-12-20');assert.equal(await date.inputValue(),'2026-12-20');
