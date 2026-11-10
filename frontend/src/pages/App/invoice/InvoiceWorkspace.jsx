@@ -2,7 +2,7 @@ import {invoiceNumber} from '../../../utils/invoiceStyleRows.mjs';
 import React, { useEffect, useState } from 'react';
 import {Alert,Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
 import AppPageContainer from '../../../components/AppPageContainer';
-import SearchableSelect from '../../../components/SearchableSelect';
+import InvoicePartyPicker from '../../../components/InvoicePartyPicker';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -72,9 +72,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
   const renderSelection=({requestChange,disabled})=><>
     <TextField select size="small" sx={{width:220,mb:2}} label={general.type} value={documentKind} disabled={disabled} onChange={event=>requestChange(()=>{setDocumentKind(event.target.value);setCustomer(null);setChosen([]);setOrders([]);setCustomers([]);})}><MenuItem value="ORDER" disabled={service}>{general.order}</MenuItem><MenuItem value="GENERAL">{general.general}</MenuItem></TextField>
     <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(220px,1fr) minmax(0,2fr)'},gap:2}}>
-      <SearchableSelect label={t.customer} options={customers} value={customer} loading={customersLoading} disabled={disabled||!activeOrgId} autoSelect={false}
-        isOptionEqualToValue={(option,value)=>option.id===value.id} getOptionLabel={option=>(languageCode==='ko'?option.nameKo:languageCode==='vi'?option.nameVi:option.name)||option.name||''} noOptionsText={t.noCustomers}
-        onChange={(_event,value)=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>{setCustomer(value);setChosen([]);setOrders([]);setSearch('');setPage(0);setHasMore(false);setError(false);});}}/>
+      <InvoicePartyPicker orgId={activeOrgId} languageCode={languageCode} options={customers} value={customer} disabled={disabled||customersLoading||customersError||!activeOrgId} onChange={value=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>{setCustomer(value);setChosen([]);setOrders([]);setSearch('');setPage(0);setHasMore(false);setError(false);});}}/>
       {documentKind==='ORDER'&&<Button variant="outlined" disabled={disabled||!customer} onClick={()=>{setPendingChosen(chosen);setOrderModal(true);setSearch('');setPage(0);}}>{t.orders}{chosen.length ? ': '+chosen.map(order=>order.orderNumber).join(', ') : ''}</Button>}
       <Dialog open={orderModal} onClose={()=>setOrderModal(false)} fullWidth maxWidth="md">
         <DialogTitle>{t.orders}</DialogTitle>

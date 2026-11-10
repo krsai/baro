@@ -25,7 +25,7 @@ export const payeeAccountPath=payee=>payee?.employeeId?`/expense-payees/employee
 const payeeTypeLabel=(payee,languageCode)=>payee.type==='EMPLOYEE'?(PAYEE_TEXT[languageCode]||PAYEE_TEXT.en).employee:(payee.serviceTypes?.map(row=>partnerIndustryLabel(row.systemDefault||row,languageCode)).filter(Boolean).join(', ')||'');
 const InformationRows=({rows})=><Box component="dl" sx={{m:0,display:'grid',gridTemplateColumns:'minmax(80px, .8fr) minmax(0, 1.5fr)',columnGap:1,rowGap:.5}}>{rows.map(([label,value])=><React.Fragment key={label}><Typography component="dt" variant="caption" color="text.secondary" sx={{pt:.25}}>{label}</Typography><Typography component="dd" variant="body2" sx={{m:0,overflowWrap:'anywhere',fontVariantNumeric:'tabular-nums',userSelect:'text'}}>{value||'—'}</Typography></React.Fragment>)}</Box>;
 
-function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t}){
+export function PayeeDetails({draft,accounts=[],busy,error,languageCode,onRetry,onManage,t,showAccounts=true}){
  const employee=draft?.type==='EMPLOYEE'||Boolean(draft?.employeeId);
  const labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,detail=DETAIL_TEXT[languageCode]||DETAIL_TEXT.en,industry=INDUSTRY_TREE_TEXT[languageCode]||INDUSTRY_TREE_TEXT.en;
  return <Paper variant="outlined" data-testid="payee-details" sx={{minWidth:0,display:'flex',flexDirection:'column',maxHeight:{sm:360},overflow:'hidden'}}>
@@ -37,7 +37,7 @@ function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t
      {!employee&&<InformationRows rows={[[labels.businessNumber,draft?.businessNumber]]}/>}
    </Stack>
     <Stack spacing={.75}><Typography variant="subtitle2">{labels.contact}</Typography><InformationRows rows={employee?[[detail.phone,draft?.contactPhone],[labels.email,draft?.email]]:[[detail.person,draft?.contactName],[detail.phone,draft?.contactPhone],[labels.email,draft?.email],[labels.address,draft?.address]]}/></Stack>
-   <Stack spacing={.75} data-testid="payee-accounts">
+   {showAccounts&&<Stack spacing={.75} data-testid="payee-accounts">
     <Typography variant="subtitle2">{labels.banks}{draft&&!busy&&!error&&` · ${accounts.length}`}</Typography>
     {!draft?<InformationRows rows={[[labels.bank,null],[labels.number,null],[labels.holder,null]]}/>:busy?<Stack direction="row" spacing={1} alignItems="center"><CircularProgress size={16}/><Typography variant="body2" color="text.secondary">{detail.loading}</Typography></Stack>:error?<Alert severity="error" action={<Button onClick={onRetry}>{t.retry}</Button>}>{t.error}</Alert>:!accounts.length?<Alert severity="warning">{t.noAccount}</Alert>:accounts.map(account=>{
      const cash=account.accountKind==='CASH',currency=account.currency?.code||account.currencyCode||(typeof account.currency==='string'?account.currency:'')||'—';
@@ -46,9 +46,9 @@ function PayeeDetails({draft,accounts,busy,error,languageCode,onRetry,onManage,t
       {cash?<StatusLabel label={detail.cash} tone="gray"/>:<InformationRows rows={[[labels.number,account.accountNumber],[labels.holder,account.accountHolder]]}/>}
      </Box>;
     })}
-   </Stack>
+   </Stack>}
   </Stack></Box>
-  <Box sx={{p:1,borderTop:1,borderColor:'divider'}}><Button size="small" variant="outlined" fullWidth disabled={!draft||busy} onClick={onManage}>{t.information}</Button></Box>
+   {onManage&&<Box sx={{p:1,borderTop:1,borderColor:'divider'}}><Button size="small" variant="outlined" fullWidth disabled={!draft||busy} onClick={onManage}>{t.information}</Button></Box>}
  </Paper>;
 }
 

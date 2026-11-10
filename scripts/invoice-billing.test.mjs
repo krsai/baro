@@ -96,7 +96,7 @@ const createRoutes = ({ type = 'MANUFACTURER', allowed = true, found = true, ord
     invoiceOrder: { async findMany(query) { queries.push(query); return issued; } },
     currency: { async findMany() { return [{ code: 'USD' }]; } },
   };
-  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', 'ORG_MANAGEMENT_ROLES','generalInvoiceBuyerScope','attachLinkedCompanies',routeCode)(
+  new Function('requireOrgRole', 'hasRoleAccessPolicyFeature', 'prisma', 'buildInvoiceSource', 'buildAssignmentPlanProgressRows', 'WORK_ORDER_ITEM_WITH_COLOR_INCLUDE', 'app', 'invoiceOrderProgress', 'registerInvoiceDraftRoutes', 'getRequesterEmail', 'ORG_MANAGEMENT_ROLES','generalInvoiceBuyerScope','attachPartnerClassifications',routeCode)(
     async () => ({ organization: { id: 7, type }, orgMembership: { role: 'ACCOUNTANT' } }),
     async ({ feature }) => { assert.equal(feature, 'INVOICE'); return allowed; }, prisma,
     () => ({ ready: false }), (orgId, ids) => { assert.equal(orgId, 7); assert.ok(ids.length); return progress; }, {},
@@ -166,7 +166,7 @@ test('customer options contain only buyers with orders sold by the active factor
   const { routes, response, queries } = createRoutes();
   await routes.get('/invoices/customers')({ query: {} }, response);
   assert.deepEqual(queries[0].where, { buyerWorkOrders: { some: { sellerOrgId: 7 } } });
-  assert.deepEqual(queries[0].select, { id: true, code: true, name: true, nameKo: true, nameVi: true });
+  assert.deepEqual(queries[0].select, { id: true, code: true, name: true, nameKo: true, nameVi: true, businessNumber:true, representative:true, phone:true, email:true, address:true });
   assert.deepEqual(response.body, { rows: [] });
 });
 
@@ -177,7 +177,7 @@ test('both invoice customer pickers return local or official codes without chang
     await routes.get('/invoices/customers')({query:{documentKind}},response);
     assert.deepEqual(response.body.rows.map(({id,code})=>({id,code})),[{id:8,code:'CUST-008'},{id:9,code:'CUST-009'},{id:10,code:null}]);
     assert.equal(queries[0].select.code,true);
-    assert.ok(response.body.rows.every(row=>Object.keys(row).every(key=>['id','code','searchText','name','nameKo','nameVi'].includes(key))));
+    assert.ok(response.body.rows.every(row=>Object.keys(row).every(key=>['id','code','searchText','name','nameKo','nameVi','businessNumber','contactName','contactPhone','email','address','serviceTypes'].includes(key))));
     assert.equal(response.body.rows[0].searchText,'LOCAL CUST-008');
     assert.deepEqual(queries[0].where,documentKind==='GENERAL'?require('../backend/dist/services/generalInvoice').generalInvoiceBuyerScope(7):{buyerWorkOrders:{some:{sellerOrgId:7}}});
   }

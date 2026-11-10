@@ -29430,12 +29430,12 @@ app.get("/invoices/customers", async (req, res) => {
   if (!access) return;
   const rows = await prisma.organization.findMany({
     where: req.query.documentKind==='GENERAL'?generalInvoiceBuyerScope(access.organization.id):{ buyerWorkOrders: { some: { sellerOrgId: access.organization.id } } },
-    select: { id: true, code: true, name: true, nameKo: true, nameVi: true },
+    select: { id: true, code: true, name: true, nameKo: true, nameVi: true, businessNumber:true, representative:true, phone:true, email:true, address:true },
     orderBy: [{ name: "asc" }, { id: "asc" }],
   });
   res.setHeader("Cache-Control", "no-store");
-  const customers=await attachLinkedCompanies(prisma,access.organization.id,rows.map(row=>({...row,entityId:row.id})));
-  return res.json({ rows:customers.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,searchText:[row.code,row.linkedCompany?.code].filter(Boolean).join(' '),name:row.name,nameKo:row.nameKo,nameVi:row.nameVi})) });
+  const customers=await attachPartnerClassifications(prisma,access.organization.id,rows.map(row=>({...row,entityId:row.id})));
+  return res.json({ rows:customers.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,searchText:[row.code,row.linkedCompany?.code].filter(Boolean).join(' '),name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,businessNumber:row.businessNumber,contactName:row.representative,contactPhone:row.phone,email:row.email,address:row.address,serviceTypes:(row.serviceTypes||[]).map((item:any)=>({id:item.id,code:item.code,nameKo:item.nameKo,nameEn:item.nameEn,nameVi:item.nameVi}))})) });
 });
 
 app.get("/invoices/orders", async (req, res) => {

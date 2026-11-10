@@ -1,8 +1,21 @@
 // External endpoints identify a party, never a bank account owned by that party.
 export function ledgerFlowEndpoints(row,account){
  if(row.evidenceType==='ADJUSTMENT')return {from:null,to:null};
+ if('flowFrom' in row||'flowTo' in row)return {from:row.flowFrom||null,to:row.flowTo||null};
  const own=account?{kind:'ACCOUNT',id:account.entityAccountId||String(account.id).replace(/^entity:/,''),name:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),currencyCode:account.currencyCode}:null;
  return row.direction==='OUT'?{from:own,to:row.counterparty||null}:{from:row.counterparty||null,to:own};
+}
+// UI drafts allow either endpoint to be entered first; posting still uses actual account/party FKs.
+export function selectLedgerFlowEndpoint(row,accounts,side,value){
+ const previousAccount=accounts.find(a=>a.id===row.accountId),flow={...ledgerFlowEndpoints(row,previousAccount),[side]:value};
+ if(flow.from&&flow.to&&(flow.from.kind!=='ACCOUNT'&&flow.to.kind!=='ACCOUNT'||flow.from.kind===flow.to.kind&&flow.from.id===flow.to.id))return null;
+ const endpoint=flow.from?.kind==='ACCOUNT'?flow.from:flow.to?.kind==='ACCOUNT'?flow.to:null;
+ const account=endpoint?accounts.find(a=>(a.entityAccountId||String(a.id).replace(/^entity:/,''))===endpoint.id):null;
+ if(endpoint&&!account)return null;
+ const direction=flow.from?.kind==='ACCOUNT'?'OUT':'IN',counterparty=direction==='OUT'?flow.to:flow.from;
+ const changedCurrency=previousAccount?.currencyCode!==account?.currencyCode;
+ return {flowFrom:flow.from,flowTo:flow.to,accountId:account?.id||'',direction,counterparty:counterparty||null,
+  ...(changedCurrency?{amount:''}:{}),transferAmount:'',transferCurrencyCode:''};
 }
 export function selectLedgerEndpoint(row,account,side,value){
  const ownId=account?.entityAccountId||String(account?.id||'').replace(/^entity:/,'');
