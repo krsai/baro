@@ -135,6 +135,9 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   if(body.expenseRequestId!==undefined&&costs.some((c:any)=>c.expenseRequestId!==body.expenseRequestId))return fail('LEDGER_INVALID_EVIDENCE');
   const requestIds=[...new Set<number>(costs.map((c:any)=>c.expenseRequestId))].sort((a,b)=>a-b);
   for(const id of requestIds){await tx.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);const state=await approvalState(tx,orgId,id);if(!state.approved)return fail('LEDGER_EXPENSE_NOT_APPROVED');if(body.expenseVersion!==undefined&&state.version!==body.expenseVersion)return fail('EXPENSE_REQUEST_CHANGED',409);}
+  const scheduled=await tx.expensePaymentSchedule.findMany({where:{orgId,requestId:{in:requestIds},expenseItemId:{in:ids},active:true}});
+  const schedule=body.paymentScheduleId?scheduled.find((row:any)=>row.id===body.paymentScheduleId&&row.currency===code):null;
+  if((scheduled.length||body.paymentScheduleId)&&(!schedule||requestIds.length!==1||ids.length!==1||ids[0]!==schedule.expenseItemId))return fail('INVALID_EXPENSE_PAYMENT_SCHEDULE');
   let allocated=0n;const refs:string[]=[];
   for(const row of [...body.expenseItems].sort((a,b)=>a.itemId.localeCompare(b.itemId))){
    const cost=await tx.partnerTransactionCost.findFirst({where:{id:row.itemId,orgId}});
@@ -145,7 +148,11 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
    const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:row.itemId,entry:{voidedAt:null}}});
    if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+minor>ledgerScale4(cost.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
    allocated+=minor;refs.push(`${state.managementNumber} #${cost.expenseRequestLine}`);
-   allocations.push({expenseItemId:row.itemId,requestVersion:state.version,amount:value});
+   allocations.push({expenseItemId:row.itemId,requestVersion:state.version,amount:value,...(schedule?{paymentScheduleId:schedule.id}:{})});
+  }
+  if(schedule){
+   const paid=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,paymentScheduleId:schedule.id,entry:{voidedAt:null}}});
+   if(paid.reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n)+allocated>ledgerScale4(schedule.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
   }
   if(allocated+bankFee!==amount)return fail('LEDGER_ALLOCATION_MISMATCH');reference=refs.join(', ');
  }

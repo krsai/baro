@@ -54,3 +54,7 @@ Object.assign(bankLedgerMessages.vi.errors,{LEDGER_INVALID_SETTLEMENT:'Kiểm tr
 Object.assign(bankLedgerMessages.ko.errors,{LEDGER_ENTRY_CHANGED:'내역이 이미 수정 또는 삭제되었습니다. 목록을 다시 확인해 주세요.',LEDGER_PURPOSE_CODE_REQUIRED:'사용 중인 비용·회계 코드를 선택해 주세요.'});
 Object.assign(bankLedgerMessages.en.errors,{LEDGER_ENTRY_CHANGED:'This transaction has already been edited or deleted. Reload the list.',LEDGER_PURPOSE_CODE_REQUIRED:'Select an active expense / accounting code.'});
 Object.assign(bankLedgerMessages.vi.errors,{LEDGER_ENTRY_CHANGED:'Giao dịch đã được sửa hoặc xóa. Tải lại danh sách.',LEDGER_PURPOSE_CODE_REQUIRED:'Chọn mã chi phí / kế toán đang sử dụng.'});
+
+Object.assign(bankLedgerMessages.ko.errors,{INVALID_EXPENSE_PAYMENT_SCHEDULE:'해당 비용 항목의 지급 회차를 선택해 주세요.'});
+Object.assign(bankLedgerMessages.en.errors,{INVALID_EXPENSE_PAYMENT_SCHEDULE:'Select a payment installment for the expense item.'});
+Object.assign(bankLedgerMessages.vi.errors,{INVALID_EXPENSE_PAYMENT_SCHEDULE:'Chọn đợt thanh toán của khoản chi.'});

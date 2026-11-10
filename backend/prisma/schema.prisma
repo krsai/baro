@@ -703,6 +703,9 @@ model BankLedgerBatch {
 }
 
 model BankLedgerEvidenceAllocation {
+  paymentScheduleId String?
+  paymentSchedule ExpensePaymentSchedule? @relation(fields:[paymentScheduleId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  @@index([paymentScheduleId])
   id String @id @default(uuid())
   entryId String
   orgId Int
@@ -1978,6 +1981,7 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  paymentSchedule ExpensePaymentSchedule[]
  changeApprovalRequests ChangeApprovalRequest[] @relation("CostChangeSource")
   payeeEmployeeId Int?
   payeeEmployee Employee? @relation("ExpenseCostEmployeePayee",fields:[payeeEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
@@ -2045,6 +2049,7 @@ model ExpenseCostProcess {
 }
 
 model ExpenseRequest {
+  paymentSchedule ExpensePaymentSchedule[]
  changeApprovalRequests ChangeApprovalRequest[] @relation("ExpenseChangeSource")
  deletedChangeRequest ChangeApprovalRequest? @relation("ExpenseChangeDeletion",fields:[deletedChangeRequestId,orgId],references:[id,orgId],onDelete:Restrict,map:"ExpenseRequest_deleted_change_fkey")
   deletedChangeRequestId String?
@@ -2087,6 +2092,24 @@ model ExpenseRequest {
   @@unique([id, orgId, partnerOrgId])
   @@unique([id, orgId, partnerOrgId, currency])
   @@index([orgId, requestDate])
+}
+
+model ExpensePaymentSchedule {
+  expenseItemId String
+  expenseItem PartnerTransactionCost @relation(fields:[expenseItemId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  id String @id
+  orgId Int
+  requestId Int
+  position Int
+  label String
+  scheduledDate String
+  currency String
+  amount Decimal @db.Decimal(24,4)
+  active Boolean @default(true)
+  request ExpenseRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+  allocations BankLedgerEvidenceAllocation[]
+  @@unique([id,orgId])
+  @@index([orgId,requestId,active])
 }
 
 model EmployeeExpenseBankAccount {

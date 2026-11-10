@@ -17,7 +17,7 @@ function validateInclude(modelName,include){
 function fixture(type='FILE',allocations=[]){
  const reads=[];
  const entry={id:'entry',orgId:1,account:{currencyCode:'USD'},accountId:'account',evidenceType:type,amount:'90',bankFee:'0',writeOffAmount:'0',allocations,settlementLines:[],voidedAt:null};
- const db={bankLedgerEntry:{findFirst:async({where,include})=>{validateInclude('BankLedgerEntry',include);reads.push(where);return where.orgId===1?structuredClone(entry):null;}},
+ const db={expensePaymentSchedule:{findMany:async()=>[]},bankLedgerEntry:{findFirst:async({where,include})=>{validateInclude('BankLedgerEntry',include);reads.push(where);return where.orgId===1?structuredClone(entry):null;}},
   invoice:{findMany:async query=>{reads.push(query.where);return [{id:'invoice',invoiceNumber:'INV-2026-000001',total:'100',buyer:{name:'Customer'}}];}},
   partnerTransactionCost:{findMany:async query=>{validateInclude('PartnerTransactionCost',query.include);reads.push(query.where);return []; }},
   bankLedgerEvidenceAllocation:{findMany:async query=>{reads.push(query.where);return [];}}};

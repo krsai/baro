@@ -1,3 +1,4 @@
+import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {counterpartyInput,entryCounterparty,resolveLedgerCounterparty,ledgerCounterpartyOptions} from './ledgerCounterparty';
 import {requireLedgerAdjustmentAccess} from './ledgerAdjustmentAccess';
 import {reconcileLedgerBalances} from './ledgerBalance';
@@ -93,8 +94,8 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
       if(generatedPurpose)data.purpose=previous.purpose;
       if(Object.entries(data).some(([field,value])=>field==='amount'?ledgerScale4(previous[field])!==ledgerScale4(value):previous[field]!==value))return fail('LEDGER_RETRY_CONFLICT',409);
       const type=body.evidenceType||'FILE',fee=validateLedgerMoney(settlement?.fee||body.bankFee||'0',account.currencyCode,true),loss=settlement?.writeOff||'0';
-      const requested=type==='EXPENSE'?(body.expenseItems||[]).map((r:any)=>`${r.itemId}:${ledgerScale4(r.amount)}`).sort():[];
-      const saved=type==='EXPENSE'?(previous.allocations||[]).map((r:any)=>`${r.expenseItemId}:${ledgerScale4(r.amount)}`).sort():[];
+      const requested=type==='EXPENSE'?(body.expenseItems||[]).map((r:any)=>`${r.itemId}:${ledgerScale4(r.amount)}:${body.paymentScheduleId||''}`).sort():[];
+      const saved=type==='EXPENSE'?(previous.allocations||[]).map((r:any)=>`${r.expenseItemId}:${ledgerScale4(r.amount)}:${r.paymentScheduleId||''}`).sort():[];
       if((previous.revisesEntryId||null)!==(settlement?.revisesEntryId||null)||(previous.createdBy&&previous.createdBy!==actor)||(previous.settlementMode||'LEGACY')!==(settlement?'ROWS':'LEGACY')||ledgerScale4(previous.writeOffAmount||'0')!==ledgerScale4(loss)||(previous.evidenceType||'FILE')!==type||ledgerScale4(previous.bankFee||'0')!==ledgerScale4(fee)||JSON.stringify(requested)!==JSON.stringify(saved)||(['FILE','INVOICE'].includes(type)&&previous.evidenceNumber!==String(body.evidenceNumber||'').trim()))return fail('LEDGER_RETRY_CONFLICT',409);
       return previous;
     }
@@ -144,7 +145,7 @@ export async function postLedgerBatch(db:any,orgId:number,actor:string,body:any)
  const keys=rows.map((row:any)=>clientKey(row.clientKey));
  if(new Set(keys).size!==keys.length)return fail('LEDGER_INVALID_BATCH');
  // UI-only labels never identify financial records or change retry identity.
- const canonical=rows.map((r:any)=>({...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
+ const canonical=rows.map((r:any)=>({...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
  const requestHash=createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
@@ -169,7 +170,7 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
   if(r.entryKind!=='BANK')return {...base,parentClientKey:clientKey(r.parentClientKey)};
   if(typeof r.accountId!=='string'||r.accountId.length>100||r.bankFee&&ledgerScale4(r.bankFee)!==0n||r.writeOffAmount&&ledgerScale4(r.writeOffAmount)!==0n)return fail('LEDGER_INVALID_SETTLEMENT');
   if(r.expenseItems!==undefined&&!Array.isArray(r.expenseItems))return fail('LEDGER_INVALID_SETTLEMENT');
-  return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount}))};
+  return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount}))};
  });
  if(new Set(normalized.map((r:any)=>r.clientKey)).size!==rows.length)return fail('LEDGER_INVALID_BATCH');
  const parents=normalized.filter((r:any)=>r.entryKind==='BANK');
@@ -253,7 +254,8 @@ export async function searchLedgerEvidence(db:any,orgId:number,query:any){
  const documents=[];
  for(const request of approved){
   const items=request.items.map((item:any)=>({id:item.id,line:item.expenseRequestLine,description:item.description,amount:ledgerMoney(ledgerScale4(item.amount),code),remaining:ledgerMoney(ledgerScale4(item.amount)-used.filter((a:any)=>a.expenseItemId===item.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n),code)})).filter((item:any)=>ledgerScale4(item.remaining)>0n);
-  if(items.length)documents.push({id:request.id,version:request.version,reference:request.managementNumber||legacyExpenseNumber(request.id),date:request.requestDate,payee:request.partner?.name||request.payeeEmployee?.name||'',counterparty:request.payeeEmployeeId?{kind:'EMPLOYEE',id:request.payeeEmployeeId,name:request.payeeEmployee?.name||''}:{kind:'PARTNER',id:request.partnerOrgId,name:request.partner?.name||''},items,amount:ledgerMoney(request.items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)});
+  const paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,request.id)).filter((row:any)=>row.currency===code);
+  if(items.length)documents.push({paymentSchedule,id:request.id,version:request.version,reference:request.managementNumber||legacyExpenseNumber(request.id),date:request.requestDate,payee:request.partner?.name||request.payeeEmployee?.name||'',counterparty:request.payeeEmployeeId?{kind:'EMPLOYEE',id:request.payeeEmployeeId,name:request.payeeEmployee?.name||''}:{kind:'PARTNER',id:request.partnerOrgId,name:request.partner?.name||''},items,amount:ledgerMoney(request.items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)});
  }
  return {documents};
 }

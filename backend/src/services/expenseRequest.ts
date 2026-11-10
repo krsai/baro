@@ -1,3 +1,4 @@
+import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule} from './expensePaymentSchedule';
 import {cashScheduleDate} from './cashSchedule';
 import {companyBusinessTimeZone} from './serviceCompany';
 import { requirePayeeBankAccount } from './entityBankAccount';
@@ -13,6 +14,7 @@ import { registerTransactionRequest, REQUEST_INCLUDE } from './transactionReques
 import { loadExpenseEditorSource } from './expenseRequestEditor';
 
 export const EXPENSE_REQUEST_INCLUDE = {
+  paymentSchedule:{where:{active:true},orderBy:[{expenseItemId:'asc'},{position:'asc'}] as Prisma.ExpensePaymentScheduleOrderByWithRelationInput[]},
   deletionRequests:{where:{status:'PENDING'},select:{version:true}},
   payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}},
   approvalSteps:{orderBy:{position:'asc' as const},include:{employee:{select:{id:true,name:true}}}},
@@ -48,12 +50,14 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const requestDate = validateCostDate(body?.automaticRequestDate ? previous?.requestDate||expenseApplicationDate() : body?.requestDate??previous?.requestDate??expenseApplicationDate());
   const period = await loadManagementPeriod(tx, orgId);
   assertManagedDate(requestDate, period.startDate);
+  const paymentSchedule:any[]=[];
   const scheduledPaymentDate=cashScheduleDate(body?.scheduledPaymentDate);
   const remark = typeof body?.remark === 'string' ? body.remark.trim() : '';
   if (remark.length > 500) fail('INVALID_EXPENSE_REMARK');
   const payeeIds=expensePayeeIds(body);
   if (typeof body?.clientKey !== 'string' || !/^[\w-]{8,64}$/.test(body.clientKey)) fail('INVALID_TRANSACTION_KEY');
   if (!Array.isArray(body?.items) || !body.items.length || body.items.length > 50) fail('EXPENSE_REQUEST_ITEMS_REQUIRED');
+  const lineSchedules=body.items.map((item:any)=>normalizeExpensePaymentSchedule(item?.paymentSchedule));
   const items = body.items.map((item: any, index: number) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) fail('INVALID_EXPENSE_REQUEST_ITEM');
     // The payee is shared; each line owns its currency. Legacy clients may supply a header fallback.
@@ -73,7 +77,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   const approval=previous ? {ids:(previous.approvalSteps || []).map((step:any)=>step.employeeId),policy:null} : await resolveExpenseApproval(tx,orgId,actorId,items,body.approvalSelection);
   const approverEmployeeIds=approval.ids;
   const requestedNumber=normalizeDocumentNumber(body.managementNumber);
-  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark,...(scheduledPaymentDate?{scheduledPaymentDate}:{}), approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
+  const submissionHash = createHash('sha256').update(JSON.stringify(canonical({ requestDate, remark,...(lineSchedules.some((rows:any[])=>rows.length)?{lineSchedules}:{}),...(scheduledPaymentDate?{scheduledPaymentDate}:{}), approverEmployeeIds, items,...(body.approvalSelection===undefined?{}:{approvalSelection:body.approvalSelection}),...(body.managementNumber===undefined?{}:{managementNumber:requestedNumber}) }))).digest('hex');
   if (previous) {
     if (previous.createdByEmployeeId !== actorId || previous.submissionHash !== submissionHash) throw createHttpError(409, 'EXPENSE_REQUEST_RETRY_MISMATCH');
     return { ...previous, ...expenseRequestTotals(previous.items) };
@@ -89,13 +93,15 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
   // Caller owns the Serializable transaction: every cost and production write rolls back together.
   for (const [index, item] of items.entries()) {
     try {
-      await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}},orgType);
+      const cost=await registerTransactionRequest(tx, orgId, actorId, item, appendQuantityRemark, true, {request:{id:document.id,line:index+1}},orgType);
+      paymentSchedule.push(...lineSchedules[index].map((row:any)=>({...row,expenseItemId:cost.id})));
     } catch(error: any) {
       error.expenseLine=index+1;
       error.message=`EXPENSE_LINE:${index+1}:${error.message}`;
       throw error;
     }
   }
+  if(paymentSchedule.length)await replaceExpensePaymentSchedule(tx,orgId,document.id,paymentSchedule);
   const saved = await tx.expenseRequest.findUnique({ where: { id: document.id }, include: EXPENSE_REQUEST_INCLUDE });
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
   await tx.expenseRequestAudit.create({ data: { orgId,requestId:document.id,actorId,version:document.version,action:'CREATE',

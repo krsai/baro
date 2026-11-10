@@ -1,3 +1,4 @@
+import ExpensePaymentSchedule from './ExpensePaymentSchedule';
 import ReadOnlyField from './ReadOnlyField';
 import {ledgerEvidenceText} from '../constants/ledgerEvidence';
 import ExpenseLookupField from './ExpenseLookupField';
@@ -99,6 +100,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
       <TableCell sx={{ whiteSpace: 'nowrap' }}><Tooltip title={labels.add}><span><IconButton aria-label={labels.add} disabled={disabled} onClick={()=>onAdd?.(line.key)}><Add/></IconButton></span></Tooltip><Button size="small" startIcon={<Add/>} disabled={disabled||!code||!optionalKeys.length} onClick={event=>setAddAnchor(event.currentTarget)}>{addLabel}</Button><Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={()=>setAddAnchor(null)}>{optionalKeys.map(key=><MenuItem key={key} onClick={()=>{setAdded(previous=>[...previous,key,...(key==='process'?['order','style']:key==='style'?['order']:[])]);setAddAnchor(null);}}>{labels[key]||common[key]}</MenuItem>)}</Menu><Tooltip title={labels.remove}><span><DeleteActionButton aria-label={labels.remove} disabled={disabled || index === 0 || Boolean(line.sourceRecordId && !line.itemId)} onClick={() => onRemove(line.key)} /></span></Tooltip></TableCell>
     </TableRow>
+    <TableRow><TableCell/><TableCell colSpan={11}><ExpensePaymentSchedule rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></TableCell></TableRow>
     {(expanded || isProcess && currency !== 'VND') && <TableRow data-testid="expense-line-links"><TableCell sx={{verticalAlign:'top',pt:2,color:'text.secondary',textAlign:'right'}}><span aria-hidden="true">└</span></TableCell><TableCell colSpan={11} sx={{ bgcolor: 'grey.50', px: 1, py: 1.5 }}><Stack spacing={1.5}>
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <>

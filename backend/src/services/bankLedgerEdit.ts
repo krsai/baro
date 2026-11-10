@@ -1,3 +1,4 @@
+import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
@@ -33,8 +34,8 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
   const items=entry.allocations.map((a:any)=>({id:a.expenseItemId,line:a.expenseItem.expenseRequestLine,description:a.expenseItem.description,amount:ledgerMoney(ledgerScale4(a.expenseItem.amount),code),remaining:ledgerMoney(ledgerScale4(a.expenseItem.amount)-other.filter((b:any)=>b.expenseItemId===a.expenseItemId).reduce((sum:bigint,b:any)=>sum+ledgerScale4(b.amount),0n),code)}));
   document={...(requests.length===1?{id:requests[0].id,version:requests[0].version}:{}),reference:requests.length===1?requests[0].managementNumber||legacyExpenseNumber(requests[0].id):entry.evidenceNumber,payee:requests.map(r=>r.partner?.name||r.payeeEmployee?.name||'').join(', '),items,amount:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)};
  }
- if(document)document.counterparty=entryCounterparty(entry);
- return {...entry,revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
+ if(document){document.counterparty=entryCounterparty(entry);if(entry.evidenceType==='EXPENSE'&&document.id)document.paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,document.id,id)).filter((row:any)=>row.currency===code);}
+ return {...entry,paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
 }
 export async function replaceLedgerEntry(db:any,orgId:number,actor:string,id:string,body:any){
  if(!Array.isArray(body.rows)||body.rows.filter((r:any)=>r.entryKind==='BANK').length!==1)return fail('LEDGER_INVALID_BATCH',400);

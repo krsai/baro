@@ -1,3 +1,5 @@
+import {paymentScheduleError} from '../../utils/expensePaymentSchedule.mjs';
+import {expensePaymentText} from '../../constants/expensePaymentSchedule';
 import ReadOnlyField from '../../components/ReadOnlyField';
 import {cashScheduleText} from '../../constants/cashSchedule';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
@@ -99,6 +101,23 @@ export default function TransactionRequestEntry() {
   const [validationAttempt,setValidationAttempt]=useState(0),[validation,setValidation]=useState(''),[approvalStatus,setApprovalStatus]=useState(null);
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
   const dirty = documentSnapshot(form) !== initialSnapshot;
+  const refreshState=useRef({});
+  refreshState.current={dirty,saving,active:isTabActive};
+  const previousTabActive=useRef(isTabActive);
+  useEffect(()=>{
+    const activated=isTabActive&&!previousTabActive.current;
+    previousTabActive.current=isTabActive;
+    if(editing&&activated&&!refreshState.current.dirty&&!refreshState.current.saving)setReload(value=>value+1);
+  },[editing,isTabActive]);
+  useEffect(()=>{
+    if(!editing)return;
+    const refresh=()=>{const state=refreshState.current;if(state.active&&!state.dirty&&!state.saving)setReload(value=>value+1);};
+    const unsubscribe=subscribeWorkspaceDataChanged(detail=>{
+      if(Number(detail?.orgId)===Number(activeOrgId)&&detail.topics?.some(topic=>['bank-ledger','ledger-entries','expense-approvals'].includes(topic)))refresh();
+    });
+    window.addEventListener('focus',refresh);
+    return()=>{unsubscribe();window.removeEventListener('focus',refresh);};
+  },[activeOrgId,editing]);
   useUnsavedChanges(dirty);
   useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setApprovalStatus(null); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId]);
   useEffect(() => {
@@ -197,6 +216,9 @@ export default function TransactionRequestEntry() {
       setTimeout(()=>tableContainerRef.current?.querySelector('input[required]:invalid')?.focus(),0);
       return;
     }
+    const scheduleLine=form.items.find(line=>paymentScheduleError(line.paymentSchedule,expenseTotalsByCurrency([line])));
+    const scheduleError=scheduleLine?paymentScheduleError(scheduleLine.paymentSchedule,expenseTotalsByCurrency([scheduleLine])):null;
+    if(scheduleError){setValidation((expensePaymentText[languageCode]||expensePaymentText.en)[scheduleError]);return;}
     setValidation('');
     saveLock.current=true;
     try {
@@ -215,6 +237,7 @@ export default function TransactionRequestEntry() {
       if ([400,403,404,409,422].includes(failure.status)) {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
+        if(['INVALID_EXPENSE_PAYMENT_SCHEDULE','EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH','EXPENSE_PAYMENT_SCHEDULE_REFERENCED'].includes(code)){const t=expensePaymentText[languageCode]||expensePaymentText.en;setError(code==='EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH'?t.mismatch:code==='EXPENSE_PAYMENT_SCHEDULE_REFERENCED'?t.referenced:t.invalid);return;}
         if(code==='INVALID_CASH_SCHEDULE_DATE'){setError((cashScheduleText[languageCode]||cashScheduleText.en).invalid);return;}
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
         const requiredDetail=line?.[2]?.match(/^REQUIRED_TRANSACTION_FIELD:(.+)$/);

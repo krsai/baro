@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:expense-payment-schedule": "npm --prefix backend run build && node --test scripts/expense-payment-schedule.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/ledger-evidence.test.mjs scripts/ledger-edit-read.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/expense-payment-schedule-browser.test.mjs",
     "test:app-review": "npm --prefix backend run build && node scripts/run-app-review.mjs && node scripts/app-review-browser.test.mjs && node scripts/shipping-requests-browser.test.mjs && node scripts/shipping-menu-browser.test.mjs && node scripts/style-packaging-browser.test.mjs && node scripts/industry-menu-browser.test.mjs",
     "test:shipping-requests": "npm --prefix backend run build && node --test scripts/shipping-requests.test.mjs scripts/freight-operations.test.mjs scripts/transport-exchange.test.mjs scripts/company-menu-layout.test.mjs scripts/railway-schema-preflight.test.mjs scripts/access-policy-regression.test.mjs scripts/page-naming.test.mjs && node scripts/shipping-requests-browser.test.mjs && node scripts/shipping-menu-browser.test.mjs",
     "test:transport-exchange": "npm --prefix backend run build && node --test scripts/transport-exchange.test.mjs scripts/freight-jobs.test.mjs scripts/railway-schema-preflight.test.mjs scripts/shipping-requests.test.mjs && node scripts/shipping-requests-browser.test.mjs",

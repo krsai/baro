@@ -1,3 +1,4 @@
+import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule,expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {cashScheduleDate} from './cashSchedule';
 import {companyBusinessTimeZone} from './serviceCompany';
 import {APPROVAL_SUBJECTS} from './approvalSubjects';
@@ -20,7 +21,7 @@ const recordInclude = {
     workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } } } },
 };
 const costInclude = { ...REQUEST_INCLUDE, workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } }, outsourcedWorkRecord: { include: recordInclude } };
-const documentInclude = { payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}}, approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
+const documentInclude = { paymentSchedule:{where:{active:true},orderBy:[{expenseItemId:'asc'},{position:'asc'}]}, payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}}, approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
   items: { include: costInclude, orderBy: { expenseRequestLine: 'asc' } } };
 const fail = (status: number, code: string): never => { throw createHttpError(status, code); };
 const numericId = (id: string) => /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id)>0 ? Number(id) : fail(400,'INVALID_EXPENSE_SOURCE');
@@ -53,7 +54,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
 
 export function expenseEditorRevision(source: any) {
   return hash(snapshot({ kind: source.kind, id: source.id, document: source.document && {
-    id: source.document.id, version: source.document.version, ...(source.document.scheduledPaymentDate?{scheduledPaymentDate:source.document.scheduledPaymentDate}:{}), remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
+    id: source.document.id, version: source.document.version,...(source.document.paymentSchedule?.length?{paymentSchedule:source.document.paymentSchedule}:{}), ...(source.document.scheduledPaymentDate?{scheduledPaymentDate:source.document.scheduledPaymentDate}:{}), remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
   }, costs: source.costs.map((cost: any) => ({...cost,partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
 }
 
@@ -82,6 +83,7 @@ export function expenseEditorForm(source: any) {
   const first = source.costs[0], record = source.record || first?.outsourcedWorkRecord;
   return { managementNumber:source.document?(source.document.managementNumber||legacyExpenseNumber(source.document.id)):'', approverEmployeeIds:(source.document?.approvalSteps || []).map((step:any)=>step.employeeId), approvalSteps:source.document?.approvalSteps || [], version: source.document?.version ?? null, updatedAt: source.document?.updatedAt ?? null, updatedByEmployee: source.document?.updatedByEmployee ?? null, remark: source.document?.remark || '',
     scheduledPaymentDate:source.document?.scheduledPaymentDate??'',
+    paymentSchedule:source.document?.paymentSchedule||[],
     requestDate: source.document?.requestDate || first?.transactionDate || record?.workLog.displayDate,
     partnerOrgId: source.document?.partnerOrgId || first?.partnerOrgId || record?.outsourcingPartnerId || null,
     payeeEmployeeId:source.document?.payeeEmployeeId||first?.payeeEmployeeId||null,
@@ -89,7 +91,7 @@ export function expenseEditorForm(source: any) {
     createdByEmployee: source.document?.createdByEmployee || first?.createdByEmployee || record?.createdByEmployee || null, revision: expenseEditorRevision(source),
     bankReconciled:!!source.document?.bankReconciled,
     readOnly: Boolean(source.document?.bankReconciled || record?.assignmentPlan?.workOrder?.invoiceFinalLockedAt || source.costs.some((cost: any)=>cost.workOrder?.invoiceFinalLockedAt || cost.outsourcedWorkRecord?.assignmentPlan?.workOrder?.invoiceFinalLockedAt)),
-    items: source.record ? [editorLine(null,source.record)] : source.costs.map((cost: any)=>editorLine(cost,cost.outsourcedWorkRecord)),
+    items: source.record ? [editorLine(null,source.record)] : source.costs.map((cost: any)=>({...editorLine(cost,cost.outsourcedWorkRecord),paymentSchedule:(source.document?.paymentSchedule||[]).filter((row:any)=>row.expenseItemId===cost.id)})),
     canonicalSource: { kind: source.kind, id: source.id } };
 }
 
@@ -147,6 +149,8 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
   if(source.document&&body.managementNumber!==undefined&&normalizeDocumentNumber(body.managementNumber)!==(source.document.managementNumber||legacyExpenseNumber(source.document.id)))return fail(409,'DOCUMENT_NUMBER_LOCKED');
   if(!source.document&&normalizeDocumentNumber(body.managementNumber))return fail(400,'DOCUMENT_NUMBER_AUTOMATIC');
   const managementNumber=source.document?.managementNumber||(!source.document?await allocateDocumentNumber(tx,orgId,'EXP',requestDate,body.managementNumber):null);
+  const paymentSchedule:any[]=[];
+  const lineSchedules=body.items.map((item:any)=>normalizeExpensePaymentSchedule(item.paymentSchedule===undefined?(source.document?.paymentSchedule||[]).filter((row:any)=>row.expenseItemId===item.itemId).map((row:any)=>({...row,amount:String(row.amount)})):item.paymentSchedule));
   const scheduledPaymentDate=cashScheduleDate(body.scheduledPaymentDate===undefined?source.document?.scheduledPaymentDate:body.scheduledPaymentDate);
   const header = { remark, requestDate, scheduledPaymentDate, ...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, updatedAt: new Date(), updatedByEmployeeId: actorId,
     currency: body.items.every((item: any)=>item.currency===body.items[0].currency) ? body.items[0].currency : null };
@@ -161,11 +165,14 @@ export async function saveExpenseEditor(tx: any, orgId: number, actorId: number,
     let saved;
     try { saved = await registerTransactionRequest(tx,orgId,actorId,input,appendQuantityRemark,true,{cost,record,request:{id:document.id,line:index+1}},orgType); }
     catch(error: any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
+    paymentSchedule.push(...lineSchedules[index].map((row:any)=>({...row,expenseItemId:saved.id})));
     if (saved.outsourcedWorkRecord) assignmentPlanIds.push(saved.outsourcedWorkRecord.assignmentPlanId);
   }
   const removed = source.costs.filter((cost: any)=>!itemIds.includes(cost.id));
+  if(removed.length&&await tx.expensePaymentSchedule.findFirst({where:{orgId,expenseItemId:{in:removed.map((cost:any)=>cost.id)}}}))return fail(409,'EXPENSE_PAYMENT_SCHEDULE_REFERENCED');
   // Removing an expense line never removes its original production record or shared work-log group.
   for (const cost of removed) await tx.partnerTransactionCost.delete({ where: { id: cost.id } });
+  if(paymentSchedule.length||source.document?.paymentSchedule?.length)await replaceExpensePaymentSchedule(tx,orgId,document.id,paymentSchedule);
   const after = await loadExpenseEditorSource(tx,orgId,'request',String(document.id));
   await tx.expenseRequestAudit.create({ data: { orgId, requestId: document.id, actorId, version: document.version,
     action: source.document ? 'UPDATE' : 'CREATE', clientKey:key, inputHash, beforeSnapshot: before, afterSnapshot:snapshot({...after,approvalPolicy:{...approval.policy,drafterId}}) } });
@@ -219,6 +226,10 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);
     assertManagedDate(expenseEditorForm(source).requestDate,(await loadManagementPeriod(db,access.organization.id)).startDate);
     const result:any=expenseEditorForm(source);
+    if(source.document?.paymentSchedule?.length){
+      const paymentSchedule=await expensePaymentScheduleStatus(db,access.organization.id,source.document.id);
+      result.items=result.items.map((item:any)=>({...item,paymentSchedule:paymentSchedule.filter((row:any)=>row.expenseItemId===item.itemId)}));
+    }
     if(source.document){
       const audit=await db.expenseRequestAudit.findFirst({where:{orgId:access.organization.id,requestId:source.document.id,version:source.document.version},orderBy:{id:'desc'}});
       const policy=audit?.afterSnapshot?.approvalPolicy;

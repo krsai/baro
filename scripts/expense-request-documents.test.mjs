@@ -14,18 +14,20 @@ const { registerExpenseRequest } = require('../backend/dist/services/expenseRequ
 const {retryEditTransaction}=require('../backend/dist/utils/editRevision.js');
 const { calculateRequestAmounts } = require('../backend/dist/services/transactionRequest.js');
 const ts = require('../backend/node_modules/typescript');
-const input = () => ({ remark: 'Factory expenses', requestDate: '2026-10-17', partnerOrgId: 11, currency: 'VND', clientKey: 'document-001', items: [
-  { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Transport', quantity: '2', unitPrice: '100000', vatRate: '10', details: {reference:'REF-001'} },
-  { transactionCodeId: 7, transactionDate: '2026-10-17', description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {reference:'REF-001'} },
+const applicationDate=()=>new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'});
+const input = () => ({ remark: 'Factory expenses', requestDate: applicationDate(), partnerOrgId: 11, currency: 'VND', clientKey: 'document-001', items: [
+  { transactionCodeId: 7, transactionDate: applicationDate(), description: 'Transport', quantity: '2', unitPrice: '100000', vatRate: '10', details: {reference:'REF-001',evidenceFile:'invoice.pdf'} },
+  { transactionCodeId: 7, transactionDate: applicationDate(), description: 'Materials', quantity: '1', unitPrice: '50000', vatRate: '10', details: {reference:'REF-001',evidenceFile:'invoice.pdf'} },
 ] });
 function harness({sourceEnabled=true}={}) {
   let state = { documents: [], costs: [], logs: [], production: [], audits: [] };
   const client = data => {
     const readDocument = where => {
       const document = data.documents.find(row => where.id ? row.id === where.id : row.orgId === where.orgId_clientKey.orgId && row.clientKey === where.orgId_clientKey.clientKey);
-      return document ? { ...document, items: data.costs.filter(row => row.expenseRequestId === document.id).map(row => ({ ...row, outsourcedWorkRecord: data.production.find(record => record.id === row.outsourcedWorkRecordId) || null })) } : null;
+      return document ? { ...document,...(data.schedules?{paymentSchedule:data.schedules.filter(row=>row.requestId===document.id&&row.active)}:{}), items: data.costs.filter(row => row.expenseRequestId === document.id).map(row => ({ ...row, outsourcedWorkRecord: data.production.find(record => record.id === row.outsourcedWorkRecordId) || null })) } : null;
     };
     return withDocumentNumbers({
+      expensePaymentSchedule:{findUnique:async({where})=>(data.schedules||[]).find(row=>row.id===where.id)||null,updateMany:async({where,data:patch})=>{for(const row of data.schedules||[])if(row.orgId===where.orgId&&row.requestId===where.requestId&&row.active)Object.assign(row,patch);},create:async({data:row})=>{(data.schedules||=[]).push(row);return row;}},
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       employeeExpenseBankAccount:{findFirst:async()=>({id:'employee-bank'})},
@@ -33,6 +35,7 @@ function harness({sourceEnabled=true}={}) {
       factory: { findMany: async () => [{ id: 1, managementStartDate: '2026-04-01' }] },
       expenseRequest: { findUnique: async ({ where }) => readDocument(where),findFirst:async({where})=>readDocument(where), create: async ({ data: row }) => { const document = { id: data.documents.length + 1,version:1, ...row }; data.documents.push(document); return document; } },
       partnerTransactionCost: {
+        findMany:async({where})=>data.costs.filter(row=>row.orgId===where.orgId&&row.expenseRequestId===where.expenseRequestId),
         findUnique: async () => null,
         create: async ({ data: row }) => { const cost = { id: `cost-${data.costs.length + 1}`, ...JSON.parse(JSON.stringify(row)) }; data.costs.push(cost); return cost; },
         update: async ({ where, data: patch }) => Object.assign(data.costs.find(row => row.id === where.id), patch),
@@ -110,6 +113,22 @@ test('document registration persists ordered cost rows and server totals; identi
   assert.equal(db.state().documents.length,1); assert.equal(db.state().costs.length,2);
   await assert.rejects(route({ body: { ...body, items: body.items.slice(0,1) } },response()),/RETRY_MISMATCH/);
 });
+
+test('one expense item can have installments while another stays single, with exact retries and atomic total validation',async()=>{
+ const {route,db}=routeHarness(),body=input();
+ body.items[0].paymentSchedule=[{id:'advance-0001',label:'Advance',scheduledDate:'2026-11-30',currency:'VND',amount:'88000'},{id:'balance-0001',label:'Balance',scheduledDate:'2026-12-10',currency:'VND',amount:'132000'}];
+ body.items[0].paymentSchedule[1].amount='131999';
+ await assert.rejects(route({body},response()),/TOTAL_MISMATCH/);
+ assert.deepEqual(db.state(),{documents:[],costs:[],logs:[],production:[],audits:[]});
+ body.items[0].paymentSchedule[1].amount='132000';
+ const res=response();await route({body},res);
+ assert.equal(res.body.paymentSchedule.length,2);
+ assert.ok(res.body.paymentSchedule.every(row=>row.expenseItemId===res.body.items[0].id));
+ assert.equal(db.state().audits[0].afterSnapshot.document.paymentSchedule.length,2);
+ await route({body},response());assert.equal(db.state().schedules.length,2);
+ body.items[0].paymentSchedule[0].scheduledDate='2026-12-01';
+ await assert.rejects(route({body},response()),/RETRY_MISMATCH/);
+});
 test('expense management numbers are automatic, reject manual input and preserve exact retry identity',async()=>{
  const {route,db}=routeHarness(),body={...input(),remark:'Factory expenses\nAdditional remark'};
  await assert.rejects(route({body:{...body,managementNumber:'BARO-2026-A'}},response()),/DOCUMENT_NUMBER_AUTOMATIC/);
@@ -160,12 +179,12 @@ test('mixed base policies validate each line independently and report the failin
  assert.equal(db.state().production.length,1);
 });
 
-test('one header date applies to all new costs and conflicting item dates are rejected atomically', async () => {
+test('server application date applies to all new costs and conflicting item dates are rejected atomically', async () => {
   const { route, db } = routeHarness(), body = input();
   body.requestDate = '2026-10-18';
   for (const item of body.items) delete item.transactionDate;
   await route({ body }, response());
-  assert.deepEqual(db.state().costs.map(row => row.transactionDate), ['2026-10-18','2026-10-18']);
+  assert.deepEqual(db.state().costs.map(row => row.transactionDate), [applicationDate(),applicationDate()]);
   const other = routeHarness();
   body.items[1].transactionDate = '2026-10-17';
   await assert.rejects(other.route({ body }, response()), /EXPENSE_REQUEST_DATE_MISMATCH/);
@@ -173,7 +192,7 @@ test('one header date applies to all new costs and conflicting item dates are re
 });
 test('documents reject conflicting payees, invalid currencies, empty or excessive lines and unauthorized access', async () => {
   const { route,db } = routeHarness();
-  for (const patch of [{ remark: 'x'.repeat(501) },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] },{ requestDate: '2026-03-31' }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
+  for (const patch of [{ remark: 'x'.repeat(501) },{ currency: 'EUR' },{ items: [] },{ items: Array(51).fill(input().items[0]) },{ items: [{ ...input().items[0], currency: 'EUR' }] },{ items: [{ ...input().items[0], partnerOrgId: 99 }] }]) await assert.rejects(route({ body: { ...input(), ...patch } },response()));
   assert.equal(db.state().documents.length,0);
   const forbidden = postRoute({ requireOrgRole: async () => null, ORG_MANAGEMENT_ROLES: ['ADMIN'] });
   await forbidden({ body: input() },response());

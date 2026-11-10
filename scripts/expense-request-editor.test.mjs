@@ -24,9 +24,9 @@ function harness() {
     const order = () => ({ id: 30, orderNumber: 'L17-1', invoiceFinalLockedAt: s.finalLocked ? new Date() : null });
     const record = r => r && ({ ...r, workLog: r.workLogId===77?s.log:s.extraLogs.find(log=>log.id===r.workLogId), style: { id: 40, name: 'Shirt', code: 'AM02058' }, styleProcess: { id: 50, processName: 'Buttonhole' }, outsourcingPartner: { id: r.outsourcingPartnerId, name: 'Vendor' }, assignmentPlan: { ...s.plan, workOrder: order() } });
     const cost = r => r && ({ ...r, referenceLinks:s.references.filter(ref=>ref.costId===r.id), outsourcedWorkRecord: record(s.records.find(x=>x.id===r.outsourcedWorkRecordId)), workOrder: r.workOrderId ? order() : null, partner: { id: r.partnerOrgId, name: 'Vendor' } });
-    const document = r => r && ({ ...r, partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
+    const document = r => r && ({ ...r,...(s.schedules?{paymentSchedule:s.schedules.filter(row=>row.requestId===r.id&&row.active)}:{}), partner: { id: r.partnerOrgId, name: 'Vendor' }, createdByEmployee: { id: r.createdByEmployeeId, name: 'Author' }, items: s.costs.filter(x=>x.expenseRequestId===r.id).sort((a,b)=>a.expenseRequestLine-b.expenseRequestLine).map(cost) });
     const matches = (r,w) => Object.entries(w).every(([k,v])=>r[k]===v);
-    return withDocumentNumbers({
+    return withDocumentNumbers({expensePaymentSchedule:{findFirst:async()=>null,findUnique:async({where})=>(s.schedules||[]).find(row=>row.id===where.id)||null,updateMany:async({where,data:patch})=>{for(const row of s.schedules||[])if(row.orgId===where.orgId&&row.requestId===where.requestId&&row.active)Object.assign(row,patch);},update:async({where,data:patch})=>Object.assign(s.schedules.find(row=>row.id===where.id),patch),create:async({data:row})=>{(s.schedules||=[]).push(row);return row;}},bankLedgerEvidenceAllocation:{findFirst:async()=>null},
       expenseCodeLinkPolicy:{findUnique:async({where})=>({target:where.orgId_baseId.baseId===2?'PROCESS':'NONE',auditId:null})},
       organizationBankAccount: {findFirst:async()=>({id:"test-bank"})},
       employee: {findFirst:async({where})=>({id:where.id,orgId:where.orgId,status:'ACTIVE',orgRole:'ACCOUNTANT',gradeId:1,grade:{code:'CL2',isActive:true,set:{isActive:true}}})},
@@ -40,6 +40,7 @@ function harness() {
       },
       expenseItemReference:{deleteMany:async({where})=>{s.references=s.references.filter(ref=>ref.costId!==where.costId||ref.orgId!==where.orgId);},createMany:async({data})=>{s.references.push(...data);}},
       partnerTransactionCost: {
+        findMany:async({where})=>s.costs.filter(row=>matches(row,where)),
         findUnique:async({where})=>cost(s.costs.find(row=>row.id===where.id)),
         findFirst: async({where})=>cost(s.costs.find(r=>matches(r,where))),
         create: async({data})=>{const row={id:`cost-${s.costs.length+1}`,...JSON.parse(JSON.stringify(data))};s.costs.push(row);return cost(row);},
@@ -68,6 +69,26 @@ async function input(db) {
   const form=expenseEditorForm(await db.source());
   return {...form,remark:'July buttonhole cost',clientKey:'edit-command-001',items:form.items.map(item=>({...item,details:{...item.details,reference:'REF-001'},transactionCodeId:8}))};
 }
+
+test('installments survive editor reload and approved edits without changing the expense or production identities',async()=>{
+ const db=harness(),body=await input(db);
+ const {calculateRequestAmounts}=require('../backend/dist/services/transactionRequest.js');
+ const item=body.items[0],total=calculateRequestAmounts(item.unitPrice,item.quantity,item.currency,item.vatRate).amount;
+ item.paymentSchedule=[{id:'advance-edit-001',label:'Advance',scheduledDate:'2026-11-30',currency:item.currency,amount:'1'},{id:'balance-edit-001',label:'Balance',scheduledDate:'2026-12-10',currency:item.currency,amount:total.sub(1).toFixed(0)}];
+ await db.save(body);
+ const form=structuredClone(expenseEditorForm(await loadExpenseEditorSource(db.client(),1,'request','1')));
+ assert.equal(form.items[0].paymentSchedule.length,2);
+ const costId=form.items[0].itemId,recordId=form.items[0].sourceRecordId;
+ form.items[0].paymentSchedule[1].scheduledDate='2026-12-11';
+ await db.save({...form,clientKey:'schedule-edit-002'},'request','1');
+ const after=structuredClone(expenseEditorForm(await loadExpenseEditorSource(db.client(),1,'request','1')));
+ assert.equal(after.items[0].itemId,costId);assert.equal(after.items[0].sourceRecordId,recordId);
+ assert.equal(after.items[0].paymentSchedule[1].scheduledDate,'2026-12-11');
+ assert.equal(db.state().audits.at(-1).beforeSnapshot.document.paymentSchedule[1].scheduledDate,'2026-12-10');
+ const before=structuredClone(db.state());
+ const invalid={...after,clientKey:'schedule-invalid-003',items:after.items.map(row=>({...row,paymentSchedule:row.paymentSchedule.map((schedule,index)=>({...schedule,amount:index?'1':schedule.amount}))}))};
+ await assert.rejects(db.save(invalid,'request','1'),/TOTAL_MISMATCH/);assert.deepEqual(db.state(),before);
+});
 
 test('another employee edits a draft without replacing its author and records an immutable before/after version',async()=>{
  const db=harness();await db.save(await input(db));
