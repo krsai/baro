@@ -9,7 +9,7 @@ export default function LookupInput({options=[],value,onChange,onSearch,getLabel
  const setInput=(next,event,reason)=>{setDraft(next);onInputChange?.(event,next,reason);};
  useEffect(()=>{if(!value&&preserveDraft.current){preserveDraft.current=false;return;}setDraft(text);},[key,text,resetKey]);
  const eligible=options.filter(row=>row.isActive!==false&&row.base?.isActive!==false);
- const resolve=(query,exactOnly=false)=>resolveLookupOption(eligible,query,{getLabel,...(getCode?{getCode}:{}),...(getValues?{getValues}:{}),...(getSearchText?{getSearchText}:{}),exactOnly});
+ const resolve=query=>resolveLookupOption(eligible,query,{getLabel,...(getCode?{getCode}:{}),...(getValues?{getValues}:{})});
  const choose=(row,event)=>{preserveDraft.current=false;setInput(clearAfterChoose?'':getLabel(row),event,'reset');if(!value||getOptionKey(row)!==key)onChange(row,event);};
  const search=()=>{if(!disabled){skipBlur.current=true;if(value&&normalizeLookupText(input)!==normalizeLookupText(text)){preserveDraft.current=true;onChange(null);}onSearch(input);}};
  const keyDown=event=>{
@@ -43,7 +43,7 @@ export default function LookupInput({options=[],value,onChange,onSearch,getLabel
   onCompositionStart={()=>{composing.current=true;}} onCompositionEnd={()=>{composing.current=false;}}
   onChange={event=>{skipBlur.current=false;setInput(event.target.value,event,'input');onEdit?.(event.target.value);}}
   onFocus={event=>{skipBlur.current=false;onFocus?.(event);}}
-  onBlur={event=>{if(!disabled&&!skipBlur.current&&!composing.current&&!event.nativeEvent?.isComposing){const selected=value&&normalizeLookupText(input)===normalizeLookupText(text),match=resolve(input,true);if(!selected&&match)choose(match,event);else if(!selected&&value){preserveDraft.current=true;onChange(null,event);}}skipBlur.current=false;onBlur?.(event);}}
+  onBlur={event=>{if(!disabled&&!skipBlur.current&&!composing.current&&!event.nativeEvent?.isComposing){const selected=value&&normalizeLookupText(input)===normalizeLookupText(text),match=resolve(input);if(!selected&&match)choose(match,event);else if(!selected&&value){preserveDraft.current=true;onChange(null,event);}}skipBlur.current=false;onBlur?.(event);}}
   onKeyDown={event=>{keyDown(event);if(!event.defaultPrevented){inputProps.onKeyDown?.(event);if(!event.defaultPrevented)customKeyDown?.(event);}}}
   inputProps={{...inputProps,onKeyDown:undefined,'aria-label':inputProps['aria-label']||label,'aria-haspopup':'dialog',spellCheck:false}}
   slotProps={{...slotProps,input:lookupInputProps,inputLabel:state=>({...InputLabelProps,...(typeof labelSlot==='function'?labelSlot(state):labelSlot),shrink:true,...(typeof label==='string'?{title:label}:{})})}}/>;

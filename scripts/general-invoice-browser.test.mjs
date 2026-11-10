@@ -32,7 +32,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route('**/invoices/**',route=>{
    const req=route.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});
-   if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',searchText:'BARO CUST-001',name:'Customer',businessNumber:'TAX-123',contactName:'Ms. Contact',contactPhone:'0123456789',email:'Public@example.test',address:'Public address'}]}});
+   if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',searchText:'BARO CUST-001',name:process.argv.includes('--customer-only')?'THE SAN':'Customer',businessNumber:'TAX-123',contactName:'Ms. Contact',contactPhone:'0123456789',email:'Public@example.test',address:'Public address'}]}});
    if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{name:'Customer'},seller:{name:'BARO'},sellerBankAccounts:[{id:'bank',bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true}],currencies:['VND','USD','KRW']}});}
    if(req.method()==='GET'&&url.pathname.endsWith('/orders'))return route.fulfill({headers,json:{rows:[],hasMore:false}});
    if(req.method()==='POST'&&url.pathname.endsWith('/issue')){issues.push(req.postDataJSON());if(failure==='issue'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'issued'}});}
@@ -43,6 +43,7 @@ try{
   const t=generalInvoiceText[lang],u=invoiceUi[lang];
   await page.getByRole('combobox',{name:new RegExp('^'+t.type)}).click();await page.getByRole('option',{name:t.general,exact:true}).click();
   const customer=page.getByRole('textbox',{name:invoicePartyText[lang].target,exact:true});if(process.argv.includes('--customer-only')){
+   await customer.fill('THE');await customer.press('Enter');const partial=page.getByRole('dialog');await partial.waitFor();assert.equal(await partial.getByText('THE SAN',{exact:true}).count(),1);assert.equal(await page.getByTestId('general-invoice-line').count(),0);await page.keyboard.press('Escape');await partial.waitFor({state:'hidden'});await customer.fill('');
    await customer.press('F2');const dialog=page.getByRole('dialog'),lookup=EXPENSE_LOOKUP_TEXT[lang];await dialog.getByText('CUST-001',{exact:true}).click();const details=dialog.getByTestId('payee-details');await details.getByText('0123456789',{exact:true}).waitFor();assert.equal(await details.getByText('TAX-123',{exact:true}).count(),1);assert.equal(await details.getByTestId('payee-accounts').count(),0);
    await dialog.getByRole('textbox',{name:lookup.keyword,exact:true}).fill('BARO');await dialog.getByRole('button',{name:lookup.select,exact:true}).click();await dialog.waitFor({state:'hidden'});
    await page.getByTestId('general-invoice-line').waitFor();assert.equal(await customer.inputValue(),'CUST-001');
