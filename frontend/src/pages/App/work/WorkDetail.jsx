@@ -1,3 +1,5 @@
+import StatusLabel from '../../../components/StatusLabel';
+import {buildWorkStyleLookupOptions,workStyleProgressText,workStyleLookupText} from '../../../utils/workStyleLookup.mjs';
 import WorkQuantityReviewDialog from './WorkQuantityReviewDialog';
 import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
@@ -449,6 +451,9 @@ const buildStyleOptionSearchText = (assignment) =>
   [
     formatAssignmentLabel(assignment),
     assignment?.styleCode,
+    assignment?.orderNo,
+    assignment?.factoryName,
+    ...(assignment?.lookupOverview?.factoryNames||[]),
   ]
     .map(toText)
     .filter(Boolean)
@@ -1048,6 +1053,8 @@ const WorkDetail = ({
   const [factoryScopeWorkers, setFactoryScopeWorkers] = useState(() =>
     normalizeWorkerOptions(initialContext?.workers)
   );
+  const [styleOverview,setStyleOverview]=useState(()=>initialContext?.styleOverview||[]);
+  const lookupText=workStyleLookupText[languageCode]||workStyleLookupText.en;
   const [outsourcingPartners, setOutsourcingPartners] = useState([]);
   const [outsourcePartnerRowId, setOutsourcePartnerRowId] = useState(null);
   const [processAttributes, setProcessAttributes] = useState([]);
@@ -1232,6 +1239,7 @@ const WorkDetail = ({
     setFactories(initialFactoryOption ? [initialFactoryOption] : []);
     setFactoryScopeWorkers(prefetchedWorkers);
     setAllAssignmentPlans(prefetchedAllAssignments);
+    setStyleOverview(initialContext?.styleOverview||[]);
     setAssignmentOptions(prefetchedAssignments);
     setRows(
       hasInitialRecords
@@ -1248,6 +1256,7 @@ const WorkDetail = ({
     setBaseLoading(!initialLog?.id);
   }, [
     hasInitialRecords,
+    initialContext?.styleOverview,
     initialFactoryOption,
     initialLog?.createdAt,
     initialLog?.coverageEndDate,
@@ -1331,6 +1340,7 @@ const WorkDetail = ({
     ) {
       setFactoryScopeWorkers(prefetchedWorkers);
       setAllAssignmentPlans(prefetchedAllAssignments);
+      setStyleOverview(initialContext?.styleOverview||[]);
       setAssignmentOptions(prefetchedAssignments);
       setCoverageSuggestion({
         previousCoverageEndDate: initialContext?.previousCoverageEndDate || null,
@@ -1376,6 +1386,7 @@ const WorkDetail = ({
         const normalizedAssignments = normalizeAssignmentPlans(context?.assignments);
         const normalizedCtAssignments = filterAssignmentsWithCt(normalizedAssignments);
         setAllAssignmentPlans(normalizedAssignments);
+        setStyleOverview(Array.isArray(context?.styleOverview)?context.styleOverview:[]);
         setAssignmentOptions(
           normalizedCtAssignments.filter((plan) => !Boolean(plan?.isCompleted))
         );
@@ -1414,6 +1425,7 @@ const WorkDetail = ({
           details: error?.details ?? null,
         });
         setAllAssignmentPlans([]);
+        setStyleOverview([]);
         setAssignmentOptions([]);
         setFactoryScopeWorkers([]);
         setFactoryScopeContextReady(true);
@@ -2561,7 +2573,7 @@ const WorkDetail = ({
             : '';
           workerDisabled = isAggregateLegacyLog || (rowWorkerOptions?.length || 0) === 0;
           styleDisabled =
-            isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0;
+            isAggregateLegacyLog || !row?.worker || (styleOptions?.length || 0) === 0 && styleOverview.length===0;
           processDisabled =
             isAggregateLegacyLog ||
             !row?.worker ||
@@ -2590,7 +2602,7 @@ const WorkDetail = ({
         );
         const stylePlaceholder = !row?.worker
           ? LABELS.selectWorkerFirst
-          : (styleOptions?.length || 0) === 0
+          : (styleOptions?.length || 0) === 0 && styleOverview.length===0
             ? LABELS.noStylesAvailable
             : LABELS.stylePlaceholder;
         const processPlaceholder = !row?.worker
@@ -2660,6 +2672,7 @@ const WorkDetail = ({
       resolveProcessForRow,
       resolveWorkerOptions,
       resolveStyleOptions,
+      styleOverview,
       resolveSelectedStyleOption,
       buildStyleOrderMetaLabel,
       getStyleExceptionLabel,
@@ -3120,11 +3133,14 @@ const WorkDetail = ({
                                 toText(option?.id || option?.dbId) ===
                                 toText(value?.id || value?.dbId)
                               }
+                              lookupOptions={buildWorkStyleLookupOptions(styleOptions,styleOverview)}
+                              getLookupOptionDisabled={option=>option.lookupReadOnly===true}
                               lookupColumns={[
- {key:'order',label:languageCode==='ko'?'주문 번호':languageCode==='vi'?'Đơn hàng':'Order',width:'24%',value:option=>option.orderNo},
+ {key:'order',label:LABELS.orderNo,width:'17%',value:option=>option.orderNo},
  {key:'style',label:LABELS.style,value:getStyleOptionLabel},
- {key:'quantity',label:LABELS.orderQuantity,width:'18%',align:'right',value:option=>formatCount(resolveBaselineQuantity(option))},
- {key:'factory',label:LABELS.factory,width:'20%',value:option=>option.factoryName}
+ {key:'status',label:lookupText.status,width:'20%',render:option=><Stack spacing={.5}><StatusLabel tone={option.isAssigned?'blue':'gray'} label={option.isAssigned?lookupText.assigned:lookupText.unassigned}/>{option.lookupReadOnly&&<Typography variant="caption" color="text.secondary">{option.isAssigned?lookupText.checkAssignment:lookupText.assignFirst}</Typography>}</Stack>,value:option=>option.isAssigned?lookupText.assigned:lookupText.unassigned},
+ {key:'quantity',label:lookupText.progress,width:'25%',align:'right',value:option=>workStyleProgressText(option,formatCount,lookupText.unknown)},
+ {key:'factory',label:lookupText.factory,width:'16%',value:option=>(option.lookupOverview?.factoryNames||[]).join(', ')||option.factoryName}
  ]}
  getLookupCode={getStyleOptionLabel}
  getLookupSearchText={option=>[getStyleOptionLabel(option),option.orderNo,option.factoryName].filter(Boolean).join(' ')}
@@ -3527,11 +3543,14 @@ const WorkDetail = ({
                                     toText(option?.id || option?.dbId) ===
                                     toText(value?.id || value?.dbId)
                                   }
-                                  lookupColumns={[
- {key:'order',label:languageCode==='ko'?'주문 번호':languageCode==='vi'?'Đơn hàng':'Order',width:'24%',value:option=>option.orderNo},
+                                  lookupOptions={buildWorkStyleLookupOptions(styleOptions,styleOverview)}
+                              getLookupOptionDisabled={option=>option.lookupReadOnly===true}
+                              lookupColumns={[
+ {key:'order',label:LABELS.orderNo,width:'17%',value:option=>option.orderNo},
  {key:'style',label:LABELS.style,value:getStyleOptionLabel},
- {key:'quantity',label:LABELS.orderQuantity,width:'18%',align:'right',value:option=>formatCount(resolveBaselineQuantity(option))},
- {key:'factory',label:LABELS.factory,width:'20%',value:option=>option.factoryName}
+ {key:'status',label:lookupText.status,width:'20%',render:option=><Stack spacing={.5}><StatusLabel tone={option.isAssigned?'blue':'gray'} label={option.isAssigned?lookupText.assigned:lookupText.unassigned}/>{option.lookupReadOnly&&<Typography variant="caption" color="text.secondary">{option.isAssigned?lookupText.checkAssignment:lookupText.assignFirst}</Typography>}</Stack>,value:option=>option.isAssigned?lookupText.assigned:lookupText.unassigned},
+ {key:'quantity',label:lookupText.progress,width:'25%',align:'right',value:option=>workStyleProgressText(option,formatCount,lookupText.unknown)},
+ {key:'factory',label:lookupText.factory,width:'16%',value:option=>(option.lookupOverview?.factoryNames||[]).join(', ')||option.factoryName}
  ]}
  getLookupCode={getStyleOptionLabel}
  getLookupSearchText={option=>[getStyleOptionLabel(option),option.orderNo,option.factoryName].filter(Boolean).join(' ')}

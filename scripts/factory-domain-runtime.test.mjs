@@ -109,6 +109,7 @@ test('work context uses direct factory employment and does not perform database 
     attachLiveStyleProcessMirrorsToAssignmentPlans:async({plans})=>plans,
     evaluateWorkerEmploymentInDateRange:({joinedAt,endDateKey})=>({passed:joinedAt<=endDateKey}),
     toWorkLogContextWorkerResponse:({employee})=>employee,toWorkLogContextAssignmentResponse:p=>p,
+    workLogStyleOverview:async()=>[],
   });
   const result=await context({orgId:1,factoryId:71,workDate:'2026-07-31'});
   assert.equal(result.workers.length,1);

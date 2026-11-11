@@ -1,3 +1,4 @@
+import {workLogStyleOverview} from './services/workLogStyleOverview';
 import {registerDashboardWorkRequestRoutes} from './services/dashboardWorkRequests';
 import {registerTransportExchangeRoutes} from './services/transportExchange';
 import {registerShippingRequestRoutes} from './services/shippingRequests';
@@ -12185,15 +12186,17 @@ const buildWorkLogContextResponse = async ({ orgId, factoryId, workDate, coverag
   const previousCoverageEndDate = previousEnd && previousEnd >= period.startDate ? previousEnd : null;
   const suggestedCoverageStartDate = previousCoverageEndDate ? shiftDateKeyByDays(previousCoverageEndDate, 1) : null;
   const start = normalizeDateKey(coverageStartDate) || suggestedCoverageStartDate || date;
-  const [employees, rawPlans, vendors] = await Promise.all([
+  const [employees, rawPlans, vendors, styleOverview] = await Promise.all([
     prisma.employee.findMany({ where: { orgId, factoryId: factory.id, orgRole: "WORKER", status: { in: ["ACTIVE", "TERMINATED", "SUSPENDED"] } }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     prisma.assignmentPlan.findMany({ where: { orgId, factoryId: factory.id, isCompleted: false }, select: { ...ASSIGNMENT_PLAN_SELECT_WITH_CLOSE, assignmentProcessRevisionHistory: true, ...ASSIGNMENT_PLAN_DISPLAY_JOIN_INCLUDE }, orderBy: [{ startIndex: "asc" }, { id: "asc" }] }),
     recordKind === "OUTSOURCING" ? prisma.organization.findMany({ where: { ownerOrgId: orgId, type: "PROCESS_OUTSOURCING", isActive: true }, select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }) : Promise.resolve([]),
+    workLogStyleOverview(prisma,orgId,ids=>buildAssignmentPlanProgressRows(orgId,ids)),
   ]);
   const plans = await attachLiveStyleProcessMirrorsToAssignmentPlans({ orgId, plans: rawPlans });
   return {
     factory,
     workers: recordKind === "OUTSOURCING" ? vendors.map(row => ({ id: `partner:${row.id}`, partnerId: row.id, name: row.name, vendorName: row.name, isOutsourced: true })) : employees.filter(employee => evaluateWorkerEmploymentInDateRange({ joinedAt: employee.joinedAt, leftAt: employee.leftAt, startDateKey: start, endDateKey: date }).passed).map(employee => toWorkLogContextWorkerResponse({ employee })),
+    styleOverview,
     assignments: plans.map(plan => toWorkLogContextAssignmentResponse({ ...plan, _workLogContextDateKey: date })),
     previousCoverageEndDate, suggestedCoverageStartDate, isFirstFactoryWorkLog: !previousCoverageEndDate,
   };
