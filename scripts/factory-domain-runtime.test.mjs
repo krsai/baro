@@ -28,6 +28,12 @@ function load(source, name, dependencies) {
   vm.runInContext(js,context);
   return context.subject;
 }
+test('work context preserves the employee number for worker code lookup without exposing employee internals',()=>{
+ const response=load(backend,'toWorkLogContextWorkerResponse',{resolveOptionalString:(value,fallback)=>value??fallback});
+ const worker=response({employee:{id:7,name:'Worker',employeeNo:'HN0042',factoryId:3,email:'worker@example.test',salary:900}});
+ assert.equal(worker.employeeNo,'HN0042');assert.equal(worker.id,7);assert.equal(worker.factoryId,3);assert.equal('salary' in worker,false);
+ assert.equal(response({employee:{id:8,name:'Legacy'}}).employeeNo,'');
+});
 const common = {
   toPositiveIntOrNull: value => Number.isSafeInteger(Number(value)) && Number(value)>0 ? Number(value) : null,
   ensureArray: value => Array.isArray(value)?value:[],

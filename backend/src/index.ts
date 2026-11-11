@@ -12077,6 +12077,7 @@ const toWorkLogResponse = async (
 const toWorkLogContextWorkerResponse = (row: any) => ({
   id: row?.employee?.id ?? row?.employeeId ?? null,
   orgMembershipId: row?.employee?.id ?? row?.employeeId ?? null,
+  employeeNo: resolveOptionalString(row?.employee?.employeeNo, "") ?? "",
   name: resolveOptionalString(row?.employee?.name, "") ?? "",
   email: resolveOptionalString(row?.employee?.email, "") ?? "",
   factoryId: row?.employee?.factoryId ?? null,
