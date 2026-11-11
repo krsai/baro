@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {dashboardWidgetStorageKey,moveDashboardWidget,normalizeDashboardWidgets,resolveDashboardWidgetLayout} from '../frontend/src/utils/dashboardWidgets.mjs';
 const widgets=[{id:'excess',width:'full'},{id:'notifications'},{id:'todo'}];
+test('new service notifications appear once and an explicit later removal remains removed',()=>{
+ const available=[{id:'tasks'},{id:'notifications',defaultTag:'finance-v1'}];
+ assert.deepEqual(resolveDashboardWidgetLayout({version:2,items:[{id:'tasks'}]},available).map(item=>item.id),['tasks','notifications']);
+ assert.deepEqual(resolveDashboardWidgetLayout({version:2,items:[{id:'tasks'}],defaultsApplied:['finance-v1']},available).map(item=>item.id),['tasks']);
+ assert.deepEqual(resolveDashboardWidgetLayout({version:2,items:[]},available),[]);
+});
 test('split widgets migrate existing order once and preserve per-user item selection including explicit empty layouts',()=>{
  const available=[{id:'notifications',options:[{id:'unassigned'}]},{id:'suspected-errors',newDefault:true},{id:'work-requests',newDefault:true}];
  const migrated=resolveDashboardWidgetLayout({legacy:true,items:[{id:'production-excess',width:'full'},{id:'notifications'}]},available);

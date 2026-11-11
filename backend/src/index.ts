@@ -1,3 +1,4 @@
+import {registerAccountingAlertRoutes} from './services/accountingAlerts';
 import {workLogStyleOverview} from './services/workLogStyleOverview';
 import {registerDashboardWorkRequestRoutes} from './services/dashboardWorkRequests';
 import {registerTransportExchangeRoutes} from './services/transportExchange';
@@ -19031,6 +19032,7 @@ app.get("/ready", (_req, res) => {
   return res.json({ ok: true, ready: true });
 });
 
+registerAccountingAlertRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerDashboardWorkRequestRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerProductionExcessRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature,loadQuantities:loadStyleGenderQuantityMapForWorkOrderIds,targetForProcess:resolveStyleProcessRowApplicableQuantity});
 registerOrderShipmentRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});

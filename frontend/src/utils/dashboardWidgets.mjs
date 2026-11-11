@@ -13,5 +13,6 @@ export const dashboardWidgetStorageKey=(companyId,userId)=>`dashboard-widgets:v1
 export function resolveDashboardWidgetLayout(savedValue,widgets){
  const rawItems=savedValue?.items;
  const migrated=savedValue?.legacy&&rawItems?.length?[...rawItems.map(item=>item?.id==='production-excess'?{...item,id:'suspected-errors'}:item),...widgets.filter(widget=>widget.newDefault&&!rawItems.some(item=>item?.id===widget.id||widget.id==='suspected-errors'&&item?.id==='production-excess')).map(({id,width='half'})=>({id,width}))]:rawItems;
- return normalizeDashboardWidgets(migrated,widgets);
+ const additions=Array.isArray(migrated)&&migrated.length?widgets.filter(widget=>widget.defaultTag&&!savedValue?.defaultsApplied?.includes(widget.defaultTag)&&!migrated.some(item=>item.id===widget.id)).map(({id,width='half'})=>({id,width})):[];
+ return normalizeDashboardWidgets(Array.isArray(migrated)?[...migrated,...additions]:migrated,widgets);
 }

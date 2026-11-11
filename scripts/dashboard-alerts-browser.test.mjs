@@ -18,6 +18,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/utils/accessControl*',r=>r.fulfill({contentType:'application/javascript',body:'export const canAccessPath=()=>true;'}));
   const json=(r,value)=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:value});
+  await page.route('**/dashboard/accounting-alerts?*',r=>json(r,{rows:[],total:0,page:0}));
   await page.route('**/orders?*',r=>json(r,[{orderId:'new-order',orderNumber:'NEW',hasAssignments:false,workflowStatus:'RECEIVED',productionAssignments:[]},{orderId:'assigned',orderNumber:'ASSIGNED',hasAssignments:true,workflowStatus:'PRODUCTION',productionAssignments:[{id:'plan-1',style:'STYLE',factory:'Factory',missingRecordProcesses:[{processCode:'P1',targetQuantity:10}]}]}]));
   await page.route('**/assignment-board-view?*',r=>json(r,{assignments:[]}));
   await page.route('**/org-memberships?*',r=>json(r,[]));await page.route('**/customers?*',r=>json(r,[]));
