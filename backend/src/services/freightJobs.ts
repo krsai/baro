@@ -42,7 +42,7 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
 export function registerJobRoutes(app:any,db:any,access:any){
  const route=(method:string,path:string,work:any)=>app[method]('/freight/transport-jobs'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any,req:any)=>listFreight(db,orgId,actorId,'jobs',req.query));
- route('get','/options',async({orgId}:any)=>({employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}})}));
+ route('get','/options',async({orgId}:any)=>({forwarder:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true}}),employees:await db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}})}));
  route('get','/:id',({orgId,actorId}:any,req:any)=>jobDetail(db,orgId,actorId,req.params.id));
  const save=async({orgId,actorId}:any,req:any)=>{
   const previous=req.params.id?await job(db,orgId,req.params.id):null;

@@ -26,7 +26,7 @@ try{
    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});
    const p=new URL(req.url()).pathname.split('/freight/')[1];let json;
    if(p==='options')json=[{id:11,code:'BARO',name:'BARO',nameKo:'BARO',address:'Hanoi',contactName:'Customer contact',phone:'+84 111',email:'customer@example.test'}];
-   else if(p==='transport-jobs/options')json={employees:[{id:9,employeeNo:'DEXL0004',name:'DEX operator'}]};
+   else if(p==='transport-jobs/options')json={forwarder:{id:7,code:'DEXL',name:'DEX LOGIS'},employees:[{id:9,employeeNo:'DEXL0004',name:'DEX operator'}]};
    else if(p==='transport-jobs'&&req.method()==='POST'){const v=req.postDataJSON();assert.equal(v.customerId,11);assert.equal(v.masterId,undefined);assert.equal(v.houseNumber,undefined);job={...v,id:'job1',number:'SHP-001',version:1,data:{...v.data,customer:{name:'BARO'}}};json=job;}
    else if(p==='transport-jobs')json={rows:job?[job]:[],total:job?1:0};
    else if(p==='transport-jobs/job1'&&req.method()==='GET')json={...job,bills};
@@ -41,6 +41,15 @@ try{
   await page.getByRole('button',{name:t.new,exact:true}).click();let dialog=page.getByRole('dialog');
   const customer=page.getByRole('textbox',{name:t.customer,exact:true});await customer.fill('BARO');await customer.press('Enter');
   assert.equal(await page.getByRole('dialog').count(),0);
+  assert.equal(await page.getByRole('textbox',{name:e.forwarderCompany,exact:true}).inputValue(),'DEXL / DEX LOGIS');
+  const dateBox=await page.getByLabel(e.plannedDate,{exact:true}).boundingBox();
+  for(const mode of ['AIR','EXPRESS','ROAD','LCL','FCL']){
+   await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:e[mode],exact:true}).click();
+   assert.equal((await page.getByLabel(e.plannedDate,{exact:true}).boundingBox()).y,dateBox.y);
+   assert.equal(await page.getByRole('spinbutton',{name:e.containerCount,exact:true}).count(),mode==='FCL'?1:0);
+  }
+  assert.equal(await page.locator('[data-route-direction]').count(),1);
+  for(const [key,choice] of [['exportCustoms','OUR_SCOPE'],['importCustoms','NOT_OUR_SCOPE']]){await page.getByRole('combobox',{name:e[key],exact:true}).click();await page.getByRole('option',{name:e[choice],exact:true}).click();}
   const r=routeScopeText[lang];await page.getByRole('button',{name:r.consignee,exact:true}).click();
   assert.equal(await page.getByRole('combobox',{name:t.jobType,exact:true}).count(),0);
   assert.equal(await page.getByRole('button',{name:r.all,exact:true}).evaluate(el=>el.classList.contains('MuiButton-contained')),true);
@@ -56,7 +65,7 @@ try{
   await page.getByTestId('freight-party-consignee').getByRole('textbox',{name:e.address,exact:true}).fill('B/L address');
   assert.equal(await page.getByTestId('freight-party-notify').getByRole('textbox',{name:e.address,exact:true}).inputValue(),'B/L address');
   await page.getByLabel(e.plannedDate,{exact:true}).fill('2026-11-15');
-  for(const label of [e.shipper]){const input=page.getByRole('textbox',{name:label,exact:true});await input.fill('BARO');await input.press('Enter');}
+  for(const role of ['shipper']){const input=page.getByTestId('freight-party-'+role).getByRole('textbox',{name:e.name,exact:true});await input.fill('BARO');await input.press('Enter');}
   await page.getByRole('combobox',{name:e.incoterms,exact:true}).click();await page.getByRole('option',{name:'FOB',exact:true}).click();
   await page.getByRole('button',{name:r.all,exact:true}).click();
   const start=page.getByRole('slider',{name:r.start,exact:true});await start.focus();await start.press('ArrowRight');assert.equal(await page.getByRole('checkbox',{name:e.pickupRequired,exact:true}).count(),0);await start.press('ArrowLeft');
@@ -64,13 +73,13 @@ try{
   await page.getByRole('checkbox',{name:e.pickupRequired,exact:true}).check();const pickup=page.getByRole('textbox',{name:r.pickupFrom,exact:true});await pickup.fill('BARO');await pickup.press('Enter');assert.equal(await page.getByRole('textbox',{name:e.pickupAddress,exact:true}).inputValue(),'Hanoi');await page.getByRole('textbox',{name:e.pickupAddress,exact:true}).fill('Separate warehouse');
   await page.getByRole('checkbox',{name:e.dangerousGoods,exact:true}).check();await page.getByRole('textbox',{name:e.dangerousGoodsDetails,exact:true}).fill('UN 1993');
   if(lang==='ko'&&process.env.BARO_FREIGHT_SCREENSHOT){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:process.env.BARO_FREIGHT_SCREENSHOT,fullPage:true});}
-  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(bills.length,0);assert.equal(job.data.shipperId,11);assert.equal(job.data.consigneeId,11);assert.equal(job.data.pickupAddress,'Separate warehouse');assert.equal(job.data.pickupPartyId,11);assert.equal(job.data.dangerousGoods,true);assert.equal(job.data.customerRole,'consignee');assert.equal(job.data.incoterms,'FOB');assert.deepEqual(job.data.workScope,{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'});
+  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(bills.length,0);assert.equal(job.data.shipperId,11);assert.equal(job.data.consigneeId,11);assert.equal(job.data.pickupAddress,'Separate warehouse');assert.equal(job.data.pickupPartyId,11);assert.equal(job.data.dangerousGoods,true);assert.equal(job.data.exportCustoms,'OUR_SCOPE');assert.equal(job.data.importCustoms,'NOT_OUR_SCOPE');assert.equal(job.data.customerRole,'consignee');assert.equal(job.data.incoterms,'FOB');assert.deepEqual(job.data.workScope,{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'});
   const add=async(kind,number)=>{await page.getByRole('button',{name:kind==='MASTER'?t.addMaster:t.addHouse,exact:true}).click();await dialog.getByRole('textbox',{name:t.billNumber,exact:true}).fill(number);await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});await page.getByText(number,{exact:true}).waitFor();};
   await add('HOUSE','H-001');await add('MASTER','M-001');await add('MASTER','M-002');await add('HOUSE','H-002');
   const house=bills.find(b=>b.number==='H-001');await page.locator(`[data-bill-id="${house.id}"]`).getByRole('button',{name:t.edit,exact:true}).click();
   await dialog.locator('#job-bill-master').click();await page.getByRole('option',{name:'M-001',exact:true}).click();await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(bills.find(b=>b.id===house.id).masterId,bills.find(b=>b.number==='M-001').id);
   await page.locator(`[data-bill-id="${house.id}"]`).getByRole('button',{name:t.edit,exact:true}).click();await dialog.locator('#job-bill-master').click();await page.getByRole('option',{name:t.unlink,exact:true}).click();await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(bills.find(b=>b.id===house.id).masterId,null);
-  await page.getByRole('button',{name:t.edit,exact:true}).first().click();await page.setViewportSize({width:390,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:t.AIR,exact:true}).click();await page.getByRole('button',{name:r.main,exact:true}).click();await page.getByTestId('freight-route-scope').getByText(r.originAirport,{exact:true}).waitFor();await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:t.ROAD,exact:true}).click();await page.getByRole('button',{name:r.all,exact:true}).click();assert.equal(await page.getByRole('slider',{name:r.end,exact:true}).getAttribute('aria-valuemax'),'1');await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:t.SEA,exact:true}).click();await page.getByRole('button',{name:r.all,exact:true}).click();await page.getByRole('textbox',{name:t.origin,exact:true}).fill('Hanoi');await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(job.data.origin,'Hanoi');
+  await page.getByRole('button',{name:t.edit,exact:true}).first().click();await page.setViewportSize({width:390,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:e.AIR,exact:true}).click();await page.getByRole('button',{name:r.main,exact:true}).click();await page.getByTestId('freight-route-scope').getByText(r.originAirport,{exact:true}).waitFor();await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:e.ROAD,exact:true}).click();await page.getByRole('button',{name:r.all,exact:true}).click();assert.equal(await page.getByRole('slider',{name:r.end,exact:true}).getAttribute('aria-valuemax'),'1');await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:e.FCL,exact:true}).click();await page.getByRole('button',{name:r.all,exact:true}).click();await page.getByRole('textbox',{name:t.origin,exact:true}).fill('Hanoi');await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(job.data.origin,'Hanoi');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: minimal job creation, multiple BLs, delayed Master linkage, unlinking, job edit; ko/en/vi.');

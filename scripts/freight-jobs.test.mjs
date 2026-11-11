@@ -9,9 +9,10 @@ const require=createRequire(import.meta.url),{saveFreight,freightDetail,issueFre
 test('job registration validates scoped parties, preserves cargo details and starts received without BLs',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
-  const routes=new Map();require('../backend/dist/services/freightJobs').registerJobRoutes({get:()=>{},post:(path,fn)=>routes.set(path,fn),put:()=>{},delete:()=>{}},db,async()=>({orgId:org,actorId:actor}));
+  const routes=new Map();require('../backend/dist/services/freightJobs').registerJobRoutes({get:(path,fn)=>routes.set(path,fn),post:(path,fn)=>routes.set(path,fn),put:()=>{},delete:()=>{}},db,async()=>({orgId:org,actorId:actor}));
   const create=async body=>{let value;await routes.get('/freight/transport-jobs')({params:{},body},{json:row=>{value=row;}});return value;};
-  const body={clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',status:'DELIVERED',data:{customerRole:'shipper',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},billTo:'Destination forwarder',shipperId:s.vendor.id,consigneeId:s.vendor.id,shipmentType:'FCL',incoterms:'FOB Hai Phong',cargo:'Garments',quantity:'20',weightKg:'250.5',cbm:'4.25',containerType:'40HC',containerCount:'2',pickupRequired:true,pickupAddress:'Separate warehouse',dangerousGoods:true,dangerousGoodsDetails:'UN 1993'}};
+  let options;await routes.get('/freight/transport-jobs/options')({},{json:value=>{options=value;}});assert.equal(options.forwarder.id,org);assert.ok(options.employees.some(row=>row.id===actor));assert.equal(options.employees.length,await db.employee.count({where:{orgId:org,status:'ACTIVE'}}));
+  const body={clientKey:randomUUID(),customerId:s.vendor.id,mode:'SEA',status:'DELIVERED',data:{customerRole:'shipper',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},exportCustoms:'OUR_SCOPE',importCustoms:'NOT_OUR_SCOPE',billTo:'Destination forwarder',shipperId:s.vendor.id,consigneeId:s.vendor.id,shipmentType:'FCL',incoterms:'FOB Hai Phong',cargo:'Garments',quantity:'20',weightKg:'250.5',cbm:'4.25',containerType:'40HC',containerCount:'2',pickupRequired:true,pickupAddress:'Separate warehouse',dangerousGoods:true,dangerousGoodsDetails:'UN 1993'}};
   await assert.rejects(create({...body,data:{...body.data,shipperId:null}}),/FREIGHT_PARTIES_REQUIRED/);
   await assert.rejects(create({...body,data:{...body.data,consigneeId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
   await assert.rejects(create({...body,data:{...body.data,shipmentType:'AIR'}}),/FREIGHT_INVALID_INPUT/);
@@ -20,7 +21,8 @@ test('job registration validates scoped parties, preserves cargo details and sta
   await assert.rejects(create({...body,data:{...body.data,workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'}}}),/FREIGHT_PICKUP_REQUIRED/);
   await assert.rejects(create({...body,data:{...body.data,pickupAddress:''}}),/FREIGHT_PICKUP_REQUIRED/);
   await assert.rejects(create({...body,data:{...body.data,pickupPartyId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
-  const saved=await create(body);assert.deepEqual(saved.data.workScope,body.data.workScope);assert.equal(saved.data.billTo,'Destination forwarder');assert.equal(saved.data.incoterms,'FOB Hai Phong');assert.equal(saved.status,'DRAFT');assert.equal(saved.data.shipperParty.id,s.vendor.id);assert.equal(saved.data.pickupAddress,'Separate warehouse');assert.equal(saved.data.cbm,'4.25');assert.equal(saved.data.containerCount,'2');assert.equal(saved.data.dangerousGoods,true);assert.equal((await jobDetail(db,org,actor,saved.id)).bills.length,0);
+  await assert.rejects(create({...body,data:{...body.data,exportCustoms:'INVALID'}}),/FREIGHT_INVALID_INPUT/);
+  const saved=await create(body);assert.equal(saved.data.exportCustoms,'OUR_SCOPE');assert.equal(saved.data.importCustoms,'NOT_OUR_SCOPE');assert.deepEqual(saved.data.workScope,body.data.workScope);assert.equal(saved.data.billTo,'Destination forwarder');assert.equal(saved.data.incoterms,'FOB Hai Phong');assert.equal(saved.status,'DRAFT');assert.equal(saved.data.shipperParty.id,s.vendor.id);assert.equal(saved.data.pickupAddress,'Separate warehouse');assert.equal(saved.data.cbm,'4.25');assert.equal(saved.data.containerCount,'2');assert.equal(saved.data.dangerousGoods,true);assert.equal((await jobDetail(db,org,actor,saved.id)).bills.length,0);
   assert.equal((await create(body)).id,saved.id,'retry does not create another job');
   const receiver=await db.organization.create({data:{name:'Receiver',type:'BRAND',ownerOrgId:org}});
   await assert.rejects(create({...body,clientKey:randomUUID(),data:{...body.data,customerRole:'consignee',consigneeId:receiver.id}}),/FREIGHT_CUSTOMER_ROLE/);
@@ -41,6 +43,7 @@ test('job registration validates scoped parties, preserves cargo details and sta
   assert.equal(document.snapshot.source.data.notify,same.data.consignee);
   await assert.rejects(create({...body,clientKey:randomUUID(),data:{...body.data,notifySameAsConsignee:true,consigneeId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
   await assert.rejects(create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_DOOR'}}}),/FREIGHT_INVALID_INPUT/);
+  const express=await create({...body,clientKey:randomUUID(),mode:'AIR',service:'EXPRESS',data:{...body.data,shipmentType:'AIR'}});assert.equal(express.mode,'AIR');assert.equal(express.service,'EXPRESS');
   const road=await create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}});assert.equal(road.mode,'ROAD');
  }finally{await f.close();}
 });

@@ -27,7 +27,7 @@ function Jobs({orgId}){
  const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
  const api=useCallback((path='',method='GET',body,query={})=>requestJSON('/freight/transport-jobs'+path+buildQueryString({orgId,...query}),{method,skipCache:true,...(body?{body:JSON.stringify(body)}:{})}),[orgId]);
  const message=e=>e.message==='FREIGHT_MASTER_HAS_HOUSES'?t.hasHouses:e.message==='FREIGHT_MASTER_SCOPE'?t.scope:e.message==='FREIGHT_CHANGED'?t.conflict:t.failed;
- useEffect(()=>{let live=true;Promise.all([requestJSON('/freight/options'+buildQueryString({orgId}),{skipCache:true}),api('/options')]).then(([customers,value])=>live&&setOptions({customers,employees:value.employees})).catch(e=>live&&setError(message(e)));return()=>{live=false;};},[api]);
+ useEffect(()=>{let live=true;Promise.all([requestJSON('/freight/options'+buildQueryString({orgId}),{skipCache:true}),api('/options')]).then(([customers,value])=>live&&setOptions({customers,employees:value.employees,forwarder:value.forwarder})).catch(e=>live&&setError(message(e)));return()=>{live=false;};},[api]);
  useEffect(()=>{let live=true;setError('');setDetail(null);const timer=setTimeout(()=>{(id?api('/'+id):api('', 'GET',null,{search,offset})).then(value=>{if(!live)return;if(id)setDetail(value);else{setRows(value.rows);setTotal(value.total);}}).catch(e=>live&&setError(message(e)));},150);return()=>{live=false;clearTimeout(timer);};},[api,id,search,offset,reload]);
  const go=value=>setParams(value?{id:value}:{});
  useShippingRefresh({orgId,blocked:!!edit||!!bill||busy,onRefresh:()=>setReload(value=>value+1)});
