@@ -44,7 +44,8 @@ export const validateEmployeePayTypePolicy = (input: any) => {
   return Array.isArray(input?.workWeekdays) && normalized.workWeekdays.length > 0
     && TIME_PATTERN.test(String(input?.standardClockIn || "")) && TIME_PATTERN.test(String(input?.standardClockOut || ""))
     && Number.isInteger(breakMinutes) && breakMinutes >= 0 && breakMinutes <= 720
-    && Number.isInteger(workdayMinimumMinutes) && workdayMinimumMinutes >= 1 && workdayMinimumMinutes <= normalized.standardWorkMinutes;
+    && Number.isInteger(workdayMinimumMinutes) && workdayMinimumMinutes >= 1 && workdayMinimumMinutes <= 1440
+    && ((timeToMinutes(normalized.standardClockOut)-timeToMinutes(normalized.standardClockIn)+1440)%1440||1440)>breakMinutes;
 };
 
 export const loadEmployeePayTypePolicies = async (orgId: number) => {

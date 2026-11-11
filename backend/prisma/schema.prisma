@@ -391,6 +391,7 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  workTimeRequests WorkTimeRequest[]
   payrollPayableDocuments PayrollPayableDocument[]
   accountingOpenings AccountingOpeningItem[] @relation("OpeningCompany")
   partyOpenings AccountingOpeningItem[] @relation("OpeningParty")
@@ -1012,6 +1013,10 @@ model Warehouse {
 
 
 model Employee {
+  workTimeRequests WorkTimeRequest[] @relation("WorkTimeSubject")
+  draftedWorkTimeRequests WorkTimeRequest[] @relation("WorkTimeDrafter")
+  workTimeSteps WorkTimeStep[]
+  workTimeDecisions WorkTimeDecision[]
   payrollPayableItems PayrollPayableItem[] @relation("PayrollPayee")
   createdPayrollPayableDocuments PayrollPayableDocument[] @relation("PayrollDocumentActor")
   createdPayrollPayableItems PayrollPayableItem[] @relation("PayrollItemActor")
@@ -3481,4 +3486,73 @@ model DashboardWorkRequestEvent {
  request DashboardWorkRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"DashboardWorkRequestEvent_request_scope_fkey")
  actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"DashboardWorkRequestEvent_actor_scope_fkey")
  @@unique([requestId,version],map:"DashboardWorkRequestEvent_revision_key")
+}
+
+model WorkTimeRequest {
+ id String @id @default(uuid())
+ orgId Int
+ employeeId Int
+ drafterId Int
+ kind String
+ startDate String
+ endDate String
+ startTime String?
+ endTime String?
+ requestedMinutes Int?
+ approvedMinutes Int?
+ reason String
+ status String @default("PENDING")
+ revision Int @default(0)
+ policy Json
+ clientKey String
+ requestHash String
+ cancelsRequestId String?
+ createdAt DateTime @default(now())
+ decidedAt DateTime?
+ organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict)
+ employee Employee @relation("WorkTimeSubject",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeRequest_employee_fkey")
+ drafter Employee @relation("WorkTimeDrafter",fields:[drafterId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeRequest_drafter_fkey")
+ original WorkTimeRequest? @relation("WorkTimeCancellation",fields:[cancelsRequestId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeRequest_original_fkey")
+ cancellations WorkTimeRequest[] @relation("WorkTimeCancellation")
+ days WorkTimeDay[]
+ steps WorkTimeStep[]
+ decisions WorkTimeDecision[]
+ @@unique([id,orgId])
+ @@unique([orgId,clientKey])
+ @@index([orgId,startDate])
+}
+model WorkTimeDay {
+ id String @id @default(uuid())
+ orgId Int
+ requestId String
+ workDate String
+ portion Decimal @db.Decimal(3,2)
+ request WorkTimeRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeDay_request_fkey")
+ @@unique([requestId,workDate])
+ @@index([orgId,workDate])
+}
+model WorkTimeStep {
+ id String @id @default(uuid())
+ orgId Int
+ requestId String
+ position Int
+ employeeId Int
+ role String
+ request WorkTimeRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeStep_request_fkey")
+ employee Employee @relation(fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeStep_employee_fkey")
+ @@unique([requestId,position])
+ @@unique([requestId,employeeId])
+}
+model WorkTimeDecision {
+ id String @id @default(uuid())
+ orgId Int
+ requestId String
+ position Int
+ actorId Int
+ decision String
+ reason String?
+ createdAt DateTime @default(now())
+ request WorkTimeRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeDecision_request_fkey")
+ actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeDecision_actor_fkey")
+ @@unique([requestId,position])
 }

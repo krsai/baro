@@ -1,3 +1,4 @@
+import {workTimeText} from '../../../constants/workTime';
 import {payrollPayableMessage} from '../../../constants/payrollPayable';
 import {formatCurrency} from '../../../utils/currencyFormat';
 import dayjs from 'dayjs';
@@ -505,6 +506,7 @@ const PayrollBoard = () => {
                         ? (languageCode === 'ko' ? `해당 월의 ${missingSources.join(' · ')}이 없습니다.` : languageCode === 'vi' ? `Không có dữ liệu trong tháng: ${missingSources.join(' · ')}` : `No records for this month: ${missingSources.join(' · ')}`)
                         : '');
                       const rowNeedsRecalculation = Boolean(snapshot && readinessByKey[key]?.needsRecalculation);
+                      const lockedBasisChanged=readinessByKey[key]?.lockedBasisChanged;
                       const invalidAttendanceCount = Array.isArray(readinessByKey[key]?.invalidPayrollAttendance)
                         ? readinessByKey[key].invalidPayrollAttendance.length : 0;
                       const snapshotEmployees = Array.isArray(snapshot?.data) ? snapshot.data : [];
@@ -532,12 +534,12 @@ const PayrollBoard = () => {
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary', fontWeight: 700 }}>{snapshot ? totalPayroll || '-' : payrollSummaryText.pending}</TableCell>
                           <TableCell align="center">
                             <Stack direction="row" spacing={0.75} justifyContent="center" alignItems="center">
-                              <Tooltip title={readinessDescription}><Chip
+                              <Tooltip title={lockedBasisChanged?(workTimeText[languageCode]||workTimeText.en).locked:readinessDescription}><Chip
                                 size="small"
-                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation ? 'warning' : 'success'}
+                                color={invalidAttendanceCount > 0 || readiness?.error ? 'error' : incomplete ? 'warning' : !snapshot ? 'default' : rowNeedsRecalculation||lockedBasisChanged ? 'warning' : 'success'}
                                 label={invalidAttendanceCount > 0
                                   ? (languageCode === 'ko' ? `출퇴근 공장 오류 ${invalidAttendanceCount}건` : languageCode === 'vi' ? `Lỗi nhà máy chấm công ${invalidAttendanceCount}` : `Attendance factory errors: ${invalidAttendanceCount}`)
-                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : payrollStatusText.calculated}
+                                  : readiness?.error ? resolveText(languageCode, 'fetchError') : incomplete ? resolveText(languageCode, 'incomplete') : !snapshot ? payrollStatusText.notCalculated : rowNeedsRecalculation ? payrollStatusText.recalculationRequired : lockedBasisChanged ? (workTimeText[languageCode]||workTimeText.en).lockedChanged : payrollStatusText.calculated}
                                 variant="outlined"
                               /></Tooltip>
                             </Stack>

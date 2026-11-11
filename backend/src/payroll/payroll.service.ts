@@ -1,3 +1,4 @@
+import {approvedWorkTime} from '../services/workTimeRequests';
 import {loadPayrollLeaves} from '../employees/employeeLeave';
 import {salaryMonthCalendar} from '../employees/salaryMonthCalendar';
 import {companySalaryCalendar} from '../employees/companySalaryCalendar';
@@ -356,7 +357,8 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     loadEmployeePayTypePolicies(orgId),
   ]);
   const leaveDays=await loadPayrollLeaves(prisma,orgId,month);
-  const excusedKeys=new Set(leaveDays.map((row:any)=>row.employeeId+':'+row.leaveDate));
+  const leavePortions=new Map<string,number>();for(const row of leaveDays){const key=row.employeeId+':'+row.leaveDate;leavePortions.set(key,(leavePortions.get(key)||0)+(row.portion??1));}
+  const excusedKeys=new Set([...leavePortions].filter(([,portion])=>portion>=1).map(([key])=>key));
   const expectsAttendance=(employee:any,dateKey:string)=>employeeExpectedOnDate(employee,dateKey)&&!excusedKeys.has(employee.id+':'+dateKey);
   const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
 
@@ -589,18 +591,19 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
       ),
     };
   });
-  const needsRecalculation = Boolean(
+  const needsRecalculation = Boolean(snapshot?.isProvisional && (
     snapshot?.recalculationRequested ||
     salaryCalculationChanged ||
     snapshot && attendanceEntries.some(entry => [entry.createdAt, entry.updatedAt].some(changedAt => new Date(changedAt).getTime() > snapshot.lockedAt.getTime())) ||
     groupsWithRecalculation.some((group) => group.needsRecalculation)
-  );
+  ));
 
   return {
     month,
     completedMonth,
     snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
     needsRecalculation,
+    lockedBasisChanged:Boolean(snapshot&&!snapshot.isProvisional&&salaryCalculationChanged),
     salaryCalculationError,
     recalculationReasons: needsRecalculation ? [...new Set([snapshot?.recalculationRequested&&'REQUESTED',salaryCalculationError&&'CALCULATION_ERROR',salaryCalculationChanged&&'SALARY_BASIS_CHANGED',snapshot&&attendanceEntries.some(entry=>[entry.createdAt,entry.updatedAt].some(value=>new Date(value).getTime()>snapshot.lockedAt.getTime()))&&'ATTENDANCE_CHANGED',...groupsWithRecalculation.flatMap(group=>group.recalculationReasons)].filter(Boolean))] : [],
     attendanceRequiredCount: requiredAttendance.length,
@@ -658,7 +661,8 @@ const buildIntegratedPayrollEmployees = async (
     }),
     loadEmployeePayTypePolicies(orgId),
   ]);
-  const leaveEntries=await loadPayrollLeaves(prisma,orgId,month);
+  const approvals=await approvedWorkTime(prisma,orgId,month);
+  const leaveEntries=approvals.filter((row:any)=>!['OVERTIME','SPECIAL'].includes(row.kind)).map((row:any)=>({...row,leaveDate:row.workDate}));
   const payTypePolicyByType = employeePayTypePolicyMap(payTypePolicies);
   const holidayDateKeys = new Set(holidays.map((row) => String(row.holidayDate)));
   const attendanceByWorker = new Map<number, any[]>();
@@ -709,33 +713,13 @@ const buildIntegratedPayrollEmployees = async (
       }
       const workerAttendance = allWorkerAttendance;
       const alwaysFullAttendance = Boolean(employee.alwaysFullAttendance);
-      const attendanceParameters = resolveSalaryAttendanceParameters({ month, payType, holidayDateKeys: holidays, attendanceEntries: workerAttendance, policy: payTypePolicy, alwaysFullAttendance, employmentStart: employee.joinedAt ? new Date(employee.joinedAt).toISOString().slice(0,10) : null, employmentEnd: employee.leftAt ? new Date(employee.leftAt).toISOString().slice(0,10) : null, leaveEntries:leaveEntries.filter((row:any)=>row.employeeId===employee.id) });
+      const workerApprovals=approvals.filter((row:any)=>row.employeeId===employee.id);
+      const attendanceParameters = resolveSalaryAttendanceParameters({ approvedWork:workerApprovals, month, payType, holidayDateKeys: holidays, attendanceEntries: workerAttendance, policy: payTypePolicy, alwaysFullAttendance, employmentStart: employee.joinedAt ? new Date(employee.joinedAt).toISOString().slice(0,10) : null, employmentEnd: employee.leftAt ? new Date(employee.leftAt).toISOString().slice(0,10) : null, leaveEntries:leaveEntries.filter((row:any)=>row.employeeId===employee.id) });
       if(attendanceParameters.LEAVE_CONFLICT_DAYS)throw createHttpError(409,`LEAVE_ATTENDANCE_CONFLICT: employee ${employee.id}`);
-      let regularSeconds = 0;
-      let overtimeSeconds = 0;
-      let holidaySeconds = 0;
-      const workedSecondsByDate = new Map<string, number>();
-      for (const entry of workerAttendance) {
-        const dateKey = String(entry.workDate || "");
-        workedSecondsByDate.set(dateKey, (workedSecondsByDate.get(dateKey) || 0) + Math.max(0, Number(entry.workedSeconds) || 0));
-      }
-      for (const [dateKey, seconds] of workedSecondsByDate) {
-        const isHoliday = holidayDateKeys.has(dateKey) || !isPolicyWorkday(dateKey, payTypePolicy);
-        if (isHoliday) holidaySeconds += seconds;
-        else {
-          const standardSeconds = payTypePolicy.standardWorkMinutes * 60;
-          regularSeconds += Math.min(seconds, standardSeconds);
-          overtimeSeconds += Math.max(0, seconds - standardSeconds);
-        }
-      }
-      if (alwaysFullAttendance) {
-        // 실제 출퇴근 기록이 없어도 기준 근무일수만큼 정규 근무시간을 인정한다.
-        // 연장근무는 실제 기록이 있어야만 인정되므로 여기서는 만들어내지 않는다.
-        regularSeconds = (attendanceParameters.REQUIRED_WORKDAYS-attendanceParameters.PAID_LEAVE_WORKDAYS-attendanceParameters.UNPAID_LEAVE_WORKDAYS) * payTypePolicy.standardWorkMinutes * 60;
-        overtimeSeconds = 0;
-      }
-      // 만 근속연수(정수)다. 근속수당처럼 "만 1년을 채워야 그 해분을 지급한다"는
-      // 항목이 소수 연차로 일부 지급되지 않도록 절사한다. 예: 11개월째는 0년,
+      const regularSeconds=attendanceParameters.ACTUAL_WORKDAYS*payTypePolicy.standardWorkMinutes*60;
+      const overtimeSeconds=workerApprovals.filter((row:any)=>row.kind==='OVERTIME').reduce((sum:number,row:any)=>sum+row.approvedMinutes*60,0);
+      const holidaySeconds=workerApprovals.filter((row:any)=>row.kind==='SPECIAL').reduce((sum:number,row:any)=>sum+row.approvedMinutes*60,0);
+      // 근속수당 항목이 소수 연차로 일부 지급되지 않도록 절사한다. 예: 11개월째는 0년,
       // 만 1년을 채우면 1년이다.
       const production = productionByWorkerId.get(employee.id);
       const productionAllowance = payType === EMPLOYEE_PAY_TYPE.OUTPUT
@@ -849,6 +833,7 @@ const buildIntegratedPayrollEmployees = async (
         items: salaryItems.map((item) => [item.code, item.amount]),
         parameters,
         payTypePolicy,
+        approvedWork:workerApprovals,
       });
       return normalizePayrollSnapshotEmployee({
         ...(production || {}),

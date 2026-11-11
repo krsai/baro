@@ -16,15 +16,15 @@ const {createServiceCompany}=require('../backend/dist/services/companyWorkspaces
 test('service company common functions and hard production boundary agree on client/server',()=>{
  assert.deepEqual(SERVICE_ROLE_DEFAULTS,server.SERVICE_ROLE_DEFAULTS);assert.deepEqual(SERVICE_FEATURES,server.SERVICE_FEATURES);
  const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:'ADMIN',accessPolicy:getDefaultRoleAccessPolicy()}};
- for(const path of ['/employee','/attendance','/holiday','/payroll','/business-partner','/bank-ledger','/account-overview','/outsourcing-record','/approval-settings','/employee-system','/salary-system','/business','/personal-settings'])assert.equal(canAccessPath(path,state),true,path);
+ for(const path of ['/work-time','/invoices','/employee','/attendance','/holiday','/payroll','/business-partner','/bank-ledger','/account-overview','/outsourcing-record','/approval-settings','/employee-system','/salary-system','/business','/personal-settings'])assert.equal(canAccessPath(path,state),true,path);
  state.accessProfile.accessPolicy.SERVICE.ADMIN.push('ORDER','STYLE','INVENTORY','ASSIGNMENT','INVOICE');
- for(const path of ['/order','/style','/inventory/stock','/assignment','/invoices','/work-history','/production-analysis'])assert.equal(canAccessPath(path,state),false,path);
+ for(const path of ['/order','/style','/inventory/stock','/assignment','/work-history','/production-analysis'])assert.equal(canAccessPath(path,state),false,path);
  assert.equal(server.supportsWorkplaces({type:'SERVICE'}),true);assert.equal(server.supportsWorkplaces({type:'BRAND'}),false);
 });
 test('only the complete historical banking starter policy upgrades; saved custom denials survive',()=>{
  const old={ADMIN:['BANK_LEDGER'],ACCOUNTANT:['BANK_LEDGER'],OPERATOR:[],WORKER:[]};
  assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:old}).SERVICE,SERVICE_ROLE_DEFAULTS);
- const custom={...old,ACCOUNTANT:[]};assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:custom}).SERVICE,{...custom,ADMIN:['BANK_LEDGER','ACCOUNT_OVERVIEW','FREIGHT']});
+ const custom={...old,ACCOUNTANT:[]};assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:13,SERVICE:custom}).SERVICE,{...custom,ADMIN:['BANK_LEDGER','WORK_TIME','ACCOUNT_OVERVIEW','FREIGHT'],ACCOUNTANT:['WORK_TIME'],OPERATOR:['WORK_TIME'],WORKER:['WORK_TIME']});
  assert.deepEqual(sanitizeRoleAccessPolicy({__schemaVersion:ROLE_ACCESS_POLICY_SCHEMA_VERSION,SERVICE:old}).SERVICE,old);
  assert.equal(workplaceText('공장 선택','SERVICE'),'사업장 선택');assert.equal(workplaceText('Select Factory','SERVICE'),'Select Workplace');assert.equal(workplaceText('Chọn nhà máy','SERVICE'),'Chọn nơi làm việc');assert.equal(workplaceText('Factory','MANUFACTURER'),'Factory');
 });
@@ -41,7 +41,7 @@ test('service expense codes retain transport requirements without manufacturing 
  assert.equal(resolved.linkTarget,'NONE');assert.equal(resolved.base.entryMode,'GENERAL');
  for(const key of ['orderInput','styleInput','processInput'])assert.equal(resolved.base[key],'HIDDEN');
  assert.deepEqual(resolved.base.requiredFields,['transportDate','origin','reference']);assert.equal(effectiveExpenseCode(code).base.entryMode,'PROCESS');
- const retained=await resolveExpenseCodeLink({},2,code,{cost:{linkTarget:'PROCESS',styleProcessId:5}},'SERVICE');assert.equal(retained.linkTarget,'PROCESS');
+ const retained=await resolveExpenseCodeLink({expenseCodeLinkPolicy:{findUnique:async()=>null}},2,code,{cost:{linkTarget:'PROCESS',styleProcessId:5}},'SERVICE');assert.equal(retained.linkTarget,'PROCESS');
 });
 test('grade template uses new company FKs and copies definitions without people or salary amounts',async()=>{
  const writes=[],sourceGrade={id:10,code:'STAFF',name:'Staff',nameKo:'직원',nameEn:'Staff',nameVi:'Nhân viên',sortOrder:0,isActive:true,isDefault:true};
@@ -85,7 +85,7 @@ test('service salary setup and save use general pay without manufacturing allowa
  const db={factory:{findFirst:async()=>({id:20,salaryCurrency:{code:'VND'},organization:{salaryCurrency:{code:'VND'}}}),update:async()=>{}},employeeCompensationPolicy:{findMany:async()=>[]},employeeGrade:{findMany:async()=>[]},currency:{findUnique:async()=>({id:1})},salaryItem:{findFirst:async()=>items[0]||null,findMany:async()=>items,create:async({data})=>{const row={id:items.length+1,...data};items.push(row);writes.push(row);return row;},upsert:async({where,update})=>{const row=items.find(item=>item.code===where.factoryId_code.code);Object.assign(row,update);return row;},updateMany:async()=>{}},salaryItemRate:{findMany:async()=>[],deleteMany:async()=>{}},salarySystemVersion:{findFirst:async()=>versions[0]||null,findMany:async()=>versions,create:async({data})=>versions.push({id:1,confirmedDate:new Date(),...data})},$transaction:async fn=>fn(db)};
  const router={get:(path,fn)=>routes.set('get:'+path,fn),put:(path,fn)=>routes.set('put:'+path,fn),post:(path,fn)=>routes.set('post:'+path,fn)};
  const localized=require('../backend/dist/utils/localizedName.js'),{validateSalaryFormula}=require('../backend/dist/employees/salaryFormula.js');
- const {createSalarySystemRouter}=loadSourceBindings('backend/src/employees/salarySystem.routes.ts',['createSalarySystemRouter','PAY_TYPES','PAYMENT_MONTHS_BY_CYCLE','toJsonSnapshot'],{...localized,Router:()=>router,prisma:db,getOrganizationByQuery:async()=>({id:2,type:'SERVICE'}),getRequesterEmail:()=> 'krsailer82@gmail.com',defaultVersionStartMonth:()=> '2026-11',normalizeCurrencyCode:value=>value,editRevision:()=> 'r1',assertEditRevision:expected=>assert.equal(expected,'r1'),editTransaction:async(_db,fn)=>fn(db),validateSalaryFormula});
+ const {createSalarySystemRouter}=loadSourceBindings('backend/src/employees/salarySystem.routes.ts',['createSalarySystemRouter','PAY_TYPES','PAYMENT_MONTHS_BY_CYCLE','toJsonSnapshot'],{...require('../backend/dist/employees/calendarSalaryFormula.js'),...localized,Router:()=>router,prisma:db,getOrganizationByQuery:async()=>({id:2,type:'SERVICE'}),getRequesterEmail:()=> 'krsailer82@gmail.com',defaultVersionStartMonth:()=> '2026-11',normalizeCurrencyCode:value=>value,editRevision:()=> 'r1',assertEditRevision:expected=>assert.equal(expected,'r1'),editTransaction:async(_db,fn)=>fn(db),validateSalaryFormula});
  createSalarySystemRouter({requireSalarySystemManager:async()=>true});
  const response=()=>({statusCode:200,status(code){this.statusCode=code;return this;},json(body){this.body=body;return this;}});
  let res=response();await routes.get('get:/salary-system')({query:{factoryId:'20'}},res);assert.equal(res.statusCode,200);assert.equal(items.length,2);assert.ok(items.every(row=>row.category!=='INCENTIVE'&&JSON.stringify(row.payTypes)==='["GENERAL"]'));assert.ok(writes.every(row=>!JSON.stringify(row.formula).includes('PRODUCTION')));

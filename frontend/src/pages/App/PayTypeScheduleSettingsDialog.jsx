@@ -1,3 +1,4 @@
+import {workTimeText} from '../../constants/workTime';
 import {useAuth} from '../../context/AuthContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useEffect, useState } from 'react';
@@ -50,7 +51,7 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
 
   const dirty = baseline !== '' && policySignature(policies) !== baseline;
   useUnsavedChanges(open && dirty);
-  const valid = policies.length === 3 && policies.every((row) => row.workWeekdays.length && dailyMinutes(row) > 0 && Number(row.workdayMinimumHours) > 0 && Number(row.workdayMinimumHours) * 60 <= dailyMinutes(row));
+  const valid = policies.length === 3 && policies.every((row) => row.workWeekdays.length && dailyMinutes(row) > 0);
   const editPolicy = (type, key, value) => setPolicies((rows) => rows.map((row) => row.payType === type ? { ...row, [key]: value } : row));
   const setWeekdays = (type, days) => setPolicies((rows) => rows.map((row) => row.payType === type ? { ...row, workWeekdays: [...days].map(Number).sort((a, b) => a - b) } : row));
 
@@ -74,7 +75,7 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
     <DialogTitle>{text.title}</DialogTitle>
     <DialogContent dividers sx={{ bgcolor: 'grey.50' }}>
       <Stack spacing={2}>
-        <Typography variant="body2" color="text.secondary">{text.help}</Typography>
+        <Typography variant="body2" color="text.secondary">{(workTimeText[languageCode]||workTimeText.en).rules}</Typography>
         {policies.filter(row=>!isService||row.payType==='GENERAL').map((row) => {
           const palette = LABEL_PALETTE[PAY_TYPE_PALETTE[row.payType]] || LABEL_PALETTE.blue;
           const hours = dailyMinutes(row) / 60;
@@ -116,11 +117,10 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
               })}
             </ToggleButtonGroup>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, minmax(130px, 1fr))' }, gap: 1.25 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(3, minmax(130px, 1fr))' }, gap: 1.25 }}>
               <CustomTimePicker languageCode={languageCode} size="small" label={text.clockIn} value={row.standardClockIn} onChange={(event) => editPolicy(row.payType, 'standardClockIn', event.target.value)} InputLabelProps={{ shrink: true }} />
               <CustomTimePicker languageCode={languageCode} size="small" label={text.clockOut} value={row.standardClockOut} onChange={(event) => editPolicy(row.payType, 'standardClockOut', event.target.value)} InputLabelProps={{ shrink: true }} />
               <TextField size="small" type="number" label={text.breakTime} value={row.breakMinutes} onChange={(event) => editPolicy(row.payType, 'breakMinutes', event.target.value)} InputLabelProps={{ shrink: true }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5, whiteSpace: 'nowrap' }}>{text.minutes}</Typography> }} />
-              <TextField size="small" type="number" label={text.minimum} value={row.workdayMinimumHours} onChange={(event) => editPolicy(row.payType, 'workdayMinimumHours', event.target.value)} inputProps={{ min: .5, step: .5 }} InputLabelProps={{ shrink: true }} InputProps={{ endAdornment: <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5, whiteSpace: 'nowrap' }}>{text.hours}</Typography> }} />
             </Box>
           </Paper>;
         })}

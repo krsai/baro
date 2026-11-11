@@ -101,7 +101,8 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   const section=src.slice(src.indexOf('const buildIntegratedPayrollEmployees ='),src.indexOf('export const listPayrollSnapshots'));
   const employees=[{...employee,payType:'GENERAL',joinedAt:'2025-07-02'},{...employee,id:2,payType:'GENERAL',joinedAt:'2024-01-01'}];
   const prisma={employee:{findMany:async()=>employees},attendanceEntry:{findMany:async()=>[]},organizationHoliday:{findMany:async()=>[]},factory:{findMany:async()=>[factory]}};
-  const deps={loadPayrollLeaves:async()=>[],...require('../backend/dist/employees/calendarSalaryFormula.js'),...comp,...policy,...attendance,...formula,...tenure,...management,...common,...service,prisma,resolveNextPaymentMonthKey:nextPayment,
+  let approvedRows=[];
+  const deps={approvedWorkTime:async()=>approvedRows,loadPayrollLeaves:async()=>[],...require('../backend/dist/employees/calendarSalaryFormula.js'),...comp,...policy,...attendance,...formula,...tenure,...management,...common,...service,prisma,resolveNextPaymentMonthKey:nextPayment,
     loadManagementPeriod:async()=>({startDate:'2020-01-01'}),loadEmployeePayTypePolicies:async()=>[],
     employeePayTypePolicyMap:()=>new Map(['GENERAL','OUTPUT_FIXED','OUTPUT'].map(type=>[type,policy.normalizeEmployeePayTypePolicy(null,type)])),
     getPayrollMonthRange:month=>({start:new Date(`${month}-01T00:00:00Z`),endExclusive:new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),1))}),
@@ -114,6 +115,15 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   const eligible=result.find(row=>row.workerId===2);
   assert.equal(eligible.parameters.TENURE_YEARS,2,'January 2024 to December 2026 has only two completed years');
   assert.equal(eligible.salaryItems.find(row=>row.code==='tenure').amount,200000);
+  employees[0].alwaysFullAttendance=false;
+  prisma.attendanceEntry.findMany=async()=>[{workerId:1,factoryId:1,workDate:'2026-12-01',workedSeconds:10*3600},{workerId:1,factoryId:1,workDate:'2026-12-06',workedSeconds:8*3600}];
+  let ordinary=(await fn(1,'2026-12',[],1)).find(row=>row.workerId===1);
+  assert.equal(ordinary.parameters.WORK_HOURS,8);assert.equal(ordinary.parameters.OVERTIME_HOURS,0);assert.equal(ordinary.parameters.HOLIDAY_HOURS,0);
+  approvedRows=[{requestId:'approved-night',employeeId:1,workDate:'2026-12-01',kind:'OVERTIME',approvedMinutes:90,portion:0},{requestId:'approved-special',employeeId:1,workDate:'2026-12-06',kind:'SPECIAL',approvedMinutes:60,portion:0}];
+  ordinary=(await fn(1,'2026-12',[],1)).find(row=>row.workerId===1);
+  assert.equal(ordinary.parameters.WORK_HOURS,8);assert.equal(ordinary.parameters.OVERTIME_HOURS,1.5);assert.equal(ordinary.parameters.HOLIDAY_HOURS,1);assert.equal(ordinary.parameters.HOLIDAY_WORKDAYS,1);
+  assert.ok(ordinary.calculationSignature.includes('approved-night'));
+  approvedRows=[];
   const beforeCredit=JSON.stringify(result);
   employees[1].tenureRecognitions=[{id:9,effectiveMonth:'2026-12',additionalYears:2}];
   const credited=await fn(1,'2026-12',[],1),creditedEmployee=credited.find(row=>row.workerId===2);
@@ -130,6 +140,8 @@ test('real payroll applies previous-year tenure gate while preserving actual com
   const base={...items[0],code:'baseSalary'};
   prisma.factory.findMany=async()=>[{...factory,salarySystemVersions:[{id:1,versionNumber:5,snapshot:{currencyCode:'VND',items:[base,overtime],rates:[{payType:'GENERAL',gradeId:7,salaryItemCode:'baseSalary',amount:2600000},{payType:'GENERAL',gradeId:7,salaryItemCode:'night',amount:999999}]}}]}];
   prisma.attendanceEntry.findMany=async()=>[{workerId:1,factoryId:1,workDate:'2026-12-01',workedSeconds:10*3600}];
+  const unapproved=await fn(1,'2026-12',[],1);assert.equal(unapproved.find(row=>row.workerId===1).salaryItems.find(row=>row.code==='night').amount,0);
+  approvedRows=[{requestId:'approved-final',employeeId:1,workDate:'2026-12-01',kind:'OVERTIME',approvedMinutes:120,portion:0}];
   const calculated=await fn(1,'2026-12',[],1);const worker=calculated.find(row=>row.workerId===1),night=worker.salaryItems.find(row=>row.code==='night');
   assert.equal(worker.parameters.BASE_SALARY,2600000);assert.equal(night.amount,Math.round(2600000/23/8*2*1.5));assert.equal(night.rate,null,'automatic allowance ignores dormant manual rate');
   assert.notEqual(worker.salaryItems.find(row=>row.code==='baseSalary').amount,2600000,'overtime uses configured base rather than attendance-prorated base');

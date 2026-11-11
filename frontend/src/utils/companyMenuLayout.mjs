@@ -3,7 +3,7 @@ const GROUPS = [
   ['ORDER', 'salesWorkflow', ['/business-partner', '/shipping', '/style', '/order', '/customer-production-report']],
   ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/order-shipments', '/production-analysis']],
   ['INVENTORY', 'materialsInventory', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/inventory/settings']],
-  ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/holiday', '/payroll']],
+  ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/work-time', '/holiday', '/payroll']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger']],
   ['OPERATIONS', 'managementAnalysis', ['/account-overview', '/revenue-analysis']],
   ['SETTINGS', 'settings', ['/business', '/employee-system', '/salary-system', '/approval-settings', '/personal-settings', '/app-settings', '/system-setting/access-policy']],

@@ -30,6 +30,7 @@ const FEATURE_KEYS = {
   ASSIGNMENT: 'ASSIGNMENT',
   PRODUCTION_PLAN: 'PRODUCTION_PLAN',
   INVENTORY: 'INVENTORY',
+  WORK_TIME: 'WORK_TIME',
   ATTENDANCE: 'ATTENDANCE',
   PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
@@ -185,6 +186,7 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path.startsWith('/qc-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
   if (path.startsWith('/assignment')) return FEATURE_KEYS.ASSIGNMENT;
   if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY;
+  if (path.startsWith('/work-time')) return FEATURE_KEYS.WORK_TIME;
   if (path.startsWith('/attendance')) return FEATURE_KEYS.ATTENDANCE;
   if (path.startsWith('/production-analysis')) return FEATURE_KEYS.PRODUCTION_ANALYSIS;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
@@ -240,6 +242,7 @@ const ACCESS_PATH_PRIORITY = [
   '/assignment',
   '/inventory',
   '/work-history',
+  '/work-time',
   '/attendance',
   '/production-analysis',
   '/payroll',

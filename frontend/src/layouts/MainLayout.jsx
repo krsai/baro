@@ -717,6 +717,7 @@ const MainLayout = () => {
             icon: <CalendarMonthIcon />,
             path: '/holiday',
           },
+          {label:getUiMessage('menu.workTime','Work and leave requests',languageCode),icon:<CalendarMonthIcon/>,path:'/work-time'},
           ...(isSystemAdminProfile
             ? [
                 {

@@ -1,3 +1,4 @@
+import {workTimeText} from '../../../constants/workTime';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import dayjs from 'dayjs';
@@ -12,7 +13,7 @@ import {employeeLeaveText} from '../../../constants/employeeLeave';
 import {HOLIDAY_UPDATED_EVENT} from '../../../utils/holidayApi';
 import {emitWorkspaceDataChanged} from '../../../utils/workspaceDataEvents';
 export default function EmployeeLeaveBoard(){
- const {activeOrgId,activeOrgRole}=useAuth(),{languageCode}=useLanguage(),{showNotification}=useAppActions(),t=employeeLeaveText[languageCode]||employeeLeaveText.en;
+ const {activeOrgId,activeOrgRole}=useAuth(),{languageCode}=useLanguage(),{showNotification,navigateToPath}=useAppActions(),t=employeeLeaveText[languageCode]||employeeLeaveText.en;
  const [employeeId,setEmployeeId]=useState(null),[year,setYear]=useState(dayjs().year()),[data,setData]=useState(null),[reload,setReload]=useState(0),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [form,setForm]=useState({startDate:dayjs().format('YYYY-MM-DD'),endDate:dayjs().format('YYYY-MM-DD'),kind:'ANNUAL',reason:''}),[grant,setGrant]=useState({days:'',reason:''}),[cancel,setCancel]=useState(null),[cancelReason,setCancelReason]=useState('');
  const currentScope=useRef(null);
@@ -35,10 +36,7 @@ export default function EmployeeLeaveBoard(){
   {!employeeId&&<Typography color="text.secondary">{t.select}</Typography>}
   {balance&&<Stack spacing={2}>
    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">{['granted','used','remaining'].map(key=><Chip key={key} variant="outlined" label={`${t[key]}: ${balance[key]}`}/>)}</Stack>
-   <Paper variant="outlined" sx={{p:2}}><Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center">
-    <TextField type="date" size="small" label={t.start} value={form.startDate} onChange={event=>update('startDate',event.target.value)} InputLabelProps={{shrink:true}}/><TextField type="date" size="small" label={t.end} value={form.endDate} onChange={event=>update('endDate',event.target.value)} InputLabelProps={{shrink:true}}/>
-    <TextField select size="small" label={t.kind} value={form.kind} onChange={event=>update('kind',event.target.value)} sx={{minWidth:150}}>{['ANNUAL','PAID','UNPAID'].map(kind=><MenuItem key={kind} value={kind}>{t[kind]}</MenuItem>)}</TextField><TextField size="small" label={t.reason} value={form.reason} onChange={event=>update('reason',event.target.value)} sx={{flex:1,minWidth:180}}/><Button variant="contained" disabled={busy||loading} onClick={()=>send('record',form)}>{t.record}</Button>
-   </Stack></Paper>
+   <Alert severity="info" action={<Button onClick={()=>navigateToPath('/work-time')}>{(workTimeText[languageCode]||workTimeText.en).new}</Button>}>{(workTimeText[languageCode]||workTimeText.en).legacy}</Alert>
    {activeOrgRole==='ADMIN'&&<Paper variant="outlined" sx={{p:2}}><Typography variant="subtitle2" sx={{mb:1}}>{t.grantTitle}</Typography><Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap"><TextField type="number" size="small" label={t.days} value={grant.days} onChange={event=>setGrant(current=>({...current,days:event.target.value}))} sx={{width:140}}/><TextField size="small" label={t.reason} value={grant.reason} onChange={event=>setGrant(current=>({...current,reason:event.target.value}))} sx={{flex:1,minWidth:180}}/><Button variant="outlined" disabled={busy||loading} onClick={()=>send('grant',{year,days:Number(grant.days),reason:grant.reason})}>{t.grant}</Button></Stack></Paper>}
    <Paper variant="outlined"><TableContainer><Table size="small"><TableHead><TableRow>{[t.date,t.kind,t.reason,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{balance.leaves.map(row=><TableRow key={row.id} sx={{opacity:row.cancelledAt?.6:1}}><TableCell>{row.leaveDate}</TableCell><TableCell>{t[row.kind]} {row.cancelledAt?<Chip size="small" label={t.cancelled}/>:!row.counted?<Chip size="small" label={t.notCounted}/>:null}</TableCell><TableCell>{row.reason}{row.cancellationReason&&<Typography variant="caption" display="block">{row.cancellationReason}</Typography>}</TableCell><TableCell align="right">{!row.cancelledAt&&<Button disabled={busy} onClick={()=>{setCancel(row);setCancelReason('');}}>{t.cancel}</Button>}</TableCell></TableRow>)}{!balance.leaves.length&&<TableRow><TableCell colSpan={4}>{t.empty}</TableCell></TableRow>}</TableBody></Table></TableContainer></Paper>
   </Stack>}
