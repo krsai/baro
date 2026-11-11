@@ -1,3 +1,4 @@
+import {payrollMonthEnd,payrollPayableRemaining} from './payrollPayables';
 import {companyNameCodeSearch} from './companySearch';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -40,7 +41,7 @@ export function normalizeOpeningRows(value:any){
    return {kind:row.kind,side:row.side,currencyCode:row.currencyCode,amount:validateLedgerMoney(row.amount,row.currencyCode),accountingCodeId:row.accountingCodeId,counterparty:{kind:row.counterparty.kind,id:row.counterparty.id}};
   }
   if(typeof row.sourceId!=='string'||!row.sourceId||row.sourceId.length>100||typeof row.expectedRemaining!=='string')fail();
-  return {kind:row.kind,side:row.side,sourceId:row.sourceId,expectedRemaining:row.expectedRemaining,sourceVersion:row.sourceVersion??null};
+  return {...(row.sourceType==='PAYROLL'?{sourceType:'PAYROLL'}:{}),kind:row.kind,side:row.side,sourceId:row.sourceId,expectedRemaining:row.expectedRemaining,sourceVersion:row.sourceVersion??null};
  });
 }
 export async function applyAccountingOpening(tx:any,scope:any,body:any,rows:any[]){
@@ -54,7 +55,14 @@ export async function applyAccountingOpening(tx:any,scope:any,body:any,rows:any[
   }else{
    const key=row.side+':'+row.sourceId;if(seen.has(key))fail();seen.add(key);
    let remaining:bigint;
-   if(row.side==='AR'){
+   if(row.sourceType==='PAYROLL'){
+    if(row.side!=='AP')fail();
+    await tx.$queryRawUnsafe('SELECT id FROM "PayrollPayableItem" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',row.sourceId,orgId);
+    const item=await tx.payrollPayableItem.findFirst({where:{id:row.sourceId,orgId,voidedAt:null},include:{document:{include:{snapshot:true}}}});
+    if(!item||item.document.snapshot.isProvisional||item.snapshotRevision!==item.document.snapshot.revision||row.sourceVersion!==item.snapshotRevision||payrollMonthEnd(item.document.month)>=date)fail('OPENING_SOURCE_CHANGED',409);
+    remaining=await payrollPayableRemaining(tx,orgId,item);
+    data={...data,payrollItemId:item.id,employeeId:item.employeeId,currencyCode:item.currencyCode,accountingCodeId:item.document.accountingCodeId,sourceVersion:item.snapshotRevision};
+   }else if(row.side==='AR'){
     await tx.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',row.sourceId,orgId);
     const invoice=await tx.invoice.findFirst({where:{id:row.sourceId,sellerOrgId:orgId,status:'ISSUED'},include:{credits:{where:{voidedAt:null}},payments:{where:{voidedAt:null}}}});
     if(!invoice||String((invoice.snapshot as any)?.fields?.date||invoice.issuedAt.toISOString().slice(0,10)).slice(0,10)>=date)fail('OPENING_SOURCE_CHANGED',409);
@@ -83,7 +91,7 @@ export async function readAccountingOpening(db:any,orgId:number,actorId:number,q
   const [invoices,requests,history,parties]=await Promise.all([
    tx.invoice.findMany({where:{sellerOrgId:orgId,status:'ISSUED',...(search?{OR:[{invoiceNumber:{contains:search,mode:'insensitive'}},{buyer:companyNameCodeSearch(orgId,search)}]}:{})},include:{buyer:{select:{name:true}},credits:{where:{voidedAt:null}},payments:{where:{voidedAt:null}}},orderBy:{issuedAt:'desc'},take:201}),
    tx.expenseRequest.findMany({where:{orgId,deletedAt:null,requestDate:{lt:balanceDate},...(search?{OR:[{managementNumber:{contains:search,mode:'insensitive'}},{partner:companyNameCodeSearch(orgId,search)},{payeeEmployee:{OR:[{name:{contains:search,mode:'insensitive'}},{employeeNo:{contains:search,mode:'insensitive'}}]}}]}:{})},include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:true,approvalSteps:true,items:{include:{transactionCode:true}}},orderBy:{requestDate:'desc'},take:201}),
-   tx.accountingOpeningItem.findMany({where:{orgId},include:{party:{select:{name:true}},employee:{select:{name:true}},invoice:{select:{invoiceNumber:true}},expenseItem:{select:{description:true}},accountingCode:{select:{code:true}},allocations:{include:{entry:{select:{voidedAt:true}}}}},orderBy:{createdAt:'desc'}}),
+   tx.accountingOpeningItem.findMany({where:{orgId},include:{payrollItem:{include:{document:true}},party:{select:{name:true}},employee:{select:{name:true}},invoice:{select:{invoiceNumber:true}},expenseItem:{select:{description:true}},accountingCode:{select:{code:true}},allocations:{include:{entry:{select:{voidedAt:true}}}}},orderBy:{createdAt:'desc'}}),
    ledgerCounterpartyOptions(tx,orgId),
   ]);
   const roots=[...new Set(invoices.slice(0,200).map((i:any)=>i.rootInvoiceId||i.id))];
@@ -103,6 +111,8 @@ export async function readAccountingOpening(db:any,orgId:number,actorId:number,q
   }
   const approved=(await attachExpenseApprovalStates(tx,orgId,requests.slice(0,200))).filter((r:any)=>r.approval.approved);
   for(const request of approved)for(const item of request.items){const remaining=ledgerScale4(item.amount)-(totals.get('AP:'+item.id)||0n);if(remaining>0n)documents.push({side:'AP',id:item.id,sourceVersion:request.version,reference:(request.managementNumber||String(request.id))+' #'+item.expenseRequestLine,description:item.description,party:request.partner?.name||request.payeeEmployee?.name||'',currencyCode:item.currency,remaining:ledgerMoney(remaining,item.currency)});}
+  const payroll=await tx.payrollPayableItem.findMany({where:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false},month:{lt:balanceDate.slice(0,7)}}},include:{document:true,employee:{select:{name:true}}},orderBy:{document:{month:'desc'}}});
+  for(const item of payroll){if(search&&!((item.document.managementNumber+' '+item.document.month+' '+item.employee.name).toLowerCase().includes(search.toLowerCase())))continue;const remaining=await payrollPayableRemaining(tx,orgId,item);if(remaining>0n)documents.push({side:'AP',sourceType:'PAYROLL',id:item.id,sourceVersion:item.snapshotRevision,reference:item.document.managementNumber+' / '+item.document.month,party:item.employee.name,currencyCode:item.currencyCode,remaining:ledgerMoney(remaining,item.currencyCode)});}
   return {documents:documents.slice(0,200),hasMore:documents.length>200||invoices.length>200||requests.length>200,parties:parties.filter((p:any)=>p.kind!=='ACCOUNT'),history:history.map((r:any)=>({...r,amount:String(r.amount),matched:ledgerMoney(r.allocations.filter((a:any)=>!a.entry.voidedAt).reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),r.currencyCode),remaining:ledgerMoney(ledgerScale4(r.amount)-r.allocations.filter((a:any)=>!a.entry.voidedAt).reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),r.currencyCode),allocations:undefined}))};
  });
 }

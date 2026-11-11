@@ -391,6 +391,7 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  payrollPayableDocuments PayrollPayableDocument[]
   accountingOpenings AccountingOpeningItem[] @relation("OpeningCompany")
   partyOpenings AccountingOpeningItem[] @relation("OpeningParty")
   dashboardWorkRequests DashboardWorkRequest[]
@@ -637,6 +638,7 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  payrollAllocations PayrollPayableAllocation[]
   openingAllocations AccountingOpeningAllocation[]
   internalTransferSourceId String?
   internalTransferAmount Decimal? @db.Decimal(24,4)
@@ -685,6 +687,8 @@ model BankLedgerEntry {
 }
 
 model AccountingOpeningItem {
+  payrollItemId String?
+  payrollItem PayrollPayableItem? @relation(fields:[payrollItemId,orgId],references:[id,orgId],onDelete:Restrict,map:"AccountingOpeningItem_payroll_fkey")
   id String @id @default(uuid())
   orgId Int
   batchKey String
@@ -1008,6 +1012,10 @@ model Warehouse {
 
 
 model Employee {
+  payrollPayableItems PayrollPayableItem[] @relation("PayrollPayee")
+  createdPayrollPayableDocuments PayrollPayableDocument[] @relation("PayrollDocumentActor")
+  createdPayrollPayableItems PayrollPayableItem[] @relation("PayrollItemActor")
+  voidedPayrollPayableItems PayrollPayableItem[] @relation("PayrollItemVoidActor")
   accountingOpenings AccountingOpeningItem[] @relation("OpeningActor")
   voidedAccountingOpenings AccountingOpeningItem[] @relation("OpeningVoidActor")
   payableOpenings AccountingOpeningItem[] @relation("OpeningEmployee")
@@ -2287,6 +2295,7 @@ model CodeBaseUsageRollout {
 }
 
 model TransactionCode {
+  payrollPayableDocuments PayrollPayableDocument[]
   accountingOpenings AccountingOpeningItem[]
   invoiceGeneralLines InvoiceGeneralLine[]
   canBill Boolean @default(false)
@@ -2713,6 +2722,7 @@ model OutsourcedWorkRecord {
 }
 
 model PayrollSnapshot {
+  payableDocument PayrollPayableDocument?
   id                  Int      @id @default(autoincrement())
   orgId               Int
   month               String
@@ -2735,8 +2745,62 @@ model PayrollSnapshot {
   updatedByEmployee Employee? @relation("PayrollSnapshotUpdatedByEmployee", fields: [updatedByEmployeeId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, month, factoryId])
+  @@unique([id,orgId])
   @@index([orgId])
   @@index([factoryId])
+}
+
+model PayrollPayableDocument {
+  id String @id @default(uuid())
+  orgId Int
+  snapshotId Int @unique
+  month String
+  managementNumber String
+  accountingCodeId Int
+  createdByEmployeeId Int
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict,map:"PayrollPayableDocument_org_fkey")
+  snapshot PayrollSnapshot @relation(fields:[snapshotId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableDocument_snapshot_fkey")
+  accountingCode TransactionCode @relation(fields:[accountingCodeId,orgId],references:[id,ownerOrgId],onDelete:Restrict,map:"PayrollPayableDocument_code_fkey")
+  actor Employee @relation("PayrollDocumentActor",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableDocument_actor_fkey")
+  items PayrollPayableItem[]
+  @@unique([snapshotId,orgId])
+  @@unique([id,orgId])
+  @@unique([orgId,managementNumber])
+}
+
+model PayrollPayableItem {
+  id String @id @default(uuid())
+  orgId Int
+  documentId String
+  snapshotRevision Int
+  employeeId Int
+  currencyCode String
+  amount Decimal @db.Decimal(24,4)
+  createdByEmployeeId Int
+  createdAt DateTime @default(now())
+  voidedAt DateTime?
+  voidedByEmployeeId Int?
+  document PayrollPayableDocument @relation(fields:[documentId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableItem_document_fkey")
+  employee Employee @relation("PayrollPayee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableItem_employee_fkey")
+  actor Employee @relation("PayrollItemActor",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableItem_actor_fkey")
+  voidActor Employee? @relation("PayrollItemVoidActor",fields:[voidedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableItem_void_actor_fkey")
+  allocations PayrollPayableAllocation[]
+  openingAdjustments AccountingOpeningItem[]
+  @@unique([id,orgId])
+  @@unique([documentId,snapshotRevision,employeeId])
+  @@index([orgId,voidedAt])
+}
+
+model PayrollPayableAllocation {
+  id String @id @default(uuid())
+  orgId Int
+  payrollItemId String
+  entryId String @unique
+  amount Decimal @db.Decimal(24,4)
+  item PayrollPayableItem @relation(fields:[payrollItemId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableAllocation_item_fkey")
+  entry BankLedgerEntry @relation(fields:[entryId,orgId],references:[id,orgId],onDelete:Restrict,map:"PayrollPayableAllocation_entry_fkey")
+  @@index([payrollItemId])
 }
 
 model QuantitySettlementSnapshot {

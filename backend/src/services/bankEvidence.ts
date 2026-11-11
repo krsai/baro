@@ -1,3 +1,4 @@
+import {validatePayrollEvidence} from './payrollPayables';
 import {documentOpeningAmount,openingCashEvidence,invoiceOpeningRemaining} from './accountingOpening';
 import {approvalDelegate,delegationData,delegatedExpenseIds} from './approvalDelegation';
 import {createHttpError} from '../utils/http';
@@ -106,13 +107,17 @@ export async function approveExpense(db:any,orgId:number,actorId:number,requestI
 }
 export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  const type=body.evidenceType||'FILE',code=account.currencyCode;
- if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT','BANK_FEE','OPENING'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
+ if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT','BANK_FEE','OPENING','PAYROLL'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
  const fee=validateLedgerMoney(body.bankFee||'0',code,true),writeOff=validateLedgerMoney(body.writeOffAmount||'0',code,true);
  if(ledgerScale4(fee)<0n||ledgerScale4(writeOff)<0n||type!=='INVOICE'&&ledgerScale4(writeOff)!==0n)return fail('LEDGER_INVALID_AMOUNT');
  const amount=ledgerScale4(body.amount),bankFee=ledgerScale4(fee),loss=ledgerScale4(writeOff);
  let reference=typeof body.evidenceNumber==='string'?body.evidenceNumber.trim():'';
  const allocations:any[]=[];
- if(type==='OPENING'){
+ if(type==='PAYROLL'){
+  if(bankFee||loss)return fail('LEDGER_INVALID_EVIDENCE');
+  const item=await validatePayrollEvidence(tx,orgId,account,body);
+  return {evidenceType:type,evidenceNumber:item.id,bankFee:fee,writeOffAmount:writeOff,allocations:[],payrollItemId:item.id};
+ }else if(type==='OPENING'){
   if(bankFee||loss) return fail('LEDGER_INVALID_EVIDENCE');
   const item=await openingCashEvidence(tx,orgId,account,body);
   return {evidenceType:type,evidenceNumber:item.id,bankFee:fee,writeOffAmount:writeOff,allocations:[],openingItemId:item.id};

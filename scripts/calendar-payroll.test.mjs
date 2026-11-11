@@ -36,3 +36,15 @@ test('new calculations normalize historical date divisors while preserving unrel
 });
 
 test('monthly wage conversion follows the calendar and unrelated factory edits do not create rate changes',()=>{const {resolveFactoryWageFields,resolveFactoryWageUpdateFields}=loadSourceBindings('backend/src/factories/factory.routes.ts',['roundToScale','resolveFactoryWageFields','resolveFactoryWageUpdateFields'],{toNumberOrNull:value=>value==null?null:Number(value)});assert.equal(resolveFactoryWageFields(2600000,null,26*8*3600).wagePerSecond,3.47);assert.equal(resolveFactoryWageFields(2600000,null,23*7*3600).wagePerSecond,4.49);assert.deepEqual(resolveFactoryWageUpdateFields({targetMonthlyWageInput:2600000,wagePerSecondInput:4.49,fallbackTargetMonthlyWage:2600000,fallbackWagePerSecond:3.47,monthSeconds:23*7*3600}),{targetMonthlyWage:2600000,wagePerSecond:3.47});});
+
+test('July payroll earnings use the same monthly calendar rate as readiness, preserving stored version rates',async()=>{
+ const factory={id:1,name:'Factory',_count:{productionAllowanceRates:1},productionAllowanceRates:[{targetMonthlyWage:2600000,wagePerSecond:3.47}]},worker={id:1,name:'Worker',payType:'OUTPUT',status:'ACTIVE',role:{name:'Worker'}};
+ const record={workerId:1,worker,quantity:2,ctSeconds:60,styleProcessId:10,assignmentPlan:{id:1}};
+ const calendar=salaryMonthCalendar('2026-07',policy,[]),before=JSON.stringify(factory);
+ const deps={...require('../backend/dist/utils/common'),...require('../backend/dist/utils/http'),...require('../backend/dist/employees/employeeCompensation'),...require('../backend/dist/work-records/workRecord.shared'),...require('../backend/dist/employees/payrollManagement'),
+  prisma:{workLog:{findMany:async()=>[{factoryId:1,factory,displayDate:'2026-07-01',workRecords:[record]}]},employee:{findMany:async()=>[worker]},assignmentPlan:{findMany:async()=>[{id:1,assignmentStSnapshot:{processes:[{styleProcessId:10,stSeconds:50}]}}]}},
+  loadManagementPeriod:async()=>({startDate:'2026-04-01'}),assertManagedDate:()=>{},isPayrollMonthReady:()=>true,companySalaryCalendar:async()=>[{...calendar,payType:'OUTPUT'}],isPayrollEmployeeRelevantForMonth:()=>true,buildIntegratedPayrollEmployees:async(_org,_month,employees)=>employees};
+ const {getPayrollByMonth}=loadSourceBindings('backend/src/payroll/payroll.service.ts',['toPayrollAmountOrNull','toPayrollAmount','buildPayrollEmployeeKey','assertPayrollMonth','getPayrollMonthRange','resolveFactoryProductionAllowanceRate','resolvePayrollEmployeeName','resolvePayrollRoleName','getPayrollByMonth'],deps);
+ const result=await getPayrollByMonth(1,'2026-07',1,{ignoreSnapshot:true}),expectedRate=Math.round(2600000/calendar.scheduledHours/3600*100)/100;
+ assert.notEqual(expectedRate,3.47);assert.ok(Math.abs(result.employees[0].processes[0].wagePerSecond-expectedRate)<1e-9);assert.ok(Math.abs(result.employees[0].productionEarnings-120*expectedRate)<1e-9);assert.equal(JSON.stringify(factory),before);
+});

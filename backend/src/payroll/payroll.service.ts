@@ -5,7 +5,12 @@ import {calendarSalaryFormula} from '../employees/calendarSalaryFormula';
 import {tenureRecognitionInclude,recognizedTenureParameters} from '../employees/tenureRecognition';
 import { defaultVersionStartMonth } from "../utils/versionApplication";
 import { payrollManagementInclude, resolvePayrollManagement } from "../employees/payrollManagement";
-import { prisma } from "../db";
+import { prisma as applicationPrisma } from "../db";
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {retryEditTransaction} from '../utils/editRevision';
+import {requirePayrollActor,ensurePayrollPayables,voidPayrollPayables} from '../services/payrollPayables';
+const payrollTransaction = new AsyncLocalStorage<any>();
+const prisma: typeof applicationPrisma = new Proxy(applicationPrisma, {get(target,key){const source=payrollTransaction.getStore()||target;const value=Reflect.get(source,key);return typeof value==='function'?value.bind(source):value;}});
 import {
   EMPLOYEE_PAY_TYPE,
   normalizePayType,
@@ -577,6 +582,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     ));
     return {
       ...group,
+      recalculationReasons: [sourceChangedAfterCalculation&&'WORK_CHANGED',configuredRateChanged&&'RATE_CHANGED',calculatedBasisChanged&&'AMOUNT_CHANGED'].filter(Boolean),
       needsRecalculation: Boolean(
         snapshot && snapshot.isProvisional &&
         (salaryCalculationChanged || sourceChangedAfterCalculation || configuredRateChanged || calculatedBasisChanged)
@@ -596,6 +602,7 @@ export const getPayrollMonthReadiness = async (orgId: number, monthInput: string
     snapshotExists: Boolean(snapshot && !snapshot.isProvisional),
     needsRecalculation,
     salaryCalculationError,
+    recalculationReasons: needsRecalculation ? [...new Set([snapshot?.recalculationRequested&&'REQUESTED',salaryCalculationError&&'CALCULATION_ERROR',salaryCalculationChanged&&'SALARY_BASIS_CHANGED',snapshot&&attendanceEntries.some(entry=>[entry.createdAt,entry.updatedAt].some(value=>new Date(value).getTime()>snapshot.lockedAt.getTime()))&&'ATTENDANCE_CHANGED',...groupsWithRecalculation.flatMap(group=>group.recalculationReasons)].filter(Boolean))] : [],
     attendanceRequiredCount: requiredAttendance.length,
     attendanceRecordedCount: requiredAttendance.length - missingPayrollAttendance.length,
     missingPayrollAttendance,
@@ -887,6 +894,7 @@ export const listPayrollSnapshots = async (orgId: number) => {
       lockedBy: true,
       isProvisional: true,
       createdAt: true,
+      payableDocument:{select:{managementNumber:true}},
     },
   });
   return snapshots.map((snapshot) => ({
@@ -1139,7 +1147,7 @@ export const getPayrollByMonth = async (
   let payrollBreakdownMissingStyleProcessCount = 0;
   let payrollProductionStUnresolvedCount = 0;
   for (const workLog of workLogs) {
-    const wagePerSecond = resolveFactoryProductionAllowanceRate(workLog.factory);
+    const wagePerSecond = resolveFactoryProductionAllowanceRate(workLog.factory,monthlyCalendar);
     const validWage = Number.isFinite(wagePerSecond) && wagePerSecond > 0;
 
     for (const record of workLog.workRecords) {
@@ -1572,87 +1580,40 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string, f
     throw createHttpError(409, "unlock production allowance before deletion");
   }
 
+  if(await prisma.payrollPayableDocument.findUnique({where:{snapshotId:existing.id}}))throw createHttpError(409,'PAYROLL_PAYABLE_HISTORY_EXISTS');
   const deleted = await prisma.payrollSnapshot.deleteMany({ where: { id: existing.id, isProvisional: true, revision: existing.revision } });
   if (deleted.count !== 1) throw createHttpError(409, "payroll was locked while deleting");
 
   return { ok: true, month };
 };
 
-export const unlockPayrollSnapshot = async (orgId: number, monthInput: string, factoryIdInput: number) => {
-  const month = String(monthInput || "");
-  assertPayrollMonth(month);
-  const factoryId = toPositiveIntOrNull(factoryIdInput);
-  if (factoryId === null) {
-    throw createHttpError(400, "factoryId is required");
-  }
-
-  const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month_factoryId: { orgId, month, factoryId } },
-    select: { id: true, isProvisional: true, revision: true },
-  });
-  if (!existing) {
-    throw createHttpError(404, "snapshot not found");
-  }
-
-  if (existing.isProvisional) return { ok: true, month };
-  const unlocked = await prisma.payrollSnapshot.updateMany({
-    where: { id: existing.id, isProvisional: false, revision: existing.revision },
-    data: {
-      isProvisional: true,
-      recalculationRequested: true,
-      revision: { increment: 1 },
-    },
-  });
-  if (unlocked.count !== 1) throw createHttpError(409, "payroll state changed while unlocking");
-  return { ok: true, month };
+export const unlockPayrollSnapshot = async (orgId:number,monthInput:string,factoryIdInput:number,actorId:number) => {
+ const month=String(monthInput||'');assertPayrollMonth(month);const factoryId=toPositiveIntOrNull(factoryIdInput);if(factoryId===null)throw createHttpError(400,'factoryId is required');
+ return retryEditTransaction(applicationPrisma,tx=>payrollTransaction.run(tx,async()=>{
+  await requirePayrollActor(tx,orgId,actorId);
+  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
+  const existing=await tx.payrollSnapshot.findUnique({where:{orgId_month_factoryId:{orgId,month,factoryId}}});
+  if(!existing)throw createHttpError(404,'snapshot not found');
+  if(existing.isProvisional)return {ok:true,month};
+  await voidPayrollPayables(tx,orgId,existing.id,actorId);
+  const result=await tx.payrollSnapshot.updateMany({where:{id:existing.id,isProvisional:false,revision:existing.revision},data:{isProvisional:true,recalculationRequested:true,revision:{increment:1},updatedByEmployeeId:actorId}});
+  if(result.count!==1)throw createHttpError(409,'payroll state changed while unlocking');return {ok:true,month};
+ }),120000);
 };
-
-export const lockPayrollSnapshot = async ({
-  orgId,
-  month: monthInput,
-  factoryId: factoryIdInput,
-  lockedBy,
-  timeZone=process.env.BUSINESS_TIME_ZONE||"Asia/Seoul",
-}: {
-  orgId: number;
-  month: string;
-  factoryId: number;
-  lockedBy: string;
-  timeZone?: string;
-}) => {
-  const month = String(monthInput || "");
-  assertPayrollMonth(month);
-  const factoryId = toPositiveIntOrNull(factoryIdInput);
-  if (factoryId === null) {
-    throw createHttpError(400, "factoryId is required");
+export const lockPayrollSnapshot = async ({orgId,month:monthInput,factoryId:factoryIdInput,lockedBy,actorId,timeZone=process.env.BUSINESS_TIME_ZONE||'Asia/Seoul'}:{orgId:number;month:string;factoryId:number;lockedBy:string;actorId:number;timeZone?:string}) => {
+ const month=String(monthInput||'');assertPayrollMonth(month);const factoryId=toPositiveIntOrNull(factoryIdInput);if(factoryId===null)throw createHttpError(400,'factoryId is required');
+ return retryEditTransaction(applicationPrisma,tx=>payrollTransaction.run(tx,async()=>{
+  await requirePayrollActor(tx,orgId,actorId);
+  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
+  let existing=await tx.payrollSnapshot.findUnique({where:{orgId_month_factoryId:{orgId,month,factoryId}}});
+  if(!existing)throw createHttpError(404,'calculate production allowance before locking');
+  if(existing.isProvisional){
+   const readiness=await getPayrollMonthReadiness(orgId,month,factoryId,{timeZone});
+   if(readiness.invalidPayrollAttendance.length)throw createHttpError(409,"attendance records must belong to each employee's assigned factory");
+   if(readiness.needsRecalculation)throw createHttpError(409,'payroll must be recalculated before locking');
+   existing=await tx.payrollSnapshot.update({where:{id:existing.id,revision:existing.revision},data:{isProvisional:false,lockedAt:new Date(),lockedBy,revision:{increment:1},updatedByEmployeeId:actorId}});
   }
-  const existing = await prisma.payrollSnapshot.findUnique({
-    where: { orgId_month_factoryId: { orgId, month, factoryId } },
-    select: { id: true, isProvisional: true, revision: true },
-  });
-  if (!existing) throw createHttpError(404, "calculate production allowance before locking");
-  if (!existing.isProvisional) return { ok: true, month };
-
-  // A snapshot already exists here, so - like recalculation (savePayrollSnapshot) -
-  // locking preserves the calculated snapshot without requiring records for every date.
-  // What matters for an
-  // already-calculated snapshot is that it isn't stale (needsRecalculation) and that
-  // no cross-factory attendance integrity error has appeared since it was calculated.
-  const readiness = await getPayrollMonthReadiness(orgId, month, factoryId,{timeZone});
-  if (readiness.invalidPayrollAttendance.length > 0) {
-    throw createHttpError(409, "attendance records must belong to each employee's assigned factory");
-  }
-  if (readiness.needsRecalculation) throw createHttpError(409, "payroll must be recalculated before locking");
-
-  const locked = await prisma.payrollSnapshot.updateMany({
-    where: { id: existing.id, isProvisional: true, revision: existing.revision },
-    data: {
-      isProvisional: false,
-      lockedAt: new Date(),
-      lockedBy: String(lockedBy || "unknown"),
-      revision: { increment: 1 },
-    },
-  });
-  if (locked.count !== 1) throw createHttpError(409, "payroll state changed while locking");
-  return { ok: true, month };
+  const payable=await ensurePayrollPayables(tx,existing,actorId);
+  return {ok:true,month,managementNumber:payable.document.managementNumber};
+ }),120000);
 };

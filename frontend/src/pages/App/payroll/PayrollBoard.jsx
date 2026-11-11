@@ -1,3 +1,4 @@
+import {payrollPayableMessage} from '../../../constants/payrollPayable';
 import {formatCurrency} from '../../../utils/currencyFormat';
 import dayjs from 'dayjs';
 import DateRangeSelector from '../../../components/DateRangeSelector';
@@ -6,6 +7,7 @@ import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Box,
+  Alert,
   Button,
   Chip,
   Dialog,
@@ -38,7 +40,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
-import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
+import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import PayrollSettingsDialog from './PayrollSettingsDialog';
 import { resolvePayrollManagement } from '../attendance/attendanceEmployment';
 
@@ -144,6 +146,7 @@ const PayrollBoard = () => {
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [mutating, setMutating] = useState('');
+  const [payableError,setPayableError]=useState('');
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [calculationErrors, setCalculationErrors] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -222,7 +225,7 @@ const PayrollBoard = () => {
     } catch (error) {
       setQueryFailed(true);
       if (!silent) setSnapshots([]);
-      showNotification(error?.message || resolveText(languageCode, 'fetchError'), 'error');
+      showNotification(payrollPayableMessage(languageCode,error?.message) || error?.message || resolveText(languageCode, 'fetchError'), 'error');
     } finally {
       if (!silent) setLoading(false);
     }
@@ -352,7 +355,8 @@ const PayrollBoard = () => {
       );
     } catch (error) {
       await load();
-      showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
+      setPayableError(payrollPayableMessage(languageCode,error?.message)||error?.message||resolveText(languageCode,'calculateError'));
+      showNotification(payrollPayableMessage(languageCode,error?.message) || error?.message || resolveText(languageCode, 'calculateError'), 'error');
     } finally {
       setCalculating(false);
     }
@@ -361,6 +365,7 @@ const PayrollBoard = () => {
   const handleLockToggle = async (row, checked) => {
     const { month, factory, snapshot } = row;
     if (!month || !factory?.id) return;
+    setPayableError('');
     const mutationKey = `lock:${rowKey(month, factory.id)}`;
     setMutating(mutationKey);
     try {
@@ -377,12 +382,13 @@ const PayrollBoard = () => {
             ? { ...row2, ...updatedSnapshot }
             : row2
         ));
+        emitWorkspaceDataChanged({orgId:activeOrgId,source:'payroll',topics:['bank-ledger',WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES]});
         await load({ silent: true });
       } else {
         await handleUnlock(month, factory, snapshot);
       }
     } catch (error) {
-      showNotification(error?.message || resolveText(languageCode, 'calculateError'), 'error');
+      showNotification(payrollPayableMessage(languageCode,error?.message) || error?.message || resolveText(languageCode, 'calculateError'), 'error');
     } finally {
       setMutating('');
     }
@@ -403,9 +409,11 @@ const PayrollBoard = () => {
           : row2
       ));
       await load({ silent: true });
+      emitWorkspaceDataChanged({orgId:activeOrgId,source:'payroll',topics:['bank-ledger',WORKSPACE_DATA_TOPICS.PAYROLL_SOURCES]});
       showNotification(resolveText(languageCode, 'unlockSuccess', { month }), 'success');
     } catch (error) {
-      showNotification(error?.message || resolveText(languageCode, 'unlockError'), 'error');
+      setPayableError(payrollPayableMessage(languageCode,error?.message)||error?.message||resolveText(languageCode,'unlockError'));
+      showNotification(payrollPayableMessage(languageCode,error?.message) || error?.message || resolveText(languageCode, 'unlockError'), 'error');
     } finally {
       setMutating('');
     }
@@ -438,6 +446,7 @@ const PayrollBoard = () => {
         </Stack>
       )} />}
     >
+      {payableError&&<Alert severity="error" sx={{mb:2}}>{payableError}</Alert>}
       <Box sx={{ width: '100%' }}>
         <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
           {isService?({ko:'선택 기간의 사업장별 급여를 계산하고 확정합니다.',en:'Calculate and confirm payroll by month and workplace.',vi:'Tính và xác nhận lương theo tháng và nơi làm việc.'})[languageCode]:languageCode === 'ko' ? '선택 기간에 포함되는 월별·공장별 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
@@ -469,7 +478,7 @@ const PayrollBoard = () => {
                         readiness?.hasAttendanceData === false ? resolveText(languageCode, 'attendanceCoverage') : '',
                         readiness?.hasWorkData === false ? resolveText(languageCode, 'workCoverage') : '',
                       ].filter(Boolean);
-                      const readinessDescription = readiness?.error || readiness?.salaryCalculationError || (incomplete && missingSources.length
+                      const readinessDescription = readiness?.error || readiness?.salaryCalculationError || (readiness?.recalculationReasons||[]).map(code=>payrollPayableMessage(languageCode,code)).filter(Boolean).join(' / ') || (incomplete && missingSources.length
                         ? (languageCode === 'ko' ? `해당 월의 ${missingSources.join(' · ')}이 없습니다.` : languageCode === 'vi' ? `Không có dữ liệu trong tháng: ${missingSources.join(' · ')}` : `No records for this month: ${missingSources.join(' · ')}`)
                         : '');
                       const rowNeedsRecalculation = Boolean(snapshot && readinessByKey[key]?.needsRecalculation);
@@ -491,7 +500,7 @@ const PayrollBoard = () => {
                           key={key} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })}
                         >
-                          <TableCell sx={{ fontWeight: 700 }}>{month}</TableCell>
+                          <TableCell sx={{ fontWeight: 700 }}>{month}{snapshot?.payableDocument?.managementNumber&&<Typography variant="caption" display="block">{snapshot.payableDocument.managementNumber}</Typography>}</TableCell>
                           <TableCell>{factoryLabel || '-'}</TableCell>
                           <TableCell align="right">{summaryEmployees.length}{text.peopleSuffix}{!isService&&`(${generalEmployees.length}, ${fixedOutputEmployees.length}, ${outputEmployees.length})`}</TableCell>
                           <TableCell align="right" sx={{ color: snapshot ? 'text.primary' : 'text.secondary' }}>{snapshot ? generalPayroll || '-' : payrollSummaryText.pending}</TableCell>
@@ -509,6 +518,7 @@ const PayrollBoard = () => {
                                 variant="outlined"
                               /></Tooltip>
                             </Stack>
+                            {rowNeedsRecalculation&&readinessDescription&&<Typography variant="caption" display="block" color="warning.main">{readinessDescription}</Typography>}
                           </TableCell>
                           <TableCell align="center">
                             <LockToggleSwitch

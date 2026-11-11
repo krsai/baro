@@ -42,7 +42,7 @@ export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,
   const partner=await tx.organization.findFirst({where:{id:party!.id,...(!allocations.length?{isActive:true}:{})},select:{id:true,name:true,ownerOrgId:true}});if(!partner||partner.id===orgId)fail('LEDGER_COUNTERPARTY_INVALID');
   if(partner.ownerOrgId!==orgId&&!await tx.orgRelationship.findFirst({where:{OR:[{manufacturerOrgId:orgId,brandOrgId:partner.id},{brandOrgId:orgId,manufacturerOrgId:partner.id}]},select:{id:true}}))fail('LEDGER_COUNTERPARTY_INVALID');name=tx.companyPartnerLink&&tx.companyIdentityLink?(await attachLinkedCompanies(tx,orgId,[{...partner,entityId:partner.id}]))[0].name:partner.name;
  }else if(party!.kind==='EMPLOYEE'){
-  const employee=await tx.employee.findFirst({where:{id:party!.id,orgId,...(!allocations.length?{status:'ACTIVE'}:{})},select:{name:true}});if(!employee)fail('LEDGER_COUNTERPARTY_INVALID');name=employee.name;
+  const employee=await tx.employee.findFirst({where:{id:party!.id,orgId,...(!allocations.length&&body.evidenceType!=='PAYROLL'?{status:'ACTIVE'}:{})},select:{name:true}});if(!employee)fail('LEDGER_COUNTERPARTY_INVALID');name=employee.name;
  }else{
   const target=await tx.organizationBankAccount.findFirst({where:{id:party!.id,orgId,entityId:orgId,isActive:true},include:{currency:true}});if(!target||target.id===account.entityAccountId||'entity:'+target.id===account.id)fail('LEDGER_COUNTERPARTY_INVALID');name=target.displayName||[target.bankName,target.accountNumber].filter(Boolean).join(' / ');
   if(body.evidenceType&&body.evidenceType!=='FILE'||allocations.length)fail('LEDGER_TRANSFER_EVIDENCE_INVALID');

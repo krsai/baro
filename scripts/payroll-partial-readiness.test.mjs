@@ -44,6 +44,8 @@ test('later attendance or production updates flag a calculated partial month for
   assert.equal((await readiness({snapshot:true})).needsRecalculation,false);
   assert.equal((await readiness({snapshot:true,attendanceAfter:true})).needsRecalculation,true);
   assert.equal((await readiness({snapshot:true,workAfter:true})).needsRecalculation,true);
+  assert.ok((await readiness({snapshot:true,attendanceAfter:true})).recalculationReasons.includes('ATTENDANCE_CHANGED'));
+  assert.ok((await readiness({snapshot:true,workAfter:true})).recalculationReasons.includes('WORK_CHANGED'));
 });
 
 test('a fully registered leave month does not require invented punches or production records',async()=>{const result=await readiness({attendance:false,work:false,leaves:[{employeeId:1,leaveDate:'2026-08-03',kind:'ANNUAL'},{employeeId:1,leaveDate:'2026-08-04',kind:'UNPAID'}]});assert.equal(result.ready,true);assert.equal(result.attendanceRequiredCount,0);assert.equal(result.hasWorkData,true);});

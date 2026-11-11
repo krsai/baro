@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
+import path from 'node:path';
+import {chromium} from 'playwright-core';
+import {payrollPayableText} from '../frontend/src/constants/payrollPayable.js';
+import {ledgerEntryText} from '../frontend/src/constants/ledgerEntry.js';
+import {accountingOpeningText} from '../frontend/src/constants/accountingOpening.js';
+const file=path.resolve('frontend/payroll-payable-test.html'),entry=file.replace('.html','.jsx'),port=43435;
+assert.ok(!existsSync(file)&&!existsSync(entry));
+writeFileSync(file,'<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/payroll-payable-test.jsx"></script>');
+writeFileSync(entry,`import React from 'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline}from'@mui/material';import{MemoryRouter,Routes,Route}from'react-router-dom';import theme from'/src/theme';import Ledger from'/src/pages/App/BankLedgerEntry';import Opening from'/src/components/AccountingOpeningPanel';const q=new URLSearchParams(location.search),lang=q.get('lang');const noop=()=>{};createRoot(document.getElementById('root')).render(<ThemeProvider theme={theme}><CssBaseline/><MemoryRouter initialEntries={['/bank-ledger/source/edit']}>{q.get('mode')==='opening'?<Opening orgId={1} balanceDate="2026-11-01" languageCode={lang} onReady={noop} onChange={rows=>window.openingRows=rows}/>:<Routes><Route path="/bank-ledger/:entryId/edit" element={<Ledger/>}/></Routes>}</MemoryRouter></ThemeProvider>);`);
+const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
+try{
+ for(let n=0;n<100;n++){try{if((await fetch(`http://127.0.0.1:${port}/payroll-payable-test.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+ browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+  const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],t=payrollPayableText[lang],l=ledgerEntryText[lang],o=accountingOpeningText[lang];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgRole:"ADMIN",activeProfile:{orgType:"SERVICE",orgRole:"ADMIN"}});'}));
+  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>{},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
+  await page.route('**/src/context/RequestScopeContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useRequestScopeContext=()=>({active:true,scopeId:"/bank-ledger/source/edit"});'}));
+  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},party={kind:'EMPLOYEE',id:3,name:'Worker'},document={id:'salary',reference:'PAY-2026-000001 / 2026-10 / Worker',payee:'Worker',accountingCodeId:11,counterparty:party,amount:'100',remaining:'100'};let imported=false,imports=0;
+  await page.route('**/*',r=>{const url=new URL(r.request().url());if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+   const json=url.pathname==='/bank-ledger/accounts'?{accounts:[{id:'a',entityAccountId:'master',displayName:'Company bank',currencyCode:'USD'}]}:url.pathname==='/bank-ledger/counterparties'?[party]:url.pathname==='/transaction-codes'?[{id:11,code:'SALE',nameEn:'Salary',nameKo:'급여',nameVi:'Lương',cashDirection:'OUT'}]:url.pathname==='/bank-ledger/entries/source'?{accountId:'a',transactionDate:'2026-11-10',direction:'OUT',amount:'40',purpose:'October salary',accountingCodeId:11,evidenceType:'PAYROLL',evidenceNumber:'salary',expenseItems:[],counterparty:party,document,settlementLines:[],revision:'r'}:url.pathname==='/bank-ledger/evidence/search'?{documents:[document]}:url.pathname==='/bank-ledger/opening'?{documents:imported?[{id:'salary',sourceType:'PAYROLL',side:'AP',sourceVersion:4,reference:document.reference,party:'Worker',currencyCode:'USD',remaining:'100'}]:[],parties:[party],history:[],hasMore:false}:null;
+   if(url.pathname==='/bank-ledger/payroll/import'){assert.equal(r.request().postDataJSON().balanceDate,'2026-11-01');imported=true;imports++;return r.fulfill({headers,json:{importedCount:1}});}if(json)return r.fulfill({headers,json});return r.fallback();
+  });
+  const url=`http://127.0.0.1:${port}/payroll-payable-test.html?lang=${lang}`;await page.goto(url);const row=page.locator('[data-ledger-entry-row="0"]');await row.waitFor();await row.getByText(t.PAYROLL,{exact:true}).waitFor();
+  await row.getByRole('button',{name:l.connected,exact:true}).click();const picker=page.getByRole('dialog');await picker.getByRole('textbox',{name:l.search,exact:true}).fill('PAY-2026');await picker.getByText(document.reference,{exact:true}).last().waitFor();await picker.getByRole('button',{name:l.select,exact:true}).click();await picker.waitFor({state:'hidden'});assert.equal(await row.locator('input[value="40"]').count(),1,'selecting evidence preserves the actual partial payout');
+  await page.goto(url+'&mode=opening');const panel=page.locator('[data-accounting-opening]');await panel.getByText(o.empty,{exact:true}).waitFor();await panel.getByRole('button',{name:o.addBalance,exact:true}).click();assert.equal(await panel.locator('table').first().locator('tbody tr').count(),1);
+  await panel.getByRole('button',{name:t.importPayroll,exact:true}).click();await panel.getByText(document.reference,{exact:true}).waitFor();assert.equal(imports,1);assert.equal(await panel.locator('table').first().locator('tbody tr').count(),1,'import preserves manual drafts');await panel.getByRole('checkbox').check();await page.waitForFunction(()=>window.openingRows?.some(r=>r.sourceType==='PAYROLL'));assert.equal((await page.evaluate(()=>window.openingRows)).find(r=>r.sourceType==='PAYROLL').sourceVersion,4);assert.deepEqual(errors,[]);await page.close();
+ }
+ console.log('PASS payroll evidence selection and explicit historical import preserve partial cash and manual drafts; ko/en/vi desktop/mobile.');
+}finally{await browser?.close();server.kill();if(existsSync(file))unlinkSync(file);if(existsSync(entry))unlinkSync(entry);}

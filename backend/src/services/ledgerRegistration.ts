@@ -47,6 +47,10 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
   if(row.evidenceType==='EXPENSE')for(const item of row.expenseItems||[])allocations.push({expenseItemId:item.itemId});
   const party=input.allowIncomplete&&!row.counterparty&&!allocations.length?{}:await resolveLedgerCounterparty(db,orgId,account,row,allocations);
   if(!/^\d{4}-\d{2}-\d{2}$/.test(row.transactionDate)||!input.allowIncomplete&&(!/^\d+(\.\d{1,4})?$/.test(row.amount)||!new Prisma.Decimal(row.amount).gt(0)))fail('LEDGER_INVALID_AMOUNT');
+  if(row.evidenceType==='PAYROLL'&&!input.allowIncomplete){
+   const item=await db.payrollPayableItem.findFirst({where:{id:row.payrollItemId,orgId,voidedAt:null},include:{document:{include:{snapshot:true}}}});
+   if(!item||item.document.snapshot.isProvisional||item.snapshotRevision!==item.document.snapshot.revision||item.currencyCode!==account.currencyCode||row.transactionDate<item.document.month+'-01'||row.accountingCodeId!==item.document.accountingCodeId||row.direction!=='OUT'||party.counterpartyEmployeeId!==item.employeeId||party.counterpartyOrgId||party.counterpartyAccountId)fail('PAYROLL_PAYABLE_SOURCE_CHANGED');
+  }
   if(row.evidenceType==='OPENING'&&!input.allowIncomplete){
    const opening=await db.accountingOpeningItem.findFirst({where:{id:row.openingItemId,orgId,kind:'OPENING',voidedAt:null}});
    if(!opening||opening.currencyCode!==account.currencyCode||opening.balanceDate>row.transactionDate||opening.accountingCodeId!==row.accountingCodeId||row.direction!==(opening.side==='AR'?'IN':'OUT')||party.counterpartyOrgId!==opening.partyOrgId||party.counterpartyEmployeeId!==opening.employeeId)fail('OPENING_SOURCE_CHANGED');

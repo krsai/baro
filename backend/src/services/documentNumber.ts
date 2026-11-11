@@ -1,6 +1,6 @@
 import {createHttpError} from '../utils/http';
 
-export type DocumentKind='INV'|'EXP';
+export type DocumentKind='INV'|'EXP'|'PAY';
 export const legacyExpenseNumber=(id:number)=>`EXP-${String(id).padStart(6,'0')}`;
 export function normalizeDocumentNumber(value:unknown){
  if(value==null||value==='')return '';
@@ -13,8 +13,9 @@ export async function allocateDocumentNumber(tx:any,orgId:number,kind:DocumentKi
  const manual=normalizeDocumentNumber(input),year=String(date).slice(0,4);
  if(!/^\d{4}$/.test(year)||Number(year)<1000)throw createHttpError(400,'INVALID_DOCUMENT_NUMBER_DATE');
  // Manual and automatic numbers share the same company/type lock and namespace.
- await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock($1::integer,$2::integer)::text',orgId,kind==='INV'?202610281:202610282);
+ await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock($1::integer,$2::integer)::text',orgId,kind==='INV'?202610281:kind==='PAY'?202610283:202610282);
  const exists=async(number:string)=>{
+  if(kind==='PAY')return !!await tx.payrollPayableDocument.findFirst({where:{orgId,managementNumber:{equals:number,mode:'insensitive'}},select:{id:true}});
   if(kind==='INV')return !!await tx.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:{equals:number,mode:'insensitive'}},select:{id:true}});
   if(await tx.expenseRequest.findFirst({where:{orgId,managementNumber:{equals:number,mode:'insensitive'}},select:{id:true}}))return true;
   const legacy=/^EXP-(\d{1,10})$/i.exec(number);

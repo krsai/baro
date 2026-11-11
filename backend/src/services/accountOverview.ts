@@ -68,9 +68,10 @@ async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
   tx.accountingOpeningItem.findMany({where:{orgId,voidedAt:null,balanceDate:{lte:asOf}},include:{party:{select:{name:true}},employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}}),
  ]);
  const approved=(await attachExpenseApprovalStates(tx,orgId,requests)).filter((row:any)=>row.approval.approved);
- return outstandingReport(invoices,approved,allocations,openings);
+ const payroll=await tx.payrollPayableItem.findMany({where:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false},month:{lte:asOf.slice(0,7)}}},include:{document:true,employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}});
+ return outstandingReport(invoices,approved,allocations,openings,payroll);
 }
-export function outstandingReport(invoices:any[],requests:any[],allocations:any[],openings:any[]=[]){
+export function outstandingReport(invoices:any[],requests:any[],allocations:any[],openings:any[]=[],payroll:any[]=[]){
  const receivable=new Map<string,any>(),payable=new Map<string,any>();
  for(const invoice of invoices){
   const key=JSON.stringify([invoice.buyerOrgId,invoice.currencyCode]),code=invoice.currencyCode;
@@ -85,6 +86,10 @@ export function outstandingReport(invoices:any[],requests:any[],allocations:any[
   const key=JSON.stringify([request.payeeEmployeeId?'EMPLOYEE':'PARTNER',request.payeeEmployeeId||request.partnerOrgId,item.currency]),group=payable.get(key)||{partyKind:request.payeeEmployeeId?'EMPLOYEE':'PARTNER',partyId:request.payeeEmployeeId||request.partnerOrgId,party:request.partner?.name||request.payeeEmployee?.name||'',currencyCode:item.currency,debt:0n,matched:0n,references:[]};
   group.debt+=ledgerScale4(item.amount);group.matched+=openingSum(openings.filter(row=>row.expenseItemId===item.id));group.matched+=allocations.filter(row=>row.expenseItemId===item.id).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
   if(!group.references.some((r:any)=>r.id===request.id))group.references.push({kind:'EXPENSE_REQUEST',id:request.id,number:request.managementNumber||legacyExpenseNumber(request.id),date:request.requestDate});payable.set(key,group);
+ }
+ for(const item of payroll){
+  const key=JSON.stringify(['EMPLOYEE',item.employeeId,item.currencyCode]),group=payable.get(key)||{partyKind:'EMPLOYEE',partyId:item.employeeId,party:item.employee.name,currencyCode:item.currencyCode,debt:0n,matched:0n,references:[]};
+  group.debt+=ledgerScale4(item.amount);group.matched+=openingSum(item.allocations)+openingSum(openings.filter(row=>row.payrollItemId===item.id));group.references.push({kind:'PAYROLL',id:item.id,number:item.document.managementNumber,date:item.document.month+'-01'});payable.set(key,group);
  }
  for(const item of openings.filter(row=>row.kind==='OPENING')){
   const map=item.side==='AR'?receivable:payable,key=JSON.stringify(item.side==='AR'?[item.employeeId?'EMPLOYEE:'+item.employeeId:item.partyOrgId,item.currencyCode]:[item.employeeId?'EMPLOYEE':'PARTNER',item.employeeId||item.partyOrgId,item.currencyCode]);

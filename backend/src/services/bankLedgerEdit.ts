@@ -1,3 +1,4 @@
+import {payrollPayableRemaining} from './payrollPayables';
 import {documentOpeningAmount,invoiceOpeningRemaining} from './accountingOpening';
 import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
@@ -19,7 +20,7 @@ export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,ro
 }
 export async function readLedgerEdit(db:any,orgId:number,id:string){
  const codeInclude={base:{include:{expenseType:true}}} satisfies Prisma.TransactionCodeInclude;
- const include={openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
+ const include={payrollAllocations:{include:{item:{include:{document:true,employee:{select:{name:true}}}}}},openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
  const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include});
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');
  const code=entry.account.currencyCode;
@@ -34,6 +35,10 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  entry.allocations=entry.allocations.map((allocation:any)=>({...allocation,invoice:invoices.find((row:any)=>row.id===allocation.invoiceId)||null,expenseItem:expenses.find((row:any)=>row.id===allocation.expenseItemId)||null}));
  if(entry.allocations.some((allocation:any)=>allocation.invoiceId&&!allocation.invoice||allocation.expenseItemId&&!allocation.expenseItem))return fail('LEDGER_INVALID_EVIDENCE');
  let document:any=null;
+ if(entry.evidenceType==='PAYROLL'){
+  const item=entry.payrollAllocations[0]?.item;if(!item||item.voidedAt)return fail('PAYROLL_PAYABLE_SOURCE_CHANGED');
+  document={id:item.id,reference:item.document.managementNumber+' / '+item.document.month+' / '+item.employee.name,payee:item.employee.name,accountingCodeId:item.document.accountingCodeId,counterparty:{kind:'EMPLOYEE',id:item.employeeId,name:item.employee.name},amount:String(item.amount),remaining:ledgerMoney(await payrollPayableRemaining(db,orgId,item,undefined,id),code)};
+ }
  if(entry.evidenceType==='OPENING'){
   const item=entry.openingAllocations[0]?.openingItem;if(!item||item.voidedAt)return fail('OPENING_SOURCE_CHANGED');
   const used=await db.accountingOpeningAllocation.findMany({where:{orgId,openingItemId:item.id,entryId:{not:id},entry:{voidedAt:null}}});

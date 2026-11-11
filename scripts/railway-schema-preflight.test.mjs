@@ -36,6 +36,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "InvoicePayment"(id TEXT PRIMARY KEY,"invoiceId" TEXT,amount NUMERIC,kind TEXT,"voidedAt" TIMESTAMP); CREATE TABLE "InvoiceCredit"(id TEXT PRIMARY KEY,"invoiceId" TEXT,amount NUMERIC,"voidedAt" TIMESTAMP);
       CREATE TABLE "SystemUser"(id INT PRIMARY KEY,email TEXT,"systemRole" TEXT);
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',"gradeId" INT,UNIQUE(id,"orgId"));
+      CREATE TABLE "PayrollSnapshot"(id SERIAL PRIMARY KEY,"orgId" INT,"factoryId" INT,month TEXT,data JSONB,"isProvisional" BOOLEAN DEFAULT true,revision INT DEFAULT 1,"updatedByEmployeeId" INT);
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);
       CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,"customerOrgId" INT);
       CREATE TABLE "PartnerTransactionCost"("transactionCodeId" INT,id TEXT PRIMARY KEY,"orgId" INT,"partnerOrgId" INT,"styleId" INT,currency TEXT,amount NUMERIC,"outsourcedWorkRecordId" INT);

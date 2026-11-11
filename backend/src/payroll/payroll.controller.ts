@@ -176,7 +176,7 @@ export const updatePayrollEmployeeRatesController = async (req: Request, res: Re
 };
 
 export const unlockPayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES], allowSystemAdmin:false });
   if (!accessContext) return;
   const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
   assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
@@ -184,25 +184,24 @@ export const unlockPayrollSnapshotController = async (req: Request, res: Respons
   const result = await unlockPayrollSnapshot(
     accessContext.organization.id,
     String(req.params.month || ""),
-    Number(req.query.factoryId ?? req.body?.factoryId)
+    Number(req.query.factoryId ?? req.body?.factoryId),
+    accessContext.employee!.id
   );
   return res.json(result);
 };
 
 export const lockPayrollSnapshotController = async (req: Request, res: Response) => {
-  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES] });
+  const accessContext = await requireOrgRole(req, res, { allowedRoles: [...PAYROLL_ROLES], allowSystemAdmin:false });
   if (!accessContext) return;
   const period = await loadManagementPeriod(prisma,accessContext.organization.id,Number(req.query.factoryId ?? req.body?.factoryId) || null);
   assertManagedDate(req.query.month ?? req.body?.month ?? req.params.month,period.startDate,true);
   const result = await lockPayrollSnapshot({
+    actorId:accessContext.employee!.id,
     timeZone:companyBusinessTimeZone(accessContext.organization),
     orgId: accessContext.organization.id,
     month: String(req.params.month || ""),
     factoryId: Number(req.body?.factoryId),
-    lockedBy:
-      resolveOptionalString(req.body?.lockedBy, null) ??
-      accessContext.requesterEmail ??
-      "unknown",
+    lockedBy: accessContext.requesterEmail || String(accessContext.employee!.id),
   });
   return res.json(result);
 };
