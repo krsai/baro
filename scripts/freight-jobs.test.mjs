@@ -4,7 +4,7 @@ import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
-const require=createRequire(import.meta.url),{saveFreight}=require('../backend/dist/services/freightOperations'),{saveJobBill,jobDetail}=require('../backend/dist/services/freightJobs');
+const require=createRequire(import.meta.url),{saveFreight,freightDetail,issueFreightDocument}=require('../backend/dist/services/freightOperations'),{saveJobBill,jobDetail}=require('../backend/dist/services/freightJobs');
 
 test('job registration validates scoped parties, preserves cargo details and starts received without BLs',async()=>{
  const f=await changeApprovalFixture();try{
@@ -26,6 +26,20 @@ test('job registration validates scoped parties, preserves cargo details and sta
   await assert.rejects(create({...body,clientKey:randomUUID(),data:{...body.data,customerRole:'consignee',consigneeId:receiver.id}}),/FREIGHT_CUSTOMER_ROLE/);
   const consignee=await create({...body,clientKey:randomUUID(),customerId:receiver.id,data:{...body.data,customerRole:'consignee',consigneeId:receiver.id,incoterms:'DDP',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'},pickupRequired:false}});
   assert.equal(consignee.data.customerRole,'consignee');assert.deepEqual(consignee.data.workScope,{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'});assert.equal(consignee.data.billTo,'Destination forwarder');
+  const notify=await create({...body,clientKey:randomUUID(),data:{...body.data,customerRole:'notify',notifyId:s.vendor.id,notifySameAsConsignee:false}});
+  assert.equal(notify.data.customerRole,'notify');assert.equal(notify.data.notifyId,s.vendor.id);
+  const sameInput={...body,clientKey:randomUUID(),data:{...body.data,origin:'Hanoi',destination:'Seoul',consigneeId:receiver.id,notifyId:s.other.id,notifySameAsConsignee:true,consigneeParty:{id:s.other.id,name:'Receiver on B/L',address:'Shipping document address',phone:'+84 123',email:'receiver@example.test',contactName:'Document contact',privateMemo:'never store'},notifyParty:{name:'Ignored'}}};
+  const same=await create(sameInput);
+  assert.equal(same.data.notifyId,receiver.id);assert.deepEqual(same.data.notifyParty,same.data.consigneeParty);
+  assert.equal(same.data.consigneeParty.id,receiver.id);assert.equal(same.data.consigneeParty.privateMemo,undefined);
+  assert.equal(same.data.notify,same.data.consignee);assert.match(same.data.consignee,/Receiver on B\/L\nShipping document address\nDocument contact\n\+84 123\nreceiver@example.test/);
+  assert.equal((await db.organization.findUnique({where:{id:receiver.id}})).name,receiver.name);
+  assert.equal((await create(sameInput)).id,same.id);
+  const detail=await freightDetail(db,org,actor,'jobs',same.id);
+  const document=await issueFreightDocument(db,org,actor,'jobs',same.id,{clientKey:randomUUID(),kind:'AN',version:detail.version,revision:detail.revision});
+  assert.equal(document.snapshot.source.data.consignee,same.data.consignee);
+  assert.equal(document.snapshot.source.data.notify,same.data.consignee);
+  await assert.rejects(create({...body,clientKey:randomUUID(),data:{...body.data,notifySameAsConsignee:true,consigneeId:s.other.id}}),/FREIGHT_PARTY_SCOPE/);
   await assert.rejects(create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_DOOR'}}}),/FREIGHT_INVALID_INPUT/);
   const road=await create({...body,clientKey:randomUUID(),mode:'ROAD',data:{...body.data,shipmentType:'ROAD',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}});assert.equal(road.mode,'ROAD');
  }finally{await f.close();}

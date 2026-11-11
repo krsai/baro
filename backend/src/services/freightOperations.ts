@@ -20,16 +20,16 @@ export async function freightActor(db:any,orgId:number,actorId:number){
 }
 // Keep party lookup independent of Prisma relation aliases used by other modules.
 export async function scopedParty(db:any,orgId:number,id:number){
- const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber" FROM "Organization" p WHERE p.id=$1 AND p.id<>$2 AND p."isActive" AND (p."ownerOrgId"=$2 OR p."dataOwnerOrgId"=$2 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$2 AND r."brandOrgId"=p.id))`,id,orgId);
+ const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p.representative,p.phone,p.email FROM "Organization" p WHERE p.id=$1 AND p.id<>$2 AND p."isActive" AND (p."ownerOrgId"=$2 OR p."dataOwnerOrgId"=$2 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$2 AND r."brandOrgId"=p.id))`,id,orgId);
  if(!rows.length)fail('FREIGHT_PARTY_SCOPE',403);return (await freightParties(db,orgId,rows))[0];
 }
 async function freightParties(db:any,orgId:number,rows:any[]){
  const values=await attachLinkedCompanies(db,orgId,rows.map(row=>({...row,entityId:row.id})));
- return values.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,address:row.address,country:row.country,businessNumber:row.businessNumber}));
+ return values.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,address:row.address,country:row.country,businessNumber:row.businessNumber,contactName:row.representative,phone:row.phone,email:row.email}));
 }
 export async function freightOptions(db:any,orgId:number,actorId:number){
  await freightActor(db,orgId,actorId);
- const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p."ownerOrgId",p."dataOwnerOrgId" FROM "Organization" p WHERE p.id<>$1 AND p."isActive" AND (p."ownerOrgId"=$1 OR p."dataOwnerOrgId"=$1 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$1 AND r."brandOrgId"=p.id)) ORDER BY p.name,p.id`,orgId);
+ const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p.representative,p.phone,p.email,p."ownerOrgId",p."dataOwnerOrgId" FROM "Organization" p WHERE p.id<>$1 AND p."isActive" AND (p."ownerOrgId"=$1 OR p."dataOwnerOrgId"=$1 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$1 AND r."brandOrgId"=p.id)) ORDER BY p.name,p.id`,orgId);
  return freightParties(db,orgId,rows);
 }
 async function audit(tx:any,orgId:number,entity:string,row:any,before:any,actorId:number){await tx.$executeRawUnsafe(`INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,randomUUID(),orgId,entity,row.id,row.version,actorId,before?JSON.stringify(before):null,JSON.stringify(row));}
@@ -38,7 +38,7 @@ async function get(tx:any,orgId:number,type:keyof typeof tables,id:string,lock=f
  if(!rows.length)fail('FREIGHT_NOT_FOUND',404);return rows[0];
 }
 async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any){
- const d=input.data||{},mode=member(input.mode||'AIR',['SEA','AIR','ROAD']);
+ const d={...(input.data||{})},mode=member(input.mode||'AIR',['SEA','AIR','ROAD']);
  const data:any={origin:optional(d.origin,160),destination:optional(d.destination,160),etd:date(d.etd),eta:date(d.eta),vessel:optional(d.vessel,160),voyage:optional(d.voyage,100),remark:optional(d.remark,2000)};
  if(type==='masters'){
   const number=clean(input.number,120);if(!number)fail('FREIGHT_REQUIRED');data.carrier=optional(d.carrier,200);data.issuer=optional(d.issuer,200);return {number,mode,data};
@@ -53,12 +53,21 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
  const assigneeId=d.assigneeId==null||d.assigneeId===''?null:Number(d.assigneeId);
  if(assigneeId!==null&&(!Number.isSafeInteger(assigneeId)||!await tx.employee.findFirst({where:{id:assigneeId,orgId,status:'ACTIVE'}})))fail('FREIGHT_ASSIGNEE_SCOPE',403);
  Object.assign(data,{assigneeId,jobType:member(d.jobType||'OTHER',['IMPORT','EXPORT','DOMESTIC','OTHER']),plannedDate:date(d.plannedDate)});
+ if(d.notifySameAsConsignee!==undefined){
+  if(typeof d.notifySameAsConsignee!=='boolean')fail('FREIGHT_INVALID_INPUT');
+  data.notifySameAsConsignee=d.notifySameAsConsignee;
+  if(d.notifySameAsConsignee){d.notifyId=d.consigneeId;d.notifyParty=d.consigneeParty;}
+ }
  for(const role of ['shipper','consignee','notify']){
   const id=d[role+'Id'];
-  if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id);}
+  if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id);
+   const document=d[role+'Party'];
+   if(document!=null){if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
+    for(const field of ['name','address','contactName','phone','email'])if(document[field]!==undefined)data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
+   }}
  }
  if(d.customerRole!==undefined){
-  data.customerRole=member(d.customerRole,['shipper','consignee']);
+  data.customerRole=member(d.customerRole,['shipper','consignee','notify']);
   if(data[data.customerRole+'Id']!==customerId)fail('FREIGHT_CUSTOMER_ROLE');
  }
  if(d.workScope!==undefined&&d.workScope!==null){
@@ -79,7 +88,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
  for(const key of ['pickupRequired','dangerousGoods'])if(d[key]!==undefined&&typeof d[key]!=='boolean')fail('FREIGHT_INVALID_INPUT');
  Object.assign(data,{shipmentType,incoterms:optional(d.incoterms,80),pickupRequired:d.pickupRequired===true,pickupAddress:optional(d.pickupAddress,1000),dangerousGoods:d.dangerousGoods===true,dangerousGoodsDetails:optional(d.dangerousGoodsDetails,500),containerType:optional(d.containerType,40),containerCount:decimal(d.containerCount||undefined,0)});
  Object.assign(data,{direction:member(d.direction||'OTHER',['IMPORT','EXPORT','OTHER']),shipper:optional(d.shipper,1000),consignee:optional(d.consignee,1000),notify:optional(d.notify,1000),billTo:optional(d.billTo,1000),cargo:optional(d.cargo,2000),marks:optional(d.marks,1000),quantity:decimal(d.quantity||undefined,0),unit:optional(d.unit||'PKG',30),weightKg:decimal(d.weightKg||undefined),cbm:decimal(d.cbm||undefined,6),freightTerms:optional(d.freightTerms,100),deliveryDate:date(d.deliveryDate),recipient:optional(d.recipient,200)});
- for(const role of ['shipper','consignee','notify'])if(data[role+'Party'])data[role]=[data[role+'Party'].name,data[role+'Party'].address].filter(Boolean).join('\n');
+ for(const role of ['shipper','consignee','notify'])if(data[role+'Party'])data[role]=[data[role+'Party'].name,data[role+'Party'].address,data[role+'Party'].contactName,data[role+'Party'].phone,data[role+'Party'].email].filter(Boolean).join('\n');
  return {customerId,masterId,mode,service:member(input.service||'GENERAL',['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};
 }
 export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof typeof tables,input:any,id?:string){

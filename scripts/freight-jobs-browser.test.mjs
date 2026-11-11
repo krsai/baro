@@ -6,9 +6,10 @@ import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {freightJobEditorText} from '../frontend/src/constants/freightJobEditor.js';
 import {jobText} from '../frontend/src/constants/freightJobs.js';
+import {shippingText} from '../frontend/src/constants/shippingRequests.js';
 const file=path.resolve('frontend/freight-jobs-acceptance.html'),port=43422;
 assert.ok(!existsSync(file));writeFileSync(file,`<html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/FreightWorkspace.jsx';
+import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/FreightJobs.jsx';
 createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script></body></html>`);
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -16,7 +17,7 @@ try{
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi']){
   console.log('Checking job and BL management',lang);
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],t=jobText[lang],e=freightJobEditorText[lang];page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.accept());
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],t={...jobText[lang],...shippingText[lang]},e=freightJobEditorText[lang];page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.accept());
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={markTabChanged:()=>{},clearTabChanged:()=>{},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
@@ -24,8 +25,8 @@ try{
   await page.route('**/freight/**',async route=>{
    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'},req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers});
    const p=new URL(req.url()).pathname.split('/freight/')[1];let json;
-   if(p==='options')json=[{id:11,code:'BARO',name:'BARO',nameKo:'BARO',address:'Hanoi'}];
-   else if(p==='transport-jobs/options')json={employees:[{id:9,name:'Owner'}]};
+   if(p==='options')json=[{id:11,code:'BARO',name:'BARO',nameKo:'BARO',address:'Hanoi',contactName:'Customer contact',phone:'+84 111',email:'customer@example.test'}];
+   else if(p==='transport-jobs/options')json={employees:[{id:9,employeeNo:'DEXL0004',name:'DEX operator'}]};
    else if(p==='transport-jobs'&&req.method()==='POST'){const v=req.postDataJSON();assert.equal(v.customerId,11);assert.equal(v.masterId,undefined);assert.equal(v.houseNumber,undefined);job={...v,id:'job1',number:'SHP-001',version:1,data:{...v.data,customer:{name:'BARO'}}};json=job;}
    else if(p==='transport-jobs')json={rows:job?[job]:[],total:job?1:0};
    else if(p==='transport-jobs/job1'&&req.method()==='GET')json={...job,bills};
@@ -35,11 +36,26 @@ try{
    else throw Error('Unexpected request '+p);
    await route.fulfill({headers,json});
   });
+  await page.route('**/shipping-requests/job1/charges*',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{rows:[],currencies:[]}}));
   await page.goto(`http://127.0.0.1:${port}/freight-jobs-acceptance.html`);
   await page.getByRole('button',{name:t.new,exact:true}).click();let dialog=page.getByRole('dialog');
   const customer=page.getByRole('textbox',{name:t.customer,exact:true});await customer.fill('BARO');await customer.press('Enter');
   assert.equal(await page.getByRole('dialog').count(),0);
   const r=routeScopeText[lang];await page.getByRole('button',{name:r.consignee,exact:true}).click();
+  assert.equal(await page.getByRole('combobox',{name:t.jobType,exact:true}).count(),0);
+  assert.equal(await page.getByRole('button',{name:r.all,exact:true}).evaluate(el=>el.classList.contains('MuiButton-contained')),true);
+  assert.equal(await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).getAttribute('aria-pressed'),'true');
+  const initialColor=await page.getByTestId('freight-route-scope').locator('.MuiSlider-root').evaluate(el=>getComputedStyle(el).color);
+  await page.getByRole('button',{name:r.main,exact:true}).click();
+  assert.equal(await page.getByTestId('freight-route-scope').locator('.MuiSlider-root').evaluate(el=>getComputedStyle(el).color),initialColor);
+  await page.getByRole('button',{name:r.all,exact:true}).click();
+  await page.getByRole('button',{name:r.notify,exact:true}).click();
+  assert.equal(await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).getAttribute('aria-pressed'),'false');
+  await page.getByRole('button',{name:r.consignee,exact:true}).click();await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).click();
+  const operator=page.getByRole('textbox',{name:e.forwarderAssignee,exact:true});await operator.fill('DEXL0004');await operator.press('Enter');
+  await page.getByTestId('freight-party-consignee').getByRole('textbox',{name:e.address,exact:true}).fill('B/L address');
+  assert.equal(await page.getByTestId('freight-party-notify').getByRole('textbox',{name:e.address,exact:true}).inputValue(),'B/L address');
+  await page.getByLabel(e.plannedDate,{exact:true}).fill('2026-11-15');
   for(const label of [e.shipper]){const input=page.getByRole('textbox',{name:label,exact:true});await input.fill('BARO');await input.press('Enter');}
   await page.getByRole('combobox',{name:e.incoterms,exact:true}).click();await page.getByRole('option',{name:'FOB',exact:true}).click();
   await page.getByRole('button',{name:r.all,exact:true}).click();
@@ -47,6 +63,7 @@ try{
   const slider=page.getByTestId('freight-route-scope').locator('.MuiSlider-root'),track=await slider.boundingBox(),thumb=await slider.locator('.MuiSlider-thumb').first().boundingBox();await page.mouse.move(thumb.x+thumb.width/2,thumb.y+thumb.height/2);await page.mouse.down();await page.mouse.move(track.x+track.width/3,track.y+track.height/2,{steps:8});await page.mouse.up();assert.equal(await start.getAttribute('aria-valuenow'),'1');await page.getByRole('button',{name:r.all,exact:true}).click();
   await page.getByRole('checkbox',{name:e.pickupRequired,exact:true}).check();const pickup=page.getByRole('textbox',{name:r.pickupFrom,exact:true});await pickup.fill('BARO');await pickup.press('Enter');assert.equal(await page.getByRole('textbox',{name:e.pickupAddress,exact:true}).inputValue(),'Hanoi');await page.getByRole('textbox',{name:e.pickupAddress,exact:true}).fill('Separate warehouse');
   await page.getByRole('checkbox',{name:e.dangerousGoods,exact:true}).check();await page.getByRole('textbox',{name:e.dangerousGoodsDetails,exact:true}).fill('UN 1993');
+  if(lang==='ko'&&process.env.BARO_FREIGHT_SCREENSHOT){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:process.env.BARO_FREIGHT_SCREENSHOT,fullPage:true});}
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(bills.length,0);assert.equal(job.data.shipperId,11);assert.equal(job.data.consigneeId,11);assert.equal(job.data.pickupAddress,'Separate warehouse');assert.equal(job.data.pickupPartyId,11);assert.equal(job.data.dangerousGoods,true);assert.equal(job.data.customerRole,'consignee');assert.equal(job.data.incoterms,'FOB');assert.deepEqual(job.data.workScope,{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'});
   const add=async(kind,number)=>{await page.getByRole('button',{name:kind==='MASTER'?t.addMaster:t.addHouse,exact:true}).click();await dialog.getByRole('textbox',{name:t.billNumber,exact:true}).fill(number);await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});await page.getByText(number,{exact:true}).waitFor();};
   await add('HOUSE','H-001');await add('MASTER','M-001');await add('MASTER','M-002');await add('HOUSE','H-002');
