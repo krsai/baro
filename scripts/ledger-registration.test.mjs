@@ -5,7 +5,7 @@ import {createRequire} from 'node:module';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url);
 const {previewChangeApproval,requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
-const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
+const {postLedgerEntry,listLedgerActivity}=require('../backend/dist/services/bankLedger');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {registerExpensePayeeRoutes}=require('../backend/dist/services/expensePayee');
 const {previewLedgerRegistration,validateLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
@@ -23,8 +23,16 @@ test('bank fees debit only the owned account without evidence or recipient and r
   const result=await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});
   const row=await db.bankLedgerEntry.findFirstOrThrow({where:{clientKey:body.clientKey}});
   assert.equal(row.direction,'OUT');assert.equal(row.evidenceType,'BANK_FEE');assert.equal(row.evidenceNumber,'');assert.equal(row.counterpartyOrgId,null);assert.equal(row.counterpartyAccountId,null);
+  const searched=await listLedgerActivity(db,org,{start:'2026-11-05',end:'2026-11-05',search:'FEE',includeVoided:'0'});assert.equal(searched.rows.length,1);assert.equal(searched.rows[0].balance,'-10.00');
+  assert.equal((await listLedgerActivity(db,org,{start:'2026-11-05',end:'2026-11-05',search:'missing-search',includeVoided:'0'})).rows.length,0);
+  assert.equal((await listLedgerActivity(db,s.other.id,{start:'2026-11-05',end:'2026-11-05',search:'FEE',includeVoided:'0'})).rows.length,0);
   assert.equal((await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'})).id,result.id);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261111020000_bank_fee_without_evidence');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.equal(await db.bankLedgerEntry.count(),1);
+  for(const [amount,remark] of [['20','hidden intermediate'],['30','selected fee']]){
+   const key=randomUUID(),pending=await requestChangeApproval(db,org,s.people.admin.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:key,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},payload:{schemaVersion:2,accountingCodeVersion:1,clientKey:key,rows:[{...body,clientKey:randomUUID(),amount,remark,accountId:s.account.id,entryKind:'BANK'}]}});
+   await decideChangeApproval(db,org,s.people.junior.id,pending.id,{decision:'APPROVED'});await decideChangeApproval(db,org,s.people.lead.id,pending.id,{decision:'APPROVED'});
+  }
+  const selected=await listLedgerActivity(db,org,{start:'2026-11-05',end:'2026-11-05',search:'selected fee',includeVoided:'0'});assert.equal(selected.rows.length,1);assert.equal(selected.rows[0].balance,'-60.00','search must retain hidden transactions in actual running balance');assert.equal(selected.accounts.find(account=>account.id===s.account.id).currentBalance,'-60.00');
  }finally{await f.close();}
 });
 

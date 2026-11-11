@@ -11,7 +11,7 @@ const {requestChangeApproval,decideChangeApproval,listChangeApprovals}=require('
 test('configured highest active company administrator can approve own legacy deletion; lower administrators and live payments stay blocked',async()=>{
  const f=await changeApprovalFixture(),db=f.db;try{
   const s=await seedChangeApproval(db),orgId=s.company.id,admin=s.people.admin.id;
-  const create=actor=>db.$transaction(tx=>registerExpenseRequest(tx,orgId,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'TOP-TEST'}}]}),{timeout:30000});
+  const create=actor=>db.$transaction(tx=>registerExpenseRequest(tx,orgId,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'TOP-TEST',evidenceFile:'stored-test-receipt.pdf'}}]}),{timeout:30000});
   const request=(actor,doc)=>requestExpenseDeletion(db,orgId,actor,doc.id,{version:doc.version,clientKey:randomUUID(),reason:'Duplicate'});
   const own=await create(admin),pending=await request(admin,own);
   const listed=await listExpenseDeletions(db,orgId,admin);assert.equal(listed.find(row=>row.id===pending.id).canDecide,true);assert.ok(listed.find(row=>row.id===pending.id).eligibleApprovers.some(person=>person.id===admin));

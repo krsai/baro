@@ -7,6 +7,7 @@ import {generalInvoiceSource} from '../services/generalInvoice';
 import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from '../services/accountingCode';
 import { createInvoiceCredit, voidInvoiceCredit } from '../services/invoiceCredit';
 import {companyNameCodeSearch} from '../services/companySearch';
+import {attachLedgerActorNames} from '../services/ledgerActors';
 
 const invoicePaymentMoney = (payments: any[], values: (payment: any) => unknown[]) => {
   const total = payments.reduce((sum: bigint, payment: any) => {
@@ -88,14 +89,21 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     if (!Number.isSafeInteger(page) || page < 0 || page > 10000) return res.status(400).json({ error: "invalid page" });
     const search = String(req.query.search ?? '').trim();
     const status = String(req.query.status ?? '');
+    const start=String(req.query.start||''),end=String(req.query.end||'');
+    if([start,end].some(value=>value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value))))||start&&end&&start>end)return res.status(400).json({error:'invalid invoice filter'});
+    const endExclusive=end?new Date(Date.parse(end+'T00:00:00+07:00')+86400000):undefined;
     if (search.length > 200 || (status && !['ISSUED', 'CANCELLED', 'SUPERSEDED'].includes(status))) return res.status(400).json({ error: 'invalid invoice filter' });
     const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
+      ...(start||end?{issuedAt:{...(start?{gte:new Date(start+'T00:00:00+07:00')} :{}),...(endExclusive?{lt:endExclusive}:{})}}:{}),
       ...(status ? { status } : {}),
       ...(search ? { OR: [
         { invoiceNumber: { contains: search, mode: 'insensitive' } },
         { buyer: companyNameCodeSearch(access.organization.id,search) },
         { snapshot: { path: ['fields', 'buyer', 'name'], string_contains: search, mode: 'insensitive' } },
         { snapshot: { path: ['fields', 'buyer', 'code'], string_contains: search, mode: 'insensitive' } },
+        { snapshot: { path: ['fields', 'seller', 'name'], string_contains: search, mode: 'insensitive' } },
+        { generalLines: { some: { OR: ['code','codeDescription','description'].map(field=>({[field]:{contains:search,mode:'insensitive'}})) } } },
+        { lines: { some: { OR: ['description','styleCode','styleName'].map(field=>({[field]:{contains:search,mode:'insensitive'}})) } } },
         { orders: { some: { sourceOrderNumber: { contains: search, mode: 'insensitive' } } } },
       ] } : {}),
     },
@@ -106,6 +114,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
           allocations: { where: { voidedAt: null }, select: { amount: true } } } } },
     });
     const visible = rows.slice(0, 30);
+    const actors=await attachLedgerActorNames(db,access.organization.id,visible.map((row:any)=>({id:row.id,createdBy:row.issuedBy})));
     const familyIds = [...new Set(visible.map((row: any) => invoiceFamily(row)))];
     const familyInvoices = familyIds.length ? await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
       OR: [{ id: { in: familyIds } }, { rootInvoiceId: { in: familyIds } }] },
@@ -115,7 +124,10 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
       expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
       receivableAdded: String(row.receivableAdded),
-      issuedAt: row.issuedAt, issuedBy: row.issuedBy, orders: row.orders,
+      issuedAt: row.issuedAt, issuedBy: row.issuedBy, issuedByName:actors.find((actor:any)=>actor.id===row.id)?.createdByName||null, orders: row.orders,
+      sellerName:(row.snapshot as any)?.fields?.seller?.name||access.organization.name,
+      accountingCodes:[...new Set(((row.snapshot as any)?.lines||[]).map((line:any)=>line.code).filter(Boolean))],
+      descriptions:[...new Set(((row.snapshot as any)?.lines||[]).map((line:any)=>line.description||line.styleCode).filter(Boolean))],
       revisionOfInvoiceId: row.revisionOfInvoiceId, revisionNumber: row.revisionNumber, revisionReason: row.revisionReason,
       // A partially unlocked document must still offer Unlock for its remaining
       // locks. Locks belonging to a later invoice are not this document's locks.

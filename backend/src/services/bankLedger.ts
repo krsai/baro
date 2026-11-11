@@ -235,19 +235,25 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const selectedAccountId=selectedAccount?.id||'';
   const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:end}},_sum:{amount:true}});
   const summary=accounts.map((account:any)=>({...account,totalIn:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='IN')?._sum.amount||'0'),account.currencyCode),totalOut:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='OUT')?._sum.amount||'0'),account.currencyCode)}));
-  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'desc'},{evidenceType:'desc'},{createdAt:'desc'},{id:'desc'}],skip:page*100,take:101,include:{internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+  const search=String(query.search||'').trim();if(search.length>200)return fail('LEDGER_INVALID_RANGE');
+  const matchingActors=search?await tx.employee.findMany({where:{orgId,name:{contains:search,mode:'insensitive'}},select:{email:true}}):[];
+  const contains={contains:search,mode:'insensitive'};
+  const searchScope=search?{OR:[{counterpartyName:contains},{purpose:contains},{evidenceNumber:contains},{createdBy:contains},{createdBy:{in:matchingActors.map((row:any)=>row.email).filter(Boolean)}},{account:{OR:[{bankName:contains},{accountNumber:contains},{currencyCode:contains},{entityAccount:{displayName:contains}}]}},{accountingCode:{OR:[{code:contains},{nameKo:contains},{nameEn:contains},{nameVi:contains},{base:{OR:[{code:contains},{nameKo:contains},{nameEn:contains},{nameVi:contains}]}}]}}]}:{};
+  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...searchScope,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'desc'},{evidenceType:'desc'},{createdAt:'desc'},{id:'desc'}],skip:page*100,take:101,include:{internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
   const pending=rows.length?await tx.changeApprovalRequest.findMany({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:rows.slice(0,100).flatMap((row:any)=>[row.id,row.internalTransferSourceId,row.internalTransferMirror?.id].filter(Boolean))}},select:{ledgerEntryId:true}}):[];
   // Calculate each balance in ledger order, then return the page newest first.
   const chronologicalRows=rows.slice(0,100).reverse();
   const balances=new Map<string,bigint>();
-  for(const row of chronologicalRows)if(!balances.has(row.accountId)){
+  const searchedBalances=new Map<string,bigint>();
+  for(const row of chronologicalRows)if(search||!balances.has(row.accountId)){
    const account=accounts.find((a:any)=>a.id===row.accountId);
    if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
    const prefix={OR:[{transactionDate:{lt:row.transactionDate}},{transactionDate:row.transactionDate,evidenceType:{lt:row.evidenceType}},{transactionDate:row.transactionDate,evidenceType:row.evidenceType,createdAt:{lt:row.createdAt}},{transactionDate:row.transactionDate,evidenceType:row.evidenceType,createdAt:row.createdAt,id:{lt:row.id}}]};
-   balances.set(row.accountId,ledgerScale4(account.openingBalance)+delta(await sums(tx,{orgId,accountId:row.accountId,...prefix})));
+   const balance=ledgerScale4(account.openingBalance)+delta(await sums(tx,{orgId,accountId:row.accountId,...prefix}));
+   if(search)searchedBalances.set(row.id,balance);else balances.set(row.accountId,balance);
   }
   const result=chronologicalRows.map((row:any)=>{
-   const account=accounts.find((a:any)=>a.id===row.accountId);let balance=balances.get(row.accountId)!;
+   const account=accounts.find((a:any)=>a.id===row.accountId);let balance=search?searchedBalances.get(row.id)!:balances.get(row.accountId)!;
    if(!row.voidedAt)balance+=(row.direction==='IN'?1n:-1n)*ledgerScale4(row.amount);balances.set(row.accountId,balance);
    return {...row,changePending:pending.some((request:any)=>[row.id,row.internalTransferSourceId,row.internalTransferMirror?.id].includes(request.ledgerEntryId)),currencyCode:account.currencyCode,accountName:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),balance:ledgerMoney(balance,account.currencyCode)};
   });

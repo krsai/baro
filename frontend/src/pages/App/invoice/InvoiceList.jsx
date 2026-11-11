@@ -1,3 +1,10 @@
+import dayjs from 'dayjs';
+import DateRangeSelector from '../../../components/DateRangeSelector';
+import {ledgerFlowText} from '../../../constants/ledgerFlow';
+import {ledgerEntryText} from '../../../constants/ledgerEntry';
+import {ledgerWorkspaceText} from '../../../constants/ledgerWorkspace';
+import {bankLedgerMessages} from '../../../constants/bankLedgerMessages';
+import {ACCOUNTING_CODE_TEXT} from '../../../constants/accountingCode';
 import PageContentStack from '../../../components/PageContentStack';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchPanel from '../../../components/SearchPanel';
@@ -25,6 +32,8 @@ import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const {navigateToPath}=useAppActions();
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
+  const [start,setStart]=useState(()=>dayjs().startOf('month')),[end,setEnd]=useState(()=>dayjs());
+  const flow=ledgerFlowText[languageCode]||ledgerFlowText.en,entry=ledgerEntryText[languageCode]||ledgerEntryText.en,bank=bankLedgerMessages[languageCode]||bankLedgerMessages.en,workspace=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
   const [search,setSearch]=useState(''),[status,setStatus]=useState(''),[detail,setDetail]=useState(null),[pdfBusy,setPdfBusy]=useState(false);
   const labels=invoiceListUi[languageCode]||invoiceListUi.en;
   const types=generalInvoiceText[languageCode]||generalInvoiceText.en;
@@ -39,12 +48,12 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     if (!orgId) return;
     let cancelled = false;
     setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null); setRevising(false);
-    const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status}:{}) })}`, { skipCache:true })
+    const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status,start:start.format('YYYY-MM-DD'),end:end.format('YYYY-MM-DD')}:{}) })}`, { skipCache:true })
       .then(invoices=>{if(!cancelled){if(invoiceId)setDetail({...invoices,isFinalLocked:invoices.orders?.some(order=>order.workOrder?.invoiceFinalLockedAt&&order.workOrder.invoiceFinalLockInvoiceId===invoices.id)});else setIssued(invoices);}})
       .catch(()=>{if(!cancelled)setError(ui.failed);})
       .finally(()=>{if(!cancelled)setLoading(false);}),200);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [orgId, invoiceId, page, reload, search, status, ui.failed]);
+  }, [orgId, invoiceId, page, reload, search, status, start, end, ui.failed]);
   const printIssued = async row => {
     // Open synchronously from the click so browsers do not block the print tab.
     const popup = window.open('', '_blank');
@@ -62,21 +71,19 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const amount=(value,currencyCode)=>formatCurrency(value,{currencyCode,languageCode});
   return <PageContentStack>
     {!invoiceId&&<>
-    <SearchPanel search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} filters={<TextField select size="small" label={common.invoiceStatus} value={status} onChange={e=>{setStatus(e.target.value);setPage(0);}} sx={{minWidth:180}}><MenuItem value="">{ui.all}</MenuItem>{['ISSUED','CANCELLED','SUPERSEDED'].map((value,index)=><MenuItem key={value} value={value}>{[ui.issued,ui.cancelled,ui.superseded][index]}</MenuItem>)}</TextField>} onReset={()=>{setSearch('');setStatus('');setPage(0);}} />
+    <SearchPanel compact search={<SearchInput value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder={ui.search}/>} controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={start} endValue={end} onStartChange={date=>{if(date?.isValid()){setStart(date);setPage(0);}}} onEndChange={date=>{if(date?.isValid()){setEnd(date);setPage(0);}}}/>} onReset={()=>{setSearch('');setStatus('');setStart(dayjs().startOf('month'));setEnd(dayjs());setPage(0);}} />
     <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
-      {[common.issuedDate,common.invoiceStatus,types.type,common.invoiceNumber,common.customerName,labels.orders,labels.statement,labels.received,labels.balance,'PDF'].map((label,index)=><TableCell key={label} align={index>=6&&index<=8?'right':'left'}>{label}</TableCell>)}
+      {[common.issuedDate,flow.from,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF'].map((label,index)=><TableCell key={index} align={index>=6&&index<=8?'right':'left'}>{label}</TableCell>)}
     </TableRow></TableHead><TableBody>
-      {loading?<TableRow><TableCell colSpan={10} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={10} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
+      {loading?<TableRow><TableCell colSpan={12} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={12} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
-        <TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/>{row.isFinalLocked&&<Typography variant="caption" color="success.main" display="block">{labels.locked}</Typography>}</TableCell>
-        <TableCell sx={{whiteSpace:'nowrap'}}>{row.documentKind==='GENERAL'?types.general:types.order}</TableCell>
-        <TableCell><Typography variant="subtitle2">{row.invoiceNumber}</Typography></TableCell>
-        <TableCell>{row.buyerName}</TableCell><TableCell>{row.documentKind==='GENERAL'?'—':row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
+        <TableCell>{row.sellerName||'\u2014'}</TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{amount(row.receivedAmount,row.currencyCode)}</TableCell>
         <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
+        <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
         <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
       </TableRow>)}
     </TableBody></Table></Box>
