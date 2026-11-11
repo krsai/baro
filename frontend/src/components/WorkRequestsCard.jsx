@@ -7,6 +7,7 @@ import {useRequestScopeContext} from '../context/RequestScopeContext';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {workRequestText} from '../constants/dashboardWorkRequests';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
+import {dashboardWidgetPaperSx,dashboardWidgetTitleSx} from './dashboardWidgetStyles';
 export default function WorkRequestsCard({orgId,languageCode}){
  const t=workRequestText[languageCode]||workRequestText.en,{active}=useRequestScopeContext(),{showNotification}=useAppActions();
  const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[page,setPage]=useState(0),[status,setStatus]=useState('ALL'),[direction,setDirection]=useState('ALL'),[reload,setReload]=useState(0);
@@ -30,8 +31,8 @@ export default function WorkRequestsCard({orgId,languageCode}){
   try{await api('',payload);if(!alive.current)return;setOpen(false);setUncertain(false);attempt.current=null;setPage(0);setReload(n=>n+1);showNotification(t.sent,'success');}
   catch(e){if(!alive.current)return;const unknown=!e.status||e.status>=500;setUncertain(unknown);if(!unknown)attempt.current=null;setFormError(unknown?t.uncertain:t.failed);}finally{mutation.current=false;if(alive.current)setBusy(false);}};
  const act=async(row,action)=>{if(mutation.current)return;mutation.current=true;setBusy(true);setMutationError('');try{await api('/'+encodeURIComponent(row.id),{action,version:row.version});if(!alive.current)return;showNotification(action==='COMPLETE'?t.completed:t.hidden,'success');setReload(n=>n+1);}catch(e){if(alive.current){setMutationError(e.status===409?t.changed:t.failed);setReload(n=>n+1);}}finally{mutation.current=false;if(alive.current)setBusy(false);}};
- return <Paper variant="outlined" data-testid="dashboard-work-requests" sx={{p:2,height:540,display:'flex',flexDirection:'column',minWidth:0}}>
-  <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="h6">{t.title}</Typography>{data?.canCreate&&<Button onClick={create}>{t.create}</Button>}</Stack>
+ return <Paper variant="outlined" data-testid="dashboard-work-requests" sx={dashboardWidgetPaperSx}>
+  <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{flexShrink:0}}><Typography variant="subtitle1" sx={dashboardWidgetTitleSx}>{t.title}</Typography>{data?.canCreate&&<Button onClick={create}>{t.create}</Button>}</Stack>
   <Stack direction="row" spacing={1} sx={{my:1.5}}>{[['status',status,setStatus,['ALL','OPEN','DONE']],['direction',direction,setDirection,['ALL','RECEIVED','SENT']]].map(([key,value,set,keys])=><TextField key={key} select fullWidth size="small" label={t[key]} value={value} onChange={e=>{set(e.target.value);setPage(0);}}>{keys.map(k=><MenuItem key={k} value={k}>{t[k]}</MenuItem>)}</TextField>)}</Stack>
   {(error||mutationError)&&<Alert severity="error" action={<Button onClick={()=>{setMutationError('');setReload(n=>n+1);}}>{t.retry}</Button>}>{mutationError||error}</Alert>}
   <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>{loading&&!data?<CircularProgress size={20}/>:!error&&data?.rows.length===0?<Typography color="text.secondary">{t.empty}</Typography>:<Stack spacing={1}>{data?.rows.map(row=><Paper key={row.id} variant="outlined" sx={{p:1.5}}>

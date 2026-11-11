@@ -1917,6 +1917,7 @@ const MainLayout = () => {
 
         <Box
           ref={workspaceScrollRef}
+          data-workspace-viewport
           sx={{
             flexGrow: 1,
             minWidth: 0,
