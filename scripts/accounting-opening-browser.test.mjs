@@ -24,17 +24,17 @@ try{
    return r.fallback();
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-opening-acceptance.html?lang=${lang}`);
-  await page.getByLabel(b.date,{exact:true}).fill('2026-11-01');await page.getByText('OLD-1',{exact:true}).waitFor();
+  await page.getByLabel(b.date,{exact:true}).fill('2026-11-01');await page.getByLabel(b.actual+' Cash',{exact:true}).fill('11');await page.getByLabel(b.reason,{exact:false}).fill('Cash draft');await page.getByRole('tab',{name:t.arapTab,exact:true}).click();await page.getByText('OLD-1',{exact:true}).waitFor();
   const panel=page.locator('[data-accounting-opening]');await panel.getByRole('button',{name:t.addBalance,exact:true}).click();
   const manual=panel.locator('table').first().locator('tbody tr').first(),texts=manual.getByRole('textbox');
   await texts.nth(0).fill('VEND');await texts.nth(0).press('Enter');await manual.getByText('VENDOR',{exact:true}).waitFor();
   await texts.nth(1).fill('SALE');await texts.nth(1).press('Enter');await texts.last().fill('50');
   const source=panel.getByRole('row').filter({has:page.getByText('OLD-1',{exact:true})});await source.getByRole('checkbox').check();assert.equal(await panel.getByText(t.SETTLED,{exact:true}).count(),0);await panel.getByText('OLD-DONE',{exact:true}).waitFor();
-  await page.getByLabel(b.reason,{exact:false}).fill('Prior opening');
-  await page.getByRole('button',{name:b.save,exact:true}).click();await page.getByText(b.uncertain,{exact:true}).waitFor();
+  await page.getByLabel(b.reason,{exact:false}).fill('Prior opening');await page.getByRole('tab',{name:t.accountTab,exact:true}).click();assert.equal(await page.getByLabel(b.actual+' Cash',{exact:true}).inputValue(),'11');assert.equal(await page.getByLabel(b.reason,{exact:false}).inputValue(),'Cash draft');await page.getByRole('tab',{name:t.arapTab,exact:true}).click();assert.equal(await page.getByLabel(b.reason,{exact:false}).inputValue(),'Prior opening');assert.equal(await texts.last().inputValue(),'50');
+  await page.getByRole('button',{name:t.saveAr,exact:true}).click();await page.getByText(b.uncertain,{exact:true}).waitFor();
   assert.equal(await page.getByLabel(b.date,{exact:true}).isDisabled(),true);
-  await page.getByRole('button',{name:b.retry,exact:true}).click();await page.waitForFunction(()=>window.closedBalance===true);
-  assert.deepEqual(saved[0],saved[1]);assert.deepEqual(saved[0].accounts,[]);assert.equal(saved[0].openingRows.length,2);assert.equal(saved[0].openingRows[0].amount,'50');assert.equal(saved[0].openingRows[1].expectedRemaining,'100.00');assert.equal(saved[0].openingRows[1].kind,'EXCLUDED');assert.equal(saved[0].balanceDate,'2026-11-01');
+  await page.getByRole('button',{name:b.retry,exact:true}).click();await page.getByRole('button',{name:t.saveAr,exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('[data-accounting-opening] table tbody')?.children.length===0);assert.equal(await page.evaluate(()=>window.closedBalance===true),false);
+  assert.deepEqual(saved[0],saved[1]);assert.deepEqual(saved[0].accounts,[]);assert.equal(saved[0].openingRows.length,2);assert.equal(saved[0].openingRows[0].amount,'50');assert.equal(saved[0].openingRows[1].expectedRemaining,'100.00');assert.equal(saved[0].openingRows[1].kind,'EXCLUDED');assert.equal(saved[0].balanceDate,'2026-11-01');await page.getByRole('tab',{name:t.accountTab,exact:true}).click();assert.equal(await page.getByLabel(b.actual+' Cash',{exact:true}).inputValue(),'11');assert.equal(await page.getByLabel(b.reason,{exact:false}).inputValue(),'Cash draft');await page.getByRole('button',{name:t.saveAccounts,exact:true}).click();await page.waitForFunction(()=>document.querySelector('input[aria-label]')?.value==='');assert.deepEqual(saved[2].openingRows,[]);assert.equal(saved[2].accounts[0].targetBalance,'11');assert.equal(saved[2].reason,'Cash draft');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS opening balances ko/en/vi desktop/mobile: exact party/code lookup, document settlement, no cash adjustment, immutable unknown-result retry.');

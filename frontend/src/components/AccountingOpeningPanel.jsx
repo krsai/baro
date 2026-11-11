@@ -12,9 +12,10 @@ import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import {accountingOpeningText} from '../constants/accountingOpening';
 import {ledgerBalanceText} from '../constants/ledgerBalance';
 
-export default function AccountingOpeningPanel({orgId,balanceDate,languageCode,locked,reload,onChange,onReady,onNotify}){
+export default function AccountingOpeningPanel({orgId,balanceDate,languageCode,locked,reload,onChange,onReady,onNotify,resetVersion=0}){
  const t={...(ledgerBalanceText[languageCode]||ledgerBalanceText.en),...(accountingOpeningText[languageCode]||accountingOpeningText.en)};
  const [data,setData]=useState(null),[codes,setCodes]=useState([]),[manual,setManual]=useState([]),[selected,setSelected]=useState({}),[search,setSearch]=useState(''),[busy,setBusy]=useState(true),[error,setError]=useState(''),[refresh,setRefresh]=useState(0),[reversal,setReversal]=useState(null),[voidReason,setVoidReason]=useState(''),[voidBusy,setVoidBusy]=useState(false),[voidUncertain,setVoidUncertain]=useState(false);
+ useEffect(()=>{setManual([]);setSelected({});setSearch('');},[resetVersion]);
  useEffect(()=>{setSelected({});},[balanceDate,reload]);
  useEffect(()=>{onChange([...manual.map(({key,...row})=>row),...Object.values(selected)]);},[manual,selected,onChange]);
  useEffect(()=>{let live=true;setBusy(true);setError('');onReady(false);

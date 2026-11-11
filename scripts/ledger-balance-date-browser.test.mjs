@@ -1,3 +1,4 @@
+import {accountingOpeningText} from '../frontend/src/constants/accountingOpening.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -14,7 +15,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/ledger-balance-date-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi']){
-  const page=await browser.newPage({viewport:{width:1440,height:1000}}),t=ledgerBalanceText[lang],dates=[],saved=[],errors=[];page.setDefaultTimeout(8000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
+  const page=await browser.newPage({viewport:{width:1440,height:1000}}),t=ledgerBalanceText[lang],o=accountingOpeningText[lang],dates=[],saved=[],errors=[];page.setDefaultTimeout(8000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
   await page.route('**/src/hooks/useUnsavedChanges.js*',r=>r.fulfill({contentType:'application/javascript',body:'export default function(){}'}));
   await page.route('**/bank-ledger/**',r=>{const url=new URL(r.request().url()),headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
@@ -29,7 +30,7 @@ try{
   await page.getByText('$1.00',{exact:true}).waitFor();
   await page.getByLabel(t.actual+' Cash',{exact:true}).fill('100');
   await page.getByLabel(t.reason,{exact:false}).fill('Actual cash at start of day');
-  await page.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>window.balanceClosed===true);
+  await page.getByRole('button',{name:o.saveAccounts,exact:true}).click();await page.waitForFunction(()=>document.querySelector('input[aria-label]')?.value==='');assert.equal(await page.evaluate(()=>window.balanceClosed===true),false);
   assert.equal(dates.at(-1),'2026-01-02');assert.equal(saved[0].balanceDate,'2026-01-02');assert.equal(saved[0].accounts[0].expectedBalance,'1.00');assert.equal(saved[0].accounts[0].targetBalance,'100');assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: ko/en/vi dated balance lookup, date-specific book balance and adjustment payload.');
