@@ -1,3 +1,4 @@
+import {invoicePrimaryAccountText} from './invoicePrimaryAccounts';
 import { createHttpError } from "../utils/http";
 import {issueGeneralInvoice} from './generalInvoice';
 import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
@@ -142,8 +143,8 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     const existing = await tx.invoice.findFirst({ where: { sellerOrgId, clientKey: issueKey } });
     if (existing) return existing;
     if (draft.revision !== revision) throw createHttpError(409, STALE_EDIT);
-    const content: any = draft.content;
-    if(content.documentKind==='GENERAL')return issueGeneralInvoice(tx,sellerOrgId,actor,draft,issueKey);
+    const content: any = structuredClone(draft.content);
+    if(content.documentKind==='GENERAL')return issueGeneralInvoice(tx,sellerOrgId,actor,{...draft,content},issueKey);
     const revisionReason = String(draft.revisionReason || "").trim();
     const revisedFrom = draft.revisionOfInvoiceId ? await tx.invoice.findFirst({
       where: { id: draft.revisionOfInvoiceId, sellerOrgId }, include: { orders: true },
@@ -196,6 +197,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
         } }, orders: { select: { id: true } } } } } });
       settlementContext[source.orderId] = invoiceSettlement(previous, revisedFrom ? invoiceFamily(revisedFrom) : undefined);
     }
+    content.fields.bank=await invoicePrimaryAccountText(tx,sellerOrgId);
     const calculated = calculateInvoiceIssueSnapshot(content, sources, settlementContext);
     for (const order of calculated.orders) {
       const revisedOrder = revisedFrom?.orders.find((row: any) => row.sourceOrderId === order.sourceOrderId);

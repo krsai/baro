@@ -5,7 +5,6 @@ import AppPageContainer from '../../../components/AppPageContainer';
 import InvoiceSheet from '../../../components/InvoiceSheet';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
 import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
-import InvoiceBankConfirmation from '../../../components/InvoiceBankConfirmation';
 import AccountingCodeField from '../../../components/AccountingCodeField';
 import DecimalAmountField from '../../../components/DecimalAmountField';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -13,7 +12,7 @@ import {usePageDialogs} from '../../../components/PageDialogProvider';
 import {useAppActions} from '../../../context/AppContext';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import {requestJSON,buildQueryString} from '../../../utils/apiClient';
-import {invoiceBankInfo,invoiceBankChoices} from '../../../utils/invoiceBankInfo.mjs';
+import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
 import {formatInvoiceMoney} from '../../../utils/invoiceItemGrid.mjs';
 import {newGeneralInvoiceLine,generalInvoiceLines,calculateGeneralInvoiceDraft} from '../../../utils/generalInvoice.mjs';
 import {generalInvoiceText} from '../../../constants/generalInvoice';
@@ -25,7 +24,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
  const t=generalInvoiceText[languageCode]||generalInvoiceText.en,ui=invoiceUi[languageCode]||invoiceUi.en,storage=invoiceSubmissionUi[languageCode]||invoiceSubmissionUi.en;
  const dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [source,setSource]=useState(null),[fields,setFields]=useState(null),[currency,setCurrency]=useState('VND'),[lines,setLines]=useState([newGeneralInvoiceLine()]);
- const [loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[dirty,setDirty]=useState(false),[reviewed,setReviewed]=useState(false),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false),[bankOpen,setBankOpen]=useState(false);
+ const [loading,setLoading]=useState(false),[loadError,setLoadError]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0),[dirty,setDirty]=useState(false),[reviewed,setReviewed]=useState(false),[saving,setSaving]=useState(false),[uncertain,setUncertain]=useState(false);
  const draft=useRef(null),clientKey=useRef(crypto.randomUUID()),revisionRequest=useRef(null),submission=useRef(null),busy=useRef(false),scope=useRef(orgId),mounted=useRef(true);
  scope.current=orgId;useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useUnsavedChanges(dirty||saving||uncertain);
@@ -51,7 +50,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
   return()=>{alive=false;};
  },[orgId,buyerOrgId,revisionInvoice?.id,draftId,reload]);
  const calculation=useMemo(()=>calculateGeneralInvoiceDraft(lines,currency),[lines,currency]);
- const locked=saving||uncertain,bankChoices=useMemo(()=>invoiceBankChoices(source?.sellerBankAccounts||[],currency),[source,currency]);
+ const locked=saving||uncertain;
  const change=(fn)=>{if(locked)return;fn();setDirty(true);setReviewed(false);};
  const changeLine=(key,patch)=>change(()=>setLines(current=>current.map(row=>row.key===key?{...row,...patch}:row)));
  const changeField=(key,value)=>change(()=>setFields(current=>({...current,[key]:value})));
@@ -62,9 +61,8 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
  const close=async()=>{if(saving)return;if((dirty||uncertain)&&!await dialogs.confirm(ui.discard))return;setDirty(false);onClose?.();};
  const issue=async(options={})=>{
   if(busy.current||loading||loadError||!source||!fields?.date||!reviewed||!calculation.valid)return;
-  if(!uncertain&&bankChoices.length&&!options.confirmedBank){setBankOpen(true);return;}
   if(!uncertain&&!await dialogs.confirm(storage.confirmIssue))return;
-  const issueFields=options.confirmedBank?{...fields,bank:options.confirmedBank}:fields;
+  const issueFields={...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])};
   if(revisionInvoice&&!draft.current&&!revisionRequest.current){const reason=await dialogs.prompt(t.reason);if(!reason?.trim())return;revisionRequest.current={clientKey:clientKey.current,reason:reason.trim()};}
   busy.current=true;setSaving(true);setError('');
   try{
@@ -97,10 +95,9 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
      <TableCell align="right">{formatInvoiceMoney(calculation.lines[index]?.vatAmount,currency)}</TableCell><TableCell align="right">{formatInvoiceMoney(calculation.lines[index]?.amount,currency)}</TableCell><TableCell data-table-actions><Stack direction="row"><AddActionButton aria-label={t.add} disabled={locked||lines.length>=50} onClick={()=>change(()=>setLines(current=>[...current.slice(0,index+1),newGeneralInvoiceLine(),...current.slice(index+1)]))}/><DeleteActionButton aria-label={t.remove} disabled={locked||lines.length===1} onClick={()=>change(()=>setLines(current=>current.filter(row=>row.key!==line.key)))}/></Stack></TableCell>
     </TableRow>)}</TableBody></Table></Box>
     <Stack alignItems="flex-end" sx={{p:2}}><Typography>{t.subtotal}: {formatInvoiceMoney(calculation.subtotal,currency)}</Typography><Typography>{t.tax}: {formatInvoiceMoney(calculation.vatAmount,currency)}</Typography></Stack>
-    <InvoiceFormSummary fields={fields} total={calculation.amount} currencyCode={currency} languageCode={languageCode} onRemark={value=>changeField('notes',value)}/>
+    <InvoiceFormSummary fields={{...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])}} total={calculation.amount} currencyCode={currency} languageCode={languageCode} onRemark={value=>changeField('notes',value)}/>
     {!calculation.valid&&<Alert severity="info">{t.invalid}</Alert>}<FormControlLabel control={<Checkbox checked={reviewed} disabled={locked} onChange={event=>setReviewed(event.target.checked)}/>} label={t.review}/>
    </Box>}
   </Stack></InvoiceSheet>
-  <InvoiceBankConfirmation open={bankOpen} onClose={()=>setBankOpen(false)} accounts={bankChoices} currencyCode={currency} currentText={fields?.bank||''} languageCode={languageCode} onConfirm={bank=>{setBankOpen(false);setFields(current=>({...current,bank}));issue({confirmedBank:bank});}}/>
  </AppPageContainer>;
 }

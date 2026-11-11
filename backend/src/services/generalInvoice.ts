@@ -1,3 +1,4 @@
+import {invoicePrimaryAccountText} from './invoicePrimaryAccounts';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {calculateRequestAmounts} from './transactionRequest';
@@ -18,7 +19,7 @@ export async function generalInvoiceSource(db:any,sellerOrgId:number,buyerOrgId:
  ]);
  if(!seller||!localBuyer)return invalid('GENERAL_INVOICE_BUYER_INVALID');
  const [buyer]=await attachLinkedCompanies(db,sellerOrgId,[{...localBuyer,entityId:localBuyer.id}]);
- const accounts=await db.organizationBankAccount.findMany({where:{orgId:sellerOrgId,entityId:sellerOrgId,accountKind:'BANK'},select:{id:true,bankName:true,accountNumber:true,accountHolder:true,currency:{select:{code:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
+ const accounts=await db.organizationBankAccount.findMany({where:{orgId:sellerOrgId,entityId:sellerOrgId,accountKind:'BANK'},select:{id:true,isDefault:true,isActive:true,bankName:true,accountNumber:true,accountHolder:true,currency:{select:{code:true}}},orderBy:[{sortOrder:'asc'},{createdAt:'asc'},{id:'asc'}]});
  return {buyerOrgId,sellerOrgId,seller:party(seller),buyer:party(buyer),sellerBankAccounts:accounts};
 }
 export function normalizeGeneralInvoiceLines(lines:any){
@@ -56,7 +57,7 @@ export function calculateGeneralInvoice(content:any,codes:Map<number,any>){
 }
 
 export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string,draft:any,issueKey:string){
- const content=draft.content;
+ const content=structuredClone(draft.content);
  if(content.orders?.length||draft.orders?.length||draft.lines?.length)return invalid();
  await generalInvoiceSource(tx,sellerOrgId,draft.buyerOrgId);
  let original:any=null;
@@ -67,6 +68,7 @@ export async function issueGeneralInvoice(tx:any,sellerOrgId:number,actor:string
   if(!original||original.documentKind!=='GENERAL'||original.status!=='ISSUED'||original.buyerOrgId!==draft.buyerOrgId||original.currencyCode!==content.currency||!revisionReason)throw createHttpError(409,'INVOICE_REVISION_SCOPE_CHANGED');
   if(await tx.invoiceCredit.count({where:{invoiceId:original.id,voidedAt:null}}))throw createHttpError(409,'INVOICE_CREDIT_VOID_BEFORE_REVISION');
  }
+ content.fields.bank=await invoicePrimaryAccountText(tx,sellerOrgId);
  const calculated=calculateGeneralInvoice(content,await validateGeneralInvoiceCodes(tx,sellerOrgId,content.lines));
  const invoiceNumber=await allocateDocumentNumber(tx,sellerOrgId,'INV',content.fields.date,normalizeDocumentNumber(content.fields.number));
  calculated.snapshot.fields={...calculated.snapshot.fields,number:invoiceNumber};

@@ -1,3 +1,4 @@
+import {accountingCompactText} from '../frontend/src/constants/accountingCompact.js';
 import {expensePaymentText} from '../frontend/src/constants/expensePaymentSchedule.js';
 const layoutOnly=process.argv.includes('--layout-only');
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
@@ -90,14 +91,12 @@ try {
     }
     if(layoutOnly){
       const text=EXPENSE_REQUEST_TEXT[lang],payment=expensePaymentText[lang],row=page.getByTestId('expense-line').first();await row.waitFor();await page.waitForFunction(()=>{const b=document.querySelector('[data-testid="expense-line"] [data-table-action="add"]');return b&&!b.disabled;});
-      await row.getByRole('combobox',{name:payment.mode,exact:true}).waitFor();assert.equal(await row.getByRole('combobox',{name:payment.mode,exact:true}).count(),1);assert.equal(await page.getByTestId('expense-line-payment-details').count(),0);
-      await row.getByLabel(text.quantity,{exact:false}).focus();await row.getByLabel(text.quantity,{exact:false}).press('Enter');assert.equal(await row.getByRole('combobox',{name:text.unit,exact:false}).evaluate(el=>document.activeElement===el),true,'expense Enter advances to unit');
-      const position=await row.getByRole('combobox',{name:payment.mode,exact:true}).evaluate(el=>el.closest('.MuiFormControl-root').getBoundingClientRect().top),quantityPosition=await row.getByLabel(text.quantity,{exact:false}).evaluate(el=>el.closest('.MuiFormControl-root').getBoundingClientRect().top);assert.ok(Math.abs(position-quantityPosition)<2);
+      const modeButton=row.getByRole('button',{name:payment.single,exact:true});await modeButton.waitFor();assert.equal(await page.getByTestId('expense-line-payment-details').count(),0);assert.equal(await page.locator('tr[data-testid="expense-line-links"]').count(),0);
+      await row.getByLabel(text.quantity,{exact:false}).focus();await row.getByLabel(text.quantity,{exact:false}).press('Enter');assert.equal(await row.getByRole('combobox',{name:text.unit,exact:false}).evaluate(el=>document.activeElement===el),true);
       const add=row.getByRole('button',{name:text.add,exact:true}),remove=row.getByRole('button',{name:text.remove,exact:true});assert.equal(await add.getAttribute('data-table-action'),'add');assert.equal(await remove.getAttribute('data-table-action'),'delete');assert.equal(await remove.isDisabled(),true);assert.equal(Math.round((await add.boundingBox()).width),28);assert.equal(Math.round((await remove.boundingBox()).width),28);
       await page.setViewportSize({width:1920,height:1000});const scroll=page.locator('.MuiTableContainer-root').filter({has:row}).first();assert.equal(await scroll.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
       await add.click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-line"]').length===2);await page.getByTestId('expense-line').nth(1).getByRole('button',{name:text.remove,exact:true}).click();await page.waitForFunction(()=>document.querySelectorAll('[data-testid="expense-line"]').length===1);
-      await row.getByRole('combobox',{name:payment.mode,exact:true}).click();await page.getByRole('option',{name:payment.split,exact:true}).click();await page.getByTestId('expense-line-payment-details').waitFor();
-      await row.getByRole('combobox',{name:payment.mode,exact:true}).click();await page.getByRole('option',{name:payment.single,exact:true}).click();await page.getByTestId('expense-line-payment-details').waitFor({state:'hidden'});
+      await modeButton.click();const paymentDialog=page.getByRole('dialog');await paymentDialog.getByRole('combobox').click().catch(async e=>{console.log(await paymentDialog.innerText());throw e;});await page.getByRole('option',{name:payment.split,exact:true}).click();await page.getByTestId('expense-payment-schedule').waitFor();await paymentDialog.getByRole('button',{name:accountingCompactText[lang].close,exact:true}).click();await paymentDialog.waitFor({state:'hidden'});assert.equal(await row.getByRole('button',{name:payment.split,exact:true}).count(),1);
       for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.equal(await add.evaluate(el=>getComputedStyle(el.closest('td')).position),'sticky');}
       assert.deepEqual(errors,[]);await page.close();continue;
     }

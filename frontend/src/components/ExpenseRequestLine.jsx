@@ -1,3 +1,6 @@
+import {accountingCompactText} from '../constants/accountingCompact';
+import {expensePaymentText} from '../constants/expensePaymentSchedule';
+import {Dialog,DialogTitle,DialogContent,DialogActions} from '@mui/material';
 import ExpensePaymentSchedule,{ExpensePaymentMode} from './ExpensePaymentSchedule';
 import AddActionButton from './AddActionButton';
 import ReadOnlyField from './ReadOnlyField';
@@ -17,7 +20,7 @@ import { formatCurrency } from '../utils/currencyFormat';
 import { expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
 export default function ExpenseRequestLine({ line, index, codes, orders, units = [], settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onAdd, onStatus, onAddProcess, canAddProcess, validationAttempt=0 }) {
-  const currency = line.currency;
+  const currency = line.currency;const compact=accountingCompactText[languageCode]||accountingCompactText.en,payment=expensePaymentText[languageCode]||expensePaymentText.en;const [detailsOpen,setDetailsOpen]=useState(false),[paymentOpen,setPaymentOpen]=useState(false);
   const [referencesBusy,setReferencesBusy]=useState(false);
   const [added,setAdded]=useState([]),[addAnchor,setAddAnchor]=useState(null);
   const addLabel=languageCode==='ko'?'\uD56D\uBAA9 \uCD94\uAC00':languageCode==='vi'?'Th\u00EAm tr\u01B0\u1EDDng':'Add fields';
@@ -93,17 +96,18 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       <TableCell><ReadOnlyField hideLabel label={labels.description} value={expenseLineDescription(line,languageCode,codes)}/></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} disabled={disabled || line.productionLocked} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
-      <TableCell><TextField {...field} select label={labels.unit} value={line.unitId||''} onChange={change('unitId')}><MenuItem value="">—</MenuItem>{[...units,...(line.unit&&!units.some(unit=>unit.id===line.unit.id)?[line.unit]:[])].filter(unit=>unit.isActive||unit.id===line.unitId).map(unit=><MenuItem key={unit.id} value={unit.id}>{serviceName(unit,languageCode)}</MenuItem>)}</TextField></TableCell>
+      <TableCell><TextField {...field} select title={serviceName(units.find(row=>row.id===line.unitId)||line.unit||{},languageCode)} label={labels.unit} value={line.unitId||''} onChange={change('unitId')}><MenuItem value="">—</MenuItem>{[...units,...(line.unit&&!units.some(unit=>unit.id===line.unit.id)?[line.unit]:[])].filter(unit=>unit.isActive||unit.id===line.unitId).map(unit=><MenuItem key={unit.id} value={unit.id}>{serviceName(unit,languageCode)}</MenuItem>)}</TextField></TableCell>
       <TableCell><DecimalAmountField currencyCode={currency} {...field} required label={labels.price} disabled={disabled || line.productionLocked} value={line.unitPrice} onValueChange={unitPrice => onChange(line.key, { unitPrice })} /></TableCell>
       <TableCell><TextField {...field} label={labels.vat} disabled={disabled || !code?.vatEnabled} value={line.vatRate} onChange={change('vatRate')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.subtotal)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap' }}>{money(amount?.vatAmount)}</TableCell>
       <TableCell align="right" sx={{ pt: '20px !important', whiteSpace: 'nowrap', fontWeight: 700 }}>{money(amount?.amount)}</TableCell>
-      <TableCell><ExpensePaymentMode rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} hideLabel onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></TableCell>
-      <TableCell data-table-actions sx={{whiteSpace:'nowrap'}}><Stack direction="row" alignItems="center"><AddActionButton aria-label={labels.add} disabled={disabled} onClick={()=>onAdd?.(line.key)}/><DeleteActionButton aria-label={labels.remove} title={labels.remove} disabled={disabled||index===0||Boolean(line.sourceRecordId&&!line.itemId)} onClick={()=>onRemove(line.key)}/>{code&&optionalKeys.length>0&&<IconButton size="small" aria-label={addLabel} title={addLabel} disabled={disabled} onClick={event=>setAddAnchor(event.currentTarget)}><MoreHoriz fontSize="small"/></IconButton>}</Stack><Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={()=>setAddAnchor(null)}>{optionalKeys.map(key=><MenuItem key={key} onClick={()=>{setAdded(previous=>[...previous,key,...(key==='process'?['order','style']:key==='style'?['order']:[])]);setAddAnchor(null);}}>{labels[key]||common[key]}</MenuItem>)}</Menu></TableCell>
+      <TableCell><Button fullWidth size="small" variant="outlined" title={line.paymentSchedule?.length?payment.split:payment.single} onClick={()=>setPaymentOpen(true)}>{line.paymentSchedule?.length?payment.split:payment.single}</Button></TableCell>
+      <TableCell><Button fullWidth size="small" variant="outlined" color={validationAttempt&&!valid?'error':'primary'} disabled={!code} onClick={()=>setDetailsOpen(true)} title={[line.details?.reference,line.details?.evidenceFile].filter(Boolean).join(' / ')}>{line.details?.reference||line.productionLinked?compact.link:compact.evidence}</Button></TableCell>
+      <TableCell data-table-actions sx={{whiteSpace:'nowrap'}}><Stack direction="row" alignItems="center"><AddActionButton aria-label={labels.add} disabled={disabled} onClick={()=>onAdd?.(line.key)}/><DeleteActionButton aria-label={labels.remove} title={labels.remove} disabled={disabled||index===0||Boolean(line.sourceRecordId&&!line.itemId)} onClick={()=>onRemove(line.key)}/>{code&&optionalKeys.length>0&&<IconButton size="small" aria-label={addLabel} title={addLabel} disabled={disabled} onClick={event=>setAddAnchor(event.currentTarget)}><MoreHoriz fontSize="small"/></IconButton>}</Stack><Menu anchorEl={addAnchor} open={Boolean(addAnchor)} onClose={()=>setAddAnchor(null)}>{optionalKeys.map(key=><MenuItem key={key} onClick={()=>{setDetailsOpen(true);setAdded(previous=>[...previous,key,...(key==='process'?['order','style']:key==='style'?['order']:[])]);setAddAnchor(null);}}>{labels[key]||common[key]}</MenuItem>)}</Menu></TableCell>
     </TableRow>
-    {line.paymentSchedule?.length>0&&<TableRow data-testid="expense-line-payment-details"><TableCell/><TableCell colSpan={12}><ExpensePaymentSchedule showMode={false} rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></TableCell></TableRow>}
-    {(expanded || isProcess && currency !== 'VND') && <TableRow data-testid="expense-line-links"><TableCell sx={{verticalAlign:'top',pt:2,color:'text.secondary',textAlign:'right'}}><span aria-hidden="true">└</span></TableCell><TableCell colSpan={12} sx={{ bgcolor: 'grey.50', px: 1, py: 1.5 }}><Stack spacing={1.5}>
+    <Dialog open={paymentOpen} onClose={()=>setPaymentOpen(false)} fullWidth maxWidth="md"><DialogTitle>{payment.mode}</DialogTitle><DialogContent><ExpensePaymentSchedule rows={line.paymentSchedule||[]} languageCode={languageCode} disabled={disabled} currencies={[currency]} onChange={paymentSchedule=>onChange(line.key,{paymentSchedule})}/></DialogContent><DialogActions><Button onClick={()=>setPaymentOpen(false)}>{compact.close}</Button></DialogActions></Dialog>
+    <Dialog open={detailsOpen} onClose={()=>setDetailsOpen(false)} fullWidth maxWidth="md"><DialogTitle>{compact.details}</DialogTitle><DialogContent data-testid="expense-line-links"><Stack spacing={1.5}>
       {isProcess && currency !== 'VND' && <Alert severity="error">{labels.processCurrency}</Alert>}
       {expanded && <>
         {code?.base?.entryMode==='PROCESS' && <Box><AddActionButton aria-label={labels.addProcess} disabled={disabled || !canAddProcess} onClick={()=>onAddProcess?.(line.key)}/></Box>}
@@ -120,6 +124,6 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
         {isProcess && line.styleProcessId && !optionsLoading && !plans.length && <Alert severity="warning">{labels.noPlan}</Alert>}
         {isProcess && <Typography variant="caption" color="text.secondary">{labels.processInfo}</Typography>}
       </>}
-    </Stack></TableCell></TableRow>}
+    </Stack></DialogContent><DialogActions><Button onClick={()=>setDetailsOpen(false)}>{compact.close}</Button></DialogActions></Dialog>
   </>;
 }

@@ -1,3 +1,4 @@
+import {accountingCompactText} from '../constants/accountingCompact';
 import BankAccountEditorDialog from './BankAccountEditorDialog';
 import React,{useEffect,useRef,useState} from 'react';
 import {Alert,Box,Button,CircularProgress,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
@@ -48,6 +49,6 @@ export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAcc
    {data.accounts.map((account,index)=><Draggable key={account.id} draggableId={account.id} index={index} isDragDisabled={pending||saving||disabled||!canManage}>{drag=><TableRow ref={drag.innerRef} {...drag.draggableProps} data-account-id={account.id}><TableCell {...drag.dragHandleProps} aria-label={t.move}><DragIndicator fontSize="small"/></TableCell><TableCell>{account.currency.code}</TableCell><TableCell>{t[account.accountKind||'BANK']}</TableCell><TableCell>{account.displayName||'—'}</TableCell><TableCell>{account.accountKind==='CASH'?'—':account.bankName}</TableCell><TableCell>{account.accountKind==='CASH'?'—':account.accountNumber}</TableCell><TableCell>{account.accountKind==='CASH'?'—':account.accountHolder}</TableCell><TableCell><Button aria-label={labels.edit} disabled={saving||disabled||dirty||!canManage} onClick={()=>edit(account)} sx={{minWidth:32,p:.5}}><EditOutlined fontSize="small"/></Button></TableCell></TableRow>}</Draggable>)}{provided.placeholder}
    {!data.accounts.length&&<TableRow><TableCell colSpan={8}>{labels.empty}</TableCell></TableRow>}
   </TableBody>}</Droppable></Table></TableContainer></DragDropContext>}
-  <BankAccountEditorDialog key={draft?.id||'new'+(!!draft)} open={!!draft} title={draft?.id?labels.edit:labels.add} value={draft} onChange={setDraft} onSave={save} onClose={()=>setDraft(null)} currencies={data.currencies.map(row=>({value:row.id,label:row.code}))} busy={saving} disabled={disabled||!canManage} error={error} languageCode={languageCode} errorAction={!ready&&<Button color="inherit" onClick={()=>setReload(n=>n+1)}>{loadText.retry}</Button>}/>
+  <BankAccountEditorDialog key={draft?.id||'new'+(!!draft)} open={!!draft} showPrimary={Number(entityId)===Number(scope)} title={draft?.id?labels.edit:labels.add} value={draft} onChange={setDraft} onSave={save} onClose={()=>setDraft(null)} currencies={data.currencies.map(row=>({value:row.id,label:row.code}))} busy={saving} disabled={disabled||!canManage} error={error} languageCode={languageCode} errorAction={!ready&&<Button color="inherit" onClick={()=>setReload(n=>n+1)}>{loadText.retry}</Button>}/>
  </EntityDetailSection>;
 }

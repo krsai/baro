@@ -1,3 +1,5 @@
+import {Checkbox,FormControlLabel} from '@mui/material';
+import {accountingCompactText} from '../constants/accountingCompact';
 import React,{useEffect,useState} from 'react';
 import {Alert,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField} from '@mui/material';
 import {ENTITY_TEXT} from '../constants/entityProfile';
@@ -7,7 +9,7 @@ export const bankAccountEditorText={
  vi:{kind:'Loại',BANK:'Ngân hàng',CASH:'Tiền mặt',name:'Tên tài khoản',cash:'Quỹ tiền mặt không có ngân hàng, số tài khoản hoặc chủ tài khoản.',required:'Chọn tiền tệ và nhập thông tin tài khoản bắt buộc.'}
 };
 export const validBankAccountDraft=(value,currencyKey='currencyId')=>Boolean(value?.[currencyKey]&&(value.accountKind==='CASH'?value.displayName?.trim():['bankName','accountNumber','accountHolder'].every(key=>value[key]?.trim())));
-export default function BankAccountEditorDialog({open,title,value,onChange,onSave,onClose,currencies=[],currencyKey='currencyId',allowCash=true,showName=true,busy=false,disabled=false,error,languageCode='ko',maxLengths={bankName:120,accountNumber:100,accountHolder:160},errorAction}){
+export default function BankAccountEditorDialog({open,title,value,onChange,onSave,onClose,currencies=[],currencyKey='currencyId',allowCash=true,showName=true,showPrimary=false,busy=false,disabled=false,error,languageCode='ko',maxLengths={bankName:120,accountNumber:100,accountHolder:160},errorAction}){
  const labels=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en,t=bankAccountEditorText[languageCode]||bankAccountEditorText.en,[invalid,setInvalid]=useState(false),locked=busy||disabled;
  useEffect(()=>setInvalid(false),[open]);
  const change=patch=>{setInvalid(false);onChange({...value,...patch});};
@@ -19,6 +21,7 @@ export default function BankAccountEditorDialog({open,title,value,onChange,onSav
    {showName&&<TextField label={t.name} required={value?.accountKind==='CASH'} value={value?.displayName||''} disabled={locked} inputProps={{maxLength:160}} onChange={e=>change({displayName:e.target.value})}/>}
    <TextField required select label={labels.currency} SelectProps={{'aria-label':labels.currency}} value={value?.[currencyKey]||''} disabled={locked} onChange={e=>change({[currencyKey]:e.target.value})}>{currencies.map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>
    {value?.accountKind!=='CASH'&&['bankName','accountNumber','accountHolder'].map((key,index)=><TextField key={key} required disabled={locked} label={labels[['bank','number','holder'][index]]} value={value?.[key]||''} inputProps={{maxLength:maxLengths[key]}} onChange={e=>change({[key]:e.target.value})}/>)}
+   {showPrimary&&value?.accountKind!=='CASH'&&<FormControlLabel control={<Checkbox checked={Boolean(value?.isDefault)} disabled={locked} onChange={e=>change({isDefault:e.target.checked})}/>} label={(accountingCompactText[languageCode]||accountingCompactText.en).primary}/>}
    {value?.accountKind==='CASH'&&<Alert severity="info">{t.cash}</Alert>}
   </Stack></DialogContent><DialogActions><Button variant="contained" disabled={locked} onClick={submit}>{labels.save}</Button></DialogActions>
  </Dialog>;

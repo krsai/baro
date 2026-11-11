@@ -103,16 +103,12 @@ try {
     await page.locator('[data-expense-row="old"] .cc-cell-link[aria-label]').click();
     assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'legacy:78');
     await resetToAll();
-    await page.getByRole('tab',{name:text.partnerSummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
-    await page.getByRole('tab',{name:text.industrySummary,exact:true}).click();assert.equal(await page.locator('tbody tr').count(),3);
-    await page.getByRole('tab',{name:text.documents,exact:true}).click();await page.getByRole('textbox',{name:text.search}).fill('NEW-42');assert.equal(await page.locator('.cc-total-amount strong').count(),2);
-    assert.equal(await page.getByText('EXP-2026-000041',{exact:true}).count(),0);await page.locator('.cc-table-scroll tbody .cc-cell-link[aria-label]').click();assert.equal(await page.evaluate(()=>document.documentElement.dataset.destination),'request:1');
-    await resetToAll();await page.getByRole('tab',{name:text.detail,exact:true}).click();
+    assert.equal(await page.getByRole('tab').count(),0);
     // Repeated view changes must replace headers, including Korean document
     // columns whose translated labels are identical. Verify actual geometry.
     for(let cycle=0;cycle<4;cycle++) {
-      for(const [name,count] of [[text.documents,9],[text.detail,9],[text.partnerSummary,5],[text.industrySummary,5],[text.detail,9]]) {
-        await page.getByRole('tab',{name,exact:true}).click();
+      for(const [name,count] of [[text.detail,9]]) {
+
         assert.equal(await page.locator('thead th').count(),count,`${lang} ${name} cycle ${cycle}: no leftover headers`);
         const geometry=await page.locator('.cc-table-scroll table').evaluate(table=>{
           const alignment=cell=>{

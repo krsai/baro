@@ -2,6 +2,7 @@
   "name": "baro",
   "private": true,
   "scripts": {
+    "test:accounting-compact": "npm --prefix backend run build && node --test scripts/accounting-compact.test.mjs scripts/railway-schema-preflight.test.mjs scripts/change-approvals.test.mjs scripts/general-invoice.test.mjs scripts/invoice-style-rows.test.mjs scripts/issued-invoice-print.test.mjs && node scripts/accounting-compact-browser.test.mjs",
     "test:expense-payment-schedule": "npm --prefix backend run build && node --test scripts/expense-payment-schedule.test.mjs scripts/expense-request-documents.test.mjs scripts/expense-request-editor.test.mjs scripts/ledger-evidence.test.mjs scripts/ledger-edit-read.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/expense-payment-schedule-browser.test.mjs",
     "test:general-invoice": "npm --prefix backend run build && node --test scripts/general-invoice.test.mjs scripts/invoice-draft-store.test.mjs scripts/invoice-issue-store.test.mjs scripts/invoice-billing.test.mjs scripts/issued-invoice-print.test.mjs scripts/invoice-list-query.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/general-invoice-browser.test.mjs",
     "test:app-review": "npm --prefix backend run build && node scripts/run-app-review.mjs && node scripts/app-review-browser.test.mjs && node scripts/shipping-requests-browser.test.mjs && node scripts/shipping-menu-browser.test.mjs && node scripts/style-packaging-browser.test.mjs && node scripts/industry-menu-browser.test.mjs",

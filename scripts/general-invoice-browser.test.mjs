@@ -33,7 +33,7 @@ try{
   await page.route('**/invoices/**',route=>{
    const req=route.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});
    if(url.pathname.endsWith('/customers'))return route.fulfill({headers,json:{rows:[{id:2,code:'CUST-001',searchText:'BARO CUST-001',name:process.argv.includes('--customer-only')?'THE SAN':'Customer',businessNumber:'TAX-123',contactName:'Ms. Contact',contactPhone:'0123456789',email:'Public@example.test',address:'Public address'}]}});
-   if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{name:'Customer'},seller:{name:'BARO'},sellerBankAccounts:[{id:'bank',bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true}],currencies:['VND','USD','KRW']}});}
+   if(url.pathname.endsWith('/general-source')){sourceReads.push(url.pathname);return route.fulfill({headers,json:{buyerOrgId:2,sellerOrgId:1,buyer:{name:'Customer'},seller:{name:'BARO'},sellerBankAccounts:[{id:'bank',isDefault:true,bankName:'Own Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}],codes:[{id:1,code:'GENV',nameEn:'General sales',nameKo:'일반 매출',nameVi:'Doanh thu khác',cashDirection:'IN',vatEnabled:true}],currencies:['VND','USD','KRW']}});}
    if(req.method()==='GET'&&url.pathname.endsWith('/orders'))return route.fulfill({headers,json:{rows:[],hasMore:false}});
    if(req.method()==='POST'&&url.pathname.endsWith('/issue')){issues.push(req.postDataJSON());if(failure==='issue'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'issued'}});}
    if(req.method()==='POST'&&url.pathname.endsWith('/drafts')){const body=req.postDataJSON();saves.push(body);assert.equal(body.documentKind,'GENERAL');assert.deepEqual(body.orders,[]);assert.equal(body.basis,null);assert.equal(calculateGeneralInvoiceDraft(body.lines,body.currency).amount,'1375000');if(failure==='save'&&!failed){failed=true;return route.abort('failed');}return route.fulfill({headers,json:{id:'draft',revision:1,clientKey:body.clientKey}});}
@@ -56,7 +56,7 @@ try{
   await row.getByRole('textbox',{name:t.unit,exact:true}).fill('pcs');await row.getByRole('textbox',{name:t.quantity,exact:true}).fill('1000');await row.getByRole('textbox',{name:t.price,exact:true}).fill('1250');await row.getByRole('textbox',{name:t.vat,exact:true}).fill('10');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Only the item table may scroll horizontally');
   await page.getByRole('checkbox',{name:t.review}).check();const issue=page.getByRole('button',{name:u.issue,exact:true});await issue.click();
-  const bank=page.getByRole('dialog'),bankText=INVOICE_BANK_TEXT[lang];await bank.getByRole('checkbox').check();await bank.getByRole('button',{name:bankText.confirm,exact:true}).click();
+
   if(failure!=='none'){await page.getByRole('alert').filter({hasText:t.uncertain}).waitFor();assert.equal(await row.getByRole('textbox',{name:t.description,exact:true}).isDisabled(),true);await issue.click();}
   await page.waitForFunction(()=>window.issued===true);
   assert.equal(sourceReads.length,1);assert.equal(saves[0].fields.bank,'Own Bank / VND-001 / BARO / VND');assert.deepEqual(errors,[]);

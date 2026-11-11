@@ -39,8 +39,9 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
   if(lock){await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);await db.$queryRawUnsafe('SELECT id FROM "BankLedgerEntry" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);}
   const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include:{account:{include:{entityAccount:true}},internalTransferMirror:{include:{account:true}},internalTransferSource:{include:{account:true}}}});if(!entry)fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)fail('LEDGER_ENTRY_CHANGED');
   const {account,internalTransferMirror,internalTransferSource,...row}=entry,peer=internalTransferMirror||internalTransferSource;
+  const proposed=operation==='UPDATE'&&input.payload?.rows?.some((r:any)=>r.evidenceType!=='ADJUSTMENT')?await ledgerRegistrationSource(db,orgId,{payload:input.payload,sourceId:input.payload.clientKey,allowIncomplete:!lock}):null;
   const items=[{currency:account.currencyCode,unitPrice:String(entry.amount),quantity:'1',vatRate:'0'},...(peer&&peer.account.currencyCode!==account.currencyCode?[{currency:peer.account.currencyCode,unitPrice:String(peer.amount),quantity:'1',vatRate:'0'}]:[])];
-  return {menu,operation,kind:'ledger',id,transferPeerId:peer?.id,revision:ledgerEntryRevision(row),version:null,snapshot:{entry:json(row),account:{name:account.entityAccount?.displayName||account.bankName,currencyCode:account.currencyCode},...(peer?{transfer:{amount:String(peer.amount),currencyCode:peer.account.currencyCode}}:{})},entry,items};
+  return {menu,operation,kind:'ledger',id,transferPeerId:peer?.id,proposedItems:proposed?.items,revision:ledgerEntryRevision(row),version:null,snapshot:{...(proposed?{proposedAccounts:(proposed.snapshot.accounts||[]).map(({accountId,masterId,currency}:any)=>({accountId,masterId,currency})),proposedRows:proposed.snapshot.rows}:{}),entry:json(row),account:{name:account.entityAccount?.displayName||account.bankName,currencyCode:account.currencyCode},...(peer?{transfer:{amount:String(peer.amount),currencyCode:peer.account.currencyCode}}:{})},entry,items};
  }
  const loaded=await loadExpenseEditorSource(db,orgId,kind,id);
  if(loaded.document&&lock)await db.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',loaded.document.id,orgId);
@@ -57,10 +58,10 @@ function assertParticipant(actor:any,s:any){
 }
 function amounts(s:any,payload:any){
  if(s.operation==='DELETE')return s.items;
- const next=s.menu==='EXPENSE'?payload?.items:payload?.rows?.filter((row:any)=>row.entryKind==='BANK').map((row:any)=>({currency:s.proposedCurrency||s.entry.account.currencyCode,unitPrice:row.amount,quantity:'1',vatRate:'0'}));
+ const next=s.proposedItems|| (s.menu==='EXPENSE'?payload?.items:payload?.rows?.filter((row:any)=>row.entryKind==='BANK').map((row:any)=>({currency:s.proposedCurrency||s.entry.account.currencyCode,unitPrice:row.amount,quantity:'1',vatRate:'0'})));
  if(!Array.isArray(next)||!next.length)fail('CHANGE_INVALID_PAYLOAD',400);
- if(s.menu==='BANK_LEDGER'&&(next.length!==1))fail('LEDGER_INVALID_BATCH',400);
- if(s.proposedTransfer)next.push(s.proposedTransfer);
+
+ if(s.proposedTransfer&&!s.proposedItems)next.push(s.proposedTransfer);
  const totals=(items:any[])=>{const result=new Map<string,Prisma.Decimal>();for(const item of items){const amount=new Prisma.Decimal(item.unitPrice).mul(item.quantity).mul(new Prisma.Decimal(1).add(new Prisma.Decimal(item.vatRate||0).div(100)));result.set(item.currency,(result.get(item.currency)||new Prisma.Decimal(0)).add(amount));}return result;};
  const old=totals(s.items),changed=totals(next);for(const [currency,value] of changed)old.set(currency,Prisma.Decimal.max(value,old.get(currency)||0));
  return [...old].map(([currency,value])=>({currency,unitPrice:value.toFixed(currency==='USD'?2:0),quantity:'1',vatRate:'0'}));
@@ -165,7 +166,7 @@ async function decideChangeApprovalTx(tx:any,db:any,orgId:number,actorId:number,
    const rule=(row.policy.effectiveRegistrationStages||row.policy.config.registrationStages)[decisions.length];
    if(rule.gradeMatch!=='ANY'){const grade=await tx.employeeGrade.findFirst({where:{id:rule.gradeId,orgId,isActive:true,set:{isActive:true}}});if(!grade||!actor.grade?.isActive||actor.grade.setId!==grade.setId||(rule.gradeMatch==='MINIMUM'?actor.grade.sortOrder<grade.sortOrder:actor.gradeId!==grade.id))fail('CHANGE_APPROVER_REQUIRED',403);}
   }
-  const s=body.decision==='APPROVED'?await source(tx,orgId,row,true):null;if(s&&s.revision!==row.revision)fail('CHANGE_SOURCE_CHANGED');
+  const s=body.decision==='APPROVED'?await source(tx,orgId,row,true):null;if(s&&s.revision!==row.revision)fail('CHANGE_SOURCE_CHANGED');if(s&&row.beforeSnapshot.proposedAccounts&&JSON.stringify(s.snapshot.proposedAccounts?.map((a:any)=>[a.accountId,a.masterId,a.currency]))!==JSON.stringify(row.beforeSnapshot.proposedAccounts.map((a:any)=>[a.accountId,a.masterId,a.currency])))fail('CHANGE_SOURCE_CHANGED');
   const requester=await tx.employee.findFirst({where:{id:row.requestedByEmployeeId,orgId,status:'ACTIVE'}});if(!requester||requester.orgRole!==row.policy.requestedByRole||(requester.gradeId??null)!==row.policy.requestedByGradeId)fail('CHANGE_SOURCE_CHANGED');
   await tx.changeApprovalDecision.create({data:{requestId:id,orgId,employeeId:next.employeeId,...delegationData(next.employeeId,actorId),position:decisions.length+1,decision:body.decision,reason:reason||null}});
   if(body.decision==='REJECTED')return tx.changeApprovalRequest.update({where:{id},data:{status:'REJECTED',decidedByEmployeeId:actorId,decisionReason:reason,decidedAt:new Date()}});

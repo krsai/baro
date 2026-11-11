@@ -1,9 +1,8 @@
 import {cashScheduleText} from '../../../constants/cashSchedule';
-import InvoiceBankConfirmation from '../../../components/InvoiceBankConfirmation';
 import {useAppActions} from '../../../context/AppContext';
 import InvoiceFormHeader from '../../../components/InvoiceFormHeader';
 import InvoiceFormSummary from '../../../components/InvoiceFormSummary';
-import {invoiceBankInfo,invoiceBankChoices} from '../../../utils/invoiceBankInfo.mjs';
+import {invoiceBankInfo} from '../../../utils/invoiceBankInfo.mjs';
 import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -219,14 +218,11 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   };
   const revisionRequest = useRef(null);
   const revisionNeedsSave = useRef(false);
-  const [bankConfirmationOpen,setBankConfirmationOpen]=useState(false);
-  const bankChoices=useMemo(()=>invoiceBankChoices(source?.sellerBankAccounts||[],currency),[source,currency]);
-  const issue = async (options={}) => {
+
+    const issue = async (options={}) => {
     if (!source || saving || !reviewed || calculation?.issues.length || !fields?.date) return;
-    if(!uncertain&&bankChoices.length&&!options.confirmedBank){setBankConfirmationOpen(true);return;}
-    const issueFields=options.confirmedBank?{...fields,bank:options.confirmedBank}:fields;
+    const issueFields={...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])};
     if (!uncertain && !await pageDialogs.confirm(storageText.confirmIssue)) return;
-    if(options.confirmedBank&&fields.bank!==options.confirmedBank){setFields(current=>({...current,bank:options.confirmedBank}));setDirty(true);}
     if (revisionInvoice && !draftRef.current && !revisionRequest.current) {
       const reason = await pageDialogs.prompt(languageCode==='ko'?'개정 사유를 입력하세요.':languageCode==='vi'?'Nhập lý do sửa đổi.':'Enter a revision reason.');
       if (!reason?.trim()) return;
@@ -273,7 +269,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
           <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:820,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,110,null,100,130,120,150].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
             {[sheetText.row,sheetText.orderNumber,sheetText.style,sheetText.orderedQuantity,t.price,t.quantity,t.amount].map((label,index)=><TableCell key={label} align={index===0||index>=3?'right':'left'}>{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],production=invoiceProductionReview(source,first);return <TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
+          </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],production=invoiceProductionReview(source,first);return <React.Fragment key={first.key}>{(index===0||styleRows[index-1].lines[0].orderId!==first.orderId)&&<TableRow data-invoice-order-controls={first.orderId}><TableCell colSpan={7}><Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center"><Typography fontWeight={700}>{first.orderNumber}</Typography><TextField size="small" label={billingText.percentage} inputProps={{inputMode:'decimal',maxLength:6,'aria-label':billingText.percentage+' '+first.orderNumber}} placeholder="100" value={percentages[first.orderId]??''} sx={{width:110}} onChange={e=>changeBilling(setPercentages,{...percentages,[first.orderId]:e.target.value})}/><DecimalAmountField size="small" currencyCode={currency} label={settlementLabels.deduction} value={settlements[first.orderId]?.deduction??''} sx={{width:150}} onValueChange={value=>changeBilling(setSettlements,{...settlements,[first.orderId]:{...settlements[first.orderId],deduction:value}})}/><TextField size="small" label={settlementLabels.reason} value={settlements[first.orderId]?.reason??''} onChange={e=>changeBilling(setSettlements,{...settlements,[first.orderId]:{...settlements[first.orderId],reason:e.target.value}})}/><Typography sx={{ml:'auto'}}>{ui.summary}: {formatInvoiceMoney(calculation.orders.find(o=>o.orderId===first.orderId)?.netAmount,currency)}</Typography></Stack></TableCell></TableRow>}<TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
             <TableCell align="right">{invoiceNumber(index+1)}</TableCell>
             <TableCell>{first.orderNumber}</TableCell><TableCell>{first.description||first.styleName}
               {production&&<Typography variant="caption" display="block" color="warning.main">{productionText.scope}: {invoiceNumber(production.style.producedQuantity)} / {invoiceNumber(production.style.orderedQuantity)}</Typography>}
@@ -283,34 +279,14 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
             <TableCell align="right"><DecimalAmountField size="small" value={String(group.quantity??'')} onValueChange={value=>{const distributed=distributeInvoiceQuantity(group,value);if(!distributed||saving||uncertain)return;const values=new Map(distributed.map(row=>[row.key,row.quantity]));setLines(previous=>previous.map(row=>values.has(row.key)?{...row,quantity:values.get(row.key),adjustmentReason:fields.notes||row.adjustmentReason||row.remark||''}:row));setReviewed(false);setDirty(true);}} inputProps={{'aria-label':t.quantity+' '+first.key,style:{textAlign:'right'}}} sx={{width:110}}/></TableCell>
             <TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatInvoiceMoney(group.amount,currency)}</TableCell>
 
-          </TableRow>;})}</TableBody></Table></Box>
-          <Stack spacing={1} sx={{p:2}}>
-          <Typography className="invoice-section-title">{billingText.settlement}</Typography>
-
-          <Stack direction="row" spacing={1} alignItems="center">
-            <TextField size="small" label={billingText.percentage} placeholder="100" value={allPercentage} inputProps={{ inputMode: 'decimal', maxLength: 6 }} onChange={e => setAllPercentage(e.target.value)} />
-            <Button onClick={() => changeBilling(setPercentages, Object.fromEntries(source.orders.map(order => [order.orderId, allPercentage])))}>{billingText.applyAll}</Button>
-          </Stack>
-          <Box sx={{ overflowX: 'auto' }}><Table data-table-layout="document" size="small" sx={{ minWidth: 650 }}><TableHead><TableRow>
-            {[billingText.orderStyle, billingText.subtotal, billingText.percentage, billingText.currentAmount, settlementLabels.deduction, ui.summary].map((label,index) => <TableCell key={label} align={index ? 'right' : 'left'}>{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{calculation.orders.map(order => <TableRow key={order.orderId}>
-            <TableCell>{order.orderNumber}</TableCell><TableCell align="right">{formatInvoiceMoney(order.subtotal,currency)}</TableCell>
-            <TableCell align="right"><TextField size="small" placeholder="100" value={percentages[order.orderId] ?? ''} error={order.percentage == null}
-              inputProps={{ inputMode: 'decimal', maxLength: 6, 'aria-label': `${billingText.percentage} ${order.orderNumber}` }} sx={{ width: 100 }}
-              onChange={e => changeBilling(setPercentages, { ...percentages, [order.orderId]: e.target.value })} /></TableCell>
-            <TableCell align="right">{formatInvoiceMoney(order.amount,currency)}</TableCell>
-            <TableCell align="right"><Stack spacing={1}><DecimalAmountField currencyCode={currency} size="small" value={settlements[order.orderId]?.deduction ?? ''} inputProps={{style:{textAlign:'right'}}} onValueChange={value => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], deduction: value } })} /><TextField size="small" placeholder={settlementLabels.reason} value={settlements[order.orderId]?.reason ?? ''} onChange={e => changeBilling(setSettlements, { ...settlements, [order.orderId]: { ...settlements[order.orderId], reason: e.target.value } })} /></Stack></TableCell>
-            <TableCell align="right">{formatInvoiceMoney(order.netAmount,currency)}{order.hasUnallocatedPayments && <Typography color="warning.main" variant="caption" display="block">{settlementLabels.unallocated}</Typography>}</TableCell>
-          </TableRow>)}</TableBody></Table></Box>
-          </Stack>
-          <InvoiceFormSummary fields={fields} total={calculation.total} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark}/>
+          </TableRow></React.Fragment>;})}</TableBody></Table></Box>
+          <InvoiceFormSummary fields={{...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])}} total={calculation.total} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark}/>
           {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </Box>}
       </Stack>
     </InvoiceSheet>
-    <InvoiceBankConfirmation open={bankConfirmationOpen} onClose={()=>setBankConfirmationOpen(false)} accounts={bankChoices} currencyCode={currency} currentText={fields?.bank||''} languageCode={languageCode} onConfirm={bank=>{setBankConfirmationOpen(false);issue({confirmedBank:bank});}}/>
     <QuantityReviewDrawer externalId={reviewAssignment?.externalId} orgId={orgId} languageCode={languageCode} headerOrderNo={reviewAssignment?.orderNumber} headerStyleLabel={reviewAssignment?.styleLabel} headerQuantity={reviewAssignment?.quantity} onClose={()=>setReviewAssignment(null)}/>
   </AppPageContainer>;
 }

@@ -16,7 +16,7 @@ export function ExpensePaymentScheduleView({rows=[],languageCode}){
 const installment=(label,currency,date)=>({id:crypto.randomUUID(),label,scheduledDate:date,currency,amount:''});
 export function ExpensePaymentMode({rows=[],onChange,languageCode,disabled,currencies=['VND'],defaultDate='',hideLabel=false}){
  const t=expensePaymentText[languageCode]||expensePaymentText.en;
- return <TextField data-testid="expense-payment-mode" fullWidth select size="small" label={hideLabel?undefined:t.mode} inputProps={{'aria-label':t.mode}} value={rows.length?'SPLIT':'SINGLE'} disabled={disabled} onChange={event=>onChange(event.target.value==='SINGLE'?[]:[installment(t.advance,currencies[0]||'VND',defaultDate),installment(t.balance,currencies[0]||'VND',defaultDate)])}><MenuItem value="SINGLE">{t.single}</MenuItem><MenuItem value="SPLIT">{t.split}</MenuItem></TextField>;
+ return <TextField data-testid="expense-payment-mode" fullWidth select size="small" label={hideLabel?undefined:t.mode} slotProps={{select:{inputProps:{'aria-label':t.mode}}}} value={rows.length?'SPLIT':'SINGLE'} disabled={disabled} onChange={event=>onChange(event.target.value==='SINGLE'?[]:[installment(t.advance,currencies[0]||'VND',defaultDate),installment(t.balance,currencies[0]||'VND',defaultDate)])}><MenuItem value="SINGLE">{t.single}</MenuItem><MenuItem value="SPLIT">{t.split}</MenuItem></TextField>;
 }
 
 export default function ExpensePaymentSchedule({rows=[],onChange,languageCode,disabled,currencies=['VND'],defaultDate='',showMode=true}){

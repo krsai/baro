@@ -17,22 +17,15 @@ export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly
         <InvoiceDocumentField label={ui.date} type="date" value={fields.date} readOnly={readOnly} onChange={e=>onChange('date',e.target.value)}/>
       </Box>
     </Box>
-    <Box className="invoice-parties">{['seller','buyer'].map(party=><Box className="invoice-party" key={party}>
+    <Box className="invoice-parties">{['buyer','seller'].map(party=><Box className="invoice-party" key={party}>
       <Typography component="h3" className="invoice-party-title">{text[party]}</Typography>
       <Box className="invoice-party-identity">
         {fields[party]?.code&&<InvoiceDocumentField label={labels.code} value={fields[party].code} readOnly/>}
         {field(party,'name')}
       </Box>
       {field(party,'taxId')}{field(party,'address')}
-      <Box component="details" sx={{gridColumn:'1 / -1','& summary':{cursor:'pointer',color:'text.secondary',fontSize:12}}}>
-        <summary>{ui.phone} · {ui.email}</summary>{field(party,'phone')}{field(party,'email')}
-      </Box>
+      {field(party,'phone')}{field(party,'email')}
     </Box>)}</Box>
-    <Box className="invoice-metadata" sx={{mt:2}}>
-      <InvoiceDocumentField label={ui.dueDate} type="date" value={fields.dueDate} readOnly={readOnly} onChange={e=>onChange('dueDate',e.target.value)}/>
-      <InvoiceDocumentField label={(cashScheduleText[languageCode]||cashScheduleText.en).collection} type="date" value={fields.expectedCollectionDate||''} readOnly={readOnly} onChange={e=>onChange('expectedCollectionDate',e.target.value)}/>
-      <InvoiceDocumentField label={ui.paymentTerms} value={fields.paymentTerms} readOnly={readOnly} onChange={e=>onChange('paymentTerms',e.target.value)}/>
-      <InvoiceDocumentField label={ui.incoterm} value={fields.incoterm} readOnly={readOnly} onChange={e=>onChange('incoterm',e.target.value)}/>
-    </Box>
+
   </Box>;
 }

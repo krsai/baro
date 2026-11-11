@@ -24,7 +24,7 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  const code=entry.account.currencyCode;
  const invoiceIds=[...new Set(entry.allocations.map((a:any)=>a.invoiceId).filter(Boolean))];
  const expenseIds=[...new Set(entry.allocations.map((a:any)=>a.expenseItemId).filter(Boolean))];
- const expenseInclude={expenseRequest:{include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}} satisfies Prisma.PartnerTransactionCostInclude;
+ const expenseInclude={transactionCode:{include:codeInclude},expenseRequest:{include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}} satisfies Prisma.PartnerTransactionCostInclude;
  const [invoices,expenses,other]=await Promise.all([
   invoiceIds.length?db.invoice.findMany({where:{sellerOrgId:orgId,id:{in:invoiceIds}},include:{buyer:{select:{name:true}}}}):[],
   expenseIds.length?db.partnerTransactionCost.findMany({where:{orgId,id:{in:expenseIds}},include:expenseInclude}):[],
@@ -39,15 +39,15 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  }
  if(entry.evidenceType==='EXPENSE'){
   const requests=[...new Map(entry.allocations.filter((a:any)=>a.expenseItem?.expenseRequest).map((a:any)=>[a.expenseItem.expenseRequest.id,a.expenseItem.expenseRequest])).values()] as any[];
-  const items=entry.allocations.map((a:any)=>({id:a.expenseItemId,line:a.expenseItem.expenseRequestLine,description:a.expenseItem.description,amount:ledgerMoney(ledgerScale4(a.expenseItem.amount),code),remaining:ledgerMoney(ledgerScale4(a.expenseItem.amount)-other.filter((b:any)=>b.expenseItemId===a.expenseItemId).reduce((sum:bigint,b:any)=>sum+ledgerScale4(b.amount),0n),code)}));
+  const items=entry.allocations.map((a:any)=>({id:a.expenseItemId,line:a.expenseItem.expenseRequestLine,description:a.expenseItem.description,accountingCode:a.expenseItem.transactionCode,amount:ledgerMoney(ledgerScale4(a.expenseItem.amount),code),remaining:ledgerMoney(ledgerScale4(a.expenseItem.amount)-other.filter((b:any)=>b.expenseItemId===a.expenseItemId).reduce((sum:bigint,b:any)=>sum+ledgerScale4(b.amount),0n),code)}));
   document={...(requests.length===1?{id:requests[0].id,version:requests[0].version}:{}),reference:requests.length===1?requests[0].managementNumber||legacyExpenseNumber(requests[0].id):entry.evidenceNumber,payee:requests.map(r=>r.partner?.name||r.payeeEmployee?.name||'').join(', '),items,amount:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)};
  }
  if(document){document.counterparty=entryCounterparty(entry);if(entry.evidenceType==='EXPENSE'&&document.id)document.paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,document.id,id)).filter((row:any)=>row.currency===code);}
  const peer=entry.internalTransferAmount!=null?await db.bankLedgerEntry.findFirst({where:{orgId,...(entry.internalTransferSourceId?{id:entry.internalTransferSourceId}:{internalTransferSourceId:entry.id})},include:{account:true}}):null;
- return {...entry,...(peer?{transferAmount:ledgerMoney(ledgerScale4(peer.amount),peer.account.currencyCode),transferCurrencyCode:peer.account.currencyCode}:{}),paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
+ return {...entry,...(peer?{transferAmount:ledgerMoney(ledgerScale4(peer.amount),peer.account.currencyCode),transferCurrencyCode:peer.account.currencyCode}:{}),paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description,line:a.expenseItem.expenseRequestLine,accountingCode:a.expenseItem.transactionCode})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
 }
 export async function replaceLedgerEntry(db:any,orgId:number,actor:string,id:string,body:any){
- if(!Array.isArray(body.rows)||body.rows.filter((r:any)=>r.entryKind==='BANK').length!==1)return fail('LEDGER_INVALID_BATCH',400);
+ if(!Array.isArray(body.rows)||!body.rows.some((r:any)=>r.entryKind==='BANK'))return fail('LEDGER_INVALID_BATCH',400);
  return retryEditTransaction(db,tx=>replaceLedgerEntryApproved(tx,db,orgId,actor,id,body),60000);
 }
 export async function replaceLedgerEntryApproved(tx:any,db:any,orgId:number,actor:string,id:string,body:any){

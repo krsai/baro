@@ -1,3 +1,4 @@
+import {accountingSummary} from '../../utils/accountingSummary.mjs';
 import {ACCOUNTING_CODE_TEXT} from '../../constants/accountingCode';
 import {expenseDeletionText} from '../../constants/expenseDeletion';
 import {ExpenseDeletionButton} from '../../components/ExpenseDeletion';
@@ -39,7 +40,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const text = EXPENSE_LIST_TEXT[languageCode] || EXPENSE_LIST_TEXT.ko;
   const [canDraft,setCanDraft]=useState(null);
   useEffect(()=>{let live=true;setCanDraft(null);requestJSON('/expense-approval-settings'+buildQueryString({orgId:activeOrgId}),{skipCache:true,skipGlobalLoading:true}).then(data=>{if(live)setCanDraft(data.canDraft!==false);}).catch(()=>{});return()=>{live=false;};},[activeOrgId]);
-  const [rows,setRows] = useState([]), [documents,setDocuments] = useState([]), [view,setView] = useState('items');
+  const [rows,setRows] = useState([]), [documents,setDocuments] = useState([]), [view] = useState('items');
   const [loading,setLoading] = useState(true), [errors,setErrors] = useState({ items:'',documents:'' });
   const [search,setSearch] = useState(''), [partner,setPartner] = useState(''), [industry,setIndustry] = useState(''), [currency,setCurrency] = useState('');
   const [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
@@ -128,8 +129,8 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     return onOpenRequest?.('cost',String(row.id));
   };
   const uniqueText=values=>[...new Set(values.filter(Boolean))].join(', ')||'\u2014';
-  const codeSummary=items=>uniqueText(items.map(item=>item.transactionCode?.code));
-  const descriptionSummary=items=>uniqueText(items.map(item=>expenseLineDescription(item,languageCode)));
+  const codeSummary=items=>accountingSummary(items.map(item=>item.transactionCode?.code),languageCode);
+  const descriptionSummary=items=>accountingSummary(items.map(item=>expenseLineDescription(item,languageCode)),languageCode);
   const openRowOnClick = (event,row) => {event.stopPropagation();editRow(row);};
   return <AppPageContainer title={labels.costs} titleActions={<div className="cc-actions">
       <Button variant="contained" disableElevation className="cc-primary" disabled={canDraft===false || loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
@@ -141,7 +142,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
 
     />
     <section className="cc-panel cc-results">
-      <div className="cc-tabs" role="tablist">{[['items',text.detail],['partner',text.partnerSummary],['industry',text.industrySummary],['documents',text.documents]].map(([key,label])=><button key={key} role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{label}</button>)}<span>{text.basis}: {view==='documents' ? docText.date : labels.date}</span></div>
+
     <div className="cc-totals cc-results-summary"><span>{text.results} <b>{loading || error ? '—' : visibleRows.length}</b> {text.items}</span><i /><span>{text.partners} <b>{loading || error ? '—' : partnerCount}</b> {text.companies}</span>
       <div className="cc-total-amount"><span>{text.total}</span>{loading || error || !totals.length ? <strong>—</strong> : totals.map(total=><strong key={total.currency}>{money(total.amount,total.currency)}</strong>)}</div>
     </div>

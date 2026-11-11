@@ -1,3 +1,4 @@
+import {accountingCompactText} from '../../constants/accountingCompact';
 import {paymentScheduleError} from '../../utils/expensePaymentSchedule.mjs';
 import {expensePaymentText} from '../../constants/expensePaymentSchedule';
 import ReadOnlyField from '../../components/ReadOnlyField';
@@ -287,9 +288,9 @@ export default function TransactionRequestEntry() {
           dragColumnWidths.current = Array.from(tableContainerRef.current?.querySelector('[data-testid="expense-line"]')?.cells || []).map(cell => cell.getBoundingClientRect().width);
         }} onDragEnd={reorderLines}>
           <Droppable droppableId="expense-items" isDropDisabled={disabled}>{provided => (
-            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1496, tableLayout: 'fixed' }}>
-              <colgroup>{[60,144,180,88,88,88,144,88,112,112,128,160,104].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
-              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,(expensePaymentText[languageCode]||expensePaymentText.en).mode,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
+            <TableContainer ref={tableContainerRef}><Table ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1530, tableLayout: 'fixed' }}>
+              <colgroup>{[48,112,150,68,72,105,128,68,105,100,120,92,90,90].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
+              <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,(accountingCompactText[languageCode]||accountingCompactText.en).payment,(accountingCompactText[languageCode]||accountingCompactText.en).evidence,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
               {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
                   <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAdd={addLine} onAddProcess={addProcess} canAddProcess={!disabled} />

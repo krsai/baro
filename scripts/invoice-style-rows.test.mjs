@@ -25,9 +25,9 @@ test('issued document and PDF use grouped snapshots with comma formatting withou
   assert.doesNotMatch(html,/Color \/ Gender \/ Size|Blue|Red/);
 });
 
-test('invoice bank instructions use only matching currency company bank accounts',()=>{
-  const account={bankName:'Bank',accountNumber:'001',accountHolder:'Company',currency:{code:'USD'}};
-  assert.equal(invoiceBankInfo([account,{...account,accountNumber:'002',currency:{code:'VND'}}],'USD'),'Bank / 001 / Company / USD');
-  assert.equal(invoiceBankInfo([account],'KRW'),'');
+test('invoice bank instructions use every explicitly designated company bank account across currencies',()=>{
+  const account={isDefault:true,bankName:'Bank',accountNumber:'001',accountHolder:'Company',currency:{code:'USD'}};
+  assert.equal(invoiceBankInfo([account,{...account,accountNumber:'002',currency:{code:'VND'}}],'USD'),'Bank / 001 / Company / USD\nBank / 002 / Company / VND');
+  assert.equal(invoiceBankInfo([{...account,isDefault:false}],'KRW'),'');
   assert.equal(invoiceBankInfo([], 'USD'),'');
 });
