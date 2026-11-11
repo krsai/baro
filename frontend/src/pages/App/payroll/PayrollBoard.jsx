@@ -2,9 +2,11 @@ import {payrollPayableMessage} from '../../../constants/payrollPayable';
 import {formatCurrency} from '../../../utils/currencyFormat';
 import dayjs from 'dayjs';
 import DateRangeSelector from '../../../components/DateRangeSelector';
+import SearchPanel from '../../../components/SearchPanel';
+import SearchInput from '../../../components/SearchInput';
 import {periodMonthKeys,periodMonthNote} from '../../../utils/periodRange.mjs';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Alert,
@@ -46,6 +48,7 @@ import { resolvePayrollManagement } from '../attendance/attendanceEmployment';
 
 const TEXT = {
   ko: {
+    searchPlaceholder: '정산월·공장/사업장·관리번호 검색',
     calculateMonth: '계산 월', calculate: '계산', recalculate: '현재까지 다시 계산', calculating: '계산 중...',
     noData: '선택한 월에 계산할 작업기록이 없습니다.', alreadyCalculated: '이미 계산이 완료된 월입니다.',
     calculateSuccess: '{month} 급여를 계산했습니다.', fetchError: '급여 계산 내역을 불러오지 못했습니다.',
@@ -65,6 +68,7 @@ const TEXT = {
     calculationErrorTitle: '급여 계산 오류', calculationSucceeded: '계산 완료', calculationRetryHint: '아래 문제를 수정한 뒤 해당 월을 다시 계산해 주세요.',
   },
   en: {
+    searchPlaceholder: 'Search month, factory/workplace or reference',
     calculateMonth: 'Calculation Month', calculate: 'Calculate', recalculate: 'Recalculate to Date', calculating: 'Calculating...',
     noData: 'There are no work records to calculate for the selected month.', alreadyCalculated: 'This month has already been calculated.',
     calculateSuccess: 'Calculated payroll for {month}.', fetchError: 'Failed to load payroll records.',
@@ -84,6 +88,7 @@ const TEXT = {
     calculationErrorTitle: 'Payroll Calculation Error', calculationSucceeded: 'Calculation Completed', calculationRetryHint: 'Fix the issues below, then calculate the month again.',
   },
   vi: {
+    searchPlaceholder: 'Tìm tháng, nhà máy/nơi làm việc hoặc mã quản lý',
     calculateMonth: 'Thang tinh', calculate: 'Tinh', recalculate: 'Tinh lai den hien tai', calculating: 'Dang tinh...',
     noData: 'Không có du lieu cong viec de tinh trong thang da chon.', alreadyCalculated: 'Thang nay da duoc tinh.',
     calculateSuccess: 'Đã tính lương cho {month}.', fetchError: 'Không thể tải dữ liệu tính lương.',
@@ -140,8 +145,11 @@ const PayrollBoard = () => {
   const [queryFailed, setQueryFailed] = useState(false);
   const [snapshots, setSnapshots] = useState([]);
   const [calendar, setCalendar] = useState(null);
+  const [calendarOrg,setCalendarOrg]=useState(null);
   const [readinessByKey, setReadinessByKey] = useState({});
   const [dateFrom,setDateFrom]=useState(null),[dateTo,setDateTo]=useState(null);
+  const [search,setSearch]=useState('');
+  const periodOrg = useRef(null);
   const selectedMonths=useMemo(()=>new Set(periodMonthKeys(dateFrom?.format('YYYY-MM-DD'),dateTo?.format('YYYY-MM-DD'))),[dateFrom,dateTo]);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -221,6 +229,7 @@ const PayrollBoard = () => {
       setSnapshots(nextSnapshots);
       setEmployeeDirectory(Array.isArray(employeeRows) ? employeeRows : []);
       setCalendar(calendarPayload || null);
+      setCalendarOrg(activeOrgId);
       setReadinessByKey(Object.fromEntries(readinessEntries));
     } catch (error) {
       setQueryFailed(true);
@@ -270,13 +279,23 @@ const PayrollBoard = () => {
       return Number(a.factory.id) - Number(b.factory.id);
     });
   }, [calendar?.availableMonthKeys, factories, latestCompletedMonthKey, readinessByKey, snapshots, snapshotsByKey]);
+  const defaultPeriodEnd=useMemo(()=>calendarOrg===activeOrgId&&latestCompletedMonthKey?dayjs(latestCompletedMonthKey+'-01').endOf('month'):null,[calendarOrg,activeOrgId,latestCompletedMonthKey]);
+  const resetSearch=useCallback(()=>{
+    setSearch('');
+    if(defaultPeriodEnd?.isValid()){setDateFrom(defaultPeriodEnd.subtract(11,'month').startOf('month'));setDateTo(defaultPeriodEnd);}
+  },[defaultPeriodEnd]);
   useEffect(()=>{
-    const months=monthFactoryRows.map(row=>row.month).sort();
-    if(months.length){setDateFrom(previous=>previous||dayjs(months[0]+'-01'));setDateTo(previous=>previous||dayjs(months.at(-1)+'-01').endOf('month'));}
-  },[monthFactoryRows]);
-  const filteredMonthFactoryRows=useMemo(()=>monthFactoryRows.filter(row=>selectedMonths.has(row.month)),[monthFactoryRows,selectedMonths]);
+    if(defaultPeriodEnd?.isValid()&&periodOrg.current!==activeOrgId){periodOrg.current=activeOrgId;resetSearch();}
+  },[activeOrgId,defaultPeriodEnd,resetSearch]);
+  const filteredMonthFactoryRows=useMemo(()=>{
+    const terms=search.normalize('NFKC').toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+    return monthFactoryRows.filter(row=>{
+      const value=[row.month,row.factory.name,row.factory.nameKo,row.factory.nameVi,row.factory.factoryCode,row.snapshot?.payableDocument?.managementNumber].filter(Boolean).join(' ').normalize('NFKC').toLocaleLowerCase();
+      return selectedMonths.has(row.month)&&terms.every(term=>value.includes(term));
+    });
+  },[monthFactoryRows,selectedMonths,search]);
   const batchTargetRows = useMemo(
-    () => monthFactoryRows
+    () => filteredMonthFactoryRows
       .filter((row) => {
         const key = rowKey(row.month, row.factory.id);
         const monthReadiness = readinessByKey[key];
@@ -287,7 +306,7 @@ const PayrollBoard = () => {
         return Boolean(selected && calculable);
       })
       .sort((a, b) => a.month.localeCompare(b.month) || Number(a.factory.id) - Number(b.factory.id)),
-    [monthFactoryRows, readinessByKey, selectedMonths]
+    [filteredMonthFactoryRows, readinessByKey, selectedMonths]
   );
   const canCalculate = batchTargetRows.length > 0 && !loading && !calculating;
   const explainCalculationError = useCallback((message) => {
@@ -432,7 +451,6 @@ const PayrollBoard = () => {
       )}
       toolbar={<PageToolbar showLastUpdater={false} right={(
         <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
-          <DateRangeSelector languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} disabled={loading||calculating}/>
           <Button
             variant="contained" startIcon={<CalculateIcon />}
             disabled={!canCalculate} onClick={handleCalculate}
@@ -446,6 +464,11 @@ const PayrollBoard = () => {
         </Stack>
       )} />}
     >
+      <SearchPanel
+        search={<SearchInput value={search} placeholder={resolveText(languageCode,'searchPlaceholder')} inputProps={{'aria-label':resolveText(languageCode,'searchPlaceholder')}} disabled={loading||calculating||!!mutating} onChange={event=>setSearch(event.target.value)}/>}
+        controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} disabled={loading||calculating||!!mutating}/>}
+        onReset={resetSearch} disabled={loading||calculating||!!mutating}
+      />
       {payableError&&<Alert severity="error" sx={{mb:2}}>{payableError}</Alert>}
       <Box sx={{ width: '100%' }}>
         <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
