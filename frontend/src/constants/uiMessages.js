@@ -307,8 +307,11 @@ export const UI_MESSAGES = {
     groupKey: { ko: 'key: {key}', en: 'key: {key}', vi: 'key: {key}' },
   },
   assign: {
-    includeManagementClosed: { ko: '관리 종료 포함', en: 'Include closed assignments', vi: 'Bao gồm phân công đã kết thúc' },
-    managementClosed: { ko: '관리 종료', en: 'Management closed', vi: 'Đã kết thúc quản lý' },
+    includeManagementClosed: { ko: '청구 완료 포함', en: 'Include fully billed assignments', vi: 'Bao gồm phân công đã lập đủ hóa đơn' },
+    managementClosed: { ko: '청구 완료', en: 'Fully billed', vi: 'Đã lập đủ hóa đơn' },
+    billedAssignmentsHeader: { ko: '청구 완료 목록', en: 'Fully billed assignments', vi: 'Phân công đã lập đủ hóa đơn' },
+    progressUnknownExplanation: { ko: '공정 연결·기준 ST 누락 또는 작업 기록의 진행률 계산 불가로 남은 작업량 예측에서 제외했습니다. 아래 배정의 공정·수량·작업 기록을 확인하세요. 청구·수금 상태와는 별개입니다.', en: 'Process links or ST references are missing, or recorded work progress cannot be calculated. These assignments are excluded from remaining workload forecasts. Check their processes, quantities and work records. Billing and collection are separate.', vi: 'Thiếu liên kết công đoạn, ST tham chiếu hoặc không tính được tiến độ nên không đưa vào dự báo khối lượng còn lại. Kiểm tra công đoạn, số lượng và nhật ký sản xuất bên dưới. Không liên quan đến lập hóa đơn hay thu tiền.' },
+    progressUnknownDetailsPending: { ko: '대상 배정 상세를 아직 불러오지 못했습니다. 조회를 새로고침해 주세요.', en: 'Assignment details are not loaded yet. Refresh the board.', vi: 'Chưa tải được chi tiết phân công. Vui lòng tải lại bảng.' },
     dragRequiresReadyOrder: { ko: '스타일과 수량이 유효한 주문을 저장한 뒤 배정해 주세요.', en: 'Save an order with valid styles and quantities before scheduling.', vi: 'Lưu đơn hàng với mẫu và số lượng hợp lệ trước khi phân công.' },
     orderReadinessRequiredCompact: { ko: '주문 검토 필요', en: 'Order review required', vi: 'Cần kiểm tra đơn hàng' },
     orderNotReadySaveError: { ko: '주문의 스타일과 수량을 확인하고 저장한 뒤 배정판을 새로고침해 주세요.', en: 'Check and save the order styles and quantities, then refresh the board.', vi: 'Kiểm tra và lưu mẫu, số lượng của đơn hàng, sau đó tải lại bảng phân công.' },

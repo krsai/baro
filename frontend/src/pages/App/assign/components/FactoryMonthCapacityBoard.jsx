@@ -216,6 +216,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   onOpenContextMenu,
 }) {
   const queueStatus = assignment?.queueStatus || (assignment?.isCompleted ? 'completed' : 'queued');
+  const isBilled = assignment?.isManagementClosed === true;
   const isCompleted = queueStatus === 'completed';
   const isReviewRequired = queueStatus === 'review_required';
   const isZeroQuantityOverflow = queueStatus === 'zero_quantity_overflow';
@@ -224,7 +225,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
   const isLocked = isCompleted || isZeroQuantityOverflow;
   const chips = [
     assignment.isManagementClosed
-      ? { label: getUiMessage('assign.managementClosed', 'Management closed', languageCode), variant: 'outlined', color: 'success' }
+      ? { label: getUiMessage('assign.managementClosed', 'Fully billed', languageCode), variant: 'outlined', color: 'default' }
       : isCompleted
       ? {
           label: getUiMessage(
@@ -273,7 +274,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
         }
       : null,
   ];
-  const footer = isCompleted
+  const footer = isBilled ? '' : isCompleted
     ? assignment.completedAt
       ? getUiMessage(
           assignment.completionDateIsEstimated
@@ -308,14 +309,14 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
             languageCode
           )
       : '';
-  const accentColor = isCompleted
+  const accentColor = isBilled ? LABEL_PALETTE.gray.text : isCompleted
     ? LABEL_PALETTE.green.text
     : isZeroQuantityOverflow
       ? LABEL_PALETTE.orange.text
     : isReviewRequired
       ? LABEL_PALETTE.red.text
       : LABEL_PALETTE.blue.text;
-  const backgroundColor = isCompleted
+  const backgroundColor = isBilled ? LABEL_PALETTE.gray.background : isCompleted
     ? LABEL_PALETTE.green.background
     : isZeroQuantityOverflow
       ? LABEL_PALETTE.orange.background
@@ -338,6 +339,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       orderNo={assignment.orderNo || getUiMessage('assign.orderNoFallback', 'No order', languageCode)}
       styleName={assignment.label || '-'}
       quantity={assignment.quantity}
+      showProgress={!isBilled}
       progressPercent={assignment.workProgressPercent ?? assignment.progressPercent}
       chips={chips.filter(Boolean)}
       footer={footer}
@@ -430,14 +432,29 @@ const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
               </Typography>
             ) : null}
             {Number(row.progressUnknownAssignmentCount) > 0 ? (
-              <Typography variant="caption" color="warning.main" sx={{ display: 'block' }}>
+              <Box component="details" sx={{ color: 'warning.main', typography: 'caption' }}>
+                <Box component="summary" sx={{ cursor: 'pointer' }}>
                 {getUiMessage(
                   'assign.progressUnknownExcludedCompact',
                   '{count} progress unknown - excluded',
                   languageCode,
                   { count: row.progressUnknownAssignmentCount }
                 )}
-              </Typography>
+                </Box>
+                <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                  {getUiMessage('assign.progressUnknownExplanation', '', languageCode)}
+                </Typography>
+                {row.progressUnknownAssignments.map(assignment => (
+                  <Typography key={assignment.id} variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                    {[resolveCardCustomerDisplay(assignment, languageCode), assignment.orderNo, assignment.label].filter(Boolean).join(' / ')}
+                  </Typography>
+                ))}
+                {row.progressUnknownAssignments.length < Number(row.progressUnknownAssignmentCount) ? (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                    {getUiMessage('assign.progressUnknownDetailsPending', '', languageCode)}
+                  </Typography>
+                ) : null}
+              </Box>
             ) : null}
             <FactoryScopeRowDropHint isOver={isOver} languageCode={languageCode} />
           </Box>
@@ -600,13 +617,21 @@ const FactoryMonthCapacityBoard = ({
     const sourceRows = Array.isArray(rows) ? rows : [];
     return sourceRows.map((row) => ({
       ...row,
+      progressUnknownAssignments: [...new Map([
+        ...(row.assignments || []), ...(row.queuedAssignments || []), ...(row.reviewRequiredAssignments || []),
+      ].filter(assignment => assignment.isProgressUnknown && !assignment.isCompleted)
+        .map(assignment => [assignment.id, assignment])).values()],
       queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm),
       reviewRequiredAssignments: filterAssignmentsBySearchTerm(
         row.reviewRequiredAssignments,
         lowerSearchTerm
       ),
       completedAssignments: filterAssignmentsBySearchTerm(
-        (row.completedAssignments || []).filter(assignment => includeManagementClosed || !assignment.isManagementClosed),
+        (row.completedAssignments || []).filter(assignment => !assignment.isManagementClosed),
+        lowerSearchTerm
+      ),
+      billedAssignments: filterAssignmentsBySearchTerm(
+        includeManagementClosed ? (row.completedAssignments || []).filter(assignment => assignment.isManagementClosed) : [],
         lowerSearchTerm
       ),
       zeroQuantityOverflowAssignments: filterAssignmentsBySearchTerm(
@@ -829,6 +854,18 @@ const FactoryMonthCapacityBoard = ({
                                 ))}
                               </Stack>
                             </>
+                          ) : null}
+                          {row.billedAssignments.length > 0 ? (
+                            <Box data-billed-assignments sx={{ mt: 1.5 }}>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                                {getUiMessage('assign.billedAssignmentsHeader', '', languageCode)}
+                              </Typography>
+                              <Stack spacing={1}>
+                                {row.billedAssignments.map(assignment => (
+                                  <AssignmentDetailCard key={assignment.id} assignment={assignment} languageCode={languageCode} onOpenContextMenu={onOpenContextMenu} />
+                                ))}
+                              </Stack>
+                            </Box>
                           ) : null}
                           {row.zeroQuantityOverflowAssignments.length > 0 ? (
                             <>
