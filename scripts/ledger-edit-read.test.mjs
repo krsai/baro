@@ -17,7 +17,7 @@ function validateInclude(modelName,include){
 function fixture(type='FILE',allocations=[]){
  const reads=[];
  const entry={id:'entry',orgId:1,account:{currencyCode:'USD'},accountId:'account',evidenceType:type,amount:'90',bankFee:'0',writeOffAmount:'0',allocations,settlementLines:[],voidedAt:null};
- const db={expensePaymentSchedule:{findMany:async()=>[]},bankLedgerEntry:{findFirst:async({where,include})=>{validateInclude('BankLedgerEntry',include);reads.push(where);return where.orgId===1?structuredClone(entry):null;}},
+ const db={accountingOpeningItem:{findMany:async()=>[]},expensePaymentSchedule:{findMany:async()=>[]},bankLedgerEntry:{findFirst:async({where,include})=>{validateInclude('BankLedgerEntry',include);reads.push(where);return where.orgId===1?structuredClone(entry):null;}},
   invoice:{findMany:async query=>{reads.push(query.where);return [{id:'invoice',invoiceNumber:'INV-2026-000001',total:'100',buyer:{name:'Customer'}}];}},
   partnerTransactionCost:{findMany:async query=>{validateInclude('PartnerTransactionCost',query.include);reads.push(query.where);return []; }},
   bankLedgerEvidenceAllocation:{findMany:async query=>{reads.push(query.where);return [];}}};
@@ -46,6 +46,6 @@ test('expense edit resolves item IDs in the company and returns employee payee, 
  db.bankLedgerEvidenceAllocation.findMany=async()=>[{expenseItemId:'cost',amount:'20'}];
  const result=await readLedgerEdit(db,1,'entry');
  assert.equal(result.document.remaining,'80.00');assert.equal(result.document.reference,'EXP-2026-000009');assert.equal(result.document.version,2);assert.equal(result.document.payee,'Employee');
- assert.deepEqual(result.expenseItems,[{itemId:'cost',amount:'30.00',label:'Travel'}]);assert.deepEqual(reads[1],{orgId:1,id:{in:['cost']}});
+ assert.deepEqual(result.expenseItems,[{itemId:'cost',amount:'30.00',label:'Travel',line:1,accountingCode:undefined}]);assert.deepEqual(reads[1],{orgId:1,id:{in:['cost']}});
  db.partnerTransactionCost.findMany=async()=>[];await assert.rejects(readLedgerEdit(db,1,'entry'),/INVALID_EVIDENCE/);
 });

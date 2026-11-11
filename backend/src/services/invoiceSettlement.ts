@@ -14,13 +14,15 @@ export const invoiceFamily = (invoice: any) => invoice.rootInvoiceId || invoice.
 export function invoiceFamilyBalance(invoices: any[], familyId: string) {
   const family = invoices.filter(invoice => invoiceFamily(invoice) === familyId);
   const current = family.find(invoice => invoice.status === 'ISSUED') || null;
-  const received = family.reduce((sum, invoice) => sum + (invoice.payments || [])
+  let received = family.reduce((sum, invoice) => sum + (invoice.payments || [])
     .filter((payment: any) => !payment.voidedAt)
     .reduce((paymentSum: bigint, payment: any) => paymentSum
       + (payment.kind === 'REFUND' ? -1n : 1n) * money4(payment.amount), 0n), 0n);
   const credit = (current?.credits || []).filter((row: any) => !row.voidedAt)
     .reduce((sum: bigint, row: any) => sum + money4(row.amount), 0n);
-  const debt = current ? money4(current.receivableAdded) - credit : 0n;
+  const historical = (current?.openingAdjustments || []).filter((row:any)=>!row.voidedAt).reduce((sum:bigint,row:any)=>sum+money4(row.amount),0n);
+  if (historical>0n) received=family.reduce((sum:bigint,row:any)=>sum+money4(row.ledgerReceivedAmount||'0'),0n);
+  const debt = current ? money4(current.receivableAdded) - credit - historical : 0n;
   return { currentInvoiceId: current?.id ?? null, receivedAmount: decimal4(received),
     debtAmount: decimal4(debt), balanceAmount: decimal4(debt >= received ? debt - received : received - debt),
     balanceKind: debt > received ? 'DUE' : debt < received ? 'CREDIT' : 'SETTLED' };

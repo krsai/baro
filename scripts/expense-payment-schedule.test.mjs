@@ -33,7 +33,7 @@ function ledgerFixture(){
  const schedule={...rows()[0],expenseItemId:'cost1',orgId:1,requestId:1,active:true};
  let paid='0';
  const cost={id:'cost1',orgId:1,expenseRequestId:1,expenseRequestLine:1,currency:'VND',amount:'100000000'};
- const tx={$queryRawUnsafe:async()=>[],
+ const tx={accountingOpeningItem:{findMany:async()=>[]},$queryRawUnsafe:async()=>[],
   partnerTransactionCost:{findMany:async()=>[cost],findFirst:async()=>cost},
   expenseRequest:{findFirst:async()=>({id:1,orgId:1,version:1,createdByEmployeeId:10,createdByEmployee:{id:10,orgId:1,status:'ACTIVE',orgRole:'ADMIN'},approvalSteps:[]})},
   expenseApprovalDecision:{findMany:async()=>[]},expenseRequestAudit:{findFirst:async()=>null},

@@ -1,3 +1,4 @@
+import {documentOpeningAmount,invoiceOpeningRemaining} from './accountingOpening';
 import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
 import {Prisma} from '@prisma/client';
@@ -18,7 +19,7 @@ export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,ro
 }
 export async function readLedgerEdit(db:any,orgId:number,id:string){
  const codeInclude={base:{include:{expenseType:true}}} satisfies Prisma.TransactionCodeInclude;
- const include={account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
+ const include={openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
  const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include});
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');
  const code=entry.account.currencyCode;
@@ -26,20 +27,28 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  const expenseIds=[...new Set(entry.allocations.map((a:any)=>a.expenseItemId).filter(Boolean))];
  const expenseInclude={transactionCode:{include:codeInclude},expenseRequest:{include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}}}}} satisfies Prisma.PartnerTransactionCostInclude;
  const [invoices,expenses,other]=await Promise.all([
-  invoiceIds.length?db.invoice.findMany({where:{sellerOrgId:orgId,id:{in:invoiceIds}},include:{buyer:{select:{name:true}}}}):[],
+  invoiceIds.length?db.invoice.findMany({where:{sellerOrgId:orgId,id:{in:invoiceIds}},include:{credits:{where:{voidedAt:null}},buyer:{select:{name:true}}}}):[],
   expenseIds.length?db.partnerTransactionCost.findMany({where:{orgId,id:{in:expenseIds}},include:expenseInclude}):[],
   invoiceIds.length||expenseIds.length?db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:{not:id},entry:{voidedAt:null},OR:[{invoiceId:{in:invoiceIds}},{expenseItemId:{in:expenseIds}}]}}):[],
  ]);
  entry.allocations=entry.allocations.map((allocation:any)=>({...allocation,invoice:invoices.find((row:any)=>row.id===allocation.invoiceId)||null,expenseItem:expenses.find((row:any)=>row.id===allocation.expenseItemId)||null}));
  if(entry.allocations.some((allocation:any)=>allocation.invoiceId&&!allocation.invoice||allocation.expenseItemId&&!allocation.expenseItem))return fail('LEDGER_INVALID_EVIDENCE');
  let document:any=null;
+ if(entry.evidenceType==='OPENING'){
+  const item=entry.openingAllocations[0]?.openingItem;if(!item||item.voidedAt)return fail('OPENING_SOURCE_CHANGED');
+  const used=await db.accountingOpeningAllocation.findMany({where:{orgId,openingItemId:item.id,entryId:{not:id},entry:{voidedAt:null}}});
+  document={id:item.id,reference:item.reason,payee:item.party?.name||item.employee?.name||'',accountingCodeId:item.accountingCodeId,side:item.side,amount:String(item.amount),remaining:ledgerMoney(ledgerScale4(item.amount)-used.reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),code)};
+ }
+
  if(entry.evidenceType==='INVOICE'){
   const invoice=entry.allocations[0]?.invoice;if(!invoice)return fail('LEDGER_INVALID_EVIDENCE');
-  document={id:invoice.id,reference:invoice.invoiceNumber,payee:invoice.buyer?.name||'',amount:ledgerMoney(ledgerScale4(invoice.total),code),remaining:ledgerMoney(ledgerScale4(invoice.total)-other.filter((a:any)=>a.invoiceId===invoice.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n),code)};
+  const historical=await documentOpeningAmount(db,orgId,{invoiceId:invoice.id});
+  const available=historical>0n?(await invoiceOpeningRemaining(db,orgId,invoice)).remaining+entry.allocations.filter((a:any)=>a.invoiceId===invoice.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n):ledgerScale4(invoice.receivableAdded??invoice.total)-other.filter((a:any)=>a.invoiceId===invoice.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n);
+  document={id:invoice.id,reference:invoice.invoiceNumber,payee:invoice.buyer?.name||'',amount:ledgerMoney(ledgerScale4(invoice.total),code),remaining:ledgerMoney(available,code)};
  }
  if(entry.evidenceType==='EXPENSE'){
   const requests=[...new Map(entry.allocations.filter((a:any)=>a.expenseItem?.expenseRequest).map((a:any)=>[a.expenseItem.expenseRequest.id,a.expenseItem.expenseRequest])).values()] as any[];
-  const items=entry.allocations.map((a:any)=>({id:a.expenseItemId,line:a.expenseItem.expenseRequestLine,description:a.expenseItem.description,accountingCode:a.expenseItem.transactionCode,amount:ledgerMoney(ledgerScale4(a.expenseItem.amount),code),remaining:ledgerMoney(ledgerScale4(a.expenseItem.amount)-other.filter((b:any)=>b.expenseItemId===a.expenseItemId).reduce((sum:bigint,b:any)=>sum+ledgerScale4(b.amount),0n),code)}));
+  const items=await Promise.all(entry.allocations.map(async(a:any)=>({id:a.expenseItemId,line:a.expenseItem.expenseRequestLine,description:a.expenseItem.description,accountingCode:a.expenseItem.transactionCode,amount:ledgerMoney(ledgerScale4(a.expenseItem.amount),code),remaining:ledgerMoney(ledgerScale4(a.expenseItem.amount)-await documentOpeningAmount(db,orgId,{expenseItemId:a.expenseItemId})-other.filter((b:any)=>b.expenseItemId===a.expenseItemId).reduce((sum:bigint,b:any)=>sum+ledgerScale4(b.amount),0n),code)})));
   document={...(requests.length===1?{id:requests[0].id,version:requests[0].version}:{}),reference:requests.length===1?requests[0].managementNumber||legacyExpenseNumber(requests[0].id):entry.evidenceNumber,payee:requests.map(r=>r.partner?.name||r.payeeEmployee?.name||'').join(', '),items,amount:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)};
  }
  if(document){document.counterparty=entryCounterparty(entry);if(entry.evidenceType==='EXPENSE'&&document.id)document.paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,document.id,id)).filter((row:any)=>row.currency===code);}

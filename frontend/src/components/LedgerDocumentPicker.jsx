@@ -5,12 +5,12 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {ledgerEntryText} from '../constants/ledgerEntry';
 import {bankLedgerMessages} from '../constants/bankLedgerMessages';
 import {formatLedgerMoney} from '../utils/bankLedgerMoney.mjs';
-export default function LedgerDocumentPicker({orgId,currencyCode,type,value,disabled,languageCode,onChange,compact=false}){
+export default function LedgerDocumentPicker({orgId,currencyCode,type,value,disabled,languageCode,onChange,compact=false,direction}){
  const t=ledgerEntryText[languageCode]||ledgerEntryText.en;
  const [open,setOpen]=useState(false),[search,setSearch]=useState(''),[rows,setRows]=useState([]),[busy,setBusy]=useState(false),[error,setError]=useState(false);
  useEffect(()=>{setOpen(false);setRows([]);},[orgId,currencyCode,type]);
  useEffect(()=>{setRows([]);setError(false);if(!open||!search.trim()){setBusy(false);return;}let alive=true;const controller=new AbortController();setBusy(true);
-  const timer=setTimeout(()=>requestJSON('/bank-ledger/evidence/search'+buildQueryString({orgId,currencyCode,type,search:search.trim()}),{skipCache:true,signal:controller.signal}).then(result=>{if(alive)setRows(result.documents);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(true);}).finally(()=>{if(alive)setBusy(false);}),250);
+  const timer=setTimeout(()=>requestJSON('/bank-ledger/evidence/search'+buildQueryString({orgId,currencyCode,type,direction,search:search.trim()}),{skipCache:true,signal:controller.signal}).then(result=>{if(alive)setRows(result.documents);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(true);}).finally(()=>{if(alive)setBusy(false);}),250);
   return()=>{alive=false;clearTimeout(timer);controller.abort();};
  },[open,search,orgId,currencyCode,type]);
  return <><Button variant="outlined" size="small" startIcon={compact?undefined:<SearchOutlined/>} disabled={disabled||!currencyCode} title={value?.reference||t.link} onClick={()=>{setSearch('');setOpen(true);}} sx={{minWidth:0,maxWidth:'100%',justifyContent:'flex-start',color:'text.primary',borderColor:'divider','& .MuiButton-startIcon':{color:'text.secondary'}}}><Typography variant="body2" noWrap>{compact?(value?t.connected:t.unlinked):value?.reference||t.link}</Typography></Button>

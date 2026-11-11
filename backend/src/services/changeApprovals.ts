@@ -27,7 +27,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
   if(operation!=='DELETE'||kind!=='invoice')fail('CHANGE_INVALID_SOURCE',400);
   if(lock){await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);await db.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',id,orgId);}
   const invoice=await db.invoice.findFirst({where:{id,sellerOrgId:orgId},include:{orders:true,generalLines:true,payments:{include:{allocations:true}},credits:true}});
-  if(!invoice)fail('INVOICE_NOT_FOUND',404);if(invoice.status!=='ISSUED')fail('CHANGE_SOURCE_CHANGED');
+  if(!invoice)fail('INVOICE_NOT_FOUND',404);if(await db.accountingOpeningItem.findFirst({where:{orgId,invoiceId:id,voidedAt:null},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');if(invoice.status!=='ISSUED')fail('CHANGE_SOURCE_CHANGED');
   if(invoice.payments.some((p:any)=>!p.voidedAt)||await db.bankLedgerEvidenceAllocation.findFirst({where:{invoiceId:id,entry:{orgId,voidedAt:null}}}))fail('INVOICE_ACTIVE_PAYMENT');
   if(await db.workOrder.findFirst({where:{sellerOrgId:orgId,invoiceFinalLockInvoiceId:id}}))fail('INVOICE_FINAL_LOCK_UNLOCK_REQUIRED');
   if(await db.invoiceOrder.findFirst({where:{sourceOrderId:{in:invoice.orders.map((r:any)=>r.sourceOrderId)},invoice:{sellerOrgId:orgId,status:'ISSUED',sequenceNumber:{gt:invoice.sequenceNumber}}}}))fail('INVOICE_CANCEL_REVERSE_ORDER_REQUIRED');
@@ -48,6 +48,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  if(lock&&loaded.costs.length)for(const cost of loaded.costs)await db.$queryRawUnsafe('SELECT id FROM "PartnerTransactionCost" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',cost.id,orgId);
  const current=lock?await loadExpenseEditorSource(db,orgId,kind,id):loaded;
  if(current.document?.bankReconciled)fail('EXPENSE_ALREADY_RECONCILED');
+ if(await db.accountingOpeningItem.findFirst({where:{orgId,voidedAt:null,expenseItemId:{in:current.costs.map((c:any)=>c.id)}},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');
  if(operation==='DELETE'&&!current.document)fail('CHANGE_INVALID_SOURCE',400);
  return {menu,operation,kind:current.kind,id:current.id,revision:expenseEditorRevision(current),version:current.document?.version??null,snapshot:json(current),expense:current,items:current.costs.map((c:any)=>({currency:c.currency,unitPrice:String(c.amount),quantity:'1',vatRate:'0'}))};
 }

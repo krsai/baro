@@ -148,7 +148,7 @@ test('expense item requires sequential approvals for current version, checks all
 });
 test('service validates invoice scope, actual receipt and fees without forcing full settlement',async()=>{
  const invoices=[{id:'i',sellerOrgId:1,invoiceNumber:'INV-1',status:'ISSUED',currencyCode:'USD',total:'10000'}];
- const tx={$queryRawUnsafe:async()=>[],invoice:{findFirst:async({where})=>invoices.find(i=>Object.entries(where).every(([k,v])=>i[k]===v))},bankLedgerEvidenceAllocation:{findMany:async()=>[]}};
+ const tx={accountingOpeningItem:{findMany:async()=>[]},$queryRawUnsafe:async()=>[],invoice:{findFirst:async({where})=>invoices.find(i=>Object.entries(where).every(([k,v])=>i[k]===v))},bankLedgerEvidenceAllocation:{findMany:async()=>[]}};
  const body={evidenceType:'INVOICE',direction:'IN',evidenceNumber:'INV-1',amount:'4980',bankFee:'20'};
  const result=await resolveEvidence(tx,1,{currencyCode:'USD'},body);assert.equal(result.allocations[0].amount,'5000.00');
  await assert.rejects(resolveEvidence(tx,2,{currencyCode:'USD'},body),/INVOICE_NOT_FOUND/);
@@ -157,7 +157,7 @@ test('service validates invoice scope, actual receipt and fees without forcing f
 });
 test('first transaction initializes an owned business account at zero without opening inputs, and retries keep one transaction',async()=>{
  let account=null,row=null;let creates=0;
- const tx={$queryRawUnsafe:async()=>[],organizationBankAccount:{findFirst:async({where})=>where.entityId===1&&where.orgId===1?{id:'master',currency:{code:'USD'},bankName:'',accountNumber:'',accountHolder:''}:null},bankLedgerAccount:{findFirst:async({where})=>account&&where.orgId===account.orgId&&(!where.id||where.id===account.id)&&(!where.entityAccountId||where.entityAccountId===account.entityAccountId)?account:null,create:async({data})=>account={id:'ledger',...data}},bankLedgerEntry:{findUnique:async()=>row,create:async({data})=>{creates++;return row={id:'entry',...data};}}};tx.$transaction=async fn=>fn(tx);
+ const tx={accountingOpeningItem:{findMany:async()=>[]},$queryRawUnsafe:async()=>[],organizationBankAccount:{findFirst:async({where})=>where.entityId===1&&where.orgId===1?{id:'master',currency:{code:'USD'},bankName:'',accountNumber:'',accountHolder:''}:null},bankLedgerAccount:{findFirst:async({where})=>account&&where.orgId===account.orgId&&(!where.id||where.id===account.id)&&(!where.entityAccountId||where.entityAccountId===account.entityAccountId)?account:null,create:async({data})=>account={id:'ledger',...data}},bankLedgerEntry:{findUnique:async()=>row,create:async({data})=>{creates++;return row={id:'entry',...data};}}};tx.$transaction=async fn=>fn(tx);
  tx.organization={findFirst:async()=>({id:3,name:'Vendor',ownerOrgId:1,isActive:true})};
  const body={clientKey:'11111111-1111-4111-8111-111111111111',transactionDate:'2026-01-02',direction:'IN',amount:'10',purpose:'Received',evidenceNumber:'receipt.pdf',evidenceType:'FILE',bankFee:'0',counterparty:{kind:'PARTNER',id:3}};
  await postLedgerEntry(tx,1,'actor','entity:master',body);await postLedgerEntry(tx,1,'actor','entity:master',body);assert.equal(creates,1);assert.equal(account.openingBalance,'0');
@@ -166,7 +166,7 @@ test('first transaction initializes an owned business account at zero without op
 });
 test('approval service uses active employee identity and only the designated next approver',async()=>{
  const decisions=[],request={id:1,orgId:1,version:1,approvalSteps:[{id:'s1',position:1,employeeId:10},{id:'s2',position:2,employeeId:11}]};
- const tx={$queryRawUnsafe:async()=>[],employee:{findFirst:async({where})=>[10,11].includes(where.id)?where:null},expenseRequest:{findFirst:async()=>request},expenseApprovalDecision:{findMany:async()=>decisions,create:async({data})=>{decisions.push(data);return data;}}};tx.$transaction=async fn=>fn(tx);
+ const tx={accountingOpeningItem:{findMany:async()=>[]},$queryRawUnsafe:async()=>[],employee:{findFirst:async({where})=>[10,11].includes(where.id)?where:null},expenseRequest:{findFirst:async()=>request},expenseApprovalDecision:{findMany:async()=>decisions,create:async({data})=>{decisions.push(data);return data;}}};tx.$transaction=async fn=>fn(tx);
  await assert.rejects(approveExpense(tx,1,11,1,1),/NOT_YOUR_TURN/);await assert.rejects(approveExpense(tx,1,99,1,1),/ACCESS_DENIED/);
  assert.equal((await approveExpense(tx,1,10,1,1)).approved,false);await approveExpense(tx,1,10,1,1);assert.equal(decisions.length,1);assert.equal((await approveExpense(tx,1,11,1,1)).approved,true);
  await assert.rejects(approveExpense(tx,1,10,1,2),/REQUEST_CHANGED/);
@@ -190,7 +190,7 @@ function ledgerDatabase(pg){
   update:async({where,data})=>{const values=Object.values(data),sets=Object.keys(data).map((key,index)=>`"${key}"=$${index+1}`).join(',');return (await q(`UPDATE "${table}" SET ${sets} WHERE ${whereSql(where,values)} RETURNING *`,values))[0];},
   groupBy:async({by,where})=>{const args=[],fields=by.map(k=>'"'+k+'"').join(',');return (await q(`SELECT ${fields},sum(amount)::text AS total FROM "${table}" WHERE ${whereSql(where,args)} GROUP BY ${fields}`,args)).map(({total,...row})=>({...row,_sum:{amount:total}}));}
  });
- const db={expensePaymentSchedule:{findMany:async()=>[]},changeApprovalRequest:{findMany:async()=>[]},organization:model('Organization'),transactionCode:{findFirst:async args=>{const row=await model('TransactionCode').findFirst(args);return row?{...row,taxTreatment:{code:'VAT',suffix:'E'},base:{code:row.code.slice(0,3),nameEn:row.nameEn,isActive:true,expenseType:{nameEn:'Expense',isActive:true},variants:[{id:1,taxTreatmentId:row.taxTreatmentId,isActive:true,isEnabled:true}]}}:null;}},bankLedgerAccount:model('BankLedgerAccount'),bankLedgerEntry:model('BankLedgerEntry'),bankLedgerBatch:model('BankLedgerBatch'),bankLedgerSettlementLine:model('BankLedgerSettlementLine'),organizationBankAccount:{findMany:async()=>[]},$queryRawUnsafe:async(sql,...args)=>q(sql,args)};
+ const db={accountingOpeningItem:{findMany:async()=>[]},expensePaymentSchedule:{findMany:async()=>[]},changeApprovalRequest:{findMany:async()=>[]},organization:model('Organization'),transactionCode:{findFirst:async args=>{const row=await model('TransactionCode').findFirst(args);return row?{...row,taxTreatment:{code:'VAT',suffix:'E'},base:{code:row.code.slice(0,3),nameEn:row.nameEn,isActive:true,expenseType:{nameEn:'Expense',isActive:true},variants:[{id:1,taxTreatmentId:row.taxTreatmentId,isActive:true,isEnabled:true}]}}:null;}},bankLedgerAccount:model('BankLedgerAccount'),bankLedgerEntry:model('BankLedgerEntry'),bankLedgerBatch:model('BankLedgerBatch'),bankLedgerSettlementLine:model('BankLedgerSettlementLine'),organizationBankAccount:{findMany:async()=>[]},$queryRawUnsafe:async(sql,...args)=>q(sql,args)};
  db.$transaction=async run=>{await pg.exec('BEGIN ISOLATION LEVEL SERIALIZABLE');try{const result=await run(db);await pg.exec('COMMIT');return result;}catch(error){await pg.exec('ROLLBACK');throw error;}};
  return db;
 }

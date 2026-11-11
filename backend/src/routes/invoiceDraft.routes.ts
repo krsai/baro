@@ -118,8 +118,14 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const familyIds = [...new Set(visible.map((row: any) => invoiceFamily(row)))];
     const familyInvoices = familyIds.length ? await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
       OR: [{ id: { in: familyIds } }, { rootInvoiceId: { in: familyIds } }] },
-      select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true, credits: true,
+      select: { id: true, rootInvoiceId: true, status: true, receivableAdded: true, credits: true, openingAdjustments:{where:{voidedAt:null}},
         payments: { select: { amount: true, kind: true, voidedAt: true } } } }) : [];
+    const historicalFamilies=familyInvoices.filter((invoice:any)=>invoice.openingAdjustments?.length).map((invoice:any)=>invoiceFamily(invoice));
+    if(historicalFamilies.length){
+      const historicalIds=familyInvoices.filter((invoice:any)=>historicalFamilies.includes(invoiceFamily(invoice))).map((invoice:any)=>invoice.id);
+      const cash=await db.bankLedgerEvidenceAllocation.groupBy({by:['invoiceId'],where:{orgId:access.organization.id,invoiceId:{in:historicalIds},entry:{voidedAt:null}},_sum:{amount:true}});
+      for(const invoice of familyInvoices as any[])invoice.ledgerReceivedAmount=String(cash.find((row:any)=>row.invoiceId===invoice.id)?._sum.amount||'0');
+    }
     res.setHeader("Cache-Control", "no-store");
       return res.json({ rows: visible.map((row: any) => { const familyBalance = invoiceFamilyBalance(familyInvoices, invoiceFamily(row)); return ({ id: row.id,documentKind:row.documentKind||'ORDER', invoiceNumber: row.invoiceNumber,
       expectedCollectionDate:(row.snapshot as any)?.fields?.expectedCollectionDate||null, status: row.status, buyerName: (row.snapshot as any)?.fields?.buyer?.name ?? row.buyer.name, currencyCode: row.currencyCode, total: String(row.total),
@@ -133,6 +139,8 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       // locks. Locks belonging to a later invoice are not this document's locks.
       isFinalLocked: row.orders.some((order: any) => Boolean(order.workOrder?.invoiceFinalLockedAt)
         && order.workOrder.invoiceFinalLockInvoiceId === row.id),
+      openingSettlementAmount: String(familyInvoices.find((invoice:any)=>invoice.id===familyBalance.currentInvoiceId)?.openingAdjustments?.[0]?.amount||'0'),
+      openingSettlementKind: familyInvoices.find((invoice:any)=>invoice.id===familyBalance.currentInvoiceId)?.openingAdjustments?.[0]?.kind||null,
       receivedAmount: familyBalance.receivedAmount, familyDebtAmount: familyBalance.debtAmount,
       familyBalanceAmount: familyBalance.balanceAmount, familyBalanceKind: familyBalance.balanceKind,
       isCurrentRevision: familyBalance.currentInvoiceId === row.id,
@@ -142,7 +150,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
   app.get("/invoices/issued/:id", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
     const row = await db.invoice.findFirst({ where: { id: req.params.id, sellerOrgId: access.organization.id },
-      include: { orders: { include: { workOrder: { select: { invoiceFinalLockedAt: true, invoiceFinalLockedBy: true,
+      include: { openingAdjustments:{where:{voidedAt:null}}, orders: { include: { workOrder: { select: { invoiceFinalLockedAt: true, invoiceFinalLockedBy: true,
         invoiceFinalLockInvoiceId: true, invoiceFinalLockReason: true, invoiceFinalRecognizedQuantity: true } } } }, payments: { orderBy: [{ receivedAt: "asc" }, { id: "asc" }], include: {
         allocations: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },
       } }, revisedFrom: { select: { id: true, invoiceNumber: true, revisionNumber: true } },

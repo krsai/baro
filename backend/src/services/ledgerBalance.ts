@@ -1,3 +1,4 @@
+import {normalizeOpeningRows,applyAccountingOpening} from './accountingOpening';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -19,7 +20,8 @@ export async function reconcileLedgerBalances(db:any,scope:{orgId:number,actorId
  if(!scope.actorId)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);
  if(typeof body?.clientKey!=='string'||!/^[0-9a-f-]{36}$/i.test(body.clientKey))return fail('LEDGER_INVALID_CLIENT_KEY');
  if(typeof body.reason!=='string'||!body.reason.trim()||body.reason.trim().length>1000)return fail('LEDGER_INVALID_INPUT');
- if(!Array.isArray(body.accounts)||!body.accounts.length||body.accounts.length>50)return fail('LEDGER_INVALID_BATCH');
+ const openingRows=normalizeOpeningRows(body.openingRows);
+ if(!Array.isArray(body.accounts)||(!body.accounts.length&&!openingRows.length)||body.accounts.length>50)return fail('LEDGER_INVALID_BATCH');
  const rows=body.accounts.map((row:any)=>{
   if(typeof row?.accountId!=='string'||!row.accountId||row.accountId.length>100||!['USD','VND','KRW'].includes(row.currencyCode))return fail('LEDGER_INVALID_INPUT');
   return {accountId:row.accountId,currencyCode:row.currencyCode,expectedBalance:validateLedgerMoney(row.expectedBalance,row.currencyCode,true),targetBalance:validateLedgerMoney(row.targetBalance,row.currencyCode,true)};
@@ -28,7 +30,8 @@ export async function reconcileLedgerBalances(db:any,scope:{orgId:number,actorId
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
  const balanceDate=body.balanceDate===undefined?undefined:ledgerDate(body.balanceDate);
  if(balanceDate&&balanceDate>today)return fail('LEDGER_INVALID_DATE');
- const reason=body.reason.trim(),requestHash=createHash('sha256').update(JSON.stringify({kind:'BALANCE_TARGET',...(balanceDate?{balanceDate}:{}),actorId:scope.actorId,reason,accounts:rows})).digest('hex');
+ if(openingRows.length&&!balanceDate)return fail('LEDGER_INVALID_DATE');
+ const reason=body.reason.trim(),requestHash=createHash('sha256').update(JSON.stringify({kind:'BALANCE_TARGET',...(balanceDate?{balanceDate}:{}),actorId:scope.actorId,reason,accounts:rows,...(openingRows.length?{openingRows}:{})})).digest('hex');
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:scope.actorId,orgId:scope.orgId,status:'ACTIVE',orgRole:'ADMIN'},select:{id:true}});
   if(!actor)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);
@@ -53,6 +56,7 @@ export async function reconcileLedgerBalances(db:any,scope:{orgId:number,actorId
    entryIds.push(entry.id);
   }
   await tx.bankLedgerBatch.create({data:{orgId:scope.orgId,clientKey:body.clientKey,requestHash,entryIds,createdBy:scope.actor}});
+  await applyAccountingOpening(tx,scope,{...body,balanceDate:transactionDate},openingRows);
   return {entryIds};
  },60000);
 }

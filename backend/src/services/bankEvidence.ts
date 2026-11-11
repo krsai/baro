@@ -1,3 +1,4 @@
+import {documentOpeningAmount,openingCashEvidence,invoiceOpeningRemaining} from './accountingOpening';
 import {approvalDelegate,delegationData,delegatedExpenseIds} from './approvalDelegation';
 import {createHttpError} from '../utils/http';
 import {legacyExpenseNumber} from './documentNumber';
@@ -105,13 +106,17 @@ export async function approveExpense(db:any,orgId:number,actorId:number,requestI
 }
 export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  const type=body.evidenceType||'FILE',code=account.currencyCode;
- if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT','BANK_FEE'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
+ if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT','BANK_FEE','OPENING'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
  const fee=validateLedgerMoney(body.bankFee||'0',code,true),writeOff=validateLedgerMoney(body.writeOffAmount||'0',code,true);
  if(ledgerScale4(fee)<0n||ledgerScale4(writeOff)<0n||type!=='INVOICE'&&ledgerScale4(writeOff)!==0n)return fail('LEDGER_INVALID_AMOUNT');
  const amount=ledgerScale4(body.amount),bankFee=ledgerScale4(fee),loss=ledgerScale4(writeOff);
  let reference=typeof body.evidenceNumber==='string'?body.evidenceNumber.trim():'';
  const allocations:any[]=[];
- if(type==='FILE'){
+ if(type==='OPENING'){
+  if(bankFee||loss) return fail('LEDGER_INVALID_EVIDENCE');
+  const item=await openingCashEvidence(tx,orgId,account,body);
+  return {evidenceType:type,evidenceNumber:item.id,bankFee:fee,writeOffAmount:writeOff,allocations:[],openingItemId:item.id};
+ }else if(type==='FILE'){
   if(!reference||reference.length>500||/[\r\n]/.test(reference))return fail('LEDGER_FILE_REQUIRED');
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');
  }else if(type==='BANK_FEE'){
@@ -125,8 +130,10 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   await tx.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 FOR UPDATE',invoice.id);
   const current=await tx.invoice.findFirst({where:{id:invoice.id,sellerOrgId:orgId,status:'ISSUED',currencyCode:code}});
   if(!current)return fail('LEDGER_INVOICE_NOT_FOUND');
+  const openingAmount=await documentOpeningAmount(tx,orgId,{invoiceId:invoice.id});
+  if(openingAmount>0n){const remaining=await invoiceOpeningRemaining(tx,orgId,await tx.invoice.findFirst({where:{id:invoice.id,sellerOrgId:orgId},include:{credits:{where:{voidedAt:null}}}}));if(amount+bankFee+loss>remaining.remaining)return fail('LEDGER_EXCEEDS_DOCUMENT');}
   const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,invoiceId:invoice.id,entry:{voidedAt:null}}});
-  if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+amount+bankFee+loss>ledgerScale4(current.total))return fail('LEDGER_EXCEEDS_DOCUMENT');
+  if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+amount+bankFee+loss+await documentOpeningAmount(tx,orgId,{invoiceId:invoice.id})>ledgerScale4(current.receivableAdded??current.total))return fail('LEDGER_EXCEEDS_DOCUMENT');
   allocations.push({invoiceId:invoice.id,amount:ledgerMoney(amount+bankFee+loss,code)});
  }else{
   if(body.direction!=='OUT'||!Array.isArray(body.expenseItems)||!body.expenseItems.length||body.expenseItems.length>50)return fail('LEDGER_INVALID_EVIDENCE');
@@ -148,7 +155,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
    const state=await approvalState(tx,orgId,cost.expenseRequestId);
    const value=validateLedgerMoney(row.amount,code),minor=ledgerScale4(value);
    const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:row.itemId,entry:{voidedAt:null}}});
-   if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+minor>ledgerScale4(cost.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
+   if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+minor+await documentOpeningAmount(tx,orgId,{expenseItemId:cost.id})>ledgerScale4(cost.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
    allocated+=minor;refs.push(`${state.managementNumber} #${cost.expenseRequestLine}`);
    allocations.push({expenseItemId:row.itemId,requestVersion:state.version,amount:value,...(schedule?{paymentScheduleId:schedule.id}:{})});
   }

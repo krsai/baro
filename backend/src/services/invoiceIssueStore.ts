@@ -269,7 +269,7 @@ export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: 
     : body?.kind == null || body?.kind === "RECEIPT" ? "RECEIPT" : fail("INVOICE_PAYMENT_INVALID");
   if (reference.length > 500 || note.length > 2000) fail("INVOICE_PAYMENT_INVALID");
   return editTransaction(db, async (tx: any) => {
-    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
+    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId },include:{openingAdjustments:{where:{voidedAt:null},select:{id:true}}} });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     const existing = await tx.invoicePayment.findFirst({ where: { invoiceId, clientKey } });
     if (existing) {
@@ -278,6 +278,7 @@ export async function recordInvoicePayment(db: any, sellerOrgId: number, actor: 
         || existing.kind !== kind || existing.reference !== reference || existing.note !== note) fail("INVOICE_PAYMENT_RETRY_MISMATCH");
       return existing;
     }
+    if (invoice.openingAdjustments?.length) throw createHttpError(409,"OPENING_SOURCE_LOCKED");
     if (kind === "RECEIPT" && invoice.status !== "ISSUED") fail("INVOICE_PAYMENT_CANCELLED_INVOICE");
     if (kind === "REFUND") {
       const familyId = invoiceFamily(invoice);
@@ -368,8 +369,9 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
       if (retried.revisionOfInvoiceId !== invoiceId || retried.revisionReason !== revisionReason) fail("INVOICE_REVISION_RETRY_MISMATCH");
       return retried;
     }
-    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true, lines: true } });
+    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { openingAdjustments:{where:{voidedAt:null},select:{id:true}}, orders: true, lines: true } });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
+    if (invoice.openingAdjustments?.length) throw createHttpError(409,"OPENING_SOURCE_LOCKED");
     if (invoice.status !== "ISSUED") fail("INVOICE_REVISION_SOURCE_INVALID");
     if (invoice.orders.some((row: any) => row.workOrderId == null)
       || invoice.lines.some((row: any) => row.workOrderItemId == null)) {

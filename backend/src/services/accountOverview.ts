@@ -1,3 +1,4 @@
+import {openingSum} from './accountingOpening';
 import type {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -60,28 +61,35 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
  },60000);
 }
 async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
- const [invoices,requests,allocations]=await Promise.all([
+ const [invoices,requests,allocations,openings]=await Promise.all([
   tx.invoice.findMany({where:{sellerOrgId:orgId},select:{id:true,buyerOrgId:true,currencyCode:true,status:true,invoiceNumber:true,receivableAdded:true,issuedAt:true,buyer:{select:{name:true}},credits:{where:{voidedAt:null},select:{amount:true}},payments:{where:{voidedAt:null,receivedAt:{lte:new Date(`${asOf}T23:59:59.999+07:00`)}},select:{kind:true,amount:true}}}}),
   tx.expenseRequest.findMany({where:{orgId,requestDate:{lte:asOf}},include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:{select:{id:true,orgId:true,status:true,orgRole:true}},approvalSteps:{orderBy:{position:'asc'}},items:{select:{id:true,currency:true,amount:true}}}}),
   tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,entry:{voidedAt:null,transactionDate:{lte:asOf}}},select:{invoiceId:true,expenseItemId:true,amount:true}}),
+  tx.accountingOpeningItem.findMany({where:{orgId,voidedAt:null,balanceDate:{lte:asOf}},include:{party:{select:{name:true}},employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}}),
  ]);
  const approved=(await attachExpenseApprovalStates(tx,orgId,requests)).filter((row:any)=>row.approval.approved);
- return outstandingReport(invoices,approved,allocations);
+ return outstandingReport(invoices,approved,allocations,openings);
 }
-export function outstandingReport(invoices:any[],requests:any[],allocations:any[]){
+export function outstandingReport(invoices:any[],requests:any[],allocations:any[],openings:any[]=[]){
  const receivable=new Map<string,any>(),payable=new Map<string,any>();
  for(const invoice of invoices){
   const key=JSON.stringify([invoice.buyerOrgId,invoice.currencyCode]),code=invoice.currencyCode;
   const group=receivable.get(key)||{partyId:invoice.buyerOrgId,party:invoice.buyer?.name||'',currencyCode:code,debt:0n,matched:0n,separateReceived:0n,references:[]};
   if(invoice.status==='ISSUED')group.debt+=ledgerScale4(invoice.receivableAdded)-invoice.credits.reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
+  group.matched+=openingSum(openings.filter(row=>row.invoiceId===invoice.id));
   group.matched+=allocations.filter(row=>row.invoiceId===invoice.id).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
   group.separateReceived+=invoice.payments.reduce((sum:bigint,row:any)=>sum+(row.kind==='REFUND'?-1n:1n)*ledgerScale4(row.amount),0n);
   group.references.push({kind:'INVOICE',id:invoice.id,number:invoice.invoiceNumber,date:invoice.issuedAt});receivable.set(key,group);
  }
  for(const request of requests)for(const item of request.items){
   const key=JSON.stringify([request.payeeEmployeeId?'EMPLOYEE':'PARTNER',request.payeeEmployeeId||request.partnerOrgId,item.currency]),group=payable.get(key)||{partyKind:request.payeeEmployeeId?'EMPLOYEE':'PARTNER',partyId:request.payeeEmployeeId||request.partnerOrgId,party:request.partner?.name||request.payeeEmployee?.name||'',currencyCode:item.currency,debt:0n,matched:0n,references:[]};
-  group.debt+=ledgerScale4(item.amount);group.matched+=allocations.filter(row=>row.expenseItemId===item.id).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
+  group.debt+=ledgerScale4(item.amount);group.matched+=openingSum(openings.filter(row=>row.expenseItemId===item.id));group.matched+=allocations.filter(row=>row.expenseItemId===item.id).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row.amount),0n);
   if(!group.references.some((r:any)=>r.id===request.id))group.references.push({kind:'EXPENSE_REQUEST',id:request.id,number:request.managementNumber||legacyExpenseNumber(request.id),date:request.requestDate});payable.set(key,group);
+ }
+ for(const item of openings.filter(row=>row.kind==='OPENING')){
+  const map=item.side==='AR'?receivable:payable,key=JSON.stringify(item.side==='AR'?[item.employeeId?'EMPLOYEE:'+item.employeeId:item.partyOrgId,item.currencyCode]:[item.employeeId?'EMPLOYEE':'PARTNER',item.employeeId||item.partyOrgId,item.currencyCode]);
+  const group=map.get(key)||{partyKind:item.employeeId?'EMPLOYEE':'PARTNER',partyId:item.partyOrgId||item.employeeId,party:item.party?.name||item.employee?.name||'',currencyCode:item.currencyCode,debt:0n,matched:0n,separateReceived:0n,references:[]};
+  group.debt+=ledgerScale4(item.amount);group.matched+=openingSum(item.allocations);group.references.push({kind:'OPENING',id:item.id,number:item.reason,date:item.balanceDate});map.set(key,group);
  }
  const format=(group:any)=>({...group,debt:ledgerMoney(group.debt,group.currencyCode),matched:ledgerMoney(group.matched,group.currencyCode),balance:ledgerMoney(BigInt(group.debt)-BigInt(group.matched),group.currencyCode),separateReceived:ledgerMoney(group.separateReceived||0n,group.currencyCode),hasUnlinkedReceipt:group.separateReceived>0n&&group.separateReceived!==group.matched});
  const receivables=[...receivable.values()].filter(row=>row.debt!==row.matched||row.separateReceived>0n&&row.separateReceived!==row.matched).map(format),payables=[...payable.values()].filter(row=>row.debt!==row.matched).map(format);

@@ -1,3 +1,4 @@
+import {accountingOpeningText} from '../../../constants/accountingOpening';
 import ChangeApprovalDialog from '../../../components/ChangeApprovalDialog';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import {changeApprovalText} from '../../../constants/changeApprovals';
@@ -86,7 +87,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{amount(row.receivedAmount,row.currencyCode)}</TableCell>
-        <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
+        <TableCell align="right" title={row.openingSettlementKind?`${(accountingOpeningText[languageCode]||accountingOpeningText.en)[row.openingSettlementKind]}: ${amount(row.openingSettlementAmount,row.currencyCode)}`:''}>{amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
         <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
         <TableCell data-table-actions><DeleteActionButton aria-label={change.requestCancel} disabled={loading||requesting||row.status!=='ISSUED'} onClick={event=>{event.stopPropagation();cancelInvoice(row);}}/></TableCell>

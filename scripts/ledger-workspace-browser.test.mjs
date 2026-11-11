@@ -28,6 +28,7 @@ try{
   await page.route('**/transaction-codes?**',r=>r.fulfill({headers,json:[{id:100,code:'GENE',nameEn:'General',isActive:true},{id:101,code:'FEEE',nameEn:'Fee',isActive:true}]}));
   await page.route('**/bank-ledger/**',r=>{
    const url=new URL(r.request().url());if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(url.pathname==='/bank-ledger/opening')return r.fulfill({headers,json:{documents:[],parties:[],history:[],hasMore:false}});
    assert.equal(url.searchParams.get('orgId'),'1');
    if(url.pathname.endsWith('/balance-adjustments')){const body=r.request().postDataJSON();balancePosts.push(body);assert.equal(body.accounts[0].targetBalance,'-5.25');assert.equal(body.accounts[0].expectedBalance,'100.00');assert.equal(body.accounts[1].targetBalance,'0');assert.equal(body.reason,'Reconcile balance');if(balancePosts.length===1)return r.fulfill({headers,status:409,json:{error:'LEDGER_BALANCE_CHANGED'}});if(balancePosts.length===2)return r.fulfill({headers,status:500,json:{error:'Unknown result'}});return r.fulfill({headers,json:{entryIds:['balance-adjustment']}});}
    if(url.pathname.endsWith('/exchange-rates'))return r.fulfill({headers,json:{source:'Frankfurter',date:'2026-10-30',rates:{USD:'1',VND:'25000',KRW:'1250'},stale:false}});

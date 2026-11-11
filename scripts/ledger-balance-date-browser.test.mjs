@@ -18,9 +18,11 @@ try{
   await page.route('**/src/hooks/useUnsavedChanges.js*',r=>r.fulfill({contentType:'application/javascript',body:'export default function(){}'}));
   await page.route('**/bank-ledger/**',r=>{const url=new URL(r.request().url()),headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(url.pathname==='/bank-ledger/opening')return r.fulfill({headers,json:{documents:[],parties:[],history:[],hasMore:false}});
    if(r.request().method()==='POST'){saved.push(r.request().postDataJSON());return r.fulfill({headers,json:{entryIds:['adjustment']}});}
    dates.push(url.searchParams.get('balanceDate'));return r.fulfill({headers,json:{accounts:[{id:'a',displayName:'Cash',currencyCode:'USD',currentBalance:url.searchParams.get('balanceDate')==='2026-01-02'?'1.00':'9.00'}]}});
   });
+  await page.route('**/transaction-codes**',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:[]}));
   await page.goto(`http://127.0.0.1:${port}/ledger-balance-date-acceptance.html?lang=${lang}`);
   await page.getByLabel(t.actual+' Cash',{exact:true}).waitFor();
   await page.getByLabel(t.date,{exact:true}).fill('2026-01-02');

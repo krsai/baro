@@ -33,6 +33,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "Organization"(id INT PRIMARY KEY,code TEXT,name TEXT,"nameKo" TEXT,"nameVi" TEXT,country TEXT,address TEXT,type "OrganizationType" DEFAULT 'MANUFACTURER',"ownerOrgId" INT,"dataOwnerOrgId" INT,"businessNumber" TEXT,"isActive" BOOL DEFAULT true,UNIQUE(id,"ownerOrgId"));
       CREATE TABLE "SettingServiceDefault"(id SERIAL PRIMARY KEY,code TEXT UNIQUE); CREATE TABLE "ExpenseType"(id INT PRIMARY KEY,code TEXT,"isActive" BOOL DEFAULT true); CREATE TABLE "TransactionCodeBase"("serviceTypeId" INT,"expenseTypeId" INT);
       CREATE TABLE "Currency"(id INT PRIMARY KEY,code TEXT UNIQUE); CREATE TABLE "OrgRelationship"("manufacturerOrgId" INT,"brandOrgId" INT);
+      CREATE TABLE "InvoicePayment"(id TEXT PRIMARY KEY,"invoiceId" TEXT,amount NUMERIC,kind TEXT,"voidedAt" TIMESTAMP); CREATE TABLE "InvoiceCredit"(id TEXT PRIMARY KEY,"invoiceId" TEXT,amount NUMERIC,"voidedAt" TIMESTAMP);
       CREATE TABLE "SystemUser"(id INT PRIMARY KEY,email TEXT,"systemRole" TEXT);
       CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,status TEXT DEFAULT 'ACTIVE',"orgRole" TEXT DEFAULT 'ADMIN',"gradeId" INT,UNIQUE(id,"orgId"));
       CREATE TABLE "OutsourcedWorkRecord"(id INT PRIMARY KEY,"orgId" INT);

@@ -391,6 +391,8 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  accountingOpenings AccountingOpeningItem[] @relation("OpeningCompany")
+  partyOpenings AccountingOpeningItem[] @relation("OpeningParty")
   dashboardWorkRequests DashboardWorkRequest[]
   ownedStyleProducts StyleProduct[] @relation("StyleProductOwner")
   managedStyleProducts StyleProduct[] @relation("StyleProductCustodian")
@@ -635,6 +637,7 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  openingAllocations AccountingOpeningAllocation[]
   internalTransferSourceId String?
   internalTransferAmount Decimal? @db.Decimal(24,4)
   internalTransferSource BankLedgerEntry? @relation("InternalLedgerTransfer",fields:[internalTransferSourceId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"Ledger_transfer_source_scope_fkey")
@@ -681,6 +684,57 @@ model BankLedgerEntry {
   @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
 }
 
+model AccountingOpeningItem {
+  id String @id @default(uuid())
+  orgId Int
+  batchKey String
+  line Int
+  kind String
+  side String
+  balanceDate String
+  currencyCode String
+  amount Decimal @db.Decimal(24,4)
+  partyOrgId Int?
+  employeeId Int?
+  accountingCodeId Int?
+  invoiceId String?
+  expenseItemId String?
+  sourceVersion Int?
+  reason String
+  createdByEmployeeId Int
+  createdAt DateTime @default(now())
+  voidedAt DateTime?
+  voidReason String?
+  voidedByEmployeeId Int?
+  voidActor Employee? @relation(map:"AccountingOpeningItem_void_actor_fkey","OpeningVoidActor",fields:[voidedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict)
+  company Organization @relation(map:"AccountingOpeningItem_company_fkey","OpeningCompany",fields:[orgId],references:[id],onDelete:Restrict)
+  batch BankLedgerBatch @relation(map:"AccountingOpeningItem_batch_fkey",fields:[orgId,batchKey],references:[orgId,clientKey],onDelete:Restrict)
+  party Organization? @relation(map:"AccountingOpeningItem_party_fkey","OpeningParty",fields:[partyOrgId],references:[id],onDelete:Restrict)
+  employee Employee? @relation(map:"AccountingOpeningItem_employee_fkey","OpeningEmployee",fields:[employeeId,orgId],references:[id,orgId],onDelete:Restrict)
+  actor Employee @relation(map:"AccountingOpeningItem_actor_fkey","OpeningActor",fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict)
+  accountingCode TransactionCode? @relation(map:"AccountingOpeningItem_code_fkey",fields:[accountingCodeId,orgId],references:[id,ownerOrgId],onDelete:Restrict)
+  invoice Invoice? @relation(map:"AccountingOpeningItem_invoice_fkey",fields:[invoiceId,orgId],references:[id,sellerOrgId],onDelete:Restrict)
+  expenseItem PartnerTransactionCost? @relation(map:"AccountingOpeningItem_cost_fkey",fields:[expenseItemId,orgId],references:[id,orgId],onDelete:Restrict)
+  allocations AccountingOpeningAllocation[]
+  @@unique([orgId,batchKey,line])
+  @@unique([id,orgId])
+  @@index([orgId,balanceDate])
+  @@index([invoiceId])
+  @@index([expenseItemId])
+}
+
+model AccountingOpeningAllocation {
+  id String @id @default(uuid())
+  orgId Int
+  openingItemId String
+  entryId String
+  amount Decimal @db.Decimal(24,4)
+  openingItem AccountingOpeningItem @relation(map:"AccountingOpeningAllocation_item_fkey",fields:[openingItemId,orgId],references:[id,orgId],onDelete:Restrict)
+  entry BankLedgerEntry @relation(map:"AccountingOpeningAllocation_entry_fkey",fields:[entryId,orgId],references:[id,orgId],onDelete:Restrict)
+  @@unique([entryId])
+  @@index([openingItemId])
+}
+
 model LedgerChangeAcknowledgement {
   entryId String
   orgId Int
@@ -710,6 +764,7 @@ model BankLedgerSettlementLine {
 }
 
 model BankLedgerBatch {
+  openingItems AccountingOpeningItem[]
   id String @id @default(uuid())
   orgId Int
   clientKey String
@@ -953,6 +1008,9 @@ model Warehouse {
 
 
 model Employee {
+  accountingOpenings AccountingOpeningItem[] @relation("OpeningActor")
+  voidedAccountingOpenings AccountingOpeningItem[] @relation("OpeningVoidActor")
+  payableOpenings AccountingOpeningItem[] @relation("OpeningEmployee")
   sentDashboardRequests DashboardWorkRequest[] @relation("DashboardRequestSender")
   receivedDashboardRequests DashboardWorkRequest[] @relation("DashboardRequestRecipient")
   dashboardRequestEvents DashboardWorkRequestEvent[]
@@ -2002,6 +2060,7 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  openingAdjustments AccountingOpeningItem[]
   paymentSchedule ExpensePaymentSchedule[]
  changeApprovalRequests ChangeApprovalRequest[] @relation("CostChangeSource")
   payeeEmployeeId Int?
@@ -2228,6 +2287,7 @@ model CodeBaseUsageRollout {
 }
 
 model TransactionCode {
+  accountingOpenings AccountingOpeningItem[]
   invoiceGeneralLines InvoiceGeneralLine[]
   canBill Boolean @default(false)
   ledgerEntries BankLedgerEntry[] @relation("LedgerAccountingCode")
@@ -2825,6 +2885,7 @@ enum InvoicePaymentKind {
 
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
+  openingAdjustments AccountingOpeningItem[]
   cancellationRequests ChangeApprovalRequest[] @relation("InvoiceChangeSource")
   documentKind String @default("ORDER")
   generalLines InvoiceGeneralLine[]

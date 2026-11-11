@@ -23,7 +23,7 @@ const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',yea
 export const ledgerAccountName=row=>row.displayName||[row.bankName,row.accountNumber].filter(Boolean).join(' / ');
 export default function BankLedger(){const {activeOrgId}=useAuth();return <LedgerList key={activeOrgId} orgId={activeOrgId}/>;}
 function LedgerList({orgId}){
- const {navigateToPath}=useAppActions(),{activeOrgRole}=useAuth(),{languageCode}=useLanguage(),t=bankLedgerMessages[languageCode]||bankLedgerMessages.en,w=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
+ const {navigateToPath,showNotification}=useAppActions(),{activeOrgRole}=useAuth(),{languageCode}=useLanguage(),t=bankLedgerMessages[languageCode]||bankLedgerMessages.en,w=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
  const [balanceOpen,setBalanceOpen]=useState(false),[search,setSearch]=useState('');
  const b=ledgerBalanceText[languageCode]||ledgerBalanceText.en;
  const [includeDeleted,setIncludeDeleted]=useState(false),[accountId,setAccountId]=useState(''),[data,setData]=useState(null),[start,setStart]=useState(()=>today().slice(0,7)+'-01'),[end,setEnd]=useState(today),[page,setPage]=useState(0),[reload,setReload]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState('');
@@ -42,6 +42,6 @@ function LedgerList({orgId}){
   <Paper variant="outlined"><LedgerActivityTable rows={data?.rows||[]} loading={loading} text={t} labels={{...l,delete:changeText.requestDelete}} currencyLabel={w.currency} languageCode={languageCode} onEdit={editEntry} onEditKey={editKey} onDelete={row=>changeRef.current.prepare({menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:row.id,payload:{}})}/><Stack direction="row" spacing={1} justifyContent="flex-end" sx={{p:1}}><Button disabled={!page||loading} onClick={()=>setPage(n=>n-1)}>{t.previous}</Button><Button disabled={!data?.hasMore||loading} onClick={()=>setPage(n=>n+1)}>{t.next}</Button></Stack></Paper>
  </PageContentStack>
  <ChangeApprovalDialog ref={changeRef} orgId={orgId} languageCode={languageCode}/>
- {balanceOpen&&activeOrgRole==='ADMIN'&&<LedgerBalanceDialog orgId={orgId} languageCode={languageCode} onClose={()=>setBalanceOpen(false)}/>}
+ {balanceOpen&&activeOrgRole==='ADMIN'&&<LedgerBalanceDialog onNotify={showNotification} orgId={orgId} languageCode={languageCode} onClose={()=>setBalanceOpen(false)}/>}
  </AppPageContainer>;
 }
