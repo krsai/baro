@@ -24,7 +24,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    await assert.rejects(post({counterparty:{kind:'ACCOUNT',id:s.own.id}}),/LEDGER_COUNTERPARTY_INVALID/);
    await assert.rejects(post({evidenceType:'ADJUSTMENT',evidenceNumber:''}),/LEDGER_COUNTERPARTY_INVALID/);
    const adjustment=await post({evidenceType:'ADJUSTMENT',evidenceNumber:'',counterparty:null});assert.equal(adjustment.counterpartyOrgId,null);
-   row=await post({});assert.equal(row.counterpartyOrgId,s.vendor.id);assert.equal(row.counterpartyName,'Vendor');
+   row=await post({});assert.equal(row.counterpartyOrgId,s.vendor.id);assert.equal(row.counterpartyName,s.vendor.name);
    await assert.rejects(db.bankLedgerEntry.update({where:{id:row.id},data:{voidedAt:new Date(),voidedBy:'actor',voidReason:'Direct'}}),/CHANGE_APPROVAL_REQUIRED/);
   });
   await t.test('menus/actions inherit registration independently and reads do not create settings',async()=>{

@@ -20,3 +20,7 @@ Object.assign(ledgerEntryText.vi,{codeDescription:'Diễn giải khoản mục',
 Object.assign(ledgerEntryText.ko,{bankFeeLabel:'은행 수수료',removeFeeLabel:'은행 수수료 삭제'});
 Object.assign(ledgerEntryText.en,{bankFeeLabel:'Bank fee',removeFeeLabel:'Remove bank fee'});
 Object.assign(ledgerEntryText.vi,{bankFeeLabel:'Phí ngân hàng',removeFeeLabel:'Xóa phí ngân hàng'});
+
+Object.assign(ledgerEntryText.ko,{connected:'연결됨',unlinked:'미연결',close:'닫기',addFeeCompact:'추가',amountCurrency:'금액 통화 · 표시 순서',feeCurrency:'수수료 출금 통화',actualFeeHint:'수수료는 선택한 계좌의 별도 실제 출금으로 저장됩니다. 받는 곳에 수수료를 받는 은행을 선택하세요.'});
+Object.assign(ledgerEntryText.en,{connected:'Linked',unlinked:'Unlinked',close:'Close',addFeeCompact:'Add',amountCurrency:'Amount currency / display order',feeCurrency:'Fee debit currency',actualFeeHint:'The fee is saved as a separate actual withdrawal. Select the bank receiving the fee.'});
+Object.assign(ledgerEntryText.vi,{connected:'Đã liên kết',unlinked:'Chưa liên kết',close:'Đóng',addFeeCompact:'Thêm',amountCurrency:'Tiền tệ / thứ tự hiển thị',feeCurrency:'Tiền tệ trừ phí',actualFeeHint:'Phí được lưu thành khoản chi thực tế riêng. Chọn ngân hàng nhận phí.'});

@@ -54,7 +54,7 @@ test('single-account ledger registration uses two independent accounting approva
   const preview=(await previewChangeApproval(db,org,s.people.admin.id,input)).preview;
   assert.equal((await previewChangeApproval(db,org,s.people.admin.id,{...input,payload:{...payload,rows:[bank({amount:'',counterparty:null})]}})).preview.stages.length,2,'the amount-independent line can be selected before completing details');
   assert.equal(preview.stages.length,2);assert.ok(preview.stages[0].candidates.some(p=>p.id===s.people.junior.id));assert.ok(preview.stages[1].candidates.some(p=>p.id===s.people.senior.id));assert.ok(preview.stages[1].candidates.some(p=>p.id===s.people.lead.id));assert.ok(!preview.stages[1].candidates.some(p=>p.id===s.people.junior.id));
-  await assert.rejects(previewChangeApproval(db,org,s.people.admin.id,{...input,payload:{...payload,rows:[bank(),bank({accountId:'foreign'})]}}),/LEDGER_SINGLE_ACCOUNT_REQUIRED/);
+  await assert.rejects(previewChangeApproval(db,org,s.people.admin.id,{...input,payload:{...payload,rows:[bank(),bank({accountId:'foreign'})]}}),/LEDGER_ACCOUNT_NOT_FOUND/);
   await assert.rejects(postLedgerEntry(db,org,'admin@example.test',s.account.id,bank()),/CHANGE_APPROVAL_REQUIRED/);
   const request=await requestChangeApproval(db,org,s.people.admin.id,input);assert.equal(await db.bankLedgerEntry.count(),0);
   assert.equal((await requestChangeApproval(db,org,s.people.admin.id,input)).id,request.id);

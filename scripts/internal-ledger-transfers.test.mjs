@@ -22,6 +22,21 @@ async function approvedCreate(db,s,rows){
  const done=await decideChangeApproval(db,s.company.id,s.people.lead.id,request.id,{decision:'APPROVED'});
  return {request,done,value};
 }
+
+test('FX and a separate VND fee share approval and post three cash legs exactly once',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const vnd=await db.currency.upsert({where:{code:'VND'},create:{code:'VND',name:'Dong'},update:{}}),b=await ownAccount(db,s,{currencyId:vnd.id});
+  const fx=transfer(s,b,{amount:'40',transferAmount:'1000000'});
+  const fee=transfer(s,b,{accountId:'entity:'+b.id,amount:'1000',counterparty:{kind:'PARTNER',id:s.vendor.id},evidenceNumber:'Bank fee receipt'});
+  const {request,done,value}=await approvedCreate(db,s,[fx,fee]);
+  assert.deepEqual(Object.fromEntries(request.policy.totals.map(t=>[t.currency,t.amount])),{USD:'40',VND:'1001000'});
+  assert.equal(done.result.entryIds.length,2);assert.equal(await db.bankLedgerEntry.count(),3);assert.equal(await db.bankLedgerSettlementLine.count(),0);
+  const balances=await readLedgerAccounts(db,org);assert.equal(balances.find(a=>a.id===s.account.id).currentBalance,'-40.00');assert.equal(balances.find(a=>a.entityAccountId===b.id).currentBalance,'999000');
+  await requestChangeApproval(db,org,s.people.admin.id,value);assert.equal(await db.bankLedgerEntry.count(),3);
+  const bad=input([fx,{...fee,accountId:'missing'}]);await assert.rejects(requestChangeApproval(db,org,s.people.admin.id,bad),/LEDGER_ACCOUNT_NOT_FOUND/);assert.equal(await db.bankLedgerEntry.count(),3);
+ }finally{await f.close();}
+});
 test('From/To identifies an external party or our account and derives direction without external bank details',()=>{
  const account={id:'a',entityAccountId:'own-a',displayName:'A',currencyCode:'USD'},customer={kind:'PARTNER',id:14,name:'Customer'};
  const row={direction:'IN',evidenceType:'FILE',counterparty:customer};
