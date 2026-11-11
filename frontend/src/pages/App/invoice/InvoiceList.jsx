@@ -73,9 +73,9 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <TableCell sx={{whiteSpace:'nowrap'}}>{row.documentKind==='GENERAL'?types.general:types.order}</TableCell>
         <TableCell><Typography variant="subtitle2">{row.invoiceNumber}</Typography></TableCell>
         <TableCell>{row.buyerName}</TableCell><TableCell>{row.documentKind==='GENERAL'?'—':row.orders.map(order=>order.sourceOrderNumber).join(', ')}<Typography variant="caption" color="text.secondary">r{row.revisionNumber||1}</Typography></TableCell>
-        <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography><Typography variant="caption" color="text.secondary">{labels.debt}: {amount(row.receivableAdded,row.currencyCode)}</Typography></TableCell>
+        <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography></TableCell>
         <TableCell align="right">{amount(row.receivedAmount,row.currencyCode)}</TableCell>
-        <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}<Typography variant="caption" display="block" color={row.familyBalanceKind==='CREDIT'?'warning.main':'text.secondary'}>{!row.isCurrentRevision?labels.historical:row.familyBalanceKind==='CREDIT'?labels.credit:row.familyBalanceKind==='SETTLED'?labels.settled:labels.due}</Typography></TableCell>
+        <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
       </TableRow>)}
     </TableBody></Table></Box>
