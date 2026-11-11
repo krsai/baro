@@ -1768,13 +1768,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 {tenantText('drawerHint', languageCode)}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
-                <Button
-                  variant="outlined"
-                  onClick={closeEmployeeDrawer}
-                  disabled={isDrawerSaving}
-                >
-                  {tenantText('cancelButton', languageCode)}
-                </Button>
+
                 <SaveButton
                   onClick={handleDrawerSave}
                   disabled={isDrawerSaving || !activeOrgId || !isDrawerDirty}

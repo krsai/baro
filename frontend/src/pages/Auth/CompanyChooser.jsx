@@ -33,7 +33,7 @@ export default function CompanyChooser({languageCode,managementOnly=false}){
     {['adminName','managementStartDate','country','currencyCode'].map(field=><TextField key={field} label={details[field]} type={field==='managementStartDate'?'date':'text'} InputLabelProps={field==='managementStartDate'?{shrink:true}:undefined} required value={form[field]} disabled={saving||uncertain} onChange={e=>{setForm(previous=>({...previous,[field]:e.target.value}));key.current=crypto.randomUUID();}}/>)}
     <TextField select label={details.templateOrgId} value={form.templateOrgId} disabled={saving||uncertain} onChange={e=>{setForm(previous=>({...previous,templateOrgId:e.target.value}));key.current=crypto.randomUUID();}}><MenuItem value="">{details.none}</MenuItem>{templates.map(row=><MenuItem key={row.id} value={row.id}>{languageCode==='ko'?row.nameKo||row.name:languageCode==='vi'?row.nameVi||row.name:row.name}</MenuItem>)}</TextField>
     {error&&<Alert severity="error">{error}</Alert>}
-   </Stack></DialogContent><DialogActions><Button disabled={saving||uncertain} onClick={()=>setOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={saving||!form.adminName.trim()||!form.managementStartDate||![form.name,form.nameKo,form.nameVi].some(value=>value.trim())} onClick={submit}>{uncertain?t.retry:t.create}</Button></DialogActions>
+   </Stack></DialogContent><DialogActions><Button variant="contained" disabled={saving||!form.adminName.trim()||!form.managementStartDate||![form.name,form.nameKo,form.nameVi].some(value=>value.trim())} onClick={submit}>{uncertain?t.retry:t.create}</Button></DialogActions>
   </Dialog>
  </Stack>;
 }

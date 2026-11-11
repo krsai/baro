@@ -7146,9 +7146,7 @@ const AssignBoard = () => {
             </Stack>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseCompletionAdjustmentDialog} disabled={Boolean(completingAssignmentId)}>
-              {languageCode === 'ko' ? '취소' : languageCode === 'vi' ? 'Hủy' : 'Cancel'}
-            </Button>
+
             <Button
               variant="contained"
               color="error"

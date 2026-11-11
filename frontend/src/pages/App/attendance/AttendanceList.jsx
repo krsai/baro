@@ -875,7 +875,7 @@ const AttendanceList = () => {
     <Dialog open={Boolean(importError)} onClose={() => setImportError(null)} maxWidth="md" fullWidth>
       <DialogTitle>{text(TEXT.importFail, languageCode)}</DialogTitle>
       <DialogContent dividers><Typography sx={{ whiteSpace: 'pre-wrap' }}>{importError}</Typography></DialogContent>
-      <DialogActions><Button onClick={() => setImportError(null)}>{text(TEXT.importReviewCancel, languageCode)}</Button></DialogActions>
+
     </Dialog>
     <Dialog open={Boolean(importReview)} onClose={handleCancelImportReview} maxWidth="md" fullWidth>
       <DialogTitle>{text(TEXT.importReviewTitle, languageCode, 'Review import')}</DialogTitle>
@@ -941,9 +941,7 @@ const AttendanceList = () => {
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleCancelImportReview}>
-          {text(TEXT.importReviewCancel, languageCode, 'Cancel')}
-        </Button>
+
         <Button
           variant="contained"
           onClick={handleConfirmImportReview}

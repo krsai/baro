@@ -720,7 +720,7 @@ const ProcessComposerDialog = memo(function ProcessComposerDialog({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>취소</Button>
+
         <Button variant="contained" onClick={handleSubmit} disabled={!canSubmit}>
           추가
         </Button>

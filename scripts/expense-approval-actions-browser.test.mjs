@@ -28,7 +28,7 @@ try{
   const panel=page.getByTestId('expense-approval-actions'),button=panel.getByRole('button',{name:t.approve,exact:true});await button.waitFor();
   assert.equal(await page.getByRole('dialog').count(),0,'approve is visible without opening approval settings');
   await page.evaluate(()=>window.setDirty(true));assert.equal(await button.isDisabled(),true);
-  await page.evaluate(()=>window.setDirty(false));await button.click();let dialog=page.getByRole('dialog');await dialog.getByText('EXP-2026-000001').waitFor();await dialog.getByRole('button',{name:t.cancel,exact:true}).click();assert.equal(posts.length,0);
+  await page.evaluate(()=>window.setDirty(false));await button.click();let dialog=page.getByRole('dialog');await dialog.getByText('EXP-2026-000001').waitFor();await page.keyboard.press('Escape');assert.equal(posts.length,0);
   await button.click();version=2;await page.getByRole('dialog').getByRole('button',{name:t.approve,exact:true}).click();await panel.getByRole('button',{name:t.refresh,exact:true}).waitFor();assert.equal(posts.length,0,'a server-side version conflict never approves unseen content');
   await page.evaluate(()=>window.setOrg(8));await panel.getByRole('button',{name:t.refresh,exact:true}).waitFor();assert.equal(await button.isDisabled(),true);assert.equal(posts.length,0,'unseen newer version cannot be approved');
   await panel.getByRole('button',{name:t.refresh,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('[data-testid="expense-approval-actions"] .MuiAlert-standardWarning'));
@@ -39,7 +39,7 @@ try{
   await panel.getByRole('button',{name:w.reject,exact:true}).click();dialog=page.getByRole('dialog');
   const reject=dialog.getByRole('button',{name:w.reject,exact:true});assert.equal(await reject.isDisabled(),true);
   await dialog.getByRole('textbox').fill('   ');assert.equal(await reject.isDisabled(),true);
-  await dialog.getByRole('button',{name:t.cancel,exact:true}).click();assert.equal(posts.length,1);
+  await page.keyboard.press('Escape');assert.equal(posts.length,1);
   await panel.getByRole('button',{name:w.reject,exact:true}).click();dialog=page.getByRole('dialog');
   await dialog.getByRole('textbox').fill('  Incorrect invoice\nPlease revise.  ');await dialog.getByRole('button',{name:w.reject,exact:true}).click();await dialog.waitFor({state:'hidden'});
   await panel.getByText(w.resubmit).waitFor();assert.equal(await panel.getByRole('button',{name:w.reject,exact:true}).count(),0);assert.equal(await button.count(),0);

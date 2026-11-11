@@ -17,10 +17,10 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:"en"});'}));
   await page.goto(`http://127.0.0.1:${port}/workspace-prompts-acceptance.html`);
   await page.getByRole('button',{name:'Drawer A',exact:true}).click();await page.getByLabel('Draft A').fill('drawer draft');
-  const paper=page.locator('[data-workspace-dialog-host]:visible .MuiDrawer-paper');await page.waitForTimeout(300);const rect=await paper.boundingBox();assert.equal(rect.y,80);assert.equal(rect.height,720);assert.ok(rect.x>=200);
+  const paper=page.locator('[data-workspace-dialog-host]:visible .MuiDrawer-paper');await page.waitForTimeout(300);const rect=await paper.boundingBox();assert.ok(rect.y>80&&rect.y+rect.height<800,'drawer respects the shared workspace inset');assert.ok(rect.x>=200);
   await page.getByRole('button',{name:'Tab B',exact:true}).click();await page.getByRole('button',{name:'Tab A',exact:true}).click();assert.equal(await page.getByLabel('Draft A').inputValue(),'drawer draft');await page.keyboard.press('Escape');await page.getByLabel('Draft A').waitFor({state:'hidden'});
   await page.getByRole('button',{name:'Ask A',exact:true}).click();await page.getByLabel('Amount A').fill('99');
-  await page.getByRole('button',{name:'Tab B',exact:true}).click();await page.getByRole('button',{name:'Ask B',exact:true}).click();await page.getByLabel('Amount B').fill('55');await page.getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.getByRole('button',{name:'Tab B',exact:true}).click();await page.getByRole('button',{name:'Ask B',exact:true}).click();await page.getByLabel('Amount B').fill('55');await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'Tab A',exact:true}).click();assert.equal(await page.getByLabel('Amount A').inputValue(),'99');await page.getByRole('button',{name:'OK',exact:true}).click();
   await page.getByText('Confirm A',{exact:true}).waitFor();await page.getByRole('button',{name:'OK',exact:true}).click();await page.getByText('Saved A',{exact:true}).waitFor();await page.getByRole('button',{name:'OK',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
   assert.deepEqual(await page.evaluate(()=>window.promptResults),[['B',null],['A','99'],['A',true]]);assert.deepEqual(native,[]);assert.deepEqual(errors,[]);

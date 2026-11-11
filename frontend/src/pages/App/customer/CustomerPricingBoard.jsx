@@ -1294,9 +1294,7 @@ const CustomerPricingBoard = () => {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => closeBucketConfirmation(false)}>
-            {text.cancel || 'Cancel'}
-          </Button>
+
           <Button variant="contained" onClick={() => closeBucketConfirmation(true)} autoFocus>
             {text.confirmBucketChange || 'Change buckets'}
           </Button>

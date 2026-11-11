@@ -116,7 +116,7 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
         <DragDropContext onDragEnd={move}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><EmployeeList text={text} id="normal" title={text.normal} rows={visible.filter((row) => !attendanceSelected.has(Number(row.id)) && !payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="attendance-exception" title={text.attendance} rows={visible.filter((row) => attendanceSelected.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="payroll-exception" title={text.payroll} rows={visible.filter((row) => payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /></Stack></DragDropContext>
       </Stack>
     </DialogContent>
-    <DialogActions><Button onClick={onClose} disabled={saving}>{text.cancel}</Button><SaveButton onClick={save} loading={saving} disabled={loading || !dirty}>{text.save}</SaveButton></DialogActions>
+    <DialogActions><SaveButton onClick={save} loading={saving} disabled={loading || !dirty}>{text.save}</SaveButton></DialogActions>
   </Dialog>;
 };
 

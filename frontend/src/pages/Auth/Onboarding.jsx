@@ -961,14 +961,7 @@ const Onboarding = () => {
               >
                 {registerSubmitting ? t('registerSubmitting') : t('registerSubmit')}
               </Button>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={handleCloseRegisterDrawer}
-                disabled={registerSubmitting}
-              >
-                {t('cancel')}
-              </Button>
+
             </Stack>
           </Box>
         </Box>

@@ -41,7 +41,7 @@ try{
   assert.equal(await dialog.getByRole('textbox',{name:classification.category,exact:true}).isDisabled(),true);assert.ok(await dialog.locator('.MuiInputBase-root .MuiChip-root').count()>=4);assert.equal(await save.isEnabled(),true);
   await save.click();await page.waitForFunction(()=>window.notices?.length===1);assert.equal(await dialog.locator('input[name="name"]').inputValue(),'BARO updated');assert.equal(await save.isEnabled(),true);
   await save.click();await page.waitForFunction(()=>window.notices?.length===2);assert.deepEqual(writes[0],writes[1]);assert.equal(await save.isDisabled(),true);assert.ok(await page.evaluate(()=>Object.values(window.guards).every(value=>!value)));
-  await dialog.getByRole('button',{name:t.cancel,exact:true}).click();await page.getByTestId('system-entities-table').getByRole('button',{name:t.remove+' Unused vendor',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:t.remove,exact:true}).click();await page.waitForFunction(()=>window.notices?.length===3);assert.equal(deletes.length,1);
+  await page.keyboard.press('Escape');await page.getByTestId('system-entities-table').getByRole('button',{name:t.remove+' Unused vendor',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:t.remove,exact:true}).click();await page.waitForFunction(()=>window.notices?.length===3);assert.equal(deletes.length,1);
   await page.setViewportSize({width:390,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: SYSTEM ko/en/vi used-company edits, automatic categories, single-save drafts/retry, protected deletion, unused deletion and responsive layout.');

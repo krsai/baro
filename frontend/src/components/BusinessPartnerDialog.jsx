@@ -176,7 +176,7 @@ function PartnerEditorState({
         </Stack><Slide direction="left" in={panelOpen} timeout={reducedMotion?0:200} mountOnEnter unmountOnExit onExited={()=>setPanelExiting(false)}><Box ref={setPanelTarget} sx={{minWidth:0}}/></Slide></Box>
       </DialogContent>
       <DialogActions sx={{flexShrink:0,px:3,py:2,flexWrap:'wrap',gap:1,'& > :not(style) ~ :not(style)':{ml:0}}}>
-        <Button onClick={onClose} disabled={saving}>{labels.cancel}</Button>
+
         <Stack direction="row" spacing={1} alignItems="center" sx={{maxWidth:'100%'}}>
 
         <Button variant="contained" onClick={save} disabled={locked||profileLocked}>{isEdit ? labels.saveEdit : labels.save}</Button>

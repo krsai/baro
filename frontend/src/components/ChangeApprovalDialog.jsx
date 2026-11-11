@@ -32,5 +32,5 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
   <ApprovalStageFlow drafter={preview?.drafter} stages={preview?.stages?.filter(s=>!s.vacant)||[]} grades={grades} languageCode={languageCode} value={selection} disabled={busy||uncertain||loading} onChange={(stageKey,id)=>{setSelection(current=>({...current,[stageKey+'EmployeeId']:id}));key.current=crypto.randomUUID();submitted.current=null;}}/>
 
   {preview&&!preview.complete&&<Alert severity="warning">{t.required}</Alert>}
- </Stack></DialogContent><DialogActions><Button disabled={busy||uncertain} onClick={()=>finish(null)}>{t.cancel}</Button><Button variant="contained" disabled={busy||loading||!uncertain&&(!preview?.complete||!!error||input?.operation==='DELETE'&&!reason.trim())} onClick={send}>{uncertain?t.retry:t.request}</Button></DialogActions></Dialog>;
+ </Stack></DialogContent><DialogActions><Button variant="contained" disabled={busy||loading||!uncertain&&(!preview?.complete||!!error||input?.operation==='DELETE'&&!reason.trim())} onClick={send}>{uncertain?t.retry:t.request}</Button></DialogActions></Dialog>;
 });

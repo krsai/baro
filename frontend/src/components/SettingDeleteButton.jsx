@@ -17,5 +17,5 @@ export default function SettingDeleteButton({ path, id, name, orgId, languageCod
     catch (error) { setOpen(false); onError?.(error?.status === 409 ? labels.used : labels.error); }
     finally { setSaving(false); }
   };
-  return <><Tooltip title={used ? usedReason||labels.used : labels.remove}><span><DeleteActionButton title={labels.remove} disabled={disabled || used || saving || !id} onClick={() => setOpen(true)} /></span></Tooltip><Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="xs"><DialogTitle>{labels.confirm}</DialogTitle><DialogContent>{name}</DialogContent><DialogActions><Button disabled={saving} onClick={() => setOpen(false)}>{labels.cancel}</Button><Button color="error" variant="contained" disabled={saving} onClick={remove}>{labels.remove}</Button></DialogActions></Dialog></>;
+  return <><Tooltip title={used ? usedReason||labels.used : labels.remove}><span><DeleteActionButton title={labels.remove} disabled={disabled || used || saving || !id} onClick={() => setOpen(true)} /></span></Tooltip><Dialog open={open} onClose={() => !saving && setOpen(false)} fullWidth maxWidth="xs"><DialogTitle>{labels.confirm}</DialogTitle><DialogContent>{name}</DialogContent><DialogActions><Button color="error" variant="contained" disabled={saving} onClick={remove}>{labels.remove}</Button></DialogActions></Dialog></>;
 }

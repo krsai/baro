@@ -83,7 +83,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
           {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
           {hasMore&&<Button disabled={loading} onClick={()=>setPage(value=>value+1)}>{t.next}</Button>}
         </DialogContent>
-        <DialogActions><Button onClick={()=>setOrderModal(false)}>{modalText.cancel}</Button><Button disabled={disabled} onClick={()=>{if(chosen.length===pendingChosen.length&&chosen.every(order=>pendingChosen.some(row=>row.orderId===order.orderId))){setOrderModal(false);return;}requestChange(()=>{setChosen(pendingChosen);setOrderModal(false);});}}>{modalText.apply}</Button></DialogActions>
+        <DialogActions><Button disabled={disabled} onClick={()=>{if(chosen.length===pendingChosen.length&&chosen.every(order=>pendingChosen.some(row=>row.orderId===order.orderId))){setOrderModal(false);return;}requestChange(()=>{setChosen(pendingChosen);setOrderModal(false);});}}>{modalText.apply}</Button></DialogActions>
       </Dialog>
     </Box>
     {(customersError||error)&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{customersError?t.customersFailed:t.failed}</Alert>}

@@ -65,7 +65,7 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
     </Box>
     <Box sx={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:1.5,mt:3}}><Button variant="contained" onClick={()=>accept(row)} sx={{height:'100%'}}>{labels.same}</Button><Button variant="outlined" onClick={separate} sx={{height:'100%'}}>{labels.different}</Button></Box>
    </Paper>)}</Stack></DialogContent>
-   <DialogActions sx={{px:3,py:2}}><Button onClick={()=>setReview(false)}>{confirm.cancel}</Button></DialogActions>
+
   </Dialog>
  </>;
 }

@@ -46,6 +46,6 @@ export default function WorkRequestsCard({orgId,languageCode}){
    <SearchableSelect options={people} value={recipient} onChange={(_event,value)=>setRecipient(value)} disabled={busy||uncertain||peopleLoading||peopleFailed} getOptionLabel={person=>[person.employeeNo,person.name].filter(Boolean).join(' · ')} isOptionEqualToValue={(a,b)=>a.id===b.id} renderInput={params=><TextField {...params} size="small" required label={t.recipient}/>}/>
    <TextField size="small" required label={t.subject} value={title} disabled={busy||uncertain} onChange={e=>setTitle(e.target.value)} inputProps={{maxLength:200}}/>
    <TextField size="small" multiline minRows={4} label={t.message} value={message} disabled={busy||uncertain} onChange={e=>setMessage(e.target.value)} inputProps={{maxLength:4000}}/>
-  </Stack></DialogContent><DialogActions><Button disabled={busy||uncertain} onClick={()=>setOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={busy||!recipient||!title.trim()||peopleFailed} onClick={send}>{t.send}</Button></DialogActions></Dialog>
+  </Stack></DialogContent><DialogActions><Button variant="contained" disabled={busy||!recipient||!title.trim()||peopleFailed} onClick={send}>{t.send}</Button></DialogActions></Dialog>
  </Paper>;
 }

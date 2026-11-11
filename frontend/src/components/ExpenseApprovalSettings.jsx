@@ -75,7 +75,7 @@ export default forwardRef(function ExpenseApprovalSettings({orgId,languageCode,s
 
     {preview?.stages?.some(stage=>stage.required)&&<Alert severity="error">{rules.accountantRequired}</Alert>}
    </Stack></DialogContent>
-   <DialogActions><Button onClick={close}>{t.cancel}</Button><Button variant="contained" disabled={busy||!preview?.complete||!!error} onClick={confirm}>{t.confirmSave}</Button></DialogActions>
+   <DialogActions><Button variant="contained" disabled={busy||!preview?.complete||!!error} onClick={confirm}>{t.confirmSave}</Button></DialogActions>
   </Dialog>
  </>;
 });

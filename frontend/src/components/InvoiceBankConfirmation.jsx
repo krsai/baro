@@ -11,5 +11,5 @@ export default function InvoiceBankConfirmation({open,onClose,accounts,currencyC
   {currentText&&<Stack spacing={.5}><Typography variant="caption" color="text.secondary">{t.previous}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{currentText}</Typography></Stack>}
   <RadioGroup value={selected} onChange={event=>{setSelected(event.target.value);setChecked(false);}}>{accounts.map(row=><FormControlLabel key={row.id} value={String(row.id)} control={<Radio/>} label={<Typography variant="body2" sx={{overflowWrap:'anywhere'}}>{invoiceAccountText(row,currencyCode)}</Typography>} sx={{alignItems:'center',py:.5}}/>)}</RadioGroup>
   <FormControlLabel control={<Checkbox checked={checked} disabled={!account} onChange={event=>setChecked(event.target.checked)}/>} label={t.ack}/>
- </Stack></DialogContent><DialogActions><Button onClick={onClose}>{t.cancel}</Button><Button variant="contained" disabled={!account||!checked} onClick={()=>onConfirm(invoiceAccountText(account,currencyCode))}>{t.confirm}</Button></DialogActions></Dialog>;
+ </Stack></DialogContent><DialogActions><Button variant="contained" disabled={!account||!checked} onClick={()=>onConfirm(invoiceAccountText(account,currencyCode))}>{t.confirm}</Button></DialogActions></Dialog>;
 }

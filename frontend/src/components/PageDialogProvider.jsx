@@ -48,7 +48,7 @@ export default function PageDialogProvider({ children }) {
       <DialogContent><Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{current?.message}</Typography>
         {current?.kind === 'prompt' && <TextField autoFocus fullWidth size="small" value={value} onChange={event => setValue(event.target.value)} inputProps={{ 'aria-label': current.message }} sx={{ mt: 2 }} onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); finish(true, value, current.id); } }} />}
       </DialogContent>
-      <DialogActions>{current?.kind !== 'alert' && <Button onClick={() => finish(false, undefined, current?.id)}>{text.cancel}</Button>}<Button variant="contained" onClick={() => finish(true, value, current?.id)}>{text.ok}</Button></DialogActions>
+      <DialogActions><Button variant="contained" onClick={() => finish(true, value, current?.id)}>{text.ok}</Button></DialogActions>
     </Dialog>
   </PageDialogs.Provider>;
 }

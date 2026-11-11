@@ -622,7 +622,7 @@ const SalarySystem = () => {
       <LocalizedNameFields value={draft} languageCode={languageCode} autoFocus onChange={(field, value) => setDraft(prev => ({ ...prev, [field]: value }))} />
       <FormControl fullWidth size="small"><InputLabel>{t('급여 구분')}</InputLabel><Select label={t('급여 구분')} value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>{Object.entries(CATEGORIES).filter(([key])=>!isService||key!=='INCENTIVE').map(([key, label]) => <MenuItem key={key} value={key}>{t(label)}</MenuItem>)}</Select></FormControl>
       {calculationFields(draft, (field, value) => setDraft((prev) => ({ ...prev, [field]: value })))}
-    </Stack></DialogContent><DialogActions><Button onClick={() => setDialogOpen(false)}>{t('취소')}</Button><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || !hasLocalizedName(draft)}>{t('추가')}</Button></DialogActions></Dialog>
+    </Stack></DialogContent><DialogActions><Button variant="contained" onClick={addItem} disabled={!hasValidPaymentMonths(draft) || !hasLocalizedName(draft)}>{t('추가')}</Button></DialogActions></Dialog>
 
     <PayTypeScheduleSettingsDialog open={scheduleSettingsOpen} onClose={() => setScheduleSettingsOpen(false)} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} />
   </Box></AppPageContainer>;

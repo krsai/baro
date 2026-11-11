@@ -127,7 +127,7 @@ const PayTypeScheduleSettingsDialog = ({ open, onClose, orgId, languageCode, sho
       </Stack>
     </DialogContent>
     <DialogActions>
-      <Button onClick={onClose} disabled={saving}>{text.cancel}</Button>
+
       <SaveButton onClick={save} loading={saving} disabled={loading || !dirty || !valid}>{text.save}</SaveButton>
     </DialogActions>
   </Dialog>;

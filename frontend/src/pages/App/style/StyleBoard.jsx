@@ -871,9 +871,7 @@ const StyleBoard = () => {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleAtResetConfirmClose} disabled={isAtResetRunning}>
-            {getUiMessage('common.cancel', '취소', languageCode)}
-          </Button>
+
           <Button onClick={handleAtResetConfirm} color="warning" disabled={isAtResetRunning}>
             {isAtResetRunning
               ? getUiMessage('styleBoard.atResetRunning', 'AT 초기화 중...', languageCode)
@@ -896,9 +894,7 @@ const StyleBoard = () => {
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleConfirmClose}>
-            {getUiMessage('common.cancel', '취소', languageCode)}
-          </Button>
+
           <Button onClick={handleDeleteConfirm} color="error">
             {getUiMessage('common.delete', '삭제', languageCode)}
           </Button>

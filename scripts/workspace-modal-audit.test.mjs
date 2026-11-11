@@ -11,12 +11,19 @@ test('all business dialogs and drawers use the shared workspace scope without na
     if(/\/(PageDialogProvider|WorkspaceDialogScope)\.jsx$/.test(file))continue;
     const source=readFileSync(file,'utf8');
     assert.doesNotMatch(source,/window\.(confirm|prompt|alert)\(/,file);
-    // A header save-action portal is not a modal and stays inside its page.
-    assert.doesNotMatch(source.replace(/createPortal\(saveAction,headerActionsTarget\)/g,''),/createPortal\(|<Modal\b|<dialog\b/,file);
+    // Existing header actions, inline side panels and the pointer-only drag
+    // preview are portals, but do not replace the shared modal root.
+    const nonModalPortals={'CompanyConnections.jsx':2,'PartnerClassificationFields.jsx':1,'VersionAssignmentBoard.jsx':1,'OrganizationDetail.jsx':1};
+    const basename=file.split('/').pop(),portals=(source.match(/createPortal\(/g)||[]).length;
+    assert.equal(portals,nonModalPortals[basename]||0,file);
+    assert.doesNotMatch(source,/<Modal\b|<dialog\b/,file);
+    if(basename==='CompanyConnections.jsx')assert.match(source,/createPortal\(<CompanyPublicSearchPanel[\s\S]*sidePanelTarget/);
+    if(basename==='PartnerClassificationFields.jsx')assert.match(source,/createPortal\(<Box component="aside"/);
+    if(basename==='VersionAssignmentBoard.jsx')assert.match(source,/createPortal\(<DragOverlay[\s\S]*pointerEvents: 'none'/);
     assert.doesNotMatch(source,/slots=\{\{\s*root:/,file);
     dialogs+=(source.match(/<Dialog\b/g)||[]).length;drawers+=(source.match(/<Drawer\b/g)||[]).length;
   }
-  assert.ok(dialogs>30);assert.equal(drawers,6);
+  assert.ok(dialogs>30);assert.equal(drawers,7);
   console.log(`Audited ${dialogs} business Dialog instances and ${drawers} Drawer instances.`);
 });
 

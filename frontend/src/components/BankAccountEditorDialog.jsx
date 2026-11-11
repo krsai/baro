@@ -20,6 +20,6 @@ export default function BankAccountEditorDialog({open,title,value,onChange,onSav
    <TextField required select label={labels.currency} SelectProps={{'aria-label':labels.currency}} value={value?.[currencyKey]||''} disabled={locked} onChange={e=>change({[currencyKey]:e.target.value})}>{currencies.map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField>
    {value?.accountKind!=='CASH'&&['bankName','accountNumber','accountHolder'].map((key,index)=><TextField key={key} required disabled={locked} label={labels[['bank','number','holder'][index]]} value={value?.[key]||''} inputProps={{maxLength:maxLengths[key]}} onChange={e=>change({[key]:e.target.value})}/>)}
    {value?.accountKind==='CASH'&&<Alert severity="info">{t.cash}</Alert>}
-  </Stack></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>{labels.cancel}</Button><Button variant="contained" disabled={locked} onClick={submit}>{labels.save}</Button></DialogActions>
+  </Stack></DialogContent><DialogActions><Button variant="contained" disabled={locked} onClick={submit}>{labels.save}</Button></DialogActions>
  </Dialog>;
 }

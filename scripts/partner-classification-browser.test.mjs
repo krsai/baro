@@ -54,7 +54,7 @@ try{
   await save.click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes[0].classification,{revision:0,roleIds:[2,3],industryIds:[10,11,12]});
   await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).waitFor();
   await page.reload();await page.getByRole('button',{name:lang==='ko'?'기존 업체':lang==='vi'?'Đối tác cũ':'Legacy vendor',exact:true}).click();await dialog.getByRole('combobox',{name:localized(roles[2])+' > '+text.industry,exact:true}).waitFor();assert.equal(await save.isEnabled(),true);
-  await dialog.getByRole('button',{name:lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',exact:true}).click();
+  await page.keyboard.press('Escape');
   await page.getByRole('button',{name:lang==='ko'?'거래처 등록':lang==='vi'?'Thêm đối tác':'Add partner',exact:true}).click();
   assert.equal(await dialog.locator('.MuiChip-root').count(),0);
   await dialog.locator('input[name="name"]').fill('Dual partner');
