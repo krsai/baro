@@ -1,3 +1,6 @@
+import WorkRequestsCard from '../../components/WorkRequestsCard';
+import DashboardAlertsCard from '../../components/DashboardAlertsCard';
+import {dashboardAlertText} from '../../constants/dashboardAlerts';
 import DashboardWidgets from '../../components/DashboardWidgets';
 import ProductionExcessCard from '../../components/ProductionExcessCard';
 import ServiceDashboard from './ServiceDashboard';
@@ -130,6 +133,7 @@ const createEmptySummary = () => ({
   pendingEmployeeCount: EMPTY_SUMMARY.pendingEmployeeCount,
   missingSalesPriceCustomerCount: EMPTY_SUMMARY.missingSalesPriceCustomerCount,
   missingRecordAlerts: [],
+  unassignedOrderCount:0,
 });
 
 const EMPTY_SYSTEM_SUMMARY = Object.freeze({
@@ -278,6 +282,7 @@ const buildSummaryData = ({ orders, assignments }) => {
   const summary = createEmptySummary();
 
   (Array.isArray(orders) ? orders : []).forEach((order) => {
+    if(order.hasAssignments===false&&order.workflowStatus==='RECEIVED')summary.unassignedOrderCount++;
     for (const assignment of order.productionAssignments || []) {
       if (!assignment.missingRecordProcesses?.length) continue;
       summary.missingRecordAlerts.push({
@@ -533,6 +538,7 @@ const buildNotificationItems = ({ languageCode, isSystemProfile, summaryData, sy
   const candidates = isSystemProfile
     ? [{ key: 'onboarding', count: systemSummaryData?.pendingOnboardingCount, path: '/system-onboarding', label: { ko: '가입 승인 대기', en: 'Pending onboarding requests', vi: 'Yêu cầu đăng ký chờ duyệt' } }]
     : [
+        { key:'unassigned',count:summaryData?.unassignedOrderCount,path:'/order',label:{ko:'미배정 주문',en:'Orders without assignments',vi:'Đơn hàng chưa phân công'} },
         { key: 'employees', count: summaryData?.pendingEmployeeCount, path: '/employee', label: { ko: '승인 대기 직원', en: 'Employees awaiting approval', vi: 'Nhân viên chờ phê duyệt' } },
         { key: 'sales-prices', count: summaryData?.missingSalesPriceCustomerCount, path: '/customer', label: { ko: '판매단가 미설정 고객사', en: 'Customers missing sales prices', vi: 'Khách hàng chưa có đơn giá bán' } },
         ...(summaryData?.missingRecordAlerts || []).map(alert => ({
@@ -642,11 +648,11 @@ const WorkspaceDashboard = () => {
           includeCards: 0,
         });
         const [orders, boardState, memberships, customers] = await Promise.all([
-          fetchOrders({ orgId: activeOrgId, forceRefresh }),
-          requestJSON('/assignment-board-view' + boardQuery, {
+          canAccessPath('/order',authState)?fetchOrders({ orgId: activeOrgId, forceRefresh }):[],
+          canAccessPath('/assignment',authState)?requestJSON('/assignment-board-view' + boardQuery, {
             forceRefresh,
             skipGlobalLoading: true,
-          }),
+          }):{assignments:[]},
           canViewEmployee ? requestJSON(`/org-memberships${buildQueryString({ status: 'PENDING', orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }) : [],
           canViewCustomer ? requestJSON(`/customers${buildQueryString({ orgId: activeOrgId })}`, { forceRefresh, skipGlobalLoading: true }) : [],
         ]);
@@ -677,7 +683,7 @@ const WorkspaceDashboard = () => {
         }
       }
     },
-    [activeOrgId, canViewCustomer, canViewEmployee, isSystemProfile, languageCode, showNotification, queryRetry]
+    [activeOrgId, canViewCustomer, canViewEmployee, isSystemProfile, languageCode, showNotification, queryRetry, authState]
   );
 
   useEffect(() => {
@@ -718,40 +724,12 @@ const WorkspaceDashboard = () => {
     [authState, isSystemProfile, languageCode, summaryData, systemSummaryData]
   );
 
+  const a=dashboardAlertText[languageCode]||dashboardAlertText.en;
+  const showProduction=canAccessPath('/work-history',authState);
   const widgets=[
-    ...(!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'&&canAccessPath('/work-history',authState)?[{id:'production-excess',label:({ko:'초과 생산 확인',en:'Production excess',vi:'Sản xuất vượt'})[languageCode]||'Production excess',width:'full',content:<ProductionExcessCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>}]:[]),
-    {id:'notifications',label:resolveText(DASHBOARD_TEXT.notificationTitle,languageCode),content:(<Paper variant="outlined" data-testid="dashboard-notifications" sx={{p:2,borderRadius:`${ui.radius.panel}px`,height:540,minWidth:0,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-            <NotificationsNoneIcon color="primary" />
-            <Typography variant="h6">{resolveText(DASHBOARD_TEXT.notificationTitle, languageCode)}</Typography>
-          </Stack>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{resolveText(DASHBOARD_TEXT.notificationDescription, languageCode)}</Typography>
-          <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>
-          {summaryLoading ? (
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5 }}>
-              <CircularProgress size={18} />
-              <Typography variant="body2" color="text.secondary">{resolveText(DASHBOARD_TEXT.syncing, languageCode)}</Typography>
-            </Stack>
-          ) : notificationItems.length === 0 ? (
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 1.5, bgcolor: 'success.50', borderRadius: 1 }}>
-              <CheckCircleOutlineIcon color="success" fontSize="small" />
-              <Typography variant="body2">{resolveText(DASHBOARD_TEXT.notificationEmpty, languageCode)}</Typography>
-            </Stack>
-          ) : (
-            <Stack spacing={1}>
-              {notificationItems.map((item) => (
-                <Button key={item.key} variant="outlined" onClick={() => item.recordAlert ? setRecordAlert(item.recordAlert) : navigateToPath(item.path)} sx={{ justifyContent: 'space-between', gap: 2, height: 'auto', minHeight: item.recordAlert ? 64 : 44, px: 1.5, py: 1.25, textTransform: 'none', color: 'text.primary', borderColor: 'divider' }}>
-                  <Box sx={{ textAlign: 'left', minWidth: 0, overflowWrap: 'anywhere' }}>
-                    <Typography variant="body2" fontWeight={600}>{resolveText(item.label, languageCode)}</Typography>
-                    {item.recordAlert && <Typography variant="caption" color="inherit" sx={{ display: 'block', mt: 0.5, lineHeight: 1.6 }}>{item.recordAlert.factoryName} · {item.recordAlert.processes.map(process => `${process.processCode || process.styleProcessId}: 0 / ${process.targetQuantity}`).join(' · ')}</Typography>}
-                  </Box>
-                  <Chip size="small" label={item.countLabel} sx={{ flexShrink: 0, color: 'text.primary' }} />
-                </Button>
-              ))}
-            </Stack>
-          )}
-          </Box>
-        </Paper>)},
+    {id:'notifications',label:a.notifications,options:(isSystemProfile?[]:[['unassigned',a.unassigned,'/order'],['employees',a.employees,'/employee'],['sales-prices',a.prices,'/customer']].filter(([, ,path])=>canAccessPath(path,authState)).map(([id,label])=>({id,label}))),content:({settings})=><DashboardAlertsCard title={a.notifications} description={a.notificationDescription} text={a} loading={summaryLoading} error={queryError} onRetry={()=>setQueryRetry(v=>v+1)} items={notificationItems.filter(item=>!item.recordAlert&&settings?.[item.key]!==false).map(item=>({...item,text:resolveText(item.label,languageCode)}))} onSelect={item=>navigateToPath(item.path)}/>},
+    ...(!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'?[{id:'suspected-errors',newDefault:true,label:a.suspected,options:[...(canAccessPath('/assignment',authState)?[{id:'missing-records',label:a.missing}]:[]),...(showProduction?[{id:'production-excess',label:a.excess}]:[])],content:({settings})=><DashboardAlertsCard title={a.suspected} description={a.suspectedDescription} text={a} loading={summaryLoading} error={queryError} onRetry={()=>setQueryRetry(v=>v+1)} items={settings?.['missing-records']===false?[]:notificationItems.filter(item=>item.recordAlert).map(item=>({...item,text:resolveText(item.label,languageCode)}))} onSelect={item=>setRecordAlert(item.recordAlert)}>{showProduction&&settings?.['production-excess']!==false?<ProductionExcessCard key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>:null}</DashboardAlertsCard>}]:[]),
+    ...(!isSystemProfile?[{id:'work-requests',label:a.tasks,newDefault:true,content:<WorkRequestsCard key={activeOrgId+':'+activeProfile?.employeeId} orgId={activeOrgId} languageCode={languageCode}/>}]:[]),
     ...(!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)?[{id:'approvals',label:({ko:'결재 현황',en:'Approvals',vi:'Phê duyệt'})[languageCode]||'Approvals',content:<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}]:[]),
   ];
   return (

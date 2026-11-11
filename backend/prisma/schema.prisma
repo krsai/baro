@@ -391,6 +391,7 @@ model ProcessMasterOptionRelation {
 }
 
 model Organization {
+  dashboardWorkRequests DashboardWorkRequest[]
   ownedStyleProducts StyleProduct[] @relation("StyleProductOwner")
   managedStyleProducts StyleProduct[] @relation("StyleProductCustodian")
   styleProductRevisionActors StyleProductRevision[] @relation("StyleProductRevisionActor")
@@ -952,6 +953,9 @@ model Warehouse {
 
 
 model Employee {
+  sentDashboardRequests DashboardWorkRequest[] @relation("DashboardRequestSender")
+  receivedDashboardRequests DashboardWorkRequest[] @relation("DashboardRequestRecipient")
+  dashboardRequestEvents DashboardWorkRequestEvent[]
  requestedChanges ChangeApprovalRequest[] @relation("ChangeRequester")
  decidedChanges ChangeApprovalRequest[] @relation("ChangeDecider")
  changeApprovalDecisions ChangeApprovalDecision[] @relation("ChangeDecisionEmployee")
@@ -3313,4 +3317,40 @@ model ChangeApprovalDecision {
  createdAt DateTime @default(now())
  @@unique([requestId,position])
  @@index([orgId,employeeId,createdAt])
+}
+
+model DashboardWorkRequest {
+ id String @id
+ orgId Int
+ senderId Int
+ recipientId Int
+ clientKey String
+ title String
+ message String
+ status String @default("OPEN")
+ version Int @default(1)
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ completedAt DateTime? @db.Timestamp(3)
+ senderHiddenAt DateTime? @db.Timestamp(3)
+ recipientHiddenAt DateTime? @db.Timestamp(3)
+ organization Organization @relation(fields:[orgId],references:[id],onDelete:Restrict)
+ sender Employee @relation("DashboardRequestSender",fields:[senderId,orgId],references:[id,orgId],onDelete:Restrict,map:"DashboardWorkRequest_sender_scope_fkey")
+ recipient Employee @relation("DashboardRequestRecipient",fields:[recipientId,orgId],references:[id,orgId],onDelete:Restrict,map:"DashboardWorkRequest_recipient_scope_fkey")
+ events DashboardWorkRequestEvent[]
+ @@unique([id,orgId])
+ @@unique([orgId,senderId,clientKey],map:"DashboardWorkRequest_retry_key")
+ @@index([orgId,senderId,createdAt(sort:Desc),id],map:"DashboardWorkRequest_sender_idx")
+ @@index([orgId,recipientId,createdAt(sort:Desc),id],map:"DashboardWorkRequest_recipient_idx")
+}
+model DashboardWorkRequestEvent {
+ id String @id
+ orgId Int
+ requestId String
+ actorId Int
+ action String
+ version Int
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ request DashboardWorkRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"DashboardWorkRequestEvent_request_scope_fkey")
+ actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"DashboardWorkRequestEvent_actor_scope_fkey")
+ @@unique([requestId,version],map:"DashboardWorkRequestEvent_revision_key")
 }
