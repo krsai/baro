@@ -21,7 +21,7 @@ try{
   page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:(message,level)=>window.notices.push({message,level})});'}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};let writes=0;
-  await page.route('**/style-products?*',route=>route.fulfill({headers,json:[{id:17,ownerOrgId:2,ownerOrgName:'THE SAN',customerOrgId:2,revision:3,fields:{code:'AM01160',name:'Áo 한글'}}]}));
+  await page.route('**/style-products?*',route=>route.fulfill({headers,json:writes>=2&&new URL(route.request().url()).searchParams.get('orgId')==='1'?[]:[{id:17,ownerOrgId:2,ownerOrgName:'THE SAN',customerOrgId:2,revision:3,fields:{code:'AM01160',name:'Áo 한글'}}]}));
   await page.route('**/style-products/17/production-style?*',async route=>{
    if(route.request().method()==='OPTIONS')return route.fulfill({headers,status:204});
    writes++;assert.deepEqual(route.request().postDataJSON(),{customerOrgId:2,revision:3});
@@ -38,7 +38,7 @@ try{
   await select.click();await dialog.waitFor({state:'hidden'});
   assert.equal(writes,2);assert.equal(await page.evaluate(()=>window.taken),1);
   assert.equal(await page.evaluate(()=>window.notices.filter(n=>n.level==='success').length),1);
-  await button.click();await dialog.waitFor();await query.fill('No matching product');
+  await page.waitForFunction(()=>document.querySelectorAll('button').length===0);await page.evaluate(()=>window.switchOrg(2));await button.waitFor();await button.click();await dialog.waitFor();await query.fill('No matching product');
   assert.equal(await dialog.locator('tbody button').count(),0);
   await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
   assert.equal(await button.evaluate(element=>element===document.activeElement),true);

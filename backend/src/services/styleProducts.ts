@@ -51,12 +51,15 @@ export async function readStyleProduct(db: any, orgId: number, actorId: number, 
   return product;
 }
 
-export async function listStyleProducts(db: any, orgId: number, actorId: number) {
+export async function listStyleProducts(db: any, orgId: number, actorId: number, availableOnly = false) {
   await actor(db, orgId, actorId);
   return db.$queryRawUnsafe(`SELECT p.id,p."ownerOrgId",p.revision,p.fields-'imageUrls' AS fields,o.name AS "ownerOrgName",r."brandOrgId" AS "customerOrgId"
     FROM "StyleProduct" p JOIN "Organization" o ON o.id=p."ownerOrgId" AND o."isActive"
     LEFT JOIN "OrgRelationship" r ON r."manufacturerOrgId"=$1 AND baro_style_product_trade_connected($1::integer,p."ownerOrgId",r."brandOrgId")
-    WHERE p."ownerOrgId"=$1 OR r."brandOrgId" IS NOT NULL ORDER BY p.id,r."brandOrgId"`, orgId);
+    WHERE (p."ownerOrgId"=$1 OR r."brandOrgId" IS NOT NULL)
+    AND (NOT $2::boolean OR (r."brandOrgId" IS NOT NULL AND p."ownerOrgId"<>$1
+      AND NOT EXISTS (SELECT 1 FROM "Style" s WHERE s."orgId"=$1 AND s."productStyleId"=p.id)))
+    ORDER BY p.id,r."brandOrgId"`, orgId, availableOnly);
 }
 
 export async function takeStyleProduct(db: any, orgId: number, actorId: number, id: number, input: any) {
@@ -146,7 +149,7 @@ export function registerStyleProductRoutes(app: any, db: any, gates: any) {
   };
   app.get('/style-products', async (req: any, res: any) => {
     const scope = await access(req, res);
-    if (scope) res.json(await listStyleProducts(db, scope.orgId, scope.actorId));
+    if (scope) res.json(await listStyleProducts(db, scope.orgId, scope.actorId, req.query.availableOnly === '1'));
   });
   app.post('/style-products', async (req: any, res: any) => {
     const scope = await access(req, res);

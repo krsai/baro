@@ -159,8 +159,11 @@ test('trading relationship permits catalogue lookup and explicit take with indep
   await assert.rejects(readStyleProduct(client,3,30,p.id),/NOT_FOUND/);
   await db.exec('INSERT INTO "CompanyPartnerLink" VALUES(3,4,2)');
   const catalogue=await listStyleProducts(client,3,30);assert.equal(catalogue.length,1);
+  assert.equal((await listStyleProducts(client,3,30,true)).length,1);
   assert.equal(catalogue[0].fields.code,'SAN102');assert.ok(!('processes' in catalogue[0].fields));assert.ok(!('bom' in catalogue[0].fields));
   const taken=await takeStyleProduct(client,3,30,p.id,{customerOrgId:4,revision:1});
+  assert.equal((await listStyleProducts(client,3,30,true)).length,0);
+  assert.equal((await listStyleProducts(client,3,30)).length,1,'the full catalogue retains imported products');
   assert.equal((await takeStyleProduct(client,3,30,p.id,{customerOrgId:4,revision:1})).id,taken.id);
   const style=(await q(db,'SELECT * FROM "Style" WHERE id=$1',[taken.id]))[0];
   assert.equal(style.orgId,3);assert.equal(style.productOwnerOrgId,2);assert.equal(style.productStyleId,p.id);

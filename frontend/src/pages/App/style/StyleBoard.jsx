@@ -614,7 +614,7 @@ const StyleBoard = () => {
       title={getUiMessage('menu.style', '스타일', languageCode)}
       titleActions={(
         <Box sx={{ display: 'flex', gap: 1 }}>
-          {canViewProcessSummary && <StyleProductPicker orgId={activeOrgId} languageCode={languageCode} onTaken={async () => refreshStyles({ forceRefresh: true })} />}
+          {canViewProcessSummary && <StyleProductPicker orgId={activeOrgId} languageCode={languageCode} refreshKey={styles} isActive={isStyleRouteActive} onTaken={async () => refreshStyles({ forceRefresh: true })} />}
           {canViewProcessSummary ? (
             <Tooltip title={atSyncButtonTooltip}>
               <span>

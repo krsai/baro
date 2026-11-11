@@ -11,24 +11,25 @@ const text = {
   vi: { title: 'Lấy mẫu từ đối tác', owner: 'Chủ sở hữu sản phẩm', code: 'Mã mẫu', name: 'Tên mẫu', done: 'Đã liên kết mẫu sản xuất.', loading: 'Đang tải mẫu.', failed: 'Không thể lấy mẫu. Vui lòng tải lại và thử lại.' },
 };
 
-export default function StyleProductPicker({ orgId, languageCode, onTaken }) {
+export default function StyleProductPicker({ orgId, languageCode, onTaken, refreshKey, isActive = true }) {
   const t = text[languageCode] || text.en;
   const { showNotification } = useAppActions();
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
-  const [rows, setRows] = useState([]), [loading, setLoading] = useState(false), [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [rows, setRows] = useState([]), [loading, setLoading] = useState(false), [error, setError] = useState(false), [checked, setChecked] = useState(false);
   const busy = useRef(false), scope = useRef(orgId);
   scope.current = orgId;
-  useEffect(() => { setOpen(false); setRows([]); setQuery(''); }, [orgId]);
+  useEffect(() => { setOpen(false); setRows([]); setQuery(''); setChecked(false); }, [orgId]);
   useEffect(() => {
-    if (!open || !orgId) return undefined;
+    if (!isActive || !orgId) return undefined;
     const controller = new AbortController();
-    setRows([]); setLoading(true); setError(false);
-    requestJSON(`/style-products${buildQueryString({ orgId })}`, { signal: controller.signal, skipCache: true })
-      .then(data => { if (!controller.signal.aborted) setRows(Array.isArray(data) ? data : []); })
+    setLoading(true); setError(false);
+    requestJSON(`/style-products${buildQueryString({ orgId, availableOnly: '1' })}`, { signal: controller.signal, skipCache: true })
+      .then(data => { if (!controller.signal.aborted) { setRows(Array.isArray(data) ? data : []); setChecked(true); } })
       .catch(() => { if (!controller.signal.aborted) setError(true); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [open, orgId]);
+  }, [reloadKey, orgId, refreshKey, isActive]);
   const take = async row => {
     if (busy.current || scope.current !== orgId) return;
     busy.current = true; setError(false);
@@ -38,12 +39,13 @@ export default function StyleProductPicker({ orgId, languageCode, onTaken }) {
       });
       if (scope.current !== orgId) return;
       emitWorkspaceDataChanged({ orgId, topics: [WORKSPACE_DATA_TOPICS.STYLES], styleIds: [saved.id] });
+      setRows(current => current.filter(product => product.id !== row.id));
       setOpen(false); showNotification(t.done, 'success'); await onTaken?.();
     } catch { if (scope.current === orgId) setError(true); }
     finally { busy.current = false; }
   };
   return <>
-    <Button variant="outlined" onClick={() => { setQuery(''); setOpen(true); }}>{t.title}</Button>
+    {(!checked || error || rows.length > 0) && <Button variant="outlined" disabled={loading} onClick={() => { setQuery(''); setOpen(true); setReloadKey(current => current + 1); }}>{t.title}</Button>}
     <LookupSearchDialog open={open} onClose={() => { if (!busy.current) setOpen(false); }} title={t.title}
       languageCode={languageCode} query={query} onQueryChange={setQuery} options={rows}
       getOptionKey={row => `${row.id}:${row.customerOrgId}`} onSelect={take}
