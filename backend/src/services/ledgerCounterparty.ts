@@ -1,5 +1,6 @@
 import {createHttpError} from '../utils/http';
 import {attachLinkedCompanies} from './companyConnections';
+import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from './accountingCode';
 const fail=(code='LEDGER_COUNTERPARTY_REQUIRED'):never=>{throw createHttpError(400,code);};
 export const counterpartyInput=(value:any)=>{
  if(value==null)return null;
@@ -20,6 +21,11 @@ export async function ledgerCounterpartyOptions(db:any,orgId:number){
 }
 export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,body:any,allocations:any[]){
  const supplied=counterpartyInput(body.counterparty);
+ if(body.evidenceType==='BANK_FEE'){
+  const code=resolveAccountingCode(await tx.transactionCode.findFirst({where:{id:body.accountingCodeId,ownerOrgId:orgId,isActive:true},include:ACCOUNTING_CODE_INCLUDE}));
+  if(code?.code!=='FEEE'||body.direction!=='OUT'||supplied||allocations.length||body.evidenceNumber||body.expenseItems?.length)fail('LEDGER_INVALID_EVIDENCE');
+  return {};
+ }
  if(body.evidenceType==='ADJUSTMENT'){if(supplied)fail('LEDGER_COUNTERPARTY_INVALID');return {};}
  let party=supplied;
  if(allocations.length){

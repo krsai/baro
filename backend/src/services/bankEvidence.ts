@@ -105,7 +105,7 @@ export async function approveExpense(db:any,orgId:number,actorId:number,requestI
 }
 export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  const type=body.evidenceType||'FILE',code=account.currencyCode;
- if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
+ if(!['FILE','INVOICE','EXPENSE','ADJUSTMENT','BANK_FEE'].includes(type))return fail('LEDGER_INVALID_EVIDENCE');
  const fee=validateLedgerMoney(body.bankFee||'0',code,true),writeOff=validateLedgerMoney(body.writeOffAmount||'0',code,true);
  if(ledgerScale4(fee)<0n||ledgerScale4(writeOff)<0n||type!=='INVOICE'&&ledgerScale4(writeOff)!==0n)return fail('LEDGER_INVALID_AMOUNT');
  const amount=ledgerScale4(body.amount),bankFee=ledgerScale4(fee),loss=ledgerScale4(writeOff);
@@ -114,6 +114,8 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  if(type==='FILE'){
   if(!reference||reference.length>500||/[\r\n]/.test(reference))return fail('LEDGER_FILE_REQUIRED');
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');
+ }else if(type==='BANK_FEE'){
+  if(body.direction!=='OUT'||bankFee||loss||reference||body.counterparty||body.expenseItems?.length)return fail('LEDGER_INVALID_EVIDENCE');reference='';
  }else if(type==='ADJUSTMENT'){
   if(bankFee)return fail('LEDGER_INVALID_EVIDENCE');reference='';
  }else if(type==='INVOICE'){

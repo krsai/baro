@@ -59,6 +59,7 @@ try{
   assert.equal(await page.getByText('S1',{exact:true}).count(),0);
   assert.equal(await page.locator('textarea[aria-label^="Remark "]').count(),0);
   const grid=page.locator('fieldset table').first();
+  const numeric=grid.locator('tbody tr').first().locator('input');await numeric.first().focus();await numeric.first().press('Enter');assert.equal(await numeric.nth(1).evaluate(el=>document.activeElement===el),true,'invoice price Enter advances to quantity');
   assert.equal(await grid.locator('thead th').count(),7);
   assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),0);
   assert.equal(await grid.locator('thead th').nth(3).evaluate(el=>getComputedStyle(el).textAlign),'right');

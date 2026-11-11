@@ -83,7 +83,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    setError(documentNumberError(failure.details?.error||failure.message,languageCode)|| (unknown?t.uncertain:failure.message==='COMPANY_BILLING_CODE_INVALID'?t.codeInvalid:failure.message==='GENERAL_INVOICE_BUYER_INVALID'?t.buyerInvalid:t.failed));
   }finally{busy.current=false;if(mounted.current&&scope.current===orgId)setSaving(false);}
  };
- return <AppPageContainer title={t.general} titleActions={<Stack direction="row" spacing={1}><Button disabled={saving} onClick={close}>{ui.cancel}</Button><Button variant="contained" disabled={loading||loadError||saving||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
+ return <AppPageContainer keyboardEntry title={t.general} titleActions={<Stack direction="row" spacing={1}><Button disabled={saving} onClick={close}>{ui.cancel}</Button><Button variant="contained" disabled={loading||loadError||saving||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
   <InvoiceSheet><Stack spacing={2} sx={{p:2}}>
    {renderSelection?.({requestChange,disabled:locked})}
    {loading&&<CircularProgress size={22}/>}{loadError&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}{error&&<Alert severity="error">{error}</Alert>}

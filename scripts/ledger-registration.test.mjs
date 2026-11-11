@@ -10,6 +10,24 @@ const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest'
 const {registerExpensePayeeRoutes}=require('../backend/dist/services/expensePayee');
 const {previewLedgerRegistration,validateLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
 
+test('bank fees debit only the owned account without evidence or recipient and require the real fee classification',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const body={clientKey:randomUUID(),transactionDate:'2026-11-05',direction:'OUT',amount:'10',remark:'',evidenceType:'BANK_FEE',evidenceNumber:'',accountingCodeId:s.code.id};
+  await assert.rejects(postLedgerEntry(db,org,'test',s.account.id,body),/LEDGER_INVALID_EVIDENCE/);
+  await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{code:'FEE'}});
+  for(const patch of [{direction:'IN'},{evidenceNumber:'receipt'},{counterparty:{kind:'PARTNER',id:s.vendor.id}}])await assert.rejects(postLedgerEntry(db,org,'test',s.account.id,{...body,...patch}),/LEDGER_INVALID_EVIDENCE/);
+  const batchKey=randomUUID(),request=await requestChangeApproval(db,org,s.people.admin.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:batchKey,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},payload:{schemaVersion:2,accountingCodeVersion:1,clientKey:batchKey,rows:[{...body,accountId:s.account.id,entryKind:'BANK'}]}});
+  assert.equal(await db.bankLedgerEntry.count(),0,'fees also wait for final approval');
+  await decideChangeApproval(db,org,s.people.junior.id,request.id,{decision:'APPROVED'});
+  const result=await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});
+  const row=await db.bankLedgerEntry.findFirstOrThrow({where:{clientKey:body.clientKey}});
+  assert.equal(row.direction,'OUT');assert.equal(row.evidenceType,'BANK_FEE');assert.equal(row.evidenceNumber,'');assert.equal(row.counterpartyOrgId,null);assert.equal(row.counterpartyAccountId,null);
+  assert.equal((await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'})).id,result.id);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261111020000_bank_fee_without_evidence');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.equal(await db.bankLedgerEntry.count(),1);
+ }finally{await f.close();}
+});
+
 test('registration bands skip only qualified intermediate authority and preserve final approval snapshots',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id;

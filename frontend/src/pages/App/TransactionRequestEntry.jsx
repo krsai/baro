@@ -254,7 +254,7 @@ export default function TransactionRequestEntry() {
     } finally { if (organizationRef.current === activeOrgId && mountedRef.current) setSaving(false); }
     } finally {saveLock.current=false;}
   };
-  return <AppPageContainer
+  return <AppPageContainer keyboardEntry
     title={(editing ? EDIT_TITLES : ENTRY_TITLES)[languageCode] || ENTRY_TITLES.en}
     titleActions={<Stack direction="row" spacing={1}>
       <Button disabled={saving} onClick={close}>{labels.cancel}</Button>

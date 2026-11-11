@@ -1,3 +1,4 @@
+import {advanceDocumentInput} from '../utils/documentKeyboard.mjs';
 ﻿import React,{useEffect,useRef,useState} from 'react';
 import {IconButton,InputAdornment,TextField,Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -20,6 +21,7 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
   if(match||hasSelection&&!input.trim()){
    skipBlur.current=true;if(match&&!selected)choose(match,event);
    const handled=onCommit?.(match,event);
+   if(!handled&&event.key==='Enter'&&event.target.closest('[data-document-keyboard]'))advanceDocumentInput(event.target);
    if(event.key==='Enter'||handled){event.preventDefault();event.stopPropagation();}return;
   }
   event.preventDefault();event.stopPropagation();search();

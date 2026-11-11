@@ -91,6 +91,7 @@ try {
     if(layoutOnly){
       const text=EXPENSE_REQUEST_TEXT[lang],payment=expensePaymentText[lang],row=page.getByTestId('expense-line').first();await row.waitFor();await page.waitForFunction(()=>{const b=document.querySelector('[data-testid="expense-line"] [data-table-action="add"]');return b&&!b.disabled;});
       await row.getByRole('combobox',{name:payment.mode,exact:true}).waitFor();assert.equal(await row.getByRole('combobox',{name:payment.mode,exact:true}).count(),1);assert.equal(await page.getByTestId('expense-line-payment-details').count(),0);
+      await row.getByLabel(text.quantity,{exact:false}).focus();await row.getByLabel(text.quantity,{exact:false}).press('Enter');assert.equal(await row.getByRole('combobox',{name:text.unit,exact:false}).evaluate(el=>document.activeElement===el),true,'expense Enter advances to unit');
       const position=await row.getByRole('combobox',{name:payment.mode,exact:true}).evaluate(el=>el.closest('.MuiFormControl-root').getBoundingClientRect().top),quantityPosition=await row.getByLabel(text.quantity,{exact:false}).evaluate(el=>el.closest('.MuiFormControl-root').getBoundingClientRect().top);assert.ok(Math.abs(position-quantityPosition)<2);
       const add=row.getByRole('button',{name:text.add,exact:true}),remove=row.getByRole('button',{name:text.remove,exact:true});assert.equal(await add.getAttribute('data-table-action'),'add');assert.equal(await remove.getAttribute('data-table-action'),'delete');assert.equal(await remove.isDisabled(),true);assert.equal(Math.round((await add.boundingBox()).width),28);assert.equal(Math.round((await remove.boundingBox()).width),28);
       await page.setViewportSize({width:1920,height:1000});const scroll=page.locator('.MuiTableContainer-root').filter({has:row}).first();assert.equal(await scroll.evaluate(el=>el.scrollWidth>el.clientWidth+1),false);
@@ -215,7 +216,7 @@ try {
           await page.getByRole('button',{name:l.addProcess,exact:true}).click();
           assert.equal(await page.getByTestId('expense-line').count(),2);
           const second=page.getByTestId('expense-line').nth(1);
-          await second.getByLabel(l.quantity,{exact:false}).fill('200');await second.getByLabel(l.price,{exact:false}).fill('2500');
+          await second.getByLabel(l.quantity,{exact:false}).fill('200');await second.getByLabel(l.quantity,{exact:false}).press('Enter');assert.equal(await second.getByRole('combobox',{name:l.unit,exact:false}).evaluate(el=>document.activeElement===el),true,'expense quantity Enter advances to unit');await second.getByLabel(l.price,{exact:false}).fill('2500');
           const details=page.locator('tbody[data-rfd-draggable-id]').nth(1);
           await details.getByRole('combobox',{name:l.style,exact:true}).click();await page.getByRole('option',{name:'Shirt (AM02058)',exact:true}).click();
           await details.getByRole('combobox',{name:l.process,exact:false}).click();await page.getByRole('option',{name:'Buttonhole second (BH2)',exact:true}).click();

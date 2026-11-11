@@ -1,3 +1,4 @@
+import {documentInputKeyDown} from '../utils/documentKeyboard.mjs';
 import React from 'react';
 import { Box, Stack } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
@@ -14,6 +15,7 @@ const AppPageContainer = ({
   footer,
   sx = {},
   contentSx = {},
+  keyboardEntry = false,
 }) => {
   const pageNaming = usePageNaming();
   if (title) title = pageNaming?.title || title;
@@ -40,6 +42,8 @@ const AppPageContainer = ({
   return (
     <Box
       component="main"
+      data-document-keyboard={keyboardEntry?'true':undefined}
+      onKeyDown={keyboardEntry?documentInputKeyDown:undefined}
       className="app-page"
       sx={{
         flexGrow: 1,
