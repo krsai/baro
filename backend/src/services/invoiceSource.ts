@@ -45,7 +45,7 @@ export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[]
         }).sort((a: any, b: any) => a.quantity - b.quantity) })),
     };
   });
-  const party = (org: any) => ({ name: org?.name || '', address: org?.address || '',
+  const party = (org: any) => ({ code: org?.code || '', name: org?.name || '', address: org?.address || '',
     country: org?.country || '', taxId: org?.businessNumber || '', email: org?.email || '', phone: org?.phone || '' });
   return {
     orderId: order.orderId, orderNumber: order.orderNumber, sourceUpdatedAt: order.updatedAt,

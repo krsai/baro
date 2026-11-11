@@ -69,9 +69,9 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       .catch(()=>{if(!cancelled)setError(true);}).finally(()=>{if(!cancelled){setLoading(false);pendingOrders.current=false;}}),200);
     return ()=>{cancelled=true;clearTimeout(timer);};
   },[activeOrgId,customer,search,page,revisionId,reload,documentKind]);
-  const renderSelection=({requestChange,disabled})=><>
-    <TextField select size="small" sx={{width:220,mb:2}} label={general.type} value={documentKind} disabled={disabled} onChange={event=>requestChange(()=>{setDocumentKind(event.target.value);setCustomer(null);setChosen([]);setOrders([]);setCustomers([]);})}><MenuItem value="ORDER" disabled={service}>{general.order}</MenuItem><MenuItem value="GENERAL">{general.general}</MenuItem></TextField>
-    <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(220px,1fr) minmax(0,2fr)'},gap:2}}>
+  const renderSelection=({requestChange,disabled})=><Box sx={{display:"flex",alignItems:"flex-start",flexWrap:"wrap",gap:2}}>
+    <TextField select size="small" sx={{width:180}} label={general.type} value={documentKind} disabled={disabled} onChange={event=>requestChange(()=>{setDocumentKind(event.target.value);setCustomer(null);setChosen([]);setOrders([]);setCustomers([]);})}><MenuItem value="ORDER" disabled={service}>{general.order}</MenuItem><MenuItem value="GENERAL">{general.general}</MenuItem></TextField>
+    <Box sx={{display:'grid',flex:1,minWidth:260,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(260px,1fr) minmax(180px,1fr)'},gap:2}}>
       <InvoicePartyPicker orgId={activeOrgId} languageCode={languageCode} options={customers} value={customer} disabled={disabled||customersLoading||customersError||!activeOrgId} onChange={value=>{if((value?.id??null)===(customer?.id??null))return;requestChange(()=>{setCustomer(value);setChosen([]);setOrders([]);setSearch('');setPage(0);setHasMore(false);setError(false);});}}/>
       {documentKind==='ORDER'&&<Button variant="outlined" disabled={disabled||!customer} onClick={()=>{setPendingChosen(chosen);setOrderModal(true);setSearch('');setPage(0);}}>{t.orders}{chosen.length ? ': '+chosen.map(order=>order.orderNumber).join(', ') : ''}</Button>}
       <Dialog open={orderModal} onClose={()=>setOrderModal(false)} fullWidth maxWidth="md">
@@ -87,7 +87,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       </Dialog>
     </Box>
     {(customersError||error)&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{customersError?t.customersFailed:t.failed}</Alert>}
-  </>;
+  </Box>;
   if(revisionId&&!resumeKind)return <AppPageContainer title={t.title}>{resumeError?<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>:<Typography>{t.loading||'…'}</Typography>}</AppPageContainer>;
   const Editor=(revisionId?resumeKind:documentKind)==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor;
   return <Editor key={activeOrgId+':'+documentKind} orgId={activeOrgId} buyerOrgId={customer?.id} orderIds={orderIds} draftId={revisionId} languageCode={languageCode} onClose={onBack} onIssued={onBack} renderSelection={revisionId?null:renderSelection}/>;

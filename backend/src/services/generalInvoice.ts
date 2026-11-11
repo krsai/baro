@@ -9,7 +9,7 @@ import {allocateDocumentNumber,normalizeDocumentNumber} from './documentNumber';
 
 const invalid=(code='GENERAL_INVOICE_INVALID'):never=>{throw createHttpError(400,code);};
 export const generalInvoiceBuyerScope=(sellerOrgId:number)=>({isActive:true,id:{not:sellerOrgId},OR:[{ownerOrgId:sellerOrgId},{buyerWorkOrders:{some:{sellerOrgId}}}]});
-const party=(row:any)=>({name:row?.name||'',address:row?.address||'',country:row?.country||'',taxId:row?.businessNumber||'',email:row?.email||'',phone:row?.phone||''});
+const party=(row:any)=>({code:row?.code||'',name:row?.name||'',address:row?.address||'',country:row?.country||'',taxId:row?.businessNumber||'',email:row?.email||'',phone:row?.phone||''});
 export async function generalInvoiceSource(db:any,sellerOrgId:number,buyerOrgId:number){
  if(!Number.isSafeInteger(buyerOrgId)||buyerOrgId<=0)return invalid();
  const [seller,localBuyer]=await Promise.all([

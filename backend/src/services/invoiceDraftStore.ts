@@ -44,8 +44,10 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   if (new Set(lines.map((row: any) => row.key)).size !== lines.length) return bad();
   const expectedCollectionDate=cashScheduleDate(body.fields?.expectedCollectionDate);
   const fields = { ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
-    seller: pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
-    buyer: pickText(body.fields.buyer, ["name", "address", "country", "taxId", "email", "phone"]),
+    seller: { ...pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
+      ...(body.fields.seller.code !== undefined ? { code: text(body.fields.seller.code, 200) } : {}) },
+    buyer: { ...pickText(body.fields.buyer, ["name", "address", "country", "taxId", "email", "phone"]),
+      ...(body.fields.buyer.code !== undefined ? { code: text(body.fields.buyer.code, 200) } : {}) },
   };
   if(!general)object(body.percentages);
   const percentages = Object.fromEntries(orders.map((row: any) => [row.orderId, text(body.percentages[row.orderId] ?? "", 32)]));

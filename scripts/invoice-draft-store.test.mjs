@@ -63,6 +63,11 @@ test('draft normalization whitelists editable inputs and keeps incomplete quanti
   assert.equal(normalized.lines[0].quantity, '');
   for (const property of ['amount', 'sellerOrgId', 'createdBy', 'reviewed']) assert.equal(normalized[property], undefined);
   assert.equal(normalized.lines[0].unitPrice, undefined);
+  assert.equal(Object.hasOwn(normalized.fields.seller, 'code'), false);
+  input.fields.seller.code = 'BARO'; input.fields.buyer.code = 'CUSTOMER';
+  const withCodes = normalizeInvoiceDraftContent(input);
+  assert.equal(withCodes.fields.seller.code, 'BARO');
+  assert.equal(withCodes.fields.buyer.code, 'CUSTOMER');
   assert.throws(() => normalizeInvoiceDraftContent({ ...body(), orders: [body().orders[0], body().orders[0]] }), /INVALID/);
   assert.throws(() => normalizeInvoiceDraftContent({ ...body(), lines: [body().lines[0], body().lines[0]] }), /INVALID/);
   assert.throws(() => normalizeInvoiceDraftContent({ ...body(), fields: null }), /INVALID/);

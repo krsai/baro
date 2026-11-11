@@ -4,6 +4,12 @@ export const invoiceDocumentCss = `
 .invoice-sheet *{box-sizing:border-box}
 .invoice-sheet .invoice-heading{font-size:21px;font-weight:700;letter-spacing:1px;margin:0;padding:0 0 16px;line-height:1.4}
 .invoice-sheet .invoice-metadata{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 20px}
+.invoice-sheet .invoice-document-top{display:flex;justify-content:space-between;align-items:center;gap:24px;border-bottom:2px solid #182b3d;padding-bottom:12px}
+.invoice-sheet .invoice-document-top .invoice-heading{padding:0}
+.invoice-sheet .invoice-document-identifiers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;width:60%;max-width:560px;min-width:0}
+.invoice-sheet .invoice-party-identity{grid-column:1/-1;display:flex;gap:16px;align-items:end}
+.invoice-sheet .invoice-party-identity .invoice-cell:first-child:not(:last-child){width:110px;flex-shrink:0}
+.invoice-sheet .invoice-party-identity .invoice-cell:last-child{flex:1}
 .invoice-sheet .invoice-parties{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
 .invoice-sheet .invoice-party{min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
 .invoice-sheet .invoice-party-title{grid-column:1/-1;margin:0;padding:4px 0;font-size:12px;color:#667085;font-weight:600}
@@ -28,5 +34,5 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-signature{display:flex;justify-content:flex-end;margin-top:20px}
 .invoice-sheet .invoice-stamp{width:160px;min-height:78px;border:1px solid #cbd5e1;border-radius:6px;padding:10px;text-align:center;color:#667085;font-size:11px}
 .invoice-sheet .invoice-status{text-align:right;font-weight:700;color:#a33939;padding-bottom:12px}
-@media(max-width:600px){.invoice-sheet .invoice-metadata,.invoice-sheet .invoice-parties,.invoice-sheet .invoice-summary{grid-template-columns:1fr}.invoice-sheet .invoice-summary{padding:16px;gap:16px}.invoice-sheet th,.invoice-sheet td{padding:6px 8px}}
+@media(max-width:600px){.invoice-sheet .invoice-document-top{display:block}.invoice-sheet .invoice-document-identifiers{width:100%;margin-top:12px;grid-template-columns:1fr}.invoice-sheet .invoice-metadata,.invoice-sheet .invoice-parties,.invoice-sheet .invoice-summary{grid-template-columns:1fr}.invoice-sheet .invoice-summary{padding:16px;gap:16px}.invoice-sheet th,.invoice-sheet td{padding:6px 8px}}
 `;

@@ -1,3 +1,5 @@
+import {invoiceUi} from '../frontend/src/constants/invoiceUi.js';
+import {invoicePartyText} from '../frontend/src/constants/invoiceParty.js';
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
 import {invoiceMessages} from '../frontend/src/constants/invoiceMessages.js';
 const scheduleOnly=process.argv.includes('--schedule-only');
@@ -15,7 +17,7 @@ const fixture=path.resolve('frontend/invoice-editor-acceptance.html');assert.ok(
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
 import React from 'react';import {MemoryRouter} from 'react-router-dom';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Editor from '/src/pages/App/invoice/InvoiceEditor.jsx';import List from '/src/pages/App/invoice/InvoiceList.jsx';import Workspace from '/src/pages/App/invoice/InvoiceWorkspace.jsx';
 const mode=new URLSearchParams(location.search).get('mode');createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),mode==='workspace'?React.createElement(Workspace,{view:'editor'}):mode==='list'?React.createElement(List,{orgId:1,languageCode:window.testLang}):React.createElement(Editor,{draftId:new URLSearchParams(location.search).get('draft'),revisionInvoice:window.testInvoice,orgId:1,buyerOrgId:2,orderIds:['o1'],languageCode:window.testLang,onClose:()=>window.closedEditor=true,onIssued:()=>window.issuedEditor=true}))));</script></body></html>`);
-const party=name=>({name,address:'',country:'VN',taxId:'',email:'',phone:''});
+const party=name=>({code:name==='BARO'?'BARO':'CUST-001',name,address:'',country:'VN',taxId:'',email:'',phone:''});
 const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',sellerOrgId:1,buyerOrgId:2,seller:party('BARO'),buyer:party('Customer'),ready:true,currencies:['USD'],
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
  lines:[{key:'item1:S',itemId:1,styleId:10,styleCode:'S1',description:'Shirt',orderedQuantity:10,quantity:'10',adjustmentReason:'',remark:'',hsCode:'',origin:'',color:'Blue',size:'S'}]};
@@ -40,10 +42,10 @@ try{
    if(request.method()==='POST'&&url.pathname.endsWith('/revision-draft')){assert.equal(saves.length,0);assert.ok(request.postDataJSON().reason);return r.fulfill({headers,json:{id:'revision',revision:1,clientKey:request.postDataJSON().clientKey}});}
    if(request.method()==='GET'&&url.pathname.endsWith('/drafts/revision'))return r.fulfill({headers,json:{id:'revision',revision:1,clientKey:'saved-client',buyerOrgId:2,content:{version:2,buyerOrgId:2,basis:'MANUFACTURING_SERVICE_PRICE',currency:'USD',orders:combineInvoiceSources([source]).orders,lines:combineInvoiceSources([source]).lines,percentages:{},settlements:{},fields:{number:'',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'',shipTo:'',shipmentDate:'',dueDate:'',incoterm:'',paymentTerms:''}}}});
    if((request.method()==='POST'&&url.pathname.endsWith('/drafts'))||(request.method()==='PUT'&&url.pathname.endsWith('/drafts/revision'))){
-    saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
+    saves.push(request.postDataJSON());if(failure==='save'&&!failed){failed=true;return r.fulfill({headers,status:503,json:{error:'TEST_RESULT_UNCONFIRMED'}});}return r.fulfill({headers,json:{id:'pending-1',revision:1,clientKey:saves[0].clientKey}});
    }
    if(request.method()==='POST'&&url.pathname.endsWith('/issue')){
-    issues.push({path:url.pathname,body:request.postDataJSON()});if(failure==='issue'&&!failed){failed=true;return r.abort();}return r.fulfill({headers,json:{id:'issued-1'}});
+    issues.push({path:url.pathname,body:request.postDataJSON()});if(failure==='issue'&&!failed){failed=true;return r.fulfill({headers,status:503,json:{error:'TEST_RESULT_UNCONFIRMED'}});}return r.fulfill({headers,json:{id:'issued-1'}});
    }
    throw Error(`Unexpected request: ${request.method()} ${url.pathname}`);
   });
@@ -57,11 +59,15 @@ try{
   assert.equal(await page.getByText('S1',{exact:true}).count(),0);
   assert.equal(await page.locator('textarea[aria-label^="Remark "]').count(),0);
   const grid=page.locator('fieldset table').first();
-  assert.equal(await grid.locator('thead th').count(),5);
+  assert.equal(await grid.locator('thead th').count(),7);
   assert.equal(await grid.getByRole('columnheader',{name:'S',exact:true}).count(),0);
-  assert.equal(await grid.locator('thead th').nth(2).evaluate(el=>getComputedStyle(el).textAlign),'right');
+  assert.equal(await grid.locator('thead th').nth(3).evaluate(el=>getComputedStyle(el).textAlign),'right');
+  assert.equal(await grid.locator('tbody tr').first().locator('td').nth(1).innerText(),source.orderNumber);
+  assert.equal(await grid.locator('tbody tr').first().locator('td').nth(3).innerText(),failure==='layout'?'90':'15');
   assert.equal(await grid.locator('tbody tr').count(),1);
   assert.equal(await page.locator('.invoice-party').count(),2);
+  assert.equal(await page.locator('.invoice-party').first().locator('input').first().inputValue(),'BARO');
+  assert.equal(await page.locator('.invoice-party').last().locator('input').first().inputValue(),'CUST-001');
   assert.equal(await page.locator('.invoice-cell').first().evaluate(el=>getComputedStyle(el).display),'flex');
   assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'none');
   if(failure==='layout'){
@@ -133,7 +139,7 @@ try{
   await assertSeparateCards();
   await page.locator('tbody tr').first().dblclick();assert.equal(await page.evaluate(()=>window.navigation),'/invoices/i1');
   await page.getByRole('button',{name:lang==='ko'?'다음':lang==='vi'?'Tiếp':'Next',exact:true}).click();await page.waitForFunction(()=>document.querySelector('tbody')?.textContent.includes('INV-001'));
-  await page.getByPlaceholder(lang==='ko'?'청구번호·고객·주문 검색':lang==='vi'?'Tìm số hóa đơn, khách hàng hoặc đơn hàng':'Search invoice, customer or order').fill('PO-1');
+  await page.getByPlaceholder(invoiceUi[lang].search).fill('PO-1');
   await page.waitForResponse(r=>r.url().includes('search=PO-1'));
   assert.ok(queries.some(q=>q.search==='PO-1'&&q.page==='0'));
   for(const width of [768,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await assertSeparateCards();}
@@ -155,7 +161,7 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/invoice-editor-acceptance.html?mode=workspace`);
   assert.equal(await page.locator('h1').count(),1);assert.equal(await page.locator('table').count(),0);
-  const customer=page.getByRole('textbox',{name:invoiceMessages[lang].customer,exact:true});await customer.fill('Customer');await customer.press('Enter');
+  const customer=page.getByRole('textbox',{name:invoicePartyText[lang].target,exact:true});await customer.fill('Customer');await customer.press('Enter');
   const orders=page.getByRole('button',{name:/^(청구 대상 주문|Orders to invoice|Đơn hàng cần lập hóa đơn)/});
   const apply=()=>page.getByRole('button',{name:lang==='ko'?'선택 적용':lang==='vi'?'Áp dụng':'Apply selection',exact:true}).click();
   await orders.click();await page.getByRole('dialog').getByRole('button',{name:/PO-1/}).click();await apply();

@@ -32,12 +32,13 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const [issued, setIssued] = useState({ rows: [], hasMore: false });
   const [page, setPage] = useState(0), [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
-  useWorkspaceRefreshOnEvent({ orgId, topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
+  const [revising,setRevising]=useState(false);
+  useWorkspaceRefreshOnEvent({ orgId, isBlocked:revising, topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
      onRefresh: () => setReload(value => value + 1) });
   useEffect(() => {
     if (!orgId) return;
     let cancelled = false;
-    setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null);
+    setLoading(true); setError(''); setIssued({rows:[],hasMore:false}); setDetail(null); setRevising(false);
     const timer=setTimeout(()=>requestJSON(`/invoices/issued${invoiceId?'/'+encodeURIComponent(invoiceId):''}${buildQueryString({ orgId, ...(!invoiceId?{page, search, status}:{}) })}`, { skipCache:true })
       .then(invoices=>{if(!cancelled){if(invoiceId)setDetail({...invoices,isFinalLocked:invoices.orders?.some(order=>order.workOrder?.invoiceFinalLockedAt&&order.workOrder.invoiceFinalLockInvoiceId===invoices.id)});else setIssued(invoices);}})
       .catch(()=>{if(!cancelled)setError(ui.failed);})
@@ -85,9 +86,9 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     {invoiceId&&<>
       {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
       {loading?<CircularProgress size={22}/>:detail&&<>
-        {detail.status==='ISSUED'
-          ? React.createElement(detail.documentKind==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor,{orgId,revisionInvoice:detail,languageCode,onClose:()=>navigateToPath('/invoices'),onIssued:()=>navigateToPath('/invoices')})
-          : <AppPageContainer title={d.title}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
+        {detail.status==='ISSUED'&&revising
+          ? React.createElement(detail.documentKind==='GENERAL'?GeneralInvoiceEditor:InvoiceEditor,{orgId,revisionInvoice:detail,languageCode,onClose:()=>setRevising(false),onIssued:()=>navigateToPath('/invoices')})
+          : <AppPageContainer title={d.title} titleActions={detail.status==='ISSUED'?<Button variant="outlined" onClick={()=>setRevising(true)}>{labels.revise}</Button>:undefined}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
       </>}
     </>}
   </PageContentStack>;

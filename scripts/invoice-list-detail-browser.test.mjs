@@ -37,7 +37,13 @@ try{
   }
   await page.locator('tbody tr').first().dblclick();await page.getByRole('cell',{name:/Saved item 0$/}).waitFor();assert.equal(await page.locator('iframe').count(),0);assert.equal(reads.at(-1),'/invoices/issued/i1');assert.ok(await page.locator('input,textarea').evaluateAll(inputs=>inputs.every(input=>input.readOnly)));assert.equal(await page.getByRole('button',{name:u.edit,exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:d.back,exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:d.pdf,exact:true}).count(),0);
   for(const width of [768,390]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
-  await page.evaluate(()=>window.testNavigate('/invoices'));await page.locator('[data-search-results]').getByText('INV-001',{exact:true}).waitFor();await page.locator('tbody tr').first().focus();await page.keyboard.press('Enter');await page.getByRole('heading',{name:d.title,exact:true}).waitFor();assert.deepEqual(errors,[]);await page.close();
+  invoice.status='ISSUED';
+  await page.evaluate(()=>window.testNavigate('/invoices'));await page.locator('[data-search-results]').getByText('INV-001',{exact:true}).waitFor();await page.locator('tbody tr').first().focus();await page.keyboard.press('Enter');await page.getByRole('heading',{name:d.title,exact:true}).waitFor();
+  await page.getByRole('button',{name:l.revise,exact:true}).waitFor();
+  assert.equal(await page.getByLabel(invoiceDocumentText[lang].number,{exact:true}).inputValue(),'INV-001');
+  assert.ok(await page.locator('input,textarea').evaluateAll(inputs=>inputs.every(input=>input.readOnly)));
+  assert.equal(reads.filter(path=>path.includes('order-source')).length,0);
+  assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Invoice list/detail ko/en/vi: column order, PDF-only action, real multi-page PDF blob, double-click/Enter, read-only snapshot and responsive detail passed.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}
