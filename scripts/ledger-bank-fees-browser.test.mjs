@@ -23,6 +23,7 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({showNotification:()=>{}});'}));
   await page.goto(`http://127.0.0.1:${port}/bank-fees-acceptance.html?lang=${lang}`);
   const row=page.locator('[data-entry-kind="BANK"]').first();await row.waitFor();
+  for(const header of await page.locator('thead th > span').all()){assert.equal(await header.getAttribute('title'),await header.textContent()||null);assert.equal(await header.evaluate(el=>getComputedStyle(el).textOverflow),'ellipsis');assert.ok(await header.evaluate(el=>el.getBoundingClientRect().right<=el.parentElement.getBoundingClientRect().right+1));}
   assert.equal(await page.getByTestId('ledger-bank-fees').count(),0);assert.equal(await page.locator('[data-ledger-details]').count(),0,'a single expense does not repeat payee, description or matching totals');
   const party=row.getByRole('textbox',{name:ledgerFlowText[lang].to,exact:true});assert.equal(await party.inputValue(),'MJLG / Vendor');
   await party.fill('DUP');await party.press('Enter');await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
