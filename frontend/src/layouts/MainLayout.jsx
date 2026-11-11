@@ -188,10 +188,12 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   tabsForRender,
   onTabChange,
   onCloseTab,
+  onCloseAllTabs,
   resolveRenderedTabLabel,
 }) {
   const networkLoading = useNetworkLoading();
   const { languageCode } = useLanguage();
+  const closeAllLabel = languageCode === 'ko' ? '모든 탭 닫기' : languageCode === 'vi' ? 'Đóng tất cả các tab' : 'Close all tabs';
   const tabLoadingCounts = useMemo(
     () => buildTabLoadingCounts(networkLoading.scopes),
     [networkLoading.scopes]
@@ -215,7 +217,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   }
 
   return (
-    <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', borderBottom: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
       <Tabs
         value={activeTabValue}
         onChange={onTabChange}
@@ -223,6 +225,8 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
         scrollButtons="auto"
         aria-label="open pages tabs"
         sx={{
+          flex: 1,
+          minWidth: 0,
           minHeight: '40px',
           '& .MuiTabs-indicator': {
             height: '2px',
@@ -295,6 +299,11 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
           );
         })}
       </Tabs>
+      <Tooltip title={closeAllLabel}>
+        <IconButton aria-label={closeAllLabel} onClick={onCloseAllTabs} size="small" sx={{ flexShrink: 0, mx: 1 }}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 });
@@ -1556,6 +1565,20 @@ const MainLayout = () => {
     schedulePendingNavigationCleanup,
   ]);
 
+  const handleCloseAllTabs = React.useCallback(() => {
+    if (!confirmDiscardUnsavedChanges()) return;
+    const sourcePath = currentPathRef.current;
+    const activeTab = openTabs.find(tab => tab.id === sourcePath);
+    skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
+    pendingCloseTabRef.current = activeTab?.id || null;
+    pendingManualTabCloseRef.current = activeTab ? { tabId: activeTab.id, targetPath: EMPTY_WORKSPACE_PATH, sourcePath } : null;
+    pendingNavigationPathRef.current = EMPTY_WORKSPACE_PATH;
+    recentTabHistoryRef.current = [];
+    openTabs.filter(tab => tab.id !== activeTab?.id).forEach(tab => closeTab(tab.id));
+    navigate(EMPTY_WORKSPACE_PATH, { replace: true });
+    schedulePendingNavigationCleanup(currentPathRef.current, EMPTY_WORKSPACE_PATH);
+  }, [confirmDiscardUnsavedChanges, openTabs, closeTab, navigate, schedulePendingNavigationCleanup]);
+
   const isCurrentPathKeepAlive = isKeepAliveCandidatePath(currentPath);
   const shouldRenderLiveOutlet =
     !isCurrentPathKeepAlive || !mountedTabOutlets.has(currentPath);
@@ -1887,6 +1910,7 @@ const MainLayout = () => {
           tabsForRender={tabsForRender}
           onTabChange={handleTabChange}
           onCloseTab={handleCloseTab}
+          onCloseAllTabs={handleCloseAllTabs}
           resolveRenderedTabLabel={resolveRenderedTabLabel}
         />
 

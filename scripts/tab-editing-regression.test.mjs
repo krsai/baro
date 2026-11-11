@@ -116,3 +116,13 @@ test('failed refresh stays pending without a request loop and succeeds on the ne
     assert.equal(context.pendingRefreshRef.current, false);
   }
 });
+
+test('close all confirms every dirty tab before changing anything and closes the active tab after neutral navigation',()=>{
+ const source=fs.readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
+ const callback=source.slice(source.indexOf('  const handleCloseAllTabs ='),source.indexOf('  const isCurrentPathKeepAlive ='));
+ const calls=[],refs={skipAutoOpenPathRef:{current:null},pendingCloseTabRef:{current:null},pendingManualTabCloseRef:{current:null},pendingNavigationPathRef:{current:null},recentTabHistoryRef:{current:['/style','/work']},currentPathRef:{current:'/work'}};
+ let allow=false;
+ const context=vm.createContext({...refs,React:{useCallback:fn=>fn},EMPTY_WORKSPACE_PATH:'/workspace',openTabs:[{id:'/style'},{id:'/work'}],confirmDiscardUnsavedChanges:(options)=>{calls.push(['confirm',options]);return allow;},closeTab:id=>calls.push(['close',id]),navigate:(...args)=>calls.push(['navigate',...args]),schedulePendingNavigationCleanup:(...args)=>calls.push(['cleanup',...args])});
+ vm.runInContext(callback+'globalThis.closeAll=handleCloseAllTabs;',context);context.closeAll();assert.deepEqual(calls,[['confirm',undefined]]);assert.equal(refs.pendingCloseTabRef.current,null);assert.equal(refs.recentTabHistoryRef.current.length,2);
+ allow=true;calls.length=0;context.closeAll();assert.deepEqual(calls[0],['confirm',undefined]);assert.deepEqual(calls[1],['close','/style']);assert.equal(calls[2][0],'navigate');assert.equal(calls[2][1],'/workspace');assert.equal(calls[2][2].replace,true);assert.equal(refs.pendingCloseTabRef.current,'/work');assert.equal(refs.pendingManualTabCloseRef.current.targetPath,'/workspace');assert.equal(refs.recentTabHistoryRef.current.length,0);
+});
