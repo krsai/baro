@@ -388,7 +388,11 @@ test('all-account activity and modal totals keep currencies separate and balance
 test('all-account pagination includes the prior running balance and voided rows do not affect totals',async()=>{
  const pg=await fixture(),db=ledgerDatabase(pg);try{
   await pg.exec(`INSERT INTO "BankLedgerEntry"(id,"orgId","accountId","clientKey","transactionDate",direction,amount,purpose,"evidenceNumber","createdBy") SELECT 'bulk'||lpad(n::text,3,'0'),1,'a','bulk'||n,'2026-01-02','IN',1,'Batch','scan.pdf','actor' FROM generate_series(1,101) n;UPDATE "BankLedgerEntry" SET "voidedAt"=now(),"voidedBy"='actor',"voidReason"='wrong' WHERE id='bulk001'`);
-  const result=await listLedgerActivity(db,1,{start:'2026-01-02',end:'2026-01-02',page:1});assert.equal(result.rows.length,1);assert.equal(result.rows[0].balance,'101.00');assert.equal(result.accounts[0].totalIn,'100.00');
+  const first=await listLedgerActivity(db,1,{start:'2026-01-02',end:'2026-01-02',page:0});
+  assert.equal(first.rows.length,100);assert.equal(first.hasMore,true);
+  assert.equal(first.rows[0].id,'bulk101');assert.equal(first.rows[0].balance,'101.00');
+  assert.equal(first.rows[99].id,'bulk002');assert.equal(first.rows[99].balance,'2.00');
+  const result=await listLedgerActivity(db,1,{start:'2026-01-02',end:'2026-01-02',page:1});assert.equal(result.rows.length,1);assert.equal(result.rows[0].id,'bulk001');assert.equal(result.rows[0].balance,'1.00');assert.equal(result.accounts[0].totalIn,'100.00');
  }finally{await pg.close();}
 });
 
@@ -404,7 +408,7 @@ test('dated reconciliation sets start-of-day balance and retains same-day and la
   assert.equal((await readLedgerAccounts(db,1))[0].currentBalance,'115.00');
   assert.equal((await readLedgerAccounts(db,1,'2026-01-02',true))[0].currentBalance,'100.00');
   const activity=await listLedgerActivity(db,1,{start:'2026-01-02',end:'2026-01-03'});
-  assert.equal(activity.rows[0].id,result.entryIds[0]);assert.deepEqual(activity.rows.map(r=>r.balance),['100.00','120.00','115.00']);
+  assert.equal(activity.rows.at(-1).id,result.entryIds[0]);assert.deepEqual(activity.rows.map(r=>r.balance),['115.00','120.00','100.00']);
   assert.deepEqual(await reconcileLedgerBalances(db,scope,body),result);
   await assert.rejects(reconcileLedgerBalances(db,scope,{...body,clientKey:randomUUID()}),/BALANCE_CHANGED/);
   const again={...body,clientKey:randomUUID(),accounts:[{...body.accounts[0],expectedBalance:'100',targetBalance:'100'}]};assert.deepEqual(await reconcileLedgerBalances(db,scope,again),{entryIds:[]});

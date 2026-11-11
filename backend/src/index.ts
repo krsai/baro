@@ -27551,7 +27551,7 @@ app.get("/partner-transaction-costs", async (req, res) => {
   if (!access) return;
   const period = await loadManagementPeriod(prisma,access.organization.id);
   const transactionDate = managedDateRange(period,req.query);
-  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}] }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }));
+  return res.json(await prisma.partnerTransactionCost.findMany({ where: { orgId: access.organization.id, transactionDate,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}] }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] }));
 });
 registerEntityBankRoutes(app,prisma,{requireOrgRole,getActor:getCurrentRequestActorEmployeeId,loadPolicy:loadRoleAccessPolicySetting});
 registerPartnerEditorRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
@@ -27589,7 +27589,7 @@ app.get('/expense-requests', async (req, res) => {
   const period = await loadManagementPeriod(prisma, orgId);
   const requestDate = managedDateRange(period, req.query);
   const rows = await prisma.expenseRequest.findMany({ where: { orgId, requestDate,deletedAt:null }, include: EXPENSE_REQUEST_INCLUDE,
-    orderBy: [{ requestDate: 'desc' }, { id: 'desc' }] });
+    orderBy: [{ requestDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] });
   const approvedRows=await attachExpenseApprovalStates(prisma,orgId,rows);
   const deletableRows=await attachExpenseDeletionAvailability(prisma,orgId,approvedRows,access.employee);
   return res.json(await Promise.all(deletableRows.map(async row => ({ ...row,...(row.paymentSchedule?.length?{paymentSchedule:await expensePaymentScheduleStatus(prisma,orgId,row.id)}:{}),partner:row.partner||employeePayee(row.payeeEmployee), ...expenseRequestTotals(row.items) }))));
@@ -27822,7 +27822,7 @@ app.get("/business-partners/:id/history", async (req, res) => {
   });
   res.json({
     partner: (await attachPartnerClassifications(prisma,organization.id,[toBusinessPartnerResponse(partner)]))[0],
-    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}], transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }] }),
+    costs: await prisma.partnerTransactionCost.findMany({ where: { orgId: organization.id, partnerOrgId: id,OR:[{expenseRequestId:null},{expenseRequest:{deletedAt:null}}], transactionDate: { gte: period.startDate } }, include: costInclude, orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] }),
     records: records.map((record) => ({
       id: record.id,
       workDate: record.workLog?.displayDate || null,

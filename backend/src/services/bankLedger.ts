@@ -235,16 +235,18 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
   const selectedAccountId=selectedAccount?.id||'';
   const totals=await tx.bankLedgerEntry.groupBy({by:['accountId','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:end}},_sum:{amount:true}});
   const summary=accounts.map((account:any)=>({...account,totalIn:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='IN')?._sum.amount||'0'),account.currencyCode),totalOut:ledgerMoney(ledgerScale4(totals.find((r:any)=>r.accountId===account.id&&r.direction==='OUT')?._sum.amount||'0'),account.currencyCode)}));
-  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'asc'},{evidenceType:'asc'},{createdAt:'asc'},{id:'asc'}],skip:page*100,take:101,include:{internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
+  const rows=await tx.bankLedgerEntry.findMany({where:{orgId,...(String(query.includeVoided)==='0'?{voidedAt:null}:{}),...(selectedAccountId?{accountId:selectedAccountId}:{}),transactionDate:{gte:start,lte:end}},orderBy:[{transactionDate:'desc'},{evidenceType:'desc'},{createdAt:'desc'},{id:'desc'}],skip:page*100,take:101,include:{internalTransferMirror:{select:{id:true}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}},settlementLines:{orderBy:{createdAt:'asc'},include:{accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{include:{expenseType:true}}}}}}}});
   const pending=rows.length?await tx.changeApprovalRequest.findMany({where:{orgId,menu:'BANK_LEDGER',status:'PENDING',ledgerEntryId:{in:rows.slice(0,100).flatMap((row:any)=>[row.id,row.internalTransferSourceId,row.internalTransferMirror?.id].filter(Boolean))}},select:{ledgerEntryId:true}}):[];
+  // Calculate each balance in ledger order, then return the page newest first.
+  const chronologicalRows=rows.slice(0,100).reverse();
   const balances=new Map<string,bigint>();
-  for(const row of rows.slice(0,100))if(!balances.has(row.accountId)){
+  for(const row of chronologicalRows)if(!balances.has(row.accountId)){
    const account=accounts.find((a:any)=>a.id===row.accountId);
    if(!account)return fail('LEDGER_ACCOUNT_NOT_FOUND',404);
    const prefix={OR:[{transactionDate:{lt:row.transactionDate}},{transactionDate:row.transactionDate,evidenceType:{lt:row.evidenceType}},{transactionDate:row.transactionDate,evidenceType:row.evidenceType,createdAt:{lt:row.createdAt}},{transactionDate:row.transactionDate,evidenceType:row.evidenceType,createdAt:row.createdAt,id:{lt:row.id}}]};
    balances.set(row.accountId,ledgerScale4(account.openingBalance)+delta(await sums(tx,{orgId,accountId:row.accountId,...prefix})));
   }
-  const result=rows.slice(0,100).map((row:any)=>{
+  const result=chronologicalRows.map((row:any)=>{
    const account=accounts.find((a:any)=>a.id===row.accountId);let balance=balances.get(row.accountId)!;
    if(!row.voidedAt)balance+=(row.direction==='IN'?1n:-1n)*ledgerScale4(row.amount);balances.set(row.accountId,balance);
    return {...row,changePending:pending.some((request:any)=>[row.id,row.internalTransferSourceId,row.internalTransferMirror?.id].includes(request.ledgerEntryId)),currencyCode:account.currencyCode,accountName:account.displayName||[account.bankName,account.accountNumber].filter(Boolean).join(' / '),amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),balance:ledgerMoney(balance,account.currencyCode)};
@@ -253,7 +255,7 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
    const same=summary.filter((a:any)=>a.currencyCode===code),sum=(field:string)=>ledgerMoney(same.reduce((s:bigint,a:any)=>s+ledgerScale4(a[field]),0n),code);
    return {currencyCode:code,totalIn:sum('totalIn'),totalOut:sum('totalOut'),currentBalance:sum('currentBalance')};
   });
-  return {accounts:summary,currencyTotals,rows:await attachLedgerActorNames(tx,orgId,result),selectedAccountId,page,hasMore:rows.length>100};
+  return {accounts:summary,currencyTotals,rows:await attachLedgerActorNames(tx,orgId,result.reverse()),selectedAccountId,page,hasMore:rows.length>100};
  });
 }
 export async function searchLedgerEvidence(db:any,orgId:number,query:any){

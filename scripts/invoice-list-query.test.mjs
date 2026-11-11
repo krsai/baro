@@ -11,6 +11,7 @@ function harness(){
 test('invoice list searches before pagination and preserves seller scope and original-order lookup',async()=>{
  const app=harness();const result=await app.run({page:'2',search:'PO-1',status:'ISSUED'});
  assert.equal(result.status,200);const query=app.calls[0];assert.equal(query.where.sellerOrgId,7);assert.equal(query.where.status,'ISSUED');assert.equal(query.skip,60);assert.equal(query.take,31);
+ assert.deepEqual(query.orderBy,[{issuedAt:'desc'},{id:'desc'}]);
  assert.ok(query.where.OR.some(item=>item.invoiceNumber?.contains==='PO-1'));assert.ok(query.where.OR.some(item=>item.orders?.some.sourceOrderNumber.contains==='PO-1'));
  assert.ok(query.where.OR.some(item=>item.snapshot?.path.join('.')==='fields.buyer.name'));
  const buyer=query.where.OR.find(item=>item.buyer).buyer;
