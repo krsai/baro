@@ -115,8 +115,8 @@ test('Prisma/PostgreSQL: own-customer drafts, exact retries, issue, immutable sn
    const family=await db.invoice.findMany({where:{sellerOrgId:org},include:{payments:true,credits:true}}),balance=invoiceFamilyBalance(family,invoice.id);
    assert.equal(balance.receivedAmount,'400.0000');assert.equal(balance.debtAmount,'1500.0000');
    assert.equal(await db.workOrder.count(),0);
-   await cancelIssuedInvoice(db,org,'actor',issued.id,'Cancelled purchase');
-   assert.equal((await db.invoice.findUnique({where:{id:issued.id}})).status,'CANCELLED');
+   await assert.rejects(cancelIssuedInvoice(db,org,'actor',issued.id,'Cancelled purchase'),/CHANGE_APPROVAL_REQUIRED/);
+   assert.equal((await db.invoice.findUnique({where:{id:issued.id}})).status,'ISSUED');
   });
  }finally{await f.close();}
 });

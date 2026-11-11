@@ -1,3 +1,6 @@
+import ChangeApprovalDialog from '../../../components/ChangeApprovalDialog';
+import DeleteActionButton from '../../../components/DeleteActionButton';
+import {changeApprovalText} from '../../../constants/changeApprovals';
 import dayjs from 'dayjs';
 import DateRangeSelector from '../../../components/DateRangeSelector';
 import {ledgerFlowText} from '../../../constants/ledgerFlow';
@@ -8,7 +11,7 @@ import {ACCOUNTING_CODE_TEXT} from '../../../constants/accountingCode';
 import PageContentStack from '../../../components/PageContentStack';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchPanel from '../../../components/SearchPanel';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Alert, Button, CircularProgress, Box, Paper, MenuItem, TextField, Stack, Table, TableBody, TableCell, TableHead, TableRow, Typography } from '@mui/material';
 import { requestJSON, buildQueryString } from '../../../utils/apiClient';
 import { invoiceMessages } from '../../../constants/invoiceMessages';
@@ -30,7 +33,8 @@ import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEven
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 export default function InvoiceList({ orgId, languageCode, invoiceId }) {
-  const {navigateToPath}=useAppActions();
+  const {navigateToPath,showNotification}=useAppActions();const approval=useRef(null),[requesting,setRequesting]=useState(false);const change=changeApprovalText[languageCode]||changeApprovalText.en;
+  const cancelInvoice=async row=>{setRequesting(true);try{const result=await approval.current.prepare({menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:row.id});if(result){setReload(n=>n+1);showNotification(change.submitted);}}finally{setRequesting(false);}};
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const [start,setStart]=useState(()=>dayjs().startOf('month')),[end,setEnd]=useState(()=>dayjs());
   const flow=ledgerFlowText[languageCode]||ledgerFlowText.en,entry=ledgerEntryText[languageCode]||ledgerEntryText.en,bank=bankLedgerMessages[languageCode]||bankLedgerMessages.en,workspace=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
@@ -42,7 +46,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const [page, setPage] = useState(0), [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
   const [revising,setRevising]=useState(false);
-  useWorkspaceRefreshOnEvent({ orgId, isBlocked:revising, topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
+  useWorkspaceRefreshOnEvent({ orgId, isBlocked:revising||requesting, topics: [WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, WORKSPACE_DATA_TOPICS.ISSUED_INVOICES],
      onRefresh: () => setReload(value => value + 1) });
   useEffect(() => {
     if (!orgId) return;
@@ -75,9 +79,9 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     <Paper data-search-results variant="outlined" sx={{borderRadius:2,overflow:'hidden'}}>
     {error&&<Alert severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{common.retry}</Button>}>{error}</Alert>}
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
-      {[common.issuedDate,flow.from,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF'].map((label,index)=><TableCell key={index} align={index>=6&&index<=8?'right':'left'}>{label}</TableCell>)}
+      {[common.issuedDate,flow.from,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF',change.DELETE].map((label,index)=><TableCell key={index} align={index>=6&&index<=8?'right':'left'}>{label}</TableCell>)}
     </TableRow></TableHead><TableBody>
-      {loading?<TableRow><TableCell colSpan={12} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={12} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
+      {loading?<TableRow><TableCell colSpan={13} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={13} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
         <TableCell>{row.sellerName||'\u2014'}</TableCell><TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography></TableCell>
@@ -85,6 +89,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <TableCell align="right">{amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
         <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
+        <TableCell data-table-actions><DeleteActionButton aria-label={change.requestCancel} disabled={loading||requesting||row.status!=='ISSUED'} onClick={event=>{event.stopPropagation();cancelInvoice(row);}}/></TableCell>
       </TableRow>)}
     </TableBody></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><Stack direction="row" alignItems="center" spacing={1}><Button disabled={!page||loading} onClick={()=>setPage(v=>v-1)}>{common.previous}</Button><Typography variant="caption">{page+1}</Typography><Button disabled={!issued.hasMore||loading} onClick={()=>setPage(v=>v+1)}>{common.next}</Button></Stack></Stack>
@@ -98,5 +103,6 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
           : <AppPageContainer title={d.title} titleActions={detail.status==='ISSUED'?<Button variant="outlined" onClick={()=>setRevising(true)}>{labels.revise}</Button>:undefined}><InvoiceIssuedForm invoice={detail} languageCode={languageCode}/></AppPageContainer>}
       </>}
     </>}
+  <ChangeApprovalDialog ref={approval} orgId={orgId} languageCode={languageCode}/>
   </PageContentStack>;
 }

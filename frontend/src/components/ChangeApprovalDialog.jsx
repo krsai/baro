@@ -20,11 +20,11 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
   const chosen={...selection,...Object.fromEntries((preview?.stages||[]).filter(s=>s.employeeId).map(s=>[s.key+'EmployeeId',s.employeeId]))};
   if(input.selectionOnly){locked.current=false;setBusy(false);finish({selection:chosen,preview});return;}
   submitted.current=submitted.current||{...input,reason:reason.trim(),selection:chosen,clientKey:key.current};
-  try{const result=await requestJSON('/change-approval-requests'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(submitted.current)});emitWorkspaceDataChanged({orgId,source:'change-approval',topics:['change-approvals','bank-ledger','expense-requests']});if(scope.current===company)finish(result);}
+  try{const result=await requestJSON('/change-approval-requests'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(submitted.current)});emitWorkspaceDataChanged({orgId,source:'change-approval',topics:['change-approvals','bank-ledger','expense-requests','issued-invoices']});if(scope.current===company)finish(result);}
   catch(e){if(scope.current===company){const unknown=!e.status||e.status>=500;setUncertain(unknown);setError(unknown?t.uncertain:changeApprovalError(e,t));if(!unknown)submitted.current=null;}}
   finally{locked.current=false;if(scope.current===company)setBusy(false);}
  };
- return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.operation==='CREATE'?t.CREATE:input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
+ return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.menu==='INVOICE'?t.requestCancel:input?.operation==='CREATE'?t.CREATE:input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
   {loading&&<LinearProgress/>}{error&&<Alert severity="error">{error}</Alert>}
   <Typography variant="body2">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography>
   <TextField fullWidth label={t.reason} required={input?.operation==='DELETE'} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();submitted.current=null;}}/>

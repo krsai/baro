@@ -1,3 +1,4 @@
+import {cancelIssuedInvoice} from './invoiceIssueStore';
 import {calculateRequestAmounts} from './transactionRequest';
 import {approvalDelegate,delegationData,delegatedChangeIds} from './approvalDelegation';
 import {normalizeExpensePaymentSchedule,validateExpensePaymentScheduleTotals} from './expensePaymentSchedule';
@@ -22,6 +23,16 @@ const person={orgId:true,id:true,name:true,orgRole:true,gradeId:true,status:true
 async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  const menu=String(input.menu),operation=String(input.operation),kind=String(input.sourceKind||'request'),id=String(input.sourceId||'');
  approvalActionKey(orgId,menu,operation);if(!/^[-\w]{1,100}$/.test(id))fail('CHANGE_INVALID_SOURCE',400);
+ if(menu==='INVOICE'){
+  if(operation!=='DELETE'||kind!=='invoice')fail('CHANGE_INVALID_SOURCE',400);
+  if(lock){await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);await db.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',id,orgId);}
+  const invoice=await db.invoice.findFirst({where:{id,sellerOrgId:orgId},include:{orders:true,generalLines:true,payments:{include:{allocations:true}},credits:true}});
+  if(!invoice)fail('INVOICE_NOT_FOUND',404);if(invoice.status!=='ISSUED')fail('CHANGE_SOURCE_CHANGED');
+  if(invoice.payments.some((p:any)=>!p.voidedAt)||await db.bankLedgerEvidenceAllocation.findFirst({where:{invoiceId:id,entry:{orgId,voidedAt:null}}}))fail('INVOICE_ACTIVE_PAYMENT');
+  if(await db.workOrder.findFirst({where:{sellerOrgId:orgId,invoiceFinalLockInvoiceId:id}}))fail('INVOICE_FINAL_LOCK_UNLOCK_REQUIRED');
+  if(await db.invoiceOrder.findFirst({where:{sourceOrderId:{in:invoice.orders.map((r:any)=>r.sourceOrderId)},invoice:{sellerOrgId:orgId,status:'ISSUED',sequenceNumber:{gt:invoice.sequenceNumber}}}}))fail('INVOICE_CANCEL_REVERSE_ORDER_REQUIRED');
+  return {menu,operation,kind:'invoice',id,revision:digest(invoice),version:null,snapshot:{invoice:json(invoice)},items:[{currency:invoice.currencyCode,unitPrice:String(invoice.total),quantity:'1',vatRate:'0'}]};
+ }
  if(menu==='BANK_LEDGER'&&operation==='CREATE')return ledgerRegistrationSource(db,orgId,{...input,allowIncomplete:!lock});
  if(operation==='CREATE')fail('CHANGE_INVALID_SOURCE',400);
  if(menu==='BANK_LEDGER'){
@@ -40,6 +51,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  return {menu,operation,kind:current.kind,id:current.id,revision:expenseEditorRevision(current),version:current.document?.version??null,snapshot:json(current),expense:current,items:current.costs.map((c:any)=>({currency:c.currency,unitPrice:String(c.amount),quantity:'1',vatRate:'0'}))};
 }
 function assertParticipant(actor:any,s:any){
+ if(s.menu==='INVOICE'){if(!['ADMIN','ACCOUNTANT','OPERATOR'].includes(actor.orgRole))fail('INVOICE_ACCESS_DENIED',403);return;}
  if(s.menu==='BANK_LEDGER'){if(!['ADMIN','ACCOUNTANT'].includes(actor.orgRole)||s.entry.evidenceType==='ADJUSTMENT'&&actor.orgRole!=='ADMIN')fail('LEDGER_ACCESS_DENIED',403);return;}
  const doc=s.expense.document;if(doc&&actor.orgRole!=='ADMIN'&&doc.createdByEmployeeId!==actor.id&&!doc.approvalSteps.some((step:any)=>step.employeeId===actor.id))fail('EXPENSE_DELETE_NOT_PARTICIPANT',403);
 }
@@ -104,12 +116,13 @@ export async function requestChangeApproval(db:any,orgId:number,actorId:number,i
   const payload=input.operation!=='DELETE'?json(input.payload):{};
   if(s.menu==='EXPENSE'&&s.operation==='UPDATE'){cashScheduleDate(payload?.scheduledPaymentDate);for(const [index,item] of (payload?.items||[]).entries()){const rows=normalizeExpensePaymentSchedule(item?.paymentSchedule);if(rows.length){const expenseItemId=String(index);validateExpensePaymentScheduleTotals(rows.map(row=>({...row,expenseItemId})),[{id:expenseItemId,currency:item.currency,amount:calculateRequestAmounts(item.unitPrice,item.quantity,item.currency,item.vatRate).amount}]);}}}
   if(s.menu==='EXPENSE'&&input.operation==='UPDATE'&&(payload.revision!==s.revision||payload.version!==s.version))fail('CHANGE_SOURCE_CHANGED');
-  const created=await tx.changeApprovalRequest.create({data:{orgId,clientKey:input.clientKey,requestHash,menu:s.menu,operation:s.operation,sourceKind:s.kind,sourceId:s.id,expenseRequestId:s.expense?.document?.id??null,ledgerEntryId:s.menu==='BANK_LEDGER'&&s.operation!=='CREATE'?s.id:null,legacyCostId:s.kind==='cost'?s.id:null,legacyRecordId:s.kind==='legacy'?Number(s.id):null,sourceVersion:s.version,revision:s.revision,requestedByEmployeeId:actorId,reason,beforeSnapshot:s.snapshot,payload,policy}});
+  const created=await tx.changeApprovalRequest.create({data:{orgId,clientKey:input.clientKey,requestHash,menu:s.menu,operation:s.operation,sourceKind:s.kind,sourceId:s.id,expenseRequestId:s.expense?.document?.id??null,ledgerEntryId:s.menu==='BANK_LEDGER'&&s.operation!=='CREATE'?s.id:null,invoiceId:s.menu==='INVOICE'?s.id:null,legacyCostId:s.kind==='cost'?s.id:null,legacyRecordId:s.kind==='legacy'?Number(s.id):null,sourceVersion:s.version,revision:s.revision,requestedByEmployeeId:actorId,reason,beforeSnapshot:s.snapshot,payload,policy}});
   return automaticResult(tx,db,orgId,actorId,created,gates);
  },60000);
 }
 async function applyChange(tx:any,db:any,orgId:number,actor:any,row:any,s:any,gates:any){
  await tx.$queryRawUnsafe("SELECT set_config('baro.change_request_id',$1,true),set_config('baro.change_approver',$2,true)",row.id,String(actor.id));
+ if(row.menu==='INVOICE')return cancelIssuedInvoice(tx,orgId,actor.email||String(actor.id),s.id,row.reason,true);
  if(row.menu==='BANK_LEDGER'){
   if(row.operation==='CREATE'){const requester=await tx.employee.findFirst({where:{id:row.requestedByEmployeeId,orgId,status:'ACTIVE'}});return postLedgerSettlementBatch(db,orgId,requester.email||String(requester.id),row.payload,tx);}
   if(s.entry.evidenceType==='ADJUSTMENT'&&actor.orgRole!=='ADMIN')fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);
@@ -172,9 +185,9 @@ export async function listChangeApprovals(db:any,orgId:number,actorId:number){
 }
 export function registerChangeApprovalRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;const actorId=gates.actorId();if(!actorId||!await db.employee.findFirst({where:{id:actorId,orgId:ctx.organization.id,status:'ACTIVE'}}))fail('ACTIVE_EMPLOYEE_REQUIRED',403);return {orgId:ctx.organization.id,actorId,ctx};};
- const submission=async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return null;if(req.body?.menu==='BANK_LEDGER'){const policy=(await gates.loadPolicy()).policy;if(!['ADMIN','ACCOUNTANT'].includes(scope.ctx.employee?.orgRole)||!policy?.[scope.ctx.organization.type]?.[scope.ctx.employee.orgRole]?.includes('BANK_LEDGER'))fail('LEDGER_ACCESS_DENIED',403);}return scope;};
+ const submission=async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return null;if(req.body?.menu==='INVOICE'){if(!['ADMIN','ACCOUNTANT','OPERATOR'].includes(scope.ctx.employee?.orgRole)||!await gates.canAccess?.({orgType:scope.ctx.organization.type,orgRole:scope.ctx.employee.orgRole,feature:'INVOICE'}))fail('INVOICE_ACCESS_DENIED',403);}if(req.body?.menu==='BANK_LEDGER'){const policy=(await gates.loadPolicy()).policy;if(!['ADMIN','ACCOUNTANT'].includes(scope.ctx.employee?.orgRole)||!policy?.[scope.ctx.organization.type]?.[scope.ctx.employee.orgRole]?.includes('BANK_LEDGER'))fail('LEDGER_ACCESS_DENIED',403);}return scope;};
  app.post('/change-approval-preview',async(req:any,res:any)=>{const scope=await submission(req,res);if(scope)res.json((await previewChangeApproval(db,scope.orgId,scope.actorId,req.body)).preview);});
  app.post('/change-approval-requests',async(req:any,res:any)=>{const scope=await submission(req,res);if(scope)res.json(await requestChangeApproval(db,scope.orgId,scope.actorId,req.body,gates));});
- app.get('/change-approval-requests',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await listChangeApprovals(db,scope.orgId,scope.actorId));});
- app.post('/change-approval-requests/:id/decision',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const result=await decideChangeApproval(db,scope.orgId,scope.actorId,req.params.id,req.body,gates);if(result.result?.assignmentPlanIds?.length)await gates.syncProduction?.(scope.orgId,result.result.assignmentPlanIds);res.json(result);});
+ app.get('/change-approval-requests',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){const rows=await listChangeApprovals(db,scope.orgId,scope.actorId),invoiceAccess=await gates.canAccess?.({orgType:scope.ctx.organization.type,orgRole:scope.ctx.employee?.orgRole,feature:'INVOICE'});res.json(rows.filter((row:any)=>row.menu!=='INVOICE'||invoiceAccess));}});
+ app.post('/change-approval-requests/:id/decision',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;const target=await db.changeApprovalRequest.findFirst({where:{id:req.params.id,orgId:scope.orgId},select:{menu:true}});if(target?.menu==='INVOICE'&&!await gates.canAccess?.({orgType:scope.ctx.organization.type,orgRole:scope.ctx.employee?.orgRole,feature:'INVOICE'}))fail('INVOICE_ACCESS_DENIED',403);const result=await decideChangeApproval(db,scope.orgId,scope.actorId,req.params.id,req.body,gates);if(result.result?.assignmentPlanIds?.length)await gates.syncProduction?.(scope.orgId,result.result.assignmentPlanIds);res.json(result);});
 }

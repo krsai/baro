@@ -1,5 +1,5 @@
 import { saveInvoiceDraft, deleteInvoiceDraft } from "../services/invoiceDraftStore";
-import { cancelIssuedInvoice, createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
+import { createInvoiceRevisionDraft, issueInvoiceDraft, recordInvoicePayment, replaceInvoicePaymentAllocations, voidInvoicePayment } from "../services/invoiceIssueStore";
 import { approveInvoiceFinalLock, unlockInvoiceFinalLock, unlockInvoiceFinalLocksForInvoice } from "../services/invoiceFinalLock";
 import { invoiceFinalReview } from '../services/invoiceFinalReview';
 import { invoiceFamily, invoiceFamilyBalance } from '../services/invoiceSettlement';
@@ -154,8 +154,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
   });
   app.post("/invoices/issued/:id/cancel", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
-    const row = await cancelIssuedInvoice(db, access.organization.id, actor(req) || "unknown", req.params.id, req.body?.reason);
-    res.setHeader("Cache-Control", "no-store"); return res.json(row);
+    return res.status(409).json({error:"CHANGE_APPROVAL_REQUIRED"});
   });
   app.post("/invoices/issued/:id/payments", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;

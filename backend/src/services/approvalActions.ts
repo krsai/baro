@@ -1,7 +1,7 @@
 import {createHttpError} from '../utils/http';
 import {defaultApprovalSettings,validateApprovalSettings} from './expenseApproval';
 import {defaultLedgerRegistration,validateLedgerRegistration} from './ledgerRegistration';
-export const approvalActions=(menu:string)=>['EXPENSE','BANK_LEDGER'].includes(menu)?['CREATE','UPDATE','DELETE']:[];
+export const approvalActions=(menu:string)=>menu==='INVOICE'?['DELETE']:['EXPENSE','BANK_LEDGER'].includes(menu)?['CREATE','UPDATE','DELETE']:[];
 export function approvalActionKey(orgId:number,menu='EXPENSE',operation='CREATE'){
  if(!approvalActions(menu).includes(operation))throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
  return menu==='EXPENSE'&&operation==='CREATE'?`EXPENSE_APPROVAL_POLICY:${orgId}`:`APPROVAL_POLICY:${menu}:${operation}:${orgId}`;
@@ -13,8 +13,8 @@ export async function approvalActionSettings(db:any,orgId:number,menu:string,ope
  return {key,stored,value:stored?.value||(fallback?{...fallback.value,revision:0}:null),inherited:!stored&&key!==`EXPENSE_APPROVAL_POLICY:${orgId}`};
 }
 export async function saveApprovalActionBatch(db:any,orgId:number,actorId:number,changes:any){
- if(!Array.isArray(changes)||!changes.length||changes.length>6)throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
- if(changes.some(change=>!['EXPENSE','BANK_LEDGER'].includes(change?.menu)||!approvalActions(change.menu).includes(change?.operation)))throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
+ if(!Array.isArray(changes)||!changes.length||changes.length>7)throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
+ if(changes.some(change=>!['EXPENSE','BANK_LEDGER','INVOICE'].includes(change?.menu)||!approvalActions(change.menu).includes(change?.operation)))throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
  const keys=changes.map(change=>approvalActionKey(orgId,change?.menu,change?.operation));
  if(new Set(keys).size!==keys.length)throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
  return db.$transaction(async(tx:any)=>{

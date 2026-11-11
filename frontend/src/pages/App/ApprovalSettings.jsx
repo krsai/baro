@@ -17,7 +17,6 @@ import {approvalSettingsText} from '../../constants/approvalSettings';
 import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import {approvalBandOrderErrors,cleanApprovalBands,invalidApprovalBands} from '../../utils/approvalBands.mjs';
 
-const operations=['CREATE','UPDATE','DELETE'];
 const keyFor=(menu,operation)=>menu+':'+operation;
 const registrationFor=(menu,operation)=>menu==='BANK_LEDGER'&&operation==='CREATE';
 const formFrom=(settings,registration)=>{
@@ -32,6 +31,7 @@ function CompanyApprovalSettings({activeOrgId}){
  const {languageCode}=useLanguage(),{showNotification}=useAppActions();
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,actionText=changeApprovalText[languageCode]||changeApprovalText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
  const [menu,setMenu]=useState('EXPENSE'),[entries,setEntries]=useState({}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
+ const operations=menu==='INVOICE'?['DELETE']:['CREATE','UPDATE','DELETE'];
  const lock=useRef(false),scope=useRef(activeOrgId),live=useRef(true);scope.current=activeOrgId;
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{let alive=true;setLoading(true);
@@ -59,7 +59,7 @@ function CompanyApprovalSettings({activeOrgId}){
  };
  return <AppPageContainer title={t.title} titleActions={<SaveButton loading={saving} disabled={disabled||!dirty.length||invalid} onClick={save}>{t.save}</SaveButton>} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={3} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
-   <TextField select size="small" label={subject.label} value={menu} disabled={saving} onChange={event=>{setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER'].map(key=><MenuItem key={key} value={key}>{actionText[key]}</MenuItem>)}</TextField>
+   <TextField select size="small" label={subject.label} value={menu} disabled={saving} onChange={event=>{setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER','INVOICE'].map(key=><MenuItem key={key} value={key}>{actionText[key]}</MenuItem>)}</TextField>
    {error&&<Alert severity="error">{error}</Alert>}
    {operations.map(operation=><ApprovalOperationSettings key={keyFor(menu,operation)} entry={entries[keyFor(menu,operation)]} menu={menu} operation={operation} disabled={disabled} onChange={patch=>update(operation,patch)} onReload={()=>setReload(value=>value+1)} languageCode={languageCode}/>)}
   </Stack>

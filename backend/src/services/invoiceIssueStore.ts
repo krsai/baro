@@ -230,10 +230,10 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
   });
 }
 
-export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: string, invoiceId: string, reason: unknown) {
+export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: string, invoiceId: string, reason: unknown, approvedTransaction = false) {
   const cancellationReason = String(reason || "").trim();
   if (!cancellationReason || cancellationReason.length > 1000) fail("INVOICE_CANCELLATION_REASON_REQUIRED");
-  return editTransaction(db, async (tx: any) => {
+  const work = async (tx: any) => {
     const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true } });
     if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
     if (invoice.status === "CANCELLED") return invoice;
@@ -249,7 +249,8 @@ export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: s
       data: { status: "CANCELLED", cancelledBy: actor, cancelledAt: new Date(), cancellationReason } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
     return tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
-  });
+  };
+  return approvedTransaction ? work(db) : editTransaction(db,work);
 }
 
 import { guardInvoiceCashCorrection } from './invoiceCashGuard';

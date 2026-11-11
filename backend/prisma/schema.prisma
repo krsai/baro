@@ -2825,6 +2825,7 @@ enum InvoicePaymentKind {
 
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
+  cancellationRequests ChangeApprovalRequest[] @relation("InvoiceChangeSource")
   documentKind String @default("ORDER")
   generalLines InvoiceGeneralLine[]
   id String @id @default(cuid())
@@ -3263,6 +3264,8 @@ model ExpenseItemReference {
 
 // The immutable SQL migration enforces company/source/employee FKs and lifecycle guards.
 model ChangeApprovalRequest {
+ invoice Invoice? @relation("InvoiceChangeSource",fields:[invoiceId,orgId],references:[id,sellerOrgId],onDelete:Restrict,map:"ChangeApprovalRequest_invoice_fkey")
+ invoiceId String?
  company Organization @relation("ChangeCompany",fields:[orgId],references:[id],onDelete:Restrict,map:"ChangeApprovalRequest_org_fkey")
  requester Employee @relation("ChangeRequester",fields:[requestedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalRequest_requester_fkey")
  decider Employee? @relation("ChangeDecider",fields:[decidedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,map:"ChangeApprovalRequest_decider_fkey")
