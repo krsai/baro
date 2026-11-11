@@ -19,22 +19,22 @@ try{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(url.pathname==='/transaction-codes')return r.fulfill({headers,json:[{id:11,code:'SALE',nameKo:'Sales',nameEn:'Sales',nameVi:'Sales',cashDirection:'BOTH'}]});
    if(url.pathname==='/bank-ledger/accounts')return r.fulfill({headers,json:{accounts:[{id:'a',displayName:'Cash',currencyCode:'USD',currentBalance:'9.00'}]}});
-   if(url.pathname==='/bank-ledger/opening')return r.fulfill({headers,json:{documents:[{side:'AR',id:'old',reference:'OLD-1',party:'VENDOR',currencyCode:'USD',remaining:'100.00'}],parties:[{id:3,kind:'PARTNER',code:'VEND',name:'VENDOR'}],history:[],hasMore:false}});
+   if(url.pathname==='/bank-ledger/opening')return r.fulfill({headers,json:{documents:[{side:'AR',id:'old',reference:'OLD-1',party:'VENDOR',currencyCode:'USD',remaining:'100.00'}],parties:[{id:3,kind:'PARTNER',code:'VEND',name:'VENDOR'}],history:[{id:'prior',balanceDate:'2026-11-01',kind:'SETTLED',party:{name:'VENDOR'},invoice:{invoiceNumber:'OLD-DONE'},currencyCode:'USD',amount:'10',matched:'0',remaining:'10',reason:'Previously collected'}],hasMore:false}});
    if(url.pathname==='/bank-ledger/balance-adjustments'){saved.push(r.request().postDataJSON());return saved.length===1?r.fulfill({headers,status:503,json:{error:'temporary'}}):r.fulfill({headers,json:{entryIds:[]}});}
    return r.fallback();
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-opening-acceptance.html?lang=${lang}`);
   await page.getByLabel(b.date,{exact:true}).fill('2026-11-01');await page.getByText('OLD-1',{exact:true}).waitFor();
-  const panel=page.locator('[data-accounting-opening]');await panel.getByRole('button',{name:t.add,exact:true}).click();
+  const panel=page.locator('[data-accounting-opening]');await panel.getByRole('button',{name:t.addBalance,exact:true}).click();
   const manual=panel.locator('table').first().locator('tbody tr').first(),texts=manual.getByRole('textbox');
   await texts.nth(0).fill('VEND');await texts.nth(0).press('Enter');await manual.getByText('VENDOR',{exact:true}).waitFor();
   await texts.nth(1).fill('SALE');await texts.nth(1).press('Enter');await texts.last().fill('50');
-  const source=panel.getByRole('row').filter({has:page.getByText('OLD-1',{exact:true})});await source.getByRole('combobox').click();await page.getByRole('option',{name:t.SETTLED,exact:true}).click();
+  const source=panel.getByRole('row').filter({has:page.getByText('OLD-1',{exact:true})});await source.getByRole('checkbox').check();assert.equal(await panel.getByText(t.SETTLED,{exact:true}).count(),0);await panel.getByText('OLD-DONE',{exact:true}).waitFor();
   await page.getByLabel(b.reason,{exact:false}).fill('Prior opening');
   await page.getByRole('button',{name:b.save,exact:true}).click();await page.getByText(b.uncertain,{exact:true}).waitFor();
   assert.equal(await page.getByLabel(b.date,{exact:true}).isDisabled(),true);
   await page.getByRole('button',{name:b.retry,exact:true}).click();await page.waitForFunction(()=>window.closedBalance===true);
-  assert.deepEqual(saved[0],saved[1]);assert.deepEqual(saved[0].accounts,[]);assert.equal(saved[0].openingRows.length,2);assert.equal(saved[0].openingRows[0].amount,'50');assert.equal(saved[0].openingRows[1].expectedRemaining,'100.00');assert.equal(saved[0].balanceDate,'2026-11-01');
+  assert.deepEqual(saved[0],saved[1]);assert.deepEqual(saved[0].accounts,[]);assert.equal(saved[0].openingRows.length,2);assert.equal(saved[0].openingRows[0].amount,'50');assert.equal(saved[0].openingRows[1].expectedRemaining,'100.00');assert.equal(saved[0].openingRows[1].kind,'EXCLUDED');assert.equal(saved[0].balanceDate,'2026-11-01');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS opening balances ko/en/vi desktop/mobile: exact party/code lookup, document settlement, no cash adjustment, immutable unknown-result retry.');
