@@ -28,6 +28,10 @@ function source(system) {
   return vm.runInNewContext(`${code}; blueprint()`, context);
 }
 const flatten = items => items.flatMap(item => item.isParent ? flatten(item.children || []) : [item]);
+test('sewing brands expose only their three business menus without manufacturer or accounting entries',()=>{
+ const menu=organizeCompanyMenu(source(false),key=>key,'BRAND');
+ assert.deepEqual(flatten(menu).map(row=>row.path),['/style','/order','/customer-production-report']);
+});
 test('service transport starts in the sales group beside customer and partner management',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'SERVICE');
  const group=menu.find(item=>item.menuGroupKey==='ORDER');

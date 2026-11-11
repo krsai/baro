@@ -3,6 +3,7 @@ import {registerDashboardWorkRequestRoutes} from './services/dashboardWorkReques
 import {registerTransportExchangeRoutes} from './services/transportExchange';
 import {registerShippingRequestRoutes} from './services/shippingRequests';
 import {registerStyleProductRoutes,styleOwnershipDto} from './services/styleProducts';
+import {brandSewingMiddleware,registerBrandSewingRoutes} from './services/brandSewing';
 import {registerSystemEntityRoutes} from './services/systemEntities';
 import {registerEmployeeLeaveRoutes,assertCompanyLeaveBalances} from './employees/employeeLeave';
 import {registerProductionExcessRoutes} from './services/productionExcess';
@@ -210,6 +211,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use(industryMenuMiddleware(prisma,requireOrgRole));
+app.use(brandSewingMiddleware(prisma,{getEmail:getRequesterEmail,getOrganization:getOrganizationByQuery,requireOrgRole,loadPolicy:()=>loadRoleAccessPolicySetting()}));
 
 const WORK_LOG_RECORD_INCLUDE = WORK_RECORD_WITH_REFS_INCLUDE;
 const WORK_LOG_DETAIL_RECORD_SELECT = WORK_RECORD_WITH_REFS_INCLUDE;
@@ -19033,6 +19035,7 @@ registerDashboardWorkRequestRoutes(app,prisma,{requireOrgRole,actorId:getCurrent
 registerProductionExcessRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature,loadQuantities:loadStyleGenderQuantityMapForWorkOrderIds,targetForProcess:resolveStyleProcessRowApplicableQuantity});
 registerOrderShipmentRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerCompanyWorkspaceRoutes(app,prisma,{getEmail:getRequesterEmail,requireOrgRole});
+registerBrandSewingRoutes(app,prisma,{requireOrgRole,loadPolicy:loadRoleAccessPolicySetting,loadProgress:(orgId:number,ids:any[])=>buildAssignmentPlanProgressRows(orgId,ids)});
 registerBankLedgerRoutes(app,prisma,{requireOrgRole,loadPolicy:loadRoleAccessPolicySetting});
 app.get("/auth/context", async (req, res) => {
   const requesterEmail = getRequesterEmail(req);

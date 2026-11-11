@@ -3,23 +3,28 @@ export const LOGIN_COMPANIES = [
   { key: 'DEX', label: 'DEX LOGIS', codes: ['DEX', 'DEXS'], names: ['DEX LOGIS', 'DEXS LOGIS'] },
   { key: 'SYSTEM', label: 'SYSTEM', codes: [], names: [] },
 ];
+export const TEST_LOGIN_COMPANIES = [
+  { key: 'TEST_THESAN', label: 'THE SAN · TEST', codes: ['THES'], names: [], type: 'BRAND' },
+  { key: 'TEST_URD', label: 'URD · TEST', codes: ['URDK'], names: [], type: 'BRAND' },
+];
+const allLoginCompanies = [...LOGIN_COMPANIES, ...TEST_LOGIN_COMPANIES];
 const PENDING_KEY = 'baro:login-company';
 export const readLoginCompany = () => {
-  try { const key = sessionStorage.getItem(PENDING_KEY); return LOGIN_COMPANIES.some(company => company.key === key) ? key : null; }
+  try { const key = sessionStorage.getItem(PENDING_KEY); return allLoginCompanies.some(company => company.key === key) ? key : null; }
   catch { return null; }
 };
 export const rememberLoginCompany = key => {
-  if (!LOGIN_COMPANIES.some(company => company.key === key)) throw new Error('INVALID_LOGIN_COMPANY');
+  if (!allLoginCompanies.some(company => company.key === key)) throw new Error('INVALID_LOGIN_COMPANY');
   sessionStorage.setItem(PENDING_KEY, key);
 };
 export const clearLoginCompany = () => sessionStorage.removeItem(PENDING_KEY);
 // Match only an authorized server choice; a public login label never grants access.
 export const findLoginWorkspace = (workspaces, key) => {
-  const company = LOGIN_COMPANIES.find(row => row.key === key);
+  const company = allLoginCompanies.find(row => row.key === key);
   if (!company) return null;
   if (key === 'SYSTEM') return workspaces.find(row => row.key === 'system' && row.type === 'SYSTEM' && row.role === 'SYSTEM_ADMIN') || null;
   const normalize = value => String(value || '').trim().toUpperCase();
-  const byCode = workspaces.filter(row => company.codes.includes(normalize(row.code)) && row.key?.startsWith('org:'));
+  const byCode = workspaces.filter(row => company.codes.includes(normalize(row.code)) && row.key?.startsWith('org:') && (!company.type || row.type === company.type));
   if (byCode.length) return byCode.length === 1 ? byCode[0] : null;
   const byName = workspaces.filter(row => company.names.includes(normalize(row.name)) && row.key?.startsWith('org:'));
   return byName.length === 1 ? byName[0] : null;

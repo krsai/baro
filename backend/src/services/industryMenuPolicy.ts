@@ -14,12 +14,13 @@ export async function readIndustryMenuPolicy(db:any){
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
  const policy=await readIndustryMenuPolicy(db);
- if(Object.hasOwn(policy.subscribers??{},orgType))return [...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
+ if(Object.hasOwn(policy.subscribers??{},orgType))return orgType==='BRAND'?policy.subscribers[orgType].filter((feature:string)=>['STYLE','ORDER'].includes(feature)):[...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
  const classification=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId:orgId}},include:{industries:true}});
  const defaults=INDUSTRY_MENU_FEATURES.filter(feature=>orgType==='SERVICE'||feature!=='FREIGHT');
 
  const ids=(classification?.industries??[]).map((row:any)=>row.systemIndustryId);
  const selected=ids.length?ids.flatMap((id:number)=>policy.industries[String(id)]??defaults):defaults;
+ if(orgType==='BRAND')return ['STYLE','ORDER'].filter(feature=>selected.includes(feature));
  return [...new Set([...COMMON_MENU_FEATURES,...selected])];
 }
 export function industryMenuMiddleware(db:any,requireOrgRole:any){

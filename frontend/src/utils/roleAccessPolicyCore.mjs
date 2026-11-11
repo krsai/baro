@@ -354,6 +354,7 @@ export const getAllowedFeaturesForRole = ({ orgType, orgRole, policy = null }) =
   const normalizedOrgRole = normalizeRoleKey(orgRole);
   if (!normalizedOrgType || !normalizedOrgRole) return [];
   const features=sanitizeFeatureArray(resolvedPolicy?.[normalizedOrgType]?.[normalizedOrgRole]);
+  if(normalizedOrgType==='BRAND')return features.filter(key=>['STYLE','ORDER'].includes(key));
   return normalizedOrgType==='SERVICE'?features.filter(key=>SERVICE_FEATURES.includes(key)):features;
 };
 

@@ -26,7 +26,7 @@ export async function companyChoices(db:any,email:string){
   ]);
   const systemAdmin=system?.systemRole==='SYSTEM_ADMIN';
   const companies=memberships.map((row:any)=>row.organization);
-  return {canCreateCompany:systemAdmin||memberships.some((row:any)=>row.orgRole==='ADMIN'),
+  return {canCreateCompany:systemAdmin||memberships.some((row:any)=>row.orgRole==='ADMIN'&&row.organization.type!=='BRAND'),
     workspaces:[...(systemAdmin?[{key:'system',id:null,name:'SYSTEM',type:'SYSTEM',role:'SYSTEM_ADMIN'}]:[]),
       ...companies.map((org:any)=>({key:`org:${org.id}`,id:org.id,name:org.name,nameKo:org.nameKo,nameVi:org.nameVi,code:org.code,type:org.type,role:memberships.find((row:any)=>row.orgId===org.id)?.orgRole}))]};
 }

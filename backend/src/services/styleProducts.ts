@@ -125,7 +125,7 @@ export async function createStyleProduct(db: any, orgId: number, actorId: number
       ownerOrgId = resolved[0].ownerOrgId;
       custodianOrgId = orgId;
     } else {
-      const owner = await tx.organization.findFirst({ where: { id: orgId, type: 'BRAND', isActive: true, ownerOrgId: null, OR: [{ dataOwnerOrgId: null }, { dataOwnerOrgId: orgId }] } });
+      const owner = await tx.organization.findFirst({ where: { id: orgId, type: 'BRAND', isActive: true, ownerOrgId: null, OR: [{ dataOwnerOrgId: null }, { dataOwnerOrgId: orgId }, { subscription: { is: { status: { in: ['TRIAL','ACTIVE','GRACE'] } } } }] } });
       if (!owner) throw createHttpError(403, 'STYLE_PRODUCT_OWNER_REQUIRED');
     }
     await tx.$queryRawUnsafe("SELECT set_config('baro.style_product_actor_org',$1,true)", String(orgId));

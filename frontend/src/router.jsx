@@ -47,6 +47,8 @@ const lazyImportWithRetry = (importer) =>
   );
 
 const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
+const BrandSewingWorkspace = lazyImportWithRetry(() => import('./pages/App/BrandSewingWorkspace'));
+function SewingBrandPage({mode,children}){const {activeOrgType}=useAuth();return activeOrgType==='BRAND'?<BrandSewingWorkspace mode={mode}/>:children;}
 const FreightWorkspace = lazyImportWithRetry(() => import('./pages/App/FreightWorkspace'));
 const AccountOverview = lazyImportWithRetry(() => import('./pages/App/AccountOverview'));
 const BankLedgerEntry = lazyImportWithRetry(() => import('./pages/App/BankLedgerEntry'));
@@ -348,15 +350,15 @@ const router = createBrowserRouter([
           },
           {
             path: 'order',
-            element: <Order />,
+            element: <SewingBrandPage mode="orders"><Order /></SewingBrandPage>,
           },
           {
             path: 'order/:orderId',
-            element: <Order />,
+            element: <SewingBrandPage mode="orders"><Order /></SewingBrandPage>,
           },
           {
             path: 'customer-production-report',
-            element: <CustomerProductionReport />,
+            element: <SewingBrandPage mode="progress"><CustomerProductionReport /></SewingBrandPage>,
           },
           {
             path: 'outsourcing-partner',
@@ -376,15 +378,15 @@ const router = createBrowserRouter([
           },
           {
             path: 'style',
-            element: <Style />,
+            element: <SewingBrandPage mode="styles"><Style /></SewingBrandPage>,
           },
           {
             path: 'style/new',
-            element: <StyleDetail />,
+            element: <SewingBrandPage mode="styles"><StyleDetail /></SewingBrandPage>,
           },
           {
             path: 'style/:styleId',
-            element: <StyleBoard />,
+            element: <SewingBrandPage mode="styles"><StyleBoard /></SewingBrandPage>,
           },
           {
             path: 'st-review',
