@@ -4,6 +4,24 @@ import {createRequire} from 'node:module';
 import {buildWorkStyleLookupOptions,workStyleProgressText} from '../frontend/src/utils/workStyleLookup.mjs';
 import {changeApprovalFixture} from './helpers/change-approval-fixture.mjs';
 const {workLogStyleOverview}=createRequire(import.meta.url)('../backend/dist/services/workLogStyleOverview');
+
+test('completed assignments cannot reappear as read-only lookup rows; unknown and unassigned styles remain',async()=>{
+ const order={id:1,orderId:'one',orderNumber:'DONE',workOrderItems:[{styleId:7,totalQuantity:100,style:{code:'S',name:'Same'}}],priorCompletions:[]};
+ const plans=[{externalId:'done',workOrderId:1,styleId:7,factory:{name:'HANOI'}}];
+ const db={workOrder:{findMany:async()=>[order]},assignmentPlan:{findMany:async()=>plans}};
+ const groups=await workLogStyleOverview(db,9,async()=>[{id:'done',plannedQuantity:100,producedQuantity:100,isCompleted:true}]);
+ assert.equal(groups[0].isCompleted,true);assert.deepEqual(groups[0].completedAssignmentIds,['done']);
+ assert.deepEqual(buildWorkStyleLookupOptions([],groups),[]);
+ assert.deepEqual(buildWorkStyleLookupOptions([{id:'done'}],groups),[]);
+ const mixed={...groups[0],isCompleted:false,assignmentIds:['done','open'],completedAssignmentIds:['done']};
+ assert.deepEqual(buildWorkStyleLookupOptions([{id:'done'},{id:'open'}],[mixed]).map(row=>row.id),['open']);
+ const partial={...mixed,assignmentIds:['done']};
+ assert.deepEqual(buildWorkStyleLookupOptions([],[partial]),[],'a completed partial allocation is not an unavailable selection');
+ const unknown={...groups[0],isCompleted:false,producedQuantity:100,isProgressUnknown:true,completedAssignmentIds:[]};
+ assert.equal(buildWorkStyleLookupOptions([],[unknown]).length,1,'matching quantities alone never imply completion');
+ const unassigned={...unknown,isAssigned:false,assignmentIds:[]};
+ assert.equal(buildWorkStyleLookupOptions([],[unassigned]).length,1);
+});
 test('real Prisma projections include company-scoped unassigned order items without creating any plans',async()=>{
  let company,buyer,style;
  const f=await changeApprovalFixture({beforeMigration:async({db},migration)=>{
@@ -41,7 +59,8 @@ test('work lookup includes unassigned order styles and uses real order/style/ass
  assert.equal(JSON.stringify({orders,plans}),before,'lookup never edits source records or snapshots');
  const actual={id:'p1',dbId:11,label:'Same name',processes:[{styleProcessId:4}]};
  const options=buildWorkStyleLookupOptions([actual],rows);
- assert.equal(options.length,4);assert.equal(options[0].lookupOverview.workOrderId,1);assert.equal(options[0].lookupReadOnly,undefined);
+ assert.equal(options.length,3);assert.equal(options[0].lookupOverview.workOrderId,1);assert.equal(options[0].lookupReadOnly,undefined);
+ assert.equal(options.some(option=>option.lookupOverview.workOrderId===4),false,'historically completed styles stay in source overview but not new-work candidates');
  assert.equal(options[1].lookupReadOnly,true);assert.equal(options[1].isAssigned,false);assert.equal(options[1].lookupOverview.workOrderId,2);
  assert.equal(options[2].isAssigned,true);assert.equal(options[2].lookupReadOnly,true,'another factory or missing CT cannot become a selectable plan');
  assert.equal(workStyleProgressText(options[0],String,'unknown'),'55 / 100');assert.equal(workStyleProgressText(options[2],String,'unknown'),'unknown / 80');

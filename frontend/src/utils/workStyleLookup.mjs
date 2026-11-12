@@ -1,8 +1,9 @@
 export function buildWorkStyleLookupOptions(assignments,overview){
+ const completed=new Set(overview.flatMap(group=>group.completedAssignmentIds||[]).map(String));
  const byAssignment=new Map(overview.flatMap(group=>(group.assignmentIds||[]).map(id=>[String(id),group])));
  const represented=new Set();
- const selectable=assignments.map(option=>{const group=byAssignment.get(String(option.id));if(group)represented.add(group);return {...option,lookupOverview:group||null,isAssigned:true};});
- return [...selectable,...overview.filter(group=>!represented.has(group)).map(group=>({id:`work-style:${group.workOrderId}:${group.styleId}`,label:group.styleName||group.styleCode,styleCode:group.styleCode,orderNo:group.orderNo,lookupOverview:group,lookupReadOnly:true,isAssigned:group.isAssigned,factoryName:(group.factoryNames||[]).join(', ')}))];
+ const selectable=assignments.filter(option=>option.isCompleted!==true&&!completed.has(String(option.id))&&byAssignment.get(String(option.id))?.isCompleted!==true).map(option=>{const group=byAssignment.get(String(option.id));if(group)represented.add(group);return {...option,lookupOverview:group||null,isAssigned:true};});
+ return [...selectable,...overview.filter(group=>!represented.has(group)&&group.isCompleted!==true&&!(group.assignmentIds?.length&&group.assignmentIds.every(id=>completed.has(String(id))))).map(group=>({id:`work-style:${group.workOrderId}:${group.styleId}`,label:group.styleName||group.styleCode,styleCode:group.styleCode,orderNo:group.orderNo,lookupOverview:group,lookupReadOnly:true,isAssigned:group.isAssigned,factoryName:(group.factoryNames||[]).join(', ')}))];
 }
 export function workStyleProgressText(option,format,unknown){
  const group=option.lookupOverview;
