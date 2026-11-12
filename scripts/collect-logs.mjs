@@ -24,6 +24,11 @@ export function scanDevelopmentLogs(workspace){
  return files;
 }
 
+export function rootDevelopmentLogs(workspace){
+ const root=fs.realpathSync(workspace);
+ return fs.readdirSync(root,{withFileTypes:true}).filter(entry=>entry.isFile()&&logName(entry.name)).map(entry=>entry.name).sort();
+}
+
 function assertLogPath(root,file){
  const resolved=path.resolve(file),logRoot=path.join(root,'logs');
  if(!logName(path.basename(resolved))||!(path.dirname(resolved)===root||inside(logRoot,resolved)))throw Error('Development log path is outside the allowed scope');
@@ -68,11 +73,18 @@ export function collectDevelopmentLogs(workspace){
 
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
-  const flags=process.argv.slice(2);if(flags.some(flag=>!['--clean','--all','--dry-run'].includes(flag)))throw Error('Use --clean, --all or --dry-run');
+  const flags=process.argv.slice(2);if(flags.some(flag=>!['--clean','--all','--dry-run','--check'].includes(flag)))throw Error('Use --clean, --all, --dry-run or --check');
   const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),dryRun=flags.includes('--dry-run');
+  if(flags.includes('--check')){
+   if(flags.length!==1)throw Error('Use --check on its own');
+   const files=rootDevelopmentLogs(root);
+   if(files.length){console.error(`Root development logs found (${files.length}). Move them to logs/; use npm run logs:collect to collect with retention cleanup.`);process.exitCode=1;}
+   else console.log('Log location check passed: no development logs in the repository root.');
+  }else{
   const collection=flags.includes('--clean')||flags.includes('--all')||dryRun?null:collectDevelopmentLogs(root);
   const cleanup=cleanDevelopmentLogs(root,{all:flags.includes('--all'),dryRun});
   console.log(JSON.stringify({dryRun,limits:LOG_LIMITS,collection,cleanup}));
   if(collection?.failures.length||cleanup.failures.length)process.exitCode=1;
+  }
  }catch(error){console.error(error.message);process.exitCode=1;}
 }

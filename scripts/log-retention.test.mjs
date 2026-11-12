@@ -3,11 +3,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {scanDevelopmentLogs,planLogCleanup,cleanDevelopmentLogs,collectDevelopmentLogs,LOG_LIMITS} from './collect-logs.mjs';
+import {scanDevelopmentLogs,planLogCleanup,cleanDevelopmentLogs,collectDevelopmentLogs,rootDevelopmentLogs,LOG_LIMITS} from './collect-logs.mjs';
 
 const now=Date.UTC(2026,10,8);
 function fixture(t){const parent=path.resolve(os.tmpdir()),root=fs.mkdtempSync(path.join(parent,'baro-log-retention-'));t.after(()=>{assert.equal(path.dirname(path.resolve(root)),parent);assert.ok(path.basename(root).startsWith('baro-log-retention-'));fs.rmSync(root,{recursive:true,force:true});});return root;}
 function write(root,name,content='log',age=0){const file=path.join(root,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,content);fs.utimesSync(file,new Date(now-age),new Date(now-age));return file;}
+
+test('location check detects root logs and rotated logs without moving or deleting files',t=>{
+ const root=fixture(t);write(root,'build.log','build');write(root,'failure.log.1','failure');write(root,'UPPER.LOG','upper');
+ for(const name of ['logs/kept.log','backups/original.log','backend/runtime.log','review.json','README.md'])write(root,name,'preserve');
+ assert.deepEqual(rootDevelopmentLogs(root),['UPPER.LOG','build.log','failure.log.1']);
+ assert.equal(fs.readFileSync(path.join(root,'build.log'),'utf8'),'build');
+ const result=collectDevelopmentLogs(root);assert.equal(result.moved,3);assert.deepEqual(rootDevelopmentLogs(root),[]);
+ for(const name of ['logs/build.log','logs/failure.log.1','logs/UPPER.LOG','logs/kept.log','backups/original.log','backend/runtime.log','review.json','README.md'])assert.ok(fs.existsSync(path.join(root,name)));
+});
 
 test('retention enforces age and count while preserving investigation data, source and backup files',t=>{
  const root=fixture(t);for(let i=0;i<25;i++)write(root,`logs/check-${i}.log`,'x',i*1000);
