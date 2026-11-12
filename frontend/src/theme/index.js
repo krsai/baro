@@ -387,6 +387,10 @@ const theme = createTheme(baseTheme, {
   },
   components: {
     MuiCssBaseline: { styleOverrides: {
+      // Use final domain states, never pending cancellation requests.
+      '[data-cancelled="true"] > td:not([data-table-actions]), [data-cancelled="true"] > td:not([data-table-actions]) :is(p,span,a,button,div,h1,h2,h3,h4,h5,h6,strong,b,small,em), [data-cancelled-content="true"]': {
+        textDecorationLine: 'line-through',
+      },
       ':root': {
         ...Object.fromEntries(Object.entries(LABEL_PALETTE).flatMap(([tone, colors]) =>
           Object.entries(colors).map(([role, value]) => [`--label-${tone}-${role}`, value]))),

@@ -1267,7 +1267,7 @@ const QcReview = () => {
                                           {history.map((eventRow) => {
                                             const isCancelled = Boolean(eventRow?.cancelledAt);
                                             return (
-                                              <TableRow key={`${row.id}:history:${eventRow.id}`}>
+                                              <TableRow key={`${row.id}:history:${eventRow.id}`} data-cancelled={isCancelled}>
                                                 <TableCell>{eventRow.inspectedOn || '-'}</TableCell>
                                                 <TableCell>
                                                   {[eventRow.colorName, eventRow.sizeKey].filter(Boolean).join(' / ') || copy.totalEntry}
