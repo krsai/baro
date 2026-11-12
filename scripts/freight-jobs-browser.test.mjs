@@ -48,7 +48,7 @@ try{
    assert.equal((await page.getByLabel(e.plannedDate,{exact:true}).boundingBox()).y,dateBox.y);
    assert.equal(await page.getByRole('spinbutton',{name:e.containerCount,exact:true}).count(),mode==='FCL'?1:0);
   }
-  assert.equal(await page.locator('[data-route-direction]').count(),1);
+  assert.equal(await page.locator('[data-route-direction]').count(),3);
   for(const [key,choice] of [['exportCustoms','OUR_SCOPE'],['importCustoms','NOT_OUR_SCOPE']]){await page.getByRole('combobox',{name:e[key],exact:true}).click();await page.getByRole('option',{name:e[choice],exact:true}).click();}
   const r=routeScopeText[lang];await page.getByRole('button',{name:r.consignee,exact:true}).click();
   assert.equal(await page.getByRole('combobox',{name:t.jobType,exact:true}).count(),0);
