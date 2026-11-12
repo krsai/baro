@@ -6,12 +6,33 @@ import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approva
 const require=createRequire(import.meta.url);
 const {reconcileLedgerBalances}=require('../backend/dist/services/ledgerBalance');
 const {readAccountingOpening,voidAccountingOpening}=require('../backend/dist/services/accountingOpening');
+const {readAccountingOpeningHistory}=require('../backend/dist/services/accountingOpeningHistory');
 const {outstandingReport}=require('../backend/dist/services/accountOverview');
 const {invoiceFamilyBalance}=require('../backend/dist/services/invoiceSettlement');
 const {searchLedgerEvidence,postLedgerEntryInTransaction}=require('../backend/dist/services/bankLedger');
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
+
+test('opening history combines signed account adjustments and AR/AP without changing balances or exposing another company',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,scope={orgId:org,actorId:s.people.admin.id,actor:s.people.admin.email};
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  const adjustmentBase=await db.transactionCodeBase.create({data:{code:'FAD',nameKo:'Funds adjustment',nameEn:'Funds adjustment',nameVi:'Funds adjustment',entryMode:'GENERAL',serviceTypeId:base.serviceTypeId,expenseTypeId:base.expenseTypeId}});
+  await db.settingTransactionCodeDefault.create({data:{code:'FADE',nameKo:'Funds adjustment',nameEn:'Funds adjustment',nameVi:'Funds adjustment',serviceTypeId:base.serviceTypeId,baseId:adjustmentBase.id,taxTreatmentId:s.code.taxTreatmentId}});
+  await db.transactionCode.create({data:{ownerOrgId:org,serviceTypeId:s.code.serviceTypeId,baseId:adjustmentBase.id,taxTreatmentId:s.code.taxTreatmentId,code:'FADE',nameKo:'Funds adjustment',nameEn:'Funds adjustment',nameVi:'Funds adjustment'}});
+  await reconcileLedgerBalances(db,scope,{clientKey:randomUUID(),balanceDate:'2026-11-01',reason:'Opening setup',accounts:[{accountId:s.account.id,currencyCode:'USD',expectedBalance:'0',targetBalance:'-10'}],openingRows:[{kind:'OPENING',side:'AP',currencyCode:'USD',amount:'25',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id}}]});
+  const before=await db.bankLedgerEntry.count();
+  const history=await readAccountingOpeningHistory(db,org,scope.actorId,{page:0});assert.equal(history.rows.length,2);assert.equal(history.hasMore,false);
+  const account=history.rows.find(row=>row.source==='ACCOUNT'),arap=history.rows.find(row=>row.source==='ARAP');
+  assert.equal(account.amount,'-10.00');assert.equal(account.remaining,null);assert.equal(account.treatment,'ACCOUNT');assert.equal(account.reason,'Opening setup');assert.equal(account.changePending,false);
+  assert.equal(arap.remaining,'25.00');assert.equal(arap.reference,'');assert.equal(arap.side,'AP');assert.equal(arap.party,s.vendor.name);assert.equal(arap.reason,'Opening setup');
+  assert.deepEqual((await readAccountingOpeningHistory(db,org,scope.actorId,{page:1})).rows,[]);
+  await assert.rejects(readAccountingOpeningHistory(db,org,scope.actorId,{page:-1}),/LEDGER_INVALID_RANGE/);
+  await assert.rejects(readAccountingOpeningHistory(db,s.other.id,scope.actorId,{}),/LEDGER_ADJUSTMENT_ADMIN_REQUIRED/);
+  assert.equal(await db.bankLedgerEntry.count(),before);assert.equal(await db.accountingOpeningItem.count(),1);
+ }finally{await f.close();}
+});
 
 test('bill lookup and replacement manage one balance, preserve source and cash, and reverse the linked pair atomically',async()=>{
  const f=await changeApprovalFixture();try{
@@ -34,6 +55,10 @@ test('bill lookup and replacement manage one balance, preserve source and cash, 
   const invoices=[{...invoice,buyer:s.vendor,payments:[],credits:[]}],openings=await db.accountingOpeningItem.findMany({include:{party:true,allocations:true}});
   assert.equal(outstandingReport(invoices,[],[],openings).outstandingTotals[0].receivable,'100.00');
   const after=await readAccountingOpening(db,org,scope.actorId,{balanceDate:'2026-11-01'});assert.equal(after.history.length,1);assert.equal(after.history[0].replacesItem.invoice.invoiceNumber,'LOAD-150');
+  const history=await readAccountingOpeningHistory(db,org,scope.actorId,{});
+  assert.equal(history.rows.length,1);assert.equal(history.rows[0].treatment,'REPLACED');assert.equal(history.rows[0].reference,'LOAD-150');assert.equal(history.rows[0].remaining,'100.00');assert.equal(history.rows[0].reason,'Correct opening from bill');
+  await assert.rejects(readAccountingOpeningHistory(db,org,s.people.junior.id,{}),/LEDGER_ADJUSTMENT_ADMIN_REQUIRED/);
+  await assert.rejects(readAccountingOpeningHistory(db,s.other.id,scope.actorId,{}),/LEDGER_ADJUSTMENT_ADMIN_REQUIRED/);
   assert.equal(after.documents.some(r=>r.id===invoice.id),false);
   await assert.rejects(db.accountingOpeningItem.update({where:{id:excluded.id},data:{voidedAt:new Date(),voidReason:'Only one half',voidedByEmployeeId:scope.actorId}}),/OPENING_REPLACEMENT_INVALID/);
   await assert.rejects(reconcileLedgerBalances(db,scope,{...body,clientKey:randomUUID(),openingRows:[row,row]}),/OPENING_SOURCE_CHANGED|OPENING_INVALID_INPUT/);
@@ -86,6 +111,8 @@ test('opening AR/AP preserves cash, uses real party/code FKs, settles partly, re
   assert.equal(await db.bankLedgerEntry.count(),1);assert.equal(await db.accountingOpeningAllocation.count(),1);
   const edit=await readLedgerEdit(db,org,cash.id);assert.equal(edit.document.id,ar.id);assert.equal(edit.document.remaining,'100.00');
   assert.equal((await searchLedgerEvidence(db,org,{type:'OPENING',currencyCode:'USD',direction:'IN',search:'Prior'})).documents[0].remaining,'65.00');
+  const paidHistory=await readAccountingOpeningHistory(db,org,scope.actorId,{}),paidRow=paidHistory.rows.find(row=>row.id===ar.id);
+  assert.equal(paidRow.matched,true);assert.equal(paidRow.remaining,'65.00');
   await assert.rejects(voidAccountingOpening(db,org,scope.actorId,ar.id,'Correct opening'),/OPENING_ALREADY_MATCHED/);
   await assert.rejects(db.$transaction(tx=>postLedgerEntryInTransaction(tx,org,scope.actor,s.account.id,{...body,clientKey:randomUUID(),amount:'66'})),/LEDGER_EXCEEDS_DOCUMENT/);
   await assert.rejects(db.$transaction(tx=>postLedgerEntryInTransaction(tx,org,scope.actor,s.account.id,{...body,clientKey:randomUUID(),direction:'OUT'})),/OPENING_SOURCE_CHANGED/);

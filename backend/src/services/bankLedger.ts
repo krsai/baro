@@ -1,4 +1,5 @@
 import {searchPayrollEvidence,importLockedPayrollPayables} from './payrollPayables';
+import {readAccountingOpeningHistory} from './accountingOpeningHistory';
 import {readAccountingOpening,voidAccountingOpening,documentOpeningAmount,openingSum,invoiceOpeningRemaining} from './accountingOpening';
 import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {companyNameCodeSearch} from './companySearch';
@@ -309,6 +310,7 @@ export function registerBankLedgerRoutes(app:any,db:any,gates:any){
   app.get('/bank-ledger/counterparties',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;if(!scope.actorId||!await db.employee.findFirst({where:{id:scope.actorId,orgId:scope.orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}}}))return fail('LEDGER_ACCESS_DENIED',403);res.json(await ledgerCounterpartyOptions(db,scope.orgId));});
   app.get('/bank-ledger/accounts',async(req:any,res:any)=>{const scope=await access(req,res);if(scope){const date=req.query.balanceDate===undefined?undefined:ledgerDate(req.query.balanceDate);res.json({accounts:date?await retryEditTransaction(db,tx=>readLedgerAccounts(tx,scope.orgId,date,true)):await listLedgerAccounts(db,scope.orgId)});}});
   app.get('/bank-ledger/opening',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;res.json(await readAccountingOpening(db,scope.orgId,scope.actorId,req.query));});
+  app.get('/bank-ledger/opening/history',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;res.json(await readAccountingOpeningHistory(db,scope.orgId,scope.actorId,req.query));});
   app.post('/bank-ledger/opening/:id/void',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;res.json(await voidAccountingOpening(db,scope.orgId,scope.actorId,req.params.id,req.body.reason));});
   app.post('/bank-ledger/balance-adjustments',async(req:any,res:any)=>{const scope=await access(req,res);if(!scope)return;if(scope.role!=='ADMIN'||!scope.actorId)return fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);res.json(await reconcileLedgerBalances(db,scope,req.body));});
   app.post('/bank-ledger/changes/:entryId/acknowledge',async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await acknowledgeLedgerChange(db,scope.orgId,scope.actorId,req.params.entryId));});
