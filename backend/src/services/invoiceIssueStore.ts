@@ -33,8 +33,9 @@ const currencyDigits = (currencyCode: string) => {
   return 2;
 };
 const decimal = (minor: bigint, digits: number) => {
-  const padded = minor.toString().padStart(digits + 1, "0");
-  return digits ? `${padded.slice(0, -digits)}.${padded.slice(-digits)}` : padded;
+  const sign = minor < 0n ? "-" : "";
+  const padded = (minor < 0n ? -minor : minor).toString().padStart(digits + 1, "0");
+  return sign + (digits ? `${padded.slice(0, -digits)}.${padded.slice(-digits)}` : padded);
 };
 const percentage = (value: unknown) => {
   const raw = String(value ?? "").trim() || "100";
@@ -95,7 +96,13 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
     const source = sourceOrders.get(input.orderId); if (!source) fail("INVOICE_SOURCE_CHANGED");
     const percent = percentage(content.percentages?.[input.orderId]);
     const basisMinor = orderMinor.get(input.orderId) || 0n;
-    const billedMinor = (basisMinor * percent.basisPoints + 5000n) / 10000n;
+    const adjustmentText = String(content.settlements?.[input.orderId]?.adjustment ?? '').trim() || '0';
+    const adjustmentScale4 = /^[+-]?\d+(\.\d{1,4})?$/.test(adjustmentText) ? parseMoneyScale4(adjustmentText.replace(/^[+-]/, '')) : null;
+    if (adjustmentScale4 === null) fail("INVOICE_ISSUE_INVALID_ADJUSTMENT");
+    const adjustmentMinor = (adjustmentText.startsWith('-') ? -1n : 1n) * ((adjustmentScale4! + divisor / 2n) / divisor);
+    if (adjustmentMinor !== 0n && !String(content.fields?.notes || '').trim()) fail("INVOICE_ISSUE_ADJUSTMENT_REASON_REQUIRED");
+    const billedMinor = (basisMinor * percent.basisPoints + 5000n) / 10000n + adjustmentMinor;
+    if (billedMinor < 0n) fail("INVOICE_ISSUE_INVALID_ADJUSTMENT");
     const context = settlementContext[input.orderId] || {};
     const defaultScale4 = parseMoneyScale4(context.defaultDeductionAmount) ?? 0n;
     const defaultMinor = (defaultScale4 + divisor / 2n) / divisor;
@@ -118,6 +125,7 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
     receivableAddedMinor += newReceivableMinor;
     return { workOrderId: source.workOrderId, sourceOrderId: source.orderId, sourceOrderNumber: source.orderNumber,
       sourceUpdatedAt: source.sourceUpdatedAt, billingPercentage: percent.raw,
+      adjustmentAmount: decimal(adjustmentMinor, digits),
       basisAmount: decimal(basisMinor, digits), billedAmount: decimal(billedMinor, digits),
       priorBilledAmount: String(context.priorBilledAmount || "0"), priorReceivedAmount: String(context.priorReceivedAmount || "0"),
       defaultDeductionAmount: decimal(defaultMinor, digits), appliedDeductionAmount: decimal(appliedMinor, digits),
@@ -216,7 +224,8 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       rootInvoiceId: revisedFrom ? (revisedFrom.rootInvoiceId || revisedFrom.id) : null,
       revisionNumber: revisedFrom ? revisedFrom.revisionNumber + 1 : 1, revisionReason } });
     for (const order of calculated.orders) {
-      const orderRow = await tx.invoiceOrder.create({ data: { invoiceId: invoice.id, ...order } });
+      const { adjustmentAmount: _adjustmentAmount, ...storedOrder } = order;
+      const orderRow = await tx.invoiceOrder.create({ data: { invoiceId: invoice.id, ...storedOrder } });
       const related = calculated.lines.filter((line: any) => line.orderId === order.sourceOrderId);
       if (related.length) await tx.invoiceLine.createMany({ data: related.map(({ orderId: _orderId, ...line }: any) => ({
         ...line, invoiceId: invoice.id, invoiceOrderId: orderRow.id,
@@ -389,7 +398,8 @@ export async function createInvoiceRevisionDraft(db: any, sellerOrgId: number, a
       orders: invoice.orders.map((row: any) => ({ orderId: row.sourceOrderId, sourceUpdatedAt: row.sourceUpdatedAt.toISOString() })),
       percentages: Object.fromEntries(invoice.orders.map((row: any) => [row.sourceOrderId, String(row.billingPercentage)])),
       settlements: Object.fromEntries(invoice.orders.map((row: any) => [row.sourceOrderId, {
-        deduction: String(row.appliedDeductionAmount), reason: row.deductionReason || "",
+        deduction: String(row.appliedDeductionAmount), reason: snapshot.fields?.notes || row.deductionReason || "",
+        adjustment: String(snapshot.orders?.find((order: any) => order.sourceOrderId === row.sourceOrderId)?.adjustmentAmount || ""),
       }])),
       lines: invoice.lines.map((line: any) => ({ key: line.lineKey, quantity: String(line.quantity), unitPriceOverride: String(line.unitPrice), remark: line.remark || "",
         adjustmentReason: line.adjustmentReason || "", hsCode: line.hsCode || "", origin: line.origin || "" })),

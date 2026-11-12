@@ -45,8 +45,9 @@ const parsePrice = (value) => {
   return result > 0n ? result : null;
 };
 const formatMinor = (value, digits) => {
-  const text = value.toString().padStart(digits + 1, '0');
-  return digits ? `${text.slice(0, -digits)}.${text.slice(-digits)}` : text;
+  const sign = value < 0n ? '-' : '';
+  const text = (value < 0n ? -value : value).toString().padStart(digits + 1, '0');
+  return sign + (digits ? `${text.slice(0, -digits)}.${text.slice(-digits)}` : text);
 };
 
 export function calculateInvoiceDraft(source, lines, pricingBasis, currencyCode) {
@@ -120,7 +121,13 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
     const rows = calculation.lines.filter(line => (line.orderId ?? source.orderId) === order.orderId);
     const known = rows.every(line => line.amount != null || line.quantity === 0);
     const subtotal = rows.reduce((sum, line) => sum + BigInt((line.amount || '0').replace('.', '')), 0n);
-    const amount = (subtotal * percent + 5000n) / 10000n;
+    const adjustmentText = String(settlements[order.orderId]?.adjustment ?? '').trim() || '0';
+    const adjustmentValue = /^[+-]?\d+(\.\d{1,4})?$/.test(adjustmentText) ? deductionMinor(adjustmentText.replace(/^[+-]/,'')) : null;
+    const adjustment = (adjustmentText.startsWith('-') ? -1n : 1n) * (adjustmentValue ?? 0n);
+    if (adjustmentValue == null) issues.push('ADJUSTMENT');
+    if (adjustment !== 0n && !String(settlements[order.orderId]?.reason || '').trim()) issues.push('ADJUSTMENT_REASON');
+    const amount = (subtotal * percent + 5000n) / 10000n + adjustment;
+    if (amount < 0n) issues.push('ADJUSTMENT');
     const settlementContext = order.settlementsByCurrency?.[currencyCode] || {};
     const defaultText = String(settlementContext.defaultDeductionAmount || '0');
     const input = String(settlements[order.orderId]?.deduction ?? '').trim() || defaultText;
@@ -138,6 +145,7 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
     total += netAmount;
     receivableAddedTotal += receivableAdded;
     return { orderId: order.orderId, orderNumber: order.orderNumber, percentage: valid ? raw : null,
+      adjustmentAmount: formatMinor(adjustment, digits),
       subtotal: known ? formatMinor(subtotal, digits) : null,
       amount: known && valid ? formatMinor(amount, digits) : null, priorBilledAmount: settlementContext.priorBilledAmount || '0',
       priorReceivedAmount: settlementContext.priorReceivedAmount || '0', defaultDeductionAmount: defaultText,

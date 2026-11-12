@@ -291,3 +291,16 @@ test('issued ledger bootstrap is repeatable and preserves snapshots when source 
     await assert.rejects(db.exec('DELETE FROM "Invoice" WHERE id=\'i\''));
   } finally { await db.close(); }
 });
+
+test('signed amount adjustments change billed amount and receivable, with a required remark', () => {
+ const input={...content,orders:[{orderId:'o1'}],percentages:{o1:'50'},fields:{...content.fields,notes:'Agreed rounding'},lines:[{...content.lines[0],quantity:'3'}],settlements:{o1:{adjustment:'+1.005'}}};
+ const sources=[source('o1','A','2.00')];
+ let result=calculateInvoiceIssueSnapshot(input,sources);
+ assert.equal(result.total,'4.01');assert.equal(result.receivableAdded,'4.01');assert.equal(result.snapshot.orders[0].adjustmentAmount,'1.01');
+ input.settlements.o1.adjustment='-0.005';result=calculateInvoiceIssueSnapshot(input,sources);
+ assert.equal(result.total,'2.99');assert.equal(result.orders[0].adjustmentAmount,'-0.01');
+ input.fields.notes=' ';assert.throws(()=>calculateInvoiceIssueSnapshot(input,sources),/ADJUSTMENT_REASON_REQUIRED/);
+ input.fields.notes='Discount';input.settlements.o1.adjustment='-4';assert.throws(()=>calculateInvoiceIssueSnapshot(input,sources),/INVALID_ADJUSTMENT/);
+ input.settlements.o1.adjustment='1e2';assert.throws(()=>calculateInvoiceIssueSnapshot(input,sources),/INVALID_ADJUSTMENT/);
+ input.settlements.o1.adjustment='-1';assert.throws(()=>calculateInvoiceIssueSnapshot(input,sources,{o1:{priorBilledAmount:'3'}}),/CREDIT_REVIEW_REQUIRED/);
+});

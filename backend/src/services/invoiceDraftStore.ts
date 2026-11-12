@@ -54,7 +54,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   const settlementInput = body.settlements == null ? {} : object(body.settlements);
   const settlements = Object.fromEntries(orders.map((row: any) => {
     const value = settlementInput[row.orderId] == null ? {} : object(settlementInput[row.orderId]);
-    return [row.orderId, { deduction: text(value.deduction ?? "", 32), reason: text(value.reason ?? "", 1000) }];
+    return [row.orderId, { deduction: text(value.deduction ?? "", 32), reason: text(value.reason ?? "", 2000), ...(value.adjustment !== undefined ? { adjustment: text(value.adjustment, 32) } : {}) }];
   }));
   return { version: 2,...(general?{documentKind:'GENERAL'}:{}), buyerOrgId: body.buyerOrgId, orders, basis: general?null:body.basis, currency, fields, percentages, settlements, lines };
 };

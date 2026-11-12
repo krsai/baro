@@ -114,13 +114,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   const t = messages[languageCode] || messages.en;
   const billingText = invoiceMessages[languageCode] || invoiceMessages.en;
   const storageText = invoiceSubmissionUi[languageCode] || invoiceSubmissionUi.en;
-  const settlementLabels = languageCode === 'ko' ? {
-    prior: '이전 청구 / 입금', deduction: '이번 차감', outstanding: '기존 미수', statement: '안내금액 / 신규채권', reason: '차감 변경 사유', unallocated: '다중 주문 입금 미배분', newReceivable: '신규 채권',
-  } : languageCode === 'vi' ? {
-    prior: 'Đã lập / đã thu', deduction: 'Khấu trừ', outstanding: 'Nợ cũ', statement: 'Thông báo / khoản phải thu mới', reason: 'Lý do đổi khấu trừ', unallocated: 'Khoản thu nhiều đơn chưa phân bổ', newReceivable: 'Khoản phải thu mới',
-  } : {
-    prior: 'Prior billed / received', deduction: 'Deduction', outstanding: 'Prior outstanding', statement: 'Statement / new receivable', reason: 'Reason for changing deduction', unallocated: 'Multi-order payment is unallocated', newReceivable: 'New receivable',
-  };
+  const adjustmentErrors = languageCode==='ko'?{ADJUSTMENT:'\uc870\uc815 \uae08\uc561\uc744 \ud655\uc778\ud558\uc138\uc694. \uccad\uad6c \uae08\uc561\uc740 0 \uc774\uc0c1\uc774\uc5b4\uc57c \ud569\ub2c8\ub2e4.',ADJUSTMENT_REASON:'REMARK\uc5d0 \uae08\uc561 \uc870\uc815 \uc0ac\uc720\ub97c \uc785\ub825\ud558\uc138\uc694.'}:languageCode==='vi'?{ADJUSTMENT:'Ki\u1ec3m tra s\u1ed1 ti\u1ec1n \u0111i\u1ec1u ch\u1ec9nh. T\u1ed5ng ph\u1ea3i t\u1eeb 0 tr\u1edf l\u00ean.',ADJUSTMENT_REASON:'Nh\u1eadp l\u00fd do \u0111i\u1ec1u ch\u1ec9nh trong REMARK.'}:{ADJUSTMENT:'Check the adjustment amount. The total must be nonnegative.',ADJUSTMENT_REASON:'Enter the adjustment reason in REMARK.'};
   const [savedDraft, setSavedDraft] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uncertain, setUncertain] = useState(false);
@@ -149,6 +143,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     }
     if (!revisionInvoice && !draftId && !orderId && !orderIds?.length) {
       setSource(null); setFields(null); setLines([]); setLoading(false); setError(''); setReviewed(false);
+      setDirty(false); setSavedDraft(null); draftRef.current=null; clientKey.current=globalThis.crypto.randomUUID();
       return;
     }
     let cancelled = false;
@@ -163,7 +158,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         fields:{...revisionInvoice.snapshot.fields,number:revisionInvoice.invoiceNumber+'-R'+(Number(revisionInvoice.revisionNumber||1)+1)},
         orders:revisionInvoice.orders.map(row=>({orderId:row.sourceOrderId,sourceUpdatedAt:row.sourceUpdatedAt})),
         percentages:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,String(row.billingPercentage)])),
-        settlements:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,{deduction:String(row.appliedDeductionAmount),reason:row.deductionReason||''}])),
+        settlements:Object.fromEntries(revisionInvoice.orders.map(row=>[row.sourceOrderId,{deduction:String(row.appliedDeductionAmount),reason:revisionInvoice.snapshot.fields.notes||row.deductionReason||'',adjustment:String(revisionInvoice.snapshot.orders?.find(order=>order.sourceOrderId===row.sourceOrderId)?.adjustmentAmount||'')}])),
         lines:revisionInvoice.snapshot.lines.map(row=>({key:row.lineKey,quantity:String(row.quantity),unitPriceOverride:String(row.unitPrice),remark:row.remark||'',adjustmentReason:row.adjustmentReason||'',hsCode:row.hsCode||'',origin:row.origin||''})),
       }} : null);
       if (cancelled) return;
@@ -203,11 +198,8 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   const changeRemark = value => {
     if(saving||uncertain)return;
     changeField('notes',value);
+    setSettlements(rows=>Object.fromEntries(Object.entries(rows).map(([key,row])=>[key,{...row,reason:value}])));
     setLines(rows=>rows.map(row=>Number(row.quantity)!==row.orderedQuantity?{...row,adjustmentReason:value}:row));
-  };
-  const close = async () => {
-    if (saving) return;
-    if ((!dirty && !uncertain) || await pageDialogs.confirm(ui.discard)) { setDirty(false); onClose(); }
   };
   const requestSelectionChange = async change => {
     if (saving || uncertain) return;
@@ -256,7 +248,6 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     } finally { setSaving(false); }
   };
   return <AppPageContainer keyboardEntry title={revisionInvoice ? (languageCode==='ko'?'청구서 상세':languageCode==='vi'?'Chi tiết hóa đơn':'Invoice detail') : draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
-    <Button disabled={saving} onClick={close}>{ui.cancel}</Button>
     <Button variant="contained" onClick={issue} disabled={loading || saving || !source || !reviewed || !!calculation?.issues.length || !fields?.date}>{saving ? <CircularProgress size={18}/> : ui.issue}</Button>
   </Stack>}>
     <InvoiceSheet>
@@ -269,7 +260,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
           <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:820,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,110,null,100,130,120,150].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
             {[sheetText.row,sheetText.orderNumber,sheetText.style,sheetText.orderedQuantity,t.price,t.quantity,t.amount].map((label,index)=><TableCell key={label} align={index===0||index>=3?'right':'left'}>{label}</TableCell>)}
-          </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],production=invoiceProductionReview(source,first);return <React.Fragment key={first.key}>{(index===0||styleRows[index-1].lines[0].orderId!==first.orderId)&&<TableRow data-invoice-order-controls={first.orderId}><TableCell colSpan={7}><Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center"><Typography fontWeight={700}>{first.orderNumber}</Typography><TextField size="small" label={billingText.percentage} inputProps={{inputMode:'decimal',maxLength:6,'aria-label':billingText.percentage+' '+first.orderNumber}} placeholder="100" value={percentages[first.orderId]??''} sx={{width:110}} onChange={e=>changeBilling(setPercentages,{...percentages,[first.orderId]:e.target.value})}/><DecimalAmountField size="small" currencyCode={currency} label={settlementLabels.deduction} value={settlements[first.orderId]?.deduction??''} sx={{width:150}} onValueChange={value=>changeBilling(setSettlements,{...settlements,[first.orderId]:{...settlements[first.orderId],deduction:value}})}/><TextField size="small" label={settlementLabels.reason} value={settlements[first.orderId]?.reason??''} onChange={e=>changeBilling(setSettlements,{...settlements,[first.orderId]:{...settlements[first.orderId],reason:e.target.value}})}/><Typography sx={{ml:'auto'}}>{ui.summary}: {formatInvoiceMoney(calculation.orders.find(o=>o.orderId===first.orderId)?.netAmount,currency)}</Typography></Stack></TableCell></TableRow>}<TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
+          </TableRow></TableHead><TableBody>{styleRows.map((group,index)=>{const first=group.lines[0],production=invoiceProductionReview(source,first);return <React.Fragment key={first.key}>{(index===0||styleRows[index-1].lines[0].orderId!==first.orderId)&&<TableRow data-invoice-order-controls={first.orderId}><TableCell colSpan={7}><Stack direction="row" spacing={1.5} useFlexGap flexWrap="wrap" alignItems="center"><Typography fontWeight={700}>{first.orderNumber}</Typography><TextField size="small" label={billingText.percentage} inputProps={{inputMode:'decimal',maxLength:6,'aria-label':billingText.percentage+' '+first.orderNumber}} placeholder="100" value={percentages[first.orderId]??''} sx={{width:110}} onChange={e=>changeBilling(setPercentages,{...percentages,[first.orderId]:e.target.value})}/><Typography sx={{ml:'auto'}}>{ui.summary}: {formatInvoiceMoney(calculation.orders.find(o=>o.orderId===first.orderId)?.netAmount,currency)}</Typography></Stack></TableCell></TableRow>}<TableRow key={first.key} data-invoice-line="true" data-production-review={production?'true':undefined} sx={production?{bgcolor:LABEL_PALETTE.yellow.background}:undefined}>
             <TableCell align="right">{invoiceNumber(index+1)}</TableCell>
             <TableCell>{first.orderNumber}</TableCell><TableCell>{first.description||first.styleName}
               {production&&<Typography variant="caption" display="block" color="warning.main">{productionText.scope}: {invoiceNumber(production.style.producedQuantity)} / {invoiceNumber(production.style.orderedQuantity)}</Typography>}
@@ -280,8 +271,9 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
             <TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatInvoiceMoney(group.amount,currency)}</TableCell>
 
           </TableRow></React.Fragment>;})}</TableBody></Table></Box>
+          <Stack spacing={1.5} sx={{p:2}}>{source.orders.map(order=><Stack key={order.orderId} direction="row" spacing={1.5} alignItems="center"><Typography>{order.orderNumber}</Typography><DecimalAmountField size="small" currencyCode={currency} allowNegative allowPositiveSign label={languageCode==='ko'?'금액 조정 (+/-)':languageCode==='vi'?'Điều chỉnh (+/-)':'Amount adjustment (+/-)'} value={settlements[order.orderId]?.adjustment??''} onValueChange={value=>changeBilling(setSettlements,{...settlements,[order.orderId]:{...settlements[order.orderId],adjustment:value,reason:fields.notes||''}})} sx={{width:200}}/></Stack>)}</Stack>
           <InvoiceFormSummary fields={{...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])}} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark}/>
-          {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue]}</Alert>)}
+          {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue] || adjustmentErrors[issue]}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </Box>}

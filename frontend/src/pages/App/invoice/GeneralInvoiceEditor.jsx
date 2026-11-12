@@ -34,7 +34,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    const stored=draftId?await requestJSON('/invoices/drafts/'+encodeURIComponent(draftId)+buildQueryString({orgId}),{skipCache:true}):null;
    if(stored&&stored.content?.documentKind!=='GENERAL')throw new Error('GENERAL_INVOICE_INVALID');
    const buyer=stored?.buyerOrgId||revisionInvoice?.buyerOrgId||buyerOrgId;
-   if(!buyer){if(alive){setSource(null);setFields(null);}return;}
+   if(!buyer){if(alive){setSource(null);setFields(null);setDirty(false);setReviewed(false);draft.current=null;submission.current=null;clientKey.current=crypto.randomUUID();}return;}
    const data=await requestJSON('/invoices/general-source'+buildQueryString({orgId,buyerOrgId:buyer}),{skipCache:true});
    if(!alive)return;
    setSource(data);
@@ -58,7 +58,6 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
   if(locked)return;if((dirty||draft.current)&&!await dialogs.confirm(ui.discard))return;
   draft.current=null;submission.current=null;clientKey.current=crypto.randomUUID();setSource(null);setFields(null);setDirty(false);setReviewed(false);action();
  };
- const close=async()=>{if(saving)return;if((dirty||uncertain)&&!await dialogs.confirm(ui.discard))return;setDirty(false);onClose?.();};
  const issue=async(options={})=>{
   if(busy.current||loading||loadError||!source||!fields?.date||!reviewed||!calculation.valid)return;
   if(!uncertain&&!await dialogs.confirm(storage.confirmIssue))return;
@@ -81,7 +80,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
    setError(documentNumberError(failure.details?.error||failure.message,languageCode)|| (unknown?t.uncertain:failure.message==='COMPANY_BILLING_CODE_INVALID'?t.codeInvalid:failure.message==='GENERAL_INVOICE_BUYER_INVALID'?t.buyerInvalid:t.failed));
   }finally{busy.current=false;if(mounted.current&&scope.current===orgId)setSaving(false);}
  };
- return <AppPageContainer keyboardEntry title={t.general} titleActions={<Stack direction="row" spacing={1}><Button disabled={saving} onClick={close}>{ui.cancel}</Button><Button variant="contained" disabled={loading||loadError||saving||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
+ return <AppPageContainer keyboardEntry title={t.general} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={loading||loadError||saving||!source||!reviewed||!calculation.valid||!fields?.date} onClick={()=>issue()}>{saving?<CircularProgress size={18}/>:ui.issue}</Button></Stack>}>
   <InvoiceSheet><Stack spacing={2} sx={{p:2}}>
    {renderSelection?.({requestChange,disabled:locked})}
    {loading&&<CircularProgress size={22}/>}{loadError&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}{error&&<Alert severity="error">{error}</Alert>}

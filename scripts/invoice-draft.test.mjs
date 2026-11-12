@@ -195,3 +195,12 @@ test('print document escapes all customer content, repeats table headings and ma
   assert.ok(html.includes('display:table-header-group'));
   assert.ok(html.includes('COMMERCIAL INVOICE'));
 });
+
+test('signed adjustments round symmetrically and require a remark without changing quantities',()=>{
+ const source={orders:[{orderId:'a',orderNumber:'A'}]};const calculation={total:'10.00',issues:[],lines:[{orderId:'a',amount:'10.00',quantity:5}]};
+ for(const [adjustment,total] of [['+0.005','5.01'],['-0.005','4.99'],['-1','4.00']]){
+ const result=applyOrderBillingPercentages(source,calculation,{a:'50'},{a:{adjustment,reason:'Rounding'}},'USD');assert.equal(result.total,total);assert.equal(result.receivableAdded,total);assert.equal(result.lines[0].quantity,5);assert.deepEqual(result.issues,[]);
+ }
+ assert.ok(applyOrderBillingPercentages(source,calculation,{}, {a:{adjustment:'1'}}).issues.includes('ADJUSTMENT_REASON'));
+ assert.ok(applyOrderBillingPercentages(source,calculation,{}, {a:{adjustment:'-11',reason:'Discount'}}).issues.includes('ADJUSTMENT'));
+});

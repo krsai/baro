@@ -26,3 +26,9 @@ test('workspace restores the page scroll position independently for each open ta
   assert.match(layout, /workspaceScrollByPathRef\.current\.get\(currentPath\)/);
   assert.match(layout, /ref=\{workspaceScrollRef\}/);
 });
+
+test('new invoice forms are excluded from tab preservation',()=>{
+ const start=layout.indexOf('const isKeepAliveCandidatePath =');const end=layout.indexOf('\n};',start)+3;
+ const decide=new Function('toPathname','EMPTY_WORKSPACE_PATH',layout.slice(start,end)+'; return isKeepAliveCandidatePath;')(path=>path.split('?')[0],'/empty');
+ assert.equal(decide('/invoices/new'),false);assert.equal(decide('/invoices/new?revision=existing'),false);assert.equal(decide('/invoices'),true);assert.equal(decide('/invoices/issued/id'),true);
+});
