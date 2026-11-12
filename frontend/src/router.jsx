@@ -78,9 +78,6 @@ const QcReview = lazyImportWithRetry(() => import('./pages/App/QcReview'));
 const Assign = lazyImportWithRetry(() => import('./pages/App/Assign'));
 const AssignDetail = lazyImportWithRetry(() => import('./pages/App/assign/AssignDetail'));
 const Work = lazyImportWithRetry(() => import('./pages/App/Work'));
-const WorkMonthly = lazyImportWithRetry(() => import('./pages/App/WorkMonthly'));
-const WorkMonthlyDetail = lazyImportWithRetry(() => import('./pages/App/work/WorkMonthlyDetail'));
-const ProductionAnalysis = lazyImportWithRetry(() => import('./pages/App/ProductionAnalysis'));
 const Attendance = lazyImportWithRetry(() => import('./pages/App/Attendance'));
 const WorkTimeRequests = lazyImportWithRetry(() => import('./pages/App/WorkTimeRequests'));
 const AttendanceEntry = lazyImportWithRetry(() => import('./pages/App/attendance/AttendanceEntry'));
@@ -440,22 +437,6 @@ const router = createBrowserRouter([
           {
             path: 'outsourcing-record/:workLogId',
             element: <Navigate to="/outsourcing-record" replace />,
-          },
-          {
-            path: 'production-analysis',
-            element: <ProductionAnalysis />,
-          },
-          {
-            path: 'production-analysis/:monthKey/:factoryId/:workerId',
-            element: <WorkMonthlyDetail />,
-          },
-          {
-            path: 'work-history-monthly',
-            element: <WorkMonthly />,
-          },
-          {
-            path: 'work-history-monthly/:monthKey/:factoryId/:workerId',
-            element: <WorkMonthly />,
           },
           {
             path: 'work-time',

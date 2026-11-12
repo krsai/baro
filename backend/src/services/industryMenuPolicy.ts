@@ -3,9 +3,9 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 
 export const INDUSTRY_MENU_KEY='INDUSTRY_MENU_POLICY:1';
-export const INDUSTRY_MENU_FEATURES=['WORK_TIME','FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','PRODUCTION_ANALYSIS','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
+export const INDUSTRY_MENU_FEATURES=['WORK_TIME','FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
 export const SUBSCRIBER_TYPES=['MANUFACTURER','SERVICE'];
-export const INDUSTRY_SPECIFIC_FEATURES=['FREIGHT','ORDER','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','PRODUCTION_ANALYSIS','WORK_HISTORY','REVENUE_FORECAST','REVENUE_ANALYSIS'];
+export const INDUSTRY_SPECIFIC_FEATURES=['FREIGHT','ORDER','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','WORK_HISTORY','REVENUE_FORECAST','REVENUE_ANALYSIS'];
 export const COMMON_MENU_FEATURES=INDUSTRY_MENU_FEATURES.filter(feature=>!INDUSTRY_SPECIFIC_FEATURES.includes(feature));
 const required=['DASHBOARD','BUSINESS'];
 export async function readIndustryMenuPolicy(db:any){
@@ -64,7 +64,7 @@ export function industryMenuApiFeature(path:string){
   [/^\/(?:orders|order-items)(?:\/|$)/,'ORDER'],[/^\/(?:styles|style-processes|style-products)(?:\/|$)/,'STYLE'],
   [/^\/(?:assignment-board(?:-state|-view|-versions|-revision)?|assignment-plan-progress|assignment-plans|assignment-cards|factory-month-capacity)(?:\/|$)/,'ASSIGNMENT'],
   [/^\/inventory(?:\/|$)/,'INVENTORY'],[/^\/attendance-entries(?:\/|$)/,'ATTENDANCE'],
-  [/^\/production-analysis(?:\/|$)/,'PRODUCTION_ANALYSIS'],[/^\/work-logs(?:\/|$)/,'WORK_HISTORY'],
+  [/^\/work-logs(?:\/|$)/,'WORK_HISTORY'],
   [/^\/(?:transaction-requests|expense-requests|outsourcing-records|expense-request-editor|partner-transaction-costs|expense-approval-settings|expense-approval-preview)(?:\/|$)/,'OUTSOURCING_RECORD'],
   [/^\/payroll(?:\/|$)/,'PAYROLL'],[/^\/revenue-analysis(?:\/|$)/,'REVENUE_ANALYSIS'],
   [/^\/revenue-forecast(?:\/|$)/,'REVENUE_FORECAST'],

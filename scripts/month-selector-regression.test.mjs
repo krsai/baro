@@ -23,7 +23,6 @@ test('query and settlement screens reuse the global date range selector', () => 
     'frontend/src/pages/App/assign/AssignBoard.jsx',
     'frontend/src/pages/App/ShipmentReview.jsx',
     'frontend/src/pages/App/work/WorkList.jsx',
-    'frontend/src/pages/App/work/WorkMonthlyBoard.jsx',
   ];
 
   screens.forEach((screen) => {

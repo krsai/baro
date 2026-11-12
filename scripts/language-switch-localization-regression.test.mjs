@@ -12,7 +12,7 @@ const [layout, processTime, workDetail, styleProcess, styleMatrix] = await Promi
 ]);
 
 test('dynamic workspace tab titles are recalculated for the current language', () => {
-  for(const path of ['/work-history/1','/production-analysis/2026-10/1/2','/attendance/1/2026-10-21','/style/1','/order/1','/customer/1','/payroll/1']) {
+  for(const path of ['/work-history/1','/attendance/1/2026-10-21','/style/1','/order/1','/customer/1','/payroll/1']) {
     const names=['ko','en','vi'].map(lang=>resolvePageNaming(path,lang,key=>`${lang}:${key}`).title);
     assert.equal(new Set(names).size,3);
   }

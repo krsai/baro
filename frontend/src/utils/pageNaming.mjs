@@ -33,8 +33,6 @@ export const PAGE_ROUTES = [
   ['/qc-review','qcReview','page'], ['/assignment','assignment','page','detail'],
   ['/work-history','workHistory','list','edit'],
   ['/outsourcing-record','outsourcingRecord','list','edit'],
-  ['/production-analysis','productionAnalysis','page','detail'],
-  ['/work-history-monthly','productionAnalysis','page','detail'],
   ['/attendance','attendance','list','edit'],
   ['/inventory/stock','inventoryStock','page'],
   ['/inventory/movements','inventoryHistory','list'],

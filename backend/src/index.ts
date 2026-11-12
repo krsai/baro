@@ -1314,7 +1314,7 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // own independent copy of this schema (two separate implementations, no
 // shared import - see AGENTS.md "접근 제어"). Letting the two versions drift
 // makes the frontend treat every backend response as permanently stale and
-// re-apply ALL legacy defaults (including production-analysis/outsourcing-
+// re-apply ALL legacy defaults (including outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 17;
@@ -1334,7 +1334,6 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "PRODUCTION_PLAN",
   "INVENTORY",
   "ATTENDANCE",
-  "PRODUCTION_ANALYSIS",
   "WORK_HISTORY",
   "OUTSOURCING_RECORD",
   "PAYROLL",
@@ -1378,7 +1377,6 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "INVENTORY",
       "WORK_TIME",
       "ATTENDANCE",
-      "PRODUCTION_ANALYSIS",
       "WORK_HISTORY",
       "OUTSOURCING_RECORD",
       "EMPLOYEE",
@@ -1444,19 +1442,6 @@ const applyLegacyDashboardDefault = (policy: RoleAccessPolicy): void => {
         const features = policy[orgType][role];
         if (features.includes("DASHBOARD")) return;
         features.unshift("DASHBOARD");
-      });
-    }
-  );
-};
-const applyLegacyProductionAnalysisDefault = (policy: RoleAccessPolicy): void => {
-  (Object.values(ORGANIZATION_TYPE_KEYS) as OrganizationTypeKey[]).forEach(
-    (orgType) => {
-      ORG_ACCESS_ROLES.forEach((role) => {
-        const features = policy[orgType][role];
-        if (!features.includes("WORK_HISTORY")) return;
-        if (features.includes("PRODUCTION_ANALYSIS")) return;
-        const workHistoryIndex = features.indexOf("WORK_HISTORY");
-        features.splice(Math.max(0, workHistoryIndex), 0, "PRODUCTION_ANALYSIS");
       });
     }
   );
@@ -1567,7 +1552,6 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
   }
   if (sourceSchemaVersion < 9) {
     applyLegacyDashboardDefault(policy);
-    applyLegacyProductionAnalysisDefault(policy);
     applyLegacyOutsourcingRecordDefault(policy);
     applyLegacyBusinessPartnerSplitDefault(policy);
     applyLegacyRevenueAnalysisDefault(policy);

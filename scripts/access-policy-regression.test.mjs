@@ -121,7 +121,6 @@ test('manufacturer operator defaults retain operational menus', () => {
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.ORDER), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.ASSIGNMENT), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.ATTENDANCE), true);
-  assert.equal(features.includes(ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS), true);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY), true);
   assert.equal(features.includes('LINE'), false);
   assert.equal(features.includes(ACCESS_FEATURE_KEYS.EMPLOYEE), true);
@@ -190,45 +189,19 @@ test('operator route access follows the saved operational switches', () => {
   assert.equal(canAccessPath('/payroll', authState), false);
 });
 
-test('production analysis and work history route access are independent', () => {
-  const productionOnlyPolicy = getDefaultRoleAccessPolicy();
-  productionOnlyPolicy.MANUFACTURER.OPERATOR = [
-    ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS,
-  ];
-  const productionOnlyAuthState = buildOrgAuthState({
-    orgRole: ORG_ROLE_KEYS.OPERATOR,
-    policy: productionOnlyPolicy,
-  });
-
-  assert.equal(canAccessPath('/production-analysis', productionOnlyAuthState), true);
-  assert.equal(canAccessPath('/work-history', productionOnlyAuthState), false);
-
-  const workHistoryOnlyPolicy = getDefaultRoleAccessPolicy();
-  workHistoryOnlyPolicy.MANUFACTURER.OPERATOR = [
-    ACCESS_FEATURE_KEYS.WORK_HISTORY,
-  ];
-  const workHistoryOnlyAuthState = buildOrgAuthState({
-    orgRole: ORG_ROLE_KEYS.OPERATOR,
-    policy: workHistoryOnlyPolicy,
-  });
-
-  assert.equal(canAccessPath('/production-analysis', workHistoryOnlyAuthState), false);
-  assert.equal(canAccessPath('/work-history', workHistoryOnlyAuthState), true);
-});
-
-test('legacy work history policies keep production analysis access after schema upgrade', () => {
+test('legacy work history policies discard retired production analysis access', () => {
   const sanitized = sanitizeRoleAccessPolicy({
     __schemaVersion: 2,
     MANUFACTURER: {
-      OPERATOR: [ACCESS_FEATURE_KEYS.WORK_HISTORY],
+      OPERATOR: [ACCESS_FEATURE_KEYS.WORK_HISTORY, 'PRODUCTION_ANALYSIS'],
     },
   });
 
   assert.equal(
     sanitized.MANUFACTURER.OPERATOR.includes(
-      ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS
+      'PRODUCTION_ANALYSIS'
     ),
-    true
+    false
   );
   assert.equal(
     sanitized.MANUFACTURER.OPERATOR.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY),

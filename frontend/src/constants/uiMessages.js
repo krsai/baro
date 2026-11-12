@@ -61,11 +61,6 @@ export const UI_MESSAGES = {
       en: 'Cost Estimation',
       vi: 'Tính giá dự toán',
     },
-    productionAnalysis: {
-      ko: '생산 분석',
-      en: 'Production Analysis',
-      vi: 'Phân tích sản xuất',
-    },
     qcReview: { ko: '\uAC80\uC218', en: 'Inspection', vi: 'Kiểm tra' },
     processMaster: { ko: '\uACF5\uC815 \uB9C8\uC2A4\uD130', en: 'Process Master', vi: 'Danh mục công đoạn' },
     processTargets: { ko: '\uB300\uC0C1 \uAD00\uB9AC', en: 'Target Management', vi: 'Quản lý đối tượng' },

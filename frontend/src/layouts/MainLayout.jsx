@@ -581,11 +581,6 @@ const MainLayout = () => {
         menuGroupKey: MENU_GROUP_KEYS.OPERATIONS,
         isOpen: operationsOpen,
         children: [
-          {
-            label: getUiMessage('menu.productionAnalysis', '생산 분석', languageCode),
-            icon: <TrendingUpIcon />,
-            path: '/production-analysis',
-          },
 
           {
             label: getUiMessage('menu.revenueAnalysis', '\uC218\uC775 \uBD84\uC11D', languageCode),
@@ -1148,20 +1143,6 @@ const MainLayout = () => {
         // For outsourcing record detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/outsourcing-record/') && nextPathname !== '/outsourcing-record') {
           openOptions.replacePrefix = '/outsourcing-record/';
-        }
-        // For production analysis detail pages, ensure only one detail tab is open.
-        if (
-          nextPathname.startsWith('/production-analysis/') &&
-          nextPathname !== '/production-analysis'
-        ) {
-          openOptions.replacePrefix = '/production-analysis/';
-        }
-        // Keep the legacy monthly work history detail route compatible.
-        if (
-          nextPathname.startsWith('/work-history-monthly/') &&
-          nextPathname !== '/work-history-monthly'
-        ) {
-          openOptions.replacePrefix = '/work-history-monthly/';
         }
         // For attendance detail pages, ensure only one detail tab is open.
         if (nextPathname.startsWith('/attendance/') && nextPathname !== '/attendance') {

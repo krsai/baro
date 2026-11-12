@@ -32,7 +32,6 @@ const FEATURE_KEYS = {
   INVENTORY: 'INVENTORY',
   WORK_TIME: 'WORK_TIME',
   ATTENDANCE: 'ATTENDANCE',
-  PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
   OUTSOURCING_RECORD: 'OUTSOURCING_RECORD',
   PAYROLL: 'PAYROLL',
@@ -188,7 +187,6 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY;
   if (path.startsWith('/work-time')) return FEATURE_KEYS.WORK_TIME;
   if (path.startsWith('/attendance')) return FEATURE_KEYS.ATTENDANCE;
-  if (path.startsWith('/production-analysis')) return FEATURE_KEYS.PRODUCTION_ANALYSIS;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/outsourcing-record')) return FEATURE_KEYS.OUTSOURCING_RECORD;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
@@ -244,7 +242,6 @@ const ACCESS_PATH_PRIORITY = [
   '/work-history',
   '/work-time',
   '/attendance',
-  '/production-analysis',
   '/payroll',
   '/business',
   '/employee',

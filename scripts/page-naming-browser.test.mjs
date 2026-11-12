@@ -29,7 +29,7 @@ try {
   await page.goto(`http://127.0.0.1:${port}/page-naming-acceptance.html`);
   for(const lang of ['ko','en','vi']){
     await page.getByRole('button',{name:lang,exact:true}).click();
-    for(const route of [...PAGE_ROUTES.map(row=>row[0]),'/outsourcing-record/new','/outsourcing-record/edit/request/17','/order/new','/order/12','/style/12','/work-history/12','/attendance/1/2026-10-21','/invoices/new?revision=2','/production-analysis/2026-10/1/2']){
+    for(const route of [...PAGE_ROUTES.map(row=>row[0]),'/outsourcing-record/new','/outsourcing-record/edit/request/17','/order/new','/order/12','/style/12','/work-history/12','/attendance/1/2026-10-21','/invoices/new?revision=2']){
       await page.evaluate(route=>window.setScreen(route),route);
       const screen=page.getByTestId('screen-1');
       await page.waitForFunction(()=>document.querySelector('[data-testid="screen-1"] h1')?.textContent===document.querySelector('[data-testid="tab-1"]')?.textContent);

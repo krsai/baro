@@ -27,7 +27,6 @@ test('list, creation and editing use the same business name and one action vocab
 test('single screens, settings and view-only details do not pretend to be editing lists',()=>{
   assert.equal(name('/app-settings').title,'앱 설정');
   assert.equal(name('/payroll/123').mode,'detail');
-  assert.equal(name('/production-analysis/2026-10/1/3').mode,'detail');
   assert.equal(name('/system-setting/app-defaults').key,'appDefaults');
   assert.equal(name('/system-setting').key,'subscription');
   assert.equal(name('/inventory/movements/new').key,'inventoryEntry');

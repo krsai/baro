@@ -27,7 +27,6 @@ export const ACCESS_FEATURE_KEYS = {
   INVENTORY: 'INVENTORY',
   WORK_TIME: 'WORK_TIME',
   ATTENDANCE: 'ATTENDANCE',
-  PRODUCTION_ANALYSIS: 'PRODUCTION_ANALYSIS',
   WORK_HISTORY: 'WORK_HISTORY',
   OUTSOURCING_RECORD: 'OUTSOURCING_RECORD',
   PAYROLL: 'PAYROLL',
@@ -77,7 +76,6 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.INVENTORY,
       ACCESS_FEATURE_KEYS.WORK_TIME,
       ACCESS_FEATURE_KEYS.ATTENDANCE,
-      ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS,
       ACCESS_FEATURE_KEYS.WORK_HISTORY,
       ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
@@ -161,23 +159,6 @@ const applyLegacyDashboardDefault = (policy) => {
       if (!Array.isArray(features)) return;
       if (features.includes(ACCESS_FEATURE_KEYS.DASHBOARD)) return;
       features.unshift(ACCESS_FEATURE_KEYS.DASHBOARD);
-    });
-  });
-};
-
-const applyLegacyProductionAnalysisDefault = (policy) => {
-  POLICY_ORG_TYPES.forEach((orgType) => {
-    POLICY_ORG_ROLES.forEach((role) => {
-      const features = policy?.[orgType]?.[role];
-      if (!Array.isArray(features)) return;
-      if (!features.includes(ACCESS_FEATURE_KEYS.WORK_HISTORY)) return;
-      if (features.includes(ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS)) return;
-      const workHistoryIndex = features.indexOf(ACCESS_FEATURE_KEYS.WORK_HISTORY);
-      features.splice(
-        Math.max(0, workHistoryIndex),
-        0,
-        ACCESS_FEATURE_KEYS.PRODUCTION_ANALYSIS
-      );
     });
   });
 };
@@ -307,7 +288,6 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
   }
   if (sourceSchemaVersion < 9) {
     applyLegacyDashboardDefault(base);
-    applyLegacyProductionAnalysisDefault(base);
     applyLegacyOutsourcingRecordDefault(base);
     applyLegacyBusinessPartnerSplitDefault(base);
     applyLegacyRevenueAnalysisDefault(base);

@@ -66,7 +66,7 @@ test('company groups, direct entry, partner scopes and notifications follow the 
   for (const [path, group] of [
     ['/account-overview', 'OPERATIONS'], ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'SETTINGS'],
     ['/attendance', 'ADMIN'], ['/payroll', 'ADMIN'], ['/employee-system', 'SETTINGS'],
-    ['/salary-system', 'SETTINGS'], ['/production-analysis', 'RECORDS'],
+    ['/salary-system', 'SETTINGS'],
     ['/business', 'SETTINGS'], ['/inventory/stock', 'INVENTORY'],
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],
