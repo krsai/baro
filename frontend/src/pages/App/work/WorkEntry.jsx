@@ -184,6 +184,7 @@ const WorkEntry = ({ recordKind = 'EMPLOYEE' } = {}) => {
         );
         navigateToPath(`${basePath}/${created.id}`, {
           label: buildWorkDetailTabLabel(payload?.workDate, languageCode, isOutsourcingMode),
+          skipUnsavedChangesCheck: true,
         });
       } catch (error) {
         if (error?.details?.quantityReviewItems) return error.details;
