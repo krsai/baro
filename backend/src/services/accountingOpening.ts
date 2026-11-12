@@ -38,22 +38,30 @@ export function normalizeOpeningRows(value:any){
   if(!row||!['OPENING','SETTLED','EXCLUDED'].includes(row.kind)||!['AR','AP'].includes(row.side))fail();
   if(row.kind==='OPENING'){
    if(!['USD','VND','KRW'].includes(row.currencyCode)||!row.counterparty||!['PARTNER','EMPLOYEE'].includes(row.counterparty.kind)||!Number.isSafeInteger(row.counterparty.id)||!Number.isSafeInteger(row.accountingCodeId))fail();
-   return {kind:row.kind,side:row.side,currencyCode:row.currencyCode,amount:validateLedgerMoney(row.amount,row.currencyCode),accountingCodeId:row.accountingCodeId,counterparty:{kind:row.counterparty.kind,id:row.counterparty.id}};
+   const source=row.source===undefined?undefined:normalizeOpeningRows([{...row.source,kind:'EXCLUDED'}])[0];
+   return {kind:row.kind,side:row.side,currencyCode:row.currencyCode,amount:validateLedgerMoney(row.amount,row.currencyCode),accountingCodeId:row.accountingCodeId,counterparty:{kind:row.counterparty.kind,id:row.counterparty.id},...(source?{source}:{})};
   }
   if(typeof row.sourceId!=='string'||!row.sourceId||row.sourceId.length>100||typeof row.expectedRemaining!=='string')fail();
   return {...(row.sourceType==='PAYROLL'?{sourceType:'PAYROLL'}:{}),kind:row.kind,side:row.side,sourceId:row.sourceId,expectedRemaining:row.expectedRemaining,sourceVersion:row.sourceVersion??null};
  });
 }
-export async function applyAccountingOpening(tx:any,scope:any,body:any,rows:any[]){
- const orgId=scope.orgId,date=ledgerDate(body.balanceDate),seen=new Set<string>();
- for(const [line,row] of rows.entries()){
+export async function applyAccountingOpening(tx:any,scope:any,body:any,rows:any[],lineOffset=0):Promise<string[]>{
+ const orgId=scope.orgId,date=ledgerDate(body.balanceDate),seen=new Set<string>(),createdIds:string[]=[];
+ for(const [index,row] of rows.entries()){
+  const line=lineOffset+index*2;
   let data:any={orgId,batchKey:body.clientKey,line,kind:row.kind,side:row.side,balanceDate:date,reason:body.reason.trim(),createdByEmployeeId:scope.actorId};
   if(row.kind==='OPENING'){
    await ledgerAccountingCode(tx,orgId,row.accountingCodeId,row.side==='AR'?'IN':'OUT');
    const party=await resolveLedgerCounterparty(tx,orgId,{}, {counterparty:row.counterparty},[]);
    data={...data,partyOrgId:party.counterpartyOrgId,employeeId:party.counterpartyEmployeeId,currencyCode:row.currencyCode,amount:row.amount,accountingCodeId:row.accountingCodeId};
+   if(row.source){
+    const sourceKey=(row.source.sourceType||row.source.side)+':'+row.source.sourceId;
+    if(seen.has(sourceKey))fail();seen.add(sourceKey);
+    const [replacesItemId]=await applyAccountingOpening(tx,scope,body,[row.source],line+1);
+    data.replacesItemId=replacesItemId;
+   }
   }else{
-   const key=row.side+':'+row.sourceId;if(seen.has(key))fail();seen.add(key);
+   const key=(row.sourceType||row.side)+':'+row.sourceId;if(seen.has(key))fail();seen.add(key);
    let remaining:bigint;
    if(row.sourceType==='PAYROLL'){
     if(row.side!=='AP')fail();
@@ -65,9 +73,9 @@ export async function applyAccountingOpening(tx:any,scope:any,body:any,rows:any[
    }else if(row.side==='AR'){
     await tx.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',row.sourceId,orgId);
     const invoice=await tx.invoice.findFirst({where:{id:row.sourceId,sellerOrgId:orgId,status:'ISSUED'},include:{credits:{where:{voidedAt:null}},payments:{where:{voidedAt:null}}}});
-    if(!invoice||String((invoice.snapshot as any)?.fields?.date||invoice.issuedAt.toISOString().slice(0,10)).slice(0,10)>=date)fail('OPENING_SOURCE_CHANGED',409);
+    if(!invoice||(row.sourceVersion!==null&&row.sourceVersion!==undefined&&row.sourceVersion!==invoice.revisionNumber)||String((invoice.snapshot as any)?.fields?.date||invoice.issuedAt.toISOString().slice(0,10)).slice(0,10)>=date)fail('OPENING_SOURCE_CHANGED',409);
     const current=await invoiceOpeningRemaining(tx,orgId,invoice);if(current.hasUnlinkedReceipt)fail('OPENING_UNLINKED_RECEIPT',409);remaining=current.remaining;
-    data={...data,invoiceId:invoice.id,partyOrgId:invoice.buyerOrgId,currencyCode:invoice.currencyCode};
+    data={...data,invoiceId:invoice.id,sourceVersion:invoice.revisionNumber,partyOrgId:invoice.buyerOrgId,currencyCode:invoice.currencyCode};
    }else{
     const item=await tx.partnerTransactionCost.findFirst({where:{id:row.sourceId,orgId},include:{expenseRequest:true}});
     if(!item?.expenseRequest||item.expenseRequest.deletedAt||item.expenseRequest.requestDate>=date)fail('OPENING_SOURCE_CHANGED',409);
@@ -81,18 +89,19 @@ export async function applyAccountingOpening(tx:any,scope:any,body:any,rows:any[
    if(remaining<=0n||ledgerScale4(row.expectedRemaining)!==remaining)fail('OPENING_SOURCE_CHANGED',409);
    data.amount=ledgerMoney(remaining!,data.currencyCode);
   }
-  await tx.accountingOpeningItem.create({data});
+  createdIds.push((await tx.accountingOpeningItem.create({data})).id);
  }
+ return createdIds;
 }
 export async function readAccountingOpening(db:any,orgId:number,actorId:number,query:any){
  const balanceDate=ledgerDate(query.balanceDate),search=String(query.search||'').trim();if(search.length>200)fail();
  return retryEditTransaction(db,async(tx:any)=>{
   await openingAdmin(tx,orgId,actorId);
   const [invoices,requests,history,parties]=await Promise.all([
-   tx.invoice.findMany({where:{sellerOrgId:orgId,status:'ISSUED',...(search?{OR:[{invoiceNumber:{contains:search,mode:'insensitive'}},{buyer:companyNameCodeSearch(orgId,search)}]}:{})},include:{buyer:{select:{name:true}},credits:{where:{voidedAt:null}},payments:{where:{voidedAt:null}}},orderBy:{issuedAt:'desc'},take:201}),
+   tx.invoice.findMany({where:{sellerOrgId:orgId,status:'ISSUED',...(search?{OR:[{invoiceNumber:{contains:search,mode:'insensitive'}},{buyer:companyNameCodeSearch(orgId,search)}]}:{})},include:{generalLines:{select:{transactionCodeId:true}},buyer:{select:{name:true}},credits:{where:{voidedAt:null}},payments:{where:{voidedAt:null}}},orderBy:{issuedAt:'desc'},take:201}),
    tx.expenseRequest.findMany({where:{orgId,deletedAt:null,requestDate:{lt:balanceDate},...(search?{OR:[{managementNumber:{contains:search,mode:'insensitive'}},{partner:companyNameCodeSearch(orgId,search)},{payeeEmployee:{OR:[{name:{contains:search,mode:'insensitive'}},{employeeNo:{contains:search,mode:'insensitive'}}]}}]}:{})},include:{partner:{select:{name:true}},payeeEmployee:{select:{name:true}},createdByEmployee:true,approvalSteps:true,items:{include:{transactionCode:true}}},orderBy:{requestDate:'desc'},take:201}),
-   tx.accountingOpeningItem.findMany({where:{orgId},include:{payrollItem:{include:{document:true}},party:{select:{name:true}},employee:{select:{name:true}},invoice:{select:{invoiceNumber:true}},expenseItem:{select:{description:true}},accountingCode:{select:{code:true}},allocations:{include:{entry:{select:{voidedAt:true}}}}},orderBy:{createdAt:'desc'}}),
-   ledgerCounterpartyOptions(tx,orgId),
+   query.lookup==='1'?Promise.resolve([]):tx.accountingOpeningItem.findMany({where:{orgId},include:{payrollItem:{include:{document:true}},party:{select:{name:true}},employee:{select:{name:true}},replacesItem:{include:{invoice:{select:{invoiceNumber:true}},expenseItem:{select:{expenseRequest:{select:{managementNumber:true}}}},payrollItem:{include:{document:true}}}},invoice:{select:{invoiceNumber:true}},expenseItem:{select:{description:true}},accountingCode:{select:{code:true}},allocations:{include:{entry:{select:{voidedAt:true}}}}},orderBy:{createdAt:'desc'}}),
+   query.lookup==='1'?Promise.resolve([]):ledgerCounterpartyOptions(tx,orgId),
   ]);
   const roots=[...new Set(invoices.slice(0,200).map((i:any)=>i.rootInvoiceId||i.id))];
   const families=await tx.invoice.findMany({where:{sellerOrgId:orgId,OR:[{id:{in:roots}},{rootInvoiceId:{in:roots}}]},select:{id:true,rootInvoiceId:true,payments:{where:{voidedAt:null},select:{id:true}}}});
@@ -107,13 +116,13 @@ export async function readAccountingOpening(db:any,orgId:number,actorId:number,q
   for(const invoice of invoices.slice(0,200)){
    if(String((invoice.snapshot as any)?.fields?.date||invoice.issuedAt.toISOString().slice(0,10)).slice(0,10)>=balanceDate)continue;
    const remaining=ledgerScale4(invoice.receivableAdded)-openingSum(invoice.credits)-(totals.get('AR:'+(invoice.rootInvoiceId||invoice.id))||0n),hasUnlinkedReceipt=families.some((i:any)=>(i.rootInvoiceId||i.id)===(invoice.rootInvoiceId||invoice.id)&&i.payments.length>0);
-   if(remaining>0n)documents.push({side:'AR',id:invoice.id,reference:invoice.invoiceNumber,party:invoice.buyer.name,currencyCode:invoice.currencyCode,remaining:ledgerMoney(remaining,invoice.currencyCode),hasUnlinkedReceipt});
+   if(remaining>0n)documents.push({side:'AR',id:invoice.id,sourceVersion:invoice.revisionNumber,reference:invoice.invoiceNumber,billNumber:invoice.invoiceNumber,counterparty:{kind:'PARTNER',id:invoice.buyerOrgId},accountingCodeId:invoice.generalLines?.length===1?invoice.generalLines[0].transactionCodeId:null,party:invoice.buyer.name,currencyCode:invoice.currencyCode,remaining:ledgerMoney(remaining,invoice.currencyCode),hasUnlinkedReceipt});
   }
   const approved=(await attachExpenseApprovalStates(tx,orgId,requests.slice(0,200))).filter((r:any)=>r.approval.approved);
-  for(const request of approved)for(const item of request.items){const remaining=ledgerScale4(item.amount)-(totals.get('AP:'+item.id)||0n);if(remaining>0n)documents.push({side:'AP',id:item.id,sourceVersion:request.version,reference:(request.managementNumber||String(request.id))+' #'+item.expenseRequestLine,description:item.description,party:request.partner?.name||request.payeeEmployee?.name||'',currencyCode:item.currency,remaining:ledgerMoney(remaining,item.currency)});}
+  for(const request of approved)for(const item of request.items){const remaining=ledgerScale4(item.amount)-(totals.get('AP:'+item.id)||0n);if(remaining>0n)documents.push({side:'AP',id:item.id,sourceVersion:request.version,reference:(request.managementNumber||String(request.id))+' #'+item.expenseRequestLine,billNumber:request.managementNumber||String(request.id),description:item.description,counterparty:item.payeeEmployeeId?{kind:'EMPLOYEE',id:item.payeeEmployeeId}:{kind:'PARTNER',id:item.partnerOrgId},accountingCodeId:item.transactionCodeId,party:request.payeeEmployee?.name||request.partner?.name||'',currencyCode:item.currency,remaining:ledgerMoney(remaining,item.currency)});}
   const payroll=await tx.payrollPayableItem.findMany({where:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false},month:{lt:balanceDate.slice(0,7)}}},include:{document:true,employee:{select:{name:true}}},orderBy:{document:{month:'desc'}}});
-  for(const item of payroll){if(search&&!((item.document.managementNumber+' '+item.document.month+' '+item.employee.name).toLowerCase().includes(search.toLowerCase())))continue;const remaining=await payrollPayableRemaining(tx,orgId,item);if(remaining>0n)documents.push({side:'AP',sourceType:'PAYROLL',id:item.id,sourceVersion:item.snapshotRevision,reference:item.document.managementNumber+' / '+item.document.month,party:item.employee.name,currencyCode:item.currencyCode,remaining:ledgerMoney(remaining,item.currencyCode)});}
-  return {documents:documents.slice(0,200),hasMore:documents.length>200||invoices.length>200||requests.length>200,parties:parties.filter((p:any)=>p.kind!=='ACCOUNT'),history:history.map((r:any)=>({...r,amount:String(r.amount),matched:ledgerMoney(r.allocations.filter((a:any)=>!a.entry.voidedAt).reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),r.currencyCode),remaining:ledgerMoney(ledgerScale4(r.amount)-r.allocations.filter((a:any)=>!a.entry.voidedAt).reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),r.currencyCode),allocations:undefined}))};
+  for(const item of payroll){if(search&&!((item.document.managementNumber+' '+item.document.month+' '+item.employee.name).toLowerCase().includes(search.toLowerCase())))continue;const remaining=await payrollPayableRemaining(tx,orgId,item);if(remaining>0n)documents.push({side:'AP',sourceType:'PAYROLL',id:item.id,sourceVersion:item.snapshotRevision,reference:item.document.managementNumber+' / '+item.document.month,counterparty:{kind:'EMPLOYEE',id:item.employeeId},accountingCodeId:item.document.accountingCodeId,party:item.employee.name,currencyCode:item.currencyCode,remaining:ledgerMoney(remaining,item.currencyCode)});}
+  return {documents:documents.slice(0,200),hasMore:documents.length>200||invoices.length>200||requests.length>200,parties:parties.filter((p:any)=>p.kind!=='ACCOUNT'),history:history.filter((r:any)=>!history.some((other:any)=>other.replacesItemId===r.id)).map((r:any)=>({...r,amount:String(r.amount),matched:ledgerMoney(r.allocations.filter((a:any)=>!a.entry.voidedAt).reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),r.currencyCode),remaining:ledgerMoney(ledgerScale4(r.amount)-r.allocations.filter((a:any)=>!a.entry.voidedAt).reduce((s:bigint,a:any)=>s+ledgerScale4(a.amount),0n),r.currencyCode),allocations:undefined}))};
  });
 }
 export async function openingCashEvidence(tx:any,orgId:number,account:any,body:any){
@@ -133,7 +142,9 @@ export async function voidAccountingOpening(db:any,orgId:number,actorId:number,i
   await openingAdmin(tx,orgId,actorId);await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
   const item=await tx.accountingOpeningItem.findFirst({where:{id,orgId}});if(!item)fail('OPENING_SOURCE_CHANGED',409);
   if(item.voidedAt){if(item.voidReason!==reason.trim())fail('LEDGER_RETRY_CONFLICT',409);return {id};}
-  if(await tx.accountingOpeningAllocation.count({where:{orgId,openingItemId:id,entry:{voidedAt:null}}}))fail('OPENING_ALREADY_MATCHED',409);
-  await tx.accountingOpeningItem.update({where:{id},data:{voidedAt:new Date(),voidReason:reason.trim(),voidedByEmployeeId:actorId}});return {id};
+  const replacement=item.replacesItemId?item:await tx.accountingOpeningItem.findFirst({where:{orgId,replacesItemId:id}});
+  const ids=replacement?[replacement.id,replacement.replacesItemId]:[id];
+  if(await tx.accountingOpeningAllocation.count({where:{orgId,openingItemId:{in:ids},entry:{voidedAt:null}}}))fail('OPENING_ALREADY_MATCHED',409);
+  for(const itemId of ids)await tx.accountingOpeningItem.update({where:{id:itemId},data:{voidedAt:new Date(),voidReason:reason.trim(),voidedByEmployeeId:actorId}});return {id};
  });
 }

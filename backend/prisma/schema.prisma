@@ -688,6 +688,9 @@ model BankLedgerEntry {
 }
 
 model AccountingOpeningItem {
+  replacesItemId String? @unique
+  replacesItem AccountingOpeningItem? @relation("OpeningReplacement",fields:[replacesItemId,orgId],references:[id,orgId],onDelete:Restrict)
+  replacementItems AccountingOpeningItem[] @relation("OpeningReplacement")
   payrollItemId String?
   payrollItem PayrollPayableItem? @relation(fields:[payrollItemId,orgId],references:[id,orgId],onDelete:Restrict,map:"AccountingOpeningItem_payroll_fkey")
   id String @id @default(uuid())
