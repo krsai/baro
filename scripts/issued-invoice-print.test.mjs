@@ -11,6 +11,17 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
   lines: [{ orderId: 'internal-order-id', quantity: 1, styleCode:'STYLE123',description: 'Jacket', color: 'Blue', gender: 'U', size: 'XL', hsCode:'HS123',origin:'Vietnam',unitPrice: '100', amount: '100', remark:'Customer remark',adjustmentReason: 'INTERNAL REASON' }],
 } });
 
+test('print explains the final billing percentage and deduction using frozen amounts and separate bank lines',()=>{
+ const invoice=fixture();
+ invoice.snapshot.orders[0]={...invoice.snapshot.orders[0],basisAmount:'200',billingPercentage:'50',billedAmount:'100',appliedDeductionAmount:'20',netAmount:'80'};
+ invoice.snapshot.fields.bank='Bank A / 123 / Holder / USD\nBank B / 456 / Holder / VND';
+ const before=structuredClone(invoice),html=buildIssuedInvoicePrintHtml(invoice);
+ assert.ok(html.includes('$200.00 × 50% = $100.00'));
+ assert.ok(html.includes('$100.00 − $20.00 = $80.00'));
+ assert.equal((html.match(/<p class="invoice-bank-line">/g)||[]).length,2);
+ assert.deepEqual(invoice,before);
+});
+
 test('issued HTML renders frozen document fields, public order numbers and settlement, not live masters or internal reasons', () => {
   const invoice = fixture(), before = structuredClone(invoice), html = buildIssuedInvoicePrintHtml(invoice);
   for (const text of ['COMMERCIAL INVOICE', 'Frozen seller', 'Frozen address', 'Frozen buyer', 'TAX123', 'frozen@example.com', 'PHONE123', 'Frozen bank', 'ORDER-1', '80%', 'Jacket', '$80.00']) assert.ok(html.includes(text), text);

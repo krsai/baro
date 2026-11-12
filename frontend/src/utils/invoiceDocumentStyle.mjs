@@ -27,12 +27,19 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-lines input{padding:8px 10px}
 .invoice-sheet .invoice-cell:focus-within .invoice-cell-value{border-color:#2878f0}
 .invoice-sheet .invoice-section-title{font-size:12px;font-weight:600;margin:0;padding:10px 16px;color:#57616c;border-bottom:1px solid #e7ecf2}
-.invoice-sheet .invoice-summary{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;padding:20px;background:#f8fafc}
+.invoice-sheet .invoice-summary{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);gap:24px;padding:20px;background:#f8fafc}
+.invoice-sheet .invoice-remark{align-self:stretch;min-height:190px}
+.invoice-sheet .invoice-remark .MuiInputBase-root{height:100%;align-items:flex-start}
+.invoice-sheet .invoice-remark textarea:not([aria-hidden]){height:100%!important;overflow:auto!important}
+.invoice-sheet .invoice-bank-lines{min-width:0;overflow-x:auto}
+.invoice-sheet .invoice-bank-line{white-space:pre;overflow-wrap:normal;line-height:1.7}
+.invoice-sheet .invoice-amount-formula{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 .invoice-sheet .invoice-total{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #e7ecf2;padding:8px 0;font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
 .invoice-sheet .invoice-total span:last-child{color:#2878f0;text-align:right}
 .invoice-sheet p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .invoice-sheet .invoice-signature{display:flex;justify-content:flex-end;margin-top:20px}
 .invoice-sheet .invoice-stamp{width:160px;min-height:78px;border:1px solid #cbd5e1;border-radius:6px;padding:10px;text-align:center;color:#667085;font-size:11px}
 .invoice-sheet .invoice-status{text-align:right;font-weight:700;color:#a33939;padding-bottom:12px}
+@media print{.invoice-sheet .invoice-bank-lines{overflow:visible}.invoice-sheet .invoice-bank-line{white-space:pre-wrap;overflow-wrap:anywhere}}
 @media(max-width:600px){.invoice-sheet .invoice-document-top{display:block}.invoice-sheet .invoice-document-identifiers{width:100%;margin-top:12px;grid-template-columns:1fr}.invoice-sheet .invoice-metadata,.invoice-sheet .invoice-parties,.invoice-sheet .invoice-summary{grid-template-columns:1fr}.invoice-sheet .invoice-summary{padding:16px;gap:16px}.invoice-sheet th,.invoice-sheet td{padding:6px 8px}}
 `;

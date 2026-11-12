@@ -2,6 +2,7 @@ import {invoiceUi} from '../frontend/src/constants/invoiceUi.js';
 import {invoicePartyText} from '../frontend/src/constants/invoiceParty.js';
 import {cashScheduleText} from '../frontend/src/constants/cashSchedule.js';
 import {invoiceMessages} from '../frontend/src/constants/invoiceMessages.js';
+const summaryOnly=process.argv.includes('--summary-only');
 const compactOnly=process.argv.includes('--compact-only');
 const scheduleOnly=process.argv.includes('--schedule-only');
 import {INVOICE_BANK_TEXT} from '../frontend/src/constants/invoiceBankConfirmation.js';
@@ -23,13 +24,14 @@ const source={orderId:'o1',orderNumber:'PO-1',sourceUpdatedAt:'2026-10-20',selle
  styles:[{styleId:10,code:'S1',name:'Shirt',orderedQuantity:10,producedQuantity:10,ready:true,prices:[{pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',entries:[{quantity:1,unitPrice:'2',priceId:4}],versionId:3}]}],
  lines:[{key:'item1:S',itemId:1,styleId:10,styleCode:'S1',description:'Shirt',orderedQuantity:10,quantity:'10',adjustmentReason:'',remark:'',hsCode:'',origin:'',color:'Blue',size:'S'}]};
 source.sellerBankAccounts=[{id:1,isDefault:true,bankName:'Company Bank',accountNumber:'USD-001',accountHolder:'BARO',currency:{code:'USD'}},{id:2,isDefault:true,bankName:'Company Bank',accountNumber:'VND-001',accountHolder:'BARO',currency:{code:'VND'}}];
+if(summaryOnly){source.sellerBankAccounts.forEach(account=>{account.accountHolder='BARO GARMENT MANUFACTURING COMPANY LIMITED';account.accountNumber='01234567890123456789';});source.sellerBankAccounts.push({id:3,isDefault:true,bankName:'International bank',accountNumber:'98765432109876543210',accountHolder:'BARO GARMENT MANUFACTURING COMPANY LIMITED',currency:{code:'KRW'}});}
 if(bankReviewOnly)source.sellerBankAccounts.push({id:3,bankName:'Second bank',accountNumber:'USD-999',accountHolder:'Other holder',currency:{code:'USD'}});
 source.lines.push({...source.lines[0],key:'item1:M',size:'M',orderedQuantity:5,quantity:'5'});source.styles[0].orderedQuantity=15;source.styles[0].producedQuantity=15;
 const port=43221,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/invoice-editor-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const [lang,failure] of (compactOnly?[['ko','none'],['en','none'],['vi','none']]:scheduleOnly?[['ko','none'],['en','none'],['vi','none']]:bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
+ for(const [lang,failure] of ((summaryOnly||compactOnly)?[['ko','none'],['en','none'],['vi','none']]:scheduleOnly?[['ko','none'],['en','none'],['vi','none']]:bankReviewOnly?[['ko','none'],['en','issue'],['en','save'],['vi','none']]:[['ko','detail'],['en','detail'],['vi','detail'],['en','revision'],['ko','layout'],['ko','none'],['en','none'],['vi','none'],['en','issue'],['en','save'],['ko','advance'],['en','advance'],['vi','advance']])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],saves=[],issues=[],reads=[];let failed=false;
   page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.addInitScript(({lang,invoice})=>{window.testLang=lang;window.testInvoice=invoice;},{lang,invoice:failure==='detail'?{id:'i1',buyerOrgId:2,invoiceNumber:'INV-001',revisionNumber:1,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',orders:[{sourceOrderId:'o1',sourceUpdatedAt:source.sourceUpdatedAt,billingPercentage:'100',appliedDeductionAmount:'0'}],snapshot:{fields:{number:'INV-001',date:'2026-10-31',seller:source.seller,buyer:source.buyer,notes:'',bank:'Saved bank USD-001'},lines:combineInvoiceSources([source]).lines.map(row=>({...row,lineKey:row.key,unitPrice:'2'}))}}:null});
@@ -72,7 +74,20 @@ try{
   assert.equal(await page.locator('.invoice-party').last().locator('input').first().inputValue(),'BARO');
   assert.equal(await page.locator('.invoice-cell').first().evaluate(el=>getComputedStyle(el).display),'flex');
   assert.equal(await grid.locator('td').first().evaluate(el=>getComputedStyle(el).borderRightStyle),'none');
+  if(summaryOnly){
+   const summary=page.locator('.invoice-summary');await page.locator('input[inputmode="decimal"][aria-label$=" PO-1"]').fill('50');
+   assert.match(await summary.locator('.invoice-amount-formula').innerText(),/\$30\.00 \u00d7 50% = \$15\.00/);
+   assert.equal(await summary.locator('.invoice-bank-line').count(),3);
+   for(const width of [1920,1720,1366,768,390]){
+    await page.setViewportSize({width,height:1000});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+    assert.equal(await summary.locator('.invoice-bank-line').first().evaluate(el=>getComputedStyle(el).whiteSpace),'pre');
+    if(width>=1366){const boxes=await summary.evaluate(el=>{const note=el.querySelector('.invoice-remark').getBoundingClientRect(),details=el.querySelector('.invoice-summary-details').getBoundingClientRect();return {note:note.bottom,details:details.bottom,right:details.width,total:el.getBoundingClientRect().width};});assert.ok(Math.abs(boxes.note-boxes.details)<3,JSON.stringify(boxes));assert.ok(boxes.right>boxes.total*.5,JSON.stringify(boxes));}
+   }
+   assert.deepEqual(errors,[]);await page.close();continue;
+  }
   if(failure==='layout'){
+
    assert.equal(await grid.locator('tr[data-production-review="true"]').count(),1);
    assert.match(await grid.locator('tbody tr[data-invoice-line]').innerText(),/HANOI/);
    let quantityReads=0;
@@ -111,7 +126,7 @@ try{
   assert.ok(saves[0].lines.every(line=>line.unitPriceOverride==='2.3456'));assert.equal(saves[0].buyerOrgId,2);assert.equal(saves[0].lines[0].quantity,'9');assert.equal(saves[0].lines[1].quantity,'5');assert.ok(saves[0].lines.every(line=>line.remark===''));assert.equal(saves[0].lines[0].adjustmentReason,'Reviewed note');assert.equal(saves[0].fields.notes,'Reviewed note');if(failure!=='revision'){assert.match(saves[0].fields.bank,/USD-001/);assert.match(saves[0].fields.bank,/VND-001/);assert.doesNotMatch(saves[0].fields.bank,/USD-999/);}assert.equal(saves[0].fields.number,failure==='save'?'CUSTOM-2026-A':failure==='detail'?'INV-001-R2':'');
   assert.deepEqual(errors,[]);await page.close();
  }
- for(const lang of ((bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){
+ for(const lang of ((summaryOnly||bankReviewOnly||scheduleOnly||compactOnly)?[]:['ko','en','vi'])){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],queries=[];
   page.on('pageerror',e=>errors.push(e.message));
   await page.addInitScript(lang=>{window.testLang=lang;},lang);
