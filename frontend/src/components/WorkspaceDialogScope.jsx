@@ -1,4 +1,4 @@
-import React, { createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, forwardRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Modal, ThemeProvider, useTheme } from '@mui/material';
 import PageDialogProvider from './PageDialogProvider';
 
@@ -10,6 +10,39 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
   const id = useRef(Symbol('workspace-dialog'));
   const register = scope?.register;
   const active = scope?.active;
+  const origin = useRef(null);
+  const modalRoot = useRef(null);
+  const mounted = useRef(true);
+  const wasOpen = useRef(false);
+  const current = useRef({ open, active });
+  current.current = { open, active };
+  const restoreFocus = useCallback(() => {
+    requestAnimationFrame(() => {
+      const target = origin.current;
+      if ((mounted.current && current.current.open) || !current.current.active || !target?.isConnected ||
+          target.disabled || target.closest('[inert],[aria-hidden="true"]') || !target.getClientRects().length) return;
+      // A deliberate focus move (for example to another tab) takes precedence.
+      const focused = target.ownerDocument.activeElement;
+      if (focused !== target.ownerDocument.body && focused !== target &&
+          !modalRoot.current?.contains(focused)) { origin.current = null; return; }
+      target.focus({ preventScroll: true });
+      origin.current = null;
+    });
+  }, []);
+  useLayoutEffect(() => {
+    if (open && active && !wasOpen.current) {
+      const focused = document.activeElement;
+      if (focused && focused !== document.body && !focused.closest('[inert]')) origin.current = focused;
+    }
+    wasOpen.current = open;
+  }, [open, active]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; restoreFocus(); };
+  }, [restoreFocus]);
+  useEffect(() => {
+    if (!open && active) restoreFocus();
+  }, [open, active, restoreFocus]);
   useEffect(() => {
     register?.(id.current, Boolean(open && active));
     return () => register?.(id.current, false);
@@ -21,6 +54,12 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
     closeAfterTransition={scope.active ? closeAfterTransition : false}
     container={() => scope.host.current}
     disableScrollLock disableEnforceFocus disableRestoreFocus
+    onFocusCapture={event => {
+      modalRoot.current = event.currentTarget;
+      if (!origin.current && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) origin.current = event.relatedTarget;
+      rest.onFocusCapture?.(event);
+    }}
+    onTransitionExited={(...args) => { rest.onTransitionExited?.(...args); restoreFocus(); }}
     slotProps={{ ...slotProps, backdrop: { ...slotProps?.backdrop, sx: [{ position: 'absolute' }, slotProps?.backdrop?.sx] } }}
     sx={[...(Array.isArray(sx) ? sx : [sx]), {
       position: 'absolute', inset: 0, pointerEvents: 'auto',
