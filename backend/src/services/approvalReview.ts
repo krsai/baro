@@ -14,7 +14,7 @@ const day=(value:any,zone:string)=>new Intl.DateTimeFormat('en-CA',{timeZone:zon
 async function actor(db:any,orgId:number,actorId:number){const value=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}},include:{grade:{include:{set:true}}}});if(!value)fail('ACTIVE_EMPLOYEE_REQUIRED');return value;}
 export async function listApprovalReviews(db:any,orgId:number,actorId:number,query:any){
  await actor(db,orgId,actorId);
- const base=await listApprovalOverview(db,orgId,actorId,query,{unpaged:true,submissionDates:true});
+ const base=await listApprovalOverview(db,orgId,actorId,query,{unpaged:true,submissionDates:true,allDates:query.start==null&&query.end==null});
  const zone=companyBusinessTimeZone(await db.organization.findUnique({where:{id:orgId},select:{type:true,country:true}}));
  // Return list metadata only. Source snapshots are loaded after opening a row.
  const changes=await db.$queryRawUnsafe(`SELECT c.id,'CHANGE_APPROVAL' AS kind,c.menu,c.operation,

@@ -4,9 +4,9 @@ import {ledgerDate} from './bankLedger';
 import {accountReportToday} from './accountOverview';
 import {legacyExpenseNumber} from './documentNumber';
 import {companyBusinessTimeZone} from './serviceCompany';
-export async function listApprovalOverview(db:any,orgId:number,actorId:number,query:any,options:{unpaged?:boolean,submissionDates?:boolean}={}){
- const today=accountReportToday(),start=ledgerDate(query.start||today.slice(0,7)+'-01'),end=ledgerDate(query.end||today),status=String(query.status||'UNAPPROVED'),page=Number(query.page||0),pageSize=Number(query.pageSize||20);
- if(start>end||end>today||!['UNAPPROVED','ALL','REQUESTED','IN_REVIEW','APPROVED','REJECTED','UNKNOWN'].includes(status)||!Number.isSafeInteger(page)||page<0||page>100000||![10,20,50].includes(pageSize))throw createHttpError(400,'INVALID_APPROVAL_VIEW');
+export async function listApprovalOverview(db:any,orgId:number,actorId:number,query:any,options:{unpaged?:boolean,submissionDates?:boolean,allDates?:boolean}={}){
+ const today=accountReportToday(),start=ledgerDate(options.allDates?'0001-01-01':query.start||today.slice(0,7)+'-01'),end=ledgerDate(options.allDates?'9999-12-31':query.end||today),status=String(query.status||'UNAPPROVED'),page=Number(query.page||0),pageSize=Number(query.pageSize||20);
+ if(start>end||!options.allDates&&end>today||!['UNAPPROVED','ALL','REQUESTED','IN_REVIEW','APPROVED','REJECTED','UNKNOWN'].includes(status)||!Number.isSafeInteger(page)||page<0||page>100000||![10,20,50].includes(pageSize))throw createHttpError(400,'INVALID_APPROVAL_VIEW');
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}}});
   if(!actor)throw createHttpError(403,'LEDGER_ACCESS_DENIED');

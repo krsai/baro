@@ -24,10 +24,12 @@ try{
     }
     reads++;const hidden=row?.[actor===1?'senderHiddenAt':'recipientHiddenAt'];return r.fulfill({headers,json:{actorId:actor,canCreate:actor===1,rows:row&&!hidden?[row]:[],hasMore:false}});
    });await page.goto(`http://127.0.0.1:${port}/${path.basename(file)}?lang=${lang}`);await page.getByText(t.empty,{exact:true}).waitFor();return page;};
-  const a=await setup(1),b=await setup(2);assert.equal(await b.getByRole('button',{name:t.create,exact:true}).count(),0);
+  const a=await setup(1),b=await setup(2);
+  for(const filter of await a.getByRole('combobox').all())assert.ok((await filter.boundingBox()).width<=162);
+assert.equal(await b.getByRole('button',{name:t.create,exact:true}).count(),0);
   await a.getByRole('button',{name:t.create,exact:true}).click();const dialog=a.getByRole('dialog');await dialog.getByRole('textbox',{name:t.recipient,exact:true}).fill('B002');await dialog.getByRole('textbox',{name:t.recipient,exact:true}).press('Enter');
   await dialog.getByRole('textbox',{name:t.subject,exact:true}).fill('Review order');await dialog.getByRole('textbox',{name:t.message,exact:true}).fill('Confirm assignment before production.');await dialog.getByRole('button',{name:t.send,exact:true}).click();await dialog.getByText(t.uncertain,{exact:true}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:t.subject,exact:true}).isDisabled(),true);await dialog.getByRole('button',{name:t.send,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  await b.clock.fastForward(11000);await b.getByText('Review order',{exact:true}).waitFor();assert.equal(await a.getByRole('button',{name:t.complete,exact:true}).count(),0);
+  await b.clock.fastForward(11000);await b.getByText('Review order',{exact:true}).waitFor();assert.equal(Math.round((await b.locator('[data-dashboard-card]').boundingBox()).height),128);assert.equal(await a.getByRole('button',{name:t.complete,exact:true}).count(),0);
   await a.getByRole('button',{name:t.edit,exact:true}).click();await a.getByRole('dialog').getByRole('textbox',{name:t.message,exact:true}).fill('Updated instructions.');await a.getByRole('dialog').getByRole('button',{name:t.save,exact:true}).click();await a.getByRole('dialog').waitFor({state:'hidden'});await b.clock.fastForward(11000);await b.getByRole('button',{name:/Review order/}).first().click();await b.getByRole('dialog').getByText('Updated instructions.',{exact:true}).waitFor();await b.keyboard.press('Escape');await b.getByRole('dialog').waitFor({state:'hidden'});
   await b.getByRole('button',{name:t.complete,exact:true}).click();await b.getByText(t.DONE,{exact:true}).waitFor();await a.clock.fastForward(11000);await a.getByText(t.DONE,{exact:true}).waitFor();
   await a.getByRole('button',{name:t.hide,exact:true}).click();await a.getByText(t.empty,{exact:true}).waitFor();assert.equal(await b.getByText('Review order',{exact:true}).count(),1);

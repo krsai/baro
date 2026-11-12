@@ -16,10 +16,13 @@ try{
   await page.clock.install({time:new Date('2026-11-12T12:00:00+07:00')});
   await page.route('**/approval-reviews?*',r=>{queries.push(Object.fromEntries(new URL(r.request().url()).searchParams));return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{rows:[{id:1,kind:'EXPENSE_REQUEST',menu:'EXPENSE',operation:'CREATE',managementNumber:'EXP-001',drafter:'Author',requestDate:'2026-11-11'}],total:1}});});
   await page.goto('http://127.0.0.1:'+port+'/dashboard-card-list-test.html?lang='+lang);await page.getByText('Author',{exact:false}).waitFor();
-  assert.equal(await page.locator('table,input[type="date"]').count(),0);assert.equal(queries[0].start,'2026-11-01');assert.equal(queries[0].end,'2026-11-12');
-  const next=page.getByRole('button',{name:t.next,exact:true}).first(),previous=page.getByRole('button',{name:t.previous,exact:true}).first();assert.equal(await next.isDisabled(),true);
-  await Promise.all([page.waitForResponse(r=>r.url().includes('start=2026-10-01')),previous.click()]);await page.getByText('2026-10',{exact:true}).waitFor();assert.equal(queries.at(-1).end,'2026-10-31');
-  await next.click();await page.getByText('2026-11',{exact:true}).waitFor();assert.equal(await next.isDisabled(),true);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
+  assert.equal(await page.locator('table,input[type="date"]').count(),0);assert.equal(queries[0].start,undefined);assert.equal(queries[0].end,undefined);
+  assert.equal(await page.getByText('2026-11',{exact:true}).count(),0);
+  const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);
+  await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=APPROVED')),page.getByRole('option',{name:t.statuses.APPROVED,exact:true}).click()]);
+  assert.equal(queries.at(-1).start,undefined);assert.equal(queries.at(-1).end,undefined);assert.equal(queries.at(-1).status,'APPROVED');
+  assert.equal(await page.locator('[data-dashboard-card]').count(),1);assert.equal(Math.round((await page.locator('[data-dashboard-card]').boundingBox()).height),128);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS dashboard cards: ko/en/vi desktop/mobile, shared card list, no date inputs/table, previous/next month with current-day cap.');
+ console.log('PASS dashboard cards: ko/en/vi desktop/mobile, shared card list, no date inputs/table, status-only filtering across all months, compact filters and shared card size.');
 }finally{await browser?.close();server.kill();for(const path of [file,jsx])if(existsSync(path))unlinkSync(path);}
