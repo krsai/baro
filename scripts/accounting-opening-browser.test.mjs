@@ -25,16 +25,18 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-opening-acceptance.html?lang=${lang}`);
   await page.getByLabel(b.date,{exact:true}).fill('2026-11-01');await page.getByLabel(b.actual+' Cash',{exact:true}).fill('11');await page.getByLabel(b.reason,{exact:false}).fill('Cash draft');await page.getByRole('tab',{name:t.arapTab,exact:true}).click();await page.getByText('OLD-DONE',{exact:true}).waitFor();assert.equal(await page.getByText(t.documents,{exact:true}).count(),0);
-  const panel=page.locator('[data-accounting-opening]');await panel.getByRole('button',{name:t.addBalance,exact:true}).click();
+  const panel=page.locator('[data-accounting-opening]');assert.equal(await panel.getByRole('button',{name:t.addBalance,exact:true}).count(),0);assert.equal(await panel.locator('table').first().locator('tbody tr').count(),1);
   const manual=panel.locator('table').first().locator('tbody tr').first(),texts=manual.getByRole('textbox');
+  await manual.getByRole('button',{name:t.remove,exact:true}).click();assert.equal(await panel.locator('table').first().locator('tbody tr').count(),1);assert.equal(await page.getByRole('button',{name:t.saveAr,exact:true}).isDisabled(),true);
   await texts.nth(0).fill('VEND');await texts.nth(0).press('Enter');await manual.getByText('VENDOR',{exact:true}).waitFor();
   await texts.nth(1).fill('SALE');await texts.nth(1).press('Enter');await manual.getByLabel(t.amount,{exact:true}).fill('50');
+  await manual.getByRole('button',{name:t.add,exact:true}).click();const blank=panel.locator('table').first().locator('tbody tr').last();await blank.getByRole('button',{name:t.remove,exact:true}).click();assert.equal(await panel.locator('table').first().locator('tbody tr').count(),1);
   const bill=manual.getByRole('textbox',{name:t.billNumber,exact:true});
   await bill.fill('OLD');await bill.press('Enter');
   const lookup=page.locator('[data-lookup-dialog]');await lookup.waitFor();await lookup.locator('tbody tr').first().getByRole('button').click();await lookup.waitFor({state:'hidden'});
   assert.equal(await manual.getByLabel(t.amount,{exact:true}).inputValue(),'100.00');
   await manual.getByLabel(t.amount,{exact:true}).fill('50');
-  await panel.getByRole('button',{name:t.addBalance,exact:true}).click();
+  await manual.getByRole('button',{name:t.add,exact:true}).click();
   const other=panel.locator('table').first().locator('tbody tr').nth(1),otherTexts=other.getByRole('textbox');
   await otherTexts.nth(0).fill('VEND');await otherTexts.nth(0).press('Enter');await otherTexts.nth(1).fill('SALE');await otherTexts.nth(1).press('Enter');await other.getByLabel(t.amount,{exact:true}).fill('25');
   if(lang==='en'&&width===1440){
@@ -49,10 +51,11 @@ try{
    assert.equal(await other.getByLabel(t.amount,{exact:true}).inputValue(),'25');assert.equal(await lookup.isVisible(),false);
    await otherBill.fill('');await otherBill.press('Tab');
   }
+  await other.getByRole('button',{name:t.add,exact:true}).click();
   await page.getByLabel(b.reason,{exact:false}).fill('Prior opening');await page.getByRole('tab',{name:t.accountTab,exact:true}).click();assert.equal(await page.getByLabel(b.actual+' Cash',{exact:true}).inputValue(),'11');assert.equal(await page.getByLabel(b.reason,{exact:false}).inputValue(),'Cash draft');await page.getByRole('tab',{name:t.arapTab,exact:true}).click();assert.equal(await page.getByLabel(b.reason,{exact:false}).inputValue(),'Prior opening');assert.equal(await manual.getByLabel(t.amount,{exact:true}).inputValue(),'50');
   await page.getByRole('button',{name:t.saveAr,exact:true}).click();await page.getByText(b.uncertain,{exact:true}).waitFor();
   assert.equal(await page.getByLabel(b.date,{exact:true}).isDisabled(),true);
-  await page.getByRole('button',{name:b.retry,exact:true}).click();await page.getByRole('button',{name:t.saveAr,exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('[data-accounting-opening] table tbody')?.children.length===0);assert.equal(await page.evaluate(()=>window.closedBalance===true),false);
+  await page.getByRole('button',{name:b.retry,exact:true}).click();await page.getByRole('button',{name:t.saveAr,exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('[data-accounting-opening] table tbody')?.children.length===1&&document.querySelector('[data-accounting-opening] table tbody input[aria-label]')?.value==='');assert.equal(await page.evaluate(()=>window.closedBalance===true),false);
   assert.deepEqual(saved[0],saved[1]);assert.deepEqual(saved[0].accounts,[]);assert.equal(saved[0].openingRows.length,2);assert.equal(saved[0].openingRows[0].amount,'50');assert.equal(saved[0].openingRows[0].source.expectedRemaining,'100.00');assert.equal(saved[0].openingRows[0].source.sourceId,'old');assert.equal(saved[0].openingRows[1].kind,'OPENING');assert.equal(saved[0].openingRows[1].source,undefined);assert.equal(saved[0].openingRows[1].amount,'25');assert.equal(saved[0].balanceDate,'2026-11-01');await page.getByRole('tab',{name:t.accountTab,exact:true}).click();assert.equal(await page.getByLabel(b.actual+' Cash',{exact:true}).inputValue(),'11');assert.equal(await page.getByLabel(b.reason,{exact:false}).inputValue(),'Cash draft');await page.getByRole('button',{name:t.saveAccounts,exact:true}).click();await page.waitForFunction(()=>document.querySelector('input[aria-label]')?.value==='');assert.deepEqual(saved[2].openingRows,[]);assert.equal(saved[2].accounts[0].targetBalance,'11');assert.equal(saved[2].reason,'Cash draft');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
