@@ -48,7 +48,7 @@ try{
    assert.equal((await page.getByLabel(e.plannedDate,{exact:true}).boundingBox()).y,dateBox.y);
    assert.equal(await page.getByRole('spinbutton',{name:e.containerCount,exact:true}).count(),mode==='FCL'?1:0);
   }
-  assert.equal(await page.locator('[data-route-direction]').count(),3);
+  assert.equal(await page.locator('[data-route-direction]').count(),1);
   for(const [key,choice] of [['exportCustoms','OUR_SCOPE'],['importCustoms','NOT_OUR_SCOPE']]){await page.getByRole('combobox',{name:e[key],exact:true}).click();await page.getByRole('option',{name:e[choice],exact:true}).click();}
   const r=routeScopeText[lang];await page.getByRole('button',{name:r.consignee,exact:true}).click();
   assert.equal(await page.getByRole('combobox',{name:t.jobType,exact:true}).count(),0);
@@ -57,6 +57,8 @@ try{
   const initialColor=await page.getByTestId('freight-route-scope').locator('.MuiSlider-root').evaluate(el=>getComputedStyle(el).color);
   await page.getByRole('button',{name:r.main,exact:true}).click();
   assert.equal(await page.getByTestId('freight-route-scope').locator('.MuiSlider-root').evaluate(el=>getComputedStyle(el).color),initialColor);
+  const direction=await page.locator('[data-route-direction]').evaluate(el=>{const a=el.getBoundingClientRect(),b=el.parentElement.querySelector('.MuiSlider-track').getBoundingClientRect(),s=getComputedStyle(el);return {x:a.x+a.width/2,y:a.y+a.height/2,trackX:b.x+b.width/2,trackY:b.y+b.height/2,width:a.width,background:s.backgroundColor,pointer:s.pointerEvents};});
+  assert.ok(Math.abs(direction.x-direction.trackX)<=1.5&&Math.abs(direction.y-direction.trackY)<=1.5,JSON.stringify(direction));assert.ok(direction.width<=14);assert.equal(direction.background,'rgba(0, 0, 0, 0)');assert.equal(direction.pointer,'none');
   await page.getByRole('button',{name:r.all,exact:true}).click();
   await page.getByRole('button',{name:r.notify,exact:true}).click();
   assert.equal(await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).getAttribute('aria-pressed'),'false');
