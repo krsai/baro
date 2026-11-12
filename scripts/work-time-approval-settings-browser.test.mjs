@@ -28,6 +28,11 @@ try{
   await page.goto(`http://127.0.0.1:${port}/work-time-settings-test.html`);
   const editor=page.getByTestId('work-time-approval-settings');await editor.getByText(t.approvers,{exact:true}).waitFor();
   assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('button',{name:a.save,exact:true}).count(),1);
+  const stages=editor.locator('[data-work-time-stage]');assert.equal(await stages.count(),1);
+  await editor.getByRole('button',{name:t.add,exact:true}).click();assert.equal(await stages.count(),2);
+  assert.equal(await page.getByRole('button',{name:a.save,exact:true}).isDisabled(),true);
+  await stages.nth(1).getByRole('button',{name:t.remove,exact:true}).click();assert.equal(await stages.count(),1);
+  const card=await stages.first().boundingBox();assert.equal(Math.round(card.width),208);assert.equal(Math.round(card.height),70);
   await editor.getByLabel(t.WORKER,{exact:true}).uncheck();await page.getByRole('button',{name:a.save,exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await editor.getByLabel(t.WORKER,{exact:true}).isChecked(),false);
   await page.getByRole('button',{name:a.save,exact:true}).click();await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.disabled&&button.textContent));
   assert.equal(bodies.length,2);assert.deepEqual(bodies[1].changes,[{menu:'WORK_TIME',operation:'CREATE',settings:{revision:1,drafterRoles:['ADMIN'],proxyRoles:['ADMIN'],approverIds:[3]}}]);
