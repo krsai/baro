@@ -1,4 +1,3 @@
-import {ledgerRegistrationText} from '../frontend/src/constants/ledgerRegistration.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -6,120 +5,34 @@ import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
 import {approvalBandText} from '../frontend/src/constants/approvalBands.js';
-import {changeApprovalText} from '../frontend/src/constants/changeApprovals.js';
-const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','/usr/bin/chromium'].find(existsSync);
-assert.ok(executablePath);
-const fixture=path.resolve('frontend/approval-settings-acceptance.html');assert.ok(!existsSync(fixture));
-writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Settings from '/src/pages/App/ApprovalSettings.jsx';
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Settings))));</script></body></html>`);
-const port=43219,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
+const html='frontend/approval-settings-acceptance.html';assert.ok(!existsSync(html));
+writeFileSync(html,`<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">import React from'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Scope from'/src/components/WorkspaceDialogScope.jsx';import Settings from'/src/pages/App/ApprovalSettings.jsx';function App(){const viewport=React.useRef();return React.createElement('div',{ref:viewport,style:{height:'100vh'}},React.createElement(Scope,{viewportRef:viewport},React.createElement(Settings)));}createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(App))));</script>`);
+const port=43219,server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore',windowsHide:true});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/approval-settings-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
- browser=await chromium.launch({executablePath,headless:true});
- for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
-  const page=await browser.newPage({viewport:{width,height:1100}}),errors=[];let saved;
-  page.on('pageerror',e=>errors.push(e.message));const posts=[];
-  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7});'}));
-  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});'}));
+ browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
+ for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+  const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[],t=approvalSettingsText[lang],b=approvalBandText[lang];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
+  const mock=(p,body)=>page.route(p,r=>r.fulfill({contentType:'application/javascript',body}));
+  await mock('**/src/context/AuthContext.jsx*','export const useAuth=()=>({activeOrgId:7});');
+  await mock('**/src/context/LanguageContext.jsx*',`export const useLanguage=()=>({languageCode:'${lang}'});`);
+  await mock('**/src/context/AppContext.jsx*',`const noop=()=>{};export const useAppActions=()=>({showNotification:noop,setUnsavedChangesGuard:noop,clearUnsavedChangesGuard:noop});`);
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
-  const settings={registrationStages:[{role:'ACCOUNTANT',gradeMatch:'ANY',gradeId:null},{role:'ACCOUNTANT',gradeMatch:'MINIMUM',gradeId:10}],drafterScope:{role:'OPERATOR',gradeId:null},limits:{VND:{senior:'20000000',lead:'100000000'},USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'}},seniorGradeId:10,leadGradeId:20,seniorEmployeeId:2,leadEmployeeId:3,adminEmployeeId:4};
-  const data={settings,drafter:{id:1,name:'Current user',orgRole:'ADMIN'},canEdit:true,grades:[{id:1,code:'CL1',name:'Staff',nameEn:'Staff'},{id:10,code:'CL2',name:'Senior',nameEn:'Senior'},{id:20,code:'CL3',name:'Lead',nameEn:'Lead'}],candidates:[{id:2,name:'Senior accountant',orgRole:'ACCOUNTANT',gradeId:10},{id:3,name:'Lead accountant',orgRole:'ACCOUNTANT',gradeId:20},{id:4,name:'Administrator',orgRole:'ADMIN'}]};
-  await page.route('**/expense-approval-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){saved=r.request().postDataJSON();posts.push(saved);return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
-  const actionSaves=[];
-  await page.route('**/approval-action-settings?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});if(r.request().method()==='PUT'){actionSaves.push({url:r.request().url(),body:r.request().postDataJSON()});return r.fulfill({headers,json:{ok:true}});}return r.fulfill({headers,json:data});});
+  let settings={revision:0,drafterScope:{role:'OPERATOR',gradeId:null},limits:{USD:{senior:'1000',lead:'5000'},KRW:{senior:'1000000',lead:'5000000'},VND:{senior:'20000000',lead:'100000000'}},rules:[],seniorGradeId:10,leadGradeId:20};
+  const reply=()=>({canEdit:true,settings,grades:[{id:10,code:'CL2',name:'Senior'},{id:20,code:'CL3',name:'Lead'}]});
+  await page.route('**/expense-approval-settings?*',r=>r.fulfill({headers,json:reply()}));await page.route('**/approval-action-settings?*',r=>r.fulfill({headers,json:reply()}));
+  await page.route('**/approval-action-settings/batch?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});const body=r.request().postDataJSON();writes.push(body);settings={...body.changes[0].settings,revision:1};return r.fulfill({headers,json:{saved:[{menu:'EXPENSE',operation:'CREATE',settings}]}});});
   await page.goto(`http://127.0.0.1:${port}/approval-settings-acceptance.html`);
-  const t=approvalSettingsText[lang],band=approvalBandText[lang],initialUrl=page.url();
-  await page.getByRole('heading',{name:t.title,exact:true}).waitFor();
-  const section=page.locator('[data-approval-operation="CREATE"]');
-  assert.equal(await page.locator('[data-approval-operation]').count(),3);
-  assert.equal(await page.getByRole('combobox',{name:changeApprovalText[lang].operation,exact:true}).count(),0);
-  const first=section.locator('[data-approval-band="0"]'),rows=section.locator('[data-approval-band]');
-  await first.getByRole('textbox',{name:band.amount+' USD 1',exact:true}).waitFor();
-  assert.equal(await section.getByRole('combobox',{name:band.drafterRole,exact:false}).count(),await section.locator('[data-band-drafter]').count(),'Only amount-band drafter selectors remain');
-  assert.equal(await rows.count(),3);assert.equal(await first.locator('[data-band-stage]').count(),1);
-  assert.ok((await first.boundingBox()).height<110,'Approval rows remain compact');
-  assert.equal(await page.getByText(band.future,{exact:true}).count(),0);
-  assert.equal(await page.locator('.app-page-header').getByRole('button',{name:band.addCondition,exact:true}).count(),0);
-  const tableHeader=section.getByTestId('approval-table-header');
-  assert.equal(await tableHeader.getByRole('button',{name:band.addCondition,exact:true}).count(),1);
-  const headingBoxes=await tableHeader.locator('[data-condition-heading],[data-currency-heading]').evaluateAll(elements=>elements.map(element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,height:r.height};}));
-  assert.ok(headingBoxes.every(box=>Math.abs(box.y+box.height/2-headingBoxes[0].y-headingBoxes[0].height/2)<1),'Condition and currencies share one header line');
-  for(const currency of ['USD','KRW','VND']){
-   const inputBox=await first.locator(`[data-cost-currency="${currency}"]`).boundingBox(),headingBox=await tableHeader.locator(`[data-currency-heading="${currency}"]`).boundingBox();
-   assert.ok(inputBox.width>=110,'Currency amounts have enough room');assert.ok(Math.abs(inputBox.x-headingBox.x)<1&&Math.abs(inputBox.width-headingBox.width)<1,'Currency headings align with amount inputs');
-  }
-  const addBox=await tableHeader.getByRole('button',{name:band.addCondition,exact:true}).boundingBox(),headerBox=await tableHeader.boundingBox();
-  assert.ok(headerBox.x+headerBox.width-addBox.x-addBox.width<=16,'Add band is at the far right of the table header');
-  assert.equal(await page.getByRole('button',{name:/규칙 추가|예시|Add rule|Add example|Ví dụ/}).count(),0);
-  assert.equal(await page.getByRole('dialog').count(),0);assert.equal(posts.length,0);
-  const bounds=await page.getByTestId('approval-settings-page').boundingBox();assert.ok(bounds.width>=width-70,'Settings use the full work area');
-  await first.getByRole('textbox',{name:band.amount+' USD 1',exact:true}).fill('1500');
-  await first.locator('[data-add-middle]').last().click();await first.locator('[data-add-middle]').last().click();
-  assert.equal(await first.locator('[data-band-stage]').count(),3);assert.equal(await section.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);
-  const choose=async(control,name)=>{await control.click();await page.getByRole('option',{name,exact:true}).click();};
-  const stage=(index,field)=>first.locator('[data-band-stage="'+index+'"]').getByRole('combobox').nth(field);
-  await choose(stage(0,1),'Lead');await choose(stage(1,0),band.ACCOUNTANT);await choose(stage(1,1),'Senior');await choose(stage(2,0),band.ADMIN);
-  const dragStage=async(position,key)=>{
-   const controls=await first.locator('[data-band-stage] .MuiSelect-select').allTextContents(),pairs=Array.from({length:controls.length/2},(_,index)=>controls.slice(index*2,index*2+2));pairs.splice(position+(key==='ArrowLeft'?-1:1),0,pairs.splice(position,1)[0]);
-   const handle=first.locator(`[data-stage-drag-handle="${position}"]`);await handle.scrollIntoViewIfNeeded();await handle.focus();await page.keyboard.press('Space');await page.keyboard.press(key);await page.keyboard.press('Space');
-   await page.waitForFunction(expected=>JSON.stringify([...document.querySelectorAll('[data-approval-operation="CREATE"] [data-approval-band="0"] [data-band-stage] .MuiSelect-select')].map(element=>element.textContent))===JSON.stringify(expected),pairs.flat());
-   await page.waitForFunction(()=>![...document.querySelectorAll('[data-stage-drag-handle]')].some(element=>getComputedStyle(element.closest('[data-rfd-draggable-id]')).transform!=='none'));
-  };
-  await dragStage(1,'ArrowLeft');
-  assert.equal(await stage(0,0).textContent(),band.ACCOUNTANT);
-  await dragStage(0,'ArrowRight');
-  await dragStage(2,'ArrowLeft');assert.equal(await stage(2,0).textContent(),band.ACCOUNTANT);await dragStage(1,'ArrowRight');
-  assert.equal(await first.getByRole('button',{name:band.left,exact:true}).count(),0);assert.equal(await first.getByRole('button',{name:band.right,exact:true}).count(),0);
-  assert.equal(posts.length,0);assert.equal(page.url(),initialUrl);assert.equal(await page.getByRole('dialog').count(),0);
-  await section.getByRole('button',{name:t.save,exact:true}).click();await section.getByText(t.saved,{exact:true}).waitFor();
-  assert.equal(saved.revision,0);assert.equal(saved.rules.length,9);assert.equal(saved.rules[0].max,'1500');assert.equal(saved.rules[1].min,'1500.01');
-  assert.deepEqual(saved.rules[0].stages,[{role:'OPERATOR',gradeId:20},{role:'ACCOUNTANT',gradeId:10},{role:'ADMIN',gradeId:null}]);
-  assert.ok(saved.rules.every(row=>!('__bounded' in row)));assert.equal(saved.limits.USD.senior,'1000');
-  await page.waitForFunction(()=>{const nodes=[...document.querySelectorAll('[data-approval-operation="CREATE"] [data-approval-band="0"] [data-band-drafter],[data-approval-operation="CREATE"] [data-approval-band="0"] [data-band-stage]')].map(element=>element.getBoundingClientRect());return nodes.every((node,index)=>!index||Math.abs(node.x-nodes[index-1].x-nodes[index-1].width-32)<1);});
-  const nodes=await first.locator('[data-band-drafter],[data-band-stage]').evaluateAll(elements=>elements.map(element=>{const rect=element.getBoundingClientRect();return {x:rect.x,width:rect.width};}));
-  for(let i=1;i<nodes.length;i++)assert.ok(Math.abs(nodes[i].x-nodes[i-1].x-nodes[i-1].width-32)<1,'Every connection uses the same gap: '+JSON.stringify(nodes));
-  const connector=first.locator('[data-band-connector]').first(),arrow=await connector.locator('svg').first().boundingBox(),plus=await connector.getByRole('button').boundingBox();assert.ok(plus.y>=arrow.y+arrow.height,'Add button sits below the arrow');
-  assert.equal(await first.getByText(band.under,{exact:true}).count(),0);assert.equal(await first.getByText(band.over,{exact:true}).count(),0);
-  assert.equal(await page.getByRole('tab').count(),0);assert.equal(await section.locator('[data-currency-heading]').count(),3);
-  await first.getByRole('textbox',{name:band.amount+' VND 1',exact:true}).fill('25000000');
-  await section.getByRole('button',{name:t.save,exact:true}).click();await section.getByText(t.saved,{exact:true}).waitFor();
-  assert.equal(saved.revision,1);assert.equal(saved.rules.length,9);assert.equal(saved.rules.find(row=>row.currency==='VND').max,'25000000');assert.equal(saved.rules.filter(row=>row.currency==='VND')[1].min,'25000001');
-  assert.equal(saved.rules.find(row=>row.currency==='USD').max,'1500');
-  await section.getByRole('button',{name:band.addCondition,exact:true}).click();assert.equal(await rows.count(),4);
-  assert.equal(await section.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);
-  assert.equal(await page.getByText(band.orderError,{exact:true}).count(),0);assert.equal(await page.locator('.Mui-error').count(),0,'Adding an unfinished band does not show an error');
-  const added=section.locator('[data-approval-band="2"]');for(const [currency,max] of [['USD','750'],['KRW','500000'],['VND','15000000']])await added.getByRole('textbox',{name:band.amount+' '+currency+' 3',exact:true}).fill(max);
-  await page.getByText(band.orderError,{exact:true}).waitFor();
-  const handle=added.locator('[data-band-drag-handle]');await handle.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowUp');await page.keyboard.press('ArrowUp');await page.keyboard.press('Space');
-  await page.getByText(band.orderError,{exact:true}).waitFor({state:'hidden'});assert.equal(await section.locator('[data-approval-band="0"]').getByRole('textbox',{name:band.amount+' USD 1',exact:true}).inputValue(),'750');
-  await section.getByRole('button',{name:t.save,exact:true}).click();await section.getByText(t.saved,{exact:true}).waitFor();assert.equal(saved.rules.length,12);
-  assert.equal(saved.rules.filter(row=>row.currency==='VND')[3].min,'100000001');assert.equal(saved.rules.find(row=>row.currency==='USD').max,'750');
-  await section.locator('[data-approval-band="0"]').getByRole('button',{name:band.remove,exact:true}).first().click();assert.equal(await rows.count(),3);
-  const scopes=section.getByRole('combobox',{name:band.drafterRole,exact:false}).first();await scopes.click();for(const role of ['ALL','OPERATOR','ACCOUNTANT','ADMIN'])await page.getByRole('option',{name:band[role],exact:true}).waitFor();await page.keyboard.press('Escape');
-  for(const [role,grade] of [['ACCOUNTANT','Staff'],['ADMIN','Lead']]){
-   await choose(scopes,band[role]);await choose(section.getByRole('combobox',{name:band.drafterGrade,exact:false}).first(),grade);await section.getByRole('button',{name:band.addCondition,exact:true}).click();
-   const scoped=section.locator('[data-approval-band="0"]');for(const [currency,max] of [['USD','2000'],['KRW','2000000'],['VND','30000000']])await scoped.getByRole('textbox',{name:band.amount+' '+currency+' 1',exact:true}).fill(max);
-   assert.equal(await scoped.locator('[data-band-drafter]').getByRole('combobox').first().textContent(),band[role]);await section.getByRole('button',{name:t.save,exact:true}).click();await section.getByText(t.saved,{exact:true}).waitFor();
-   assert.deepEqual(saved.drafterScope,{role,gradeId:role==='ACCOUNTANT'?1:20});assert.equal(saved.rules.filter(row=>row.drafterRole===role&&row.drafterGradeId===(role==='ACCOUNTANT'?1:20)).length,3);assert.equal(saved.rules.filter(row=>row.drafterRole==='OPERATOR').length,9);
-  }
-  const actions=changeApprovalText[lang],menus=page.getByRole('combobox').first();
-  const registrationPosts=posts.length;
-  await choose(menus,actions.BANK_LEDGER);
-  const createSection=page.locator('[data-approval-operation="CREATE"]'),reg=ledgerRegistrationText[lang];
-  await createSection.getByText(reg.ANY,{exact:true}).waitFor();await createSection.getByText(reg.MINIMUM,{exact:true}).waitFor();
-  assert.equal(await createSection.locator('[data-cost-currency]').count(),0);await createSection.getByRole('button',{name:t.save,exact:true}).click();await createSection.getByText(t.saved,{exact:true}).waitFor();assert.deepEqual(actionSaves.at(-1).body.registrationStages,settings.registrationStages);assert.ok(actionSaves.at(-1).url.includes('operation=CREATE'));
-  for(const operation of ['UPDATE','DELETE']){
-   const actionSection=page.locator('[data-approval-operation="'+operation+'"]');
-   await actionSection.locator('[data-approval-band="0"]').waitFor();
-   await actionSection.getByRole('button',{name:t.save,exact:true}).click();
-   await actionSection.getByText(t.saved,{exact:true}).waitFor();
-   assert.ok(actionSaves.at(-1).url.includes('operation='+operation));
-  }
-  assert.equal(posts.length,registrationPosts);
-  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
-  assert.deepEqual(errors,[]);await page.close();
+  const section=page.locator('[data-approval-operation="CREATE"]'),summary=section.locator('[data-condition-summary="0"]'),save=page.getByRole('button',{name:t.save,exact:true});await summary.waitFor();
+  assert.equal(await section.locator('[data-cost-currency]').count(),0);assert.ok((await summary.boundingBox()).width<200);assert.match(await summary.innerText(),/USD/);assert.match(await summary.innerText(),/1,000/);assert.equal(await save.isDisabled(),true);
+  await summary.click();let dialog=page.getByRole('dialog',{name:b.conditionDetails});await dialog.waitFor();const amount=()=>dialog.getByRole('textbox',{name:b.amount+' USD',exact:true});await amount().fill('1234');
+  await page.keyboard.press('Escape');const discard=page.getByRole('dialog').filter({hasText:b.discardConditions});await discard.waitFor();await discard.getByRole('button').last().click();await dialog.waitFor({state:'hidden'});
+  assert.match(await summary.innerText(),/1,000/);assert.equal(await save.isDisabled(),true);assert.equal(writes.length,0);
+  await summary.click();await amount().fill('1234');await dialog.getByRole('button',{name:b.apply,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.match(await summary.innerText(),/1,234/);assert.match(await summary.innerText(),/1,000,000/);assert.equal(writes.length,0);assert.equal(await save.isEnabled(),true);
+  await summary.click();await amount().fill('6000');assert.equal(await dialog.getByRole('button',{name:b.apply,exact:true}).isDisabled(),true);await amount().fill('1234');await dialog.getByRole('button',{name:b.apply,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await save.click();await page.waitForFunction(()=>document.querySelector('[data-condition-summary]')?.textContent.includes('1,234')&&!document.querySelector('[role="dialog"]'));assert.equal(writes.length,1);
+  const rules=writes[0].changes[0].settings.rules;assert.equal(rules.find(row=>row.currency==='USD'&&row.min==='0').max,'1234');assert.equal(rules.filter(row=>row.currency==='USD')[1].min,'1234.01');assert.equal(rules.some(row=>row.currency==='KRW'),false,'untouched fallback currency is not materialized into a new policy');assert.equal(writes[0].changes[0].settings.limits.KRW.senior,'1000000');assert.equal(writes[0].changes.length,1);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: full-width inline amount conditions, two intermediate approvers, role/grade editing and ordering, separate currencies, amount-band insertion/removal, no dialogs or navigation, ko/en/vi desktop/mobile.');
-}finally{await browser?.close();vite.kill();unlinkSync(fixture);}
+ console.log('Approval conditions ko/en/vi desktop/mobile: compact summaries, scoped modal drafts/discard, boundary validation, independent currencies and one explicit page save passed.');
+}finally{await browser?.close();server.kill();if(existsSync(html))unlinkSync(html);}

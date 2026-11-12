@@ -11,6 +11,10 @@ approvalBandText.ko.reorderStage='결재 순서 변경';
 approvalBandText.en.reorderStage='Reorder approval';
 approvalBandText.vi.reorderStage='Sắp xếp bước duyệt';
 
+Object.assign(approvalBandText.ko,{condition:'조건',conditionDetails:'조건 확인 · 수정',noAmountCondition:'금액 조건 없음',apply:'확인',discardConditions:'조건 변경을 적용하지 않고 닫으시겠습니까?'});
+Object.assign(approvalBandText.en,{condition:'Conditions',conditionDetails:'Review · edit conditions',noAmountCondition:'No amount condition',apply:'Confirm',discardConditions:'Close without applying condition changes?'});
+Object.assign(approvalBandText.vi,{condition:'Điều kiện',conditionDetails:'Xem · sửa điều kiện',noAmountCondition:'Không có điều kiện số tiền',apply:'Xác nhận',discardConditions:'Đóng mà không áp dụng thay đổi điều kiện?'});
+
 Object.assign(approvalBandText.ko,{ALL:'전체 직종',allRoles:'전체 직종',drafterRole:'기안자 직종'});
 Object.assign(approvalBandText.en,{ALL:'All roles',allRoles:'All roles'});
 Object.assign(approvalBandText.vi,{ALL:'Tất cả vai trò',allRoles:'Tất cả vai trò'});
