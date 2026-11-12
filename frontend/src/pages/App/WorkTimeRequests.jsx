@@ -73,4 +73,3 @@ function CompanyRequests({orgId}){
  </AppPageContainer>;
 }
 function RequestStatus({row,t}){return <StatusLabel tone={{APPROVED:'green',REJECTED:'red',PENDING:'blue',CANCELLED:'gray',WITHDRAWN:'gray'}[row.status]} label={t[row.status]+(row.status==='PENDING'&&row.decisions.length?' '+row.decisions.length+'/'+row.steps.length:'')}/>;}
-
