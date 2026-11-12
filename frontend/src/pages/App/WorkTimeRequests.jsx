@@ -1,16 +1,13 @@
-import {useLocation} from 'react-router-dom';
 import StatusLabel from '../../components/StatusLabel';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import dayjs from 'dayjs';
-import {Alert,Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import AppPageContainer from '../../components/AppPageContainer';
 import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
 import SearchableSelect from '../../components/SearchableSelect';
 import DateRangeSelector from '../../components/DateRangeSelector';
 import SaveButton from '../../components/SaveButton';
-import AddActionButton from '../../components/AddActionButton';
-import DeleteActionButton from '../../components/DeleteActionButton';
 import ApprovalStageFlow from '../../components/ApprovalStageFlow';
 import {usePageDialogs} from '../../components/PageDialogProvider';
 import {useAuth} from '../../context/AuthContext';
@@ -28,17 +25,15 @@ const tone={APPROVED:'success',REJECTED:'error',PENDING:'info',CANCELLED:'warnin
 const errorText=(t,e)=>t.errors[e?.message]||t.error;
 export default function WorkTimeRequests(){const {activeOrgId}=useAuth();return <CompanyRequests key={activeOrgId} orgId={activeOrgId}/>;}
 function CompanyRequests({orgId}){
- const location=useLocation();
- const {languageCode}=useLanguage(),t=workTimeText[languageCode]||workTimeText.en,{showNotification}=useAppActions(),dialogs=usePageDialogs();
+ const {languageCode}=useLanguage(),t=workTimeText[languageCode]||workTimeText.en,{showNotification,navigateToPath}=useAppActions(),dialogs=usePageDialogs();
  const [period,setPeriod]=useState(defaults),[query,setQuery]=useState(''),[serverQuery,setServerQuery]=useState(''),[status,setStatus]=useState(''),[catalog,setCatalog]=useState(null),[result,setResult]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[reload,setReload]=useState(0);
- const [form,setForm]=useState(null),[initial,setInitial]=useState(''),[detail,setDetail]=useState(null),[detailId,setDetailId]=useState(null),[settings,setSettings]=useState(new URLSearchParams(location.search).get('settings')==='1'),[policyState,setPolicyState]=useState({busy:false,dirty:false}),[busy,setBusy]=useState(false),[minutes,setMinutes]=useState(''),[decisionReason,setDecisionReason]=useState(''),[balance,setBalance]=useState(null);
- useEffect(()=>{if(new URLSearchParams(location.search).get('settings')==='1')setSettings(true);},[location.key]);
+ const [form,setForm]=useState(null),[initial,setInitial]=useState(''),[detail,setDetail]=useState(null),[detailId,setDetailId]=useState(null),[busy,setBusy]=useState(false),[minutes,setMinutes]=useState(''),[decisionReason,setDecisionReason]=useState(''),[balance,setBalance]=useState(null);
  const detailHeading=useRef(null),lock=useRef(false),live=useRef(true),dirty=!!form&&JSON.stringify(form)!==initial;
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);useUnsavedChanges(dirty);
  const api=useCallback((path,options={})=>requestJSON('/work-time'+path+(path.includes('?')?'&':'?')+'orgId='+encodeURIComponent(orgId),{...options,skipCache:true}),[orgId]);
  useEffect(()=>{const timer=setTimeout(()=>setServerQuery(query),250);return()=>clearTimeout(timer);},[query]);
  const refresh=useCallback(()=>setReload(v=>v+1),[]);
- useWorkspaceRefreshOnEvent({orgId,topics:['work-time','work-time-policy','employees'],isBlocked:!!form||busy||settings||!!detailId,onRefresh:refresh});
+ useWorkspaceRefreshOnEvent({orgId,topics:['work-time','work-time-policy','employees'],isBlocked:!!form||busy||!!detailId,onRefresh:refresh});
  useEffect(()=>{let alive=true;setLoading(true);setError('');Promise.all([api('/catalog'),api('/requests'+buildQueryString({start:period.start.format('YYYY-MM-DD'),end:period.end.format('YYYY-MM-DD'),q:serverQuery,status}))]).then(([c,r])=>{if(alive){setCatalog(c);setResult(r);}}).catch(e=>{if(alive){setResult(null);setError(errorText(t,e));}}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};},[api,period,reload,serverQuery,status]);
  // api() appends company scope to paths that may already contain a query string.
  useEffect(()=>{if(!detailId)return;let alive=true;setDetail(current=>current?.id===detailId?current:null);api('/requests/'+detailId).then(d=>{if(alive){setDetail(d);setMinutes(String(d.requestedMinutes||''));setDecisionReason('');}}).catch(e=>{if(alive)setError(errorText(t,e));});return()=>{alive=false;};},[api,detailId,reload]);
@@ -53,9 +48,9 @@ function CompanyRequests({orgId}){
  const closeForm=async()=>{if(!busy&&(!dirty||await dialogs.confirm(t.discard))){setForm(null);setError('');}};
  const rows=(result?.rows||[]).filter(r=>(!status||r.status===status)&&(!query||[r.employee.name,r.employee.employeeNo,r.drafter.name,r.reason].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())));
  const extra=form&&['OVERTIME','SPECIAL'].includes(form.kind),single=form&&['OVERTIME','SPECIAL','ANNUAL_AM','ANNUAL_PM'].includes(form.kind);
- return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}>{catalog?.canConfigure&&<Button variant="outlined" onClick={()=>setSettings(true)} disabled={busy}>{t.settings}</Button>}<Button variant="contained" disabled={loading||!catalog?.policy.approverIds.length||!(catalog?.policy.drafterRoles.includes(catalog.actor.orgRole)||catalog?.canProxy)} onClick={()=>begin()}>{t.new}</Button></Stack>}>
+ return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={loading||!catalog?.policy.approverIds.length||!(catalog?.policy.drafterRoles.includes(catalog.actor.orgRole)||catalog?.canProxy)} onClick={()=>begin()}>{t.new}</Button></Stack>}>
   <SearchPanel search={<SearchInput value={query} onChange={e=>setQuery(e.target.value)} placeholder={t.search}/>} filters={<TextField select label={t.status} value={status} onChange={e=>setStatus(e.target.value)} sx={{minWidth:170}}><MenuItem value="">{t.all}</MenuItem>{Object.keys(tone).map(k=><MenuItem key={k} value={k}>{t[k]}</MenuItem>)}</TextField>} controls={<DateRangeSelector startValue={period.start} endValue={period.end} onStartChange={value=>{if(value?.isValid())setPeriod(p=>({...p,start:value}));}} onEndChange={value=>{if(value?.isValid())setPeriod(p=>({...p,end:value}));}}/>} onReset={()=>{setPeriod(defaults());setQuery('');setStatus('');}}/>
-  <Alert severity="info">{t.rules}</Alert>{catalog&&!catalog.policy.approverIds.length&&<Alert severity="warning">{t.noPolicy}</Alert>}
+  <Alert severity="info">{t.rules}</Alert>{catalog&&!catalog.policy.approverIds.length&&<Alert severity="warning" action={catalog.canConfigure?<Button onClick={()=>navigateToPath('/approval-settings?menu=WORK_TIME')}>{t.settings}</Button>:undefined}>{t.noPolicy}</Alert>}
   {error&&!form&&!detailId&&<Alert severity="error" action={<Button onClick={refresh}>{t.retry}</Button>}>{error}</Alert>}{result?.hasMore&&<Alert severity="warning">{t.more}</Alert>}
   <Paper variant="outlined"><TableContainer><Table size="small"><TableHead><TableRow>{[t.employee,t.kind,t.start,t.end,t.drafter,t.status].map(k=><TableCell key={k}>{k}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map(r=><TableRow hover key={r.id}><TableCell><Button onClick={()=>{setError('');setDetailId(r.id);}}>{r.employee.name}</Button></TableCell><TableCell>{r.cancelsRequestId?t.cancelRequest+' · ':''}{t[r.kind]}</TableCell><TableCell>{r.startDate}</TableCell><TableCell>{r.endDate}</TableCell><TableCell>{r.drafter.name}</TableCell><TableCell><RequestStatus row={r} t={t}/></TableCell></TableRow>)}{!rows.length&&<TableRow><TableCell colSpan={6}>{loading?'…':result?t.empty:'—'}</TableCell></TableRow>}</TableBody></Table></TableContainer></Paper>
   <Dialog open={!!form} onClose={closeForm} fullWidth maxWidth="md"><DialogTitle>{form?.cancelsRequestId?t.cancel:t.new}</DialogTitle><DialogContent><Stack spacing={2}>
@@ -75,27 +70,7 @@ function CompanyRequests({orgId}){
    {detail.decisions.map(d=><Typography key={d.id}>{detail.steps.find(s=>s.position===d.position)?.employee.name} · {t[d.decision]} · {d.createdAt.slice(0,10)} {d.reason}</Typography>)}
    {detail.canDecide&&<><TextField label={t.reason} multiline value={decisionReason} onChange={e=>setDecisionReason(e.target.value)} disabled={busy} inputProps={{maxLength:1000}}/>{detail.requestedMinutes!=null&&!detail.cancelsRequestId&&detail.decisions.length===detail.steps.length-1&&<TextField required type="number" label={t.minutes} value={minutes} onChange={e=>setMinutes(e.target.value)} disabled={busy} inputProps={{min:1,max:detail.requestedMinutes}}/>}</>}
   </>}</Stack></DialogContent><DialogActions>{detail?.canWithdraw&&<Button onClick={()=>decide('WITHDRAWN')} disabled={busy}>{t.withdraw}</Button>}{detail?.canCancel&&<Button onClick={()=>begin(detail)} disabled={busy}>{t.cancel}</Button>}{detail?.canDecide&&<><Button color="error" disabled={busy||!decisionReason.trim()} onClick={()=>decide('REJECTED')}>{t.reject}</Button><SaveButton loading={busy} onClick={()=>decide('APPROVED')}>{t.approve}</SaveButton></>}</DialogActions></Dialog>
-  <Dialog open={settings} onClose={policyState.busy?undefined:async()=>{if(!policyState.dirty||await dialogs.confirm(t.discard))setSettings(false);}} fullWidth maxWidth="md">{settings&&<WorkTimePolicyEditor orgId={orgId} onStateChange={setPolicyState} onSaved={()=>{setSettings(false);refresh();}}/>}</Dialog>
  </AppPageContainer>;
 }
 function RequestStatus({row,t}){return <StatusLabel tone={{APPROVED:'green',REJECTED:'red',PENDING:'blue',CANCELLED:'gray',WITHDRAWN:'gray'}[row.status]} label={t[row.status]+(row.status==='PENDING'&&row.decisions.length?' '+row.decisions.length+'/'+row.steps.length:'')}/>;}
-
-export function WorkTimePolicyEditor({orgId,onSaved,onStateChange}){
- const {languageCode}=useLanguage(),t=workTimeText[languageCode]||workTimeText.en,{showNotification}=useAppActions();
- const [catalog,setCatalog]=useState(null),[form,setForm]=useState(null),[initial,setInitial]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0),live=useRef(true),lock=useRef(false);
- useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);useUnsavedChanges(!!form&&JSON.stringify(form)!==initial);
- const draftRef=useRef(null);draftRef.current={form,initial};
- useEffect(()=>{let alive=true;requestJSON('/work-time/catalog'+buildQueryString({orgId}),{skipCache:true}).then(c=>{if(alive){setCatalog(c);const current=draftRef.current,preserve=current?.form&&JSON.stringify(current.form)!==current.initial;setForm(preserve?{...current.form,revision:c.policy.revision}:c.policy);setInitial(JSON.stringify(c.policy));setError(preserve?t.draftPreserved:'');}}).catch(e=>{if(alive)setError(errorText(t,e));});return()=>{alive=false;};},[orgId,reload]);
- useEffect(()=>{onStateChange?.({busy,dirty:!!form&&JSON.stringify(form)!==initial});},[busy,form,initial,onStateChange]);
- const update=(k,v)=>setForm(f=>({...f,[k]:v})),toggle=(k,r)=>update(k,form[k].includes(r)?form[k].filter(v=>v!==r):[...form[k],r]);
- const save=async()=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{const f=await requestJSON('/work-time/policy'+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify(form)});if(live.current){setForm(f);setInitial(JSON.stringify(f));showNotification(t.saved,'success');emitWorkspaceDataChanged({orgId,topics:['work-time-policy']});onSaved?.();}}catch(e){if(live.current)setError(errorText(t,e));}finally{lock.current=false;if(live.current)setBusy(false);}};
- return <><DialogTitle>{t.settings}</DialogTitle><DialogContent><Stack spacing={2}>
-  {error&&<Alert severity="error" action={<Button disabled={busy} onClick={()=>setReload(v=>v+1)}>{t.retry}</Button>}>{error}</Alert>}
-  <Typography>{t.policyNote}</Typography>{form&&<>
-   {['drafterRoles','proxyRoles'].map(k=><Box key={k}><Typography variant="subtitle2">{k==='drafterRoles'?t.draftRoles:t.proxyRoles}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{(k==='drafterRoles'?['ADMIN','OPERATOR','ACCOUNTANT','WORKER']:['ADMIN','OPERATOR','ACCOUNTANT']).map(r=><FormControlLabel key={r} control={<Checkbox checked={form[k].includes(r)} onChange={()=>toggle(k,r)} disabled={busy||!catalog.canConfigure}/>} label={t[r]}/>)}</Stack></Box>)}
-   <Typography variant="subtitle2">{t.approvers}</Typography>
-   {form.approverIds.map((id,index)=><Stack direction="row" spacing={1} alignItems="center" key={index}><Typography>{index+1}</Typography><SearchableSelect sx={{flex:1,minWidth:0}} label={t.manager} options={catalog.managers} value={catalog.managers.find(p=>p.id===id)||null} getOptionLabel={p=>p.name} isOptionEqualToValue={(a,b)=>a.id===b.id} getOptionDisabled={p=>form.approverIds.includes(p.id)&&p.id!==id} onChange={(_,p)=>update('approverIds',form.approverIds.map((v,i)=>i===index?p?.id||null:v))} disabled={busy||!catalog.canConfigure}/><DeleteActionButton title={t.remove} onClick={()=>update('approverIds',form.approverIds.filter((_,i)=>i!==index))} disabled={busy||!catalog.canConfigure}/></Stack>)}
-   <AddActionButton title={t.add} onClick={()=>update('approverIds',[...form.approverIds,null])} disabled={busy||!catalog.canConfigure||form.approverIds.length>=10}/>
-  </>}
- </Stack></DialogContent><DialogActions><SaveButton loading={busy} disabled={!catalog?.canConfigure||!form?.drafterRoles.length||!form?.approverIds.length||form.approverIds.some(id=>!id)||JSON.stringify(form)===initial} onClick={save}>{t.save}</SaveButton></DialogActions></>;
-}
+

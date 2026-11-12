@@ -27,7 +27,9 @@ export async function workTimePolicy(db:any,orgId:number){
  return row?.value||{revision:0,drafterRoles:roles,proxyRoles:['ADMIN','OPERATOR'],approverIds:[]};
 }
 export async function saveWorkTimePolicy(db:any,orgId:number,actorId:number,input:any){
- return retryEditTransaction(db,async(tx:any)=>{
+ return retryEditTransaction(db,async(tx:any)=>saveWorkTimePolicyInTransaction(tx,orgId,actorId,input));
+}
+export async function saveWorkTimePolicyInTransaction(tx:any,orgId:number,actorId:number,input:any){
   await tx.$queryRawUnsafe("SELECT set_config('baro.work_time_actor',$1,true)",String(actorId));
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
   const actor=await workTimeActor(tx,orgId,actorId);if(actor.orgRole!=='ADMIN')fail('WORK_TIME_ACCESS_DENIED',403);
@@ -41,7 +43,6 @@ export async function saveWorkTimePolicy(db:any,orgId:number,actorId:number,inpu
   const value={revision:current.revision+1,drafterRoles:[...new Set(input.drafterRoles)],proxyRoles:[...new Set(input.proxyRoles)],approverIds:input.approverIds};
   await tx.systemSetting.create({data:{key:key(orgId)+':REV:'+value.revision,value:{before:current,after:value,actorId,at:new Date().toISOString()},updatedByEmployeeId:actorId}});
   await tx.systemSetting.upsert({where:{key:key(orgId)},create:{key:key(orgId),value,updatedByEmployeeId:actorId},update:{value,updatedByEmployeeId:actorId}});return value;
- });
 }
 export async function workTimeAnnualBalance(db:any,orgId:number,employeeId:number,year:string){
  return (await employeeLeaveBalance(db,orgId,employeeId,Number(year))).remaining;

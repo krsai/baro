@@ -1,4 +1,6 @@
 import {workTimeText} from '../../constants/workTime';
+import {useLocation} from 'react-router-dom';
+import WorkTimeApprovalSettings from '../../components/WorkTimeApprovalSettings';
 import {ledgerApprovalBands} from '../../utils/ledgerApprovalBands.mjs';
 import {Add} from '@mui/icons-material';
 import React,{useEffect,useRef,useState} from 'react';
@@ -22,17 +24,20 @@ const keyFor=(menu,operation)=>menu+':'+operation;
 const registrationFor=(menu,operation)=>menu==='BANK_LEDGER'&&operation==='CREATE';
 const formFrom=(settings,registration)=>{
  if(!settings)throw new Error('INVALID_APPROVAL_SETTINGS');
+ if(Array.isArray(settings.approverIds))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,proxyRoles:settings.proxyRoles,approverIds:settings.approverIds};
  return {...(registration?{version:2}:{}),kind:registration?'BANK_LEDGER':'EXPENSE',drafterScope:settings.drafterScope||{role:'ALL',gradeId:null},limits:settings.limits,rules:registration?ledgerApprovalBands(settings):settings.rules||[],revision:settings.revision||0};
 };
-const invalidEntry=entry=>invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
+const invalidEntry=entry=>entry.menu==='WORK_TIME'?!entry.form.drafterRoles?.length||!entry.form.approverIds?.length||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length:invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
 const dirtyEntry=entry=>Boolean(entry?.form&&JSON.stringify(entry.form)!==entry.initial);
 
 export default function ApprovalSettings(){const {activeOrgId}=useAuth();return <CompanyApprovalSettings key={activeOrgId} activeOrgId={activeOrgId}/>;}
 function CompanyApprovalSettings({activeOrgId}){
- const {languageCode}=useLanguage(),{showNotification,navigateToPath}=useAppActions();
+ const location=useLocation();
+ const {languageCode}=useLanguage(),{showNotification}=useAppActions();
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,actionText=changeApprovalText[languageCode]||changeApprovalText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
- const [menu,setMenu]=useState('EXPENSE'),[entries,setEntries]=useState({}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
- const operations=menu==='INVOICE'?['DELETE']:['CREATE','UPDATE','DELETE'];
+ const [menu,setMenu]=useState(()=>new URLSearchParams(location.search).get('menu')==='WORK_TIME'?'WORK_TIME':'EXPENSE'),[entries,setEntries]=useState({}),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
+ useEffect(()=>{if(new URLSearchParams(location.search).get('menu')==='WORK_TIME')setMenu('WORK_TIME');},[location.key,location.search]);
+ const operations=menu==='WORK_TIME'?['CREATE']:menu==='INVOICE'?['DELETE']:['CREATE','UPDATE','DELETE'];
  const lock=useRef(false),scope=useRef(activeOrgId),live=useRef(true);scope.current=activeOrgId;
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{let alive=true;setLoading(true);
@@ -49,18 +54,18 @@ function CompanyApprovalSettings({activeOrgId}){
  const disabled=saving||loading,invalid=dirty.some(entry=>invalidEntry(entry)||!entry.data?.canEdit||entry.error);
  const save=async()=>{
   if(lock.current||disabled||!dirty.length||invalid)return;lock.current=true;setSaving(true);setError('');const orgId=activeOrgId;
-  const changes=dirty.map(entry=>({menu:entry.menu,operation:entry.operation,settings:{...entry.form,stageAuthorityVersion:1,rules:cleanApprovalBands(entry.form.rules)}}));
+  const changes=dirty.map(entry=>({menu:entry.menu,operation:entry.operation,settings:entry.menu==='WORK_TIME'?entry.form:{...entry.form,stageAuthorityVersion:1,rules:cleanApprovalBands(entry.form.rules)}}));
   try{const result=await requestJSON('/approval-action-settings/batch'+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify({changes})});if(!live.current||scope.current!==orgId)return;
    const expected=new Map(changes.map(row=>[keyFor(row.menu,row.operation),row.settings.revision+1]));
    if(!Array.isArray(result?.saved)||result.saved.length!==changes.length||new Set(result.saved.map(row=>keyFor(row.menu,row.operation))).size!==changes.length||result.saved.some(row=>!expected.has(keyFor(row.menu,row.operation))||expected.get(keyFor(row.menu,row.operation))!==row.settings?.revision))throw new Error('INVALID_APPROVAL_SETTINGS');
    const saved=result.saved.map(row=>({...row,form:formFrom(row.settings,registrationFor(row.menu,row.operation))}));
    setEntries(current=>{const next={...current};for(const row of saved){const key=keyFor(row.menu,row.operation),entry=next[key],form=row.form;next[key]={...entry,data:{...entry.data,settings:{...entry.data.settings,...row.settings}},form,initial:JSON.stringify(form),error:''};}return next;});
-   showNotification(t.saved,'success');emitWorkspaceDataChanged({orgId,topics:['expense-approval-settings']});setReload(value=>value+1);
-  }catch(failure){if(live.current&&scope.current===orgId)setError(failure.message==='APPROVAL_SETTINGS_CHANGED'?messages.changed:messages.error);}finally{lock.current=false;if(live.current)setSaving(false);}
+   showNotification(t.saved,'success');emitWorkspaceDataChanged({orgId,topics:['expense-approval-settings','work-time-policy']});setReload(value=>value+1);
+  }catch(failure){if(live.current&&scope.current===orgId)setError(['APPROVAL_SETTINGS_CHANGED','WORK_TIME_POLICY_CHANGED'].includes(failure.message)?messages.changed:messages.error);}finally{lock.current=false;if(live.current)setSaving(false);}
  };
  return <AppPageContainer title={t.title} titleActions={<SaveButton loading={saving} disabled={disabled||!dirty.length||invalid} onClick={save}>{t.save}</SaveButton>} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={3} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
-   <TextField select size="small" label={subject.label} value={menu} disabled={saving} onChange={event=>{if(event.target.value==='WORK_TIME'){navigateToPath('/work-time?settings=1');return;}setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER','INVOICE','WORK_TIME'].map(key=><MenuItem key={key} value={key}>{key==='WORK_TIME'?(workTimeText[languageCode]||workTimeText.en).title:actionText[key]}</MenuItem>)}</TextField>
+   <TextField select size="small" label={subject.label} value={menu} disabled={saving} onChange={event=>{setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER','INVOICE','WORK_TIME'].map(key=><MenuItem key={key} value={key}>{key==='WORK_TIME'?(workTimeText[languageCode]||workTimeText.en).title:actionText[key]}</MenuItem>)}</TextField>
    {error&&<Alert severity="error">{error}</Alert>}
    {operations.map(operation=><ApprovalOperationSettings key={keyFor(menu,operation)} entry={entries[keyFor(menu,operation)]} menu={menu} operation={operation} disabled={disabled} onChange={patch=>update(operation,patch)} onReload={()=>setReload(value=>value+1)} languageCode={languageCode}/>)}
   </Stack>
@@ -70,6 +75,7 @@ function CompanyApprovalSettings({activeOrgId}){
 function ApprovalOperationSettings({entry,menu,operation,disabled,onChange,onReload,languageCode}){
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,band=approvalBandText[languageCode]||approvalBandText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en,actions=changeApprovalText[languageCode]||changeApprovalText.en;
  const editor=useRef(null),[editorError,setEditorError]=useState(''),form=entry?.form,data=entry?.data,locked=disabled||!data?.canEdit||!!entry?.error,registration=registrationFor(menu,operation);
+ if(menu==='WORK_TIME')return <Stack spacing={2}>{entry?.error&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry.error}</Alert>}{form&&<WorkTimeApprovalSettings form={form} managers={data?.managers||[]} onChange={onChange} disabled={locked} languageCode={languageCode}/>}</Stack>;
  return <Stack component="section" aria-label={actions[operation]} data-approval-operation={operation} spacing={2} sx={{minWidth:0}}>
   <Typography component="h2" variant="h6">{actions[operation]}</Typography>
   {(entry?.error||editorError)&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry?.error||editorError}</Alert>}

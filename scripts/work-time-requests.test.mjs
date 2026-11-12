@@ -7,6 +7,23 @@ const require=createRequire(import.meta.url);
 const {saveWorkTimePolicy:policy,submitWorkTimeRequest:submit,decideWorkTimeRequest:decide,readWorkTimeRequest:read,approvedWorkTime,workTimeAnnualBalance,registerWorkTimeRoutes}=require('../backend/dist/services/workTimeRequests');
 const {resolveSalaryAttendanceParameters:attendance}=require('../backend/dist/employees/salaryAttendanceParameters');
 const {loadPayrollLeaves,grantEmployeeLeave}=require('../backend/dist/employees/employeeLeave');
+const {saveApprovalActionBatch}=require('../backend/dist/services/approvalActions');
+
+test('central approval settings use the existing work-time policy and roll back mixed changes atomically',async()=>{
+ const f=await fixture();try{
+  const {db,p,org}=f,original=await db.systemSetting.findUnique({where:{key:`WORK_TIME_POLICY:${org}`}});
+  const settings={...original.value,approverIds:[p.lead.id]},work={menu:'WORK_TIME',operation:'CREATE',settings};
+  await assert.rejects(saveApprovalActionBatch(db,org,p.admin.id,[work,{menu:'BANK_LEDGER',operation:'CREATE',settings:{revision:999}}]),/APPROVAL_SETTINGS_CHANGED/);
+  assert.deepEqual(await db.systemSetting.findUnique({where:{key:`WORK_TIME_POLICY:${org}`}}),original);
+  assert.equal(await db.systemSetting.findUnique({where:{key:`WORK_TIME_POLICY:${org}:REV:2`}}),null,'history write rolls back with invalid financial policy');
+  await assert.rejects(saveApprovalActionBatch(db,org,p.junior.id,[work]),/ACTIVE_EMPLOYEE_REQUIRED/);
+  const existing=await submit(db,org,f.worker.id,f.request());
+  const [saved]=await saveApprovalActionBatch(db,org,p.admin.id,[work]);assert.equal(saved.settings.revision,2);
+  assert.deepEqual((await read(db,org,p.admin.id,existing.id)).policy.approverIds,original.value.approverIds,'existing request retains its original chain');
+  const newer=await submit(db,org,f.worker.id,f.request({policyRevision:2,startDate:'2026-10-06',endDate:'2026-10-06'}));
+  assert.deepEqual(newer.steps.map(step=>step.employeeId),[p.lead.id]);
+ }finally{await f.close();}
+});
 test('a short normal workday preserves historical thresholds without using them as a payroll cutoff',()=>{
  const {validateEmployeePayTypePolicy,normalizeEmployeePayTypePolicy}=require('../backend/dist/employees/employeePayTypePolicy');
  const policy={payType:'GENERAL',workWeekdays:[1,2,3,4,5],standardClockIn:'08:00',standardClockOut:'11:00',breakMinutes:0,workdayMinimumMinutes:240};
