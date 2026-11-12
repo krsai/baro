@@ -373,3 +373,10 @@ export const useAppActions = () => {
   }
   return context;
 };
+
+// Reuse page editors in dashboard dialogs while keeping their navigation local.
+export function AppActionsScope({navigateToPath,children}) {
+ const parent=useAppActions();
+ const value=useMemo(()=>({...parent,navigateToPath}),[parent,navigateToPath]);
+ return <AppActionsContext.Provider value={value}>{children}</AppActionsContext.Provider>;
+}

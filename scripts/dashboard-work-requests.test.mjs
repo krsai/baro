@@ -55,3 +55,24 @@ test('work request routes require company membership and the saved dashboard fea
  assert.match(readFileSync('backend/src/index.ts','utf8'),/DashboardWorkRequest:\['id','orgId'/);
 });
 
+
+test('work request edits preserve snapshots, sender authority, revisions and audit rollback',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin.id,b=s.people.junior.id;
+  const row=await createWorkRequest(db,org,a,{clientKey:randomUUID(),recipientId:b,title:'Original',message:'Original instructions'});
+  await assert.rejects(actWorkRequest(db,org,b,row.id,{action:'UPDATE',version:1,title:'Other',message:''}),/ADMIN_REQUIRED/);
+  await assert.rejects(actWorkRequest(db,org,a,row.id,{action:'UPDATE',version:9,title:'Other',message:''}),/CHANGED/);
+  const updated=await actWorkRequest(db,org,a,row.id,{action:'UPDATE',version:1,title:'Updated',message:'New instructions'});
+  assert.equal(updated.version,2);assert.equal((await listWorkRequests(db,org,b)).rows[0].message,'New instructions');
+  assert.equal((await actWorkRequest(db,org,a,row.id,{action:'UPDATE',version:1,title:'Updated',message:'New instructions'})).version,2);
+  const events=(await f.pg.query('SELECT action,snapshot FROM "DashboardWorkRequestEvent" ORDER BY version')).rows;
+  assert.deepEqual(events.map(e=>e.action),['CREATE','UPDATE']);assert.deepEqual(events[1].snapshot,{before:{title:'Original',message:'Original instructions'},after:{title:'Updated',message:'New instructions'}});
+  await assert.rejects(db.$executeRawUnsafe('UPDATE "DashboardWorkRequest" SET title=$1,version=version+1 WHERE id=$2','Unaudited',row.id),/HISTORY_PROTECTED/);
+  const failing={...db,$transaction:work=>db.$transaction(tx=>work(new Proxy(tx,{get:(target,key)=>key==='$executeRawUnsafe'?async(sql,...args)=>{if(sql.includes('DashboardWorkRequestEvent'))throw Error('audit unavailable');return target.$executeRawUnsafe(sql,...args);}:Reflect.get(target,key)})))};
+  await assert.rejects(actWorkRequest(failing,org,a,row.id,{action:'UPDATE',version:2,title:'Lost',message:''}),/audit unavailable/);
+  assert.equal((await listWorkRequests(db,org,b)).rows[0].title,'Updated');
+  await actWorkRequest(db,org,b,row.id,{action:'COMPLETE',version:2});
+  await assert.rejects(actWorkRequest(db,org,a,row.id,{action:'UPDATE',version:3,title:'Late',message:''}),/CHANGED/);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261112010000_dashboard_work_request_edit');await f.pg.exec(migration.sql);
+ }finally{await f.close();}
+});

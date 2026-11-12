@@ -3476,6 +3476,7 @@ model DashboardWorkRequest {
  @@index([orgId,recipientId,createdAt(sort:Desc),id],map:"DashboardWorkRequest_recipient_idx")
 }
 model DashboardWorkRequestEvent {
+ snapshot Json?
  id String @id
  orgId Int
  requestId String

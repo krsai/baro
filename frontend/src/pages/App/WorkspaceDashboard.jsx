@@ -12,6 +12,8 @@ import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orde
 import { ui } from '../../theme/ui';
 import QueryFeedback from '../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+const DashboardDocumentDialog=React.lazy(()=>import('../../components/DashboardDocumentDialog'));
+
 import {
   Box,
   Button,
@@ -577,6 +579,8 @@ const WorkspaceDashboard = () => {
   );
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [recordAlert, setRecordAlert] = useState(null);
+  const [notificationDocument,setNotificationDocument]=useState(null);
+  useEffect(()=>setNotificationDocument(null),[activeOrgId]);
   useEffect(() => { setRecordAlert(null); }, [activeOrgId]);
   const isSystemProfile = activeProfile?.entryType === 'SYSTEM';
 
@@ -730,13 +734,14 @@ const WorkspaceDashboard = () => {
   const showProduction=canAccessPath('/work-history',authState);
   const financeAlerts=!isSystemProfile&&(canAccessPath('/bank-ledger',authState)||canAccessPath('/outsourcing-record',authState)||canAccessPath('/invoices',authState)),accountingText=accountingAlertText[languageCode]||accountingAlertText.en;
   const widgets=[
-    {id:'notifications',label:a.notifications,options:(isSystemProfile?[]:[['unassigned',a.unassigned,'/order'],['employees',a.employees,'/employee'],['sales-prices',a.prices,'/customer']].filter(([, ,path])=>canAccessPath(path,authState)).map(([id,label])=>({id,label})).concat(financeAlerts?[{id:'accounting-direction',label:accountingText.DIRECTION},{id:'accounting-partner',label:accountingText.PARTNER_INDUSTRY}]:[])),content:({settings})=><DashboardAlertsCard title={a.notifications} text={a} loading={summaryLoading} error={queryError} onRetry={()=>setQueryRetry(v=>v+1)} items={notificationItems.filter(item=>!item.recordAlert&&settings?.[item.key]!==false).map(item=>({...item,text:resolveText(item.label,languageCode)}))} onSelect={item=>navigateToPath(item.path)}>{financeAlerts&&<AccountingAlerts key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} settings={settings} showEmpty={!notificationItems.some(item=>!item.recordAlert&&settings?.[item.key]!==false)}/>}</DashboardAlertsCard>},
+    {id:'notifications',label:a.notifications,options:(isSystemProfile?[]:[['unassigned',a.unassigned,'/order'],['employees',a.employees,'/employee'],['sales-prices',a.prices,'/customer']].filter(([, ,path])=>canAccessPath(path,authState)).map(([id,label])=>({id,label})).concat(financeAlerts?[{id:'accounting-direction',label:accountingText.DIRECTION},{id:'accounting-partner',label:accountingText.PARTNER_INDUSTRY}]:[])),content:({settings})=><DashboardAlertsCard title={a.notifications} text={a} loading={summaryLoading} error={queryError} onRetry={()=>setQueryRetry(v=>v+1)} items={notificationItems.filter(item=>!item.recordAlert&&settings?.[item.key]!==false).map(item=>({...item,text:resolveText(item.label,languageCode)}))} onSelect={item=>isSystemProfile?navigateToPath(item.path):setNotificationDocument(item)}>{financeAlerts&&<AccountingAlerts key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} settings={settings} showEmpty={!notificationItems.some(item=>!item.recordAlert&&settings?.[item.key]!==false)}/>}</DashboardAlertsCard>},
     ...(!isSystemProfile&&activeProfile?.orgType==='MANUFACTURER'?[{id:'suspected-errors',newDefault:true,label:a.suspected,options:[...(canAccessPath('/assignment',authState)?[{id:'missing-records',label:a.missing}]:[]),...(showProduction?[{id:'production-excess',label:a.excess}]:[])],content:({settings})=><DashboardAlertsCard title={a.suspected} text={a} loading={summaryLoading} error={queryError} onRetry={()=>setQueryRetry(v=>v+1)} items={settings?.['missing-records']===false?[]:notificationItems.filter(item=>item.recordAlert).map(item=>({...item,text:resolveText(item.label,languageCode)}))} onSelect={item=>setRecordAlert(item.recordAlert)}>{showProduction&&settings?.['production-excess']!==false?<ProductionExcessCard embedded key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} canOpenExpense={canAccessPath('/outsourcing-record',authState)}/>:null}</DashboardAlertsCard>}]:[]),
     ...(!isSystemProfile?[{id:'work-requests',label:a.tasks,newDefault:true,content:<WorkRequestsCard key={activeOrgId+':'+activeProfile?.employeeId} orgId={activeOrgId} languageCode={languageCode}/>}]:[]),
     ...(!isSystemProfile&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&canAccessPath('/outsourcing-record',authState)?[{id:'approvals',label:({ko:'결재 현황',en:'Approvals',vi:'Phê duyệt'})[languageCode]||'Approvals',content:<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile?.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}]:[]),
   ];
   return (
     <DashboardWidgets title={resolveText(DASHBOARD_TEXT.title, languageCode)} widgets={widgets} companyId={activeOrgId} userId={user?.id||activeProfile?.employeeId} languageCode={languageCode} onSaved={message=>showNotification(message,'success')}>
+      {notificationDocument&&<React.Suspense fallback={null}><DashboardDocumentDialog key={activeOrgId} row={notificationDocument} languageCode={languageCode} onClose={()=>setNotificationDocument(null)} onNavigate={navigateToPath}/></React.Suspense>}
       <QueryFeedback error={queryError} onRetry={() => setQueryRetry(value => value + 1)} />
       {recordAlert && <QuantityReviewDrawer externalId={recordAlert.id} orgId={activeOrgId} languageCode={languageCode}
         headerOrderNo={recordAlert.orderNo} headerStyleLabel={recordAlert.styleName} headerQuantity={recordAlert.plannedQuantity}

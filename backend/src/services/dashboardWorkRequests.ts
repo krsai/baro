@@ -7,8 +7,8 @@ async function actor(db:any,orgId:number,actorId:number){
  const person=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',organization:{isActive:true,ownerOrgId:null}},select:{id:true,orgRole:true}});
  if(!person)fail('WORK_REQUEST_ACCESS_DENIED',403);return person;
 }
-async function event(tx:any,orgId:number,actorId:number,row:any,action:string){
- await tx.$executeRawUnsafe('INSERT INTO "DashboardWorkRequestEvent"(id,"orgId","requestId","actorId",action,version) VALUES($1,$2,$3,$4,$5,$6)',randomUUID(),orgId,row.id,actorId,action,row.version);
+async function event(tx:any,orgId:number,actorId:number,row:any,action:string,snapshot:any=null){
+ await tx.$executeRawUnsafe('INSERT INTO "DashboardWorkRequestEvent"(id,"orgId","requestId","actorId",action,version,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)',randomUUID(),orgId,row.id,actorId,action,row.version,snapshot?JSON.stringify(snapshot):null);
 }
 export async function listWorkRequests(db:any,orgId:number,actorId:number,query:any={}){
  const person=await actor(db,orgId,actorId),page=Number(query.page||0),status=query.status||'ALL',direction=query.direction||'ALL';
@@ -29,11 +29,20 @@ export async function createWorkRequest(db:any,orgId:number,actorId:number,input
  });
 }
 export async function actWorkRequest(db:any,orgId:number,actorId:number,id:string,input:any){
- if(!['COMPLETE','HIDE'].includes(input?.action)||!Number.isSafeInteger(input.version)||input.version<1)fail('WORK_REQUEST_INVALID');
+ if(!['COMPLETE','HIDE','UPDATE'].includes(input?.action)||!Number.isSafeInteger(input.version)||input.version<1)fail('WORK_REQUEST_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
-  await actor(tx,orgId,actorId);
+  const person=await actor(tx,orgId,actorId);
   const before=(await tx.$queryRawUnsafe('SELECT * FROM "DashboardWorkRequest" WHERE id=$1 AND "orgId"=$2 AND ("senderId"=$3 OR "recipientId"=$3) FOR UPDATE',id,orgId,actorId))[0];
   if(!before)fail('WORK_REQUEST_NOT_FOUND',404);
+  if(input.action==='UPDATE'){
+   if(before.senderId!==actorId||person.orgRole!=='ADMIN')fail('WORK_REQUEST_ADMIN_REQUIRED',403);
+   if(typeof input.title!=='string'||!input.title.trim()||input.title.trim().length>200||typeof input.message!=='string'||input.message.length>4000)fail('WORK_REQUEST_INVALID');
+   if(before.status!=='OPEN')fail('WORK_REQUEST_CHANGED',409);
+   if(before.title===input.title.trim()&&before.message===input.message)return before;
+   if(before.version!==input.version)fail('WORK_REQUEST_CHANGED',409);
+   const row=(await tx.$queryRawUnsafe('UPDATE "DashboardWorkRequest" SET title=$1,message=$2,version=version+1 WHERE id=$3 AND "orgId"=$4 RETURNING *',input.title.trim(),input.message,id,orgId))[0];
+   await event(tx,orgId,actorId,row,'UPDATE',{before:{title:before.title,message:before.message},after:{title:row.title,message:row.message}});return row;
+  }
   const column=before.senderId===actorId?'senderHiddenAt':'recipientHiddenAt';
   if(input.action==='COMPLETE'&&before.recipientId!==actorId)fail('WORK_REQUEST_RECIPIENT_REQUIRED',403);
   if(input.action==='COMPLETE'&&before.status==='DONE'||input.action==='HIDE'&&before[column])return before;
