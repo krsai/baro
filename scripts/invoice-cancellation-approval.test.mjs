@@ -9,6 +9,17 @@ test('invoice cancellation requires staged approval, real invoice FK, current fi
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.junior.id;
   const make=async()=>{const draft=await saveInvoiceDraft(db,org,'actor',{clientKey:randomUUID(),documentKind:'GENERAL',buyerOrgId:s.vendor.id,orders:[],currency:'USD',fields:{date:'2026-11-11',seller:{name:'Seller'},buyer:{name:'Buyer'}},lines:[{key:randomUUID(),transactionCodeId:s.code.id,description:'Service',unit:'pcs',quantity:'1',unitPrice:'100',vatRate:'0'}]});return issueInvoiceDraft(db,org,'actor',draft.id,draft.revision);};
+  const ownInvoice=await make(),ownInput={menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:ownInvoice.id,reason:'Highest administrator cancellation',clientKey:randomUUID()};
+  const adminGrade=await db.employeeGrade.findUnique({where:{id:s.people.admin.gradeId}});
+  const lowerGrade=await db.employeeGrade.create({data:{orgId:org,setId:adminGrade.setId,code:'LOW_ADMIN',name:'Lower administrator',nameKo:'Lower administrator',nameEn:'Lower administrator',nameVi:'Lower administrator',sortOrder:-1}});
+  const lowerAdmin=await db.employee.create({data:{orgId:org,name:'Lower administrator',orgRole:'ADMIN',gradeId:lowerGrade.id,status:'ACTIVE'}});
+  const lowerPreview=await previewChangeApproval(db,org,lowerAdmin.id,ownInput);
+  assert.equal(lowerPreview.policy.autoApproved,false);assert.ok(lowerPreview.preview.ids.includes(s.people.admin.id));
+  const ownPreview=await previewChangeApproval(db,org,s.people.admin.id,ownInput);
+  assert.equal(ownPreview.preview.complete,true);assert.equal(ownPreview.policy.autoApproved,true);assert.equal(ownPreview.policy.exemptionReason,'FINAL_DRAFTER');
+  const ownRequest=await requestChangeApproval(db,org,s.people.admin.id,ownInput);
+  assert.equal(ownRequest.status,'APPROVED');assert.equal((await db.invoice.findUnique({where:{id:ownInvoice.id}})).status,'CANCELLED');
+  assert.equal((await requestChangeApproval(db,org,s.people.admin.id,ownInput)).id,ownRequest.id);
   const invoice=await make(),input={menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:invoice.id,reason:'Wrong invoice',clientKey:randomUUID()};
   await assert.rejects(cancelIssuedInvoice(db,org,'actor',invoice.id,'Direct cancellation'),/CHANGE_APPROVAL_REQUIRED/);
   const routes=new Map();let allowed=false;require('../backend/dist/services/changeApprovals').registerChangeApprovalRoutes({post:(path,fn)=>routes.set(path,fn),get:()=>{}},db,{requireOrgRole:async()=>({organization:s.company,employee:s.people.junior}),actorId:()=>actor,canAccess:async()=>allowed});

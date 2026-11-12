@@ -95,6 +95,11 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
  const resolver={authorityEmployee:db.employee,excludedApprovalIds:excluded,systemSetting:db.systemSetting,employeeGrade:db.employeeGrade,employee:{findFirst:db.employee.findFirst.bind(db.employee),findMany:(args:any)=>db.employee.findMany({...args,where:{...args.where,id:{notIn:[...new Set([...(args.where.id?.notIn||[]),...excluded])]}}})}};
  const preview=s.menu==='BANK_LEDGER'&&s.operation==='CREATE'?await previewLedgerRegistration(db,orgId,actor,s,config,input.selection):await resolveExpenseApproval(resolver,orgId,actorId,amounts(s,input.payload),input.selection||{},true,config);
  let highestSelfDeletion=false;
+ // Legacy administrator exemption still requires verified highest-company authority.
+ if(s.menu==='INVOICE'&&preview.policy.exempt&&preview.policy.exemptionReason==='ADMIN_DRAFTER'&&await isHighestCompanyApprover(db,orgId,actor)){
+  const finalDrafterStage={role:'ADMIN',gradeId:actor.gradeId};
+  Object.assign(preview.policy,{exemptionReason:'FINAL_DRAFTER',finalDrafterStage,config:{...preview.policy.config,registrationStages:[finalDrafterStage]}});
+ }
  const automatic=preview.policy.exempt&&preview.policy.exemptionReason==='FINAL_DRAFTER';
  if(automatic){preview.stages=[{key:'final-self',role:actor.orgRole,gradeId:actor.gradeId,employeeId:actor.id,name:actor.name,candidates:[actor]}];preview.ids=[actor.id];preview.complete=true;}else if(preview.policy.exempt&&s.menu==='EXPENSE'&&s.operation==='DELETE'&&s.expense.document&&await isHighestCompanyApprover(db,orgId,actor)){
   highestSelfDeletion=true;preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:actor.gradeId,employeeId:actor.id,candidates:[{id:actor.id,name:actor.name,gradeId:actor.gradeId}]}];preview.ids=[actor.id];preview.complete=true;
