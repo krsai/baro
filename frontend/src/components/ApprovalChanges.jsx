@@ -1,5 +1,5 @@
-import React,{useState} from 'react';
-import {Box,Button,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography,Tooltip} from '@mui/material';
+import React from 'react';
+import {Box,Paper,Stack,Typography,Tooltip} from '@mui/material';
 import {accountingCodeDescription} from '../utils/accountingCode.mjs';
 import {evidenceReference} from '../utils/evidenceReference.mjs';
 import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
@@ -18,7 +18,7 @@ const codeText=(code,language)=>[code?.code,accountingCodeDescription(code,langu
 export default function ApprovalChanges({detail,languageCode}){
  const t=approvalReviewText[languageCode]||approvalReviewText.en,x=TEXT[languageCode]||TEXT.en,flow=ledgerFlowText[languageCode]||ledgerFlowText.en;
  const ledgerLabels=ledgerEntryText[languageCode]||ledgerEntryText.en;
- const [showSame,setShowSame]=useState(false),rows=[];
+ const rows=[];
  const add=(key,label,before,after,beforeKey=before,afterKey=after,help)=>rows.push({key,label,before:before??'—',after:after??'—',changed:String(beforeKey??'')!==String(afterKey??''),help});
  if(detail.menu==='BANK_LEDGER'){
   const before=detail.before?.entry||{},after=detail.after?.rows?.find(row=>row.entryKind==='BANK')||{},account=detail.before?.account||{},proposed=detail.before?.proposedAccount||account;
@@ -53,10 +53,9 @@ export default function ApprovalChanges({detail,languageCode}){
   };
   oldItems.forEach((old,index)=>{const next=newItems.find(row=>(row.itemId||row.id)===old.id);if(next)used.add(next);itemRows(old,next,index);});newItems.filter(row=>!used.has(row)).forEach((next,index)=>itemRows(null,next,oldItems.length+index));
  }
- const changed=rows.filter(row=>row.changed),same=rows.filter(row=>!row.changed);
- return <Paper variant="outlined" sx={{p:2,minWidth:0}} data-testid="approval-changes"><Stack direction="row" gap={1} alignItems="center" sx={{mb:1}}><Typography variant="h6">{x.title}</Typography><Typography color="primary" fontWeight={700}>{changed.length}</Typography></Stack>
-  {!changed.length&&<Typography color="text.secondary">{x.none}</Typography>}
-  <TableContainer><Table size="small" data-table-layout="fixed" sx={{tableLayout:'fixed'}}><TableHead><TableRow>{[x.field,t.before,t.after].map(label=><TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{[...changed,...(showSame?same:[])].map(row=><TableRow key={row.key} data-changed={row.changed||undefined} sx={row.changed?{bgcolor:'action.selected'}:{}}><TableCell sx={{width:'24%',overflowWrap:'anywhere'}}>{row.help?<Tooltip title={row.help}><span>{row.label} ⓘ</span></Tooltip>:row.label}</TableCell><TableCell sx={{color:'text.secondary',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{row.before||'—'}</TableCell><TableCell sx={{fontWeight:row.changed?700:400,color:row.changed?'primary.main':'text.primary',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{row.after||'—'}</TableCell></TableRow>)}</TableBody></Table></TableContainer>
-  {!!same.length&&<Button size="small" sx={{mt:1}} onClick={()=>setShowSame(value=>!value)}>{showSame?x.hide:`${x.same} (${same.length})`}</Button>}
- </Paper>;
+ return <Box data-testid="approval-changes" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(2,minmax(0,1fr))'},gap:2}}>
+  {['before','after'].map(side=><Paper key={side} variant="outlined" data-approval-comparison={side} sx={{p:2,minWidth:0}}><Typography variant="h6" sx={{mb:2}}>{t[side]}</Typography><Stack spacing={1}>
+   {rows.map(row=><Box key={row.key} data-changed={row.changed||undefined} sx={{p:1,borderRadius:1,...(row.changed?{bgcolor:'action.selected',borderLeft:3,borderColor:'primary.main'}:{})}}><Typography variant="caption" color="text.secondary">{row.help?<Tooltip title={row.help}><span>{row.label}</span></Tooltip>:row.label}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontWeight:row.changed?700:400,color:row.changed?'primary.main':'text.primary'}}>{row[side]||'\u2014'}</Typography></Box>)}
+  </Stack></Paper>)}
+ </Box>;
 }

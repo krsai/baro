@@ -76,6 +76,7 @@ test('editing one transaction can add a fee and independent bank row; approvals,
   const pending=await requestChangeApproval(db,org,s.people.junior.id,input);assert.equal((await db.bankLedgerEntry.findUnique({where:{id:oldId}})).voidedAt,null);
   let done;for(const stage of pending.policy.resolvedStages)done=await decideChangeApproval(db,org,stage.employeeId,pending.id,{decision:'APPROVED'});
   assert.equal(done.result.entryIds.length,3);assert.ok((await db.bankLedgerEntry.findUnique({where:{id:oldId}})).voidedAt);
+  for(const id of done.result.entryIds)assert.equal((await readLedgerEdit(db,org,id)).drafter.id,s.people.junior.id,'every row in the approved edit retains its modifying requester');
   assert.equal(await db.bankLedgerEntry.count({where:{revisesEntryId:oldId}}),1);assert.equal(await db.bankLedgerEntry.count({where:{voidedAt:null}}),3);
   assert.equal((await readLedgerAccounts(db,org)).find(a=>a.id===s.account.id).currentBalance,'-40.00');
   await requestChangeApproval(db,org,s.people.junior.id,input);assert.equal(await db.bankLedgerEntry.count(),4);

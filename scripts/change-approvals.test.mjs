@@ -56,6 +56,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    const request=await requestChangeApproval(db,org,actor,{menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,revision:loaded.revision,payload,clientKey:randomUUID()});
    assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt,null);
    const done=await decideChangeApproval(db,org,approver,request.id,{decision:'APPROVED'}),replacement=await db.bankLedgerEntry.findUnique({where:{id:done.result.entryIds[0]}});
+   assert.equal(loaded.drafter.id,actor);assert.equal((await readLedgerEdit(db,org,replacement.id)).drafter.id,actor,'the modifying requester is shown instead of the final approver');
    assert.equal(replacement.revisesEntryId,entry.id);assert.equal(replacement.amount.toString(),'150');assert.equal(replacement.counterpartyOrgId,s.vendor.id);
   });
   await t.test('rejection preserves the original and approval rechecks active company membership',async()=>{
