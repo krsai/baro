@@ -61,10 +61,10 @@ export async function approvalReviewDetail(db:any,orgId:number,actorId:number,ki
   let after:any=row.payload;
   let before:any=row.beforeSnapshot;
   if(row.menu==='BANK_LEDGER'){
-   const ids=[...new Set<number>([before.entry?.accountingCodeId,...(after?.rows||[]).map((item:any)=>item.accountingCodeId)].filter((id:any)=>Number.isSafeInteger(id)&&id>0))];
+   const ids=[...new Set<number>([before.entry?.accountingCodeId,...(before.entry?.bankFeeLinks||[]).map((link:any)=>link.fee?.accountingCodeId),...(before.proposedRows||[]).map((item:any)=>item.accountingCodeId),...(after?.rows||[]).map((item:any)=>item.accountingCodeId)].filter((id:any)=>Number.isSafeInteger(id)&&id>0))];
    const codes=ids.length?await db.transactionCode.findMany({where:{ownerOrgId:orgId,id:{in:ids}},include:{base:true}}):[];
    if(before.entry)before={...before,entry:{...before.entry,accountingCode:before.entry.accountingCode||codes.find((code:any)=>code.id===before.entry.accountingCodeId)||null}};
-   if(after.rows)after={...after,rows:after.rows.map((item:any)=>({...item,accountingCode:codes.find((code:any)=>code.id===item.accountingCodeId)||null}))};
+   if(after.rows)after={...after,rows:after.rows.map((item:any)=>({...item,accountingCode:codes.find((code:any)=>code.id===(item.accountingCodeId||before.proposedRows?.find((proposed:any)=>proposed.clientKey===item.clientKey)?.accountingCodeId))||null}))};
   }
   if(row.menu==='EXPENSE'&&row.operation==='UPDATE'){
    const codes=await db.transactionCode.findMany({where:{ownerOrgId:orgId,id:{in:row.payload.items.map((i:any)=>i.transactionCodeId)}},include:{base:true}});

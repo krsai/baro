@@ -24,3 +24,10 @@ export async function ledgerAccountingCode(tx:any,orgId:number,id:number,directi
  const description=code.base.nameEn||code.nameEn||code.code;
  return {id:code.id,description:description.slice(0,1000)};
 }
+
+export async function bankFeeAccountingCode(tx:any,orgId:number){
+ const row=await tx.transactionCode.findFirst({where:{ownerOrgId:orgId,isActive:true,base:{code:'BNF',isActive:true},taxTreatment:{suffix:'E'}},include:ACCOUNTING_CODE_INCLUDE});
+ const code=resolveAccountingCode(row);
+ if(!code||code.code!=='BNFE')throw createHttpError(400,'LEDGER_BANK_FEE_CODE_UNAVAILABLE');
+ return {id:code.id,description:(code.base.nameEn||code.nameEn||code.code).slice(0,1000)};
+}

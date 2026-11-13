@@ -70,7 +70,7 @@ test('editing one transaction can add a fee and independent bank row; approvals,
   const approve=async request=>{await decideChangeApproval(db,org,s.people.junior.id,request.id,{decision:'APPROVED'});return decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});};
   const create=payload([row('40')]);const request=await requestChangeApproval(db,org,s.people.admin.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:create.clientKey,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},payload:create});
   const made=await approve(request),oldId=made.result.entryIds[0],source=await readLedgerEdit(db,org,oldId);
-  await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{code:'FEE'}});
+  await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{code:'BNF'}});
   const update=payload([row('35'),{...row('2'),evidenceType:'BANK_FEE',counterparty:null,evidenceNumber:''},row('3')]);
   const input={menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:oldId,revision:source.revision,clientKey:randomUUID(),selection:{seniorEmployeeId:s.people.senior.id,leadEmployeeId:s.people.lead.id},payload:update};
   const pending=await requestChangeApproval(db,org,s.people.junior.id,input);assert.equal((await db.bankLedgerEntry.findUnique({where:{id:oldId}})).voidedAt,null);

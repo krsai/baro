@@ -4,7 +4,8 @@ import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
-export const ledgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['internalTransferSourceId','internalTransferAmount','subtotal','vatRate','vatAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
+const scalarLedgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['internalTransferSourceId','internalTransferAmount','subtotal','vatRate','vatAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
+export const ledgerEntryRevision=(row:any)=>row.bankFeeLinks?.length?createHash('sha256').update(JSON.stringify({entry:scalarLedgerEntryRevision(row),fees:row.bankFeeLinks.map((link:any)=>({id:link.feeEntryId,revision:scalarLedgerEntryRevision(link.fee)})).sort((a:any,b:any)=>a.id.localeCompare(b.id))})).digest('hex'):scalarLedgerEntryRevision(row);
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
@@ -13,15 +14,21 @@ const fail=(code:string,status=409):never=>{throw createHttpError(status,code);}
 export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,row:any,reason:string){
  // The organization lock also serializes requests opened from opposite legs.
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
+ const feeParent=await tx.bankLedgerFeeLink.findFirst({where:{orgId,feeEntryId:row.id},include:{parent:true}});
+ if(feeParent)return voidLedgerPairApproved(tx,orgId,actor,feeParent.parent,reason);
+
  const peer=row.internalTransferSourceId?await tx.bankLedgerEntry.findFirst({where:{id:row.internalTransferSourceId,orgId}}):await tx.bankLedgerEntry.findFirst({where:{internalTransferSourceId:row.id,orgId}});
+ const fees=await tx.bankLedgerFeeLink.findMany({where:{orgId,parentEntryId:{in:[row.id,...(peer?[peer.id]:[])]}},include:{fee:true}});
  const voidedAt=new Date();
- for(const entry of [row,peer].filter(Boolean))if(!entry.voidedAt)await tx.bankLedgerEntry.update({where:{id:entry.id},data:{voidedAt,voidedBy:actor,voidReason:reason}});
+ for(const entry of [row,peer,...fees.map((link:any)=>link.fee)].filter(Boolean))if(!entry.voidedAt)await tx.bankLedgerEntry.update({where:{id:entry.id},data:{voidedAt,voidedBy:actor,voidReason:reason}});
  return {...row,voidedAt,voidedBy:actor,voidReason:reason};
 }
 export async function readLedgerEdit(db:any,orgId:number,id:string){
+ const parentLink=await db.bankLedgerFeeLink.findFirst({where:{orgId,feeEntryId:id}});if(parentLink)return readLedgerEdit(db,orgId,parentLink.parentEntryId);
  const codeInclude={taxTreatment:true,base:{include:{expenseType:true}}} satisfies Prisma.TransactionCodeInclude;
- const include={payrollAllocations:{include:{item:{include:{document:true,employee:{select:{name:true}}}}}},openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
+ const include={bankFeeLinks:{include:{fee:{include:{accountingCode:{include:codeInclude}}}}},payrollAllocations:{include:{item:{include:{document:true,employee:{select:{name:true}}}}}},openingAllocations:{include:{openingItem:{include:{party:{select:{name:true}},employee:{select:{name:true}}}}}},account:true,accountingCode:{include:codeInclude},settlementLines:{include:{accountingCode:{include:codeInclude}}},allocations:true} satisfies Prisma.BankLedgerEntryInclude;
  const entry=await db.bankLedgerEntry.findFirst({where:{id,orgId},include});
+ if(entry?.internalTransferSourceId&&await db.bankLedgerFeeLink.findFirst({where:{orgId,parentEntryId:entry.internalTransferSourceId}}))return readLedgerEdit(db,orgId,entry.internalTransferSourceId);
  if(!entry)return fail('LEDGER_ENTRY_NOT_FOUND',404);if(entry.voidedAt)return fail('LEDGER_ENTRY_CHANGED');
  const authorSelect={id:true,name:true,orgRole:true,gradeId:true};
  // Replacement authors are the requesters linked to the superseded entry, not the final approver.
@@ -63,7 +70,7 @@ export async function readLedgerEdit(db:any,orgId:number,id:string){
  }
  if(document){document.counterparty=entryCounterparty(entry);if(entry.evidenceType==='EXPENSE'&&document.id)document.paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,document.id,id)).filter((row:any)=>row.currency===code);}
  const peer=entry.internalTransferAmount!=null?await db.bankLedgerEntry.findFirst({where:{orgId,...(entry.internalTransferSourceId?{id:entry.internalTransferSourceId}:{internalTransferSourceId:entry.id})},include:{account:true}}):null;
- return {...entry,drafter,...(peer?{transferAmount:ledgerMoney(ledgerScale4(peer.amount),peer.account.currencyCode),transferCurrencyCode:peer.account.currencyCode}:{}),paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,subtotal:a.subtotal==null?null:String(a.subtotal),vatRate:a.vatRate==null?null:String(a.vatRate),vatAmount:a.vatAmount==null?null:String(a.vatAmount),amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description,line:a.expenseItem.expenseRequestLine,accountingCode:a.expenseItem.transactionCode})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
+ return {...entry,bankFees:entry.bankFeeLinks.map((link:any)=>({...link.fee,amount:String(link.fee.amount)})),drafter,...(peer?{transferAmount:ledgerMoney(ledgerScale4(peer.amount),peer.account.currencyCode),transferCurrencyCode:peer.account.currencyCode}:{}),paymentScheduleId:entry.allocations.find((row:any)=>row.paymentScheduleId)?.paymentScheduleId||'',revision:ledgerEntryRevision(entry),counterparty:entryCounterparty(entry),bankFee:ledgerMoney(ledgerScale4(entry.bankFee||'0'),code),writeOffAmount:ledgerMoney(ledgerScale4(entry.writeOffAmount||'0'),code),amount:ledgerMoney(ledgerScale4(entry.amount),code),document,expenseItems:entry.allocations.filter((a:any)=>a.expenseItemId).map((a:any)=>({itemId:a.expenseItemId,subtotal:a.subtotal==null?null:String(a.subtotal),vatRate:a.vatRate==null?null:String(a.vatRate),vatAmount:a.vatAmount==null?null:String(a.vatAmount),amount:ledgerMoney(ledgerScale4(a.amount),code),label:a.expenseItem.description,line:a.expenseItem.expenseRequestLine,accountingCode:a.expenseItem.transactionCode})),settlementLines:entry.settlementLines.map((line:any)=>({...line,amount:ledgerMoney(ledgerScale4(line.amount),code)}))};
 }
 export async function replaceLedgerEntry(db:any,orgId:number,actor:string,id:string,body:any){
  if(!Array.isArray(body.rows)||!body.rows.some((r:any)=>r.entryKind==='BANK'))return fail('LEDGER_INVALID_BATCH',400);

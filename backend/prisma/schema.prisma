@@ -639,6 +639,8 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  bankFeeLinks BankLedgerFeeLink[] @relation("BankFeeParent")
+  bankFeeParent BankLedgerFeeLink? @relation("BankFeeDebit")
   payrollAllocations PayrollPayableAllocation[]
   openingAllocations AccountingOpeningAllocation[]
   internalTransferSourceId String?
@@ -688,6 +690,17 @@ model BankLedgerEntry {
   @@index([orgId, accountId, transactionDate, createdAt, id], map: "BankLedgerEntry_account_date_idx")
   @@unique([id,orgId])
   @@index([orgId,transactionDate,createdAt,id],map:"BankLedgerEntry_org_date_idx")
+}
+
+model BankLedgerFeeLink {
+  feeEntryId String @id
+  parentEntryId String
+  orgId Int
+  createdAt DateTime @default(now())
+  parent BankLedgerEntry @relation("BankFeeParent",fields:[parentEntryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"BankFeeLink_parent_scope_fkey")
+  fee BankLedgerEntry @relation("BankFeeDebit",fields:[feeEntryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"BankFeeLink_fee_scope_fkey")
+  @@unique([feeEntryId,orgId])
+  @@index([parentEntryId,orgId])
 }
 
 model AccountingOpeningItem {

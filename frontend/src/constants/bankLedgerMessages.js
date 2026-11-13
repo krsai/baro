@@ -61,3 +61,7 @@ Object.assign(bankLedgerMessages.vi.errors,{INVALID_EXPENSE_PAYMENT_SCHEDULE:'Ch
 Object.assign(bankLedgerMessages.ko.errors,{LEDGER_INVALID_VAT:'공급가액·VAT 세율·세액과 실제 입출금액 합계를 확인해 주세요. E·Z 코드는 0%만 사용할 수 있습니다.'});
 Object.assign(bankLedgerMessages.en.errors,{LEDGER_INVALID_VAT:'Check the subtotal, VAT rate, VAT amount and cash total. E and Z codes must use 0%.'});
 Object.assign(bankLedgerMessages.vi.errors,{LEDGER_INVALID_VAT:'Kiểm tra tiền trước VAT, thuế suất, tiền VAT và tổng thu chi. Mã E và Z chỉ dùng 0%.'});
+
+Object.assign(bankLedgerMessages.ko.errors,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"은행 수수료 면세 코드(BNFE)를 사용할 수 없습니다. 회계 코드 설정을 확인해 주세요."});
+Object.assign(bankLedgerMessages.en.errors,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Bank fee exempt code BNFE is unavailable. Check accounting code settings."});
+Object.assign(bankLedgerMessages.vi.errors,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Không thể dùng mã phí ngân hàng miễn thuế BNFE. Kiểm tra thiết lập mã kế toán."});

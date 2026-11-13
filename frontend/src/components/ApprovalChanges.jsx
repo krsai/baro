@@ -44,8 +44,10 @@ export default function ApprovalChanges({detail,languageCode}){
    const next=children.filter(row=>row.entryKind===kind),old=before[key]||'0';
    if(Number(old)!==0||next.some(row=>Number(row.amount)!==0))add(key,label,formatInvoiceMoney(String(old),currency),next.length?next.map(row=>formatInvoiceMoney(String(row.amount),afterCurrency)).join(' + '):formatInvoiceMoney('0',afterCurrency),canonical(old),next.length===1?canonical(next[0].amount):next.length?next.map(row=>canonical(row.amount)).join('+'):'0',help);
   }
+  const oldLinkedFees=(before.bankFeeLinks||[]).map(link=>link.fee),newLinkedFees=(detail.after?.rows||[]).filter(row=>row.feeForClientKey===after.clientKey);
+  if(oldLinkedFees.length||newLinkedFees.length)add('linked-bank-fees',x.fee+' \u00b7 BNFE',oldLinkedFees.length?oldLinkedFees.map(row=>formatInvoiceMoney(String(row.amount),currency)).join(' + '):formatInvoiceMoney('0',currency),newLinkedFees.length?newLinkedFees.map(row=>formatInvoiceMoney(String(row.amount),afterCurrency)).join(' + '):formatInvoiceMoney('0',afterCurrency),oldLinkedFees.map(row=>canonical(row.amount)).join('+')||'0',newLinkedFees.map(row=>canonical(row.amount)).join('+')||'0');
   if(detail.before?.transfer||after.transferCurrencyCode)add('transfer',flow.transferAmount,detail.before?.transfer?formatInvoiceMoney(String(detail.before.transfer.amount),detail.before.transfer.currencyCode):'—',after.transferAmount?formatInvoiceMoney(String(after.transferAmount),after.transferCurrencyCode):'—');
-  for(const [index,row] of (detail.after?.rows||[]).filter(row=>row.entryKind==='BANK'&&row!==after).entries()){
+  for(const [index,row] of (detail.after?.rows||[]).filter(row=>row.entryKind==='BANK'&&row!==after&&!row.feeForClientKey).entries()){
    const source=detail.before?.proposedRows?.find(item=>item.clientKey===row.clientKey)||row,cash=detail.before?.proposedAccounts?.find(item=>item.accountId===row.accountId)?.currency||afterCurrency;
    add('extra-'+index,`${t.CREATE} ${index+2}`,'—',[codeText(row.accountingCode,languageCode),source.counterparty?.name,formatInvoiceMoney(String(row.amount),cash)].filter(Boolean).join(' · '));
   }

@@ -1,3 +1,4 @@
+import {bankFeeAccountingCode} from './accountingCode';
 import {ledgerTaxSnapshot,ledgerTaxInput} from './ledgerVat';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
@@ -34,9 +35,11 @@ export async function validateLedgerRegistration(db:any,orgId:number,input:any){
 export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
  const payload=input.payload,parents=payload?.rows?.filter((r:any)=>r.entryKind==='BANK');
  if(!parents?.length||payload.rows.length>50||parents.some((r:any)=>r.transactionDate!==parents[0].transactionDate||r.evidenceType==='ADJUSTMENT'))fail('LEDGER_SINGLE_ACCOUNT_REQUIRED');
+ if(parents.some((fee:any)=>fee.feeForClientKey&&(fee.evidenceType!=='BANK_FEE'||!parents.some((parent:any)=>parent.clientKey===fee.feeForClientKey&&!['BANK_FEE','ADJUSTMENT'].includes(parent.evidenceType)&&parent.accountId===fee.accountId&&parent.transactionDate===fee.transactionDate))))fail('LEDGER_INVALID_SETTLEMENT');
  if(!payload.clientKey||input.sourceId!==payload.clientKey)fail('INVALID_TRANSACTION_KEY');
  const rows=[],items=[],transferTargets=[],accountSources=[];
- for(const row of parents){
+ for(const suppliedRow of parents){
+ const row=suppliedRow.evidenceType==='BANK_FEE'?{...suppliedRow,accountingCodeId:(await bankFeeAccountingCode(db,orgId)).id}:suppliedRow;
  const accountId=row.accountId;
  const ledger=await db.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
  const masterId=ledger?.entityAccountId||String(accountId).replace(/^entity:/,'');

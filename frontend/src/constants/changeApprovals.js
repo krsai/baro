@@ -16,3 +16,7 @@ Object.assign(changeApprovalText.vi,{LEDGER_INVALID_VAT:'Kiểm tra tiền trư�
 Object.assign(changeApprovalText.ko,{INVOICE:'청구서',requestCancel:'발행 취소 신청',INVOICE_ACTIVE_PAYMENT:'유효한 입금이 연결되어 있습니다. 입금 취소 후 다시 신청해 주세요.',INVOICE_FINAL_LOCK_UNLOCK_REQUIRED:'최종 마감을 해제한 후 신청해 주세요.',INVOICE_CANCEL_REVERSE_ORDER_REQUIRED:'이후 청구서를 먼저 취소해 주세요.'});
 Object.assign(changeApprovalText.en,{INVOICE:'Invoices',requestCancel:'Request cancellation',INVOICE_ACTIVE_PAYMENT:'Active payments are linked. Void them before requesting cancellation.',INVOICE_FINAL_LOCK_UNLOCK_REQUIRED:'Unlock final billing before requesting cancellation.',INVOICE_CANCEL_REVERSE_ORDER_REQUIRED:'Cancel later invoices first.'});
 Object.assign(changeApprovalText.vi,{INVOICE:'Hóa đơn',requestCancel:'Đề nghị hủy phát hành',INVOICE_ACTIVE_PAYMENT:'Có khoản thu còn hiệu lực. Hủy khoản thu trước khi đề nghị.',INVOICE_FINAL_LOCK_UNLOCK_REQUIRED:'Mở khóa chốt hóa đơn trước khi đề nghị.',INVOICE_CANCEL_REVERSE_ORDER_REQUIRED:'Hủy hóa đơn sau trước.'});
+
+Object.assign(changeApprovalText.ko,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"은행 수수료 면세 코드(BNFE)를 사용할 수 없습니다. 회계 코드 설정을 확인해 주세요."});
+Object.assign(changeApprovalText.en,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Bank fee exempt code BNFE is unavailable. Check accounting code settings."});
+Object.assign(changeApprovalText.vi,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Không thể dùng mã phí ngân hàng miễn thuế BNFE. Kiểm tra thiết lập mã kế toán."});
