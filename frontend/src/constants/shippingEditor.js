@@ -15,3 +15,7 @@ Object.assign(shippingEditorText.vi,{applyLocation:"Áp dụng địa chỉ",rou
 Object.assign(shippingEditorText.ko,{seaFcl:"해상 FCL",seaLcl:"해상 LCL"});
 Object.assign(shippingEditorText.en,{seaFcl:"Sea FCL",seaLcl:"Sea LCL"});
 Object.assign(shippingEditorText.vi,{seaFcl:"Đường biển FCL",seaLcl:"Đường biển LCL"});
+
+Object.assign(shippingEditorText.ko,{addressPlaceholder:"주소를 입력하세요"});
+Object.assign(shippingEditorText.en,{addressPlaceholder:"Enter the address"});
+Object.assign(shippingEditorText.vi,{addressPlaceholder:"Nhập địa chỉ"});
