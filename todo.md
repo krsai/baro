@@ -1513,3 +1513,5 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 - [정리 전 전체 진행표](https://github.com/krsai/baro/blob/49a5a676/todo.md)와 [정리 전 개발 기준](https://github.com/krsai/baro/blob/49a5a676/AGENTS.md)은 Git 이력에 보존됩니다.
 - 도메인별 조사·구현 원문은 [업무별 참고 자료](docs/domain-reference.md), 세부 규칙은 [개발 참고 자료](docs/development-reference.md)에서 필요한 부분만 찾습니다.
 - 이후 완료 작업은 위 상태표와 커밋 근거를 갱신합니다. 날짜별 성공 로그나 새 완료 보고서를 계속 추가하지 않습니다.
+
+- Partner type selection lock: implemented and verified; production deployment/acceptance unverified. Missing subscriber partyKind permits explicit local selection and saving; an existing official kind remains authoritative. Server tests (10), ko/en/vi desktop/mobile browser checks, both builds, i18n and encoding passed. No production data changed.

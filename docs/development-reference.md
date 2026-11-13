@@ -4921,3 +4921,7 @@ runtime 조회값:
 
 - 포커스 재조회는 마지막 요청 시도에서 30초가 지난 활성 화면에만 수행한다. 진행 중 요청은 공유하고 실제 거래처·고객·자체 업종 변경 이벤트를 반영한다. 포커스 간격 제한이 명시적 변경 이벤트나 오류 재시도를 막지 않는다.
 - 비활성 탭·거래처 편집·삭제 중 갱신은 보류하고 종료 후 한 번 반영한다. 진행 중 요청 이후 들어온 변경도 한 번 더 조회하여 놓치지 않는다. 백그라운드 요청은 기존 목록·검색을 유지하며 API 캐시는 우회한다. 저장·삭제는 변경 이벤트를 통해 갱신하고 별도 중복 재조회를 하지 않는다. 조회 실패를 빈 자료로 처리하거나 자동 반복하지 않는다.
+
+# 2026-11-13 Missing partner type selection
+
+- When subscriber partyKind is absent, allow explicit local partner type selection and saving. Explicit input overrides the previous local value; omitted input preserves it. Existing official types remain read-only and authoritative on the server. Preserve the subscriber source, shared identity, FKs and historical snapshots; retain corporate code and tax-number validation.

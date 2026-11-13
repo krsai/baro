@@ -20,7 +20,7 @@ export const normalizePartyKind=(value:any):'INDIVIDUAL'|'CORPORATE'|null=>{
   throw Object.assign(new Error('INVALID_PARTY_KIND'),{status:400});
 };
 export const resolvePartnerIdentity=(body:any,englishName:unknown,previous?:any,linkedCompany?:any)=>{
-  const partyKind=normalizePartyKind(linkedCompany?.subscriberOrgId?(linkedCompany.partyKind??previous?.partyKind??body?.partyKind):body?.partyKind===undefined?previous?.partyKind:body.partyKind);
+  const partyKind=normalizePartyKind(linkedCompany?.subscriberOrgId&&linkedCompany.partyKind?linkedCompany.partyKind:body?.partyKind===undefined?previous?.partyKind:body.partyKind);
   if((!previous||previous.partyKind)&&!partyKind)throw Object.assign(new Error('PARTNER_PARTY_KIND_REQUIRED'),{status:400});
   const value=body?.code===undefined?previous?.code:body.code;
   if(partyKind==='CORPORATE'){
