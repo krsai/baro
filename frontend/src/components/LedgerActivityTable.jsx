@@ -28,7 +28,7 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
      {['IN','OUT'].map(direction=><TableCell key={direction} data-ledger-amount={direction} align="right" sx={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{row.direction===direction?formatLedgerAmount(row.amount,row.currencyCode):'—'}</TableCell>)}
 
      <TableCell sx={{overflowWrap:'anywhere'}}>{row.createdByName||'—'}</TableCell>
-     <TableCell data-table-actions onDoubleClick={event=>event.stopPropagation()}>{!row.voidedAt&&<DeleteActionButton stopPropagation disabled={row.changePending} aria-label={change.requestDelete} title={row.changePending?change.pending:change.requestDelete} onDoubleClick={event=>event.stopPropagation()} onClick={()=>onDelete(row)}/>}</TableCell>
+     <TableCell data-table-actions onDoubleClick={event=>event.stopPropagation()}>{!row.voidedAt&&<DeleteActionButton stopPropagation disabled={row.changePending} aria-label={change.requestDelete} title={row.changePending?change.pendingDeletionBlocked:change.requestDelete} onDoubleClick={event=>event.stopPropagation()} onClick={()=>onDelete(row)}/>}</TableCell>
     </TableRow>
     {row.settlementLines?.map(detail=><TableRow key={detail.id} {...interaction(row)} sx={{...interaction(row).sx,bgcolor:'action.hover'}}>
      <TableCell>{'↳'}</TableCell><TableCell>{row.accountName}</TableCell><TableCell>{row.counterpartyName||'—'}</TableCell><TableCell>{detail.accountingCode?.code||'—'}{warning(detail.accountingCode,'OUT')}</TableCell>

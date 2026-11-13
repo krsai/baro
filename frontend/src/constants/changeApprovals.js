@@ -7,6 +7,10 @@ export const changeApprovalText={
 };
 export const changeApprovalError=(error,t)=>(ledgerFlowText[Object.keys(changeApprovalText).find(key=>changeApprovalText[key]===t)||'en'][String(error?.message||'').replace(/^LEDGER_ROW:\d+:/,'')]||({CHANGE_SOURCE_CHANGED:t.changed,CHANGE_ALREADY_PENDING:t.already,EXPENSE_APPROVER_REQUIRED:t.required,LEDGER_COUNTERPARTY_REQUIRED:t.partyRequired,LEDGER_COUNTERPARTY_INVALID:t.partyInvalid,LEDGER_COUNTERPARTY_MISMATCH:t.partyMismatch})[error?.message]||t[error?.message]||t.error);
 
+Object.assign(changeApprovalText.ko,{CHANGE_UPDATE_PENDING:'수정 결재가 진행 중인 항목입니다. 결재가 끝난 후 삭제를 신청해 주세요.',pendingDeletionBlocked:'수정·삭제 결재 진행 중에는 삭제를 신청할 수 없습니다.'});
+Object.assign(changeApprovalText.en,{CHANGE_UPDATE_PENDING:'An edit approval is pending. Request deletion after the approval process finishes.',pendingDeletionBlocked:'Deletion is unavailable while an edit or deletion approval is pending.'});
+Object.assign(changeApprovalText.vi,{CHANGE_UPDATE_PENDING:'Đang chờ phê duyệt sửa đổi. Chỉ đề nghị xóa sau khi quy trình phê duyệt kết thúc.',pendingDeletionBlocked:'Không thể đề nghị xóa khi đang chờ phê duyệt sửa đổi hoặc xóa.'});
+
 Object.assign(changeApprovalText.ko,{lineFailed:'결재선을 불러오지 못했습니다. 결재선 다시 불러오기를 눌러 주세요.',reloadLine:'결재선 다시 불러오기'});
 Object.assign(changeApprovalText.en,{lineFailed:'Unable to load the approval line. Select Reload approval line to try again.',reloadLine:'Reload approval line'});
 Object.assign(changeApprovalText.vi,{lineFailed:'Không tải được luồng phê duyệt. Chọn Tải lại luồng phê duyệt để thử lại.',reloadLine:'Tải lại luồng phê duyệt'});

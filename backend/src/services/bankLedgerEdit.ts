@@ -11,6 +11,10 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {postLedgerSettlementBatch,ledgerScale4,ledgerMoney} from './bankLedger';
 import {legacyExpenseNumber} from './documentNumber';
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
+export async function assertNoPendingLedgerUpdate(tx:any,orgId:number,entryIds:string[]){
+ const pending=await tx.changeApprovalRequest.findFirst({where:{orgId,menu:'BANK_LEDGER',operation:'UPDATE',status:'PENDING',ledgerEntryId:{in:entryIds}}});
+ if(pending)fail('CHANGE_UPDATE_PENDING');
+}
 export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,row:any,reason:string){
  // The organization lock also serializes requests opened from opposite legs.
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
@@ -19,6 +23,9 @@ export async function voidLedgerPairApproved(tx:any,orgId:number,actor:string,ro
 
  const peer=row.internalTransferSourceId?await tx.bankLedgerEntry.findFirst({where:{id:row.internalTransferSourceId,orgId}}):await tx.bankLedgerEntry.findFirst({where:{internalTransferSourceId:row.id,orgId}});
  const fees=await tx.bankLedgerFeeLink.findMany({where:{orgId,parentEntryId:{in:[row.id,...(peer?[peer.id]:[])]}},include:{fee:true}});
+ // Final approval marks its own request APPROVED in this same transaction.
+ // Every other pending edit must finish before any leg or linked fee is voided.
+ await assertNoPendingLedgerUpdate(tx,orgId,[row.id,...(peer?[peer.id]:[]),...fees.map((link:any)=>link.feeEntryId)]);
  const voidedAt=new Date();
  for(const entry of [row,peer,...fees.map((link:any)=>link.fee)].filter(Boolean))if(!entry.voidedAt)await tx.bankLedgerEntry.update({where:{id:entry.id},data:{voidedAt,voidedBy:actor,voidReason:reason}});
  return {...row,voidedAt,voidedBy:actor,voidReason:reason};

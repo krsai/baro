@@ -11,7 +11,7 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {approvalActionSettings,approvalActionKey} from './approvalActions';
 import {resolveExpenseApproval,defaultApprovalSettings,canDraftExpense} from './expenseApproval';
 import {loadExpenseEditorSource,expenseEditorRevision,saveExpenseEditor} from './expenseRequestEditor';
-import {replaceLedgerEntryApproved,ledgerEntryRevision,voidLedgerPairApproved} from './bankLedgerEdit';
+import {replaceLedgerEntryApproved,ledgerEntryRevision,voidLedgerPairApproved,assertNoPendingLedgerUpdate} from './bankLedgerEdit';
 import {companyBusinessTimeZone} from './serviceCompany';
 import {resolveLedgerCounterparty,entryCounterparty} from './ledgerCounterparty';
 import {ledgerRegistrationSource,previewLedgerRegistration} from './ledgerRegistration';
@@ -41,6 +41,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
   const feeParent=await db.bankLedgerFeeLink.findFirst({where:{orgId,feeEntryId:id}});if(feeParent)return source(db,orgId,{...input,sourceId:feeParent.parentEntryId},lock);
   if(entry.internalTransferSourceId&&await db.bankLedgerFeeLink.findFirst({where:{orgId,parentEntryId:entry.internalTransferSourceId}}))return source(db,orgId,{...input,sourceId:entry.internalTransferSourceId},lock);
   const {account,internalTransferMirror,internalTransferSource,...row}=entry,peer=internalTransferMirror||internalTransferSource;
+  if(operation==='DELETE')await assertNoPendingLedgerUpdate(db,orgId,[id,...(peer?[peer.id]:[]),...entry.bankFeeLinks.map((link:any)=>link.feeEntryId)]);
   const taxAllocations=await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,entryId:id,expenseItemId:{not:null}},select:{expenseItemId:true,amount:true,subtotal:true,vatRate:true,vatAmount:true}});
   const taxCosts=taxAllocations.length?await db.partnerTransactionCost.findMany({where:{orgId,id:{in:taxAllocations.map((allocation:any)=>allocation.expenseItemId)}},select:{id:true,expenseRequestLine:true,description:true}}):[];
   const allocationSnapshot=taxAllocations.map((allocation:any)=>({...allocation,line:taxCosts.find((cost:any)=>cost.id===allocation.expenseItemId)?.expenseRequestLine,label:taxCosts.find((cost:any)=>cost.id===allocation.expenseItemId)?.description}));

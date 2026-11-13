@@ -1,3 +1,4 @@
+import {changeApprovalText,changeApprovalError} from '../frontend/src/constants/changeApprovals.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -26,6 +27,7 @@ try{
    for(const selector of ['td:first-child','td:nth-child(2)','td:nth-child(4) p','td:nth-child(6) .MuiTypography-root'])assert.equal(await row.locator(selector).evaluate(el=>getComputedStyle(el).textDecorationLine),i===1?'line-through':'none');
    assert.equal(await row.locator('[data-table-actions] button').evaluate(el=>getComputedStyle(el).textDecorationLine),'none');
   }
+  const blockedDelete=page.locator('#ledger [data-table-action="delete"]');assert.equal(await blockedDelete.count(),1);assert.equal(await blockedDelete.isDisabled(),true);assert.equal(await blockedDelete.getAttribute('title'),changeApprovalText[lang].pendingDeletionBlocked);assert.equal(changeApprovalError({message:'CHANGE_UPDATE_PENDING'},changeApprovalText[lang]),changeApprovalText[lang].CHANGE_UPDATE_PENDING);
   const ledgerRows=page.locator('#ledger tbody tr');assert.equal(await ledgerRows.count(),4);
   for(let i=0;i<4;i++)for(const cell of await ledgerRows.nth(i).locator('td:not([data-table-actions])').all())assert.equal(await cell.evaluate(el=>getComputedStyle(el).textDecorationLine),i>=2?'line-through':'none');
   assert.deepEqual(errors,[]);await page.close();console.log('Cancelled record display passed',lang,width);

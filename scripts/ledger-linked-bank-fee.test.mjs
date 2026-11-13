@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {randomUUID} from 'node:crypto';import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
-const require=createRequire(import.meta.url),{postLedgerSettlementBatch,readLedgerAccounts}=require('../backend/dist/services/bankLedger'),{readLedgerEdit,voidLedgerPairApproved}=require('../backend/dist/services/bankLedgerEdit');
-const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
+const require=createRequire(import.meta.url),{postLedgerSettlementBatch,readLedgerAccounts}=require('../backend/dist/services/bankLedger'),{readLedgerEdit,voidLedgerPairApproved,deleteLedgerEntry}=require('../backend/dist/services/bankLedgerEdit');
+const {requestChangeApproval,decideChangeApproval,previewChangeApproval}=require('../backend/dist/services/changeApprovals');
 
 test('BNFE fees retain scoped parent FKs, cash amounts, approvals, edit grouping and atomic deletion',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
@@ -24,7 +24,18 @@ test('BNFE fees retain scoped parent FKs, cash amounts, approvals, edit grouping
   const nextMain={...main,clientKey:randomUUID()},nextFee={...fee,clientKey:randomUUID(),amount:'3',feeForClientKey:nextMain.clientKey};
   const next={...payload,clientKey:randomUUID(),rows:[nextMain,nextFee]};
   const update=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:parentId,revision:source.revision,clientKey:randomUUID(),selection:{seniorEmployeeId:s.people.senior.id,leadEmployeeId:s.people.lead.id},payload:next});
-  let changed;for(const stage of update.policy.resolvedStages)changed=await decideChangeApproval(db,org,stage.employeeId,update.id,{decision:'APPROVED'});
+  const blockedDeletion=id=>({menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:id,clientKey:randomUUID(),reason:'Must wait for pending edit',payload:{}});
+  for(const id of [parentId,feeId]){
+   await assert.rejects(previewChangeApproval(db,org,s.people.junior.id,blockedDeletion(id)),/CHANGE_UPDATE_PENDING/);
+   await assert.rejects(requestChangeApproval(db,org,s.people.junior.id,blockedDeletion(id)),/CHANGE_UPDATE_PENDING/);
+   await assert.rejects(deleteLedgerEntry(db,org,s.people.junior.email,id,'Must wait for pending edit'),/CHANGE_UPDATE_PENDING/);
+  }
+  assert.equal((await db.bankLedgerEntry.findUnique({where:{id:parentId}})).voidedAt,null);
+  assert.equal((await db.bankLedgerEntry.findUnique({where:{id:feeId}})).voidedAt,null);
+  let changed;for(const [index,stage] of update.policy.resolvedStages.entries()){
+   changed=await decideChangeApproval(db,org,stage.employeeId,update.id,{decision:'APPROVED'});
+   if(index<update.policy.resolvedStages.length-1)await assert.rejects(previewChangeApproval(db,org,s.people.junior.id,blockedDeletion(parentId)),/CHANGE_UPDATE_PENDING/);
+  }
   assert.equal(await db.bankLedgerEntry.count({where:{voidedAt:null}}),2);assert.ok((await db.bankLedgerEntry.findUnique({where:{id:feeId}})).voidedAt);
   assert.equal((await readLedgerAccounts(db,org)).find(row=>row.id===s.account.id).currentBalance,'-103.00');
   const edited=await readLedgerEdit(db,org,changed.result.entryIds[0]);assert.equal(edited.bankFees[0].amount,'3');assert.equal(edited.drafter.id,s.people.junior.id);
@@ -42,6 +53,12 @@ test('BNFE fees retain scoped parent FKs, cash amounts, approvals, edit grouping
   const fxRequest=await requestChangeApproval(db,org,s.people.admin.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:fxPayload.clientKey,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},payload:fxPayload});
   let fxResult;for(const stage of fxRequest.policy.resolvedStages)fxResult=await decideChangeApproval(db,org,stage.employeeId,fxRequest.id,{decision:'APPROVED'});
   const fxId=fxResult.result.entryIds[0],mirror=await db.bankLedgerEntry.findFirst({where:{internalTransferSourceId:fxId}}),fromMirror=await readLedgerEdit(db,org,mirror.id);assert.equal(fromMirror.id,fxId);assert.equal(fromMirror.bankFees.length,1);
+  const pendingFx=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:fxId,revision:fromMirror.revision,clientKey:randomUUID(),reason:'Review currency transfer',selection:{seniorEmployeeId:s.people.senior.id,leadEmployeeId:s.people.lead.id},payload:{...fxPayload,clientKey:randomUUID()}});
+  for(const id of [fxId,mirror.id,fxResult.result.entryIds[1]]){
+   await assert.rejects(previewChangeApproval(db,org,s.people.junior.id,blockedDeletion(id)),/CHANGE_UPDATE_PENDING/);
+   await assert.rejects(deleteLedgerEntry(db,org,s.people.junior.email,id,'Pending transfer edit'),/CHANGE_UPDATE_PENDING/);
+  }
+  await decideChangeApproval(db,org,pendingFx.policy.resolvedStages[0].employeeId,pendingFx.id,{decision:'REJECTED',reason:'Keep current transfer'});
   const fxDelete=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:mirror.id,revision:fromMirror.revision,clientKey:randomUUID(),selection:{seniorEmployeeId:s.people.senior.id,leadEmployeeId:s.people.lead.id},reason:'Delete currency pair and bank fee',payload:{}});
   assert.equal(fxDelete.ledgerEntryId,fxId);for(const stage of fxDelete.policy.resolvedStages)await decideChangeApproval(db,org,stage.employeeId,fxDelete.id,{decision:'APPROVED'});
   assert.equal(await db.bankLedgerEntry.count({where:{voidedAt:null}}),0);assert.ok((await readLedgerAccounts(db,org)).every(row=>Number(row.currentBalance)===0));
