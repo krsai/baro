@@ -11,3 +11,7 @@ Object.assign(shippingEditorText.vi,{locationSearch:'Tìm địa điểm',ports:
 Object.assign(shippingEditorText.ko,{applyLocation:"주소 적용",routeRequired:"선택한 구간의 각 지점을 눌러 주소나 항만을 입력해 주세요."});
 Object.assign(shippingEditorText.en,{applyLocation:"Apply address",routeRequired:"Click each stop in the selected route to enter its address or port."});
 Object.assign(shippingEditorText.vi,{applyLocation:"Áp dụng địa chỉ",routeRequired:"Nhấn từng điểm trong tuyến đã chọn để nhập địa chỉ hoặc cảng."});
+
+Object.assign(shippingEditorText.ko,{seaFcl:"해상 FCL",seaLcl:"해상 LCL"});
+Object.assign(shippingEditorText.en,{seaFcl:"Sea FCL",seaLcl:"Sea LCL"});
+Object.assign(shippingEditorText.vi,{seaFcl:"Đường biển FCL",seaLcl:"Đường biển LCL"});
