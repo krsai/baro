@@ -12,7 +12,7 @@ import { ORDER_WORKFLOW_KEYS, getOrderWorkflowLabel } from '../../constants/orde
 import { ui } from '../../theme/ui';
 import QueryFeedback from '../../components/QueryFeedback';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-const DashboardDocumentDialog=React.lazy(()=>import('../../components/DashboardDocumentDialog'));
+import DashboardDocumentDialog from '../../components/DashboardDocumentDialog';
 
 import {
   Box,

@@ -1,6 +1,6 @@
 import DashboardAlertItem from './DashboardAlertItem';
 import React,{useEffect,useState} from 'react';
-const DashboardDocumentDialog=React.lazy(()=>import('./DashboardDocumentDialog'));
+import DashboardDocumentDialog from './DashboardDocumentDialog';
 
 import {Alert,Box,Button,CircularProgress,Stack,Typography} from '@mui/material';
 import {accountingAlertText} from '../constants/accountingAlerts';
