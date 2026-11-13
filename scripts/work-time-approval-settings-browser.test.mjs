@@ -4,6 +4,7 @@ import {writeFileSync,existsSync,unlinkSync} from 'node:fs';
 import {chromium} from 'playwright-core';
 import {workTimeText} from '../frontend/src/constants/workTime.js';
 import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
+import {approvalBandText} from '../frontend/src/constants/approvalBands.js';
 const html='frontend/work-time-settings-test.html',port=43386;assert.ok(!existsSync(html));
 writeFileSync(html,`<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">import React from 'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Page from'/src/pages/App/ApprovalSettings.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/approval-settings?menu=WORK_TIME']},React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore',windowsHide:true});let browser;
@@ -26,17 +27,18 @@ try{
    settings={...body.changes[0].settings,revision:2};return r.fulfill({headers,json:{saved:[{menu:'WORK_TIME',operation:'CREATE',settings}]}});
   });
   await page.goto(`http://127.0.0.1:${port}/work-time-settings-test.html`);
-  const editor=page.getByTestId('work-time-approval-settings');await editor.getByText(t.approvers,{exact:true}).waitFor();
+  const editor=page.getByTestId('work-time-approval-settings');await editor.getByText(approvalBandText[lang].line,{exact:true}).waitFor();
   assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.getByRole('button',{name:a.save,exact:true}).count(),1);
   const stages=editor.locator('[data-work-time-stage]');assert.equal(await stages.count(),1);
   await editor.getByRole('button',{name:t.add,exact:true}).click();assert.equal(await stages.count(),2);
   assert.equal(await page.getByRole('button',{name:a.save,exact:true}).isDisabled(),true);
-  await stages.nth(1).getByRole('button',{name:t.remove,exact:true}).click();assert.equal(await stages.count(),1);
+  if(width===1440){await stages.first().locator('[data-work-time-stage-handle]').focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Space');await page.waitForTimeout(350);assert.equal(await stages.nth(1).locator('input').inputValue(),'Manager');await stages.first().getByRole('button',{name:t.remove,exact:true}).click();}else await stages.nth(1).getByRole('button',{name:t.remove,exact:true}).click();assert.equal(await stages.count(),1);
   const card=await stages.first().boundingBox();assert.equal(Math.round(card.width),208);assert.equal(Math.round(card.height),70);
-  await editor.getByLabel(t.WORKER,{exact:true}).uncheck();await page.getByRole('button',{name:a.save,exact:true}).click();await page.getByRole('alert').waitFor();assert.equal(await editor.getByLabel(t.WORKER,{exact:true}).isChecked(),false);
+  if(lang==='ko'&&width===1440)await page.screenshot({path:'logs/leave-approval-settings-preview.png'});
+  await editor.locator('[data-work-time-permissions]').click();let permissionDialog=page.getByRole('dialog');await permissionDialog.getByLabel(t.WORKER,{exact:true}).uncheck();await permissionDialog.getByRole('button',{name:approvalBandText[lang].apply,exact:true}).click();await page.getByRole('button',{name:a.save,exact:true}).click();await page.getByRole('alert').waitFor();await editor.locator('[data-work-time-permissions]').click();permissionDialog=page.getByRole('dialog');assert.equal(await permissionDialog.getByLabel(t.WORKER,{exact:true}).isChecked(),false);await permissionDialog.getByRole('button',{name:approvalBandText[lang].apply,exact:true}).click();
   await page.getByRole('button',{name:a.save,exact:true}).click();await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.disabled&&button.textContent));
   assert.equal(bodies.length,2);assert.deepEqual(bodies[1].changes,[{menu:'WORK_TIME',operation:'CREATE',settings:{revision:1,drafterRoles:['ADMIN'],proxyRoles:['ADMIN'],approverIds:[3]}}]);
   assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Central work-time approval settings passed: ko/en/vi desktop/mobile, existing policy, one top save, conflict draft retention and no redirect/modal.');
+ console.log('Central leave approval settings passed: ko/en/vi desktop/mobile, shared condition/flow layout and cards, permission editor, existing policy, one top save and conflict draft retention.');
 }finally{await browser?.close();server.kill();if(existsSync(html))unlinkSync(html);}

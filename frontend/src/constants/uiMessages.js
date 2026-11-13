@@ -108,7 +108,7 @@ export const UI_MESSAGES = {
     employee: { ko: '직원', en: 'Employee', vi: 'Nhân viên' },
     customer: { ko: '고객사', en: 'Customer', vi: 'Khách hàng' },
     misc: { ko: '기타 관리', en: 'Miscellaneous', vi: 'Quản lý khác' },
-    workTime: { ko: '근무·휴가 신청', en: 'Work and leave requests', vi: 'Đề nghị làm việc và nghỉ phép' },
+    workTime: { ko: '휴가 신청', en: 'Leave requests', vi: 'Đề nghị nghỉ phép' },
     holiday: { ko: '휴일', en: 'Holiday', vi: 'Ngày nghỉ' },
     profile: { ko: '개인 정보', en: 'Profile', vi: 'Hồ sơ cá nhân' },
     subscription: { ko: '구독 관리', en: 'Subscription', vi: 'Goi dich vu' },

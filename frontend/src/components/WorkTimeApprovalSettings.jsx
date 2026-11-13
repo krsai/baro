@@ -1,31 +1,31 @@
-import React from 'react';
-import {Alert,Box,Button,Checkbox,FormControlLabel,Paper,Stack,Typography} from '@mui/material';
-import {Add,ArrowForward} from '@mui/icons-material';
-import {approvalPolicyNodeSx,approvalPolicyConnectorSx} from './approvalPolicyLayout';
+import React,{useState} from 'react';
+import {Alert,Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,Paper,Stack,Typography} from '@mui/material';
+import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
+import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
+import {approvalPolicyNodeSx,approvalPolicyConnectorSx,approvalPolicyColumns,approvalPolicySummarySx} from './approvalPolicyLayout';
 import {approvalBandText} from '../constants/approvalBands';
 import SearchableSelect from './SearchableSelect';
-import AddActionButton from './AddActionButton';
-import DeleteActionButton from './DeleteActionButton';
 import {workTimeText} from '../constants/workTime';
 
 export default function WorkTimeApprovalSettings({form,managers=[],onChange,disabled,languageCode}){
  const t=workTimeText[languageCode]||workTimeText.en;
  const b=approvalBandText[languageCode]||approvalBandText.en;
+ const [permissionsOpen,setPermissionsOpen]=useState(false);
  const toggle=(key,role)=>onChange({[key]:form[key].includes(role)?form[key].filter(value=>value!==role):[...form[key],role]});
+ const add=position=>{const approverIds=[...form.approverIds];approverIds.splice(position,0,null);onChange({approverIds});};
+ const reorder=({source,destination})=>{if(disabled||!destination||source.index===destination.index)return;const approverIds=[...form.approverIds],moved=approverIds.splice(source.index,1)[0];approverIds.splice(destination.index,0,moved);onChange({approverIds});};
  return <Stack spacing={2} data-testid="work-time-approval-settings">
-  <Paper variant="outlined" sx={{borderRadius:2,overflow:'hidden',minWidth:0}}>
-   <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{px:2,py:.5,bgcolor:'action.hover',borderBottom:1,borderColor:'divider'}}><Typography variant="subtitle2">{t.approvers}</Typography><Button startIcon={<Add/>} onClick={()=>onChange({approverIds:[...form.approverIds,null]})} disabled={disabled||form.approverIds.length>=10}>{t.add}</Button></Stack>
-   <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'320px minmax(0,1fr)'}}}>
-    <Stack spacing={2} sx={{p:2,bgcolor:'action.hover',borderRight:{md:1},borderBottom:{xs:1,md:0},borderColor:'divider'}}>
-     {['drafterRoles','proxyRoles'].map(key=><Box key={key}><Typography variant="subtitle2">{key==='drafterRoles'?t.draftRoles:t.proxyRoles}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{(key==='drafterRoles'?['ADMIN','OPERATOR','ACCOUNTANT','WORKER']:['ADMIN','OPERATOR','ACCOUNTANT']).map(role=><FormControlLabel sx={{m:0,mr:1}} key={role} control={<Checkbox checked={form[key].includes(role)} onChange={()=>toggle(key,role)} disabled={disabled}/>} label={t[role]}/>)}</Stack></Box>)}
-    </Stack>
-    <Stack direction="row" alignItems="center" sx={{p:1.5,minWidth:0,overflowX:'auto'}}>
-     <Paper variant="outlined" sx={{...approvalPolicyNodeSx,display:'flex',alignItems:'center'}}><Typography variant="subtitle2">{b.drafter}</Typography></Paper>
-     {form.approverIds.map((id,index)=><React.Fragment key={index}><Box sx={approvalPolicyConnectorSx}><ArrowForward sx={{fontSize:16,color:'text.disabled'}}/></Box><Paper variant="outlined" data-work-time-stage={index} sx={approvalPolicyNodeSx}><Stack spacing={.25}><Stack direction="row" alignItems="center" sx={{height:18}}><Typography variant="caption" color="text.secondary" sx={{flex:1}}>{index===form.approverIds.length-1?b.final:`${b.middle} ${index+1}`}</Typography><DeleteActionButton title={t.remove} onClick={()=>onChange({approverIds:form.approverIds.filter((_,i)=>i!==index)})} disabled={disabled}/></Stack><SearchableSelect fullWidth label={t.manager} options={managers} value={managers.find(person=>person.id===id)||null} getOptionLabel={person=>person.name} isOptionEqualToValue={(a,b)=>a.id===b.id} getOptionDisabled={person=>form.approverIds.includes(person.id)&&person.id!==id} onChange={(_,person)=>onChange({approverIds:form.approverIds.map((value,i)=>i===index?person?.id||null:value)})} disabled={disabled}/></Stack></Paper></React.Fragment>)}
-     {!form.approverIds.length&&<Box sx={{ml:2}}><AddActionButton title={t.add} onClick={()=>onChange({approverIds:[null]})} disabled={disabled}/></Box>}
+  <Paper variant="outlined" sx={{borderRadius:2,overflowX:'auto',minWidth:0}}><Box sx={{minWidth:{xs:620,md:0}}}>
+   <Box sx={{display:'grid',gridTemplateColumns:approvalPolicyColumns,bgcolor:'action.hover',borderBottom:1,borderColor:'divider'}}><Typography variant="caption" fontWeight={600} sx={{pl:4,py:1.5}}>{b.condition}</Typography><Stack direction="row" alignItems="center" justifyContent="space-between" sx={{px:1.5,py:.5}}><Typography variant="subtitle2">{b.line}</Typography><Button startIcon={<Add/>} sx={{whiteSpace:'nowrap'}} onClick={()=>add(form.approverIds.length)} disabled={disabled||form.approverIds.length>=10}>{t.add}</Button></Stack></Box>
+   <Box sx={{display:'grid',gridTemplateColumns:approvalPolicyColumns}}>
+    <Box sx={{px:4,py:.75,borderRight:1,borderColor:'divider',display:'flex',alignItems:'center',minWidth:0}}><Button data-work-time-permissions onClick={()=>setPermissionsOpen(true)} sx={approvalPolicySummarySx}>{['drafterRoles','proxyRoles'].map(key=><Box key={key} sx={{mb:.5}}><Typography variant="caption" color="text.secondary">{key==='drafterRoles'?t.draftRoles:t.proxyRoles}</Typography><Typography variant="body2">{form[key].map(role=>t[role]).join(', ')||'—'}</Typography></Box>)}</Button></Box>
+    <Stack direction="row" alignItems="center" sx={{px:1,py:.75,minWidth:0,overflowX:'auto'}}>
+     <Paper variant="outlined" sx={approvalPolicyNodeSx}><Stack spacing={.25}><Typography variant="caption" color="text.secondary" sx={{height:18}}>{b.drafter}</Typography><Button fullWidth variant="outlined" onClick={()=>setPermissionsOpen(true)} sx={{height:36,justifyContent:'flex-start',color:'text.primary',borderColor:'divider'}}>{t.drafter}</Button></Stack></Paper>
+     <DragDropContext onDragEnd={reorder}><Droppable droppableId="work-time-approvers" direction="horizontal">{provided=><Stack ref={provided.innerRef} {...provided.droppableProps} direction="row" sx={{flexShrink:0}}>{form.approverIds.map((id,index)=><Draggable key={id||'empty-'+index} draggableId={'work-time-approver-'+(id||'empty-'+index)} index={index} isDragDisabled={disabled}>{drag=><Stack ref={drag.innerRef} {...drag.draggableProps} direction="row" alignItems="center" sx={{flexShrink:0}}><Box sx={approvalPolicyConnectorSx}><ArrowForward sx={{fontSize:16,color:'text.disabled'}}/><IconButton size="small" aria-label={b.addMiddle} disabled={disabled||form.approverIds.length>=10} color="primary" sx={{position:'absolute',top:44,p:.25}} onClick={()=>add(index)}><Add sx={{fontSize:16}}/></IconButton></Box><Paper variant="outlined" data-work-time-stage={index} data-stage-final={index===form.approverIds.length-1?'true':undefined} sx={approvalPolicyNodeSx}><Stack spacing={.25}><Stack direction="row" alignItems="center" spacing={.5} sx={{height:18}}><Box {...drag.dragHandleProps} data-work-time-stage-handle={index} aria-label={`${b.reorderStage} ${index+1}`} sx={{display:'flex',color:'text.disabled',touchAction:'none'}}><DragIndicator sx={{fontSize:15}}/></Box><Typography variant="caption" color="text.secondary" sx={{flex:1}}>{index===form.approverIds.length-1?b.final:`${b.middle} ${index+1}`}</Typography><IconButton size="small" aria-label={t.remove} onClick={()=>onChange({approverIds:form.approverIds.filter((_,i)=>i!==index)})} disabled={disabled} sx={{p:.25}}><Close sx={{fontSize:16}}/></IconButton></Stack><SearchableSelect fullWidth textFieldProps={{placeholder:t.manager}} options={managers} value={managers.find(person=>person.id===id)||null} getOptionLabel={person=>person.name} isOptionEqualToValue={(a,b)=>a.id===b.id} getOptionDisabled={person=>form.approverIds.includes(person.id)&&person.id!==id} onChange={(_,person)=>onChange({approverIds:form.approverIds.map((value,i)=>i===index?person?.id||null:value)})} disabled={disabled}/></Stack></Paper></Stack>}</Draggable>)}{provided.placeholder}</Stack>}</Droppable></DragDropContext>
     </Stack>
    </Box>
-  </Paper>
+  </Box></Paper>
+  <Dialog open={permissionsOpen} onClose={()=>setPermissionsOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t.settings}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>{['drafterRoles','proxyRoles'].map(key=><Box key={key}><Typography variant="subtitle2">{key==='drafterRoles'?t.draftRoles:t.proxyRoles}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{(key==='drafterRoles'?['ADMIN','OPERATOR','ACCOUNTANT','WORKER']:['ADMIN','OPERATOR','ACCOUNTANT']).map(role=><FormControlLabel sx={{m:0,mr:1}} key={role} control={<Checkbox checked={form[key].includes(role)} onChange={()=>toggle(key,role)} disabled={disabled}/>} label={t[role]}/>)}</Stack></Box>)}</Stack></DialogContent><DialogActions><Button variant="contained" onClick={()=>setPermissionsOpen(false)}>{b.apply}</Button></DialogActions></Dialog>
   <Alert severity="info" role="note">{t.policyNote}</Alert>
  </Stack>;
 }

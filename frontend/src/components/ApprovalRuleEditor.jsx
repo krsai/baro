@@ -4,7 +4,7 @@ import {usePageDialogs} from './PageDialogProvider';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
-import {approvalPolicyNodeSx,approvalPolicyConnectorSx} from './approvalPolicyLayout';
+import {approvalPolicyNodeSx,approvalPolicyConnectorSx,approvalPolicyColumns,approvalPolicySummarySx} from './approvalPolicyLayout';
 import DecimalAmountField from './DecimalAmountField';
 import {approvalBandText} from '../constants/approvalBands';
 import {approvalAmountUnits,approvalBandOrderErrors,boundedApprovalBand,combineApprovalCurrencyRows,defaultApprovalBands,previousApprovalAmount,reflowApprovalBands,reorderApprovalCurrencyBands,reorderApprovalStages,replaceApprovalGroup,sameApprovalGroup} from '../utils/approvalBands.mjs';
@@ -63,9 +63,9 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
         <TextField fullWidth select size="small" value={allowGradeRange?(stage.gradeId||'ANY'):stage.gradeId||''} disabled={disabled||preview} onChange={event=>{const selected=event.target.value;patchStage(row,position,allowGradeRange?{gradeId:selected==='ANY'?null:Number(String(selected).replace('MINIMUM:','')),gradeMatch:selected==='ANY'?'ANY':'MINIMUM'}:{gradeId:selected||null});}} slotProps={{select:{displayEmpty:true,'aria-label':`${t.grade} ${index+1}-${position+1}`}}}><MenuItem value={allowGradeRange?'ANY':''}>{allowGradeRange||stage.role==='ADMIN'?t.allGrades:t.selectGrade}</MenuItem>{stage.gradeId&&!grades.some(row=>row.id===stage.gradeId)&&<MenuItem value={stage.gradeMatch==='MINIMUM'?'MINIMUM:'+stage.gradeId:stage.gradeId} disabled>{t.selectGrade}</MenuItem>}{gradeOptions}</TextField>
        </Stack>
       </Stack></Paper>;};
- const columns={xs:'220px minmax(0,1fr)',md:'280px minmax(0,1fr)'},costColumns='20px minmax(0,1fr) 18px';
+ const columns=approvalPolicyColumns,costColumns='20px minmax(0,1fr) 18px';
  return <Paper variant="outlined" data-testid="approval-conditions" sx={{width:'100%',minWidth:0,overflow:'hidden',borderRadius:2}}>
-  <Box sx={{overflowX:'auto'}}><Box sx={{minWidth:0}}>
+  <Box sx={{overflowX:'auto'}}><Box sx={{minWidth:{xs:620,md:0}}}>
    <Box data-testid="approval-table-header" sx={{display:'grid',gridTemplateColumns:columns,bgcolor:'action.hover',borderTop:1,borderBottom:1,borderColor:'divider'}}>
     <Box sx={{display:'grid',gridTemplateColumns:costColumns,gap:.5,alignItems:'center',px:1,py:.75}}><Box/><Typography data-condition-heading variant="caption" fontWeight={600}>{t.condition}</Typography><Box/></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{px:1.5,py:.5}}><Typography variant="subtitle2">{t.line}</Typography>{headerActions}</Stack>
@@ -75,7 +75,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
    {rows.map((row,index)=><Draggable key={row.key} draggableId={row.key} index={index} isDragDisabled={disabled||row.entries.some(entry=>!boundedApprovalBand(entry.rule))}>{drag=><Box ref={drag.innerRef} {...drag.draggableProps} data-approval-band={index} sx={{display:'grid',gridTemplateColumns:columns,borderBottom:1,borderColor:'divider',bgcolor:'background.paper'}}>
     <Box sx={{display:'grid',gridTemplateColumns:costColumns,alignItems:'center',gap:.5,px:1,py:.75,borderRight:1,borderColor:'divider'}}>
      <Box {...drag.dragHandleProps} aria-label={`${t.reorder} ${index+1}`} data-band-drag-handle={index} sx={{display:'flex',alignItems:'center',color:'text.disabled',touchAction:'none',cursor:drag.dragHandleProps?'grab':'default'}}><DragIndicator sx={{fontSize:18}}/></Box>
-     <Button data-condition-summary={index} aria-label={t.condition+' '+(index+1)} onClick={()=>openConditions(row)} sx={{minWidth:0,display:'block',textAlign:'left',px:1,py:.75,color:'text.primary',textTransform:'none',border:1,borderColor:'divider',borderRadius:1,'&:hover':{borderColor:'primary.main',bgcolor:'action.hover'}}}>
+     <Button data-condition-summary={index} aria-label={t.condition+' '+(index+1)} onClick={()=>openConditions(row)} sx={approvalPolicySummarySx}>
       {row.entries.every(entry=>!boundedApprovalBand(entry.rule)&&entry.rule.min==='0')?<Typography variant="body2">{t.noAmountCondition}</Typography>:row.entries.map(entry=><Box key={entry.currency} component="span" sx={{display:'grid',gridTemplateColumns:'30px 14px minmax(0,1fr)',gap:.5,alignItems:'baseline',py:.125}}><Typography component="span" variant="caption" color="text.secondary" fontWeight={600}>{entry.currency}</Typography><Typography component="span" variant="body2" color="text.secondary">{boundedApprovalBand(entry.rule)?'\u2264':'>'}</Typography><Typography component="span" variant="body2" sx={{textAlign:'right',fontVariantNumeric:'tabular-nums',whiteSpace:'nowrap'}}>{formatEditableDecimal(boundedApprovalBand(entry.rule)?entry.rule.max??'':previousApprovalAmount(entry.rule.min,entry.currency))}</Typography></Box>)}
      </Button>
      {row.entries.every(entry=>boundedApprovalBand(entry.rule))&&<IconButton size="small" aria-label={t.remove} disabled={disabled} sx={{p:.25}} onClick={()=>updateEntries(row,()=>[],true)}><Close sx={{fontSize:15}}/></IconButton>}
@@ -93,13 +93,14 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
    </Box>}</Droppable></DragDropContext>
   </Box></Box>
  <Dialog open={!!conditionDraft} onClose={closeConditions} fullWidth maxWidth="lg" aria-label={t.conditionDetails}>
-  <DialogTitle>{t.conditionDetails}</DialogTitle><DialogContent><Stack spacing={2}>
-   <Box data-condition-line sx={{minWidth:0}}><Typography variant="subtitle2" sx={{mb:1}}>{t.line}</Typography><Stack direction="row" alignItems="center" sx={{overflowX:'auto',py:1}}>{renderDrafter(true)}{conditionDraft?.row.stages.map((stage,position)=><React.Fragment key={position}><Box sx={approvalPolicyConnectorSx}><ArrowForward sx={{color:'text.disabled',fontSize:16}}/></Box>{stageCard(stage,position,conditionDraft.row,0,null,true)}</React.Fragment>)}</Stack></Box>
+  <DialogTitle>{t.conditionDetails}</DialogTitle><DialogContent><Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'280px minmax(0,1fr)'},gap:3,alignItems:'start',pt:1}}>
+   <Stack data-condition-amounts spacing={2} sx={{minWidth:0}}><Typography variant="subtitle2">{t.amount}</Typography>
    {conditionDraft?.row.entries.map(entry=><Box key={entry.currency} data-cost-currency={entry.currency}>
     {boundedApprovalBand(entry.rule)?<DecimalAmountField fullWidth currencyCode={entry.currency} size="small" label={t.amount+' · '+entry.currency} value={conditionDraft.values[entry.currency]} disabled={disabled} error={conditionInvalid} onValueChange={max=>setConditionDraft(current=>({...current,values:{...current.values,[entry.currency]:max}}))} InputProps={{startAdornment:<Typography component="span" sx={{mr:1}}>≤</Typography>}} inputProps={{'aria-label':t.amount+' '+entry.currency}}/>:<Typography>{amountSummary(entry)}</Typography>}
    </Box>)}
-   {conditionInvalid&&<Alert severity="error">{t.orderError}</Alert>}
-  </Stack></DialogContent><DialogActions>{!conditionsDirty&&<Button onClick={()=>setConditionDraft(null)}>{t.apply}</Button>}{conditionsDirty&&<Button variant="contained" disabled={disabled||conditionInvalid} onClick={()=>{onChange(conditionResult);setConditionDraft(null);}}>{t.apply}</Button>}</DialogActions>
+   {conditionInvalid&&<Alert severity="error">{t.orderError}</Alert>}</Stack>
+   <Box data-condition-line sx={{minWidth:0}}><Typography variant="subtitle2" sx={{mb:1}}>{t.line}</Typography><Stack direction="row" alignItems="center" sx={{overflowX:'auto',py:1}}>{renderDrafter(true)}{conditionDraft?.row.stages.map((stage,position)=><React.Fragment key={position}><Box sx={approvalPolicyConnectorSx}><ArrowForward sx={{color:'text.disabled',fontSize:16}}/></Box>{stageCard(stage,position,conditionDraft.row,0,null,true)}</React.Fragment>)}</Stack></Box>
+  </Box></DialogContent><DialogActions><Button variant="contained" disabled={disabled||conditionInvalid} onClick={()=>{if(conditionsDirty)onChange(conditionResult);setConditionDraft(null);}}>{t.apply}</Button></DialogActions>
  </Dialog>
  </Paper>;
 });
