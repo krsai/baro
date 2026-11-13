@@ -51,7 +51,7 @@ test('monthly exclusion preserves wages, scope and audit; restores AP and eviden
   await assert.rejects(decideChangeApproval(db,org,s.people.lead.id,pending.id,{decision:'APPROVED'}),/PAYROLL_MONTH_MANAGEMENT_EXCLUDED/);
   assert.equal(await db.bankLedgerEntry.count(),0,'stale pending payment rolls back');
   const after=await db.payrollSnapshot.findUnique({where:{id:before.id}});
-  assert.deepEqual({...after,payableManagementExcluded:false,managementRevision:0},before,'all frozen fields unchanged');
+  assert.deepEqual({...after,payableManagementExcluded:false,evidenceManagementExcluded:null,managementRevision:0},before,'all frozen fields unchanged');
   assert.equal(await db.payrollPayableItem.count(),4,'all original AP items retained');
   await assert.rejects(db.payrollSnapshot.update({where:{id:before.id},data:{payableManagementExcluded:false,managementRevision:2}}),/PAYROLL_PAYABLE_ACCESS_DENIED/);
   await assert.rejects(db.$transaction(async tx=>{await tx.$queryRawUnsafe("SELECT set_config('baro.payroll_management_actor',$1,true)",String(actor.id));await tx.payrollSnapshot.update({where:{id:before.id},data:{payableManagementExcluded:false,managementRevision:2}});}),/PAYROLL_MANAGEMENT_AUDIT_REQUIRED/);

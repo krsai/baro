@@ -1,3 +1,4 @@
+import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import Autocomplete from '../../../components/SearchableSelect';
 import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
 import {OrderColorDragHandle, OrderColorDropRow, OrderItemsTableContainer} from '../../../components/OrderColorDrag';
@@ -3037,9 +3038,10 @@ const OrderList = () => {
       <AppPageContainer
         title={orderPageText.listTitle}
         titleActions={(
+          <Stack direction="row" spacing={1} alignItems="center">{['INVOICE','SHIPPING'].map(kind=><ManagementTargetSettings key={activeOrgId+kind} orgId={activeOrgId} languageCode={languageCode} kind={kind} disabled={activeOrgType!=='MANUFACTURER'} />)}
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
             {orderPageText.addOrder}
-          </Button>
+          </Button></Stack>
         )}
         toolbar={(
           <SearchPanel onReset={()=>{setSearchTerm('');setProgressFilter(ORDER_FILTER_ALL);}}

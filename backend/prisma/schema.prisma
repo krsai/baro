@@ -1035,6 +1035,8 @@ model Warehouse {
 
 
 model Employee {
+  orderInvoicePolicies OrderInvoicePolicy[] @relation("OrderInvoicePolicyActor")
+  orderInvoicePolicyEvents OrderInvoicePolicyEvent[] @relation("OrderInvoicePolicyEventActor")
   payrollManagementEvents PayrollManagementEvent[] @relation("PayrollManagementActor")
   workTimeRequests WorkTimeRequest[] @relation("WorkTimeSubject")
   draftedWorkTimeRequests WorkTimeRequest[] @relation("WorkTimeDrafter")
@@ -1961,6 +1963,9 @@ model StyleProcessAtObservation {
 }
 
 model WorkOrder {
+  invoiceTargetRevision Int @default(0)
+  invoiceTargetPolicy OrderInvoicePolicy?
+  @@unique([id, sellerOrgId])
   expenseReferences ExpenseItemReference[]
   transactionCosts PartnerTransactionCost[]
   priorCompletions PriorProductionCompletion[]
@@ -2750,6 +2755,7 @@ model OutsourcedWorkRecord {
 }
 
 model PayrollSnapshot {
+  evidenceManagementExcluded Boolean?
   payableManagementExcluded Boolean @default(false)
   managementRevision Int @default(0)
   managementEvents PayrollManagementEvent[]
@@ -2782,6 +2788,7 @@ model PayrollSnapshot {
 }
 
 model PayrollManagementEvent {
+  evidenceExcluded Boolean?
   id String @id @default(uuid())
   orgId Int
   snapshotId Int
@@ -3598,4 +3605,31 @@ model WorkTimeDecision {
  request WorkTimeRequest @relation(fields:[requestId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeDecision_request_fkey")
  actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,map:"WorkTimeDecision_actor_fkey")
  @@unique([requestId,position])
+}
+
+model OrderInvoicePolicy {
+ workOrderId Int @id
+ orgId Int
+ excluded Boolean @default(false)
+ revision Int @default(1)
+ updatedByEmployeeId Int
+ order WorkOrder @relation(fields:[workOrderId,orgId],references:[id,sellerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"OrderInvoicePolicy_order_fkey")
+ actor Employee @relation("OrderInvoicePolicyActor",fields:[updatedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"OrderInvoicePolicy_actor_fkey")
+ events OrderInvoicePolicyEvent[]
+ @@unique([workOrderId,orgId])
+}
+model OrderInvoicePolicyEvent {
+ id String @id @default(uuid())
+ orgId Int
+ workOrderId Int
+ revision Int
+ excluded Boolean
+ reason String
+ actorId Int
+ clientKey String
+ createdAt DateTime @default(now())
+ policy OrderInvoicePolicy @relation(fields:[workOrderId,orgId],references:[workOrderId,orgId],onDelete:Restrict,onUpdate:Restrict,map:"OrderInvoicePolicyEvent_policy_fkey")
+ actor Employee @relation("OrderInvoicePolicyEventActor",fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"OrderInvoicePolicyEvent_actor_fkey")
+ @@unique([orgId,clientKey])
+ @@unique([workOrderId,revision])
 }

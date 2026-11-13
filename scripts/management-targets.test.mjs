@@ -1,0 +1,80 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {createRequire} from 'node:module';
+import {AsyncLocalStorage} from 'node:async_hooks';
+import {loadSourceBindings} from './helpers/source-bindings.mjs';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+const require=createRequire(import.meta.url);
+const {listManagementTargets,saveManagementTargets}=require('../backend/dist/services/managementTargets');
+const {searchPayrollEvidence,validatePayrollEvidence}=require('../backend/dist/services/payrollPayables');
+const {loadAccountOverview}=require('../backend/dist/services/accountOverview');
+const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore');
+const {createOrderShipment,listShippingOrders}=require('../backend/dist/services/orderShipments');
+test('invoice and shipment exclusions are independent, atomic, audited and preserve existing orders and drafts',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin;
+  await db.organization.update({where:{id:org},data:{type:'MANUFACTURER'}});
+  const orders=[];for(let i=0;i<2;i++)orders.push(await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:s.vendor.id,customerId:s.vendor.id,orderId:randomUUID(),orderNumber:'TARGET-'+i,totalQuantity:10}}));
+  const list=(kind,excluded)=>listManagementTargets(db,org,a.id,kind,{excluded:String(excluded)});
+  const save=(kind,rows)=>saveManagementTargets(db,org,a.id,kind,{rows,reason:'Handled outside this workflow'});
+  const change=(order,revision=0,excluded=true)=>({id:order.id,revision,excluded,clientKey:randomUUID()});
+  assert.equal((await list('INVOICE',false)).rows.length,2);
+  await assert.rejects(save('INVOICE',[change(orders[0]),change(orders[1],9)]),/TARGET_CHANGED/);
+  assert.equal(await db.orderInvoicePolicy.count(),0,'failure rolls back all rows');
+  const input=[change(orders[0])];await save('INVOICE',input);await save('INVOICE',input);
+  assert.equal(await db.orderInvoicePolicyEvent.count(),1);
+  assert.equal((await list('INVOICE',true)).rows[0].id,orders[0].id);
+  assert.equal((await list('SHIPPING',true)).rows.length,0);
+  assert.equal((await listShippingOrders(db,org,a.id,{})).rows.length,2);
+  const draft=await db.invoiceDraft.create({data:{sellerOrgId:org,buyerOrgId:s.vendor.id,clientKey:randomUUID(),createdBy:a.email,updatedBy:a.email,content:{fields:{date:'2026-11-13'},orders:[{orderId:orders[0].orderId}]}}});
+  await assert.rejects(issueInvoiceDraft(db,org,a.email,draft.id,1),/INVOICE_ORDER_MANAGEMENT_EXCLUDED/);
+  await assert.rejects(db.$transaction(async tx=>{
+   const invoice=await tx.invoice.create({data:{sellerOrgId:org,buyerOrgId:s.vendor.id,invoiceNumber:'TARGET-BYPASS',clientKey:randomUUID(),sequenceNumber:1,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',subtotal:'10',total:'10',snapshot:{},issuedBy:a.email}});
+   await tx.invoiceOrder.create({data:{invoiceId:invoice.id,workOrderId:orders[0].id,sourceOrderId:orders[0].orderId,sourceOrderNumber:orders[0].orderNumber,sourceUpdatedAt:orders[0].updatedAt,billingPercentage:'50',basisAmount:'20',billedAmount:'10',installmentNumber:1}});
+  }),/INVOICE_ORDER_MANAGEMENT_EXCLUDED/,'database rejects bypassed new invoice orders');
+  assert.equal(await db.invoice.count(),0);assert.equal(await db.invoiceDraft.count(),1,'pending draft is preserved');
+  await save('SHIPPING',[change(orders[0])]);
+  await assert.rejects(createOrderShipment(db,org,a.id,orders[0].id,{clientKey:randomUUID(),shipmentDate:'2026-11-13',lines:[{itemId:123,size:'S',quantity:1}]}),/SHIPPING_EXCLUDED/);
+  await save('INVOICE',[change(orders[0],1,false)]);
+  assert.equal((await list('INVOICE',true)).rows.length,0);assert.equal((await list('SHIPPING',true)).rows.length,1);
+  assert.deepEqual({...await db.workOrder.findUnique({where:{id:orders[0].id}}),invoiceTargetRevision:0},orders[0],'order fields and updatedAt remain unchanged');
+  await assert.rejects(db.orderInvoicePolicyEvent.deleteMany({where:{orgId:org}}),/TARGET_HISTORY_IMMUTABLE/);
+  await assert.rejects(db.orderInvoicePolicy.update({where:{workOrderId:orders[0].id},data:{excluded:true,revision:3}}),/TARGET_AUDIT_REQUIRED/);
+  await assert.rejects(saveManagementTargets(db,s.other.id,a.id,'INVOICE',{rows:input,reason:'Other company'}),/SHIPPING_ACCESS_DENIED/);
+  await db.systemSetting.create({data:{key:'ROLE_ACCESS_POLICY',value:{MANUFACTURER:{ADMIN:['INVOICE']}}}});
+  await assert.rejects(list('INVOICE',false),/TARGET_ACCESS_DENIED/);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261113050000_independent_management_targets');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
+  assert.equal(await db.orderInvoicePolicyEvent.count(),2);
+  const buyerOwned=await db.workOrder.create({data:{orgId:s.other.id,sellerOrgId:org,buyerOrgId:s.vendor.id,orderId:randomUUID(),orderNumber:'SELLER-SCOPE',totalQuantity:10}});
+  await db.systemSetting.delete({where:{key:'ROLE_ACCESS_POLICY'}});
+  assert.ok((await list('INVOICE',false)).rows.some(row=>row.id===buyerOwned.id),'actual seller can manage its order without changing the source owner');
+  await save('INVOICE',[change(buyerOwned)]);
+  assert.equal((await db.workOrder.findUnique({where:{id:buyerOwned.id}})).orgId,s.other.id);
+  const foreign=await db.workOrder.create({data:{orgId:s.other.id,sellerOrgId:s.other.id,orderId:randomUUID(),orderNumber:'FOREIGN',totalQuantity:10}});
+  await assert.rejects(save('INVOICE',[change(foreign)]),/TARGET_NOT_FOUND/);
+ }finally{await f.close();}
+});
+test('payroll payables and evidence settings are independent without rewriting frozen wages or AP',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin;
+  await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{code:'SAL'}});
+  const factory=await db.factory.create({data:{orgId:org,name:'Hanoi'}}),month='2026-10';
+  const snapshot=await db.payrollSnapshot.create({data:{orgId:org,factoryId:factory.id,month,data:[{workerId:s.people.junior.id,currencyCode:'USD',netSalary:100}],isProvisional:true,lockedAt:new Date(),lockedBy:a.email}});
+  const services=await loadSourceBindings('backend/src/payroll/payroll.service.ts',['payrollTransaction','prisma','assertPayrollMonth','lockPayrollSnapshot'],{applicationPrisma:db,AsyncLocalStorage,...require('../backend/dist/utils/editRevision'),...require('../backend/dist/utils/common'),...require('../backend/dist/utils/http'),...require('../backend/dist/services/payrollPayables'),getPayrollMonthReadiness:async()=>({invalidPayrollAttendance:[],needsRecalculation:false})});
+  await services.lockPayrollSnapshot({orgId:org,actorId:a.id,month,factoryId:factory.id,lockedBy:a.email});
+  const before=await db.payrollSnapshot.findUnique({where:{id:snapshot.id}}),list=(kind,excluded)=>listManagementTargets(db,org,a.id,kind,{excluded:String(excluded),q:month});
+  const save=async(kind,excluded)=>{const row=(await list(kind,!excluded)).rows[0];assert.ok(row);const input={rows:[{id:row.id,excluded,revision:row.revision,snapshotRevision:row.snapshotRevision,clientKey:randomUUID()}]};await saveManagementTargets(db,org,a.id,kind,input);await saveManagementTargets(db,org,a.id,kind,input);};
+  const evidence=()=>searchPayrollEvidence(db,org,{currencyCode:'USD',search:month}),overview=()=>loadAccountOverview(db,org);
+  await save('PAYABLE',true);
+  assert.equal((await overview()).payables.length,0);assert.equal((await evidence()).documents.length,1);
+  const item=await db.payrollPayableItem.findFirst({where:{document:{snapshotId:snapshot.id}}});
+  await db.$transaction(tx=>validatePayrollEvidence(tx,org,{currencyCode:'USD'},{payrollItemId:item.id,direction:'OUT',amount:'10',accountingCodeId:s.code.id,counterparty:{kind:'EMPLOYEE',id:item.employeeId},transactionDate:'2026-11-10'}));
+  await save('EVIDENCE',true);assert.equal((await evidence()).documents.length,0);
+  await save('PAYABLE',false);assert.equal((await overview()).payables[0].balance,'100.00');assert.equal((await evidence()).documents.length,0);
+  await save('EVIDENCE',false);assert.equal((await evidence()).documents.length,1);
+  const after=await db.payrollSnapshot.findUnique({where:{id:snapshot.id}});
+  assert.deepEqual({...after,managementRevision:before.managementRevision,evidenceManagementExcluded:before.evidenceManagementExcluded},before);
+  assert.equal(await db.payrollPayableItem.count(),1);assert.equal(await db.payrollManagementEvent.count(),4);assert.equal(await db.bankLedgerEntry.count(),0);
+ }finally{await f.close();}
+});

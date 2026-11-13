@@ -1,11 +1,10 @@
-import { payrollManagementText } from '../../../constants/payrollManagement';
-import { emitWorkspaceDataChanged } from '../../../utils/workspaceDataEvents';
+import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import {calendarPayrollText} from '../../../constants/calendarPayroll';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Alert, Box, Button, Chip, CircularProgress, FormControlLabel, Switch, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
@@ -236,14 +235,6 @@ const PayrollEntry = () => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
-  const [savingManagement, setSavingManagement] = useState(false);
-  const [managementError, setManagementError] = useState('');
-  const managementRequest = useRef(null);
-  const managementScope = [activeOrgId, month, factoryId].join(':');
-  const managementScopeRef = useRef(managementScope);
-  managementScopeRef.current = managementScope;
-  const managementText = payrollManagementText[languageCode] || payrollManagementText.en;
-  useEffect(() => { setManagementError(''); managementRequest.current = null; }, [activeOrgId, month, factoryId]);
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [jobRoleOptions, setJobRoleOptions] = useState([]);
   const [factories, setFactories] = useState([]);
@@ -652,30 +643,8 @@ const PayrollEntry = () => {
       || ""
     : "";
 
-  const handleManagementToggle = async (_, excluded) => {
-    if (!data?.snapshotId || !data.canManagePayables || loading || savingManagement || togglingLock) return;
-    const identity = [activeOrgId, month, factoryId, data.snapshotRevision, data.managementRevision, excluded].join(':');
-    if (managementRequest.current?.identity !== identity) {
-      managementRequest.current = { identity, body: { excluded, revision: data.managementRevision, snapshotRevision: data.snapshotRevision, clientKey: crypto.randomUUID() } };
-    }
-    setSavingManagement(true);
-    setManagementError('');
-    try {
-      const updated = await requestJSON('/payroll/snapshots/' + month + '/management' + buildQueryString({orgId: activeOrgId, factoryId}), {
-        method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(managementRequest.current.body),
-      });
-      if (managementScopeRef.current !== managementScope) return;
-      setData(previous => ({...previous, ...updated}));
-      managementRequest.current = null;
-      emitWorkspaceDataChanged({orgId: activeOrgId, source: 'bank-ledger', topics: ['bank-ledger', 'payroll-sources']});
-      showNotification(managementText.saved, 'success');
-    } catch (error) {
-      if (managementScopeRef.current === managementScope) setManagementError(error?.code || error?.message || 'error');
-    } finally { setSavingManagement(false); }
-  };
-
   const handleLockToggle = async () => {
-    if (!data || togglingLock || savingManagement) return;
+    if (!data || togglingLock) return;
     const lockText = LOCK_TEXT[languageCode] || LOCK_TEXT.en;
     if (locked && !await pageDialogs.confirm(lockText.unlockConfirm)) return;
     setTogglingLock(true);
@@ -711,11 +680,10 @@ const PayrollEntry = () => {
           right={
             data ? (
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <FormControlLabel sx={{mr: 1}} label={managementText.label} control={<Switch size="small" checked={Boolean(data.payableManagementExcluded)} onChange={handleManagementToggle} disabled={!data.snapshotId || !data.canManagePayables || loading || savingManagement || togglingLock} />} />
-                {savingManagement ? <CircularProgress size={16} /> : null}
+                {['PAYABLE','EVIDENCE'].map(kind=><ManagementTargetSettings key={activeOrgId+kind} orgId={activeOrgId} languageCode={languageCode} kind={kind} initialSearch={month} disabled={!data.canManagePayables || togglingLock} />)}
                 <Tooltip title={(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? "lockedHelp" : "unlockedHelp"]}>
                   <span>
-                    <Button size="small" variant="contained" color="inherit" startIcon={locked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />} disabled={togglingLock || savingManagement} onClick={handleLockToggle} sx={getPayrollLockButtonSx(locked)}>
+                    <Button size="small" variant="contained" color="inherit" startIcon={locked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />} disabled={togglingLock} onClick={handleLockToggle} sx={getPayrollLockButtonSx(locked)}>
                       {(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? "locked" : "unlocked"]}
                     </Button>
                   </span>
@@ -728,8 +696,6 @@ const PayrollEntry = () => {
       }
     >
       <Box sx={{ width: "100%" }}>
-        {managementError ? <Alert severity="error" sx={{mb: 2}}>{managementText[managementError] || managementText.error}</Alert> : null}
-        {data?.payableManagementExcluded ? <Alert severity="info" sx={{mb: 2}}>{managementText.help}</Alert> : null}
         {!factoryId ? (
           <Alert severity="error">
             {languageCode === "ko"

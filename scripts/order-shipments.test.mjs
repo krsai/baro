@@ -12,6 +12,7 @@ test('split order shipments preserve color/size balances, explicit exclusions, c
   const actor=await db.employee.create({data:{orgId:org,name:'Shipping operator',gradeId:grade.id,orgRole:'OPERATOR',status:'ACTIVE'}});
   await assert.rejects(shippingActor(db,org,undefined),/SHIPPING_ACCESS_DENIED/);await assert.rejects(shippingActor(db,org,999999),/SHIPPING_ACCESS_DENIED/);
   const buyer=await db.organization.create({data:{name:'Customer',ownerOrgId:org,type:'BRAND'}});
+  await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:buyer.id}});
   const style=await db.style.create({data:{orgId:org,customerOrgId:buyer.id,code:'SHIRT',name:'Shirt'}});
   const red=await db.attrColor.create({data:{code:'SHIP-RED',name:'Red'}}),blue=await db.attrColor.create({data:{code:'SHIP-BLUE',name:'Blue'}});
   const order=await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:buyer.id,customerId:buyer.id,orderId:'shipping-test',orderNumber:'ORD-SHIP',totalQuantity:190,workOrderItems:{create:[{itemId:'red',styleId:style.id,colorId:red.id,gender:'M',sizeQuantities:{S:100,M:50},totalQuantity:150},{itemId:'blue',styleId:style.id,colorId:blue.id,gender:'M',sizeQuantities:{S:40},totalQuantity:40}]}} ,include:{workOrderItems:{orderBy:{id:'asc'}}}});

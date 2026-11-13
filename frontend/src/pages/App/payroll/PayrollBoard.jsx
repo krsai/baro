@@ -1,3 +1,4 @@
+import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import {workTimeText} from '../../../constants/workTime';
 import {payrollPayableMessage} from '../../../constants/payrollPayable';
 import {formatCurrency} from '../../../utils/currencyFormat';
@@ -10,6 +11,7 @@ import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
+  IconButton,
   Alert,
   Button,
   Chip,
@@ -445,9 +447,8 @@ const PayrollBoard = () => {
       titleActions={(
         <Stack direction="row" spacing={1} alignItems="center">
           <LastUpdaterLabel />
-          <Button variant="outlined" startIcon={<SettingsOutlinedIcon />} onClick={() => setSettingsOpen(true)}>
-            {languageCode === 'ko' ? '설정' : languageCode === 'vi' ? 'Cài đặt' : 'Settings'}
-          </Button>
+          {['PAYABLE','EVIDENCE'].map(kind=><ManagementTargetSettings key={activeOrgId+kind} orgId={activeOrgId} languageCode={languageCode} kind={kind} onSaved={()=>load({silent:true})} />)}
+          <Tooltip title={languageCode === 'ko' ? '급여 설정' : languageCode === 'vi' ? 'Thiết lập lương' : 'Payroll settings'}><IconButton aria-label={languageCode === 'ko' ? '급여 설정' : languageCode === 'vi' ? 'Thiết lập lương' : 'Payroll settings'} onClick={() => setSettingsOpen(true)}><SettingsOutlinedIcon/></IconButton></Tooltip>
         </Stack>
       )}
       toolbar={<PageToolbar showLastUpdater={false} right={(

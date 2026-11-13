@@ -125,7 +125,7 @@ test('source lookup always scopes seller, including the old endpoint alias', asy
     await routes.get(path)({ params: { orderId: 'foreign-order' }, query: {} }, response);
     assert.deepEqual(queries[0].where, { orderId: 'foreign-order', sellerOrgId: 7 });
     assert.deepEqual(queries[0].include.sellerOrg.include.bankAccounts.where,{orgId:7,entityId:7,accountKind:'BANK'});
-    assert.deepEqual(queries[0].include.sellerOrg.include.bankAccounts.select,{bankName:true,accountNumber:true,accountHolder:true,currency:{select:{code:true}}});
+    assert.deepEqual(queries[0].include.sellerOrg.include.bankAccounts.select,{isDefault:true,isActive:true,bankName:true,accountNumber:true,accountHolder:true,currency:{select:{code:true}}});
     assert.equal(response.statusCode, 404);
   }
 });
@@ -134,6 +134,7 @@ test('list queries are paginated and preserve seller scope when searching', asyn
   await routes.get('/invoices/orders')({ query: { buyerOrgId: '8', search: 'PO', page: '2' } }, response);
   assert.equal(queries[0].where.sellerOrgId, 7);
   assert.equal(queries[0].where.buyerOrgId, 8);
+  assert.deepEqual(queries[0].where.NOT,{invoiceTargetPolicy:{is:{excluded:true}}},'explicit exclusions apply before paging');
   assert.deepEqual(queries[0].where.AND, [{invoiceOrders:{none:{billingPercentage:{gte:100},invoice:{sellerOrgId:7,buyerOrgId:8,status:'ISSUED'}}}}]);
   assert.deepEqual(queries[0].where.orderNumber, { contains: 'PO', mode: 'insensitive' });
   assert.equal(queries[0].take, 51);

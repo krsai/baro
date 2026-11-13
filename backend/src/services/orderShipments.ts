@@ -41,17 +41,19 @@ export async function listShippingOrders(db:any,orgId:number,actorId:number,quer
  return {rows:rows.map((r:any)=>({...r,ordered:Number(r.ordered),shipped:Number(r.shipped)})),total:rows[0]?.resultCount||0,page};
 }
 export async function saveShippingPolicy(db:any,orgId:number,actorId:number,id:number,input:any){
+ return retryEditTransaction(db,tx=>saveShippingPolicyInTransaction(tx,orgId,actorId,id,input));
+}
+export async function saveShippingPolicyInTransaction(db:any,orgId:number,actorId:number,id:number,input:any){
  await shippingActor(db,orgId,actorId);if(typeof input?.excluded!=='boolean'||!Number.isSafeInteger(input.version))fail('SHIPPING_INVALID_INPUT');
  const clientKey=key(input.clientKey),reason=text(input.reason||'',1000);if(input.excluded&&!reason)fail('SHIPPING_REASON_REQUIRED');
  const requestHash=hash({id,excluded:input.excluded,version:input.version,reason});
- return retryEditTransaction(db,async(tx:any)=>{
+ const tx=db;
   await shippingActor(tx,orgId,actorId);await order(tx,orgId,id,true);
   const old=(await tx.$queryRawUnsafe('SELECT * FROM "OrderShippingPolicyEvent" WHERE "orgId"=$1 AND "clientKey"=$2',orgId,clientKey))[0];if(old){if(old.requestHash!==requestHash)fail('SHIPPING_CHANGED',409);return old.snapshot;}
   const before=await policy(tx,orgId,id);if(before.version!==input.version)fail('SHIPPING_CHANGED',409);
   const snapshot={excluded:input.excluded,reason,version:before.version+1};
   await tx.$executeRawUnsafe('INSERT INTO "OrderShippingPolicy"("orgId","workOrderId",excluded,reason,version,"updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT("workOrderId") DO UPDATE SET excluded=EXCLUDED.excluded,reason=EXCLUDED.reason,version=EXCLUDED.version,"updatedByEmployeeId"=EXCLUDED."updatedByEmployeeId","updatedAt"=CURRENT_TIMESTAMP',orgId,id,input.excluded,reason,snapshot.version,actorId);
   await tx.$executeRawUnsafe('INSERT INTO "OrderShippingPolicyEvent"(id,"orgId","workOrderId","clientKey","requestHash",snapshot,"actorId") VALUES($1,$2,$3,$4,$5,$6::jsonb,$7)',randomUUID(),orgId,id,clientKey,requestHash,JSON.stringify({before,...snapshot}),actorId);return snapshot;
- });
 }
 export async function createOrderShipment(db:any,orgId:number,actorId:number,id:number,input:any){
  await shippingActor(db,orgId,actorId);const clientKey=key(input?.clientKey),shipmentDate=text(input.shipmentDate,10),remark=text(input.remark||'',2000);

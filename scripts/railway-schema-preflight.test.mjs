@@ -49,7 +49,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
       CREATE TABLE "SettingTransactionCodeDefault"(id INT,"serviceTypeId" INT,"baseId" INT,"taxTreatmentId" INT,code TEXT,"nameKo" TEXT,"nameEn" TEXT,"nameVi" TEXT,"vatEnabled" BOOL,"isActive" BOOL DEFAULT true,"isEnabled" BOOL DEFAULT true,UNIQUE("baseId","taxTreatmentId"));
       CREATE TABLE "OrganizationOutsourcingServiceType"("partnerOrgId" INT,"ownerOrgId" INT,"serviceTypeId" INT,"createdAt" TIMESTAMP,PRIMARY KEY("partnerOrgId","serviceTypeId"));
       ${['WorkLog','WorkOrder','AssignmentPlan'].map(table=>`CREATE TABLE "${table}"(id INT);`).join('\n')}`);
-    await db.exec('ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
+    await db.exec('ALTER TABLE "WorkOrder" ADD COLUMN "orgId" INT, ADD COLUMN "sellerOrgId" INT; CREATE UNIQUE INDEX "WorkOrder_id_orgId_key" ON "WorkOrder"(id,"orgId"); CREATE UNIQUE INDEX "Style_id_orgId_key" ON "Style"(id,"orgId");');
     await db.exec('CREATE TABLE "WorkOrderItem"(id INT PRIMARY KEY,"workOrderId" INT,"styleId" INT,"colorId" INT,gender TEXT,"sizeQuantities" JSONB)');
     await db.exec(`CREATE TABLE "Invoice"(id TEXT PRIMARY KEY,"sellerOrgId" INT,status TEXT,"currencyCode" TEXT,total NUMERIC,"pricingBasis" TEXT NOT NULL DEFAULT 'MANUFACTURING_SERVICE_PRICE')`);
     await db.exec('CREATE TABLE "InvoiceOrder"(id INT PRIMARY KEY,"invoiceId" TEXT); CREATE TABLE "InvoiceLine"(id INT PRIMARY KEY,"invoiceId" TEXT)');

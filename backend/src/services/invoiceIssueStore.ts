@@ -180,6 +180,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       for (const order of [...orders].sort((a: any, b: any) => a.id - b.id)) {
         await tx.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE id = $1 AND "sellerOrgId" = $2 FOR UPDATE', order.id, sellerOrgId);
       }
+      if(await tx.orderInvoicePolicy.findFirst({where:{orgId:sellerOrgId,workOrderId:{in:orders.map((order:any)=>order.id)},excluded:true}})) fail("INVOICE_ORDER_MANAGEMENT_EXCLUDED");
       const fullyBilled = await tx.invoiceOrder.findFirst({ where: {
         workOrderId: { in: orders.map((order: any) => order.id) }, billingPercentage: { gte: 100 },
         invoice: { sellerOrgId, buyerOrgId: draft.buyerOrgId, status: "ISSUED" },

@@ -82,7 +82,7 @@ export async function validatePayrollEvidence(tx:any,orgId:number,account:any,bo
  if(typeof body.payrollItemId!=='string')fail('PAYROLL_PAYABLE_REQUIRED',400);
  await tx.$queryRawUnsafe('SELECT id FROM "PayrollPayableItem" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',body.payrollItemId,orgId);
  const item=await tx.payrollPayableItem.findFirst({where:{id:body.payrollItemId,orgId,voidedAt:null},include:{document:{include:{snapshot:true}}}});
- if(item?.document.snapshot.payableManagementExcluded)fail('PAYROLL_MONTH_MANAGEMENT_EXCLUDED');
+ if(item&&(item.document.snapshot.evidenceManagementExcluded??item.document.snapshot.payableManagementExcluded))fail('PAYROLL_MONTH_MANAGEMENT_EXCLUDED');
  if(!item||item.document.snapshot.isProvisional||item.document.snapshot.revision!==item.snapshotRevision||body.direction!=='OUT'||item.currencyCode!==account.currencyCode||body.accountingCodeId!==item.document.accountingCodeId||body.counterparty?.kind!=='EMPLOYEE'||body.counterparty.id!==item.employeeId||body.transactionDate<item.document.month+'-01')fail('PAYROLL_PAYABLE_SOURCE_CHANGED');
  const amount=validateLedgerMoney(body.amount,account.currencyCode);
  if(ledgerScale4(amount)>await payrollPayableRemaining(tx,orgId,item))fail('LEDGER_EXCEEDS_DOCUMENT',400);
@@ -90,7 +90,7 @@ export async function validatePayrollEvidence(tx:any,orgId:number,account:any,bo
 }
 export async function searchPayrollEvidence(db:any,orgId:number,query:any){
  const search=String(query.search||'').trim(),code=query.currencyCode;if(query.direction&&query.direction!=='OUT')return {documents:[]};if(!search)return {documents:[]};if(search.length>200||!['USD','VND','KRW'].includes(code))fail('LEDGER_INVALID_EVIDENCE',400);
- const items=await db.payrollPayableItem.findMany({where:{orgId,voidedAt:null,currencyCode:code,document:{snapshot:{isProvisional:false,payableManagementExcluded:false}},OR:[{document:{managementNumber:{contains:search,mode:'insensitive'}}},{document:{month:{contains:search}}},{employee:{OR:[{name:{contains:search,mode:'insensitive'}},{employeeNo:{contains:search,mode:'insensitive'}}]}}]},include:{employee:{select:{name:true,employeeNo:true}},document:true},orderBy:[{document:{month:'desc'}},{employeeId:'asc'}]});
+ const items=await db.payrollPayableItem.findMany({where:{orgId,voidedAt:null,currencyCode:code,document:{snapshot:{isProvisional:false,OR:[{evidenceManagementExcluded:false},{evidenceManagementExcluded:null,payableManagementExcluded:false}]}},OR:[{document:{managementNumber:{contains:search,mode:'insensitive'}}},{document:{month:{contains:search}}},{employee:{OR:[{name:{contains:search,mode:'insensitive'}},{employeeNo:{contains:search,mode:'insensitive'}}]}}]},include:{employee:{select:{name:true,employeeNo:true}},document:true},orderBy:[{document:{month:'desc'}},{employeeId:'asc'}]});
  const documents=[];for(const item of items){const remaining=await payrollPayableRemaining(db,orgId,item);if(remaining>0n)documents.push({id:item.id,reference:item.document.managementNumber+' / '+item.document.month+' / '+item.employee.name,payee:item.employee.name,month:item.document.month,amount:ledgerMoney(ledgerScale4(item.amount),code),remaining:ledgerMoney(remaining,code),accountingCodeId:item.document.accountingCodeId,counterparty:{kind:'EMPLOYEE',id:item.employeeId,name:item.employee.name}});}
  return {documents:documents.slice(0,100)};
 }

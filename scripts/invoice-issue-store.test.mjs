@@ -35,7 +35,7 @@ const { calculateInvoiceIssueSnapshot, createInvoiceRevisionDraft, recordInvoice
 test('stale new invoice selection cannot issue a fully billed order; successful retries return the original invoice', async () => {
   const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore.js');
   const locks=[];
-  const tx={invoiceDraft:{findFirst:async()=>({id:'d',revision:1,buyerOrgId:8,content:{fields:{date:'2026-10-31'},orders:[{orderId:'o'}]}})},
+  const tx={orderInvoicePolicy:{findFirst:async()=>null},invoiceDraft:{findFirst:async()=>({id:'d',revision:1,buyerOrgId:8,content:{fields:{date:'2026-10-31'},orders:[{orderId:'o'}]}})},
     invoice:{findFirst:async()=>null},workOrder:{findMany:async()=>[{id:10,orderId:'o'}]},
     $queryRawUnsafe:async(...args)=>locks.push(args),invoiceOrder:{findFirst:async({where})=>{
       assert.deepEqual(where,{workOrderId:{in:[10]},billingPercentage:{gte:100},invoice:{sellerOrgId:7,buyerOrgId:8,status:'ISSUED'}});
