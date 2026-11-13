@@ -18,7 +18,7 @@ try{
   await page.goto('http://127.0.0.1:'+port+'/dashboard-card-list-test.html?lang='+lang);await page.getByText('Author',{exact:false}).waitFor();
   assert.equal(await page.locator('table,input[type="date"]').count(),0);assert.equal(queries[0].start,undefined);assert.equal(queries[0].end,undefined);
   assert.equal(await page.getByText('2026-11',{exact:true}).count(),0);
-  const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);
+  const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);const title=await page.getByText(t.overview,{exact:true}).boundingBox(),field=await filter.boundingBox();assert.ok(Math.abs(title.y+title.height/2-field.y-field.height/2)<2,'filter shares the title row');
   await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=APPROVED')),page.getByRole('option',{name:t.statuses.APPROVED,exact:true}).click()]);
   assert.equal(queries.at(-1).start,undefined);assert.equal(queries.at(-1).end,undefined);assert.equal(queries.at(-1).status,'APPROVED');
   assert.equal(await page.locator('[data-dashboard-card]').count(),1);const card=await page.locator('[data-dashboard-card]').boundingBox(),action=await page.locator('[data-dashboard-card-actions]').boundingBox();assert.ok(card.height>=80&&card.height<128);assert.ok(Math.abs(action.y+action.height/2-card.y-card.height/2)<1);assert.ok(action.x>card.x+card.width/2);

@@ -1,6 +1,7 @@
+import DashboardFilter from './DashboardFilter';
 import DashboardAlertItem from './DashboardAlertItem';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
-import {Alert,Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Alert,Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,TextField,Typography} from '@mui/material';
 import SearchableSelect from './SearchableSelect';
 import DeleteActionButton from './DeleteActionButton';
 import {useAppActions} from '../context/AppContext';
@@ -8,7 +9,7 @@ import {useRequestScopeContext} from '../context/RequestScopeContext';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {workRequestText} from '../constants/dashboardWorkRequests';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
-import {dashboardWidgetPaperSx,dashboardWidgetTitleSx,dashboardFilterRowSx,dashboardFilterFieldSx} from './dashboardWidgetStyles';
+import {dashboardWidgetPaperSx,dashboardWidgetTitleSx} from './dashboardWidgetStyles';
 export default function WorkRequestsCard({orgId,languageCode}){
  const t=workRequestText[languageCode]||workRequestText.en,{active}=useRequestScopeContext(),{showNotification}=useAppActions();
  const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[page,setPage]=useState(0),[status,setStatus]=useState('ALL'),[direction,setDirection]=useState('ALL'),[reload,setReload]=useState(0);
@@ -36,8 +37,7 @@ export default function WorkRequestsCard({orgId,languageCode}){
   catch(e){if(!alive.current)return;const unknown=!e.status||e.status>=500;setUncertain(unknown);if(!unknown)attempt.current=null;setFormError(unknown?t.uncertain:t.failed);}finally{mutation.current=false;if(alive.current)setBusy(false);}};
  const act=async(row,action)=>{if(mutation.current)return;mutation.current=true;setBusy(true);setMutationError('');try{await api('/'+encodeURIComponent(row.id),{action,version:row.version});if(!alive.current)return;showNotification(action==='COMPLETE'?t.completed:t.hidden,'success');setReload(n=>n+1);}catch(e){if(alive.current){setMutationError(e.status===409?t.changed:t.failed);setReload(n=>n+1);}}finally{mutation.current=false;if(alive.current)setBusy(false);}};
  return <Paper variant="outlined" data-testid="dashboard-work-requests" sx={dashboardWidgetPaperSx}>
-  <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1} sx={{flexShrink:0}}><Typography variant="subtitle1" sx={dashboardWidgetTitleSx}>{t.title}</Typography>{data?.canCreate&&<Button onClick={create}>{t.create}</Button>}</Stack>
-  <Stack sx={{...dashboardFilterRowSx,mt:1.5}}>{[['status',status,setStatus,['ALL','OPEN','DONE']],['direction',direction,setDirection,['ALL','RECEIVED','SENT']]].map(([key,value,set,keys])=><TextField key={key} select sx={dashboardFilterFieldSx} size="small" label={t[key]} value={value} onChange={e=>{set(e.target.value);setPage(0);}}>{keys.map(k=><MenuItem key={k} value={k}>{t[k]}</MenuItem>)}</TextField>)}</Stack>
+  <Stack direction="row" useFlexGap flexWrap="wrap" alignItems="center" gap={1} sx={{mb:1.5,flexShrink:0}}><Typography variant="subtitle1" sx={{...dashboardWidgetTitleSx,mr:'auto'}}>{t.title}</Typography><Stack direction="row" useFlexGap flexWrap="wrap" gap={.75} sx={{order:{xs:2,sm:0},flexBasis:{xs:'100%',sm:'auto'}}}>{[['status',status,setStatus,['ALL','OPEN','DONE']],['direction',direction,setDirection,['ALL','RECEIVED','SENT']]].map(([key,value,set,keys])=><DashboardFilter key={key} label={t[key]} value={value} onChange={next=>{set(next);setPage(0);}} options={keys.map(value=>({value,label:t[value]}))}/>)}</Stack>{data?.canCreate&&<Button sx={{flexShrink:0}} onClick={create}>{t.create}</Button>}</Stack>
   {(error||mutationError)&&<Alert severity="error" action={<Button onClick={()=>{setMutationError('');setReload(n=>n+1);}}>{t.retry}</Button>}>{mutationError||error}</Alert>}
   <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>{loading&&!data?<CircularProgress size={20}/>:!error&&data?.rows.length===0?<Typography color="text.secondary">{t.empty}</Typography>:<Stack spacing={1}>{data?.rows.map(row=><DashboardAlertItem languageCode={languageCode} key={row.id} title={row.title} countLabel={t[row.status]} detail={row.senderName+' → '+row.recipientName+' · '+new Date(row.completedAt||row.createdAt).toLocaleString({ko:'ko-KR',en:'en-GB',vi:'vi-VN'}[languageCode]||'en-GB')} onClick={()=>setSelected(row)} actions={<>{row.status==='OPEN'&&row.senderId===data.actorId&&data.canCreate&&<Button disabled={busy} onClick={()=>edit(row)}>{t.edit}</Button>}{row.status==='OPEN'&&row.recipientId===data.actorId&&<Button disabled={busy} onClick={()=>act(row,'COMPLETE')}>{t.complete}</Button>}{row.status==='DONE'&&<DeleteActionButton aria-label={t.hide} title={t.hide} disabled={busy} onClick={()=>act(row,'HIDE')}/>}</>}/>)}</Stack>}</Box>
   <Stack direction="row" justifyContent="flex-end"><Button disabled={!page||loading} onClick={()=>setPage(n=>n-1)}>{t.previous}</Button><Button disabled={!data?.hasMore||loading} onClick={()=>setPage(n=>n+1)}>{t.next}</Button></Stack>
