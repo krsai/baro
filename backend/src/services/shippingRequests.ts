@@ -1,4 +1,5 @@
 import {listShippingPresets,saveShippingPreset} from './shippingPresets';
+import {searchShippingPorts,validateShippingPorts} from './shippingPorts';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -56,6 +57,7 @@ export async function submitShippingRequest(db:any,orgId:number,actorId:number,i
  const digest=createHash('sha256').update(JSON.stringify({forwarder:input.forwarderOrgId,value})).digest('hex');
  return retryEditTransaction(db,async (tx:any)=>{
   const org=await actor(tx,orgId,actorId);if(!['MANUFACTURER','BRAND'].includes(org.type))fail('SHIPPING_ACCESS_DENIED',403);
+  await validateShippingPorts(tx,value.data);
   if(!(await transportPartners(tx,orgId)).some((p:any)=>p.id===input.forwarderOrgId&&p.type==='SERVICE'))fail('TRANSPORT_PARTNER_REQUIRED',403);
   await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))::text',`shipping:${orgId}:${input.clientKey}`);
   const key=`shipping:${orgId}:${input.clientKey}`;
@@ -88,6 +90,7 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
    updated=await tx.$queryRawUnsafe('UPDATE "FreightJob" SET "sharedSnapshot"=$1::jsonb,"updatedByEmployeeId"=$2,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 RETURNING *',JSON.stringify(snapshot),actorId,id);
   }else if(input.action==='EDIT'&&row.receiptStatus==='PENDING'){
    const value=requestFields({mode:input.mode,data:input.data});
+   await validateShippingPorts(tx,value.data);
    const oldPublic=transportSnapshot(row).data;
    const privateData=Object.fromEntries(Object.entries(row.data).filter(([key])=>!(key in oldPublic)));
    const nextData:any={...privateData,...value.data};if(!owner)for(const role of ['shipper','consignee','notify'])if(JSON.stringify(oldPublic[role+'Party'])!==JSON.stringify(value.data[role+'Party'])||oldPublic[role]!==value.data[role])delete nextData[role+'Id'];if(value.data.customerRole){for(const role of ['shipper','consignee','notify'])if(role!==value.data.customerRole&&nextData[role+'Id']===row.customerId)delete nextData[role+'Id'];nextData[value.data.customerRole+'Id']=row.customerId;}
@@ -129,6 +132,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
  route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true}}),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
+ route('get','/ports',(_scope:any,req:any)=>searchShippingPorts(db,req.query.q??''));
  route('post','/presets',(scope:any,req:any)=>saveShippingPreset(db,scope,req.body));
  route('delete','/presets/:presetId',(scope:any,req:any)=>saveShippingPreset(db,scope,{...req.body,id:req.params.presetId},true));
  route('get','/:id',({orgId,actorId}:any,req:any)=>readShippingRequest(db,orgId,actorId,req.params.id));

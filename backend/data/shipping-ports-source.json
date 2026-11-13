@@ -1,0 +1,23 @@
+{
+  "publisher": "United Nations Economic Commission for Europe (UNECE)",
+  "release": "2025-1",
+  "source": "https://unlocode.unece.org/publications/",
+  "download": "https://opensource.unicc.org/un/unece/uncefact/vocab-locode/-/jobs/artifacts/2025-1/download?job=package-release",
+  "license": "CC BY 4.0",
+  "filter": "Function 1 (maritime port), excluding change indicator X. Maritime locations, not a certification of container handling.",
+  "count": 17520,
+  "sources": [
+    {
+      "file": "UNLOCODE CodeListPart1.csv",
+      "sha256": "a578f1caa76850f0d46ff7dab71bed53be84f8a0b0b3b6157e7de6d169ba37f2"
+    },
+    {
+      "file": "UNLOCODE CodeListPart2.csv",
+      "sha256": "b63c997fd42acfffbc8b3d8dd4ad6d97182dd8a0f123f6fa29bad41219b68dcc"
+    },
+    {
+      "file": "UNLOCODE CodeListPart3.csv",
+      "sha256": "65898aef20602d63b5394af4ebb2ddb1f0d0ad2ee0841c07040046b111a9371d"
+    }
+  ]
+}

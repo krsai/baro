@@ -86,6 +86,10 @@ model FreightTransportTask {
  status String @default("PLANNED")
 }
 model FreightJob {
+ originPortCode String?
+ destinationPortCode String?
+ originPort ShippingPort? @relation("FreightOriginPort",fields:[originPortCode],references:[code],onDelete:Restrict,map:"FreightJob_origin_port_fkey")
+ destinationPort ShippingPort? @relation("FreightDestinationPort",fields:[destinationPortCode],references:[code],onDelete:Restrict,map:"FreightJob_destination_port_fkey")
  receiptStatus String @default("ACCEPTED")
  requesterOrgId Int?
  requestCreatedByOrgId Int?
@@ -115,6 +119,21 @@ model FreightJob {
  @@unique([orgId,number])
  @@index([orgId,createdAt,id],map:"FreightJob_org_created_idx")
  @@index([masterId,orgId],map:"FreightJob_master_idx")
+}
+model ShippingPort {
+ code String @id
+ country String
+ name String
+ asciiName String
+ subdivision String
+ functions String
+ status String
+ iata String
+ coordinates String
+ sourceVersion String
+ originJobs FreightJob[] @relation("FreightOriginPort")
+ destinationJobs FreightJob[] @relation("FreightDestinationPort")
+ @@index([country,code],map:"ShippingPort_country_idx")
 }
 model ShippingRequestEvent {
  id String @id

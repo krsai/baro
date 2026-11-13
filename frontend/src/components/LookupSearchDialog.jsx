@@ -3,7 +3,7 @@ import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,Stack
 import {EXPENSE_LOOKUP_TEXT} from '../constants/expenseLookup';
 import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 const paging={ko:{previous:'이전',next:'다음'},en:{previous:'Previous',next:'Next'},vi:{previous:'Trước',next:'Tiếp'}};
-export default function LookupSearchDialog({open,onClose,title,query,onQueryChange,options=[],columns=[],getSearchText,filterOptions,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[],getOptionDisabled=()=>false,loading=false,feedback,searchInputRef,searchLabel,searchInputProps,tableMinWidth}){
+export default function LookupSearchDialog({open,onClose,title,query,onQueryChange,options=[],columns=[],getSearchText,filterOptions,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[],getOptionDisabled=()=>false,loading=false,feedback,searchInputRef,searchLabel,searchInputProps,tableMinWidth,searchTools,maxWidth}){
  const t=EXPENSE_LOOKUP_TEXT[languageCode]||EXPENSE_LOOKUP_TEXT.en,p=paging[languageCode]||paging.en;
  const [page,setPage]=useState(0);useEffect(()=>setPage(0),[query,open,options.length]);
  const filtered=filterOptions?filterOptions(options,query):options.filter(row=>normalizeLookupText(getSearchText?getSearchText(row):columns.map(column=>column.value(row)).join(' ')).includes(normalizeLookupText(query))),pages=Math.max(1,Math.ceil(filtered.length/20)),current=Math.min(page,pages-1);
@@ -17,7 +17,8 @@ export default function LookupSearchDialog({open,onClose,title,query,onQueryChan
   else if(event.key==='Enter'){event.preventDefault();select(cursor>=0?filtered[cursor]:filtered.length===1?filtered[0]:null);}
  };
  useEffect(()=>{tableRef.current?.querySelector('[data-lookup-active="true"]')?.scrollIntoView({block:'nearest'});},[activeKey,current]);
- return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={details?'lg':'md'} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}>{title}</DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
+ return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={maxWidth||(details?'lg':'md')} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}>{title}</DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
+  {searchTools}
   <TextField inputRef={searchInputRef} autoFocus onFocus={event=>event.target.select()} fullWidth size="small" label={searchLabel||t.keyword} inputProps={searchInputProps} value={query} onChange={event=>onQueryChange(event.target.value)} onKeyDown={keyboard}/>
   <Box sx={{display:'grid',gridTemplateColumns:details?{xs:'minmax(0,1fr)',md:'minmax(0,1fr) minmax(0,1fr)'}:'minmax(0,1fr)',gap:2,minWidth:0}}>
    <Stack spacing={1} sx={{minWidth:0}}><TableContainer ref={tableRef} onKeyDown={keyboard} sx={{maxHeight:360,border:1,borderColor:'divider',borderRadius:1}}><Table data-table-layout="fixed" size="small" stickyHeader sx={{minWidth:tableMinWidth,tableLayout:"fixed","& th:last-child, & td:last-child":{width:80,textAlign:"center",boxShadow:"none !important"}}}><TableHead><TableRow>{columns.map(column=><TableCell key={column.key} align={column.align||'left'} sx={{width:column.width,whiteSpace:'nowrap'}}>{column.label}</TableCell>)}<TableCell sx={{width:64}}>{t.select}</TableCell></TableRow></TableHead><TableBody>

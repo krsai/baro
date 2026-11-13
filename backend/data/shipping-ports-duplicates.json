@@ -1,0 +1,2133 @@
+{
+  "policy": "Same UN/LOCODE only: retain the newest source Date; keep first on equal dates. Original alternatives retained here.",
+  "duplicates": [
+    {
+      "code": "AXMHQ",
+      "previous": {
+        "code": "AXMHQ",
+        "country": "AX",
+        "name": "Maarianhamina (Mariehamn)",
+        "ascii": "Maarianhamina (Mariehamn)",
+        "subdivision": "",
+        "functions": "1--4----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6006N 01957E"
+      },
+      "candidate": [
+        "",
+        "AX",
+        "MHQ",
+        "Mariehamn (Maarianhamina)",
+        "Mariehamn (Maarianhamina)",
+        "",
+        "1--4----",
+        "AI",
+        "1207",
+        "",
+        "6006N 01957E",
+        ""
+      ]
+    },
+    {
+      "code": "BEBRU",
+      "previous": {
+        "code": "BEBRU",
+        "country": "BE",
+        "name": "Brussel (Bruxelles)",
+        "ascii": "Brussel (Bruxelles)",
+        "subdivision": "BRU",
+        "functions": "1234----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "5050N 00420E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "BRU",
+        "Bruxelles (Brussel)",
+        "Bruxelles (Brussel)",
+        "BRU",
+        "1234----",
+        "AI",
+        "1101",
+        "",
+        "5050N 00420E",
+        ""
+      ]
+    },
+    {
+      "code": "BEITR",
+      "previous": {
+        "code": "BEITR",
+        "country": "BE",
+        "name": "Itter (Ittre)",
+        "ascii": "Itter (Ittre)",
+        "subdivision": "WBR",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5039N 00416E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "ITR",
+        "Ittre (Itter)",
+        "Ittre (Itter)",
+        "WBR",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5039N 00416E",
+        ""
+      ]
+    },
+    {
+      "code": "BEKAN",
+      "previous": {
+        "code": "BEKAN",
+        "country": "BE",
+        "name": "Canne (Kanne)",
+        "ascii": "Canne (Kanne)",
+        "subdivision": "VLI",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5049N 00540E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "KAN",
+        "Kanne (Canne)",
+        "Kanne (Canne)",
+        "VLI",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5049N 00540E",
+        ""
+      ]
+    },
+    {
+      "code": "BELNY",
+      "previous": {
+        "code": "BELNY",
+        "country": "BE",
+        "name": "Lanaye (Ternaaien)",
+        "ascii": "Lanaye (Ternaaien)",
+        "subdivision": "WLG",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5047N 00541E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "LNY",
+        "Ternaaien (Lanaye)",
+        "Ternaaien (Lanaye)",
+        "WLG",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5047N 00541E",
+        ""
+      ]
+    },
+    {
+      "code": "BEMSJ",
+      "previous": {
+        "code": "BEMSJ",
+        "country": "BE",
+        "name": "Molenbeek-Saint-Jean (Sint-Jans-Molenbeek)/Brussel (Bruxelles)",
+        "ascii": "Molenbeek-Saint-Jean (Sint-Jans-Molenbeek)/Brussel (Bruxelles)",
+        "subdivision": "BRU",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5051N 00419E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "MSJ",
+        "Sint-Jans-Molenbeek (Molenbeek-Saint-Jean)/Brussel (Bruxelles)",
+        "Sint-Jans-Molenbeek (Molenbeek-Saint-Jean)/Brussel (Bruxelles)",
+        "BRU",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5051N 00419E",
+        ""
+      ]
+    },
+    {
+      "code": "BEODE",
+      "previous": {
+        "code": "BEODE",
+        "country": "BE",
+        "name": "Auderghem (Oudergem)/Brussel (Bruxelles)",
+        "ascii": "Auderghem (Oudergem)/Brussel (Bruxelles)",
+        "subdivision": "BRU",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5049N 00426E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "ODE",
+        "Oudergem (Auderghem)/Brussel (Bruxelles)",
+        "Oudergem (Auderghem)/Brussel (Bruxelles)",
+        "BRU",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5049N 00426E",
+        ""
+      ]
+    },
+    {
+      "code": "BEOST",
+      "previous": {
+        "code": "BEOST",
+        "country": "BE",
+        "name": "Oostende (Ostend)",
+        "ascii": "Oostende (Ostend)",
+        "subdivision": "VWV",
+        "functions": "123-----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "5112N 00255E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "OST",
+        "Ostend (Oostende)",
+        "Ostend (Oostende)",
+        "VWV",
+        "123-----",
+        "AI",
+        "1201",
+        "",
+        "5112N 00255E",
+        ""
+      ]
+    },
+    {
+      "code": "BESPI",
+      "previous": {
+        "code": "BESPI",
+        "country": "BE",
+        "name": "Espierres (Spiere)",
+        "ascii": "Espierres (Spiere)",
+        "subdivision": "VWV",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5043N 00321E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "SPI",
+        "Spiere (Espierres)",
+        "Spiere (Espierres)",
+        "VWV",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5043N 00321E",
+        ""
+      ]
+    },
+    {
+      "code": "BETRN",
+      "previous": {
+        "code": "BETRN",
+        "country": "BE",
+        "name": "Doornik (Tournai)",
+        "ascii": "Doornik (Tournai)",
+        "subdivision": "WHT",
+        "functions": "123-----",
+        "status": "RN",
+        "iata": "ZGQ",
+        "coordinates": "5036N 00323E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "TRN",
+        "Tournai (Doornik)",
+        "Tournai (Doornik)",
+        "WHT",
+        "123-----",
+        "RN",
+        "0307",
+        "ZGQ",
+        "5036N 00323E",
+        ""
+      ]
+    },
+    {
+      "code": "BEZUN",
+      "previous": {
+        "code": "BEZUN",
+        "country": "BE",
+        "name": "Zuen (Zuun)",
+        "ascii": "Zuen (Zuun)",
+        "subdivision": "VBR",
+        "functions": "1-3-----",
+        "status": "RN",
+        "iata": "",
+        "coordinates": "5047N 00416E"
+      },
+      "candidate": [
+        "",
+        "BE",
+        "ZUN",
+        "Zuun (Zuen)",
+        "Zuun (Zuen)",
+        "VBR",
+        "1-3-----",
+        "RN",
+        "0307",
+        "",
+        "5047N 00416E",
+        ""
+      ]
+    },
+    {
+      "code": "FIDLS",
+      "previous": {
+        "code": "FIDLS",
+        "country": "FI",
+        "name": "Dalsbruk (Taalintehdas)",
+        "ascii": "Dalsbruk (Taalintehdas)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6001N 02231E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "DLS",
+        "Taalintehdas (Dalsbruk)",
+        "Taalintehdas (Dalsbruk)",
+        "19",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "6001N 02231E",
+        ""
+      ]
+    },
+    {
+      "code": "FIEJO",
+      "previous": {
+        "code": "FIEJO",
+        "country": "FI",
+        "name": "Eurajoki (Euraåminne)",
+        "ascii": "Eurajoki (Euraaminne)",
+        "subdivision": "17",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6112N 02144E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "EJO",
+        "Euraåminne (Eurajoki)",
+        "Euraaminne (Eurajoki)",
+        "17",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "6112N 02144E",
+        ""
+      ]
+    },
+    {
+      "code": "FIESP",
+      "previous": {
+        "code": "FIESP",
+        "country": "FI",
+        "name": "Esbo (Espoo)",
+        "ascii": "Esbo (Espoo)",
+        "subdivision": "18",
+        "functions": "1-3--6--",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6012N 02439E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "ESP",
+        "Espoo (Esbo)",
+        "Espoo (Esbo)",
+        "18",
+        "1-3--6--",
+        "AI",
+        "1401",
+        "",
+        "6012N 02439E",
+        ""
+      ]
+    },
+    {
+      "code": "FIHEL",
+      "previous": {
+        "code": "FIHEL",
+        "country": "FI",
+        "name": "Helsingfors (Helsinki)",
+        "ascii": "Helsingfors (Helsinki)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "¦",
+        "FI",
+        "HEL",
+        "Helsinki",
+        "Helsinki",
+        "18",
+        "1-345---",
+        "AS",
+        "2501",
+        "",
+        "6010N 02456E",
+        ""
+      ]
+    },
+    {
+      "code": "FIHKO",
+      "previous": {
+        "code": "FIHKO",
+        "country": "FI",
+        "name": "Hangö (Hanko)",
+        "ascii": "Hango (Hanko)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "FI",
+        "HKO",
+        "Hanko (Hangö)",
+        "Hanko (Hango)",
+        "18",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "FIHMN",
+      "previous": {
+        "code": "FIHMN",
+        "country": "FI",
+        "name": "Fredrikshamn (Hamina)",
+        "ascii": "Fredrikshamn (Hamina)",
+        "subdivision": "09",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "QVZ",
+        "coordinates": "6034N 02712E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "HMN",
+        "Hamina (Fredrikshamn)",
+        "Hamina (Fredrikshamn)",
+        "09",
+        "1-------",
+        "AI",
+        "1307",
+        "QVZ",
+        "6034N 02712E",
+        ""
+      ]
+    },
+    {
+      "code": "FIHOU",
+      "previous": {
+        "code": "FIHOU",
+        "country": "FI",
+        "name": "Houtskari (Houtskär)",
+        "ascii": "Houtskari (Houtskar)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6013N 02123E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "HOU",
+        "Houtskär (Houtskari)",
+        "Houtskar (Houtskari)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6013N 02123E",
+        ""
+      ]
+    },
+    {
+      "code": "FIIIS",
+      "previous": {
+        "code": "FIIIS",
+        "country": "FI",
+        "name": "Idensalmi (Iisalmi)",
+        "ascii": "Idensalmi (Iisalmi)",
+        "subdivision": "15",
+        "functions": "123-----",
+        "status": "AC",
+        "iata": "",
+        "coordinates": "6333N 02711E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "IIS",
+        "Iisalmi (Idensalmi)",
+        "Iisalmi (Idensalmi)",
+        "15",
+        "123-----",
+        "AC",
+        "1307",
+        "",
+        "6333N 02711E",
+        ""
+      ]
+    },
+    {
+      "code": "FIINK",
+      "previous": {
+        "code": "FIINK",
+        "country": "FI",
+        "name": "Ingå (Inkoo)",
+        "ascii": "Inga (Inkoo)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "FI",
+        "INK",
+        "Inkoo (Ingå)",
+        "Inkoo (Inga)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "FIKAS",
+      "previous": {
+        "code": "FIKAS",
+        "country": "FI",
+        "name": "Kaskinen (Kaskö)",
+        "ascii": "Kaskinen (Kasko)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6037N 02153E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KAS",
+        "Kaskö (Kaskinen)",
+        "Kasko (Kaskinen)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6037N 02153E",
+        ""
+      ]
+    },
+    {
+      "code": "FIKEM",
+      "previous": {
+        "code": "FIKEM",
+        "country": "FI",
+        "name": "Kemi/Torneå (Kemi/Tornio)",
+        "ascii": "Kemi/Tornea (Kemi/Tornio)",
+        "subdivision": "10",
+        "functions": "1-34----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6544N 02434E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KEM",
+        "Kemi/Tornio (Kemi/Torneå)",
+        "Kemi/Tornio (Kemi/Tornea)",
+        "10",
+        "1-34----",
+        "AI",
+        "1307",
+        "",
+        "6544N 02434E",
+        ""
+      ]
+    },
+    {
+      "code": "FIKIM",
+      "previous": {
+        "code": "FIKIM",
+        "country": "FI",
+        "name": "Kemiö (Kimito)",
+        "ascii": "Kemio (Kimito)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6010N 02245E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KIM",
+        "Kimito (Kemiö)",
+        "Kimito (Kemio)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6010N 02245E",
+        ""
+      ]
+    },
+    {
+      "code": "FIKOK",
+      "previous": {
+        "code": "FIKOK",
+        "country": "FI",
+        "name": "Karleby (Kokkola)",
+        "ascii": "Karleby (Kokkola)",
+        "subdivision": "07",
+        "functions": "123-----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6350N 02307E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KOK",
+        "Kokkola (Karleby)",
+        "Kokkola (Karleby)",
+        "07",
+        "123-----",
+        "AI",
+        "1307",
+        "",
+        "6350N 02307E",
+        ""
+      ]
+    },
+    {
+      "code": "FIKOR",
+      "previous": {
+        "code": "FIKOR",
+        "country": "FI",
+        "name": "Korpo (Korppoo)",
+        "ascii": "Korpo (Korppoo)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6010N 02134E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KOR",
+        "Korppoo (Korpo)",
+        "Korppoo (Korpo)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6010N 02134E",
+        ""
+      ]
+    },
+    {
+      "code": "FIKRS",
+      "previous": {
+        "code": "FIKRS",
+        "country": "FI",
+        "name": "Kristiinankaupunki (Kristinestad)",
+        "ascii": "Kristiinankaupunki (Kristinestad)",
+        "subdivision": "12",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6217N 02123E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KRS",
+        "Kristinestad (Kristiinankaupunki)",
+        "Kristinestad (Kristiinankaupunki)",
+        "12",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6217N 02123E",
+        ""
+      ]
+    },
+    {
+      "code": "FIKUS",
+      "previous": {
+        "code": "FIKUS",
+        "country": "FI",
+        "name": "Gustavs (Kustavi)",
+        "ascii": "Gustavs (Kustavi)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KUS",
+        "Kustavi (Gustavs)",
+        "Kustavi (Gustavs)",
+        "19",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "FIKVH",
+      "previous": {
+        "code": "FIKVH",
+        "country": "FI",
+        "name": "Koverhaara (Koverhar)",
+        "ascii": "Koverhaara (Koverhar)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "5952N 02313E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "KVH",
+        "Koverhar (Koverhaara)",
+        "Koverhar (Koverhaara)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "5952N 02313E",
+        ""
+      ]
+    },
+    {
+      "code": "FILAP",
+      "previous": {
+        "code": "FILAP",
+        "country": "FI",
+        "name": "Lappohja (Lappvik)",
+        "ascii": "Lappohja (Lappvik)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "5954N 02315E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "LAP",
+        "Lappvik (Lappohja)",
+        "Lappvik (Lappohja)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "5954N 02315E",
+        ""
+      ]
+    },
+    {
+      "code": "FILOV",
+      "previous": {
+        "code": "FILOV",
+        "country": "FI",
+        "name": "Loviisa (Lovisa)",
+        "ascii": "Loviisa (Lovisa)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "QKI",
+        "coordinates": "6027N 02614E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "LOV",
+        "Lovisa (Loviisa)",
+        "Lovisa (Loviisa)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "QKI",
+        "6027N 02614E",
+        ""
+      ]
+    },
+    {
+      "code": "FILPP",
+      "previous": {
+        "code": "FILPP",
+        "country": "FI",
+        "name": "Lappeenranta (Villmanstrand)",
+        "ascii": "Lappeenranta (Villmanstrand)",
+        "subdivision": "02",
+        "functions": "1234---B",
+        "status": "AC",
+        "iata": "",
+        "coordinates": "6103N 02811E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "LPP",
+        "Villmanstrand (Lappeenranta)",
+        "Villmanstrand (Lappeenranta)",
+        "02",
+        "1234---B",
+        "AC",
+        "1307",
+        "",
+        "6103N 02811E",
+        ""
+      ]
+    },
+    {
+      "code": "FIMER",
+      "previous": {
+        "code": "FIMER",
+        "country": "FI",
+        "name": "Merikarvia (Sastmola)",
+        "ascii": "Merikarvia (Sastmola)",
+        "subdivision": "17",
+        "functions": "1-------",
+        "status": "AF",
+        "iata": "",
+        "coordinates": "6151N 02130E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "MER",
+        "Sastmola (Merikarvia)",
+        "Sastmola (Merikarvia)",
+        "17",
+        "1-------",
+        "AF",
+        "1401",
+        "",
+        "6151N 02130E",
+        ""
+      ]
+    },
+    {
+      "code": "FIMHQ",
+      "previous": {
+        "code": "FIMHQ",
+        "country": "FI",
+        "name": "Maarianhamina (Mariehamn)",
+        "ascii": "Maarianhamina (Mariehamn)",
+        "subdivision": "01",
+        "functions": "1--4----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6006N 01957E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "MHQ",
+        "Mariehamn (Maarianhamina)",
+        "Mariehamn (Maarianhamina)",
+        "01",
+        "1--4----",
+        "AI",
+        "1307",
+        "",
+        "6006N 01957E",
+        ""
+      ]
+    },
+    {
+      "code": "FIMIK",
+      "previous": {
+        "code": "FIMIK",
+        "country": "FI",
+        "name": "Mikkeli (Sankt Michel)",
+        "ascii": "Mikkeli (Sankt Michel)",
+        "subdivision": "04",
+        "functions": "1234----",
+        "status": "AC",
+        "iata": "",
+        "coordinates": "6141N 02716E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "MIK",
+        "Sankt Michel (Mikkeli)",
+        "Sankt Michel (Mikkeli)",
+        "04",
+        "1234----",
+        "AC",
+        "1307",
+        "",
+        "6141N 02716E",
+        ""
+      ]
+    },
+    {
+      "code": "FINAU",
+      "previous": {
+        "code": "FINAU",
+        "country": "FI",
+        "name": "Nagu (Nauvo)",
+        "ascii": "Nagu (Nauvo)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6011N 02155E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "NAU",
+        "Nauvo (Nagu)",
+        "Nauvo (Nagu)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6011N 02155E",
+        ""
+      ]
+    },
+    {
+      "code": "FINLI",
+      "previous": {
+        "code": "FINLI",
+        "country": "FI",
+        "name": "Naantali (Nådendal)",
+        "ascii": "Naantali (Nadendal)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6027N 02202E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "NLI",
+        "Nådendal (Naantali)",
+        "Nadendal (Naantali)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6027N 02202E",
+        ""
+      ]
+    },
+    {
+      "code": "FIOUL",
+      "previous": {
+        "code": "FIOUL",
+        "country": "FI",
+        "name": "Oulu (Uleåborg)",
+        "ascii": "Oulu (Uleaborg)",
+        "subdivision": "14",
+        "functions": "1234----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6501N 02528E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "OUL",
+        "Uleåborg (Oulu)",
+        "Uleaborg (Oulu)",
+        "14",
+        "1234----",
+        "AI",
+        "1307",
+        "",
+        "6501N 02528E",
+        ""
+      ]
+    },
+    {
+      "code": "FIPAR",
+      "previous": {
+        "code": "FIPAR",
+        "country": "FI",
+        "name": "Parainen (Pargas)",
+        "ascii": "Parainen (Pargas)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6018N 02218E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "PAR",
+        "Pargas (Parainen)",
+        "Pargas (Parainen)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6018N 02218E",
+        ""
+      ]
+    },
+    {
+      "code": "FIPER",
+      "previous": {
+        "code": "FIPER",
+        "country": "FI",
+        "name": "Pernaja (Pernå)",
+        "ascii": "Pernaja (Perna)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6027N 02603E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "PER",
+        "Pernå (Pernaja)",
+        "Perna (Pernaja)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6027N 02603E",
+        ""
+      ]
+    },
+    {
+      "code": "FIPOH",
+      "previous": {
+        "code": "FIPOH",
+        "country": "FI",
+        "name": "Pohjankuru (Skuru)",
+        "ascii": "Pohjankuru (Skuru)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AF",
+        "iata": "",
+        "coordinates": "6007N 02333E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "POH",
+        "Skuru (Pohjankuru)",
+        "Skuru (Pohjankuru)",
+        "18",
+        "1-------",
+        "AF",
+        "1401",
+        "",
+        "6007N 02333E",
+        ""
+      ]
+    },
+    {
+      "code": "FIPOR",
+      "previous": {
+        "code": "FIPOR",
+        "country": "FI",
+        "name": "Björneborg (Pori)",
+        "ascii": "Bjorneborg (Pori)",
+        "subdivision": "17",
+        "functions": "1-34----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6129N 02148E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "POR",
+        "Pori (Björneborg)",
+        "Pori (Bjorneborg)",
+        "17",
+        "1-34----",
+        "AI",
+        "1307",
+        "",
+        "6129N 02148E",
+        ""
+      ]
+    },
+    {
+      "code": "FIPRS",
+      "previous": {
+        "code": "FIPRS",
+        "country": "FI",
+        "name": "Jakobstad (Pietarsaari)",
+        "ascii": "Jakobstad (Pietarsaari)",
+        "subdivision": "12",
+        "functions": "123-----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6341N 02247E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "PRS",
+        "Pietarsaari (Jakobstad)",
+        "Pietarsaari (Jakobstad)",
+        "12",
+        "123-----",
+        "AI",
+        "1307",
+        "",
+        "6341N 02247E",
+        ""
+      ]
+    },
+    {
+      "code": "FIPRV",
+      "previous": {
+        "code": "FIPRV",
+        "country": "FI",
+        "name": "Borgå (Porvoo)",
+        "ascii": "Borga (Porvoo)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6024N 02540E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "PRV",
+        "Porvoo (Borgå)",
+        "Porvoo (Borga)",
+        "18",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "6024N 02540E",
+        ""
+      ]
+    },
+    {
+      "code": "FIRAA",
+      "previous": {
+        "code": "FIRAA",
+        "country": "FI",
+        "name": "Brahestad (Raahe)",
+        "ascii": "Brahestad (Raahe)",
+        "subdivision": "14",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6441N 02429E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "RAA",
+        "Raahe (Brahestad)",
+        "Raahe (Brahestad)",
+        "14",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "6441N 02429E",
+        ""
+      ]
+    },
+    {
+      "code": "FIRAU",
+      "previous": {
+        "code": "FIRAU",
+        "country": "FI",
+        "name": "Rauma (Raumo)",
+        "ascii": "Rauma (Raumo)",
+        "subdivision": "17",
+        "functions": "123----B",
+        "status": "AC",
+        "iata": "",
+        "coordinates": "6108N 02130E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "RAU",
+        "Raumo (Rauma)",
+        "Raumo (Rauma)",
+        "17",
+        "123----B",
+        "AC",
+        "1401",
+        "",
+        "6108N 02130E",
+        ""
+      ]
+    },
+    {
+      "code": "FIRUO",
+      "previous": {
+        "code": "FIRUO",
+        "country": "FI",
+        "name": "Ruotsinpyhtää (Strömfors)",
+        "ascii": "Ruotsinpyhtaa (Stromfors)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AF",
+        "iata": "",
+        "coordinates": "6032N 02627E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "RUO",
+        "Strömfors (Ruotsinpyhtää)",
+        "Stromfors (Ruotsinpyhtaa)",
+        "18",
+        "1-------",
+        "AF",
+        "1401",
+        "",
+        "6032N 02627E",
+        ""
+      ]
+    },
+    {
+      "code": "FIRYM",
+      "previous": {
+        "code": "FIRYM",
+        "country": "FI",
+        "name": "Rimito (Rymättylä)",
+        "ascii": "Rimito (Rymattyla)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AF",
+        "iata": "",
+        "coordinates": "6022N 02157E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "RYM",
+        "Rymättylä (Rimito)",
+        "Rymattyla (Rimito)",
+        "19",
+        "1-------",
+        "AF",
+        "1401",
+        "",
+        "6022N 02157E",
+        ""
+      ]
+    },
+    {
+      "code": "FISBG",
+      "previous": {
+        "code": "FISBG",
+        "country": "FI",
+        "name": "Suomenlinna (Sveaborg)",
+        "ascii": "Suomenlinna (Sveaborg)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "RL",
+        "iata": "",
+        "coordinates": "6008N 02459E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "SBG",
+        "Sveaborg (Suomenlinna)",
+        "Sveaborg (Suomenlinna)",
+        "18",
+        "1-------",
+        "RL",
+        "1401",
+        "",
+        "6008N 02459E",
+        ""
+      ]
+    },
+    {
+      "code": "FISIP",
+      "previous": {
+        "code": "FISIP",
+        "country": "FI",
+        "name": "Sibbo (Sipoo)",
+        "ascii": "Sibbo (Sipoo)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6022N 02516E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "SIP",
+        "Sipoo (Sibbo)",
+        "Sipoo (Sibbo)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6022N 02516E",
+        ""
+      ]
+    },
+    {
+      "code": "FISKV",
+      "previous": {
+        "code": "FISKV",
+        "country": "FI",
+        "name": "Kilpilahti (Sköldvik)",
+        "ascii": "Kilpilahti (Skoldvik)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6018N 02533E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "SKV",
+        "Sköldvik (Kilpilahti)",
+        "Skoldvik (Kilpilahti)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6018N 02533E",
+        ""
+      ]
+    },
+    {
+      "code": "FISVL",
+      "previous": {
+        "code": "FISVL",
+        "country": "FI",
+        "name": "Nyslott (Savonlinna)",
+        "ascii": "Nyslott (Savonlinna)",
+        "subdivision": "04",
+        "functions": "1234----",
+        "status": "AC",
+        "iata": "",
+        "coordinates": "6152N 02854E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "SVL",
+        "Savonlinna (Nyslott)",
+        "Savonlinna (Nyslott)",
+        "04",
+        "1234----",
+        "AC",
+        "1307",
+        "",
+        "6152N 02854E",
+        ""
+      ]
+    },
+    {
+      "code": "FITAI",
+      "previous": {
+        "code": "FITAI",
+        "country": "FI",
+        "name": "Ekenäs (Tammisaari)",
+        "ascii": "Ekenas (Tammisaari)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "5958N 02326E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "TAI",
+        "Tammisaari (Ekenäs)",
+        "Tammisaari (Ekenas)",
+        "18",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "5958N 02326E",
+        ""
+      ]
+    },
+    {
+      "code": "FITKU",
+      "previous": {
+        "code": "FITKU",
+        "country": "FI",
+        "name": "Turku (Åbo)",
+        "ascii": "Turku (Abo)",
+        "subdivision": "19",
+        "functions": "1-34----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6027N 02217E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "TKU",
+        "Åbo (Turku)",
+        "Abo (Turku)",
+        "19",
+        "1-34----",
+        "AI",
+        "1307",
+        "",
+        "6027N 02217E",
+        ""
+      ]
+    },
+    {
+      "code": "FITMP",
+      "previous": {
+        "code": "FITMP",
+        "country": "FI",
+        "name": "Tammerfors (Tampere)",
+        "ascii": "Tammerfors (Tampere)",
+        "subdivision": "17",
+        "functions": "12-4---B",
+        "status": "AF",
+        "iata": "",
+        "coordinates": "6130N 02345E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "TMP",
+        "Tampere (Tammerfors)",
+        "Tampere (Tammerfors)",
+        "17",
+        "12-4---B",
+        "AF",
+        "1307",
+        "",
+        "6130N 02345E",
+        ""
+      ]
+    },
+    {
+      "code": "FITOK",
+      "previous": {
+        "code": "FITOK",
+        "country": "FI",
+        "name": "Tolkis (Tolkkinen)",
+        "ascii": "Tolkis (Tolkkinen)",
+        "subdivision": "18",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6020N 02535E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "TOK",
+        "Tolkkinen (Tolkis)",
+        "Tolkkinen (Tolkis)",
+        "18",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6020N 02535E",
+        ""
+      ]
+    },
+    {
+      "code": "FITOR",
+      "previous": {
+        "code": "FITOR",
+        "country": "FI",
+        "name": "Torneå (Tornio)",
+        "ascii": "Tornea (Tornio)",
+        "subdivision": "10",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6551N 02411E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "TOR",
+        "Tornio (Torneå)",
+        "Tornio (Tornea)",
+        "10",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6551N 02411E",
+        ""
+      ]
+    },
+    {
+      "code": "FITVS",
+      "previous": {
+        "code": "FITVS",
+        "country": "FI",
+        "name": "Taivassalo (Tövsala)",
+        "ascii": "Taivassalo (Tovsala)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6034N 02136E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "TVS",
+        "Tövsala (Taivassalo)",
+        "Tovsala (Taivassalo)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6034N 02136E",
+        ""
+      ]
+    },
+    {
+      "code": "FIUKI",
+      "previous": {
+        "code": "FIUKI",
+        "country": "FI",
+        "name": "Nystad (Uusikaupunki)",
+        "ascii": "Nystad (Uusikaupunki)",
+        "subdivision": "19",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6048N 02125E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "UKI",
+        "Uusikaupunki (Nystad)",
+        "Uusikaupunki (Nystad)",
+        "19",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6048N 02125E",
+        ""
+      ]
+    },
+    {
+      "code": "FIUKP",
+      "previous": {
+        "code": "FIUKP",
+        "country": "FI",
+        "name": "Nykarleby (Uusikaarlepyy)",
+        "ascii": "Nykarleby (Uusikaarlepyy)",
+        "subdivision": "12",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6332N 02232E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "UKP",
+        "Uusikaarlepyy (Nykarleby)",
+        "Uusikaarlepyy (Nykarleby)",
+        "12",
+        "1-------",
+        "AI",
+        "1401",
+        "",
+        "6332N 02232E",
+        ""
+      ]
+    },
+    {
+      "code": "FIVAA",
+      "previous": {
+        "code": "FIVAA",
+        "country": "FI",
+        "name": "Vaasa (Vasa)",
+        "ascii": "Vaasa (Vasa)",
+        "subdivision": "12",
+        "functions": "1-34----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "6306N 02136E"
+      },
+      "candidate": [
+        "",
+        "FI",
+        "VAA",
+        "Vasa (Vaasa)",
+        "Vasa (Vaasa)",
+        "12",
+        "1-34----",
+        "AI",
+        "1307",
+        "",
+        "6306N 02136E",
+        ""
+      ]
+    },
+    {
+      "code": "FIVKO",
+      "previous": {
+        "code": "FIVKO",
+        "country": "FI",
+        "name": "Valko (Valkom)",
+        "ascii": "Valko (Valkom)",
+        "subdivision": "18",
+        "functions": "1-3-----",
+        "status": "AC",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "FI",
+        "VKO",
+        "Valkom (Valko)",
+        "Valkom (Valko)",
+        "18",
+        "1-3-----",
+        "AC",
+        "1401",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "GRHER",
+      "previous": {
+        "code": "GRHER",
+        "country": "GR",
+        "name": "Heraklion (Iraklion)",
+        "ascii": "Heraklion (Iraklion)",
+        "subdivision": "91",
+        "functions": "1--4----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3520N 02510E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "HER",
+        "Iraklion (Heraklion)",
+        "Iraklion (Heraklion)",
+        "91",
+        "1--4----",
+        "AI",
+        "1101",
+        "",
+        "3520N 02510E",
+        ""
+      ]
+    },
+    {
+      "code": "GRHYD",
+      "previous": {
+        "code": "GRHYD",
+        "country": "GR",
+        "name": "Hydra (Idhra)",
+        "ascii": "Hydra (Idhra)",
+        "subdivision": "",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3721N 02328E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "HYD",
+        "Idhra (Hydra)",
+        "Idhra (Hydra)",
+        "",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "3721N 02328E",
+        ""
+      ]
+    },
+    {
+      "code": "GRJSY",
+      "previous": {
+        "code": "GRJSY",
+        "country": "GR",
+        "name": "Syra (Syros)",
+        "ascii": "Syra (Syros)",
+        "subdivision": "",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "GR",
+        "JSY",
+        "Syros (Syra)",
+        "Syros (Syra)",
+        "",
+        "1-------",
+        "AI",
+        "9601",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "GRKIM",
+      "previous": {
+        "code": "GRKIM",
+        "country": "GR",
+        "name": "Kimi (Kými)",
+        "ascii": "Kimi (Kymi)",
+        "subdivision": "",
+        "functions": "1-3-----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3838N 02406E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "KIM",
+        "Kými (Kimi)",
+        "Kymi (Kimi)",
+        "",
+        "1-3-----",
+        "AI",
+        "1301",
+        "",
+        "3838N 02406E",
+        ""
+      ]
+    },
+    {
+      "code": "GRLAV",
+      "previous": {
+        "code": "GRLAV",
+        "country": "GR",
+        "name": "Laurium (Lavrion)",
+        "ascii": "Laurium (Lavrion)",
+        "subdivision": "",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3743N 02404E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "LAV",
+        "Lavrion (Laurium)",
+        "Lavrion (Laurium)",
+        "",
+        "1-------",
+        "AI",
+        "1307",
+        "",
+        "3743N 02404E",
+        ""
+      ]
+    },
+    {
+      "code": "GRLEV",
+      "previous": {
+        "code": "GRLEV",
+        "country": "GR",
+        "name": "Lefkáda (Lefkás)",
+        "ascii": "Lefkada (Lefkas)",
+        "subdivision": "",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3850N 02042E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "LEV",
+        "Lefkás (Lefkáda)",
+        "Lefkas (Lefkada)",
+        "",
+        "1-------",
+        "AI",
+        "0212",
+        "",
+        "3850N 02042E",
+        ""
+      ]
+    },
+    {
+      "code": "GRSYS",
+      "previous": {
+        "code": "GRSYS",
+        "country": "GR",
+        "name": "Stylis (Stylída)",
+        "ascii": "Stylis (Stylida)",
+        "subdivision": "06",
+        "functions": "1-3-----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3855N 02237E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "SYS",
+        "Stylída (Stylis)",
+        "Stylida (Stylis)",
+        "06",
+        "1-3-----",
+        "AI",
+        "1301",
+        "",
+        "3855N 02237E",
+        ""
+      ]
+    },
+    {
+      "code": "GRVTH",
+      "previous": {
+        "code": "GRVTH",
+        "country": "GR",
+        "name": "Port Vathý (Vathý)",
+        "ascii": "Port Vathy (Vathy)",
+        "subdivision": "84",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3745N 02659E"
+      },
+      "candidate": [
+        "",
+        "GR",
+        "VTH",
+        "Vathý (Port Vathý)",
+        "Vathy (Port Vathy)",
+        "84",
+        "1-------",
+        "AI",
+        "1301",
+        "",
+        "3745N 02659E",
+        ""
+      ]
+    },
+    {
+      "code": "INMRM",
+      "previous": {
+        "code": "INMRM",
+        "country": "IN",
+        "name": "Marmagao (Marmugao)",
+        "ascii": "Marmagao (Marmugao)",
+        "subdivision": "GA",
+        "functions": "123-----",
+        "status": "AA",
+        "iata": "",
+        "coordinates": "1524N 07347E"
+      },
+      "candidate": [
+        "",
+        "IN",
+        "MRM",
+        "Marmugao (Marmagao)",
+        "Marmugao (Marmagao)",
+        "GA",
+        "123-----",
+        "AA",
+        "0207",
+        "",
+        "1524N 07347E",
+        ""
+      ]
+    },
+    {
+      "code": "INNSA",
+      "previous": {
+        "code": "INNSA",
+        "country": "IN",
+        "name": "Jawaharlal Nehru (Nhava Sheva)",
+        "ascii": "Jawaharlal Nehru (Nhava Sheva)",
+        "subdivision": "MH",
+        "functions": "1-------",
+        "status": "AA",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "IN",
+        "NSA",
+        "Nhava Sheva (Jawaharlal Nehru)",
+        "Nhava Sheva (Jawaharlal Nehru)",
+        "MH",
+        "1-------",
+        "AA",
+        "0002",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "ITFCO",
+      "previous": {
+        "code": "ITFCO",
+        "country": "IT",
+        "name": "Fiumicino",
+        "ascii": "Fiumicino",
+        "subdivision": "RM",
+        "functions": "1--4----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "4146N 01214E"
+      },
+      "candidate": [
+        "",
+        "IT",
+        "FCO",
+        "Fiumicino Apt/Roma",
+        "Fiumicino Apt/Roma",
+        "RM",
+        "1--4----",
+        "AI",
+        "1801",
+        "",
+        "4146N 01214E",
+        ""
+      ]
+    },
+    {
+      "code": "ITPFX",
+      "previous": {
+        "code": "ITPFX",
+        "country": "IT",
+        "name": "Porto Foxi (Sarroch)",
+        "ascii": "Porto Foxi (Sarroch)",
+        "subdivision": "",
+        "functions": "1-------",
+        "status": "AI",
+        "iata": "",
+        "coordinates": "3903N 00900E"
+      },
+      "candidate": [
+        "",
+        "IT",
+        "PFX",
+        "Sarroch (Porto Foxi)",
+        "Sarroch (Porto Foxi)",
+        "",
+        "1-------",
+        "AI",
+        "0307",
+        "",
+        "3903N 00900E",
+        ""
+      ]
+    },
+    {
+      "code": "USEWB",
+      "previous": {
+        "code": "USEWB",
+        "country": "US",
+        "name": "Fall River-New Bedford Apt",
+        "ascii": "Fall River-New Bedford Apt",
+        "subdivision": "MA",
+        "functions": "1--4----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "US",
+        "EWB",
+        "New Bedford-Fall River Apt",
+        "New Bedford-Fall River Apt",
+        "MA",
+        "1--4----",
+        "AI",
+        "9506",
+        "",
+        "",
+        "cf US FAV, US NBD"
+      ]
+    },
+    {
+      "code": "USGON",
+      "previous": {
+        "code": "USGON",
+        "country": "US",
+        "name": "Groton-New London Apt",
+        "ascii": "Groton-New London Apt",
+        "subdivision": "CT",
+        "functions": "1-34----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "US",
+        "GON",
+        "New London-Groton Apt",
+        "New London-Groton Apt",
+        "CT",
+        "1-34----",
+        "AI",
+        "2101",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "code": "USOXR",
+      "previous": {
+        "code": "USOXR",
+        "country": "US",
+        "name": "Oxnard-Ventura Apt",
+        "ascii": "Oxnard-Ventura Apt",
+        "subdivision": "CA",
+        "functions": "1-34----",
+        "status": "AI",
+        "iata": "",
+        "coordinates": ""
+      },
+      "candidate": [
+        "",
+        "US",
+        "OXR",
+        "Ventura-Oxnard Apt",
+        "Ventura-Oxnard Apt",
+        "CA",
+        "1-34----",
+        "AI",
+        "9506",
+        "",
+        "",
+        ""
+      ]
+    }
+  ]
+}

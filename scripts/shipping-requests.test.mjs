@@ -105,7 +105,7 @@ test('shipping migration preserves pre-existing transport rows, document snapsho
   await issueFreightDocument(f.db,org,actor,'jobs',job.id,{kind:'AN',clientKey:randomUUID(),version:source.version,revision:source.revision});
   previous=await Promise.all(['FreightJob','FreightDocument','FreightAudit','BankLedgerEntry','ExpenseRequest','Invoice','TransportExchange'].map(table=>f.db.$queryRawUnsafe(`SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY id),'[]'::jsonb) rows FROM "${table}" t`)));
  }});try{
-  const after=await Promise.all(['FreightJob','FreightDocument','FreightAudit','BankLedgerEntry','ExpenseRequest','Invoice','TransportExchange'].map(table=>f.db.$queryRawUnsafe(`SELECT coalesce(jsonb_agg(${table==='FreightJob'?"to_jsonb(t)-ARRAY['receiptStatus','requesterOrgId','requestCreatedByOrgId','requestCreatedByEmployeeId','requestSnapshot','sharedSnapshot']":"to_jsonb(t)"} ORDER BY id),'[]'::jsonb) rows FROM "${table}" t`)));
+  const after=await Promise.all(['FreightJob','FreightDocument','FreightAudit','BankLedgerEntry','ExpenseRequest','Invoice','TransportExchange'].map(table=>f.db.$queryRawUnsafe(`SELECT coalesce(jsonb_agg(${table==='FreightJob'?"to_jsonb(t)-ARRAY['receiptStatus','requesterOrgId','requestCreatedByOrgId','requestCreatedByEmployeeId','requestSnapshot','sharedSnapshot','originPortCode','destinationPortCode']":"to_jsonb(t)"} ORDER BY id),'[]'::jsonb) rows FROM "${table}" t`)));
   assert.deepEqual(after,previous);
   const row=(await f.db.$queryRawUnsafe('SELECT "receiptStatus","requesterOrgId" FROM "FreightJob" WHERE id=$1',jobId))[0];assert.equal(row.receiptStatus,'ACCEPTED');assert.equal(row.requesterOrgId,null);
  }finally{await f.close();}

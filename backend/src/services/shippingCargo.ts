@@ -6,13 +6,20 @@ export function shippingCargo(data:any,mode:string){
  if(data.cargoSchemaVersion==null)return {};
  if(data.cargoSchemaVersion!==1)fail();
  const result:any={cargoSchemaVersion:1};
+ if(data.hsCode!=null){if(typeof data.hsCode!=='string'||data.hsCode!==''&&!/^\d{4}(?:\.?\d{2}){0,4}$/.test(data.hsCode))fail();result.hsCode=data.hsCode;}
+ if(data.dgClass!==undefined||data.unNumber!==undefined){
+  if(typeof data.dgClass!=='string'||typeof data.unNumber!=='string')fail();
+  if((data.dangerousGoods||data.dgClass)&&!['1.1','1.2','1.3','1.4','1.5','1.6','2.1','2.2','2.3','3','4.1','4.2','4.3','5.1','5.2','6.1','6.2','7','8','9'].includes(data.dgClass))fail();
+  if((data.dangerousGoods||data.unNumber)&&!/^\d{4}$/.test(data.unNumber))fail();
+  result.dgClass=data.dgClass;result.unNumber=data.unNumber;
+ }
  if(typeof data.cargo!=='string'||!data.cargo.trim())fail();
- if(data.dangerousGoods&&(typeof data.dangerousGoodsDetails!=='string'||!data.dangerousGoodsDetails.trim()||data.dangerousGoodsDetails.length>500))fail();
+ if(data.dangerousGoods&&data.dgClass===undefined&&(typeof data.dangerousGoodsDetails!=='string'||!data.dangerousGoodsDetails.trim()||data.dangerousGoodsDetails.length>500))fail();
  if(mode==='SEA'&&data.shipmentType==='FCL'){
   if(!Array.isArray(data.containers)||!data.containers.length||data.containers.length>50)fail();
   result.containers=data.containers.map((row:any)=>{
    if(!row||typeof row!=='object')fail();
-   if(!['20','40','45'].includes(row.size)||!['DC','HQ','OT','FR'].includes(row.type))fail();
+   if(!['20','40','45'].includes(row.size)||!['DC','HQ','OT','OH','FR','FH','RF','RH','TK'].includes(row.type))fail();
    return {size:row.size,type:row.type,count:number(row.count,true)};
   });
   if(typeof data.outOfGauge!=='boolean')fail();
