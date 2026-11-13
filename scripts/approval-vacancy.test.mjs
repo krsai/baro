@@ -11,6 +11,33 @@ const {approveExpense,approvalState}=require('../backend/dist/services/bankEvide
 const {approvalReviewDetail,listApprovalReviews}=require('../backend/dist/services/approvalReview');
 const {saveApprovalActionBatch}=require('../backend/dist/services/approvalActions');
 const {defaultApprovalSettings}=require('../backend/dist/services/expenseApproval');
+const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
+const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
+const {previewChangeApproval}=require('../backend/dist/services/changeApprovals');
+const {previewLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
+
+test('older exact-grade policies escalate a vacant accountant grade for new ledger edits without rewriting settings or existing approvals',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const config={...defaultApprovalSettings(),version:2,kind:'EXPENSE',revision:0,drafterScope:{role:'ALL',gradeId:null},rules:[{id:'legacy-final',name:'Legacy exact final',currency:'USD',min:'0',max:null,drafterRole:'ALL',drafterGradeId:null,stages:[{role:'ACCOUNTANT',gradeId:s.people.junior.gradeId,gradeMatch:'EXACT'}]}]};
+  await saveApprovalActionBatch(db,org,s.people.admin.id,[{menu:'BANK_LEDGER',operation:'UPDATE',settings:config}]);
+  const key=`APPROVAL_POLICY:BANK_LEDGER:UPDATE:${org}`,before=await db.systemSetting.findUnique({where:{key}});
+  const body={clientKey:randomUUID(),transactionDate:'2026-11-06',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'R1',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id}};
+  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,body),loaded=await readLedgerEdit(db,org,entry.id);
+  const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{...body,clientKey:randomUUID(),amount:'15',entryKind:'BANK',accountId:s.account.id}]};
+  const input={menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,revision:loaded.revision,payload,clientKey:randomUUID()};
+  const occupied=await previewChangeApproval(db,org,s.people.admin.id,input);assert.deepEqual(occupied.preview.ids,[s.people.junior.id]);
+  await db.employee.update({where:{id:s.people.junior.id},data:{status:'SUSPENDED'}});
+  const preview=await previewChangeApproval(db,org,s.people.admin.id,input);assert.deepEqual(preview.preview.stages[0].candidates.map(p=>p.id).sort(),[s.people.lead.id,s.people.senior.id].sort());
+  await assert.rejects(requestChangeApproval(db,org,s.people.admin.id,{...input,selection:{step1EmployeeId:s.people.junior.id}}),/EXPENSE_APPROVER_REQUIRED|INVALID_EXPENSE_APPROVERS/);
+  const request=await requestChangeApproval(db,org,s.people.admin.id,{...input,selection:{step1EmployeeId:s.people.senior.id}});
+  assert.equal(request.policy.resolvedStages[0].gradeId,s.people.senior.gradeId);assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt,null);
+  const done=await decideChangeApproval(db,org,s.people.senior.id,request.id,{decision:'APPROVED'});assert.equal(done.status,'APPROVED');assert.equal((await db.bankLedgerEntry.findUnique({where:{id:done.result.entryIds[0]}})).amount.toString(),'15');
+  assert.deepEqual((await db.systemSetting.findUnique({where:{key}})).value,before.value);
+  const legacy=await previewLedgerRegistration(db,org,s.people.admin,{items:[{currency:'USD',unitPrice:'10'}]},{registrationStages:config.rules[0].stages},{step1EmployeeId:s.people.senior.id});assert.equal(legacy.complete,true);assert.deepEqual(legacy.ids,[s.people.senior.id]);
+  const own=await previewLedgerRegistration(db,org,s.people.senior,{items:[{currency:'USD',unitPrice:'10'}]},{registrationStages:config.rules[0].stages});assert.equal(own.policy.exemptionReason,'FINAL_DRAFTER');
+ }finally{await f.close();}
+});
 
 test('minimum grade candidates, vacancy fallback and final reservation stay inside the active company grade set',async()=>{
  const f=await changeApprovalFixture({registration:true});try{

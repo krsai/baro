@@ -5,6 +5,7 @@ import {resolveLedgerCounterparty,entryCounterparty} from './ledgerCounterparty'
 import {validateApprovalRules,resolveApprovalRules} from './approvalRules';
 import {defaultApprovalSettings} from './expenseApproval';
 import {canSkipApprovalStage} from './approvalStageAuthority';
+import {flexibleApprovalStages,hasApprovalGradeVacancy} from './flexibleApprovalStages';
 import {validateLedgerMoney,ledgerScale4} from './bankLedger';
 const subject={key:'BANK_LEDGER',menuPath:'/bank-ledger',hasAmount:true,enabled:true};
 const fail=(code:string):never=>{throw createHttpError(400,code);};
@@ -82,6 +83,10 @@ export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,
   if(!result)fail('APPROVAL_RULE_NOT_FOUND');return result!;
  }
  if(await canSkipApprovalStage(db,orgId,drafter,config.registrationStages[config.registrationStages.length-1],false))return {ids:[],stages:[],complete:true,drafter,policy:{config,drafterId:drafter.id,exempt:true,exemptionReason:'FINAL_DRAFTER',finalDrafterStage:config.registrationStages[config.registrationStages.length-1],resolvedStages:[],skipped:[],totals}};
+ if(await hasApprovalGradeVacancy(db,orgId,config.registrationStages)){
+  const result=await flexibleApprovalStages(db,orgId,drafter,config.registrationStages,selection,true);
+  return {...result,drafter,policy:{...result.policy,config,drafterId:drafter.id,totals}};
+ }
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],skipped:string[]=[],effectiveRegistrationStages:any[]=[];
  for(const [index,stage] of config.registrationStages.entries()){
   if(await canSkipApprovalStage(db,orgId,drafter,stage,index===config.registrationStages.length-1)){skipped.push('step'+(index+1));continue;}

@@ -1,6 +1,22 @@
 import {canSkipApprovalStage} from './approvalStageAuthority';
 import {createHttpError} from '../utils/http';
 
+// Older saved rule policies may still use exact grades without authorityVersion.
+// Check the real company roster before excluding the drafter or selected people.
+export async function hasApprovalGradeVacancy(db:any,orgId:number,ordered:any[]){
+ for(const stage of ordered){
+  if(!stage.gradeId||stage.gradeMatch==='ANY')continue;
+  const grade=await db.employeeGrade.findFirst({where:{id:stage.gradeId,orgId,isActive:true,set:{isActive:true}}});
+  if(!grade)continue;
+  const people=await (db.authorityEmployee||db.employee).findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,gradeId:stage.gradeId,grade:{orgId,setId:grade.setId,isActive:true,set:{isActive:true}}},select:{id:true}});
+  if(!people.length){
+   const higher=await (db.authorityEmployee||db.employee).findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,grade:{orgId,setId:grade.setId,sortOrder:{gt:grade.sortOrder},isActive:true,set:{isActive:true}}},select:{id:true}});
+   if(higher.length)return true;
+  }
+ }
+ return false;
+}
+
 // Resolve only new policies. Issued documents keep their employee/grade snapshot.
 export async function flexibleApprovalStages(db:any,orgId:number,drafter:any,ordered:any[],selection:any,allowIncomplete:boolean){
  const pools=[];

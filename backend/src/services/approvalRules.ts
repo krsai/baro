@@ -1,4 +1,4 @@
-import {flexibleApprovalStages} from './flexibleApprovalStages';
+import {flexibleApprovalStages,hasApprovalGradeVacancy} from './flexibleApprovalStages';
 import {canSkipApprovalStage} from './approvalStageAuthority';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
@@ -52,7 +52,7 @@ export async function resolveApprovalRules(db:any,orgId:number,drafter:any,total
  const ordered:any[]=[];const remaining=new Set(nodes.keys());
  while(remaining.size){const key=[...remaining].find(key=>![...remaining].some(other=>edges.get(other)?.has(key)));if(!key)return fail('APPROVAL_RULE_ORDER_CONFLICT');remaining.delete(key);ordered.push(nodes.get(key));}
  if(config.stageAuthorityVersion!==1&&ordered.length&&await canSkipApprovalStage(db,orgId,drafter,ordered[ordered.length-1],false))return {ids:[],stages:[],complete:true,drafter,policy:{drafterId:drafter.id,exempt:true,exemptionReason:'FINAL_DRAFTER',finalDrafterStage:ordered[ordered.length-1],config,ruleIds:matched.map(rule=>rule.id),resolvedStages:[],skipped:ordered.map((_,index)=>'step'+(index+1)),level:ordered.length-1,totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
- if(config.stageAuthorityVersion===1){const result=await flexibleApprovalStages(db,orgId,drafter,ordered,selection,allowIncomplete);return {...result,drafter,policy:{...result.policy,drafterId:drafter.id,exempt:result.policy.exempt===true,config,ruleIds:matched.map(rule=>rule.id),level:ordered.length-1,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};}
+ if(config.stageAuthorityVersion===1||await hasApprovalGradeVacancy(db,orgId,ordered)){const result=await flexibleApprovalStages(db,orgId,drafter,ordered,selection,allowIncomplete);return {...result,drafter,policy:{...result.policy,drafterId:drafter.id,exempt:result.policy.exempt===true,config,ruleIds:matched.map(rule=>rule.id),level:ordered.length-1,...(selection===undefined?{}:{selection}),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};}
  const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],skipped:string[]=[],effectiveRegistrationStages:any[]=[];let complete=true;
  for(const [index,stage] of ordered.entries()){
   const key='step'+(index+1);
