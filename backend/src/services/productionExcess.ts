@@ -12,7 +12,9 @@ const source=`WITH records AS (
  JOIN "Style" s ON s.id=r."styleId" AND s."orgId"=r."orgId"
  JOIN "StyleProcess" sp ON sp.id=r."styleProcessId" AND sp."styleId"=r."styleId" AND sp."orgId"=r."orgId"
  JOIN "WorkLog" l ON l.id=r."workLogId" AND l."orgId"=r."orgId"
- WHERE ($2::integer IS NULL OR p."workOrderId"=$2) AND ($3::integer IS NULL OR r."styleId"=$3) AND ($4::integer IS NULL OR r."styleProcessId"=$4)
+ WHERE NOT p."isCompleted" AND p."productionCompletedAt" IS NULL AND p."completedAt" IS NULL AND p."closedAt" IS NULL
+ AND COALESCE(p."scheduleStatus",'')<>'PRODUCTION_COMPLETED'
+ AND ($2::integer IS NULL OR p."workOrderId"=$2) AND ($3::integer IS NULL OR r."styleId"=$3) AND ($4::integer IS NULL OR r."styleProcessId"=$4)
 )`;
 async function actor(db:any,orgId:number,actorId:number){
  if(!Number.isSafeInteger(orgId)||orgId<=0||!Number.isSafeInteger(actorId)||actorId<=0)fail('PRODUCTION_EXCESS_ACCESS_DENIED',403);

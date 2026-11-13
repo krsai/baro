@@ -16,7 +16,7 @@ test('dashboard queries aggregate all months, assignments, employees and outsour
   await pg.exec(`CREATE TABLE "WorkOrder"(id INT PRIMARY KEY,"orgId" INT,"orderNumber" TEXT);
    CREATE TABLE "Style"(id INT PRIMARY KEY,"orgId" INT,code TEXT,name TEXT);
    CREATE TABLE "StyleProcess"(id INT PRIMARY KEY,"styleId" INT,"orgId" INT,"processCode" TEXT,"processName" TEXT,"genderScope" TEXT);
-   CREATE TABLE "AssignmentPlan"(id INT PRIMARY KEY,"orgId" INT,"workOrderId" INT,"styleId" INT);
+   CREATE TABLE "AssignmentPlan"(id INT PRIMARY KEY,"orgId" INT,"workOrderId" INT,"styleId" INT,"isCompleted" BOOLEAN NOT NULL DEFAULT FALSE,"productionCompletedAt" TIMESTAMP,"completedAt" TIMESTAMP,"closedAt" TIMESTAMP,"scheduleStatus" TEXT);
    CREATE TABLE "WorkLog"(id INT PRIMARY KEY,"orgId" INT,"workDate" TEXT,"coverageStartDate" TEXT,"coverageEndDate" TEXT,"factoryId" INT,note TEXT);
    CREATE TABLE "Employee"(id INT PRIMARY KEY,"orgId" INT,name TEXT);
    CREATE TABLE "Factory"(id INT PRIMARY KEY,"orgId" INT,name TEXT);
@@ -26,7 +26,7 @@ test('dashboard queries aggregate all months, assignments, employees and outsour
    INSERT INTO "WorkOrder" VALUES(1,7,'L16-1'),(2,7,'L18-1'),(3,8,'PRIVATE');
    INSERT INTO "Style" VALUES(10,7,'AM01622','Shirt'),(20,7,'AM01160','Shirt 2'),(30,8,'PRIVATE','Private');
    INSERT INTO "StyleProcess" VALUES(100,10,7,'TS05','Sew collar','UNISEX'),(101,10,7,'NORMAL','Normal','UNISEX'),(200,20,7,'TS01','Sew','UNISEX'),(300,30,8,'PRIVATE','Private','UNISEX');
-   INSERT INTO "AssignmentPlan" VALUES(11,7,1,10),(12,7,1,10),(21,7,2,20),(31,8,3,30);
+   INSERT INTO "AssignmentPlan"(id,"orgId","workOrderId","styleId") VALUES(11,7,1,10),(12,7,1,10),(21,7,2,20),(31,8,3,30);
    INSERT INTO "Factory" VALUES(1,7,'HANOI');INSERT INTO "Employee" VALUES(1,7,'Worker A'),(2,7,'Worker B'),(3,8,'Private');
    INSERT INTO "WorkLog" VALUES(1,7,'2026-05-31',NULL,NULL,1,'No warning'),(2,7,'2026-11-02',NULL,NULL,1,'No warning'),(3,7,'2026-11-03',NULL,NULL,1,'Old warning text must not be used'),(4,8,'2026-11-03',NULL,NULL,NULL,'Private');
    INSERT INTO targets VALUES(1,10,440,440,0,0),(2,20,1084,1084,0,0);
@@ -38,6 +38,19 @@ test('dashboard queries aggregate all months, assignments, employees and outsour
   const initial=await productionExcessList(db,7,1,{pageSize:5},gates);assert.equal(initial.total,2);assert.deepEqual(initial.rows.map(r=>[r.orderNumber,r.recorded,r.target,r.excess]),[['L18-1',2224,1084,1140],['L16-1',790,440,350]]);
   const detail=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates);assert.equal(detail.total,3);assert.equal(detail.records[0].kind,'OUTSOURCING');assert.equal(detail.records[0].name,'Vendor A');assert.equal(detail.records[2].workDate,'2026-05-31');assert.equal(detail.group.recordCount,3);
   const second=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{page:1,pageSize:5},gates);assert.equal(second.records.length,0);
+  const recordsBefore=await pg.query('SELECT * FROM "WorkRecord" ORDER BY id');
+  for(const completion of ['"isCompleted"=TRUE','"productionCompletedAt"=CURRENT_TIMESTAMP','"completedAt"=CURRENT_TIMESTAMP','"closedAt"=CURRENT_TIMESTAMP',`"scheduleStatus"='PRODUCTION_COMPLETED'`]){
+   await pg.exec(`UPDATE "AssignmentPlan" SET ${completion} WHERE id=21`);
+   const filtered=await productionExcessList(db,7,1,{},gates);assert.equal(filtered.total,1);assert.equal(filtered.rows[0].workOrderId,1);
+   const completed=await productionExcessDetail(db,7,1,{orderId:2,styleId:20,processId:200},{},gates);assert.equal(completed.resolved,true);assert.equal(completed.total,0);
+   await pg.exec('UPDATE "AssignmentPlan" SET "isCompleted"=FALSE,"productionCompletedAt"=NULL,"completedAt"=NULL,"closedAt"=NULL,"scheduleStatus"=NULL WHERE id=21');
+   assert.equal((await productionExcessList(db,7,1,{},gates)).total,2);
+  }
+  assert.deepEqual((await pg.query('SELECT * FROM "WorkRecord" ORDER BY id')).rows,recordsBefore.rows);
+  await pg.exec('UPDATE "AssignmentPlan" SET "isCompleted"=TRUE WHERE id=12');
+  assert.equal((await productionExcessList(db,7,1,{},gates)).total,1,'completed employee and outsourced assignments are both excluded');
+  const activeOnly=await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates);assert.equal(activeOnly.total,1);assert.equal(activeOnly.group.recorded,440);assert.equal(activeOnly.resolved,true);
+  await pg.exec('UPDATE "AssignmentPlan" SET "isCompleted"=FALSE WHERE id=12');
   await assert.rejects(productionExcessList(db,7,999,{},gates),/ACCESS_DENIED/);await assert.rejects(productionExcessList(db,7,undefined,{},gates),/ACCESS_DENIED/);await assert.rejects(productionExcessDetail(db,7,1,{orderId:3,styleId:30,processId:300},{},gates),/NOT_FOUND/);
   await pg.exec('UPDATE "WorkRecord" SET quantity=0 WHERE id=2; DELETE FROM "OutsourcedWorkRecord" WHERE id=1');
   assert.equal((await productionExcessList(db,7,1,{},gates)).total,1);assert.equal((await productionExcessDetail(db,7,1,{orderId:1,styleId:10,processId:100},{},gates)).resolved,true);
