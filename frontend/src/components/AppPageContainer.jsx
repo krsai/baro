@@ -57,6 +57,7 @@ const AppPageContainer = ({
       }}
     >
       <Stack
+        className="app-page-layout"
         spacing={ui.layout.pageGap}
         sx={{
           flexGrow: 1,
