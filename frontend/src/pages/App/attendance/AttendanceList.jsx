@@ -67,7 +67,17 @@ const TEXT = {
   searchPlaceholder: { ko: '날짜 검색', en: 'Search date', vi: 'Tim ngay' },
   workDate: { ko: '근무일자', en: 'Work Date', vi: 'Ngay lam viec' },
   workType: { ko: '타입', en: 'Type', vi: 'Loai' },
-  enteredWorkers: { ko: '인원', en: 'Workers', vi: 'So nguoi' },
+  enteredWorkers: { ko: '기록 인원 / 관리 대상', en: 'Recorded / attendance target', vi: 'Đã ghi / Cần chấm công' },
+  workerCountHelp: {
+    ko: '해당 근무일에 기록된 인원 / 출퇴근 관리 대상 인원입니다. 출퇴근 관리 제외·급여 제외 직원은 포함하지 않으며, 근무일의 재직 기간과 적용월 설정을 기준으로 계산합니다.',
+    en: 'Employees with attendance records / employees requiring attendance management on that work date. Attendance-exempt and payroll-excluded employees are excluded, using employment dates and the policy effective for that month.',
+    vi: 'Số người đã có bản ghi / số người cần quản lý chấm công trong ngày. Không tính người được miễn chấm công hoặc loại khỏi bảng lương; áp dụng thời gian làm việc và thiết lập có hiệu lực trong tháng.',
+  },
+  workerCountMeaning: {
+    ko: '{entered}명 기록 / 관리 대상 {target}명',
+    en: 'Recorded: {entered} / attendance target: {target}',
+    vi: 'Đã ghi: {entered} / cần chấm công: {target}',
+  },
   workedHoursAverage: { ko: '평균 근무시간', en: 'Avg Hours', vi: 'Gio lam trung binh' },
   noteCount: { ko: '메모 건수', en: 'Notes', vi: 'So ghi chu' },
   holidayMark: { ko: '공휴일', en: 'Holiday', vi: 'Ngay le' },
@@ -760,7 +770,9 @@ const AttendanceList = () => {
                 <TableCell>{text(TEXT.workDate, languageCode, 'Work Date')}</TableCell>
                 <TableCell>{text(TEXT.workType, languageCode, 'Type')}</TableCell>
                 <TableCell align="right">
-                  {text(TEXT.enteredWorkers, languageCode, 'Entered Workers')}
+                  <Tooltip describeChild title={text(TEXT.workerCountHelp, languageCode)}>
+                    <span>{text(TEXT.enteredWorkers, languageCode, 'Recorded / attendance target')}</span>
+                  </Tooltip>
                 </TableCell>
                 <TableCell align="right">
                   {text(TEXT.workedHoursAverage, languageCode, 'Avg Worked')}
@@ -820,7 +832,9 @@ const AttendanceList = () => {
                       </TableCell>
                       <TableCell sx={{ whiteSpace: 'nowrap' }}>{workTypeText}</TableCell>
                       <TableCell align="right">
-                        {toWorkerAttendanceRatioText(row.enteredWorkerCount, row.activeWorkerCount)}
+                        <Tooltip describeChild title={formatTemplate(text(TEXT.workerCountMeaning, languageCode), { entered: row.enteredWorkerCount, target: row.activeWorkerCount })}>
+                          <span>{toWorkerAttendanceRatioText(row.enteredWorkerCount, row.activeWorkerCount)}</span>
+                        </Tooltip>
                       </TableCell>
                       <TableCell align="right">
                         {toAverageHoursTextFromRow(row, languageCode)}
