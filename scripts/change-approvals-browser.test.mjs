@@ -29,9 +29,14 @@ try{
   for(let attempt=0;attempt<100&&!pendingPreview;attempt++)await page.waitForTimeout(20);assert.ok(pendingPreview);
   await page.evaluate(()=>window.setTestLanguage('en'));
   await pendingPreview.fulfill({headers,status:400,json:{error:lang==='en'?'CHANGE_ALREADY_PENDING':'TEST_PREVIEW_FAILED'}});
-  await dialog.getByRole('alert').getByText(changeApprovalText.en[lang==='en'?'already':'error'],{exact:true}).waitFor();
-  for(const next of ['vi','ko','en']){await page.evaluate(language=>window.setTestLanguage(language),next);await dialog.getByRole('alert').getByText(changeApprovalText[next][lang==='en'?'already':'error'],{exact:true}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText[next].reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText[next].request,exact:true}).isDisabled(),true);}
-  assert.equal(posts.length,1);
+  await dialog.getByRole('alert').getByText(changeApprovalText.en.lineFailed,{exact:true}).waitFor();
+  for(const next of ['vi','ko','en']){await page.evaluate(language=>window.setTestLanguage(language),next);await dialog.getByRole('alert').getByText(changeApprovalText[next].lineFailed,{exact:true}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText[next].reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText[next].request,exact:true}).isDisabled(),true);}
+  assert.equal(await dialog.getByTestId('approval-dialog-flow').count(),0,'failed preview must not show an empty drafter or invented approvers');
+  if(lang==='en')await dialog.getByRole('alert').getByText(changeApprovalText.en.already,{exact:true}).waitFor();
+  failPreview=false;await dialog.getByRole('button',{name:changeApprovalText.en.reloadLine,exact:true}).click();
+  await dialog.locator('[data-approval-flow-card="senior"]').waitFor();assert.equal(await dialog.locator('[data-approval-flow-card]').count(),2);assert.equal(await dialog.getByRole('alert').count(),0);
+  assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText.en.reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText.en.request,exact:true}).isEnabled(),true);
+  assert.equal(posts.length,1,'loading the approval line never submits the request');
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.close();
  }
  console.log('PASS: current party lookup and approval request in ko/en/vi mobile.');
