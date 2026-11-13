@@ -15,7 +15,7 @@ function file(source) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ['ID Người', 'Tên', 'Thời gian', 'Nguồn dữ liệu'],
-    ['01', 'BRVN0003', '2026-09-01 08:00:00', source],
+    ...Array.from({length:31},(_,i)=>['08:00:00','17:30:00'].map(time=>['01','BRVN0003','2026-10-'+String(i+1).padStart(2,'0')+' '+time,source])).flat(),
   ]), 'Sheet1');
   return { name: 'attendance.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', buffer: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) };
 }
@@ -34,12 +34,12 @@ try {
     const mock = (pattern, body) => page.route(pattern, route => route.fulfill({ contentType: 'application/javascript', body }));
     await mock('**/src/context/LanguageContext.jsx*', `export const useLanguage=()=>({languageCode:${JSON.stringify(language)}});`);
     await mock('**/src/context/AuthContext.jsx*', 'export const useAuth=()=>({activeOrgId:1,activeFactoryId:1});');
-    await mock('**/src/context/AppContext.jsx*', 'const actions={navigateToPath:()=>{},showNotification:()=>{}};export const useAppActions=()=>actions;');
+    await mock('**/src/context/AppContext.jsx*', 'const actions={navigateToPath:()=>{},showNotification:(...args)=>{window.notifications??=[];window.notifications.push(args)}};export const useAppActions=()=>actions;');
     await mock('**/src/components/AppPageContainer.jsx*', 'import React from "/node_modules/.vite/deps/react.js";export default ({children})=>React.createElement("main",{},children);');
     await mock('**/src/pages/App/payroll/PayrollSettingsDialog.jsx*', 'export default ()=>null;');
     await mock('**/src/hooks/useWorkspaceRefreshOnEvent*', 'export default ()=>{};');
     await mock('**/src/hooks/useHolidayCalendar*', 'const holidaySet=new Set();export default ()=>({holidaySet});');
-    await mock('**/src/utils/apiClient.js*', `export const buildQueryString=o=>'?' + new URLSearchParams(o);export async function requestJSON(url,options={}){window.requests??=[];window.requests.push({url,method:options.method||'GET'});if(options.method)throw Error('Unexpected write');if(url.startsWith('/factories'))return [{id:1,name:'Hanoi',managementStartDate:'2026-04-01'}];if(url.startsWith('/employees'))return [{id:3,employeeNo:'BRVN0003',name:'Test Employee',factoryId:1,status:'ACTIVE'}];return [];}`);
+    await mock('**/src/utils/apiClient.js*', `export const buildQueryString=o=>'?' + new URLSearchParams(o);export async function requestJSON(url,options={}){window.requests??=[];window.requests.push({url,method:options.method||'GET',body:options.body&&JSON.parse(options.body)});if(options.method){if(!url.startsWith('/attendance-entries/import')||options.method!=='POST')throw Error('Unexpected write');window.attempts=(window.attempts||0)+1;if(window.attempts===1)throw Error('Simulated interruption');const body=JSON.parse(options.body);return {dayCount:body.dailyEntries.length,entryCount:body.dailyEntries.reduce((n,d)=>n+d.entries.length,0)};}if(url.startsWith('/factories'))return [{id:1,name:'Hanoi',managementStartDate:'2026-04-01'}];if(url.startsWith('/employees'))return [{id:3,employeeNo:'BRVN0003',name:'Test Employee',factoryId:1,status:'ACTIVE'}];return [];}`);
     await page.goto(`http://127.0.0.1:${port}/attendance-file-import-acceptance.html`);
     await page.waitForFunction(() => (window.requests || []).some(row => row.url.startsWith('/employees')));
     await page.locator('input[type=file]').setInputFiles(file('Manual correction'));
@@ -48,10 +48,19 @@ try {
     await confirm.waitFor();
     assert.equal(await confirm.isDisabled(), false);
     assert.equal(await page.evaluate(() => window.requests.some(row => row.method !== 'GET')), false);
+    await confirm.click();
+    await page.getByText('Simulated interruption',{exact:true}).waitFor();
+    await page.keyboard.press('Escape');
+    await confirm.waitFor();assert.equal(await confirm.isDisabled(),false);
+    await confirm.click();
+    await page.waitForFunction(()=>window.notifications?.some(row=>row[1]==='success'));
+    const writes=await page.evaluate(()=>window.requests.filter(row=>row.method!=='GET'));assert.equal(writes.length,2);
+    for(const write of writes){assert.equal(write.method,'POST');assert.equal(write.body.dailyEntries.length,31);assert.equal(write.body.dailyEntries[30].workDate,'2026-10-31');assert.equal(write.body.dailyEntries.reduce((n,d)=>n+d.entries.length,0),31);}
+    assert.deepEqual(writes[0].body,writes[1].body);
     assert.deepEqual(errors, []);
     await page.close();
   }
-  console.log('Attendance file import browser passed: ko/en/vi edited-file review with enabled import confirmation and zero premature saves.');
+  console.log('Attendance file import browser passed: ko/en/vi edited-file review with whole-month atomic import, retained review after failure, and identical retry.');
 } finally {
   await browser?.close(); vite.kill(); unlinkSync(fixture);
 }

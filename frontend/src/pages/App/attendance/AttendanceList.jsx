@@ -52,7 +52,6 @@ import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { formatNumberWithCommas } from '../../../utils/numberFormat';
 import {
   buildAttendanceImportPlan,
-  mergeImportedAttendanceEntries,
   parseAttendanceImportFile,
 } from './attendanceFileImport';
 
@@ -594,32 +593,12 @@ const AttendanceList = () => {
 
   const commitImportPlan = useCallback(
     async (importPlan) => {
-      let updatedDayCount = 0;
-      for (const daily of importPlan.dailyEntries) {
-        const readQuery = buildQueryString({
-          orgId: activeOrgId,
-          factoryId: selectedFactoryId,
-          workDate: daily.workDate,
-        });
-        const existingRows = await requestJSON('/attendance-entries' + readQuery, {
-          skipGlobalLoading: true,
-        });
-        const mergedEntries = mergeImportedAttendanceEntries(existingRows, daily.entries);
-
-        const saveQuery = buildQueryString({ orgId: activeOrgId });
-        await requestJSON('/attendance-entries' + saveQuery, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          skipGlobalLoading: true,
-          body: JSON.stringify({
-            factoryId: Number(selectedFactoryId),
-            workDate: daily.workDate,
-            entries: mergedEntries,
-          }),
-        });
-
-        updatedDayCount += 1;
-      }
+      const result=await requestJSON('/attendance-entries/import'+buildQueryString({orgId:activeOrgId}),{
+        method:'POST',skipGlobalLoading:true,requestTimeoutMs:90000,
+        body:JSON.stringify({factoryId:Number(selectedFactoryId),dailyEntries:importPlan.dailyEntries}),
+      });
+      if(result?.dayCount!==importPlan.dailyEntries.length||result?.entryCount!==importPlan.dailyEntries.reduce((sum,day)=>sum+day.entries.length,0))throw new Error(text(TEXT.importFail,languageCode));
+      const updatedDayCount=result.dayCount;
 
       refreshRows();
       const doneTemplate = text(
@@ -691,12 +670,12 @@ const AttendanceList = () => {
 
   const handleConfirmImportReview = useCallback(async () => {
     const importPlan = importReview?.importPlan;
-    setImportReview(null);
     if (!importPlan || !importPlan.dailyEntries.length) return;
 
     setImportingFile(true);
     try {
       await commitImportPlan(importPlan);
+      setImportReview(null);
     } catch (error) {
       setImportError(error?.message || text(TEXT.importFail, languageCode, 'Failed to import file.'));
     } finally {
@@ -877,7 +856,7 @@ const AttendanceList = () => {
       <DialogContent dividers><Typography sx={{ whiteSpace: 'pre-wrap' }}>{importError}</Typography></DialogContent>
 
     </Dialog>
-    <Dialog open={Boolean(importReview)} onClose={handleCancelImportReview} maxWidth="md" fullWidth>
+    <Dialog open={Boolean(importReview)} onClose={importingFile?undefined:handleCancelImportReview} maxWidth="md" fullWidth>
       <DialogTitle>{text(TEXT.importReviewTitle, languageCode, 'Review import')}</DialogTitle>
       <DialogContent dividers>
         {importReview?.importPlan && (
@@ -945,7 +924,7 @@ const AttendanceList = () => {
         <Button
           variant="contained"
           onClick={handleConfirmImportReview}
-          disabled={!importReview?.importPlan?.dailyEntries.length}
+          disabled={importingFile||!importReview?.importPlan?.dailyEntries.length}
         >
           {text(importReview?.importPlan?.unmatchedEventCount ? TEXT.importReviewProceed : TEXT.importReviewAll, languageCode)}
         </Button>

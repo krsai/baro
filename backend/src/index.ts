@@ -1,3 +1,4 @@
+import {importAttendanceFile} from './services/attendanceImport';
 import {registerWorkTimeRoutes} from './services/workTimeRequests';
 import {registerAccountingAlertRoutes} from './services/accountingAlerts';
 import {workLogStyleOverview} from './services/workLogStyleOverview';
@@ -24058,6 +24059,11 @@ app.get("/attendance-entries", async (req, res) => {
   });
 
   res.json(rows.map(toAttendanceEntryResponse));
+});
+
+app.post('/attendance-entries/import', async (req,res)=>{
+ const access=await requireOrgRole(req,res,{allowedRoles:ORG_MANAGEMENT_ROLES,allowSystemAdmin:false});if(!access)return;
+ res.json(await importAttendanceFile(prisma,access.organization.id,access.employee?.id??0,req.body,normalizeAttendanceEntryPayloadList,value=>toDateKeyInTimeZone(value,BUSINESS_TIME_ZONE)));
 });
 
 app.put("/attendance-entries", async (req, res) => {
