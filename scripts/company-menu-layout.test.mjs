@@ -31,17 +31,19 @@ const flatten = items => items.flatMap(item => item.isParent ? flatten(item.chil
 test('sewing brands expose their existing business menus and shipping without manufacturer or accounting entries',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'BRAND');
  assert.deepEqual(flatten(menu).map(row=>row.path),['/style','/order','/customer-production-report','/shipping']);
+ assert.equal(findMenuGroupForPath(menu,'/shipping'),'INVENTORY');
+ assert.equal(menu.find(row=>row.menuGroupKey==='INVENTORY').label,'menu.inventoryLogistics');
 });
-test('service transport starts in the sales group beside customer and partner management',()=>{
+test('service transport uses inventory and logistics while customer and partner management stays in sales',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'SERVICE');
  const group=menu.find(item=>item.menuGroupKey==='ORDER');
- assert.equal(group.label,'menu.transportWorkflow');
- assert.deepEqual(group.children.slice(0,2).map(row=>row.path),['/shipping','/business-partner']);
- assert.equal(group.children[0].label,'menu.transportList');
- assert.equal(group.children[1].label,'menu.customerPartners');
+ assert.equal(group.label,'menu.sales');
+ assert.equal(group.children[0].path,'/business-partner');
+ assert.equal(group.children[0].label,'menu.customerPartners');
+ assert.equal(menu.find(item=>item.menuGroupKey==='INVENTORY').label,'menu.inventoryLogistics');
  assert.equal(flatten(menu).filter(row=>row.path==='/shipping').length,1);
- assert.equal(findMenuGroupForPath(menu,'/shipping'),'ORDER');
- assert.equal(group.children[1].accessChildren.length,4);
+ assert.equal(findMenuGroupForPath(menu,'/shipping'),'INVENTORY');
+ assert.equal(group.children[0].accessChildren.length,4);
 });
 for (const system of [false, true]) {
   test(`actual canonical menus survive regrouping exactly once (SYSTEM=${system})`, () => {
@@ -68,10 +70,12 @@ test('company groups, direct entry, partner scopes and notifications follow the 
     ['/attendance', 'ADMIN'], ['/payroll', 'ACCOUNTING'], ['/payroll/2026-11', 'ACCOUNTING'], ['/employee-system', 'SETTINGS'],
     ['/salary-system', 'SETTINGS'],
     ['/business', 'SETTINGS'], ['/inventory/stock', 'INVENTORY'],
+    ['/shipping', 'INVENTORY'], ['/order-shipments', 'INVENTORY'],
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],
   ]) assert.equal(findMenuGroupForPath(menu, path), group);
   assert.deepEqual(menu.find(item => item.menuGroupKey === 'ACCOUNTING').children.map(item => item.path), ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']);
+  assert.deepEqual(menu.find(item=>item.menuGroupKey==='INVENTORY').children.map(item=>item.path),['/inventory/materials','/inventory/stock','/inventory/movements','/order-shipments','/shipping','/inventory/settings']);
   const partner = menu.find(item => item.menuGroupKey === 'ORDER').children[0];
   assert.equal(partner.path, '/business-partner');
   assert.equal(partner.notificationActive, true);

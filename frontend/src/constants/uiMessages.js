@@ -33,6 +33,7 @@ export const UI_MESSAGES = {
     salesWorkflow: { ko: '영업·주문', en: 'Sales & orders', vi: 'Kinh doanh & đơn hàng' },
     productionWorkflow: { ko: '생산', en: 'Production', vi: 'Sản xuất' },
     materialsInventory: { ko: '자재·재고', en: 'Materials & inventory', vi: 'Vật tư & tồn kho' },
+    inventoryLogistics: { ko: '재고·물류', en: 'Inventory & logistics', vi: 'Tồn kho & logistics' },
     peoplePayroll: { ko: '인사·근태', en: 'People & attendance', vi: 'Nhân sự & chấm công' },
     finance: { ko: '회계·자금', en: 'Accounting & finance', vi: 'Kế toán & tài chính' },
     managementAnalysis: { ko: '경영 분석', en: 'Business analysis', vi: 'Phân tích kinh doanh' },

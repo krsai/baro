@@ -1,8 +1,8 @@
 // Move canonical nodes intact so route permissions, partner access keys and badges survive.
 const GROUPS = [
-  ['ORDER', 'salesWorkflow', ['/business-partner', '/shipping', '/style', '/order', '/customer-production-report']],
-  ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history', '/order-shipments']],
-  ['INVENTORY', 'materialsInventory', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/inventory/settings']],
+  ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
+  ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history']],
+  ['INVENTORY', 'inventoryLogistics', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/order-shipments', '/shipping', '/inventory/settings']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/work-time', '/holiday']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']],
   ['OPERATIONS', 'managementAnalysis', ['/account-overview', '/revenue-analysis']],
@@ -21,20 +21,22 @@ export function organizeCompanyMenu(items, translate, orgType) {
   const shipping=items.find(item=>item.path==='/shipping');
   if(shipping)leaves.set('/shipping',shipping);
   if(orgType==='BRAND'){
-    const children=['/style','/order','/customer-production-report','/shipping'].map(path=>leaves.get(path)).filter(Boolean),source=groups.get('ORDER');
-    return source&&children.length?[{...source,children}]:children;
+    return [['ORDER',['/style','/order','/customer-production-report']],['INVENTORY',['/shipping']]].flatMap(([key,paths])=>{
+      const source=groups.get(key),children=paths.map(path=>leaves.get(path)).filter(Boolean);
+      return source&&children.length?[{...source,...(key==='INVENTORY'?{label:translate('menu.inventoryLogistics')}:{}),children}]:children;
+    });
   }
   const transport=orgType==='SERVICE'&&shipping;
   const used = new Set();
   const result = [...items.filter(item => !item.isParent && !['/shipping','/transport-exchange','/freight'].includes(item.path))];
   for (const [key, labelKey, paths] of GROUPS) {
     const source = groups.get(key);
-    const children = (transport&&key==='ORDER'?['/shipping',...paths.filter(path=>path!=='/shipping')]:paths).map(path => {
+    const children = paths.map(path => {
       used.add(path);
       const leaf=leaves.get(path);
       return transport&&path==='/business-partner'&&leaf?{...leaf,label:translate('menu.customerPartners')}:leaf;
     }).filter(Boolean);
-    if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'transportWorkflow':labelKey}`), children });
+    if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'sales':labelKey}`), children });
   }
   // Preserve every unassigned menu, including all SYSTEM reference/admin routes.
   for (const item of items.filter(item => item.isParent)) {
