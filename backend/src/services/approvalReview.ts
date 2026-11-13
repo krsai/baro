@@ -19,6 +19,13 @@ export async function listApprovalReviews(db:any,orgId:number,actorId:number,que
  // Return list metadata only. Source snapshots are loaded after opening a row.
  const changes=await db.$queryRawUnsafe(`SELECT c.id,'CHANGE_APPROVAL' AS kind,c.menu,c.operation,
  COALESCE(c."beforeSnapshot"->'invoice'->>'invoiceNumber',c."beforeSnapshot"->'document'->>'managementNumber',c."beforeSnapshot"->'entry'->>'managementNumber',c."beforeSnapshot"->'entry'->>'evidenceNumber',c."sourceId") AS "managementNumber",
+ COALESCE(c."beforeSnapshot"->'entry'->>'transactionDate',c."beforeSnapshot"->'document'->>'requestDate') AS "transactionDate",
+ COALESCE(c."beforeSnapshot"->'entry'->>'counterpartyName',c."beforeSnapshot"->'document'->'partner'->>'name',c."beforeSnapshot"->'document'->'payeeEmployee'->>'name') AS "targetName",
+ c.reason AS "changeReason",
+ CASE WHEN c.menu='BANK_LEDGER' AND c.operation='UPDATE' THEN
+ ARRAY(SELECT field FROM (VALUES ('transactionDate'),('accountingCodeId'),('amount'),('purpose'),('remark'),('evidenceNumber'),('direction'),('accountId')) AS fields(field)
+ WHERE (c."beforeSnapshot"->'entry'->>field) IS DISTINCT FROM
+ ((SELECT proposed FROM jsonb_array_elements(COALESCE(c.payload->'rows','[]'::jsonb)) proposed WHERE proposed->>'entryKind'='BANK' LIMIT 1)->>field)) ELSE ARRAY[]::text[] END AS "changedFields",
  c."createdAt",p.name AS drafter,CASE WHEN c.status='PENDING' THEN CASE WHEN EXISTS(SELECT 1 FROM "ChangeApprovalDecision" d WHERE d."requestId"=c.id AND d.decision='APPROVED') THEN 'IN_REVIEW' ELSE 'REQUESTED' END ELSE c.status END AS status
  FROM "ChangeApprovalRequest" c JOIN "Employee" p ON p.id=c."requestedByEmployeeId" AND p."orgId"=c."orgId"
  WHERE c."orgId"=$1 AND (EXISTS(SELECT 1 FROM "ChangeApprovalDecision" d WHERE d."requestId"=c.id AND d."orgId"=c."orgId" AND d."actingEmployeeId"=$2) OR c."requestedByEmployeeId"=$2 OR c.policy->'resolvedStages' @> jsonb_build_array(jsonb_build_object('employeeId',$2::integer)) OR (c.status='PENDING' AND NOT(c.menu='EXPENSE' AND c.operation='DELETE') AND EXISTS(SELECT 1 FROM jsonb_array_elements(c.policy->'resolvedStages') s WHERE baro_approval_delegate_allowed(c."orgId",c."requestedByEmployeeId",(s->>'employeeId')::integer,$2::integer))))`,orgId,actorId);
