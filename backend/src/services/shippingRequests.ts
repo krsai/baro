@@ -1,4 +1,5 @@
 import {listShippingPresets,saveShippingPreset} from './shippingPresets';
+import {validateOogTransition} from './shippingCargo';
 import {searchShippingPorts,validateShippingPorts} from './shippingPorts';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -53,6 +54,7 @@ export async function shareShippingDocument(db:any,orgId:number,actorId:number,i
 }
 export async function submitShippingRequest(db:any,orgId:number,actorId:number,input:any){
  const value=requestFields(input);
+ validateOogTransition(value.data);
  if(typeof input.clientKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.clientKey)||!Number.isSafeInteger(input.forwarderOrgId))fail('SHIPPING_INVALID');
  const digest=createHash('sha256').update(JSON.stringify({forwarder:input.forwarderOrgId,value})).digest('hex');
  return retryEditTransaction(db,async (tx:any)=>{
@@ -90,6 +92,7 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
    updated=await tx.$queryRawUnsafe('UPDATE "FreightJob" SET "sharedSnapshot"=$1::jsonb,"updatedByEmployeeId"=$2,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 RETURNING *',JSON.stringify(snapshot),actorId,id);
   }else if(input.action==='EDIT'&&row.receiptStatus==='PENDING'){
    const value=requestFields({mode:input.mode,data:input.data});
+   validateOogTransition(value.data,row.data);
    await validateShippingPorts(tx,value.data,row.data);
    const oldPublic=transportSnapshot(row).data;
    const privateData=Object.fromEntries(Object.entries(row.data).filter(([key])=>!(key in oldPublic)));

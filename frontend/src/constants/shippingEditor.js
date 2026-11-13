@@ -19,3 +19,10 @@ Object.assign(shippingEditorText.vi,{seaFcl:"Đường biển FCL",seaLcl:"Đư�
 Object.assign(shippingEditorText.ko,{addressPlaceholder:"주소를 입력하세요"});
 Object.assign(shippingEditorText.en,{addressPlaceholder:"Enter the address"});
 Object.assign(shippingEditorText.vi,{addressPlaceholder:"Nhập địa chỉ"});
+
+Object.assign(shippingEditorText.ko,{oogDimensions:"OOG 화물 크기",oogQuantity:"화물 수량",oogNote:"취급 메모 (선택)"});
+Object.assign(shippingEditorText.en,{oogDimensions:"OOG cargo dimensions",oogQuantity:"Cargo quantity",oogNote:"Handling notes (optional)"});
+Object.assign(shippingEditorText.vi,{oogDimensions:"Kích thước hàng OOG",oogQuantity:"Số lượng hàng",oogNote:"Ghi chú xử lý (tùy chọn)"});
+Object.assign(shippingEditorText.ko,{cargoInvalid:"화물명과 필수 항목을 확인해 주세요. OOG 화물은 수량과 길이·너비·높이(m)를 모두 입력해야 합니다."});
+Object.assign(shippingEditorText.en,{cargoInvalid:"Check the commodity and required cargo fields. OOG cargo requires quantity and length, width and height in metres."});
+Object.assign(shippingEditorText.vi,{cargoInvalid:"Kiểm tra tên hàng và các mục bắt buộc. Hàng OOG cần số lượng, chiều dài, rộng và cao theo mét."});

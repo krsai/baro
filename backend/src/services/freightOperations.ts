@@ -1,4 +1,4 @@
-import {shippingCargo} from './shippingCargo';
+import {shippingCargo,validateOogTransition} from './shippingCargo';
 import {shippingRouteFields} from './shippingRoute';
 import {shippingPortFields,validateShippingPorts} from './shippingPorts';
 import {registerJobRoutes} from './freightJobs';
@@ -96,6 +96,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
  Object.assign(data,{shipmentType,incoterms:optional(d.incoterms,80),pickupRequired:d.pickupRequired===true,pickupAddress:optional(d.pickupAddress,1000),dangerousGoods:d.dangerousGoods===true,dangerousGoodsDetails:optional(d.dangerousGoodsDetails,500),containerType:optional(d.containerType,d.cargoSchemaVersion===1?500:40),containerCount:decimal(d.containerCount||undefined,0)});
  Object.assign(data,{direction:member(d.direction||'OTHER',['IMPORT','EXPORT','OTHER']),shipper:optional(d.shipper,1000),consignee:optional(d.consignee,1000),notify:optional(d.notify,1000),billTo:optional(d.billTo,1000),cargo:optional(d.cargo,2000),marks:optional(d.marks,1000),quantity:decimal(d.quantity||undefined,0),unit:optional(d.unit||'PKG',30),weightKg:decimal(d.weightKg||undefined),cbm:decimal(d.cbm||undefined,6),freightTerms:optional(d.freightTerms,100),deliveryDate:date(d.deliveryDate),recipient:optional(d.recipient,200)});
  Object.assign(data,shippingCargo(d,mode));
+ validateOogTransition(data,previous);
  Object.assign(data,shippingPortFields(d,mode));
  Object.assign(data,shippingRouteFields(d,mode));
  await validateShippingPorts(tx,data,previous);

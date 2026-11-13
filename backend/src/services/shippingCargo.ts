@@ -2,6 +2,9 @@ import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 const fail=():never=>{throw createHttpError(400,'SHIPPING_CARGO_INVALID');};
 const number=(value:any,integer=false)=>{if(typeof value!=='string'||!(integer?/^\d{1,8}$/:/^\d{1,10}(\.\d{1,6})?$/).test(value)||!new Prisma.Decimal(value).gt(0))fail();return value;};
+export function validateOogTransition(data:any,previous:any={}){
+ if(data.outOfGauge&&data.oogSchemaVersion!==1&&(!previous.outOfGauge||previous.oogSchemaVersion===1))fail();
+}
 export function shippingCargo(data:any,mode:string){
  if(data.cargoSchemaVersion==null)return {};
  if(data.cargoSchemaVersion!==1)fail();
@@ -24,7 +27,15 @@ export function shippingCargo(data:any,mode:string){
   });
   if(typeof data.outOfGauge!=='boolean')fail();
   result.outOfGauge=data.outOfGauge;result.oogDetails=data.oogDetails||'';
-  if(typeof result.oogDetails!=='string'||result.oogDetails.length>2000||result.outOfGauge&&!result.oogDetails.trim())fail();
+  if(typeof result.oogDetails!=='string'||result.oogDetails.length>2000)fail();
+  if(data.oogSchemaVersion!==undefined||data.oogPackages!==undefined){
+   if(data.oogSchemaVersion!==1)fail();
+   result.oogSchemaVersion=1;result.oogPackages=[];
+   if(result.outOfGauge){
+    if(!Array.isArray(data.oogPackages)||!data.oogPackages.length||data.oogPackages.length>50)fail();
+    result.oogPackages=data.oogPackages.map((row:any)=>{if(!row||typeof row!=='object'||Array.isArray(row))fail();return {quantity:number(row.quantity,true),lengthM:number(row.lengthM),widthM:number(row.widthM),heightM:number(row.heightM)};});
+   }
+  }else if(result.outOfGauge&&!result.oogDetails.trim())fail(); // Keep legacy text-only records readable.
   result.containerCount=result.containers.reduce((sum:number,row:any)=>sum+Number(row.count),0).toString();
   result.containerType=result.containers.map((row:any)=>`${row.size}${row.type}`).join(', ');
  }else{
