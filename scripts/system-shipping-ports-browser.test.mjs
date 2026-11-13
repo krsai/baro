@@ -19,18 +19,17 @@ try{
   for(const path of ['expense-deletion-requests','change-approval-requests','customers','org-memberships'])await page.route('**/'+path+'?*',r=>r.fulfill({headers,json:[]}));
   await page.route('**/system/onboarding-requests',r=>r.fulfill({headers,json:{pendingCompanyRequests:[]}}));
   const rows=[...Array.from({length:51},(_,i)=>({code:'AA'+String(i).padStart(3,'0'),country:'AA',name:'Fixture port '+i,sourceVersion:'2025-1',version:1,isActive:true,deletedAt:null,inUse:false})),{code:'KRPUS',country:'KR',name:'Busan',sourceVersion:'2025-1',version:1,isActive:true,deletedAt:null,inUse:true},{code:'VNHPH',country:'VN',name:'Haiphong',sourceVersion:'2025-1',version:1,isActive:true,deletedAt:null,inUse:false}];
-  let failLoad=true,failSave=true,conflict=true,posted=[];const receipts=new Map();
+  let failLoad=true,failSave=true,getCount=0,posted=[];const receipts=new Map();
   await page.route(/\/system\/shipping-ports(?:[/?]|$)/,async r=>{
    const req=r.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(req.method()==='GET'){
+   if(req.method()==='GET'){getCount++;
     if(failLoad){failLoad=false;return r.fulfill({headers,status:500,json:{error:'FAILED'}});}
     const q=(url.searchParams.get('q')||'').toLowerCase(),state=url.searchParams.get('state'),page=Number(url.searchParams.get('page')||0),filtered=rows.filter(row=>[row.code,row.name,row.country].join(' ').toLowerCase().includes(q)&&(state==='DELETED'?row.deletedAt:!row.deletedAt&&(state==='ALL'||state==='ACTIVE'&&row.isActive||state==='INACTIVE'&&!row.isActive)));
     return r.fulfill({headers,json:{rows:filtered.slice(page*50,page*50+50),total:filtered.length,page}});
    }
    const body=req.postDataJSON(),row=rows.find(row=>row.code===url.pathname.split('/').at(-1));posted.push(body);
    if(receipts.has(body.clientKey)){assert.deepEqual(receipts.get(body.clientKey).request,body);return r.fulfill({headers,json:receipts.get(body.clientKey).after});}
-   if(body.action==='ACTIVATE'&&row.code==='KRPUS'&&conflict){conflict=false;row.version++;return r.fulfill({headers,status:409,json:{error:'SHIPPING_PORT_CHANGED'}});}
-   assert.equal(body.version,row.version);row.version++;row.isActive=body.action==='ACTIVATE';row.deletedAt=body.action==='DELETE'?'2026-11-14T00:00:00Z':null;receipts.set(body.clientKey,{request:body,after:{...row}});
+   assert.equal(body.version,row.version);row.version++;row.isActive=body.action==='ACTIVATE'||body.action==='RESTORE';row.deletedAt=body.action==='DELETE'?'2026-11-14T00:00:00Z':null;receipts.set(body.clientKey,{request:body,after:{...row}});
    if(failSave){failSave=false;return r.fulfill({headers,status:500,json:{error:'FAILED_AFTER_COMMIT'}});}
    return r.fulfill({headers,json:row});
   });
@@ -39,10 +38,11 @@ try{
   await page.getByText(t.failed,{exact:true}).waitFor();assert.equal(await page.getByText(t.empty,{exact:true}).count(),0);await page.getByRole('button',{name:t.reload,exact:true}).click();await page.locator('[data-port-code="AA000"]').waitFor();
   await page.getByRole('button',{name:t.next,exact:true}).click();await page.locator('[data-port-code="KRPUS"]').waitFor();await page.getByRole('button',{name:t.previous,exact:true}).click();await page.locator('[data-port-code="AA000"]').waitFor();
   const search=page.getByRole('textbox',{name:t.search,exact:true});await search.fill('KRPUS');const used=page.locator('[data-port-code="KRPUS"]');await used.waitFor();assert.equal(await used.getByRole('button',{name:t.remove,exact:true}).isDisabled(),true);
-  await used.getByRole('checkbox').click();await page.getByText(t.failed,{exact:true}).waitFor();assert.equal(await search.isDisabled(),true);assert.equal(await search.inputValue(),'KRPUS');await page.getByRole('button',{name:t.retry,exact:true}).click();await page.waitForFunction(()=>window.notices.length===1);assert.deepEqual(posted[0],posted[1]);await used.getByRole('checkbox').waitFor();assert.equal(await used.getByRole('checkbox').isChecked(),false);
-  await used.getByRole('checkbox').click();await page.getByText(t.changed,{exact:true}).waitFor();await page.getByRole('button',{name:t.reload,exact:true}).click();await used.waitFor();await used.getByRole('checkbox').click();await page.waitForFunction(()=>window.notices.length===2);
-  await search.fill('VNHPH');let unused=page.locator('[data-port-code="VNHPH"]');await unused.waitFor();await unused.getByRole('button',{name:t.remove,exact:true}).click();const confirmation=page.getByRole('dialog');await confirmation.getByText(t.confirmDelete,{exact:true}).waitFor();await confirmation.getByRole('button',{name:lang==='ko'?'확인':lang==='en'?'OK':'Đồng ý',exact:true}).click();await page.getByText(t.empty,{exact:true}).waitFor();
-  const state=page.getByRole('combobox',{name:t.state,exact:true});await state.click();await page.getByRole('option',{name:t.DELETED,exact:true}).click();await unused.getByRole('button',{name:t.restore,exact:true}).click();await page.getByText(t.empty,{exact:true}).waitFor();await state.click();await page.getByRole('option',{name:t.INACTIVE,exact:true}).click();await unused.waitFor();assert.equal(await unused.getByRole('checkbox').isChecked(),false);
+  assert.equal(await page.getByRole('checkbox').count(),0);assert.equal(await page.getByRole('columnheader',{name:t.source,exact:true}).count(),0);await used.getByText(t.inUse,{exact:true}).waitFor();
+  const stable=getCount;await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));window.dispatchEvent(new Event('focus'));});await page.waitForTimeout(700);assert.equal(getCount,stable,'focus must not reload the catalogue');
+  await search.fill('VNHPH');let unused=page.locator('[data-port-code="VNHPH"]');await unused.waitFor();await unused.getByRole('button',{name:t.remove,exact:true}).click();const confirmation=page.getByRole('dialog');await confirmation.getByText(t.confirmDelete,{exact:true}).waitFor();await confirmation.getByRole('button',{name:lang==='ko'?'확인':lang==='en'?'OK':'Đồng ý',exact:true}).click();
+  await page.getByText(t.failed,{exact:true}).waitFor();assert.equal(await search.isDisabled(),true);await page.getByRole('button',{name:t.retry,exact:true}).click();await page.getByText(t.empty,{exact:true}).waitFor();assert.deepEqual(posted[0],posted[1]);
+  const state=page.getByRole('combobox',{name:t.state,exact:true});await state.click();await page.getByRole('option',{name:t.DELETED,exact:true}).click();await unused.getByRole('button',{name:t.restore,exact:true}).click();await page.getByText(t.empty,{exact:true}).waitFor();await state.click();await page.getByRole('option',{name:t.ALL,exact:true}).click();await unused.waitFor();assert.equal(rows.find(row=>row.code==='VNHPH').isActive,true);
   assert.equal(await search.inputValue(),'VNHPH');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();console.log('PASS SYSTEM port management',lang,width);
  }
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

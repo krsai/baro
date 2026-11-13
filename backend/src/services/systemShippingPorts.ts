@@ -26,7 +26,7 @@ export async function changeSystemShippingPort(db:any,email:string,code:string,i
   const remove=input.action==='DELETE',restore=input.action==='RESTORE';
   if(restore?!before.deletedAt:!!before.deletedAt)fail('SHIPPING_PORT_CHANGED',409);
   if(remove&&(await tx.$queryRawUnsafe('SELECT '+usage+' AS used FROM "ShippingPort" p WHERE code=$1',code))[0].used)fail('SHIPPING_PORT_IN_USE',409);
-  const after=(await tx.$queryRawUnsafe('UPDATE "ShippingPort" SET "isActive"=$2,"deletedAt"=CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END,version=version+1,"updatedBySystemUserId"=$4,"updatedAt"=CURRENT_TIMESTAMP WHERE code=$1 RETURNING *',code,input.action==='ACTIVATE',remove,user.id))[0];
+  const after=(await tx.$queryRawUnsafe('UPDATE "ShippingPort" SET "isActive"=$2,"deletedAt"=CASE WHEN $3 THEN CURRENT_TIMESTAMP ELSE NULL END,version=version+1,"updatedBySystemUserId"=$4,"updatedAt"=CURRENT_TIMESTAMP WHERE code=$1 RETURNING *',code,input.action==='ACTIVATE'||restore,remove,user.id))[0];
   await tx.$executeRawUnsafe('INSERT INTO "ShippingPortChange"("clientKey","requestHash",code,version,"actorId",action,"before","after") VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)',input.clientKey,hash,code,after.version,user.id,input.action,JSON.stringify(before),JSON.stringify(after));
   return after;
  });
