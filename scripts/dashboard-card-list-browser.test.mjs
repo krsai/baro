@@ -21,7 +21,7 @@ try{
   const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);
   await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=APPROVED')),page.getByRole('option',{name:t.statuses.APPROVED,exact:true}).click()]);
   assert.equal(queries.at(-1).start,undefined);assert.equal(queries.at(-1).end,undefined);assert.equal(queries.at(-1).status,'APPROVED');
-  assert.equal(await page.locator('[data-dashboard-card]').count(),1);assert.equal(Math.round((await page.locator('[data-dashboard-card]').boundingBox()).height),128);
+  assert.equal(await page.locator('[data-dashboard-card]').count(),1);const card=await page.locator('[data-dashboard-card]').boundingBox(),action=await page.locator('[data-dashboard-card-actions]').boundingBox();assert.ok(card.height>=80&&card.height<128);assert.ok(Math.abs(action.y+action.height/2-card.y-card.height/2)<1);assert.ok(action.x>card.x+card.width/2);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS dashboard cards: ko/en/vi desktop/mobile, shared card list, no date inputs/table, status-only filtering across all months, compact filters and shared card size.');

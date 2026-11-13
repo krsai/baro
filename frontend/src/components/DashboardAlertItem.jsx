@@ -4,9 +4,9 @@ import {dashboardItemSx,dashboardCardText} from './dashboardWidgetStyles';
 import {getCurrentLanguageCode} from '../utils/appLanguage';
 export default function DashboardAlertItem({title,detail,countLabel,onClick,disabled=false,kind,actions,showConfirm=true,confirmLabel,languageCode=getCurrentLanguageCode()}){
  const t=dashboardCardText[languageCode]||dashboardCardText.en;
- const content=<Box sx={{textAlign:'left',minWidth:0,overflowWrap:'anywhere'}}><Typography fontWeight={600}>{title}</Typography>{detail&&<Typography variant="caption" color="text.secondary" component="div" sx={{whiteSpace:'pre-wrap'}}>{detail}</Typography>}</Box>;
+ const content=<Box sx={{textAlign:'left',minWidth:0,overflowWrap:'anywhere'}}><Typography fontWeight={600}>{title}</Typography>{detail&&<Typography variant="caption" color="text.secondary" component="div" sx={{whiteSpace:'pre-wrap'}}>{detail}</Typography>}{countLabel&&<Chip size="small" label={countLabel} sx={{mt:.5}}/>}</Box>;
  return <Box data-dashboard-card data-dashboard-alert-kind={kind} sx={dashboardItemSx}>
-  <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>{onClick?<ButtonBase disabled={disabled} onClick={onClick} sx={{width:'100%',minHeight:'100%',display:'block',p:1.5,pb:.5,color:'text.primary','&:hover':{bgcolor:'action.hover'}}}>{content}</ButtonBase>:<Box sx={{p:1.5,pb:.5}}>{content}</Box>}</Box>
-  <Box sx={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:1,px:1.5,pb:1,minHeight:36,flexShrink:0}}>{countLabel&&<Chip size="small" label={countLabel} sx={{mr:'auto',flexShrink:0}}/>}{actions}{showConfirm&&onClick&&<Button size="small" disabled={disabled} onClick={onClick}>{confirmLabel||t.confirm}</Button>}</Box>
+  <Box sx={{flex:1,minWidth:0,display:'flex'}}>{onClick?<ButtonBase disabled={disabled} onClick={onClick} sx={{width:'100%',display:'flex',justifyContent:'flex-start',p:1.5,color:'text.primary','&:hover':{bgcolor:'action.hover'}}}>{content}</ButtonBase>:<Box sx={{p:1.5}}>{content}</Box>}</Box>
+  {(actions||showConfirm&&onClick)&&<Box data-dashboard-card-actions sx={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:.5,px:1,py:1,minWidth:80,maxWidth:'45%',boxSizing:'border-box',flexShrink:0}}>{actions}{showConfirm&&onClick&&<Button size="small" disabled={disabled} onClick={onClick}>{confirmLabel||t.confirm}</Button>}</Box>}
  </Box>;
 }
