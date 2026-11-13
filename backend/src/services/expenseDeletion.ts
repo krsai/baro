@@ -1,3 +1,4 @@
+import {expensePaymentCompletionByItem} from './expensePaymentCompletion';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {loadExpenseEditorSource} from './expenseRequestEditor';
@@ -73,14 +74,15 @@ export async function listExpenseDeletions(db:any,orgId:number,actorId:number){
 }
 export async function attachExpenseDeletionAvailability(db:any,orgId:number,requests:any[],actor:any){
  const itemIds=requests.flatMap(row=>row.items.map((item:any)=>item.id));
- const allocations=itemIds.length?await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:{in:itemIds},entry:{voidedAt:null}},select:{expenseItemId:true}}):[];
+ const allocations=itemIds.length?await db.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:{in:itemIds},entry:{voidedAt:null}},select:{expenseItemId:true,amount:true}}):[];
+ const completion=expensePaymentCompletionByItem(requests.flatMap(row=>row.items),allocations);
  const linked=new Set(allocations.map((row:any)=>row.expenseItemId));
  const pending=requests.length?await db.changeApprovalRequest.findMany({where:{orgId,menu:'EXPENSE',status:'PENDING',expenseRequestId:{in:requests.map(row=>row.id)}},select:{expenseRequestId:true,operation:true}}):[];
  return requests.map(row=>{
   const bankReconciled=row.items.some((item:any)=>linked.has(item.id));
   const participant=actor&&(actor.orgRole==='ADMIN'||row.createdByEmployeeId===actor.id||row.approvalSteps.some((step:any)=>step.employeeId===actor.id));
   const changePending=pending.find((request:any)=>request.expenseRequestId===row.id);
-  return {...row,bankReconciled,changePending:!!changePending,deletionPending:changePending?.operation==='DELETE'||!bankReconciled&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.deletedAt&&!bankReconciled&&!changePending&&!!participant};
+  return {...row,items:row.items.map((item:any)=>({...item,bankPaymentComplete:completion.get(item.id)===true})),bankPaymentComplete:row.items.length>0&&row.items.every((item:any)=>completion.get(item.id)===true),bankReconciled,changePending:!!changePending,deletionPending:changePending?.operation==='DELETE'||!bankReconciled&&row.deletionRequests.some((d:any)=>d.version===row.version),canRequestDeletion:!row.deletedAt&&!bankReconciled&&!changePending&&!!participant};
  });
 }
 export function registerExpenseDeletionRoutes(app:any,db:any,gates:any){

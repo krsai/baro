@@ -35,7 +35,7 @@ try {
     rows.push({...rows[2],id:'document-item-2',quantity:'7',unit:{id:2,nameEn:'Meter'},amount:'20.50',subtotal:'20.50'});
     await page.route('**/outsourcing-requests?*',route=>route.fulfill({headers,json:rows}));
     await page.route('**/expense-approval-settings?*',route=>route.fulfill({headers,json:{canDraft:true}}));
-    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,version:1,canRequestDeletion:!paymentLinked,bankReconciled:paymentLinked,approval:{approved:true,status:'APPROVED'},managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
+    await page.route('**/expense-requests?*',route=>route.fulfill({headers,json:[{id:1,version:1,canRequestDeletion:!paymentLinked,bankReconciled:paymentLinked,bankPaymentComplete:rows[2].bankPaymentComplete===true&&rows[3].bankPaymentComplete===true,approval:{approved:true,status:'APPROVED'},managementNumber:'EXP-2026-000041',partnerOrgId:12,partner:{id:12,name:'New Vendor'},title:'Document title',remark:'Delivery note',requestDate:'2026-10-17',createdByEmployee:{name:'Applicant'},currency:null,subtotal:null,vatAmount:null,amount:null,currencyTotals:[{currency:'USD',subtotal:'10.25',vatAmount:'0',amount:'10.25'},{currency:'VND',subtotal:'200',vatAmount:'0',amount:'200'}],items:[rows[2],rows[1]]}]}));
     await page.goto(`http://127.0.0.1:${port}/expense-list-acceptance.html`);
     await page.locator('[data-expense-row="cost"]').waitFor();assert.equal(await page.locator('tbody tr').count(),2);
     assert.equal(await page.locator('[data-expense-request="1"]').getByRole('button',{name:expenseDeletionText[lang].request,exact:true}).isDisabled(),false);
@@ -43,6 +43,18 @@ try {
     await page.waitForFunction(()=>document.querySelector('[data-expense-request="1"] .MuiIconButton-root')?.disabled===true);
     paymentLinked=false;await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
     await page.waitForFunction(()=>document.querySelector('[data-expense-request="1"] .MuiIconButton-root')?.disabled===false);
+    const hidePaid=page.getByRole('checkbox',{name:text.hideBankPaid,exact:true});assert.equal(await hidePaid.isChecked(),false);
+    const searchBox=await page.getByRole('textbox',{name:text.search}).boundingBox(),filterBox=await hidePaid.boundingBox();assert.ok(filterBox.x>=searchBox.x+searchBox.width,'completion filter sits beside search');
+    rows[2].bankPaymentComplete=true;rows[3].bankPaymentComplete=false;
+    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
+    await page.locator('[data-expense-request="1"]').waitFor();await hidePaid.check();assert.equal(await page.locator('[data-expense-request="1"]').count(),1,'a partially paid multi-item request remains visible');
+    rows[3].bankPaymentComplete=true;
+    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
+    await page.locator('[data-expense-request="1"]').waitFor({state:'hidden'});assert.equal(await page.locator('.cc-total-amount').innerText().then(value=>value.includes('30.75')||value.includes('30,75')),false,'hidden requests leave displayed totals');
+    rows[3].bankPaymentComplete=false;
+    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,topics:['bank-ledger']}})));
+    await page.locator('[data-expense-request="1"]').waitFor();assert.equal(await hidePaid.isChecked(),true,'voiding a payment returns the request without clearing the filter');
+    await page.getByRole('button',{name:text.reset,exact:true}).click();assert.equal(await hidePaid.isChecked(),false);
     assert.equal(await page.locator('.cc-kicker').count(),0);
     assert.equal(await page.locator('.cc-primary.MuiButton-containedPrimary').count(),1);
     assert.notEqual(await page.locator('.cc-primary').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
@@ -72,7 +84,7 @@ try {
     await page.getByRole('button',{name:text.reset,exact:true}).click();
     await left.click();assert.equal(await page.locator('tbody tr').count(),3);
     const headings=await page.locator('thead th').allTextContents();
-    assert.equal(headings.length,9);assert.equal(await page.locator('[data-search-filters]').count(),0);assert.equal(await page.getByText('SEARCH',{exact:true}).count(),0);
+    assert.equal(headings.length,9);assert.equal(await page.locator('[data-search-filters]').count(),1);assert.equal(await page.getByText('SEARCH',{exact:true}).count(),0);
     assert.equal(await page.getByText('EXP-2026-000041',{exact:true}).count(),0);assert.equal(await page.locator('[data-expense-row="cost"] td').nth(2).textContent(),'TRKV');
     const grouped=page.locator('[data-expense-request="1"]');assert.equal(await grouped.count(),1);assert.match(await grouped.locator('td').nth(5).innerText(),/30[.,]75/);
     await page.getByRole('textbox',{name:text.search}).fill('NEW-42');assert.match(await grouped.locator('td').nth(5).innerText(),/30[.,]75/);await page.getByRole('textbox',{name:text.search}).fill('');

@@ -8,7 +8,7 @@ import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
 import { expenseLineDescription, expenseRequestSummary } from '../../utils/expenseCodePresentation.mjs';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, CircularProgress,MenuItem,TextField } from '@mui/material';
+import { Alert, Box, Button, CircularProgress,MenuItem,TextField,Checkbox,FormControlLabel } from '@mui/material';
 import dayjs from 'dayjs';
 import { expenseRequestNumber } from '../../components/ExpenseRequestView';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -43,10 +43,11 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const [rows,setRows] = useState([]), [documents,setDocuments] = useState([]), [view] = useState('items');
   const [loading,setLoading] = useState(true), [errors,setErrors] = useState({ items:'',documents:'' });
   const [search,setSearch] = useState(''), [partner,setPartner] = useState(''), [industry,setIndustry] = useState(''), [currency,setCurrency] = useState('');
+  const [hidePaid,setHidePaid]=useState(false);
   const [checked,setChecked] = useState([]), [ascending,setAscending] = useState(false);
   const [dateFrom,setDateFrom] = useState(() => dayjs().startOf('month')), [dateTo,setDateTo] = useState(() => dayjs().endOf('month').startOf('day'));
   const loadSequence = useRef(0), rangeOrganization = useRef(null);
-  const error = errors[view === 'documents' ? 'documents' : 'items'];
+  const error = errors[view === 'documents' ? 'documents' : 'items'] || (hidePaid?errors.documents:'');
   const load = useCallback(async () => {
     const sequence = ++loadSequence.current;
     setRows([]); setDocuments([]); setLoading(true); setErrors({items:'',documents:''});
@@ -67,7 +68,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
     if (Number(detail.orgId)===Number(activeOrgId)&&(['transaction-request','business-partner','expense-approval'].includes(detail?.source)||detail.topics?.some(topic=>['bank-ledger','ledger-entries','expense-approvals'].includes(topic)))) load();
   }),[activeOrgId,load]);
-  useEffect(() => {setPartner('');setIndustry('');setCurrency('');setChecked([]);},[activeOrgId]);
+  useEffect(() => {setPartner('');setIndustry('');setCurrency('');setChecked([]);setHidePaid(false);},[activeOrgId]);
   useEffect(() => {
     if (loading || period.loading || period.error || rangeOrganization.current === activeOrgId) return;
     const [start,end] = currentMonthRange(period.startDate);
@@ -93,14 +94,14 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     return withinDates(row.transactionDate) && matchesPartner(row) && matchesIndustry(row) && matchesCurrency(row) &&
       matches([...searchValues(row),expenseRequestSummary(document,languageCode),document?.remark,document && expenseRequestNumber(document)]);
   }).sort((a,b)=>ascending ? a.transactionDate.localeCompare(b.transactionDate) : b.transactionDate.localeCompare(a.transactionDate));
-  const filteredDocuments = documents.filter(row => withinDates(row.requestDate) && matchesPartner(row) && (!currency || (row.currencyTotals || row.items.map(item=>({...item,currency:item.currency || row.currency}))).some(matchesCurrency)) &&
+  const filteredDocuments = documents.filter(row => (!hidePaid||row.bankPaymentComplete!==true)&&withinDates(row.requestDate) && matchesPartner(row) && (!currency || (row.currencyTotals || row.items.map(item=>({...item,currency:item.currency || row.currency}))).some(matchesCurrency)) &&
     (!industry || row.items.some(matchesIndustry)) && matches([expenseRequestNumber(row),expenseRequestSummary(row,languageCode),row.remark,row.partner?.name,row.createdByEmployee?.name,...row.items.flatMap(searchValues)]))
     .sort((a,b)=>ascending ? a.requestDate.localeCompare(b.requestDate) : b.requestDate.localeCompare(a.requestDate));
   const partnerOptions = [...new Map([...rows,...documents].filter(row=>row.partnerOrgId != null || row.partner?.id != null).map(row=>[String(row.partnerOrgId ?? row.partner.id),row.partner?.name || '—'])).entries()];
   const industryOptions = [...new Map(rows.map(row=>[expenseIndustryKey(row),industryLabel(row)])).entries()];
   const currencies = [...new Set([...rows,...documents.flatMap(document=>document.currencyTotals || document.items.map(item=>({...item,currency:item.currency || document.currency})))].map(row=>row.currency).filter(Boolean))].sort();
   const matchedRows = new Set(filtered);
-  const requests = groupExpenseRequests(rows).filter(group=>group.items.some(row=>matchedRows.has(row)))
+  const requests = groupExpenseRequests(rows).filter(group=>group.items.some(row=>matchedRows.has(row))&&(!hidePaid||!(group.row.expenseRequestId?documentsById.get(group.row.expenseRequestId)?.bankPaymentComplete===true:group.items.every(item=>item.bankPaymentComplete===true))))
     .sort((a,b)=>ascending ? a.row.transactionDate.localeCompare(b.row.transactionDate) : b.row.transactionDate.localeCompare(a.row.transactionDate));
   const totals = expenseCurrencyTotals(view === 'documents' ? filteredDocuments.flatMap(document=>document.currencyTotals || [document]).filter(matchesCurrency) : view === 'items' ? requests.flatMap(group=>group.items).filter(matchesCurrency) : filtered);
   const groups = groupExpenseRows(filtered,view, row=>view === 'partner' ? row.partner?.name || '—' : industryLabel(row));
@@ -111,7 +112,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
   const money = (value,code) => formatCurrency(value,{currencyCode:code,languageCode});
   const toggle = id => setChecked(current=>current.includes(id) ? current.filter(key=>key!==id) : [...current,id]);
   const reset = () => {
-    setSearch('');setPartner('');setIndustry('');setCurrency('');setChecked([]);setAscending(false);
+    setSearch('');setPartner('');setIndustry('');setCurrency('');setChecked([]);setAscending(false);setHidePaid(false);
     const [start,end] = currentMonthRange(period.startDate);
     setDateFrom(start);setDateTo(end);
   };
@@ -138,6 +139,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     {canDraft===false&&<Alert severity="info">{(expenseDeletionText[languageCode]||expenseDeletionText.en).notAllowed}</Alert>}
     <SearchPanel compact title={text.query} searchWidth={260} disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
+      filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={hidePaid} disabled={loading} onChange={event=>setHidePaid(event.target.checked)}/>} label={text.hideBankPaid}/> }
       controls={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
 
     />

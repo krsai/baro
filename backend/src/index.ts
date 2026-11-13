@@ -1,3 +1,4 @@
+import {attachExpensePaymentCompletion} from './services/expensePaymentCompletion';
 import {importAttendanceFile} from './services/attendanceImport';
 import {registerWorkTimeRoutes} from './services/workTimeRequests';
 import {registerAccountingAlertRoutes} from './services/accountingAlerts';
@@ -27667,7 +27668,8 @@ app.get("/outsourcing-requests", async (req, res) => {
       createdByEmployee: { select: { id: true, name: true } },
     } }),
   ]);
-  return res.json([...costs.map(row => ({ ...row,partner:row.partner||employeePayee(row.payeeEmployee), sourceKind: 'COST_REQUEST' })), ...historicalOutsourcingRows(records)].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)));
+  const paidCosts=await attachExpensePaymentCompletion(prisma,orgId,costs);
+  return res.json([...paidCosts.map(row => ({ ...row,partner:row.partner||employeePayee(row.payeeEmployee), sourceKind: 'COST_REQUEST' })), ...historicalOutsourcingRows(records)].sort((a, b) => b.transactionDate.localeCompare(a.transactionDate)));
 });
 app.post("/partner-transaction-costs", async (req, res) => {
   const access = await requireOrgRole(req, res, { allowedRoles: ORG_MANAGEMENT_ROLES });
