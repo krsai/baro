@@ -13,3 +13,9 @@ approvalWorkflowText.ko.overview='결재 현황';
 Object.assign(approvalWorkflowText.ko.statuses,{DELETED:'삭제 완료'});
 Object.assign(approvalWorkflowText.en.statuses,{DELETED:'Deleted'});
 Object.assign(approvalWorkflowText.vi.statuses,{DELETED:'Đã xóa'});
+
+approvalWorkflowText.ko.overviewStatuses={UNAPPROVED:'결재',APPROVED:'승인',REJECTED:'반려'};
+approvalWorkflowText.en.overviewStatuses={UNAPPROVED:'Pending',APPROVED:'Approved',REJECTED:'Rejected'};
+approvalWorkflowText.vi.overviewStatuses={UNAPPROVED:'Chờ duyệt',APPROVED:'Đã duyệt',REJECTED:'Từ chối'};
+// Overview groups do not change the stored workflow or its diagnostic states.
+export const approvalOverviewStatus=status=>['APPROVED','REJECTED'].includes(status)?status:'UNAPPROVED';

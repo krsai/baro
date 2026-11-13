@@ -14,14 +14,21 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:800}}),queries=[],errors=[],t=approvalWorkflowText[lang];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
   await page.clock.install({time:new Date('2026-11-12T12:00:00+07:00')});
-  await page.route('**/approval-reviews?*',r=>{queries.push(Object.fromEntries(new URL(r.request().url()).searchParams));return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{rows:[{id:1,kind:'EXPENSE_REQUEST',menu:'EXPENSE',operation:'CREATE',managementNumber:'EXP-001',drafter:'Author',requestDate:'2026-11-11'}],total:1}});});
-  await page.goto('http://127.0.0.1:'+port+'/dashboard-card-list-test.html?lang='+lang);await page.getByText('Author',{exact:false}).waitFor();
+  await page.route('**/approval-reviews?*',r=>{const query=Object.fromEntries(new URL(r.request().url()).searchParams);queries.push(query);const rows=['REQUESTED','IN_REVIEW','UNKNOWN','APPROVED','REJECTED'].map((status,i)=>({id:i+1,status,kind:'EXPENSE_REQUEST',menu:'EXPENSE',operation:'CREATE',managementNumber:'EXP-00'+(i+1),drafter:'Author',requestDate:'2026-11-11'})).filter(row=>query.status==='UNAPPROVED'?['REQUESTED','IN_REVIEW','UNKNOWN'].includes(row.status):row.status===query.status);return r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{rows,total:rows.length}});});
+  await page.goto('http://127.0.0.1:'+port+'/dashboard-card-list-test.html?lang='+lang);await page.getByText('Author',{exact:false}).first().waitFor();
   assert.equal(await page.locator('table,input[type="date"]').count(),0);assert.equal(queries[0].start,undefined);assert.equal(queries[0].end,undefined);
   assert.equal(await page.getByText('2026-11',{exact:true}).count(),0);
   const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);const title=await page.getByText(t.overview,{exact:true}).boundingBox(),field=await filter.boundingBox();assert.ok(Math.abs(title.y+title.height/2-field.y-field.height/2)<2,'filter shares the title row');
-  await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=APPROVED')),page.getByRole('option',{name:t.statuses.APPROVED,exact:true}).click()]);
+  assert.equal(queries[0].status,'UNAPPROVED');assert.equal(await page.locator('[data-dashboard-card]').count(),3);
+  assert.deepEqual(await page.locator('[data-dashboard-card-title] .MuiChip-label').allTextContents(),Array(3).fill(t.overviewStatuses.UNAPPROVED),'requested, in-review and unknown share one visible status');
+  await filter.click();assert.equal(await page.getByRole('option').count(),3);assert.deepEqual(await page.getByRole('option').allTextContents(),[t.overviewStatuses.UNAPPROVED,t.overviewStatuses.APPROVED,t.overviewStatuses.REJECTED]);
+  await Promise.all([page.waitForResponse(r=>r.url().includes('status=APPROVED')),page.getByRole('option',{name:t.overviewStatuses.APPROVED,exact:true}).click()]);
   assert.equal(queries.at(-1).start,undefined);assert.equal(queries.at(-1).end,undefined);assert.equal(queries.at(-1).status,'APPROVED');
   assert.equal(await page.locator('[data-dashboard-card]').count(),1);const card=await page.locator('[data-dashboard-card]').boundingBox(),action=await page.locator('[data-dashboard-card-actions]').boundingBox();assert.ok(card.height>=80&&card.height<128);assert.ok(Math.abs(action.y+action.height/2-card.y-card.height/2)<1);assert.ok(action.x>card.x+card.width/2);
+  assert.deepEqual(await page.locator('[data-dashboard-card-title] .MuiChip-label').allTextContents(),[t.overviewStatuses.APPROVED]);
+  await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=REJECTED')),page.getByRole('option',{name:t.overviewStatuses.REJECTED,exact:true}).click()]);
+  await page.getByText('Author',{exact:false}).first().waitFor();assert.equal(queries.at(-1).status,'REJECTED');assert.deepEqual(await page.locator('[data-dashboard-card-title] .MuiChip-label').allTextContents(),[t.overviewStatuses.REJECTED]);
+  await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=UNAPPROVED')),page.getByRole('option',{name:t.overviewStatuses.UNAPPROVED,exact:true}).click()]);await page.waitForFunction(()=>document.querySelectorAll('[data-dashboard-card]').length===3);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS dashboard cards: ko/en/vi desktop/mobile, shared card list, no date inputs/table, status-only filtering across all months, compact filters and shared card size.');
