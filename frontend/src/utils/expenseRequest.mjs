@@ -35,6 +35,8 @@ export function expenseDocumentTotals(lines, currency) {
 export function validExpenseLine(line, code, currency) {
   code = expenseCodeForLine(line,code);
   if (!code || !expenseLineAmounts(line, currency)) return false;
+  if(['length','width','height'].some(key=>line.details[key])&&(!line.details.length||!line.details.width))return false;
+  if(['length','width','height'].some(key=>line.details[key]&&(!/^\d{1,12}(\.\d{1,4})?$/.test(line.details[key])||Number(line.details[key])<=0)))return false;
   if(!line.productionLinked&&code.base?.entryMode!=='PROCESS'&&!line.details.evidenceFile?.trim())return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
   if(line.styleProcessIds?.length&&(!line.workOrderId||!line.styleId||line.styleProcessIds.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(line.styleProcessIds).size!==line.styleProcessIds.length))return false;

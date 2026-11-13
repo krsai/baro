@@ -3,8 +3,8 @@ import { Prisma } from '@prisma/client';
 import { createHttpError } from '../utils/http';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 
-export const COST_DETAIL_FIELDS = ['transportDate', 'origin', 'destination', 'reference'] as const;
-export const COST_STORED_DETAIL_FIELDS=[...COST_DETAIL_FIELDS,'evidenceFile'] as const;
+export const COST_DETAIL_FIELDS = ['transportDate', 'origin', 'destination', 'reference', 'length', 'width'] as const;
+export const COST_STORED_DETAIL_FIELDS=[...COST_DETAIL_FIELDS,'height','evidenceFile'] as const;
 export const costInclude = { unit:true,referenceLinks:{include:{workOrder:{select:{id:true,orderNumber:true}},style:{select:{id:true,name:true,code:true}}}}, partner: { select: { id: true, name: true } }, serviceType: true, workOrder: { select: { id: true, orderNumber: true } }, createdByEmployee: { select: { id: true, name: true } } } as const;
 // Project historical production records for the unified request list without
 // migrating, recreating or approving the original production observations.
@@ -33,6 +33,10 @@ export function historicalOutsourcingRows(records: any[]) {
     createdAt: record.createdAt,
   }));
 }
+export function validateCostDimensions(details:Record<string,string>){
+ for(const key of ['length','width','height'])if(details[key]&&(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key])||new Prisma.Decimal(details[key]).lte(0)))throw createHttpError(400,'INVALID_TRANSACTION_DETAILS');
+ if(['length','width','height'].some(key=>details[key])&&(!details.length||!details.width))throw createHttpError(400,'REQUIRED_TRANSACTION_FIELD:'+(!details.length?'length':'width'));
+}
 const fail = (message: string): never => { throw createHttpError(400, message); };
 export function validateCostDate(value: unknown): string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0, 4)) < 1) return fail('INVALID_TRANSACTION_DATE');
@@ -45,6 +49,7 @@ export function validateServiceDefinition(body: any) {
   if (!['PROCESS', 'LOGISTICS', 'GENERAL'].includes(entryMode)) return fail('INVALID_ENTRY_MODE');
   const fields = body?.requiredFields;
   if (!Array.isArray(fields) || fields.some(field => !COST_DETAIL_FIELDS.includes(field))) return fail('INVALID_REQUIRED_FIELDS');
+  if(fields.includes('length')!==fields.includes('width'))return fail('INVALID_REQUIRED_FIELDS');
   if (!validLocalizedName(body, 100)) return fail('INVALID_SERVICE_NAME');
   body = { ...body, ...normalizeLocalizedName(body) };
   const text = (key: string) => typeof body[key] === 'string' && body[key].trim().length <= 100 ? body[key].trim() : '';
@@ -80,6 +85,7 @@ export function validateCostInput(body: any) {
     details[key] = value.trim();
   }
   if(details.evidenceFile&&/[\r\n\u0000]/.test(details.evidenceFile))return fail('INVALID_TRANSACTION_DETAILS');
+  validateCostDimensions(details);
   if (details.transportDate) validateCostDate(details.transportDate);
   return { partnerOrgId, serviceTypeId, workOrderId, transactionDate, description, amount, currency, clientKey: body.clientKey, details };
 }

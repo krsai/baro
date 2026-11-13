@@ -5,7 +5,7 @@ import { resolveExpenseCodeLink } from './expenseCodeLinkPolicy';
 import { Prisma } from '@prisma/client';
 import { env } from 'node:process';
 import { createHttpError } from '../utils/http';
-import { validateCostDate, COST_STORED_DETAIL_FIELDS } from './partnerTransactionCost';
+import { validateCostDate, validateCostDimensions, COST_STORED_DETAIL_FIELDS } from './partnerTransactionCost';
 import { snapshotProcessIds, hasValidAssignmentProcessRefs } from '../utils/assignmentSnapshotIntegrity';
 import { loadManagementPeriod, assertManagedDate } from '../factories/factoryManagementStart';
 import { resolveAccountingCode, ACCOUNTING_CODE_INCLUDE } from './accountingCode';
@@ -62,6 +62,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     if (!COST_STORED_DETAIL_FIELDS.includes(key as any) || typeof value !== 'string' || value.length > 500) return invalid('INVALID_TRANSACTION_DETAILS');
     details[key] = value.trim();
   }
+  validateCostDimensions(details);
   if (details.transportDate) validateCostDate(details.transportDate);
   const previous = edit ? null : await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: REQUEST_INCLUDE });
   const metadata=await prepareExpenseMetadata(tx,orgId,body,edit?.cost||previous||(edit?.record?{workOrderId:edit.record.assignmentPlan?.workOrderId,styleId:edit.record.styleId}:null));

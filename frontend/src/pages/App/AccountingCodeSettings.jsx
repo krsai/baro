@@ -66,7 +66,7 @@ export default function AccountingCodeSettings(){
   setForm({cashDirection:'BOTH',code:'',nameKo:'',nameEn:'',nameVi:'',industryIds:initial?[initial.id]:[],entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true});
  };
  const togglePanel=kind=>{if(pickerOpen&&panelKind===kind){closePicker();return;}setPanelKind(kind);setPickerExiting(false);setPickerOpen(true);};
- const activeInputs=form?['order','style','process','transportDate','origin','destination'].filter(key=>['order','style','process'].includes(key)?form[key+'Input']&&form[key+'Input']!=='HIDDEN':form.requiredFields?.includes(key)):[];
+ const activeInputs=form?['order','style','process','transportDate','origin','destination','dimensions'].filter(key=>['order','style','process'].includes(key)?form[key+'Input']&&form[key+'Input']!=='HIDDEN':form.requiredFields?.includes(key==='dimensions'?'length':key)):[];
  const closePicker=()=>{setPickerExiting(true);setPickerOpen(false);};
  const save=async()=>{
   setSaving(true);setError('');

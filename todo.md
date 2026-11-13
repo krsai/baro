@@ -1559,3 +1559,4 @@ BOM에는 단순한 “한 벌당 숫자”만 저장하지 않는다. 기준 �
 - 이후 완료 작업은 위 상태표와 커밋 근거를 갱신합니다. 날짜별 성공 로그나 새 완료 보고서를 계속 추가하지 않습니다.
 
 - Partner type selection lock: implemented and verified; production deployment/acceptance unverified. Missing subscriber partyKind permits explicit local selection and saving; an existing official kind remains authoritative. Server tests (10), ko/en/vi desktop/mobile browser checks, both builds, i18n and encoding passed. No production data changed.
+- 회계 코드 치수 입력: 구현·관련 검증 완료 / 운영 배포·DB migration 적용·인수 미확인. 입력 항목에 치수(L×W×H)를 추가한다. 사용 시 길이(L)·너비(W)는 필수, 높이(H)는 선택이며 단위는 mm다. 양수 소수 입력·코드별/회사별 설정·비용 신청 저장/편집/상세 표시를 연결하고 설정 해제 시 기존 치수를 보존한다. 기존 정책/문서/감사는 일괄 변경하지 않는다. 신규 migration은 입력 설정 허용값과 치수 DB 검증만 확장하며 공통 실행기·Railway preflight·읽기 전용 시작 검사에 등록한다. 롤백은 새 치수 입력을 중지하고 기존 치수·감사·검증기를 보존한다. 한영베 PC·모바일, 저장/재조회·오입력/누락 차단·migration 멱등, 관련 회귀·양쪽 빌드·번역·인코딩 확인.
