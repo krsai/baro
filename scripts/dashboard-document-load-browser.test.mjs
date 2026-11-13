@@ -6,13 +6,14 @@ import {chromium} from 'playwright-core';
 const html='frontend/dashboard-document-load-test.html',jsx='frontend/dashboard-document-load-test.jsx',port=43497;
 assert.ok(!existsSync(html)&&!existsSync(jsx));
 writeFileSync(html,'<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/dashboard-document-load-test.jsx"></script></html>');
-writeFileSync(jsx,`import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline,Button}from'@mui/material';import theme from'/src/theme';import{MemoryRouter,Routes,Route,useLocation}from'react-router-dom';import{AppProvider}from'/src/context/AppContext';import Dialog from'/src/components/DashboardDocumentDialog';function Demo(){window.dashboardRouterPath=useLocation().pathname;const[open,setOpen]=React.useState(false);return <ThemeProvider theme={theme}><CssBaseline/><AppProvider><h1>Dashboard</h1><input aria-label="Draft" defaultValue="Keep my draft"/><Button onClick={()=>setOpen(true)}>Open alert</Button>{open&&<Dialog row={{path:new URLSearchParams(location.search).get('mode')==='expense'?'/outsourcing-record/edit/request/18':'/bank-ledger/edit/1'}} languageCode={new URLSearchParams(location.search).get('lang')} onClose={()=>setOpen(false)} onNavigate={()=>{}}/>}</AppProvider></ThemeProvider>;}createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/dashboard']}><Routes><Route path="/dashboard" element={<Demo/>}/></Routes></MemoryRouter>);`);
+writeFileSync(jsx,`import React from'react';import{createRoot}from'react-dom/client';import{ThemeProvider,CssBaseline,Button}from'@mui/material';import theme from'/src/theme';import{MemoryRouter,Routes,Route,useLocation}from'react-router-dom';import{AppProvider}from'/src/context/AppContext';import Dialog from'/src/components/DashboardDocumentDialog';import Panel from'/src/components/DashboardAlertsCard';function Demo(){window.dashboardRouterPath=useLocation().pathname;const[open,setOpen]=React.useState(false),[loading,setLoading]=React.useState(false),[error,setError]=React.useState(false);window.setSummaryLoading=setLoading;window.setSummaryError=setError;return <ThemeProvider theme={theme}><CssBaseline/><AppProvider><h1>Dashboard</h1><input aria-label="Draft" defaultValue="Keep my draft"/><Button onClick={()=>setOpen(true)}>Open alert</Button><Panel title="Alerts" text={{empty:"Empty",failed:"Failed",retry:"Retry"}} items={[]} loading={loading} error={error}>{open&&<Dialog row={{path:new URLSearchParams(location.search).get('mode')==='expense'?'/outsourcing-record/edit/request/18':'/bank-ledger/edit/1'}} languageCode={new URLSearchParams(location.search).get('lang')} onClose={()=>setOpen(false)} onNavigate={()=>{}}/>}</Panel></AppProvider></ThemeProvider>;}createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/dashboard']}><Routes><Route path="/dashboard" element={<Demo/>}/></Routes></MemoryRouter>);`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore',windowsHide:true});let browser;
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/dashboard-document-load-test.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const mode of ['failure','expense'])for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:900}});let requests=0,navigations=0;
+  page.on('dialog',dialog=>dialog.accept());
   page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useAuth=()=>{const profile={entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',orgId:2};return {isAuthenticated:true,activeOrgId:2,activeProfile:profile,accessProfile:profile};};"}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
@@ -35,6 +36,8 @@ try{
   if(mode==='expense'){
    const dialog=page.getByRole('dialog'),remark=dialog.getByTestId('expense-summary').getByRole('textbox');
    await remark.waitFor();assert.equal(await remark.inputValue(),'Original source remark');assert.equal(await remark.isEnabled(),true);
+   await remark.fill('Keep edited source');await page.evaluate(()=>window.setSummaryLoading(true));await page.waitForTimeout(100);assert.equal(await remark.inputValue(),'Keep edited source');
+   await page.evaluate(()=>{window.setSummaryLoading(false);window.setSummaryError(true);});await page.waitForTimeout(100);assert.equal(await remark.inputValue(),'Keep edited source');assert.equal(requests,1);await page.evaluate(()=>window.setSummaryError(false));
    assert.equal(await dialog.getByTestId('dashboard-document-load-error').count(),0);assert.equal(requests,1);assert.equal(navigations,1);
    assert.equal(await page.getByRole('textbox',{name:'Draft',includeHidden:true}).inputValue(),'Keep my draft');
    assert.equal(await page.evaluate(()=>window.dashboardRouterPath),'/dashboard');
@@ -52,5 +55,5 @@ try{
   await page.getByRole('button',{name:'Open alert',exact:true}).click();await page.getByTestId('dashboard-document-load-error').waitFor();assert.equal(navigations,1);
   await page.close();
  }
- console.log('PASS dashboard document routes: ko/en/vi desktop/mobile, real expense source opens below /dashboard, original data/params preserved, module failure stays local, close/reopen preserves dashboard.');
+ console.log('PASS dashboard document routes: ko/en/vi desktop/mobile, actual expense editor draft survives parent loading/error refresh without remount, source params preserved, module failure stays local and close/reopen preserves dashboard.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}

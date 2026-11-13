@@ -20,14 +20,14 @@ export default function WorkRequestsCard({orgId,languageCode}){
  const formDirty=editing?title!==editing.title||message!==editing.message:Boolean(title||message||recipient);
  useUnsavedChanges(open&&formDirty);
  const api=useCallback((path='',body)=>requestJSON('/dashboard/work-requests'+path+buildQueryString({orgId,...(!body&&!path?{page,status,direction}:{})}),{skipCache:true,skipGlobalLoading:true,...(body?{method:'POST',body:JSON.stringify(body)}:{})}),[orgId,page,status,direction]);
- useEffect(()=>{if(!active)return;let live=true,pending=false,timer;
-  const load=async()=>{if(!live||pending||document.visibilityState==='hidden')return;pending=true;setLoading(true);clearTimeout(timer);
-   try{const result=await api();if(live){if(page>0&&!result.rows.length){setPage(page-1);return;}setData(result);setError('');timer=setTimeout(load,10000);}}
+ useEffect(()=>{if(!active||open||selected||busy)return;let live=true,pending=false,timer,lastAttempt=0;
+  const load=async()=>{if(!live||pending||document.visibilityState==='hidden')return;pending=true;lastAttempt=Date.now();setLoading(true);clearTimeout(timer);
+   try{const result=await api();if(live){if(page>0&&!result.rows.length){setPage(page-1);return;}setData(result);setError('');timer=setTimeout(load,30000);}}
    catch{if(live)setError(t.failed);}finally{pending=false;if(live)setLoading(false);}};
-  const focus=()=>{if(document.visibilityState!=='hidden')void load();};
+  const focus=()=>{if(document.visibilityState!=='hidden'&&Date.now()-lastAttempt>=30000)void load();};
   void load();window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
   return()=>{live=false;clearTimeout(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
- },[api,active,reload,t.failed,page]);
+ },[api,active,reload,t.failed,page,open,Boolean(selected),busy]);
  const loadPeople=async()=>{setPeopleLoading(true);setPeopleFailed(false);try{const rows=await api('/recipients');if(alive.current)setPeople(rows);}catch{if(alive.current)setPeopleFailed(true);}finally{if(alive.current)setPeopleLoading(false);}};
  const create=()=>{clientKey.current=crypto.randomUUID();attempt.current=null;setEditing(null);setRecipient(null);setTitle('');setMessage('');setFormError('');setUncertain(false);setOpen(true);void loadPeople();};
  const edit=row=>{setEditing(row);setTitle(row.title);setMessage(row.message);setFormError('');setUncertain(false);setOpen(true);};

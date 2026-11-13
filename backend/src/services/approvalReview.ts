@@ -52,11 +52,18 @@ export async function approvalReviewDetail(db:any,orgId:number,actorId:number,ki
   const delegated=!!next&&delegatedIds.includes(row.id)&&await approvalDelegate(db,orgId,row.requestedByEmployeeId,next.employeeId,actorId);
   const canDecide=row.status==='PENDING'&&(delegated||next?.employeeId===actorId&&next.role===a.orgRole&&(next.gradeId==null||next.gradeId===a.gradeId&&a.grade?.isActive&&a.grade.set?.isActive))&&(!self||row.menu==='EXPENSE'&&row.operation==='DELETE'&&row.policy.highestSelfDeletion===true&&await isHighestCompanyApprover(db,orgId,a));
   let after:any=row.payload;
+  let before:any=row.beforeSnapshot;
+  if(row.menu==='BANK_LEDGER'){
+   const ids=[...new Set<number>([before.entry?.accountingCodeId,...(after?.rows||[]).map((item:any)=>item.accountingCodeId)].filter((id:any)=>Number.isSafeInteger(id)&&id>0))];
+   const codes=ids.length?await db.transactionCode.findMany({where:{ownerOrgId:orgId,id:{in:ids}},include:{base:true}}):[];
+   if(before.entry)before={...before,entry:{...before.entry,accountingCode:before.entry.accountingCode||codes.find((code:any)=>code.id===before.entry.accountingCodeId)||null}};
+   if(after.rows)after={...after,rows:after.rows.map((item:any)=>({...item,accountingCode:codes.find((code:any)=>code.id===item.accountingCodeId)||null}))};
+  }
   if(row.menu==='EXPENSE'&&row.operation==='UPDATE'){
    const codes=await db.transactionCode.findMany({where:{ownerOrgId:orgId,id:{in:row.payload.items.map((i:any)=>i.transactionCodeId)}},include:{base:true}});
    after={document:{...row.beforeSnapshot.document,...row.payload,partner:row.payload.payeeEmployeeId?null:row.beforeSnapshot.proposedPayee,payeeEmployee:row.payload.payeeEmployeeId?row.beforeSnapshot.proposedPayee:null},costs:row.payload.items.map((item:any)=>{const {subtotal,vatAmount,amount}=calculateRequestAmounts(String(item.unitPrice),String(item.quantity),item.currency,item.vatRate||'0');return {...item,transactionCode:codes.find((c:any)=>c.id===item.transactionCodeId),subtotal:subtotal.toFixed(4),vatAmount:vatAmount.toFixed(4),amount:amount.toFixed(4)};})};
   }
-  return {...row,before:row.menu==='EXPENSE'?expenseTotals(row.beforeSnapshot):row.beforeSnapshot,after:row.menu==='EXPENSE'?expenseTotals(after):after,canDecide,drafter:names.find((p:any)=>p.id===row.requestedByEmployeeId),approvalLine:line(stages,decisions,names,row.status).map((s:any,index:number)=>delegated&&index===decisions.length?{...s,originalPerson:s.person,person:names.find((p:any)=>p.id===actorId),delegation:{reason:'APPROVER_VACANCY'}}:s)};
+  return {...row,before:row.menu==='EXPENSE'?expenseTotals(before):before,after:row.menu==='EXPENSE'?expenseTotals(after):after,canDecide,drafter:names.find((p:any)=>p.id===row.requestedByEmployeeId),approvalLine:line(stages,decisions,names,row.status).map((s:any,index:number)=>delegated&&index===decisions.length?{...s,originalPerson:s.person,person:names.find((p:any)=>p.id===actorId),delegation:{reason:'APPROVER_VACANCY'}}:s)};
  }
  if(kind==='EXPENSE_DELETION'){
   const row=await db.expenseDeletionRequest.findFirst({where:{id,orgId}});if(!row)fail('EXPENSE_SOURCE_NOT_FOUND',404);
