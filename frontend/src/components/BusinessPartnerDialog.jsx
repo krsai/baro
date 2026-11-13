@@ -99,6 +99,9 @@ function PartnerEditorState({
   const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelVisible=panelOpen||panelExiting;
   const togglePanel=(next,kind='classification')=>{if(next)setPanelKind(kind);if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
+  const officialClassification=form.linkedCompany?.subscriberOrgId&&(form.linkedCompany.officialClassification||record?.officialClassification);
+  const hasOfficialClassification=Boolean(officialClassification?.industryIds?.length);
+  const displayedClassification=hasOfficialClassification?officialClassification:form.classification;
   const classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
 
   useEffect(() => {
@@ -120,7 +123,7 @@ function PartnerEditorState({
     if(saveLock.current||locked||profileLocked)return;
     if (!hasLocalizedName(form, 'name')) return setError(labels.required);
     if(form.partyKind==='CORPORATE'&&!form.businessNumber.trim())return setError((PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en).businessRequired);
-    if(!classificationLoaded||!optionsReady||!classificationComplete(form.classification))return setError(classificationText.required);
+    if(!classificationLoaded||!optionsReady||!classificationComplete(displayedClassification))return setError(classificationText.required);
     saveLock.current=true;setSaving(true);
     setError('');
     try {
@@ -130,7 +133,7 @@ function PartnerEditorState({
         ...Object.fromEntries(['code','nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
-        classification: classificationPayload(form.classification),
+        classification: classificationPayload({...displayedClassification,revision:form.classification.revision}),
         ...(form.companyConnection?{companyConnection:form.companyConnection}:{}),
         ...(!isEdit&&pendingAccounts.length?{bankAccounts:pendingAccounts.map(account=>Object.fromEntries(['accountKind','displayName','bankName','accountNumber','accountHolder','currencyId'].map(key=>[key,account[key]])))}:{}),
 
@@ -169,10 +172,10 @@ function PartnerEditorState({
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={locked||profileLocked} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
           <EntityBankAccounts hideGuidance entityId={record?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={isEdit?undefined:setPendingAccounts} disabled={locked}/>
 
-          <PartnerClassificationFields title={common.role} expandable sidePanelTarget={panelKind==='classification'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='classification'} onPanelOpenChange={togglePanel} value={form.linkedCompany?.subscriberOrgId?(form.linkedCompany.officialClassification||record?.officialClassification||emptyPartnerClassification()):form.classification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||!!form.linkedCompany?.subscriberOrgId} languageCode={languageCode} onReady={setOptionsReady}/>
+          <PartnerClassificationFields title={common.role} expandable sidePanelTarget={panelKind==='classification'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='classification'} onPanelOpenChange={togglePanel} value={displayedClassification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||hasOfficialClassification} languageCode={languageCode} onReady={setOptionsReady}/>
 
 
-          {record?.sourceKind==='CUSTOMER'&&hasApparelBrandIndustry(form.classification)&&<EntityDetailSection title={editorText.order}><TextField fullWidth select size="small" label={editorText.size} value={normalizeSizeSetCode(form.defaultSizeSetCode)} disabled={locked||profileLocked} onChange={event=>setForm(current=>({...current,defaultSizeSetCode:event.target.value}))}>{getSizeSetOptions(languageCode).map(option=><MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}</TextField></EntityDetailSection>}
+          {record?.sourceKind==='CUSTOMER'&&hasApparelBrandIndustry(displayedClassification)&&<EntityDetailSection title={editorText.order}><TextField fullWidth select size="small" label={editorText.size} value={normalizeSizeSetCode(form.defaultSizeSetCode)} disabled={locked||profileLocked} onChange={event=>setForm(current=>({...current,defaultSizeSetCode:event.target.value}))}>{getSizeSetOptions(languageCode).map(option=><MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}</TextField></EntityDetailSection>}
         </Stack><Slide direction="left" in={panelOpen} timeout={reducedMotion?0:200} mountOnEnter unmountOnExit onExited={()=>setPanelExiting(false)}><Box ref={setPanelTarget} sx={{minWidth:0}}/></Slide></Box>
       </DialogContent>
       <DialogActions sx={{flexShrink:0,px:3,py:2,flexWrap:'wrap',gap:1,'& > :not(style) ~ :not(style)':{ml:0}}}>

@@ -15,6 +15,7 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
  assert.deepEqual(accountingAlertKinds({...source,direction:'IN',code:{...source.code,base:{...source.code.base,cashDirection:'OUT'}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,cashDirection:'BOTH'}}},null),[]);
  assert.deepEqual(accountingAlertKinds(source,{classification:{industryIds:[]}}),['DIRECTION']);
+ for(const officialClassification of [null,{industryIds:[]}])assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification,classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
  assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification:{industryIds:[2]},classification:{industryIds:[3]}}),['DIRECTION']);
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,expenseType:{code:'FUNDS'}}}},{classification:{industryIds:[3]}}),['DIRECTION']);
 });

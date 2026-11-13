@@ -26,7 +26,7 @@ export function registerExpensePayeeRoutes(app:any,db:any,gates:any){
    db.employee.findMany({where:{orgId,status:'ACTIVE'},select:EMPLOYEE_PAYEE_SELECT,orderBy:[{name:'asc'},{id:'asc'}]}),
   ]);
   const linked=await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));
-  res.json([...linked.map((p:any)=>({id:p.id,name:p.name,nameKo:p.nameKo,nameVi:p.nameVi,code:p.linkedCompany?.code||p.code,type:p.type,isActive:p.isActive,contactName:p.representative,contactPhone:p.phone,email:p.email,businessNumber:p.businessNumber,address:p.address,country:p.country,serviceTypes:p.linkedCompany?.subscriberOrgId?p.officialClassification?.industries||[]:p.classification?.industries||[]})),...employees.map(employeePayee)]);
+  res.json([...linked.map((p:any)=>({id:p.id,name:p.name,nameKo:p.nameKo,nameVi:p.nameVi,code:p.linkedCompany?.code||p.code,type:p.type,isActive:p.isActive,contactName:p.representative,contactPhone:p.phone,email:p.email,businessNumber:p.businessNumber,address:p.address,country:p.country,serviceTypes:p.linkedCompany?.subscriberOrgId&&p.officialClassification?.industryIds?.length?p.officialClassification?.industries||[]:p.classification?.industries||[]})),...employees.map(employeePayee)]);
  });
  app.get('/expense-payees/employees/:id/bank-accounts',async(req:any,res:any)=>{
   const ctx=await access(req,res);if(!ctx)return;const orgId=ctx.organization.id,employeeId=Number(req.params.id);
