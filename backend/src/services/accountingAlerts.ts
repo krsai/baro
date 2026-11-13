@@ -4,20 +4,15 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {attachPartnerClassifications} from './partnerClassification';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const prefix=(orgId:number)=>`ACCOUNTING_ALERT_ACK:${orgId}:`;
-const industryInclude={include:{expenseType:true,partnerRole:true}};
-const codeInclude={base:{include:{industryLinks:{include:{industry:industryInclude}},serviceType:industryInclude,expenseType:true}},serviceType:{include:{systemDefault:industryInclude}}};
+const prefix=(orgId:number,actorId:number)=>`ACCOUNTING_ALERT_ACK_USER:${orgId}:${actorId}:`;
+const codeInclude={base:{include:{industryLinks:{include:{industry:true}},serviceType:true,expenseType:true}},serviceType:{include:{systemDefault:true}}};
 export function accountingAlertKinds(source:any,partner:any){
  const code=source.code,base=code?.base;if(!code||!base)return [];
  const kinds=[];if(['IN','OUT'].includes(base.cashDirection)&&base.cashDirection!==source.direction)kinds.push('DIRECTION');
  const links=base.industryLinks||[],allowed=links.length?links.map((link:any)=>link.systemIndustryId):base.serviceTypeId?[base.serviceTypeId]:[];
- const industries=[base.serviceType,code.serviceType?.systemDefault,...links.map((link:any)=>link.industry)];
- // Follow the saved classification FKs, including renamed/custom industry codes.
- // Accounting code text (LNC, etc.) and translated display names are not policy.
- const funds=base.expenseType?.code==='FUNDS'||industries.some(row=>row?.code==='FUNDS'||row?.expenseType?.code==='FUNDS'||['FUNDS','FINANCE'].includes(row?.partnerRole?.code));
  const classification=partner?.linkedCompany?.subscriberOrgId&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
- if(partner&&!funds&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
+ if(partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
  return kinds;
 }
 export async function accountingAlertCandidates(db:any,orgId:number,permissions:any){
@@ -35,18 +30,22 @@ export async function accountingAlertCandidates(db:any,orgId:number,permissions:
   return {signature,kind,sourceKind:source.sourceKind,sourceId:source.sourceId,date:source.date,path:source.path,reference:source.reference||'',code:source.code.code,description:source.code.base.nameEn||source.code.nameEn||'',partyName:party?.name||source.partyName||'',expectedDirection:source.code.base.cashDirection,actualDirection:source.direction};
  });}).sort((a:any,b:any)=>b.date.localeCompare(a.date)||a.signature.localeCompare(b.signature));
 }
-export async function listAccountingAlerts(db:any,orgId:number,permissions:any,query:any={}){
+export async function listAccountingAlerts(db:any,orgId:number,actorId:number,permissions:any,query:any={}){
+ if(!await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true}}))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
  const page=Number(query.page||0);if(!Number.isSafeInteger(page)||page<0||page>10000)throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  const kinds=String(query.kinds||'DIRECTION,PARTNER_INDUSTRY').split(',');if(kinds.some(kind=>!['DIRECTION','PARTNER_INDUSTRY'].includes(kind)))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
- const candidates=await accountingAlertCandidates(db,orgId,permissions),receipts=await db.systemSetting.findMany({where:{key:{startsWith:prefix(orgId)}},select:{key:true}}),acknowledged=new Set(receipts.map((row:any)=>row.key));
- const rows=candidates.filter((row:any)=>kinds.includes(row.kind)&&!acknowledged.has(prefix(orgId)+row.signature));return {rows:rows.slice(page*10,page*10+10),total:rows.length,page};
+ const candidates=await accountingAlertCandidates(db,orgId,permissions),legacyPrefix=`ACCOUNTING_ALERT_ACK:${orgId}:`;
+ const receipts=await db.systemSetting.findMany({where:{OR:[{key:{startsWith:prefix(orgId,actorId)}},{key:{startsWith:legacyPrefix}}]},select:{key:true,value:true}});
+ // Historical company receipts retain their original signer, never hide peers' alerts.
+ const acknowledged=new Set(receipts.flatMap((row:any)=>row.key.startsWith(prefix(orgId,actorId))?[row.key.slice(prefix(orgId,actorId).length)]:row.value?.actorId===actorId&&row.value?.orgId===orgId?[row.key.slice(legacyPrefix.length)]:[]));
+ const rows=candidates.filter((row:any)=>kinds.includes(row.kind)&&!acknowledged.has(row.signature));return {rows:rows.slice(page*10,page*10+10),total:rows.length,page};
 }
 export async function acknowledgeAccountingAlert(db:any,orgId:number,actorId:number,permissions:any,signature:unknown){
  if(typeof signature!=='string'||!/^[a-f0-9]{64}$/.test(signature))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true}});if(!actor)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   if(!(await accountingAlertCandidates(tx,orgId,permissions)).some((row:any)=>row.signature===signature))throw createHttpError(409,'ACCOUNTING_ALERT_CHANGED');
-  await tx.systemSetting.upsert({where:{key:prefix(orgId)+signature},create:{key:prefix(orgId)+signature,value:{signature,orgId,actorId,acknowledgedAt:new Date().toISOString()},updatedByEmployeeId:actorId},update:{}});return {acknowledged:true};
+  await tx.systemSetting.upsert({where:{key:prefix(orgId,actorId)+signature},create:{key:prefix(orgId,actorId)+signature,value:{signature,orgId,actorId,acknowledgedAt:new Date().toISOString()},updatedByEmployeeId:actorId},update:{}});return {acknowledged:true};
  });
 }
 export function registerAccountingAlertRoutes(app:any,db:any,gates:any){
@@ -58,6 +57,6 @@ export function registerAccountingAlertRoutes(app:any,db:any,gates:any){
   const permissions={ledger:await allowed('BANK_LEDGER'),expense:await allowed('OUTSOURCING_RECORD'),invoice:await allowed('INVOICE')};if(!permissions.ledger&&!permissions.expense&&!permissions.invoice)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   res.setHeader('Cache-Control','no-store');return {orgId,actorId,permissions};
  };
- app.get('/dashboard/accounting-alerts',async(req:any,res:any)=>{const ctx=await access(req,res);if(ctx)res.json(await listAccountingAlerts(db,ctx.orgId,ctx.permissions,req.query));});
+ app.get('/dashboard/accounting-alerts',async(req:any,res:any)=>{const ctx=await access(req,res);if(ctx)res.json(await listAccountingAlerts(db,ctx.orgId,ctx.actorId,ctx.permissions,req.query));});
  app.post('/dashboard/accounting-alerts/acknowledge',async(req:any,res:any)=>{const ctx=await access(req,res);if(ctx)res.json(await acknowledgeAccountingAlert(db,ctx.orgId,ctx.actorId,ctx.permissions,req.body?.signature));});
 }
