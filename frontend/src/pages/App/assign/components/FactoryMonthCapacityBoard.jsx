@@ -1,8 +1,9 @@
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import {
   Alert,
   Box,
+  Button,
   Chip,
   Collapse,
   IconButton,
@@ -38,10 +39,10 @@ const buildAssignmentSearchText = (assignment) =>
     .join(' ')
     .toLowerCase();
 
-const filterAssignmentsBySearchTerm = (assignments, lowerSearchTerm) => {
+const filterAssignmentsBySearchTerm = (assignments, lowerSearchTerm, focusedId) => {
   if (!lowerSearchTerm) return assignments;
   return (Array.isArray(assignments) ? assignments : []).filter((assignment) =>
-    buildAssignmentSearchText(assignment).includes(lowerSearchTerm)
+    String(assignment.id) === String(focusedId) || buildAssignmentSearchText(assignment).includes(lowerSearchTerm)
   );
 };
 
@@ -212,6 +213,7 @@ const FactoryScopeAssignmentDropSlot = memo(function FactoryScopeAssignmentDropS
 
 const AssignmentDetailCard = memo(function AssignmentDetailCard({
   assignment,
+  needsProgressReview = false,
   languageCode,
   onOpenContextMenu,
 }) {
@@ -262,7 +264,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
     // (see isProgressUnknown, AGENTS.md). Its remaining ST is excluded from the factory's
     // forecast rather than guessed at, so this needs to stay visible to the operator
     // instead of just quietly under-counting the backlog.
-    !isCompleted && !isZeroQuantityOverflow && Boolean(assignment?.isProgressUnknown)
+    !isCompleted && !isZeroQuantityOverflow && Boolean(needsProgressReview || assignment?.isProgressUnknown)
       ? {
           label: getUiMessage(
             'assign.progressUnknownStatusCompact',
@@ -325,6 +327,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
       : LABEL_PALETTE.blue.background;
 
   return (
+    <Box data-assignment-review-id={assignment.id} tabIndex={-1} sx={(needsProgressReview || assignment.isProgressUnknown)&&!isCompleted?{border:2,borderColor:'warning.main',borderRadius:2,p:.5,'&:focus':{outline:'3px solid',outlineColor:'warning.main',outlineOffset:3}}:{}}>
     <CompactBoardCard
       draggableId={`assign-${assignment.id}`}
       droppableId={isLocked ? null : `assign-drop-${assignment.id}`}
@@ -357,6 +360,7 @@ const AssignmentDetailCard = memo(function AssignmentDetailCard({
         });
       }}
     />
+    </Box>
   );
 });
 
@@ -366,6 +370,7 @@ const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
   languageCode,
   isExpanded,
   onToggleExpand,
+  onShowAssignment,
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `factory-row-drop::${row.factoryId}`,
@@ -432,7 +437,7 @@ const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
               </Typography>
             ) : null}
             {Number(row.progressUnknownAssignmentCount) > 0 ? (
-              <Box component="details" sx={{ color: 'warning.main', typography: 'caption' }}>
+              <Box component="details" open sx={{ color: 'warning.main', typography: 'caption' }}>
                 <Box component="summary" sx={{ cursor: 'pointer' }}>
                 {getUiMessage(
                   'assign.progressUnknownExcludedCompact',
@@ -445,9 +450,12 @@ const FactoryScopeCapacityMainRow = memo(function FactoryScopeCapacityMainRow({
                   {getUiMessage('assign.progressUnknownExplanation', '', languageCode)}
                 </Typography>
                 {row.progressUnknownAssignments.map(assignment => (
-                  <Typography key={assignment.id} variant="caption" sx={{ display: 'block', mt: 0.5 }}>
-                    {[resolveCardCustomerDisplay(assignment, languageCode), assignment.orderNo, assignment.label].filter(Boolean).join(' / ')}
-                  </Typography>
+                  <Box key={assignment.id} sx={{ mt: .75, overflowWrap: 'anywhere' }}>
+                    <Typography variant="caption" component="div" fontWeight={700}>
+                      {[resolveCardCustomerDisplay(assignment, languageCode), assignment.orderNo, assignment.label].filter(Boolean).join(' / ')}
+                    </Typography>
+                    {assignment.hasVisibleCard ? <Button size="small" onClick={()=>onShowAssignment(assignment.id)}>{getUiMessage('assign.showReviewAssignment', '', languageCode)}</Button> : <Typography variant="caption">{getUiMessage('assign.reviewAssignmentOutsidePeriod', '', languageCode)}</Typography>}
+                  </Box>
                 ))}
                 {row.progressUnknownAssignments.length < Number(row.progressUnknownAssignmentCount) ? (
                   <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
@@ -608,6 +616,8 @@ const FactoryMonthCapacityBoard = ({
   onOpenContextMenu,
 }) => {
   const [expandedFactoryIds, setExpandedFactoryIds] = useState(() => new Set());
+  const [focusedId, setFocusedId] = useState(null);
+  useEffect(()=>{if(focusedId==null)return;const timer=setTimeout(()=>{const card=[...document.querySelectorAll('[data-assignment-review-id]')].find(node=>node.getAttribute('data-assignment-review-id')===String(focusedId));card?.scrollIntoView({block:'center',behavior:'smooth'});card?.focus({preventScroll:true});},350);return()=>clearTimeout(timer);},[focusedId,expandedFactoryIds]);
 
   const lowerSearchTerm = useMemo(
     () => String(searchTerm || '').trim().toLowerCase(),
@@ -618,13 +628,13 @@ const FactoryMonthCapacityBoard = ({
     return sourceRows.map((row) => ({
       ...row,
       progressUnknownAssignments: [...new Map([
-        ...(row.assignments || []), ...(row.queuedAssignments || []), ...(row.reviewRequiredAssignments || []),
+        ...(row.progressUnknownAssignments || []), ...(row.assignments || []), ...(row.queuedAssignments || []), ...(row.reviewRequiredAssignments || []),
       ].filter(assignment => assignment.isProgressUnknown && !assignment.isCompleted)
-        .map(assignment => [assignment.id, assignment])).values()],
-      queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm),
+        .map(assignment => [assignment.id, {...assignment,hasVisibleCard:[...(row.queuedAssignments||[]),...(row.reviewRequiredAssignments||[])].some(card=>String(card.id)===String(assignment.id))}])).values()],
+      queuedAssignments: filterAssignmentsBySearchTerm(row.queuedAssignments, lowerSearchTerm, focusedId),
       reviewRequiredAssignments: filterAssignmentsBySearchTerm(
         row.reviewRequiredAssignments,
-        lowerSearchTerm
+        lowerSearchTerm, focusedId
       ),
       completedAssignments: filterAssignmentsBySearchTerm(
         (row.completedAssignments || []).filter(assignment => !assignment.isManagementClosed),
@@ -639,7 +649,7 @@ const FactoryMonthCapacityBoard = ({
         lowerSearchTerm
       ),
     }));
-  }, [rows, lowerSearchTerm, includeManagementClosed]);
+  }, [rows, lowerSearchTerm, includeManagementClosed, focusedId]);
   const normalizedMonthKeys = useMemo(
     () => (Array.isArray(monthKeys) ? monthKeys : []).filter(Boolean),
     [monthKeys]
@@ -701,6 +711,7 @@ const FactoryMonthCapacityBoard = ({
                     languageCode={languageCode}
                     isExpanded={isExpanded}
                     onToggleExpand={() => toggleExpanded(row.factoryId)}
+                    onShowAssignment={id=>{setExpandedFactoryIds(current=>new Set([...current,row.factoryId]));setFocusedId(id);}}
                   />
                   <TableRow>
                     <TableCell
@@ -774,7 +785,7 @@ const FactoryMonthCapacityBoard = ({
                                     </Box>
                                     {group.items.map((assignment) => (
                                       <React.Fragment key={assignment.id || `${row.factoryId}:${assignment.label}`}>
-                                        <AssignmentDetailCard
+                                        <AssignmentDetailCard needsProgressReview={row.progressUnknownAssignments.some(item=>String(item.id)===String(assignment.id))}
                                           assignment={assignment}
                                           languageCode={languageCode}
                                           onOpenContextMenu={onOpenContextMenu}
@@ -820,7 +831,7 @@ const FactoryMonthCapacityBoard = ({
                               </Typography>
                               <Stack spacing={1}>
                                 {row.reviewRequiredAssignments.map((assignment) => (
-                                  <AssignmentDetailCard
+                                  <AssignmentDetailCard needsProgressReview={row.progressUnknownAssignments.some(item=>String(item.id)===String(assignment.id))}
                                     key={assignment.id || `${row.factoryId}:${assignment.label}:review`}
                                     assignment={assignment}
                                     languageCode={languageCode}
@@ -845,7 +856,7 @@ const FactoryMonthCapacityBoard = ({
                               </Typography>
                               <Stack spacing={1}>
                                 {row.completedAssignments.map((assignment) => (
-                                  <AssignmentDetailCard
+                                  <AssignmentDetailCard needsProgressReview={row.progressUnknownAssignments.some(item=>String(item.id)===String(assignment.id))}
                                     key={assignment.id || `${row.factoryId}:${assignment.label}:completed`}
                                     assignment={assignment}
                                     languageCode={languageCode}
@@ -862,7 +873,7 @@ const FactoryMonthCapacityBoard = ({
                               </Typography>
                               <Stack spacing={1}>
                                 {row.billedAssignments.map(assignment => (
-                                  <AssignmentDetailCard key={assignment.id} assignment={assignment} languageCode={languageCode} onOpenContextMenu={onOpenContextMenu} />
+                                  <AssignmentDetailCard needsProgressReview={row.progressUnknownAssignments.some(item=>String(item.id)===String(assignment.id))} key={assignment.id} assignment={assignment} languageCode={languageCode} onOpenContextMenu={onOpenContextMenu} />
                                 ))}
                               </Stack>
                             </Box>
@@ -882,7 +893,7 @@ const FactoryMonthCapacityBoard = ({
                               </Typography>
                               <Stack spacing={1}>
                                 {row.zeroQuantityOverflowAssignments.map((assignment) => (
-                                  <AssignmentDetailCard
+                                  <AssignmentDetailCard needsProgressReview={row.progressUnknownAssignments.some(item=>String(item.id)===String(assignment.id))}
                                     key={assignment.id || `${row.factoryId}:${assignment.label}:zero-overflow`}
                                     assignment={assignment}
                                     languageCode={languageCode}

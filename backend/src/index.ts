@@ -20980,6 +20980,7 @@ const buildFactoryMonthCapacityRows = async ({
   const factoryScopeRemainingBacklogStSecondsByFactoryId = new Map<number, number>();
   const factoryScopeStUnknownAssignmentCountByFactoryId = new Map<number, number>();
   const factoryScopeProgressUnknownAssignmentCountByFactoryId = new Map<number, number>();
+  const factoryScopeProgressUnknownAssignmentsByFactoryId = new Map<number, any[]>();
   const planProgressMetaById = new Map<
     number,
     {
@@ -21146,6 +21147,12 @@ const buildFactoryMonthCapacityRows = async ({
       );
     }
     if (isProgressUnknown) {
+      const affected = factoryScopeProgressUnknownAssignmentsByFactoryId.get(factoryId) || [];
+      affected.push({id: plan.externalId || String(planId), assignmentPlanId: planId,
+        orderNo: plan.workOrder?.orderNumber || '', label: plan.style?.code || plan.style?.name || '',
+        customer: plan.buyerOrg?.name || '', customerNameKo: plan.buyerOrg?.nameKo || '', customerNameVi: plan.buyerOrg?.nameVi || '',
+        quantity: plannedQuantity, isProgressUnknown: true});
+      factoryScopeProgressUnknownAssignmentsByFactoryId.set(factoryId, affected);
       factoryScopeProgressUnknownAssignmentCountByFactoryId.set(
         factoryId,
         (factoryScopeProgressUnknownAssignmentCountByFactoryId.get(factoryId) || 0) + 1
@@ -21993,6 +22000,8 @@ const buildFactoryMonthCapacityRows = async ({
         // the comment above isProgressUnknown). Excluded from
         // factoryScopeRemainingBacklogStSeconds rather than guessed at, so the forecast can
         // under-count but never silently re-inflate to the full planned ST.
+        progressUnknownAssignments:
+          factoryScopeProgressUnknownAssignmentsByFactoryId.get(Number(row.factoryId)) || [],
         progressUnknownAssignmentCount:
           factoryScopeForecastMetaByFactoryId.get(Number(row.factoryId))?.progressUnknownAssignmentCount ?? 0,
       };

@@ -590,6 +590,7 @@ export const buildFactoryMonthCapacityBoardRows = ({
         0,
         Math.round(Number(sourceRow?.stUnknownAssignmentCount) || 0)
       ),
+      progressUnknownAssignments: Array.isArray(sourceRow?.progressUnknownAssignments) ? sourceRow.progressUnknownAssignments : [],
       progressUnknownAssignmentCount: Math.max(
         0,
         Math.round(Number(sourceRow?.progressUnknownAssignmentCount) || 0)
@@ -1015,6 +1016,7 @@ export const buildFactoryMonthCapacityBoardRows = ({
       factoryScopeRemainingBacklogStSeconds: queueForecast.totalRemainingStTotalSeconds,
       stUnknownAssignmentCount: currentBoardStUnknownAssignmentCount,
       progressUnknownAssignmentCount: currentBoardProgressUnknownAssignmentCount,
+      progressUnknownAssignments: factoryScopeMeta?.progressUnknownAssignments || [],
       dailyCapacitySeconds: queueForecast.dailyCapacitySeconds,
       totalRemainingStTotalSeconds: queueForecast.totalRemainingStTotalSeconds,
       queueBacklogDays: queueForecast.queueBacklogDays,
