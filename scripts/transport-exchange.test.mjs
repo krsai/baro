@@ -54,7 +54,7 @@ test('manufacturer and forwarder exchange operational information with independe
   const reverse=await sendTransport(db,forwarder,admin.id,{targetOrgId:org,clientKey:randomUUID(),jobId:job.id});
   await actOnTransport(db,org,employee,reverse.id,{version:1,action:'ACCEPT'});
   assert.equal((await listTransportExchanges(db,org,employee)).find(r=>r.id===reverse.id).status,'ACCEPTED');
-  assert.equal((await transportPartners(db,org)).length,1);
+  const partners=await transportPartners(db,org);assert.equal(partners.length,1);assert.equal(partners[0].id,forwarder);assert.equal(partners[0].code,'OTHR');assert.deepEqual(Object.keys(partners[0]).sort(),['code','id','name','nameKo','nameVi','type'].sort());
   const cancel=await sendTransport(db,org,employee,{...payload,clientKey:randomUUID()});
   await actOnTransport(db,org,employee,cancel.id,{version:1,action:'CANCEL'});
   await assert.rejects(actOnTransport(db,forwarder,admin.id,cancel.id,{version:2,action:'ACCEPT',customerId:customer.id,customerRole:'shipper'}),/TRANSPORT_ACTION_INVALID/);

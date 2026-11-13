@@ -25,7 +25,7 @@ try{
    const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    await page.route(/\/shipping-requests(?:[/?]|$)/,async r=>{
     const req=r.request(),p=new URL(req.url()).pathname;if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});let json;
-    if(p.endsWith('/options'))json={forwarders:[{id:2,name:'DEX'}],customers:[]};
+    if(p.endsWith('/options'))json={forwarders:[{id:2,code:'DEXL',name:'DEX'}],customers:[]};
     else if(p.endsWith('/charges'))json={rows:[],currencies:[{code:'USD',name:'USD'}]};
     else if(req.method()==='GET')json=p.endsWith('/sr-1')?{id:job.id,number:job.number,ownerOrgId:2,company:'DEX',receiptStatus:job.receiptStatus,version:job.version,request:job.requestSnapshot,shared:job.sharedSnapshot,documents:[]}:job?[{id:job.id,number:job.number,company:'DEX',receiptStatus:job.receiptStatus}]:[];
     else if(p.endsWith('/sr-1')){const body=req.postDataJSON();if(body.action==='ACCEPT'){accepts++;assert.equal(body.version,job.version);job={...job,receiptStatus:'ACCEPTED',version:job.version+1};}else if(body.action==='PUBLISH'){job={...job,version:job.version+1,sharedSnapshot:{mode:'SEA',status:'BOOKED',data:{...job.data,eta:'2026-12-01'}}};}else throw Error('Unexpected action');json={id:job.id,version:job.version};}
@@ -45,7 +45,12 @@ try{
   };
   const customer=await makePage(false);await customer.goto(`http://127.0.0.1:${port}/shipping-requests-acceptance.html`);
   await customer.getByRole('button',{name:t.new,exact:true}).click();const dialog=customer.getByRole('dialog');
-  const partner=dialog.getByRole('textbox',{name:t.forwarder,exact:true});await partner.fill('DEX');await partner.press('Enter');
+  const partner=dialog.getByRole('textbox',{name:t.forwarder,exact:true});
+  await partner.fill('DEXL');await partner.press('Enter');assert.equal(await partner.inputValue(),'DEX');
+  await dialog.getByRole('button',{name:t.forwarder,exact:true}).click();
+  const lookup=customer.getByRole('dialog').filter({has:customer.getByRole('table')});await lookup.getByRole('cell',{name:'DEXL',exact:true}).waitFor();
+  await lookup.getByRole('textbox').fill('DEXL');await lookup.getByRole('cell',{name:'DEX',exact:true}).waitFor();
+  await lookup.getByRole('row').filter({hasText:'DEXL'}).getByRole('button').click();await lookup.waitFor({state:'hidden'});assert.equal(await partner.inputValue(),'DEX');
   for(const [key,value]of Object.entries({origin:'Hai Phong',destination:'Busan',shipper:'BARO',consignee:'Buyer',cargo:'Garments'}))await dialog.getByRole('textbox',{name:new RegExp('^'+t[key])}).fill(value);
   const save=dialog.getByRole('button',{name:t.save,exact:true});await save.evaluate(b=>{b.click();b.click();});await dialog.getByText(t.mapping).waitFor();assert.equal(submits,1);assert.equal(await dialog.getByRole('textbox',{name:new RegExp('^'+t.cargo)}).inputValue(),'Garments');
   await save.click();await dialog.waitFor({state:'hidden'});await customer.getByText(/SR-001/).waitFor();assert.equal(submits,2);
@@ -55,7 +60,7 @@ try{
   await owner.getByRole('button',{name:ownerText.share,exact:true}).click();await owner.waitForFunction(()=>window.notices.length>=2);
   await customer.evaluate(()=>window.dispatchEvent(new Event('focus')));await customer.getByText('2026-12-01').waitFor();assert.equal(await customer.getByRole('button',{name:t.edit,exact:true}).isDisabled(),true);
   await owner.getByRole('button',{name:ownerText.back,exact:true}).click();await owner.getByRole('button',{name:ownerText.new,exact:true}).click();
-  const c=owner.getByRole('textbox',{name:ownerText.customer,exact:true});await c.fill('BARO');await c.press('Enter');const consignee=owner.getByRole('textbox',{name:freightJobEditorText[lang].consignee,exact:true});await consignee.fill('BUYER');await consignee.press('Enter');await owner.getByRole('button',{name:routeScopeText[lang].main,exact:true}).click();
+  const c=owner.getByRole('textbox',{name:ownerText.customer,exact:true});await c.fill('BARO');await c.press('Enter');const consignee=owner.getByTestId('freight-party-consignee').getByRole('textbox',{name:freightJobEditorText[lang].name,exact:true});await consignee.fill('BUYER');await consignee.press('Enter');await owner.getByRole('button',{name:routeScopeText[lang].main,exact:true}).click();
   await owner.getByRole('button',{name:ownerText.save,exact:true}).click();await owner.getByRole('heading',{name:'SR-002',exact:true}).waitFor();assert.equal(job.receiptStatus,'ACCEPTED');
   for(const page of [owner,customer])assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   assert.deepEqual(errors,[]);await customer.close();await owner.close();console.log('PASS unified shipping request',lang,width);
