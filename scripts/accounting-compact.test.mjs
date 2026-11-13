@@ -12,6 +12,21 @@ const {invoicePrimaryAccountText}=require('../backend/dist/services/invoicePrima
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {readLedgerAccounts}=require('../backend/dist/services/bankLedger');
+const {postLedgerEntry,listLedgerActivity}=require('../backend/dist/services/bankLedger');
+const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
+
+test('ledger activity returns every paid expense item even when codes repeat, so summary counts real lines',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.admin.id,{partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[1,2,3].map(n=>({transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'MULTI-'+n,evidenceFile:'invoice.pdf'}}))}));
+  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,{clientKey:randomUUID(),transactionDate:'2026-11-13',direction:'OUT',amount:'30',purpose:'Multiple expenses',accountingCodeId:s.code.id,evidenceType:'EXPENSE',expenseRequestId:expense.id,expenseVersion:expense.version,expenseItems:expense.items.map(item=>({itemId:item.id,amount:'10'})),counterparty:{kind:'PARTNER',id:s.vendor.id}});
+  const result=await listLedgerActivity(db,org,{start:'2026-11-01',end:'2026-11-13'}),row=result.rows.find(row=>row.id===entry.id);
+  assert.equal(row.allocations.length,3);assert.deepEqual(new Set(row.allocations.map(a=>a.expenseItem.id)),new Set(expense.items.map(item=>item.id)));
+  const codes=row.allocations.sort((a,b)=>a.expenseItem.expenseRequestLine-b.expenseItem.expenseRequestLine).map(a=>a.expenseItem.transactionCode.code);
+  assert.equal(accountingSummary(codes,'ko'),s.code.code+' 외 2건');assert.ok(row.allocations.every(a=>a.expenseItem.transactionCode.base.nameEn));
+  assert.equal(result.rows.length,1);assert.equal(row.amount,'30.00');assert.equal(await db.bankLedgerEntry.count(),1);
+ }finally{await f.close();}
+});
 test('expense allocations are full rows while cash and FK totals remain one real transfer',()=>{
  const row={entryKind:'BANK',evidenceType:'EXPENSE',amount:'30',expenseItems:[{itemId:'cost2',line:2,amount:'20',accountingCode:{code:'DOCV'}},{itemId:'cost1',line:1,amount:'10',accountingCode:{code:'THCV'}}]};
  const projected=ledgerExpenseRows([row]);assert.equal(projected.length,2);assert.equal(projected[0].item.itemId,'cost1');assert.equal(projected[1].row,row);
