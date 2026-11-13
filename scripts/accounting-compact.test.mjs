@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 import {ledgerExpenseRows,changeLedgerExpenseItem} from '../frontend/src/utils/ledgerExpenseRows.mjs';
 import {accountingSummary} from '../frontend/src/utils/accountingSummary.mjs';
+import {ledgerAccountingSummary} from '../frontend/src/utils/ledgerAccountingSummary.mjs';
 import {invoiceBankInfo} from '../frontend/src/utils/invoiceBankInfo.mjs';
 const require=createRequire(import.meta.url);
 const {saveEntityBankAccount}=require('../backend/dist/services/entityBankAccount');
@@ -14,6 +15,16 @@ const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {readLedgerAccounts}=require('../backend/dist/services/bankLedger');
 const {postLedgerEntry,listLedgerActivity}=require('../backend/dist/services/bankLedger');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
+
+test('ledger representative is the largest actual allocation, keeps ties in source order and counts repeated codes',()=>{
+ const allocation=(id,line,paid,code,description)=>({expenseItemId:id,amount:paid,expenseItem:{id,expenseRequestLine:line,description:'Saved source detail',amount:'999999999',transactionCode:code?{code,base:{nameKo:description,nameEn:description,nameVi:description}}:null}});
+ const row={allocations:[allocation('first',1,'10','THCV','THC'),allocation('second',2,'30','DOCV','Documents'),allocation('third',3,'20','DOCV','Documents')]},before=structuredClone(row);
+ assert.equal(ledgerAccountingSummary(row).code,'DOCV 외 2건');assert.equal(ledgerAccountingSummary(row).description,'Documents 외 2건');assert.equal(ledgerAccountingSummary(row).descriptionTitle,'Documents\nDocuments\nTHC');assert.deepEqual(row,before);
+ const tie={allocations:[allocation('second',2,'30','DOCV','Documents'),allocation('first',1,'30','THCV','THC')]};assert.equal(ledgerAccountingSummary(tie).code,'THCV 외 1건');
+ const precise={allocations:[allocation('first',1,'9007199254740993.0001','A','First'),allocation('second',2,'9007199254740993.0002','B','Second')]};assert.equal(ledgerAccountingSummary(precise).code,'B 외 1건');
+ const legacy={allocations:[allocation('old',1,'40',null,'')]};assert.equal(ledgerAccountingSummary(legacy).description,'Saved source detail');assert.equal(ledgerAccountingSummary(legacy).code,'—');
+ assert.equal(ledgerAccountingSummary({accountingCode:{code:'IBTE',base:{nameKo:'Internal transfer'}}}).code,'IBTE');
+});
 
 test('ledger activity returns every paid expense item even when codes repeat, so summary counts real lines',async()=>{
  const f=await changeApprovalFixture();try{

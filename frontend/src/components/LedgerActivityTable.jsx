@@ -1,4 +1,4 @@
-import {accountingSummary} from '../utils/accountingSummary.mjs';
+import {ledgerAccountingSummary} from '../utils/ledgerAccountingSummary.mjs';
 import {ledgerFlowText} from '../constants/ledgerFlow';
 import {accountingDirectionText,matchesAccountingDirection} from '../constants/accountingDirection';
 import React from 'react';
@@ -21,10 +21,10 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
   <TableHead><TableRow>{columns.map((column,index)=><TableCell key={index} align={column.numeric?'right':'left'}>{column.title}</TableCell>)}</TableRow></TableHead>
   <TableBody>
    {!rows.length&&<TableRow><TableCell colSpan={columns.length}>{loading?'…':t.empty}</TableCell></TableRow>}
-   {rows.map(row=><React.Fragment key={row.id}>
+   {rows.map(row=>{const summary=ledgerAccountingSummary(row,languageCode);return <React.Fragment key={row.id}>
     <TableRow {...interaction(row)}>
      <TableCell sx={{whiteSpace:'nowrap'}}>{row.transactionDate}{row.voidedAt&&<Typography variant="caption" display="block">{l.deleted}</Typography>}</TableCell>
-     <TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='OUT'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.counterpartyName||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='IN'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.counterpartyName||'—'}</TableCell><TableCell>{accountingSummary(row.allocations?.filter(a=>a.expenseItem).sort((a,b)=>(a.expenseItem.expenseRequestLine||0)-(b.expenseItem.expenseRequestLine||0))?.length?row.allocations?.filter(a=>a.expenseItem).sort((a,b)=>(a.expenseItem.expenseRequestLine||0)-(b.expenseItem.expenseRequestLine||0)).map(a=>a.expenseItem.transactionCode?.code):[row.accountingCode?.code],languageCode)}{warning(row.accountingCode,row.direction)}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{accountingSummary(row.allocations?.filter(a=>a.expenseItem).sort((a,b)=>(a.expenseItem.expenseRequestLine||0)-(b.expenseItem.expenseRequestLine||0))?.length?row.allocations?.filter(a=>a.expenseItem).sort((a,b)=>(a.expenseItem.expenseRequestLine||0)-(b.expenseItem.expenseRequestLine||0)).map(a=>accountingCodeDescription(a.expenseItem.transactionCode,languageCode)):[accountingCodeDescription(row.accountingCode,languageCode)],languageCode)}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
+     <TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='OUT'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.counterpartyName||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='IN'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.counterpartyName||'—'}</TableCell><TableCell title={summary.codeTitle}>{summary.code}{warning(row.accountingCode,row.direction)}</TableCell><TableCell title={summary.descriptionTitle} sx={{overflowWrap:'anywhere'}}>{summary.description}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
      {['IN','OUT'].map(direction=><TableCell key={direction} data-ledger-amount={direction} align="right" sx={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{row.direction===direction?formatLedgerAmount(row.amount,row.currencyCode):'—'}</TableCell>)}
 
      <TableCell sx={{overflowWrap:'anywhere'}}>{row.createdByName||'—'}</TableCell>
@@ -34,7 +34,7 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
      <TableCell>{'↳'}</TableCell><TableCell>{row.accountName}</TableCell><TableCell>{row.counterpartyName||'—'}</TableCell><TableCell>{detail.accountingCode?.code||'—'}{warning(detail.accountingCode,'OUT')}</TableCell>
      <TableCell><Stack direction="row" spacing={1} justifyContent="space-between"><Typography variant="body2">{accountingCodeDescription(detail.accountingCode,languageCode)||l[detail.kind]}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{formatLedgerAmount(detail.amount,row.currencyCode)}</Typography></Stack><Typography variant="caption" color="text.secondary">{l.noncash}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell>{detail.createdByName||'—'}</TableCell><TableCell/>
     </TableRow>)}
-   </React.Fragment>)}
+   </React.Fragment>;})}
   </TableBody>
  </Table></TableContainer>;
 }
