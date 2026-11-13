@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {organizeSystemMenu,findMenuGroupForPath} from '../frontend/src/utils/systemMenuLayout.mjs';
 const paths=['/system-setting/expense-units','/system-setting','/employee','/system-onboarding','/attribute/colors','/attribute/categories','/attribute/processes/targets','/attribute/processes/actions','/attribute/processes/specs','/system-setting/static-options','/system-setting/access-policy','/system-setting/app-defaults','/system-setting/expense-types','/system-setting/partner-industries','/system-setting/transaction-codes','/employee-system','/salary-system'];
+paths.push('/system-setting/shipping-ports');
 const dashboard={path:'/dashboard',label:'Dashboard'};
 const leaves=paths.map(path=>({path,label:path,notificationActive:path==='/system-onboarding',disabled:path==='/attribute/colors'}));
 const source=[dashboard,...['ADMIN','ATTRIBUTE','PROCESS_MASTER','MISC','SYSTEM'].map((key,index)=>({menuGroupKey:key,isParent:true,isOpen:index===0,children:index===0?leaves:[]}))];
@@ -28,6 +29,8 @@ test('SYSTEM groups combine accounting type management and preserve remaining no
 });
 test('direct entry chooses the most specific group without confusing subscription and settings',()=>{
  const menu=organizeSystemMenu(source);
+ assert.equal(findMenuGroupForPath(menu,'/system-setting/shipping-ports'),'ATTRIBUTE');
+ assert.equal(menu.find(group=>group.menuGroupKey==='ATTRIBUTE').children.filter(row=>row.path==='/system-setting/shipping-ports').length,1);
  for(const [path,key] of [['/system-setting/expense-units','ATTRIBUTE'],['/system-setting','ADMIN'],['/system-onboarding','ADMIN'],['/system-setting/transaction-codes','MISC'],['/attribute/processes/actions/4','PROCESS_MASTER'],['/system-setting/access-policy','SYSTEM'],['/employee-system','SYSTEM'],['/employee/4','ADMIN']])assert.equal(findMenuGroupForPath(menu,path),key);
 });
 test('translations, newly added routes and permission-filtered groups remain intact',()=>{

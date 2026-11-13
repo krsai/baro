@@ -39,7 +39,7 @@ async function get(tx:any,orgId:number,type:keyof typeof tables,id:string,lock=f
  const rows=await tx.$queryRawUnsafe(`SELECT * FROM "${tables[type]}" WHERE id=$1 AND "orgId"=$2${lock?' FOR UPDATE':''}`,id,orgId);
  if(!rows.length)fail('FREIGHT_NOT_FOUND',404);return rows[0];
 }
-async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any){
+async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,previous:any={}){
  const d={...(input.data||{})},mode=member(input.mode||'AIR',['SEA','AIR','ROAD']);
  const data:any={origin:optional(d.origin,160),destination:optional(d.destination,160),etd:date(d.etd),eta:date(d.eta),vessel:optional(d.vessel,160),voyage:optional(d.voyage,100),remark:optional(d.remark,2000)};
  if(type==='masters'){
@@ -96,7 +96,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
  Object.assign(data,{direction:member(d.direction||'OTHER',['IMPORT','EXPORT','OTHER']),shipper:optional(d.shipper,1000),consignee:optional(d.consignee,1000),notify:optional(d.notify,1000),billTo:optional(d.billTo,1000),cargo:optional(d.cargo,2000),marks:optional(d.marks,1000),quantity:decimal(d.quantity||undefined,0),unit:optional(d.unit||'PKG',30),weightKg:decimal(d.weightKg||undefined),cbm:decimal(d.cbm||undefined,6),freightTerms:optional(d.freightTerms,100),deliveryDate:date(d.deliveryDate),recipient:optional(d.recipient,200)});
  Object.assign(data,shippingCargo(d,mode));
  Object.assign(data,shippingPortFields(d,mode));
- await validateShippingPorts(tx,data);
+ await validateShippingPorts(tx,data,previous);
  for(const role of ['shipper','consignee','notify'])if(data[role+'Party'])data[role]=[data[role+'Party'].name,data[role+'Party'].address,data[role+'Party'].contactName,data[role+'Party'].phone,data[role+'Party'].email].filter(Boolean).join('\n');
  return {customerId,masterId,mode,service:member(input.service||'GENERAL',['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};
 }
@@ -113,7 +113,7 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
    if(prior[0]?.after?.requestHash===requestHash)return prior[0].after;
    fail('FREIGHT_CHANGED',409);
   }
-  const value=await normalize(tx,orgId,type,input);
+  const value=await normalize(tx,orgId,type,input,before?.data);
   // A status is an operational observation, not an automatically signed POD.
   if(type==='jobs'&&value.status==='DELIVERED'&&(!value.data.deliveryDate||!value.data.recipient))fail('FREIGHT_DELIVERY_REQUIRED');
   const sourceId=id||randomUUID(),columns=Object.keys(value),params=columns.map(k=>k==='data'?JSON.stringify((value as any)[k]):(value as any)[k]);

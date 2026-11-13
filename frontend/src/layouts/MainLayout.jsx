@@ -32,6 +32,7 @@ import {
   Tab,
   Stack,
   Typography,
+  useMediaQuery,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import OrganizationIcon from '@mui/icons-material/AccountTree';
@@ -312,6 +313,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
 });
 
 const MainLayout = () => {
+  const compactNavigation = useMediaQuery(theme => theme.breakpoints.down('md'));
   const navigate = useNavigate();
   const location = useLocation();
   const routeOutlet = useOutlet();
@@ -856,6 +858,7 @@ const MainLayout = () => {
           { label: languageCode === 'ko' ? '앱 기본설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
           { label: getUiMessage('menu.transactionMasters', 'Accounting codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           { label: getUiMessage('menu.expenseUnits', 'Units', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-units' },
+          { label: getUiMessage('menu.shippingPorts', 'Ports', languageCode), icon: <LocalShippingOutlinedIcon />, path: '/system-setting/shipping-ports' },
           { label: getUiMessage('menu.partnerIndustries', 'Partner industries', languageCode), icon: <DnsIcon />, path: '/system-setting/partner-industries' },
           {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),
@@ -1859,7 +1862,7 @@ const MainLayout = () => {
       </Drawer>
       <Drawer
         variant="temporary"
-        open={sidebarOpen}
+        open={sidebarOpen && compactNavigation}
         onClose={() => setSidebarOpen(false)}
         sx={{
           display: { xs: 'block', md: 'none' },

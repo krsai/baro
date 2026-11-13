@@ -29,6 +29,7 @@ export const UI_MESSAGES = {
     },
   },
   menu: {
+    shippingPorts:{ko:'항만 관리',en:'Port management',vi:'Quản lý cảng biển'},
     systemEntities:{ko:'전체 업체 관리',en:'All companies',vi:'Quản lý tất cả doanh nghiệp'},
     salesWorkflow: { ko: '영업·주문', en: 'Sales & orders', vi: 'Kinh doanh & đơn hàng' },
     productionWorkflow: { ko: '생산', en: 'Production', vi: 'Sản xuất' },

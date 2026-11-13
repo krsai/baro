@@ -90,7 +90,7 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
    updated=await tx.$queryRawUnsafe('UPDATE "FreightJob" SET "sharedSnapshot"=$1::jsonb,"updatedByEmployeeId"=$2,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 RETURNING *',JSON.stringify(snapshot),actorId,id);
   }else if(input.action==='EDIT'&&row.receiptStatus==='PENDING'){
    const value=requestFields({mode:input.mode,data:input.data});
-   await validateShippingPorts(tx,value.data);
+   await validateShippingPorts(tx,value.data,row.data);
    const oldPublic=transportSnapshot(row).data;
    const privateData=Object.fromEntries(Object.entries(row.data).filter(([key])=>!(key in oldPublic)));
    const nextData:any={...privateData,...value.data};if(!owner)for(const role of ['shipper','consignee','notify'])if(JSON.stringify(oldPublic[role+'Party'])!==JSON.stringify(value.data[role+'Party'])||oldPublic[role]!==value.data[role])delete nextData[role+'Id'];if(value.data.customerRole){for(const role of ['shipper','consignee','notify'])if(role!==value.data.customerRole&&nextData[role+'Id']===row.customerId)delete nextData[role+'Id'];nextData[value.data.customerRole+'Id']=row.customerId;}

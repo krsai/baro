@@ -7,6 +7,7 @@ import ShippingLocationField from './ShippingLocationField';
 import ShippingCargoRows,{dgClasses} from './ShippingCargoRows';
 import {usePageDialogs} from './PageDialogProvider';
 import {shippingEditorText} from '../constants/shippingEditor';
+import {systemShippingPortText} from '../constants/systemShippingPorts';
 import ExpenseLookupField from './ExpenseLookupField';
 import SaveButton from './SaveButton';
 import ReadOnlyField from './ReadOnlyField';
@@ -24,7 +25,7 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
  const {languageCode}=useLanguage(),e=freightJobEditorText[languageCode]||freightJobEditorText.en,r=routeScopeText[languageCode]||routeScopeText.en,x=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs();
  const [baseline]=useState(()=>({...initial,data:{...(!initial.id?{shipmentType:initial.mode==='SEA'?'FCL':initial.mode,workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},notifySameAsConsignee:true,cargoSchemaVersion:1,outOfGauge:false}:{}),...initial.data,customerRole:initial.data.customerRole||(initial.customerId===initial.data.shipperId?'shipper':initial.customerId===initial.data.consigneeId?'consignee':initial.customerId===initial.data.notifyId?'notify':initial.id?null:'shipper')}}));
  const [value,commit]=useState(baseline),[failed,setFailed]=useState(''),[partyRole,setPartyRole]=useState(null),[preset,setPreset]=useState(null),[uncertain,setUncertain]=useState(false);
- const pendingSave=useRef(null),locked=busy||uncertain;
+ const pendingSave=useRef(null),locked=busy||uncertain,portText=systemShippingPortText[languageCode]||systemShippingPortText.en;
  const dirty=JSON.stringify(value)!==JSON.stringify(baseline);useUnsavedChanges(dirty||uncertain);
  const setValue=fn=>commit(v=>{const next=fn(v);return next.data.notifySameAsConsignee?{...next,data:{...next.data,notifyId:next.data.consigneeId??null,notifyParty:next.data.consigneeParty??null}}:next;});
  const data=(key,val)=>setValue(v=>({...v,data:{...v.data,[key]:val}}));
@@ -50,8 +51,8 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
 
 
 
- return <Dialog open fullWidth maxWidth="lg" onClose={close} data-testid="shipping-editor"><DialogTitle component="div"><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><Typography variant="h6">{initial.id?`${t.edit} · ${initial.number||''}`:t.new}</Typography><SaveButton loading={busy} disabled={!canSave} onClick={async()=>{if(busy)return;setFailed('');pendingSave.current=pendingSave.current||JSON.parse(JSON.stringify(value));try{await onSave(pendingSave.current);}catch(error){const unknown=!error.status||error.status>=500;setUncertain(unknown);if(!unknown)pendingSave.current=null;setFailed(error.message==='SHIPPING_CARGO_INVALID'?x.cargoInvalid:t.failed);}}}>{uncertain?x.retry:t.save}</SaveButton></Stack></DialogTitle><DialogContent dividers><Stack spacing={2}>
- {failed&&<Alert severity="error">{failed===x.cargoInvalid?failed:saveError||failed}</Alert>}
+ return <Dialog open fullWidth maxWidth="lg" onClose={close} data-testid="shipping-editor"><DialogTitle component="div"><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><Typography variant="h6">{initial.id?`${t.edit} · ${initial.number||''}`:t.new}</Typography><SaveButton loading={busy} disabled={!canSave} onClick={async()=>{if(busy)return;setFailed('');pendingSave.current=pendingSave.current||JSON.parse(JSON.stringify(value));try{await onSave(pendingSave.current);}catch(error){const unknown=!error.status||error.status>=500;setUncertain(unknown);if(!unknown)pendingSave.current=null;setFailed(error.message==='SHIPPING_CARGO_INVALID'?x.cargoInvalid:error.message==='SHIPPING_PORT_UNAVAILABLE'?portText.unavailable:t.failed);}}}>{uncertain?x.retry:t.save}</SaveButton></Stack></DialogTitle><DialogContent dividers><Stack spacing={2}>
+ {failed&&<Alert severity="error">{failed===x.cargoInvalid||failed===portText.unavailable?failed:saveError||failed}</Alert>}
  <Section title={e.basics}><Box sx={grid}>
  {customerMode?lookup(e.forwarderCompany,options.forwarders||[],(options.forwarders||[]).find(row=>row.id===value.forwarderOrgId),row=>setValue(v=>({...v,forwarderOrgId:row?.id??null})),true,!!initial.id):<ReadOnlyField label={e.forwarderCompany} value={name(options.forwarder)}/>}
  {customerMode?<ReadOnlyField label={t.customer} value={name(customer)}/>:lookup(t.customer,allParties,customer,assignCustomer,true)}

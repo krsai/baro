@@ -121,6 +121,11 @@ model FreightJob {
  @@index([masterId,orgId],map:"FreightJob_master_idx")
 }
 model ShippingPort {
+ isActive Boolean @default(true)
+ version Int @default(1)
+ deletedAt DateTime?
+ updatedBySystemUserId Int?
+ updatedAt DateTime @default(now())
  code String @id
  country String
  name String
@@ -134,6 +139,18 @@ model ShippingPort {
  originJobs FreightJob[] @relation("FreightOriginPort")
  destinationJobs FreightJob[] @relation("FreightDestinationPort")
  @@index([country,code],map:"ShippingPort_country_idx")
+}
+model ShippingPortChange {
+ clientKey String @id
+ requestHash String
+ code String
+ version Int
+ actorId Int
+ action String
+ before Json
+ after Json
+ createdAt DateTime @default(now())
+ @@unique([code,version],map:"ShippingPortChange_code_version_key")
 }
 model ShippingRequestEvent {
  id String @id

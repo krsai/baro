@@ -17,6 +17,10 @@ const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   ...policy,
 });
+test('shared port management belongs only to the SYSTEM administrator',()=>{
+ for(const systemRole of ['SYSTEM_ADMIN','USER'])assert.equal(canAccessPath('/system-setting/shipping-ports',{isAuthenticated:true,accessProfile:{entryType:'SYSTEM',systemRole}}),systemRole==='SYSTEM_ADMIN');
+ for(const orgType of ['SERVICE','MANUFACTURER','BRAND'])assert.equal(canAccessPath('/system-setting/shipping-ports',{isAuthenticated:true,accessProfile:{entryType:'ORG',orgType,orgRole:'ADMIN'}}),false);
+});
 
 test('brand shipping follows its saved order permission and industry availability without opening freight operations',()=>{
  const auth=features=>({isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'BRAND',orgRole:'ADMIN',industryMenuFeatures:['ORDER'],accessPolicy:withCurrentPolicyVersion({BRAND:{ADMIN:features}})}});

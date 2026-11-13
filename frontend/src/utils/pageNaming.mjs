@@ -11,6 +11,7 @@ export const PAGE_ROUTES = [
   ['/employee','employee','list'], ['/employee-system','employeeSystem','page'],
   ['/salary-system','salarySystem','page'], ['/permission','permission','page'],
   ['/system-setting/entities','systemEntities','page'],
+  ['/system-setting/shipping-ports','shippingPorts','page'],
   ['/system-setting','subscription','page'],
   ['/app-settings/transaction-codes','transactionCodes','page'],
   ['/app-settings','appSettings','page'],

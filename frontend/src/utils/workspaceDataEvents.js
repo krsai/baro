@@ -3,6 +3,7 @@ const WORKSPACE_DATA_CHANGED_EVENT = 'baro:workspace-data-changed';
 export const WORKSPACE_DATA_TOPICS = Object.freeze({
   STYLES: 'styles',
   SHIPPING: 'shipping',
+  SHIPPING_PORTS: 'shipping-ports',
   ORDERS: 'orders',
   INVOICE_DRAFTS: 'invoice-drafts',
   ISSUED_INVOICES: 'issued-invoices',

@@ -6,11 +6,15 @@ import ShippingPresetDialog from './ShippingPresetDialog';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 import {shippingEditorText} from '../constants/shippingEditor';
+import {hasWorkspaceDataTopic,subscribeWorkspaceDataChanged,WORKSPACE_DATA_TOPICS} from '../utils/workspaceDataEvents';
+import {useRequestScopeContext} from '../context/RequestScopeContext';
 
 export default function ShippingLocationField({label,value,portCode,onChange,orgId,customerId,allowPorts,languageCode,disabled}){
+ const {active:pageActive}=useRequestScopeContext();
  const t=shippingEditorText[languageCode]||shippingEditorText.en;
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[draftQuery,setDraftQuery]=useState(portCode||value||''),[source,setSource]=useState(allowPorts?'PORT':'SAVED'),[manage,setManage]=useState(false),[reload,setReload]=useState(0);
  const [ports,setPorts]=useState([]),[saved,setSaved]=useState([]),[portError,setPortError]=useState(false),[savedError,setSavedError]=useState(false),[loadingPorts,setLoadingPorts]=useState(false),[loadingSaved,setLoadingSaved]=useState(false),[hasMore,setHasMore]=useState(false);
+ useEffect(()=>{const refresh=()=>{if(pageActive&&!disabled&&document.visibilityState==='visible'){setPorts([]);if(open)setReload(v=>v+1);}};window.addEventListener('focus',refresh);const unsubscribe=subscribeWorkspaceDataChanged(detail=>{if(hasWorkspaceDataTopic(detail,WORKSPACE_DATA_TOPICS.SHIPPING_PORTS))refresh();});return()=>{window.removeEventListener('focus',refresh);unsubscribe();};},[open,disabled,pageActive]);
  useEffect(()=>{setSource(allowPorts?'PORT':'SAVED');setPorts([]);setPortError(false);},[allowPorts]);
  useEffect(()=>{let active=true;setSaved([]);setSavedError(false);if(!customerId){setLoadingSaved(false);return;}setLoadingSaved(true);
   requestJSON('/shipping-requests/presets'+buildQueryString({orgId,customerId,kind:'LOCATION'}),{skipCache:true}).then(rows=>{if(active)setSaved(rows.map(row=>({id:row.id,source:'SAVED',label:row.label,address:row.data.address,code:''})));}).catch(()=>active&&setSavedError(true)).finally(()=>active&&setLoadingSaved(false));return()=>{active=false;};
@@ -18,7 +22,7 @@ export default function ShippingLocationField({label,value,portCode,onChange,org
  const search=open?query:draftQuery;
  useEffect(()=>{let active=true;if(!allowPorts)return;setLoadingPorts(true);setPortError(false);setPorts([]);const timer=setTimeout(()=>{
   requestJSON('/shipping-requests/ports'+buildQueryString({orgId,q:search}),{skipCache:true}).then(result=>{if(active){setPorts(result.rows.map(row=>({...row,id:row.code,source:'PORT',label:row.name,address:`${row.name} (${row.code})`})));setHasMore(result.hasMore);}}).catch(()=>active&&setPortError(true)).finally(()=>active&&setLoadingPorts(false));
- },180);return()=>{active=false;clearTimeout(timer);};},[orgId,allowPorts,search,reload]);
+ },180);return()=>{active=false;clearTimeout(timer);};},[orgId,allowPorts,search,reload,open]);
  const matches=(row,text)=>normalizeLookupText([row.label,row.address,row.code,row.country].join(' ')).includes(normalizeLookupText(text));
  const options=[...saved,...ports],selected=portCode?{id:portCode,label:value,address:value,code:portCode}:saved.find(row=>row.address===value)||null;
  const choose=row=>{if(!row)return;onChange(row.address,row.source==='PORT'?row.code:null);setDraftQuery(row.source==='PORT'?row.code:row.address);setOpen(false);};

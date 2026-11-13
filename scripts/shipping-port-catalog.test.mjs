@@ -31,7 +31,8 @@ test('official worldwide port catalogue, literal search, real FK persistence, is
   assert.equal(job.requestSnapshot.data.dgClass,'3');assert.equal(job.requestSnapshot.data.originPortCode,'VNHPH');
   await assert.rejects(saveFreight(db,s.company.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'SEA',customerId:s.vendor.id,data:{...data,originPortCode:'ZZZZZ'}}),/SHIPPING_INVALID/);
   await assert.rejects(saveFreight(db,s.other.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'SEA',customerId:s.vendor.id,data}),/ACTIVE_EMPLOYEE_REQUIRED/);
-  await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingPort" WHERE code=$1','VNHPH'),/foreign key|FreightJob_origin_port_fkey/i);
+  assert.equal((await db.$queryRawUnsafe("SELECT count(*)::int AS count FROM pg_constraint WHERE conname IN ('FreightJob_origin_port_fkey','FreightJob_destination_port_fkey')"))[0].count,2);
+  await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingPort" WHERE code=$1','VNHPH'),/SHIPPING_PORT_HISTORY_IMMUTABLE/);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261113080000_shipping_port_catalog');
   await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
   assert.equal((await db.$queryRawUnsafe('SELECT count(*)::int AS count FROM "ShippingPort"'))[0].count,count);
