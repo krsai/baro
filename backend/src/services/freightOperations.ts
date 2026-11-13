@@ -1,4 +1,5 @@
 import {shippingCargo} from './shippingCargo';
+import {shippingRouteFields} from './shippingRoute';
 import {shippingPortFields,validateShippingPorts} from './shippingPorts';
 import {registerJobRoutes} from './freightJobs';
 import {attachLinkedCompanies} from './companyConnections';
@@ -96,6 +97,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
  Object.assign(data,{direction:member(d.direction||'OTHER',['IMPORT','EXPORT','OTHER']),shipper:optional(d.shipper,1000),consignee:optional(d.consignee,1000),notify:optional(d.notify,1000),billTo:optional(d.billTo,1000),cargo:optional(d.cargo,2000),marks:optional(d.marks,1000),quantity:decimal(d.quantity||undefined,0),unit:optional(d.unit||'PKG',30),weightKg:decimal(d.weightKg||undefined),cbm:decimal(d.cbm||undefined,6),freightTerms:optional(d.freightTerms,100),deliveryDate:date(d.deliveryDate),recipient:optional(d.recipient,200)});
  Object.assign(data,shippingCargo(d,mode));
  Object.assign(data,shippingPortFields(d,mode));
+ Object.assign(data,shippingRouteFields(d,mode));
  await validateShippingPorts(tx,data,previous);
  for(const role of ['shipper','consignee','notify'])if(data[role+'Party'])data[role]=[data[role+'Party'].name,data[role+'Party'].address,data[role+'Party'].contactName,data[role+'Party'].phone,data[role+'Party'].email].filter(Boolean).join('\n');
  return {customerId,masterId,mode,service:member(input.service||'GENERAL',['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};

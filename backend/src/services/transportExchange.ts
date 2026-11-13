@@ -1,4 +1,5 @@
 import {shippingCargo} from './shippingCargo';
+import {shippingRouteFields} from './shippingRoute';
 import {shippingPortFields} from './shippingPorts';
 import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -25,6 +26,7 @@ export function transportSnapshot(input:any){
  if(input.data?.transportService!=null){if(!['GENERAL','EXPRESS'].includes(input.data.transportService)||input.data.transportService==='EXPRESS'&&input.mode!=='AIR')fail('TRANSPORT_INVALID');data.transportService=input.data.transportService;}
  Object.assign(data,shippingCargo(input.data||{},input.mode));
  Object.assign(data,shippingPortFields(input.data||{},input.mode));
+ Object.assign(data,shippingRouteFields(input.data||{},input.mode));
  for(const role of ['shipper','consignee','notify']){const party=input.data?.cargoSchemaVersion===1?input.data?.[role+'Party']:null;if(party!=null){if(typeof party!=='object'||Array.isArray(party))fail('TRANSPORT_INVALID');data[role+'Party']={};for(const [key,max] of Object.entries({name:200,address:1000,contactName:320,phone:320,email:320})){if(party[key]!=null){if(typeof party[key]!=='string'||party[key].length>max)fail('TRANSPORT_INVALID');data[role+'Party'][key]=party[key];}}}}
  if(input.data?.customerRole!=null){if(!['shipper','consignee','notify'].includes(input.data.customerRole))fail('TRANSPORT_INVALID');data.customerRole=input.data.customerRole;}
  if(input.data?.notifySameAsConsignee!=null){if(typeof input.data.notifySameAsConsignee!=='boolean')fail('TRANSPORT_INVALID');data.notifySameAsConsignee=input.data.notifySameAsConsignee;if(data.notifySameAsConsignee){data.notify=data.consignee;data.notifyParty=data.consigneeParty;}}

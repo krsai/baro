@@ -7,3 +7,7 @@ export const routeScopeText = {
 };
 
 for(const lang of ['ko','en','vi'])Object.assign(routeScopeText[lang],{shipper:'SHPR',consignee:'CNEE',notify:'NOTIFY'});
+
+Object.assign(routeScopeText.ko,{entered:"입력 완료",notEntered:"미입력",clickLocation:"클릭하여 입력"});
+Object.assign(routeScopeText.en,{entered:"Entered",notEntered:"Not entered",clickLocation:"Click to enter"});
+Object.assign(routeScopeText.vi,{entered:"Đã nhập",notEntered:"Chưa nhập",clickLocation:"Nhấn để nhập"});

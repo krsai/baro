@@ -9,7 +9,7 @@ export async function searchShippingPorts(db:any,query:unknown){
  return {rows:rows.slice(0,200),hasMore:rows.length>200};
 }
 export function shippingPortFields(data:any,mode:string){
- if(data.cargoSchemaVersion!==1)return {};
+ if(data.cargoSchemaVersion!==1&&data.routeLocations===undefined)return {};
  const result:any={};
  for(const key of ['originPortCode','destinationPortCode'])if(data[key]!=null&&data[key]!==''){
   if(mode!=='SEA'||typeof data[key]!=='string'||! /^[A-Z]{2}[A-Z0-9]{3}$/.test(data[key]))throw createHttpError(400,'SHIPPING_INVALID');
