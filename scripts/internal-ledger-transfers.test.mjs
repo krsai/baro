@@ -10,6 +10,7 @@ const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/serv
 const {readLedgerAccounts,postLedgerEntry,postLedgerSettlementBatch,listLedgerActivity}=require('../backend/dist/services/bankLedger');
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {ledgerCounterpartyOptions}=require('../backend/dist/services/ledgerCounterparty');
+const {saveClassification}=require('../backend/dist/services/partnerClassification');
 async function ownAccount(db,s,extra={}){
  return db.organizationBankAccount.create({data:{orgId:s.company.id,entityId:s.company.id,currencyId:s.currency.id,bankName:'Bank B',accountNumber:randomUUID(),accountHolder:'Company',displayName:'Account B',createdByEmployeeId:s.people.admin.id,updatedByEmployeeId:s.people.admin.id,...extra}});
 }
@@ -52,7 +53,11 @@ test('From/To identifies an external party or our account and derives direction 
 test('one approved line atomically posts both accounts, retries once, edits either side and cancels both',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,b=await ownAccount(db,s),row=transfer(s,b);
-  assert.ok((await ledgerCounterpartyOptions(db,org)).some(p=>p.kind==='ACCOUNT'&&p.id===b.id));
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId},include:{serviceType:true}});
+  await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:0,roleIds:[base.serviceType.partnerRoleId],industryIds:[base.serviceTypeId]}));
+  const partyOptions=await ledgerCounterpartyOptions(db,org);
+  assert.ok(partyOptions.some(p=>p.kind==='ACCOUNT'&&p.id===b.id));
+  const partner=partyOptions.find(p=>p.kind==='PARTNER'&&p.id===s.vendor.id);assert.deepEqual(partner.classification.industryIds,[base.serviceTypeId]);assert.equal(partner.classification.industries[0].partnerRole.id,base.serviceType.partnerRoleId);
   await assert.rejects(postLedgerEntry(db,org,s.people.admin.email,s.account.id,row),/CHANGE_APPROVAL_REQUIRED/);
   const value=input([row],{selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id}});
   const request=await requestChangeApproval(db,org,s.people.admin.id,value);assert.equal(await db.bankLedgerEntry.count(),0);

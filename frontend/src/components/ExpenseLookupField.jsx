@@ -7,7 +7,7 @@ export default function ExpenseLookupField({label,options=[],value,onChange,colu
  const text=EXPENSE_LOOKUP_TEXT[languageCode]||EXPENSE_LOOKUP_TEXT.en;
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[selection,setSelection]=useState([]);
  const display=getOptionLabel||(row=>directCode?row.code||'':row.name||row.label||'');
- const searchText=row=>[...columns.map(column=>column.value(row)),row.code,row.name,row.nameEn,row.nameKo,row.nameVi].filter(Boolean).join(' ');
+ const searchText=row=>[display(row),...columns.map(column=>column.value(row)),row.code,row.name,row.nameEn,row.nameKo,row.nameVi].filter(Boolean).join(' ');
  useEffect(()=>{if(disabled)setOpen(false);},[disabled]);
  const choose=row=>{if(multiple){if(!row)return;const selected=value||[];if(!selected.some(item=>getOptionKey(item)===getOptionKey(row)))onChange([...selected,row]);}else onChange(row);};
  const title=label+' \u00b7 '+text.search;
