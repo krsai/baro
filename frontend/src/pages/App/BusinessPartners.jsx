@@ -71,15 +71,21 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
   const costLabels = TRANSACTION_TEXT[languageCode] || TRANSACTION_TEXT.ko;
   const [historyLoading, setHistoryLoading] = useState(false);
   const loadGeneration=useRef(0);
+  const loaded=useRef(false),inFlight=useRef(null),refreshPending=useRef(false),lastAttempt=useRef(0);
+  const refreshBlocked=!active||createOpen||Boolean(editingPartner)||deleting||Boolean(deletingPartner);
+  const refreshBlockedRef=useRef(refreshBlocked);refreshBlockedRef.current=refreshBlocked;
   const mounted=useRef(true);
-  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;loadGeneration.current+=1;};},[]);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const loadPartners = useCallback(async () => {
     if(!mounted.current)return;
+    if(inFlight.current)return inFlight.current;
+    lastAttempt.current=Date.now();refreshPending.current=false;
     const generation=++loadGeneration.current;
-    setLoading(true); setError('');setQueryFailed(false);
-    try {
+    setLoading(!loaded.current); setError('');setQueryFailed(false);
+    const request=(async()=>{try {
       const result = await requestJSON(`${unified?'/partner-directory':'/business-partners'}${buildQueryString({ orgId: activeOrgId, ...(!unified?{type}:{}) })}`, { skipGlobalLoading: true, skipCache: true });
-      if(generation!==loadGeneration.current)return;
+      if(!mounted.current||generation!==loadGeneration.current)return;
+      loaded.current=true;
       if(unified){
         const pathFor=row=>row.kind==='CUSTOMER'?'/customer':({PROCESS_OUTSOURCING:'/outsourcing-partner',MATERIAL_SUPPLIER:'/material-supplier',LOGISTICS_PROVIDER:'/logistics-partner'})[row.entity.type];
         const allowed=result.rows.filter(row=>canAccessPath(pathFor(row),auth));
@@ -87,13 +93,16 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
         setPartners(allowed.map(row=>({...row.entity,code:row.linkedCompany?.code||row.entity.code,sourceKind:row.kind,relationshipRoles:row.relationshipRoles,officialClassification:row.officialClassification,relationshipId:row.relationshipId,localClassification:row.classification,classification:row.linkedCompany?.subscriberOrgId&&row.officialClassification?.industryIds?.length?(row.officialClassification||{roleIds:[],industryIds:[],industries:[]}):row.classification,hasUsageHistory:row.hasUsageHistory,missingSalesPriceStyleCount:row.missingSalesPriceStyleCount,contactName:row.entity.representative,contactPhone:row.entity.phone,serviceTypes:(row.linkedCompany?.subscriberOrgId&&row.officialClassification?.industryIds?.length?row.officialClassification:row.classification)?.industries||[]})));
       }else setPartners(Array.isArray(result) ? result : []);
     }
-    catch (loadError) { if(generation===loadGeneration.current){setQueryFailed(true);setError(loadError?.message || labels.loadError);} }
-    finally { if(generation===loadGeneration.current)setLoading(false); }
+    catch (loadError) { if(mounted.current&&generation===loadGeneration.current){setQueryFailed(true);setError(loadError?.message || labels.loadError);} }
+    finally { if(mounted.current&&generation===loadGeneration.current)setLoading(false); }
+    })();
+    inFlight.current=request;
+    try{await request;}finally{if(inFlight.current===request)inFlight.current=null;if(mounted.current&&refreshPending.current&&!refreshBlockedRef.current)loadPartners();}
   }, [activeOrgId, labels.loadError, type,unified,onDirectoryLoaded,accessProfile,activeOrgRole]);
-  useEffect(() => { if(active)loadPartners(); }, [active,loadPartners]);
-  useEffect(()=>{const refresh=()=>{if(active)loadPartners();};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[active,loadPartners]);
+  useEffect(() => {if(!refreshBlocked&&(!loaded.current||refreshPending.current||Date.now()-lastAttempt.current>=30000))loadPartners();}, [refreshBlocked,loadPartners]);
+  useEffect(()=>{const refresh=()=>{if(document.visibilityState==='hidden'||Date.now()-lastAttempt.current<30000)return;if(refreshBlockedRef.current){refreshPending.current=true;return;}loadPartners();};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[loadPartners]);
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
-    if (Number(detail?.orgId) === Number(activeOrgId) && (['business-partner', 'transaction-request','customer-detail'].includes(detail.source)||detail.topics?.some(topic=>['customers','business-partners','company-industries'].includes(topic)))) loadPartners();
+    if (Number(detail?.orgId) === Number(activeOrgId) && (['business-partner','customer-detail'].includes(detail.source)||detail.topics?.some(topic=>['customers','business-partners','company-industries'].includes(topic)))) {if(refreshBlockedRef.current||inFlight.current){refreshPending.current=true;return;}loadPartners();}
   }), [activeOrgId, loadPartners]);
   const removePartner = async () => {
     setDeleting(true); setError('');
@@ -102,7 +111,6 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
       if (selected?.id === deletingPartner.id) setSelected(null);
       setDeletingPartner(null);
       emitWorkspaceDataChanged({ topics: ['business-partners'], orgId: activeOrgId, source: 'business-partner' });
-      await loadPartners();
     } catch (failure) {
       setDeletingPartner(null);
       await loadPartners();
@@ -126,7 +134,6 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
       <BusinessPartnerDialog
         open={createOpen || Boolean(editingPartner)}
         onClose={() => { setCreateOpen(false); setEditingPartner(null); }}
-        onSaved={loadPartners}
         activeOrgId={activeOrgId}
         languageCode={languageCode}
         partner={editingPartner}
