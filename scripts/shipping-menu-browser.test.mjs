@@ -8,7 +8,7 @@ const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','1
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/shipping-menu-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
- for(const lang of ['ko','en','vi'])for(const type of ['MANUFACTURER','SERVICE']){
+ for(const lang of ['ko','en','vi'])for(const type of ['MANUFACTURER','SERVICE','BRAND']){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const profile={entryType:'ORG',orgId:7,orgType:'${type}',orgRole:'ADMIN',orgName:'Test company',employeeName:'Admin',employeeId:1};export const useAuth=()=>({activeOrgId:7,activeOrgType:'${type}',activeProfile:profile,accessProfile:profile,isAuthenticated:true,user:{},signOut:()=>{}});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"const actions=new Proxy({},{get:()=>()=>{}}),state={sidebarOpen:true,openTabs:[{id:'/shipping',path:'/shipping',label:'Transport list'}],notification:null};export const useAppActions=()=>actions;export const useAppState=()=>state;"}));

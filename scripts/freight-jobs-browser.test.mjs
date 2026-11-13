@@ -1,3 +1,4 @@
+import {shippingEditorText} from '../frontend/src/constants/shippingEditor.js';
 import {routeScopeText} from '../frontend/src/constants/freightRouteScope.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -40,42 +41,24 @@ try{
   await page.goto(`http://127.0.0.1:${port}/freight-jobs-acceptance.html`);
   await page.getByRole('button',{name:t.new,exact:true}).click();let dialog=page.getByRole('dialog');
   const customer=page.getByRole('textbox',{name:t.customer,exact:true});await customer.fill('BARO');await customer.press('Enter');
-  assert.equal(await page.getByRole('dialog').count(),0);
-  assert.equal(await page.getByRole('textbox',{name:e.forwarderCompany,exact:true}).inputValue(),'DEXL / DEX LOGIS');
-  const dateBox=await page.getByLabel(e.plannedDate,{exact:true}).boundingBox();
-  for(const mode of ['AIR','EXPRESS','ROAD','LCL','FCL']){
-   await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:e[mode],exact:true}).click();
-   assert.equal((await page.getByLabel(e.plannedDate,{exact:true}).boundingBox()).y,dateBox.y);
-   assert.equal(await page.getByRole('spinbutton',{name:e.containerCount,exact:true}).count(),mode==='FCL'?1:0);
-  }
-  assert.equal(await page.locator('[data-route-direction]').count(),3);
-  for(const [key,choice] of [['exportCustoms','OUR_SCOPE'],['importCustoms','NOT_OUR_SCOPE']]){await page.getByRole('combobox',{name:e[key],exact:true}).click();await page.getByRole('option',{name:e[choice],exact:true}).click();}
-  const r=routeScopeText[lang];await page.getByRole('button',{name:r.consignee,exact:true}).click();
-  assert.equal(await page.getByRole('combobox',{name:t.jobType,exact:true}).count(),0);
-  assert.equal(await page.getByRole('button',{name:r.all,exact:true}).evaluate(el=>el.classList.contains('MuiButton-contained')),true);
-  assert.equal(await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).getAttribute('aria-pressed'),'true');
-  const initialColor=await page.getByTestId('freight-route-scope').locator('.MuiSlider-root').evaluate(el=>getComputedStyle(el).color);
-  await page.getByRole('button',{name:r.main,exact:true}).click();
-  assert.equal(await page.getByTestId('freight-route-scope').locator('.MuiSlider-root').evaluate(el=>getComputedStyle(el).color),initialColor);
-  const direction=await page.locator('[data-route-direction]').nth(1).evaluate(el=>{const a=el.getBoundingClientRect(),b=el.parentElement.querySelector('.MuiSlider-track').getBoundingClientRect(),s=getComputedStyle(el);return {x:a.x+a.width/2,y:a.y+a.height/2,trackX:b.x+b.width/2,trackY:b.y+b.height/2,width:a.width,background:s.backgroundColor,pointer:s.pointerEvents};});
-  assert.ok(Math.abs(direction.x-direction.trackX)<=1.5&&Math.abs(direction.y-direction.trackY)<=1.5,JSON.stringify(direction));assert.equal(direction.width,28);assert.equal(direction.background,'rgba(0, 0, 0, 0)');assert.equal(direction.pointer,'none');
+  const x=shippingEditorText[lang];assert.equal(await page.getByRole('dialog').count(),1);
+  assert.equal(await page.getByRole('textbox',{name:e.forwarderCompany,exact:true}).inputValue(),'DEX LOGIS');
+  assert.equal(await page.getByRole('textbox',{name:e.forwarderAssignee,exact:true}).count(),0);
+  for(const mode of ['AIR','EXPRESS','ROAD','LCL','FCL']){await page.getByRole('combobox',{name:t.mode,exact:true}).click();await page.getByRole('option',{name:e[mode],exact:true}).click();assert.equal(await page.locator('[data-container-row]').count(),mode==='FCL'?1:0);assert.equal(await page.locator('[data-package-row]').count(),mode==='FCL'?0:1);}
+  assert.equal(await page.getByRole('combobox',{name:e.exportCustoms,exact:true}).count(),0);assert.equal(await page.getByRole('checkbox',{name:e.pickupRequired,exact:true}).count(),0);
+  const r=routeScopeText[lang];assert.equal(await page.locator('[data-route-direction]').count(),3);
+  await page.getByRole('button',{name:r.main,exact:true}).click();const arrows=await page.locator('[data-route-direction]').evaluateAll(nodes=>nodes.map(el=>({color:getComputedStyle(el).color,opacity:getComputedStyle(el).opacity})));assert.equal(arrows[0].color,arrows[1].color);assert.equal(arrows[0].opacity,'0.38');assert.equal(arrows[1].opacity,'1');
   await page.getByRole('button',{name:r.all,exact:true}).click();
-  await page.getByRole('button',{name:r.notify,exact:true}).click();
-  assert.equal(await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).getAttribute('aria-pressed'),'false');
-  await page.getByRole('button',{name:r.consignee,exact:true}).click();await page.getByRole('button',{name:e.sameAsConsignee,exact:true}).click();
-  const operator=page.getByRole('textbox',{name:e.forwarderAssignee,exact:true});await operator.fill('DEXL0004');await operator.press('Enter');
-  await page.getByTestId('freight-party-consignee').getByRole('textbox',{name:e.address,exact:true}).fill('B/L address');
-  assert.equal(await page.getByTestId('freight-party-notify').getByRole('textbox',{name:e.address,exact:true}).inputValue(),'B/L address');
-  await page.getByLabel(e.plannedDate,{exact:true}).fill('2026-11-15');
-  for(const role of ['shipper']){const input=page.getByTestId('freight-party-'+role).getByRole('textbox',{name:e.name,exact:true});await input.fill('BARO');await input.press('Enter');}
-  await page.getByRole('combobox',{name:e.incoterms,exact:true}).click();await page.getByRole('option',{name:'FOB',exact:true}).click();
-  await page.getByRole('button',{name:r.all,exact:true}).click();
-  const start=page.getByRole('slider',{name:r.start,exact:true});await start.focus();await start.press('ArrowRight');assert.equal(await page.getByRole('checkbox',{name:e.pickupRequired,exact:true}).count(),0);await start.press('ArrowLeft');
-  const slider=page.getByTestId('freight-route-scope').locator('.MuiSlider-root'),track=await slider.boundingBox(),thumb=await slider.locator('.MuiSlider-thumb').first().boundingBox();await page.mouse.move(thumb.x+thumb.width/2,thumb.y+thumb.height/2);await page.mouse.down();await page.mouse.move(track.x+track.width/3,track.y+track.height/2,{steps:8});await page.mouse.up();assert.equal(await start.getAttribute('aria-valuenow'),'1');await page.getByRole('button',{name:r.all,exact:true}).click();
-  await page.getByRole('checkbox',{name:e.pickupRequired,exact:true}).check();const pickup=page.getByRole('textbox',{name:r.pickupFrom,exact:true});await pickup.fill('BARO');await pickup.press('Enter');assert.equal(await page.getByRole('textbox',{name:e.pickupAddress,exact:true}).inputValue(),'Hanoi');await page.getByRole('textbox',{name:e.pickupAddress,exact:true}).fill('Separate warehouse');
+  const slider=page.getByTestId('freight-route-scope').locator('.MuiSlider-root'),track=await slider.boundingBox(),thumb=await slider.locator('.MuiSlider-thumb').first().boundingBox();await page.mouse.move(thumb.x+thumb.width/2,thumb.y+thumb.height/2);await page.mouse.down();await page.mouse.move(track.x+track.width/3,track.y+track.height/2,{steps:8});await page.mouse.up();assert.equal(await page.getByRole('slider',{name:r.start,exact:true}).getAttribute('aria-valuenow'),'1');await page.getByRole('button',{name:r.all,exact:true}).click();
+  const consignee=page.getByTestId('freight-party-consignee').getByRole('textbox',{name:e.name,exact:true});await consignee.fill('BARO');await consignee.press('Enter');
+  await page.getByTestId('freight-party-consignee').getByRole('button',{name:x.details,exact:true}).click();const partyDialog=page.getByRole('dialog').last();await partyDialog.getByRole('textbox',{name:e.address,exact:true}).fill('B/L address');await partyDialog.getByRole('button',{name:x.close,exact:true}).click();
+  assert.equal(await page.getByRole('checkbox',{name:e.sameAsConsignee,exact:true}).isChecked(),true);
+  for(const [key,value] of [['origin','Hanoi'],['destination','Busan'],['cargo','Garments']])await page.getByRole('textbox',{name:e[key]||t[key],exact:true}).fill(value);
+  const container=page.locator('[data-container-row]');await container.getByRole('combobox',{name:x.containerSize,exact:true}).click();await page.getByRole('option',{name:'40',exact:true}).click();await container.getByRole('combobox',{name:x.containerType,exact:true}).click();await page.getByRole('option',{name:'HQ',exact:true}).click();await container.getByRole('textbox',{name:x.count,exact:true}).fill('2');
   await page.getByRole('checkbox',{name:e.dangerousGoods,exact:true}).check();await page.getByRole('textbox',{name:e.dangerousGoodsDetails,exact:true}).fill('UN 1993');
-  if(lang==='ko'&&process.env.BARO_FREIGHT_SCREENSHOT){await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:process.env.BARO_FREIGHT_SCREENSHOT,fullPage:true});}
-  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(bills.length,0);assert.equal(job.data.shipperId,11);assert.equal(job.data.consigneeId,11);assert.equal(job.data.pickupAddress,'Separate warehouse');assert.equal(job.data.pickupPartyId,11);assert.equal(job.data.dangerousGoods,true);assert.equal(job.data.exportCustoms,'OUR_SCOPE');assert.equal(job.data.importCustoms,'NOT_OUR_SCOPE');assert.equal(job.data.customerRole,'consignee');assert.equal(job.data.incoterms,'FOB');assert.deepEqual(job.data.workScope,{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'});
+  await page.getByRole('combobox',{name:e.incoterms,exact:true}).click();await page.getByRole('option',{name:'FOB',exact:true}).click();
+  if(lang==='ko'&&process.env.BARO_SHIPPING_SCREENSHOT){await page.locator('.MuiPopover-root').waitFor({state:'hidden'});await page.getByRole('dialog').locator('.MuiDialogContent-root').first().evaluate(el=>el.scrollTop=0);await page.screenshot({path:process.env.BARO_SHIPPING_SCREENSHOT});}
+  await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(bills.length,0);assert.equal(job.data.notifyParty.address,'B/L address');assert.equal(job.data.assigneeId,undefined);assert.equal(job.data.exportCustoms,undefined);assert.equal(job.data.containerCount,undefined);assert.deepEqual(job.data.containers,[{size:'40',type:'HQ',count:'2'}]);
   const add=async(kind,number)=>{await page.getByRole('button',{name:kind==='MASTER'?t.addMaster:t.addHouse,exact:true}).click();await dialog.getByRole('textbox',{name:t.billNumber,exact:true}).fill(number);await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});await page.getByText(number,{exact:true}).waitFor();};
   await add('HOUSE','H-001');await add('MASTER','M-001');await add('MASTER','M-002');await add('HOUSE','H-002');
   const house=bills.find(b=>b.number==='H-001');await page.locator(`[data-bill-id="${house.id}"]`).getByRole('button',{name:t.edit,exact:true}).click();

@@ -1,3 +1,4 @@
+import {shippingCargo} from './shippingCargo';
 import {registerJobRoutes} from './freightJobs';
 import {attachLinkedCompanies} from './companyConnections';
 import {createHash,randomUUID} from 'node:crypto';
@@ -64,7 +65,10 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
    const document=d[role+'Party'];
    if(document!=null){if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
     for(const field of ['name','address','contactName','phone','email'])if(document[field]!==undefined)data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
-   }}
+   }}else if(d[role+'Party']!=null){
+   const document=d[role+'Party'];if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
+   data[role+'Party']={};for(const field of ['name','address','contactName','phone','email'])data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
+  }
  }
  if(d.customerRole!==undefined){
   data.customerRole=member(d.customerRole,['shipper','consignee','notify']);
@@ -87,8 +91,9 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any)
  if((['FCL','LCL'].includes(shipmentType)?'SEA':shipmentType)!==mode)fail('FREIGHT_INVALID_INPUT');
  for(const key of ['pickupRequired','dangerousGoods'])if(d[key]!==undefined&&typeof d[key]!=='boolean')fail('FREIGHT_INVALID_INPUT');
  for(const key of ['exportCustoms','importCustoms'])if(d[key]!==undefined)data[key]=member(d[key],['UNCONFIRMED','OUR_SCOPE','NOT_OUR_SCOPE']);
- Object.assign(data,{shipmentType,incoterms:optional(d.incoterms,80),pickupRequired:d.pickupRequired===true,pickupAddress:optional(d.pickupAddress,1000),dangerousGoods:d.dangerousGoods===true,dangerousGoodsDetails:optional(d.dangerousGoodsDetails,500),containerType:optional(d.containerType,40),containerCount:decimal(d.containerCount||undefined,0)});
+ Object.assign(data,{shipmentType,incoterms:optional(d.incoterms,80),pickupRequired:d.pickupRequired===true,pickupAddress:optional(d.pickupAddress,1000),dangerousGoods:d.dangerousGoods===true,dangerousGoodsDetails:optional(d.dangerousGoodsDetails,500),containerType:optional(d.containerType,d.cargoSchemaVersion===1?500:40),containerCount:decimal(d.containerCount||undefined,0)});
  Object.assign(data,{direction:member(d.direction||'OTHER',['IMPORT','EXPORT','OTHER']),shipper:optional(d.shipper,1000),consignee:optional(d.consignee,1000),notify:optional(d.notify,1000),billTo:optional(d.billTo,1000),cargo:optional(d.cargo,2000),marks:optional(d.marks,1000),quantity:decimal(d.quantity||undefined,0),unit:optional(d.unit||'PKG',30),weightKg:decimal(d.weightKg||undefined),cbm:decimal(d.cbm||undefined,6),freightTerms:optional(d.freightTerms,100),deliveryDate:date(d.deliveryDate),recipient:optional(d.recipient,200)});
+ Object.assign(data,shippingCargo(d,mode));
  for(const role of ['shipper','consignee','notify'])if(data[role+'Party'])data[role]=[data[role+'Party'].name,data[role+'Party'].address,data[role+'Party'].contactName,data[role+'Party'].phone,data[role+'Party'].email].filter(Boolean).join('\n');
  return {customerId,masterId,mode,service:member(input.service||'GENERAL',['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};
 }

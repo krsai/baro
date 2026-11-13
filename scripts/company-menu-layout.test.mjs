@@ -28,9 +28,9 @@ function source(system) {
   return vm.runInNewContext(`${code}; blueprint()`, context);
 }
 const flatten = items => items.flatMap(item => item.isParent ? flatten(item.children || []) : [item]);
-test('sewing brands expose only their three business menus without manufacturer or accounting entries',()=>{
+test('sewing brands expose their existing business menus and shipping without manufacturer or accounting entries',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'BRAND');
- assert.deepEqual(flatten(menu).map(row=>row.path),['/style','/order','/customer-production-report']);
+ assert.deepEqual(flatten(menu).map(row=>row.path),['/style','/order','/customer-production-report','/shipping']);
 });
 test('service transport starts in the sales group beside customer and partner management',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'SERVICE');

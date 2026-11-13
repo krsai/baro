@@ -6,3 +6,11 @@ export const freightJobEditorText={
 Object.assign(freightJobEditorText.ko,{forwarderCompany:'포워더',tradeName:'상호',name:'회사명',contactName:'담당자',cargo:'화물명',quantity:'수량',EXPRESS:'특송',exportCustoms:'수출 통관',importCustoms:'수입 통관',UNCONFIRMED:'미정',OUR_SCOPE:'당사 담당',NOT_OUR_SCOPE:'당사 범위 아님'});
 Object.assign(freightJobEditorText.en,{forwarderCompany:'Forwarder',tradeName:'Company name',name:'Company name',contactName:'Contact person',cargo:'Commodity',quantity:'Quantity',EXPRESS:'Express',exportCustoms:'Export customs clearance',importCustoms:'Import customs clearance',UNCONFIRMED:'Unconfirmed',OUR_SCOPE:'Our responsibility',NOT_OUR_SCOPE:'Outside our scope'});
 Object.assign(freightJobEditorText.vi,{forwarderCompany:'Đơn vị giao nhận',tradeName:'Tên công ty',name:'Tên công ty',contactName:'Người liên hệ',cargo:'Tên hàng',quantity:'Số lượng',EXPRESS:'Chuyển phát nhanh',exportCustoms:'Thông quan xuất khẩu',importCustoms:'Thông quan nhập khẩu',UNCONFIRMED:'Chưa xác định',OUR_SCOPE:'Chúng ta phụ trách',NOT_OUR_SCOPE:'Ngoài phạm vi của chúng ta'});
+
+for(const lang of ['ko','en','vi'])Object.assign(freightJobEditorText[lang],{shipper:'SHPR',consignee:'CNEE',notify:'NOTIFY'});
+Object.assign(freightJobEditorText.ko,{origin:'출발지',destination:'도착지'});
+Object.assign(freightJobEditorText.en,{origin:'Origin',destination:'Destination'});
+Object.assign(freightJobEditorText.vi,{origin:'Nơi đi',destination:'Nơi đến'});
+Object.assign(freightJobEditorText.ko,{route:'\uC6B4\uC1A1 \uAD6C\uAC04',cargo:'\uB300\uD45C \uD654\uBB3C\uBA85'});
+Object.assign(freightJobEditorText.en,{route:'Transport scope',cargo:'Representative commodity'});
+Object.assign(freightJobEditorText.vi,{route:'Ph\u1ea1m vi v\u1eadn chuy\u1ec3n',cargo:'T\u00ean h\u00e0ng \u0111\u1ea1i di\u1ec7n'});

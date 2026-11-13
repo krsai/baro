@@ -47,7 +47,7 @@ export function registerJobRoutes(app:any,db:any,access:any){
  const save=async({orgId,actorId}:any,req:any)=>{
   const previous=req.params.id?await job(db,orgId,req.params.id):null;
   // The new editor never writes legacy BL columns; preserve their historical values.
-  if(!req.body?.data?.shipperId||!req.body?.data?.consigneeId)fail('FREIGHT_PARTIES_REQUIRED');
+  if(!['shipper','consignee'].every(role=>req.body?.data?.[role+'Id']||req.body?.data?.[role+'Party']?.name?.trim()))fail('FREIGHT_PARTIES_REQUIRED');
   const role=req.body.data.customerRole||(req.body.customerId===req.body.data.shipperId?'shipper':req.body.customerId===req.body.data.consigneeId?'consignee':null);
   if(!role||!['shipper','consignee','notify'].includes(role)||req.body.data[role+'Id']!==req.body.customerId)fail('FREIGHT_CUSTOMER_ROLE');
   if(!req.body.data.workScope)fail('FREIGHT_SCOPE_REQUIRED');

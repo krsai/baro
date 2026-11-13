@@ -1,3 +1,4 @@
+import {listShippingPresets,saveShippingPreset} from './shippingPresets';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -7,7 +8,7 @@ import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 async function actor(db:any,orgId:number,actorId:number){
  await freightActor(db,orgId,actorId);
- const org=await db.organization.findFirst({where:{id:orgId,isActive:true,ownerOrgId:null,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:orgId}],type:{in:['SERVICE','MANUFACTURER']}},select:{id:true,type:true,name:true}});
+ const org=await db.organization.findFirst({where:{id:orgId,isActive:true,ownerOrgId:null,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:orgId}],type:{in:['SERVICE','MANUFACTURER','BRAND']}},select:{id:true,type:true,name:true}});
  if(!org)fail('SHIPPING_ACCESS_DENIED',403);return org;
 }
 const requestFields=(input:any)=>{
@@ -54,7 +55,7 @@ export async function submitShippingRequest(db:any,orgId:number,actorId:number,i
  if(typeof input.clientKey!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.clientKey)||!Number.isSafeInteger(input.forwarderOrgId))fail('SHIPPING_INVALID');
  const digest=createHash('sha256').update(JSON.stringify({forwarder:input.forwarderOrgId,value})).digest('hex');
  return retryEditTransaction(db,async (tx:any)=>{
-  const org=await actor(tx,orgId,actorId);if(org.type!=='MANUFACTURER')fail('SHIPPING_ACCESS_DENIED',403);
+  const org=await actor(tx,orgId,actorId);if(!['MANUFACTURER','BRAND'].includes(org.type))fail('SHIPPING_ACCESS_DENIED',403);
   if(!(await transportPartners(tx,orgId)).some((p:any)=>p.id===input.forwarderOrgId&&p.type==='SERVICE'))fail('TRANSPORT_PARTNER_REQUIRED',403);
   await tx.$queryRawUnsafe('SELECT pg_advisory_xact_lock(hashtext($1))::text',`shipping:${orgId}:${input.clientKey}`);
   const key=`shipping:${orgId}:${input.clientKey}`;
@@ -67,7 +68,7 @@ export async function submitShippingRequest(db:any,orgId:number,actorId:number,i
   const customer=customers[0],id=randomUUID();
   await tx.$queryRawUnsafe("SELECT set_config('baro.shipping_actor_org',$1,true),set_config('baro.shipping_actor_id',$2,true)",String(orgId),String(actorId));
   const row=(await tx.$queryRawUnsafe(`INSERT INTO "FreightJob"(id,"orgId","clientKey","requestHash",number,"customerId",mode,service,"houseStatus",status,data,"receiptStatus","requesterOrgId","requestCreatedByOrgId","requestCreatedByEmployeeId","requestSnapshot")
-   VALUES($1,$2,$3,$4,$5,$6,$7,'GENERAL','NONE','DRAFT',$8::jsonb,'PENDING',$9,$9,$10,$11::jsonb) RETURNING *`,id,input.forwarderOrgId,key,digest,`SR-${id.slice(0,8).toUpperCase()}`,customer.id,value.mode,JSON.stringify({...value.data,customer:{name:customer.name}}),orgId,actorId,JSON.stringify(value)))[0];
+   VALUES($1,$2,$3,$4,$5,$6,$7,$12,'NONE','DRAFT',$8::jsonb,'PENDING',$9,$9,$10,$11::jsonb) RETURNING *`,id,input.forwarderOrgId,key,digest,`SR-${id.slice(0,8).toUpperCase()}`,customer.id,value.mode,JSON.stringify({...value.data,customer:{name:customer.name},...(value.data.customerRole?{[value.data.customerRole+'Id']:customer.id}:{})}),orgId,actorId,JSON.stringify(value),value.data.transportService||'GENERAL'))[0];
   return projection(row);
  });
 }
@@ -89,7 +90,8 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
    const value=requestFields({mode:input.mode,data:input.data});
    const oldPublic=transportSnapshot(row).data;
    const privateData=Object.fromEntries(Object.entries(row.data).filter(([key])=>!(key in oldPublic)));
-   updated=await tx.$queryRawUnsafe(`UPDATE "FreightJob" SET mode=$1,data=$2::jsonb,"requestSnapshot"=$3::jsonb,"updatedByEmployeeId"=CASE WHEN $5 THEN $6::integer ELSE "updatedByEmployeeId" END,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,value.mode,JSON.stringify({...privateData,...value.data}),JSON.stringify(value),id,owner,actorId);
+   const nextData:any={...privateData,...value.data};if(!owner)for(const role of ['shipper','consignee','notify'])if(JSON.stringify(oldPublic[role+'Party'])!==JSON.stringify(value.data[role+'Party'])||oldPublic[role]!==value.data[role])delete nextData[role+'Id'];if(value.data.customerRole){for(const role of ['shipper','consignee','notify'])if(role!==value.data.customerRole&&nextData[role+'Id']===row.customerId)delete nextData[role+'Id'];nextData[value.data.customerRole+'Id']=row.customerId;}
+   updated=await tx.$queryRawUnsafe(`UPDATE "FreightJob" SET mode=$1,service=$7,data=$2::jsonb,"requestSnapshot"=$3::jsonb,"updatedByEmployeeId"=CASE WHEN $5 THEN $6::integer ELSE "updatedByEmployeeId" END,version=version+1,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$4 RETURNING *`,value.mode,JSON.stringify(nextData),JSON.stringify(value),id,owner,actorId,value.data.transportService||row.service);
   }else fail('SHIPPING_ACTION_INVALID',409);
   return {id,version:updated[0].version};
  });
@@ -119,13 +121,16 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{
   const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return null;
   const orgId=ctx.organization.id,actorId=gates.actorId(),org=await actor(db,orgId,actorId),policy=(await gates.loadPolicy()).policy;
-  const feature=org.type==='SERVICE'?'FREIGHT':'CUSTOMER';
-  if(!policy?.[org.type]?.[ctx.employee.orgRole]?.includes(feature)||org.type==='SERVICE'&&!(await companyIndustryMenuFeatures(db,orgId,'SERVICE')).includes('FREIGHT'))fail('SHIPPING_ACCESS_DENIED',403);
+  const feature=org.type==='SERVICE'?'FREIGHT':org.type==='BRAND'?'ORDER':'CUSTOMER';
+  if(!policy?.[org.type]?.[ctx.employee.orgRole]?.includes(feature)||['SERVICE','BRAND'].includes(org.type)&&!(await companyIndustryMenuFeatures(db,orgId,org.type)).includes(feature))fail('SHIPPING_ACCESS_DENIED',403);
   return {orgId,actorId,org};
  };
  const route=(method:string,path:string,work:any)=>app[method]('/shipping-requests'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
- route('get','/options',async({orgId,actorId,org}:any)=>org.type==='SERVICE'?{customers:await freightOptions(db,orgId,actorId),forwarders:[]}:{customers:[],forwarders:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')});
+ route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true}}),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
+ route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
+ route('post','/presets',(scope:any,req:any)=>saveShippingPreset(db,scope,req.body));
+ route('delete','/presets/:presetId',(scope:any,req:any)=>saveShippingPreset(db,scope,{...req.body,id:req.params.presetId},true));
  route('get','/:id',({orgId,actorId}:any,req:any)=>readShippingRequest(db,orgId,actorId,req.params.id));
  route('get','/:id/charges',({orgId,actorId}:any,req:any)=>shippingCharges(db,orgId,actorId,req.params.id));
  route('post','/:id/charges',({orgId,actorId}:any,req:any)=>saveShippingCharge(db,orgId,actorId,req.params.id,req.body));

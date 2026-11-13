@@ -129,6 +129,24 @@ model ShippingRequestEvent {
  @@unique([jobId,version])
  @@index([orgId,jobId])
 }
+// Composite employee/company FKs and ownership/revision guards live in
+// 20261113070000_shipping_editor_presets, as with the other freight tables.
+model ShippingPreset {
+ id String @id
+ orgId Int
+ customerId Int
+ partyId Int?
+ kind String
+ label String
+ data Json
+ version Int @default(1)
+ deletedAt DateTime?
+ createdByEmployeeId Int
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now())
+ updatedAt DateTime @default(now())
+ @@index([orgId,customerId,kind],map:"ShippingPreset_customer_idx")
+}
 model ShippingChargeDraft {
  id String @id
  orgId Int

@@ -18,6 +18,16 @@ const withCurrentPolicyVersion = (policy) => ({
   ...policy,
 });
 
+test('brand shipping follows its saved order permission and industry availability without opening freight operations',()=>{
+ const auth=features=>({isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'BRAND',orgRole:'ADMIN',industryMenuFeatures:['ORDER'],accessPolicy:withCurrentPolicyVersion({BRAND:{ADMIN:features}})}});
+ assert.equal(resolveFeatureByPath('/shipping','BRAND'),'ORDER');
+ assert.equal(canAccessPath('/shipping',auth(['ORDER'])),true);
+ assert.equal(canAccessPath('/shipping',auth(['STYLE'])),false);
+ assert.equal(canAccessPath('/freight',auth(['ORDER'])),false);
+ const unavailable=auth(['ORDER']);unavailable.accessProfile.industryMenuFeatures=['STYLE'];assert.equal(canAccessPath('/shipping',unavailable),false);
+ assert.equal(canAccessPath('/shipping',{isAuthenticated:true,accessProfile:{entryType:'SYSTEM',systemRole:'SYSTEM_ADMIN'}}),false);
+});
+
 test('new SaaS registrations resolve only garment factories and logistics companies',()=>{
  const {resolveOnboardingOrganizationType}=loadSourceBindings('backend/src/index.ts',['ORGANIZATION_TYPE_KEYS','ONBOARDING_ORGANIZATION_TYPE_OPTIONS','ONBOARDING_ORGANIZATION_TYPE_TOKENS','resolveOnboardingOrganizationType']);
  for(const value of ['MANUFACTURER','factory'])assert.equal(resolveOnboardingOrganizationType(value),'MANUFACTURER');

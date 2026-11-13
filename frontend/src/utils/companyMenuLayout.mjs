@@ -19,11 +19,11 @@ export function organizeCompanyMenu(items, translate, orgType) {
     }
   }
   const shipping=items.find(item=>item.path==='/shipping');
+  if(shipping)leaves.set('/shipping',shipping);
   if(orgType==='BRAND'){
-    const children=['/style','/order','/customer-production-report'].map(path=>leaves.get(path)).filter(Boolean),source=groups.get('ORDER');
+    const children=['/style','/order','/customer-production-report','/shipping'].map(path=>leaves.get(path)).filter(Boolean),source=groups.get('ORDER');
     return source&&children.length?[{...source,children}]:children;
   }
-  if(shipping)leaves.set('/shipping',shipping);
   const transport=orgType==='SERVICE'&&shipping;
   const used = new Set();
   const result = [...items.filter(item => !item.isParent && !['/shipping','/transport-exchange','/freight'].includes(item.path))];

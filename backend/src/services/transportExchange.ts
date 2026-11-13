@@ -1,3 +1,4 @@
+import {shippingCargo} from './shippingCargo';
 import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -14,12 +15,17 @@ export function transportSnapshot(input:any){
  for(const key of ['pickupRequired','dangerousGoods'])if(input.data?.[key]!==undefined){if(typeof input.data[key]!=='boolean')fail('TRANSPORT_INVALID');data[key]=input.data[key];}
  for(const key of ['quantity','containerCount'])if(data[key]&&!/^\d{1,12}$/.test(data[key]))fail('TRANSPORT_INVALID');
  for(const key of ['weightKg','cbm'])if(data[key]&&!new RegExp('^\\d{1,12}(?:\\.\\d{1,'+(key==='weightKg'?4:6)+'})?$').test(data[key]))fail('TRANSPORT_INVALID');
- for(const [key,max] of Object.entries({origin:160,destination:160,vessel:160,voyage:100,incoterms:80,incotermsPlace:200,pickupAddress:1000,shipper:1000,consignee:1000,notify:1000,marks:1000,unit:30,containerType:40,dangerousGoodsDetails:500,recipient:200}))if(data[key]?.length>max)fail('TRANSPORT_INVALID');
+ for(const [key,max] of Object.entries({origin:160,destination:160,vessel:160,voyage:100,incoterms:80,incotermsPlace:200,pickupAddress:1000,shipper:1000,consignee:1000,notify:1000,marks:1000,unit:30,containerType:input.data?.cargoSchemaVersion===1?500:40,dangerousGoodsDetails:500,recipient:200}))if(data[key]?.length>max)fail('TRANSPORT_INVALID');
  for(const key of ['etd','eta','plannedDate','deliveryDate'])if(data[key]&&(!/^\d{4}-\d{2}-\d{2}$/.test(data[key])||!Number.isFinite(Date.parse(data[key]))||new Date(data[key]+'T00:00:00Z').toISOString().slice(0,10)!==data[key]))fail('TRANSPORT_INVALID');
  if(data.shipmentType&&(input.mode==='SEA'?!['FCL','LCL'].includes(data.shipmentType):data.shipmentType!==input.mode))fail('TRANSPORT_INVALID');
  const scope=input.data?.workScope,nodes=input.mode==='ROAD'?['ORIGIN_DOOR','DESTINATION_DOOR']:['ORIGIN_DOOR','ORIGIN_TERMINAL','DESTINATION_TERMINAL','DESTINATION_DOOR'];
  if(scope){if(nodes.indexOf(scope.start)<0||nodes.indexOf(scope.end)<=nodes.indexOf(scope.start))fail('TRANSPORT_INVALID');data.workScope={start:scope.start,end:scope.end};}
  if(data.pickupRequired&&(!data.pickupAddress||scope?.start!=='ORIGIN_DOOR'))fail('FREIGHT_PICKUP_REQUIRED');
+ if(input.data?.transportService!=null){if(!['GENERAL','EXPRESS'].includes(input.data.transportService)||input.data.transportService==='EXPRESS'&&input.mode!=='AIR')fail('TRANSPORT_INVALID');data.transportService=input.data.transportService;}
+ Object.assign(data,shippingCargo(input.data||{},input.mode));
+ for(const role of ['shipper','consignee','notify']){const party=input.data?.cargoSchemaVersion===1?input.data?.[role+'Party']:null;if(party!=null){if(typeof party!=='object'||Array.isArray(party))fail('TRANSPORT_INVALID');data[role+'Party']={};for(const [key,max] of Object.entries({name:200,address:1000,contactName:320,phone:320,email:320})){if(party[key]!=null){if(typeof party[key]!=='string'||party[key].length>max)fail('TRANSPORT_INVALID');data[role+'Party'][key]=party[key];}}}}
+ if(input.data?.customerRole!=null){if(!['shipper','consignee','notify'].includes(input.data.customerRole))fail('TRANSPORT_INVALID');data.customerRole=input.data.customerRole;}
+ if(input.data?.notifySameAsConsignee!=null){if(typeof input.data.notifySameAsConsignee!=='boolean')fail('TRANSPORT_INVALID');data.notifySameAsConsignee=input.data.notifySameAsConsignee;if(data.notifySameAsConsignee){data.notify=data.consignee;data.notifyParty=data.consigneeParty;}}
  const status=['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED'].includes(input.status)?input.status:'DRAFT';
  return {mode:input.mode,status,data};
 }
@@ -29,7 +35,7 @@ async function actor(db:any,orgId:number,actorId:number){
  if(!org)fail('TRANSPORT_ACCESS_DENIED',403);return org;
 }
 export async function transportPartners(db:any,orgId:number){
- return db.$queryRawUnsafe(`SELECT DISTINCT o.id,o.code,o.name,o."nameKo",o."nameVi",o.type FROM "Organization" o WHERE o.id<>$1 AND o."isActive" AND o."ownerOrgId" IS NULL AND (o."dataOwnerOrgId" IS NULL OR o."dataOwnerOrgId"=o.id) AND o.type::text IN ('MANUFACTURER','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND EXISTS(SELECT 1 FROM "Organization" own WHERE own.id=$1 AND own.type<>o.type) AND (EXISTS(SELECT 1 FROM "CompanyPartnerLink" l WHERE l."orgId"=$1 AND l."targetOrgId"=o.id) OR EXISTS(SELECT 1 FROM "CompanyIdentityLink" l JOIN "CompanyIdentity" c ON c.id=l."identityId" WHERE l."orgId"=$1 AND c."anchorEntityId"=o.id)) ORDER BY o.name,o.id`,orgId);
+ return db.$queryRawUnsafe(`SELECT DISTINCT o.id,o.code,o.name,o."nameKo",o."nameVi",o.type FROM "Organization" o WHERE o.id<>$1 AND o."isActive" AND o."ownerOrgId" IS NULL AND (o."dataOwnerOrgId" IS NULL OR o."dataOwnerOrgId"=o.id) AND o.type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND EXISTS(SELECT 1 FROM "Organization" own WHERE own.id=$1 AND (own.type='SERVICE' AND o.type::text IN ('MANUFACTURER','BRAND') OR own.type::text IN ('MANUFACTURER','BRAND') AND o.type='SERVICE')) AND (EXISTS(SELECT 1 FROM "CompanyPartnerLink" l WHERE l."orgId"=$1 AND l."targetOrgId"=o.id) OR EXISTS(SELECT 1 FROM "CompanyIdentityLink" l JOIN "CompanyIdentity" c ON c.id=l."identityId" WHERE l."orgId"=$1 AND c."anchorEntityId"=o.id) OR EXISTS(SELECT 1 FROM "Organization" own JOIN "CompanyPartnerLink" reverse_link ON reverse_link."targetOrgId"=own.id JOIN "Organization" customer ON customer.id=reverse_link."entityId" WHERE own.id=$1 AND own.type::text='BRAND' AND reverse_link."orgId"=o.id AND o.type::text='SERVICE' AND customer."isActive" AND (customer."ownerOrgId"=o.id OR customer."dataOwnerOrgId"=o.id))) ORDER BY o.name,o.id`,orgId);
 }
 async function ownJob(db:any,orgId:number,id:string){
  const rows=await db.$queryRawUnsafe('SELECT mode,status,data FROM "FreightJob" WHERE id=$1 AND "orgId"=$2',id,orgId);

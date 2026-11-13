@@ -163,7 +163,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 
 export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   const path = normalizePathname(pathname);
-  if(path==='/shipping'||path.startsWith('/shipping/'))return orgType==='MANUFACTURER'?FEATURE_KEYS.CUSTOMER:FEATURE_KEYS.FREIGHT;
+  if(path==='/shipping'||path.startsWith('/shipping/'))return orgType==='BRAND'?FEATURE_KEYS.ORDER:orgType==='MANUFACTURER'?FEATURE_KEYS.CUSTOMER:FEATURE_KEYS.FREIGHT;
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
   if (path.startsWith('/transport-exchange')) return FEATURE_KEYS.CUSTOMER;
   if (path.startsWith('/freight')) return FEATURE_KEYS.FREIGHT;
@@ -211,7 +211,7 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
 export const canAccessPath = (pathname, authState) => {
   const context = buildAccessContext(authState || {});
   const path = normalizePathname(pathname);
-  if(path==='/shipping'||path.startsWith('/shipping/'))return context?.entryType==='ORG'&&['SERVICE','MANUFACTURER'].includes(context.orgType)&&hasOrgRole(context,'ADMIN','OPERATOR','ACCOUNTANT')&&canAccessFeatureByContext(context.orgType==='SERVICE'?FEATURE_KEYS.FREIGHT:FEATURE_KEYS.CUSTOMER,context);
+  if(path==='/shipping'||path.startsWith('/shipping/'))return context?.entryType==='ORG'&&['SERVICE','MANUFACTURER','BRAND'].includes(context.orgType)&&hasOrgRole(context,'ADMIN','OPERATOR','ACCOUNTANT')&&canAccessFeatureByContext(context.orgType==='SERVICE'?FEATURE_KEYS.FREIGHT:context.orgType==='BRAND'?FEATURE_KEYS.ORDER:FEATURE_KEYS.CUSTOMER,context);
   if(path.startsWith('/system-setting/entities'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/order-shipments')&&(!context||context.entryType!=='ORG'||context.orgType!=='MANUFACTURER'))return false;
   // The root route is a redirect-only shell. Allow authenticated users to enter it.
