@@ -5,12 +5,16 @@ import {attachPartnerClassifications} from './partnerClassification';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const prefix=(orgId:number)=>`ACCOUNTING_ALERT_ACK:${orgId}:`;
-const codeInclude={base:{include:{industryLinks:{include:{industry:true}},serviceType:true,expenseType:true}},serviceType:{include:{systemDefault:true}}};
+const industryInclude={include:{expenseType:true,partnerRole:true}};
+const codeInclude={base:{include:{industryLinks:{include:{industry:industryInclude}},serviceType:industryInclude,expenseType:true}},serviceType:{include:{systemDefault:industryInclude}}};
 export function accountingAlertKinds(source:any,partner:any){
  const code=source.code,base=code?.base;if(!code||!base)return [];
  const kinds=[];if(['IN','OUT'].includes(base.cashDirection)&&base.cashDirection!==source.direction)kinds.push('DIRECTION');
  const links=base.industryLinks||[],allowed=links.length?links.map((link:any)=>link.systemIndustryId):base.serviceTypeId?[base.serviceTypeId]:[];
- const funds=[base.serviceType,base.expenseType,code.serviceType?.systemDefault,...links.map((link:any)=>link.industry)].some(row=>row?.code==='FUNDS');
+ const industries=[base.serviceType,code.serviceType?.systemDefault,...links.map((link:any)=>link.industry)];
+ // Follow the saved classification FKs, including renamed/custom industry codes.
+ // Accounting code text (LNC, etc.) and translated display names are not policy.
+ const funds=base.expenseType?.code==='FUNDS'||industries.some(row=>row?.code==='FUNDS'||row?.expenseType?.code==='FUNDS'||['FUNDS','FINANCE'].includes(row?.partnerRole?.code));
  const classification=partner?.linkedCompany?.subscriberOrgId&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
  if(partner&&!funds&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');

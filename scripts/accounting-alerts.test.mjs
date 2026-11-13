@@ -18,6 +18,13 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
  for(const officialClassification of [null,{industryIds:[]}])assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification,classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
  assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification:{industryIds:[2]},classification:{industryIds:[3]}}),['DIRECTION']);
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,expenseType:{code:'FUNDS'}}}},{classification:{industryIds:[3]}}),['DIRECTION']);
+ for(const industry of [{code:'TYPE_CUSTOM',expenseType:{code:'FUNDS'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FINANCE'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FUNDS'}}]){
+  for(const base of [{...source.code.base,serviceType:industry},{...source.code.base,industryLinks:[{systemIndustryId:1,industry}]}]){
+   assert.deepEqual(accountingAlertKinds({...source,code:{base}},{classification:{industryIds:[3]}}),['DIRECTION']);
+   assert.deepEqual(accountingAlertKinds({...source,direction:'IN',code:{base}},{classification:{industryIds:[3]}}),[]);
+  }
+ }
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,serviceType:{code:'EQUIPMENT',nameKo:'재무',partnerRole:{code:'MANAGEMENT'}}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
 });
 test('actual company-scoped sources, shared acknowledgement, current-state revisions, immutable ledger and active membership',async()=>{
  const f=await changeApprovalFixture(),db=f.db;try{
@@ -40,6 +47,11 @@ test('actual company-scoped sources, shared acknowledgement, current-state revis
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN',industryRevision:{increment:1}}});assert.equal((await listAccountingAlerts(db,org,permissions)).total,4,'a newly changed code basis must reappear even if it returns to an earlier direction');await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'OUT'}});
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:1,roleIds:[sourceIndustry.partnerRoleId],industryIds:[sourceIndustry.id]}));assert.equal((await listAccountingAlerts(db,org,permissions)).total,0);
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:2,roleIds:[sourceIndustry.partnerRoleId],industryIds:[otherIndustry.id]}));const changed=await listAccountingAlerts(db,org,permissions);assert.equal(changed.total,2);
+  const financeRole=await db.partnerRole.upsert({where:{code:'FINANCE'},create:{code:'FINANCE',nameKo:'재무',nameEn:'Finance',nameVi:'Tài chính'},update:{}});
+  await db.settingServiceDefault.update({where:{id:sourceIndustry.id},data:{partnerRoleId:financeRole.id}});
+  assert.equal((await listAccountingAlerts(db,org,permissions)).total,0,'finance classification excludes partner mismatches without changing stored transactions');
+  await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
+  const financeAlerts=await listAccountingAlerts(db,org,permissions);assert.ok(financeAlerts.total>0);assert.ok(financeAlerts.rows.every(alert=>alert.kind==='DIRECTION'),'finance still checks cash direction');
   await db.employee.update({where:{id:s.people.admin.id},data:{status:'SUSPENDED'}});await assert.rejects(acknowledgeAccountingAlert(db,org,s.people.admin.id,permissions,changed.rows[0].signature),/ACCESS_DENIED/);
   const retained=await db.bankLedgerEntry.findUnique({where:{id:row.id}});assert.equal(retained.amount.toString(),'10');assert.equal(retained.voidedAt,null);assert.equal(retained.evidenceNumber,'Reference');
   const handlers=new Map(),app={get:(p,h)=>handlers.set('GET '+p,h),post:(p,h)=>handlers.set('POST '+p,h)};

@@ -33,8 +33,9 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('/code-bases')?bases:url.pathname.endsWith('/partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-code-industries-acceptance.html`);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
-  const usageText=accountingCodeUsageText[lang];await page.getByText(usageText.history+' 1 '+usageText.count,{exact:true}).waitFor();
+  const usageText=accountingCodeUsageText[lang];assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByText(usageText.history+' 1 '+usageText.count,{exact:true}).waitFor();
   await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).waitFor();
+  if(process.argv.includes('--subtitle-only')){for(const width of [1440,390]){await page.setViewportSize({width,height:900});assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();}assert.deepEqual(errors,[]);await page.close();continue;}
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
   const edit=lang==='ko'?'수정':lang==='vi'?'Sửa':'Edit',save=lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',cancel=lang==='ko'?'취소':lang==='vi'?'Hủy':'Cancel',industry=lang==='ko'?'세부 업종':lang==='vi'?'Ngành nghề':'Industry';
   await page.getByRole('button',{name:edit,exact:true}).click();const dialog=page.getByRole('dialog'),picker={ko:{open:'세부 업종 선택',search:'세부 업종 검색',selected:'선택 항목',close:'선택창 닫기'},en:{open:'Select industries',search:'Search industries',selected:'Selected',close:'Close industry selection'},vi:{open:'Chọn ngành nghề',search:'Tìm ngành nghề',selected:'Đã chọn',close:'Đóng chọn ngành nghề'}}[lang],openPicker=dialog.getByRole('button',{name:picker.open,exact:true}),panel=dialog.locator('#accounting-subtype-panel'),selector=panel.getByRole('textbox',{name:picker.search,exact:true});
@@ -65,5 +66,5 @@ try{
   const old=page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'OLD',exact:true})});await old.waitFor();assert.equal(await old.locator('td').nth(4).innerText(),usageText.history+' 1 '+usageText.count);await old.getByRole('button',{name:edit,exact:true}).click();assert.equal(await dialog.locator('input[type="checkbox"]').count(),0);assert.equal(await dialog.locator('input[value="PURCHASE"]').count(),0);await page.keyboard.press('Escape');
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Accounting code industries ko/en/vi: N:M edit, unique category counts, source-prefilled creation, fixed used input mode/FKs, stale edit recovery, persistence and mobile passed.');
+ console.log(process.argv.includes('--subtitle-only')?'PASS accounting code subtitle removed: ko/en/vi desktop/mobile, usage labels and classification flow retained.':'Accounting code industries ko/en/vi: N:M edit, unique category counts, source-prefilled creation, fixed used input mode/FKs, stale edit recovery, persistence and mobile passed.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}
