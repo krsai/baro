@@ -25,7 +25,7 @@ test('older exact-grade policies escalate a vacant accountant grade for new ledg
   const body={clientKey:randomUUID(),transactionDate:'2026-11-06',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'R1',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id}};
   const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,body),loaded=await readLedgerEdit(db,org,entry.id);
   const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{...body,clientKey:randomUUID(),amount:'15',entryKind:'BANK',accountId:s.account.id}]};
-  const input={menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,revision:loaded.revision,payload,clientKey:randomUUID()};
+  const input={menu:'BANK_LEDGER',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:entry.id,revision:loaded.revision,payload,clientKey:randomUUID()};
   const occupied=await previewChangeApproval(db,org,s.people.admin.id,input);assert.deepEqual(occupied.preview.ids,[s.people.junior.id]);
   await db.employee.update({where:{id:s.people.junior.id},data:{status:'SUSPENDED'}});
   const preview=await previewChangeApproval(db,org,s.people.admin.id,input);assert.deepEqual(preview.preview.stages[0].candidates.map(p=>p.id).sort(),[s.people.lead.id,s.people.senior.id].sort());

@@ -10,6 +10,9 @@ export const changeApprovalError=(error,t)=>(ledgerFlowText[Object.keys(changeAp
 Object.assign(changeApprovalText.ko,{lineFailed:'결재선을 불러오지 못했습니다. 결재선 다시 불러오기를 눌러 주세요.',reloadLine:'결재선 다시 불러오기'});
 Object.assign(changeApprovalText.en,{lineFailed:'Unable to load the approval line. Select Reload approval line to try again.',reloadLine:'Reload approval line'});
 Object.assign(changeApprovalText.vi,{lineFailed:'Không tải được luồng phê duyệt. Chọn Tải lại luồng phê duyệt để thử lại.',reloadLine:'Tải lại luồng phê duyệt'});
+Object.assign(changeApprovalText.ko,{CHANGE_REASON_REQUIRED:'신청 사유를 입력해 주세요.'});
+Object.assign(changeApprovalText.en,{CHANGE_REASON_REQUIRED:'Enter a reason for the request.'});
+Object.assign(changeApprovalText.vi,{CHANGE_REASON_REQUIRED:'Vui lòng nhập lý do đề nghị.'});
 Object.assign(changeApprovalText.ko,{LEDGER_INVALID_VAT:'공급가액·VAT 세율·세액과 실제 입출금액 합계를 확인해 주세요. E·Z 코드는 0%만 사용할 수 있습니다.'});
 Object.assign(changeApprovalText.en,{LEDGER_INVALID_VAT:'Check the subtotal, VAT rate, VAT amount and cash total. E and Z codes must use 0%.'});
 Object.assign(changeApprovalText.vi,{LEDGER_INVALID_VAT:'Kiểm tra tiền trước VAT, thuế suất, tiền VAT và tổng thu chi. Mã E và Z chỉ dùng 0%.'});

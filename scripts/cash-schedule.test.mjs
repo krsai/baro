@@ -24,7 +24,7 @@ test('scheduled dates reject impossible days, timestamps and guessing',()=>{
 test('expense schedule survives creation, approved changes and audit without changing payment or drafter',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.junior.id;
-  const item={transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'SCHEDULE-1'}};
+  const item={transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'100',vatRate:'0',details:{reference:'SCHEDULE-1',evidenceFile:'schedule-proof.pdf'}};
   const body={partnerOrgId:s.vendor.id,requestDate:'2026-04-02',scheduledPaymentDate:'2026-12-10',clientKey:randomUUID(),items:[item]};
   const document=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,body),{timeout:30000});
   assert.equal(document.scheduledPaymentDate,'2026-12-10');
@@ -34,7 +34,7 @@ test('expense schedule survives creation, approved changes and audit without cha
   assert.equal(expenseEditorForm(source).scheduledPaymentDate,'2026-12-10');
   const editor=await db.employee.create({data:{orgId:org,name:'Editor',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}});
   const payload={partnerOrgId:s.vendor.id,scheduledPaymentDate:'2026-12-20',revision:expenseEditorRevision(source),version:document.version,clientKey:randomUUID(),items:[{...item,itemId:document.items[0].id}]};
-  const change=await requestChangeApproval(db,org,editor.id,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(document.id),payload,selection:{changeAdminEmployeeId:s.people.admin.id},clientKey:randomUUID()});
+  const change=await requestChangeApproval(db,org,editor.id,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(document.id),payload,selection:{changeAdminEmployeeId:s.people.admin.id},clientKey:randomUUID()});
   assert.equal((await db.expenseRequest.findUnique({where:{id:document.id}})).scheduledPaymentDate,'2026-12-10');
   await decideChangeApproval(db,org,s.people.admin.id,change.id,{decision:'APPROVED'});
   const saved=await db.expenseRequest.findUnique({where:{id:document.id},include:{items:true}});

@@ -92,7 +92,7 @@ test('single-account ledger registration uses two independent accounting approva
   await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});assert.equal(await db.bankLedgerEntry.count(),2);
   const rejectPayload={...payload,clientKey:randomUUID(),rows:[bank()]};const rejected=await requestChangeApproval(db,org,s.people.admin.id,{...input,clientKey:randomUUID(),sourceId:rejectPayload.clientKey,payload:rejectPayload});await decideChangeApproval(db,org,s.people.junior.id,rejected.id,{decision:'REJECTED',reason:'Wrong receipt'});assert.equal(await db.bankLedgerEntry.count(),2);
   const correction={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[bank({amount:'15'})]};
-  const edit=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:done.result.entryIds[0],payload:correction,clientKey:randomUUID()});
+  const edit=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:done.result.entryIds[0],payload:correction,clientKey:randomUUID()});
   const corrected=await decideChangeApproval(db,org,s.people.senior.id,edit.id,{decision:'APPROVED'});assert.equal(await db.bankLedgerEntry.count({where:{voidedAt:null}}),2);assert.equal((await db.bankLedgerEntry.findUnique({where:{id:corrected.result.entryIds[0]}})).amount.toString(),'15');
   // A real local company is eligible independently of the obsolete vendor type.
   const baro=await db.organization.create({data:{name:'BARO',type:'BRAND',ownerOrgId:org}});

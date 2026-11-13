@@ -17,7 +17,8 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
  useEffect(()=>{if(!input)return;let alive=true;requestJSON('/approval-action-settings'+buildQueryString({orgId,menu:input.menu,operation:input.operation}),{skipCache:true}).then(data=>{if(alive)setGrades(data.grades);}).catch(e=>{if(alive)setError({cause:e,phase:'settings'});});return()=>{alive=false;};},[orgId,input?.menu,input?.operation,reload]);
  const selected=JSON.stringify(selection);
  useEffect(()=>{if(!input||uncertain)return;let alive=true;setLoading(true);setError('');const timer=setTimeout(()=>requestJSON('/change-approval-preview'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify({...input,selection})}).then(data=>{if(alive)setPreview(data);}).catch(e=>{if(alive){setPreview(null);setError({cause:e,phase:'preview'});}}).finally(()=>{if(alive)setLoading(false);}),120);return()=>{alive=false;clearTimeout(timer);};},[orgId,input,selected,uncertain,reload]);
- const send=async()=>{if(locked.current)return;locked.current=true;setBusy(true);setError('');const company=orgId;
+ const reasonRequired=!input?.selectionOnly&&['UPDATE','DELETE'].includes(input?.operation);
+ const send=async()=>{if(!input||locked.current)return;if(reasonRequired&&!reason.trim()){setError({message:'CHANGE_REASON_REQUIRED'});return;}locked.current=true;setBusy(true);setError('');const company=orgId;
   const chosen={...selection,...Object.fromEntries((preview?.stages||[]).filter(s=>s.employeeId).map(s=>[s.key+'EmployeeId',s.employeeId]))};
   if(input.selectionOnly){locked.current=false;setBusy(false);finish({selection:chosen,preview});return;}
   submitted.current=submitted.current||{...input,reason:reason.trim(),selection:chosen,clientKey:key.current};
@@ -30,10 +31,10 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
  return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.menu==='INVOICE'?t.requestCancel:input?.operation==='CREATE'?t.CREATE:input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
   {loading&&<LinearProgress/>}{error&&<Alert severity="error" action={loadError&&!busy&&!uncertain?<Button onClick={()=>setReload(value=>value+1)} disabled={loading}>{t.reloadLine}</Button>:undefined}>{error.uncertain?t.uncertain:loadError?<><Typography variant="body2">{t.lineFailed}</Typography>{errorText!==t.error&&<Typography variant="body2">{errorText}</Typography>}</>:errorText}</Alert>}
   <Typography variant="body2">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography>
-  <TextField fullWidth label={t.reason} required={input?.operation==='DELETE'} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);key.current=crypto.randomUUID();submitted.current=null;}}/>
+  {!input?.selectionOnly&&<TextField fullWidth label={t.reason} required={reasonRequired} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);if(error?.message==='CHANGE_REASON_REQUIRED')setError('');key.current=crypto.randomUUID();submitted.current=null;}}/>}
   {preview?.policy?.autoApproved&&<Typography variant="body2">{(approvalVacancyText[languageCode]||approvalVacancyText.en).automatic}</Typography>}
   {preview&&<ApprovalStageFlow drafter={preview?.drafter} stages={preview?.stages?.filter(s=>!s.vacant)||[]} grades={grades} languageCode={languageCode} value={selection} disabled={busy||uncertain||loading} onChange={(stageKey,id)=>{setSelection(current=>({...current,[stageKey+'EmployeeId']:id}));key.current=crypto.randomUUID();submitted.current=null;}}/>}
 
   {preview&&!preview.complete&&<Alert severity="warning">{t.required}</Alert>}
- </Stack></DialogContent><DialogActions><Button variant="contained" disabled={busy||loading||!uncertain&&(!preview?.complete||!!error||input?.operation==='DELETE'&&!reason.trim())} onClick={send}>{uncertain?t.retry:t.request}</Button></DialogActions></Dialog>;
+ </Stack></DialogContent><DialogActions><Button variant="contained" disabled={busy||loading||!uncertain&&(!preview?.complete||!!error||reasonRequired&&!reason.trim())} onClick={send}>{uncertain?t.retry:t.request}</Button></DialogActions></Dialog>;
 });

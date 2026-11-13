@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url);
 const {postLedgerEntry,postLedgerSettlementBatch}=require('../backend/dist/services/bankLedger');
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
-const {requestChangeApproval,decideChangeApproval,listChangeApprovals}=require('../backend/dist/services/changeApprovals');
+const {requestChangeApproval,decideChangeApproval,listChangeApprovals,previewChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {approvalActionSettings,registerApprovalActionRoutes}=require('../backend/dist/services/approvalActions');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {loadExpenseEditorSource,expenseEditorRevision}=require('../backend/dist/services/expenseRequestEditor');
@@ -53,7 +53,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
   await t.test('editing keeps the original live until approval, then replaces it atomically',async()=>{
    const entry=await post({}),loaded=await readLedgerEdit(db,org,entry.id),newBody=body({amount:'150',remark:'Corrected receipt'});
    const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{...newBody,entryKind:'BANK',accountId:s.account.id}]};
-   const request=await requestChangeApproval(db,org,actor,{menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,revision:loaded.revision,payload,clientKey:randomUUID()});
+   const request=await requestChangeApproval(db,org,actor,{menu:'BANK_LEDGER',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:entry.id,revision:loaded.revision,payload,clientKey:randomUUID()});
    assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt,null);
    const done=await decideChangeApproval(db,org,approver,request.id,{decision:'APPROVED'}),replacement=await db.bankLedgerEntry.findUnique({where:{id:done.result.entryIds[0]}});
    assert.equal(loaded.drafter.id,actor);assert.equal((await readLedgerEdit(db,org,replacement.id)).drafter.id,actor,'the modifying requester is shown instead of the final approver');
@@ -77,7 +77,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    const source=await loadExpenseEditorSource(db,org,'request',String(document.id));
    const payload={partnerOrgId:s.vendor.id,requestDate:document.requestDate,revision:expenseEditorRevision(source),version:document.version,clientKey:randomUUID(),items:[{...item,itemId:document.items[0].id,unitPrice:'120'}]};
    const editor=(await db.employee.create({data:{orgId:org,name:'Another editor',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}})).id,editApprover=s.people.admin.id;
-   const change=await requestChangeApproval(db,org,editor,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(document.id),payload,selection:{changeAdminEmployeeId:editApprover},clientKey:randomUUID()});
+   const change=await requestChangeApproval(db,org,editor,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(document.id),payload,selection:{changeAdminEmployeeId:editApprover},clientKey:randomUUID()});
    assert.equal((await db.expenseRequest.findUnique({where:{id:document.id}})).version,document.version);
    await decideChangeApproval(db,org,editApprover,change.id,{decision:'APPROVED'});
    const edited=await db.expenseRequest.findUnique({where:{id:document.id},include:{items:true}});assert.equal(edited.version,document.version+1);assert.equal(edited.items[0].id,document.items[0].id);assert.equal(edited.items[0].amount.toString(),'120');assert.equal((await approvalState(db,org,edited.id)).approved,true);
@@ -101,5 +101,40 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    await decideChangeApproval(db,org,approver,removal.id,{decision:'APPROVED'});
    const deleted=await db.expenseRequest.findUnique({where:{id:document.id}});assert.ok(deleted.deletedAt);assert.equal(deleted.deletedChangeRequestId,removal.id);assert.equal(await db.partnerTransactionCost.count({where:{expenseRequestId:document.id}}),1);
   });
+ }finally{await f.close();}
+});
+
+
+test('new edit/deletion reasons are required in service and SQL; earlier blank requests and retries remain intact',async()=>{
+ let seeded,legacy,legacyInput,legacyPolicy,entry;
+ const f=await changeApprovalFixture({beforeMigration:async(ctx,migration)=>{
+  if(migration.version!=='20261113060000_change_request_reason_required')return;
+  const db=ctx.db,s=seeded=await seedChangeApproval(db),org=s.company.id,actor=s.people.junior;
+  const body={clientKey:randomUUID(),transactionDate:'2026-04-02',direction:'IN',amount:'100',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'R1',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id}};
+  entry=await postLedgerEntry(db,org,actor.email,s.account.id,body);
+  const source=await readLedgerEdit(db,org,entry.id),payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{...body,clientKey:randomUUID(),amount:'110',entryKind:'BANK',accountId:s.account.id}]};
+  legacyInput={menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,revision:source.revision,payload,reason:'',clientKey:randomUUID()};
+  const preview=await previewChangeApproval(db,org,actor.id,legacyInput);legacyPolicy=preview.policy;
+  legacy=await db.changeApprovalRequest.create({data:{orgId:org,clientKey:legacyInput.clientKey,requestHash:createHash('sha256').update(JSON.stringify(legacyInput)).digest('hex'),menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,ledgerEntryId:entry.id,revision:preview.source.revision,requestedByEmployeeId:actor.id,reason:'',beforeSnapshot:JSON.parse(JSON.stringify(preview.source.snapshot)),payload,policy:preview.policy}});
+ }});
+ try{
+  const db=f.db,s=seeded,org=s.company.id,actor=s.people.junior.id;
+  assert.equal((await requestChangeApproval(db,org,actor,legacyInput)).id,legacy.id,'a previously successful blank request is still idempotent');
+  const count=await db.changeApprovalRequest.count();
+  for(const operation of ['UPDATE','DELETE'])for(const reason of [undefined,null,'',' \t\r\n ','\u00a0\u3000',{text:'Not a string'},'x'.repeat(1001)]){
+   await assert.rejects(requestChangeApproval(db,org,actor,{...legacyInput,operation,reason,clientKey:randomUUID()}),/CHANGE_REASON_REQUIRED/);
+  }
+  assert.equal(await db.changeApprovalRequest.count(),count);assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).amount.toString(),'100');
+  for(const reason of ['',' \t\n ','\u00a0\u3000'])await assert.rejects(db.changeApprovalRequest.create({data:{orgId:org,clientKey:randomUUID(),requestHash:'direct',menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,ledgerEntryId:entry.id,revision:legacy.revision,requestedByEmployeeId:actor,reason,beforeSnapshot:legacy.beforeSnapshot,payload:legacy.payload,policy:legacy.policy}}),/CHANGE_REASON_REQUIRED/);
+  for(const stage of legacyPolicy.resolvedStages)await decideChangeApproval(db,org,stage.employeeId,legacy.id,{decision:'APPROVED'});
+  const old=await db.changeApprovalRequest.findUnique({where:{id:legacy.id}});assert.equal(old.reason,'');assert.equal(old.status,'APPROVED');assert.deepEqual(old.beforeSnapshot,legacy.beforeSnapshot);
+  const replacement=await db.bankLedgerEntry.findFirst({where:{orgId:org,revisesEntryId:entry.id,voidedAt:null}});assert.equal(String(replacement.amount),'110');const current=await readLedgerEdit(db,org,replacement.id);
+  const input={...legacyInput,sourceId:replacement.id,revision:current.revision,payload:{...legacyInput.payload,rows:legacyInput.payload.rows.map(row=>({...row,amount:'120'}))},reason:'  '+'x'.repeat(1000)+'  ',clientKey:randomUUID()};
+  const valid=await requestChangeApproval(db,org,actor,input);assert.equal(valid.reason,'x'.repeat(1000));assert.equal((await requestChangeApproval(db,org,actor,input)).id,valid.id);
+  const batchKey=randomUUID();const creation={selection:{step1EmployeeId:s.people.senior.id,step2EmployeeId:s.people.lead.id},menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:batchKey,clientKey:randomUUID(),payload:{...legacyInput.payload,clientKey:batchKey,rows:legacyInput.payload.rows.map(row=>({...row,clientKey:randomUUID()}))}};
+  assert.ok((await previewChangeApproval(db,org,actor,{...input,reason:''})).preview.complete,'previews do not require a reason');
+  assert.ok((await requestChangeApproval(db,org,actor,creation)).id,'registration keeps its existing optional-reason policy');
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261113060000_change_request_reason_required');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
+  assert.equal((await db.changeApprovalRequest.findUnique({where:{id:legacy.id}})).reason,'');
  }finally{await f.close();}
 });

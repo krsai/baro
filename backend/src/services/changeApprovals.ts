@@ -119,10 +119,11 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
 }
 export async function requestChangeApproval(db:any,orgId:number,actorId:number,input:any,gates:any={}){
  if(!/^[-\w]{8,64}$/.test(input.clientKey||''))fail('INVALID_TRANSACTION_KEY',400);
- const reason=typeof input.reason==='string'?input.reason.trim():'';if(input.operation==='DELETE'&&(!reason||reason.length>1000)||reason.length>1000)fail('CHANGE_REASON_REQUIRED',400);
+ const reason=typeof input.reason==='string'?input.reason.trim():'';if(reason.length>1000)fail('CHANGE_REASON_REQUIRED',400);
  const requestHash=digest({...input,reason});
  return retryEditTransaction(db,async(tx:any)=>{
   const prior=await tx.changeApprovalRequest.findUnique({where:{orgId_clientKey:{orgId,clientKey:input.clientKey}}});if(prior){if(prior.requestHash!==requestHash||prior.requestedByEmployeeId!==actorId)fail('CHANGE_RETRY_CONFLICT');return prior;}
+  if(['UPDATE','DELETE'].includes(input.operation)&&!reason)fail('CHANGE_REASON_REQUIRED',400);
   const {source:s,preview,policy}=await previewChangeApproval(tx,orgId,actorId,input,true);if(!preview.complete||!policy.resolvedStages.length)fail('EXPENSE_APPROVER_REQUIRED',400);
   const pending=await tx.changeApprovalRequest.findFirst({where:{orgId,menu:s.menu,sourceKind:s.kind,sourceId:s.transferPeerId?{in:[s.id,s.transferPeerId]}:s.id,status:'PENDING'}});if(pending)fail('CHANGE_ALREADY_PENDING');
   const payload=input.operation!=='DELETE'?json(input.payload):{};

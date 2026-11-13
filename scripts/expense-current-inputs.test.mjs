@@ -20,7 +20,7 @@ test('SQL guard validates latest required fields on real document edits without 
  const payload={...form,clientKey:randomUUID(),items:form.items.map(item=>({...item,details:{...item.details,destination:'New destination'}}))};
  const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
  const reviewer=await db.employee.create({data:{orgId:org,name:'Reviewer',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}});
- const change=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(doc.id),payload,selection:{changeAdminEmployeeId:reviewer.id},clientKey:randomUUID()});
+ const change=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(doc.id),payload,selection:{changeAdminEmployeeId:reviewer.id},clientKey:randomUUID()});
  await decideChangeApproval(db,org,reviewer.id,change.id,{decision:'APPROVED'});
  const saved=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});assert.equal(saved.details.origin,'Old origin');assert.equal(saved.details.destination,'New destination');assert.equal(saved.linkPolicyAuditId,doc.items[0].linkPolicyAuditId);
  assert.deepEqual(await db.expenseRequestAudit.findMany({where:{requestId:doc.id,version:1}}),audits);

@@ -44,7 +44,7 @@ test('real ledger VAT snapshots: cash totals, approved replacement, allocation F
   const revision=ledgerEntryRevision(legacy),without={...legacy};delete without.subtotal;delete without.vatRate;delete without.vatAmount;assert.equal(ledgerEntryRevision(without),revision,'new nullable columns do not invalidate old pending revisions');
   const source=await readLedgerEdit(db,org,entry.id),row={...body({amount:'1100',vatRate:'10',vatAmount:'100'}),entryKind:'BANK',accountId:s.account.id};
   const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[row]};
-  const request=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:entry.id,revision:source.revision,payload,clientKey:randomUUID()});
+  const request=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:entry.id,revision:source.revision,payload,clientKey:randomUUID()});
   assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt,null);
   let done;for(const stage of request.policy.resolvedStages)done=await decideChangeApproval(db,org,stage.employeeId,request.id,{decision:'APPROVED'});
   assert.equal((await readLedgerEdit(db,org,done.result.entryIds[0])).vatAmount.toString(),'100');assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).vatAmount.toString(),'80');

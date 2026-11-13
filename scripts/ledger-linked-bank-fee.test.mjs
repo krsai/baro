@@ -23,7 +23,7 @@ test('BNFE fees retain scoped parent FKs, cash amounts, approvals, edit grouping
   await assert.rejects(db.bankLedgerEntry.update({where:{id:parentId},data:{voidedAt:new Date(),voidedBy:'actor',voidReason:'Unpaired deletion'}}));
   const nextMain={...main,clientKey:randomUUID()},nextFee={...fee,clientKey:randomUUID(),amount:'3',feeForClientKey:nextMain.clientKey};
   const next={...payload,clientKey:randomUUID(),rows:[nextMain,nextFee]};
-  const update=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',sourceKind:'ledger',sourceId:parentId,revision:source.revision,clientKey:randomUUID(),selection:{seniorEmployeeId:s.people.senior.id,leadEmployeeId:s.people.lead.id},payload:next});
+  const update=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:parentId,revision:source.revision,clientKey:randomUUID(),selection:{seniorEmployeeId:s.people.senior.id,leadEmployeeId:s.people.lead.id},payload:next});
   let changed;for(const stage of update.policy.resolvedStages)changed=await decideChangeApproval(db,org,stage.employeeId,update.id,{decision:'APPROVED'});
   assert.equal(await db.bankLedgerEntry.count({where:{voidedAt:null}}),2);assert.ok((await db.bankLedgerEntry.findUnique({where:{id:feeId}})).voidedAt);
   assert.equal((await readLedgerAccounts(db,org)).find(row=>row.id===s.account.id).currentBalance,'-103.00');

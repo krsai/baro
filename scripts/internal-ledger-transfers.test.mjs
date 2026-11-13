@@ -69,7 +69,7 @@ test('one approved line atomically posts both accounts, retries once, edits eith
   const balances=await readLedgerAccounts(db,org);assert.equal(balances.find(a=>a.id===s.account.id).currentBalance,'-40.25');assert.equal(balances.find(a=>a.entityAccountId===b.id).currentBalance,'40.25');
   await requestChangeApproval(db,org,s.people.admin.id,value);await decideChangeApproval(db,org,s.people.lead.id,request.id,{decision:'APPROVED'});assert.equal(await db.bankLedgerEntry.count(),2);
   const editSource=await readLedgerEdit(db,org,mirror.id);assert.equal(editSource.counterparty.id,s.own.id);
-  const correction=input([transfer(s,s.own,{accountId:mirror.accountId,direction:'IN',amount:'55.10',remark:'Corrected'})],{operation:'UPDATE',sourceKind:'ledger',sourceId:mirror.id,revision:editSource.revision});
+  const correction=input([transfer(s,s.own,{accountId:mirror.accountId,direction:'IN',amount:'55.10',remark:'Corrected'})],{operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:mirror.id,revision:editSource.revision});
   const edit=await requestChangeApproval(db,org,s.people.junior.id,correction);
   await assert.rejects(requestChangeApproval(db,org,s.people.junior.id,input([],{operation:'DELETE',sourceKind:'ledger',sourceId:root.id,reason:'Opposite side pending'})),/CHANGE_ALREADY_PENDING/);
   const activity=await listLedgerActivity(db,org,{start:'2026-11-10',end:'2026-11-10'});assert.ok(activity.rows.filter(r=>[root.id,mirror.id].includes(r.id)).every(r=>r.changePending));
@@ -114,7 +114,7 @@ test('FXC records two actual currencies, preserves effective rate and approvals,
   const edit=await readLedgerEdit(db,org,mirror.id);assert.equal(edit.transferAmount,'40.00');assert.equal(edit.transferCurrencyCode,'USD');
   assert.equal(ledgerTransferRate(row,'USD','VND'),'1 USD ≈ 25000 VND');
   assert.deepEqual(ledgerEntryTotals([{...row,counterparty:{...row.counterparty,currencyCode:'VND'}}],[s.account]),[{currency:'USD',incoming:'0.00',outgoing:'40.00',net:'-40.00'},{currency:'VND',incoming:'1000000.00',outgoing:'0.00',net:'1000000.00'}]);
-  const update=await requestChangeApproval(db,org,s.people.junior.id,input([transfer(s,s.own,{accountId:mirror.accountId,direction:'IN',amount:'1100000',transferAmount:'44'})],{operation:'UPDATE',sourceKind:'ledger',sourceId:mirror.id,revision:edit.revision}));
+  const update=await requestChangeApproval(db,org,s.people.junior.id,input([transfer(s,s.own,{accountId:mirror.accountId,direction:'IN',amount:'1100000',transferAmount:'44'})],{operation:'UPDATE',reason:'Correct recorded details',sourceKind:'ledger',sourceId:mirror.id,revision:edit.revision}));
   let updated;for(const stage of update.policy.resolvedStages)updated=await decideChangeApproval(db,org,stage.employeeId,update.id,{decision:'APPROVED'});
   const active=await db.bankLedgerEntry.findMany({where:{voidedAt:null}});assert.equal(active.length,2);assert.deepEqual(new Set(active.map(e=>e.amount.toString())),new Set(['1100000','44']));
   const deletion=await requestChangeApproval(db,org,s.people.junior.id,input([],{operation:'DELETE',sourceKind:'ledger',sourceId:updated.result.entryIds[0],reason:'Cancel exchange'}));for(const stage of deletion.policy.resolvedStages)await decideChangeApproval(db,org,stage.employeeId,deletion.id,{decision:'APPROVED'});

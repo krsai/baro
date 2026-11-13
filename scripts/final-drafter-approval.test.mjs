@@ -27,6 +27,6 @@ test('final drafter auto-approves expenses and ledger once; intermediate-only au
   assert.equal((await requestChangeApproval(db,org,s.people.lead.id,input)).id,done.id);assert.equal(await db.bankLedgerEntry.count(),1);assert.equal(await db.changeApprovalDecision.count({where:{requestId:done.id}}),1);
   const source=await loadExpenseEditorSource(db,org,'request',String(expense.id));
   const update={partnerOrgId:s.vendor.id,requestDate:expense.requestDate,revision:expenseEditorRevision(source),version:expense.version,clientKey:randomUUID(),items:[{...expenseBody.items[0],itemId:expense.items[0].id,unitPrice:'12'}]};
-  const edited=await requestChangeApproval(db,org,s.people.lead.id,{menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(expense.id),payload:update,clientKey:randomUUID()});assert.equal(edited.status,'APPROVED');assert.equal((await approvalState(db,org,expense.id,s.people.lead.id)).approved,true);assert.equal(await db.expenseApprovalDecision.count(),0);
+  const edited=await requestChangeApproval(db,org,s.people.lead.id,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(expense.id),payload:update,clientKey:randomUUID()});assert.equal(edited.status,'APPROVED');assert.equal((await approvalState(db,org,expense.id,s.people.lead.id)).approved,true);assert.equal(await db.expenseApprovalDecision.count(),0);
  }finally{await f.close();}
 });
