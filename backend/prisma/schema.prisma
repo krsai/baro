@@ -1035,6 +1035,7 @@ model Warehouse {
 
 
 model Employee {
+  payrollManagementEvents PayrollManagementEvent[] @relation("PayrollManagementActor")
   workTimeRequests WorkTimeRequest[] @relation("WorkTimeSubject")
   draftedWorkTimeRequests WorkTimeRequest[] @relation("WorkTimeDrafter")
   workTimeSteps WorkTimeStep[]
@@ -2749,6 +2750,9 @@ model OutsourcedWorkRecord {
 }
 
 model PayrollSnapshot {
+  payableManagementExcluded Boolean @default(false)
+  managementRevision Int @default(0)
+  managementEvents PayrollManagementEvent[]
   payableDocument PayrollPayableDocument?
   id                  Int      @id @default(autoincrement())
   orgId               Int
@@ -2775,6 +2779,22 @@ model PayrollSnapshot {
   @@unique([id,orgId])
   @@index([orgId])
   @@index([factoryId])
+}
+
+model PayrollManagementEvent {
+  id String @id @default(uuid())
+  orgId Int
+  snapshotId Int
+  revision Int
+  snapshotRevision Int
+  excluded Boolean
+  actorId Int
+  clientKey String
+  createdAt DateTime @default(now())
+  snapshot PayrollSnapshot @relation(fields:[snapshotId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"PayrollManagementEvent_snapshot_fkey")
+  actor Employee @relation("PayrollManagementActor",fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"PayrollManagementEvent_actor_fkey")
+  @@unique([orgId,clientKey])
+  @@unique([snapshotId,revision])
 }
 
 model PayrollPayableDocument {

@@ -879,6 +879,8 @@ export const listPayrollSnapshots = async (orgId: number) => {
       lockedBy: true,
       isProvisional: true,
       createdAt: true,
+      payableManagementExcluded:true,
+      managementRevision:true,
       payableDocument:{select:{managementNumber:true}},
     },
   });
@@ -990,6 +992,10 @@ export const getPayrollByMonth = async (
     return {
       locked: false,
       snapshotExists: true,
+      snapshotId:snapshot.id,
+      snapshotRevision:snapshot.revision,
+      payableManagementExcluded:snapshot.payableManagementExcluded,
+      managementRevision:snapshot.managementRevision,
       monthReady,
       lockedAt: snapshot.lockedAt,
       lockedBy: snapshot.lockedBy,
@@ -1565,6 +1571,7 @@ export const deletePayrollSnapshot = async (orgId: number, monthInput: string, f
     throw createHttpError(409, "unlock production allowance before deletion");
   }
 
+  if(await prisma.payrollManagementEvent.findFirst({where:{snapshotId:existing.id,orgId}}))throw createHttpError(409,'PAYROLL_MANAGEMENT_HISTORY_EXISTS');
   if(await prisma.payrollPayableDocument.findUnique({where:{snapshotId:existing.id}}))throw createHttpError(409,'PAYROLL_PAYABLE_HISTORY_EXISTS');
   const deleted = await prisma.payrollSnapshot.deleteMany({ where: { id: existing.id, isProvisional: true, revision: existing.revision } });
   if (deleted.count !== 1) throw createHttpError(409, "payroll was locked while deleting");
@@ -1579,10 +1586,10 @@ export const unlockPayrollSnapshot = async (orgId:number,monthInput:string,facto
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
   const existing=await tx.payrollSnapshot.findUnique({where:{orgId_month_factoryId:{orgId,month,factoryId}}});
   if(!existing)throw createHttpError(404,'snapshot not found');
-  if(existing.isProvisional)return {ok:true,month};
+  if(existing.isProvisional)return {ok:true,month,isProvisional:true,snapshotRevision:existing.revision};
   await voidPayrollPayables(tx,orgId,existing.id,actorId);
   const result=await tx.payrollSnapshot.updateMany({where:{id:existing.id,isProvisional:false,revision:existing.revision},data:{isProvisional:true,recalculationRequested:true,revision:{increment:1},updatedByEmployeeId:actorId}});
-  if(result.count!==1)throw createHttpError(409,'payroll state changed while unlocking');return {ok:true,month};
+  if(result.count!==1)throw createHttpError(409,'payroll state changed while unlocking');return {ok:true,month,isProvisional:true,snapshotRevision:existing.revision+1};
  }),120000);
 };
 export const lockPayrollSnapshot = async ({orgId,month:monthInput,factoryId:factoryIdInput,lockedBy,actorId,timeZone=process.env.BUSINESS_TIME_ZONE||'Asia/Seoul'}:{orgId:number;month:string;factoryId:number;lockedBy:string;actorId:number;timeZone?:string}) => {
@@ -1599,6 +1606,6 @@ export const lockPayrollSnapshot = async ({orgId,month:monthInput,factoryId:fact
    existing=await tx.payrollSnapshot.update({where:{id:existing.id,revision:existing.revision},data:{isProvisional:false,lockedAt:new Date(),lockedBy,revision:{increment:1},updatedByEmployeeId:actorId}});
   }
   const payable=await ensurePayrollPayables(tx,existing,actorId);
-  return {ok:true,month,managementNumber:payable.document.managementNumber};
+  return {ok:true,month,isProvisional:false,snapshotRevision:existing.revision,managementNumber:payable.document.managementNumber};
  }),120000);
 };

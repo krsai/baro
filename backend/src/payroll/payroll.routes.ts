@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  setPayrollManagementController,
   deletePayrollSnapshotController,
   getPayrollCalendarController,
   getPayrollController,
@@ -26,3 +27,5 @@ payrollRouter.post("/payroll/snapshots/:month/lock", lockPayrollSnapshotControll
 payrollRouter.post("/payroll/snapshots/:month/unlock", unlockPayrollSnapshotController);
 payrollRouter.put("/payroll/snapshots/:month/employee-rates", updatePayrollEmployeeRatesController);
 payrollRouter.delete("/payroll/snapshots/:month", deletePayrollSnapshotController);
+
+payrollRouter.put('/payroll/snapshots/:month/management',setPayrollManagementController);

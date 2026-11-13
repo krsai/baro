@@ -68,7 +68,7 @@ async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
   tx.accountingOpeningItem.findMany({where:{orgId,voidedAt:null,balanceDate:{lte:asOf}},include:{party:{select:{name:true}},employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}}),
  ]);
  const approved=(await attachExpenseApprovalStates(tx,orgId,requests)).filter((row:any)=>row.approval.approved);
- const payroll=await tx.payrollPayableItem.findMany({where:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false},month:{lte:asOf.slice(0,7)}}},include:{document:true,employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}});
+ const payroll=await tx.payrollPayableItem.findMany({where:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false,payableManagementExcluded:false},month:{lte:asOf.slice(0,7)}}},include:{document:true,employee:{select:{name:true}},allocations:{where:{entry:{voidedAt:null,transactionDate:{lte:asOf}}}}}});
  return outstandingReport(invoices,approved,allocations,openings,payroll);
 }
 export function outstandingReport(invoices:any[],requests:any[],allocations:any[],openings:any[]=[],payroll:any[]=[]){

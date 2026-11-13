@@ -1,3 +1,4 @@
+import {payrollManagementText} from './payrollManagement.js';
 import {ledgerFlowText} from './ledgerFlow.js';
 export const changeApprovalText={
  ko:{noCreateApproval:'입출금 등록은 별도 결재 없이 처리합니다.',EXPENSE:'비용 신청',BANK_LEDGER:'입출금 기록',operation:'결재 동작',CREATE:'등록',UPDATE:'수정',DELETE:'삭제',request:'신청',requestUpdate:'수정 신청',requestDelete:'삭제 신청',reason:'신청 사유',approve:'승인',reject:'반려',rejectReason:'반려 사유',cancel:'취소',retry:'재시도',pending:'결재 대기',inbox:'수정·삭제 결재',requester:'신청자',review:'요청 내용 보기',before:'현재 내용',after:'변경 요청',stage:'결재 단계',final:'최종 결재',person:'결재자',submitted:'결재 신청을 저장했습니다.',error:'결재 요청을 처리하지 못했습니다.',changed:'원문이 변경되었습니다. 원문을 다시 열어 신청해 주세요.',required:'실제 결재자를 모두 지정해 주세요.',uncertain:'처리 결과를 확인하지 못했습니다. 같은 요청으로 재시도해 주세요.',already:'진행 중인 수정·삭제 신청이 있습니다.',party:'입출금 대상',PARTNER:'거래처',EMPLOYEE:'직원',ACCOUNT:'회사 계좌',partyRequired:'입출금 대상을 선택해 주세요.',partyInvalid:'해당 회사에서 사용할 수 없는 입출금 대상입니다.',partyMismatch:'연결 증빙의 거래 대상과 일치하지 않습니다.'},
@@ -20,3 +21,5 @@ Object.assign(changeApprovalText.vi,{INVOICE:'Hóa đơn',requestCancel:'Đề n
 Object.assign(changeApprovalText.ko,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"은행 수수료 면세 코드(BNFE)를 사용할 수 없습니다. 회계 코드 설정을 확인해 주세요."});
 Object.assign(changeApprovalText.en,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Bank fee exempt code BNFE is unavailable. Check accounting code settings."});
 Object.assign(changeApprovalText.vi,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Không thể dùng mã phí ngân hàng miễn thuế BNFE. Kiểm tra thiết lập mã kế toán."});
+
+for (const language of ['ko','en','vi']) Object.assign(changeApprovalText[language], Object.fromEntries(Object.entries(payrollManagementText[language]).filter(([key]) => key.startsWith('PAYROLL_'))));

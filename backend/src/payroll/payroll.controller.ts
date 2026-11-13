@@ -1,3 +1,4 @@
+import {setPayrollManagement} from '../services/payrollManagement';
 import {companyBusinessTimeZone} from '../services/serviceCompany';
 import { type Request, type Response } from "express";
 import { requireOrgRole } from "../middleware/access";
@@ -108,7 +109,7 @@ export const getPayrollController = async (req: Request, res: Response) => {
     Number(req.query.factoryId),
     {timeZone:companyBusinessTimeZone(organization)}
   );
-  return res.json(payroll);
+  return res.json({...payroll,canManagePayables:Boolean(accessContext.employee?.status==='ACTIVE'&&PAYROLL_ROLES.includes(accessContext.employee?.orgRole as any))});
 };
 
 export const getPayrollReadinessController = async (req: Request, res: Response) => {
@@ -204,4 +205,9 @@ export const lockPayrollSnapshotController = async (req: Request, res: Response)
     lockedBy: accessContext.requesterEmail || String(accessContext.employee!.id),
   });
   return res.json(result);
+};
+
+export const setPayrollManagementController=async(req:Request,res:Response)=>{
+ const access=await requireOrgRole(req,res,{allowedRoles:[...PAYROLL_ROLES],allowSystemAdmin:false});if(!access)return;
+ res.json(await setPayrollManagement(prisma,access.organization.id,access.employee?.id??0,String(req.params.month),Number(req.query.factoryId??req.body?.factoryId),req.body));
 };

@@ -1,0 +1,40 @@
+const ko = {
+  label: '관리 대상 제외',
+  help: '해당 월·공장의 계산 결과와 급여표는 보존하고 미지급금·입출금 증빙 대상에서 제외합니다.',
+  saved: '급여 관리 대상 설정을 저장했습니다.',
+  error: '설정을 저장하지 못했습니다. 다시 시도해 주세요.',
+  PAYROLL_MANAGEMENT_INVALID: '급여 관리 대상 설정을 확인해 주세요.',
+  PAYROLL_MANAGEMENT_NOT_SAVED: '급여 계산을 저장한 뒤 설정해 주세요.',
+  PAYROLL_MANAGEMENT_CHANGED: '급여 상태가 변경되었습니다. 상세 화면을 다시 열어 확인해 주세요.',
+  PAYROLL_MANAGEMENT_PAYMENT_LINKED: '이미 연결된 급여 지급이 있습니다. 정상 취소한 뒤 제외해 주세요.',
+  PAYROLL_MANAGEMENT_HISTORY_EXISTS: '관리 대상 변경 이력이 있는 급여 계산은 삭제할 수 없습니다.',
+  PAYROLL_MONTH_MANAGEMENT_EXCLUDED: '관리 대상에서 제외된 월의 급여입니다. 관리 대상에 포함한 뒤 지급을 연결해 주세요.',
+  PAYROLL_PAYABLE_ACCESS_DENIED: '현재 회사의 급여 관리 권한이 필요합니다.',
+};
+const en = {
+  label: 'Exclude from management',
+  help: 'Keep this month and factory’s calculations and payslips, but exclude them from payables and bank transaction evidence.',
+  saved: 'Payroll management setting saved.',
+  error: 'Could not save the setting. Please retry.',
+  PAYROLL_MANAGEMENT_INVALID: 'Check the payroll management setting.',
+  PAYROLL_MANAGEMENT_NOT_SAVED: 'Save the payroll calculation before changing this setting.',
+  PAYROLL_MANAGEMENT_CHANGED: 'Payroll has changed. Reopen the detail page to review it.',
+  PAYROLL_MANAGEMENT_PAYMENT_LINKED: 'Salary payments are already linked. Complete their normal cancellation before excluding this payroll.',
+  PAYROLL_MANAGEMENT_HISTORY_EXISTS: 'Payroll calculations with management history cannot be deleted.',
+  PAYROLL_MONTH_MANAGEMENT_EXCLUDED: 'This payroll month is excluded from management. Include it before linking a payment.',
+  PAYROLL_PAYABLE_ACCESS_DENIED: 'Payroll management access in the current company is required.',
+};
+const vi = {
+  label: 'Loại khỏi quản lý',
+  help: 'Giữ kết quả tính lương và phiếu lương của tháng, nhà máy này; loại khỏi công nợ phải trả và chứng từ giao dịch ngân hàng.',
+  saved: 'Đã lưu thiết lập quản lý lương.',
+  error: 'Không thể lưu thiết lập. Vui lòng thử lại.',
+  PAYROLL_MANAGEMENT_INVALID: 'Vui lòng kiểm tra thiết lập quản lý lương.',
+  PAYROLL_MANAGEMENT_NOT_SAVED: 'Lưu kết quả tính lương trước khi thay đổi thiết lập.',
+  PAYROLL_MANAGEMENT_CHANGED: 'Dữ liệu lương đã thay đổi. Mở lại trang chi tiết để kiểm tra.',
+  PAYROLL_MANAGEMENT_PAYMENT_LINKED: 'Đã có giao dịch trả lương liên kết. Hoàn tất hủy theo quy trình trước khi loại trừ.',
+  PAYROLL_MANAGEMENT_HISTORY_EXISTS: 'Không thể xóa kết quả tính lương có lịch sử quản lý.',
+  PAYROLL_MONTH_MANAGEMENT_EXCLUDED: 'Tháng lương này đã bị loại khỏi quản lý. Đưa vào quản lý trước khi liên kết thanh toán.',
+  PAYROLL_PAYABLE_ACCESS_DENIED: 'Cần quyền quản lý lương trong công ty hiện tại.',
+};
+export const payrollManagementText = { ko, en, vi };
