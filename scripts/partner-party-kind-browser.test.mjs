@@ -18,7 +18,7 @@ try{
   await page.goto(`http://127.0.0.1:${port}/partner-party-kind-acceptance.html?lang=${lang}`);
   const rows=page.locator('tbody tr');await rows.nth(4).waitFor();
   assert.deepEqual(await rows.locator('td:nth-child(3)').allTextContents(),['Group corporation A','Group corporation B','Group person A','Group person B','Individual-looking legacy company']);
-  const labels={ko:['법인','개인','미지정 (기존)'],en:['Corporation','Individual','Unspecified (existing)'],vi:['Pháp nhân','Cá nhân','Chưa xác định (cũ)']}[lang];
+  const labels={ko:['법인','개인','선택 필요'],en:['Corporation','Individual','Selection required'],vi:['Pháp nhân','Cá nhân','Cần chọn']}[lang];
   assert.deepEqual(await rows.locator('td:first-child').allTextContents(),[labels[0],labels[0],labels[1],labels[1],labels[2]]);
   assert.equal(await rows.nth(2).locator('td:nth-child(2)').innerText(),'-');
   await rows.nth(2).dblclick();assert.equal(await page.evaluate(()=>window.openedPartner),1);

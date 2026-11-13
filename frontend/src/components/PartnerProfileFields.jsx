@@ -26,7 +26,7 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
   <EntityDetailSection title={common.identity}>
    {!hideGuidance&&<Typography variant="body2" color="text.secondary" sx={{mb:2}}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>}
    <Box sx={grid}>
-    {field('partyKind',party.label,{select:true,InputLabelProps:{shrink:true},SelectProps:{displayEmpty:true},children:[...(!resolved('partyKind')?[<MenuItem key="legacy" value="" disabled>{party.legacy}</MenuItem>]:[]),...['INDIVIDUAL','CORPORATE'].map(kind=><MenuItem key={kind} value={kind}>{party[kind]}</MenuItem>)]})}
+    {field('partyKind',party.label,{select:true,InputLabelProps:{shrink:true},SelectProps:{displayEmpty:true,renderValue:kind=>party[kind]||party.legacy},children:['INDIVIDUAL','CORPORATE'].map(kind=><MenuItem key={kind} value={kind}>{party[kind]}</MenuItem>)})}
     {field('businessNumber',common.businessNumber,{required:value.partyKind==='CORPORATE'})}
     {value.linkedCompany?<TextField fullWidth size="small" label={party.codeLabel} value={value.linkedCompany.code||''} InputProps={{readOnly:true}}/>:field('code',value.partyKind==='CORPORATE'?party.codeLabel:text.code,{required:value.partyKind==='CORPORATE',helperText:hideGuidance?undefined:value.partyKind==='INDIVIDUAL'?party.codeHelp:value.partyKind==='CORPORATE'?party.corporateCodeHelp:(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help,inputProps:{maxLength:value.partyKind==='CORPORATE'?4:40}})}
     {field('name',text.name,{autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}
