@@ -39,6 +39,7 @@ test('actual company-scoped sources, personal acknowledgement, current-state rev
   const request=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:row.id,payload:{},reason:'Duplicate',clientKey:randomUUID()});
   const during=await listAccountingAlerts(db,org,s.people.senior.id,permissions);
   assert.ok(during.rows.filter(item=>item.sourceId===row.id).every(item=>item.pendingOperation==='DELETE'));
+  await assert.rejects(acknowledgeAccountingAlert(db,org,s.people.senior.id,permissions,during.rows.find(item=>item.sourceId===row.id).signature),/ACCOUNTING_ALERT_PENDING/,'a request opened after review cannot be acknowledged');
   assert.ok(during.rows.filter(item=>item.sourceKind==='EXPENSE').every(item=>item.pendingOperation===null));
   assert.ok(during.rows.every(item=>!('payload' in item)&&!('reason' in item)&&!('requestedByEmployeeId' in item)));
   assert.deepEqual(during.rows.map(item=>item.signature).sort(),initial.rows.map(item=>item.signature).sort());

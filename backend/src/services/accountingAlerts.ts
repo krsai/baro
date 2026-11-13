@@ -45,7 +45,9 @@ export async function acknowledgeAccountingAlert(db:any,orgId:number,actorId:num
  if(typeof signature!=='string'||!/^[a-f0-9]{64}$/.test(signature))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true}});if(!actor)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
-  if(!(await accountingAlertCandidates(tx,orgId,permissions)).some((row:any)=>row.signature===signature))throw createHttpError(409,'ACCOUNTING_ALERT_CHANGED');
+  const current=(await accountingAlertCandidates(tx,orgId,permissions)).find((row:any)=>row.signature===signature);
+  if(!current)throw createHttpError(409,'ACCOUNTING_ALERT_CHANGED');
+  if(current.pendingOperation)throw createHttpError(409,'ACCOUNTING_ALERT_PENDING');
   await tx.systemSetting.upsert({where:{key:prefix(orgId,actorId)+signature},create:{key:prefix(orgId,actorId)+signature,value:{signature,orgId,actorId,acknowledgedAt:new Date().toISOString()},updatedByEmployeeId:actorId},update:{}});return {acknowledged:true};
  });
 }

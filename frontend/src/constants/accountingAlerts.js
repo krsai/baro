@@ -5,3 +5,6 @@ export const accountingAlertText={
 };
 
 accountingAlertText.ko.empty='\uD655\uC778\uD560 \uD56D\uBAA9\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.';accountingAlertText.en.empty='No items to review.';accountingAlertText.vi.empty='Kh\u00f4ng c\u00f3 m\u1ee5c c\u1ea7n ki\u1ec3m tra.';
+Object.assign(accountingAlertText.ko,{review:'알림 확인',date:'거래일',party:'대상',code:'회계 코드',description:'항목 설명',reference:'문서 번호',openSource:'원본 확인 · 수정',personalNote:'확인하면 내 대시보드에서만 이 알림이 숨겨집니다. 원본 거래와 다른 사람의 알림은 유지됩니다.',refreshAlert:'최신 알림 보기'});
+Object.assign(accountingAlertText.en,{review:'Review alert',date:'Transaction date',party:'Target',code:'Accounting code',description:'Description',reference:'Document number',openSource:'Review · edit source',personalNote:'Acknowledging hides this alert only on your dashboard. The source transaction and other people’s alerts are preserved.',refreshAlert:'View latest alerts'});
+Object.assign(accountingAlertText.vi,{review:'Kiểm tra thông báo',date:'Ngày giao dịch',party:'Đối tượng',code:'Mã kế toán',description:'Diễn giải',reference:'Số chứng từ',openSource:'Xem · sửa bản gốc',personalNote:'Xác nhận chỉ ẩn thông báo trên bảng điều khiển của bạn. Giữ nguyên giao dịch gốc và thông báo của người khác.',refreshAlert:'Xem thông báo mới nhất'});
