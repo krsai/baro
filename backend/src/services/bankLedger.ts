@@ -1,3 +1,5 @@
+import {Prisma} from '@prisma/client';
+import {ledgerTaxInput,ledgerTaxSnapshot} from './ledgerVat';
 import {searchPayrollEvidence,importLockedPayrollPayables} from './payrollPayables';
 import {readAccountingOpeningHistory} from './accountingOpeningHistory';
 import {readAccountingOpening,voidAccountingOpening,documentOpeningAmount,openingSum,invoiceOpeningRemaining} from './accountingOpening';
@@ -97,9 +99,10 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
       if(target.currency.code===account.currencyCode&&ledgerScale4(transferAmount)!==ledgerScale4(body.amount))return fail('LEDGER_TRANSFER_AMOUNT_MISMATCH');
     }else if(body.transferAmount!==undefined)return fail('LEDGER_TRANSFER_EVIDENCE_INVALID');
     const codeId=accountingCodeId(body.accountingCodeId);
+    if(body.evidenceType==='EXPENSE'&&Object.keys(ledgerTaxInput(body)).length)return fail('LEDGER_INVALID_VAT');
     const generatedPurpose=codeId!==null&&body.evidenceType!=='ADJUSTMENT'&&(body.remark===undefined||ledgerRemark(body.remark)==='');
     const purpose=body.remark!==undefined?(body.evidenceType==='ADJUSTMENT'?text(body.remark,1000):ledgerRemark(body.remark)):generatedPurpose?'':text(body.purpose,1000);
-    const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),purpose,...(codeId===null?{}:{accountingCodeId:codeId})};
+    const data:any={orgId,accountId:account.id,clientKey:clientKey(body.clientKey),transactionDate,direction:body.direction,amount:validateLedgerMoney(body.amount,account.currencyCode),...await ledgerTaxSnapshot(tx,orgId,codeId,body,account.currencyCode),purpose,...(codeId===null?{}:{accountingCodeId:codeId})};
     const previous=await tx.bankLedgerEntry.findUnique({where:{orgId_clientKey:{orgId,clientKey:data.clientKey}},include:{allocations:true}});
     if(previous){
       if(ledgerScale4(previous.internalTransferAmount||'0')!==ledgerScale4(transferAmount||'0'))return fail('LEDGER_RETRY_CONFLICT',409);
@@ -107,7 +110,7 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
       if(requestedParty&&(!savedParty||requestedParty.kind!==savedParty.kind||requestedParty.id!==savedParty.id))return fail('LEDGER_COUNTERPARTY_MISMATCH');
       if((previous.accountingCodeId??null)!==codeId)return fail('LEDGER_RETRY_CONFLICT',409);
       if(generatedPurpose)data.purpose=previous.purpose;
-      if(Object.entries(data).some(([field,value])=>field==='amount'?ledgerScale4(previous[field])!==ledgerScale4(value):previous[field]!==value))return fail('LEDGER_RETRY_CONFLICT',409);
+      if((previous.subtotal!=null)!==('subtotal' in data)||Object.entries(data).some(([field,value])=>['amount','subtotal','vatRate','vatAmount'].includes(field)?!new Prisma.Decimal(previous[field]).eq(value as any):previous[field]!==value))return fail('LEDGER_RETRY_CONFLICT',409);
       const type=body.evidenceType||'FILE',fee=validateLedgerMoney(settlement?.fee||body.bankFee||'0',account.currencyCode,true),loss=settlement?.writeOff||'0';
       const requested=type==='EXPENSE'?(body.expenseItems||[]).map((r:any)=>`${r.itemId}:${ledgerScale4(r.amount)}:${body.paymentScheduleId||''}`).sort():[];
       const saved=type==='EXPENSE'?(previous.allocations||[]).map((r:any)=>`${r.expenseItemId}:${ledgerScale4(r.amount)}:${r.paymentScheduleId||''}`).sort():[];
@@ -169,7 +172,7 @@ export async function postLedgerBatch(db:any,orgId:number,actor:string,body:any)
  const keys=rows.map((row:any)=>clientKey(row.clientKey));
  if(new Set(keys).size!==keys.length)return fail('LEDGER_INVALID_BATCH');
  // UI-only labels never identify financial records or change retry identity.
- const canonical=rows.map((r:any)=>({...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',...(r.evidenceType==='OPENING'?{openingItemId:r.openingItemId}:{}),...(r.evidenceType==='PAYROLL'?{payrollItemId:r.payrollItemId}:{}),evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
+ const canonical=rows.map((r:any)=>({...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),...ledgerTaxInput(r),accountId:r.accountId,clientKey:r.clientKey,transactionDate:r.transactionDate,direction:r.direction,amount:r.amount,purpose:r.purpose,...(r.remark===undefined?{}:{remark:ledgerRemark(r.remark)}),evidenceType:r.evidenceType||'FILE',...(r.evidenceType==='OPENING'?{openingItemId:r.openingItemId}:{}),...(r.evidenceType==='PAYROLL'?{payrollItemId:r.payrollItemId}:{}),evidenceNumber:r.evidenceNumber||'',bankFee:r.bankFee||'0',...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({...ledgerTaxInput(i),itemId:i.itemId,amount:i.amount})),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})}));
  const requestHash=createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
  return retryEditTransaction(db,async(tx:any)=>{
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
@@ -190,8 +193,8 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
  if(!Array.isArray(rows)||!rows.length||rows.length>50)return fail('LEDGER_INVALID_BATCH');
  const normalized:any[]=rows.map((r:any)=>{
   if(!r||!['BANK','FEE','WRITEOFF'].includes(r.entryKind))return fail('LEDGER_INVALID_SETTLEMENT');
-  const base={clientKey:clientKey(r.clientKey),entryKind:r.entryKind,amount:r.amount,purpose:r.entryKind==='BANK'&&r.accountingCodeId&&r.evidenceType!=='ADJUSTMENT'?'':r.purpose,...(r.entryKind==='BANK'&&r.remark!==undefined?{remark:ledgerRemark(r.remark)}:{}),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})};
-  if(r.entryKind!=='BANK')return {...base,parentClientKey:clientKey(r.parentClientKey)};
+  const base={...ledgerTaxInput(r),clientKey:clientKey(r.clientKey),entryKind:r.entryKind,amount:r.amount,purpose:r.entryKind==='BANK'&&r.accountingCodeId&&r.evidenceType!=='ADJUSTMENT'?'':r.purpose,...(r.entryKind==='BANK'&&r.remark!==undefined?{remark:ledgerRemark(r.remark)}:{}),...(r.accountingCodeId===undefined&&body.accountingCodeVersion===undefined?{}:{accountingCodeId:accountingCodeId(r.accountingCodeId,body.accountingCodeVersion===1)})};
+  if(r.entryKind!=='BANK'){if(Object.keys(ledgerTaxInput(r)).length)return fail('LEDGER_INVALID_VAT');return {...base,parentClientKey:clientKey(r.parentClientKey)};}
   if(typeof r.accountId!=='string'||r.accountId.length>100||r.bankFee&&ledgerScale4(r.bankFee)!==0n||r.writeOffAmount&&ledgerScale4(r.writeOffAmount)!==0n)return fail('LEDGER_INVALID_SETTLEMENT');
   if(r.expenseItems!==undefined&&!Array.isArray(r.expenseItems))return fail('LEDGER_INVALID_SETTLEMENT');
   return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',...(r.evidenceType==='OPENING'?{openingItemId:r.openingItemId}:{}),...(r.evidenceType==='PAYROLL'?{payrollItemId:r.payrollItemId}:{}),evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount}))};
@@ -294,7 +297,7 @@ export async function searchLedgerEvidence(db:any,orgId:number,query:any){
  const adjustments=itemIds.length?await db.accountingOpeningItem.findMany({where:{orgId,voidedAt:null,expenseItemId:{in:itemIds}}}):[];
  const documents=[];
  for(const request of approved){
-  const items=(await Promise.all(request.items.map(async(item:any)=>({id:item.id,line:item.expenseRequestLine,description:item.description,accountingCode:item.transactionCode,amount:ledgerMoney(ledgerScale4(item.amount),code),remaining:ledgerMoney(ledgerScale4(item.amount)-openingSum(adjustments.filter((a:any)=>a.expenseItemId===item.id))-used.filter((a:any)=>a.expenseItemId===item.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n),code)})))).filter((item:any)=>ledgerScale4(item.remaining)>0n);
+  const items=(await Promise.all(request.items.map(async(item:any)=>({id:item.id,line:item.expenseRequestLine,description:item.description,subtotal:item.subtotal==null?null:String(item.subtotal),vatRate:item.vatRate==null?null:String(item.vatRate),vatAmount:item.vatAmount==null?null:String(item.vatAmount),accountingCode:item.transactionCode,amount:ledgerMoney(ledgerScale4(item.amount),code),remaining:ledgerMoney(ledgerScale4(item.amount)-openingSum(adjustments.filter((a:any)=>a.expenseItemId===item.id))-used.filter((a:any)=>a.expenseItemId===item.id).reduce((sum:bigint,a:any)=>sum+ledgerScale4(a.amount),0n),code)})))).filter((item:any)=>ledgerScale4(item.remaining)>0n);
   const paymentSchedule=(await expensePaymentScheduleStatus(db,orgId,request.id)).filter((row:any)=>row.currency===code);
   if(items.length)documents.push({paymentSchedule,id:request.id,version:request.version,reference:request.managementNumber||legacyExpenseNumber(request.id),date:request.requestDate,payee:request.partner?.name||request.payeeEmployee?.name||'',counterparty:request.payeeEmployeeId?{kind:'EMPLOYEE',id:request.payeeEmployeeId,name:request.payeeEmployee?.name||''}:{kind:'PARTNER',id:request.partnerOrgId,name:request.partner?.name||''},items,amount:ledgerMoney(request.items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.amount),0n),code),remaining:ledgerMoney(items.reduce((sum:bigint,item:any)=>sum+ledgerScale4(item.remaining),0n),code)});
  }

@@ -1,3 +1,4 @@
+import {ledgerTaxSnapshot} from './ledgerVat';
 import {validatePayrollEvidence} from './payrollPayables';
 import {documentOpeningAmount,openingCashEvidence,invoiceOpeningRemaining} from './accountingOpening';
 import {approvalDelegate,delegationData,delegatedExpenseIds} from './approvalDelegation';
@@ -162,7 +163,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
    const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:row.itemId,entry:{voidedAt:null}}});
    if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+minor+await documentOpeningAmount(tx,orgId,{expenseItemId:cost.id})>ledgerScale4(cost.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
    allocated+=minor;refs.push(`${state.managementNumber} #${cost.expenseRequestLine}`);
-   allocations.push({expenseItemId:row.itemId,requestVersion:state.version,amount:value,...(schedule?{paymentScheduleId:schedule.id}:{})});
+   allocations.push({...await ledgerTaxSnapshot(tx,orgId,cost.transactionCodeId,row,code),expenseItemId:row.itemId,requestVersion:state.version,amount:value,...(schedule?{paymentScheduleId:schedule.id}:{})});
   }
   if(schedule){
    const paid=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,paymentScheduleId:schedule.id,entry:{voidedAt:null}}});

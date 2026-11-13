@@ -4,7 +4,7 @@ import {IconButton,InputAdornment,TextField,Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import {normalizeLookupText,resolveLookupOption} from '../utils/expenseLookup.mjs';
 
-export default function LookupInput({options=[],getOptionDisabled=()=>false,value,onChange,onSearch,getLabel=row=>row.name||row.code||'',getCode,getValues,getSearchText,getOptionKey=row=>row.id,hasSelection=false,allowEmpty=false,clearAfterChoose=false,label,hideLabel=false,searchLabel,placeholder,disabled,required,error,helperText,onEdit,onCommit,resetKey,inputValue,onInputChange,textFieldProps={},...props}){
+export default function LookupInput({options=[],getOptionDisabled=()=>false,value,onChange,onSearch,getLabel=row=>row.name||row.code||'',getCode,getValues,getSearchText,getOptionKey=row=>row.id,hasSelection=false,allowEmpty=false,clearAfterChoose=false,label,hideLabel=false,showSearchIcon=true,searchLabel,placeholder,disabled,required,error,helperText,onEdit,onCommit,resetKey,inputValue,onInputChange,textFieldProps={},...props}){
  const text=value?getLabel(value):'',[draft,setDraft]=useState(text),preserveDraft=useRef(false),skipBlur=useRef(false),composing=useRef(false);
  const key=value?getOptionKey(value):null,input=inputValue===undefined?draft:inputValue;
  const setInput=(next,event,reason)=>{setDraft(next);onInputChange?.(event,next,reason);};
@@ -38,7 +38,7 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
   };
   return {...merged,...((state.variant||fieldProps.variant||props.variant||'outlined')==='outlined'?{notched:!hideLabel&&Boolean(label)}:{}),
    sx:[...(Array.isArray(merged.sx)?merged.sx:[merged.sx]),inputLayout],
-   endAdornment:<>{merged.endAdornment}<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><Tooltip title={searchLabel||label||''}><span style={{display:'inline-flex'}}><IconButton type="button" tabIndex={-1} size="small" aria-label={searchLabel||label} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={search}><SearchIcon fontSize="small"/></IconButton></span></Tooltip></InputAdornment></>,
+   endAdornment:<>{merged.endAdornment}{showSearchIcon&&<InputAdornment position="end" sx={{m:0,ml:.5,flexShrink:0}}><Tooltip title={searchLabel||label||''}><span style={{display:'inline-flex'}}><IconButton type="button" tabIndex={-1} size="small" aria-label={searchLabel||label} disabled={disabled} onMouseDown={event=>event.preventDefault()} onClick={search}><SearchIcon fontSize="small"/></IconButton></span></Tooltip></InputAdornment>}</>,
   };
  };
  return <TextField {...props} {...fieldProps} fullWidth size={fieldProps.size||'small'} value={input} disabled={disabled} required={required} error={error} helperText={helperText} label={hideLabel?undefined:label} placeholder={placeholder||fieldProps.placeholder} autoComplete="off"

@@ -9,6 +9,9 @@ export const changeApprovalError=(error,t)=>(ledgerFlowText[Object.keys(changeAp
 Object.assign(changeApprovalText.ko,{lineFailed:'결재선을 불러오지 못했습니다. 결재선 다시 불러오기를 눌러 주세요.',reloadLine:'결재선 다시 불러오기'});
 Object.assign(changeApprovalText.en,{lineFailed:'Unable to load the approval line. Select Reload approval line to try again.',reloadLine:'Reload approval line'});
 Object.assign(changeApprovalText.vi,{lineFailed:'Không tải được luồng phê duyệt. Chọn Tải lại luồng phê duyệt để thử lại.',reloadLine:'Tải lại luồng phê duyệt'});
+Object.assign(changeApprovalText.ko,{LEDGER_INVALID_VAT:'공급가액·VAT 세율·세액과 실제 입출금액 합계를 확인해 주세요. E·Z 코드는 0%만 사용할 수 있습니다.'});
+Object.assign(changeApprovalText.en,{LEDGER_INVALID_VAT:'Check the subtotal, VAT rate, VAT amount and cash total. E and Z codes must use 0%.'});
+Object.assign(changeApprovalText.vi,{LEDGER_INVALID_VAT:'Kiểm tra tiền trước VAT, thuế suất, tiền VAT và tổng thu chi. Mã E và Z chỉ dùng 0%.'});
 
 Object.assign(changeApprovalText.ko,{INVOICE:'청구서',requestCancel:'발행 취소 신청',INVOICE_ACTIVE_PAYMENT:'유효한 입금이 연결되어 있습니다. 입금 취소 후 다시 신청해 주세요.',INVOICE_FINAL_LOCK_UNLOCK_REQUIRED:'최종 마감을 해제한 후 신청해 주세요.',INVOICE_CANCEL_REVERSE_ORDER_REQUIRED:'이후 청구서를 먼저 취소해 주세요.'});
 Object.assign(changeApprovalText.en,{INVOICE:'Invoices',requestCancel:'Request cancellation',INVOICE_ACTIVE_PAYMENT:'Active payments are linked. Void them before requesting cancellation.',INVOICE_FINAL_LOCK_UNLOCK_REQUIRED:'Unlock final billing before requesting cancellation.',INVOICE_CANCEL_REVERSE_ORDER_REQUIRED:'Cancel later invoices first.'});

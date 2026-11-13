@@ -1,3 +1,4 @@
+import {ledgerEntryText} from '../constants/ledgerEntry';
 import {getUiMessage} from '../constants/uiMessages';
 import {approvalReviewText} from '../constants/approvalReview';
 import {changeApprovalText} from '../constants/changeApprovals';
@@ -15,7 +16,7 @@ export function approvalCardDetail(row,language='ko'){
  const text=approvalReviewText[language]||approvalReviewText.en;
  // Evidence paths describe attachments, never the transaction being reviewed.
  const reference=row.managementNumber&&!/[\\/]|^["']/.test(row.managementNumber)?row.managementNumber:null;
- const changed=(row.changedFields||[]).map(key=>(fields[language]||fields.en)[key]).filter(Boolean).join(', ');
+ const changed=(row.changedFields||[]).map(key=>(fields[language]||fields.en)[key]||(ledgerEntryText[language]||ledgerEntryText.en)[key]).filter(Boolean).join(', ');
  return [row.requestDate&&`${text.date}: ${row.requestDate}`,row.targetName||reference,changed||row.changeReason,row.drafter&&`${text.drafter}: ${row.drafter}`].filter(Boolean).join(' \u00b7 ');
 }
 export const accountingPendingText=labels;

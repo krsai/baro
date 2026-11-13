@@ -1,3 +1,4 @@
+import {updateLedgerVat} from '../frontend/src/utils/ledgerVat.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -26,7 +27,8 @@ test('installment suggestion allocates only its own expense item and keeps the e
  assert.equal(paymentAllocationAmount('0.10','USD'),'0.10');
  assert.equal(paymentAllocationAmount('1.10','VND'),'1.10');
  const document={items:[{id:'other',description:'Other',remaining:'5000000'},{id:'cost1',description:'Machine',remaining:'100000000'}]};
- assert.deepEqual(allocateScheduledPayment(document,{...rows()[0],expenseItemId:'cost1',remaining:'40000000'}),{paymentScheduleId:'advance-0001',amount:'40000000',expenseItems:[{itemId:'cost1',amount:'40000000',label:'Machine'}]});
+ assert.deepEqual(allocateScheduledPayment(document,{...rows()[0],expenseItemId:'cost1',remaining:'40000000'}),{paymentScheduleId:'advance-0001',amount:'40000000',expenseItems:[{itemId:'cost1',taxInclusiveAmount:true,amount:'40000000',label:'Machine'}]});
+ const selected=allocateScheduledPayment(document,{...rows()[0],expenseItemId:'cost1',remaining:'40000000'});assert.equal(updateLedgerVat(selected.expenseItems[0],{vatRate:'8'},{code:'TSTV'},'VND','8').amount,'40000000','a VAT-only edit preserves the actual installment amount');
 });
 
 function ledgerFixture(){

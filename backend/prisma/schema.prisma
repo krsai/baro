@@ -663,6 +663,9 @@ model BankLedgerEntry {
   transactionDate String
   direction String
   amount Decimal @db.Decimal(24, 4)
+  subtotal Decimal? @db.Decimal(24, 4)
+  vatRate Decimal? @db.Decimal(5, 2)
+  vatAmount Decimal? @db.Decimal(24, 4)
   purpose String
   revisesEntryId String? @unique
   revisesEntry BankLedgerEntry? @relation("LedgerRevision",fields:[revisesEntryId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"BankLedgerEntry_revision_scope_fkey")
@@ -794,6 +797,9 @@ model BankLedgerEvidenceAllocation {
   expenseItemId String?
   requestVersion Int?
   amount Decimal @db.Decimal(24, 4)
+  subtotal Decimal? @db.Decimal(24, 4)
+  vatRate Decimal? @db.Decimal(5, 2)
+  vatAmount Decimal? @db.Decimal(24, 4)
   entry BankLedgerEntry @relation(fields:[entryId],references:[id],onDelete:Restrict)
   @@index([invoiceId])
   @@index([expenseItemId])

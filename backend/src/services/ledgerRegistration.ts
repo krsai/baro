@@ -1,3 +1,4 @@
+import {ledgerTaxSnapshot,ledgerTaxInput} from './ledgerVat';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -44,6 +45,7 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
  const account=ledger||{id:accountId,entityAccountId:master.id,currencyCode:master.currency.code};
  accountSources.push({accountId,masterId:master.id,currency:account.currencyCode,name:master.displayName||[master.bankName,master.accountNumber].filter(Boolean).join(' / ')});
   const allocations:any[]=[];
+  if(!input.allowIncomplete){if(row.evidenceType==='EXPENSE'&&Object.keys(ledgerTaxInput(row)).length)fail('LEDGER_INVALID_VAT');await ledgerTaxSnapshot(db,orgId,row.accountingCodeId,row,account.currencyCode);for(const item of row.expenseItems||[]){if(item.subtotal!=null||item.vatRate!=null){const cost=await db.partnerTransactionCost.findFirst({where:{id:item.itemId,orgId},select:{transactionCodeId:true}});if(!cost)fail('LEDGER_INVALID_EVIDENCE');await ledgerTaxSnapshot(db,orgId,cost.transactionCodeId,item,account.currencyCode);}}}
   if(row.evidenceType==='INVOICE'){const invoice=await db.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:row.evidenceNumber,status:'ISSUED'},select:{id:true}});if(!invoice)fail('LEDGER_INVOICE_NOT_FOUND');allocations.push({invoiceId:invoice.id});}
   if(row.evidenceType==='EXPENSE')for(const item of row.expenseItems||[])allocations.push({expenseItemId:item.itemId});
   const party=input.allowIncomplete&&!row.counterparty&&!allocations.length?{}:await resolveLedgerCounterparty(db,orgId,account,row,allocations);

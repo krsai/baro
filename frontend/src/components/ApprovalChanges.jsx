@@ -29,9 +29,16 @@ export default function ApprovalChanges({detail,languageCode}){
   add('direction',t.direction,t[before.direction],t[after.direction],before.direction,after.direction);
   add('code',x.code,codeText(before.accountingCode,languageCode),codeText(after.accountingCode,languageCode),before.accountingCodeId,after.accountingCodeId);
   add('amount',t.amount,formatInvoiceMoney(String(before.amount||0),currency),formatInvoiceMoney(String(after.amount||0),afterCurrency),currency+':'+canonical(before.amount),afterCurrency+':'+canonical(after.amount));
+  if(before.subtotal!=null||after.subtotal!=null){const taxLabels=ledgerEntryText[languageCode]||ledgerEntryText.en;for(const [key,label] of [['subtotal',taxLabels.subtotal],['vatRate',taxLabels.vatRate],['vatAmount',taxLabels.vatAmount]])add(key,label,before[key]==null?null:key==='vatRate'?before[key]+'%':formatInvoiceMoney(String(before[key]),currency),after[key]==null?null:key==='vatRate'?after[key]+'%':formatInvoiceMoney(String(after[key]),afterCurrency),before[key]==null?'':canonical(before[key]),after[key]==null?'':canonical(after[key]));}
   add('purpose',t.purpose,before.remark||before.purpose,after.remark||after.purpose);
   add('reference',t.reference,evidenceReference(before.evidenceNumber),evidenceReference(after.evidenceNumber));
   add('evidenceType',ledgerLabels.evidenceKind,ledgerLabels[before.evidenceType]||before.evidenceType,ledgerLabels[after.evidenceType]||after.evidenceType,before.evidenceType,after.evidenceType);
+  const oldTax=detail.before?.taxAllocations||[],newTax=after.expenseItems||[];
+  const taxIds=[...new Set([...oldTax.map(item=>item.expenseItemId),...newTax.map(item=>item.itemId)])];
+  taxIds.forEach((id,index)=>{const old=oldTax.find(item=>item.expenseItemId===id),next=newTax.find(item=>item.itemId===id);if(old?.subtotal==null&&next?.subtotal==null)return;
+   const prefix=`${x.item} ${old?.line||index+1} · `;
+   for(const [key,label] of [['subtotal',ledgerLabels.subtotal],['vatRate',ledgerLabels.vatRate],['vatAmount',ledgerLabels.vatAmount]])add('allocation-'+id+key,prefix+label,old?.[key]==null?null:key==='vatRate'?old[key]+'%':formatInvoiceMoney(String(old[key]),currency),next?.[key]==null?null:key==='vatRate'?next[key]+'%':formatInvoiceMoney(String(next[key]),afterCurrency),old?.[key]==null?'':canonical(old[key]),next?.[key]==null?'':canonical(next[key]));
+  });
   const children=(detail.after?.rows||[]).filter(row=>row.entryKind!=='BANK'&&(!row.parentClientKey||row.parentClientKey===after.clientKey));
   for(const [kind,key,label,help] of [['FEE','bankFee',x.fee,x.feeHelp],['WRITEOFF','writeOffAmount',x.writeoff,x.writeoffHelp]]){
    const next=children.filter(row=>row.entryKind===kind),old=before[key]||'0';

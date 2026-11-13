@@ -23,7 +23,7 @@ export async function listApprovalReviews(db:any,orgId:number,actorId:number,que
  COALESCE(c."beforeSnapshot"->'entry'->>'counterpartyName',c."beforeSnapshot"->'document'->'partner'->>'name',c."beforeSnapshot"->'document'->'payeeEmployee'->>'name') AS "targetName",
  c.reason AS "changeReason",
  CASE WHEN c.menu='BANK_LEDGER' AND c.operation='UPDATE' THEN
- ARRAY(SELECT field FROM (VALUES ('transactionDate'),('accountingCodeId'),('amount'),('purpose'),('remark'),('evidenceNumber'),('direction'),('accountId')) AS fields(field)
+ ARRAY(SELECT field FROM (VALUES ('transactionDate'),('accountingCodeId'),('amount'),('subtotal'),('vatRate'),('vatAmount'),('purpose'),('remark'),('evidenceNumber'),('direction'),('accountId')) AS fields(field)
  WHERE (c."beforeSnapshot"->'entry'->>field) IS DISTINCT FROM
  ((SELECT proposed FROM jsonb_array_elements(COALESCE(c.payload->'rows','[]'::jsonb)) proposed WHERE proposed->>'entryKind'='BANK' LIMIT 1)->>field)) ELSE ARRAY[]::text[] END AS "changedFields",
  c."createdAt",p.name AS drafter,CASE WHEN c.status='PENDING' THEN CASE WHEN EXISTS(SELECT 1 FROM "ChangeApprovalDecision" d WHERE d."requestId"=c.id AND d.decision='APPROVED') THEN 'IN_REVIEW' ELSE 'REQUESTED' END ELSE c.status END AS status

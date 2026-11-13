@@ -1,3 +1,6 @@
+import {ledgerFlowText} from '../frontend/src/constants/ledgerFlow.js';
+import {ACCOUNTING_CODE_TEXT} from '../frontend/src/constants/accountingCode.js';
+import {bankLedgerMessages} from '../frontend/src/constants/bankLedgerMessages.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -19,16 +22,27 @@ try{
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const actions={navigateToPath:()=>{},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;export const useAppState=()=>({});`}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   const reply=(pattern,json)=>page.route(pattern,r=>r.fulfill({headers,json}));
-  await reply('**/bank-ledger/accounts?*',{accounts:[{id:'account',displayName:'Cash',currencyCode:'USD'}]});
-  await reply('**/transaction-codes?*',[{id:1,code:'GENE',isActive:true,base:{nameEn:'General',entryMode:'GENERAL',cashDirection:'BOTH'}}]);
+  await reply('**/app-settings?*',{defaultVatRate:'8'});
+  await reply('**/bank-ledger/accounts?*',{accounts:[{id:'account',displayName:'Cash',currencyCode:'USD'},{id:'second',displayName:'Second cash',currencyCode:'USD'}]});
+  await reply('**/transaction-codes?*',['GENE','GENV','GENZ','FEEE'].map((code,index)=>({id:index+1,code,isActive:true,base:{nameEn:'General',entryMode:'GENERAL',cashDirection:'BOTH'}})));
   await reply('**/bank-ledger/counterparties?*',[{kind:'PARTNER',id:2,name:'Vendor'}]);
   await page.route('**/approval-action-settings?*',r=>{assert.equal(new URL(r.request().url()).searchParams.get('operation'),'UPDATE');return r.fulfill({headers,json:{drafter:{id:2,name:'Current editor'},grades:[],settings:{rules:[]}}});});
-  await reply('**/bank-ledger/entries/source?*',{id:'source',revision:'revision',accountId:'account',transactionDate:'2026-11-06',direction:'OUT',amount:'100',purpose:'Saved remark',accountingCodeId:1,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:2,name:'Vendor'},settlementLines:[],expenseItems:[],bankFee:'0',drafter:{id:1,name:'Saved author'}});
+  const source={id:'source',revision:'revision',accountId:'account',transactionDate:'2026-11-06',direction:'OUT',amount:'100',purpose:'Saved remark',accountingCodeId:1,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:2,name:'Vendor'},settlementLines:[],expenseItems:[],bankFee:'0',drafter:{id:1,name:'Saved author'}};await reply('**/bank-ledger/entries/source?*',source);
   await page.goto(`http://127.0.0.1:${port}/ledger-drafter-acceptance.html`);
   const summary=page.getByTestId('document-entry-approval');await summary.getByText('Saved author',{exact:true}).waitFor();
   const remark=page.getByRole('textbox',{name:ledgerEntryText[language].documentRemark,exact:true});await remark.fill('Edited remark');await summary.getByText('Current editor',{exact:true}).waitFor();
   await remark.fill('Saved remark');await summary.getByText('Saved author',{exact:true}).waitFor();
-  assert.equal(await summary.getByText('Current editor',{exact:true}).count(),0);assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.close();
+  const row=page.locator('[data-ledger-entry-row="0"]'),text=ledgerEntryText[language],codeInput=row.getByRole('textbox',{name:ACCOUNTING_CODE_TEXT[language].code,exact:true}),rate=row.getByRole('textbox',{name:text.vatRate,exact:true});
+  assert.equal(await rate.inputValue(),'0');assert.equal(await rate.getAttribute('readonly'),'');
+  await codeInput.fill('GENV');await codeInput.press('Enter');await page.waitForFunction(()=>document.querySelector('[aria-label="VAT (%)"]').value==='8');
+  await rate.fill('10');await row.getByRole('textbox',{name:bankLedgerMessages[language].amount,exact:true}).fill('1000');assert.equal(await row.getByRole('textbox',{name:text.vatAmount,exact:true}).inputValue(),'100.00');assert.ok((await page.getByTestId('ledger-totals').textContent()).includes('1,100.00'));
+  await codeInput.fill('GENZ');await codeInput.press('Enter');assert.equal(await rate.inputValue(),'0');assert.equal(await rate.getAttribute('readonly'),'');
+  await row.getByRole('button',{name:text.bankFeeLabel,exact:true}).click();const fee=page.locator('[data-ledger-entry-row="1"]');assert.equal(await fee.getByRole('textbox',{name:ledgerFlowText[language].ownAccount,exact:true}).inputValue(),'Cash');assert.equal(await fee.getByRole('textbox',{name:ledgerFlowText[language].ownAccount,exact:true}).getAttribute('readonly'),'');
+  const from=row.getByRole('textbox',{name:ledgerFlowText[language].from,exact:true});await from.fill('Second cash');await from.press('Enter');assert.equal(await fee.getByRole('textbox',{name:ledgerFlowText[language].ownAccount,exact:true}).inputValue(),'Second cash');
+  assert.equal(await row.locator('svg[data-testid="SearchIcon"]').count(),0);
+  await row.getByRole('combobox',{name:text.evidenceKind,exact:true}).click();assert.equal(await page.getByRole('option').count(),2);await page.getByRole('option',{name:text.server,exact:true}).click();
+  assert.equal(await summary.getByText('Current editor',{exact:true}).count(),1);for(const type of ['OPENING','PAYROLL']){source.evidenceType=type;source.document={id:'legacy-document',reference:'Legacy linked document'};await page.goto(page.url());await summary.getByText('Saved author',{exact:true}).waitFor();await row.getByRole('combobox',{name:text.evidenceKind,exact:true}).click();assert.equal(await page.getByRole('option').count(),2);await page.getByRole('option',{name:text.app,exact:true}).click();await row.getByRole('button',{name:text.connected,exact:true}).click();await page.getByRole('dialog').getByRole('heading',{name:text.link+' '+String.fromCharCode(183)+' '+text[type],exact:true}).waitFor();await page.keyboard.press('Escape');}
+  assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.close();
  }
  console.log('PASS ledger drafter: saved author, modifying employee, reverted draft; ko/en/vi desktop/mobile.');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

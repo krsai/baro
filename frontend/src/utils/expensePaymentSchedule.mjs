@@ -1,3 +1,4 @@
+import {splitLedgerGross} from './ledgerVat.mjs';
 import {parseDecimalUnits,formatDecimalUnits} from './invoiceBilling.mjs';
 
 export const paymentAllocationAmount=(value,currency)=>currency==='USD'?String(value):String(value).replace(/\.0+$/,'');
@@ -23,7 +24,7 @@ export function allocateScheduledPayment(document,schedule){
  for(const item of (document.items||[]).filter(item=>item.id===schedule.expenseItemId)){
   if(remaining<=0n)break;
   const available=parseDecimalUnits(item.remaining,2),amount=available<remaining?available:remaining;
-  if(amount>0n)expenseItems.push({itemId:item.id,amount:formatDecimalUnits(amount,2),label:item.description});
+  if(amount>0n)expenseItems.push({itemId:item.id,taxInclusiveAmount:true,amount:formatDecimalUnits(amount,2),label:item.description,...(item.accountingCode?{accountingCode:item.accountingCode}:{}),...(item.vatRate==null?{}:splitLedgerGross(formatDecimalUnits(amount,2),item.vatRate,schedule.currency)||{})});
   remaining-=amount;
  }
  return {paymentScheduleId:schedule.id,amount:schedule.remaining,expenseItems:expenseItems.map(item=>({...item,amount:schedule.currency==='USD'?item.amount:String(BigInt(item.amount.replace('.',''))/100n)}))};
