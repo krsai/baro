@@ -1,4 +1,5 @@
 import {shippingCargo,validateOogTransition} from './shippingCargo';
+import {generalCustomerFields,shippingGeneralCustomer} from './shippingGeneralCustomer';
 import {shippingRouteFields} from './shippingRoute';
 import {shippingPortFields,validateShippingPorts} from './shippingPorts';
 import {registerJobRoutes} from './freightJobs';
@@ -28,7 +29,8 @@ export async function scopedParty(db:any,orgId:number,id:number){
 }
 async function freightParties(db:any,orgId:number,rows:any[]){
  const values=await attachLinkedCompanies(db,orgId,rows.map(row=>({...row,entityId:row.id})));
- return values.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||null,name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,address:row.address,country:row.country,businessNumber:row.businessNumber,contactName:row.representative,phone:row.phone,email:row.email}));
+ const general=(await db.$queryRawUnsafe('SELECT "customerId" FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId))[0];
+ return values.map(row=>({id:row.id,...(general?.customerId===row.id?{isShippingGeneralCustomer:true}:{}),code:row.linkedCompany?.code||row.code||null,name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,address:row.address,country:row.country,businessNumber:row.businessNumber,contactName:row.representative,phone:row.phone,email:row.email}));
 }
 export async function freightOptions(db:any,orgId:number,actorId:number){
  await freightActor(db,orgId,actorId);
@@ -40,7 +42,7 @@ async function get(tx:any,orgId:number,type:keyof typeof tables,id:string,lock=f
  const rows=await tx.$queryRawUnsafe(`SELECT * FROM "${tables[type]}" WHERE id=$1 AND "orgId"=$2${lock?' FOR UPDATE':''}`,id,orgId);
  if(!rows.length)fail('FREIGHT_NOT_FOUND',404);return rows[0];
 }
-async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,previous:any={}){
+async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,previous:any={},actorId?:number){
  const d={...(input.data||{})},mode=member(input.mode||'AIR',['SEA','AIR','ROAD']);
  const data:any={origin:optional(d.origin,160),destination:optional(d.destination,160),etd:date(d.etd),eta:date(d.eta),vessel:optional(d.vessel,160),voyage:optional(d.voyage,100),remark:optional(d.remark,2000)};
  if(type==='masters'){
@@ -50,7 +52,15 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
   const masterId=input.masterId?clean(input.masterId,80):null;if(masterId)await get(tx,orgId,'masters',masterId,true);
   return {masterId,data};
  }
- const customerId=Number(input.customerId);if(!Number.isSafeInteger(customerId)||customerId<=0)fail('FREIGHT_REQUIRED');data.customer=await scopedParty(tx,orgId,customerId);
+ if(d.generalCustomer!==undefined&&typeof d.generalCustomer!=='boolean')fail('FREIGHT_INVALID_INPUT');
+ if(d.generalCustomer===true)generalCustomerFields(d);
+ const generalId=await shippingGeneralCustomer(tx,orgId,actorId!,input.customerId,d.generalCustomer===true);
+ const customerId=generalId??Number(input.customerId);if(!Number.isSafeInteger(customerId)||customerId<=0)fail('FREIGHT_REQUIRED');data.customer=await scopedParty(tx,orgId,customerId);
+ if(generalId){
+  if(input.service!=='EXPRESS'||mode!=='AIR')fail('SHIPPING_GENERAL_CUSTOMER_INVALID');
+  Object.assign(data,generalCustomerFields(d));
+  if(d.customerRole!=null)fail('FREIGHT_CUSTOMER_ROLE');
+ }
  const masterId=input.masterId?clean(input.masterId,80):null;if(masterId&&(await get(tx,orgId,'masters',masterId,true)).mode!==mode)fail('FREIGHT_MASTER_MODE');
  const houseStatus=member(input.houseStatus||'NONE',['NONE','HOUSE','UNKNOWN']),houseNumber=houseStatus==='HOUSE'?clean(input.houseNumber||'',120):null;if(houseStatus==='HOUSE'&&!houseNumber)fail('FREIGHT_REQUIRED');
  const assigneeId=d.assigneeId==null||d.assigneeId===''?null:Number(d.assigneeId);
@@ -64,6 +74,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
  for(const role of ['shipper','consignee','notify']){
   const id=d[role+'Id'];
   if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id);
+   if(data[role+'Party'].isShippingGeneralCustomer)fail('FREIGHT_PARTY_SCOPE',403);
    const document=d[role+'Party'];
    if(document!=null){if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
     for(const field of ['address','contactName','phone','email'])if(document[field]!==undefined)data[role+'Party'][field]=optional(document[field],field==='address'?1000:320);
@@ -72,7 +83,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
    data[role+'Party']={};for(const field of ['name','address','contactName','phone','email'])data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
   }
  }
- if(d.customerRole!==undefined){
+ if(d.customerRole!=null){
   data.customerRole=member(d.customerRole,['shipper','consignee','notify']);
   if(data[data.customerRole+'Id']!==customerId)fail('FREIGHT_CUSTOMER_ROLE');
  }
@@ -116,7 +127,7 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
    if(prior[0]?.after?.requestHash===requestHash)return prior[0].after;
    fail('FREIGHT_CHANGED',409);
   }
-  const value=await normalize(tx,orgId,type,input,before?.data);
+  const value=await normalize(tx,orgId,type,input,before?.data,actorId);
   // A status is an operational observation, not an automatically signed POD.
   if(type==='jobs'&&value.status==='DELIVERED'&&(!value.data.deliveryDate||!value.data.recipient))fail('FREIGHT_DELIVERY_REQUIRED');
   const sourceId=id||randomUUID(),columns=Object.keys(value),params=columns.map(k=>k==='data'?JSON.stringify((value as any)[k]):(value as any)[k]);
@@ -141,7 +152,7 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
 export async function listFreight(db:any,orgId:number,actorId:number,type:keyof typeof tables,input:any={}){
  await freightActor(db,orgId,actorId);if(!tables[type])fail('FREIGHT_NOT_FOUND',404);
  const search=optional(input.search,160),offset=Number(input.offset||0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('FREIGHT_INVALID_INPUT');
- const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ORDER BY "createdAt" DESC,id LIMIT 50 OFFSET $3`,orgId,search,offset);
+ const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name',data->>'actualRequesterName',data->>'actualRequesterPhone'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ORDER BY "createdAt" DESC,id LIMIT 50 OFFSET $3`,orgId,search,offset);
  return {rows:result.map(({totalCount,...row}:any)=>row),total:result[0]?.totalCount||0,offset};
 }
 export async function freightDetail(db:any,orgId:number,actorId:number,type:keyof typeof tables,id:string){

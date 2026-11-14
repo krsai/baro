@@ -183,6 +183,13 @@ model ShippingPreset {
  updatedAt DateTime @default(now())
  @@index([orgId,customerId,kind],map:"ShippingPreset_customer_idx")
 }
+// Company/customer and actor composite FKs are installed by the shipping migration.
+model ShippingGeneralCustomer {
+ orgId Int @id
+ customerId Int @unique(map:"ShippingGeneralCustomer_customer_key")
+ createdByEmployeeId Int
+ createdAt DateTime @default(now())
+}
 model ShippingChargeDraft {
  id String @id
  orgId Int
