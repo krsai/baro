@@ -47,6 +47,7 @@ const DELETE_TEXT = {
 export default function BusinessPartners({ type, embedded=false,unified=false,category=null,onDirectoryLoaded }) {
   const auth=useAuth(),{active}=useRequestScopeContext();
   const { activeOrgId, activeOrgRole, accessProfile } = auth;
+  const isService=(auth.activeOrgType||accessProfile?.orgType||auth.activeProfile?.orgType)==='SERVICE';
   const {navigateToPath}=useAppActions();
   const isSystemAdmin = accessProfile?.systemRole === 'SYSTEM_ADMIN';
   const canEdit = isSystemAdmin || ['ADMIN', 'OPERATOR', 'ACCOUNTANT'].includes(activeOrgRole);
@@ -119,7 +120,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     } finally { setDeleting(false); }
   };
   const serviceName = useCallback(item=>partnerIndustryLabel(item,languageCode),[languageCode]);
-  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))).map(partner=>({id:partner.id,source:partner,attentionLabel:partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:classificationSummary(partner.classification,languageCode),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category]);
+  const directoryRows=useMemo(()=>partners.filter(partner=>(!unified||!category||partner.classification?.roleIds?.includes(category))).map(partner=>({id:partner.id,source:partner,attentionLabel:!isService&&partner.sourceKind==='CUSTOMER'&&partner.missingSalesPriceStyleCount>0?({ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[languageCode]||'Pricing'):null,code:partner.code,name:resolveCustomerDisplayName(partner,languageCode),country:partner.country,contactName:partner.contactName,phone:partner.contactPhone,email:partner.email,registeredAt:partner.createdAt,isActive:partner.isActive,subtitle:classificationSummary(partner.classification,languageCode),searchText:[partner.name,partner.nameKo,partner.nameVi,partner.address].filter(Boolean).join(' ')})),[partners,languageCode,serviceName,unified,category,isService]);
   const openHistory = async (partner) => {
     setSelected(partner); setHistory([]); setCosts([]); setHistoryLoading(true);
     try { const result = await requestJSON(`/business-partners/${partner.id}/history${buildQueryString({ orgId: activeOrgId })}`, { skipGlobalLoading: true }); setHistory(Array.isArray(result?.records) ? result.records : []); setCosts(Array.isArray(result?.costs) ? result.costs : []); }
@@ -128,7 +129,7 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
   };
   return (
     <PartnerDirectory embedded={embedded} title={pageTitle} languageCode={languageCode} rows={directoryRows} loading={loading} error={queryFailed} onRetry={loadPartners} onAdd={()=>setCreateOpen(true)} canAdd={canEdit} onOpen={setEditingPartner} canOpen={canEdit}
-      renderActions={partner=><><Button variant="contained" onClick={()=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer-pricing?customerId='+partner.relationshipId):openHistory(partner)}>{partner.sourceKind==='CUSTOMER'?({ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing'):listLabels.viewHistory}</Button><Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
+      renderActions={partner=><>{(!isService||partner.sourceKind!=='CUSTOMER')&&<Button variant="contained" onClick={()=>partner.sourceKind==='CUSTOMER'?navigateToPath('/customer-pricing?customerId='+partner.relationshipId):openHistory(partner)}>{partner.sourceKind==='CUSTOMER'?({ko:'단가',en:'Pricing',vi:'Đơn giá'}[languageCode]||'Pricing'):listLabels.viewHistory}</Button>}<Tooltip title={partner.hasUsageHistory!==false?deleteLabels.blocked:deleteLabels.remove}><span><DeleteActionButton aria-label={deleteLabels.remove} disabled={!canEdit||deleting||partner.hasUsageHistory!==false} onClick={()=>setDeletingPartner(partner)}/></span></Tooltip></>}
     >
       {error&&<Alert severity="error" onClose={()=>setError('')}>{error}</Alert>}
       <BusinessPartnerDialog
