@@ -11,7 +11,7 @@ import {jobText} from '../frontend/src/constants/freightJobs.js';
 import {shippingText} from '../frontend/src/constants/shippingRequests.js';
 const file=path.resolve('frontend/freight-jobs-acceptance.html'),port=43422;
 assert.ok(!existsSync(file));writeFileSync(file,`<html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/FreightJobs.jsx';
+import '/src/styles/form.css';import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Page from '/src/pages/App/FreightJobs.jsx';
 createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script></body></html>`);
 const vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -44,6 +44,7 @@ try{
   await page.route('**/shipping-requests/job1/charges*',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{rows:[],currencies:[]}}));
   await page.goto(`http://127.0.0.1:${port}/freight-jobs-acceptance.html`);
   await page.getByRole('button',{name:t.new,exact:true}).click();let dialog=page.getByRole('dialog');await dialog.getByRole('combobox',{name:t.mode,exact:true}).and(page.locator(':focus')).waitFor();
+  for(const width of [1920,1440,1100,900,600,390]){await page.setViewportSize({width,height:1000});await page.waitForTimeout(80);const layout=await page.locator('[data-shipping-basics]').evaluate(root=>{const rect=el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};};const children=[...root.children].map(rect),group=root.querySelector('.MuiToggleButtonGroup-root');return {root:rect(root),children,group:rect(group),buttons:[...group.querySelectorAll('button')].map(rect)};});for(const child of layout.children)assert.ok(child.left>=layout.root.left-1&&child.right<=layout.root.right+1,JSON.stringify({width,layout}));for(const button of layout.buttons)assert.ok(button.left>=layout.group.left-1&&button.right<=layout.group.right+1,JSON.stringify({width,layout}));for(let i=1;i<layout.buttons.length;i++)assert.ok(layout.buttons[i-1].right<=layout.buttons[i].left+1,JSON.stringify({width,layout}));for(let i=0;i<layout.children.length;i++)for(let j=i+1;j<layout.children.length;j++){const a=layout.children[i],b=layout.children[j];assert.ok(a.right<=b.left+1||b.right<=a.left+1||a.bottom<=b.top+1||b.bottom<=a.top+1,JSON.stringify({width,layout}));}}await page.setViewportSize({width:1440,height:1000});
   const customer=page.getByRole('textbox',{name:t.customer,exact:true});await customer.fill('BARO');await customer.press('Enter');
   const x=shippingEditorText[lang];assert.equal(await page.getByRole('dialog').count(),1);
   assert.equal(await page.getByRole('textbox',{name:e.forwarderCompany,exact:true}).inputValue(),'DEX LOGIS');
