@@ -31,18 +31,20 @@ const flatten = items => items.flatMap(item => item.isParent ? flatten(item.chil
 test('sewing brands expose their existing business menus and shipping without manufacturer or accounting entries',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'BRAND');
  assert.deepEqual(flatten(menu).map(row=>row.path),['/style','/order','/customer-production-report','/shipping']);
- assert.equal(findMenuGroupForPath(menu,'/shipping'),'INVENTORY');
- assert.equal(menu.find(row=>row.menuGroupKey==='INVENTORY').label,'menu.inventoryLogistics');
+ assert.equal(findMenuGroupForPath(menu,'/shipping'),'LOGISTICS');
+ assert.equal(menu.find(row=>row.menuGroupKey==='LOGISTICS').label,'menu.logistics');
 });
-test('service transport uses inventory and logistics while customer and partner management stays in sales',()=>{
+test('service transport has a separate logistics group without inventory while partners stay in sales',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'SERVICE');
  const group=menu.find(item=>item.menuGroupKey==='ORDER');
  assert.equal(group.label,'menu.sales');
  assert.equal(group.children[0].path,'/business-partner');
  assert.equal(group.children[0].label,'menu.customerPartners');
- assert.equal(menu.find(item=>item.menuGroupKey==='INVENTORY').label,'menu.inventoryLogistics');
+ assert.equal(menu.some(item=>item.menuGroupKey==='INVENTORY'),false);
+ assert.equal(flatten(menu).some(row=>row.path.startsWith('/inventory')),false);
+ assert.equal(menu.find(item=>item.menuGroupKey==='LOGISTICS').label,'menu.logistics');
  assert.equal(flatten(menu).filter(row=>row.path==='/shipping').length,1);
- assert.equal(findMenuGroupForPath(menu,'/shipping'),'INVENTORY');
+ assert.equal(findMenuGroupForPath(menu,'/shipping'),'LOGISTICS');
  assert.equal(group.children[0].accessChildren.length,4);
 });
 for (const system of [false, true]) {
@@ -64,18 +66,19 @@ for (const system of [false, true]) {
 test('company groups, direct entry, partner scopes and notifications follow the new workflow', () => {
   const menu = organizeCompanyMenu(source(false), key => key);
   assert.deepEqual(menu.filter(item => item.isParent).map(item => item.menuGroupKey),
-    ['ORDER', 'RECORDS', 'INVENTORY', 'ADMIN', 'ACCOUNTING', 'OPERATIONS', 'SETTINGS', 'SYSTEM']);
+    ['ORDER', 'RECORDS', 'INVENTORY', 'LOGISTICS', 'ADMIN', 'ACCOUNTING', 'OPERATIONS', 'SETTINGS', 'SYSTEM']);
   for (const [path, group] of [
     ['/account-overview', 'OPERATIONS'], ['/bank-ledger/new', 'ACCOUNTING'], ['/approval-settings', 'SETTINGS'],
     ['/attendance', 'ADMIN'], ['/payroll', 'ACCOUNTING'], ['/payroll/2026-11', 'ACCOUNTING'], ['/employee-system', 'SETTINGS'],
     ['/salary-system', 'SETTINGS'],
     ['/business', 'SETTINGS'], ['/inventory/stock', 'INVENTORY'],
-    ['/shipping', 'INVENTORY'], ['/order-shipments', 'INVENTORY'],
+    ['/shipping', 'LOGISTICS'], ['/order-shipments', 'INVENTORY'],
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],
   ]) assert.equal(findMenuGroupForPath(menu, path), group);
   assert.deepEqual(menu.find(item => item.menuGroupKey === 'ACCOUNTING').children.map(item => item.path), ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']);
-  assert.deepEqual(menu.find(item=>item.menuGroupKey==='INVENTORY').children.map(item=>item.path),['/inventory/materials','/inventory/stock','/inventory/movements','/order-shipments','/shipping','/inventory/settings']);
+  assert.deepEqual(menu.find(item=>item.menuGroupKey==='INVENTORY').children.map(item=>item.path),['/inventory/materials','/inventory/stock','/inventory/movements','/order-shipments','/inventory/settings']);
+  assert.equal(menu.find(item=>item.menuGroupKey==='INVENTORY').label,'menu.inventoryMaterials');
   const partner = menu.find(item => item.menuGroupKey === 'ORDER').children[0];
   assert.equal(partner.path, '/business-partner');
   assert.equal(partner.notificationActive, true);

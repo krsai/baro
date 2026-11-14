@@ -21,6 +21,10 @@ try{
   await page.goto(`http://127.0.0.1:${port}/shipping-menu-acceptance.html`,{timeout:90000});
   const [name,old]=await page.evaluate(async lang=>{const {getUiMessage}=await import('/src/constants/uiMessages.js');return [getUiMessage('menu.transportList','Transport',lang),getUiMessage('menu.transportExchange','Transport exchange',lang)];},lang);
   const drawer=page.locator('.MuiDrawer-paper:visible');await drawer.getByText(name,{exact:true}).waitFor();assert.equal(await drawer.getByText(name,{exact:true}).count(),1);assert.equal(await drawer.getByText(old,{exact:true}).count(),0);
+  const [logistics,inventory]=await page.evaluate(async lang=>{const {getUiMessage}=await import('/src/constants/uiMessages.js');return [getUiMessage('menu.logistics','Logistics',lang),getUiMessage('menu.inventoryMaterials','Inventory & materials',lang)];},lang);
+  const logisticsGroup=drawer.locator('li').filter({has:page.getByText(logistics,{exact:true})}).first();await drawer.getByText(logistics,{exact:true}).waitFor();assert.equal(await logisticsGroup.getByText(name,{exact:true}).count(),1);
+  assert.equal(await drawer.getByText(inventory,{exact:true}).count(),type==='MANUFACTURER'?1:0);
+  await drawer.getByText(logistics,{exact:true}).click();await drawer.getByText(name,{exact:true}).waitFor({state:'hidden'});await drawer.getByText(logistics,{exact:true}).click();await drawer.getByText(name,{exact:true}).waitFor();
   await page.setViewportSize({width:390,height:900});await page.locator('.MuiDrawer-paper:visible').getByText(name,{exact:true}).waitFor();assert.equal(await page.locator('.MuiDrawer-paper:visible').getByText(old,{exact:true}).count(),0);
   assert.deepEqual(errors,[]);await page.close();console.log('PASS actual shipping menu',lang,type);
  }

@@ -2,7 +2,8 @@
 const GROUPS = [
   ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
   ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history']],
-  ['INVENTORY', 'inventoryLogistics', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/order-shipments', '/shipping', '/inventory/settings']],
+  ['INVENTORY', 'inventoryMaterials', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/order-shipments', '/inventory/settings']],
+  ['LOGISTICS', 'logistics', ['/shipping']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/work-time', '/holiday']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']],
   ['OPERATIONS', 'managementAnalysis', ['/account-overview', '/revenue-analysis']],
@@ -18,18 +19,19 @@ export function organizeCompanyMenu(items, translate, orgType) {
       for (const child of item.children || []) if (child.path) leaves.set(child.path, child);
     }
   }
-  const shipping=items.find(item=>item.path==='/shipping');
+  const shipping=leaves.get('/shipping')||items.find(item=>item.path==='/shipping');
   if(shipping)leaves.set('/shipping',shipping);
   if(orgType==='BRAND'){
-    return [['ORDER',['/style','/order','/customer-production-report']],['INVENTORY',['/shipping']]].flatMap(([key,paths])=>{
+    return [['ORDER',['/style','/order','/customer-production-report']],['LOGISTICS',['/shipping']]].flatMap(([key,paths])=>{
       const source=groups.get(key),children=paths.map(path=>leaves.get(path)).filter(Boolean);
-      return source&&children.length?[{...source,...(key==='INVENTORY'?{label:translate('menu.inventoryLogistics')}:{}),children}]:children;
+      return source&&children.length?[{...source,...(key==='LOGISTICS'?{label:translate('menu.logistics')}:{}),children}]:children;
     });
   }
   const transport=orgType==='SERVICE'&&shipping;
   const used = new Set();
   const result = [...items.filter(item => !item.isParent && !['/shipping','/transport-exchange','/freight'].includes(item.path))];
   for (const [key, labelKey, paths] of GROUPS) {
+    if(orgType==='SERVICE'&&key==='INVENTORY'){paths.forEach(path=>used.add(path));continue;}
     const source = groups.get(key);
     const children = paths.map(path => {
       used.add(path);

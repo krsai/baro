@@ -102,6 +102,7 @@ const MENU_GROUP_KEYS = {
   PARTNERS: 'PARTNERS',
   RECORDS: 'RECORDS',
   INVENTORY: 'INVENTORY',
+  LOGISTICS: 'LOGISTICS',
   ACCOUNTING: 'ACCOUNTING',
   ACCOUNTS: 'ACCOUNTS',
   OPERATIONS: 'OPERATIONS',
@@ -353,6 +354,7 @@ const MainLayout = () => {
   const [orderOpen, setOrderOpen] = useState(false);
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const [logisticsOpen, setLogisticsOpen] = useState(false);
   const [accountingOpen, setAccountingOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
@@ -384,6 +386,7 @@ const MainLayout = () => {
     setOrderOpen(menuGroupKey === MENU_GROUP_KEYS.ORDER);
     setRecordsOpen(menuGroupKey === MENU_GROUP_KEYS.RECORDS);
     setInventoryOpen(menuGroupKey === MENU_GROUP_KEYS.INVENTORY);
+    setLogisticsOpen(menuGroupKey === MENU_GROUP_KEYS.LOGISTICS);
     setAccountingOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTING);
     setAccountsOpen(menuGroupKey === MENU_GROUP_KEYS.ACCOUNTS);
     setOperationsOpen(menuGroupKey === MENU_GROUP_KEYS.OPERATIONS);
@@ -696,7 +699,7 @@ const MainLayout = () => {
           },
         ],
       },
-      {label:getUiMessage('menu.transportList','Transport',languageCode),icon:<LocalShippingIcon/>,path:'/shipping'},
+      {label:getUiMessage('menu.logistics','Logistics',languageCode),icon:<LocalShippingIcon/>,isParent:true,menuGroupKey:MENU_GROUP_KEYS.LOGISTICS,isOpen:logisticsOpen,children:[{label:getUiMessage('menu.transportList','Transport',languageCode),icon:<LocalShippingIcon/>,path:'/shipping'}]},
       {label:getUiMessage('menu.accountManagement','Account management',languageCode),icon:<AccountBalanceWalletIcon/>,isParent:true,menuGroupKey:MENU_GROUP_KEYS.ACCOUNTS,isOpen:accountsOpen,children:[{label:getUiMessage('menu.accountOverview','Account overview',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/account-overview'},{label:getUiMessage('menu.bankLedger','Transactions',languageCode),icon:<AccountBalanceWalletIcon/>,path:'/bank-ledger'}]},
       {
         label: getUiMessage('menu.organization', '\uC870\uC9C1 \uAD00\uB9AC', languageCode),
@@ -875,6 +878,7 @@ const MainLayout = () => {
     adminOpen,
     attributeOpen,
     inventoryOpen,
+    logisticsOpen,
     languageCode,
     miscOpen,
     operationsOpen,
