@@ -99,7 +99,7 @@ function PartnerEditorState({
   const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelVisible=panelOpen||panelExiting;
   const togglePanel=(next,kind='classification')=>{if(next)setPanelKind(kind);if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
   const [optionsReady,setOptionsReady]=useState(false),[classificationLoaded,setClassificationLoaded]=useState(false);
-  const officialClassification=form.linkedCompany?.subscriberOrgId&&(form.linkedCompany.officialClassification||record?.officialClassification);
+  const officialClassification=form.linkedCompany&&(form.linkedCompany.officialClassification||record?.officialClassification);
   const hasOfficialClassification=Boolean(officialClassification?.industryIds?.length);
   const displayedClassification=hasOfficialClassification?officialClassification:form.classification;
   const classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;

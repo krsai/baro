@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
-const require=createRequire(import.meta.url),{searchPublicCompanies,registerCompanyConnectionRoutes}=require('../backend/dist/services/companyConnections');
+const require=createRequire(import.meta.url),{searchPublicCompanies,registerCompanyConnectionRoutes,attachLinkedCompanies}=require('../backend/dist/services/companyConnections');
 test('public company name/number search is scoped, bounded and never returns private account or business data',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db);
@@ -10,14 +10,27 @@ test('public company name/number search is scoped, bounded and never returns pri
   await db.organization.update({where:{id:s.other.id},data:{name:'Test Forwarder',nameKo:'\uB354\uC0B0',dataOwnerOrgId:s.company.id,businessNumber:'123456789',representative:'Public representative'}});
   const set=await db.employeeGradeSet.create({data:{orgId:s.other.id,code:'TEST',name:'Grades'}});
   const grade=await db.employeeGrade.create({data:{orgId:s.other.id,setId:set.id,code:'ADMIN',name:'Admin',nameKo:'Admin',nameEn:'Admin',nameVi:'Admin',sortOrder:0}});
-  await db.employee.create({data:{orgId:s.other.id,name:'Private employee name',orgRole:'ADMIN',status:'ACTIVE',gradeId:grade.id}});
-  const found=await searchPublicCompanies(db,s.company.id,{query:'Forward'});assert.equal(found.length,1);assert.equal(found[0].sourceEntityId,s.other.id);assert.equal(found[0].representative,'Public representative');assert.ok(found[0].revision);assert.equal(found[0].subscriberOrgId,s.other.id);
+  const targetActor=await db.employee.create({data:{orgId:s.other.id,name:'Private employee name',orgRole:'ADMIN',status:'ACTIVE',gradeId:grade.id}});
+  const {saveClassification}=require('../backend/dist/services/partnerClassification');
+  const localType=await db.outsourcingServiceType.findUnique({where:{id:s.code.serviceTypeId}}),industry=await db.settingServiceDefault.findUnique({where:{id:localType.systemDefaultId}});
+  await db.orgRelationship.create({data:{manufacturerOrgId:s.company.id,brandOrgId:s.other.id}});
+  const shared={revision:0,roleIds:[industry.partnerRoleId],industryIds:[industry.id]};
+  await db.$transaction(tx=>saveClassification(tx,s.company.id,s.other.id,s.people.admin.id,shared));
+  const found=await searchPublicCompanies(db,s.company.id,{query:'Forward'});assert.equal(found.length,1);assert.equal(found[0].sourceEntityId,s.other.id);assert.equal(found[0].representative,'Public representative');assert.ok(found[0].revision);assert.equal(found[0].subscriberOrgId,s.other.id);assert.deepEqual(found[0].officialClassification.industryIds,[industry.id]);assert.equal(found[0].officialClassification.source,'SHARED');
   assert.equal((await searchPublicCompanies(db,s.company.id,{query:'\uB354\uC0B0'}))[0].sourceEntityId,s.other.id);
   for(const key of ['employees','bankAccounts','accounts','accountNumber','documents','prices','ownerOrgId','subscription'])assert.equal(key in found[0],false,key);
   assert.equal(JSON.stringify(found).includes('Private employee name'),false);
   assert.equal((await searchPublicCompanies(db,s.company.id,{query:'123-456'}))[0].sourceEntityId,s.other.id);
   await db.companyIdentity.create({data:{anchorEntityId:s.other.id,code:s.other.code,name:'Old public name',country:'VN',businessNumber:'123456789'}});
   const linked=await searchPublicCompanies(db,s.company.id,{query:'Forward'});assert.equal(linked.length,1);assert.ok(linked[0].identityId);assert.equal(linked[0].name,found[0].name);assert.equal((await searchPublicCompanies(db,s.company.id,{query:'\uB354\uC0B0'}))[0].identityId,linked[0].identityId);
+  await db.organization.update({where:{id:s.vendor.id},data:{country:'VN',businessNumber:'123456789'}});
+  await db.companyIdentityLink.create({data:{orgId:s.company.id,entityId:s.vendor.id,identityId:linked[0].identityId,createdByEmployeeId:s.people.admin.id}});
+  let attached=(await attachLinkedCompanies(db,s.company.id,[{entityId:s.vendor.id}]))[0];assert.deepEqual(attached.officialClassification.industryIds,[industry.id]);assert.equal(attached.linkedCompany.officialClassification.source,'SHARED');
+  assert.equal(await db.partnerClassification.count(),1,'Reading shared industry must not copy or rewrite company classifications');
+  await db.$transaction(tx=>saveClassification(tx,s.company.id,s.other.id,s.people.admin.id,{...shared,revision:1}));
+  attached=(await attachLinkedCompanies(db,s.company.id,[{entityId:s.vendor.id}]))[0];assert.equal(attached.officialClassification.revision,2,'All identity consumers read the current registration');
+  await db.$transaction(tx=>saveClassification(tx,s.other.id,s.other.id,targetActor.id,shared));
+  const declared=(await searchPublicCompanies(db,s.company.id,{query:'Forward'}))[0];assert.equal(declared.officialClassification.source,'COMPANY','Self-declared public industry takes priority');
   assert.equal((await searchPublicCompanies(db,s.company.id,{query:'Service company'})).length,0);
   assert.equal((await searchPublicCompanies(db,s.company.id,{query:'%__'})).length,0);
   await assert.rejects(searchPublicCompanies(db,s.company.id,{query:'a'}),/COMPANY_LOOKUP_INPUT_REQUIRED/);
