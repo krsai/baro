@@ -5,7 +5,12 @@ import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingEditorText} from '../constants/shippingEditor';
 import {useAppActions} from '../context/AppContext';
+import ShippingAddressBook from './ShippingAddressBook';
 export default function ShippingPresetDialog({orgId,customerId,kind,current,languageCode,onLoad,onClose}){
+ if(kind==='LOCATION')return <ShippingAddressBook {...{orgId,customerId,current,languageCode,onLoad,onClose}}/>;
+ return <PartyPresets {...{orgId,customerId,kind,current,languageCode,onLoad,onClose}}/>;
+}
+function PartyPresets({orgId,customerId,kind,current,languageCode,onLoad,onClose}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [rows,setRows]=useState([]),[label,setLabel]=useState((current?.name||current?.address||'').slice(0,200)),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
  const content=useRef(null),lock=useRef(false),newId=useRef(crypto.randomUUID()),pending=useRef(null),live=useRef(true);useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
