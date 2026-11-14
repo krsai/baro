@@ -4885,6 +4885,16 @@ runtime 조회값:
 
 # 2026-11-06 서비스 운송·영업 메뉴·업무 구간
 
+### 운송건 중심 B/L·서류·청구 — 조사 기반 검토안, 구현 미반영
+
+- 사용자 확정 원칙: 연결된 SR의 소유자도 상대 회사의 B/L·운송 업무·감사 연결을 삭제해서는 안 된다. 단순히 취소 요청을 상대가 수락할 때까지 대기하는 설계는 미응답/거절 처리를 누락한다. SR의 미수락/명시 거절과 진행 중 취소의 이견 처리를 구분해야 하며, 상태명과 승인/취소 권한·기한은 아직 확정되지 않았다. 취소가 실제 운송 중단·발행 서류 무효·채무 소멸을 자동 의미하지 않는다.
+- 조사: [DHL의 MBL/HBL 설명](https://www.dhl.com/discover/en-br/logistics-advice/bill-of-lading-air-waybill-brazil)은 일반적으로 Master는 선사→포워더, House는 포워더→개별 고객의 문서 계층으로 설명한다. [CargoWise의 NVOCC 연계 설명](https://www.cargowise.com/solutions/cargowise-forwarding/ocean/cargowise-to-cargowise-electronic-messaging-for-nvoccs/)은 여러 shipment를 하나의 consolidation/master bill 기준으로 묶는 흐름을 제공한다. 실제 선사 서류의 존재와 BARO에 Master를 등록했는지는 별개다.
+- 검토안: 화면·서류·매출/매입·청구의 기준은 운송건(Job)으로 둔다. SR은 원본 소유 회사의 의뢰이며 포워더 운송건에 FK로 연결한다. House만 선등록하고 Master는 선택 연결/나중 연결을 허용한다. Master/합배송은 동일 포워더 회사 안에서 서로 다른 고객 운송건의 House 여러 개를 묶을 수 있어야 하므로 단일 SR/운송건의 필수 하위 부모로 제한하지 않는 방향을 검토한다. 같은 Master 번호라는 이유로 자동 병합하지 않으며 회사·실제 FK·원본/발행 이력을 유지한다.
+- 현재 코드 차이: FreightBill은 jobId가 필수이고 saveJobBill/DB FK가 같은 jobId의 Master만 허용한다. House의 masterId=NULL과 나중 연결은 이미 가능하지만 운송건 간 공통 Master/합배송은 지원하지 않는다. 이 제약은 후속 migration 설계 대상이며 지금 제거하거나 기존 ID/FK를 변경하지 않았다.
+- 서류 검토안: HBL은 포워더 발행용 입력/양식/버전을, MBL은 선사 발행 원본의 등록/첨부와 발행 주체를 구분한다. 운송건의 서류 영역에서 HBL·입항 안내(AN)·D/O·POD·Manifest 등을 유형과 대상 House/Master/운송 구간에 연결한다. [CargoWise 문서 기능](https://www.cargowise.com/solutions/cargowise-forwarding/)은 booking/job 자료로 B/L·invoice 등 문서를 만들고 shipment와 연계한다. [DCSA 운송 문서 흐름](https://reference.dcsa.org/content/standards/industry-blueprint/current/industry-blueprint-shipment-journey)은 초안 검토·발행·정정/무효/재발행·인도용 surrender를 구별한다. [DHL POD 설명](https://www.dhl.com/discover/en-my/ship-with-dhl/services/dhl-shipping-tools/proof-of-delivery)의 POD는 Proof of Delivery이며 실제 인도 확인/서명 자료를 보존해야 한다. 양식 출력만으로 발행·반출 승인·수령 완료를 확정하지 않는다.
+- 금액 검토안: 매출/매입 항목마다 운송건 FK를 유지하고 필요 시 House·Master·업무 구간을 보조 연결한다. 운송건별 청구를 기본으로 분할 청구/여러 운송 합산 청구 시에도 항목별 원래 운송건 연결을 보존한다. 공통 Master 비용은 중량/CBM/컨테이너 수/수동 기준 등 명시적인 배분 근거·합계 검증으로 운송건에 배부하며 각 House에 총액을 중복 계상하지 않는다. [CargoWise 회계 기능](https://cargowise.com/solutions/cargowise-enterprise/accounting/)도 Job 기준 비용·매출·이익과 청구 연결을 설명한다. BARO의 운송 금액은 현재 내부 초안이며 실제 청구/원장 자동 반영은 후속 구현이다. 운송 완료와 청구/입금·정산 완료는 별도로 표시한다.
+- 화면 검토안: 운송 상세에 SR/기본 정보·화물/구간·B/L·서류·매출/매입/청구·이력 영역을 두고 공통 Master는 운송 목록 안의 합배송 보기/선택창에서 연결한다. 고객은 자기 SR과 명시 공유된 자기 진행/서류만 보며 공통 Master에 묶인 다른 고객의 House/원가/서류를 자동 조회하지 못한다. 이 절의 구체적 구조·상태·배분/청구 정책은 조사 제안으로서 사용자 확정 전 업무 코드/운영 자료에 적용하지 않았다.
+
 ### 공통 운송 의뢰 모달 — 최신 사용자 정정
 
 - SR의 원본 소유 회사는 실제 생성 회사다. 덱스가 고객의 전화 의뢰를 받아 직접 등록하면 덱스 소유이고, 바로가 덱스 또는 다른 업체에 요청하면 바로 소유다. 고객의 이름/SHPR·CNEE 역할이나 선택한 운송 업체를 소유권 근거로 삼지 않는다. 실제 회사/생성 직원 FK와 운송 수행 회사·의뢰 회사·명시적 공유 관계를 구분하며 접수로 소유권을 이전하지 않는다. 종전의 “SR owner는 항상 포워더” 기준은 이 사용자 정정으로 대체한다. 현재 FreightJob.orgId 기반 포워더 업무 격리·운송/서류/회계 FK와 감사/발행 snapshot을 그대로 재분류해서는 안 된다. SR 원본 소유권의 서버·DB 반영 및 접수 후 수정/취소/삭제·공유 권한은 별도 구현 검토 대상이며, 소유권 정정만으로 상대 회사의 내부 매입·원가·마진·메모 접근을 확대하지 않는다.
