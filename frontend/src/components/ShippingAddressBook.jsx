@@ -10,12 +10,12 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
 const record=row=>({id:row.id,version:row.version,...addressValue({...row.data,label:row.label})});
-export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose,title,disabled=false,testId='shipping-address-book'}){
+export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose,title,notice,disabled=false,testId='shipping-address-book'}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [initial]=useState(()=>({id:crypto.randomUUID(),...addressValue(current)}));
  const [rows,setRows]=useState([]),[edit,setEdit]=useState(initial),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[busy,setBusy]=useState(false),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
  const baseline=useRef(JSON.stringify(initial)),pending=useRef(null),lock=useRef(false),alive=useRef(true),content=useRef(null);
- const blocked=disabled||busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current;
+ const blocked=disabled||busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current,addressValid=!!edit.address.trim()&&edit.address.length<=160;
  const url='/shipping-requests/presets'+buildQueryString({orgId,customerId,kind:'LOCATION'});
  useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -51,7 +51,7 @@ export default function ShippingAddressBook({orgId,customerId,current,languageCo
  const filtered=rows.filter(row=>[row.label,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
  const apply=()=>{onLoad(addressValue(edit));onClose();};
  return <Dialog open fullWidth maxWidth="md" onClose={async()=>{if(await leave())onClose();}} data-testid={testId} aria-label={title||t.savedAddresses}>
-  <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!edit.address.trim()} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
+  <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
   <DialogContent ref={content} tabIndex={-1}><Box data-address-workspace sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(0,1fr) minmax(0,1.7fr)'},gap:3,alignItems:'start'}}>
    <Stack spacing={1.5} data-address-list sx={{minWidth:0}}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.savedAddresses}</Typography><Button disabled={blocked} onClick={()=>open(null)}>{t.addAddress}</Button></Stack>
@@ -62,7 +62,9 @@ export default function ShippingAddressBook({orgId,customerId,current,languageCo
     </List>}
    </Stack>
    <Stack spacing={2} data-address-detail sx={{minWidth:0}}>
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{edit.version?t.editAddress:t.addAddress}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<DeleteActionButton disabled={blocked} title={t.deletePreset} onClick={()=>mutate(true)}/>}<SaveButton disabled={blocked||!customerId||loading||readError||!edit.label.trim()||!edit.address.trim()||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.updateAddress:t.savePreset}</SaveButton></Stack></Stack>
+    {notice&&<Alert severity="info">{notice}</Alert>}
+    {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
+    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{edit.version?t.editAddress:t.addAddress}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<DeleteActionButton disabled={blocked} title={t.deletePreset} onClick={()=>mutate(true)}/>}<SaveButton disabled={blocked||!customerId||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.updateAddress:t.savePreset}</SaveButton></Stack></Stack>
     {saveError&&<Alert severity="error" action={uncertain?<Button disabled={busy} onClick={()=>mutate()}>{t.retry}</Button>:undefined}>{t.failed}</Alert>}
     <ShippingAddressFields value={edit} onChange={setEdit} t={t} disabled={blocked} autoFocus/>
    </Stack>

@@ -9,9 +9,9 @@ async function bucket(db:any,scope:any,customerId:number){
  if(scope.org.type==='SERVICE')await scopedParty(db,scope.orgId,customerId);
  else if(customerId!==scope.orgId)fail('SHIPPING_ACCESS_DENIED',403);
 }
-export function presetFields(kind:string,value:any){
+export function presetFields(kind:string,value:any,partyId:number|null=null){
  if(!value||typeof value!=='object'||Array.isArray(value))fail();
- const keys=kind==='PARTY'?{address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
+ const keys=kind==='PARTY'?{...(partyId==null?{name:200}:{}),address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
  const data:any={};for(const [key,max] of Object.entries(keys))data[key]=clean(value[key]??'',max);
  if(kind==='LOCATION'&&!data.address)fail();return data;
 }
@@ -30,9 +30,9 @@ export async function saveShippingPreset(db:any,scope:any,input:any,remove=false
   if(remove&&old.deletedAt)return {id:old.id,version:old.version};
   const partyId=remove?old.partyId:input.partyId??null;
   if(partyId!=null){if(!Number.isSafeInteger(partyId))fail();if(partyId!==scope.orgId)await scopedParty(tx,scope.orgId,partyId);}
-  const kind=remove?old.kind:input.kind,data=remove?old.data:presetFields(kind,input.data),label=remove?old.label:clean(input.label,200);
+  const kind=remove?old.kind:input.kind,data=remove?old.data:presetFields(kind,input.data,partyId),label=remove?old.label:clean(input.label,200);
   if(!label)fail();
-  if(!remove&&old&&!old.deletedAt&&old.partyId===partyId&&old.kind===kind&&old.label===label&&JSON.stringify(presetFields(kind,old.data))===JSON.stringify(data))return old;
+  if(!remove&&old&&!old.deletedAt&&old.partyId===partyId&&old.kind===kind&&old.label===label&&JSON.stringify(presetFields(kind,old.data,partyId))===JSON.stringify(data))return old;
   if(old&&(old.deletedAt||old.version!==input.version))fail('SHIPPING_CHANGED',409);
   const rows=old?await tx.$queryRawUnsafe('UPDATE "ShippingPreset" SET label=$1,data=$2::jsonb,"deletedAt"=$3,version=version+1,"updatedByEmployeeId"=$4,"updatedAt"=CURRENT_TIMESTAMP,"partyId"=$6 WHERE id=$5 RETURNING *',label,JSON.stringify(data),remove?new Date():null,scope.actorId,input.id,partyId):await tx.$queryRawUnsafe('INSERT INTO "ShippingPreset"(id,"orgId","customerId",kind,label,data,"partyId","createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$8) RETURNING *',input.id,scope.orgId,input.customerId,kind,label,JSON.stringify(data),partyId,scope.actorId);
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'shipping-presets\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),scope.orgId,input.id,rows[0].version,scope.actorId,old?JSON.stringify(old):null,JSON.stringify(rows[0]));
