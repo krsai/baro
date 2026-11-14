@@ -5,7 +5,7 @@ import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 import {advanceFromDialog} from '../utils/formFocus.mjs';
 import useKeyboardNavigation from '../hooks/useKeyboardNavigation';
 const paging={ko:{previous:'이전',next:'다음'},en:{previous:'Previous',next:'Next'},vi:{previous:'Trước',next:'Tiếp'}};
-export default function LookupSearchDialog({open,onClose,title,query,onQueryChange,options=[],columns=[],getSearchText,filterOptions,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[],getOptionDisabled=()=>false,loading=false,feedback,searchInputRef,searchLabel,searchInputProps,tableMinWidth,searchTools,maxWidth}){
+export default function LookupSearchDialog({open,onClose,title,titleActions,query,onQueryChange,options=[],columns=[],getSearchText,filterOptions,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[],getOptionDisabled=()=>false,loading=false,feedback,searchInputRef,searchLabel,searchInputProps,tableMinWidth,searchTools,maxWidth}){
  useKeyboardNavigation();
  const dialogRef=useRef(null);
  const t=EXPENSE_LOOKUP_TEXT[languageCode]||EXPENSE_LOOKUP_TEXT.en,p=paging[languageCode]||paging.en;
@@ -21,7 +21,7 @@ export default function LookupSearchDialog({open,onClose,title,query,onQueryChan
   else if(event.key==='Enter'){event.preventDefault();select(cursor>=0?filtered[cursor]:filtered.length===1?filtered[0]:null);}
  };
  useEffect(()=>{tableRef.current?.querySelector('[data-lookup-active="true"]')?.scrollIntoView({block:'nearest'});},[activeKey,current]);
- return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={maxWidth||(details?'lg':'md')} slotProps={{paper:{ref:dialogRef}}} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}>{title}</DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
+ return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={maxWidth||(details?'lg':'md')} slotProps={{paper:{ref:dialogRef}}} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><span>{title}</span>{titleActions}</Stack></DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
   {searchTools}
   <TextField inputRef={searchInputRef} autoFocus onFocus={event=>event.target.select()} fullWidth size="small" label={searchLabel||t.keyword} inputProps={searchInputProps} value={query} onChange={event=>onQueryChange(event.target.value)} onKeyDown={keyboard}/>
   <Box sx={{display:'grid',gridTemplateColumns:details?{xs:'minmax(0,1fr)',md:'minmax(0,1fr) minmax(0,1fr)'}:'minmax(0,1fr)',gap:2,minWidth:0}}>

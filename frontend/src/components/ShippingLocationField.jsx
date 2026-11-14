@@ -5,10 +5,10 @@ import ShippingAddressBook from './ShippingAddressBook';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {shippingEditorText} from '../constants/shippingEditor';
 
-export default function ShippingLocationField({label,value,details,defaultParty,onChange,onClose,orgId,customerId,allowPorts,languageCode,disabled}){
+export default function ShippingLocationField({label,value,details,defaultParty,personLabel,resolveCustomer,onChange,onClose,orgId,customerId,allowPorts,languageCode,disabled}){
  if(allowPorts)return <PortLookup {...{label,onChange,onClose,orgId,languageCode}}/>;
- const current=value||details?{...details,address:value||''}:defaultParty?{label:defaultParty.name,address:defaultParty.address,contactName:defaultParty.contactName,phone:defaultParty.phone}:{};
- return <ShippingAddressBook title={label} testId="route-address-dialog" {...{orgId,customerId,languageCode,disabled,onClose}} notice={defaultParty?(shippingEditorText[languageCode]||shippingEditorText.en).confirmPartyLocation:undefined} current={current} onLoad={draft=>{const {address,...contact}=draft;onChange(address.trim(),null,Object.fromEntries(Object.entries(contact).map(([key,v])=>[key,v.trim()])));}}/>;
+ const current=personLabel?{label:defaultParty?.name||'',address:defaultParty?.address||'',contactName:defaultParty?.contactName||'',phone:defaultParty?.phone||'',...details,...(value?{address:value}:{})}:value||details?{...details,address:value||''}:defaultParty?{label:defaultParty.name,address:defaultParty.address,contactName:defaultParty.contactName,phone:defaultParty.phone}:{};
+ return <ShippingAddressBook personLabel={personLabel} resolveCustomer={resolveCustomer} title={label} testId="route-address-dialog" {...{orgId,customerId,languageCode,disabled,onClose}} notice={!personLabel&&defaultParty?(shippingEditorText[languageCode]||shippingEditorText.en).confirmPartyLocation:undefined} current={current} onLoad={draft=>{const {address,...contact}=draft;onChange(address.trim(),null,Object.fromEntries(Object.entries(contact).map(([key,v])=>[key,v.trim()])));}}/>;
 }
 function PortLookup({label,onChange,onClose,orgId,languageCode}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en;

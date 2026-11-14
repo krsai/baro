@@ -109,7 +109,8 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
  Object.assign(data,shippingCargo(d,mode));
  validateOogTransition(data,previous);
  Object.assign(data,shippingPortFields(d,mode));
- Object.assign(data,shippingRouteFields(d,mode));
+ data.transportService=member(input.service||'GENERAL',['GENERAL','EXPRESS']);
+ Object.assign(data,shippingRouteFields({...d,transportService:data.transportService},mode));
  await validateShippingPorts(tx,data,previous);
  for(const role of ['shipper','consignee','notify'])if(data[role+'Party'])data[role]=[data[role+'Party'].name,data[role+'Party'].address,data[role+'Party'].contactName,data[role+'Party'].phone,data[role+'Party'].email].filter(Boolean).join('\n');
  return {customerId,masterId,mode,service:member(input.service||'GENERAL',['GENERAL','EXPRESS']),houseStatus,houseNumber,status:member(input.status||'DRAFT',['DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED']),data};
@@ -152,7 +153,9 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
 export async function listFreight(db:any,orgId:number,actorId:number,type:keyof typeof tables,input:any={}){
  await freightActor(db,orgId,actorId);if(!tables[type])fail('FREIGHT_NOT_FOUND',404);
  const search=optional(input.search,160),offset=Number(input.offset||0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('FREIGHT_INVALID_INPUT');
- const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name',data->>'actualRequesterName',data->>'actualRequesterPhone'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ORDER BY "createdAt" DESC,id LIMIT 50 OFFSET $3`,orgId,search,offset);
+ const sort=input.sort||'createdAt',direction=input.sortDirection||'desc';if(!['createdAt','mode'].includes(sort)||!['asc','desc'].includes(direction)||sort==='mode'&&type!=='jobs')fail('FREIGHT_INVALID_INPUT');
+ const order=sort==='mode'?"CASE WHEN q.service='EXPRESS' THEN 'EXPRESS' WHEN q.mode='SEA' THEN COALESCE(q.data->>'shipmentType','SEA') ELSE q.mode END":'q."createdAt"';
+ const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name',data->>'actualRequesterName',data->>'actualRequesterPhone'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ORDER BY ${order} ${direction.toUpperCase()},q."createdAt" DESC,q.id LIMIT 50 OFFSET $3`,orgId,search,offset);
  return {rows:result.map(({totalCount,...row}:any)=>row),total:result[0]?.totalCount||0,offset};
 }
 export async function freightDetail(db:any,orgId:number,actorId:number,type:keyof typeof tables,id:string){

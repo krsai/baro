@@ -48,7 +48,7 @@ try{
    });return page;
   };
   const customer=await makePage(false);await customer.goto(`http://127.0.0.1:${port}/shipping-requests-acceptance.html`);
-  const emptyNotice=customer.getByRole('status').filter({hasText:t.empty});await emptyNotice.waitFor();assert.ok((await emptyNotice.locator('xpath=ancestor::td').boundingBox()).height>=80);assert.equal(await customer.getByRole('columnheader').count(),3);
+  const emptyNotice=customer.getByRole('status').filter({hasText:t.empty});await emptyNotice.waitFor();assert.ok((await emptyNotice.locator('xpath=ancestor::td').boundingBox()).height>=80);assert.equal(await customer.getByRole('columnheader').count(),5);
   await customer.getByRole('button',{name:t.new,exact:true}).click();const dialog=customer.getByRole('dialog');
   const e=freightJobEditorText[lang],x=shippingEditorText[lang];
   const partner=dialog.getByRole('textbox',{name:e.forwarderCompany,exact:true});await partner.fill('DEXL');await partner.press('Enter');assert.equal(await partner.inputValue(),'DEX');

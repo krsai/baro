@@ -1,4 +1,5 @@
 import {listShippingPresets,saveShippingPreset} from './shippingPresets';
+import {shippingGeneralCustomer} from './shippingGeneralCustomer';
 import {validateOogTransition} from './shippingCargo';
 import {searchShippingPorts,validateShippingPorts} from './shippingPorts';
 import {createHash,randomUUID} from 'node:crypto';
@@ -20,7 +21,7 @@ const requestFields=(input:any)=>{
  if(!value.data.workScope)fail('TRANSPORT_REQUIRED');
  return value;
 };
-const projection=(row:any)=>({id:row.id,number:row.number,ownerOrgId:row.orgId,company:row.company,receiptStatus:row.receiptStatus,version:row.version,updatedAt:row.updatedAt,request:row.requestSnapshot?transportSnapshot(row.requestSnapshot):null,shared:row.sharedSnapshot?transportSnapshot(row.sharedSnapshot):null});
+const projection=(row:any)=>({id:row.id,number:row.number,ownerOrgId:row.orgId,company:row.company,receiptStatus:row.receiptStatus,version:row.version,updatedAt:row.updatedAt,createdAt:row.createdAt,request:row.requestSnapshot?transportSnapshot(row.requestSnapshot):null,shared:row.sharedSnapshot?transportSnapshot(row.sharedSnapshot):null});
 async function memberJob(tx:any,orgId:number,id:string,lock=false){
  const row=(await tx.$queryRawUnsafe(`SELECT j.*,o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j.id=$1 AND (j."orgId"=$2 OR j."requesterOrgId"=$2)${lock?' FOR UPDATE OF j':''}`,id,orgId))[0];
  if(!row)fail('SHIPPING_NOT_FOUND',404);return row;
@@ -28,7 +29,7 @@ async function memberJob(tx:any,orgId:number,id:string,lock=false){
 export async function listShippingRequests(db:any,orgId:number,actorId:number){
  const org=await actor(db,orgId,actorId);
  if(org.type==='SERVICE')return db.$queryRawUnsafe('SELECT j.* FROM "FreightJob" j WHERE j."orgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
- const rows=await db.$queryRawUnsafe('SELECT j.id,j.number,j."orgId",j."receiptStatus",j.version,j."updatedAt",j."requestSnapshot",j."sharedSnapshot",o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j."requesterOrgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
+ const rows=await db.$queryRawUnsafe('SELECT j.id,j.number,j."orgId",j."receiptStatus",j.version,j."updatedAt",j."createdAt",j."requestSnapshot",j."sharedSnapshot",o.name AS company FROM "FreightJob" j JOIN "Organization" o ON o.id=j."orgId" WHERE j."requesterOrgId"=$1 ORDER BY j."createdAt" DESC,j.id LIMIT 500',orgId);
  return rows.map(projection);
 }
 export async function readShippingRequest(db:any,orgId:number,actorId:number,id:string){
@@ -135,6 +136,10 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
  route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true}}),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
+ route('post','/general-customer',({orgId,actorId,org}:any)=>{
+  if(org.type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);
+  return retryEditTransaction(db,async(tx:any)=>({id:await shippingGeneralCustomer(tx,orgId,actorId,null,true)}));
+ });
  route('get','/ports',(_scope:any,req:any)=>searchShippingPorts(db,req.query.q??''));
  route('post','/presets',(scope:any,req:any)=>saveShippingPreset(db,scope,req.body));
  route('delete','/presets/:presetId',(scope:any,req:any)=>saveShippingPreset(db,scope,{...req.body,id:req.params.presetId},true));

@@ -23,6 +23,13 @@ test('express general customer is created once per company with independent SR r
   const options=await freightOptions(db,orgId,actorId);assert.equal(options.find(row=>row.id===pool.id).isShippingGeneralCustomer,true);
   for(const search of ['Kim Min Su','+84 123 456']){const found=await listFreight(db,orgId,actorId,'jobs',{search});assert.equal(found.rows.length,1);assert.equal(found.rows[0].id,job.id);}
   assert.equal((await listFreight(db,orgId,actorId,'jobs',{search:'Lee'})).rows[0].id,second.id);
+  const doors={...data,transportService:'EXPRESS',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:{ORIGIN_DOOR:'Sender door',DESTINATION_DOOR:'Recipient door'},routeLocationDetails:{ORIGIN_DOOR:{label:'Sender',phone:'123'},DESTINATION_DOOR:{label:'Recipient',phone:'456'}}};
+  const doorJob=await saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),data:doors});assert.equal(doorJob.data.origin,'Sender door');assert.equal(transportSnapshot(doorJob).data.destination,'Recipient door');assert.equal(doorJob.data.transportService,'EXPRESS');
+  await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),customerId:s.vendor.id,service:'GENERAL',data:{...doors,generalCustomer:false}}),/SHIPPING_ROUTE_REQUIRED/);
+  const airJob=await saveFreight(db,orgId,actorId,'jobs',{clientKey:randomUUID(),customerId:s.vendor.id,mode:'AIR',service:'GENERAL',data:{cargo:'Regular air'}});
+  const sorted=await listFreight(db,orgId,actorId,'jobs',{sort:'mode',sortDirection:'asc'});assert.equal(sorted.rows[0].id,airJob.id);assert.equal((await listFreight(db,orgId,actorId,'jobs',{sort:'mode',sortDirection:'desc'})).rows.at(-1).id,airJob.id);assert.ok(sorted.rows.every(row=>row.createdAt));
+  await assert.rejects(listFreight(db,orgId,actorId,'jobs',{sort:'mode;DROP TABLE'}),/FREIGHT_INVALID_INPUT/);
+  await assert.rejects(listFreight(db,orgId,actorId,'jobs',{sort:'mode',sortDirection:'DESC;DROP TABLE'}),/FREIGHT_INVALID_INPUT/);
   await assert.rejects(saveFreight(db,s.other.id,actorId,'jobs',input),/ACTIVE_EMPLOYEE_REQUIRED/);
   await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),customerId:s.vendor.id}),/FREIGHT_PARTY_SCOPE/);
   await assert.rejects(saveFreight(db,orgId,actorId,'jobs',{...input,clientKey:randomUUID(),customerId:pool.id,data:{...data,generalCustomer:undefined,actualRequesterPhone:''}}),/SHIPPING_REQUESTER_REQUIRED/);

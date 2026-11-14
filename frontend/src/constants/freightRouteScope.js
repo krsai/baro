@@ -1,4 +1,4 @@
-export const routeNodes = mode => mode === 'ROAD' ? ['ORIGIN_DOOR','DESTINATION_DOOR'] : ['ORIGIN_DOOR','ORIGIN_TERMINAL','DESTINATION_TERMINAL','DESTINATION_DOOR'];
+export const routeNodes = (mode,service) => mode === 'ROAD'||service==='EXPRESS' ? ['ORIGIN_DOOR','DESTINATION_DOOR'] : ['ORIGIN_DOOR','ORIGIN_TERMINAL','DESTINATION_TERMINAL','DESTINATION_DOOR'];
 export const incotermsOptions = ['EXW','FCA','FAS','FOB','CFR','CIF','CPT','CIP','DAP','DPU','DDP'];
 export const routeScopeText = {
  ko:{notify:'NOTIFY · 통지처',title:'우리 업무 구간',hint:'버튼으로 선택하거나 양쪽 손잡이를 드래그하세요. 인코텀즈와 별도로 저장하며, 청구 대상은 비용 항목별로 지정합니다.',ORIGIN_DOOR:'출발 공장·창고',ORIGIN_TERMINAL:'출발 항구',DESTINATION_TERMINAL:'도착 항구',DESTINATION_DOOR:'도착 공장·창고',originAirport:'출발 공항',destinationAirport:'도착 공항',all:'전 구간',doorPort:'공장 → 도착 항구·공항',portDoor:'출발 항구·공항 → 공장',main:'항구·공항 간',start:'업무 시작',end:'업무 종료',customerRole:'고객의 운송 역할',shipper:'SHPR · 송하인',consignee:'CNEE · 수하인',customerTag:'선택한 고객',pickupFrom:'픽업 장소 불러오기',manual:'주소 직접 입력',pickupHelp:'업무 구간에 출발지 픽업이 포함되어 있습니다.',namedPlace:'인코텀즈 지정 장소',selectScope:'업무 구간을 선택해 주세요.'},

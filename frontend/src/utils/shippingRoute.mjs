@@ -13,6 +13,6 @@ export function routePatch(data,mode,scope,locations=routeLocations(data,mode)){
  return {workScope:scope,routeLocations:locations,origin:locations[scope.start]||'',destination:locations[scope.end]||'',...(mode!=='SEA'?{originPortCode:null,destinationPortCode:null}:{})};
 }
 export function routeComplete(data,mode){
- const nodes=routeNodes(mode),start=nodes.indexOf(data.workScope?.start),end=nodes.indexOf(data.workScope?.end),locations=routeLocations(data,mode);
+ const nodes=routeNodes(mode,data.transportService),start=nodes.indexOf(data.workScope?.start),end=nodes.indexOf(data.workScope?.end),locations=routeLocations(data,mode);
  return start>=0&&end>start&&nodes.slice(start,end+1).every(node=>locations[node]?.trim()&&(mode!=='SEA'||!node.endsWith('TERMINAL')||data[node==='ORIGIN_TERMINAL'?'originPortCode':'destinationPortCode']));
 }
