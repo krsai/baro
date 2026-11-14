@@ -10,7 +10,7 @@ export async function publicCompanyDetails(db:any,row:any){
  const companyId=row.anchorEntityId||row.id;
  const profile=db.partnerClassification?await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId:companyId,entityId:companyId}},include:{industries:{include:{industry:{include:{partnerRole:true}}}}}}):null;
  const industries=profile?.industries.map((link:any)=>link.industry)||[];
- const subscriber=await db.organization.findFirst({where:{id:companyId,ownerOrgId:null,isActive:true,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:companyId}],type:{in:['MANUFACTURER','BRAND','SERVICE']},employees:{some:{status:'ACTIVE'}}},select:{id:true}});
+ const subscriber=await db.organization.findFirst({where:{id:companyId,ownerOrgId:null,isActive:true,type:{in:['MANUFACTURER','BRAND','SERVICE']},employees:{some:{status:'ACTIVE'}}},select:{id:true}});
  return {...row,subscriberOrgId:subscriber?.id||null,industryLabels,officialClassification:profile?{revision:profile.revision,industries,industryIds:industries.map((i:any)=>i.id),roleIds:[...new Set(industries.map((i:any)=>i.partnerRoleId))]}:null};
 }
 // Read public names/address from the owning profile without rewriting local rows or snapshots.
