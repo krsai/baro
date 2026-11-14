@@ -11,9 +11,9 @@ async function bucket(db:any,scope:any,customerId:number){
 }
 export function presetFields(kind:string,value:any){
  if(!value||typeof value!=='object'||Array.isArray(value))fail();
- const keys=kind==='PARTY'?{name:200,address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
+ const keys=kind==='PARTY'?{address:1000,contactName:320,phone:320,email:320}:kind==='LOCATION'?{address:160,contactName:320,phone:320}:fail();
  const data:any={};for(const [key,max] of Object.entries(keys))data[key]=clean(value[key]??'',max);
- if(!(data.name||data.address))fail();return data;
+ if(kind==='LOCATION'&&!data.address)fail();return data;
 }
 export async function listShippingPresets(db:any,scope:any,customerId:number,kind:string){
  await bucket(db,scope,customerId);if(!['PARTY','LOCATION'].includes(kind))fail();

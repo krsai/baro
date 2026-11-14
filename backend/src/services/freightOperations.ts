@@ -66,7 +66,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
   if(id!=null&&id!==''){if(!Number.isSafeInteger(id)||id<=0)fail('FREIGHT_PARTY_SCOPE',403);data[role+'Id']=id;data[role+'Party']=await scopedParty(tx,orgId,id);
    const document=d[role+'Party'];
    if(document!=null){if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
-    for(const field of ['name','address','contactName','phone','email'])if(document[field]!==undefined)data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
+    for(const field of ['address','contactName','phone','email'])if(document[field]!==undefined)data[role+'Party'][field]=optional(document[field],field==='address'?1000:320);
    }}else if(d[role+'Party']!=null){
    const document=d[role+'Party'];if(typeof document!=='object'||Array.isArray(document))fail('FREIGHT_INVALID_INPUT');
    data[role+'Party']={};for(const field of ['name','address','contactName','phone','email'])data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
