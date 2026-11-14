@@ -177,6 +177,7 @@ const baseTheme = createTheme({
     },
     MuiAutocomplete: {
       defaultProps: {
+        slotProps: { listbox: state => ({ 'aria-multiselectable': state.multiple || undefined }) },
         openOnFocus: false,
         autoSelect: false,
         autoHighlight: false,

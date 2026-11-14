@@ -7,6 +7,7 @@ import CompanyWorkspaceProvider from './components/CompanyWorkspaceProvider';
 import { LanguageProvider, useLanguage } from './context/LanguageContext';
 import router from './router';
 import theme from './theme';
+import useKeyboardNavigation from './hooks/useKeyboardNavigation';
 
 const ROUTE_LOADING_TEXT = {
   ko: '페이지를 불러오는 중입니다...',
@@ -77,6 +78,7 @@ const findHorizontalScrollContainer = (startNode) => {
 };
 
 const App = () => {
+  useKeyboardNavigation();
   useEffect(() => {
     const handleWheel = (event) => {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey) return;

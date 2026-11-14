@@ -1,8 +1,9 @@
-﻿import React,{useState} from 'react';
+﻿import React,{useRef,useState} from 'react';
 import {Autocomplete,Box,Chip,Stack} from '@mui/material';
 import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 import LookupInput from './LookupInput';
 import LookupSearchDialog from './LookupSearchDialog';
+import {advanceAfterSelection,advanceFormFocus} from '../utils/formFocus.mjs';
 import {createAutocompleteFilterOptions,buildAutocompleteSearchBlob} from '../utils/autocompleteSearch';
 import {getCurrentLanguageCode} from '../utils/appLanguage';
 import {EXPENSE_LOOKUP_TEXT} from '../constants/expenseLookup';
@@ -10,10 +11,10 @@ import {EXPENSE_LOOKUP_TEXT} from '../constants/expenseLookup';
 // Compatibility boundary for existing entity selectors; all regular selections
 // use the same commit and search behavior as accounting lookup fields.
 export default function SearchableSelect({label,hideCode=false,options=[],value,onChange,getOptionLabel=option=>option?.name||String(option??''),disabled=false,textFieldProps={},getOptionDisabled,isOptionEqualToValue=(a,b)=>a===b,filterOptions,renderInput,multiple=false,chipsInside=false,onInputChange,onKeyboardSelect,advanceFocusOnKeyboardSelect=false,inputSuffix,inputValue,getOptionKey,lookupColumns,getLookupCode,getLookupValues,getLookupSearchText,languageCode=getCurrentLanguageCode(),...props}){
- const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[selected,setSelected]=useState([]);
+ const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[selected,setSelected]=useState([]),creationRoot=useRef(null);
  const t=EXPENSE_LOOKUP_TEXT[languageCode]||EXPENSE_LOOKUP_TEXT.en;
  const codeLabel=languageCode==='ko'?'코드':languageCode==='vi'?'Mã':'Code';
- if(props.freeSolo)return <Autocomplete {...props} multiple={multiple} options={options} value={value} inputValue={inputValue} disabled={disabled} getOptionLabel={getOptionLabel} isOptionEqualToValue={isOptionEqualToValue} filterOptions={filterOptions} getOptionDisabled={getOptionDisabled} onChange={onChange} onInputChange={onInputChange} renderInput={renderInput} openOnFocus={false} autoSelect={false}/>;
+ if(props.freeSolo)return <Autocomplete {...props} ref={creationRoot} multiple={multiple} options={options} value={value} inputValue={inputValue} disabled={disabled} getOptionLabel={getOptionLabel} isOptionEqualToValue={isOptionEqualToValue} filterOptions={filterOptions} getOptionDisabled={getOptionDisabled} onChange={(event,next,reason,details)=>{onChange?.(event,next,reason,details);if(!multiple&&['selectOption','createOption'].includes(reason)){const input=creationRoot.current?.querySelector('input');advanceAfterSelection(input,{popup:document.getElementById(input?.getAttribute('aria-controls'))});}}} onInputChange={onInputChange} renderInput={renderInput} openOnFocus={false} autoSelect={false}/>;
  const rendered=renderInput?.({InputProps:{},inputProps:{},disabled,size:props.size||'small'}),fields={...rendered?.props,...textFieldProps};
  const title=label||fields.label||fields.placeholder||t.search;
  const key=getOptionKey||(row=>typeof row==='object'?String(row.kind||'')+':'+String(row.id??row.dbId??row.code??options.indexOf(row)):String(row));
@@ -27,7 +28,7 @@ export default function SearchableSelect({label,hideCode=false,options=[],value,
  const advance=(row,event)=>{
   if(onKeyboardSelect){onKeyboardSelect({event,highlightedOption:row,inputElement:event.target});return true;}
   if(advanceFocusOnKeyboardSelect&&event.key==='Enter'){
-   const nodes=[...document.querySelectorAll('input,textarea,select,button,[tabindex]')].filter(node=>!node.disabled&&node.tabIndex>=0&&node.getClientRects().length),index=nodes.indexOf(event.target);nodes[index+1]?.focus();return true;
+   return advanceFormFocus(event.target);
   }
   return false;
  };

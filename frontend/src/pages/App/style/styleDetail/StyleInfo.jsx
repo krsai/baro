@@ -529,7 +529,7 @@ const StyleInfo = ({
               }}
             >
               <Stack spacing={1.25}>
-                <ToggleButtonGroup
+                <ToggleButtonGroup data-focus-next="group"
                   color="primary"
                   size="small"
                   exclusive

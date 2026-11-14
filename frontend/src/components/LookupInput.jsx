@@ -1,4 +1,4 @@
-import {advanceDocumentInput} from '../utils/documentKeyboard.mjs';
+import {advanceAfterSelection} from '../utils/formFocus.mjs';
 ﻿import React,{useEffect,useRef,useState} from 'react';
 import {IconButton,InputAdornment,TextField,Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -21,8 +21,9 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
   if(match||(hasSelection||allowEmpty)&&!input.trim()){
    skipBlur.current=true;if(match&&!selected)choose(match,event);else if(!match&&allowEmpty&&value)onChange(null,event);
    const handled=onCommit?.(match,event);
-   if(!handled&&event.key==='Enter'&&event.target.closest('[data-document-keyboard]'))advanceDocumentInput(event.target);
-   if(event.key==='Enter'||handled){event.preventDefault();event.stopPropagation();}return;
+   const advancing=!handled&&!clearAfterChoose;
+   if(advancing)advanceAfterSelection(event.target);
+   if(event.key==='Enter'||handled||advancing){event.preventDefault();event.stopPropagation();}return;
   }
   event.preventDefault();event.stopPropagation();search();
  };

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, {useRef} from 'react';
+import {advanceAfterSelection} from '../utils/formFocus.mjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -17,7 +18,8 @@ const CustomDatePicker = ({
   localeText,
   ...props
 }) => {
-  const { minDate, maxDate, format, ...pickerProps } = props;
+  const { minDate, maxDate, format, onOpen, onAccept, ...pickerProps } = props;
+  const fieldRoot=useRef(null),opener=useRef(null);
   const parsedValue = value ? dayjs(value) : null;
   const safeValue = parsedValue?.isValid() ? parsedValue : allowEmpty ? null : dayjs();
   const dateValue = monthOnly && safeValue ? safeValue.startOf('month') : safeValue;
@@ -31,6 +33,11 @@ const CustomDatePicker = ({
     textField: {
       size: 'small',
       ...slotProps?.textField,
+      ref: node => {
+        fieldRoot.current=node;
+        const ref=slotProps?.textField?.ref;
+        if(typeof ref==='function')ref(node);else if(ref)ref.current=node;
+      },
       sx: {
         minWidth: monthOnly ? 110 : 140,
         ...slotProps?.textField?.sx,
@@ -68,6 +75,11 @@ const CustomDatePicker = ({
         maxDate={safeMaxDate}
         value={dateValue}
         onChange={handleChange}
+        onOpen={() => {opener.current=document.activeElement;onOpen?.();}}
+        onAccept={(nextValue,context) => {
+          onAccept?.(nextValue,context);
+          if(nextValue?.isValid?.()&&!context?.validationError)advanceAfterSelection(opener.current,{afterContainer:fieldRoot.current,popup:document.activeElement?.closest('[role="dialog"]')});
+        }}
         format={format || (monthOnly ? 'YYYY-MM' : 'YYYY-MM-DD')}
         slotProps={mergedSlotProps}
       />

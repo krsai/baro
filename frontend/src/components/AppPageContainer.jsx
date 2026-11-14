@@ -1,4 +1,5 @@
 import {documentInputKeyDown} from '../utils/documentKeyboard.mjs';
+import useKeyboardNavigation from '../hooks/useKeyboardNavigation';
 import React from 'react';
 import { Box, Stack } from '@mui/material';
 import PageSectionHeader from './PageSectionHeader';
@@ -17,6 +18,7 @@ const AppPageContainer = ({
   contentSx = {},
   keyboardEntry = false,
 }) => {
+  useKeyboardNavigation();
   const pageNaming = usePageNaming();
   if (title) title = pageNaming?.title || title;
   const resolvedHeader = header ? (

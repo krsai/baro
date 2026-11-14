@@ -3536,7 +3536,7 @@ const OrderList = () => {
                 gridColumn: { xs: '1', md: 'span 2', lg: '6' },
               }}
             >
-              <ToggleButtonGroup
+              <ToggleButtonGroup data-focus-next="group"
                 size="small"
                 exclusive
                 value={detailViewMode}

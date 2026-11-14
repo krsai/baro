@@ -1,6 +1,7 @@
 import React, { createContext, forwardRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Modal, ThemeProvider, useTheme } from '@mui/material';
 import PageDialogProvider from './PageDialogProvider';
+import useKeyboardNavigation from '../hooks/useKeyboardNavigation';
 
 const DialogScope = createContext(null);
 
@@ -91,6 +92,7 @@ const WorkspaceDialogRoot = forwardRef(function WorkspaceDialogRoot(props, ref) 
 // MUI's modal stack. The Dialog transition stays open during a tab switch, so
 // onClose/onExited handlers and uncontrolled inputs are not reset by navigation.
 export default function WorkspaceDialogScope({ active = true, viewportRef, children }) {
+  useKeyboardNavigation();
   const parentTheme = useTheme();
   const host = useRef(null);
   const [bounds, setBounds] = useState(null);
@@ -128,7 +130,7 @@ export default function WorkspaceDialogScope({ active = true, viewportRef, child
   } }), [parentTheme]);
   const scope = useMemo(() => ({ active, host, register }), [active, register]);
   return <DialogScope.Provider value={scope}><ThemeProvider theme={theme}><PageDialogProvider>
-    <Box sx={{ display: 'contents' }} inert={active && openDialogs.size > 0 ? true : undefined}>{children}</Box>
+    <Box data-workspace-page sx={{ display: 'contents' }} inert={!active || openDialogs.size > 0 ? true : undefined}>{children}</Box>
     <Box ref={host} data-workspace-dialog-host sx={{ position: 'fixed', ...bounds,
       display: active && bounds ? 'block' : 'none', overflow: 'hidden', pointerEvents: 'none', zIndex: parentTheme.zIndex.modal }} />
   </PageDialogProvider></ThemeProvider></DialogScope.Provider>;

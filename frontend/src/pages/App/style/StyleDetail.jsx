@@ -475,7 +475,7 @@ const StyleDetail = () => {
         <PageToolbar
           showLastUpdater={false}
           left={(
-            <ToggleButtonGroup
+            <ToggleButtonGroup data-focus-next="group"
               value={currentTab}
               exclusive
               onChange={handleChange}

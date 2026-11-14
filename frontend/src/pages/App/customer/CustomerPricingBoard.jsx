@@ -1129,7 +1129,7 @@ const CustomerPricingBoard = () => {
                           spacing={1}
                           alignItems={{ lg: 'center' }}
                         >
-                          <ToggleButtonGroup
+                          <ToggleButtonGroup data-focus-next="group"
                             size="small"
                             exclusive
                             value={selectedStyleUsesCustomBuckets ? 'custom' : 'customer'}
