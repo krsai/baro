@@ -1,5 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,Dialog,DialogContent,DialogTitle,Stack,Typography} from '@mui/material';
+import {Alert,Box,Button,Dialog,DialogContent,DialogTitle,List,ListItemButton,Stack,TextField,Typography} from '@mui/material';
 import DeleteActionButton from './DeleteActionButton';
 import SaveButton from './SaveButton';
 import ShippingAddressFields,{addressValue} from './ShippingAddressFields';
@@ -9,34 +9,63 @@ import {shippingEditorText} from '../constants/shippingEditor';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
-export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose}){
+const record=row=>({id:row.id,version:row.version,...addressValue({...row.data,label:row.label})});
+export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose,title,disabled=false,testId='shipping-address-book'}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
- const [rows,setRows]=useState([]),[edit,setEdit]=useState(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
- const baseline=useRef(''),pending=useRef(null),lock=useRef(false),alive=useRef(true),content=useRef(null);
+ const [initial]=useState(()=>({id:crypto.randomUUID(),...addressValue(current)}));
+ const [rows,setRows]=useState([]),[edit,setEdit]=useState(initial),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[busy,setBusy]=useState(false),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
+ const baseline=useRef(JSON.stringify(initial)),pending=useRef(null),lock=useRef(false),alive=useRef(true),content=useRef(null);
+ const blocked=disabled||busy||uncertain,dirty=JSON.stringify(edit)!==baseline.current;
  const url='/shipping-requests/presets'+buildQueryString({orgId,customerId,kind:'LOCATION'});
+ useUnsavedChanges(dirty||uncertain);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
- useEffect(()=>{if(!busy&&!loading&&content.current&&!content.current.contains(document.activeElement))content.current.focus();},[busy,loading,rows,edit]);
- useEffect(()=>{let live=true;setLoading(true);setError(false);requestJSON(url,{skipCache:true}).then(value=>{if(live)setRows(value);}).catch(()=>live&&setError(true)).finally(()=>live&&setLoading(false));return()=>{live=false;};},[url,reload]);
- const open=row=>{const next=row?{id:row.id,version:row.version,...addressValue({...row.data,label:row.label})}:{id:crypto.randomUUID(),...addressValue(current)};baseline.current=JSON.stringify(next);setEdit(next);setError(false);};
- const dirty=edit&&JSON.stringify(edit)!==baseline.current;
- useUnsavedChanges(!!dirty||uncertain);
- const leave=async()=>!busy&&!uncertain&&(!dirty||await dialogs.confirm(t.discard));
- const close=async()=>{if(await leave())onClose();};
- const mutate=async(row,remove=false)=>{
-  if(lock.current)return;
+ useEffect(()=>{if(!busy&&!loading&&content.current&&!content.current.contains(document.activeElement))content.current.focus();},[busy,loading,rows]);
+ useEffect(()=>{
+  if(!customerId)return;
+  let live=true;setLoading(true);setReadError(false);
+  requestJSON(url,{skipCache:true}).then(value=>{if(live)setRows(value);}).catch(()=>live&&setReadError(true)).finally(()=>live&&setLoading(false));
+  return()=>{live=false;};
+ },[url,reload,customerId]);
+ const leave=async()=>!blocked&&(!dirty||await dialogs.confirm(t.discard));
+ const open=async row=>{
+  if(!await leave())return;
+  const next=row?record(row):{id:crypto.randomUUID(),...addressValue()};
+  baseline.current=JSON.stringify(next);setEdit(next);setSaveError(false);
+ };
+ const mutate=async(remove=false)=>{
+  if(lock.current||disabled)return;
   if(remove&&!pending.current&&!await dialogs.confirm(t.deleteConfirm))return;
-  lock.current=true;setBusy(true);setError(false);
+  lock.current=true;setBusy(true);setSaveError(false);
   try{
-   pending.current=pending.current||{path:remove?'/'+row.id:'',method:remove?'DELETE':'POST',body:JSON.stringify(remove?{customerId,version:row.version}:{id:edit.id,version:edit.version,customerId,kind:'LOCATION',label:edit.label,data:{address:edit.address,contactName:edit.contactName,phone:edit.phone}})};
+   pending.current=pending.current||{remove,path:remove?'/'+edit.id:'',method:remove?'DELETE':'POST',body:JSON.stringify(remove?{customerId,version:edit.version}:{id:edit.id,version:edit.version,customerId,kind:'LOCATION',label:edit.label,data:{address:edit.address,contactName:edit.contactName,phone:edit.phone}})};
    const work=pending.current;
-   await requestJSON('/shipping-requests/presets'+work.path+buildQueryString({orgId}),{method:work.method,body:work.body});
+   const saved=await requestJSON('/shipping-requests/presets'+work.path+buildQueryString({orgId}),{method:work.method,body:work.body});
    pending.current=null;
-   if(alive.current){setUncertain(false);setEdit(null);setReload(v=>v+1);showNotification(t.saved,'success');}
-  }catch(e){const unknown=!e.status||e.status>=500;if(!unknown)pending.current=null;if(alive.current){setUncertain(unknown);setError(true);}}
+   if(alive.current){
+    const next=work.remove?{id:crypto.randomUUID(),...addressValue(edit)}:record(saved);
+    baseline.current=JSON.stringify(next);setEdit(next);setUncertain(false);setReload(v=>v+1);showNotification(t.saved,'success');
+   }
+  }catch(e){const unknown=!e.status||e.status>=500;if(!unknown)pending.current=null;if(alive.current){setUncertain(unknown);setSaveError(true);}}
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
- return <Dialog open fullWidth maxWidth="md" onClose={close} data-testid="shipping-address-book"><DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2}><Typography variant="h6">{t.savedAddresses}</Typography>{edit?<SaveButton disabled={busy||uncertain||!edit.label.trim()||!edit.address.trim()} onClick={()=>mutate(null)}>{t.savePreset}</SaveButton>:<Button disabled={busy||uncertain||loading||error} onClick={()=>open(null)}>{t.addAddress}</Button>}</Stack></DialogTitle><DialogContent ref={content} tabIndex={-1}><Stack spacing={2}>
- {error&&<Alert severity="error" action={<Button disabled={busy} onClick={()=>uncertain?mutate(null):setReload(v=>v+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
- {edit?<><ShippingAddressFields value={edit} onChange={setEdit} t={t} disabled={busy||uncertain} autoFocus/><Button sx={{alignSelf:'flex-start'}} disabled={busy||uncertain} onClick={async()=>{if(await leave())setEdit(null);}}>{t.addressList}</Button></>:<>{loading&&<Typography>{t.loading}</Typography>}{!loading&&!error&&!rows.length&&<Typography color="text.secondary">{t.presetEmpty}</Typography>}{!loading&&!error&&rows.map(row=><Stack key={row.id} direction={{xs:'column',sm:'row'}} alignItems={{xs:'stretch',sm:'center'}} gap={1} sx={{borderBottom:1,borderColor:'divider',pb:2}}><Stack sx={{flex:1,minWidth:0}}><Typography fontWeight={600}>{row.label}</Typography><Typography sx={{overflowWrap:'anywhere'}}>{row.data.address}</Typography><Typography color="text.secondary" sx={{overflowWrap:'anywhere'}}>{[row.data.contactName,row.data.phone].filter(Boolean).join(' · ')}</Typography></Stack><Stack direction="row" justifyContent="flex-end"><Button disabled={busy||uncertain} onClick={()=>{onLoad({...row.data,label:row.label});onClose();}}>{t.loadPreset}</Button><Button disabled={busy||uncertain} onClick={()=>open(row)}>{t.editAddress}</Button><DeleteActionButton disabled={busy||uncertain} title={t.deletePreset} onClick={()=>mutate(row,true)}/></Stack></Stack>)}</>}
- </Stack></DialogContent></Dialog>;
+ const filtered=rows.filter(row=>[row.label,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+ const apply=()=>{onLoad(addressValue(edit));onClose();};
+ return <Dialog open fullWidth maxWidth="md" onClose={async()=>{if(await leave())onClose();}} data-testid={testId} aria-label={title||t.savedAddresses}>
+  <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!edit.address.trim()} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
+  <DialogContent ref={content} tabIndex={-1}><Box data-address-workspace sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(0,1fr) minmax(0,1.7fr)'},gap:3,alignItems:'start'}}>
+   <Stack spacing={1.5} data-address-list sx={{minWidth:0}}>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.savedAddresses}</Typography><Button disabled={blocked} onClick={()=>open(null)}>{t.addAddress}</Button></Stack>
+    <TextField fullWidth size="small" label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!customerId} onChange={e=>setQuery(e.target.value)}/>
+    {!customerId?<Alert severity="info">{t.chooseCustomer}</Alert>:readError?<Alert severity="error" action={<Button disabled={busy||uncertain} onClick={()=>setReload(v=>v+1)}>{t.retry}</Button>}>{t.failed}</Alert>:loading?<Typography role="status">{t.loading}</Typography>:<List disablePadding aria-label={t.savedAddresses} sx={{maxHeight:{xs:160,sm:400},overflowY:'auto'}}>
+     {!filtered.length&&<Typography color="text.secondary">{t.presetEmpty}</Typography>}
+     {filtered.map(row=><ListItemButton key={row.id} selected={edit.version!=null&&row.id===edit.id} aria-pressed={edit.version!=null&&row.id===edit.id} disabled={blocked} onClick={()=>open(row)} sx={{borderRadius:1,alignItems:'flex-start'}}><Stack sx={{minWidth:0}}><Typography fontWeight={600} sx={{overflowWrap:'anywhere'}}>{row.label}</Typography><Typography variant="caption" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{row.data.address}</Typography></Stack></ListItemButton>)}
+    </List>}
+   </Stack>
+   <Stack spacing={2} data-address-detail sx={{minWidth:0}}>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{edit.version?t.editAddress:t.addAddress}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<DeleteActionButton disabled={blocked} title={t.deletePreset} onClick={()=>mutate(true)}/>}<SaveButton disabled={blocked||!customerId||loading||readError||!edit.label.trim()||!edit.address.trim()||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.updateAddress:t.savePreset}</SaveButton></Stack></Stack>
+    {saveError&&<Alert severity="error" action={uncertain?<Button disabled={busy} onClick={()=>mutate()}>{t.retry}</Button>:undefined}>{t.failed}</Alert>}
+    <ShippingAddressFields value={edit} onChange={setEdit} t={t} disabled={blocked} autoFocus/>
+   </Stack>
+  </Box></DialogContent>
+ </Dialog>;
 }
