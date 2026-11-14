@@ -12,3 +12,5 @@ shippingText.vi.DRAFT='Chờ chuẩn bị';
 shippingText.ko.legacy='Master·특송 관리';
 shippingText.en.legacy='Master & express operations';
 shippingText.vi.legacy='Quản lý Master và chuyển phát';
+
+export const shippingStatusTone=status=>({PENDING:"yellow",ACCEPTED:"green",DRAFT:"gray",BOOKED:"blue",IN_TRANSIT:"blue",ARRIVED:"green",DELIVERED:"green",CANCELLED:"gray"}[status]||"gray");
