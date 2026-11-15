@@ -881,7 +881,7 @@ const MainLayout = () => {
             path: '/system-setting/access-policy',
           },
 
-          { label: languageCode === 'ko' ? '앱 기본설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
+          { label: languageCode === 'ko' ? '앱 기본 설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
           { label: getUiMessage('menu.transactionMasters', 'Accounting codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           { label: getUiMessage('menu.expenseUnits', 'Units', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-units' },
           { label: getUiMessage('menu.shippingPorts', 'Ports', languageCode), icon: <LocalShippingOutlinedIcon />, path: '/system-setting/shipping-ports' },
