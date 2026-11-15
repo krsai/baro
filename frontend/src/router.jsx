@@ -1,6 +1,5 @@
-import SystemShippingAirports from './pages/App/system/SystemShippingAirports';
+import SystemShippingLocations from './pages/App/system/SystemShippingLocations';
 import ShippingRequests from './pages/App/ShippingRequests';
-import SystemShippingPorts from './pages/App/system/SystemShippingPorts';
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
@@ -307,8 +306,8 @@ const router = createBrowserRouter([
             path: 'app-settings/transaction-codes', element: <TransactionCodeSettings />,
           },
           { path: 'system-setting/entities', element: <SystemEntities /> },
-          { path: 'system-setting/shipping-ports', element: <SystemShippingPorts /> },
-          { path: 'system-setting/shipping-airports', element: <SystemShippingAirports /> },
+          { path: 'system-setting/shipping-ports', element: <SystemShippingLocations /> },
+          { path: 'system-setting/shipping-airports', element: <Navigate to="/system-setting/shipping-ports?mode=AIR" replace /> },
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
           { path: 'app-settings', element: <ApplicationSettings />,
           },

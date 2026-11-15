@@ -12,6 +12,7 @@ export const PAGE_ROUTES = [
   ['/salary-system','salarySystem','page'], ['/permission','permission','page'],
   ['/system-setting/entities','systemEntities','page'],
   ['/system-setting/shipping-ports','shippingPorts','page'],
+  ['/system-setting/shipping-airports','shippingPorts','page'],
   ['/system-setting','subscription','page'],
   ['/app-settings/transaction-codes','transactionCodes','page'],
   ['/app-settings','appSettings','page'],

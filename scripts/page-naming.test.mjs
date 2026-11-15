@@ -64,3 +64,10 @@ test('every application route has a naming policy and the policy covers actual m
   const messages=fs.readFileSync('frontend/src/constants/uiMessages.js','utf8');
   for(const [,key]of PAGE_ROUTES) assert.match(messages,new RegExp(`\\b${key}:`),`Missing menu translation: ${key}`);
 });
+
+test('ports and legacy airports share the unified screen identity',()=>{
+ for(const path of ['/system-setting/shipping-ports','/system-setting/shipping-airports']){
+ const page=resolvePageNaming(path,'ko',key=>key==='menu.shippingPorts'?'항만·공항 관리':key);
+ assert.equal(page.title,'항만·공항 관리');assert.equal(page.mode,'page');
+ }
+});
