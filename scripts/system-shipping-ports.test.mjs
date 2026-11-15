@@ -21,7 +21,7 @@ test('explicit catalogue pruning is scoped, audited, reference-safe and idempote
   assert.deepEqual(await db.$queryRawUnsafe('SELECT * FROM "FreightJob" WHERE id=$1',job.id),original);
   const receipt=(await db.$queryRawUnsafe('SELECT * FROM "ShippingPortChange" WHERE code=$1','AEABU'))[0];assert.equal(receipt.before.name,receipt.after.name);assert.equal(receipt.before.deletedAt,null);assert.ok(receipt.after.deletedAt);assert.equal(receipt.actorId,admin.id);
   assert.equal((await pruneShippingPorts(db,{actorId:admin.id,apply:true,expectedHash:scopeHash})).delete,0);
-  await changeSystemShippingPort(db,admin.email,'AEABU',{action:'RESTORE',version:2,clientKey:randomUUID()});assert.equal((await searchShippingPorts(db,'AEABU')).rows[0].code,'AEABU');
+  await changeSystemShippingPort(db,admin.email,'AEABU',{action:'RESTORE',version:2,clientKey:randomUUID()});assert.equal((await searchShippingPorts(db,'AEABU')).rows.length,0);
  }finally{await f.close();}
 });
 test('all SYSTEM port routes require the authenticated administrator before touching the catalogue',async()=>{
@@ -53,7 +53,7 @@ test('SYSTEM-only state management: filtered search, revision/retry, referenced-
   const updated=await saveFreight(db,s.company.id,s.people.admin.id,'jobs',{...job,clientKey:randomUUID(),data:{...job.data,remark:'Unrelated edit'}},job.id);assert.equal(updated.originPortCode,'KRPUS');
   const removed=await call('NLRTM','DELETE',1);assert.ok(removed.deletedAt);assert.equal(removed.isActive,false);assert.equal((await listSystemShippingPorts(db,admin.email,{q:'NLRTM',state:'DELETED'})).total,1);
   assert.equal((await searchShippingPorts(db,'NLRTM')).rows.length,0);assert.equal((await db.$queryRawUnsafe('SELECT code FROM "ShippingPort" WHERE code=$1','NLRTM')).length,1);
-  const restored=await call('NLRTM','RESTORE',2);assert.equal(restored.deletedAt,null);assert.equal(restored.isActive,true);await call('NLRTM','ACTIVATE',3);assert.equal((await searchShippingPorts(db,'NLRTM')).rows[0].code,'NLRTM');
+  const restored=await call('NLRTM','RESTORE',2);assert.equal(restored.deletedAt,null);assert.equal(restored.isActive,true);await call('NLRTM','ACTIVATE',3);assert.equal((await searchShippingPorts(db,'NLRTM')).rows.length,0);
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingPort" WHERE code=$1','NLRTM'),/SHIPPING_PORT_HISTORY_IMMUTABLE/);
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "ShippingPortChange" WHERE code=$1','NLRTM'),/SHIPPING_PORT_HISTORY_IMMUTABLE/);
   await assert.rejects(db.$executeRawUnsafe('UPDATE "ShippingPort" SET name=$2,version=version+1,"updatedBySystemUserId"=$3 WHERE code=$1','NLRTM','Changed source',admin.id),/SHIPPING_PORT_CHANGED/);

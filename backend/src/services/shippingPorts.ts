@@ -1,11 +1,14 @@
 import {createHttpError} from '../utils/http';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+const searchScope:string[]=JSON.parse(readFileSync(join(__dirname,'../../data/shipping-ports-search-scope.json'),'utf8')).codes;
 export async function searchShippingPorts(db:any,query:unknown){
  if(typeof query!=='string'||query.length>160)throw createHttpError(400,'SHIPPING_INVALID');
  // Literal substring search; user %/_ must not become SQL wildcards.
  const q=query.trim().replace(/[\\%_]/g,'\\$&'),pattern=`%${q}%`;
  const rows=await db.$queryRawUnsafe(`SELECT code,country,name,"asciiName",subdivision,iata,"sourceVersion" FROM "ShippingPort"
- WHERE "isActive" AND "deletedAt" IS NULL AND (code ILIKE $1 OR name ILIKE $1 OR "asciiName" ILIKE $1 OR country ILIKE $1 OR replace(code,' ','') ILIKE $2)
- ORDER BY (code=$3) DESC, country,name,code LIMIT 201`,pattern,`%${q.replace(/\s/g,'')}%`,query.trim().replace(/\s/g,'').toUpperCase());
+ WHERE "isActive" AND "deletedAt" IS NULL AND code = ANY($4::text[]) AND (code ILIKE $1 OR name ILIKE $1 OR "asciiName" ILIKE $1 OR country ILIKE $1 OR replace(code,' ','') ILIKE $2)
+ ORDER BY (code=$3) DESC, country,name,code LIMIT 201`,pattern,`%${q.replace(/\s/g,'')}%`,query.trim().replace(/\s/g,'').toUpperCase(),searchScope);
  return {rows:rows.slice(0,200),hasMore:rows.length>200};
 }
 export function shippingPortFields(data:any,mode:string){

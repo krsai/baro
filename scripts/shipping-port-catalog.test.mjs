@@ -22,8 +22,8 @@ test('official worldwide port catalogue, literal search, real FK persistence, is
   const db=f.db,s=await seedChangeApproval(db),source=JSON.parse(readFileSync('backend/data/shipping-ports-source.json','utf8'));
   const count=(await db.$queryRawUnsafe('SELECT count(*)::int AS count FROM "ShippingPort"'))[0].count;assert.equal(count,source.count);assert.ok(count>17000);
   assert.equal((await searchShippingPorts(db,'KR PUS')).rows[0].code,'KRPUS');assert.equal((await searchShippingPorts(db,'VNHPH')).rows[0].code,'VNHPH');
-  assert.ok((await searchShippingPorts(db,'Rotterdam')).rows.some(row=>row.code==='NLRTM'));
-  assert.ok((await searchShippingPorts(db,'')).hasMore);assert.deepEqual((await searchShippingPorts(db,'%')).rows,[]);
+  assert.deepEqual((await searchShippingPorts(db,'Rotterdam')).rows,[]);
+  const gateways=await searchShippingPorts(db,'');assert.equal(gateways.rows.length,20);assert.equal(gateways.hasMore,false);assert.deepEqual((await searchShippingPorts(db,'Chu Lai')).rows,[]);assert.deepEqual((await searchShippingPorts(db,'%')).rows,[]);
   await assert.rejects(searchShippingPorts(db,'a'.repeat(161)),/SHIPPING_INVALID/);
   const roadLocations={ORIGIN_DOOR:'Haiphong (VNHPH)',DESTINATION_DOOR:'Incheon International Airport (ICN)'};
   const road=await saveFreight(db,s.company.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'ROAD',customerId:s.vendor.id,data:{cargo:'Garments',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:roadLocations}});

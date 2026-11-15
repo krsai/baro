@@ -1,0 +1,9 @@
+{
+  "description": "BARO primary gateway search shortlist for existing KR/JP/CN/VN scope. Search policy only; does not delete or merge catalogue records or historical references.",
+  "codes": [
+    "KRPUS", "KRINC", "KRPTK", "KRKAN",
+    "JPTYO", "JPYOK", "JPOSA", "JPUKB",
+    "CNSHG", "CNNBO", "CNSZP", "CNGZG", "CNQDG", "CNTXG", "CNDAL", "CNXMG",
+    "VNHPH", "VNSGN", "VNTOT", "VNDAD"
+  ]
+}
