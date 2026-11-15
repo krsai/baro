@@ -1,3 +1,4 @@
+import {assertDistinctShippingParties} from './shippingParties';
 import {shippingCargo,validateOogTransition} from './shippingCargo';
 import {generalCustomerFields,shippingGeneralCustomer,SHIPPING_GENERAL_CUSTOMER_CODE} from './shippingGeneralCustomer';
 import {shippingRouteFields} from './shippingRoute';
@@ -83,6 +84,7 @@ async function normalize(tx:any,orgId:number,type:keyof typeof tables,input:any,
    data[role+'Party']={};for(const field of ['name','address','contactName','phone','email'])data[role+'Party'][field]=optional(document[field],field==='address'?1000:field==='name'?200:320);
   }
  }
+ assertDistinctShippingParties(data.shipperParty,data.consigneeParty);
  if(d.customerRole!=null){
   data.customerRole=member(d.customerRole,['shipper','consignee','notify']);
   if(data[data.customerRole+'Id']!==customerId)fail('FREIGHT_CUSTOMER_ROLE');

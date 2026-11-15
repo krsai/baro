@@ -1,3 +1,4 @@
+import {assertDistinctShippingParties} from './shippingParties';
 import {listShippingPresets,saveShippingPreset} from './shippingPresets';
 import {shippingGeneralCustomer} from './shippingGeneralCustomer';
 import {validateOogTransition} from './shippingCargo';
@@ -17,6 +18,7 @@ async function actor(db:any,orgId:number,actorId:number){
 }
 const requestFields=(input:any)=>{
  if(Object.keys(input||{}).some(key=>!['mode','data','clientKey','forwarderOrgId','version'].includes(key)))fail('SHIPPING_INVALID');
+ assertDistinctShippingParties({id:input?.data?.shipperId},{id:input?.data?.consigneeId});
  const value=transportSnapshot({...input,status:'DRAFT'});
  for(const key of ['origin','destination','shipper','consignee','cargo'])if(!value.data[key]?.trim())fail('TRANSPORT_REQUIRED');
  if(!value.data.workScope)fail('TRANSPORT_REQUIRED');
