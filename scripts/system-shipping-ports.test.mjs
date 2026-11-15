@@ -28,7 +28,7 @@ test('all SYSTEM port routes require the authenticated administrator before touc
  const routes=new Map(),app={get:(path,work)=>routes.set('get:'+path,work),put:(path,work)=>routes.set('put:'+path,work)};
  registerSystemShippingPortRoutes(app,new Proxy({},{get:()=>{throw Error('No unauthorized DB access');}}),{requireSystemAdmin:async()=>null});
  for(const route of routes.values())await route({body:{email:'fake-admin@example.test'}},{json:()=>{throw Error('No unauthorized response');}});
- assert.equal(routes.size,2);
+ assert.deepEqual([...routes.keys()].sort(),['get:/system/shipping-airports','get:/system/shipping-ports','put:/system/shipping-ports/:code']);
 });
 test('SYSTEM-only state management: filtered search, revision/retry, referenced-port protection, audit and source preservation',async()=>{
  const f=await changeApprovalFixture();try{

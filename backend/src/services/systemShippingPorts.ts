@@ -1,3 +1,4 @@
+import {searchShippingAirports} from './shippingAirports';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -32,6 +33,7 @@ export async function changeSystemShippingPort(db:any,email:string,code:string,i
  });
 }
 export function registerSystemShippingPortRoutes(app:any,db:any,gates:any){
+ app.get('/system/shipping-airports',async(req:any,res:any)=>{const user=await gates.requireSystemAdmin(req,res);if(user){await actor(db,user.requesterEmail);res.json(searchShippingAirports(req.query.q||''));}});
  app.get('/system/shipping-ports',async(req:any,res:any)=>{const user=await gates.requireSystemAdmin(req,res);if(user)res.json(await listSystemShippingPorts(db,user.requesterEmail,req.query));});
  app.put('/system/shipping-ports/:code',async(req:any,res:any)=>{const user=await gates.requireSystemAdmin(req,res);if(user)res.json(await changeSystemShippingPort(db,user.requesterEmail,req.params.code,req.body));});
 }

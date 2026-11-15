@@ -885,6 +885,7 @@ const MainLayout = () => {
           { label: getUiMessage('menu.transactionMasters', 'Accounting codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           { label: getUiMessage('menu.expenseUnits', 'Units', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-units' },
           { label: getUiMessage('menu.shippingPorts', 'Ports', languageCode), icon: <LocalShippingOutlinedIcon />, path: '/system-setting/shipping-ports' },
+          { label: getUiMessage('menu.shippingAirports', 'Airports', languageCode), icon: <LocalShippingOutlinedIcon />, path: '/system-setting/shipping-airports' },
           { label: getUiMessage('menu.partnerIndustries', 'Partner industries', languageCode), icon: <DnsIcon />, path: '/system-setting/partner-industries' },
           {
             label: getUiMessage('menu.onboardingApproval', '\uAC00\uC785 \uC2B9\uC778', languageCode),

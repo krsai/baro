@@ -5047,3 +5047,5 @@ runtime 조회값:
 # 2026-11-13 Missing partner type selection
 
 - When subscriber partyKind is absent, allow explicit local partner type selection and saving. Explicit input overrides the previous local value; omitted input preserves it. Existing official types remain read-only and authoritative on the server. Preserve the subscriber source, shared identity, FKs and historical snapshots; retain corporate code and tax-number validation.
+
+- SYSTEM 항만 목록은 삭제 상태 필터 없이 삭제된 항만을 제외한다. 기존 참조 차단·논리 삭제·감사·복구 API는 보존한다. 항만/공항 검색칸은 PC 360px·모바일 가용 너비다. 공항 목록(`/system-setting/shipping-airports`)은 실제 SYSTEM_ADMIN만 기존 40개 기준자료를 검색하는 조회 전용 메뉴다. 공항 삭제·상태 저장은 미구현이다.

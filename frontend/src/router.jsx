@@ -1,3 +1,4 @@
+import SystemShippingAirports from './pages/App/system/SystemShippingAirports';
 import ShippingRequests from './pages/App/ShippingRequests';
 import SystemShippingPorts from './pages/App/system/SystemShippingPorts';
 import React from 'react';
@@ -307,6 +308,7 @@ const router = createBrowserRouter([
           },
           { path: 'system-setting/entities', element: <SystemEntities /> },
           { path: 'system-setting/shipping-ports', element: <SystemShippingPorts /> },
+          { path: 'system-setting/shipping-airports', element: <SystemShippingAirports /> },
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
           { path: 'app-settings', element: <ApplicationSettings />,
           },
