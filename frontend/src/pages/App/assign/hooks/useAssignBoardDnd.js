@@ -1,5 +1,6 @@
+import {assignmentKeyboardCoordinates,resetAssignmentKeyboardTarget} from '../../../../utils/assignmentKeyboard.mjs';
 import { useCallback } from 'react';
-import { PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { resolveCardCustomerDisplay } from '../utils/assignmentCard';
 
 /**
@@ -22,6 +23,7 @@ export const useAssignBoardDnd = ({
 }) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter:assignmentKeyboardCoordinates,scrollBehavior:'auto',keyboardCodes:{start:['Space'],cancel:['Escape','Tab'],end:['Space','Enter']} }),
   );
 
   const handleDragStart = useCallback(
@@ -29,6 +31,7 @@ export const useAssignBoardDnd = ({
       if (!persistReady || loading) return;
       const { active } = event;
       if (!active) return;
+      resetAssignmentKeyboardTarget(active);
       const id = String(active.id);
 
       if (id.startsWith('card-')) {

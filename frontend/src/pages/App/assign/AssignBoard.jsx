@@ -1,3 +1,4 @@
+import {assignmentCollisionDetection as assignBoardCollisionDetection,assignmentDropEvent} from '../../../utils/assignmentKeyboard.mjs';
 import { editableAssignmentStyleIds } from './utils/assignmentLoading.mjs';
 import { usePageNaming } from '../../../context/PageNamingContext';
 import SearchPanel from '../../../components/SearchPanel';
@@ -38,7 +39,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { DndContext, DragOverlay, useDroppable, pointerWithin, MeasuringStrategy } from '@dnd-kit/core';
+import { DndContext, DragOverlay, useDroppable, MeasuringStrategy } from '@dnd-kit/core';
 import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { useBeforeUnload, useLocation } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -124,27 +125,6 @@ import {
 const { useDeferredValue } = React;
 const ASSIGN_BOARD_SYNC_SOURCE = 'assignment-board';
 
-const assignBoardCollisionDetection = (args) => {
-  const pointerCollisions = pointerWithin(args);
-  if (pointerCollisions.length > 0) {
-    const activeId = String(args?.active?.id || '');
-    if (activeId.startsWith('assign-') || activeId.startsWith('card-')) {
-      const unassignedPanelCollision = pointerCollisions.find(
-        (collision) => String(collision?.id || '') === 'assignment-cancel-drop'
-      );
-      if (unassignedPanelCollision) {
-        return [
-          unassignedPanelCollision,
-          ...pointerCollisions.filter(
-            (collision) => collision !== unassignedPanelCollision
-          ),
-        ];
-      }
-    }
-    return pointerCollisions;
-  }
-  return [];
-};
 
 // The default (WhileDragging) strategy only remeasures droppable rects on
 // scroll/resize events it detects. On some Windows display-scaling setups
@@ -6934,7 +6914,7 @@ const AssignBoard = () => {
         collisionDetection={assignBoardCollisionDetection}
         measuring={ASSIGN_BOARD_DND_MEASURING}
         onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        onDragEnd={event=>handleDragEnd(assignmentDropEvent(event))}
         onDragCancel={handleDragCancel}
         autoScroll={false}
       >

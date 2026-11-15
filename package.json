@@ -20,6 +20,7 @@
     "test:company-connection-actions": "node scripts/company-connections-browser.test.mjs --lookup-only",
     "test:business-legal-form": "npm --prefix backend run build && node --test scripts/business-legal-form.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/entity-profile-browser.test.mjs --legal-form-only",
     "test:ledger-registration": "npm --prefix backend run build && node --test scripts/ledger-registration.test.mjs scripts/approval-stage-authority.test.mjs scripts/approval-vacancy.test.mjs scripts/final-drafter-approval.test.mjs scripts/expense-payee.test.mjs scripts/company-industries.test.mjs scripts/company-connections.test.mjs scripts/change-approvals.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/ledger-registration-browser.test.mjs && node scripts/approval-candidate-shortage-browser.test.mjs && node scripts/approval-settings-browser.test.mjs",
+    "test:keyboard-actions": "node --test scripts/assignment-keyboard.test.mjs && node scripts/keyboard-actions-browser.test.mjs && node scripts/workspace-tabs-browser.test.mjs",
     "test:keyboard-audit": "node --test scripts/keyboard-contract-audit.test.mjs",
     "test:keyboard-domains": "node scripts/keyboard-domain-browser.test.mjs",
     "test:keyboard-navigation": "node scripts/keyboard-navigation-browser.test.mjs && node scripts/global-lookup-browser.test.mjs && node scripts/workspace-dialog-browser.test.mjs",

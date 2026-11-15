@@ -1,4 +1,5 @@
 import React, { memo, useCallback } from 'react';
+import {activateOnKeyboard,openContextMenuFor,keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Avatar, Box, Chip, LinearProgress, Stack, Typography } from '@mui/material';
 import { getUiMessage } from '../../../../constants/uiMessages';
@@ -111,6 +112,27 @@ const CompactBoardCard = ({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
+      tabIndex={0}
+      aria-disabled={undefined}
+      data-keyboard-context-menu={onContextMenu?'true':undefined}
+      data-keyboard-drag={!disabled?'true':undefined}
+      title={getUiMessage('assign.cardKeyboardHelp','Enter: select/open menu. Space: pick up, arrows: choose target, Space/Enter: drop, Esc/Tab: cancel. Shift+F10: menu.',languageCode)}
+      onKeyDown={event=>{
+        if(event.target!==event.currentTarget)return;
+        const action=keyboardAction(event,'segment');
+        if(!action&&!keyboardAction(event,'context-menu'))return;
+        listeners?.onKeyDown?.(event);
+        if(event.defaultPrevented||isDragging)return;
+        if(disabled&&event.key===' '&&action==='confirm'){
+          event.preventDefault();
+          if(onDisabledDragAttempt){const rect=event.currentTarget.getBoundingClientRect();onDisabledDragAttempt({clientX:rect.left,clientY:rect.top});}
+          else if(onContextMenu)openContextMenuFor(event.currentTarget);
+          else onClick?.(event);
+        }else if(event.key==='Enter'&&action==='confirm'){
+          if(onClick)activateOnKeyboard(event);
+          else if(onContextMenu){event.preventDefault();openContextMenuFor(event.currentTarget);}
+        }
+      }}
       onPointerDown={handlePointerDown}
       onClick={onClick}
       onContextMenu={onContextMenu}

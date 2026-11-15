@@ -287,6 +287,7 @@ const CustomerProductionReport = () => {
               return <React.Fragment key={row.key}>
                 <TableRow
                   hover
+                  tabIndex={!hasMultipleStyles&&soleStyle?0:undefined} data-keyboard-context-menu={!hasMultipleStyles&&soleStyle?'true':undefined} aria-haspopup={!hasMultipleStyles&&soleStyle?'menu':undefined}
                   onContextMenu={!hasMultipleStyles && soleStyle ? (event) => handleRowContextMenu(event, soleStyle) : undefined}
                 >
                   <TableCell>{rowCustomerLabel(row, languageCode)}</TableCell>
@@ -403,7 +404,7 @@ const CustomerProductionReport = () => {
                   <TableCell><ReportProgressCell percent={dailyProducedRow?.progressPercent} /></TableCell>
                   <TableCell><ReportStatusChip status={dailyProducedRow?.status} languageCode={languageCode} /></TableCell>
                 </TableRow>
-                {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>
+                {(dailyProducedRow?.styles || []).map((styleRow) => <TableRow key={styleRow.styleId} tabIndex={0} data-keyboard-context-menu="true" aria-haspopup="menu" onContextMenu={(event) => handleRowContextMenu(event, styleRow)}>
                   <TableCell>{styleRow.styleName || styleRow.styleCode || '-'}</TableCell>
                   <TableCell align="right">{fmt(styleRow.producedQuantity)}/{fmt(styleRow.orderedQuantity)}{styleRow.priorQuantity > 0 && <Typography variant="caption" display="block">{languageCode === 'ko' ? '이전 완료' : languageCode === 'vi' ? 'Hoàn thành trước' : 'Previous completion'} {fmt(styleRow.priorQuantity)}</Typography>}</TableCell>
                   <TableCell><ReportProgressCell percent={styleRow.progressPercent} status={styleRow.status} /></TableCell>

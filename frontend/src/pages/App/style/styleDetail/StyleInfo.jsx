@@ -79,6 +79,7 @@ const StyleInfo = ({
   const { activeOrgId } = useAuth();
   const packText=packagingText[languageCode]||packagingText.en;
   const { imageUrls = [] } = formData;
+  const imageFileInput=React.useRef(null);
   const [mainImageIndex, setMainImageIndex] = useState(0);
   const [imageInputMode, setImageInputMode] = useState('file');
   const [imageUrlInput, setImageUrlInput] = useState('');
@@ -514,6 +515,7 @@ const StyleInfo = ({
             )}
 
             <input
+              ref={imageFileInput}
               accept="image/*"
               style={{ display: 'none' }}
               id="raised-button-file"
@@ -559,17 +561,17 @@ const StyleInfo = ({
                     spacing={1}
                     sx={{ width: '100%', alignItems: { xs: 'stretch', sm: 'center' } }}
                   >
-                    <label htmlFor="raised-button-file">
+
                       <Button
                         variant="contained"
-                        component="span"
+                        onClick={()=>imageFileInput.current?.click()}
                         startIcon={<PhotoCamera />}
                         disabled={uploadingImages}
                         sx={{ whiteSpace: 'nowrap' }}
                       >
                         사진 올리기
                       </Button>
-                    </label>
+
                     <Typography variant="caption" color="text.secondary">
                       JPG/PNG/WebP 권장, 여러 장 선택 가능
                     </Typography>

@@ -5,6 +5,7 @@ const suites=[
  ['brand-sewing-browser'],['work-lookup-review-browser'],['work-style-overview-browser'],
  ['style-product-ownership-browser'],['process-version-protection-browser'],['order-layout-drag-browser'],
  ['expense-editor-browser','--lookup-only'],['ledger-flow-lookup-browser'],
+ ['keyboard-actions-browser'],['workspace-tabs-browser'],['business-accounts-browser'],['dashboard-widgets-browser'],['work-time-approval-settings-browser'],
  ['employee-salary-preview-browser'],['holiday-leave-browser'],['work-time-requests-browser'],['payroll-management-browser'],
 ];
 const results=[];
