@@ -4903,6 +4903,7 @@ runtime 조회값:
 
 - 전 화면 공통 키보드 계약과 검수 진입점은 `frontend/src/theme/README.md`를 따른다. 물류 전용 입력 이동 규칙을 따로 만들지 않는다. `textInputKeyDown`은 문서/일반 폼의 Enter를 함께 처리하고 `activateOnKeyboard`는 클릭/더블클릭 행·카드의 키보드 진입을 제공한다. 실제 권한·읽기 전용 상태·업무 콜백은 유지하며 키 이동으로 신규 기준정보를 등록하지 않는다. 전 화면 JSX 감사와 영역별 브라우저 회귀는 각각 `test:keyboard-audit`, `test:keyboard-domains`로 수행하며 운영 인수와 구분한다.
 
+- 최신 장소 선택 기준: 항만·공항 검색은 왼쪽 주소록 영역에 둔다. 선택 시 새 장소 초안으로 전환해 주소 이름·주소를 선택한 이름·코드로 바꾸고 이전 담당자·연락처와 주소록 ID/version을 해제한다. 부가 안내는 표시하지 않는다. 공항은 shipping-airports-scope.json의 주요 공항 100개로 검색·재생성 후보를 제한한다. 항만과 세부 터미널 분리는 설계 확정·구현 미착수다. 고객·포워더 등 SR 작성 주체와 무관하게 세부 터미널은 선택 입력이며 작성 시 지정하거나 미정으로 두고 후속 지정할 수 있다. 항만 선택으로 특정 터미널을 자동 확정하지 않는다.
 - 트러킹은 출발지·도착지 두 지점을 유지하되 공장/창고로 제한하지 않는다. 각 지점의 기존 주소록 입력 창에서 항만 검색과 공항 검색을 제공한다. 선택 결과는 이름·코드가 포함된 주소 초안이며 명시적 주소 적용 후 운송건의 routeLocations에 저장한다. 고객별 주소록 저장/수정/조회, 미저장 확인, 실패·결과 불명 잠금은 유지한다. 해상 전용 originPortCode/destinationPortCode FK를 트러킹/공항 코드로 오용하지 않는다. 항만은 기존 활성 ShippingPort 기준, 공항은 OurAirports 공개 자료의 IATA 보유 비폐쇄 공항 목록을 사용한다. 공항 검색 ID는 실제 원자료 ident이며 중복 IATA를 합치지 않는다. 공항 자료·원자료 해시/출처는 backend/data/shipping-airports*.json, 생성기는 scripts/build-shipping-airports.mjs다. 코드·이름·도시·국가·ICAO로 검색하고 결과는 200개로 제한한다. 업무 회사 권한과 기존 route/public snapshot 계약을 유지하며 migration·운영 데이터 일괄 변경은 없다.
 
 - 운송 방식과 SHPR/CNEE/NOTIFY의 단일 선택 탐색은 공통 `formFocus.mjs`를 사용한다. Tab은 그룹 사이, 방향키/Home/End는 그룹 안 탐색이며 Enter/Space 확정 후 다음 입력으로 이동한다. 초기 명시 포커스는 비동기 입력 우선 처리에 의해 고객으로 덮어쓰지 않는다. 선택 배경과 포커스 테두리를 공통 테마에서 구분한다. 운송 방식 전용 키보드 처리는 두지 않는다.

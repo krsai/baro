@@ -8,8 +8,10 @@ test('airport lookup searches IATA, ICAO, name and city with bounded literal res
  assert.ok(searchShippingAirports('RKSI').rows.some(row=>row.code==='ICN'));
  assert.ok(searchShippingAirports('Ho Chi Minh').rows.some(row=>row.code==='SGN'));
  assert.deepEqual(searchShippingAirports('%').rows,[]);
- assert.equal(searchShippingAirports('').rows.length,200);
- assert.equal(searchShippingAirports('').hasMore,true);
+ assert.equal(searchShippingAirports('').rows.length,100);
+ assert.deepEqual(searchShippingAirports('AAA').rows,[]);
+ assert.equal(searchShippingAirports('HPH').rows[0].code,'HPH');
+ assert.equal(searchShippingAirports('').hasMore,false);
  assert.throws(()=>searchShippingAirports('x'.repeat(161)),/SHIPPING_INVALID/);
 });
 test('trucking terminal selections remain route addresses through validation and public snapshot',()=>{

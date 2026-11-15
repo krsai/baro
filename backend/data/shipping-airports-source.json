@@ -5,6 +5,7 @@
   "retrieved": "2026-11-15T09:27:40.040Z",
   "license": "Public domain",
   "sha256": "e2e65a3ddaf76170c0e2c373cb8b68597bdf3b59d243c4d6db454d48498ba6d7",
-  "filter": "Airports with IATA codes; excludes closed facilities, heliports and seaplane bases. Codes are search labels, not unique record identifiers.",
-  "count": 8799
+  "filter": "Airports with IATA codes; excludes closed facilities, heliports and seaplane bases. Codes are search labels, not unique record identifiers. Restricted to explicit IATA shortlist in shipping-airports-scope.json; original source hash retained.",
+  "count": 100,
+  "originalCount": 8799
 }
