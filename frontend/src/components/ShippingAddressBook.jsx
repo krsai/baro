@@ -10,7 +10,7 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
 const record=row=>({id:row.id,version:row.version,...addressValue({...row.data,label:row.label})});
-export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose,title,personLabel,resolveCustomer,locationLookup,disabled=false,testId='shipping-address-book'}){
+export default function ShippingAddressBook({orgId,customerId,current,registeredParty,languageCode,onLoad,onClose,title,personLabel,resolveCustomer,locationLookup,disabled=false,testId='shipping-address-book'}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [initial]=useState(()=>({id:crypto.randomUUID(),...addressValue(current)}));
  const [scopeCustomerId,setScopeCustomerId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(initial),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[busy,setBusy]=useState(false),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
@@ -29,7 +29,7 @@ export default function ShippingAddressBook({orgId,customerId,current,languageCo
  const leave=async()=>!blocked&&(!dirty||await dialogs.confirm(t.discard));
  const open=async row=>{
   if(!await leave())return;
-  const next=row?record(row):{id:crypto.randomUUID(),...addressValue()};
+  const next=row?.registered?{id:crypto.randomUUID(),...addressValue({...row.data,label:row.label})}:row?record(row):{id:crypto.randomUUID(),...addressValue()};
   baseline.current=JSON.stringify(next);setEdit(next);setSaveError(false);
  };
  const mutate=async(remove=false)=>{
@@ -49,7 +49,8 @@ export default function ShippingAddressBook({orgId,customerId,current,languageCo
   }catch(e){const unknown=!e.status||e.status>=500;if(!unknown)pending.current=null;if(alive.current){setUncertain(unknown);setSaveError(true);}}
   finally{lock.current=false;if(alive.current)setBusy(false);}
  };
- const filtered=rows.filter(row=>[row.label,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+ const registered=registeredParty?.address?.trim()?{id:'registered-party',label:registeredParty.name,data:addressValue({...registeredParty,label:registeredParty.name}),registered:true}:null;
+ const filtered=[...(registered?[registered]:[]),...rows].filter(row=>[row.label,row.data.address,row.data.contactName,row.data.phone].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
  const apply=()=>{onLoad(addressValue(edit));onClose();};
  return <Dialog open fullWidth maxWidth="md" onClose={async()=>{if(await leave())onClose();}} data-testid={testId} aria-label={title||t.savedAddresses}>
   <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
