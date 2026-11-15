@@ -8,7 +8,7 @@ const {companyConnectionCandidates,connectPartnerCompany,registerCompanyConnecti
 test('connected partners use public subscriber identity while retaining local IDs and historical codes',async()=>{
  const {attachLinkedCompanies,linkedPartnerCompany}=require('../backend/dist/services/companyConnections');
  const company={id:1845,name:'DEX LOGIS',code:'DEXL',country:'VN',businessNumber:null};
- const db={$queryRawUnsafe:async()=>[],organization:{findFirst:async()=>({id:1845})},companyIdentity:{findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
+ const db={$queryRawUnsafe:async()=>[],organization:{findFirst:async()=>({id:1845})},companyIdentity:{findUnique:async()=>null,findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
  const [row]=await attachLinkedCompanies(db,1,[{entityId:1846,id:1846,code:'DEX'}]);
  assert.equal(row.code,'DEX');assert.equal(row.entityId,1846);assert.equal(row.linkedCompany.code,'DEXL');
  assert.equal((await linkedPartnerCompany(db,1,1846)).id,1845);
@@ -33,7 +33,7 @@ test('linked corporate code guard supports atomic registration and preserves unl
  }finally{await db.close();}
 });
 test('a customer relationship cannot authorize rewriting another SaaS subscriber or another company-owned profile',async()=>{
- const db={employee:{findFirst:async()=>({id:125})}};
+ const db={$queryRawUnsafe:async()=>[],employee:{findFirst:async()=>({id:125})}};
  await assert.rejects(assertPartnerProfileEditable(db,1,{id:2,ownerOrgId:null,dataOwnerOrgId:null}),/PROFILE_IS_PRIVATE/);
  await assert.rejects(assertPartnerProfileEditable(db,1,{id:12,ownerOrgId:3,dataOwnerOrgId:null}),/PROFILE_IS_PRIVATE/);
  await assertPartnerProfileEditable(db,1,{id:11,ownerOrgId:1,dataOwnerOrgId:null});
@@ -46,7 +46,7 @@ test('candidate identity revision is stable across SQL and Prisma field order',(
 function memory(){
  const target={id:2,name:'DEX LOGIS',nameKo:'덱스로지스',nameVi:null,code:'DEXLOG',country:'VN',businessNumber:'123-456'},links=[];
  const local={id:11,name:'DEX LOGIS',nameKo:null,nameVi:null,code:'DEX',country:'VN',businessNumber:'123456'};
- const db={companyIdentity:{findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},organization:{findUnique:async()=>local,findFirst:async({where})=>where.id===11?{...local,outsourcingServiceAssignments:[]}:where.id===2?target:null,findMany:async()=>[target]},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>where.orgId===1&&where.id===101?{id:101}:null},companyPartnerLink:{findUnique:async()=>links[0]||null,create:async({data})=>{links.push(data);return data;},findMany:async()=>links.map(row=>({...row,source:{id:1,name:'BARO',code:'BARO'},target,createdAt:new Date()}))},$queryRawUnsafe:async(sql)=>sql.startsWith('SELECT id,name')?[target]:[]};
+ const db={companyIdentity:{findUnique:async()=>null,findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},organization:{findUnique:async()=>local,findFirst:async({where})=>where.id===11?{...local,outsourcingServiceAssignments:[]}:where.id===2?target:null,findMany:async()=>[target]},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>where.orgId===1&&where.id===101?{id:101}:null},companyPartnerLink:{findUnique:async()=>links[0]||null,create:async({data})=>{links.push(data);return data;},findMany:async()=>links.map(row=>({...row,source:{id:1,name:'BARO',code:'BARO'},target,createdAt:new Date()}))},$queryRawUnsafe:async(sql)=>sql.startsWith('SELECT id,name')?[target]:[]};
  db.$transaction=async fn=>fn(db);return {db,target,local,links};
 }
 test('business-number match uses only public identity and connects local vendor to separate SaaS tenant',async()=>{

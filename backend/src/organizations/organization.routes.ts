@@ -1,3 +1,4 @@
+import {publishCompanyProfileDefault} from '../services/companyProfileDefaults';
 import {companyDocumentContactUpdate} from '../services/companyDocumentContact';
 import {businessLegalForm} from '../services/businessLegalForm';
 import {saveCompanyProfileAndClassification} from '../services/companyIndustries';
@@ -237,9 +238,11 @@ export const createOrganizationRouter = ({
     };
 
     const combined=req.body?.classification!==undefined?await saveCompanyProfileAndClassification(prisma,id,employee!.id,organizationUpdateData,req.body.classification):null;
-    const organization = combined?.organization || await prisma.organization.update({
-      where: { id },
-      data: organizationUpdateData,
+    const organization = combined?.organization || await prisma.$transaction(async tx=>{
+      const before=await tx.organization.findUnique({where:{id}});
+      const saved=await tx.organization.update({where:{id},data:organizationUpdateData});
+      if(isOrgAdmin)await publishCompanyProfileDefault(tx,id,employee!.id,before,saved);
+      return saved;
     });
 
     if (isSystemAdmin) {

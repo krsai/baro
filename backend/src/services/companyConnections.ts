@@ -1,3 +1,4 @@
+import {profileSnapshot,readCompanyProfileDefaults} from './companyProfileDefaults';
 import {attachPartnerContacts} from './partnerContacts';
 import {createHttpError} from '../utils/http';
 import {editRevision,retryEditTransaction} from '../utils/editRevision';
@@ -61,7 +62,8 @@ export async function connectPartnerCompany(tx:any,orgId:number,entityId:number,
 // Customer organization FKs can predate tenant registration. A relationship
 // never authorizes rewriting an independently registered company's profile.
 export async function assertPartnerProfileEditable(tx:any,orgId:number,entity:any){
- if(entity.ownerOrgId===orgId||entity.dataOwnerOrgId===orgId)return;
+ if(entity.ownerOrgId===orgId)return;
+ if(entity.dataOwnerOrgId===orgId){const [source]=await readCompanyProfileDefaults(tx,[entity.id]);if(source?.selfData||source?.legacySelfManaged)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');return;}
  if(entity.ownerOrgId!=null||entity.dataOwnerOrgId!=null||await tx.employee.findFirst({where:{orgId:entity.id},select:{id:true}}))throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');
 }
 export function registerCompanyConnectionRoutes(app:any,db:any,gates:any){
@@ -95,7 +97,7 @@ export async function linkedPartnerCompany(db:any,orgId:number,entityId?:number,
 const publicProfile=(company:any)=>company?Object.fromEntries((company.subscriberOrgId?['name','nameKo','nameVi','address','country','businessNumber','businessLegalForm','partyKind','countryCode','representative','phone','email']:['name','nameKo','nameVi','address','country','businessNumber']).map(key=>[key,company[key]??null])):{};
 export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
  if(!rows.length)return rows;
- const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,target:{select:publicSelect}}});
+ const links=await db.companyPartnerLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},select:{entityId:true,createdAt:true,target:{select:publicSelect}}});
  const common=await db.companyIdentityLink.findMany({where:{orgId,entityId:{in:rows.map(row=>row.entityId)}},include:{identity:true}});
  await Promise.all(common.map(async(link:any)=>{link.identity=await currentIdentity(db,link.identity);}));
  await Promise.all(links.map(async(link:any)=>{link.target=await publicCompanyDetails(db,link.target);}));
@@ -103,5 +105,5 @@ export async function attachLinkedCompanies(db:any,orgId:number,rows:any[]){
  // Confirmed identities share their public industry, including the original
  // manager registration. Billing codes and business records remain private.
  const profiles=db.partnerClassification&&targets.size?await db.partnerClassification.findMany({where:{OR:[...new Set(targets.values())].map(id=>({orgId:id,entityId:id}))},include:{industries:{include:{industry:{include:{partnerRole:true}}}}}}):[];
- return attachPartnerContacts(db,orgId,rows.map(row=>{const profile=profiles.find((p:any)=>p.orgId===targets.get(row.entityId)&&p.orgId===p.entityId),industries=profile?.industries.map((l:any)=>l.industry)||[];return {...row,...publicProfile(common.find((link:any)=>link.entityId===row.entityId)?.identity||links.find((link:any)=>link.entityId===row.entityId)?.target),officialClassification:(common.find((link:any)=>link.entityId===row.entityId)?.identity||links.find((link:any)=>link.entityId===row.entityId)?.target)?.officialClassification||(profile?{revision:profile.revision,industryIds:industries.map((i:any)=>i.id),roleIds:[...new Set(industries.map((i:any)=>i.partnerRoleId))],industries}:null),linkedCompany:common.some((link:any)=>link.entityId===row.entityId)?identityDto(common.find((link:any)=>link.entityId===row.entityId).identity,true):links.find((link:any)=>link.entityId===row.entityId)?.target??null};}));
+ return attachPartnerContacts(db,orgId,rows.map(row=>{const profile=profiles.find((p:any)=>p.orgId===targets.get(row.entityId)&&p.orgId===p.entityId),industries=profile?.industries.map((l:any)=>l.industry)||[];return {...row,localContactProfile:profileSnapshot(row),defaultSourceEntityId:targets.get(row.entityId)||row.entityId,contactConnectedAt:common.find((link:any)=>link.entityId===row.entityId)?.createdAt||links.find((link:any)=>link.entityId===row.entityId)?.createdAt||row.contactConnectedAt||row.createdAt,...publicProfile(common.find((link:any)=>link.entityId===row.entityId)?.identity||links.find((link:any)=>link.entityId===row.entityId)?.target),officialClassification:(common.find((link:any)=>link.entityId===row.entityId)?.identity||links.find((link:any)=>link.entityId===row.entityId)?.target)?.officialClassification||(profile?{revision:profile.revision,industryIds:industries.map((i:any)=>i.id),roleIds:[...new Set(industries.map((i:any)=>i.partnerRoleId))],industries}:null),linkedCompany:common.some((link:any)=>link.entityId===row.entityId)?identityDto(common.find((link:any)=>link.entityId===row.entityId).identity,true):links.find((link:any)=>link.entityId===row.entityId)?.target??null};}));
 }

@@ -451,7 +451,23 @@ model ProcessMasterOptionRelation {
   @@index([childOptionId])
 }
 
+model CompanyProfileDefault {
+ entityId Int @id
+ registrationOwnerOrgId Int?
+ registrationData Json
+ data Json
+ revision Int @default(1)
+ updatedByEmployeeId Int
+ createdAt DateTime @default(now()) @db.Timestamp(3)
+ updatedAt DateTime @default(now()) @db.Timestamp(3)
+ entity Organization @relation("CompanyDefaultEntity",fields:[entityId],references:[id],onDelete:Restrict)
+ registrationOwner Organization? @relation("CompanyDefaultRegistrar",fields:[registrationOwnerOrgId],references:[id],onDelete:Restrict)
+ actor Employee @relation("CompanyDefaultActor",fields:[updatedByEmployeeId,entityId],references:[id,orgId],onDelete:Restrict,map:"CompanyProfileDefault_actor_fkey")
+}
+
 model PartnerContact {
+ base Json?
+ mode String?
  orgId Int
  entityId Int
  data Json @default("{}")
@@ -465,6 +481,8 @@ model PartnerContact {
 }
 
 model Organization {
+ companyDefault CompanyProfileDefault? @relation("CompanyDefaultEntity")
+ registeredCompanyDefaults CompanyProfileDefault[] @relation("CompanyDefaultRegistrar")
  ownedPartnerContacts PartnerContact[] @relation("PartnerContactOwner")
  partnerContacts PartnerContact[] @relation("PartnerContactEntity")
   workTimeRequests WorkTimeRequest[]
@@ -1111,6 +1129,7 @@ model Warehouse {
 
 
 model Employee {
+ companyDefaultEdits CompanyProfileDefault[] @relation("CompanyDefaultActor")
  partnerContactEdits PartnerContact[] @relation("PartnerContactActor")
   orderInvoicePolicies OrderInvoicePolicy[] @relation("OrderInvoicePolicyActor")
   orderInvoicePolicyEvents OrderInvoicePolicyEvent[] @relation("OrderInvoicePolicyEventActor")

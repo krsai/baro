@@ -21,8 +21,8 @@ export async function loadPartnerEditor(db:any,orgId:number,actorId:number,entit
  }
  const entity=target.entity,classification=await readClassification(db,orgId,entity.id);
  const canEditProfile=entity.ownerOrgId===orgId||entity.dataOwnerOrgId===orgId||entity.ownerOrgId==null&&entity.dataOwnerOrgId==null&&!await db.employee.findFirst({where:{orgId:entity.id},select:{id:true}});
- const [profile]=await attachLinkedCompanies(db,orgId,[{...entityProfile(entity),id:entity.id,type:entity.type,isActive:entity.isActive,sourceKind:target.kind,relationshipId:target.relationshipId??null,classification,localClassification:classification,contactName:entity.representative??relationship?.managerName??null,contactPhone:entity.phone??relationship?.managerPhone??null,email:entity.email??relationship?.managerEmail??null,...(relationship?{defaultSizeSetCode:relationship.defaultSizeSetCode}:{}),canEditProfile}]);
- return profile;
+ const [profile]=await attachLinkedCompanies(db,orgId,[{...entityProfile(entity),contactConnectedAt:relationship?.createdAt||entity.createdAt,id:entity.id,type:entity.type,isActive:entity.isActive,sourceKind:target.kind,relationshipId:target.relationshipId??null,classification,localClassification:classification,contactName:entity.representative??relationship?.managerName??null,contactPhone:entity.phone??relationship?.managerPhone??null,email:entity.email??relationship?.managerEmail??null,...(relationship?{defaultSizeSetCode:relationship.defaultSizeSetCode}:{}),canEditProfile}]);
+ return {...profile,canEditProfile:profile.contactSourceProtected&&profile.defaultSourceEntityId===entity.id&&entity.ownerOrgId==null?false:canEditProfile};
 }
 export function registerPartnerEditorRoutes(app:any,db:any,gates:any){
  const read=(relationship:boolean)=>async(req:any,res:any)=>{
@@ -38,7 +38,7 @@ export function registerPartnerEditorRoutes(app:any,db:any,gates:any){
    const relationshipId=req.body?.relationshipId===undefined?undefined:Number(req.body.relationshipId);
    const profile=await loadPartnerEditor(tx,orgId,actorId,relationshipId===undefined?entityId:undefined,relationshipId);
    if(profile.id!==entityId)throw createHttpError(400,'INVALID_PARTNER_ID');
-   await savePartnerContacts(tx,orgId,entityId,actorId,req.body?.contacts);
+   await savePartnerContacts(tx,orgId,entityId,actorId,req.body?.contacts,profile);
    if(req.body?.classification!==undefined){if(!profile.canEditProfile)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');await saveClassification(tx,orgId,entityId,actorId,req.body.classification);}
    if(req.body?.defaultSizeSetCode!==undefined){
     if(!profile.canEditProfile||profile.sourceKind!=='CUSTOMER'||!profile.relationshipId)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');

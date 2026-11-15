@@ -9,7 +9,7 @@ export function companyDocumentContactError(error,languageCode,fallback){
 }
 
 export const partnerContactText={
- ko:{title:'거래처 담당자 및 연락처',contactName:'담당자명',phone:'담당자 전화번호',email:'담당자 이메일',address:'거래처 주소 (영문)',defaults:'회사 기본 정보 사용',changed:'다른 화면에서 연락처가 변경되었습니다. 다시 조회한 뒤 수정해 주세요.',invalid:'담당자와 연락처를 확인해 주세요.'},
- en:{title:'Partner contact details',contactName:'Contact person',phone:'Contact phone',email:'Contact email',address:'Partner address (English)',defaults:'Use company defaults',changed:'Contact details changed. Reload before editing.',invalid:'Check the contact details.'},
- vi:{title:'Thông tin người liên hệ',contactName:'Người liên hệ',phone:'Điện thoại liên hệ',email:'Email liên hệ',address:'Địa chỉ đối tác (tiếng Anh)',defaults:'Dùng thông tin mặc định của công ty',changed:'Thông tin liên hệ đã thay đổi. Hãy tải lại trước khi sửa.',invalid:'Kiểm tra thông tin liên hệ.'}
+ ko:{title:'거래처 담당자 및 연락처',contactName:'담당자명',phone:'담당자 전화번호',email:'담당자 이메일',address:'거래처 주소 (영문)',defaults:'회사 기본 정보 사용',registration:'원본 등록 정보 사용',local:'우리 회사 저장 정보 사용',changed:'다른 화면에서 연락처가 변경되었습니다. 다시 조회한 뒤 수정해 주세요.',invalid:'담당자와 연락처를 확인해 주세요.'},
+ en:{title:'Partner contact details',contactName:'Contact person',phone:'Contact phone',email:'Contact email',address:'Partner address (English)',defaults:'Use company defaults',registration:'Use original registration',local:'Use our saved details',changed:'Contact details changed. Reload before editing.',invalid:'Check the contact details.'},
+ vi:{title:'Thông tin người liên hệ',contactName:'Người liên hệ',phone:'Điện thoại liên hệ',email:'Email liên hệ',address:'Địa chỉ đối tác (tiếng Anh)',defaults:'Dùng thông tin mặc định của công ty',registration:'Dùng thông tin đăng ký gốc',local:'Dùng thông tin riêng đã lưu',changed:'Thông tin liên hệ đã thay đổi. Hãy tải lại trước khi sửa.',invalid:'Kiểm tra thông tin liên hệ.'}
 };

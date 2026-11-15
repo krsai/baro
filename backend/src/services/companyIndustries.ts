@@ -1,3 +1,4 @@
+import {publishCompanyProfileDefault} from './companyProfileDefaults';
 import {companyClassificationSource} from './companyClassificationSource';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -34,7 +35,9 @@ export async function saveCompanyIndustries(db:any,orgId:number,actorId:number,i
 export async function saveCompanyProfileAndClassification(db:any,orgId:number,actorId:number,data:any,classification:any){
  return retryEditTransaction(db,async(tx:any)=>{
   await actor(tx,orgId,actorId,true);
+  const before=await tx.organization.findUnique({where:{id:orgId}});
   const organization=await tx.organization.update({where:{id:orgId},data});
+  await publishCompanyProfileDefault(tx,orgId,actorId,before,organization);
   const saved=await saveClassification(tx,orgId,orgId,actorId,classification);
   return {organization,classification:saved};
  });

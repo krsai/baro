@@ -23,8 +23,8 @@ test('partner contacts belong to the editing company; defaults, revision and rol
   await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:0,patch:{contactName:'Stale'}})),/PARTNER_CONTACT_CHANGED/);
   await assert.rejects(db.$transaction(async tx=>{await savePartnerContacts(tx,org,target,actor,{revision:1,patch:{contactName:'Rollback'}});throw Error('ROLLBACK');}),/ROLLBACK/);
   assert.equal((await read()).contactRevision,1);assert.equal((await read()).contactName,'바로 담당자');
-  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:1,patch:{contactName:null,contactPhone:'',email:null,address:null}}));
-  assert.equal((await read()).contactName,'New BARO default');assert.equal((await read()).contactPhone,'');assert.equal((await read()).address,'Default address');
+  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:1,mode:'DEFAULT',patch:{contactName:null,contactPhone:'',email:null,address:null}}));
+  assert.equal((await read()).contactName,'New BARO default');assert.equal((await read()).contactLocal.contactPhone,'');assert.equal((await read()).address,'Default address');
   await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,999999,actor,{revision:0,patch:{contactName:'Other'}})),/PARTNER_NOT_FOUND/);
   await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,target,org,actor,{revision:0,patch:{contactName:'Forged'}})),/ACTIVE_EMPLOYEE_REQUIRED/);
   await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:2,patch:{bankAccounts:[]}})),/PARTNER_CONTACT_INVALID/);
@@ -44,6 +44,9 @@ test('partner contacts belong to the editing company; defaults, revision and rol
   await save({params:{id:String(owned.id)},body:{relationshipId:relation.id,contacts:{revision:0,patch:{contactName:'Local person'}},defaultSizeSetCode:'URD_NUMERIC'}},response);
   assert.equal(result.relationshipId,relation.id);assert.equal(result.defaultSizeSetCode,'URD_NUMERIC');
   await assert.rejects(save({params:{id:String(target)},body:{relationshipId:relation.id,contacts:{revision:3,patch:{contactName:'Wrong relationship'}}}},response),/INVALID_PARTNER_ID/);
+  const businessRequest={params:{id:String(s.vendor.id)},body:{contacts:{revision:0,mode:'LOCAL',patch:{contactName:'Business contact'}}}};
+  await assert.rejects(save({...businessRequest,body:{...businessRequest.body,defaultSizeSetCode:null}},response),/COMPANY_PROFILE_IS_PRIVATE/);
+  await save(businessRequest,response);assert.equal(result.sourceKind,'BUSINESS');assert.equal(result.contactName,'Business contact');assert.equal(result.contactRevision,1);
   allowed=false;result=null;await save({params:{id:String(target)},body:{}},response);assert.equal(result,null);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261115010000_partner_local_contacts');
   await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.equal((await read()).contactRevision,3);

@@ -41,7 +41,7 @@ export async function resolveIdentityChoice(db:any,orgId:number,entityId:number|
   return null;
  }
  if(!requested){
-  if(numberKey(profile?.businessNumber)&&profile?.country){const candidates=await identityCandidates(db,orgId,profile);if(candidates.some((r:any)=>r.sourceEntityId!==entityId))throw createHttpError(409,'COMPANY_CONNECTION_CONFIRMATION_REQUIRED');}
+  if(numberKey(profile?.businessNumber)&&profile?.country){const candidates=await identityCandidates(db,orgId,profile);const ownAnchor=entityId?await db.companyIdentity.findUnique({where:{anchorEntityId:entityId},select:{id:true}}):null;if(candidates.some((r:any)=>r.sourceEntityId!==entityId&&(!ownAnchor||r.identityId!==ownAnchor.id)))throw createHttpError(409,'COMPANY_CONNECTION_CONFIRMATION_REQUIRED');}
   return null;
  }
  const common=Number.isSafeInteger(requested.identityId),id=common?requested.identityId:requested.sourceEntityId;
