@@ -1,4 +1,5 @@
 import {createHttpError} from '../utils/http';
+export const SHIPPING_GENERAL_CUSTOMER_CODE='EXGC';
 
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 export function generalCustomerFields(data:any){

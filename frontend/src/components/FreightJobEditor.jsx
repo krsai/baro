@@ -39,7 +39,8 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
  const field=(key,type='text',cargo=false)=><TextField key={key} fullWidth size="small" label={e[key]||t[key]} type={type} disabled={locked} value={value.data[key]??''} onChange={ev=>cargo?cargoData({[key]:ev.target.value}):data(key,ev.target.value)} slotProps={{inputLabel:{shrink:type==='date'||undefined},htmlInput:{maxLength:key==='cargo'?2000:['origin','destination'].includes(key)?160:key==='dangerousGoodsDetails'?500:1000,...(type==='number'?{min:0,step:'any'}:{})}}}/>;
  const allParties=options.customers||[],customer=allParties.find(row=>row.id===value.customerId)||value.data.customer||null;
  const counterparties=allParties.filter(row=>row.id!==orgId&&row.id!==options.self?.id&&!row.isShippingGeneralCustomer);
- const generalOption=allParties.find(row=>row.isShippingGeneralCustomer)||{id:-1,isShippingGeneralCustomer:true,name:x.generalCustomer,nameKo:x.generalCustomer,nameVi:x.generalCustomer};
+ const savedGeneral=allParties.find(row=>row.isShippingGeneralCustomer);
+ const generalOption=savedGeneral?{...savedGeneral,code:savedGeneral.code||'EXGC'}:{id:-1,code:'EXGC',isShippingGeneralCustomer:true,name:x.generalCustomer,nameKo:x.generalCustomer,nameVi:x.generalCustomer};
  const customerOptions=value.service==='EXPRESS'?[...counterparties,generalOption]:counterparties;
  const party=role=>value.data[role+'Party']||allParties.find(row=>row.id===value.data[role+'Id'])||null;
  const displayName=row=>row?.isShippingGeneralCustomer?x.generalCustomer:name(row);
