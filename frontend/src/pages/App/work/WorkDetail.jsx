@@ -1,3 +1,4 @@
+import GlobalNotice from "../../../components/AppNotice";
 import {canFocus} from '../../../utils/formFocus.mjs';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
@@ -11,25 +12,8 @@ import DeleteActionButton from '../../../components/DeleteActionButton';
 import QueryFeedback from '../../../components/QueryFeedback';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Chip,
-  CircularProgress,
-  IconButton,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Tooltip,
-  Typography,
-  useMediaQuery,
-} from '@mui/material';
+import {Box,Chip,CircularProgress,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import { useTheme } from '@mui/material/styles';
 import AddActionButton from '../../../components/AddActionButton';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
@@ -2445,7 +2429,7 @@ const WorkDetail = ({
       return;
     }
     if (coverageStartDateKey.slice(0, 7) !== workDateKey.slice(0, 7)) {
-      setFormError(messages.sameMonthRequired || '작업 시작일과 종료일은 같은 달이어야 합니다. 월별로 나누어 등록해주세요.');
+      setFormError(messages.sameMonthRequired || "작업 시작일과 종료일은 같은 달이어야 합니다. 월별로 나누어 등록해 주세요.");
       return;
     }
     if (
@@ -2874,7 +2858,7 @@ const WorkDetail = ({
   }, [editingRowId, isMobile]);
 
   const detailHeader = (
-    <PageSectionHeader title={LABELS.title} description={workDateRangeLabel} titleComponent="h1" actions={
+    <PageSectionHeader title={LABELS.title} context={workDateRangeLabel} titleComponent="h1" actions={
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <SaveButton
@@ -2980,14 +2964,14 @@ const WorkDetail = ({
             ) : !selectedFactoryId ? (
               <Alert severity="info">{messages.selectFactoryScope}</Alert>
             ) : factoryScopeDataLoading && rows.length === 0 ? (
-              <Alert severity="info">{messages.loadingFactoryScope}</Alert>
+              <Typography role="status">{messages.loadingFactoryScope}</Typography>
             ) : rows.length === 0 ? (
               <Stack spacing={1.5} alignItems="flex-start">
                 {ctWarningMessage ? <Alert severity="warning">{ctWarningMessage}</Alert> : null}
-                <Alert severity="info">{messages.preparingRow}</Alert>
+                <Typography role="status">{messages.preparingRow}</Typography>
               </Stack>
             ) : filteredRows.length === 0 ? (
-              <Alert severity="info">{messages.noSearchResults}</Alert>
+              <Typography role="status">{messages.noSearchResults}</Typography>
             ) : (
               <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
               {factoryScopeWorkers.length === 0 ? (
@@ -3175,13 +3159,9 @@ const WorkDetail = ({
                               }}
                             />
                             {selectedStyleExceptionLabel ? (
-                              <Typography
-                                variant="caption"
-                                color="warning.main"
-                                sx={{ fontSize: '0.68rem', lineHeight: 1.2 }}
-                              >
+                              <GlobalNotice severity="warning">
                                 {selectedStyleExceptionLabel}
-                              </Typography>
+                              </GlobalNotice>
                             ) : null}
                           </Stack>
                           <SearchableSelect
@@ -3585,13 +3565,9 @@ const WorkDetail = ({
                                   }}
                                 />
                                 {selectedStyleExceptionLabel ? (
-                                  <Typography
-                                    variant="caption"
-                                    color="warning.main"
-                                    sx={{ fontSize: '0.68rem', lineHeight: 1.2 }}
-                                  >
+                                  <GlobalNotice severity="warning">
                                     {selectedStyleExceptionLabel}
-                                  </Typography>
+                                  </GlobalNotice>
                                 ) : null}
                               </Stack>
                             ) : (

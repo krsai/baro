@@ -1,6 +1,7 @@
 import {invoiceNumber} from '../../../utils/invoiceStyleRows.mjs';
 import React, { useEffect, useState } from 'react';
-import {Alert,Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
+import {Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import InvoicePartyPicker from '../../../components/InvoicePartyPicker';
 import { useAuth } from '../../../context/AuthContext';

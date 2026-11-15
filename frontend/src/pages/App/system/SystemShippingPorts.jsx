@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
+import {Button,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import {usePageDialogs} from '../../../components/PageDialogProvider';
@@ -27,7 +28,7 @@ export default function SystemShippingPorts(){
   if(alive.current){setPending(null);setReload(v=>v+1);showNotification(t.saved,'success');emitWorkspaceDataChanged({topics:[WORKSPACE_DATA_TOPICS.SHIPPING_PORTS],source:'system-shipping-ports'});}
  }catch(e){if(alive.current){setPending(!e.status||e.status>=500?request:null);setError(e.message||'FAILED');}}finally{lock.current=false;if(alive.current)setBusy(false);}};
  const mutate=async(row,action)=>{if(locked)return;if(action==='DELETE'&&!await dialogs.confirm(t.confirmDelete))return;await change({code:row.code,body:{action,version:row.version,clientKey:crypto.randomUUID()}});};
- return <AppPageContainer title={t.title}><Stack spacing={2}><Alert severity="info">{t.hint}</Alert>
+ return <AppPageContainer title={t.title}><Stack spacing={2}>
  <Stack direction={{xs:'column',sm:'row'}} gap={1}><TextField size="small" fullWidth label={t.search} value={query} disabled={locked} slotProps={{htmlInput:{maxLength:160}}} onChange={e=>{setQuery(e.target.value);setPage(0);}}/><TextField size="small" select label={t.state} value={state} disabled={locked} sx={{minWidth:150}} slotProps={{select:{SelectDisplayProps:{'aria-label':t.state,'aria-labelledby':undefined}}}} onChange={e=>{setState(e.target.value);setPage(0);}}>{['ALL','DELETED'].map(value=><MenuItem key={value} value={value}>{t[value]}</MenuItem>)}</TextField>{!error&&<Button sx={{flexShrink:0}} disabled={locked||loading} onClick={()=>setReload(v=>v+1)}>{t.reload}</Button>}</Stack>
  {error&&<Alert severity="error" action={<Button disabled={busy} onClick={()=>pending?change(pending):setReload(v=>v+1)}>{pending?t.retry:t.reload}</Button>}>{message(error)}</Alert>}
  {loading&&<LinearProgress aria-label={t.loading}/>}

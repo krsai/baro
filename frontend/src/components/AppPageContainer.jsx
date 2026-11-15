@@ -8,7 +8,7 @@ import { usePageNaming } from '../context/PageNamingContext';
 
 const AppPageContainer = ({
   title,
-  description,
+  context,
   titleActions = null,
   toolbar = null,
   header,
@@ -32,7 +32,7 @@ const AppPageContainer = ({
         <PageSectionHeader
           title={title}
           titleComponent="h1"
-          description={description}
+          context={context}
           actions={titleActions}
         />
       ) : null}

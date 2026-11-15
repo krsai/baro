@@ -9,24 +9,8 @@ import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Paper,
-  Stack,
-  Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-  Tabs,
-  Tab,
-} from '@mui/material';
+import {Box,Button,Chip,Paper,Stack,Switch,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography,Tabs,Tab} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import { ORG_ROLE_DEFAULT_LABELS } from '../../../constants/organizationAccess';
 import { useAuth } from '../../../context/AuthContext';
@@ -383,9 +367,7 @@ const RolePolicyBoard = ({orgType}) => {
         {roleError&&<Alert severity="error">{menuText.failed}</Alert>}
         {scope==='industry'&&menus.loaded&&!menus.loaded.subscribers?.[orgType]&&Object.keys(menus.loaded.industries||{}).length>0&&<Alert severity="info">{menuText.legacy}</Alert>}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
-          <Typography variant="body2" color="text.secondary">
-            {scope==='common'?layout.commonNote:layout.industryNote}
-          </Typography>
+
           <Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap">
             {(isDirty||menus.dirty)&&<Chip size="small" color="warning" variant="outlined" label={layout.pending}/>}
             <Button
@@ -552,7 +534,7 @@ function AccessPolicyBoard(){
  const [orgType,setOrgType]=React.useState('MANUFACTURER');
  if(activeProfile?.entryType!=='SYSTEM'||activeProfile?.systemRole!=='SYSTEM_ADMIN')return <RolePolicyBoard orgType={orgType}/>;
  return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)}><Stack spacing={2}>
-  <Typography variant="body2" color="text.secondary">{layout.intro}</Typography>
+
   <Tabs value={orgType} onChange={(_event,value)=>setOrgType(value)} variant="fullWidth" sx={{minHeight:88,'& .MuiTabs-indicator':{display:'none'},'& .MuiTab-root':{border:1,borderColor:'divider',borderRadius:2,mr:1,alignItems:'flex-start',textAlign:'left',textTransform:'none',minHeight:84},'& .Mui-selected':{borderColor:'primary.main',bgcolor:'#EAF2FF'}}}>
     {[['MANUFACTURER',t.factory,layout.factoryNote,<FactoryOutlined/>],['SERVICE',t.logistics,layout.logisticsNote,<LocalShippingOutlined/>]].map(([type,label,note,icon])=><Tab key={type} value={type} aria-label={label} icon={icon} iconPosition="start" label={<Stack spacing={.5}><Typography variant="subtitle2">{label}</Typography><Typography variant="caption" color="text.secondary">{note}</Typography></Stack>}/>)}
   </Tabs>

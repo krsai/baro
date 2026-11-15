@@ -1,3 +1,4 @@
+import GlobalNotice from "./AppNotice";
 import {ledgerAccountingSummary} from '../utils/ledgerAccountingSummary.mjs';
 import {ledgerFlowText} from '../constants/ledgerFlow';
 import {accountingDirectionText,matchesAccountingDirection} from '../constants/accountingDirection';
@@ -10,7 +11,7 @@ import {ACCOUNTING_CODE_TEXT} from '../constants/accountingCode';
 import {changeApprovalText} from '../constants/changeApprovals';
 
 export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,currencyLabel,languageCode,onEdit,onEditKey,onDelete}){
- const warning=(code,direction)=>!matchesAccountingDirection(code,direction)&&<Typography role="status" variant="caption" display="block" color="warning.main">{(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch}</Typography>;
+ const warning=(code,direction)=>!matchesAccountingDirection(code,direction)&&<GlobalNotice severity="warning">{(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch}</GlobalNotice>;
  const flow=ledgerFlowText[languageCode]||ledgerFlowText.en;
  const change=changeApprovalText[languageCode]||changeApprovalText.en;
  const amountWidth=Math.max(112,...rows.map(row=>formatLedgerAmount(row.amount,row.currencyCode).length*7+16));

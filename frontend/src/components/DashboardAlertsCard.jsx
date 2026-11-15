@@ -1,5 +1,6 @@
 import React from 'react';
-import {Alert,Box,Button,CircularProgress,Paper,Stack,Typography} from '@mui/material';
+import {Box,Button,CircularProgress,Paper,Stack,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import {dashboardWidgetPaperSx,dashboardWidgetTitleSx} from './dashboardWidgetStyles';
 import DashboardAlertItem from './DashboardAlertItem';
 export default function DashboardAlertsCard({title,items,loading,error,onRetry,onSelect,text,children,languageCode}){

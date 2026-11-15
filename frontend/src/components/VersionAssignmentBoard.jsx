@@ -72,7 +72,7 @@ export default function VersionAssignmentBoard({ versions, targets, onAssign, on
     accessibility={{ screenReaderInstructions: { draggable: text.keyboard } }}
     onDragStart={({ active }) => setDragged(active.data.current?.version || null)} onDragCancel={() => setDragged(null)}
     onDragEnd={({ active, over }) => { setDragged(null); const version = active.data.current?.version, target = over?.data.current?.target; if (!busy && version && target && !target.locked && !isVersionDisabled(version)) { if (target.unapply) onUnassign?.(version); else onAssign(version, target); } }}>
-    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{text.help}</Typography>
+
     <Stack direction={{ xs: 'column', md: 'row' }} spacing={3} data-version-board>
       <Box sx={{ width: { xs: '100%', md: 280 }, minWidth: 0, flexShrink: 0 }}>
         <Typography variant="subtitle2" sx={{ mb: 1 }}>{text.versions}</Typography>

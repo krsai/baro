@@ -4,7 +4,8 @@ import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, Divider, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Tooltip, alpha } from "@mui/material";
+import {Box,Button,Chip,CircularProgress,Dialog,DialogContent,DialogTitle,Divider,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography,Tooltip,alpha} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import LockOpenOutlinedIcon from "@mui/icons-material/LockOpenOutlined";
 import PrintOutlinedIcon from "@mui/icons-material/PrintOutlined";
@@ -673,7 +674,7 @@ const PayrollEntry = () => {
   return (
     <AppPageContainer
       title={factoryDisplayName ? `${pageTitle} · ${month} · ${factoryDisplayName}` : `${pageTitle} · ${month}`}
-      description={factoryDisplayName ? `${month} · ${factoryDisplayName}` : month}
+      context={factoryDisplayName ? `${month} · ${factoryDisplayName}` : month}
       toolbar={
         <PageToolbar
           showLastUpdater={false}
@@ -711,7 +712,7 @@ const PayrollEntry = () => {
           </Paper>
         ) : null}
         {factoryId && !loading && !data ? <Alert severity="error">{text.fetchError}</Alert> : null}
-        {!loading && data && employees.length === 0 ? <Alert severity="info">{text.empty}</Alert> : null}
+        {!loading && data && employees.length === 0 ? <Typography role="status">{text.empty}</Typography> : null}
         {!loading && data && employees.length > 0 ? (
           <Paper variant="outlined" sx={{ overflow: "hidden" }}>
             <Box

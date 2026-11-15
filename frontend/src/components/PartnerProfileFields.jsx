@@ -1,6 +1,6 @@
-import { LOCALIZED_NAME_HELP } from './LocalizedNameFields';
+
 import React from 'react';
-import {Box,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import {Box,MenuItem,Stack,TextField} from "@mui/material";
 import EntityDetailSection from './EntityDetailSection';
 import {ENTITY_TEXT} from '../constants/entityProfile';
 import {ENTITY_CODE_TEXT} from '../utils/entityCode.mjs';
@@ -24,7 +24,6 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
  const grid={display:'grid',gap:2,gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(3,minmax(0,1fr))'}};
  return <Stack spacing={2}>
   <EntityDetailSection title={common.identity}>
-   {!hideGuidance&&<Typography variant="body2" color="text.secondary" sx={{mb:2}}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>}
    <Box sx={grid}>
     {field('partyKind',party.label,{select:true,InputLabelProps:{shrink:true},SelectProps:{displayEmpty:true,renderValue:kind=>party[kind]||party.legacy},children:['INDIVIDUAL','CORPORATE'].map(kind=><MenuItem key={kind} value={kind}>{party[kind]}</MenuItem>)})}
     {field('businessNumber',common.businessNumber,{required:value.partyKind==='CORPORATE'})}

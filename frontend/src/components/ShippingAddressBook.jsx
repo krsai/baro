@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Box,Button,Dialog,DialogContent,DialogTitle,List,ListItemButton,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Dialog,DialogContent,DialogTitle,List,ListItemButton,Stack,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import DeleteActionButton from './DeleteActionButton';
 import SaveButton from './SaveButton';
 import ShippingAddressFields,{addressValue} from './ShippingAddressFields';

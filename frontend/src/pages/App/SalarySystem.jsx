@@ -12,12 +12,8 @@ import { useLocation } from 'react-router-dom';
 import useEditRevision, { isStaleEditError } from '../../hooks/useEditRevision';
 import StaleEditNotice from '../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert, Box, Button, Checkbox, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  FormControl, FormControlLabel, FormHelperText, IconButton, InputAdornment, InputLabel, ListItemText, MenuItem, Paper, Select, Stack,
-  Tab, Tabs,
-  TextField, Tooltip, Typography,
-} from '@mui/material';
+import {Box,Button,Checkbox,Chip,Dialog,DialogActions,DialogContent,DialogTitle,FormControl,FormControlLabel,FormHelperText,IconButton,InputAdornment,InputLabel,ListItemText,MenuItem,Paper,Select,Stack,Tab,Tabs,TextField,Tooltip,Typography} from '@mui/material';
+
 import AddIcon from '@mui/icons-material/Add';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
@@ -539,7 +535,7 @@ const SalarySystem = () => {
     {message && <ActionNotice eventKey={message} severity={message.severity} onClose={() => setMessage(null)} sx={{ mb: 2 }}>{message.text}</ActionNotice>}
 
     <SalaryRateMatrix payTypes={availablePayTypes} items={items} grades={grades} rates={rates} languageCode={languageCode} currencyCode={currencyCode} t={t} categories={CATEGORIES} unitLabel={row => resolveRateUnitLabel(row, currencyCode, t)} onEdit={openFormulaDialog} onReorder={reorderItems} onChangeRate={changeRate} disabled={saving || versionBusy || edit.stale || savedSnapshot === null} />
-    <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Stack spacing={2}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field,value)=>setFormulaSettingsDraft(previous=>({...previous,[field]:value}))}/><Alert severity="info">{languageCode === 'ko' ? '이름은 변경할 수 있으며, 생산수당 자동 계산 규칙은 유지됩니다.' : languageCode === 'vi' ? 'Có thể đổi tên. Quy tắc tự động tính phụ cấp sản lượng được giữ nguyên.' : 'You can rename this item. Its automatic production allowance calculation remains unchanged.'}</Alert></Stack> : <Stack spacing={2}>
+    <Dialog open={formulaDialogOpen} onClose={() => setFormulaDialogOpen(false)} fullWidth maxWidth="md"><DialogTitle>{t('정산 설정')} · {salaryItemName(selected, languageCode)}</DialogTitle><DialogContent dividers>{isFixedIncentive ? <Stack spacing={2}><LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field,value)=>setFormulaSettingsDraft(previous=>({...previous,[field]:value}))}/></Stack> : <Stack spacing={2}>
       <LocalizedNameFields value={formulaSettingsDraft} languageCode={languageCode} onChange={(field, value) => setFormulaSettingsDraft(prev => ({ ...prev, [field]: value }))} />
       <Box><Typography variant="body2" fontWeight={600}>{languageCode === 'ko' ? '적용 대상' : languageCode === 'vi' ? 'Đối tượng áp dụng' : 'Applies to'}</Typography><Stack direction="row" useFlexGap flexWrap="wrap">{availablePayTypes.map(payType=><FormControlLabel key={payType} label={getPayTypeLabel(payType,payType,languageCode)} control={<Checkbox size="small" checked={(formulaSettingsDraft.payTypes||[]).includes(payType)} disabled={formulaSettingsDraft.category==='INCENTIVE'} onChange={()=>toggleDraftPayType(payType)} inputProps={{'aria-label':getPayTypeLabel(payType,payType,languageCode)}}/>}/>)}</Stack></Box>
       <Paper variant="outlined" sx={{ p: 2, minHeight: 80, bgcolor: 'background.default' }}>

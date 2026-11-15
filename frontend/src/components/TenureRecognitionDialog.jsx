@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {useAppActions} from '../context/AppContext';
 import {tenureRecognitionText} from '../constants/tenureRecognition';

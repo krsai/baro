@@ -1,3 +1,4 @@
+import GlobalNotice from "../../components/AppNotice";
 import React, { useState } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import { Container, Button, Typography, Box, Link } from '@mui/material';
@@ -41,10 +42,10 @@ const SignUp = () => {
             {isSubmitting || loading ? '시작 중...' : 'Google 계정으로 시작하기'}
           </Button>
           {!isSupabaseConfigured && (
-            <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+            <GlobalNotice severity="error">
               Supabase 설정이 필요합니다. `.env`에 `VITE_SUPABASE_URL`과
               `VITE_SUPABASE_ANON_KEY`를 넣고 다시 실행해 주세요.
-            </Typography>
+            </GlobalNotice>
           )}
         </Box>
         <Link component={RouterLink} to="/login" variant="body2" sx={{ mt: 2 }}>

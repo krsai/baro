@@ -5,7 +5,8 @@ import SettingInheritanceControls from './SettingInheritanceControls';
 import SettingDeleteButton from './SettingDeleteButton';
 import React, { useEffect, useState } from 'react';
 import { INDUSTRY_TREE_TEXT } from '../constants/industryHierarchy';
-import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, TextField } from '@mui/material';
+import {Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Stack,TextField} from '@mui/material';
+import Alert from "./AppNotice";
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 
 export const TRANSACTION_TEXT = {

@@ -1,3 +1,4 @@
+import GlobalNotice from "../../components/AppNotice";
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -179,9 +180,9 @@ const Login = () => {
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>
-          {!isSupabaseConfigured && <Typography role="alert" variant="body2" color="error" sx={{mt:2}}>{loginCopy.supabaseRequired}</Typography>}
-          {loginError && <Typography role="alert" variant="body2" color="error" sx={{mt:2}}>{loginCopy.loginError}</Typography>}
-          {isAuthenticated && accessError && <Box sx={{mt:2}}><Typography role="alert" variant="body2" color="error">{loginCopy.authContextError}</Typography><Button onClick={handleRestartSession} sx={{mt:1}}>{loginCopy.restartSession}</Button></Box>}
+          {!isSupabaseConfigured && <GlobalNotice severity="error">{loginCopy.supabaseRequired}</GlobalNotice>}
+          {loginError && <GlobalNotice severity="error">{loginCopy.loginError}</GlobalNotice>}
+          {isAuthenticated && accessError && <GlobalNotice severity="error" action={<Button onClick={handleRestartSession}>{loginCopy.restartSession}</Button>}>{loginCopy.authContextError}</GlobalNotice>}
           <p className="lineos-login-destination">{loginCopy.destination}</p>
           {isAuthenticated && requiresWorkspaceSelection && <Box sx={{mt:2}}><CompanyChooser languageCode={languageCode} managementOnly/></Box>}
         </section>

@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Button,Stack} from '@mui/material';
+import {Button,Stack} from '@mui/material';
+import Alert from "./AppNotice";
 import LookupSearchDialog from './LookupSearchDialog';
 import ShippingAddressBook from './ShippingAddressBook';
 import {requestJSON,buildQueryString} from '../utils/apiClient';

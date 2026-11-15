@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Alert } from '@mui/material';
+import {Button} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import LookupSearchDialog from '../../../components/LookupSearchDialog';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import { useAppActions } from '../../../context/AppContext';
@@ -50,6 +51,6 @@ export default function StyleProductPicker({ orgId, languageCode, onTaken, refre
       languageCode={languageCode} query={query} onQueryChange={setQuery} options={rows}
       getOptionKey={row => `${row.id}:${row.customerOrgId}`} onSelect={take}
       columns={[{ key: 'owner', label: t.owner, value: row => row.ownerOrgName }, { key: 'code', label: t.code, value: row => row.fields.code }, { key: 'name', label: t.name, value: row => row.fields.name }]}
-      details={error ? <Alert severity="error">{t.failed}</Alert> : loading ? <Alert severity="info">{t.loading}</Alert> : null} />
+      details={error ? <Alert severity="error">{t.failed}</Alert> : loading ? <Typography role="status">{t.loading}</Typography> : null} />
   </>;
 }

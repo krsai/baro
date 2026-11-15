@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, MenuItem, Stack, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import {Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,MenuItem,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 
 const TEXT = {
@@ -65,7 +66,7 @@ export default function PriorCompletionDialog({ rows, selectedStyleId, orgId, la
           <TableCell><TextField type="number" size="small" value={entry.quantity} disabled={saving || !entry.selected} inputProps={{ min: 1, max: entry.row.orderedQuantity - (entry.row.priorQuantity || 0), step: 1 }} onChange={e => setEntries(items => items.map((item, i) => i === index ? { ...item, quantity: e.target.value, clientKey: crypto.randomUUID() } : item))} sx={{ width: 120 }} /></TableCell>
         </TableRow>)}</TableBody></Table>
       <FormControlLabel control={<Checkbox checked={separate} disabled={saving} onChange={e => setSeparate(e.target.checked)} />} label={text.separate} />
-      <Typography variant="caption" display="block" color="text.secondary">{text.hint}</Typography>
+
       {entries.some(entry => entry.row.priorCompletions?.length) && <Stack spacing={1} sx={{ mt: 2 }}>
         <Typography fontWeight={700}>{text.history}</Typography>
         {entries.flatMap(entry => (entry.row.priorCompletions || []).map(history => <Stack key={history.id} direction="row" alignItems="center" spacing={1}>

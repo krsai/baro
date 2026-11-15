@@ -12,35 +12,8 @@ import StatusLabel from '../../../components/StatusLabel';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useParams } from 'react-router-dom';
-import {
-  Box,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Button,
-  TextField,
-  Select,
-  MenuItem,
-  InputLabel,
-  FormControl,
-  Typography,
-  IconButton,
-  Alert,
-  Stack,
-  CircularProgress,
-  Tooltip,
-  ToggleButton,
-  ToggleButtonGroup,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Chip,
-  GlobalStyles} from '@mui/material';
+import {Box,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Paper,Button,TextField,Select,MenuItem,InputLabel,FormControl,Typography,IconButton,Stack,CircularProgress,Tooltip,ToggleButton,ToggleButtonGroup,Dialog,DialogTitle,DialogContent,DialogActions,Chip,GlobalStyles} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
@@ -1075,7 +1048,7 @@ const OrderList = () => {
           ? 'Hay luu thay doi truoc khi khoa don hang.'
           : languageCode === 'en'
             ? 'Save your changes before locking the order.'
-            : '변경사항을 먼저 저장한 뒤 잠가 주세요.',
+            : "변경 사항을 먼저 저장한 뒤 잠가 주세요.",
       lockChangeNotAllowed:
         languageCode === 'vi'
           ? 'Không thể doi trang thai khoa o day voi don da co hop dong phan cong.'
@@ -3313,9 +3286,7 @@ const OrderList = () => {
           )}
         </DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {orderPageText.saveIssueDialogDescription}
-          </Typography>
+
           <TableContainer sx={{ maxHeight: 420 }}>
             <Table size="small" stickyHeader>
               <TableHead>
@@ -4397,9 +4368,7 @@ const OrderList = () => {
         )}
       </DialogTitle>
       <DialogContent dividers>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {orderPageText.saveIssueDialogDescription}
-        </Typography>
+
         <TableContainer sx={{ maxHeight: 420 }}>
           <Table size="small" stickyHeader>
             <TableHead>

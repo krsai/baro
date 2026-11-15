@@ -1,3 +1,4 @@
+import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import Autocomplete from '../../../components/SearchableSelect';
@@ -952,9 +953,9 @@ const ProcessMasterLinkedSpecSection = ({
                 label={resolveLocalizedAttributeName(parentRow, languageCode) || parentRow?.code}
               />
             ) : (
-              <Typography variant="caption" color="warning.main">
+              <GlobalNotice severity="warning">
                 왼쪽에서 {parentLabel}을 선택하세요.
-              </Typography>
+              </GlobalNotice>
             )}
           </Stack>
         </Stack>
@@ -1812,9 +1813,7 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
             <Typography variant="subtitle2" fontWeight={700}>
               {pageIntroTitle}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {pageIntroDescription}
-            </Typography>
+
             <Typography variant="caption" color="text.secondary">
               {pageIntroCaption}
             </Typography>

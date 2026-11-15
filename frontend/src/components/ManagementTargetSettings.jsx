@@ -1,5 +1,6 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {Alert,Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,ListItemButton,Paper,Stack,TextField,Tooltip,Typography} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,ListItemButton,Paper,Stack,TextField,Tooltip,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -59,7 +60,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
   <Dialog open={open} onClose={close} fullWidth maxWidth="md" aria-labelledby={'target-settings-'+kind}>
    <DialogTitle id={'target-settings-'+kind}>{t[kind]}</DialogTitle>
    <DialogContent><Stack spacing={2} sx={{pt:1}}>
-    <Typography variant="body2" color="text.secondary">{t.note} {payroll?t.payrollNote:''}</Typography>
+
     {error&&<Alert severity="error">{uncertain?t.uncertain:errorMessage}</Alert>}
     {loadError&&<Alert severity="error" action={<Button disabled={locked} onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
     <SearchInput value={q} placeholder={t.search} onChange={e=>setQ(e.target.value)} disabled={locked}/>

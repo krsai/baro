@@ -4,37 +4,8 @@ import PageContentStack from '../../../components/PageContentStack';
 import {LABEL_PALETTE} from '../../../theme/labelPalette';
 import {orderedSalesPriceBuckets} from '../../../utils/orderedSalesPriceBuckets.mjs';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  FormControl,
-  IconButton,
-  InputLabel,
-  InputAdornment,
-  MenuItem,
-  Paper,
-  Popover,
-  Select,
-  Skeleton,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogContentText,DialogTitle,FormControl,IconButton,InputLabel,InputAdornment,MenuItem,Paper,Popover,Select,Skeleton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,ToggleButton,ToggleButtonGroup,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AddOutlinedIcon from '@mui/icons-material/AddOutlined';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -1172,11 +1143,7 @@ const CustomerPricingBoard = () => {
                             </Select>
                           </FormControl>
 
-                          {!selectedStyleUsesCustomBuckets && (
-                            <Typography variant="caption" color="text.secondary">
-                              {text.inheritedHint}
-                            </Typography>
-                          )}
+
                         </Stack>
                       </TableCell>
                     </TableRow>

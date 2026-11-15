@@ -12,7 +12,7 @@ const VersionApplicationStart = ({ languageCode = 'en', mode = 'month', value, d
   const text = TEXT[languageCode] || TEXT.en;
   if (mode === 'future') return <Box sx={{ p: 1.25, bgcolor: 'action.hover', borderRadius: 1 }}>
     <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}><Typography variant="body2" fontWeight={700}>{text.future}</Typography>{Boolean(versionNumber) && <Chip size="small" label={`Ver.${versionNumber}`} />}</Stack>
-    <Typography variant="caption" color="text.secondary">{versionNumber ? text.futureHelp : languageCode === 'ko' ? '아직 확정된 버전이 없습니다. 공정을 입력하고 저장하면 최초 버전이 생성됩니다.' : languageCode === 'vi' ? 'Chưa có phiên bản đã xác nhận. Nhập và lưu công đoạn để tạo phiên bản đầu tiên.' : 'No confirmed version yet. Enter and save processes to create the first version.'}</Typography>
+
   </Box>;
   return <Stack spacing={0.75}>
     <Stack direction="row" spacing={0.5} useFlexGap flexWrap="wrap" alignItems="center" sx={{ rowGap: 1.5 }}>
@@ -21,7 +21,7 @@ const VersionApplicationStart = ({ languageCode = 'en', mode = 'month', value, d
       <MonthSelector allowFuture label={label || text.month} value={value || ''} onChange={onChange} min={min} disabled={disabled} />
     </Stack>
     <Typography variant="caption" color="text.secondary">{value ? text.since(value) : text.none}</Typography>
-    {showHelp && <Typography variant="caption" color="text.secondary">{text.help}</Typography>}
+
   </Stack>;
 };
 export default VersionApplicationStart;

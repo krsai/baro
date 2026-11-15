@@ -5,7 +5,7 @@ import { usePageNaming } from '../context/PageNamingContext';
 
 const PageSectionHeader = ({
   title,
-  description,
+  context,
   actions = null,
   actionLabel,
   onAction,
@@ -42,11 +42,11 @@ const PageSectionHeader = ({
         ...sx,
       }}
     >
-      <Stack spacing={0.5} sx={{minWidth:0}}>
+      <Stack direction="row" alignItems="baseline" flexWrap="wrap" gap={1} sx={{minWidth:0}}>
       <Typography component={titleComponent} variant={titleVariant} sx={{ fontWeight: ui.typography.titleFontWeight, color: ui.color.heading, letterSpacing: ui.typography.titleLetterSpacing, lineHeight: 1.4, overflowWrap:'anywhere' }}>
         {heading}
       </Typography>
-      {description && <Typography variant="body2" color="text.secondary">{description}</Typography>}
+      {context&&<Typography component="span" variant="body2" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{context}</Typography>}
       </Stack>
       <Box
         sx={{

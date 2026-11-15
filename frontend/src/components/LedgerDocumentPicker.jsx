@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Button,CircularProgress,Typography} from '@mui/material';
+import {Button,CircularProgress,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import LookupSearchDialog from './LookupSearchDialog';
 import SearchOutlined from '@mui/icons-material/SearchOutlined';
 import {requestJSON,buildQueryString} from '../utils/apiClient';

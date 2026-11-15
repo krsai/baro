@@ -16,7 +16,8 @@ import { ENTITY_TEXT } from '../../constants/entityProfile';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Box, Button, CircularProgress, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import {Box,Button,CircularProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
@@ -312,7 +313,7 @@ export default function TransactionRequestEntry() {
 
         </Stack>
         </Box>
-      {form.items.some(line => data.codes.find(code => code.id === line.transactionCodeId)?.base?.entryMode === 'PROCESS') && <Alert severity="info">{labels.processInfo}</Alert>}
+
       </Paper>
     </PageContentStack>
   <ChangeApprovalDialog ref={changeRef} orgId={activeOrgId} languageCode={languageCode}/></AppPageContainer>;

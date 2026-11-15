@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import {Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import {useAuth} from '../../context/AuthContext';
 import {requestJSON} from '../../utils/apiClient';
 import {ENTITY_CODE_TEXT,entityCodeError} from '../../utils/entityCode.mjs';
@@ -24,7 +25,7 @@ export default function CompanyChooser({languageCode,managementOnly=false}){
  };
  return <Stack spacing={1.5}>
   {readLoginCompany()&&!findLoginWorkspace(workspaces,readLoginCompany())&&<Alert severity="warning">{languageCode==='ko'?'선택한 회사에 접근 권한이 없거나 아직 등록되지 않았습니다.':languageCode==='vi'?'Bạn chưa có quyền truy cập công ty đã chọn hoặc công ty chưa được đăng ký.':'The selected company is unavailable or you do not have access.'}</Alert>}
-  {!managementOnly&&<><Typography variant="h6">{t.choose}</Typography><Typography variant="body2">{t.hint}</Typography>
+  {!managementOnly&&<><Typography variant="h6">{t.choose}</Typography>
   {workspaces.map(workspace=><Button key={workspace.key} variant="outlined" disabled={loading} onClick={()=>selectWorkspace(workspace.key)} sx={{justifyContent:'flex-start',height:'auto',minHeight:48,textTransform:'none'}}>{languageCode==='ko'?workspace.nameKo||workspace.name:languageCode==='vi'?workspace.nameVi||workspace.name:workspace.name}</Button>)}</>}
   {canCreateCompany&&<Button onClick={()=>{key.current=crypto.randomUUID();setError('');setUncertain(false);setOpen(true);}}>{t.add}</Button>}
   <Dialog open={open} onClose={()=>{if(!saving&&!uncertain)setOpen(false);}} fullWidth maxWidth="sm">

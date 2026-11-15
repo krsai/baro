@@ -6,23 +6,8 @@ import { LOCALIZED_NAME_HELP } from '../../../../components/LocalizedNameFields'
 import { normalizeLocalizedName, hasLocalizedName } from '../../../../utils/localizedName.mjs';
 import useUnsavedChanges from '../../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Drawer,
-  Grid,
-  IconButton,
-  MenuItem,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Drawer,Grid,IconButton,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import Alert from "../../../../components/AppNotice";
 import CloseIcon from '@mui/icons-material/Close';
 import HistoryIcon from '@mui/icons-material/History';
 import SaveButton from '../../../../components/SaveButton';
@@ -720,8 +705,10 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                   value={formatDigitsWithCommas(formData.targetMonthlyWage)}
                   onChange={handleInputChange}
                   inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
-                  helperText={calendarError?calendarText.error:monthCalendar?`${currentMonthKey()} · ${calendarText.scheduled}: ${monthCalendar.scheduledWorkdays} · ${calendarText.hours}: ${monthCalendar.scheduledHours}`:calendarText.calendar}
+                  error={!!calendarError}
+                  helperText={calendarError?calendarText.error:undefined}
                 />
+                {monthCalendar&&<Typography variant="caption">{currentMonthKey()} · {calendarText.scheduled}: {monthCalendar.scheduledWorkdays} · {calendarText.hours}: {monthCalendar.scheduledHours}</Typography>}
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -735,9 +722,7 @@ const FactoryDetail = ({ open, onClose, onSave, onRefresh, factory }) => {
                   sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
                 />
               </Grid>
-              <Grid item xs={12}>
-                <Typography variant="body2" color="text.secondary">{languageCode === 'ko' ? '단가 변경을 저장하면 미적용 버전으로 보관됩니다. 적용월은 버전 관리에서 드래그한 뒤 저장해 주세요.' : languageCode === 'vi' ? 'Thay đổi đơn giá được lưu thành phiên bản chưa áp dụng. Kéo đến tháng áp dụng trong Quản lý phiên bản rồi lưu.' : 'Rate changes are saved as unapplied versions. Drag to an effective month in Version Management, then save.'}</Typography>
-              </Grid>
+
               <Grid item xs={12} sm={6}>
                 <Button fullWidth variant="outlined" startIcon={<HistoryIcon />} onClick={openVersionDialog} disabled={!factory?.id} sx={{ height: 40 }}>
                   {languageCode === 'ko' ? '버전 관리' : languageCode === 'vi' ? 'Quản lý phiên bản' : 'Version Management'}

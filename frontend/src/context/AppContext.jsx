@@ -1,3 +1,5 @@
+import {createNotificationQueue} from '../utils/notificationQueue.mjs';
+import {NOTIFICATION_EVENT} from '../utils/appNotifications';
 import NotificationToast from '../components/NotificationToast';
 import React, {
   createContext,
@@ -11,20 +13,15 @@ import React, {
 
 const AppStateContext = createContext(null);
 const AppActionsContext = createContext(null);
-const DEFAULT_UNSAVED_CHANGES_CONFIRM_MESSAGE = '저장되지 않은 변경사항이 있습니다. 저장하지 않고 이동하시겠습니까?';
-
-// 타입별 토스트 표시 시간 (ms) — 여기서 전역 관리
-const TOAST_DURATION = {
-  success: 3000,
-  error: 5000,
-  warning: 3500,
-  info: 3000,
-};
+const DEFAULT_UNSAVED_CHANGES_CONFIRM_MESSAGE = "저장되지 않은 변경 사항이 있습니다. 저장하지 않고 이동하시겠습니까?";
 
 // AppProvider component
 export const AppProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+  const notifications=useRef(null);
+  if(!notifications.current)notifications.current=createNotificationQueue(setNotification);
+  useEffect(()=>()=>notifications.current.dispose(),[]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // --- Tab State ---
@@ -172,7 +169,7 @@ export const AppProvider = ({ children }) => {
   const resetWorkspace = useCallback(() => {
     setOpenTabs([]);
     setSidebarOpen(false);
-    setNotification(null);
+    notifications.current.dispose();setNotification(null);
     unsavedGuardsRef.current.clear();
   }, []);
 
@@ -240,32 +237,10 @@ export const AppProvider = ({ children }) => {
     return window.confirm(confirmMessage);
   }, []);
 
-  const notificationTimerRef = useRef(null);
-  const notificationSequenceRef=useRef(0);
-  useEffect(()=>()=>{if(notificationTimerRef.current)clearTimeout(notificationTimerRef.current);},[]);
-
-  // Helper to show notifications
-  const showNotification = useCallback((message, type = 'info') => {
-    if (notificationTimerRef.current) {
-      clearTimeout(notificationTimerRef.current);
-    }
-    setNotification({ message, type, id: ++notificationSequenceRef.current });
-    const duration = TOAST_DURATION[type] ?? TOAST_DURATION.info;
-    notificationTimerRef.current = setTimeout(() => {
-      setNotification(null);
-      notificationTimerRef.current = null;
-    }, duration);
-  }, []);
-
-
-  // Helper to dismiss notification
-  const dismissNotification = useCallback(() => {
-    if (notificationTimerRef.current) {
-      clearTimeout(notificationTimerRef.current);
-      notificationTimerRef.current = null;
-    }
-    setNotification(null);
-  }, []);
+  const showNotification=useCallback((message,type='info',options)=>notifications.current.show(message,type,options),[]);
+  const dismissNotification=useCallback(()=>notifications.current.dismiss(),[]);
+  const removeNotification=useCallback(source=>notifications.current.remove(source),[]);
+  useEffect(()=>{const receive=event=>showNotification(event.detail?.message,event.detail?.type);window.addEventListener(NOTIFICATION_EVENT,receive);return()=>window.removeEventListener(NOTIFICATION_EVENT,receive);},[showNotification]);
 
   // Toggle sidebar
   const toggleSidebar = useCallback(() => {
@@ -312,6 +287,7 @@ export const AppProvider = ({ children }) => {
       setIsLoading,
       showNotification,
       dismissNotification,
+      removeNotification,
       setSidebarOpen,
       toggleSidebar,
       openTab,

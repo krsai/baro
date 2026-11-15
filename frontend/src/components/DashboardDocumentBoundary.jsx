@@ -1,5 +1,6 @@
 import React from 'react';
-import {Alert,Button,Stack} from '@mui/material';
+import {Button,Stack} from '@mui/material';
+import Alert from "./AppNotice";
 
 const TEXT={
  ko:{failed:'상세 화면을 불러오지 못했습니다. 배포 후 화면 파일이 변경되었거나 연결이 끊겼을 수 있습니다. 최신 화면을 다시 불러온 후 알림을 열어 주세요.',reload:'최신 화면 다시 불러오기'},

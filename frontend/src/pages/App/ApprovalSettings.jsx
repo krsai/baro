@@ -4,7 +4,8 @@ import WorkTimeApprovalSettings from '../../components/WorkTimeApprovalSettings'
 import {ledgerApprovalBands} from '../../utils/ledgerApprovalBands.mjs';
 import {Add} from '@mui/icons-material';
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import {Button,MenuItem,Stack,TextField,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import {approvalSubjectText} from '../../constants/approvalSubjects';
 import {changeApprovalText} from '../../constants/changeApprovals';
 import {approvalBandText} from '../../constants/approvalBands';

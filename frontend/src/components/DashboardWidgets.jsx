@@ -1,5 +1,6 @@
 import React,{useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
-import {Alert,Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ViewColumnOutlinedIcon from '@mui/icons-material/ViewColumnOutlined';

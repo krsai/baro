@@ -12,9 +12,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import {partnerEditorText} from '../constants/partnerEditor';
 import {getSizeSetOptions,normalizeSizeSetCode} from '../constants/productAttributes';
 import {hasApparelBrandIndustry} from '../utils/orderDefaultsIndustry.mjs';
-import {
-  Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, LinearProgress, MenuItem, Slide, Stack, TextField, useMediaQuery,
-} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Slide,Stack,TextField,useMediaQuery} from '@mui/material';
+import Alert from "./AppNotice";
 import { buildQueryString, requestJSON } from '../utils/apiClient';
 import { emitWorkspaceDataChanged } from '../utils/workspaceDataEvents';
 

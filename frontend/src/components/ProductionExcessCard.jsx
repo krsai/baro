@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {productionExcessText} from '../constants/productionExcess';
 import {requestJSON,buildQueryString} from '../utils/apiClient';

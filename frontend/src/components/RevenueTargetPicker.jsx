@@ -1,6 +1,7 @@
 import AnalysisNumberField from './AnalysisNumberField';
 import React,{useEffect,useState} from 'react';
-import {Alert,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Radio,Stack,Tab,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tabs,TextField,Typography,Stepper,Step,StepLabel,Box} from '@mui/material';
+import {Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Radio,Stack,Tab,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tabs,TextField,Typography,Stepper,Step,StepLabel,Box} from '@mui/material';
+import Alert from "./AppNotice";
 import {revenueFlowText} from '../constants/revenueFlow';
 import {revenueSelectionText} from '../constants/revenueSelection';
 import {orderProfitText} from '../constants/orderProfit';
@@ -26,7 +27,7 @@ export default function RevenueTargetPicker({open,onClose,onSelect,orders,orderS
    <Box hidden={step!==0}><Stack spacing={2}>
    <Tabs value={mode} onChange={(_,value)=>{setMode(value);setSearch('');}} variant="fullWidth"><Tab value="ORDER" label={t.orders}/><Tab value="STYLE" label={t.styles}/></Tabs>
    <TextField size="small" fullWidth label={t.search} value={search} onChange={event=>setSearch(event.target.value)}/>
-   <Typography variant="body2" color="text.secondary">{mode==='ORDER'?t.orderHint:t.styleHint}</Typography>
+
    {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.error}</Alert>}
    {busy&&<CircularProgress size={24}/>}
    <TableContainer sx={{maxHeight:420}}><Table size="small" stickyHeader><TableHead><TableRow>{['',mode==='ORDER'?o.order:o.style,o.customer,mode==='ORDER'?o.quantity:o.style,mode==='ORDER'?o.sales:''].map((header,index)=><TableCell key={index} align={index>=3?'right':'left'}>{header}</TableCell>)}</TableRow></TableHead><TableBody>

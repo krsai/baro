@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Tooltip } from '@mui/material';
 
 const TEXT = {
-  ko: { editing: '저장하지 않은 변경사항', refreshed: '자료가 갱신되었습니다' },
+  ko: { editing: "저장하지 않은 변경 사항", refreshed: '자료가 갱신되었습니다' },
   en: { editing: 'Unsaved changes', refreshed: 'Data has been refreshed' },
   vi: { editing: 'Thay đổi chưa lưu', refreshed: 'Dữ liệu đã được cập nhật' },
 };

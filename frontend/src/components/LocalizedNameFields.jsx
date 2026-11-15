@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, TextField, Typography } from '@mui/material';
+import {Box,TextField} from "@mui/material";
 
 export const LOCALIZED_NAME_HELP = {
   ko: '이름은 한 언어만 입력해도 됩니다. 영어가 대표명이며, 비어 있으면 한국어 → 베트남어 순서로 영어 칸에 저장합니다.',
@@ -17,6 +17,5 @@ export default function LocalizedNameFields({ value, onChange, languageCode = 'e
     <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(3, minmax(0, 1fr))' } }}>
       {[englishField, 'nameKo', 'nameVi'].map((key, index) => <TextField key={key} fullWidth size="small" label={labels[index]} value={value?.[key] || ''} disabled={disabled} autoFocus={autoFocus && index === 0} onChange={event => onChange(key, event.target.value)} />)}
     </Box>
-    {showHelp && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{LOCALIZED_NAME_HELP[languageCode] || LOCALIZED_NAME_HELP.en}</Typography>}
   </Box>;
 }

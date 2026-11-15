@@ -1,3 +1,4 @@
+import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
@@ -6,26 +7,8 @@ import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Drawer,
-  MenuItem,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,Drawer,MenuItem,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
@@ -146,7 +129,7 @@ const EMPLOYEE_BOARD_TEXT = {
     vi: 'Khi nghi viec, du lieu tong hop san xuat/luong hien co van duoc giu nguyen.',
   },
   rehiredNote: {
-    ko: '재입사 처리됩니다. 저장 후 소속 공장과 입사일을 확인해주세요.',
+    ko: "재입사 처리됩니다. 저장 후 소속 공장과 입사일을 확인해 주세요.",
     en: 'This will be treated as rehire. Please review the factory and join date after saving.',
     vi: 'Se duoc xu ly la tai gia nhap. Hay kiem tra phan cong chuyen sau khi luu.',
   },
@@ -627,16 +610,8 @@ const EmployeeRow = React.memo(
               </MenuItem>
             ))}
           </TextField>
-          {draft.status === 'TERMINATED' && (
-            <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
-              {text('terminatedPreserveNote', languageCode)}
-            </Typography>
-          )}
-          {member.status === 'TERMINATED' && draft.status === 'ACTIVE' && (
-            <Typography variant="caption" color="primary" display="block" mt={0.5}>
-              {text('rehiredNote', languageCode)}
-            </Typography>
-          )}
+
+
         </TableCell>
 
         <TableCell>{formatDate(joinedAt)}</TableCell>
@@ -1601,9 +1576,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   ? tenantText('drawerAddTitle', languageCode)
                   : tenantText('drawerEditTitle', languageCode)}
               </Typography>
-              <Typography variant="caption" color="error.main">
+              <GlobalNotice severity="error">
                 {tenantText('requiredHint', languageCode)}
-              </Typography>
+              </GlobalNotice>
               <TextField
                 size="small"
                 label={tenantText('loginEmailLabel', languageCode)}
@@ -1765,9 +1740,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   </MenuItem>
                 ))}
               </TextField>
-              <Typography variant="caption" color="text.secondary">
-                {tenantText('drawerHint', languageCode)}
-              </Typography>
+
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1 }}>
 
                 <SaveButton

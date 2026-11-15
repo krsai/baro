@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Button } from '@mui/material';
+import {Button} from '@mui/material';
+import Alert from "./AppNotice";
 import { useLanguage } from '../context/LanguageContext';
 
 export const QUERY_TEXT = {
@@ -12,5 +13,5 @@ export default function QueryFeedback({ error, onRetry, loading = false }) {
   const { languageCode } = useLanguage();
   const text = QUERY_TEXT[languageCode] || QUERY_TEXT.en;
   if (!error) return null;
-  return <Alert severity="error" role="alert" sx={{ mb: 1.5 }} action={onRetry && <Button color="inherit" disabled={loading} onClick={onRetry}>{text.retry}</Button>}>{text.error}</Alert>;
+  return <Alert severity="error" action={onRetry && <Button color="inherit" disabled={loading} onClick={onRetry}>{text.retry}</Button>}>{text.error}</Alert>;
 }

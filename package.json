@@ -113,6 +113,7 @@
     "realign:time-model": "node backend/scripts/reset-to-baseline.js time-model",
     "check:encoding": "node scripts/collect-logs.mjs --check && node scripts/check-encoding.mjs",
     "check:i18n": "node scripts/check-ui-message-keys.mjs",
+    "check:ui-notices": "node scripts/check-ui-notices.mjs",
     "test:access-policy": "node --test scripts/access-policy-regression.test.mjs",
     "test:security-boundaries": "node --test scripts/security-boundaries-regression.test.mjs",
     "test:currency-format": "node --test scripts/currency-format-regression.test.mjs",

@@ -1,3 +1,4 @@
+import GlobalNotice from "../../components/AppNotice";
 import {activateOnKeyboard} from '../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
@@ -5,23 +6,8 @@ import PageContentStack from '../../components/PageContentStack';
 import QueryFeedback from '../../components/QueryFeedback';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Chip,
-  CircularProgress,
-  MenuItem,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Chip,CircularProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
@@ -958,9 +944,7 @@ const QcReview = () => {
                 <MenuItem value="all">{copy.all}</MenuItem>
               </TextField></>} onReset={()=>{setSearchText('');setStatusFilter('pending');}} />
 
-        <Alert severity="info">
-          {copy.description}
-        </Alert>
+
         {!loading && loadError ? <QueryFeedback error={loadError} onRetry={() => loadRows({ forceRefresh: true })} /> : null}
         {!loading && !loadError && !queryError && visibleRows.length === 0 ? (
           <Alert severity="info">{languageCode === 'ko' ? emptyStateMessage : copy.noHistory}</Alert>
@@ -1139,9 +1123,9 @@ const QcReview = () => {
                                 </SaveButton>
                               </Stack>
                               {row.isCompleted ? (
-                                <Typography variant="caption" color="warning.main" sx={{ fontWeight: 600 }}>
+                                <GlobalNotice severity="warning">
                                   {copy.completedHelp}
-                                </Typography>
+                                </GlobalNotice>
                               ) : null}
                             </Stack>
                           </TableCell>

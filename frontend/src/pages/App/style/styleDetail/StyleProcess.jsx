@@ -1,3 +1,4 @@
+import GlobalNotice from "../../../../components/AppNotice";
 import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
 import {advanceFormFocus} from '../../../../utils/formFocus.mjs';
 import Autocomplete from '../../../../components/SearchableSelect';
@@ -147,7 +148,7 @@ const STYLE_PROCESS_MESSAGES = {
     selectionComposerHint:
       '저장은 위 텍스트를 기준으로 처리됩니다. 아래 조합 방식은 보관 및 장기 전환 개발용입니다.',
     loadingOptions: '공정 조합 사전을 불러오는 중입니다.',
-    missingMasterOptions: '공정 사전에서 대상/동작을 먼저 등록해주세요.',
+    missingMasterOptions: "공정 사전에서 대상/동작을 먼저 등록해 주세요.",
     partLabel: '위치',
     targetLabel: '대상',
     targetSpecLabel: '대상 규격',
@@ -197,18 +198,18 @@ const STYLE_PROCESS_MESSAGES = {
     ptTooltip: 'PT({quantity}): 항상 1,000장 주문 기준의 개당 예상 시간(초)입니다.',
     atTooltip: 'AT({quantity}): {quantity}장 주문 기준의 개당 실측 시간(초)입니다.',
     stTooltip: 'ST({quantity}): {quantity}장 주문은 해당 구간 기준의 개당 표준 시간(초)입니다.',
-    validatePart: '대상을 선택해주세요.',
-    validateTarget: '대상을 선택해주세요.',
-    validateAction: '동작을 선택해주세요.',
+    validatePart: "대상을 선택해 주세요.",
+    validateTarget: "대상을 선택해 주세요.",
+    validateAction: "동작을 선택해 주세요.",
     validateTargetDuplicate: '이미 등록된 대상입니다.',
     validateActionDuplicate: '이미 등록된 동작입니다.',
     validateTargetLimit: '대상은 최대 3개까지 등록할 수 있습니다.',
     validateActionLimit: '동작은 최대 3개까지 등록할 수 있습니다.',
-    validateTargetRequiredForSpec: '대상 규격을 등록하려면 대상을 먼저 선택해주세요.',
-    validateActionRequiredForSpec: '동작 규격을 등록하려면 동작을 먼저 선택해주세요.',
-    validateTextRequired: '공정 텍스트를 입력해주세요.',
-    validateCodeRequired: '공정코드를 입력해주세요.',
-    validateInvalid: '유효한 공정 조합을 입력해주세요.',
+    validateTargetRequiredForSpec: "대상 규격을 등록하려면 대상을 먼저 선택해 주세요.",
+    validateActionRequiredForSpec: "동작 규격을 등록하려면 동작을 먼저 선택해 주세요.",
+    validateTextRequired: "공정 텍스트를 입력해 주세요.",
+    validateCodeRequired: "공정코드를 입력해 주세요.",
+    validateInvalid: "유효한 공정 조합을 입력해 주세요.",
     validateDuplicate: '이미 등록된 공정입니다.',
     validateDuplicateCode: '이미 사용 중인 공정코드입니다.',
     stGapReview: 'ST가 AT보다 {label} 차이나 ST 조정 검토가 필요합니다.',
@@ -1368,7 +1369,7 @@ const StyleProcess = ({
         });
         setOptionsError(
           languageCode === 'ko'
-            ? '공정 조합 사전을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
+            ? "공정 조합 사전을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."
             : languageCode === 'vi'
               ? 'Không thể tai tu dien to hop cong doan. Hay thu lai sau.'
               : 'Failed to load process composition options. Please try again later.'
@@ -2952,9 +2953,9 @@ const StyleProcess = ({
         </Typography>
       )}
       {!isLoadingOptions && optionsError && (
-        <Typography variant="caption" color="error" sx={{ display: 'block', mb: 1 }}>
+        <GlobalNotice severity="error">
           {optionsError}
-        </Typography>
+        </GlobalNotice>
       )}
       {isDraftOpen && (
         <Paper
@@ -3118,9 +3119,7 @@ const StyleProcess = ({
                   </Stack>
                   <Collapse in={isSelectionComposerExpanded} timeout="auto" unmountOnExit>
                     <Stack spacing={1}>
-                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                        {getStyleProcessMessage(languageCode, 'selectionComposerHint')}
-                      </Typography>
+
 
                       <Stack
                         direction={{ xs: 'column', xl: 'row' }}
@@ -3525,9 +3524,9 @@ const StyleProcess = ({
             </Box>
 
             {addError && (
-              <Typography variant="caption" color="error">
+              <GlobalNotice severity="error">
                 {addError}
-              </Typography>
+              </GlobalNotice>
             )}
           </Stack>
           </Stack>

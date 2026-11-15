@@ -8,8 +8,8 @@ import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Box, Button, Checkbox, CircularProgress, FormControlLabel, Stack, Table, TableBody, TableCell, TableHead,
-  TableRow, TextField, Typography } from '@mui/material';
+import {Box,Button,Checkbox,CircularProgress,FormControlLabel,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import InvoiceSheet from '../../../components/InvoiceSheet';
 import DecimalAmountField from '../../../components/DecimalAmountField';

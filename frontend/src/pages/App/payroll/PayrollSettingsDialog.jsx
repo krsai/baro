@@ -109,7 +109,7 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
     <DialogTitle>{text.title}</DialogTitle>
     <DialogContent dividers>
       <Stack spacing={2}>
-        <Box><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{text.section}</Typography><Typography variant="body2" color="text.secondary">{text.help}</Typography></Box>
+        <Box><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{text.section}</Typography></Box>
         <VersionApplicationStart label={text.month} languageCode={languageCode} value={effectiveMonth} defaultMonth={defaultMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} showHelp />
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{factories.length > 1 && <TextField select size="small" label={text.factory} value={factoryId} onChange={(event) => setFactoryId(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">{text.all}</MenuItem>{factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{languageCode === 'ko' ? factory.nameKo || factory.name : languageCode === 'vi' ? factory.nameVi || factory.name : factory.name}</MenuItem>)}</TextField>}<TextField size="small" fullWidth placeholder={text.search} value={search} onChange={(event) => setSearch(event.target.value)} /></Stack>
         <FormControlLabel control={<Switch checked={showRetired} onChange={(event) => setShowRetired(event.target.checked)} />} label={text.showRetired} />

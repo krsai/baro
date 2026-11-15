@@ -3,26 +3,12 @@ import SearchInput from '../../components/SearchInput';
 import PageContentStack from '../../components/PageContentStack';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Chip,
-  MenuItem,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Chip,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import DateRangeSelector from '../../components/DateRangeSelector';
 import dayjs from 'dayjs';
-import {periodMonthKeys,periodMonthNote} from '../../utils/periodRange.mjs';
+import {periodMonthKeys} from "../../utils/periodRange.mjs";
 import SaveButton from '../../components/SaveButton';
 import { useAppActions } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -584,16 +570,7 @@ const ShipmentReviewMonth = ({month,searchText,filterMode}) => {
         <Alert severity={localSummary.blocked > 0 || localSummary.review > 0 ? 'warning' : 'success'}>
           {text('payrollBlock')}
         </Alert>
-        <Alert severity="info">
-          <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.5 }}>
-            {text('usageTitle')}
-          </Typography>
-          <Typography variant="body2">{text('usage1')}</Typography>
-          <Typography variant="body2">{text('usage2')}</Typography>
-          <Typography variant="body2">{text('usage3')}</Typography>
-          <Typography variant="body2">{text('usage4')}</Typography>
-          <Typography variant="body2">{text('usage5')}</Typography>
-        </Alert>
+
 
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           <Chip label={`${text('summary.active')} ${localSummary.active}`} variant="outlined" />
@@ -789,7 +766,7 @@ export default function ShipmentReview(){
  const text=key=>resolveText(PAGE_TEXT[key],languageCode);
  return <AppPageContainer title={text('title')} description={text('subtitle')}>
   <SearchPanel search={<SearchInput value={searchText} onChange={event=>setSearchText(event.target.value)} placeholder={text('search')}/>} controls={<DateRangeSelector languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}}/>} filters={<TextField select size="small" label={text('filter')} value={filterMode} onChange={event=>setFilterMode(event.target.value)} sx={{minWidth:180}}>{['all','active','review','blocked','confirmed'].map(value=><MenuItem key={value} value={value}>{resolveText(PAGE_TEXT.filters[value],languageCode)}</MenuItem>)}</TextField>}/>
-  <Typography variant="body2" color="text.secondary" sx={{my:2}}>{periodMonthNote[languageCode]||periodMonthNote.en}</Typography>
+
   <Stack spacing={2}>{allMonths.map(month=><Box key={activeOrgId+':'+month} sx={{display:months.includes(month)?'block':'none'}}><ShipmentReviewMonth month={month} searchText={searchText} filterMode={filterMode}/></Box>)}</Stack>
  </AppPageContainer>;
 }

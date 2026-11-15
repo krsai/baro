@@ -1,6 +1,7 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Alert } from '@mui/material';
+
+import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import AttrBoard from './attribute/AttrBoard';
 import ProcessMasterBoard from './attribute/ProcessMasterBoard';

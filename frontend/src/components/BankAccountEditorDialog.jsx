@@ -1,7 +1,8 @@
 import {Checkbox,FormControlLabel} from '@mui/material';
 import {accountingCompactText} from '../constants/accountingCompact';
 import React,{useEffect,useState} from 'react';
-import {Alert,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField} from '@mui/material';
+import {Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField} from '@mui/material';
+import Alert from "./AppNotice";
 import {ENTITY_TEXT} from '../constants/entityProfile';
 export const bankAccountEditorText={
  ko:{kind:'구분',BANK:'은행',CASH:'현금',name:'계좌명',cash:'현금 계정에는 은행·계좌번호·예금주를 입력하지 않습니다.',required:'통화와 필수 계좌 정보를 입력해 주세요.'},

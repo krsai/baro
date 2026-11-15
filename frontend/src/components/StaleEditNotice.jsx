@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle } from '@mui/material';
+import {Button,Dialog,DialogActions,DialogContent,DialogTitle} from '@mui/material';
+import Alert from "./AppNotice";
 
 export default function StaleEditNotice({ stale, dirty, busy, languageCode, onRefresh }) {
   const [open, setOpen] = useState(false);

@@ -686,7 +686,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
       />
       {quantityReviewDraft ? <Paper variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'warning.main' }}>
         <Typography variant="h6">{languageCode === 'ko' ? '초과 생산 검토' : languageCode === 'vi' ? 'Kiểm tra sản lượng vượt đơn hàng' : 'Review excess production'} — {quantityReviewDraft.fileName}</Typography>
-        <Typography variant="body2" sx={{ my: 0.5 }}>{languageCode === 'ko' ? '수량 확인 후 이상 없음을 체크하세요. 메뉴 이동 중 검토 내용은 유지됩니다.' : languageCode === 'vi' ? 'Kiểm tra số lượng rồi đánh dấu xác nhận. Nội dung được giữ khi chuyển menu.' : 'Review quantities and confirm. Your review is retained when switching menus.'}</Typography>
+
         <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
           <Button onClick={() => navigateToPath('/order')}>{languageCode === 'ko' ? '주문 확인' : languageCode === 'vi' ? 'Xem đơn hàng' : 'View orders'}</Button>
           <Button onClick={() => navigateToPath('/style')}>{languageCode === 'ko' ? '스타일·공정 확인' : languageCode === 'vi' ? 'Xem kiểu dáng / công đoạn' : 'View styles / processes'}</Button>
@@ -889,13 +889,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
           )}
         </DialogTitle>
         <DialogContent dividers>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {resolveText(
-              TEXT.importIssueDialogDescription,
-              languageCode,
-              'Fix the rows below in the Excel file, then import again.'
-            )}
-          </Typography>
+
           <TableContainer sx={{ maxHeight: 420 }}>
             <Table size="small" stickyHeader>
               <TableHead>

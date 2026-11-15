@@ -1,16 +1,7 @@
 import {employeeLeaveText} from '../../../constants/employeeLeave';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Paper,
-  Stack,
-  Typography,
-  TextField,
-  MenuItem,
-} from '@mui/material';
+import {Box,Button,Chip,Paper,Stack,Typography,TextField,MenuItem} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';

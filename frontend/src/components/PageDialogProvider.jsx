@@ -1,4 +1,5 @@
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
+import {notifyGlobally} from '../utils/appNotifications';
 import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography } from '@mui/material';
 import { useLanguage } from '../context/LanguageContext';
@@ -13,7 +14,7 @@ const TEXT = {
 const fallback = {
   confirm: async message => window.confirm(message),
   prompt: async (message, value = '') => window.prompt(message, value),
-  alert: async message => window.alert(message),
+  alert: async message => notifyGlobally(message),
 };
 export const usePageDialogs = () => useContext(PageDialogs) || fallback;
 
@@ -42,7 +43,7 @@ export default function PageDialogProvider({ children }) {
     for (const request of pending.current) request.resolve(request.kind === 'confirm' ? false : request.kind === 'prompt' ? null : undefined);
     pending.current = [];
   }, []);
-  const dialogs = useMemo(() => ({ confirm: message => ask('confirm', message), prompt: (message, initial) => ask('prompt', message, initial), alert: message => ask('alert', message) }), [ask]);
+  const dialogs = useMemo(() => ({ confirm: message => ask('confirm', message), prompt: (message, initial) => ask('prompt', message, initial), alert: async message => notifyGlobally(message) }), [ask]);
   return <PageDialogs.Provider value={dialogs}>{children}
     <Dialog open={Boolean(current)} onClose={() => finish(false, undefined, current?.id)} fullWidth maxWidth="sm" aria-labelledby={titleId}>
       <DialogTitle id={titleId}>{text.title}</DialogTitle>

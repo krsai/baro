@@ -1,3 +1,4 @@
+import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import {workTimeText} from '../../../constants/workTime';
@@ -7,32 +8,11 @@ import dayjs from 'dayjs';
 import DateRangeSelector from '../../../components/DateRangeSelector';
 import SearchPanel from '../../../components/SearchPanel';
 import SearchInput from '../../../components/SearchInput';
-import {periodMonthKeys,periodMonthNote} from '../../../utils/periodRange.mjs';
+import {periodMonthKeys} from "../../../utils/periodRange.mjs";
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Box,
-  IconButton,
-  Alert,
-  Button,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  MenuItem,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-  Tooltip,
-} from '@mui/material';
+import {Box,IconButton,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,Tooltip} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import CalculateIcon from '@mui/icons-material/Calculate';
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -474,10 +454,8 @@ const PayrollBoard = () => {
       />
       {payableError&&<Alert severity="error" sx={{mb:2}}>{payableError}</Alert>}
       <Box sx={{ width: '100%' }}>
-        <Box sx={{ mb: 1, color: 'text.secondary', fontSize: 13 }}>
-          {isService?({ko:'선택 기간의 사업장별 급여를 계산하고 확정합니다.',en:'Calculate and confirm payroll by month and workplace.',vi:'Tính và xác nhận lương theo tháng và nơi làm việc.'})[languageCode]:languageCode === 'ko' ? '선택 기간에 포함되는 월별·공장별 급여를 계산하고 확정합니다.' : languageCode === 'vi' ? 'Tinh va xac nhan luong cua tat ca nhan vien theo thang va nha may.' : 'Calculate and confirm payroll for all employees by month and factory.'}
-        </Box>
-        <Typography variant="body2" color="text.secondary">{periodMonthNote[languageCode]||periodMonthNote.en}</Typography>
+
+
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
           <TableContainer>
             <Table stickyHeader size="small">
@@ -546,7 +524,7 @@ const PayrollBoard = () => {
                                 variant="outlined"
                               /></Tooltip>
                             </Stack>
-                            {rowNeedsRecalculation&&readinessDescription&&<Typography variant="caption" display="block" color="warning.main">{readinessDescription}</Typography>}
+                            {rowNeedsRecalculation&&readinessDescription&&<GlobalNotice severity="warning">{readinessDescription}</GlobalNotice>}
                           </TableCell>
                           <TableCell align="center">
                             <LockToggleSwitch
@@ -572,7 +550,7 @@ const PayrollBoard = () => {
             <Typography variant="subtitle2" color="success.dark">{resolveText(languageCode, 'calculationSucceeded')}</Typography>
             <Typography variant="body2">{calculationErrors.succeeded.join(', ')}</Typography>
           </Box>}
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{resolveText(languageCode, 'calculationRetryHint')}</Typography>
+
           <Stack spacing={1.5}>{calculationErrors?.failed?.map((row) => <Box key={`${row.month}:${row.factoryLabel}`} sx={{ p: 2, border: 1, borderColor: 'error.light', borderRadius: 1 }}>
             <Typography variant="subtitle2" color="error.main" sx={{ mb: .5 }}>{row.month} · {row.factoryLabel}</Typography>
             <Typography variant="body2">{explainCalculationError(row.message)}</Typography>

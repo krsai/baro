@@ -26,7 +26,7 @@ try{
   assert.match(await adjustmentOut.locator('td').nth(1).innerText(),/VCB/);assert.equal(await adjustmentOut.locator('td').nth(2).innerText(),'\u2014');
   for(const direction of ['IN','OUT']){const form=page.getByTestId('adjustment-'+direction);assert.equal(await form.locator('[data-side="'+(direction==='IN'?'to':'from')+'"]').getByRole('textbox').count(),1);assert.equal(await form.locator('[data-side="'+(direction==='IN'?'from':'to')+'"]').getByRole('textbox').count(),0);}
   const incoming=await ledger.locator('tbody tr').first().locator('[data-ledger-amount="IN"]').boundingBox(),outgoing=await ledger.locator('tbody tr').first().locator('[data-ledger-amount="OUT"]').boundingBox();assert.ok(Math.abs(incoming.width-outgoing.width)<2,'in/out keep equal columns even with no outgoing transactions');
-  const description=await ledger.locator('tbody tr').first().locator('td').nth(7).boundingBox();assert.ok(incoming.width>description.width,'money columns get more space than the short description');
+  for(const direction of ['IN','OUT'])assert.equal(await ledger.locator('tbody tr').first().locator('[data-ledger-amount="'+direction+'"]').evaluate(cell=>cell.scrollWidth<=cell.clientWidth+1&&getComputedStyle(cell).textOverflow!=='ellipsis'),true,'money values remain fully visible');
   assert.ok(await ledger.locator('tbody td').first().evaluate(element=>parseFloat(getComputedStyle(element).fontSize)>=13));
   assert.equal(await ledger.locator('[data-table-action]').first().evaluate(element=>getComputedStyle(element.closest('td')).boxShadow),'none','sticky actions do not draw a vertical separator');
   await ledger.locator('[data-table-action]').first().click();assert.equal(await page.evaluate(()=>window.deleted),true);

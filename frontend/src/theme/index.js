@@ -1,4 +1,5 @@
 import { ui } from './ui';
+import FieldFeedback from '../components/FieldFeedback';
 import {responsiveTableStyles} from './tableLayout';
 import { getLabelPalette, LABEL_PALETTE } from './labelPalette';
 import { createTheme } from '@mui/material/styles';
@@ -54,6 +55,7 @@ const baseTheme = createTheme({
     },
   },
   components: {
+    MuiFormHelperText: {defaultProps:{component:FieldFeedback}},
     MuiPaper: {
       styleOverrides: {
         root: {

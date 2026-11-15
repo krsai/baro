@@ -6,7 +6,8 @@ import FreightJobEditor,{FreightJobDetails} from '../../components/FreightJobEdi
 import ShippingChargeDrafts from '../../components/ShippingChargeDrafts';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {useSearchParams} from 'react-router-dom';
-import {Alert,Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,TextField,Typography} from '@mui/material';
+import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TableSortLabel,TextField,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';

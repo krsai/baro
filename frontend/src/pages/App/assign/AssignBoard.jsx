@@ -7,34 +7,8 @@ import QueryFeedback from '../../../components/QueryFeedback';
 import useEditRevision, { isStaleEditError } from '../../../hooks/useEditRevision';
 import StaleEditNotice from '../../../components/StaleEditNotice';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Checkbox,
-  FormControlLabel,
-  CircularProgress,
-  Divider,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Drawer,
-  IconButton,
-  Menu,
-  MenuItem,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Chip,Checkbox,FormControlLabel,CircularProgress,Divider,Dialog,DialogActions,DialogContent,DialogTitle,Drawer,IconButton,Menu,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import CloseIcon from '@mui/icons-material/Close';
 import KeyboardArrowLeftIcon from '@mui/icons-material/KeyboardArrowLeft';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
@@ -7568,19 +7542,7 @@ const AssignBoard = () => {
                       </Table>
                     </TableContainer>
                   )}
-                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                    {detailAssignmentIsCompleted
-                      ? getUiMessage(
-                          'assign.completedReadOnlySnapshotNote',
-                          'Completed assignments are read-only; ST/CT inputs are not saved.',
-                          languageCode
-                        )
-                      : languageCode === 'ko'
-                        ? '저장하면 현재 입력한 ST/CT 값으로 snapshot이 저장됩니다.'
-                        : languageCode === 'vi'
-                          ? 'Khi luu, ST/CT vua nhap se duoc luu vao snapshot.'
-                          : 'When you save the assignment, the current ST/CT inputs are stored in the snapshot.'}
-                  </Typography>
+
                 </Paper>
 
                 {detailAssignment?.priorStyleCompletionQuantity > 0 && <Alert severity="info">

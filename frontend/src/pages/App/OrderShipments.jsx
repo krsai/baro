@@ -2,7 +2,8 @@ import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import React,{useEffect,useRef,useState} from 'react';
 import {useParams} from 'react-router-dom';
-import {Alert,Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,MenuItem,Typography,LinearProgress} from '@mui/material';
+import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,MenuItem,Typography,LinearProgress} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import SaveButton from '../../components/SaveButton';
 import {useAuth} from '../../context/AuthContext';
@@ -69,6 +70,6 @@ function ShipmentWorkspace({orgId,orderId}){
     {data.events.length>0&&<Paper variant="outlined" sx={{p:2}}><Typography variant="subtitle2">{t.policyHistory}</Typography>{data.events.map(event=><Typography key={event.id} variant="body2">{new Date(event.createdAt).toLocaleDateString()} · {event.snapshot.excluded?t.EXCLUDED:t.TRACKED} · {event.actorName} · {event.snapshot.reason}</Typography>)}</Paper>}
    </>}
   </Stack>
-  <Dialog open={!!dialog} onClose={()=>{if(!busy&&!uncertain)setDialog(null);}} fullWidth maxWidth="sm"><DialogTitle>{dialog?.kind==='policy'?(dialog.excluded?t.excludeTitle:t.resumeTitle):t.cancelTitle}</DialogTitle><DialogContent><Stack spacing={2}>{dialog?.kind==='policy'&&<Typography variant="body2" color="text.secondary">{t.policyNote}</Typography>}{error&&<Alert severity="error">{error}</Alert>}<TextField autoFocus fullWidth required label={t.reason} value={dialog?.reason||''} disabled={busy||uncertain} onChange={e=>setDialog(current=>({...current,reason:e.target.value}))} inputProps={{maxLength:1000}}/></Stack></DialogContent><DialogActions><SaveButton onClick={operation} disabled={!dialog?.reason.trim()} loading={busy}>{uncertain?t.retry:t.confirm}</SaveButton></DialogActions></Dialog>
+  <Dialog open={!!dialog} onClose={()=>{if(!busy&&!uncertain)setDialog(null);}} fullWidth maxWidth="sm"><DialogTitle>{dialog?.kind==='policy'?(dialog.excluded?t.excludeTitle:t.resumeTitle):t.cancelTitle}</DialogTitle><DialogContent><Stack spacing={2}>{error&&<Alert severity="error">{error}</Alert>}<TextField autoFocus fullWidth required label={t.reason} value={dialog?.reason||''} disabled={busy||uncertain} onChange={e=>setDialog(current=>({...current,reason:e.target.value}))} inputProps={{maxLength:1000}}/></Stack></DialogContent><DialogActions><SaveButton onClick={operation} disabled={!dialog?.reason.trim()} loading={busy}>{uncertain?t.retry:t.confirm}</SaveButton></DialogActions></Dialog>
  </AppPageContainer>;
 }

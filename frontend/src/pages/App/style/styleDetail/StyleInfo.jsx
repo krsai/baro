@@ -1,3 +1,4 @@
+import GlobalNotice from "../../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
 import {packagingText} from '../../../../constants/packaging';
@@ -610,15 +611,11 @@ const StyleInfo = ({
                   </Stack>
                 )}
                 {imageUrlError ? (
-                  <Typography variant="caption" color="error.main">
+                  <GlobalNotice severity="error">
                     {imageUrlError}
-                  </Typography>
+                  </GlobalNotice>
                 ) : (
-                  <Typography variant="caption" color="text.secondary">
-                    {imageInputMode === 'file'
-                      ? '업로드 후 썸네일에서 대표 이미지를 선택할 수 있습니다.'
-                      : 'http:// 또는 https:// 링크만 추가됩니다.'}
-                  </Typography>
+                  null
                 )}
               </Stack>
             </Paper>

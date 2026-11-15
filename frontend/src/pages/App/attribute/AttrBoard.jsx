@@ -2,28 +2,8 @@ import Autocomplete from '../../../components/SearchableSelect';
 import PageContentStack from '../../../components/PageContentStack';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 ﻿import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Grid,
-  IconButton,
-  Paper,
-  Skeleton,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Tooltip,
-  Typography} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,Grid,IconButton,Paper,Skeleton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AddIcon from '@mui/icons-material/Add';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -526,9 +506,7 @@ const ProcessNamingGuideDialog = memo(function ProcessNamingGuideDialog({ open, 
       <DialogTitle>공정 명칭 가이드</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <Alert severity="info">
-            공정 코드는 유지하고, 텍스트는 같은 순서로 적어 중복을 줄입니다.
-          </Alert>
+
 
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 0.75 }}>
@@ -650,9 +628,7 @@ const ProcessComposerDialog = memo(function ProcessComposerDialog({
       <DialogTitle>공정 조합 생성</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <Alert severity="info">
-            시스템 표준 후보와 업체 기존 공정에서 추출한 후보를 함께 보여줍니다.
-          </Alert>
+
 
           <Grid container spacing={2}>
             <Grid item xs={12}>
@@ -965,7 +941,7 @@ const AttrBoard = ({
       });
 
       if (Object.keys(changedPayload).length === 0) {
-        showNotification('변경사항이 없습니다.', 'info');
+        showNotification("변경 사항이 없습니다.", 'info');
         return;
       }
 

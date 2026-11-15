@@ -1,5 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import DeleteActionButton from './DeleteActionButton';
 import ChangeApprovalDialog from './ChangeApprovalDialog';
 import {accountingOpeningHistoryText} from '../constants/accountingOpeningHistory';

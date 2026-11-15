@@ -1,31 +1,8 @@
 import SearchPanel from '../../../components/SearchPanel';
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Grid,
-  MenuItem,
-  Paper,
-  Stack,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Tabs,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Card,CardContent,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Grid,MenuItem,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs,TextField,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';

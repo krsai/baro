@@ -1,5 +1,6 @@
 import React from 'react';
-import {Alert,Box,MenuItem,Stack,TextField,Typography,Table,TableBody,TableCell,TableHead,TableRow,TableContainer} from '@mui/material';
+import {Box,MenuItem,Stack,TextField,Typography,Table,TableBody,TableCell,TableHead,TableRow,TableContainer} from '@mui/material';
+import Alert from "./AppNotice";
 import DecimalAmountField from './DecimalAmountField';
 import DeleteActionButton from './DeleteActionButton';
 import AddActionButton from './AddActionButton';

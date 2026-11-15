@@ -1,5 +1,6 @@
 import React from 'react';
-import { Alert, Paper, Stack, Typography } from '@mui/material';
+import {Paper,Stack,Typography} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
 import { useLanguage } from '../../context/LanguageContext';
 

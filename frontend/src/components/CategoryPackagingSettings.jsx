@@ -1,5 +1,6 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Button,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TableContainer,Typography} from '@mui/material';
+import {Button,Paper,Stack,Table,TableBody,TableCell,TableHead,TableRow,TableContainer,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import DecimalAmountField from './DecimalAmountField';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {useAppActions} from '../context/AppContext';

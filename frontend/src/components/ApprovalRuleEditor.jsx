@@ -1,5 +1,6 @@
 import React,{forwardRef,useImperativeHandle,useRef,useState} from 'react';
-import {Alert,Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import {usePageDialogs} from './PageDialogProvider';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {Add,ArrowForward,Close,DragIndicator} from '@mui/icons-material';

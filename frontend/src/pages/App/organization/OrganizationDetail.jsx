@@ -14,14 +14,8 @@ import EntityDetailSection from '../../../components/EntityDetailSection';
 import Grid from '@mui/material/Grid';
 import PageContentStack from '../../../components/PageContentStack';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert, Button, Box,
-  MenuItem,
-  Paper,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Button,Box,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import SaveButton from '../../../components/SaveButton';
 import {

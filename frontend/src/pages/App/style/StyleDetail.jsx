@@ -1,14 +1,7 @@
 import {packagingText} from '../../../constants/packaging';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert,
-  Button,
-  Box,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@mui/material';
+import {Button,Box,Stack,ToggleButton,ToggleButtonGroup,Typography} from '@mui/material';
+import Alert from "../../../components/AppNotice";
 import { useLocation, useParams } from 'react-router-dom';
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
@@ -49,8 +42,8 @@ const STYLE_DETAIL_MESSAGES = {
     createSuccess: '새 스타일이 생성되었습니다.',
     updateSuccess: '스타일이 업데이트되었습니다.',
     saveError: '스타일을 저장하지 못했습니다.',
-    nameRequired: '스타일명을 입력해주세요.',
-    customerRequired: '고객사를 선택해주세요.',
+    nameRequired: "스타일명을 입력해 주세요.",
+    customerRequired: "고객사를 선택해 주세요.",
     versionConfirmedSuccess: '저장한 공정을 새 버전으로 확정했습니다.',
     versionConfirmError: '공정은 저장했지만 버전을 확정하지 못했습니다.',
   },
@@ -460,7 +453,7 @@ const StyleDetail = () => {
   return (
     <AppPageContainer
       title={detailTabLabel}
-      description={isNew ? undefined : styleFormData.name || originalData.name || styleId}
+      context={isNew ? undefined : styleFormData.name || originalData.name || styleId}
       titleActions={(
         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
           <LastUpdaterLabel />

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, MenuItem, Stack, TextField } from '@mui/material';
+import {Button,MenuItem,Stack,TextField} from '@mui/material';
+import Alert from "./AppNotice";
 import { requestJSON, buildQueryString } from '../utils/apiClient';
 const serviceName = (row,language) => row?.[language === 'ko' ? 'nameKo' : language === 'vi' ? 'nameVi' : 'nameEn'] || row?.nameEn || '';
 

@@ -2,11 +2,8 @@ import ActionNotice from '../../components/ActionNotice';
 import SearchPanel from '../../components/SearchPanel';
 import PageContentStack from '../../components/PageContentStack';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle, FormControl, FormControlLabel, InputLabel,
-  LinearProgress, IconButton, Menu, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Tooltip, Typography, Switch,
-} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,Dialog,DialogContent,DialogTitle,FormControl,FormControlLabel,InputLabel,LinearProgress,IconButton,Menu,MenuItem,Paper,Select,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Tooltip,Typography,Switch} from '@mui/material';
+import Alert from "../../components/AppNotice";
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import AppPageContainer from '../../components/AppPageContainer';
@@ -348,7 +345,7 @@ const CustomerProductionReport = () => {
           <Typography variant="body2" color="text.secondary">{dailyProducedRow?.styles ? resolveStyleSummaryLabel(dailyProducedRow.styles, languageCode) : dailyProducedRow?.styleName || dailyProducedRow?.styleCode || '-'}</Typography>
         </Stack>
         <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>{text.dailyProducedTitle}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>{text.scheduleNote}</Typography>
+
         {(dailyProducedRow?.dailyProducedQuantities || []).length === 0
           ? <Typography variant="body2" color="text.secondary">{text.noDailyProduced}</Typography>
           : (() => {

@@ -1,5 +1,6 @@
 import React from 'react';
-import {Alert,Box,Button,Checkbox,FormControlLabel,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Checkbox,FormControlLabel,MenuItem,Paper,Stack,TextField,Typography} from '@mui/material';
+import Alert from "./AppNotice";
 import {packagingGeometry} from '../utils/profitScenario.mjs';
 import {revenueCostsText} from '../constants/revenueCosts';
 export default function RevenuePackagingInputs({rows,languageCode,defaults,change,changeStyle,field,money,number,onSettings}){

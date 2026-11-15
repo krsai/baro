@@ -254,7 +254,7 @@ export const UI_MESSAGES = {
       vi: 'Đang khóa thu cong.',
     },
     lockHelperUnsaved: {
-      ko: '미저장 변경사항이 있으면 잠글 수 없습니다. 먼저 저장해 주세요.',
+      ko: "미저장 변경 사항이 있으면 잠글 수 없습니다. 먼저 저장해 주세요.",
       en: 'You cannot lock the order while there are unsaved changes. Save first.',
       vi: 'Không thể khoa khi van con thay doi chua luu. Hay luu truoc.',
     },
@@ -731,7 +731,7 @@ export const UI_MESSAGES = {
       vi: 'Co du lieu phan cong chua luu. Roi trang ma khong luu?',
     },
     resetConfirm: {
-      ko: '저장되지 않은 작업 배정 변경사항을 마지막 저장 상태로 되돌릴까요?',
+      ko: "저장되지 않은 작업 배정 변경 사항을 마지막 저장 상태로 되돌릴까요?",
       en: 'Restore unsaved assignment changes to the last saved state?',
       vi: 'Khoi phuc cac thay doi chua luu ve trang thai da luu gan nhat?',
     },
@@ -1123,17 +1123,17 @@ Object.assign(UI_MESSAGES, {
     },
     pastSuffix: { ko: '\uC9C0\uB0A8', en: 'Past', vi: 'Da qua' },
     noChanges: {
-      ko: '\uC800\uC7A5\uD560 \uBCC0\uACBD\uC0AC\uD56D\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.',
+      ko: "저장할 변경 사항이 없습니다.",
       en: 'There are no changes to save.',
       vi: 'Không có thay doi de luu.',
     },
     saveSuccess: {
-      ko: '\uD734\uC77C \uBCC0\uACBD\uC0AC\uD56D\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.',
+      ko: "휴일 변경 사항을 저장했습니다.",
       en: 'Holiday changes have been saved.',
       vi: 'Đã lưu thay doi ngay nghi.',
     },
     saveError: {
-      ko: '\uD734\uC77C \uBCC0\uACBD\uC0AC\uD56D \uC800\uC7A5\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.',
+      ko: "휴일 변경 사항 저장에 실패했습니다.",
       en: 'Failed to save holiday changes.',
       vi: 'Không thể luu thay doi ngay nghi.',
     },

@@ -1,23 +1,7 @@
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  Collapse,
-  IconButton,
-  LinearProgress,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Chip,Collapse,IconButton,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import Alert from "../../../../components/AppNotice";
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowRightIcon from '@mui/icons-material/KeyboardArrowRight';
 import { getUiMessage } from '../../../../constants/uiMessages';

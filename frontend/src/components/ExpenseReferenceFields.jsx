@@ -1,6 +1,7 @@
 import ExpenseLookupField from './ExpenseLookupField';
 import React,{useEffect,useMemo,useState} from 'react';
-import {Alert,Box} from '@mui/material';
+import {Box} from '@mui/material';
+import Alert from "./AppNotice";
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 export default function ExpenseReferenceFields({line,orders,orgId,labels,disabled,production,hiddenOrder,hiddenStyle,languageCode,inline=false,onChange,onLoading}){
  const ids=line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]);

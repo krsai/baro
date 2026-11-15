@@ -2,28 +2,8 @@ import {entityCodeError} from '../../../utils/entityCode.mjs';
 import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Collapse,
-  Divider,
-  Grid,
-  IconButton,
-  MenuItem,
-  Paper,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  TextField,
-  Typography,
-} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,Collapse,Divider,Grid,IconButton,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AppPageContainer from '../../../components/AppPageContainer';
@@ -77,7 +57,7 @@ const PAGE_MESSAGES = {
   optionalAccessHelper: { ko: '이 섹션은 접근 권한 설정용입니다. 회사 과금과는 무관합니다.', en: 'This section is only for access control. It does not affect company billing.', vi: 'Phan nay chi dung de cap quyen truy cap. Khong anh huong den phi cua cong ty.' },
   initialAdminEmail: { ko: '초기 관리자 이메일', en: 'Initial Admin Email', vi: 'Email quan tri ban dau' },
   initialAdminRole: { ko: '초기 관리자 역할', en: 'Initial Admin Role', vi: 'Vai tro ban dau' },
-  companyRequired: { ko: '회사명을 입력해주세요.', en: 'Organization name is required.', vi: 'Hay nhap ten cong ty.' },
+  companyRequired: { ko: "회사명을 입력해 주세요.", en: 'Organization name is required.', vi: 'Hay nhap ten cong ty.' },
   activeEmailsRequired: { ko: '활성 구독은 서비스 담당 이메일과 청구 이메일이 필요합니다.', en: 'Active subscriptions require both a service contact email and a billing email.', vi: 'Goi dang hoat dong can email phu trach dich vu va email thanh toan.' },
   subscriptionUpdated: { ko: '구독 정보가 저장되었습니다.', en: 'Subscription saved.', vi: 'Đã lưu thong tin goi dich vu.' },
   subscriptionUpdateError: { ko: '구독 정보를 저장하지 못했습니다.', en: 'Failed to save the subscription.', vi: 'Không thể luu thong tin goi dich vu.' },
@@ -340,7 +320,7 @@ const OrganizationSubscriptionBoard = () => {
       }
     >
       <PageContentStack>
-        <Alert severity="info">{getPageMessage('summary', languageCode)}</Alert>
+
         <Paper variant="outlined" sx={{ p: 'var(--ui-panel-padding, 16px)' }}>
           <Box sx={{ px: 3, py: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
             <Typography variant="h6">{getPageMessage('companyList', languageCode)}</Typography>

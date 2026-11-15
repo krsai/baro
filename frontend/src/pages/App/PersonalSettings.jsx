@@ -39,17 +39,17 @@ const PersonalSettings = () => {
       <MyProfile />
       <Paper variant="outlined" sx={{ minWidth: 0, borderRadius: 2 }}>
         <Stack spacing={3} sx={{ p: { xs: 2, sm: 3 } }}>
-          <Box><Typography variant="h6" fontWeight={700}>{text.startup}</Typography><Typography variant="body2" color="text.secondary">{text.startupHelp}</Typography></Box>
+          <Box><Typography variant="h6" fontWeight={700}>{text.startup}</Typography></Box>
           <FormControlLabel
             control={<Switch checked={preferences.openDashboardOnLogin && canOpenDashboard} disabled={!canOpenDashboard} onChange={handleDashboardChange} />}
-            label={<Box><Typography fontWeight={600}>{text.dashboard}</Typography><Typography variant="body2" color="text.secondary">{canOpenDashboard ? text.dashboardHelp : text.dashboardUnavailable}</Typography></Box>}
+            label={<Box><Typography fontWeight={600}>{text.dashboard}</Typography></Box>}
             labelPlacement="start"
             sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 2, m: 0, '& .MuiFormControlLabel-label': { minWidth: 0 }, '& .MuiSwitch-root': { flexShrink: 0 } }}
           />
           <Divider />
           <Box>
             <Typography variant="h6" fontWeight={700}>{text.display}</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{text.languageHelp}</Typography>
+
             <FormControl fullWidth size="small"><InputLabel id="personal-settings-language-label">{text.language}</InputLabel><Select labelId="personal-settings-language-label" value={languageCode} label={text.language} onChange={(event) => setLanguageCode(event.target.value)}><MenuItem value="ko">한국어</MenuItem><MenuItem value="en">English</MenuItem><MenuItem value="vi">Tiếng Việt</MenuItem></Select></FormControl>
           </Box>
         </Stack>
