@@ -2,6 +2,7 @@ import {listShippingPresets,saveShippingPreset} from './shippingPresets';
 import {shippingGeneralCustomer} from './shippingGeneralCustomer';
 import {validateOogTransition} from './shippingCargo';
 import {searchShippingPorts,validateShippingPorts} from './shippingPorts';
+import {searchShippingAirports} from './shippingAirports';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -140,7 +141,11 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
   if(org.type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);
   return retryEditTransaction(db,async(tx:any)=>({id:await shippingGeneralCustomer(tx,orgId,actorId,null,true)}));
  });
- route('get','/ports',(_scope:any,req:any)=>searchShippingPorts(db,req.query.q??''));
+ route('get','/ports',(_scope:any,req:any)=>{
+  if(req.query.kind==='AIR')return searchShippingAirports(req.query.q??'');
+  if(req.query.kind!==undefined&&req.query.kind!=='SEA')fail('SHIPPING_INVALID');
+  return searchShippingPorts(db,req.query.q??'');
+ });
  route('post','/presets',(scope:any,req:any)=>saveShippingPreset(db,scope,req.body));
  route('delete','/presets/:presetId',(scope:any,req:any)=>saveShippingPreset(db,scope,{...req.body,id:req.params.presetId},true));
  route('get','/:id',({orgId,actorId}:any,req:any)=>readShippingRequest(db,orgId,actorId,req.params.id));

@@ -10,7 +10,7 @@ import {requestJSON,buildQueryString} from '../utils/apiClient';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
 const record=row=>({id:row.id,version:row.version,...addressValue({...row.data,label:row.label})});
-export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose,title,notice,personLabel,resolveCustomer,disabled=false,testId='shipping-address-book'}){
+export default function ShippingAddressBook({orgId,customerId,current,languageCode,onLoad,onClose,title,notice,personLabel,resolveCustomer,locationLookup,disabled=false,testId='shipping-address-book'}){
  const t=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs(),{showNotification}=useAppActions();
  const [initial]=useState(()=>({id:crypto.randomUUID(),...addressValue(current)}));
  const [scopeCustomerId,setScopeCustomerId]=useState(customerId),[rows,setRows]=useState([]),[edit,setEdit]=useState(initial),[query,setQuery]=useState(''),[loading,setLoading]=useState(!!customerId),[busy,setBusy]=useState(false),[readError,setReadError]=useState(false),[saveError,setSaveError]=useState(false),[uncertain,setUncertain]=useState(false),[reload,setReload]=useState(0);
@@ -67,6 +67,7 @@ export default function ShippingAddressBook({orgId,customerId,current,languageCo
     {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
     <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{edit.version?t.editAddress:t.addAddress}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<DeleteActionButton disabled={blocked} title={t.deletePreset} onClick={()=>mutate(true)}/>}<SaveButton disabled={blocked||!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.updateAddress:t.savePreset}</SaveButton></Stack></Stack>
     {saveError&&<Alert severity="error" action={uncertain?<Button disabled={busy} onClick={()=>mutate()}>{t.retry}</Button>:undefined}>{t.failed}</Alert>}
+    {locationLookup?.(place=>setEdit(v=>({...v,address:place,label:v.label||place})),blocked)}
     <ShippingAddressFields value={edit} onChange={setEdit} t={t} disabled={blocked} autoFocus personLabel={personLabel}/>
    </Stack>
   </Box></DialogContent>

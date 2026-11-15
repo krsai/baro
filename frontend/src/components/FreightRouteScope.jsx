@@ -11,7 +11,7 @@ export default function FreightRouteScope({mode,service,value,onChange,languageC
  const t=routeScopeText[languageCode]||routeScopeText.en,nodes=routeNodes(mode,service),last=nodes.length-1;
  const range=[nodes.indexOf(value?.start),nodes.indexOf(value?.end)];
  const valid=range[0]>=0&&range[1]>range[0];
- const label=node=>mode==='AIR'&&node==='ORIGIN_TERMINAL'?t.originAirport:mode==='AIR'&&node==='DESTINATION_TERMINAL'?t.destinationAirport:t[node];
+ const label=node=>mode==='ROAD'?t[node==='ORIGIN_DOOR'?'truckOrigin':'truckDestination']:mode==='AIR'&&node==='ORIGIN_TERMINAL'?t.originAirport:mode==='AIR'&&node==='DESTINATION_TERMINAL'?t.destinationAirport:t[node];
  const select=([start,end])=>onChange({start:nodes[start],end:nodes[end]});
  const presets=mode==='ROAD'?[['all',[0,last]]]:[['all',[0,3]],['doorPort',[0,2]],['portDoor',[1,3]],['main',[1,2]]];
  return <Stack spacing={2} data-testid="freight-route-scope">

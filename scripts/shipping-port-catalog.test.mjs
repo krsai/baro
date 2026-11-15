@@ -25,6 +25,14 @@ test('official worldwide port catalogue, literal search, real FK persistence, is
   assert.ok((await searchShippingPorts(db,'Rotterdam')).rows.some(row=>row.code==='NLRTM'));
   assert.ok((await searchShippingPorts(db,'')).hasMore);assert.deepEqual((await searchShippingPorts(db,'%')).rows,[]);
   await assert.rejects(searchShippingPorts(db,'a'.repeat(161)),/SHIPPING_INVALID/);
+  const roadLocations={ORIGIN_DOOR:'Haiphong (VNHPH)',DESTINATION_DOOR:'Incheon International Airport (ICN)'};
+  const road=await saveFreight(db,s.company.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'ROAD',customerId:s.vendor.id,data:{cargo:'Garments',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:roadLocations}});
+  assert.deepEqual(road.data.routeLocations,roadLocations);
+  assert.equal(road.data.origin,roadLocations.ORIGIN_DOOR);
+  assert.equal(road.data.destination,roadLocations.DESTINATION_DOOR);
+  assert.deepEqual(road.requestSnapshot.data.routeLocations,roadLocations);
+  assert.equal(road.originPortCode,null);
+  assert.equal(road.destinationPortCode,null);
   const data={cargoSchemaVersion:1,cargo:'Garments',shipmentType:'FCL',containers:[{size:'40',type:'DC',count:'5'},{size:'20',type:'RF',count:'1'}],outOfGauge:false,hsCode:'610910',dangerousGoods:true,dgClass:'3',unNumber:'1993',origin:'Hai Phong (VNHPH)',destination:'Busan (KRPUS)',originPortCode:'VNHPH',destinationPortCode:'KRPUS',workScope:{start:'ORIGIN_TERMINAL',end:'DESTINATION_TERMINAL'}};
   const job=await saveFreight(db,s.company.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'SEA',customerId:s.vendor.id,data});
   assert.equal(job.originPortCode,'VNHPH');assert.equal(job.destinationPortCode,'KRPUS');assert.equal(job.data.hsCode,'610910');assert.equal(job.data.containerCount,'6');assert.deepEqual(job.data.containers,data.containers);

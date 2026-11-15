@@ -11,3 +11,7 @@ for(const lang of ['ko','en','vi'])Object.assign(routeScopeText[lang],{shipper:'
 Object.assign(routeScopeText.ko,{entered:"입력 완료",notEntered:"미입력",clickLocation:"클릭하여 입력"});
 Object.assign(routeScopeText.en,{entered:"Entered",notEntered:"Not entered",clickLocation:"Click to enter"});
 Object.assign(routeScopeText.vi,{entered:"Đã nhập",notEntered:"Chưa nhập",clickLocation:"Nhấn để nhập"});
+
+Object.assign(routeScopeText.ko,{truckOrigin:'출발지',truckDestination:'도착지'});
+Object.assign(routeScopeText.en,{truckOrigin:'Origin',truckDestination:'Destination'});
+Object.assign(routeScopeText.vi,{truckOrigin:'Điểm đi',truckDestination:'Điểm đến'});
