@@ -1,4 +1,5 @@
 import {advanceAfterSelection} from '../utils/formFocus.mjs';
+import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 ﻿import React,{useEffect,useRef,useState} from 'react';
 import {IconButton,InputAdornment,TextField,Tooltip} from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
@@ -15,8 +16,9 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
  const search=()=>{if(!disabled){skipBlur.current=true;if(value&&normalizeLookupText(input)!==normalizeLookupText(text)){preserveDraft.current=true;onChange(null);}onSearch(input);}};
  const keyDown=event=>{
   if(disabled||composing.current||event.nativeEvent?.isComposing||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
-  if(event.key==='F2'){event.preventDefault();event.stopPropagation();search();return;}
-  if(!['Tab','Enter'].includes(event.key)||event.shiftKey)return;
+  const action=keyboardAction(event,'lookup');
+  if(action==='search'){event.preventDefault();event.stopPropagation();search();return;}
+  if(action!=='next-field'&&action!=='confirm')return;
   const selected=value&&normalizeLookupText(input)===normalizeLookupText(text),match=selected?value:resolve(input);
   if(match||(hasSelection||allowEmpty)&&!input.trim()){
    skipBlur.current=true;if(match&&!selected)choose(match,event);else if(!match&&allowEmpty&&value)onChange(null,event);

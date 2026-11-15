@@ -1,3 +1,4 @@
+import {keyboardAction} from './keyboardPolicy.mjs';
 const dialogSelector='[role="dialog"],.MuiModal-root .MuiDrawer-paper';
 const pageSelector='main.app-page,[data-workspace-page],main,form';
 const controlSelector='input,textarea,select,button,a[href],[contenteditable="true"],[tabindex]';
@@ -122,7 +123,8 @@ export function installKeyboardNavigation(doc=document){
   const segment=target.closest('[data-focus-next="group"]');
   if(segment&&target.matches('button')){
    const buttons=[...segment.querySelectorAll('button')].filter(canFocus),index=buttons.indexOf(target);
-   const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:['ArrowRight','ArrowDown'].includes(event.key)?(index+1)%buttons.length:['ArrowLeft','ArrowUp'].includes(event.key)?(index+buttons.length-1)%buttons.length:null;
+   const action=keyboardAction(event,'segment');
+   const next=action==='first-option'?0:action==='last-option'?buttons.length-1:action==='next-option'?(index+1)%buttons.length:action==='previous-option'?(index+buttons.length-1)%buttons.length:null;
    if(index>=0&&next!==null){event.preventDefault();focus(buttons[next]);return;}
   }
   if(event.key==='Tab'){

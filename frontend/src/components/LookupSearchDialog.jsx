@@ -3,6 +3,7 @@ import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,Stack
 import {EXPENSE_LOOKUP_TEXT} from '../constants/expenseLookup';
 import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 import {advanceFromDialog} from '../utils/formFocus.mjs';
+import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import useKeyboardNavigation from '../hooks/useKeyboardNavigation';
 const paging={ko:{previous:'이전',next:'다음'},en:{previous:'Previous',next:'Next'},vi:{previous:'Trước',next:'Tiếp'}};
 export default function LookupSearchDialog({open,onClose,title,titleActions,query,onQueryChange,options=[],columns=[],getSearchText,filterOptions,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[],getOptionDisabled=()=>false,loading=false,feedback,searchInputRef,searchLabel,searchInputProps,tableMinWidth,searchTools,maxWidth}){
@@ -16,9 +17,13 @@ export default function LookupSearchDialog({open,onClose,title,titleActions,quer
  const cursor=filtered.findIndex(row=>getOptionKey(row)===(activeKey??highlightedKey));
  const highlight=row=>{setActiveKey(getOptionKey(row));onHighlight?.(row);};
  const select=row=>{if(row&&!getOptionDisabled(row)){if(!multiple)advanceFromDialog(dialogRef.current);onSelect(row);}};
- const keyboard=event=>{if(event.nativeEvent?.isComposing||event.altKey||event.ctrlKey||event.metaKey)return;
-  if(['ArrowDown','ArrowUp'].includes(event.key)&&filtered.length){event.preventDefault();const index=cursor<0?(event.key==='ArrowDown'?0:filtered.length-1):Math.max(0,Math.min(filtered.length-1,cursor+(event.key==='ArrowDown'?1:-1)));highlight(filtered[index]);setPage(Math.floor(index/20));}
-  else if(event.key==='Enter'){event.preventDefault();select(cursor>=0?filtered[cursor]:filtered.length===1?filtered[0]:null);}
+ const keyboard=event=>{
+  // Row buttons/checkboxes own their activation. Bubbling Enter must never
+  // select the highlighted row in addition to the focused row's action.
+  if(event.target.closest('button,input[type="checkbox"],a[href]'))return;
+  const action=keyboardAction(event,'lookup-results');
+  if(['next-option','previous-option'].includes(action)&&filtered.length){event.preventDefault();const index=cursor<0?(action==='next-option'?0:filtered.length-1):Math.max(0,Math.min(filtered.length-1,cursor+(action==='next-option'?1:-1)));highlight(filtered[index]);setPage(Math.floor(index/20));}
+  else if(action==='confirm'){event.preventDefault();select(cursor>=0?filtered[cursor]:filtered.length===1?filtered[0]:null);}
  };
  useEffect(()=>{tableRef.current?.querySelector('[data-lookup-active="true"]')?.scrollIntoView({block:'nearest'});},[activeKey,current]);
  return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={maxWidth||(details?'lg':'md')} slotProps={{paper:{ref:dialogRef}}} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><span>{title}</span>{titleActions}</Stack></DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
