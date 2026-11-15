@@ -332,6 +332,12 @@ const baseTheme = createTheme({
           fontWeight: 600,
           padding: '6px 24px',
           minWidth: 100,
+          '&:focus': {
+            outline: `2px solid ${theme.palette.primary.main}`,
+            outlineOffset: '2px',
+            position: 'relative',
+            zIndex: 1,
+          },
           border: 'none',
           borderRadius: '6px',
           '&.Mui-selected': {

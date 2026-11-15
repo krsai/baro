@@ -14,6 +14,11 @@ export function navigationStops(scope){
  const nodes=[...scope.querySelectorAll(controlSelector)].filter(node=>canFocus(node)&&!node.closest('[role="listbox"],[role="menu"]')&&
   (!node.closest(dialogSelector)||node.closest(dialogSelector)===(scope.matches(dialogSelector)?scope:scope.closest(dialogSelector))));
  return nodes.filter(node=>{
+  const segment=node.closest('[data-focus-next="group"]');
+  if(segment&&node.matches('button')){
+   const buttons=nodes.filter(other=>other.matches('button')&&other.closest('[data-focus-next="group"]')===segment);
+   return node===(buttons.find(other=>other===scope.ownerDocument.activeElement)||buttons.find(other=>other.getAttribute('aria-pressed')==='true')||buttons[0]);
+  }
   if(node.type!=='radio'||!node.name)return true;
   const group=nodes.filter(other=>other.type==='radio'&&other.name===node.name&&other.form===node.form);
   return node===(group.find(other=>other.checked)||group[0]);
@@ -74,7 +79,7 @@ export function installKeyboardNavigation(doc=document){
    entry.wasVisible=true;
    if(entry.done){
     if(doc.activeElement===doc.body&&entry.lastFocused&&!entry.lastFocused.isConnected&&state.interactionScope&&scope.contains(state.interactionScope))focus(initialTarget(scope));
-    if(entry.fallback&&doc.activeElement===entry.fallback){const target=initialTarget(scope);if(target!==entry.fallback&&target?.matches('input,textarea,select,[role="combobox"]')){focus(target);entry.fallback=null;}}
+    if(entry.fallback&&doc.activeElement===entry.fallback&&!entry.fallback.matches('[data-initial-focus]')){const target=initialTarget(scope);if(target!==entry.fallback&&target?.matches('input,textarea,select,[role="combobox"]')){focus(target);entry.fallback=null;}}
     continue;
    }
    const active=doc.activeElement,target=initialTarget(scope);
@@ -114,6 +119,12 @@ export function installKeyboardNavigation(doc=document){
  const keyDown=event=>{
   if(event.defaultPrevented||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
   const target=event.target;if(!target.closest?.(pageSelector+','+dialogSelector))return;
+  const segment=target.closest('[data-focus-next="group"]');
+  if(segment&&target.matches('button')){
+   const buttons=[...segment.querySelectorAll('button')].filter(canFocus),index=buttons.indexOf(target);
+   const next=event.key==='Home'?0:event.key==='End'?buttons.length-1:['ArrowRight','ArrowDown'].includes(event.key)?(index+1)%buttons.length:['ArrowLeft','ArrowUp'].includes(event.key)?(index+buttons.length-1)%buttons.length:null;
+   if(index>=0&&next!==null){event.preventDefault();focus(buttons[next]);return;}
+  }
   if(event.key==='Tab'){
    if(target.closest('[role="listbox"],[role="menu"]'))return;
    const scope=navigationScope(target),stops=navigationStops(scope),index=stops.indexOf(target);
