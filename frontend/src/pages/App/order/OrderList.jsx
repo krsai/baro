@@ -1,3 +1,5 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import Autocomplete from '../../../components/SearchableSelect';
 import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
@@ -2805,7 +2807,7 @@ const OrderList = () => {
     return getDisplayQuantityInputValue(normalizedSizeQuantities[normalizedSize]);
   };
   const handleLastSizeInputKeyDown = (event) => {
-    if (event.key !== 'Tab' || event.shiftKey) return;
+    if (keyboardAction(event,'lookup') !== 'next-field') return;
     if (!styleAddButtonRef.current) return;
     event.preventDefault();
     styleAddButtonRef.current.focus();
@@ -3146,7 +3148,7 @@ const OrderList = () => {
                       <TableRow
                         key={order.id}
                         hover
-                        onDoubleClick={() => handleEdit(order)}
+                        tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleEdit(order))} onDoubleClick={() => handleEdit(order)}
                         sx={{ cursor: 'pointer' }}
                       >
                         <TableCell sx={ORDER_LIST_TEXT_ELLIPSIS_SX}>
@@ -3733,8 +3735,7 @@ const OrderList = () => {
                                         return;
                                       }
                                       if (
-                                        (event.key === 'Tab' && !event.shiftKey) ||
-                                        (event.key === 'Enter' && !event.shiftKey)
+                                        ['confirm','next-field'].includes(keyboardAction(event,'lookup'))
                                       ) {
                                         const focusItemId = group.rows[0]?.item?.id || '';
                                         pendingStyleAdvanceFocusItemIdRef.current = focusItemId;
@@ -4174,8 +4175,7 @@ const OrderList = () => {
                                             return;
                                           }
                                           if (
-                                            (event.key === 'Tab' && !event.shiftKey) ||
-                                            (event.key === 'Enter' && !event.shiftKey)
+                                            ['confirm','next-field'].includes(keyboardAction(event,'lookup'))
                                           ) {
                                             pendingStyleAdvanceFocusItemIdRef.current =
                                               colorInputTargetId;

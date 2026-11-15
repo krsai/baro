@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../utils/keyboardPolicy.mjs';
 import {calendarPayrollText} from '../../constants/calendarPayroll';
 import ActionNotice from '../../components/ActionNotice';
 import { applicableMonthVersion } from '../../utils/versionApplication.mjs';
@@ -237,8 +238,9 @@ const ensureFormulaHasBasis = (formula) => {
 
 // 계산식 칩 사이사이에 놓이는 삽입 위치 표시. 클릭하면 그 자리가 커서가 되고, 다음 모듈/연산자
 // 클릭은 항상 이 위치에 끼워진다. 현재 커서는 굵은 파란 막대로, 나머지는 옅은 클릭 영역으로 보인다.
-const FormulaCursorSlot = ({ position, active, onSelect }) => (
+const FormulaCursorSlot = ({ position, active, onSelect, label }) => (
   <Box
+    role="button" tabIndex={0} onKeyDown={activateOnKeyboard} aria-label={`${label} ${position+1}`}
     onClick={() => onSelect(position)}
     sx={{
       width: active ? 3 : 10,
@@ -552,7 +554,7 @@ const SalarySystem = () => {
           {formulaDraft.length === 0
             ? <Typography color="text.secondary" variant="body2">{t('아래 모듈을 눌러 계산식을 만드세요.')}</Typography>
             : <>
-              {minCursorIndex === 0 && <FormulaCursorSlot position={0} active={cursorIndex === 0} onSelect={setCursorIndex} />}
+              {minCursorIndex === 0 && <FormulaCursorSlot label={({ko:'삽입 위치',en:'Insertion position',vi:'Vị trí chèn'})[languageCode]||'Insertion position'} position={0} active={cursorIndex === 0} onSelect={setCursorIndex} />}
               {formulaDraft.map((token, index) => {
                 const operand = isOperandToken(token);
                 const removable = !(index === 0 && isFirstTokenLocked);
@@ -564,7 +566,7 @@ const SalarySystem = () => {
                     variant="outlined"
                     sx={{ fontWeight: operand ? 600 : 700 }}
                   />
-                  <FormulaCursorSlot position={index + 1} active={cursorIndex === index + 1} onSelect={setCursorIndex} />
+                  <FormulaCursorSlot label={({ko:'삽입 위치',en:'Insertion position',vi:'Vị trí chèn'})[languageCode]||'Insertion position'} position={index + 1} active={cursorIndex === index + 1} onSelect={setCursorIndex} />
                 </React.Fragment>;
               })}
             </>}

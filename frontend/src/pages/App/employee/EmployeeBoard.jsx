@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import ActionNotice from '../../../components/ActionNotice';
@@ -1951,6 +1952,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                       <TableRow
                         key={member.id}
                         hover
+                        tabIndex={canManageMembers?0:undefined} onKeyDown={activateOnKeyboard}
                         onClick={canManageMembers ? () => openEditDrawer(member) : undefined}
                         sx={{ cursor: canManageMembers ? 'pointer' : 'default' }}
                       >

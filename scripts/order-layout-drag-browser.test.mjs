@@ -12,7 +12,7 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/order-layout-drag-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];
- page.on('pageerror',error=>errors.push(error.message));
+ page.on('pageerror',error=>{errors.push(error.message);console.error('ORDER_UI_ERROR',error.message);});
  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1,activeOrgType:"MANUFACTURER",activeProfile:{entryType:"ORG",orgRole:"ADMIN"}});'}));
  await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:"en"});'}));
  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={showNotification:(...args)=>{(window.notices??=[]).push(args);},navigateToPath:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;export const useAppState=()=>({});'}));
@@ -23,7 +23,7 @@ try{
  await page.route('**/src/utils/styleApi.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const fetchStyles=async()=>${JSON.stringify(styles)};`}));
  await page.route('**/src/utils/attributeApi.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const fetchAttributes=async()=>({colors:${JSON.stringify(colors)}});export const createColorAttribute=async()=>{};`}));
  await page.route('**/order-parties?*',r=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:{buyerOrgOptions:[{id:2,name:'Customer'}],sellerOrgOptions:[{id:1,name:'BARO'}],currentOrg:{id:1,name:'BARO'},roleHint:'MANUFACTURER',relationshipPairs:[{brandOrgId:2,manufacturerOrgId:1}]}}));
- await page.goto(`http://127.0.0.1:${port}/order-layout-drag-acceptance.html`);
+ await page.goto(`http://127.0.0.1:${port}/order-layout-drag-acceptance.html`,{waitUntil:'domcontentloaded',timeout:60000});
  const rows=page.locator('[data-order-style-item-row]'),scroll=page.locator('[data-order-items-scroll]');
  await page.getByRole('button',{name:'Reorder color',exact:true}).first().waitFor();
  const assertHandlePositions=async()=>{

@@ -1,3 +1,5 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import Autocomplete from '../../../components/SearchableSelect';
 import PageContentStack from '../../../components/PageContentStack';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -491,6 +493,7 @@ const ProcessMasterSection = ({
                   <TableRow
                     hover
                     selected={isSelected}
+                    tabIndex={isSelectable?0:undefined} onKeyDown={activateOnKeyboard}
                     onClick={() => {
                       if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: true });
                     }}
@@ -995,7 +998,7 @@ const ProcessMasterLinkedSpecSection = ({
                   : `${parentLabel}을 먼저 선택하세요`
               }
               onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+                if (keyboardAction(event,'lookup') !== 'confirm') return;
                 const trimmed = toTrimmedText(addInputValue);
                 if (!trimmed) return;
                 event.preventDefault();

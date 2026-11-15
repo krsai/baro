@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -710,7 +711,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                 <Paper
                   key={log.id}
                   variant="outlined"
-                  onDoubleClick={() => handleOpen(log)}
+                  tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleOpen(log))} onDoubleClick={() => handleOpen(log)}
                   sx={{
                     p: 1.25,
                     borderRadius: 1.5,
@@ -826,7 +827,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
                   <TableRow
                     key={log.id}
                     hover
-                    onDoubleClick={() => handleOpen(log)}
+                    tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleOpen(log))} onDoubleClick={() => handleOpen(log)}
                     sx={{
                       cursor: 'pointer',
                       '& td': { verticalAlign: 'middle' },

@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
 import PageContentStack from '../../components/PageContentStack';
@@ -1018,6 +1019,7 @@ const QcReview = () => {
                       <React.Fragment key={row.id}>
                         <TableRow
                           hover
+                          tabIndex={0} onKeyDown={activateOnKeyboard} aria-expanded={isExpanded}
                           onClick={() => handleToggleExpand(row)}
                           sx={{
                             cursor: 'pointer',

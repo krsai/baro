@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 ﻿import React, { useEffect, useState } from 'react';
@@ -306,7 +307,7 @@ const FactoryList = ({ embedded = false }) => {
                     <TableRow
                       key={factory.id}
                       hover
-                      onDoubleClick={() => handleRowDoubleClick(factory)}
+                      tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleRowDoubleClick(factory))} onDoubleClick={() => handleRowDoubleClick(factory)}
                       sx={{ cursor: 'pointer' }}
                     >
                       <TableCell>

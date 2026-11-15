@@ -1,3 +1,4 @@
+import {keyboardAction} from '../../utils/keyboardPolicy.mjs';
 import SearchInput from '../../components/SearchInput';
 import ChangeApprovalDialog from '../../components/ChangeApprovalDialog';
 import {changeApprovalText} from '../../constants/changeApprovals';
@@ -35,7 +36,7 @@ function LedgerList({orgId}){
  const l=ledgerEntryText[languageCode]||ledgerEntryText.en;
  const accounts=data?.accounts||[],selected=accounts.find(a=>a.id===accountId);
  const editEntry=row=>{if(!row.voidedAt)navigateToPath('/bank-ledger/edit/'+(row.bankFeeParent?.parentEntryId||row.internalTransferSourceId||row.id));};
- const editKey=(event,row)=>{if(event.target===event.currentTarget&&event.key==='Enter'){event.preventDefault();editEntry(row);}};
+ const editKey=(event,row)=>{if(event.target===event.currentTarget&&keyboardAction(event,'lookup')==='confirm'){event.preventDefault();editEntry(row);}};
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}>{activeOrgRole==='ADMIN'&&<Button variant="outlined" onClick={()=>setBalanceOpen(true)}>{b.title}</Button>}<Button variant="contained" disabled={!accounts.length} onClick={()=>navigateToPath('/bank-ledger/new'+buildQueryString({accountId:accountId||undefined}))}>{t.addEntry}</Button></Stack>}><PageContentStack>
   <SearchPanel compact search={<SearchInput value={search} onChange={event=>{setSearch(event.target.value);setPage(0);}}/>} onReset={()=>{setSearch('');setAccountId('');setIncludeDeleted(false);setStart(today().slice(0,7)+'-01');setEnd(today());setPage(0);}} controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dayjs(start)} endValue={dayjs(end)} onStartChange={d=>{if(d?.isValid()){setStart(d.format('YYYY-MM-DD'));setPage(0);}}} onEndChange={d=>{if(d?.isValid()){setEnd(d.format('YYYY-MM-DD'));setPage(0);}}} minDate={selected?dayjs(selected.openingDate):undefined} maxDate={dayjs(today())}/>}/>
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{error}</Alert>}

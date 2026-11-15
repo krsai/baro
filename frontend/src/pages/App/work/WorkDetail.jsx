@@ -1,3 +1,6 @@
+import {canFocus} from '../../../utils/formFocus.mjs';
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
+import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import StatusLabel from '../../../components/StatusLabel';
 import {buildWorkStyleLookupOptions,workStyleProgressText,workStyleLookupText} from '../../../utils/workStyleLookup.mjs';
 import WorkQuantityReviewDialog from './WorkQuantityReviewDialog';
@@ -2778,7 +2781,7 @@ const WorkDetail = ({
       );
       const target = candidates.find(
         (node) =>
-          node instanceof HTMLElement &&
+          node instanceof HTMLElement && canFocus(node) &&
           node.dataset.workRowId === String(requestedField.rowId) &&
           node.dataset.workField === requestedField.field
       );
@@ -3262,9 +3265,7 @@ const WorkDetail = ({
                                 return;
                               }
                               if (
-                                !event.nativeEvent.isComposing &&
-                                ((event.key === 'Enter' && !event.shiftKey) ||
-                                  (event.key === 'Tab' && !event.shiftKey))
+                                ['confirm','next-field'].includes(keyboardAction(event,'lookup'))
                               ) {
                                 event.preventDefault();
                                 handleAddBelow(row.id, row);
@@ -3293,7 +3294,7 @@ const WorkDetail = ({
                               onKeyDown={row?.worker?.isOutsourced
                                 ? (event) => {
                                     if (['-', '+', 'e', 'E'].includes(event.key)) event.preventDefault();
-                                    if (!event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === 'Tab')) {
+                                    if (['confirm','next-field'].includes(keyboardAction(event,'lookup'))) {
                                       event.preventDefault();
                                       beginFieldEdit(row.id, 'quantity');
                                     }
@@ -3495,7 +3496,7 @@ const WorkDetail = ({
                               </Stack>
                             ) : (
                               <Box
-                                data-work-edit-activator="true"
+                                data-work-edit-activator="true" role="button" tabIndex={isAggregateLegacyLog?-1:0} aria-disabled={isAggregateLegacyLog} onKeyDown={activateOnKeyboard}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'worker');
@@ -3595,7 +3596,7 @@ const WorkDetail = ({
                               </Stack>
                             ) : (
                               <Box
-                                data-work-edit-activator="true"
+                                data-work-edit-activator="true" role="button" tabIndex={isAggregateLegacyLog?-1:0} aria-disabled={isAggregateLegacyLog} onKeyDown={activateOnKeyboard}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'style');
@@ -3680,7 +3681,7 @@ const WorkDetail = ({
                               />
                             ) : (
                               <Box
-                                data-work-edit-activator="true"
+                                data-work-edit-activator="true" role="button" tabIndex={isAggregateLegacyLog?-1:0} aria-disabled={isAggregateLegacyLog} onKeyDown={activateOnKeyboard}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'process');
@@ -3723,7 +3724,7 @@ const WorkDetail = ({
                                 autoFocus={shouldFocusOutsourceUnitPrice}
                                 onKeyDown={(event) => {
                                   if (['-', '+', 'e', 'E'].includes(event.key)) event.preventDefault();
-                                  if (!event.nativeEvent.isComposing && (event.key === 'Enter' || event.key === 'Tab')) {
+                                  if (['confirm','next-field'].includes(keyboardAction(event,'lookup'))) {
                                     event.preventDefault();
                                     beginFieldEdit(row.id, 'quantity');
                                   }
@@ -3764,9 +3765,7 @@ const WorkDetail = ({
                                     return;
                                   }
                                   if (
-                                    !event.nativeEvent.isComposing &&
-                                    ((event.key === 'Enter' && !event.shiftKey) ||
-                                      (event.key === 'Tab' && !event.shiftKey))
+                                    ['confirm','next-field'].includes(keyboardAction(event,'lookup'))
                                   ) {
                                     event.preventDefault();
                                     handleAddBelow(row.id, row);
@@ -3782,7 +3781,7 @@ const WorkDetail = ({
                               />
                             ) : (
                               <Box
-                                data-work-edit-activator="true"
+                                data-work-edit-activator="true" role="button" tabIndex={isAggregateLegacyLog?-1:0} aria-disabled={isAggregateLegacyLog} onKeyDown={activateOnKeyboard}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   beginFieldEdit(row.id, 'quantity');

@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import StyleProductPicker from './StyleProductPicker';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -736,7 +737,7 @@ const StyleBoard = () => {
                   <TableRow
                     hover
                     key={style.id}
-                    onDoubleClick={() => handleRowDoubleClick(style)}
+                    tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleRowDoubleClick(style))} onDoubleClick={() => handleRowDoubleClick(style)}
                     sx={{ cursor: 'pointer' }}
                   >
                     <TableCell sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={resolveCustomerDisplayName({ name: style.customer, nameKo: style.customerNameKo, nameVi: style.customerNameVi }, languageCode) || ''}>

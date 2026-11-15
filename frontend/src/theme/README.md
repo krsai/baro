@@ -2,6 +2,10 @@
 
 ## 전역 키보드 계약
 
+전체 화면 감사는 `npm run test:keyboard-audit`로 페이지/공통 컴포넌트의 JSX를 검사한다. 단일 선택 그룹의 공통 표식, 양수 tabindex, 클릭/더블클릭 전용 행·카드의 키보드 진입 누락과 직접 Enter/Tab 처리의 정책 우회를 확인한다. 자식 Radio/Button·DnD가 조작을 소유하는 경우는 별도 분류한다. `npm run test:keyboard-domains`는 물류·봉제·회계·인사·급여의 대표 로컬 화면 회귀를 순차 실행하며, 특정 묶음은 이름 인자로 재실행한다. 소스 감사 통과와 운영의 모든 상태를 수동 검수한 것은 구별한다.
+
+네이티브 버튼이 아닌 클릭 가능한 행/카드는 `activateOnKeyboard`를 사용하고 DOM 순서에 `tabIndex={0}`으로 참여한다. 더블클릭으로 열던 항목은 같은 업무 콜백을 전달한다. 자식 버튼의 이벤트로 부모 행이 열리지 않게 target/currentTarget을 구분하며 숨김·읽기 전용/비활성 업무 상태는 포커스 진입을 제한한다. 새 원자료 등록을 Tab이나 Shift+Tab으로 실행하지 않는다. 기존 값의 유일한 정확 일치 확정 규칙과 일반 입력 이동을 구분한다. 문서 입력과 일반 폼의 Enter 처리는 동일한 `textInputKeyDown`을 호출하고 날짜/시간·달력·여러줄 편집을 가로채지 않는다.
+
 기준은 [WAI-ARIA APG 키보드 인터페이스](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/)와 각 위젯의 [버튼](https://www.w3.org/WAI/ARIA/apg/patterns/button/), [콤보박스](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/), [체크박스](https://www.w3.org/WAI/ARIA/apg/patterns/checkbox/), [모달](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) 패턴이다. 모든 컨트롤에 같은 키 동작을 덮어씌우지 않고 의미에 따라 공통 처리한다.
 
 | 위치 | Tab / Shift+Tab | 방향키 | Enter | Space | Esc |

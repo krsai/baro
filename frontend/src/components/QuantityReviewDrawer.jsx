@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../utils/keyboardPolicy.mjs';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -63,6 +64,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                 <React.Fragment key={processKey}>
                   <TableRow
                     hover
+                    tabIndex={0} onKeyDown={activateOnKeyboard}
                     onClick={() => setExpandedProcessKey((current) => current === processKey ? '' : processKey)}
                     aria-expanded={expanded}
                     sx={{ cursor: 'pointer', '& > td': { backgroundColor: expanded ? 'action.hover' : undefined } }}

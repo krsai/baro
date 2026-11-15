@@ -940,7 +940,6 @@ const StyleTimeMatrix = ({
                               value={value}
                               onChange={(e) => handleStChange(id, qty, e.target.value)}
                               onBlur={(e) => handleStBlur(pIdx, id, qty, e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
                               size="small"
                               inputProps={{
                                 inputMode: 'decimal',

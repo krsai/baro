@@ -106,6 +106,13 @@ try {
       assert.deepEqual(errors,[]);await page.close();continue;
     }
     const l=EXPENSE_REQUEST_TEXT[lang],lookup=EXPENSE_LOOKUP_TEXT[lang];
+    if(lookupOnly){
+      const code=page.getByTestId('expense-line').getByRole('textbox',{name:l.code,exact:false});await code.waitFor();
+      if(locked){assert.equal(await code.isDisabled(),true);assert.deepEqual(errors,[]);await page.close();continue;}
+      await code.fill('BT');await code.press('Enter');const picker=page.locator('[data-lookup-dialog="true"]');await picker.waitFor();const keyword=picker.getByRole('textbox');await keyword.and(page.locator(':focus')).waitFor();await keyword.fill('Buttonhole');await picker.getByRole('row').filter({hasText:'BTHE'}).waitFor();await keyword.press(' ');assert.equal(await keyword.inputValue(),'Buttonhole ');await keyword.press('Tab');assert.equal(await picker.isVisible(),true);assert.equal(submitted,undefined);await page.keyboard.press('Escape');await picker.waitFor({state:'hidden'});await code.and(page.locator(':focus')).waitFor();
+      await code.fill('BTHE');await code.press('Tab');assert.equal(await picker.count(),0);assert.equal(await code.inputValue(),'BTHE');assert.equal(await page.getByLabel(l.description,{exact:false}).inputValue(),expenseCodeDescription(mocks['transaction-codes'][0],lang));await code.press('F2');await picker.waitFor();await picker.getByRole('row').filter({hasText:'BTHE'}).getByRole('button').click();await picker.waitFor({state:'hidden'});assert.equal(submitted,undefined);assert.deepEqual(errors,[]);console.log('PASS expense shared keyboard '+mode+' '+lang);await page.close();continue;
+    }
+
     await page.getByLabel('REMARK',{exact:false}).waitFor();
     assert.equal(await page.getByTestId('expense-author-context').count(),0);
     const h=expenseHeaderActions[lang];

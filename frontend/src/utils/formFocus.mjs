@@ -33,6 +33,12 @@ export function advanceFormFocus(node,{backward=false,afterGroup=false,afterCont
  return focus(following.find(next=>!group?.contains(next)));
 }
 export function dialogOpener(dialog){return origins.get(dialog)||null;}
+export function textInputKeyDown(event){
+ if(keyboardAction(event,'lookup')!=='confirm')return;
+ const target=event.target;
+ if(target.tagName!=='INPUT'||target.getAttribute('aria-haspopup')||target.closest('.MuiPickersInputBase-root')||['checkbox','radio','file','submit','button','date','time','datetime-local'].includes(target.type))return;
+ if(advanceFormFocus(target))event.preventDefault();
+}
 // Wait for MUI's popup focus restoration and the parent's inert state to settle.
 // A later key/click cancels this move; an asynchronous rerender never wins over the user.
 export function advanceAfterSelection(origin,{popup,afterGroup=false,afterContainer}={}){
@@ -133,8 +139,7 @@ export function installKeyboardNavigation(doc=document){
    if(index>=0){let next=stops[index+(event.shiftKey?-1:1)];if(!next&&scope.matches(dialogSelector))next=event.shiftKey?stops.at(-1):stops[0];if(next&&focus(next))event.preventDefault();}
    return;
   }
-  if(event.key!=='Enter'||event.shiftKey||target.tagName!=='INPUT'||target.getAttribute('aria-haspopup')||target.closest('.MuiPickersInputBase-root')||['checkbox','radio','file','submit','button','date','time','datetime-local'].includes(target.type))return;
-  if(advanceFormFocus(target))event.preventDefault();
+  textInputKeyDown(event);
  };
  state.observer=new MutationObserver(schedule);state.observer.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['disabled','readonly','aria-disabled','aria-hidden','hidden','inert','style','class']});
  doc.addEventListener('focusin',focused,true);doc.addEventListener('pointerdown',interacted,true);doc.addEventListener('input',interacted,true);doc.addEventListener('compositionstart',interacted,true);doc.addEventListener('keydown',keyCapture,true);doc.addEventListener('keydown',keyDown);doc.addEventListener('click',clicked,true);doc.addEventListener('change',changed,true);schedule();

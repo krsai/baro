@@ -1,3 +1,4 @@
+import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
 import {LABEL_PALETTE} from '../../../theme/labelPalette';
@@ -1214,7 +1215,7 @@ const CustomerPricingBoard = () => {
                             setNewSalesBucket(event.target.value.replace(/\D/g, ''))
                           }
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') addSalesBucket();
+                            if (keyboardAction(event,'lookup') === 'confirm') { event.preventDefault(); addSalesBucket(); }
                           }}
                           placeholder={text.quantity}
                           disabled={!canEditSalesBuckets}

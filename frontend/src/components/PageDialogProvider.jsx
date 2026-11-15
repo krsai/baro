@@ -1,3 +1,4 @@
+import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import React, { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Button, Dialog, DialogActions, DialogContent, DialogTitle, TextField, Typography } from '@mui/material';
 import { useLanguage } from '../context/LanguageContext';
@@ -46,7 +47,7 @@ export default function PageDialogProvider({ children }) {
     <Dialog open={Boolean(current)} onClose={() => finish(false, undefined, current?.id)} fullWidth maxWidth="sm" aria-labelledby={titleId}>
       <DialogTitle id={titleId}>{text.title}</DialogTitle>
       <DialogContent><Typography sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{current?.message}</Typography>
-        {current?.kind === 'prompt' && <TextField autoFocus fullWidth size="small" value={value} onChange={event => setValue(event.target.value)} inputProps={{ 'aria-label': current.message }} sx={{ mt: 2 }} onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); finish(true, value, current.id); } }} />}
+        {current?.kind === 'prompt' && <TextField autoFocus fullWidth size="small" value={value} onChange={event => setValue(event.target.value)} inputProps={{ 'aria-label': current.message }} sx={{ mt: 2 }} onKeyDown={event => { if (keyboardAction(event,'lookup') === 'confirm') { event.preventDefault(); finish(true, value, current.id); } }} />}
       </DialogContent>
       <DialogActions><Button variant="contained" onClick={() => finish(true, value, current?.id)}>{text.ok}</Button></DialogActions>
     </Dialog>

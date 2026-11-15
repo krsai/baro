@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
 import {workTimeText} from '../../../constants/workTime';
 import {payrollPayableMessage} from '../../../constants/payrollPayable';
@@ -524,6 +525,7 @@ const PayrollBoard = () => {
                       return (
                         <TableRow
                           key={key} hover sx={{ cursor: snapshot ? 'pointer' : 'default' }}
+                          tabIndex={snapshot?0:undefined} onKeyDown={activateOnKeyboard}
                           onClick={() => snapshot && navigateToPath(`/payroll/${month}?factoryId=${factory.id}`, { label: `${text.title} ${month} · ${factoryLabel}` })}
                         >
                           <TableCell sx={{ fontWeight: 700 }}>{month}{snapshot?.payableDocument?.managementNumber&&<Typography variant="caption" display="block">{snapshot.payableDocument.managementNumber}</Typography>}</TableCell>

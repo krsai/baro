@@ -1,3 +1,5 @@
+import {activateOnKeyboard} from '../../../../utils/keyboardPolicy.mjs';
+import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
 import {packagingText} from '../../../../constants/packaging';
 import { usePageDialogs } from '../../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -238,7 +240,7 @@ const StyleInfo = ({
   };
 
   const handleImageUrlKeyDown = (event) => {
-    if (event.key !== 'Enter') return;
+    if (keyboardAction(event,'lookup') !== 'confirm') return;
     event.preventDefault();
     handleImageUrlAdd();
   };
@@ -425,6 +427,7 @@ const StyleInfo = ({
                     }}
                   >
                     <Box
+                      role="button" tabIndex={0} onKeyDown={activateOnKeyboard} aria-label={String(index+1)}
                       onClick={() => handleThumbnailClick(index)}
                       sx={{
                         width: '100%',

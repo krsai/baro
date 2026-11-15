@@ -1,3 +1,5 @@
+import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
+import {advanceFormFocus} from '../../../../utils/formFocus.mjs';
 import Autocomplete from '../../../../components/SearchableSelect';
 import DeleteActionButton from '../../../../components/DeleteActionButton';
 import { getLabelPalette, labelChipSx } from '../../../../theme/labelPalette';
@@ -1963,7 +1965,7 @@ const StyleProcess = ({
 
   const trySelectExistingOptionOnEnter = useCallback(
     (event, { inputText, options, onMatch }) => {
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return false;
+      if (!['confirm','next-field'].includes(keyboardAction(event,'lookup'))) return false;
       const matchedOption = findProcessMasterOptionByInput(options, inputText, languageCode);
       if (!matchedOption) return false;
       event.preventDefault();
@@ -2077,7 +2079,7 @@ const StyleProcess = ({
         },
       });
       if (matched) return;
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+      if (keyboardAction(event,'lookup') !== 'confirm') return;
       event.preventDefault();
       event.stopPropagation();
       const rawInput = String(targetInputValue ?? '').trim();
@@ -2141,7 +2143,7 @@ const StyleProcess = ({
         },
       });
       if (matched) return;
-      if (event.key !== 'Enter' && event.key !== 'NumpadEnter' && event.key !== 'Tab') return;
+      if (keyboardAction(event,'lookup') !== 'confirm') return;
       event.preventDefault();
       event.stopPropagation();
       const rawInput = String(addActionInput ?? '').trim();
@@ -2361,25 +2363,20 @@ const StyleProcess = ({
   };
 
   const handleTimeRefQuantityKeyDown = (event) => {
-    if (event.key === 'Enter' || event.key === 'NumpadEnter') {
+    if (keyboardAction(event,'lookup') === 'confirm') {
       event.preventDefault();
       commitTimeRefQuantity();
-      event.currentTarget.blur();
+      advanceFormFocus(event.target);
       return;
     }
-    if (event.key === 'Escape') {
+    if (keyboardAction(event,'lookup') === 'dismiss') {
       event.preventDefault();
       setTimeRefQuantityInput('');
       setIsTimeRefQuantityEditing(false);
       event.currentTarget.blur();
     }
   };
-  const handleNumberInputEnterKeyDown = useCallback((event) => {
-    if (event.key === 'Enter' || event.key === 'NumpadEnter') {
-      event.preventDefault();
-      event.currentTarget.blur();
-    }
-  }, []);
+
 
   const validateDraft = (draft, options = {}) => {
     const { ignoreInstanceId = null } = options;
@@ -3493,7 +3490,6 @@ const StyleProcess = ({
                 onChange={(event) => {
                   setAddDraft((prev) => ({ ...prev, pt: event.target.value }));
                 }}
-                onKeyDown={handleNumberInputEnterKeyDown}
                 onWheel={(e) => e.target.blur()}
                 inputProps={{ min: 0 }}
                 placeholder="-"

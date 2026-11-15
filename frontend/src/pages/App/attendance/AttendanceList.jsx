@@ -1,3 +1,4 @@
+import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {workplaceText} from '../../../utils/serviceCompany.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -813,7 +814,7 @@ const AttendanceList = () => {
                     <TableRow
                       key={row.workDate}
                       hover
-                      onDoubleClick={() => handleOpenDetail(row)}
+                      tabIndex={0} onKeyDown={event=>activateOnKeyboard(event,()=>handleOpenDetail(row))} onDoubleClick={() => handleOpenDetail(row)}
                       sx={{
                         cursor: 'pointer',
                         ...(isSpecialDay

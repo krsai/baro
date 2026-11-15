@@ -17,3 +17,11 @@ export function keyboardAction(event,context){
  }
  return null;
 }
+
+// For non-native clickable rows/cards only. Native buttons keep their browser
+// Enter/Space behavior, and child actions must never activate the parent row.
+export function activateOnKeyboard(event,activate){
+ if(event.target!==event.currentTarget||keyboardAction(event,'segment')!=='confirm'||event.currentTarget.matches(':disabled,[aria-disabled="true"]'))return;
+ event.preventDefault();event.stopPropagation();
+ if(activate)activate();else event.currentTarget.click();
+}
