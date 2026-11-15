@@ -1,3 +1,5 @@
+import {keyboardAction} from '../utils/keyboardPolicy.mjs';
+import {navigationScope} from '../utils/formFocus.mjs';
 import CompanyPublicSearchPanel from './CompanyPublicSearchPanel';
 import {classificationSummary} from '../utils/partnerClassification.mjs';
 import React,{useEffect,useRef,useState} from 'react';
@@ -41,7 +43,7 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const [options,setOptions]=useState([]),[error,setError]=useState(''),[loading,setLoading]=useState(false),[checked,setChecked]=useState(false),[linked,setLinked]=useState(knownCompany);
  const [review,setReview]=useState(false),[selected,setSelected]=useState(null);
  const buttonRef=useRef(null),[statusOpen,setStatusOpen]=useState(false);
- useEffect(()=>{if(!statusOpen)return;const close=event=>{if(event.key==='Escape')setStatusOpen(false);};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[statusOpen]);
+ useEffect(()=>{if(!statusOpen)return;const close=event=>{if(keyboardAction(event,'lookup')==='dismiss'&&navigationScope(event.target)===navigationScope(buttonRef.current))setStatusOpen(false);};window.addEventListener('keydown',close);return()=>window.removeEventListener('keydown',close);},[statusOpen]);
  const acceptedProfileKey=useRef(null);
  const requestKey=`${orgId}:${businessNumber}:${country}`,current=useRef(requestKey);current.current=requestKey;
  useEffect(()=>{if(searchMode&&acceptedProfileKey.current===requestKey){acceptedProfileKey.current=null;return;}setOptions([]);setSelected(null);setReview(false);setChecked(false);setError('');setStatusOpen(false);setLoading(false);onChange(undefined,linked||null);},[orgId,businessNumber,country]);

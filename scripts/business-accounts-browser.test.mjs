@@ -39,12 +39,12 @@ try{
    assert.deepEqual(await rows.evaluateAll(nodes=>nodes.map(n=>n.dataset.accountId)),['a0','a2','a3','a1']);
    await page.getByRole('button',{name:'순서 저장',exact:true}).click();await page.waitForTimeout(200);
   }
-  await page.getByRole('button',{name:labels.add,exact:true}).click();const dialog=page.getByRole('dialog');
-  assert.equal(await dialog.getByRole('textbox',{name:labels.bank,exact:false}).count(),1);assert.equal(await dialog.getByRole('textbox',{name:labels.number,exact:false}).count(),1);assert.equal(await dialog.getByRole('textbox',{name:labels.holder,exact:false}).count(),1);assert.equal(await dialog.getByRole('checkbox').count(),0);
+  await page.getByRole('button',{name:labels.add,exact:true}).press('Enter');const dialog=page.getByRole('dialog');
+  assert.equal(await dialog.getByRole('textbox',{name:labels.bank,exact:false}).count(),1);assert.equal(await dialog.getByRole('textbox',{name:labels.number,exact:false}).count(),1);assert.equal(await dialog.getByRole('textbox',{name:labels.holder,exact:false}).count(),1);assert.equal(await dialog.getByRole('checkbox').count(),1);const primary=dialog.getByRole('checkbox');await primary.focus();await primary.press('Space');assert.equal(await primary.isChecked(),true);await primary.press('Space');assert.equal(await primary.isChecked(),false);
   await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).click();await page.getByRole('option',{name:{ko:'현금',en:'Cash',vi:'Tiền mặt'}[lang],exact:true}).click();
   await dialog.getByLabel(new RegExp({ko:'계좌명',en:'Account name',vi:'Tên tài khoản'}[lang])).fill('VND cash extra');
   assert.equal(await dialog.getByLabel(money.openingDate,{exact:true}).count(),0);assert.equal(await dialog.getByLabel(money.openingBalance).count(),0);
-  await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).accountKind,'CASH');assert.equal(writes.at(-1).currencyId,1);assert.equal('isDefault' in writes.at(-1),false);assert.equal('isActive' in writes.at(-1),false);
+  await dialog.getByRole('button',{name:labels.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).accountKind,'CASH');assert.equal(writes.at(-1).currencyId,1);assert.notEqual(writes.at(-1).isDefault,true,'cash must not become the primary bank account');assert.equal('isActive' in writes.at(-1),false);
   await page.locator('[data-account-id="a0"]').getByRole('button',{name:labels.edit,exact:true}).click();
   assert.equal(await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).getAttribute('aria-disabled'),null);
   await dialog.getByLabel({ko:'구분',en:'Type',vi:'Loại'}[lang],{exact:true}).click();await page.getByRole('option',{name:{ko:'은행',en:'Bank',vi:'Ngân hàng'}[lang],exact:true}).click();

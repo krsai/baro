@@ -1,3 +1,4 @@
+import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
 import usePendingApprovals from '../hooks/usePendingApprovals';
 import { PageNamingProvider } from '../context/PageNamingContext';
@@ -199,6 +200,17 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   const networkLoading = useNetworkLoading();
   const { languageCode } = useLanguage();
   const closeAllLabel = languageCode === 'ko' ? '모든 탭 닫기' : languageCode === 'vi' ? 'Đóng tất cả các tab' : 'Close all tabs';
+  const closeLabel=languageCode==='ko'?'탭 닫기':languageCode==='vi'?'Đóng tab':'Close tab';
+  const tabsRoot=React.useRef(null),pendingKeyboardClose=React.useRef(null);
+  React.useLayoutEffect(()=>{
+    const pending=pendingKeyboardClose.current;
+    if(!pending||tabsForRender.some(tab=>tab.id===pending.id))return;
+    pendingKeyboardClose.current=null;
+    const active=document.activeElement;
+    if(active!==document.body&&active!==pending.origin&&active?.isConnected)return;
+    const targets=[...tabsRoot.current?.querySelectorAll('[data-workspace-tab]')||[]];
+    (targets.find(node=>node.dataset.workspaceTab===pending.next)||targets[0])?.focus();
+  },[tabsForRender]);
   const tabLoadingCounts = useMemo(
     () => buildTabLoadingCounts(networkLoading.scopes),
     [networkLoading.scopes]
@@ -224,6 +236,7 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', borderBottom: 1, borderColor: 'divider', bgcolor: 'background.default' }}>
       <Tabs
+        ref={tabsRoot}
         value={activeTabValue}
         onChange={onTabChange}
         variant="scrollable"
@@ -246,6 +259,13 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
             <Tab
               key={tab.id}
               value={tab.id}
+              data-workspace-tab={tab.id}
+              onKeyDown={event=>{if(event.target===event.currentTarget&&!tab.isOptimistic&&keyboardAction(event,'workspace-tab')==='close-tab'){
+                event.preventDefault();event.stopPropagation();
+                const index=tabsForRender.findIndex(row=>row.id===tab.id);
+                pendingKeyboardClose.current={id:tab.id,next:(tabsForRender[index+1]||tabsForRender[index-1])?.id,origin:event.currentTarget};
+                if(onCloseTab(event,tab.id)===false)pendingKeyboardClose.current=null;
+              }}}
               component="div"
               sx={{
                 minHeight: '40px',
@@ -280,6 +300,9 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                   {!tab.isOptimistic && (
                     <IconButton
                       component="span"
+                      aria-label={`${closeLabel}: ${resolveRenderedTabLabel(tab)}`}
+                      tabIndex={-1}
+                      title={`${closeLabel} (Delete)`}
                       size="small"
                       onMouseDown={(e) => {
                         e.preventDefault();
@@ -1479,9 +1502,9 @@ const MainLayout = () => {
     e.stopPropagation();
 
     const closingTab = openTabs.find((tab) => tab.id === tabIdToClose);
-    if (!closingTab) return;
+    if (!closingTab) return false;
     const confirmed = confirmDiscardUnsavedChanges({ path: tabIdToClose });
-    if (!confirmed) return;
+    if (!confirmed) return false;
     pendingManualTabCloseRef.current = null;
 
     const remainingTabs = openTabs.filter((tab) => tab.id !== tabIdToClose);

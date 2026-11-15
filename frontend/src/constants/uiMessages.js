@@ -307,6 +307,11 @@ export const UI_MESSAGES = {
     groupKey: { ko: 'key: {key}', en: 'key: {key}', vi: 'key: {key}' },
   },
   assign: {
+    cardKeyboardHelp: {
+      ko: 'Enter: 선택/메뉴. Space: 카드 잡기, 방향키: 대상 탐색, Space/Enter: 놓기, Esc/Tab: 취소. Shift+F10: 메뉴.',
+      en: 'Enter: select/menu. Space: pick up, arrows: choose target, Space/Enter: drop, Esc/Tab: cancel. Shift+F10: menu.',
+      vi: 'Enter: chọn/menu. Space: nhấc thẻ, phím mũi tên: chọn đích, Space/Enter: thả, Esc/Tab: hủy. Shift+F10: menu.',
+    },
     includeManagementClosed: { ko: '청구 완료 포함', en: 'Include fully billed assignments', vi: 'Bao gồm phân công đã lập đủ hóa đơn' },
     managementClosed: { ko: '청구 완료', en: 'Fully billed', vi: 'Đã lập đủ hóa đơn' },
     billedAssignmentsHeader: { ko: '청구 완료 목록', en: 'Fully billed assignments', vi: 'Phân công đã lập đủ hóa đơn' },

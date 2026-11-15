@@ -276,7 +276,7 @@ const OnboardingBoard = () => {
                 </TableHead>
                 <TableBody>
                   {pendingCompanyRequests.map((row) => (
-                    <TableRow key={row.id} onContextMenu={(event) => handleRowContextMenu(event, row)}>
+                    <TableRow key={row.id} tabIndex={0} data-keyboard-context-menu="true" aria-haspopup="menu" onContextMenu={(event) => handleRowContextMenu(event, row)}>
                       <TableCell>{toDateOnlyText(row.createdAt, locale)}</TableCell>
                       <TableCell>{getOrganizationTypeLabel(row.organizationType)}</TableCell>
                       <TableCell>{toDisplayText(row.organizationNameEn)}</TableCell>

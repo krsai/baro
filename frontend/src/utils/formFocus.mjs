@@ -1,4 +1,4 @@
-import {keyboardAction} from './keyboardPolicy.mjs';
+import {keyboardAction,contextMenuKeyDown} from './keyboardPolicy.mjs';
 const dialogSelector='[role="dialog"],.MuiModal-root .MuiDrawer-paper';
 const pageSelector='main.app-page,[data-workspace-page],main,form';
 const controlSelector='input,textarea,select,button,a[href],[contenteditable="true"],[tabindex]';
@@ -126,6 +126,10 @@ export function installKeyboardNavigation(doc=document){
  const keyDown=event=>{
   if(event.defaultPrevented||event.isComposing||event.keyCode===229||event.ctrlKey||event.altKey||event.metaKey)return;
   const target=event.target;if(!target.closest?.(pageSelector+','+dialogSelector))return;
+  if(target.matches('[data-keyboard-context-menu]')&&keyboardAction(event,'context-menu')==='open-menu'){
+   contextMenuKeyDown(event,target);return;
+  }
+  if(target.closest('[data-keyboard-drag][aria-pressed="true"]'))return;
   const segment=target.closest('[data-focus-next="group"]');
   if(segment&&target.matches('button')){
    const buttons=[...segment.querySelectorAll('button')].filter(canFocus),index=buttons.indexOf(target);
