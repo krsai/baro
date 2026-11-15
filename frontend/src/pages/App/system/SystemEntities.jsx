@@ -1,3 +1,4 @@
+import {companyDocumentContactError} from '../../../constants/companyDocumentContact';
 import React,{useEffect,useRef,useState} from 'react';
 import {Box,Button,Checkbox,Dialog,DialogActions,DialogContent,DialogTitle,FormControlLabel,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
@@ -26,7 +27,7 @@ export default function SystemEntities(){
  const baseline=useRef(''),request=useRef(null),mounted=useRef(true),loadSerial=useRef(0),mutation=useRef(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;loadSerial.current++;};},[]);
  const dirty=!!draft&&snapshot(draft)!==baseline.current;useUnsavedChanges(dirty);
- const message=e=>String(e.message).includes('STALE_EDIT')||e.message==='PARTNER_CLASSIFICATION_CHANGED'?t.changed:e.message==='ENTITY_IN_USE'?t.used:e.message==='ENTITY_SHARED_IDENTITY_LOCKED'?t.identityLocked:e.message==='ENTITY_CODE_CONFLICT'?t.conflict:e.status===403?t.denied:e.status===400?t.invalid:t.failed;
+ const message=e=>companyDocumentContactError(e,languageCode,String(e.message).includes('STALE_EDIT')||e.message==='PARTNER_CLASSIFICATION_CHANGED'?t.changed:e.message==='ENTITY_IN_USE'?t.used:e.message==='ENTITY_SHARED_IDENTITY_LOCKED'?t.identityLocked:e.message==='ENTITY_CODE_CONFLICT'?t.conflict:e.status===403?t.denied:e.status===400?t.invalid:t.failed);
  useEffect(()=>{let live=true;const timer=setTimeout(()=>{setLoading(true);setError('');requestJSON(path+buildQueryString({q:query,status,page}),{skipCache:true}).then(result=>{if(live)setData(result);}).catch(e=>{if(live)setError(message(e));}).finally(()=>{if(live)setLoading(false);});},200);return()=>{live=false;clearTimeout(timer);};},[query,status,page,reload]);
  useEffect(()=>{let live=true;requestJSON(path+'/catalogue',{skipCache:true}).then(value=>{if(live)setCatalogue(value);}).catch(e=>{if(live)setError(message(e));});return()=>{live=false;};},[]);
  const open=async(id,remove=false)=>{const serial=++loadSerial.current;setBusy(true);try{const value=await requestJSON(path+'/'+id,{skipCache:true});if(!mounted.current||serial!==loadSerial.current)return;if(remove){if(!value.canDelete){showNotification(t.used,'warning');return;}setDeletion(value);}else{const next=draftFor(value);baseline.current=snapshot(next);setDraft(next);setDetail(value);request.current=null;}}catch(e){if(mounted.current&&serial===loadSerial.current)showNotification(message(e),'error');}finally{if(mounted.current&&serial===loadSerial.current)setBusy(false);}};

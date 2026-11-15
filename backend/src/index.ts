@@ -1,4 +1,4 @@
-import {companyDocumentContact} from './services/companyDocumentContact';
+import {companyDocumentContact,entityDocumentContactUpdate,companyDocumentContactUpdate,entityDocumentContactBaseline} from './services/companyDocumentContact';
 import {registerManagementTargetRoutes} from './services/managementTargets';
 import {attachExpensePaymentCompletion} from './services/expensePaymentCompletion';
 import {importAttendanceFile} from './services/attendanceImport';
@@ -1951,6 +1951,7 @@ const buildSharedCustomerOrganizationData = (
   fallbackOrganization: any = null, linkedCompany:any = null
 ) => {
   if(linkedCompany)payload={...payload,...Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,linkedCompany[key]??null])),...subscriberProfilePatch(linkedCompany),...(linkedCompany.subscriberOrgId?{manager:linkedCompany.representative,phoneNumber:linkedCompany.phone}:{})};
+  const contact=entityDocumentContactUpdate(payload,entityDocumentContactBaseline(fallbackOrganization,linkedCompany));
   return {
     businessNumber: payload?.businessNumber !== undefined ? resolveOptionalString(payload.businessNumber,null) : fallbackOrganization?.businessNumber ?? null,
     ...resolvePartnerIdentity(payload,normalizeLocalizedName({ ...fallbackOrganization, ...payload }, "name").name,fallbackOrganization,linkedCompany),
@@ -1988,6 +1989,7 @@ const buildSharedCustomerOrganizationData = (
       payload?.email !== undefined
         ? resolveOptionalString(payload.email, null)
         : resolveOptionalString(fallbackOrganization?.email, null),
+    ...contact,
   };
 };
 
@@ -19305,6 +19307,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
     });
   }
 
+  companyDocumentContactUpdate({representative:contactName,address:companyAddress,phone:contactPhone,email:contactEmail},{});
   const hasActiveMembership = await prisma.employee.count({
     where: {
       email: requesterEmail,
@@ -27742,8 +27745,8 @@ app.post("/business-partners", async (req, res) => {
   const name = normalizeLocalizedName(req.body, "name").name;
   const type = resolveOptionalString(req.body?.type, "PROCESS_OUTSOURCING");
   if(req.body?.partnerExpenseTypeId!=null)throw createHttpError(410,'ACCOUNTING_TYPES_RETIRED');
-  const contactName = resolveOptionalString(req.body?.contactName, null);
-  const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
+
+
   if (!name) return res.status(400).json({ ok: false, error: "partner name is required" });
   if (!['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'].includes(type || '')) {
     return res.status(400).json({ ok: false, error: "invalid partner type" });
@@ -27761,8 +27764,8 @@ app.post("/business-partners", async (req, res) => {
 
       const partner = await tx.organization.upsert({
         where: { ownerOrgId_type_name: { ownerOrgId: organization.id, type: type as any, name } },
-        create: { ...partnerProfilePatch(req.body), ...identity, ownerOrgId: organization.id, name, type: type as any, representative: contactName, phone: contactPhone, createdBy: actor, ...subscriberProfilePatch(linkedCompany) },
-        update: { ...partnerProfilePatch(req.body), ...identity, representative: contactName, phone: contactPhone, ...subscriberProfilePatch(linkedCompany) },
+        create: { ...partnerProfilePatch(req.body,entityDocumentContactBaseline(retained,linkedCompany)), ...identity, ownerOrgId: organization.id, name, type: type as any, createdBy: actor, ...subscriberProfilePatch(linkedCompany) },
+        update: { ...partnerProfilePatch(req.body,entityDocumentContactBaseline(retained,linkedCompany)), ...identity, ...subscriberProfilePatch(linkedCompany) },
       });
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if(req.body?.bankAccounts!==undefined)await saveNewPartnerBankAccounts(tx,organization.id,getCurrentRequestActorEmployeeId()!,partner.id,req.body.bankAccounts);
@@ -27796,8 +27799,8 @@ app.put("/business-partners/:id", async (req, res) => {
   }
   const type = requestedType || existing.type;
   if(req.body?.partnerExpenseTypeId!==undefined&&req.body.partnerExpenseTypeId!==existing.partnerExpenseTypeId)throw createHttpError(410,'ACCOUNTING_TYPES_RETIRED');
-  const contactName = resolveOptionalString(req.body?.contactName, null);
-  const contactPhone = resolveOptionalString(req.body?.contactPhone, null);
+
+
   const isActive = typeof req.body?.isActive === "boolean" ? req.body.isActive : existing.isActive;
   const hasServiceTypeSelection = Array.isArray(req.body?.serviceTypeIds);
 
@@ -27819,7 +27822,7 @@ app.put("/business-partners/:id", async (req, res) => {
       if(code&&await tx.organization.findFirst({where:{code:{equals:code,mode:'insensitive'},id:{not:id}}}))throw createHttpError(409,'PARTNER_CODE_CONFLICT');
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
-      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body), ...identity, name, type: type as any, representative: contactName, phone: contactPhone, isActive, ...subscriberProfilePatch(linkedCompany) } });
+      await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body,entityDocumentContactBaseline(existing,linkedCompany)), ...identity, name, type: type as any, isActive, ...subscriberProfilePatch(linkedCompany) } });
       await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       await connectPartnerCompany(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if (hasServiceTypeSelection) {

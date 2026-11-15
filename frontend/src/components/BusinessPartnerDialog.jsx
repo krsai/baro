@@ -1,3 +1,4 @@
+import {companyDocumentContactError} from '../constants/companyDocumentContact';
 import PartnerClassificationFields from './PartnerClassificationFields';
 import {CompanyConnectionField} from './CompanyConnections';
 import {emptyPartnerClassification,classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
@@ -152,7 +153,7 @@ function PartnerEditorState({
       emitWorkspaceDataChanged({ topics: ['business-partners','customers'], orgId: activeOrgId, source: 'business-partner' });
       if(live.current){(onSaved || onCreated)?.(customer?{...record,...savedPartner,id:record.id,entityId:record.id,relationshipId:record.relationshipId,contactName:savedPartner.manager??form.contactName,contactPhone:savedPartner.phoneNumber??form.contactPhone}:savedPartner);onClose?.();}
     } catch (saveError) {
-      if(live.current)setError(['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind));
+      if(live.current)setError(['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:companyDocumentContactError(saveError,languageCode,entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind)));
     } finally {
       saveLock.current=false;if(live.current)setSaving(false);
     }

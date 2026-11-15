@@ -1,3 +1,4 @@
+import {companyDocumentContactText,companyDocumentContactError} from '../../../constants/companyDocumentContact';
 import {entityCodeError} from '../../../utils/entityCode.mjs';
 import PageContentStack from '../../../components/PageContentStack';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -300,7 +301,7 @@ const OrganizationSubscriptionBoard = () => {
       );
     } catch (error) {
       showNotification(
-        entityCodeError(error,languageCode,getPageMessage('organizationCreateError', languageCode)),
+        companyDocumentContactError(error,languageCode,entityCodeError(error,languageCode,getPageMessage('organizationCreateError', languageCode))),
         'error'
       );
     } finally {
@@ -551,7 +552,7 @@ const OrganizationSubscriptionBoard = () => {
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
-                    label={getPageMessage('companyEmail', languageCode)}
+                    label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).email}
                     name="email"
                     value={orgForm.email}
                     onChange={handleOrgChange}
@@ -560,7 +561,7 @@ const OrganizationSubscriptionBoard = () => {
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
-                    label={getPageMessage('representative', languageCode)}
+                    label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).representative}
                     name="representative"
                     value={orgForm.representative}
                     onChange={handleOrgChange}
@@ -569,7 +570,7 @@ const OrganizationSubscriptionBoard = () => {
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
-                    label={getPageMessage('phone', languageCode)}
+                    label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).phone}
                     name="phone"
                     value={orgForm.phone}
                     onChange={handleOrgChange}
@@ -578,7 +579,7 @@ const OrganizationSubscriptionBoard = () => {
                 <Grid item xs={12} md={8}>
                   <TextField
                     fullWidth
-                    label={getPageMessage('address', languageCode)}
+                    label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).address}
                     name="address"
                     value={orgForm.address}
                     onChange={handleOrgChange}

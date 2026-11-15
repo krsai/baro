@@ -3,3 +3,7 @@ export const companyDocumentContactText={
  en:{title:'Document contact',representative:'Representative name (English)',phone:'Contact phone',email:'Contact email',address:'Company address (English)',addressTitle:'Document address',english:'Enter the representative name and address in English.',invalid:'Check the document contact details.'},
  vi:{title:'Thông tin liên hệ trên chứng từ',representative:'Tên người đại diện (tiếng Anh)',phone:'Số điện thoại liên hệ',email:'Email liên hệ',address:'Địa chỉ công ty (tiếng Anh)',addressTitle:'Địa chỉ trên chứng từ',english:'Nhập tên người đại diện và địa chỉ bằng tiếng Anh.',invalid:'Kiểm tra thông tin liên hệ trên chứng từ.'},
 };
+export function companyDocumentContactError(error,languageCode,fallback){
+ const text=companyDocumentContactText[languageCode]||companyDocumentContactText.en;
+ return error?.message==='COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED'?text.english:error?.message==='COMPANY_DOCUMENT_CONTACT_INVALID'?text.invalid:fallback;
+}

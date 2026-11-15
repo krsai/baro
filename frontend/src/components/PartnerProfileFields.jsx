@@ -6,6 +6,7 @@ import {ENTITY_TEXT} from '../constants/entityProfile';
 import {ENTITY_CODE_TEXT} from '../utils/entityCode.mjs';
 import {PARTY_KIND_TEXT} from '../constants/partyKind';
 import {getStaticOptionOptions} from '../constants/staticOptionRegistry';
+import {companyDocumentContactText} from '../constants/companyDocumentContact';
 
 export const PARTNER_PROFILE_TEXT={
  ko:{name:'업체명 (영어 · 기본)',nameKo:'업체명 (한국어 · 선택)',nameVi:'업체명 (베트남어 · 선택)',code:'업체 코드 (선택)',contact:'담당자 이름',help:'업체명은 회사·사업체의 이름입니다. 영어 이름은 기본으로 사용하며, 한국어·베트남어 이름이 없으면 영어 이름을 표시합니다.',codeHelp:'영문·숫자·하이픈·밑줄·마침표, 최대 40자',phone:'전화번호'},
@@ -17,6 +18,7 @@ export const PARTNER_PROFILE_TEXT={
 export default function PartnerProfileFields({value,onChange,disabled=false,languageCode='ko',autoFocus=false,hideGuidance=false,fieldLocks=[]}){
  const text=PARTNER_PROFILE_TEXT[languageCode]||PARTNER_PROFILE_TEXT.en,common=ENTITY_TEXT[languageCode]||ENTITY_TEXT.en;
  const party=PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en;
+ const contact=companyDocumentContactText[languageCode]||companyDocumentContactText.en;
  const subscriber=Boolean(value.linkedCompany?.subscriberOrgId);
  const officialNames=['name','nameKo','nameVi','address','country','businessNumber',...(subscriber?['email','contactName','contactPhone','countryCode',...(value.linkedCompany.partyKind?['partyKind']:[])]:[])];
  const resolved=name=>{if(!value.linkedCompany||!officialNames.includes(name))return value[name]||'';return value.linkedCompany[{contactName:'representative',contactPhone:'phone'}[name]||name]||'';};
@@ -31,13 +33,13 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
     {field('name',text.name,{autoFocus})}{field('nameKo',text.nameKo)}{field('nameVi',text.nameVi)}
    </Box>
   </EntityDetailSection>
-  <EntityDetailSection title={common.contact}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>
-   {field('contactName',text.contact)}{field('email',common.email,{type:'email'})}
-   {field('countryCode',common.countryCode)}{field('contactPhone',text.phone,{type:'tel'})}
+  <EntityDetailSection title={contact.title}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'}}}>
+   {field('contactName',contact.representative,{inputProps:{maxLength:200}})}{field('email',contact.email,{type:'email',inputProps:{maxLength:254}})}
+   {field('countryCode',common.countryCode)}{field('contactPhone',contact.phone,{type:'tel',inputProps:{maxLength:100}})}
   </Box></EntityDetailSection>
-  <EntityDetailSection title={common.address}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'180px minmax(0,1fr)'}}}>
+  <EntityDetailSection title={contact.addressTitle}><Box sx={{...grid,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'180px minmax(0,1fr)'}}}>
    {field('country',common.country,{select:true,children:[<MenuItem key="empty" value="">—</MenuItem>,...getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)]})}
-   {field('address',common.address)}
+   {field('address',contact.address,{inputProps:{maxLength:1000}})}
   </Box></EntityDetailSection>
  </Stack>;
 }

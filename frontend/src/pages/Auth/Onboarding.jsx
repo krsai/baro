@@ -1,3 +1,4 @@
+import {companyDocumentContactText,companyDocumentContactError} from '../../constants/companyDocumentContact';
 import ActionNotice from '../../components/ActionNotice';
 import Autocomplete from '../../components/SearchableSelect';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -642,7 +643,7 @@ const Onboarding = () => {
       setRegisterDrawerOpen(false);
       setRegisterForm(buildRegisterFormDefault(requesterEmail));
     } catch (error) {
-      setRegisterErrorMessage(error?.message || t('registerError'));
+      setRegisterErrorMessage(companyDocumentContactError(error,languageCode,error?.message || t('registerError')));
     } finally {
       setRegisterSubmitting(false);
     }
@@ -892,7 +893,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label={t('companyAddress')}
+              label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).address}
               name="companyAddress"
               value={registerForm.companyAddress}
               onChange={handleRegisterChange}
@@ -910,7 +911,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label={t('representativeName')}
+              label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).representative}
               name="representativeName"
               value={registerForm.representativeName}
               onChange={handleRegisterChange}
@@ -919,7 +920,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label={t('representativeContact')}
+              label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).phone}
               name="representativeContact"
               value={registerForm.representativeContact}
               onChange={handleRegisterChange}
@@ -928,7 +929,7 @@ const Onboarding = () => {
             <TextField
               fullWidth
               required
-              label={t('representativeEmail')}
+              label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).email}
               name="representativeEmail"
               type="email"
               value={registerForm.representativeEmail}

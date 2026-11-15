@@ -83,14 +83,13 @@ function patch(body:any,previous:any){
  if(!body||typeof body!=='object'||Array.isArray(body))fail('INVALID_ENTITY_PROFILE');
  const allowed=['name','nameKo','nameVi','code','partyKind','businessLegalForm','businessNumber','country','countryCode','address','representative','phone','email','isActive'];
  if(Object.keys(body).some(key=>!allowed.includes(key)))fail('INVALID_ENTITY_PROFILE');
- const data:any=partnerProfilePatch(body);
+ const data:any=partnerProfilePatch(body,previous);
  if(['name','nameKo','nameVi'].some(key=>Object.hasOwn(body,key))){const names={...previous,...body};if(!validLocalizedName({...names,nameEn:names.name}))fail('INVALID_ENTITY_PROFILE');const value=normalizeLocalizedName(names,'name');data.name=value.name;data.nameKo=value.nameKo||null;data.nameVi=value.nameVi||null;}
  if(Object.hasOwn(body,'partyKind'))data.partyKind=normalizePartyKind(body.partyKind);
  if(Object.hasOwn(body,'businessLegalForm'))data.businessLegalForm=businessLegalForm(body.businessLegalForm);
- for(const [key,max] of Object.entries({representative:200,phone:100})){if(!Object.hasOwn(body,key))continue;if(body[key]!=null&&(typeof body[key]!=='string'||body[key].length>max))fail('INVALID_ENTITY_PROFILE');data[key]=body[key]?.trim()||null;}
  if(Object.hasOwn(body,'isActive')){if(typeof body.isActive!=='boolean')fail('INVALID_ENTITY_PROFILE');data.isActive=body.isActive;}
  if(Object.hasOwn(body,'code')){data.code=normalizePartnerCode(body.code);if(data.code!==previous.code&&(data.partyKind??previous.partyKind)==='CORPORATE'&&(!data.code||!/^[A-Z0-9]{4}$/.test(data.code)))fail('CORPORATE_PARTNER_CODE_INVALID');}
- if(data.representative!==undefined&&data.representative!==previous.representative)data.representativeEmployeeId=null;
+ if(['representative','phone','email','address'].some(key=>data[key]!==undefined&&data[key]!==previous[key]))data.representativeEmployeeId=null;
  if((data.partyKind??previous.partyKind)==='CORPORATE'&&(previous.partyKind!=='CORPORATE'||!!previous.businessNumber)&&!(data.businessNumber===undefined?previous.businessNumber:data.businessNumber))fail('PARTNER_BUSINESS_NUMBER_REQUIRED');
  return data;
 }

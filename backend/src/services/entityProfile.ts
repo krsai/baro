@@ -1,3 +1,4 @@
+import {entityDocumentContactUpdate} from './companyDocumentContact';
 // Common party attributes. Business roles, tenancy and authentication are separate.
 export const normalizePartnerCode = (value: any): string | null => {
   if (value == null || value === '') return null;
@@ -44,7 +45,7 @@ export const entityProfile = (entity:any) => ({
   country:entity.country ?? null,countryCode:entity.countryCode ?? null,address:entity.address ?? null,
   contactName:entity.representative ?? null,contactPhone:entity.phone ?? null,email:entity.email ?? null,
 });
-export const partnerProfilePatch = (body:any) => {
+export const partnerProfilePatch = (body:any,previous:any={}) => {
   const result:any={};
   if(body?.partyKind!==undefined)result.partyKind=normalizePartyKind(body.partyKind);
   if(body?.code!==undefined)result.code=normalizePartnerCode(body.code);
@@ -54,5 +55,5 @@ export const partnerProfilePatch = (body:any) => {
     result[field]=typeof body[field]==='string'?body[field].trim()||null:null;
   }
   if(result.country && !/^[A-Z]{2}$/.test(result.country))throw Object.assign(new Error('INVALID_ENTITY_PROFILE'),{status:400});
-  return result;
+  return {...result,...entityDocumentContactUpdate(body,previous)};
 };

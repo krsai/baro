@@ -1,3 +1,4 @@
+import {companyDocumentContactText} from '../frontend/src/constants/companyDocumentContact.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -32,6 +33,7 @@ try{
   if(['directory','service','local'].includes(screen))await page.getByRole('button',{name:PARTNER_DIRECTORY_TEXT[lang].detail,exact:true}).click();
   if(screen==='expense'){await page.getByRole('button',{name:payee.choosePayee,exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:payee.information,exact:true}).click();}
   const dialog=page.getByRole('dialog').last();await page.waitForFunction(()=>document.querySelector('input[name=name]')?.value==='Full company');assert.equal(await dialog.locator('input[name=businessNumber]').inputValue(),'VN-123');assert.equal(await dialog.locator('input[name=countryCode]').inputValue(),'+84');assert.equal(await dialog.locator('input[name=contactName]').inputValue(),'Full contact');
+  const contact=companyDocumentContactText[lang];for(const [name,label]of Object.entries({contactName:contact.representative,contactPhone:contact.phone,email:contact.email,address:contact.address}))assert.equal(await dialog.getByRole('textbox',{name:label,exact:true}).getAttribute('name'),name);
   await dialog.getByRole('button',{name:panel.select,exact:true}).click();await page.getByRole('complementary').getByRole('checkbox',{name:'Office',exact:true}).waitFor();if(screen==='local')await page.getByRole('complementary').getByRole('checkbox',{name:'Office',exact:true}).check();await page.getByRole('button',{name:panel.close,exact:true}).click();await page.getByRole('complementary').waitFor({state:'hidden'});
   if(screen!=='local')await dialog.locator('input[name=contactName]').fill('Updated contact');await dialog.getByRole('button',{name:banks.save,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('input[name=name]'));
   assert.equal(writes.length,1);assert.equal(writes[0].path,screen==='local'?'/business-partners/9':'/customers/44');assert.equal(writes[0].body.partyKind,'CORPORATE');assert.equal(writes[0].body.contactName,screen==='local'?'Full contact':'Updated contact');assert.deepEqual(writes[0].body.classification,{revision:2,roleIds:[1],industryIds:[11]});if(screen!=='local'){assert.equal(writes[0].body.manager,'Updated contact');assert.equal('defaultSizeSetCode' in writes[0].body,false);}

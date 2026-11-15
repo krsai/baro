@@ -9,7 +9,7 @@ export function companyDocumentContactUpdate(input:any,current:any){
  for(const [key,max]of Object.entries({representative:200,phone:100,email:320,address:1000})){
   if(input[key]===undefined)continue;
   const value=input[key];
-  if(value!==null&&(typeof value!=='string'||value.length>max))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_INVALID');
+  if(value!==null&&(typeof value!=='string'||value.length>max&&value!==current[key]))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_INVALID');
   const text=typeof value==='string'?value.trim():null;
   // Existing text is preserved until the user explicitly changes that field.
   if(['representative','address'].includes(key)&&text&&text!==(current[key]??'')&&[...text].some(char=>/\p{L}/u.test(char)&&!/\p{Script=Latin}/u.test(char)))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED');
@@ -17,4 +17,13 @@ export function companyDocumentContactUpdate(input:any,current:any){
   result[key]=text||null;
  }
  return result;
+}
+export function entityDocumentContactUpdate(input:any,previous:any={}){
+ const first=(keys:string[])=>{const key=keys.find(key=>input?.[key]!==undefined);return key?input[key]:undefined;};
+ return companyDocumentContactUpdate({representative:first(['representative','contactName','manager']),phone:first(['phone','contactPhone','phoneNumber']),email:input?.email,address:input?.address},previous||{});
+}
+// A confirmed common identity owns its address; only a real subscriber also
+// owns the contact fields. Local contacts of non-subscribers remain private.
+export function entityDocumentContactBaseline(previous:any,official:any){
+ return {...previous,...(official?{address:official.address}:{}),...(official?.subscriberOrgId?companyDocumentContact(official):{})};
 }

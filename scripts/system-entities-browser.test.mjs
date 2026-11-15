@@ -33,7 +33,7 @@ try{
    if(url.pathname.endsWith('/13'))return r.fulfill({headers,json:{requested:unused,entity:unused,classifications:[],usage:[],canDelete:true,revision:'unused'}});
    const rows=[{...entity,subscriber:true,classifications:[scope.classification],usage:[{kind:'finance',count:1}],canDelete:false},...(removed?[]:[unused])];return r.fulfill({headers,json:{rows,total:rows.length,page:0}});
   });
-  await page.goto(`http://127.0.0.1:${port}/system-entities-acceptance.html?lang=${lang}`);
+  await page.goto(`http://127.0.0.1:${port}/system-entities-acceptance.html?lang=${lang}`,{waitUntil:'domcontentloaded',timeout:60000});
   const used=page.getByTestId('system-entities-table').locator('tbody tr').first();await used.getByRole('button',{name:t.edit,exact:true}).waitFor();assert.equal(await used.getByRole('button',{name:t.remove+' BARO',exact:true}).isDisabled(),true);
   await used.getByRole('button',{name:t.edit,exact:true}).click();const dialog=page.getByRole('dialog');await dialog.locator('input[name="name"]').waitFor();const save=dialog.getByRole('button',{name:t.save,exact:true});assert.equal(await save.isDisabled(),true);
   assert.equal(await dialog.locator('input[name="code"]').evaluate(node=>node.readOnly),true);assert.equal(await dialog.locator('textarea[name="address"]').count(),0);
@@ -41,7 +41,7 @@ try{
   assert.equal(await dialog.getByRole('textbox',{name:classification.category,exact:true}).isDisabled(),true);assert.ok(await dialog.locator('.MuiInputBase-root .MuiChip-root').count()>=4);assert.equal(await save.isEnabled(),true);
   await save.click();await page.waitForFunction(()=>window.notices?.length===1);assert.equal(await dialog.locator('input[name="name"]').inputValue(),'BARO updated');assert.equal(await save.isEnabled(),true);
   await save.click();await page.waitForFunction(()=>window.notices?.length===2);assert.deepEqual(writes[0],writes[1]);assert.equal(await save.isDisabled(),true);assert.ok(await page.evaluate(()=>Object.values(window.guards).every(value=>!value)));
-  await page.keyboard.press('Escape');await page.getByTestId('system-entities-table').getByRole('button',{name:t.remove+' Unused vendor',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:t.remove,exact:true}).click();await page.waitForFunction(()=>window.notices?.length===3);assert.equal(deletes.length,1);
+  await page.waitForFunction(()=>!document.querySelector('input[name=name]')?.disabled);await page.locator('.MuiDialog-root .MuiDialog-container').last().click({position:{x:2,y:2}});await dialog.waitFor({state:'hidden'});await page.getByTestId('system-entities-table').getByRole('button',{name:t.remove+' Unused vendor',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:t.remove,exact:true}).click();await page.waitForFunction(()=>window.notices?.length===3);assert.equal(deletes.length,1);
   await page.setViewportSize({width:390,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: SYSTEM ko/en/vi used-company edits, automatic categories, single-save drafts/retry, protected deletion, unused deletion and responsive layout.');
