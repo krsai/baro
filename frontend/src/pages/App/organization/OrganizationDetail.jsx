@@ -1,3 +1,5 @@
+import EntityPhoneField from '../../../components/EntityPhoneField';
+import { phoneForCountry } from '../../../utils/entityPhone.mjs';
 import {companyDocumentContactText} from '../../../constants/companyDocumentContact';
 import {useLocation} from 'react-router-dom';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
@@ -195,7 +197,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const handleInputChange = (event) => {
     if(isSaving)return;
     const { name, value } = event.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value, ...(name==='country'?{phone:phoneForCountry(prev.phone,prev.country,value)}:{}) }));
   };
 
   const handleSave = async () => {
@@ -316,6 +318,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
 
+          <Grid size={{xs:12,sm:6,md:4}}><TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>{countryOptions.map(option=><MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}</TextField></Grid>
           <Grid size={{xs:12}}>
             <Stack spacing={2} data-testid="company-industry-settings">{industryError&&<Alert severity="error" action={<Button onClick={()=>setIndustryReload(value=>value+1)}>{industryText.retry}</Button>}>{industryError}</Alert>}{industryProfile&&<PartnerClassificationFields inline value={classification} onChange={setClassification} orgId={activeOrgId} languageCode={languageCode} disabled={isSaving||!industryProfile.canEdit} onReady={setIndustryReady}/>}</Stack>
           </Grid>
@@ -330,9 +333,8 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             <TextField fullWidth size="small" label={contactText.representative} name="representative" value={formData.representative} onChange={handleInputChange} inputProps={{maxLength:200}}/>
           </Grid>
           <Grid size={{xs:12,md:4}}>
-            <TextField
-              fullWidth
-              size="small"
+            <EntityPhoneField
+              country={formData.country}
               label={contactText.phone}
               name="phone"
               value={formData.phone}
@@ -351,17 +353,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
 
-        </Grid>
-      </EntityDetailSection>
-
-      <EntityDetailSection title={contactText.addressTitle}>
-        <Grid container spacing={2}>
-          <Grid size={{xs:12,sm:4,md:3}}>
-            <TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>
-              {countryOptions.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
-            </TextField>
-          </Grid>
-          <Grid size={{xs:12,sm:8,md:9}}>
+          <Grid size={{xs:12}}>
             <TextField
               fullWidth
               size="small"

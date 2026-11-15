@@ -1,3 +1,5 @@
+import { phoneForCountry } from '../../utils/entityPhone.mjs';
+import EntityPhoneField from '../../components/EntityPhoneField';
 import {companyDocumentContactText,companyDocumentContactError} from '../../constants/companyDocumentContact';
 import ActionNotice from '../../components/ActionNotice';
 import Autocomplete from '../../components/SearchableSelect';
@@ -548,7 +550,7 @@ const Onboarding = () => {
     if (registerErrorMessage) {
       setRegisterErrorMessage('');
     }
-    setRegisterForm((prev) => ({ ...prev, [name]: value }));
+    setRegisterForm((prev) => ({ ...prev, [name]: value, ...(name==='country'?{representativeContact:phoneForCountry(prev.representativeContact,prev.country,value)}:{}) }));
   };
 
   const handleRegisterCompany = async () => {
@@ -917,8 +919,8 @@ const Onboarding = () => {
               onChange={handleRegisterChange}
               disabled={registerSubmitting}
             />
-            <TextField
-              fullWidth
+            <EntityPhoneField
+              country={registerForm.country}
               required
               label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).phone}
               name="representativeContact"

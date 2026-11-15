@@ -1,3 +1,6 @@
+import EntityPhoneField from '../../../components/EntityPhoneField';
+import { phoneForCountry } from '../../../utils/entityPhone.mjs';
+import { ENTITY_TEXT } from '../../../constants/entityProfile';
 import {companyDocumentContactText,companyDocumentContactError} from '../../../constants/companyDocumentContact';
 import {entityCodeError} from '../../../utils/entityCode.mjs';
 import PageContentStack from '../../../components/PageContentStack';
@@ -114,6 +117,7 @@ const createEmptyOrgForm = () => ({
   serviceContactEmail: '',
   billingEmail: '',
   activeEndsAt: '',
+  country: 'VN',
   representative: '',
   address: '',
   phone: '',
@@ -200,7 +204,7 @@ const OrganizationSubscriptionBoard = () => {
 
   const handleOrgChange = (event) => {
     const { name, value } = event.target;
-    setOrgForm((prev) => ({ ...prev, [name]: value }));
+    setOrgForm((prev) => ({ ...prev, [name]: value, ...(name==='country'?{phone:phoneForCountry(prev.phone,prev.country,value)}:{}) }));
   };
 
   const handleUpdateSubscription = async () => {
@@ -273,6 +277,7 @@ const OrganizationSubscriptionBoard = () => {
           representative: orgForm.representative.trim(),
           address: orgForm.address.trim(),
           phone: orgForm.phone.trim(),
+          country: orgForm.country,
         }),
       });
 
@@ -549,6 +554,7 @@ const OrganizationSubscriptionBoard = () => {
                     ))}
                   </TextField>
                 </Grid>
+                <Grid item xs={12} md={4}><TextField fullWidth select name="country" label={(ENTITY_TEXT[languageCode]||ENTITY_TEXT.en).country} value={orgForm.country} onChange={handleOrgChange}>{getStaticOptionOptions('country',languageCode).map(row=><MenuItem key={row.value} value={row.value}>{row.label}</MenuItem>)}</TextField></Grid>
                 <Grid item xs={12} md={4}>
                   <TextField
                     fullWidth
@@ -568,15 +574,15 @@ const OrganizationSubscriptionBoard = () => {
                   />
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
+                  <EntityPhoneField
+                    country={orgForm.country}
                     label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).phone}
                     name="phone"
                     value={orgForm.phone}
                     onChange={handleOrgChange}
                   />
                 </Grid>
-                <Grid item xs={12} md={8}>
+                <Grid item xs={12}>
                   <TextField
                     fullWidth
                     label={(companyDocumentContactText[languageCode]||companyDocumentContactText.en).address}
