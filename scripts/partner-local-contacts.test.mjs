@@ -1,0 +1,51 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+const require=createRequire(import.meta.url);
+const {savePartnerContacts,attachPartnerContacts}=require('../backend/dist/services/partnerContacts');
+
+test('partner contacts belong to the editing company; defaults, revision and rollback stay independent',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id,target=s.other.id;
+  await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:target}});
+  const original=await db.organization.findUnique({where:{id:target}});
+  const defaults={subscriberOrgId:target,representative:'BARO default',phone:'+84 111',email:'default@example.test',address:'Default address'};
+  const row={entityId:target,id:target,contactName:'BARO default',linkedCompany:defaults};
+  const read=async()=> (await attachPartnerContacts(db,org,[row]))[0];
+  assert.equal((await read()).contactRevision,0);
+  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:0,patch:{contactName:'바로 담당자',contactPhone:'+82 222',email:'dex@example.test',address:'DEX office'}}));
+  const local=await read();assert.equal(local.contactName,'바로 담당자');assert.equal(local.contactPhone,'+82 222');assert.equal(local.contactRevision,1);
+  assert.equal(local.contactDefaults.contactName,'BARO default');
+  assert.deepEqual(await db.organization.findUnique({where:{id:target}}),original);
+  assert.equal((await attachPartnerContacts(db,target,[{...row,entityId:org}]))[0].contactName,'BARO default','reverse company does not receive DEX overrides');
+  defaults.representative='New BARO default';assert.equal((await read()).contactName,'바로 담당자');
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:0,patch:{contactName:'Stale'}})),/PARTNER_CONTACT_CHANGED/);
+  await assert.rejects(db.$transaction(async tx=>{await savePartnerContacts(tx,org,target,actor,{revision:1,patch:{contactName:'Rollback'}});throw Error('ROLLBACK');}),/ROLLBACK/);
+  assert.equal((await read()).contactRevision,1);assert.equal((await read()).contactName,'바로 담당자');
+  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:1,patch:{contactName:null,contactPhone:'',email:null,address:null}}));
+  assert.equal((await read()).contactName,'New BARO default');assert.equal((await read()).contactPhone,'');assert.equal((await read()).address,'Default address');
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,999999,actor,{revision:0,patch:{contactName:'Other'}})),/PARTNER_NOT_FOUND/);
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,target,org,actor,{revision:0,patch:{contactName:'Forged'}})),/ACTIVE_EMPLOYEE_REQUIRED/);
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:2,patch:{bankAccounts:[]}})),/PARTNER_CONTACT_INVALID/);
+  const gradeSet=await db.employeeGradeSet.create({data:{orgId:target,code:'CONTACT',name:'Contact grades'}});
+  const grade=await db.employeeGrade.create({data:{orgId:target,setId:gradeSet.id,code:'CONTACT',name:'Contact',nameKo:'Contact',nameEn:'Contact',nameVi:'Contact',sortOrder:1}});
+  await db.employee.create({data:{orgId:target,gradeId:grade.id,name:'BARO employee',status:'ACTIVE',orgRole:'ADMIN'}});
+  const {registerPartnerEditorRoutes}=require('../backend/dist/services/partnerEditor');
+  const routes=new Map();let allowed=true,result;
+  registerPartnerEditorRoutes({get:()=>{},put:(path,fn)=>routes.set(path,fn)},db,{requireOrgRole:async()=>allowed?{organization:s.company}:null,actorId:()=>actor});
+  const save=routes.get('/partner-editor/entity/:id/contacts'),response={json:value=>result=value};
+  await save({params:{id:String(target)},query:{orgId:target},body:{contacts:{revision:2,patch:{contactName:'DEX contact via API'}}}},response);
+  assert.equal(result.contactName,'DEX contact via API');assert.equal(result.canEditProfile,false);assert.equal(result.contactRevision,3);
+  await assert.rejects(save({params:{id:String(target)},body:{contacts:{revision:3,patch:{contactName:'Rollback API'}},classification:{revision:0}}},response),/COMPANY_PROFILE_IS_PRIVATE/);
+  assert.equal((await read()).contactName,'DEX contact via API');assert.equal((await read()).contactRevision,3);
+  const owned=await db.organization.create({data:{name:'Owned customer',type:'BRAND',ownerOrgId:org}});
+  const relation=await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:owned.id,defaultSizeSetCode:'LEGACY_APPAREL'}});
+  await save({params:{id:String(owned.id)},body:{relationshipId:relation.id,contacts:{revision:0,patch:{contactName:'Local person'}},defaultSizeSetCode:'URD_NUMERIC'}},response);
+  assert.equal(result.relationshipId,relation.id);assert.equal(result.defaultSizeSetCode,'URD_NUMERIC');
+  await assert.rejects(save({params:{id:String(target)},body:{relationshipId:relation.id,contacts:{revision:3,patch:{contactName:'Wrong relationship'}}}},response),/INVALID_PARTNER_ID/);
+  allowed=false;result=null;await save({params:{id:String(target)},body:{}},response);assert.equal(result,null);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(row=>row.version==='20261115010000_partner_local_contacts');
+  await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);assert.equal((await read()).contactRevision,3);
+ }finally{await f.close();}
+});

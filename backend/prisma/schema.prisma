@@ -451,7 +451,22 @@ model ProcessMasterOptionRelation {
   @@index([childOptionId])
 }
 
+model PartnerContact {
+ orgId Int
+ entityId Int
+ data Json @default("{}")
+ revision Int @default(1)
+ updatedByEmployeeId Int
+ updatedAt DateTime @default(now()) @db.Timestamp(3)
+ organization Organization @relation("PartnerContactOwner", fields:[orgId], references:[id], onDelete:Restrict)
+ entity Organization @relation("PartnerContactEntity", fields:[entityId], references:[id], onDelete:Restrict)
+ actor Employee @relation("PartnerContactActor", fields:[updatedByEmployeeId,orgId], references:[id,orgId], onDelete:Restrict, map:"PartnerContact_actor_fkey")
+ @@id([orgId,entityId])
+}
+
 model Organization {
+ ownedPartnerContacts PartnerContact[] @relation("PartnerContactOwner")
+ partnerContacts PartnerContact[] @relation("PartnerContactEntity")
   workTimeRequests WorkTimeRequest[]
   payrollPayableDocuments PayrollPayableDocument[]
   accountingOpenings AccountingOpeningItem[] @relation("OpeningCompany")
@@ -1096,6 +1111,7 @@ model Warehouse {
 
 
 model Employee {
+ partnerContactEdits PartnerContact[] @relation("PartnerContactActor")
   orderInvoicePolicies OrderInvoicePolicy[] @relation("OrderInvoicePolicyActor")
   orderInvoicePolicyEvents OrderInvoicePolicyEvent[] @relation("OrderInvoicePolicyEventActor")
   payrollManagementEvents PayrollManagementEvent[] @relation("PayrollManagementActor")

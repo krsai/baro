@@ -8,11 +8,12 @@ test('every corporate or individual entity uses English document contacts and pr
  for(const partyKind of ['CORPORATE','INDIVIDUAL']){
   const patch=partnerProfilePatch({partyKind,contactName:'Jane Smith',contactPhone:'+84 123',email:'docs@example.test',address:'12 Main Street'});
   assert.equal(patch.representative,'Jane Smith');assert.equal(patch.phone,'+84 123');assert.equal(patch.email,'docs@example.test');assert.equal(patch.address,'12 Main Street');
-  assert.throws(()=>partnerProfilePatch({partyKind,contactName:'새 이름'}),/COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED/);
+  assert.equal(partnerProfilePatch({partyKind,contactName:'새 담당자'}).representative,'새 담당자');
   assert.throws(()=>partnerProfilePatch({partyKind,address:'새 주소'}),/COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED/);
   assert.throws(()=>partnerProfilePatch({partyKind,contactPhone:123}),/COMPANY_DOCUMENT_CONTACT_INVALID/);
   const old={representative:'과거 이름',address:'과거 주소',phone:'OLD'};
   assert.equal(partnerProfilePatch({contactName:old.representative,address:old.address},old).representative,old.representative);
+  assert.equal(partnerProfilePatch({contactName:'x'.repeat(201)},{representative:'x'.repeat(201)}).representative,'x'.repeat(201));
   assert.equal('phone' in partnerProfilePatch({nameKo:'새 표시명'},old),false);
  }
  const {entityDocumentContactUpdate,entityDocumentContactBaseline}=require('../backend/dist/services/companyDocumentContact');

@@ -1,4 +1,4 @@
-import {companyDocumentContactError} from '../constants/companyDocumentContact';
+import {companyDocumentContactError,partnerContactText} from '../constants/companyDocumentContact';
 import PartnerClassificationFields from './PartnerClassificationFields';
 import {CompanyConnectionField} from './CompanyConnections';
 import {emptyPartnerClassification,classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
@@ -55,6 +55,7 @@ export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
 };
 
 const buildFormFromPartner = (partner, initialType) => ({
+  contactPatch:{},
   linkedCompany:partner?.linkedCompany||null,
   partyKind:partner?.id?partner.partyKind||'':'CORPORATE',
   code: partner?.code || '',
@@ -120,7 +121,17 @@ function PartnerEditorState({
   },[open,partner?.id,relationshipId,activeOrgId,initialType,isEdit,profileReload]);
 
   const save = async () => {
-    if(saveLock.current||locked||profileLocked)return;
+    if(saveLock.current||locked)return;
+    if(isEdit&&(form.linkedCompany||profileLocked)){
+     if(!profileLocked&&(!classificationLoaded||!optionsReady||!classificationComplete(displayedClassification)))return setError(classificationText.required);
+     saveLock.current=true;setSaving(true);setError('');
+     try{
+      const saved=await requestJSON('/partner-editor/entity/'+record.id+'/contacts'+buildQueryString({orgId:activeOrgId}),{method:'PUT',body:JSON.stringify({...(record.sourceKind==='CUSTOMER'?{relationshipId:record.relationshipId}:{}),...(!profileLocked&&form.defaultSizeSetCode!==record.defaultSizeSetCode?{defaultSizeSetCode:form.defaultSizeSetCode}:{}),contacts:{revision:record.contactRevision??0,patch:form.contactPatch},...(!profileLocked?{classification:classificationPayload({...displayedClassification,revision:form.classification.revision})}:{})})});
+      emitWorkspaceDataChanged({topics:['business-partners','customers'],orgId:activeOrgId,source:'business-partner'});
+      if(live.current){(onSaved||onCreated)?.(saved);onClose?.();}
+     }catch(failure){if(live.current){const text=partnerContactText[languageCode]||partnerContactText.en;setError(failure.message==='PARTNER_CONTACT_CHANGED'?text.changed:failure.message==='PARTNER_CONTACT_INVALID'?text.invalid:companyDocumentContactError(failure,languageCode,labels.errorEdit));}}
+     finally{saveLock.current=false;if(live.current)setSaving(false);}return;
+    }
     if (!hasLocalizedName(form, 'name')) return setError(labels.required);
     if(form.partyKind==='CORPORATE'&&!form.businessNumber.trim())return setError((PARTY_KIND_TEXT[languageCode]||PARTY_KIND_TEXT.en).businessRequired);
     if(!classificationLoaded||!optionsReady||!classificationComplete(displayedClassification))return setError(classificationText.required);
@@ -138,6 +149,10 @@ function PartnerEditorState({
         ...(!isEdit&&pendingAccounts.length?{bankAccounts:pendingAccounts.map(account=>Object.fromEntries(['accountKind','displayName','bankName','accountNumber','accountHolder','currencyId'].map(key=>[key,account[key]])))}:{}),
 
       };
+      if(form.linkedCompany){
+       body.contacts={revision:0,patch:form.contactPatch};
+       if(form.linkedCompany.subscriberOrgId){for(const key of ['address','email'])body[key]=form.linkedCompany[key]??null;body.contactName=form.linkedCompany.representative??null;body.contactPhone=form.linkedCompany.phone??null;}
+      }
       const customer=record?.sourceKind==='CUSTOMER';
       if(customer){delete body.type;body.manager=body.contactName;body.phoneNumber=body.contactPhone;if(form.defaultSizeSetCode!==record.defaultSizeSetCode)body.defaultSizeSetCode=form.defaultSizeSetCode;}
       const savedPartner = await requestJSON(
@@ -168,8 +183,8 @@ function PartnerEditorState({
       {error&&<Alert severity="error" sx={{mx:3,mb:1,flexShrink:0}}>{error}</Alert>}
       <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:panelVisible?'minmax(0,1fr) 340px':'minmax(0,1fr)'},gap:panelVisible?2:0,alignItems:'start'}}><Stack spacing={2} sx={{ pt: 1,minWidth:0 }}>
-          <CompanyConnectionField searchMode sidePanelTarget={panelKind==='connections'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='connections'} onPanelOpenChange={next=>togglePanel(next,'connections')} knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={record?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','address','country','businessNumber','email'].map(key=>[key,linkedCompany[key]||''])),contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',...(!isEdit&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={locked||(profileLocked&&!form.linkedCompany)} languageCode={languageCode}/>
-          <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={locked||profileLocked} autoFocus onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
+          <CompanyConnectionField searchMode sidePanelTarget={panelKind==='connections'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='connections'} onPanelOpenChange={next=>togglePanel(next,'connections')} knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={record?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany?{...Object.fromEntries(['name','nameKo','nameVi','country','businessNumber'].map(key=>[key,linkedCompany[key]||''])),...(companyConnection?{address:linkedCompany.address||'',...(linkedCompany.subscriberOrgId?{email:linkedCompany.email||'',contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||''}:{}),contactPatch:{}}:{}),...(!isEdit&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={locked||(profileLocked&&!form.linkedCompany)} languageCode={languageCode}/>
+          <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={locked} fieldLocks={profileLocked||isEdit&&form.linkedCompany?['partyKind','code','businessNumber','country','name','nameKo','nameVi']:[]} autoFocus onUseDefaults={form.linkedCompany||profileLocked?()=>setForm(current=>({...current,...(record?.contactDefaults||Object.fromEntries(['contactName','contactPhone','email','address'].map(key=>[key,(form.linkedCompany?.subscriberOrgId||key==='address'?form.linkedCompany?.[{contactName:'representative',contactPhone:'phone'}[key]||key]:'')||'']))),contactPatch:Object.fromEntries(['contactName','contactPhone','email','address'].map(key=>[key,null]))})):undefined} onChange={(key,value)=>setForm(current=>({...current,[key]:value,...(['contactName','contactPhone','email','address'].includes(key)?{contactPatch:{...current.contactPatch,[key]:value}}:{})}))}/>
           <EntityBankAccounts hideGuidance entityId={record?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={isEdit?undefined:setPendingAccounts} disabled={locked}/>
 
           <PartnerClassificationFields title={common.role} expandable sidePanelTarget={panelKind==='classification'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='classification'} onPanelOpenChange={togglePanel} value={displayedClassification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||hasOfficialClassification} languageCode={languageCode} onReady={setOptionsReady}/>
@@ -182,7 +197,7 @@ function PartnerEditorState({
 
         <Stack direction="row" spacing={1} alignItems="center" sx={{maxWidth:'100%'}}>
 
-        <Button variant="contained" onClick={save} disabled={locked||profileLocked}>{isEdit ? labels.saveEdit : labels.save}</Button>
+        <Button variant="contained" onClick={save} disabled={locked||(!profileLocked&&(!classificationLoaded||!optionsReady))}>{isEdit ? labels.saveEdit : labels.save}</Button>
         </Stack>
       </DialogActions>
     </Dialog>

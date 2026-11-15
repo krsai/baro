@@ -22,7 +22,7 @@ test('canonical editor reads full profiles, separates relationship/entity IDs an
   const gradeSet=await db.employeeGradeSet.create({data:{orgId:s.other.id,code:'OTHER',name:'Other grades'}}),grade=await db.employeeGrade.create({data:{orgId:s.other.id,setId:gradeSet.id,code:'ADMIN',name:'Admin',nameKo:'Admin',nameEn:'Admin',nameVi:'Admin',sortOrder:1}});
   await db.employee.create({data:{orgId:s.other.id,gradeId:grade.id,name:'Other subscriber',status:'ACTIVE',orgRole:'ADMIN'}});await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:s.other.id}});
   const subscriber=await loadPartnerEditor(db,org,actor,s.other.id);assert.equal(subscriber.canEditProfile,false);for(const key of ['employees','bankAccounts','salary','costs'])assert.equal(key in subscriber,false);
-  const routes=new Map();let allowed=true;registerPartnerEditorRoutes({get:(path,fn)=>routes.set(path,fn)},db,{requireOrgRole:async()=>allowed?{organization:s.company}:null,actorId:()=>actor});let result;
+  const routes=new Map();let allowed=true;registerPartnerEditorRoutes({get:(path,fn)=>routes.set(path,fn),put:(path,fn)=>routes.set('PUT '+path,fn)},db,{requireOrgRole:async()=>allowed?{organization:s.company}:null,actorId:()=>actor});let result;
   await routes.get('/partner-editor/entity/:id')({params:{id:String(legacy.id)},query:{orgId:s.other.id}},{json:value=>result=value});assert.equal(result.id,legacy.id);allowed=false;result=null;await routes.get('/partner-editor/entity/:id')({params:{id:String(legacy.id)}},{json:value=>result=value});assert.equal(result,null);
   await db.employee.update({where:{id:actor},data:{status:'SUSPENDED'}});await assert.rejects(loadPartnerEditor(db,org,actor,legacy.id),/ACTIVE_EMPLOYEE_REQUIRED/);
  }finally{await f.close();}

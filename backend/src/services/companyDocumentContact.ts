@@ -20,7 +20,10 @@ export function companyDocumentContactUpdate(input:any,current:any){
 }
 export function entityDocumentContactUpdate(input:any,previous:any={}){
  const first=(keys:string[])=>{const key=keys.find(key=>input?.[key]!==undefined);return key?input[key]:undefined;};
- return companyDocumentContactUpdate({representative:first(['representative','contactName','manager']),phone:first(['phone','contactPhone','phoneNumber']),email:input?.email,address:input?.address},previous||{});
+ const name=first(['representative','contactName','manager']);
+ const result=companyDocumentContactUpdate({...(input?.representative!==undefined?{representative:name}:{}),phone:first(['phone','contactPhone','phoneNumber']),email:input?.email,address:input?.address},previous||{});
+ if(input?.representative===undefined&&name!==undefined){if(name!==null&&(typeof name!=='string'||name.length>200&&name!==previous?.representative))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_INVALID');result.representative=typeof name==='string'?name.trim()||null:null;}
+ return result;
 }
 // A confirmed common identity owns its address; only a real subscriber also
 // owns the contact fields. Local contacts of non-subscribers remain private.

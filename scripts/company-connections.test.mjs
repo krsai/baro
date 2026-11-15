@@ -8,7 +8,7 @@ const {companyConnectionCandidates,connectPartnerCompany,registerCompanyConnecti
 test('connected partners use public subscriber identity while retaining local IDs and historical codes',async()=>{
  const {attachLinkedCompanies,linkedPartnerCompany}=require('../backend/dist/services/companyConnections');
  const company={id:1845,name:'DEX LOGIS',code:'DEXL',country:'VN',businessNumber:null};
- const db={organization:{findFirst:async()=>({id:1845})},companyIdentity:{findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
+ const db={$queryRawUnsafe:async()=>[],organization:{findFirst:async()=>({id:1845})},companyIdentity:{findMany:async()=>[]},companyIdentityLink:{findUnique:async()=>null,findMany:async()=>[]},companyPartnerLink:{findMany:async({where,select})=>{assert.equal(where.orgId,1);assert.deepEqual(where.entityId.in,[1846]);assert.equal(select.target.select.code,true);assert.equal(select.target.select.employees,undefined);return [{entityId:1846,target:company}];},findUnique:async()=>({target:company})}};
  const [row]=await attachLinkedCompanies(db,1,[{entityId:1846,id:1846,code:'DEX'}]);
  assert.equal(row.code,'DEX');assert.equal(row.entityId,1846);assert.equal(row.linkedCompany.code,'DEXL');
  assert.equal((await linkedPartnerCompany(db,1,1846)).id,1845);

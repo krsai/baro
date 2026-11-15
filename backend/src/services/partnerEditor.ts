@@ -1,3 +1,6 @@
+import {savePartnerContacts} from './partnerContacts';
+import {saveClassification} from './partnerClassification';
+import {retryEditTransaction} from '../utils/editRevision';
 import {createHttpError} from '../utils/http';
 import {classificationTarget,readClassification,requireClassificationActor} from './partnerClassification';
 import {attachLinkedCompanies} from './companyConnections';
@@ -27,6 +30,24 @@ export function registerPartnerEditorRoutes(app:any,db:any,gates:any){
   const actorId=gates.actorId();if(!actorId)throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
   res.json(await loadPartnerEditor(db,access.organization.id,actorId,relationship?undefined:Number(req.params.id),relationship?Number(req.params.id):undefined));
  };
+ app.put('/partner-editor/entity/:id/contacts',async(req:any,res:any)=>{
+  const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!access)return;
+  const orgId=access.organization.id,actorId=gates.actorId(),entityId=Number(req.params.id);
+  if(!actorId)throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
+  const value=await retryEditTransaction(db,async(tx:any)=>{
+   const relationshipId=req.body?.relationshipId===undefined?undefined:Number(req.body.relationshipId);
+   const profile=await loadPartnerEditor(tx,orgId,actorId,relationshipId===undefined?entityId:undefined,relationshipId);
+   if(profile.id!==entityId)throw createHttpError(400,'INVALID_PARTNER_ID');
+   await savePartnerContacts(tx,orgId,entityId,actorId,req.body?.contacts);
+   if(req.body?.classification!==undefined){if(!profile.canEditProfile)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');await saveClassification(tx,orgId,entityId,actorId,req.body.classification);}
+   if(req.body?.defaultSizeSetCode!==undefined){
+    if(!profile.canEditProfile||profile.sourceKind!=='CUSTOMER'||!profile.relationshipId)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');
+    await tx.orgRelationship.update({where:{id:profile.relationshipId},data:{defaultSizeSetCode:req.body.defaultSizeSetCode==='URD_NUMERIC'?'URD_NUMERIC':'LEGACY_APPAREL'}});
+   }
+   return loadPartnerEditor(tx,orgId,actorId,relationshipId===undefined?entityId:undefined,relationshipId);
+  });
+  res.json(value);
+ });
  app.get('/partner-editor/entity/:id',read(false));
  app.get('/partner-editor/relationship/:id',read(true));
 }
