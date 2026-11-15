@@ -1,10 +1,11 @@
+import {personalProfileEmployee} from './personalProfile';
 import {assertCompanyLeaveBalances} from './employeeLeave';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 ﻿import { type OrgUserRole } from "@prisma/client";
 import { Router } from "express";
 import { prisma } from "../db";
 import { payrollManagementInclude } from "./payrollManagement";
-import { getOrganizationByQuery, getRequesterEmail } from "../middleware/access";
+import { getOrganizationByQuery, getRequesterEmail, getRequestAccessContext } from "../middleware/access";
 import {
   type EmployeePayType,
   normalizePayType,
@@ -324,10 +325,7 @@ export const createEmployeeRouter = ({
       return res.status(401).json({ ok: false, error: "request user email is required" });
     }
 
-    const employee = await prisma.employee.findFirst({
-      where: { email: requesterEmail, status: "ACTIVE" },
-      orderBy: { id: "asc" },
-    });
+    const employee = await personalProfileEmployee(prisma,await getRequestAccessContext(req));
 
     if (!employee) {
       return res.status(404).json({ ok: false, error: "employee record not found" });
@@ -349,11 +347,7 @@ export const createEmployeeRouter = ({
       return res.status(401).json({ ok: false, error: "request user email is required" });
     }
 
-    const employee = await prisma.employee.findFirst({
-      where: { email: requesterEmail, status: "ACTIVE" },
-      select: { id: true, email: true },
-      orderBy: { id: "asc" },
-    });
+    const employee = await personalProfileEmployee(prisma,await getRequestAccessContext(req));
 
     if (!employee) {
       return res.status(404).json({ ok: false, error: "employee record not found" });

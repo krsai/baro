@@ -1,3 +1,4 @@
+import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -93,7 +94,7 @@ const MyProfile = () => {
   const { languageCode } = useLanguage();
   const TEXT = COPY[languageCode] || COPY.en;
   const { showNotification } = useAppActions();
-  const { updateActiveProfile, user, activeProfile } = useAuth();
+  const { updateActiveProfile, user, activeProfile, activeOrgId } = useAuth();
   const [formData, setFormData] = useState(buildProfileInfo());
   const [savedFormData, setSavedFormData] = useState(buildProfileInfo());
   const [isSaving, setIsSaving] = useState(false);
@@ -112,7 +113,7 @@ const MyProfile = () => {
 
     const fetchProfile = async () => {
       try {
-        const data = await requestJSON('/employees/me');
+        const data = await requestJSON('/employees/me?orgId='+activeOrgId,{skipCache:true});
         if (!active || !data) return;
         const nextFormData = buildProfileInfo(data, fallbackProfileName);
         setFormData(nextFormData);
@@ -126,7 +127,7 @@ const MyProfile = () => {
     return () => {
       active = false;
     };
-  }, [fallbackProfileName]);
+  }, [fallbackProfileName,activeOrgId]);
 
   useEffect(() => {
     if (!fallbackProfileName) return;
@@ -156,7 +157,7 @@ const MyProfile = () => {
         bankName: formData.bankName?.trim(),
         bankAccountNumber: formData.bankAccountNumber?.trim(),
       };
-      const saved = await requestJSON('/employees/me', {
+      const saved = await requestJSON('/employees/me?orgId='+activeOrgId, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -167,6 +168,7 @@ const MyProfile = () => {
       updateActiveProfile({
         employeeName: nextFormData.name?.trim() || null,
       });
+      emitWorkspaceDataChanged({orgId:activeOrgId,topics:['employees','organization-profile'],source:'personal-profile',employeeIds:[saved.employeeId]});
       showNotification(TEXT.saveSuccess, 'success');
     } catch (error) {
       showNotification(error?.message || TEXT.saveError, 'error');

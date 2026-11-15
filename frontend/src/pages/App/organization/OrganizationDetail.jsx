@@ -1,3 +1,5 @@
+import {useLocation} from 'react-router-dom';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import {businessLegalFormText} from '../../../constants/businessLegalForm';
 import PartnerClassificationFields from '../../../components/PartnerClassificationFields';
 import {classificationPayload,classificationComplete,PARTNER_CLASSIFICATION_TEXT} from '../../../utils/partnerClassification.mjs';
@@ -137,10 +139,13 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [industryProfile,setIndustryProfile]=useState(null),[classification,setClassification]=useState(null),[industryReady,setIndustryReady]=useState(false),[industryError,setIndustryError]=useState(''),[industryReload,setIndustryReload]=useState(0);
+  const location=useLocation(),tabPath=useRef(location.pathname);
+  const [profileReload,setProfileReload]=useState(0),[profileError,setProfileError]=useState(false);
+  const draftBlocked=useRef(false);
   const saveLock=useRef(false),live=useRef(true),scope=useRef(activeOrgId);scope.current=activeOrgId;
   useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   const industryText=companyIndustryText[languageCode]||companyIndustryText.en,classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
-  useEffect(()=>{let active=true;setIndustryError('');requestJSON('/company-industries?orgId='+activeOrgId,{skipCache:true}).then(profile=>{if(active){setIndustryProfile(profile);setClassification(current=>current||profile.classification);}}).catch(()=>{if(active)setIndustryError(industryText.error);});return()=>{active=false;};},[activeOrgId,industryReload]);
+  useEffect(()=>{let active=true;setIndustryError('');requestJSON('/company-industries?orgId='+activeOrgId,{skipCache:true}).then(profile=>{if(active){setIndustryProfile(profile);setClassification(current=>draftBlocked.current&&current?current:profile.classification);}}).catch(()=>{if(active)setIndustryError(industryText.error);});return()=>{active=false;};},[activeOrgId,industryReload]);
   const classificationDirty=!!industryProfile&&JSON.stringify(classificationPayload(classification))!==JSON.stringify(classificationPayload(industryProfile.classification));
   const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
@@ -176,14 +181,15 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
     const fetchOrganization = async () => {
       try {
-        const data = await requestJSON(`/organizations/primary${activeOrgId?`?orgId=${activeOrgId}`:''}`);
-        if (!active || !data) return;
+        const data = await requestJSON(`/organizations/primary${activeOrgId?`?orgId=${activeOrgId}`:''}`,{skipCache:true});
+        if (!active || !data || draftBlocked.current) return;
         const nextFormData = buildCompanyInfo(data);
+        setProfileError(false);
         setOrganizationId(data.id ?? null);
         setFormData(nextFormData);
         setSavedFormData(nextFormData);
       } catch (_error) {
-        // keep the page usable even if the optional detail fetch fails
+        if(active)setProfileError(true);
       }
     };
 
@@ -191,12 +197,12 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [activeOrgId,profileReload]);
 
   useEffect(() => {
     let active = true;
     setEmployeesLoading(true);
-    requestJSON(`/employees${activeOrgId?`?orgId=${activeOrgId}`:''}`)
+    requestJSON(`/employees${activeOrgId?`?orgId=${activeOrgId}`:''}`,{skipCache:true})
       .then((data) => {
         if (!active) return;
         const safeEmployees = (Array.isArray(data) ? data : []).sort((left, right) =>
@@ -218,7 +224,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [activeOrgId,profileReload]);
 
   const employeeOptions = useMemo(() => {
     const byId = new Map();
@@ -251,6 +257,8 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     [formData, savedFormData]
   );
   const isDirty=profileDirty||classificationDirty;
+  draftBlocked.current=isDirty||isSaving;
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['employees','organization-profile','company-industries','partner-classifications'],isActive:location.pathname===tabPath.current,isBlocked:isDirty||isSaving,onRefresh:async()=>{setProfileReload(v=>v+1);setIndustryReload(v=>v+1);}});
   useUnsavedChanges(isDirty);
 
   const isNameValid = hasLocalizedName(formData, 'name');
@@ -333,6 +341,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     {headerActionsTarget && createPortal(saveAction,headerActionsTarget)}
     <Container {...(embedded ? {sx:{minWidth:0,width:'100%'}} : {title:text.title,titleActions:saveAction})}>
       <PageContentStack component="fieldset" disabled={isSaving} sx={{border:0,p:0,m:0,minWidth:0}}>
+      {profileError&&<Alert severity="error" action={<Button onClick={()=>setProfileReload(v=>v+1)}>{industryText.retry}</Button>}>{text.saveError}</Alert>}
       <EntityDetailSection title={(businessLegalFormText[languageCode]||businessLegalFormText.en).title}>
         <Grid container spacing={2}>
 
