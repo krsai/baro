@@ -1,3 +1,4 @@
+import {companyInvoiceParty} from './companyDocumentContact';
 import { invoiceProducedQuantity } from "./invoiceOrderProgress";
 import { summarizePriorProduction } from './priorProductionCompletion';
 
@@ -45,8 +46,7 @@ export const buildInvoiceSource = (order: any, plans: any[], progressRows: any[]
         }).sort((a: any, b: any) => a.quantity - b.quantity) })),
     };
   });
-  const party = (org: any) => ({ code: org?.code || '', name: org?.name || '', address: org?.address || '',
-    country: org?.country || '', taxId: org?.businessNumber || '', email: org?.email || '', phone: org?.phone || '' });
+  const party=companyInvoiceParty;
   return {
     orderId: order.orderId, orderNumber: order.orderNumber, sourceUpdatedAt: order.updatedAt,
     buyerOrgId: order.buyerOrgId ?? order.buyerOrg?.id, sellerOrgId: order.sellerOrgId ?? order.sellerOrg?.id,

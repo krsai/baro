@@ -166,7 +166,7 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
 export function buildInvoicePrintHtml({ source, calculation, fields, pricingBasis, currencyCode }) {
   const e = escapeInvoiceHtml;
   const money=value=>e(formatInvoiceMoney(value,currencyCode));
-  const party = (label, value) => `<section><h3>${label}</h3><strong>${e(value.name)}</strong><p>${e(value.address)}</p><p>${e(value.country)}</p><p>Tax ID: ${e(value.taxId)}</p><p>${e(value.email)} ${e(value.phone)}</p></section>`;
+  const party = (label, value) => `<section><h3>${label}</h3><strong>${e(value.name)}</strong><p>${e(value.address)}</p><p>${e(value.country)}</p><p>Tax ID: ${e(value.taxId)}</p>${value.contactName?`<p>Contact: ${e(value.contactName)}</p>`:''}<p>${e(value.email)} ${e(value.phone)}</p></section>`;
   const monetary = calculation.mode === 'PERCENTAGE' || calculation.mode === 'FIXED_AMOUNT';
   const title = monetary ? 'PAYMENT REQUEST' : pricingBasis === 'FINISHED_GOODS_PRICE' ? 'COMMERCIAL INVOICE' : 'MANUFACTURING SERVICE INVOICE';
   const paymentTable = `<table><thead><tr><th>Payment description</th><th class="num">Amount (${e(currencyCode)})</th></tr></thead><tbody><tr><td><strong>${calculation.mode === 'PERCENTAGE' ? `${e(calculation.percentage)}% of agreed total ${money(calculation.contractAmount)}` : 'Agreed installment amount'}</strong><p>${e(calculation.agreementNote)}</p></td><td class="num">${money(calculation.total)}</td></tr></tbody></table><p>Advance / installment request. No garment quantities are invoiced by this document.</p>`;

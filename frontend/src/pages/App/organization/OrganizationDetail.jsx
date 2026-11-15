@@ -1,3 +1,4 @@
+import {companyDocumentContactText} from '../../../constants/companyDocumentContact';
 import {useLocation} from 'react-router-dom';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import {businessLegalFormText} from '../../../constants/businessLegalForm';
@@ -30,16 +31,8 @@ import { useLanguage } from '../../../context/LanguageContext';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import { requestJSON } from '../../../utils/apiClient';
 
-const EMPLOYEE_COLLATOR = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
-
-const normalizePositiveId = (value) => {
-  if (value === null || value === undefined || value === '') return '';
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : '';
-};
-
 const buildCompanyInfo = (data = {}) => {
-  const representativeEmployee = data.representativeEmployee || null;
+
   return {
     name: data.name ?? '',
     nameKo: data.nameKo ?? '',
@@ -47,21 +40,15 @@ const buildCompanyInfo = (data = {}) => {
     code: data.code ?? '',
     businessNumber: data.businessNumber ?? '',
     businessLegalForm:data.businessLegalForm??'',
-    representativeEmployeeId: normalizePositiveId(data.representativeEmployeeId),
-    representative: representativeEmployee?.name ?? data.representative ?? '',
+
+    representative: data.representative ?? '',
     industry: data.industry ?? '',
     country: data.country ?? 'VN',
     defaultSizeSetCode: normalizeSizeSetCode(data.defaultSizeSetCode),
     address: data.address ?? '',
-    phone: representativeEmployee ? representativeEmployee.phone ?? '' : data.phone ?? '',
-    email: representativeEmployee ? representativeEmployee.email ?? '' : data.email ?? '',
+    phone: data.phone ?? '',
+    email: data.email ?? '',
   };
-};
-
-const buildEmployeeOptionLabel = (employee) => {
-  const name = String(employee?.name || '').trim() || '-';
-  const employeeNo = String(employee?.employeeNo || '').trim();
-  return employeeNo ? `${name} (${employeeNo})` : name;
 };
 
 const getLocalText = (languageCode) => {
@@ -129,8 +116,8 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const [organizationId, setOrganizationId] = useState(null);
   const [formData, setFormData] = useState(buildCompanyInfo());
   const [savedFormData, setSavedFormData] = useState(buildCompanyInfo());
-  const [employees, setEmployees] = useState([]);
-  const [employeesLoading, setEmployeesLoading] = useState(false);
+
+
   const [isSaving, setIsSaving] = useState(false);
   const [industryProfile,setIndustryProfile]=useState(null),[classification,setClassification]=useState(null),[industryReady,setIndustryReady]=useState(false),[industryError,setIndustryError]=useState(''),[industryReload,setIndustryReload]=useState(0);
   const location=useLocation(),tabPath=useRef(location.pathname);
@@ -141,6 +128,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const industryText=companyIndustryText[languageCode]||companyIndustryText.en,classificationText=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
   useEffect(()=>{let active=true;setIndustryError('');requestJSON('/company-industries?orgId='+activeOrgId,{skipCache:true}).then(profile=>{if(active){setIndustryProfile(profile);setClassification(current=>draftBlocked.current&&current?current:profile.classification);}}).catch(()=>{if(active)setIndustryError(industryText.error);});return()=>{active=false;};},[activeOrgId,industryReload]);
   const classificationDirty=!!industryProfile&&JSON.stringify(classificationPayload(classification))!==JSON.stringify(classificationPayload(industryProfile.classification));
+  const contactText=companyDocumentContactText[languageCode]||companyDocumentContactText.en;
   const localText = useMemo(() => getLocalText(languageCode), [languageCode]);
   const sizeSetOptions = useMemo(() => getSizeSetOptions(languageCode), [languageCode]);
   const countryOptions = useMemo(() => getStaticOptionOptions('country', languageCode), [languageCode]);
@@ -193,66 +181,13 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
     };
   }, [activeOrgId,profileReload]);
 
-  useEffect(() => {
-    let active = true;
-    setEmployeesLoading(true);
-    requestJSON(`/employees${activeOrgId?`?orgId=${activeOrgId}`:''}`,{skipCache:true})
-      .then((data) => {
-        if (!active) return;
-        const safeEmployees = (Array.isArray(data) ? data : []).sort((left, right) =>
-          EMPLOYEE_COLLATOR.compare(
-            buildEmployeeOptionLabel(left),
-            buildEmployeeOptionLabel(right)
-          )
-        );
-        setEmployees(safeEmployees);
-      })
-      .catch(() => {
-        if (!active) return;
-        setEmployees([]);
-      })
-      .finally(() => {
-        if (!active) return;
-        setEmployeesLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [activeOrgId,profileReload]);
-
-  const employeeOptions = useMemo(() => {
-    const byId = new Map();
-    employees.forEach((employee) => {
-      const employeeId = normalizePositiveId(employee?.id);
-      if (employeeId) byId.set(employeeId, employee);
-    });
-    const selectedId = normalizePositiveId(formData.representativeEmployeeId);
-    if (selectedId && !byId.has(selectedId)) {
-      byId.set(selectedId, {
-        id: selectedId,
-        name: formData.representative,
-        phone: formData.phone,
-        email: formData.email,
-      });
-    }
-    return Array.from(byId.values()).sort((left, right) =>
-      EMPLOYEE_COLLATOR.compare(buildEmployeeOptionLabel(left), buildEmployeeOptionLabel(right))
-    );
-  }, [
-    employees,
-    formData.email,
-    formData.phone,
-    formData.representative,
-    formData.representativeEmployeeId,
-  ]);
-
   const profileDirty = useMemo(
     () => JSON.stringify(formData) !== JSON.stringify(savedFormData),
     [formData, savedFormData]
   );
   const isDirty=profileDirty||classificationDirty;
   draftBlocked.current=isDirty||isSaving;
-  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['employees','organization-profile','company-industries','partner-classifications'],isActive:location.pathname===tabPath.current,isBlocked:isDirty||isSaving,onRefresh:async()=>{setProfileReload(v=>v+1);setIndustryReload(v=>v+1);}});
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['organization-profile','company-industries','partner-classifications'],isActive:location.pathname===tabPath.current,isBlocked:isDirty||isSaving,onRefresh:async()=>{setProfileReload(v=>v+1);setIndustryReload(v=>v+1);}});
   useUnsavedChanges(isDirty);
 
   const isNameValid = hasLocalizedName(formData, 'name');
@@ -260,21 +195,6 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
   const handleInputChange = (event) => {
     if(isSaving)return;
     const { name, value } = event.target;
-    if (name === 'representativeEmployeeId') {
-      const representativeEmployeeId = normalizePositiveId(value);
-      const selectedEmployee =
-        employeeOptions.find((employee) => normalizePositiveId(employee?.id) === representativeEmployeeId) ||
-        null;
-      setFormData((prev) => ({
-        ...prev,
-        representativeEmployeeId,
-        representative: selectedEmployee?.name ?? '',
-        phone: selectedEmployee?.phone ?? '',
-        email: selectedEmployee?.email ?? '',
-      }));
-      return;
-    }
-
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -291,7 +211,8 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
         nameVi: formData.nameVi?.trim() || null,
         businessNumber: formData.businessNumber?.trim() || null,
         businessLegalForm:formData.businessLegalForm||null,
-        representativeEmployeeId: formData.representativeEmployeeId || null,
+        representativeEmployeeId:null,
+        phone:formData.phone?.trim()||null,email:formData.email?.trim()||null,
         representative: formData.representative?.trim() || null,
         industry: formData.industry || null,
         country: formData.country || null,
@@ -299,7 +220,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
         defaultSizeSetCode: formData.defaultSizeSetCode,
       };
 
-      const payload={...(profileDirty?profilePayload:{}),...(classificationDirty?{classification:classificationPayload(classification)}:{})};
+      const payload={...(profileDirty?Object.fromEntries(Object.entries(profilePayload).filter(([key])=>key==='representativeEmployeeId'?['representative','phone','email','address'].some(field=>formData[field]!==savedFormData[field]):formData[key]!==savedFormData[key])):{}),...(classificationDirty?{classification:classificationPayload(classification)}:{})};
       const saved = await requestJSON(
         `/organizations/${organizationId}/profile`,
         {
@@ -319,10 +240,10 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
       updateActiveProfile({
         orgName: nextFormData.name?.trim() || null,
       });
-      emitWorkspaceDataChanged({orgId:companyId,source:'organization-profile',topics:['company-industries','partner-classifications','business-partners','customers','transaction-codes','accounting-codes']});
+      emitWorkspaceDataChanged({orgId:companyId,source:'organization-profile',topics:['organization-profile','shipping','invoices','company-industries','partner-classifications','business-partners','customers','transaction-codes','accounting-codes']});
       showNotification(text.saveSuccess, 'success');
     } catch (error) {
-      if(live.current&&scope.current===companyId)showNotification(error.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:error.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(error,languageCode,text.saveError), 'error');
+      if(live.current&&scope.current===companyId)showNotification(error.message==='COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED'?contactText.english:error.message==='COMPANY_DOCUMENT_CONTACT_INVALID'?contactText.invalid:error.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:error.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:entityCodeError(error,languageCode,text.saveError), 'error');
     } finally {
       saveLock.current=false;if(live.current)setIsSaving(false);
     }
@@ -403,56 +324,37 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
 
 
 
-      <EntityDetailSection title={localText.contactTitle}>
+      <EntityDetailSection title={contactText.title}>
         <Grid container spacing={2}>
           <Grid size={{xs:12,md:4}}>
-            <TextField
-              fullWidth
-              select
-              size="small"
-              label={text.representative}
-              name="representativeEmployeeId"
-              value={formData.representativeEmployeeId}
-              onChange={handleInputChange}
-              disabled={employeesLoading}
-              helperText={employeesLoading ? localText.representativeLoading : undefined}
-            >
-              <MenuItem value="">{localText.representativeNone}</MenuItem>
-              {employeeOptions.map((employee) => (
-                <MenuItem key={employee.id} value={employee.id}>
-                  {buildEmployeeOptionLabel(employee)}
-                </MenuItem>
-              ))}
-            </TextField>
+            <TextField fullWidth size="small" label={contactText.representative} name="representative" value={formData.representative} onChange={handleInputChange} inputProps={{maxLength:200}}/>
           </Grid>
           <Grid size={{xs:12,md:4}}>
             <TextField
               fullWidth
               size="small"
-              label={text.phone}
+              label={contactText.phone}
               name="phone"
               value={formData.phone}
-              InputProps={{ readOnly: true }}
-              sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+              onChange={handleInputChange}
             />
           </Grid>
           <Grid size={{xs:12,md:4}}>
             <TextField
               fullWidth
               size="small"
-              label={text.email}
+              label={contactText.email}
               name="email"
               type="email"
               value={formData.email}
-              InputProps={{ readOnly: true }}
-              sx={{ '& .MuiInputBase-root': { backgroundColor: '#f8fafc' } }}
+              onChange={handleInputChange}
             />
           </Grid>
 
         </Grid>
       </EntityDetailSection>
 
-      <EntityDetailSection title={localText.addressTitle}>
+      <EntityDetailSection title={contactText.addressTitle}>
         <Grid container spacing={2}>
           <Grid size={{xs:12,sm:4,md:3}}>
             <TextField fullWidth select size="small" label={localText.country} name="country" value={formData.country} onChange={handleInputChange}>
@@ -463,7 +365,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             <TextField
               fullWidth
               size="small"
-              label={text.address}
+              label={contactText.address}
               name="address"
               value={formData.address}
               onChange={handleInputChange}

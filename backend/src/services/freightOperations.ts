@@ -195,7 +195,7 @@ export async function issueFreightDocument(db:any,orgId:number,actorId:number,ty
   if(detail.revision!==input.revision)fail('FREIGHT_CHANGED',409);
   if(!source.data.origin||!source.data.destination)fail('FREIGHT_DOCUMENT_REQUIRED');
   if(kind==='HOUSE_DRAFT'&&(source.houseStatus!=='HOUSE'||!source.data.shipper||!source.data.consignee))fail('FREIGHT_DOCUMENT_REQUIRED');
-  const issuer=await tx.organization.findFirst({where:{id:orgId},select:{name:true,nameKo:true,nameVi:true,address:true}}),documentId=randomUUID();
+  const issuer=await tx.organization.findFirst({where:{id:orgId},select:{name:true,nameKo:true,nameVi:true,address:true,representative:true,phone:true,email:true}}),documentId=randomUUID();
   const snapshot={issuer,source:detail,draft:true,deliveryConfirmed:false,createdByEmployeeId:actorId};
   const rows=await tx.$queryRawUnsafe('INSERT INTO "FreightDocument"(id,"orgId","jobId","dispatchId","clientKey",kind,number,"sourceVersion",snapshot,"createdByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) RETURNING *',documentId,orgId,type==='jobs'?id:null,type==='dispatches'?id:null,clientKey,kind,`${kind}-${documentId.slice(0,8).toUpperCase()}`,source.version,JSON.stringify(snapshot),actorId);return rows[0];
  });

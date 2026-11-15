@@ -50,7 +50,7 @@ export async function shareShippingDocument(db:any,orgId:number,actorId:number,i
   const document=(await tx.$queryRawUnsafe('SELECT * FROM "FreightDocument" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3',input.documentId,orgId,id))[0];
   if(!document)fail('SHIPPING_NOT_FOUND',404);
   const original=document.snapshot,source=transportSnapshot(original.source);
-  const snapshot={number:document.number,kind:document.kind,sourceVersion:document.sourceVersion,snapshot:{issuer:Object.fromEntries(['name','nameKo','nameVi','address'].map(key=>[key,original.issuer?.[key]??''])),source:{...source,number:job.number},draft:true,deliveryConfirmed:false}};
+  const snapshot={number:document.number,kind:document.kind,sourceVersion:document.sourceVersion,snapshot:{issuer:Object.fromEntries(['name','nameKo','nameVi','address','representative','phone','email'].map(key=>[key,original.issuer?.[key]??''])),source:{...source,number:job.number},draft:true,deliveryConfirmed:false}};
   const shareId=randomUUID();
   await tx.$executeRawUnsafe('INSERT INTO "ShippingDocumentShare"(id,"orgId","jobId","documentId",snapshot,"createdByEmployeeId") VALUES($1,$2,$3,$4,$5::jsonb,$6)',shareId,orgId,id,input.documentId,JSON.stringify(snapshot),actorId);
   return {id:shareId};
@@ -137,7 +137,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  };
  const route=(method:string,path:string,work:any)=>app[method]('/shipping-requests'+path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','',({orgId,actorId}:any)=>listShippingRequests(db,orgId,actorId));
- route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true}}),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
+ route('get','/options',async({orgId,actorId,org}:any)=>({self:await db.organization.findUnique({where:{id:orgId},select:{id:true,code:true,name:true,nameKo:true,nameVi:true,address:true,phone:true,email:true,representative:true}}).then((row:any)=>row?{...row,contactName:row.representative}:row),customers:await freightOptions(db,orgId,actorId),forwarders:org.type==='SERVICE'?[]:(await transportPartners(db,orgId)).filter((p:any)=>p.type==='SERVICE')}));
  route('get','/presets',(scope:any,req:any)=>listShippingPresets(db,scope,Number(req.query.customerId),String(req.query.kind)));
  route('post','/general-customer',({orgId,actorId,org}:any)=>{
   if(org.type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);

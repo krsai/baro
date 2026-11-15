@@ -1,3 +1,4 @@
+import {companyDocumentContactUpdate} from '../services/companyDocumentContact';
 import {businessLegalForm} from '../services/businessLegalForm';
 import {saveCompanyProfileAndClassification} from '../services/companyIndustries';
 import { normalizeEntityNameInput } from '../utils/localizedName';
@@ -34,82 +35,10 @@ const hasSubscriptionPayload = (payload: any = {}) =>
   payload.trialEndsAt !== undefined ||
   payload.activeEndsAt !== undefined;
 
-const normalizePositiveIdOrNull = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === "") return null;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) return null;
-  return parsed;
-};
-
-const ORGANIZATION_REPRESENTATIVE_INCLUDE = {
-  representativeEmployee: true,
-};
-
-const findOrganizationWithRepresentativeById = (id: number) =>
+const findOrganizationProfileById = (id: number) =>
   prisma.organization.findUnique({
     where: { id },
-    include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
   });
-
-const resolveOrganizationRepresentativeEmployeeInput = async (params: {
-  organizationId: number | null;
-  representativeEmployeeIdInput: unknown;
-}): Promise<
-  | { ok: true; hasInput: false; representativeEmployeeId: null; representativeEmployee: null }
-  | { ok: true; hasInput: true; representativeEmployeeId: number | null; representativeEmployee: any | null }
-  | { ok: false; status: number; error: string }
-> => {
-  const { organizationId, representativeEmployeeIdInput } = params;
-  if (representativeEmployeeIdInput === undefined) {
-    return {
-      ok: true,
-      hasInput: false,
-      representativeEmployeeId: null,
-      representativeEmployee: null,
-    };
-  }
-  if (representativeEmployeeIdInput === null || representativeEmployeeIdInput === "") {
-    return {
-      ok: true,
-      hasInput: true,
-      representativeEmployeeId: null,
-      representativeEmployee: null,
-    };
-  }
-
-  const representativeEmployeeId = normalizePositiveIdOrNull(representativeEmployeeIdInput);
-  if (representativeEmployeeId === null) {
-    return { ok: false, status: 400, error: "invalid representativeEmployeeId" };
-  }
-  if (organizationId === null) {
-    return {
-      ok: false,
-      status: 400,
-      error: "representativeEmployeeId can be set only after the organization has been created",
-    };
-  }
-
-  const representativeEmployee = await prisma.employee.findFirst({
-    where: {
-      id: representativeEmployeeId,
-      orgId: organizationId,
-    },
-  });
-  if (!representativeEmployee) {
-    return {
-      ok: false,
-      status: 400,
-      error: "representative must belong to the organization",
-    };
-  }
-
-  return {
-    ok: true,
-    hasInput: true,
-    representativeEmployeeId: representativeEmployee.id,
-    representativeEmployee,
-  };
-};
 
 export const createOrganizationRouter = ({
   applySubscriptionPayload,
@@ -130,7 +59,6 @@ export const createOrganizationRouter = ({
       // are not real tenants and must never get an auto-created subscription
       // via attachOrganizationSubscription below. See AGENTS.md.
       where: { type: { in: ["MANUFACTURER", "BRAND", "SERVICE"] } },
-      include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
       orderBy: { id: "asc" },
     });
     const withSubscriptions = await Promise.all(
@@ -145,7 +73,7 @@ export const createOrganizationRouter = ({
       return res.status(404).json({ error: "organization not found" });
     }
     const organizationWithRepresentative =
-      (await findOrganizationWithRepresentativeById(organization.id)) ?? organization;
+      (await findOrganizationProfileById(organization.id)) ?? organization;
     return res.json(toOrganizationResponse(organizationWithRepresentative));
   });
 
@@ -158,13 +86,9 @@ export const createOrganizationRouter = ({
       nameVi,
       code,
       businessNumber,
-      representative,
       representativeEmployeeId,
       industry,
       country,
-      address,
-      phone,
-      email,
       defaultSizeSetCode,
       type,
     } = req.body ?? {};
@@ -174,16 +98,8 @@ export const createOrganizationRouter = ({
       return res.status(400).json({ ok: false, error: "name is required" });
     }
 
-    const representativeEmployeeResolved =
-      await resolveOrganizationRepresentativeEmployeeInput({
-        organizationId: null,
-        representativeEmployeeIdInput: representativeEmployeeId,
-      });
-    if (!representativeEmployeeResolved.ok) {
-      return res
-        .status(representativeEmployeeResolved.status)
-        .json({ ok: false, error: representativeEmployeeResolved.error });
-    }
+    if(representativeEmployeeId!=null&&representativeEmployeeId!=='')return res.status(400).json({error:'COMPANY_DOCUMENT_CONTACT_IS_MANUAL'});
+    const contactData=companyDocumentContactUpdate(req.body??{},{});
 
     {
       const existingCodeOwner = await prisma.organization.findFirst({
@@ -202,17 +118,13 @@ export const createOrganizationRouter = ({
         code: normalizedCode,
         businessNumber,
         businessLegalForm:businessLegalForm(req.body?.businessLegalForm)??null,
-        representative,
+        ...contactData,
         industry,
         country,
-        address,
-        phone,
-        email,
         defaultSizeSetCode:
           defaultSizeSetCode === "URD_NUMERIC" ? "URD_NUMERIC" : "LEGACY_APPAREL",
         type,
       },
-      include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
     });
 
     await applySubscriptionPayload(organization, req.body ?? {});
@@ -257,13 +169,9 @@ export const createOrganizationRouter = ({
       nameVi,
       code,
       businessNumber,
-      representative,
       representativeEmployeeId,
       industry,
       country,
-      address,
-      phone,
-      email,
       defaultSizeSetCode,
       type,
     } = req.body ?? {};
@@ -282,7 +190,7 @@ export const createOrganizationRouter = ({
       });
     }
 
-    const current=await prisma.organization.findUnique({where:{id},select:{name:true,code:true,industry:true}});
+    const current=await prisma.organization.findUnique({where:{id},select:{name:true,code:true,industry:true,representative:true,phone:true,email:true,address:true}});
     if(!current)return res.status(404).json({error:'organization not found'});
     if(industry!==undefined&&industry!==null&&industry!==current.industry&&
       (typeof industry!=='string'||!await prisma.partnerRole.findUnique({where:{code:industry}})))return res.status(400).json({error:'INVALID_PARTNER_ROLE'});
@@ -300,52 +208,24 @@ export const createOrganizationRouter = ({
       }
     }
 
-    const representativeEmployeeResolved =
-      await resolveOrganizationRepresentativeEmployeeInput({
-        organizationId: id,
-        representativeEmployeeIdInput: representativeEmployeeId,
-      });
-    if (!representativeEmployeeResolved.ok) {
-      return res
-        .status(representativeEmployeeResolved.status)
-        .json({ ok: false, error: representativeEmployeeResolved.error });
-    }
-    const representativeEmployee = representativeEmployeeResolved.representativeEmployee;
-    const representativeEmployeeName = normalizeOptionalOrganizationText(
-      representativeEmployee?.name
-    );
-    const representativeEmployeePhone = normalizeOptionalOrganizationText(
-      representativeEmployee?.phone
-    );
-    const representativeEmployeeEmail = normalizeOptionalOrganizationText(
-      representativeEmployee?.email
-    );
+    if(representativeEmployeeId!=null&&representativeEmployeeId!=='')return res.status(400).json({error:'COMPANY_DOCUMENT_CONTACT_IS_MANUAL'});
+    const contactData=companyDocumentContactUpdate(req.body??{},current);
 
     const organizationUpdateData: Prisma.OrganizationUpdateInput = {
       name,
       businessNumber,
       ...(req.body?.businessLegalForm!==undefined?{businessLegalForm:businessLegalForm(req.body.businessLegalForm)??null}:{}),
-      representative: representativeEmployeeResolved.hasInput
-        ? representativeEmployeeName
-        : representative,
+      ...contactData,
       industry,
       country,
-      address,
-      phone: representativeEmployeeResolved.hasInput ? representativeEmployeePhone : phone,
-      email: representativeEmployeeResolved.hasInput ? representativeEmployeeEmail : email,
+
       ...(defaultSizeSetCode !== undefined
         ? {
             defaultSizeSetCode:
               defaultSizeSetCode === "URD_NUMERIC" ? "URD_NUMERIC" : "LEGACY_APPAREL",
           }
         : {}),
-      ...(representativeEmployeeResolved.hasInput
-        ? {
-            representativeEmployee: representativeEmployeeResolved.representativeEmployeeId
-              ? { connect: { id: representativeEmployeeResolved.representativeEmployeeId } }
-              : { disconnect: true },
-          }
-        : {}),
+      ...((Object.keys(contactData).length||representativeEmployeeId===null)?{representativeEmployee:{disconnect:true}}:{}),
       ...(nameKo !== undefined
         ? { nameKo: normalizeOptionalOrganizationText(nameKo) }
         : {}),
@@ -360,7 +240,6 @@ export const createOrganizationRouter = ({
     const organization = combined?.organization || await prisma.organization.update({
       where: { id },
       data: organizationUpdateData,
-      include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
     });
 
     if (isSystemAdmin) {
@@ -380,7 +259,6 @@ export const createOrganizationRouter = ({
 
     const organization = await prisma.organization.findUnique({
       where: { id },
-      include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
     });
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });
@@ -405,7 +283,6 @@ export const createOrganizationRouter = ({
 
     const organization = await prisma.organization.findUnique({
       where: { id },
-      include: ORGANIZATION_REPRESENTATIVE_INCLUDE,
     });
     if (!organization) {
       return res.status(404).json({ ok: false, error: "organization not found" });

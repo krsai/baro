@@ -64,10 +64,13 @@ test('draft normalization whitelists editable inputs and keeps incomplete quanti
   for (const property of ['amount', 'sellerOrgId', 'createdBy', 'reviewed']) assert.equal(normalized[property], undefined);
   assert.equal(normalized.lines[0].unitPrice, undefined);
   assert.equal(Object.hasOwn(normalized.fields.seller, 'code'), false);
+  assert.equal(Object.hasOwn(normalized.fields.seller, 'contactName'), false,'old input is not rewritten with a new empty contact field');
+  input.fields.seller.contactName='John Smith';input.fields.buyer.contactName='Jane Smith';
   input.fields.seller.code = 'BARO'; input.fields.buyer.code = 'CUSTOMER';
   const withCodes = normalizeInvoiceDraftContent(input);
   assert.equal(withCodes.fields.seller.code, 'BARO');
   assert.equal(withCodes.fields.buyer.code, 'CUSTOMER');
+  assert.equal(withCodes.fields.seller.contactName,'John Smith');assert.equal(withCodes.fields.buyer.contactName,'Jane Smith');
   assert.throws(() => normalizeInvoiceDraftContent({ ...body(), orders: [body().orders[0], body().orders[0]] }), /INVALID/);
   assert.throws(() => normalizeInvoiceDraftContent({ ...body(), lines: [body().lines[0], body().lines[0]] }), /INVALID/);
   assert.throws(() => normalizeInvoiceDraftContent({ ...body(), fields: null }), /INVALID/);
@@ -75,8 +78,10 @@ test('draft normalization whitelists editable inputs and keeps incomplete quanti
 
 test('create, idempotent retry, update and delete retain scoped canonical order/item FKs', async () => {
   const db = database(); const input = body();
+  input.fields.seller.contactName='John Smith';
   const created = await saveInvoiceDraft(db, 7, 'actor@example.com', input);
   assert.equal(created.createdBy, 'actor@example.com'); assert.equal(created.sellerOrgId, 7);
+  assert.equal(created.content.fields.seller.contactName,'John Smith');
   assert.equal(db.state().orders[0].workOrderId, 1); assert.equal(db.state().lines[0].workOrderItemId, 11);
   assert.match(created.content.lines[0].label, /PO-ONE.*Shirt/);
   const again = await saveInvoiceDraft(db, 7, 'actor@example.com', { ...input, fields: { ...input.fields } });

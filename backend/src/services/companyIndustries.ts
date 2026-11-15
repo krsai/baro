@@ -34,7 +34,7 @@ export async function saveCompanyIndustries(db:any,orgId:number,actorId:number,i
 export async function saveCompanyProfileAndClassification(db:any,orgId:number,actorId:number,data:any,classification:any){
  return retryEditTransaction(db,async(tx:any)=>{
   await actor(tx,orgId,actorId,true);
-  const organization=await tx.organization.update({where:{id:orgId},data,include:{representativeEmployee:true}});
+  const organization=await tx.organization.update({where:{id:orgId},data});
   const saved=await saveClassification(tx,orgId,orgId,actorId,classification);
   return {organization,classification:saved};
  });

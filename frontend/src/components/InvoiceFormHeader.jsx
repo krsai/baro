@@ -24,6 +24,7 @@ export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly
         {field(party,'name')}
       </Box>
       {field(party,'taxId')}{field(party,'address')}
+      {(!readOnly||fields[party]?.contactName)&&field(party,'contactName')}
       {field(party,'phone')}{field(party,'email')}
     </Box>)}</Box>
 

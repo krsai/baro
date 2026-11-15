@@ -14,6 +14,7 @@ function organizationRoutes(db){
   if(name==='@prisma/client')return {};
   if(name==='express')return {Router:()=>router};
   if(name==='../services/companyIndustries')return require('../backend/dist/services/companyIndustries');
+  if(name==='../services/companyDocumentContact')return require('../backend/dist/services/companyDocumentContact');
   if(name==='../services/businessLegalForm')return require('../backend/dist/services/businessLegalForm');
   if(name==='../db')return {prisma:db};
   if(name==='../services/entityProfile')return {resolvePartnerCode};
@@ -71,4 +72,11 @@ test('unified profile requires active company ADMIN even for SYSTEM, while legac
  const {state,put}=organizationFixture();state.allowed=false;state.system=true;
  let res=response();await put({path:'/organizations/1/PROFILE/',params:{id:'1'},body:{name:'Forbidden'}},res);assert.equal(res.statusCode,403);assert.equal(state.writes,0);
  res=response();await put({path:'/organizations/1',params:{id:'1'},body:{name:'System update'}},res);assert.equal(res.statusCode,200);assert.equal(state.writes,1);
+});
+
+test('business document contacts are editable without reading or changing an employee and reject employee reconnection',async()=>{
+ const {state,put}=organizationFixture();state.entity.representative='John Smith';
+ let res=response();await put({path:'/organizations/1/profile',params:{id:'1'},body:{representative:'Jane Smith',phone:'+84 123',email:'docs@example.test',address:'12 Main Street',representativeEmployeeId:null}},res);
+ assert.equal(res.statusCode,200);assert.equal(state.entity.representative,'Jane Smith');assert.equal(state.entity.phone,'+84 123');assert.deepEqual(state.entity.representativeEmployee,{disconnect:true});
+ res=response();await put({path:'/organizations/1/profile',params:{id:'1'},body:{representativeEmployeeId:9}},res);assert.equal(res.statusCode,400);assert.equal(state.writes,1);
 });

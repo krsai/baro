@@ -1,3 +1,4 @@
+import {companyDocumentContact} from './services/companyDocumentContact';
 import {registerManagementTargetRoutes} from './services/managementTargets';
 import {attachExpensePaymentCompletion} from './services/expensePaymentCompletion';
 import {importAttendanceFile} from './services/attendanceImport';
@@ -1777,10 +1778,7 @@ const toOrganizationResponse = (organization: any) => {
     representativeEmployee: representativeEmployeeResponse,
     representativeEmployeeId:
       representativeEmployeeResponse?.id ?? rest.representativeEmployeeId ?? null,
-    representative:
-      representativeEmployeeResponse?.name ?? rest.representative ?? null,
-    phone: representativeEmployeeResponse ? representativeEmployeeResponse.phone : rest.phone ?? null,
-    email: representativeEmployeeResponse ? representativeEmployeeResponse.email : rest.email ?? null,
+    ...companyDocumentContact(rest),
     subscription: buildSubscriptionResponse(subscription),
   };
 };
@@ -29593,7 +29591,8 @@ app.get(["/invoices/order-source/:orderId", "/orders/:orderId/invoice-source"], 
       installments: scoped.map(row => ({ invoiceId: row.invoiceId, installmentNumber: row.installmentNumber,
         billedAmount: String(row.netAmount ?? row.billedAmount), status: row.invoice.status })) }];
   }));
-  return res.json({ ...buildInvoiceSource(order, plans, progress, relationship), settlementsByCurrency, currencies: currencies.map((row) => row.code) });
+  const documentBuyer=order.buyerOrg?(await attachLinkedCompanies(prisma,organization.id,[{...order.buyerOrg,entityId:order.buyerOrgId}]))[0]:null;
+  return res.json({ ...buildInvoiceSource({...order,buyerOrg:documentBuyer}, plans, progress, relationship), settlementsByCurrency, currencies: currencies.map((row) => row.code) });
 });
 
 app.post("/orders/:orderId/modification-lock", async (req, res) => {
