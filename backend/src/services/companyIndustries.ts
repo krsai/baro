@@ -1,3 +1,4 @@
+import {companyClassificationSource} from './companyClassificationSource';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {readClassification,saveClassification} from './partnerClassification';
@@ -8,8 +9,10 @@ const include={...ACCOUNTING_CODE_INCLUDE,base:{include:{...ACCOUNTING_CODE_INCL
 async function actor(db:any,orgId:number,actorId:number,write=false){const value=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:write?['ADMIN']:['ADMIN','OPERATOR','ACCOUNTANT']}}});if(!value)fail('COMPANY_INDUSTRY_ADMIN_REQUIRED',403);return value;}
 export async function readCompanyIndustries(db:any,orgId:number,actorId:number){
  const user=await actor(db,orgId,actorId),classification=await readClassification(db,orgId,orgId);
+ const source=classification.industryIds.length?null:await companyClassificationSource(db,orgId);
+ const effective=source?.source==='SHARED'?{...classification,roleIds:[...new Set(source.profile.industries.map((link:any)=>link.industry.partnerRoleId))],industryIds:source.profile.industries.map((link:any)=>link.industry.id),industries:source.profile.industries.map((link:any)=>link.industry),source:'SHARED'}:classification;
  const codes=await db.transactionCode.findMany({where:{ownerOrgId:orgId},include,orderBy:{id:'asc'}});
- return {classification,canEdit:user.orgRole==='ADMIN',codes:codes.map((raw:any)=>{const code=resolveAccountingCode(raw);const available=!!code&&['IN','BOTH'].includes(code.cashDirection);return {...(code||raw),industryIds:raw.base?.industryLinks.map((l:any)=>l.systemIndustryId)||[],eligible:available,available};}).filter((c:any)=>c.eligible||c.canBill)};
+ return {classification:effective,canEdit:user.orgRole==='ADMIN',codes:codes.map((raw:any)=>{const code=resolveAccountingCode(raw);const available=!!code&&['IN','BOTH'].includes(code.cashDirection);return {...(code||raw),industryIds:raw.base?.industryLinks.map((l:any)=>l.systemIndustryId)||[],eligible:available,available};}).filter((c:any)=>c.eligible||c.canBill)};
 }
 export async function saveCompanyIndustries(db:any,orgId:number,actorId:number,input:any){
  await actor(db,orgId,actorId,true);const ids=input?.billingCodeIds;

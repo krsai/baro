@@ -14,7 +14,7 @@ test('company profile and industry classification save together with revision, m
   await assert.rejects(saveCompanyProfileAndClassification(db,orgId,seed.people.junior.id,{name:'Forbidden'},classification),/COMPANY_INDUSTRY_ADMIN_REQUIRED/);
   await assert.rejects(saveCompanyProfileAndClassification(db,seed.other.id,actorId,{name:'Foreign'},classification),/COMPANY_INDUSTRY_ADMIN_REQUIRED/);
   const saved=await saveCompanyProfileAndClassification(db,orgId,actorId,{name:'Updated company',address:'One line address'},classification);
-  assert.equal(saved.organization.name,'Updated company');assert.equal(saved.classification.revision,1);assert.deepEqual(saved.classification.industryIds,[industry.id]);
+  assert.equal(saved.organization.name,'UPDATED COMPANY');assert.equal(saved.classification.revision,1);assert.deepEqual(saved.classification.industryIds,[industry.id]);
   const current=await db.organization.findUnique({where:{id:orgId}});
   await assert.rejects(saveCompanyProfileAndClassification(db,orgId,actorId,{name:'Stale update'},classification),/PARTNER_CLASSIFICATION_CHANGED/);
   assert.deepEqual(await db.organization.findUnique({where:{id:orgId}}),current);

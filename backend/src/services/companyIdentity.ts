@@ -1,3 +1,4 @@
+import {companyClassificationSource} from './companyClassificationSource';
 import {createHttpError} from '../utils/http';
 import {editRevision} from '../utils/editRevision';
 export const identityFields={id:true,name:true,nameKo:true,nameVi:true,code:true,country:true,businessNumber:true,address:true};
@@ -8,17 +9,7 @@ export const identityDto=(row:any,common=false)=>({...Object.fromEntries([...Obj
 export async function publicCompanyDetails(db:any,row:any){
  const industryLabels=row.industry?await db.partnerRole.findUnique({where:{code:row.industry},select:{nameKo:true,nameEn:true,nameVi:true}}):null;
  const companyId=row.anchorEntityId||row.id;
- const include={industries:{include:{industry:{include:{partnerRole:true}}}}};
- let profile=db.partnerClassification?await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId:companyId,entityId:companyId}},include}):null;
- let classificationSource='COMPANY';
- // Confirmed identities share their industry classification, including the
- // original managing company's registration. Never guess a manager by name
- // or copy another company's transaction, account or contact records.
- if(db.partnerClassification&&!profile?.industries?.length){
-  const anchor=await db.organization.findFirst({where:{id:companyId,isActive:true},select:{ownerOrgId:true,dataOwnerOrgId:true}});
-  const managerId=anchor?.ownerOrgId??anchor?.dataOwnerOrgId;
-  if(managerId&&managerId!==companyId){profile=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId:managerId,entityId:companyId}},include});classificationSource='SHARED';}
- }
+ const resolved=await companyClassificationSource(db,companyId),profile=resolved?.profile,classificationSource=resolved?.source;
  const industries=profile?.industries.map((link:any)=>link.industry)||[];
  const subscriber=await db.organization.findFirst({where:{id:companyId,ownerOrgId:null,isActive:true,type:{in:['MANUFACTURER','BRAND','SERVICE']},employees:{some:{status:'ACTIVE'}}},select:{id:true}});
  return {...row,subscriberOrgId:subscriber?.id||null,industryLabels,officialClassification:profile?{revision:profile.revision,source:classificationSource,industries,industryIds:industries.map((i:any)=>i.id),roleIds:[...new Set(industries.map((i:any)=>i.partnerRoleId))]}:null};
