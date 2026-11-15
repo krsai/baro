@@ -325,6 +325,7 @@ const baseTheme = createTheme({
       },
     },
     MuiToggleButton: {
+      defaultProps: { disableFocusRipple: true },
       styleOverrides: {
         root: ({ theme }) => ({
           textTransform: 'none',

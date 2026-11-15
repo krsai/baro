@@ -1,5 +1,7 @@
 # 공통 UI 사용 기준
 
+세그먼트 버튼은 공통 `MuiToggleButton.defaultProps.disableFocusRipple`로 짙은 포커스 ripple을 끈다. 현재 포커스는 파란 테두리로 표시하며 선택 배경과 클릭 피드백은 유지한다.
+
 단일 선택 세그먼트는 `data-focus-next="group"`와 공통 `formFocus.mjs`를 사용한다. Tab/Shift+Tab은 그룹당 한 번만 멈추며 다시 진입하면 선택 항목(없으면 첫 활성 항목)에 포커스를 준다. 방향키/Home/End는 활성 옵션 사이의 포커스만 이동하고 Enter/Space/클릭으로 확정 후 다음 입력으로 이동한다. 탐색만으로 값을 변경하지 않는다. 포커스는 선택 배경과 별개의 공통 파란 테두리로 표시하며 초기 프로그램 포커스에도 적용한다. 화면별 방향키 처리나 tabindex 상태를 중복 구현하지 않는다. 다중 선택 그룹에는 이 단일 선택 표식을 붙이지 않는다.
 
 페이지·모달·임시 Drawer의 초기 포커스와 입력 순서는 `formFocus.mjs`의 공통 처리를 사용한다. 첫 편집 항목을 우선하고 Tab/Shift+Tab은 숨김·비활성·읽기 전용을 건너뛴다. 단일 선택을 확정하면 다음 항목으로 이동하며, 다중 선택은 최종 확인 때 이동한다. 검색 취소는 원래 입력으로 복귀한다. 일반 입력의 Enter 이동과 여러줄 개행·IME·날짜 구간 편집을 구분한다. 별도 타이머나 전역 `document.querySelectorAll`로 포커스를 옮기는 화면별 예외를 추가하지 않는다. 단일 ToggleButtonGroup에는 `data-focus-next="group"`, 특수 편집기에는 `data-keyboard-navigation="off"`, 명시적 첫 항목에는 `data-initial-focus`를 사용한다. 업무 탭/초안과 중첩 모달 복귀를 유지한다.
