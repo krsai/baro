@@ -50,3 +50,7 @@ Object.assign(shippingEditorText.vi,{presets:'Danh bạ vận chuyển theo khá
 Object.assign(shippingEditorText.ko,{searchSeaPort:'항만 검색',searchAirport:'공항 검색',airportCode:'IATA 코드',airportName:'공항명'});
 Object.assign(shippingEditorText.en,{searchSeaPort:'Search seaports',searchAirport:'Search airports',airportCode:'IATA code',airportName:'Airport name'});
 Object.assign(shippingEditorText.vi,{searchSeaPort:'Tìm cảng biển',searchAirport:'Tìm sân bay',airportCode:'Mã IATA',airportName:'Tên sân bay'});
+
+Object.assign(shippingEditorText.ko,{terminalName:'세부 터미널 (선택)',requiredFields:'필수 입력을 확인해 주세요: '});
+Object.assign(shippingEditorText.en,{terminalName:"Terminal (optional)",requiredFields:"Check required fields: "});
+Object.assign(shippingEditorText.vi,{terminalName:'Bến cảng (tùy chọn)',requiredFields:'Kiểm tra thông tin bắt buộc: '});

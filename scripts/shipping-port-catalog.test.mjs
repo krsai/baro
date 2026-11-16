@@ -38,7 +38,7 @@ test('official worldwide port catalogue, literal search, real FK persistence, is
   assert.equal(job.originPortCode,'VNHPH');assert.equal(job.destinationPortCode,'KRPUS');assert.equal(job.data.hsCode,'610910');assert.equal(job.data.containerCount,'6');assert.deepEqual(job.data.containers,data.containers);
   assert.equal(job.requestSnapshot.data.dgClass,'3');assert.equal(job.requestSnapshot.data.originPortCode,'VNHPH');
   const stops={ORIGIN_DOOR:'Hanoi factory',ORIGIN_TERMINAL:'Hai Phong (VNHPH)',DESTINATION_TERMINAL:'Busan (KRPUS)',DESTINATION_DOOR:'Busan warehouse'};
-  const fullData={...data,workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:stops};
+  const fullData={...data,workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},routeLocations:stops,routeLocationDetails:{ORIGIN_TERMINAL:{label:'Lach Huyen',contactName:'',phone:''},DESTINATION_TERMINAL:{label:'',contactName:'',phone:''}}};
   const full=await saveFreight(db,s.company.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'SEA',customerId:s.vendor.id,data:fullData});
   assert.equal(full.data.origin,'Hanoi factory');assert.equal(full.data.destination,'Busan warehouse');assert.deepEqual(full.data.routeLocations,stops);assert.equal(full.originPortCode,'VNHPH');assert.equal(full.destinationPortCode,'KRPUS');assert.deepEqual(full.requestSnapshot.data.routeLocations,stops);
   assert.deepEqual(transportSnapshot(full).data.routeLocations,stops);
@@ -50,6 +50,8 @@ test('official worldwide port catalogue, literal search, real FK persistence, is
   await assert.rejects(saveFreight(db,s.company.id,s.people.admin.id,'jobs',{clientKey:randomUUID(),mode:'SEA',customerId:s.vendor.id,data:{...fullData,originPortCode:null}}),/SHIPPING_ROUTE_REQUIRED/);
   assert.throws(()=>transportSnapshot({mode:'SEA',data:{...fullData,routeLocations:{...stops,DESTINATION_DOOR:'x'.repeat(161)}}}),/SHIPPING_ROUTE_REQUIRED/);
   assert.throws(()=>require('../backend/dist/services/shippingRoute').shippingRouteFields({...fullData,originPortCode:null,destinationPortCode:null,routeLocations:{ORIGIN_TERMINAL:'not a warehouse'}},'ROAD'),/SHIPPING_ROUTE_REQUIRED/);
+  assert.equal(full.data.routeLocationDetails.ORIGIN_TERMINAL.label,'Lach Huyen');assert.equal(full.requestSnapshot.data.routeLocationDetails.ORIGIN_TERMINAL.label,'Lach Huyen');assert.equal(transportSnapshot(full).data.routeLocationDetails.DESTINATION_TERMINAL.label,'');
+  const terminalProjection=(await db.$queryRawUnsafe("SELECT baro_shipping_projection('SEA','DRAFT',$1::jsonb) AS value",JSON.stringify(fullData)))[0].value;assert.equal(terminalProjection.data.routeLocationDetails.ORIGIN_TERMINAL.label,'Lach Huyen');
   const {shippingRouteFields}=require('../backend/dist/services/shippingRoute');
   const roadStops={ORIGIN_DOOR:'Hanoi factory',DESTINATION_DOOR:'HCM warehouse'};assert.deepEqual(shippingRouteFields({workScope:fullData.workScope,routeLocations:{...roadStops,ORIGIN_TERMINAL:'ignored'}},'ROAD'),{routeLocations:roadStops,origin:roadStops.ORIGIN_DOOR,destination:roadStops.DESTINATION_DOOR});
   assert.deepEqual(shippingRouteFields({workScope:fullData.workScope,routeLocations:{...stops,ORIGIN_TERMINAL:'Noi Bai airport',DESTINATION_TERMINAL:'Incheon airport'}},'AIR').routeLocations.ORIGIN_TERMINAL,'Noi Bai airport');
