@@ -12,7 +12,7 @@ import {useRequestScopeContext} from '../context/RequestScopeContext';
 export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,settings={},showEmpty=false}){
  const text=accountingAlertText[languageCode]||accountingAlertText.en,{active}=useRequestScopeContext();
  const pendingText=(accountingPendingText[languageCode]||accountingPendingText.en).pending;
- const kinds=[...(settings['accounting-direction']===false?[]:['DIRECTION']),...(settings['accounting-partner']===false?[]:['PARTNER_INDUSTRY'])].join(',');
+ const kinds=[...(settings['accounting-retired']===false?[]:['RETIRED_EMPLOYEE']),...(settings['accounting-direction']===false?[]:['DIRECTION']),...(settings['accounting-partner']===false?[]:['PARTNER_INDUSTRY'])].join(',');
  const [selected,setSelected]=useState(null),[review,setReview]=useState(null),[reviewError,setReviewError]=useState(null);
  const [data,setData]=useState(null),[page,setPage]=useState(0),[reload,setReload]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
  const acknowledging=useRef(false),detailOpen=Boolean(selected||review);

@@ -1,4 +1,3 @@
-import {canPayRetiredEmployee} from './payrollPaymentEligibility';
 import {createHttpError} from '../utils/http';
 import {attachPartnerClassifications} from './partnerClassification';
 import {attachLinkedCompanies} from './companyConnections';
@@ -19,7 +18,7 @@ export async function ledgerCounterpartyOptions(db:any,orgId:number){
   db.organizationBankAccount.findMany({where:{orgId,entityId:orgId,isActive:true},include:{currency:true},orderBy:{sortOrder:'asc'}}),
  ]);
  const linked=await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));
- return [...linked.map((p:any)=>({...p,code:p.linkedCompany?.code||p.code,kind:'PARTNER'})),...employees.filter((p:any)=>canPayRetiredEmployee(p)).map((p:any)=>({...p,kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
+ return [...linked.map((p:any)=>({...p,code:p.linkedCompany?.code||p.code,kind:'PARTNER'})),...employees.map((p:any)=>({...p,searchOnly:p.status==='TERMINATED',kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
 }
 export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,body:any,allocations:any[]){
  const supplied=counterpartyInput(body.counterparty);

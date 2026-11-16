@@ -10,6 +10,15 @@ const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {saveClassification}=require('../backend/dist/services/partnerClassification');
 const permissions={ledger:true,expense:true,invoice:true};
+
+test('retired payment pattern flags later withdrawals without accusing historical employment-period transactions',()=>{
+ const source={date:'2026-11-10',direction:'OUT',code:{base:{cashDirection:'BOTH'}},employee:{status:'TERMINATED',leftAt:new Date('2026-09-20')}};
+ assert.deepEqual(accountingAlertKinds(source,null),['RETIRED_EMPLOYEE']);
+ assert.deepEqual(accountingAlertKinds({...source,date:'2026-09-20'},null),[]);
+ assert.deepEqual(accountingAlertKinds({...source,direction:'IN'},null),[]);
+ assert.deepEqual(accountingAlertKinds({...source,employee:{status:'ACTIVE'}},null),[]);
+ assert.deepEqual(accountingAlertKinds({...source,employee:{status:'TERMINATED',leftAt:null}},null),['RETIRED_EMPLOYEE']);
+});
 test('direction checks both ways and real multi-industry IDs, never names or unknown classifications',()=>{
  const source={direction:'OUT',code:{base:{cashDirection:'IN',industryLinks:[{systemIndustryId:1},{systemIndustryId:2}]}}};
  assert.deepEqual(accountingAlertKinds(source,{classification:{industryIds:[2]}}),['DIRECTION']);
