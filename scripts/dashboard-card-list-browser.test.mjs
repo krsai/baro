@@ -20,14 +20,18 @@ try{
   assert.equal(await page.getByText('2026-11',{exact:true}).count(),0);
   const filter=page.locator('#approval-overview-status');assert.ok((await filter.boundingBox()).width<=162);const title=await page.getByText(t.overview,{exact:true}).boundingBox(),field=await filter.boundingBox();assert.ok(Math.abs(title.y+title.height/2-field.y-field.height/2)<2,'filter shares the title row');
   assert.equal(queries[0].status,'UNAPPROVED');assert.equal(await page.locator('[data-dashboard-card]').count(),3);
-  assert.deepEqual(await page.locator('[data-dashboard-card-title] .MuiChip-label').allTextContents(),Array(3).fill(t.overviewStatuses.UNAPPROVED),'requested, in-review and unknown share one visible status');
+  assert.deepEqual(await page.locator('[data-dashboard-card-actions] .MuiChip-label').allTextContents(),Array(3).fill(t.overviewStatuses.UNAPPROVED),'requested, in-review and unknown share one visible status');
+  for(const item of await page.locator('[data-dashboard-card]').all()){
+   const chip=await item.locator('.MuiChip-root').boundingBox(),button=await item.locator('[data-dashboard-card-actions] button').boundingBox();
+   assert.ok(Math.abs(chip.y+chip.height/2-button.y-button.height/2)<1,'status and confirm share the vertical center');assert.ok(chip.x+chip.width<=button.x,'status stays left of confirm');
+  }
   await filter.click();assert.equal(await page.getByRole('option').count(),3);assert.deepEqual(await page.getByRole('option').allTextContents(),[t.overviewStatuses.UNAPPROVED,t.overviewStatuses.APPROVED,t.overviewStatuses.REJECTED]);
   await Promise.all([page.waitForResponse(r=>r.url().includes('status=APPROVED')),page.getByRole('option',{name:t.overviewStatuses.APPROVED,exact:true}).click()]);
   assert.equal(queries.at(-1).start,undefined);assert.equal(queries.at(-1).end,undefined);assert.equal(queries.at(-1).status,'APPROVED');
   assert.equal(await page.locator('[data-dashboard-card]').count(),1);const card=await page.locator('[data-dashboard-card]').boundingBox(),action=await page.locator('[data-dashboard-card-actions]').boundingBox();assert.ok(card.height>=44&&card.height<(width===1440?80:128));assert.ok(Math.abs(action.y+action.height/2-card.y-card.height/2)<1);assert.ok(action.x>card.x+card.width/2);
-  assert.deepEqual(await page.locator('[data-dashboard-card-title] .MuiChip-label').allTextContents(),[t.overviewStatuses.APPROVED]);
+  assert.deepEqual(await page.locator('[data-dashboard-card-actions] .MuiChip-label').allTextContents(),[t.overviewStatuses.APPROVED]);
   await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=REJECTED')),page.getByRole('option',{name:t.overviewStatuses.REJECTED,exact:true}).click()]);
-  await page.getByText('Author',{exact:false}).first().waitFor();assert.equal(queries.at(-1).status,'REJECTED');assert.deepEqual(await page.locator('[data-dashboard-card-title] .MuiChip-label').allTextContents(),[t.overviewStatuses.REJECTED]);
+  await page.getByText('Author',{exact:false}).first().waitFor();assert.equal(queries.at(-1).status,'REJECTED');assert.deepEqual(await page.locator('[data-dashboard-card-actions] .MuiChip-label').allTextContents(),[t.overviewStatuses.REJECTED]);
   await filter.click();await Promise.all([page.waitForResponse(r=>r.url().includes('status=UNAPPROVED')),page.getByRole('option',{name:t.overviewStatuses.UNAPPROVED,exact:true}).click()]);await page.waitForFunction(()=>document.querySelectorAll('[data-dashboard-card]').length===3);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
