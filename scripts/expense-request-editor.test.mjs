@@ -134,10 +134,16 @@ test('historical editor loads only the selected source FK and never guesses its 
 test('editor GET restores the confirmed document approval selection from its current-version audit',async()=>{
  const db=harness();await db.save({...await input(db),approvalSelection:{}});
  const client=db.client(),handlers=new Map();
+ client.companyPartnerLink={findMany:async()=>[]};client.companyIdentityLink={findMany:async()=>[]};
+ const findDocument=client.expenseRequest.findFirst;
+ client.expenseRequest.findFirst=async args=>{
+  assert.equal(args.include.partner.select.code,true);
+  const document=await findDocument(args);return {...document,partner:{...document.partner,code:'VNDR'}};
+ };
  client.expenseRequestAudit.findFirst=async({where})=>db.state().audits.find(row=>row.orgId===where.orgId&&row.requestId===where.requestId&&row.version===where.version);
  registerExpenseEditorRoutes({get:(p,fn)=>handlers.set(p,fn),put:()=>{},post:()=>{}},client,{requireOrgRole:async()=>({organization:{id:1}}),actorId:()=>20});
  let loaded;await handlers.get('/expense-request-editor/:kind/:id')({params:{kind:'request',id:'1'}},{json:value=>{loaded=value;}});
- assert.deepEqual(loaded.approvalSelection,{});assert.equal(loaded.createdByEmployee.id,20);
+ assert.deepEqual(loaded.approvalSelection,{});assert.equal(loaded.createdByEmployee.id,20);assert.equal(loaded.partner.code,'VNDR');
 });
 test('expense registration stores its number and later edits cannot replace the management identity',async()=>{
  const db=harness();const body={...await input(db),remark:'July expenses\nAdditional remark'};

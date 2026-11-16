@@ -1,3 +1,4 @@
+import {attachLinkedCompanies} from './companyConnections';
 import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule,expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {cashScheduleDate} from './cashSchedule';
 import {companyBusinessTimeZone} from './serviceCompany';
@@ -14,14 +15,14 @@ import { registerTransactionRequest, REQUEST_INCLUDE } from './transactionReques
 
 const recordInclude = {
   workLog: true, style: { select: { id: true, name: true, code: true } }, styleProcess: true,
-  outsourcingPartner: { select: { id: true, name: true } },
+  outsourcingPartner: { select: { id: true, name: true, code: true } },
   createdByEmployee: { select: { id: true, name: true } },
   assignmentPlan: { select: { id: true, orgId: true, styleId: true, workOrderId: true, factoryId: true, isCompleted: true,
     ctReviewRequired: true, completedAt: true, productionCompletedAt: true, closedAt: true,
     workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } } } },
 };
-const costInclude = { ...REQUEST_INCLUDE, workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } }, outsourcedWorkRecord: { include: recordInclude } };
-const documentInclude = { paymentSchedule:{where:{active:true},orderBy:[{expenseItemId:'asc'},{position:'asc'}]}, payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}}, approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true } }, createdByEmployee: { select: { id: true, name: true } },
+const costInclude = { ...REQUEST_INCLUDE, partner: { select: { id:true, name:true, code:true } }, workOrder: { select: { id: true, orderNumber: true, invoiceFinalLockedAt: true } }, outsourcedWorkRecord: { include: recordInclude } };
+const documentInclude = { paymentSchedule:{where:{active:true},orderBy:[{expenseItemId:'asc'},{position:'asc'}]}, payeeEmployee:{select:{id:true,name:true,employeeNo:true,status:true}}, approvalSteps: EXPENSE_APPROVAL_INCLUDE, updatedByEmployee: { select: { id: true, name: true } }, partner: { select: { id: true, name: true, code: true } }, createdByEmployee: { select: { id: true, name: true } },
   items: { include: costInclude, orderBy: { expenseRequestLine: 'asc' } } };
 const fail = (status: number, code: string): never => { throw createHttpError(status, code); };
 const numericId = (id: string) => /^\d+$/.test(id) && Number.isSafeInteger(Number(id)) && Number(id)>0 ? Number(id) : fail(400,'INVALID_EXPENSE_SOURCE');
@@ -226,6 +227,10 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);
     assertManagedDate(expenseEditorForm(source).requestDate,(await loadManagementPeriod(db,access.organization.id)).startDate);
     const result:any=expenseEditorForm(source);
+    if(result.partner&&!result.payeeEmployeeId){
+      const [partner]=await attachLinkedCompanies(db,access.organization.id,[{...result.partner,entityId:result.partner.id}]);
+      result.partner={...partner,code:partner.linkedCompany?.code||partner.code||null};
+    }
     if(source.document?.paymentSchedule?.length){
       const paymentSchedule=await expensePaymentScheduleStatus(db,access.organization.id,source.document.id);
       result.items=result.items.map((item:any)=>({...item,paymentSchedule:paymentSchedule.filter((row:any)=>row.expenseItemId===item.itemId)}));
