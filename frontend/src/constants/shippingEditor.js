@@ -54,3 +54,6 @@ Object.assign(shippingEditorText.vi,{searchSeaPort:'Tìm cảng biển',searchAi
 Object.assign(shippingEditorText.ko,{terminalName:'세부 터미널 (선택)',requiredFields:'필수 입력을 확인해 주세요: '});
 Object.assign(shippingEditorText.en,{terminalName:"Terminal (optional)",requiredFields:"Check required fields: "});
 Object.assign(shippingEditorText.vi,{terminalName:'Bến cảng (tùy chọn)',requiredFields:'Kiểm tra thông tin bắt buộc: '});
+Object.assign(shippingEditorText.ko,{applyLocation:'확인',addressHeading:'주소',addToAddressBook:'주소록 추가',saveAddress:'주소록에 저장',deleteAddress:'주소록 삭제'});
+Object.assign(shippingEditorText.en,{applyLocation:'Confirm',addressHeading:'Address',addToAddressBook:'Add to address book',saveAddress:'Save to address book',deleteAddress:'Delete address'});
+Object.assign(shippingEditorText.vi,{applyLocation:'Xác nhận',addressHeading:'Địa chỉ',addToAddressBook:'Thêm vào sổ địa chỉ',saveAddress:'Lưu vào sổ địa chỉ',deleteAddress:'Xóa địa chỉ'});

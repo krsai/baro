@@ -2,7 +2,6 @@ import React,{useEffect,useRef,useState} from 'react';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import {Box,Button,Dialog,DialogContent,DialogTitle,List,ListItemButton,Stack,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
-import DeleteActionButton from './DeleteActionButton';
 import SaveButton from './SaveButton';
 import ShippingAddressFields,{addressValue} from './ShippingAddressFields';
 import {usePageDialogs} from './PageDialogProvider';
@@ -58,7 +57,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   <DialogTitle component="div"><Stack direction="row" justifyContent="space-between" alignItems="center" gap={2} flexWrap="wrap"><Typography variant="h6">{title||t.savedAddresses}</Typography><Button variant="contained" disabled={blocked||!addressValid} onClick={apply}>{t.applyLocation}</Button></Stack></DialogTitle>
   <DialogContent ref={content} tabIndex={-1}><Box data-address-workspace sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(0,1fr) minmax(0,1.7fr)'},gap:3,alignItems:'start'}}>
    <Stack spacing={1.5} data-address-list sx={{minWidth:0}}>
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.savedAddresses}</Typography><Button disabled={blocked} onClick={()=>open(null)}>{t.addAddress}</Button></Stack>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.savedAddresses}</Typography></Stack>
     {locationLookup?.(place=>setEdit({id:crypto.randomUUID(),label:place,address:place,contactName:'',phone:''}),blocked)}
     <TextField fullWidth size="small" label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!scopeCustomerId&&!resolveCustomer} onChange={e=>setQuery(e.target.value)}/>
     {!scopeCustomerId&&!resolveCustomer?<Alert severity="info">{t.chooseCustomer}</Alert>:readError?<Alert severity="error" action={<Button disabled={busy||uncertain} onClick={()=>setReload(v=>v+1)}>{t.retry}</Button>}>{t.failed}</Alert>:loading?<Typography role="status">{t.loading}</Typography>:<List disablePadding aria-label={t.savedAddresses} sx={{maxHeight:{xs:160,sm:400},overflowY:'auto'}}>
@@ -68,7 +67,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
    </Stack>
    <Stack spacing={2} data-address-detail sx={{minWidth:0}}>
     {edit.address.length>160&&<Alert severity="error">{t.routeAddressTooLong}</Alert>}
-    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{edit.version?t.editAddress:t.addAddress}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<DeleteActionButton disabled={blocked} title={t.deletePreset} onClick={()=>mutate(true)}/>}<SaveButton disabled={blocked||!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.updateAddress:t.savePreset}</SaveButton></Stack></Stack>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" gap={1}><Typography variant="subtitle2">{t.addressHeading}</Typography><Stack direction="row" alignItems="center" gap={1}>{edit.version!=null&&<Button color="error" disabled={blocked} onClick={()=>mutate(true)}>{t.deleteAddress}</Button>}<SaveButton disabled={blocked||!scopeCustomerId&&!resolveCustomer||loading||readError||!edit.label.trim()||!addressValid||!!edit.version&&!dirty} onClick={()=>mutate()}>{edit.version?t.saveAddress:t.addToAddressBook}</SaveButton></Stack></Stack>
     {saveError&&<Alert severity="error" action={uncertain?<Button disabled={busy} onClick={()=>mutate()}>{t.retry}</Button>:undefined}>{t.failed}</Alert>}
 
     <ShippingAddressFields value={edit} onChange={setEdit} t={t} disabled={blocked} autoFocus personLabel={personLabel}/>
