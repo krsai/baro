@@ -14,6 +14,17 @@ const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/serv
 const {postLedgerEntryInTransaction}=require('../backend/dist/services/bankLedger');
 const {outstandingReport}=require('../backend/dist/services/accountOverview');
 const {ledgerCounterpartyOptions}=require('../backend/dist/services/ledgerCounterparty');
+const {canPayRetiredEmployee}=require('../backend/dist/services/payrollPaymentEligibility');
+
+test('retired salary payment deadline includes the entire following calendar month',()=>{
+ for(const [leftAt,last,next] of [['2026-10-20','2026-11-30','2026-12-01'],['2026-12-31','2027-01-31','2027-02-01'],['2028-01-15','2028-02-29','2028-03-01']]){
+  const employee={status:'TERMINATED',leftAt};
+  assert.equal(canPayRetiredEmployee(employee,last),true);
+  assert.equal(canPayRetiredEmployee(employee,next),false);
+ }
+ assert.equal(canPayRetiredEmployee({status:'TERMINATED',leftAt:null},'2026-11-01'),false);
+ assert.equal(canPayRetiredEmployee({status:'ACTIVE',leftAt:null},'2026-11-01'),true);
+});
 function payrollServices(db,readiness={invalidPayrollAttendance:[],needsRecalculation:false}){
  return loadSourceBindings('backend/src/payroll/payroll.service.ts',['payrollTransaction','prisma','assertPayrollMonth','lockPayrollSnapshot','unlockPayrollSnapshot'],{applicationPrisma:db,AsyncLocalStorage,...require('../backend/dist/utils/editRevision'),...require('../backend/dist/utils/common'),...require('../backend/dist/utils/http'),...require('../backend/dist/services/payrollPayables'),getPayrollMonthReadiness:async()=>readiness});
 }
@@ -64,6 +75,11 @@ test('payroll AP preserves frozen net pay, numbers and audit; exclusions and app
   await assert.rejects(unlock(),/PAYROLL_PAYMENT_LINKED/);
   await assert.rejects(db.$transaction(tx=>postLedgerEntryInTransaction(tx,org,actor.email,s.account.id,{...row,clientKey:randomUUID(),amount:'61'})),/LEDGER_EXCEEDS_DOCUMENT/);
   await assert.rejects(db.$transaction(tx=>postLedgerEntryInTransaction(tx,org,actor.email,s.account.id,{...row,clientKey:randomUUID(),counterparty:{kind:'EMPLOYEE',id:s.people.senior.id}})),/PAYROLL_PAYABLE_SOURCE_CHANGED/);
+  await assert.rejects(db.$transaction(tx=>require('../backend/dist/services/payrollPayables').validatePayrollEvidence(tx,org,{currencyCode:'USD'},{...row,transactionDate:'2026-12-01'})),/PAYROLL_RETIRED_PAYMENT_EXPIRED/);
+  await db.employee.update({where:{id:item.employeeId},data:{leftAt:new Date('2026-09-20T00:00:00Z')}});
+  assert.equal((await ledgerCounterpartyOptions(db,org)).some(p=>p.kind==='EMPLOYEE'&&p.id===item.employeeId),false);
+  assert.equal((await searchPayrollEvidence(db,org,{currencyCode:'USD',search:number})).documents.some(d=>d.id===item.id),false);
+  await assert.rejects(db.$transaction(tx=>postLedgerEntryInTransaction(tx,org,actor.email,s.account.id,{...row,clientKey:randomUUID()})),/PAYROLL_RETIRED_PAYMENT_EXPIRED/,'backdating cannot bypass an expired registration deadline');
   const items=await db.payrollPayableItem.findMany({where:{voidedAt:null},include:{document:true,employee:{select:{name:true}},allocations:{include:{entry:true}}}});
   const report=outstandingReport([],[],[],[],items);assert.equal(report.payables.find(p=>p.partyId===item.employeeId).balance,'60.00');
   assert.deepEqual((await db.payrollSnapshot.findUnique({where:{id:snapshot.id}})).data,data);

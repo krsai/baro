@@ -1,3 +1,4 @@
+import {canPayRetiredEmployee} from './payrollPaymentEligibility';
 import {createHttpError} from '../utils/http';
 import {attachPartnerClassifications} from './partnerClassification';
 import {attachLinkedCompanies} from './companyConnections';
@@ -14,11 +15,11 @@ export async function ledgerCounterpartyOptions(db:any,orgId:number){
  const ids=relationships.map((r:any)=>r.manufacturerOrgId===orgId?r.brandOrgId:r.manufacturerOrgId);
  const [partners,employees,accounts]=await Promise.all([
   db.organization.findMany({where:{isActive:true,id:{not:orgId},OR:[{ownerOrgId:orgId},{id:{in:ids}}]},select:{id:true,name:true,nameKo:true,nameVi:true,code:true},orderBy:{name:'asc'}}),
-  db.employee.findMany({where:{orgId,OR:[{status:'ACTIVE'},{status:'TERMINATED',payrollPayableItems:{some:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false}}}}}]},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),
+  db.employee.findMany({where:{orgId,OR:[{status:'ACTIVE'},{status:'TERMINATED',payrollPayableItems:{some:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false}}}}}]},select:{id:true,name:true,employeeNo:true,status:true,leftAt:true},orderBy:{name:'asc'}}),
   db.organizationBankAccount.findMany({where:{orgId,entityId:orgId,isActive:true},include:{currency:true},orderBy:{sortOrder:'asc'}}),
  ]);
  const linked=await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));
- return [...linked.map((p:any)=>({...p,code:p.linkedCompany?.code||p.code,kind:'PARTNER'})),...employees.map((p:any)=>({...p,kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
+ return [...linked.map((p:any)=>({...p,code:p.linkedCompany?.code||p.code,kind:'PARTNER'})),...employees.filter((p:any)=>canPayRetiredEmployee(p)).map((p:any)=>({...p,kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
 }
 export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,body:any,allocations:any[]){
  const supplied=counterpartyInput(body.counterparty);
