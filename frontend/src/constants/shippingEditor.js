@@ -7,7 +7,7 @@ Object.assign(shippingEditorText.ko,{senderName:'보내는 사람 이름',receiv
 Object.assign(shippingEditorText.en,{senderName:'Sender name',receiverName:'Recipient name'});
 Object.assign(shippingEditorText.vi,{senderName:'Tên người gửi',receiverName:'Tên người nhận'});
 
-Object.assign(shippingEditorText.ko,{generalCustomer:'특송 일반고객',actualRequester:'실제 의뢰인',actualRequesterName:'실제 의뢰인 이름',actualRequesterPhone:'실제 의뢰인 연락처',generalCustomerHint:'개인 거래처 등록 없이 접수합니다. 실제 의뢰인 이름·연락처는 이 운송건에 저장하며 발송인·수취인은 아래에서 각각 입력하세요.'});
+Object.assign(shippingEditorText.ko,{generalCustomer:'특송 일반 고객',actualRequester:'실제 의뢰인',actualRequesterName:'실제 의뢰인 이름',actualRequesterPhone:'실제 의뢰인 연락처',generalCustomerHint:'개인 거래처 등록 없이 접수합니다. 실제 의뢰인 이름·연락처는 이 운송건에 저장하며 발송인·수취인은 아래에서 각각 입력하세요.'});
 Object.assign(shippingEditorText.en,{generalCustomer:'Express general customer',actualRequester:'Actual requester',actualRequesterName:'Requester name',actualRequesterPhone:'Requester phone',generalCustomerHint:'Receive without registering each individual as a partner. The requester name and phone are saved for this shipment. Enter the shipper and consignee separately below.'});
 Object.assign(shippingEditorText.vi,{generalCustomer:'Khách lẻ chuyển phát',actualRequester:'Người yêu cầu thực tế',actualRequesterName:'Tên người yêu cầu',actualRequesterPhone:'Số điện thoại người yêu cầu',generalCustomerHint:'Tiếp nhận mà không đăng ký từng cá nhân làm đối tác. Tên và số điện thoại được lưu theo lô hàng. Nhập người gửi và người nhận riêng bên dưới.'});
 

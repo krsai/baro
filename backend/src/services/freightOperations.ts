@@ -1,6 +1,6 @@
 import {assertDistinctShippingParties} from './shippingParties';
 import {shippingCargo,validateOogTransition} from './shippingCargo';
-import {generalCustomerFields,shippingGeneralCustomer,SHIPPING_GENERAL_CUSTOMER_CODE} from './shippingGeneralCustomer';
+import {generalCustomerFields,shippingGeneralCustomer,SHIPPING_GENERAL_CUSTOMER_CODE,SHIPPING_GENERAL_CUSTOMER_NAMES} from './shippingGeneralCustomer';
 import {shippingRouteFields} from './shippingRoute';
 import {shippingPortFields,validateShippingPorts} from './shippingPorts';
 import {registerJobRoutes} from './freightJobs';
@@ -31,7 +31,7 @@ export async function scopedParty(db:any,orgId:number,id:number){
 async function freightParties(db:any,orgId:number,rows:any[]){
  const values=await attachLinkedCompanies(db,orgId,rows.map(row=>({...row,entityId:row.id})));
  const general=(await db.$queryRawUnsafe('SELECT "customerId" FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId))[0];
- return values.map(row=>({id:row.id,...(general?.customerId===row.id?{isShippingGeneralCustomer:true}:{}),code:row.linkedCompany?.code||row.code||(general?.customerId===row.id?SHIPPING_GENERAL_CUSTOMER_CODE:null),name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,address:row.address,country:row.country,businessNumber:row.businessNumber,contactName:row.representative,phone:row.phone,email:row.email}));
+ return values.map(row=>({id:row.id,code:row.linkedCompany?.code||row.code||(general?.customerId===row.id?SHIPPING_GENERAL_CUSTOMER_CODE:null),name:row.name,nameKo:row.nameKo,nameVi:row.nameVi,...(general?.customerId===row.id?{...SHIPPING_GENERAL_CUSTOMER_NAMES,isShippingGeneralCustomer:true}:{}),address:row.address,country:row.country,businessNumber:row.businessNumber,contactName:row.representative,phone:row.phone,email:row.email}));
 }
 export async function freightOptions(db:any,orgId:number,actorId:number){
  await freightActor(db,orgId,actorId);

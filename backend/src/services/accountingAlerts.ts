@@ -3,16 +3,18 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 import {attachPartnerClassifications} from './partnerClassification';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
+import {shippingGeneralCustomerId} from './shippingGeneralCustomer';
 const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const prefix=(orgId:number,actorId:number)=>`ACCOUNTING_ALERT_ACK_USER:${orgId}:${actorId}:`;
 const codeInclude={base:{include:{industryLinks:{include:{industry:true}},serviceType:true,expenseType:true}},serviceType:{include:{systemDefault:true}}};
-export function accountingAlertKinds(source:any,partner:any){
+export function accountingAlertKinds(source:any,partner:any,generalCustomerId:number|null=null){
  const code=source.code,base=code?.base;if(!code||!base)return [];
  const kinds=[];if(source.employee?.status==='TERMINATED'&&source.direction==='OUT'&&(!source.employee.leftAt||source.date>new Date(source.employee.leftAt).toISOString().slice(0,10)))kinds.push('RETIRED_EMPLOYEE');if(['IN','OUT'].includes(base.cashDirection)&&base.cashDirection!==source.direction)kinds.push('DIRECTION');
  const links=base.industryLinks||[],allowed=links.length?links.map((link:any)=>link.systemIndustryId):base.serviceTypeId?[base.serviceTypeId]:[];
  const classification=partner?.linkedCompany&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
- if(partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
+ const generalExpress=generalCustomerId!=null&&source.partyId===generalCustomerId&&base.code==='EXP';
+ if(!generalExpress&&partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
  return kinds;
 }
 export async function accountingAlertCandidates(db:any,orgId:number,permissions:any){
@@ -23,9 +25,10 @@ export async function accountingAlertCandidates(db:any,orgId:number,permissions:
   db.changeApprovalRequest.findMany({where:{orgId,status:'PENDING'},select:{operation:true,ledgerEntryId:true,expenseRequestId:true,legacyCostId:true,invoiceId:true}}),
  ]);
  const ids=[...new Set<number>([...ledger.map((row:any)=>row.counterpartyOrgId),...costs.map((row:any)=>row.partnerOrgId),...invoices.map((row:any)=>row.invoice.buyerOrgId)].filter(Boolean))];
+ const generalCustomerId=ids.length?await shippingGeneralCustomerId(db,orgId):null;
  const parties=ids.length?await attachPartnerClassifications(db,orgId,(await db.organization.findMany({where:{id:{in:ids}},select:{id:true,name:true}})).map((row:any)=>({...row,entityId:row.id}))):[];
  const sources=[...ledger.flatMap((row:any)=>[{sourceKind:'LEDGER',sourceId:row.id,employee:row.counterpartyEmployee,pendingOperation:pending.find((p:any)=>p.ledgerEntryId===row.id)?.operation,date:row.transactionDate,direction:row.direction,code:row.accountingCode,partyId:row.counterpartyOrgId,partyName:row.counterpartyName,revision:[String(row.amount),row.purpose],path:'/bank-ledger/edit/'+row.id},...row.settlementLines.map((line:any)=>({sourceKind:'SETTLEMENT',sourceId:line.id,pendingOperation:pending.find((p:any)=>p.ledgerEntryId===row.id)?.operation,date:row.transactionDate,direction:'OUT',code:line.accountingCode,partyId:row.counterpartyOrgId,partyName:row.counterpartyName,revision:[String(line.amount),line.purpose],path:'/bank-ledger/edit/'+row.id}))]),...costs.map((row:any)=>({sourceKind:'EXPENSE',sourceId:row.id,pendingOperation:pending.find((p:any)=>p.legacyCostId===row.id||row.expenseRequestId&&p.expenseRequestId===row.expenseRequestId)?.operation,date:row.transactionDate,direction:'OUT',code:row.transactionCode,partyId:row.partnerOrgId,revision:[row.expenseRequest?.version,String(row.amount),row.description],reference:row.expenseRequest?.managementNumber||'',path:'/outsourcing-record/edit/'+(row.expenseRequestId?'request/'+row.expenseRequestId:'cost/'+row.id)})),...invoices.map((row:any)=>({sourceKind:'INVOICE',sourceId:row.id,pendingOperation:pending.find((p:any)=>p.invoiceId===row.invoice.id)?.operation,date:new Date(row.invoice.issuedAt).toLocaleDateString('sv-SE',{timeZone:'Asia/Ho_Chi_Minh'}),direction:'IN',code:row.transactionCode,partyId:row.invoice.buyerOrgId,revision:[String(row.amount),row.description],reference:row.invoice.invoiceNumber,path:'/invoices/'+row.invoice.id}))];
- return sources.flatMap(source=>{const party=parties.find((row:any)=>row.id===source.partyId);return accountingAlertKinds(source,party).map(kind=>{
+ return sources.flatMap(source=>{const party=parties.find((row:any)=>row.id===source.partyId);return accountingAlertKinds(source,party,generalCustomerId).map(kind=>{
   const classification=party?.linkedCompany&&party.officialClassification?.industryIds?.length?party.officialClassification:party?.classification;
   const signature=hash([orgId,kind,source.sourceKind,source.sourceId,source.date,source.revision,source.direction,source.code.id,source.code.base.cashDirection,source.code.base.industryRevision,source.code.base.serviceTypeId,[...(source.code.base.industryLinks||[])].map((link:any)=>link.systemIndustryId).sort((a:number,b:number)=>a-b),source.partyId,classification?.revision,[...(classification?.industryIds||[])].sort((a:number,b:number)=>a-b),...(kind==='RETIRED_EMPLOYEE'?[source.employee?.status,source.employee?.leftAt]:[])]);
   return {signature,kind,pendingOperation:source.pendingOperation||null,sourceKind:source.sourceKind,sourceId:source.sourceId,date:source.date,path:source.path,reference:source.reference||'',code:source.code.code,description:source.code.base.nameEn||source.code.nameEn||'',partyName:party?.name||source.partyName||'',expectedDirection:source.code.base.cashDirection,actualDirection:source.direction};

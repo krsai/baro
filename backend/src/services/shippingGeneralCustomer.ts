@@ -1,5 +1,16 @@
 import {createHttpError} from '../utils/http';
 export const SHIPPING_GENERAL_CUSTOMER_CODE='EXGC';
+export const SHIPPING_GENERAL_CUSTOMER_NAMES={name:'Express general customer',nameKo:'특송 일반 고객',nameVi:'Khách lẻ chuyển phát'};
+// Only the immutable company/customer FK establishes the collection customer.
+export async function shippingGeneralCustomerId(db:any,orgId:number):Promise<number|null>{
+ const row=(await db.$queryRawUnsafe('SELECT "customerId" FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId))[0];
+ return row?.customerId??null;
+}
+export async function attachShippingGeneralCustomer(db:any,orgId:number,rows:any[]){
+ if(!rows.length)return rows;
+ const customerId=await shippingGeneralCustomerId(db,orgId);
+ return rows.map(row=>row.id===customerId?{...row,...SHIPPING_GENERAL_CUSTOMER_NAMES,code:row.code||SHIPPING_GENERAL_CUSTOMER_CODE,isShippingGeneralCustomer:true}:row);
+}
 
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 export function generalCustomerFields(data:any){
@@ -20,7 +31,7 @@ export async function shippingGeneralCustomer(tx:any,orgId:number,actorId:number
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
  const current=(await tx.$queryRawUnsafe('SELECT "customerId" FROM "ShippingGeneralCustomer" WHERE "orgId"=$1',orgId))[0];
  if(current)return current.customerId;
- const customer=await tx.organization.create({data:{name:'Express general customer',nameKo:'특송 일반고객',nameVi:'Khách lẻ chuyển phát',type:'MATERIAL_SUPPLIER',partyKind:'INDIVIDUAL',ownerOrgId:orgId}});
+ const customer=await tx.organization.create({data:{...SHIPPING_GENERAL_CUSTOMER_NAMES,type:'MATERIAL_SUPPLIER',partyKind:'INDIVIDUAL',ownerOrgId:orgId}});
  await tx.$executeRawUnsafe('INSERT INTO "ShippingGeneralCustomer"("orgId","customerId","createdByEmployeeId") VALUES($1,$2,$3)',orgId,customer.id,actorId);
  return customer.id;
 }

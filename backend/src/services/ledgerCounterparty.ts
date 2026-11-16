@@ -2,6 +2,7 @@ import {createHttpError} from '../utils/http';
 import {attachPartnerClassifications} from './partnerClassification';
 import {attachLinkedCompanies} from './companyConnections';
 import {ACCOUNTING_CODE_INCLUDE,resolveAccountingCode} from './accountingCode';
+import {attachShippingGeneralCustomer} from './shippingGeneralCustomer';
 const fail=(code='LEDGER_COUNTERPARTY_REQUIRED'):never=>{throw createHttpError(400,code);};
 export const counterpartyInput=(value:any)=>{
  if(value==null)return null;
@@ -26,7 +27,7 @@ export async function ledgerCounterpartyOptions(db:any,orgId:number){
   db.employee.findMany({where:{orgId,OR:[{status:'ACTIVE'},{status:'TERMINATED',payrollPayableItems:{some:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false}}}}}]},select:{id:true,name:true,employeeNo:true,status:true,leftAt:true},orderBy:{name:'asc'}}),
   db.organizationBankAccount.findMany({where:{orgId,entityId:orgId,isActive:true},include:{currency:true},orderBy:{sortOrder:'asc'}}),
  ]);
- const linked=await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));
+ const linked=await attachShippingGeneralCustomer(db,orgId,await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id}))));
  return [...linked.map((p:any)=>({...p,code:p.linkedCompany?.code||p.code,kind:'PARTNER'})),...employees.map((p:any)=>({...p,searchOnly:p.status==='TERMINATED',kind:'EMPLOYEE'})),...accounts.map((a:any)=>({kind:'ACCOUNT',id:a.id,name:a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / '),currencyCode:a.currency.code}))];
 }
 export async function resolveLedgerCounterparty(tx:any,orgId:number,account:any,body:any,allocations:any[]){
