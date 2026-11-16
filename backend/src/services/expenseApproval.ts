@@ -54,7 +54,8 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
       totals.set(item.currency,(totals.get(item.currency)||new Prisma.Decimal(0)).add(amount));
     }catch(error:any){error.expenseLine=index+1;error.message=`EXPENSE_LINE:${index+1}:${error.message}`;throw error;}
   }
-  const custom=await resolveApprovalRules(tx,orgId,drafter,totals,config,selection,allowIncomplete,EXPENSE_APPROVAL_SUBJECT,async currency=>{
+  const ruleResolver={employee:tx.employee,authorityEmployee:tx.authorityEmployee||tx.employee,employeeGrade:tx.employeeGrade,excludedApprovalIds:tx.excludedApprovalIds,allowIntermediateVacancySkip:drafter.orgRole!=='OPERATOR',systemSetting:tx.systemSetting};
+  const custom=await resolveApprovalRules(ruleResolver,orgId,drafter,totals,config,selection,allowIncomplete,EXPENSE_APPROVAL_SUBJECT,async currency=>{
     // Editing a USD band must not change untouched currencies or drafter groups.
     // Resolve their existing fallback (including vacancies and own authority),
     // then merge the required stages without converting unlike currencies.

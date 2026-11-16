@@ -16,6 +16,26 @@ const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {previewChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {previewLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
 
+test('expense requests by an accountant escalate and skip vacant intermediate grades while retaining administrator approval',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const config={...defaultApprovalSettings(),version:2,kind:'EXPENSE',revision:0,drafterScope:{role:'ALL',gradeId:null},rules:[{id:'expense-vacancy',name:'Expense approval',currency:'USD',min:'0',max:null,drafterRole:'ALL',drafterGradeId:null,stages:[{role:'ACCOUNTANT',gradeId:s.people.senior.gradeId,gradeMatch:'EXACT'},{role:'ADMIN',gradeId:null,gradeMatch:'ANY'}]}]};
+  await saveApprovalActionBatch(db,org,s.people.admin.id,[{menu:'EXPENSE',operation:'CREATE',settings:config}]);
+  const {resolveExpenseApproval}=require('../backend/dist/services/expenseApproval');
+  const items=[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{evidenceFile:'receipt.pdf',reference:'EXPENSE'}}];
+  await db.employee.update({where:{id:s.people.senior.id},data:{status:'SUSPENDED'}});
+  assert.deepEqual((await resolveExpenseApproval(db,org,s.people.junior.id,items,{},true,config)).ids,[s.people.lead.id,s.people.admin.id]);
+  await db.employee.update({where:{id:s.people.lead.id},data:{status:'SUSPENDED'}});
+  const preview=await resolveExpenseApproval(db,org,s.people.junior.id,items,{},true,config);
+  assert.equal(preview.complete,true);assert.deepEqual(preview.ids,[s.people.admin.id]);assert.equal(preview.policy.vacantStages[0].key,'step1');
+  const request=await db.$transaction(tx=>registerExpenseRequest(tx,org,s.people.junior.id,{partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items}));
+  assert.equal((await approvalState(db,org,request.id,s.people.admin.id)).canApprove,true);
+  const result=await approveExpense(db,org,s.people.admin.id,request.id,1,'APPROVED');assert.equal(result.approved,true);
+  await db.employee.update({where:{id:s.people.admin.id},data:{status:'SUSPENDED'}});
+  assert.equal((await resolveExpenseApproval(db,org,s.people.junior.id,items,{},true,config)).complete,false);
+ }finally{await f.close();}
+});
+
 test('ledger deletion escalates a vacant intermediate grade, then skips only a real vacancy and still requires the final administrator',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
