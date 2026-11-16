@@ -14,7 +14,7 @@ export async function ledgerCounterpartyOptions(db:any,orgId:number){
  const ids=relationships.map((r:any)=>r.manufacturerOrgId===orgId?r.brandOrgId:r.manufacturerOrgId);
  const [partners,employees,accounts]=await Promise.all([
   db.organization.findMany({where:{isActive:true,id:{not:orgId},OR:[{ownerOrgId:orgId},{id:{in:ids}}]},select:{id:true,name:true,nameKo:true,nameVi:true,code:true},orderBy:{name:'asc'}}),
-  db.employee.findMany({where:{orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),
+  db.employee.findMany({where:{orgId,OR:[{status:'ACTIVE'},{status:'TERMINATED',payrollPayableItems:{some:{orgId,voidedAt:null,document:{snapshot:{isProvisional:false}}}}}]},select:{id:true,name:true,employeeNo:true},orderBy:{name:'asc'}}),
   db.organizationBankAccount.findMany({where:{orgId,entityId:orgId,isActive:true},include:{currency:true},orderBy:{sortOrder:'asc'}}),
  ]);
  const linked=await attachPartnerClassifications(db,orgId,partners.map((p:any)=>({...p,entityId:p.id})));

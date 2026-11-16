@@ -13,6 +13,7 @@ const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {postLedgerEntryInTransaction}=require('../backend/dist/services/bankLedger');
 const {outstandingReport}=require('../backend/dist/services/accountOverview');
+const {ledgerCounterpartyOptions}=require('../backend/dist/services/ledgerCounterparty');
 function payrollServices(db,readiness={invalidPayrollAttendance:[],needsRecalculation:false}){
  return loadSourceBindings('backend/src/payroll/payroll.service.ts',['payrollTransaction','prisma','assertPayrollMonth','lockPayrollSnapshot','unlockPayrollSnapshot'],{applicationPrisma:db,AsyncLocalStorage,...require('../backend/dist/utils/editRevision'),...require('../backend/dist/utils/common'),...require('../backend/dist/utils/http'),...require('../backend/dist/services/payrollPayables'),getPayrollMonthReadiness:async()=>readiness});
 }
@@ -52,6 +53,10 @@ test('payroll AP preserves frozen net pay, numbers and audit; exclusions and app
   const payload={schemaVersion:2,accountingCodeVersion:1,clientKey:batchKey,rows:[row]};
   const pending=await requestChangeApproval(db,org,actor.id,{menu:'BANK_LEDGER',operation:'CREATE',sourceKind:'batch',sourceId:batchKey,clientKey:randomUUID(),selection:{step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},payload});
   assert.equal(await db.bankLedgerEntry.count(),0);await decideChangeApproval(db,org,s.people.junior.id,pending.id,{decision:'APPROVED'});assert.equal(await db.bankLedgerEntry.count(),0);
+  await db.employee.update({where:{id:item.employeeId},data:{status:'TERMINATED',leftAt:new Date('2026-10-20T00:00:00Z')}});
+  assert.ok((await ledgerCounterpartyOptions(db,org)).some(p=>p.kind==='EMPLOYEE'&&p.id===item.employeeId),'terminated salary recipient remains selectable for next-month payment');
+  assert.equal((await ledgerCounterpartyOptions(db,org+100000)).some(p=>p.kind==='EMPLOYEE'&&p.id===item.employeeId),false,'salary recipient stays company scoped');
+  assert.ok((await searchPayrollEvidence(db,org,{currencyCode:'USD',search:number})).documents.some(d=>d.id===item.id),'termination preserves confirmed salary evidence');
   await decideChangeApproval(db,org,s.people.lead.id,pending.id,{decision:'APPROVED'});
   const cash=await db.bankLedgerEntry.findFirst();assert.equal(await db.payrollPayableAllocation.count(),1);
   assert.equal((await searchPayrollEvidence(db,org,{currencyCode:'USD',search:number})).documents.find(d=>d.id===item.id).remaining,'60.00');
@@ -65,6 +70,8 @@ test('payroll AP preserves frozen net pay, numbers and audit; exclusions and app
   await assert.rejects(db.payrollPayableItem.delete({where:{id:item.id}}),/PAYROLL_HISTORY_IMMUTABLE/);
   const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261111060000_payroll_payables');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
   assert.equal(await db.payrollPayableItem.count(),4,'migration retry preserves active and void history');
+  // Restore the fixture approver only after verifying payment to the terminated recipient.
+  await db.employee.update({where:{id:item.employeeId},data:{status:'ACTIVE',leftAt:null}});
   const cancellation=await requestChangeApproval(db,org,s.people.junior.id,{menu:'BANK_LEDGER',operation:'DELETE',sourceKind:'ledger',sourceId:cash.id,payload:{},reason:'Wrong salary payout',clientKey:randomUUID()});
   for(const step of cancellation.policy.resolvedStages){await decideChangeApproval(db,org,step.employeeId,cancellation.id,{decision:'APPROVED'});}
   assert.ok((await db.bankLedgerEntry.findUnique({where:{id:cash.id}})).voidedAt);
