@@ -9,6 +9,15 @@ export const counterpartyInput=(value:any)=>{
  return {kind:value.kind,id:value.id};
 };
 export const entryCounterparty=(row:any)=>row.counterpartyOrgId?{kind:'PARTNER',id:row.counterpartyOrgId,name:row.counterpartyName}:row.counterpartyEmployeeId?{kind:'EMPLOYEE',id:row.counterpartyEmployeeId,name:row.counterpartyName}:row.counterpartyAccountId?{kind:'ACCOUNT',id:row.counterpartyAccountId,name:row.counterpartyName}:null;
+// Keep the saved ledger snapshot intact; only enrich the list presentation.
+export async function attachLedgerCounterpartyNames(db:any,orgId:number,rows:any[]){
+ const ids=[...new Set(rows.map(row=>row.counterpartyOrgId).filter(Boolean))];
+ if(!ids.length)return rows;
+ const partners=await db.organization.findMany({where:{id:{in:ids},OR:[{ownerOrgId:orgId},{manufacturerRelationships:{some:{brandOrgId:orgId}}},{brandRelationships:{some:{manufacturerOrgId:orgId}}}]},select:{id:true,name:true}});
+ const current=await attachLinkedCompanies(db,orgId,partners.map((row:any)=>({...row,entityId:row.id})));
+ const names=new Map(current.map((row:any)=>[row.id,row.name]));
+ return rows.map(row=>({...row,currentCounterpartyName:names.get(row.counterpartyOrgId)||row.counterpartyName}));
+}
 export async function ledgerCounterpartyOptions(db:any,orgId:number){
  const relationships=await db.orgRelationship.findMany({where:{OR:[{manufacturerOrgId:orgId},{brandOrgId:orgId}]},select:{manufacturerOrgId:true,brandOrgId:true}});
  const ids=relationships.map((r:any)=>r.manufacturerOrgId===orgId?r.brandOrgId:r.manufacturerOrgId);

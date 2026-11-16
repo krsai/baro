@@ -4881,6 +4881,7 @@ runtime 조회값:
 
 - 비용 지급 대상 업종은 현재 명시 PartnerClassification을 우선 표시한다. 업체 변경 시 지급 대상 목록을 재조회하되 문서 초안·과거 감사 snapshot은 유지한다.
 - 사용자 요청의 BARO 비용 19와 지급 c690df87-bd79-4ee8-9784-f46e032c93de만 PDF HANSIS26110018의 여섯 코드로 항목 정정한다. 기본 read-only·revision 일치·전체 실행 후 rollback 검증을 갖춘 correct-mj-debit-note.js를 사용한다. 정확한 범위·제약·보존 방식은 docs/mj-debit-note-correction-2026-11-06.md를 따른다. 일반적인 지급 연결 비용 수정 차단이나 결재 권한을 완화하지 않는다.
+- 사용자 지정 BARO 비용 31(EXP-2026-000013)의 네 TRKE 항목과 지급 308960b8-1e0a-4901-972a-fa7c746e8fe1은 LHFE로 한정 정정한다. `correct-baro-landlord-codes.js`는 Railway schema/target 검사·고정 FK/버전·읽기 전용 계획 revision·전체 쓰기 롤백 검증 후 적용한다. 기존 항목 ID·금액·거래처 FK·원 지급/결재/감사는 보존하고 새 비용 버전과 원 지급을 참조하는 대체 지급·전후 유지보수 영수증을 남긴다. 정상 업무의 지급 연결 수정 차단을 완화하지 않는다. 입출금 목록의 현재 거래처 이름은 회사 범위와 실제 FK로 조회해 별도 표시하며 저장 당시 이름 snapshot은 재작성하지 않는다.
 
 # 2026-11-06 거래처 업종 레거시 조회 제거 (최신 정정)
 

@@ -5,7 +5,7 @@ import {readAccountingOpeningHistory} from './accountingOpeningHistory';
 import {readAccountingOpening,voidAccountingOpening,documentOpeningAmount,openingSum,invoiceOpeningRemaining} from './accountingOpening';
 import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {companyNameCodeSearch} from './companySearch';
-import {counterpartyInput,entryCounterparty,resolveLedgerCounterparty,ledgerCounterpartyOptions} from './ledgerCounterparty';
+import {counterpartyInput,entryCounterparty,resolveLedgerCounterparty,ledgerCounterpartyOptions,attachLedgerCounterpartyNames} from './ledgerCounterparty';
 import {requireLedgerAdjustmentAccess} from './ledgerAdjustmentAccess';
 import {reconcileLedgerBalances} from './ledgerBalance';
 import {listLedgerChanges,acknowledgeLedgerChange} from './ledgerChanges';
@@ -277,7 +277,7 @@ export async function listLedgerActivity(db:any,orgId:number,query:any){
    const same=summary.filter((a:any)=>a.currencyCode===code),sum=(field:string)=>ledgerMoney(same.reduce((s:bigint,a:any)=>s+ledgerScale4(a[field]),0n),code);
    return {currencyCode:code,totalIn:sum('totalIn'),totalOut:sum('totalOut'),currentBalance:sum('currentBalance')};
   });
-  return {accounts:summary,currencyTotals,rows:await attachLedgerActorNames(tx,orgId,result.reverse()),selectedAccountId,page,hasMore:rows.length>100};
+  return {accounts:summary,currencyTotals,rows:await attachLedgerCounterpartyNames(tx,orgId,await attachLedgerActorNames(tx,orgId,result.reverse())),selectedAccountId,page,hasMore:rows.length>100};
  });
 }
 export async function searchLedgerEvidence(db:any,orgId:number,query:any){
