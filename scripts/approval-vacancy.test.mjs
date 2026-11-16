@@ -16,6 +16,36 @@ const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {previewChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {previewLedgerRegistration}=require('../backend/dist/services/ledgerRegistration');
 
+test('ledger deletion escalates a vacant intermediate grade, then skips only a real vacancy and still requires the final administrator',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id;
+  const config={...defaultApprovalSettings(),version:2,kind:'EXPENSE',revision:0,drafterScope:{role:'ALL',gradeId:null},rules:[{id:'delete',name:'Delete approval',currency:'USD',min:'0',max:null,drafterRole:'ALL',drafterGradeId:null,stages:[{role:'ACCOUNTANT',gradeId:s.people.senior.gradeId,gradeMatch:'EXACT'},{role:'ADMIN',gradeId:null,gradeMatch:'ANY'}]}]};
+  await saveApprovalActionBatch(db,org,s.people.admin.id,[{menu:'BANK_LEDGER',operation:'DELETE',settings:config}]);
+  const key=`APPROVAL_POLICY:BANK_LEDGER:DELETE:${org}`,before=await db.systemSetting.findUnique({where:{key}});
+  const entry=await postLedgerEntry(db,org,'fixture',s.account.id,{clientKey:randomUUID(),transactionDate:'2026-11-06',direction:'IN',amount:'10',purpose:'Receipt',evidenceType:'FILE',evidenceNumber:'R1',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id}});
+  const input={menu:'BANK_LEDGER',operation:'DELETE',reason:'Cancel incorrect receipt',sourceKind:'ledger',sourceId:entry.id,clientKey:randomUUID()};
+  await db.employee.update({where:{id:s.people.senior.id},data:{status:'SUSPENDED'}});
+  const higher=await previewChangeApproval(db,org,s.people.junior.id,input);
+  assert.deepEqual(higher.preview.ids,[s.people.lead.id,s.people.admin.id]);
+  await db.employee.update({where:{id:s.people.lead.id},data:{status:'SUSPENDED'}});
+  const preview=await previewChangeApproval(db,org,s.people.junior.id,input);
+  assert.equal(preview.preview.complete,true);assert.deepEqual(preview.preview.ids,[s.people.admin.id]);
+  assert.deepEqual(preview.policy.skipped,['step1']);assert.equal(preview.policy.vacantStages[0].reason,'NO_ACTIVE_AT_OR_ABOVE');
+  const request=await requestChangeApproval(db,org,s.people.junior.id,input);
+  assert.equal((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt,null);
+  await assert.rejects(decideChangeApproval(db,org,s.people.junior.id,request.id,{decision:'APPROVED'}),/CHANGE_APPROVER_REQUIRED/);
+  await db.employee.update({where:{id:s.people.admin.id},data:{status:'SUSPENDED'}});
+  assert.equal((await previewChangeApproval(db,org,s.people.junior.id,input)).preview.complete,false);
+  await assert.rejects(requestChangeApproval(db,org,s.people.junior.id,{...input,clientKey:randomUUID()}),/EXPENSE_APPROVER_REQUIRED/);
+  await db.employee.update({where:{id:s.people.admin.id},data:{status:'ACTIVE'}});
+  await decideChangeApproval(db,org,s.people.admin.id,request.id,{decision:'APPROVED'});
+  assert.ok((await db.bankLedgerEntry.findUnique({where:{id:entry.id}})).voidedAt);
+  assert.deepEqual((await db.systemSetting.findUnique({where:{key}})).value,before.value);
+  const noSelf=await flexibleApprovalStages({authorityEmployee:db.employee,employee:db.employee,employeeGrade:db.employeeGrade,allowIntermediateVacancySkip:true,excludedApprovalIds:[s.people.junior.id]},org,{id:-1,orgRole:'OPERATOR'},[{role:'ACCOUNTANT',gradeId:s.people.junior.gradeId},{role:'ADMIN',gradeMatch:'ANY'}],{},true);
+  assert.equal(noSelf.complete,false,'excluding the drafter does not create a vacancy');
+ }finally{await f.close();}
+});
+
 test('older exact-grade policies escalate a vacant accountant grade for new ledger edits without rewriting settings or existing approvals',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id;

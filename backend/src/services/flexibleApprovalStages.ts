@@ -4,14 +4,19 @@ import {createHttpError} from '../utils/http';
 // Older saved rule policies may still use exact grades without authorityVersion.
 // Check the real company roster before excluding the drafter or selected people.
 export async function hasApprovalGradeVacancy(db:any,orgId:number,ordered:any[]){
- for(const stage of ordered){
+ for(const [index,stage] of ordered.entries()){
+  const maySkip=db.allowIntermediateVacancySkip&&index<ordered.length-1&&ordered[ordered.length-1]?.role==='ADMIN';
+  if(maySkip&&stage.gradeMatch==='ANY'){
+   const people=await (db.authorityEmployee||db.employee).findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role},select:{id:true}});
+   if(!people.length)return true;
+  }
   if(!stage.gradeId||stage.gradeMatch==='ANY')continue;
   const grade=await db.employeeGrade.findFirst({where:{id:stage.gradeId,orgId,isActive:true,set:{isActive:true}}});
   if(!grade)continue;
   const people=await (db.authorityEmployee||db.employee).findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,gradeId:stage.gradeId,grade:{orgId,setId:grade.setId,isActive:true,set:{isActive:true}}},select:{id:true}});
   if(!people.length){
    const higher=await (db.authorityEmployee||db.employee).findMany({where:{orgId,status:'ACTIVE',orgRole:stage.role,grade:{orgId,setId:grade.setId,sortOrder:{gt:grade.sortOrder},isActive:true,set:{isActive:true}}},select:{id:true}});
-   if(higher.length)return true;
+   if(higher.length||maySkip)return true;
   }
  }
  return false;
@@ -35,10 +40,13 @@ export async function flexibleApprovalStages(db:any,orgId:number,drafter:any,ord
  if(final?.eligible.some((person:any)=>person.id===drafter.id))return {ids:[],stages:[],complete:true,policy:{exempt:true,exemptionReason:'FINAL_DRAFTER',finalDrafterStage:final.stage,resolvedStages:[],effectiveRegistrationStages:[],skipped:ordered.map((_,index)=>'step'+(index+1)),...(vacancy?{vacancy}:{})}};
  const finalCandidates=final?.eligible.filter((p:any)=>p.id!==drafter.id)||[];
  const reserved=finalCandidates.length===1?finalCandidates[0].id:null;
- const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],effectiveRegistrationStages:any[]=[],skipped:string[]=[];
+ const ids:number[]=[],stages:any[]=[],resolvedStages:any[]=[],effectiveRegistrationStages:any[]=[],skipped:string[]=[],vacantStages:any[]=[];
  let complete=true;
  for(const [index,row] of pools.entries()){
   const last=index===pools.length-1,key='step'+(index+1),stage=row.stage;
+  if(!last&&db.allowIntermediateVacancySkip&&final.stage.role==='ADMIN'&&(!stage.gradeId||row.grade)&&!row.eligible.length){
+   skipped.push(key);vacantStages.push({key,role:stage.role,gradeId:stage.gradeId??null,reason:'NO_ACTIVE_AT_OR_ABOVE'});continue;
+  }
   if(!last&&await canSkipApprovalStage(db,orgId,drafter,stage,false)){skipped.push(key);continue;}
   if(!last&&vacancy&&stage.role===final.stage.role&&(!row.grade||row.grade.setId===final.grade.setId&&row.grade.sortOrder>=final.eligible[0].grade.sortOrder)){skipped.push(key);continue;}
   const candidates=row.eligible.filter((p:any)=>p.id!==drafter.id&&!db.excludedApprovalIds?.includes(p.id)&&!ids.includes(p.id)&&(last||p.id!==reserved));
@@ -50,5 +58,5 @@ export async function flexibleApprovalStages(db:any,orgId:number,drafter:any,ord
   effectiveRegistrationStages.push({role:stage.role,gradeId:effectiveGrade?.id||null,gradeMatch:effectiveGrade?'MINIMUM':'ANY'});
   stages.push({key,role:stage.role,gradeId:null,minimumGradeId:effectiveGrade?.id||null,gradeMatch:effectiveGrade?'MINIMUM':'ANY',requiredGrade:effectiveGrade,employeeId:chosen?.id||null,name:chosen?.name,candidates,invalid:!!employeeId&&!chosen,...(last&&vacancy?{vacancy}: {})});
  }
- return {ids,stages,complete,policy:{exempt:false,resolvedStages,effectiveRegistrationStages,skipped,...(vacancy?{vacancy}: {})}};
+ return {ids,stages,complete,policy:{exempt:false,resolvedStages,effectiveRegistrationStages,skipped,...(vacantStages.length?{vacantStages}:{}),...(vacancy?{vacancy}: {})}};
 }

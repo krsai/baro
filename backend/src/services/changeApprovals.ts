@@ -98,7 +98,7 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
  if(input.revision&&input.revision!==s.revision||input.version!=null&&input.version!==s.version)fail('CHANGE_SOURCE_CHANGED');
  const selected=await approvalActionSettings(db,orgId,s.menu,s.operation),config=selected.value||defaultApprovalSettings();if(!canDraftExpense(actor,config))fail('EXPENSE_DRAFTER_NOT_ALLOWED',403);
  const excluded=[actorId,...(s.menu==='EXPENSE'&&s.operation==='UPDATE'&&s.expense.document?[s.expense.document.createdByEmployeeId]:[])];
- const resolver={authorityEmployee:db.employee,excludedApprovalIds:excluded,systemSetting:db.systemSetting,employeeGrade:db.employeeGrade,employee:{findFirst:db.employee.findFirst.bind(db.employee),findMany:(args:any)=>db.employee.findMany({...args,where:{...args.where,id:{notIn:[...new Set([...(args.where.id?.notIn||[]),...excluded])]}}})}};
+ const resolver={allowIntermediateVacancySkip:s.menu==='BANK_LEDGER',authorityEmployee:db.employee,excludedApprovalIds:excluded,systemSetting:db.systemSetting,employeeGrade:db.employeeGrade,employee:{findFirst:db.employee.findFirst.bind(db.employee),findMany:(args:any)=>db.employee.findMany({...args,where:{...args.where,id:{notIn:[...new Set([...(args.where.id?.notIn||[]),...excluded])]}}})}};
  const preview=s.menu==='BANK_LEDGER'&&s.operation==='CREATE'?await previewLedgerRegistration(db,orgId,actor,s,config,input.selection):await resolveExpenseApproval(resolver,orgId,actorId,amounts(s,input.payload),input.selection||{},true,config);
  let highestSelfDeletion=false;
  // Legacy administrator exemption still requires verified highest-company authority.
