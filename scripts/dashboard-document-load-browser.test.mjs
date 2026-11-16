@@ -22,8 +22,8 @@ try{
    const headers={'Access-Control-Allow-Origin':'*'},partner={id:11,name:'Source vendor',isActive:true,type:'MATERIAL_SUPPLIER',serviceTypes:[]};
    const mocks={
     'expense-payees':[partner],
-    'transaction-codes':[{id:7,code:'EQPV',isActive:true,nameEn:'Equipment purchase',nameKo:'장비 구매',nameVi:'Mua thiết bị',vatEnabled:false,base:{isActive:true,entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN'}}],
-    'app-settings':{defaultVatRate:'0'},orders:[],'expense-units':[{id:1,nameEn:'Shipment',nameKo:'?',nameVi:'L?n',isActive:true}],
+    'transaction-codes':[{id:7,code:'EQPV',isActive:true,nameEn:'International Express Courier Fee',nameKo:'국제 특송 운송 서비스 요금',nameVi:'Phí dịch vụ chuyển phát nhanh quốc tế',vatEnabled:false,base:{isActive:true,entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN'}}],
+    'app-settings':{defaultVatRate:'0'},orders:[],'expense-units':[{id:1,nameEn:'Shipment',nameKo:'회',nameVi:'Lần',isActive:true}],
     'expense-request-editor/request/18':{managementNumber:'EXP-2026-000003',canonicalSource:{kind:'request',id:'18'},requestDate:'2026-11-12',partnerOrgId:11,partner,version:1,revision:'source-revision',remark:'Original source remark',approverEmployeeIds:[],items:[{itemId:'cost-18',transactionCodeId:7,currency:'VND',unitId:1,quantity:'1',unitPrice:'1399185',vatRate:'0',details:{reference:'SUPPLIER-18',evidenceFile:'Source invoice'},enabled:{order:false,style:false,process:false}}]},
     'entities/11/bank-accounts':{accounts:[{id:'bank-11',currency:{id:1,code:'VND'},bankName:'Bank',accountNumber:'001',accountHolder:'Source vendor',isActive:true}],currencies:[{id:1,code:'VND'}]},
     'expense-requests/18/approval':{version:1,exempt:true,approved:true,steps:[]},
