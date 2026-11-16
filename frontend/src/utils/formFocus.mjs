@@ -43,15 +43,17 @@ export function textInputKeyDown(event){
 // A later key/click cancels this move; an asynchronous rerender never wins over the user.
 export function advanceAfterSelection(origin,{popup,afterGroup=false,afterContainer}={}){
  if(!origin)return;
+ const anchor=afterContainer||origin.closest('[data-focus-next-selector]'),scope=navigationScope(origin);
  const token={},manager=installed,version=installed?.interaction;
  pending.set(origin,token);let frames=0;
  const run=()=>{
-  if(pending.get(origin)!==token||!origin.isConnected||manager&&installed!==manager||installed&&installed.interaction!==version)return;
+  if(pending.get(origin)!==token||!origin.isConnected&&!anchor?.isConnected||manager&&installed!==manager||installed&&installed.interaction!==version)return;
   const active=origin.ownerDocument.activeElement;
-  if(popup?.isConnected&&popup.getClientRects().length&&!popup.closest('[aria-hidden="true"]')||!canFocus(origin)){
+  if(popup?.isConnected&&popup.getClientRects().length&&!popup.closest('[aria-hidden="true"]')||origin.isConnected&&!canFocus(origin)){
    if(++frames<60)requestAnimationFrame(run);return;
   }
-  if(active!==origin&&active!==origin.ownerDocument.body&&!popup?.contains(active)&&!active?.matches('.MuiDialog-paper,.MuiPopover-paper'))return;
+  if(origin.isConnected&&active!==origin&&active!==origin.ownerDocument.body&&!popup?.contains(active)&&!active?.matches('.MuiDialog-paper,.MuiPopover-paper'))return;
+  if(anchor?.dataset.focusNextSelector){pending.delete(origin);focus([...scope.querySelectorAll(anchor.dataset.focusNextSelector)].find(canFocus));return;}
   pending.delete(origin);advanceFormFocus(origin,{afterGroup,afterContainer});
  };
  requestAnimationFrame(()=>requestAnimationFrame(run));

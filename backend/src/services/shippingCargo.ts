@@ -4,6 +4,7 @@ const fail=():never=>{throw createHttpError(400,'SHIPPING_CARGO_INVALID');};
 const number=(value:any,integer=false)=>{if(typeof value!=='string'||!(integer?/^\d{1,8}$/:/^\d{1,10}(\.\d{1,6})?$/).test(value)||!new Prisma.Decimal(value).gt(0))fail();return value;};
 export function validateOogTransition(data:any,previous:any={}){
  if(data.outOfGauge&&data.oogSchemaVersion!==1&&(!previous.outOfGauge||previous.oogSchemaVersion===1))fail();
+ if(data.outOfGauge&&!(Array.isArray(data.containers)&&data.containers.some((row:any)=>['OT','FR'].includes(row?.type)))&&!(previous.outOfGauge&&JSON.stringify(data.containers)===JSON.stringify(previous.containers)))fail();
 }
 export function shippingCargo(data:any,mode:string){
  if(data.cargoSchemaVersion==null)return {};

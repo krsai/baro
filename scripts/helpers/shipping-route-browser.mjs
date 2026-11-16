@@ -18,3 +18,5 @@ export async function enterRoutePort(page,node,code,lang,t,{retry=false,terminal
  await row.getByRole('button',{name:lang==='ko'?'선택':lang==='en'?'Select':'Chọn',exact:true}).click();
  await dialog.waitFor({state:'hidden'});assert.equal(await card.getAttribute('data-complete'),'true');
 }
+
+export async function selectContainer(page,row,t,size,type){await row.getByRole('combobox',{name:t.containerSize,exact:true}).click();await page.getByRole('option',{name:size+"'",exact:true}).click();await row.getByRole('combobox',{name:t.containerType,exact:true}).click();await page.getByRole('option',{name:type,exact:true}).click();}

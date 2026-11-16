@@ -21,10 +21,11 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
   if(action!=='next-field'&&action!=='confirm')return;
   const selected=value&&normalizeLookupText(input)===normalizeLookupText(text),match=selected?value:resolve(input);
   if(match||(hasSelection||allowEmpty)&&!input.trim()){
+   const afterContainer=event.target.closest('[data-focus-next-selector]');
    skipBlur.current=true;if(match&&!selected)choose(match,event);else if(!match&&allowEmpty&&value)onChange(null,event);
    const handled=onCommit?.(match,event);
    const advancing=!handled&&!clearAfterChoose;
-   if(advancing)advanceAfterSelection(event.target);
+   if(advancing)advanceAfterSelection(event.target,{afterContainer});
    if(event.key==='Enter'||handled||advancing){event.preventDefault();event.stopPropagation();}return;
   }
   event.preventDefault();event.stopPropagation();search();
