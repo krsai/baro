@@ -91,10 +91,10 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
   const money = value => value == null ? '—' : formatCurrency(value, { currencyCode: currency, languageCode });
   const field = { size: 'small', fullWidth: true, disabled };
   return <>
-    <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: 1, py: 1.25 } }}>
+    <TableRow data-testid="expense-line" sx={{ '& td': { verticalAlign: 'top', px: .75, py: 1.25 } }}>
       <TableCell sx={{ color: 'text.secondary' }}><Stack direction="row" alignItems="center"><IconButton {...dragHandleProps} size="small" disabled={disabled} aria-label={labels.reorder + ' ' + (index + 1)} sx={{ cursor: disabled ? 'default' : 'grab', touchAction: 'none' }}><DragIndicator fontSize="small" /></IconButton>{index + 1}</Stack></TableCell>
       <TableCell><AccountingCodeField hideLabel codes={codes.filter(row=>row.isActive!==false&&row.base?.isActive!==false)} value={line.transactionCodeId} valueObject={code} disabled={disabled} languageCode={languageCode} onSelect={chooseCode}/></TableCell>
-      <TableCell><ReadOnlyField hideLabel label={labels.description} value={expenseLineDescription(line,languageCode,codes)}/></TableCell>
+      <TableCell><ReadOnlyField hideLabel multiline label={labels.description} value={expenseLineDescription(line,languageCode,codes)}/></TableCell>
       <TableCell><TextField {...field} select label={labels.currency} value={currency} onChange={change('currency')}>{['VND','USD','KRW'].map(value=><MenuItem key={value} value={value}>{value}</MenuItem>)}</TextField></TableCell>
       <TableCell><TextField {...field} required label={labels.quantity} disabled={disabled || line.productionLocked} value={line.quantity} onChange={change('quantity')} inputProps={{ inputMode: 'decimal' }} /></TableCell>
       <TableCell><TextField {...field} select title={serviceName(units.find(row=>row.id===line.unitId)||line.unit||{},languageCode)} label={labels.unit} value={line.unitId||''} onChange={change('unitId')}><MenuItem value="">—</MenuItem>{[...units,...(line.unit&&!units.some(unit=>unit.id===line.unit.id)?[line.unit]:[])].filter(unit=>unit.isActive||unit.id===line.unitId).map(unit=><MenuItem key={unit.id} value={unit.id}>{serviceName(unit,languageCode)}</MenuItem>)}</TextField></TableCell>

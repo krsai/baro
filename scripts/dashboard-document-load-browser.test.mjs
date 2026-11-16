@@ -11,7 +11,7 @@ const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','1
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/dashboard-document-load-test.html`)).ok)break;}catch{}await new Promise(resolve=>setTimeout(resolve,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
- for(const mode of ['failure','expense'])for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+ for(const mode of (process.argv.includes('--expense-only')?['expense']:['failure','expense']))for(const lang of ['ko','en','vi'])for(const width of mode==='expense'?[3440,1920,1440,390]:[1440,390]){
   const page=await browser.newPage({viewport:{width,height:900}});let requests=0,navigations=0;
   page.on('dialog',dialog=>dialog.accept());
   page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
@@ -23,8 +23,8 @@ try{
    const mocks={
     'expense-payees':[partner],
     'transaction-codes':[{id:7,code:'EQPV',isActive:true,nameEn:'Equipment purchase',nameKo:'장비 구매',nameVi:'Mua thiết bị',vatEnabled:false,base:{isActive:true,entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN'}}],
-    'app-settings':{defaultVatRate:'0'},orders:[],'expense-units':[],
-    'expense-request-editor/request/18':{managementNumber:'EXP-2026-000003',canonicalSource:{kind:'request',id:'18'},requestDate:'2026-11-12',partnerOrgId:11,partner,version:1,revision:'source-revision',remark:'Original source remark',approverEmployeeIds:[],items:[{itemId:'cost-18',transactionCodeId:7,currency:'VND',quantity:'1',unitPrice:'130000',vatRate:'0',details:{reference:'SUPPLIER-18',evidenceFile:'Source invoice'},enabled:{order:false,style:false,process:false}}]},
+    'app-settings':{defaultVatRate:'0'},orders:[],'expense-units':[{id:1,nameEn:'Shipment',nameKo:'?',nameVi:'L?n',isActive:true}],
+    'expense-request-editor/request/18':{managementNumber:'EXP-2026-000003',canonicalSource:{kind:'request',id:'18'},requestDate:'2026-11-12',partnerOrgId:11,partner,version:1,revision:'source-revision',remark:'Original source remark',approverEmployeeIds:[],items:[{itemId:'cost-18',transactionCodeId:7,currency:'VND',unitId:1,quantity:'1',unitPrice:'1399185',vatRate:'0',details:{reference:'SUPPLIER-18',evidenceFile:'Source invoice'},enabled:{order:false,style:false,process:false}}]},
     'entities/11/bank-accounts':{accounts:[{id:'bank-11',currency:{id:1,code:'VND'},bankName:'Bank',accountNumber:'001',accountHolder:'Source vendor',isActive:true}],currencies:[{id:1,code:'VND'}]},
     'expense-requests/18/approval':{version:1,exempt:true,approved:true,steps:[]},
     'partner-classifications/options':{roles:[],industries:[]},'partner-classifications/11':{revision:0,roleIds:[],industryIds:[],industries:[]},'transaction-request-options':{styles:[],plans:[]},
@@ -35,7 +35,16 @@ try{
   await page.getByRole('button',{name:'Open alert',exact:true}).click();
   if(mode==='expense'){
    const dialog=page.getByRole('dialog'),remark=dialog.getByTestId('expense-summary').getByRole('textbox');
-   await remark.waitFor();assert.equal(await remark.inputValue(),'Original source remark');assert.equal(await remark.isEnabled(),true);
+   await remark.waitFor();
+   const table=dialog.getByTestId('expense-entry-table'),row=dialog.getByTestId('expense-line').first();await row.waitFor();
+   const fits=async element=>element.evaluate(el=>{const style=getComputedStyle(el),canvas=document.createElement('canvas'),context=canvas.getContext('2d');context.font=style.font;return context.measureText(el.textContent.trim()).width<=el.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)+1;});
+   const cells=row.locator('td'),currency=cells.nth(3).getByRole('combobox');assert.equal(await currency.innerText(),'VND');assert.ok(await fits(currency),'full currency code fits');
+   for(const index of [11,12])assert.ok(await fits(cells.nth(index).getByRole('button')),'full payment/evidence button text fits '+lang+' '+width+' column '+index+' '+await cells.nth(index).getByRole('button').evaluate(el=>JSON.stringify({text:el.textContent,width:el.clientWidth,padding:getComputedStyle(el).padding,font:getComputedStyle(el).font})));
+   for(const index of [8,9,10])assert.ok(await cells.nth(index).evaluate(el=>el.scrollWidth<=el.clientWidth+1),'full monetary amount fits');
+   const description=cells.nth(2).locator('textarea').first();assert.ok(await description.evaluate(el=>el.scrollHeight<=el.clientHeight+1),'long description wraps without hidden lines');
+   const scroll=table.locator('..');if(width>=1920)assert.equal(await scroll.evaluate(el=>el.scrollWidth>el.clientWidth+1),false,'desktop document uses available width');
+   assert.equal(await cells.last().evaluate(el=>getComputedStyle(el).position),'sticky');assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
+   assert.equal(await remark.inputValue(),'Original source remark');assert.equal(await remark.isEnabled(),true);
    await remark.fill('Keep edited source');await page.evaluate(()=>window.setSummaryLoading(true));await page.waitForTimeout(100);assert.equal(await remark.inputValue(),'Keep edited source');
    await page.evaluate(()=>{window.setSummaryLoading(false);window.setSummaryError(true);});await page.waitForTimeout(100);assert.equal(await remark.inputValue(),'Keep edited source');assert.equal(requests,1);await page.evaluate(()=>window.setSummaryError(false));
    assert.equal(await dialog.getByTestId('dashboard-document-load-error').count(),0);assert.equal(requests,1);assert.equal(navigations,1);
