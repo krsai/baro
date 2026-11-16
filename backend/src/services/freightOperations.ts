@@ -25,7 +25,7 @@ export async function freightActor(db:any,orgId:number,actorId:number){
 }
 // Keep party lookup independent of Prisma relation aliases used by other modules.
 export async function scopedParty(db:any,orgId:number,id:number){
- const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p.representative,p.phone,p.email FROM "Organization" p WHERE p.id=$1 AND p.id<>$2 AND p."isActive" AND (p."ownerOrgId"=$2 OR p."dataOwnerOrgId"=$2 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$2 AND r."brandOrgId"=p.id))`,id,orgId);
+ const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p.representative,p.phone,p.email,p."createdAt",p."ownerOrgId",p."dataOwnerOrgId" FROM "Organization" p WHERE p.id=$1 AND p.id<>$2 AND p."isActive" AND (p."ownerOrgId"=$2 OR p."dataOwnerOrgId"=$2 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$2 AND r."brandOrgId"=p.id))`,id,orgId);
  if(!rows.length)fail('FREIGHT_PARTY_SCOPE',403);return (await freightParties(db,orgId,rows))[0];
 }
 async function freightParties(db:any,orgId:number,rows:any[]){
@@ -35,7 +35,7 @@ async function freightParties(db:any,orgId:number,rows:any[]){
 }
 export async function freightOptions(db:any,orgId:number,actorId:number){
  await freightActor(db,orgId,actorId);
- const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p.representative,p.phone,p.email,p."ownerOrgId",p."dataOwnerOrgId" FROM "Organization" p WHERE p.id<>$1 AND p."isActive" AND (p."ownerOrgId"=$1 OR p."dataOwnerOrgId"=$1 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$1 AND r."brandOrgId"=p.id)) ORDER BY p.name,p.id`,orgId);
+ const rows=await db.$queryRawUnsafe(`SELECT p.id,p.code,p.name,p."nameKo",p."nameVi",p.address,p.country,p."businessNumber",p.representative,p.phone,p.email,p."createdAt",p."ownerOrgId",p."dataOwnerOrgId" FROM "Organization" p WHERE p.id<>$1 AND p."isActive" AND (p."ownerOrgId"=$1 OR p."dataOwnerOrgId"=$1 OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE r."manufacturerOrgId"=$1 AND r."brandOrgId"=p.id)) ORDER BY p.name,p.id`,orgId);
  return freightParties(db,orgId,rows);
 }
 async function audit(tx:any,orgId:number,entity:string,row:any,before:any,actorId:number){await tx.$executeRawUnsafe(`INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,randomUUID(),orgId,entity,row.id,row.version,actorId,before?JSON.stringify(before):null,JSON.stringify(row));}

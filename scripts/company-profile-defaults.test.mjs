@@ -7,6 +7,7 @@ const {loadPartnerEditor}=require('../backend/dist/services/partnerEditor');
 const {connectPartnerCompany,assertPartnerProfileEditable,linkedPartnerCompany}=require('../backend/dist/services/companyConnections');
 const {publicIdentityRevision}=require('../backend/dist/services/companyIdentity');
 const {publishCompanyProfileDefault}=require('../backend/dist/services/companyProfileDefaults');
+const {freightOptions,scopedParty}=require('../backend/dist/services/freightOperations');
 const {savePartnerContacts}=require('../backend/dist/services/partnerContacts');
 
 test('original registrar, private copies and explicit self-managed defaults remain separate',async()=>{
@@ -31,7 +32,7 @@ test('original registrar, private copies and explicit self-managed defaults rema
   assert.equal(originalView.contactName,'BARO original contact');assert.equal(originalView.contactPhone,'+82 111');assert.equal(originalView.canEditProfile,false);
   await assert.rejects(assertPartnerProfileEditable(db,baro.id,await db.organization.findUnique({where:{id:thes.id}})),/COMPANY_PROFILE_IS_PRIVATE/);
   dexProfile=await loadPartnerEditor(db,dex,dexActor,local.id);
-  assert.equal(dexProfile.contactName,'DEX private contact');assert.equal(dexProfile.contactPhone,'+82 111');assert.equal(dexProfile.contactDefaults.contactName,'THE SAN own contact');
+  assert.equal(dexProfile.contactName,'DEX private contact');assert.equal(dexProfile.contactPhone,'+82 111');const freightParty=(await freightOptions(db,dex,dexActor)).find(row=>row.id===local.id);assert.equal(freightParty.contactName,dexProfile.contactName);assert.equal(freightParty.address,dexProfile.address);assert.equal(freightParty.phone,dexProfile.contactPhone);assert.equal((await scopedParty(db,dex,local.id)).contactName,dexProfile.contactName);assert.equal(freightParty.contactRevision,undefined);assert.equal(dexProfile.contactDefaults.contactName,'THE SAN own contact');
   await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,dex,local.id,dexActor,{revision:1,mode:'LOCAL',baseMode:'DEFAULT',defaultRevision:initialDefaultRevision,patch:{contactName:'Stale default copy'}},dexProfile)),/PARTNER_CONTACT_CHANGED/);
   await db.$transaction(tx=>savePartnerContacts(tx,dex,local.id,dexActor,{revision:1,mode:'DEFAULT',patch:{}},dexProfile));
   dexProfile=await loadPartnerEditor(db,dex,dexActor,local.id);assert.equal(dexProfile.contactName,'THE SAN own contact');assert.equal(dexProfile.contactLocal.contactName,'DEX private contact');

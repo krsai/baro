@@ -9,7 +9,7 @@ export default function useShippingRefresh({orgId, blocked = false, onRefresh}) 
   const {active} = useRequestScopeContext();
   const refresh = useRef(onRefresh);
   refresh.current = onRefresh;
-  useWorkspaceRefreshOnEvent({orgId, topics: [WORKSPACE_DATA_TOPICS.SHIPPING], isActive: active, isBlocked: blocked, onRefresh});
+  useWorkspaceRefreshOnEvent({orgId, topics: [WORKSPACE_DATA_TOPICS.SHIPPING, WORKSPACE_DATA_TOPICS.CUSTOMERS, 'business-partners'], isActive: active, isBlocked: blocked, onRefresh});
   useEffect(() => {
     if (!active || blocked) return undefined;
     const run = () => { if (document.visibilityState !== 'hidden') refresh.current(); };
