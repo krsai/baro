@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import {Box,Button,Dialog,DialogContent,DialogTitle,List,ListItemButton,Stack,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import DeleteActionButton from './DeleteActionButton';
@@ -62,7 +63,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
     <TextField fullWidth size="small" label={t.addressSearch} autoComplete="off" value={query} disabled={blocked||!scopeCustomerId&&!resolveCustomer} onChange={e=>setQuery(e.target.value)}/>
     {!scopeCustomerId&&!resolveCustomer?<Alert severity="info">{t.chooseCustomer}</Alert>:readError?<Alert severity="error" action={<Button disabled={busy||uncertain} onClick={()=>setReload(v=>v+1)}>{t.retry}</Button>}>{t.failed}</Alert>:loading?<Typography role="status">{t.loading}</Typography>:<List disablePadding aria-label={t.savedAddresses} sx={{maxHeight:{xs:160,sm:400},overflowY:'auto'}}>
      {!filtered.length&&<Typography color="text.secondary">{t.presetEmpty}</Typography>}
-     {filtered.map(row=><ListItemButton key={row.id} selected={edit.version!=null&&row.id===edit.id} aria-pressed={edit.version!=null&&row.id===edit.id} disabled={blocked} onClick={()=>open(row)} sx={{borderRadius:1,alignItems:'flex-start'}}><Stack sx={{minWidth:0}}><Typography fontWeight={600} sx={{overflowWrap:'anywhere'}}>{row.label}</Typography><Typography variant="caption" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{row.data.address}</Typography></Stack></ListItemButton>)}
+     {filtered.map(row=><ListItemButton key={row.id} selected={edit.version!=null&&row.id===edit.id} aria-pressed={edit.version!=null&&row.id===edit.id} disabled={blocked} onClick={()=>open(row)} sx={{border:1,borderColor:'divider',borderRadius:1,mb:1,px:1.5,py:1.25,gap:1,alignItems:'center',bgcolor:'background.paper','&:last-child':{mb:0},'&:hover':{borderColor:'primary.main',bgcolor:'action.hover'},'&.Mui-selected':{borderColor:'primary.main'},'&.Mui-focusVisible':{outline:'2px solid',outlineColor:'primary.main',outlineOffset:-2}}}><Stack sx={{minWidth:0,flex:1}}><Typography fontWeight={600} sx={{overflowWrap:'anywhere'}}>{row.label}</Typography><Typography variant="caption" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{row.data.address}</Typography></Stack><ChevronRightIcon aria-hidden="true" sx={{flexShrink:0,color:'primary.main'}}/></ListItemButton>)}
     </List>}
    </Stack>
    <Stack spacing={2} data-address-detail sx={{minWidth:0}}>
