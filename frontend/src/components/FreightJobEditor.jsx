@@ -1,4 +1,3 @@
-import {todayDateKey} from '../utils/dateKey.mjs';
 import SearchIcon from '@mui/icons-material/Search';
 import {sameShippingParty,shippingPartyConflictText} from '../utils/shippingParties.mjs';
 import TransportModeSwitch from './TransportModeSwitch';
@@ -30,7 +29,7 @@ export function FreightJobDetails({job}){
 }
 export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,name,orgId,customerMode=false,saveError}){
  const {languageCode}=useLanguage(),e=freightJobEditorText[languageCode]||freightJobEditorText.en,r=routeScopeText[languageCode]||routeScopeText.en,x=shippingEditorText[languageCode]||shippingEditorText.en,dialogs=usePageDialogs();
- const [baseline]=useState(()=>({...initial,data:{...(!initial.id?{plannedDate:todayDateKey('Asia/Ho_Chi_Minh'),shipmentType:initial.mode==='SEA'?'FCL':initial.mode,workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},notifySameAsConsignee:true,cargoSchemaVersion:1,outOfGauge:false}:{}),...initial.data,...(initial.service==='EXPRESS'?{transportService:'EXPRESS',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}:{}),customerRole:initial.service==='EXPRESS'||initial.data.generalCustomer?null:initial.data.customerRole||(initial.customerId===initial.data.shipperId?'shipper':initial.customerId===initial.data.consigneeId?'consignee':initial.customerId===initial.data.notifyId?'notify':initial.id?null:'shipper')}}));
+ const [baseline]=useState(()=>({...initial,data:{...(!initial.id?{plannedDate:'',shipmentType:initial.mode==='SEA'?'FCL':initial.mode,workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'},notifySameAsConsignee:true,cargoSchemaVersion:1,outOfGauge:false}:{}),...initial.data,...(initial.service==='EXPRESS'?{transportService:'EXPRESS',workScope:{start:'ORIGIN_DOOR',end:'DESTINATION_DOOR'}}:{}),customerRole:initial.service==='EXPRESS'||initial.data.generalCustomer?null:initial.data.customerRole||(initial.customerId===initial.data.shipperId?'shipper':initial.customerId===initial.data.consigneeId?'consignee':initial.customerId===initial.data.notifyId?'notify':initial.id?null:'shipper')}}));
  const [value,commit]=useState(baseline),[failed,setFailed]=useState(''),[partyRole,setPartyRole]=useState(null),[preset,setPreset]=useState(null),[uncertain,setUncertain]=useState(false),[locationNode,setLocationNode]=useState(null);
  const pendingSave=useRef(null),locked=busy||uncertain,portText=systemShippingPortText[languageCode]||systemShippingPortText.en;
  const express=value.service==='EXPRESS';
@@ -40,7 +39,7 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
  const data=(key,val)=>setValue(v=>({...v,data:{...v.data,[key]:val}}));
  const cargoData=patch=>setValue(v=>({...v,data:{...v.data,shipmentType:v.data.shipmentType||(v.mode==='SEA'?'FCL':v.mode),...patch,cargoSchemaVersion:1}}));
  const close=async()=>{if(partyRole||preset||locationNode)return;if(!locked&&(!dirty||await dialogs.confirm(x.discard)))onClose();};
- const field=(key,type='text',cargo=false)=><TextField key={key} fullWidth size="small" label={e[key]||t[key]} type={type} disabled={locked} value={value.data[key]??''} onChange={ev=>cargo?cargoData({[key]:ev.target.value}):data(key,ev.target.value)} slotProps={{inputLabel:{shrink:type==='date'||undefined},htmlInput:{maxLength:key==='cargo'?2000:['origin','destination'].includes(key)?160:key==='dangerousGoodsDetails'?500:1000,...(type==='number'?{min:0,step:'any'}:{})}}}/>;
+ const field=(key,type='text',cargo=false)=><TextField key={key} fullWidth size="small" label={e[key]||t[key]} type={type} disabled={locked} onFocus={type==='date'?ev=>{try{ev.target.showPicker?.();}catch{/* Native calendar can still be opened with its button. */}}:undefined} value={value.data[key]??''} onChange={ev=>cargo?cargoData({[key]:ev.target.value}):data(key,ev.target.value)} slotProps={{inputLabel:{shrink:type==='date'||undefined},htmlInput:{maxLength:key==='cargo'?2000:['origin','destination'].includes(key)?160:key==='dangerousGoodsDetails'?500:1000,...(type==='number'?{min:0,step:'any'}:{})}}}/>;
  const allParties=options.customers||[],customer=allParties.find(row=>row.id===value.customerId)||value.data.customer||null;
  const counterparties=allParties.filter(row=>row.id!==orgId&&row.id!==options.self?.id&&!row.isShippingGeneralCustomer);
  const savedGeneral=allParties.find(row=>row.isShippingGeneralCustomer);
