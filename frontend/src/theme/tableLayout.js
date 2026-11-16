@@ -21,7 +21,7 @@ export const responsiveTableStyles={
  },
  [`& > tbody > tr > td${actions}`]:{position:'sticky',right:0,zIndex:2,backgroundColor:ui.color.surface,whiteSpace:'nowrap'},
  [`& > tbody > tr.MuiTableRow-hover:hover > td${actions}`]:{backgroundColor:ui.color.hover},
- [`${hasActions} > thead > tr > th:last-child`]:{position:'sticky',right:0,zIndex:3,backgroundColor:ui.color.header},
+ [`${hasActions} > thead > tr:first-of-type > th:last-child`]:{position:'sticky',right:0,zIndex:3,backgroundColor:ui.color.header},
  '&.MuiTable-stickyHeader > thead > tr > th':{zIndex:3},
- [`${hasActions}.MuiTable-stickyHeader > thead > tr > th:last-child`]:{zIndex:4},
+ [`${hasActions}.MuiTable-stickyHeader > thead > tr:first-of-type > th:last-child`]:{zIndex:4},
 };

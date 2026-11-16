@@ -2,6 +2,7 @@ import React, {useLayoutEffect, useRef, useState} from 'react';
 import {IconButton, TableRow, TableContainer} from '@mui/material';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import {useDraggable, useDroppable} from '@dnd-kit/core';
+import {ui} from '../theme/ui';
 
 export function OrderColorDragHandle({id, data, disabled, label}) {
   const drag=useDraggable({id,data,disabled});
@@ -27,6 +28,6 @@ export function OrderItemsTableContainer({doubleHeader, sx, children}) {
     return ()=>{observer.disconnect();window.removeEventListener('resize',measure);};
   },[]);
   return <TableContainer ref={ref} data-order-items-scroll sx={{...sx,maxHeight:height,overflowY:'auto',
-    '& thead th':{position:'sticky',top:0,zIndex:3,bgcolor:'background.paper'},
+    '& thead th':{position:'sticky',top:0,zIndex:3,bgcolor:ui.color.header},
     ...(doubleHeader?{'& thead tr:first-of-type':{height:40},'& thead tr:nth-of-type(2) th':{top:40}}:{})}}>{children}</TableContainer>;
 }

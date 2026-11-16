@@ -42,6 +42,10 @@ try{
  assert.equal(await rows.count(),15,'One horizontal row per color, genders remain together');
  assert.equal(await rows.first().locator('input').first().inputValue(),'Zulu','Stored style order replaces alphabetical sorting');
  const header=scroll.locator('thead'),before=await header.boundingBox(),fields=await page.locator('input[name="orderNumber"]').boundingBox();
+ const headerStyles=await header.locator('th').evaluateAll(cells=>cells.map(cell=>getComputedStyle(cell).backgroundColor));
+ assert.equal(new Set(headerStyles).size,1,'all matrix header cells use the same background');
+ assert.equal(await header.locator('tr').nth(1).locator('th').last().evaluate(cell=>getComputedStyle(cell).right),'auto','last size header is not pinned as an action');
+ assert.equal(await header.locator('tr').first().locator('th').last().evaluate(cell=>getComputedStyle(cell).right),'0px','delete header remains pinned');
  await scroll.evaluate(node=>node.scrollTop=300);
  assert.ok(Math.abs((await header.locator('tr').first().locator('th').first().boundingBox()).y-before.y)<2);
  assert.equal((await page.locator('input[name="orderNumber"]').boundingBox()).y,fields.y);
