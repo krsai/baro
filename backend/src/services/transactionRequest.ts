@@ -1,3 +1,4 @@
+import {prepareCodeItemAttributes} from './codeItemAttributes';
 import {expensePayeeIds,requireEmployeePayee,expensePartnerScope} from './expensePayee';
 import { normalizeExpenseProcessIds, storedExpenseProcessIds, validateExpenseProcessLinks } from './expenseProcessLinks';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
@@ -73,6 +74,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
       const oldLinks=previous.referenceLinks||[];
       if(keys(metadata.orderIds,metadata.styles)!==keys(oldLinks.filter((row:any)=>!row.styleId).map((row:any)=>row.workOrderId),oldLinks.filter((row:any)=>row.styleId)))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     }
+    for(const field of ['itemCustomerId','itemTypeId'])if(body[field]!==undefined&&(body[field]||null)!==(previous[field]??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
     if ((previous.payeeEmployeeId??null)!==(payeeIds.payeeEmployeeId??null)||JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
@@ -84,6 +86,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
+  const itemAttributes=await prepareCodeItemAttributes(tx,orgId,body,code,edit?.cost);
 
   if(useSystemMaster)description=(edit?.cost?.transactionCodeId===transactionCodeId?edit.cost.description:null) || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
@@ -157,7 +160,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
   } else if (assignmentPlanId) return invalid('UNEXPECTED_ASSIGNMENT_PLAN');
   // Production is recorded only in the vendor table, never employee work or AT.
-  const data = { linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
+  const data = { ...itemAttributes,linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
     ...(edit?.request ? {expenseRequestId:edit.request.id,expenseRequestLine:edit.request.line} : {}) };
   const previousIds=storedExpenseProcessIds(edit?.cost);
   const replaceLinks=JSON.stringify(previousIds)!==JSON.stringify(processIds);

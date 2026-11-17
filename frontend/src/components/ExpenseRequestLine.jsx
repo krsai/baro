@@ -1,3 +1,4 @@
+import CodeItemAttributeFields from './CodeItemAttributeFields';
 import {accountingCompactText} from '../constants/accountingCompact';
 import {expensePaymentText} from '../constants/expensePaymentSchedule';
 import {Dialog,DialogTitle,DialogContent,DialogActions} from '@mui/material';
@@ -22,7 +23,7 @@ import { expenseLineDescription } from '../utils/expenseCodePresentation.mjs';
 
 export default function ExpenseRequestLine({ line, index, codes, orders, units = [], settings, orgId, labels, languageCode, disabled, dragHandleProps, onChange, onRemove, onAdd, onStatus, onAddProcess, canAddProcess, validationAttempt=0,paidCorrectionOnly=false }) {
   const currency = line.currency;const compact=accountingCompactText[languageCode]||accountingCompactText.en,payment=expensePaymentText[languageCode]||expensePaymentText.en;const [detailsOpen,setDetailsOpen]=useState(false),[paymentOpen,setPaymentOpen]=useState(false);
-  const [referencesBusy,setReferencesBusy]=useState(false);
+  const [referencesBusy,setReferencesBusy]=useState(false),[attributesBusy,setAttributesBusy]=useState(false);
   const [added,setAdded]=useState([]),[addAnchor,setAddAnchor]=useState(null);
   const addLabel=languageCode==='ko'?'\uD56D\uBAA9 \uCD94\uAC00':languageCode==='vi'?'Th\u00EAm tr\u01B0\u1EDDng':'Add fields';
   const [options, setOptions] = useState({ orderId: null, styles: [], plans: [] });
@@ -75,7 +76,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
   const refsValid = (!line.workOrderId || availableOrders.some(row => row.dbId === line.workOrderId)) &&
     (!line.styleId || Boolean(selectedStyle)) && (!line.styleProcessId || selectedStyle?.styleProcesses?.some(row => row.id === line.styleProcessId)) && selectedProcessIds.every(id => selectedStyle?.styleProcesses?.some(row => row.id === id)) &&
     (!isProcess || plans.some(plan => plan.id === line.assignmentPlanId));
-  const valid = validExpenseLine(line, code, currency) && (!line.productionLinked || currency === 'VND' && Number.isInteger(Number(line.quantity)) && Number(line.quantity) <= 2147483647) && refsValid && !optionsLoading && !optionsError && !referencesBusy;
+  const valid = validExpenseLine(line, code, currency) && (!line.productionLinked || currency === 'VND' && Number.isInteger(Number(line.quantity)) && Number(line.quantity) <= 2147483647) && refsValid && !optionsLoading && !optionsError && !referencesBusy && !attributesBusy;
   useEffect(() => { onStatus(line.key, Boolean(valid)); }, [line.key, valid, onStatus]);
   const change = key => event => onChange(line.key, { [key]: event.target.value });
   const chooseCode = selected => {
@@ -86,7 +87,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
       return;
     }
     onChange(line.key, { transactionCodeId: selected?.id || '', vatRate: selected?.vatEnabled ? String(settings.defaultVatRate) : '0',
-      workOrderId: '', styleId: '', linkedOrderIds:[],linkedStyles:[], styleProcessId: '', styleProcessIds: [], assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
+      workOrderId: '', styleId: '', linkedOrderIds:[],linkedStyles:[], styleProcessId: '', styleProcessIds: [], assignmentPlanId: '', itemCustomerId:null,itemTypeId:null,itemAttributeSnapshot:null,details: {}, enabled: { order: false, style: false, process: false } });
   };
   const amount = expenseLineAmounts(line, currency);
   const money = value => value == null ? '—' : formatCurrency(value, { currencyCode: currency, languageCode });
@@ -120,6 +121,7 @@ export default function ExpenseRequestLine({ line, index, codes, orders, units =
           {isProcess&&visible('style')&&<ExpenseLookupField label={labels.style} required={mode('style')==='REQUIRED'} languageCode={languageCode} disabled={disabled||line.productionLinked||!line.workOrderId||optionsLoading} options={options.styles} value={options.styles.find(row=>row.id===line.styleId)||null} getOptionLabel={row=>row.name} columns={[{key:'code',label:'',value:row=>row.code},{key:'name',label:labels.style,value:row=>row.name}]} onChange={row=>onChange(line.key,{styleId:row?.id||'',styleProcessId:'',styleProcessIds:[],assignmentPlanId:''})}/>}
           {visible('process')&&<ExpenseLookupField label={labels.process} required={mode('process')==='REQUIRED'} languageCode={languageCode} disabled={disabled||line.productionLinked||!selectedStyle||optionsLoading} multiple={multipleProcesses} options={selectedStyle?.styleProcesses||[]} value={multipleProcesses?(selectedStyle?.styleProcesses||[]).filter(row=>selectedProcessIds.includes(row.id)):(selectedStyle?.styleProcesses||[]).find(row=>row.id===line.styleProcessId)||null} getOptionLabel={row=>row.processName} getCode={row=>row.processCode} columns={[{key:'code',label:'',value:row=>row.processCode},{key:'name',label:labels.process,value:row=>row.processName}]} onChange={row=>{const value=multipleProcesses?row.map(item=>item.id):row?.id||'';onChange(line.key,multipleProcesses?{styleProcessIds:value,styleProcessId:code.linkTarget==='PROCESS'?(value[0]||''):'',assignmentPlanId:''}:{styleProcessId:value,styleProcessIds:[],assignmentPlanId:''});}}/>}
           {isProcess&&plans.length>1&&<ExpenseLookupField label={labels.assignment} required languageCode={languageCode} disabled={disabled} options={plans} value={plans.find(row=>row.id===line.assignmentPlanId)||null} getOptionLabel={row=>row.factoryName+' #'+row.id} columns={[{key:'name',label:labels.assignment,value:row=>row.factoryName+' #'+row.id}]} onChange={row=>onChange(line.key,{assignmentPlanId:row?.id||''})}/>}
+          <CodeItemAttributeFields line={line} code={code} orgId={orgId} languageCode={languageCode} disabled={disabled||paidCorrectionOnly} onChange={onChange} onBusyChange={setAttributesBusy} validationAttempt={validationAttempt}/>
           {detailKeys.map(key => <TextField {...field} key={key} disabled={disabled||paidCorrectionOnly&&key!=='reference'} required={key==='reference'||code?.base?.requiredFields?.includes(key)} error={validationAttempt>0&&((key==='reference'||code?.base?.requiredFields?.includes(key))&&!line.details[key]?.trim()||['length','width','height'].includes(key)&&Boolean(line.details[key])&&(!/^\d{1,12}(\.\d{1,4})?$/.test(line.details[key])||Number(line.details[key])<=0))} inputProps={['length','width','height'].includes(key)?{inputMode:'decimal',pattern:'[0-9]{1,12}([.][0-9]{1,4})?'}:undefined} type={key === 'transportDate' ? 'date' : 'text'} label={key==='reference'&&!isProcess?evidence.supplierReference:common[key]} value={line.details[key] || ''} slotProps={key === 'transportDate' ? { inputLabel: { shrink: true } } : {}} onChange={event => onChange(line.key, { details: { ...line.details, [key]: event.target.value } })} />)}
           {!isProcess&&<TextField {...field} required label={evidence.reference} value={line.details.evidenceFile||''} error={validationAttempt>0&&!line.details.evidenceFile?.trim()} inputProps={{maxLength:500}} onChange={event=>onChange(line.key,{details:{...line.details,evidenceFile:event.target.value}})}/>}
         </Box>

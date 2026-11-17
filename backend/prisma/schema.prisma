@@ -482,6 +482,8 @@ model PartnerContact {
 }
 
 model Organization {
+  codeItemTypes CodeItemType[] @relation("ItemTypeOwner")
+  itemCustomerCosts PartnerTransactionCost[] @relation("ItemCustomer")
  companyDefault CompanyProfileDefault? @relation("CompanyDefaultEntity")
  registeredCompanyDefaults CompanyProfileDefault[] @relation("CompanyDefaultRegistrar")
  ownedPartnerContacts PartnerContact[] @relation("PartnerContactOwner")
@@ -1130,6 +1132,7 @@ model Warehouse {
 
 
 model Employee {
+  createdCodeItemTypes CodeItemType[]
  companyDefaultEdits CompanyProfileDefault[] @relation("CompanyDefaultActor")
  partnerContactEdits PartnerContact[] @relation("PartnerContactActor")
   orderInvoicePolicies OrderInvoicePolicy[] @relation("OrderInvoicePolicyActor")
@@ -2198,6 +2201,11 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  itemCustomerId Int?
+  itemTypeId Int?
+  itemAttributeSnapshot Json?
+  itemCustomer Organization? @relation("ItemCustomer",fields:[itemCustomerId],references:[id],onDelete:Restrict)
+  itemType CodeItemType? @relation(map:"Cost_item_type_scope_fkey",fields:[itemTypeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
   openingAdjustments AccountingOpeningItem[]
   paymentSchedule ExpensePaymentSchedule[]
  changeApprovalRequests ChangeApprovalRequest[] @relation("CostChangeSource")
@@ -3462,6 +3470,8 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  attributeInputs Json @default("{}")
+  itemTypes CodeItemType[]
   cashDirection String @default("BOTH")
   industryLinks AccountingCodeIndustry[]
   industryRevision Int @default(1)
@@ -3744,4 +3754,22 @@ model IndustryRetirement {
  createdAt DateTime @default(now())
  industry SettingServiceDefault @relation(fields:[systemIndustryId],references:[id],onDelete:Restrict)
  actor SystemUser @relation(fields:[actorId],references:[id],onDelete:Restrict)
+}
+
+model CodeItemType {
+ id Int @id @default(autoincrement())
+ orgId Int
+ baseId Int
+ nameKey String
+ nameKo String
+ nameEn String
+ nameVi String
+ createdByEmployeeId Int
+ createdAt DateTime @default(now())
+ organization Organization @relation("ItemTypeOwner",fields:[orgId],references:[id],onDelete:Restrict)
+ base TransactionCodeBase @relation(fields:[baseId],references:[id],onDelete:Restrict)
+ actor Employee @relation(fields:[createdByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ costs PartnerTransactionCost[]
+ @@unique([id,orgId])
+ @@unique([orgId,baseId,nameKey])
 }

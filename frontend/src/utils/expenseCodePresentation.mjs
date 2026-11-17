@@ -5,7 +5,10 @@ export function expenseLineDescription(line, language = 'ko', codes = []) {
   if (!line?.transactionCodeId) return line?.description || '';
   const code = codes.find(row => row.id === line?.transactionCodeId)
     || (line?.transactionCode?.id === line?.transactionCodeId ? line.transactionCode : null);
-  return code ? expenseCodeDescription(code,language) : line?.description || '';
+  const attributes=line.itemAttributeSnapshot;
+  const customer=attributes?.customer?.[language==='ko'?'nameKo':language==='vi'?'nameVi':'name']||attributes?.customer?.name;
+  const type=attributes?.type?.[language==='ko'?'nameKo':language==='vi'?'nameVi':'nameEn']||attributes?.type?.nameEn;
+  return [code ? expenseCodeDescription(code,language) : line?.description || '',customer,type].filter(Boolean).join(' · ');
 }
 
 export function expenseRequestSummary(document, language = 'ko', codes = []) {

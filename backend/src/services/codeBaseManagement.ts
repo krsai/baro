@@ -50,6 +50,7 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   }
   if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
   Object.assign(data,accountingInputs(data));
+  data.attributeInputs=accountingInputs({...data,attributeInputs:body.attributeInputs??previous?.attributeInputs??{}}).attributeInputs??{};
   const renaming = previous && previous.code !== data.code;
   if (renaming) await assertCodeBaseRenameAvailable(tx, id!, data.code);
   const base = id ? await tx.transactionCodeBase.update({ where: { id }, data }) : await tx.transactionCodeBase.create({ data });
@@ -151,7 +152,8 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
   const rows = await db.$queryRawUnsafe(`SELECT DISTINCT code."baseId" AS id
     FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id
     WHERE code."baseId"=ANY($1::int[])`+ledgerUsage,ids) as { id: number }[];
-  return new Set(rows.map(row=>row.id));
+  const types=db.codeItemType?await db.codeItemType.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
+  return new Set([...rows.map(row=>row.id),...types.map((type:any)=>type.baseId)]);
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {

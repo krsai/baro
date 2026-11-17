@@ -10,7 +10,7 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
   const recordsProduction=production ?? (process && code.base?.entryMode==='PROCESS');
   return {...code,linkReferenceVersion:2,linkTarget:target,linkPolicyAuditId:auditId,base:{...code.base,
     entryMode:recordsProduction?'PROCESS':'GENERAL',orderInput:target!=='NONE'?'REQUIRED':'OPTIONAL',
-    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings||{})}};
+    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...inputSettings}:{})}};
 }
 
 export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string): Promise<any> {

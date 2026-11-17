@@ -1,13 +1,17 @@
 import { parseDecimalUnits, formatDecimalUnits } from './invoiceBilling.mjs';
 
 export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCodeId: '',
-  paymentSchedule:[],unitId:'',linkedOrderIds:null,linkedStyles:null,currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [],
+  itemCustomerId:null,itemTypeId:null,itemAttributeSnapshot:null,paymentSchedule:[],unitId:'',linkedOrderIds:null,linkedStyles:null,currency: 'VND', description: '', quantity: '', unitPrice: '', vatRate: '0', workOrderId: '', styleId: '', styleProcessId: '', styleProcessIds: [],
   assignmentPlanId: '', details: {}, enabled: { order: false, style: false, process: false } });
 export const expenseCodeForLine = (line,code) => {
   if (!code) return code;
   if (line.productionLinked) return {...code,linkTarget:'PROCESS',base:{...code.base,entryMode:'PROCESS',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
   // Current configuration governs editing; keep stored references editable without restoring old requirements.
   const base={...code.base,entryMode:line.itemId?'GENERAL':code.base?.entryMode};
+  if(line.itemId&&line.transactionCode?.id===code.id){
+    base.attributeInputs={...base.attributeInputs};
+    for(const [key,field] of [['customer','itemCustomerId'],['type','itemTypeId']])if(!line[field]&&line.inputSettings?.attributeInputs?.[key]!=='REQUIRED'&&base.attributeInputs[key]==='REQUIRED')base.attributeInputs[key]='OPTIONAL';
+  }
   for(const [key,present] of Object.entries({order:line.workOrderId||line.linkedOrderIds?.length,style:line.styleId||line.linkedStyles?.length,process:line.styleProcessId||line.styleProcessIds?.length}))
     if(line.itemId&&present&&base[key+'Input']==='HIDDEN')base[key+'Input']='OPTIONAL';
   return {...code,base};
@@ -35,6 +39,7 @@ export function expenseDocumentTotals(lines, currency) {
 export function validExpenseLine(line, code, currency) {
   code = expenseCodeForLine(line,code);
   if (!code || !expenseLineAmounts(line, currency)) return false;
+  if(['customer','type'].some(key=>code.base?.attributeInputs?.[key]==='REQUIRED'&&!line[key==='customer'?'itemCustomerId':'itemTypeId']))return false;
   if(['length','width','height'].some(key=>line.details[key])&&(!line.details.length||!line.details.width))return false;
   if(['length','width','height'].some(key=>line.details[key]&&(!/^\d{1,12}(\.\d{1,4})?$/.test(line.details[key])||Number(line.details[key])<=0)))return false;
   if(!line.productionLinked&&code.base?.entryMode!=='PROCESS'&&!line.details.evidenceFile?.trim())return false;
@@ -45,7 +50,7 @@ export function validExpenseLine(line, code, currency) {
     [...new Set(['reference',...(code.base?.requiredFields || [])])].every(key => line.details[key]?.trim());
 }
 export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency, paymentSchedule:line.paymentSchedule||[],
-  unitId:line.unitId||null,linkedOrderIds:line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]),linkedStyles:line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]),quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
+  itemCustomerId:line.itemCustomerId||null,itemTypeId:line.itemTypeId||null,unitId:line.unitId||null,linkedOrderIds:line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]),linkedStyles:line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]),quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   ...(line.styleProcessIds===undefined?{}:{styleProcessIds:line.styleProcessIds}),
   assignmentPlanId: line.assignmentPlanId || null, details: line.details });

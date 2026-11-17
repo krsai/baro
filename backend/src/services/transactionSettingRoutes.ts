@@ -1,3 +1,4 @@
+import {registerCodeItemAttributeRoutes} from './codeItemAttributes';
 import { effectiveExpenseCode, registerExpenseCodeLinkPolicyRoutes } from './expenseCodeLinkPolicy';
 import { validateServiceDefinition } from './partnerTransactionCost';
 import { validateTransactionCode } from './transactionRequest';
@@ -68,6 +69,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
   registerExpenseUnitRoutes(app,db,gates);
+  registerCodeItemAttributeRoutes(app,db,gates);
   registerCodeBaseRoutes(app,db,gates);
   registerExpenseCodeLinkPolicyRoutes(app,db,gates);
   const admin = (req: any, res: any) => gates.requireOrgRole(req,res,{ allowedRoles: ['ADMIN'] });

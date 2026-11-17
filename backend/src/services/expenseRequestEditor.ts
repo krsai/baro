@@ -68,6 +68,7 @@ function editorLine(cost: any, record: any) {
   return { inputSettings:cost?.linkPolicyAudit?.inputSettings??null,linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
     transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
+    itemCustomerId:cost?.itemCustomerId??null,itemTypeId:cost?.itemTypeId??null,itemAttributeSnapshot:cost?.itemAttributeSnapshot??null,
     unitId:cost?.unitId??'',unit:cost?.unit??null,
     linkedOrderIds:cost?.referenceLinks?.length?[...new Set(cost.referenceLinks.map((row:any)=>row.workOrderId))]:(cost?.workOrderId?[cost.workOrderId]:record?.assignmentPlan?.workOrderId?[record.assignmentPlan.workOrderId]:[]),
     linkedStyles:cost?.referenceLinks?.length?cost.referenceLinks.filter((row:any)=>row.styleId).map((row:any)=>({workOrderId:row.workOrderId,styleId:row.styleId})):(cost?.styleId?[{workOrderId:cost.workOrderId,styleId:cost.styleId}]:record?[{workOrderId:record.assignmentPlan.workOrderId,styleId:record.styleId}]:[]),

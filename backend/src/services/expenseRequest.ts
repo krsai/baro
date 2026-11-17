@@ -70,6 +70,8 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
       workOrderId: item.workOrderId ?? null, styleId: item.styleId ?? null, styleProcessId: item.styleProcessId ?? null,
       ...(item.styleProcessIds===undefined?{}:{styleProcessIds:item.styleProcessIds}), assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,
       ...(item.unitId===undefined?{}:{unitId:item.unitId}),
+      ...(item.itemCustomerId===undefined?{}:{itemCustomerId:item.itemCustomerId}),
+      ...(item.itemTypeId===undefined?{}:{itemTypeId:item.itemTypeId}),
       ...(item.linkedOrderIds===undefined?{}:{linkedOrderIds:item.linkedOrderIds}),
       ...(item.linkedStyles===undefined?{}:{linkedStyles:item.linkedStyles}),
       ...payeeIds, currency, clientKey: `${body.clientKey}-${index + 1}` };
