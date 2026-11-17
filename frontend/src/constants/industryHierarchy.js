@@ -4,7 +4,7 @@ export const INDUSTRY_TREE_TEXT = {
  vi:{category:'Nhóm',industry:'Ngành nghề',unclassified:'Chưa phân nhóm',empty:'Chưa có ngành nghề trong nhóm này.',active:'Đang sử dụng',inactive:'Ngừng sử dụng',edit:'Sửa',review:'Các liên kết hiện có chưa xác định được một nhóm duy nhất. Chọn nhóm khi chỉnh sửa.'},
 };
 export const TRANSACTION_CLASSIFICATION_FLOW = {
- ko:'구분 > 세부 업종 > 회계 코드',
- en:'Category > Industry > Accounting code',
- vi:'Nhóm > Ngành nghề > Mã kế toán',
+ ko:'구분 > 세부 업종 > 취급 코드',
+ en:'Category > Industry > Business code',
+ vi:'Nhóm > Ngành nghề > Mã nghiệp vụ',
 };
