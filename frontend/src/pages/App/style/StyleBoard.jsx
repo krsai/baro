@@ -1,3 +1,4 @@
+import AppNotice from '../../../components/AppNotice';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../../components/SearchPanel';
 import StyleProductPicker from './StyleProductPicker';
@@ -212,14 +213,15 @@ const resolveAtSyncStatusTooltip = (languageCode, status, isLoading) => {
   return `${monthKey} 기준 AT가 이미 최신입니다.`;
 };
 
-const StyleBoard = () => {
+const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
   const location = useLocation();
   const { styleId } = useParams();
-  if (styleId) {
+  if (styleId && !onOpenStyle) {
     return <StyleDetail />;
   }
 
-  const { activeOrgId, activeOrgType } = useAuth();
+  const { activeOrgId, activeOrgType, accessProfile } = useAuth();
+  const isBrand = activeOrgType === 'BRAND';
   const { languageCode } = useLanguage();
   const { navigateToPath, showNotification } = useAppActions();
   const canViewProcessSummary = activeOrgType === 'MANUFACTURER';
@@ -235,18 +237,19 @@ const StyleBoard = () => {
     setOrderHistory([]);
     setHistoryError(false);
     setHistoryLoading(true);
-    requestJSON(`/styles/${encodeURIComponent(historyStyle.id)}/order-history${buildQueryString({
+    requestJSON(isBrand ? `/brand-sewing/orders${buildQueryString({orgId: activeOrgId})}` : `/styles/${encodeURIComponent(historyStyle.id)}/order-history${buildQueryString({
       orgId: activeOrgId, ownerOrgId: toOrgId(historyStyle.ownerOrgId),
     })}`, { signal: controller.signal, skipCache: true, skipGlobalLoading: true })
-      .then(data => { if (!controller.signal.aborted) setOrderHistory(Array.isArray(data) ? data : []); })
+      .then(data => { if (!controller.signal.aborted) setOrderHistory(isBrand ? data.filter(order => order.items?.some(item => item.linkVerified && item.productId === historyStyle.id)).map(order => ({...order, quantity: order.items.filter(item => item.linkVerified && item.productId === historyStyle.id).reduce((sum,item) => sum + Number(item.totalQuantity || 0), 0)})) : Array.isArray(data) ? data : []); })
       .catch(() => { if (!controller.signal.aborted) setHistoryError(true); })
       .finally(() => { if (!controller.signal.aborted) setHistoryLoading(false); });
     return () => controller.abort();
-  }, [historyStyle, activeOrgId]);
+  }, [historyStyle, activeOrgId, isBrand]);
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [styles, setStyles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [isAtSyncRunning, setAtSyncRunning] = useState(false);
   const [isAtResetRunning, setAtResetRunning] = useState(false);
   const [atSyncStatus, setAtSyncStatus] = useState(null);
@@ -266,14 +269,17 @@ const StyleBoard = () => {
     notifyOnError = true,
   } = {}) => {
     setLoading(true);
+    setLoadError(false);
     try {
-      const items = await fetchStylesFromApi({ orgId: activeOrgId, listOnly: true, forceRefresh, skipCache: true });
+      const items = isBrand
+        ? (await requestJSON('/brand-sewing/styles' + buildQueryString({orgId: activeOrgId}), {skipCache: true})).map(product => ({...product, ownerOrgId: activeOrgId, ...product.fields, styleCode: product.fields.code, customer: accessProfile?.orgName || accessProfile?.organizationName || '', canDelete: false}))
+        : await fetchStylesFromApi({ orgId: activeOrgId, listOnly: true, forceRefresh, skipCache: true });
       if (!mountedRef.current || currentOrgRef.current !== activeOrgId) return items;
       setStyles(items);
       return items;
     } catch (error) {
       if (!mountedRef.current || currentOrgRef.current !== activeOrgId || error?.status === 499) return [];
-      setStyles([]);
+      setLoadError(true);
       if (notifyOnError) {
         showNotification(
           error?.message ||
@@ -286,11 +292,11 @@ const StyleBoard = () => {
     } finally {
       if (mountedRef.current && currentOrgRef.current === activeOrgId) setLoading(false);
     }
-  }, [activeOrgId, languageCode, showNotification]);
+  }, [activeOrgId, languageCode, showNotification, isBrand, accessProfile]);
 
   useEffect(() => {
     refreshStyles();
-  }, [refreshStyles]);
+  }, [refreshStyles, refreshKey]);
 
   const refreshAtSyncStatus = useCallback(async ({ throwOnError = false, fresh = false } = {}) => {
     const sequence = ++atStatusSequence.current;
@@ -336,6 +342,7 @@ const StyleBoard = () => {
   });
 
   const handleRowDoubleClick = (style) => {
+    if (onOpenStyle) return onOpenStyle(style);
     const ownerOrgId = toOrgId(style?.ownerOrgId);
     const query = buildQueryString({ ownerOrgId });
     navigateToPath(`/style/${style.id}${query}`, {
@@ -344,6 +351,7 @@ const StyleBoard = () => {
   };
 
   const handleAddNewClick = () => {
+    if (onOpenStyle) return onOpenStyle(null);
     navigateToPath('/style/new', {
       label: getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode),
     });
@@ -650,7 +658,7 @@ const StyleBoard = () => {
               </span>
             </Tooltip>
           ) : null}
-          <Button onClick={handleAddNewClick} variant="contained" color="primary">
+          <Button onClick={handleAddNewClick} variant="contained" color="primary" disabled={isBrand && (loading || loadError)}>
             {getUiMessage('styleBoard.addStyle', '스타일 추가', languageCode)}
           </Button>
         </Box>
@@ -671,6 +679,7 @@ const StyleBoard = () => {
         />
       )}
     >
+      {loadError && <AppNotice severity="error" action={<Button onClick={()=>refreshStyles({forceRefresh:true})}>{languageCode === 'ko' ? '\uB2E4\uC2DC \uC870\uD68C' : languageCode === 'vi' ? 'T\u1EA3i l\u1EA1i' : 'Reload'}</Button>}>{getUiMessage('styleBoard.fetchError', '', languageCode)}</AppNotice>}
       <Paper variant="outlined" sx={{ width: '100%', overflow: 'hidden', borderRadius: 2 }}>
         <TableContainer>
           <Table
@@ -702,13 +711,13 @@ const StyleBoard = () => {
                 <TableCell sx={{ width: '11%' }}>
                   {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
                 </TableCell>
-                <TableCell align="center" sx={{ width: '6%' }}>
+                {!isBrand && <TableCell align="center" sx={{ width: '6%' }}>
                   {getUiMessage('styleBoard.action', '작업', languageCode)}
-                </TableCell>
+                </TableCell>}
               </TableRow>
             </TableHead>
             <TableBody>
-              {rows.length === 0 && (
+              {!loadError && rows.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={8}
@@ -804,7 +813,7 @@ const StyleBoard = () => {
                         {getUiMessage('styleBoard.orderHistory', '주문 내역', languageCode)}
                       </Button>
                     </TableCell>
-                    <TableCell align="center">
+                    {!isBrand && <TableCell align="center">
                       <Tooltip title={deleteTooltipTitle}>
                         <span
                           onClick={(event) => event.stopPropagation()}
@@ -819,7 +828,7 @@ const StyleBoard = () => {
                            />
                         </span>
                       </Tooltip>
-                    </TableCell>
+                    </TableCell>}
                   </TableRow>
                 );
               })}
