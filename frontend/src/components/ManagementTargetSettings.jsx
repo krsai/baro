@@ -1,5 +1,5 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,ListItemButton,Paper,Stack,TextField,Tooltip,Typography} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,ListItemButton,Paper,Stack,Tooltip,Typography} from '@mui/material';
 import Alert from "./AppNotice";
 import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
@@ -28,7 +28,7 @@ function TargetCard({row,disabled,onMove,label,changed,children}){
 
 export default function ManagementTargetSettings({orgId,languageCode='en',kind,onSaved,disabled=false,initialSearch='',embedded=false,open:embeddedOpen=false,onStateChange }){
  const t=managementTargetText[languageCode]||managementTargetText.en,payroll=['PAYABLE','EVIDENCE'].includes(kind),dialogs=usePageDialogs(),{showNotification}=useAppActions();
- const [open,setOpen]=useState(false),[q,setQ]=useState(embedded?initialSearch:''),[search,setSearch]=useState(embedded?initialSearch:''),[pages,setPages]=useState([0,0]),[lists,setLists]=useState([{rows:[]},{rows:[]}]),[changes,setChanges]=useState({}),[reason,setReason]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
+ const [open,setOpen]=useState(false),[q,setQ]=useState(embedded?initialSearch:''),[search,setSearch]=useState(embedded?initialSearch:''),[pages,setPages]=useState([0,0]),[lists,setLists]=useState([{rows:[]},{rows:[]}]),[changes,setChanges]=useState({}),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
  const isOpen=embedded?embeddedOpen:open;
  const request=useRef(null),locked=busy||uncertain,dirty=Object.keys(changes).length>0;
  const [dragged,setDragged]=useState(null),sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}));
@@ -40,14 +40,14 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
  },[isOpen,orgId,kind,search,pages,reload]);
  useEffect(()=>{onStateChange?.({dirty,locked});},[dirty,locked,onStateChange]);
  const Container=embedded?Box:Dialog;
- const show=()=>{setQ(initialSearch);setSearch(initialSearch);setPages([0,0]);setChanges({});setReason('');setError('');setUncertain(false);request.current=null;setOpen(true);};
+ const show=()=>{setQ(initialSearch);setSearch(initialSearch);setPages([0,0]);setChanges({});setError('');setUncertain(false);request.current=null;setOpen(true);};
  const close=async()=>{if(locked)return;if(dirty&&!await dialogs.confirm(t.discard))return;setOpen(false);};
  const move=row=>{
   if(locked)return;request.current=null;setError('');setChanges(current=>{const next={...current};if(next[row.id])delete next[row.id];else next[row.id]={...row,excluded:!row.excluded,clientKey:crypto.randomUUID()};return next;});
  };
  const save=async()=>{
   if(busy||loading||loadError||!dirty)return;
-  request.current??={rows:Object.values(changes).map(({id,revision,snapshotRevision,excluded,clientKey})=>({id,revision,snapshotRevision,excluded,clientKey})),reason};
+  request.current??={rows:Object.values(changes).map(({id,revision,snapshotRevision,excluded,clientKey})=>({id,revision,snapshotRevision,excluded,clientKey}))};
   setBusy(true);setError('');
   try{
    await requestJSON('/management-targets/'+kind+buildQueryString({orgId}),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.current)});
@@ -83,9 +83,9 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
       </TargetPanel>;
      })}
     </Box><DragOverlay zIndex={2000}>{dragged?<Paper variant="outlined" sx={{p:1.5}}><Typography fontWeight={700}>{dragged.title}</Typography><Typography variant="body2">{dragged.subtitle}</Typography></Paper>:null}</DragOverlay></DndContext>
-    {!payroll&&<TextField required label={t.reason} value={reason} onChange={e=>{setReason(e.target.value);request.current=null;}} disabled={locked} inputProps={{maxLength:1000}} fullWidth/>}
+
    </Stack></DialogContent>
-   <DialogActions><SaveButton loading={busy} disabled={!dirty||loading||loadError||(!payroll&&!reason.trim())} onClick={save}>{uncertain?t.retry:t.save}</SaveButton></DialogActions>
+   <DialogActions><SaveButton loading={busy} disabled={!dirty||loading||loadError} onClick={save}>{uncertain?t.retry:t.save}</SaveButton></DialogActions>
   </Container>
  </>;
 }

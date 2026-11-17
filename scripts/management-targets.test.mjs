@@ -17,7 +17,7 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   await db.organization.update({where:{id:org},data:{type:'MANUFACTURER'}});
   const orders=[];for(let i=0;i<2;i++)orders.push(await db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:s.vendor.id,customerId:s.vendor.id,orderId:randomUUID(),orderNumber:'TARGET-'+i,totalQuantity:10}}));
   const list=(kind,excluded)=>listManagementTargets(db,org,a.id,kind,{excluded:String(excluded)});
-  const save=(kind,rows)=>saveManagementTargets(db,org,a.id,kind,{rows,reason:'Handled outside this workflow'});
+  const save=(kind,rows)=>saveManagementTargets(db,org,a.id,kind,{rows});
   const change=(order,revision=0,excluded=true)=>({id:order.id,revision,excluded,clientKey:randomUUID()});
   assert.equal((await list('INVOICE',false)).rows.length,2);
   await assert.rejects(save('INVOICE',[change(orders[0]),change(orders[1],9)]),/TARGET_CHANGED/);
@@ -44,13 +44,27 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   await assert.rejects(saveManagementTargets(db,s.other.id,a.id,'INVOICE',{rows:input,reason:'Other company'}),/SHIPPING_ACCESS_DENIED/);
   await db.systemSetting.create({data:{key:'ROLE_ACCESS_POLICY',value:{MANUFACTURER:{ADMIN:['INVOICE']}}}});
   await assert.rejects(list('INVOICE',false),/TARGET_ACCESS_DENIED/);
-  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261113050000_independent_management_targets');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261117080000_order_target_admin');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
   assert.equal(await db.orderInvoicePolicyEvent.count(),2);
+  assert.equal((await db.orderInvoicePolicyEvent.findFirst({where:{orgId:org}})).reason,'');
+  for(const role of ['OPERATOR','ACCOUNTANT']){
+   const blocked=await db.employee.create({data:{orgId:org,name:role,orgRole:role,status:'ACTIVE',gradeId:a.gradeId}});
+   for(const kind of ['INVOICE','SHIPPING']){
+    await assert.rejects(listManagementTargets(db,org,blocked.id,kind,{excluded:'false'}),/TARGET_ACCESS_DENIED/);
+    await assert.rejects(saveManagementTargets(db,org,blocked.id,kind,{rows:[change(orders[1])]}),/TARGET_ACCESS_DENIED/);
+   }
+   await assert.rejects(db.orderInvoicePolicy.create({data:{workOrderId:orders[1].id,orgId:org,excluded:true,updatedByEmployeeId:blocked.id}}),/TARGET_ACCESS_DENIED/);
+   await assert.rejects(db.$executeRawUnsafe('INSERT INTO "OrderShippingPolicy"("workOrderId","orgId",excluded,reason,version,"updatedByEmployeeId") VALUES($1,$2,true,$3,1,$4)',orders[1].id,org,'',blocked.id),/SHIPPING_ACCESS_DENIED/);
+  }
   const buyerOwned=await db.workOrder.create({data:{orgId:s.other.id,sellerOrgId:org,buyerOrgId:s.vendor.id,orderId:randomUUID(),orderNumber:'SELLER-SCOPE',totalQuantity:10}});
   await db.systemSetting.delete({where:{key:'ROLE_ACCESS_POLICY'}});
   assert.ok((await list('INVOICE',false)).rows.some(row=>row.id===buyerOwned.id),'actual seller can manage its order without changing the source owner');
   await save('INVOICE',[change(buyerOwned)]);
   assert.equal((await db.workOrder.findUnique({where:{id:buyerOwned.id}})).orgId,s.other.id);
+  const lowAdmin=await db.employee.create({data:{orgId:org,name:'Lower grade admin',orgRole:'ADMIN',status:'ACTIVE',gradeId:s.people.junior.gradeId}});
+  for(const kind of ['INVOICE','SHIPPING'])assert.ok(await listManagementTargets(db,org,lowAdmin.id,kind,{excluded:'false'}));
+  await saveManagementTargets(db,org,lowAdmin.id,'INVOICE',{rows:[change(orders[1])]});
+  await saveManagementTargets(db,org,lowAdmin.id,'SHIPPING',{rows:[change(orders[1])]});
   const foreign=await db.workOrder.create({data:{orgId:s.other.id,sellerOrgId:s.other.id,orderId:randomUUID(),orderNumber:'FOREIGN',totalQuantity:10}});
   await assert.rejects(save('INVOICE',[change(foreign)]),/TARGET_NOT_FOUND/);
  }finally{await f.close();}

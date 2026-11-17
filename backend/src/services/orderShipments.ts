@@ -10,6 +10,14 @@ export async function shippingActor(db:any,orgId:number,actorId:number){
  const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']},organization:{type:'MANUFACTURER',isActive:true,ownerOrgId:null}}});
  if(!actor)fail('SHIPPING_ACCESS_DENIED',403);return actor;
 }
+export async function requireOrderTargetAdmin(db:any,orgId:number,actorId:number){
+ const actor=await shippingActor(db,orgId,actorId);
+ if(actor.orgRole!=='ADMIN')fail('TARGET_ACCESS_DENIED',403);
+ const policy=await db.systemSetting.findUnique({where:{key:'ROLE_ACCESS_POLICY'}});
+ const configured=policy?.value?.MANUFACTURER?.ADMIN;
+ if(Array.isArray(configured)&&!configured.includes('ORDER'))fail('TARGET_ACCESS_DENIED',403);
+ return actor;
+}
 async function order(db:any,orgId:number,id:number,lock=false){
  if(!Number.isSafeInteger(id)||id<=0)fail('SHIPPING_NOT_FOUND',404);
  if(lock)await db.$queryRawUnsafe('SELECT id FROM "WorkOrder" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',id,orgId);
@@ -44,11 +52,11 @@ export async function saveShippingPolicy(db:any,orgId:number,actorId:number,id:n
  return retryEditTransaction(db,tx=>saveShippingPolicyInTransaction(tx,orgId,actorId,id,input));
 }
 export async function saveShippingPolicyInTransaction(db:any,orgId:number,actorId:number,id:number,input:any){
- await shippingActor(db,orgId,actorId);if(typeof input?.excluded!=='boolean'||!Number.isSafeInteger(input.version))fail('SHIPPING_INVALID_INPUT');
- const clientKey=key(input.clientKey),reason=text(input.reason||'',1000);if(input.excluded&&!reason)fail('SHIPPING_REASON_REQUIRED');
+ await requireOrderTargetAdmin(db,orgId,actorId);if(typeof input?.excluded!=='boolean'||!Number.isSafeInteger(input.version))fail('SHIPPING_INVALID_INPUT');
+ const clientKey=key(input.clientKey),reason=text(input.reason||'',1000);
  const requestHash=hash({id,excluded:input.excluded,version:input.version,reason});
  const tx=db;
-  await shippingActor(tx,orgId,actorId);await order(tx,orgId,id,true);
+  await requireOrderTargetAdmin(tx,orgId,actorId);await order(tx,orgId,id,true);
   const old=(await tx.$queryRawUnsafe('SELECT * FROM "OrderShippingPolicyEvent" WHERE "orgId"=$1 AND "clientKey"=$2',orgId,clientKey))[0];if(old){if(old.requestHash!==requestHash)fail('SHIPPING_CHANGED',409);return old.snapshot;}
   const before=await policy(tx,orgId,id);if(before.version!==input.version)fail('SHIPPING_CHANGED',409);
   const snapshot={excluded:input.excluded,reason,version:before.version+1};

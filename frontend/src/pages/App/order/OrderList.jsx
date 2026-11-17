@@ -3013,7 +3013,7 @@ const OrderList = () => {
       <AppPageContainer
         title={orderPageText.listTitle}
         titleActions={(
-          <Stack direction="row" spacing={1} alignItems="center"><OrderTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} disabled={activeOrgType!=='MANUFACTURER'} />
+          <Stack direction="row" spacing={1} alignItems="center">{activeProfile?.orgRole==='ADMIN'&&<OrderTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} disabled={activeOrgType!=='MANUFACTURER'} />}
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
             {orderPageText.addOrder}
           </Button></Stack>

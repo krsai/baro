@@ -10,6 +10,7 @@ test('split order shipments preserve color/size balances, explicit exclusions, c
   const db=f.db,company=await db.organization.create({data:{name:'Factory',type:'MANUFACTURER'}}),org=company.id;
   const set=await db.employeeGradeSet.create({data:{orgId:org,code:'SHIP',name:'Shipping'}}),grade=await db.employeeGrade.create({data:{orgId:org,setId:set.id,code:'CL1',name:'Staff',nameKo:'Staff',nameEn:'Staff',nameVi:'Staff',sortOrder:1}});
   const actor=await db.employee.create({data:{orgId:org,name:'Shipping operator',gradeId:grade.id,orgRole:'OPERATOR',status:'ACTIVE'}});
+  const admin=await db.employee.create({data:{orgId:org,name:'Shipping administrator',gradeId:grade.id,orgRole:'ADMIN',status:'ACTIVE'}});
   await assert.rejects(shippingActor(db,org,undefined),/SHIPPING_ACCESS_DENIED/);await assert.rejects(shippingActor(db,org,999999),/SHIPPING_ACCESS_DENIED/);
   const buyer=await db.organization.create({data:{name:'Customer',ownerOrgId:org,type:'BRAND'}});
   await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:buyer.id}});
@@ -32,13 +33,13 @@ test('split order shipments preserve color/size balances, explicit exclusions, c
   await assert.rejects(db.workOrderItem.delete({where:{id:r.id}}),/SHIPPING_ORDER_ITEM_IN_USE/);
   await assert.rejects(db.$executeRawUnsafe('DELETE FROM "OrderShipment" WHERE id=$1',first.id),/SHIPPING_HISTORY_IMMUTABLE/);
   const exclusion={excluded:true,version:0,reason:'Historical order; no backfill',clientKey:randomUUID()};
-  assert.equal((await saveShippingPolicy(db,org,actor.id,order.id,exclusion)).version,1);await saveShippingPolicy(db,org,actor.id,order.id,exclusion);
+  assert.equal((await saveShippingPolicy(db,org,admin.id,order.id,exclusion)).version,1);await saveShippingPolicy(db,org,admin.id,order.id,exclusion);
   await assert.rejects(createOrderShipment(db,org,actor.id,order.id,request([{itemId:r.id,size:'S',quantity:1}])),/SHIPPING_EXCLUDED/);
   assert.equal((await createOrderShipment(db,org,actor.id,order.id,firstInput)).id,first.id,'retry remains safe after exclusion');
   assert.equal((await listShippingOrders(db,org,actor.id,{mode:'TRACKED'})).rows.length,0);assert.equal((await listShippingOrders(db,org,actor.id,{mode:'EXCLUDED'})).rows[0].shipped,65);
   const excluded=await shippingDetail(db,org,actor.id,order.id);assert.equal(excluded.totals.shipped,65);assert.equal(excluded.totals.remaining,125);assert.equal(excluded.events.length,1,'exclusion is not fabricated completion');
-  await assert.rejects(saveShippingPolicy(db,org,actor.id,order.id,{excluded:false,version:0,reason:'Resume',clientKey:randomUUID()}),/SHIPPING_CHANGED/);
-  await saveShippingPolicy(db,org,actor.id,order.id,{excluded:false,version:1,reason:'Resume',clientKey:randomUUID()});
+  await assert.rejects(saveShippingPolicy(db,org,admin.id,order.id,{excluded:false,version:0,reason:'Resume',clientKey:randomUUID()}),/SHIPPING_CHANGED/);
+  await saveShippingPolicy(db,org,admin.id,order.id,{excluded:false,version:1,reason:'Resume',clientKey:randomUUID()});
   await assert.rejects(db.$executeRawUnsafe('UPDATE "OrderShippingPolicy" SET excluded=true,reason=$1,version=version+1 WHERE "workOrderId"=$2','Without audit',order.id),/SHIPPING_POLICY_AUDIT_REQUIRED/);
   await cancelOrderShipment(db,org,actor.id,order.id,second.id,{version:1,reason:'Wrong record'});await cancelOrderShipment(db,org,actor.id,order.id,second.id,{version:1,reason:'Wrong record'});
   const final=await shippingDetail(db,org,actor.id,order.id);assert.equal(final.totals.shipped,30);assert.equal(final.shipments.length,2);assert.equal(final.events.length,2);assert.equal(final.cells.find(c=>c.itemId===r.id&&c.size==='S').remaining,80);

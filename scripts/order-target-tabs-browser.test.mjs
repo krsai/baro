@@ -24,24 +24,20 @@ try{
   await page.goto(`http://127.0.0.1:${port}/order-target-tabs-test.html?lang=${lang}`);
   await page.getByRole('button').first().waitFor();assert.equal(await page.getByRole('button').count(),1);await page.getByRole('button').click();
   const dialog=page.getByRole('dialog');await dialog.waitFor();assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await dialog.getByRole('tab').count(),2);
-  let panel=dialog.getByRole('tabpanel');
+  assert.equal(await dialog.locator('input[required]').count(),0);let panel=dialog.getByRole('tabpanel');
   await panel.getByRole('button',{name:/ORDER-001/}).click();
-  await panel.locator('input[required]').fill('Invoice exclusion reason');
   await dialog.getByRole('tab').nth(1).click();
   panel=dialog.getByRole('tabpanel');await panel.getByRole('button',{name:/ORDER-001/}).click();
-  await panel.locator('input[required]').fill('Shipment exclusion reason');
   await dialog.getByRole('tab').nth(0).click();panel=dialog.getByRole('tabpanel');
   assert.equal(await panel.locator('[data-target-group=true]').getByRole('button',{name:/ORDER-001/}).count(),1);
-  assert.equal(await panel.locator('input[required]').inputValue(),'Invoice exclusion reason');
   page.once('dialog',prompt=>prompt.dismiss());await page.keyboard.press('Escape');assert.equal(await dialog.isVisible(),true);
   const save=()=>dialog.getByRole('tabpanel').locator('button').last().click();
   await save();await page.waitForFunction(()=>window.writes?.length===1);
-  let writes=await page.evaluate(()=>window.writes);assert.ok(writes[0].url.startsWith('/management-targets/INVOICE?'));assert.equal(writes[0].body.rows[0].excluded,true);assert.equal(writes[0].body.reason,'Invoice exclusion reason');
+  let writes=await page.evaluate(()=>window.writes);assert.ok(writes[0].url.startsWith('/management-targets/INVOICE?'));assert.equal(writes[0].body.rows[0].excluded,true);assert.equal('reason' in writes[0].body,false);
   await dialog.getByRole('tab').nth(1).click();panel=dialog.getByRole('tabpanel');
-  assert.equal(await panel.locator('input[required]').inputValue(),'Shipment exclusion reason');
   assert.equal(await panel.locator('[data-target-group=true]').getByRole('button',{name:/ORDER-001/}).count(),1);
-  await page.evaluate(()=>{window.pauseSave=true;});await save();await page.waitForFunction(()=>typeof window.finishSave==='function');await page.waitForFunction(()=>document.querySelector('[role=tab]').disabled);assert.ok(await dialog.getByRole('tab').nth(0).isDisabled());await page.keyboard.press('Escape');assert.equal(await dialog.isVisible(),true);await page.evaluate(()=>{window.pauseSave=false;window.finishSave({});});await page.waitForFunction(()=>!document.querySelector('[role=tab]').disabled);await page.waitForFunction(()=>window.writes?.length===2);writes=await page.evaluate(()=>window.writes);assert.ok(writes[1].url.startsWith('/management-targets/SHIPPING?'));assert.equal(writes[1].body.reason,'Shipment exclusion reason');
+  await page.evaluate(()=>{window.pauseSave=true;});await save();await page.waitForFunction(()=>typeof window.finishSave==='function');await page.waitForFunction(()=>document.querySelector('[role=tab]').disabled);assert.ok(await dialog.getByRole('tab').nth(0).isDisabled());await page.keyboard.press('Escape');assert.equal(await dialog.isVisible(),true);await page.evaluate(()=>{window.pauseSave=false;window.finishSave({});});await page.waitForFunction(()=>!document.querySelector('[role=tab]').disabled);await page.waitForFunction(()=>window.writes?.length===2);writes=await page.evaluate(()=>window.writes);assert.ok(writes[1].url.startsWith('/management-targets/SHIPPING?'));assert.equal('reason' in writes[1].body,false);
   assert.ok(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'dialog has no horizontal overflow');assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS order target tabs: ko/en/vi desktop/mobile, single button/dialog, independent drafts/reasons, unsaved-close guard and scoped saves.');
+ console.log('PASS order target tabs: ko/en/vi desktop/mobile, single button/dialog, independent drafts without reasons, unsaved-close guard and scoped saves.');
 }finally{await browser?.close();server.kill();for(const path of [html,jsx])unlinkSync(path);}
