@@ -1,4 +1,4 @@
-import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
+import PayrollTargetSettings from './PayrollTargetSettings';
 import {calendarPayrollText} from '../../../constants/calendarPayroll';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
@@ -681,7 +681,7 @@ const PayrollEntry = () => {
           right={
             data ? (
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                {['PAYABLE','EVIDENCE'].map(kind=><ManagementTargetSettings key={activeOrgId+kind} orgId={activeOrgId} languageCode={languageCode} kind={kind} initialSearch={month} disabled={!data.canManagePayables || togglingLock} />)}
+                <PayrollTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} initialSearch={month} includeEmployees={false} disabled={!data.canManagePayables || togglingLock} />
                 <Tooltip title={(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? "lockedHelp" : "unlockedHelp"]}>
                   <span>
                     <Button size="small" variant="contained" color="inherit" startIcon={locked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />} disabled={togglingLock} onClick={handleLockToggle} sx={getPayrollLockButtonSx(locked)}>

@@ -15,9 +15,10 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],t=managementTargetText[lang];page.setDefaultTimeout(15000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
   const mock=(pattern,body)=>page.route(pattern,r=>r.fulfill({contentType:'application/javascript',body}));
+  await mock('**/src/context/RequestScopeContext.jsx*','export const useRequestScopeContext=()=>({scopeId:"/payroll"});');
   await mock('**/src/context/AuthContext.jsx*','export const useAuth=()=>({activeOrgId:1,activeProfile:{orgRole:"ADMIN"}});');
   await mock('**/src/context/LanguageContext.jsx*',`export const useLanguage=()=>({languageCode:'${lang}'});`);
-  await mock('**/src/context/AppContext.jsx*','const actions={showNotification:()=>{}};export const useAppActions=()=>actions;');
+  await mock('**/src/context/AppContext.jsx*','const actions={showNotification:(message,type,options)=>{window.notice=message;window.noticeAction=options?.action;},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;');
   await mock('**/src/utils/attributeApi.js*','export const fetchAttributes=async()=>({roles:[]});');
   await mock('**/src/utils/apiClient.js*',`export const buildQueryString=o=>'?' + new URLSearchParams(o);export async function requestJSON(url,options={}){
     window.requests??=[];window.requests.push({url,method:options.method||'GET',body:options.body&&JSON.parse(options.body)});
@@ -39,7 +40,7 @@ try{
     await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(from.x+from.width/2+10,from.y+from.height/2,{steps:3});await page.mouse.move(to.x+to.width/2,to.y+150,{steps:12});await page.mouse.up();
    }else await target.click();await dialog.getByRole('button',{name:'TARGET-001 '+t.included,exact:true}).waitFor();
    if(['INVOICE','SHIPPING'].includes(kind))await dialog.getByLabel(t.reason,{exact:false}).fill('Handled outside workflow');
-   await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.getByText(t.uncertain,{exact:true}).waitFor();
+   await dialog.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(text=>window.notice===text,t.uncertain);
    await page.keyboard.press('Escape');assert.equal(await dialog.isVisible(),true,'unknown result locks closing');
    await dialog.getByRole('button',{name:t.retry,exact:true}).click();await dialog.waitFor({state:'hidden'});
    const writes=await page.evaluate(kind=>window.writes.filter(r=>r.kind===kind),kind);assert.deepEqual(writes[0],writes[1],'same request is retried');assert.equal(writes[1].rows[0].excluded,true);
@@ -49,12 +50,12 @@ try{
    await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});
    assert.equal(await page.evaluate(kind=>window.targets[kind].find(r=>r.id===1).excluded,kind),false);
   }
-  await page.evaluate(()=>{window.failLoad=true;});await page.getByRole('button',{name:t.PAYABLE,exact:true}).click();const dialog=page.getByRole('dialog');await dialog.getByText(t.failed,{exact:true}).waitFor();await dialog.getByRole('button',{name:t.retry,exact:true}).click();await dialog.getByRole('button',{name:'TARGET-001 '+t.excluded,exact:true}).waitFor();await page.mouse.click(4,4);await dialog.waitFor({state:'hidden'});
+  await page.evaluate(()=>{window.failLoad=true;});await page.getByRole('button',{name:t.PAYABLE,exact:true}).click();const dialog=page.getByRole('dialog');await page.waitForFunction(text=>window.notice===text,t.failed);await page.evaluate(()=>window.noticeAction.props.onClick());await dialog.getByRole('button',{name:'TARGET-001 '+t.excluded,exact:true}).waitFor();await page.mouse.click(4,4);await dialog.waitFor({state:'hidden'});
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
   await page.goto(`http://127.0.0.1:${port}/management-target-test.html?lang=${lang}&detail=1`);await page.getByText('Test Worker',{exact:true}).waitFor();
   assert.equal(await page.getByRole('checkbox').count(),0,'the outside combined toggle is removed');
-  await page.getByRole('button',{name:t.PAYABLE,exact:true}).waitFor();await page.getByRole('button',{name:t.EVIDENCE,exact:true}).waitFor();
+  await page.getByRole('button',{name:({ko:'대상 설정',en:'Target settings',vi:'Cài đặt đối tượng'})[lang],exact:true}).click();assert.equal(await page.getByRole('tab').count(),2);await page.keyboard.press('Escape');
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('Target settings: all four categories, ko/en/vi, desktop/mobile, move/save/restore, unknown-result retry, failed-read retry and payroll detail icons passed.');
+ console.log('Target settings: all four categories, ko/en/vi, desktop/mobile, move/save/restore, unknown-result retry, failed-read retry and payroll detail unified tabs passed.');
 }finally{await browser?.close();server.kill();for(const p of [file,entry])if(existsSync(p))unlinkSync(p);}

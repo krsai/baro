@@ -1,6 +1,6 @@
 import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
-import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
+import PayrollTargetSettings from './PayrollTargetSettings';
 import {workTimeText} from '../../../constants/workTime';
 import {payrollPayableMessage} from '../../../constants/payrollPayable';
 import {formatCurrency} from '../../../utils/currencyFormat';
@@ -11,10 +11,10 @@ import SearchInput from '../../../components/SearchInput';
 import {periodMonthKeys} from "../../../utils/periodRange.mjs";
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {Box,IconButton,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,Tooltip} from '@mui/material';
+import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography,Tooltip} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import CalculateIcon from '@mui/icons-material/Calculate';
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+
 import AppPageContainer from '../../../components/AppPageContainer';
 import LastUpdaterLabel from '../../../components/LastUpdaterLabel';
 import LockToggleSwitch from '../../../components/LockToggleSwitch';
@@ -27,7 +27,7 @@ import { useLanguage } from '../../../context/LanguageContext';
 import { buildQueryString, requestJSON } from '../../../utils/apiClient';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
-import PayrollSettingsDialog from './PayrollSettingsDialog';
+
 import { resolvePayrollManagement } from '../attendance/attendanceEmployment';
 
 const TEXT = {
@@ -141,7 +141,7 @@ const PayrollBoard = () => {
   const [payableError,setPayableError]=useState('');
   const [employeeDirectory, setEmployeeDirectory] = useState([]);
   const [calculationErrors, setCalculationErrors] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+
 
   const text = useMemo(() => ({
     title: getUiMessage('menu.payroll', 'Payroll', languageCode),
@@ -428,8 +428,7 @@ const PayrollBoard = () => {
       titleActions={(
         <Stack direction="row" spacing={1} alignItems="center">
           <LastUpdaterLabel />
-          {['PAYABLE','EVIDENCE'].map(kind=><ManagementTargetSettings key={activeOrgId+kind} orgId={activeOrgId} languageCode={languageCode} kind={kind} onSaved={()=>load({silent:true})} />)}
-          <Tooltip title={languageCode === 'ko' ? '급여 설정' : languageCode === 'vi' ? 'Thiết lập lương' : 'Payroll settings'}><IconButton aria-label={languageCode === 'ko' ? '급여 설정' : languageCode === 'vi' ? 'Thiết lập lương' : 'Payroll settings'} onClick={() => setSettingsOpen(true)}><SettingsOutlinedIcon/></IconButton></Tooltip>
+          <PayrollTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} onSaved={()=>load({silent:true})} />
         </Stack>
       )}
       toolbar={<PageToolbar showLastUpdater={false} right={(
@@ -558,14 +557,7 @@ const PayrollBoard = () => {
         </DialogContent>
         <DialogActions><Button onClick={() => setCalculationErrors(null)}>확인</Button></DialogActions>
       </Dialog>
-      <PayrollSettingsDialog
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        orgId={activeOrgId}
-        languageCode={languageCode}
-        showNotification={showNotification}
-        onSaved={() => load({ silent: true })}
-      />
+
     </AppPageContainer>
   );
 };

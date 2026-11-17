@@ -1,8 +1,8 @@
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Switch, MenuItem, Paper, Stack, TextField, Typography, Tooltip } from '@mui/material';
-import VersionApplicationStart from '../../../components/VersionApplicationStart';
-import { currentVersionMonth } from '../../../utils/versionApplication.mjs';
+import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Paper, Stack, TextField, Typography, Tooltip } from '@mui/material';
+import MonthSelector from '../../../components/MonthSelector';
+import SearchInput from '../../../components/SearchInput';
 import { isFormerEmployee } from '../attendance/attendanceEmployment';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -16,9 +16,9 @@ const employeeSettingsSignature = (attendanceSelected, payrollExcluded) => JSON.
 });
 
 const TEXT = {
-  ko: { title: '출퇴근·급여 관리 대상 설정', section: '직원별 관리 구분', help: '출퇴근 관리 제외 직원은 기록 없이 급여를 만근으로 계산합니다. 출퇴근·급여 제외 직원에게는 급여를 지급하지 않습니다. 변경은 적용 월부터 유효하며 이전 월의 구분과 기록을 유지합니다. 소속과 앱 접근 권한은 별도로 관리합니다.', month: '적용 월', history: '변경 이력', normal: '일반 직원', attendance: '출퇴근 관리 제외', payroll: '출퇴근·급여 제외', showRetired: '퇴사 직원까지 보기', retired: '퇴사', factory: '공장', all: '전체 공장', search: '이름 또는 사번 검색', empty: '직원이 없습니다.', cancel: '취소', save: '저장', saved: '출퇴근·급여 관리 대상 설정을 저장했습니다.' },
-  en: { month: 'Effective month', history: 'History', title: 'Attendance and Payroll Settings', section: 'Employee Management', help: 'Attendance-exempt employees are excluded from attendance counts and entry, with payroll calculated as fully present. Payroll-exempt employees are excluded from both. Changes apply from the selected month; earlier months remain unchanged. Organization and access permissions are managed separately.', normal: 'Standard Employees', attendance: 'Attendance Exempt', payroll: 'Attendance & Payroll Exempt', showRetired: 'Include former employees', retired: 'Former', factory: 'Factory', all: 'All Factories', search: 'Search name or employee no.', empty: 'No employees.', cancel: 'Cancel', save: 'Save', saved: 'Attendance and payroll settings saved.' },
-  vi: { month: 'Tháng áp dụng', history: 'Lịch sử', title: 'Cài đặt đối tượng chấm công và tính lương', section: 'Phân loại nhân viên', help: 'Nhân viên miễn chấm công được tính đủ công dù không có bản ghi chấm công. Nhân viên miễn chấm công và tính lương không được trả lương. Thay đổi có hiệu lực từ tháng đã chọn; giữ nguyên các tháng trước. Tổ chức và quyền truy cập được quản lý riêng.', normal: 'Nhân viên thông thường', attendance: 'Miễn chấm công', payroll: 'Miễn chấm công và tính lương', showRetired: 'Hiện cả nhân viên đã nghỉ', retired: 'Đã nghỉ', factory: 'Nhà máy', all: 'Tất cả nhà máy', search: 'Tìm tên hoặc mã nhân viên', empty: 'Không có nhân viên.', cancel: 'Hủy', save: 'Lưu', saved: 'Đã lưu cài đặt chấm công và tính lương.' },
+  ko: { title: '출퇴근·급여 관리 대상 설정', section: '직원별 관리 구분', help: '출퇴근 관리 제외 직원은 기록 없이 급여를 만근으로 계산합니다. 출퇴근·급여 제외 직원에게는 급여를 지급하지 않습니다. 변경은 적용 월부터 유효하며 이전 월의 구분과 기록을 유지합니다. 소속과 앱 접근 권한은 별도로 관리합니다.', month: '적용 월', history: '변경 이력', normal: '일반 직원', attendance: '출퇴근 관리 제외', payroll: '출퇴근·급여 제외', retired: '퇴사', factory: '공장', all: '전체 공장', search: '이름 또는 사번 검색', empty: '직원이 없습니다.', cancel: '취소', save: '저장', saved: '출퇴근·급여 관리 대상 설정을 저장했습니다.' },
+  en: { month: 'Effective month', history: 'History', title: 'Attendance and Payroll Settings', section: 'Employee Management', help: 'Attendance-exempt employees are excluded from attendance counts and entry, with payroll calculated as fully present. Payroll-exempt employees are excluded from both. Changes apply from the selected month; earlier months remain unchanged. Organization and access permissions are managed separately.', normal: 'Standard Employees', attendance: 'Attendance Exempt', payroll: 'Attendance & Payroll Exempt', retired: 'Former', factory: 'Factory', all: 'All Factories', search: 'Search name or employee no.', empty: 'No employees.', cancel: 'Cancel', save: 'Save', saved: 'Attendance and payroll settings saved.' },
+  vi: { month: 'Tháng áp dụng', history: 'Lịch sử', title: 'Cài đặt đối tượng chấm công và tính lương', section: 'Phân loại nhân viên', help: 'Nhân viên miễn chấm công được tính đủ công dù không có bản ghi chấm công. Nhân viên miễn chấm công và tính lương không được trả lương. Thay đổi có hiệu lực từ tháng đã chọn; giữ nguyên các tháng trước. Tổ chức và quyền truy cập được quản lý riêng.', normal: 'Nhân viên thông thường', attendance: 'Miễn chấm công', payroll: 'Miễn chấm công và tính lương', retired: 'Đã nghỉ', factory: 'Nhà máy', all: 'Tất cả nhà máy', search: 'Tìm tên hoặc mã nhân viên', empty: 'Không có nhân viên.', cancel: 'Hủy', save: 'Lưu', saved: 'Đã lưu cài đặt chấm công và tính lương.' },
 };
 
 const EmployeeList = ({ id, title, rows, empty, retired, disabled, text }) => <Paper variant="outlined" sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
@@ -38,7 +38,7 @@ const EmployeeList = ({ id, title, rows, empty, retired, disabled, text }) => <P
 // 급여 타입별 근무 요일·시간 기준(근로 기준일)은 급여 설정 화면의 설정으로 옮겼다
 // (PayTypeScheduleSettingsDialog, 조직 전체 값이라 공장 탭과 무관). 이 다이얼로그는
 // 직원별 예외는 적용 월 이력을 사용한다.
-const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, showNotification }) => {
+const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, showNotification,embedded=false,onStateChange }) => {
   const text = TEXT[languageCode] || TEXT.en;
   const [employees, setEmployees] = useState([]);
   const [attendanceSelected, setAttendanceSelected] = useState(new Set());
@@ -48,10 +48,9 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [showRetired, setShowRetired] = useState(false);
+
   const [effectiveMonth, setEffectiveMonth] = useState('');
   const [revision, setRevision] = useState('');
-  const [defaultMonth, setDefaultMonth] = useState(currentVersionMonth);
 
   useEffect(() => {
     if (!open || !orgId) return;
@@ -64,7 +63,6 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
         if (cancelled) return;
         if (!effectiveMonth && settings.month) setEffectiveMonth(settings.month);
         setRevision(settings.revision || '');
-        setDefaultMonth(settings.defaultVersionStartMonth || currentVersionMonth());
         const rows = Array.isArray(settings?.employees) ? settings.employees : [];
         const nextSelected = new Set(rows.filter((row) => row.alwaysFullAttendance).map((row) => Number(row.id)));
         const nextPayrollExcluded = new Set(rows.filter((row) => row.payrollExcluded).map((row) => Number(row.id)));
@@ -76,9 +74,11 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
   }, [open, orgId, effectiveMonth, showNotification]);
 
   const factories = useMemo(() => Array.from(new Map(employees.filter((row) => row.factory).map((row) => [row.factory.id, row.factory])).values()), [employees]);
-  const visible = useMemo(() => employees.filter((row) => (showRetired || !isFormerEmployee(row)) && (!factoryId || String(row.factoryId) === factoryId) && (!search.trim() || `${row.name || ''} ${row.employeeNo || ''} ${row.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))), [employees, factoryId, search, showRetired]);
+  const visible = useMemo(() => employees.filter((row) => !isFormerEmployee(row) && (!factoryId || String(row.factoryId) === factoryId) && (!search.trim() || `${row.name || ''} ${row.employeeNo || ''} ${row.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()))), [employees, factoryId, search]);
   const dirty = employeeBaseline !== '' && employeeSettingsSignature(attendanceSelected, payrollExcluded) !== employeeBaseline;
   useUnsavedChanges(open && dirty);
+  useEffect(()=>{onStateChange?.({dirty,locked:saving});},[dirty,saving,onStateChange]);
+  const Container=embedded?Box:Dialog;
   const move = ({ destination, source, draggableId }) => {
     if (!destination || destination.droppableId === source.droppableId) return;
     const employeeId = Number(draggableId);
@@ -100,24 +100,22 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
       await requestJSON('/payroll/settings' + buildQueryString({ orgId }), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ effectiveMonth, revision, alwaysFullAttendanceEmployeeIds: Array.from(attendanceSelected), payrollExcludedEmployeeIds: Array.from(payrollExcluded) }) });
       setEmployeeBaseline(employeeSettingsSignature(attendanceSelected, payrollExcluded));
       emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES, WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS], orgId, source: 'payroll-settings-save' });
-      showNotification(text.saved, 'success'); onSaved?.(); onClose();
+      showNotification(text.saved, 'success'); onSaved?.(); if(!embedded)onClose();
     } catch (error) { showNotification(error?.message || 'Failed to save payroll settings.', 'error'); }
     finally { setSaving(false); }
   };
 
-  return <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="md">
-    <DialogTitle>{text.title}</DialogTitle>
-    <DialogContent dividers>
+  return <Container {...(embedded?{}:{open,onClose:saving?undefined:onClose,fullWidth:true,maxWidth:'md'})}>
+    {!embedded&&<DialogTitle>{text.title}</DialogTitle>}
+    <DialogContent>
       <Stack spacing={2}>
-        <Box><Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{text.section}</Typography></Box>
-        <VersionApplicationStart label={text.month} languageCode={languageCode} value={effectiveMonth} defaultMonth={defaultMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} showHelp />
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{factories.length > 1 && <TextField select size="small" label={text.factory} value={factoryId} onChange={(event) => setFactoryId(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">{text.all}</MenuItem>{factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{languageCode === 'ko' ? factory.nameKo || factory.name : languageCode === 'vi' ? factory.nameVi || factory.name : factory.name}</MenuItem>)}</TextField>}<TextField size="small" fullWidth placeholder={text.search} value={search} onChange={(event) => setSearch(event.target.value)} /></Stack>
-        <FormControlLabel control={<Switch checked={showRetired} onChange={(event) => setShowRetired(event.target.checked)} />} label={text.showRetired} />
+        <MonthSelector allowFuture label={text.month} value={effectiveMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} />
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{factories.length > 1 && <TextField select size="small" label={text.factory} value={factoryId} onChange={(event) => setFactoryId(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">{text.all}</MenuItem>{factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{languageCode === 'ko' ? factory.nameKo || factory.name : languageCode === 'vi' ? factory.nameVi || factory.name : factory.name}</MenuItem>)}</TextField>}<SearchInput placeholder={text.search} value={search} onChange={(event) => setSearch(event.target.value)} /></Stack>
         <DragDropContext onDragEnd={move}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><EmployeeList text={text} id="normal" title={text.normal} rows={visible.filter((row) => !attendanceSelected.has(Number(row.id)) && !payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="attendance-exception" title={text.attendance} rows={visible.filter((row) => attendanceSelected.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="payroll-exception" title={text.payroll} rows={visible.filter((row) => payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /></Stack></DragDropContext>
       </Stack>
     </DialogContent>
     <DialogActions><SaveButton onClick={save} loading={saving} disabled={loading || !dirty}>{text.save}</SaveButton></DialogActions>
-  </Dialog>;
+  </Container>;
 };
 
 export default PayrollSettingsDialog;

@@ -26,17 +26,20 @@ function TargetCard({row,disabled,onMove,label,changed,children}){
  </ListItemButton>;
 }
 
-export default function ManagementTargetSettings({orgId,languageCode='en',kind,onSaved,disabled=false,initialSearch='' }){
+export default function ManagementTargetSettings({orgId,languageCode='en',kind,onSaved,disabled=false,initialSearch='',embedded=false,open:embeddedOpen=false,onStateChange }){
  const t=managementTargetText[languageCode]||managementTargetText.en,payroll=['PAYABLE','EVIDENCE'].includes(kind),dialogs=usePageDialogs(),{showNotification}=useAppActions();
- const [open,setOpen]=useState(false),[q,setQ]=useState(''),[search,setSearch]=useState(''),[pages,setPages]=useState([0,0]),[lists,setLists]=useState([{rows:[]},{rows:[]}]),[changes,setChanges]=useState({}),[reason,setReason]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
+ const [open,setOpen]=useState(false),[q,setQ]=useState(embedded?initialSearch:''),[search,setSearch]=useState(embedded?initialSearch:''),[pages,setPages]=useState([0,0]),[lists,setLists]=useState([{rows:[]},{rows:[]}]),[changes,setChanges]=useState({}),[reason,setReason]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[loadError,setLoadError]=useState(false),[reload,setReload]=useState(0),[uncertain,setUncertain]=useState(false);
+ const isOpen=embedded?embeddedOpen:open;
  const request=useRef(null),locked=busy||uncertain,dirty=Object.keys(changes).length>0;
  const [dragged,setDragged]=useState(null),sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}));
  useEffect(()=>{if(q.trim()===search)return;const timer=setTimeout(()=>{setSearch(q.trim());setPages([0,0]);},250);return()=>clearTimeout(timer);},[q,search]);
  useEffect(()=>{
-  if(!open||!orgId)return;let live=true;setLoading(true);setLoadError(false);
+  if(!isOpen||!orgId)return;let live=true;setLoading(true);setLoadError(false);
   Promise.all([false,true].map((excluded,i)=>requestJSON('/management-targets/'+kind+buildQueryString({orgId,excluded,q:search,page:pages[i]}),{forceRefresh:true,skipCache:true}))).then(result=>{if(live)setLists(result);}).catch(()=>{if(live)setLoadError(true);}).finally(()=>{if(live)setLoading(false);});
   return()=>{live=false;};
- },[open,orgId,kind,search,pages,reload]);
+ },[isOpen,orgId,kind,search,pages,reload]);
+ useEffect(()=>{onStateChange?.({dirty,locked});},[dirty,locked,onStateChange]);
+ const Container=embedded?Box:Dialog;
  const show=()=>{setQ(initialSearch);setSearch(initialSearch);setPages([0,0]);setChanges({});setReason('');setError('');setUncertain(false);request.current=null;setOpen(true);};
  const close=async()=>{if(locked)return;if(dirty&&!await dialogs.confirm(t.discard))return;setOpen(false);};
  const move=row=>{
@@ -48,7 +51,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
   setBusy(true);setError('');
   try{
    await requestJSON('/management-targets/'+kind+buildQueryString({orgId}),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(request.current)});
-   setChanges({});setUncertain(false);request.current=null;setOpen(false);
+   setChanges({});setUncertain(false);request.current=null;if(embedded)setReload(n=>n+1);else setOpen(false);
    emitWorkspaceDataChanged({orgId,source:payroll?'bank-ledger':'orders',topics:payroll?['bank-ledger','payroll-sources']:['orders','order-shipments','invoice-drafts']});
    onSaved?.();showNotification(t.saved,'success');
   }catch(e){setError(e?.message||'');setUncertain(!e?.status||e.status>=500);}finally{setBusy(false);}
@@ -56,9 +59,9 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
  const errorCode=({SHIPPING_CHANGED:'TARGET_CHANGED',SHIPPING_REASON_REQUIRED:'TARGET_REASON_REQUIRED',SHIPPING_ACCESS_DENIED:'TARGET_ACCESS_DENIED'})[error]||error;
  const errorMessage=t[errorCode]||(payrollManagementText[languageCode]||payrollManagementText.en)[errorCode]||t.saveFailed;
  return <>
-  <Tooltip title={t[kind]}><span><IconButton aria-label={t[kind]} disabled={disabled||!orgId} onClick={show}><SettingsOutlinedIcon/></IconButton></span></Tooltip>
-  <Dialog open={open} onClose={close} fullWidth maxWidth="md" aria-labelledby={'target-settings-'+kind}>
-   <DialogTitle id={'target-settings-'+kind}>{t[kind]}</DialogTitle>
+  {!embedded&&<Tooltip title={t[kind]}><span><IconButton aria-label={t[kind]} disabled={disabled||!orgId} onClick={show}><SettingsOutlinedIcon/></IconButton></span></Tooltip>}
+  <Container {...(embedded?{}:{open,onClose:close,fullWidth:true,maxWidth:'md','aria-labelledby':'target-settings-'+kind})}>
+   {!embedded&&<DialogTitle id={'target-settings-'+kind}>{t[kind]}</DialogTitle>}
    <DialogContent><Stack spacing={2} sx={{pt:1}}>
 
     {error&&<Alert severity="error">{uncertain?t.uncertain:errorMessage}</Alert>}
@@ -83,6 +86,6 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
     {!payroll&&<TextField required label={t.reason} value={reason} onChange={e=>{setReason(e.target.value);request.current=null;}} disabled={locked} inputProps={{maxLength:1000}} fullWidth/>}
    </Stack></DialogContent>
    <DialogActions><SaveButton loading={busy} disabled={!dirty||loading||loadError||(!payroll&&!reason.trim())} onClick={save}>{uncertain?t.retry:t.save}</SaveButton></DialogActions>
-  </Dialog>
+  </Container>
  </>;
 }
