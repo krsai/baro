@@ -8,8 +8,12 @@ import {shippingGeneralCustomerId} from './shippingGeneralCustomer';
 const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const prefix=(orgId:number,actorId:number)=>`ACCOUNTING_ALERT_ACK_USER:${orgId}:${actorId}:`;
 const industryInclude={partnerRole:true,expenseType:true};
-const codeInclude={base:{include:{industryLinks:{include:{industry:{include:industryInclude}}},serviceType:{include:industryInclude},expenseType:true}},serviceType:{include:{systemDefault:true}}};
+const codeInclude={base:{include:{industryLinks:{include:{industry:{include:industryInclude}}},serviceType:{include:industryInclude},expenseType:true}},serviceType:{include:{systemDefault:{include:industryInclude}}}};
 const financialIndustry=(industry:any)=>industry?.code==='FUNDS'||industry?.expenseType?.code==='FUNDS'||['FINANCE','FUNDS'].includes(industry?.partnerRole?.code);
+export function isFinancialAccountingCode(code:any){
+ const sources=[code?.serviceType,code?.serviceType?.systemDefault,code?.base?.serviceType,code?.base?.expenseType,...(code?.industries||[]),...(code?.base?.industries||[]),...(code?.base?.industryLinks||[]).map((link:any)=>link.industry)];
+ return sources.some(financialIndustry);
+}
 export function handledItemAnomaly(base:any,shared:number[],policy:any){
  if(!shared.length)return null;
  let stale=false;
@@ -31,7 +35,7 @@ export function accountingAlertKinds(source:any,partner:any,generalCustomerId:nu
  const classification=partner?.linkedCompany&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
  const generalExpress=generalCustomerId!=null&&source.partyId===generalCustomerId&&base.code==='EXP';
- const financial=base.expenseType?.code==='FUNDS'||(links.length?links.some((link:any)=>financialIndustry(link.industry)):financialIndustry(base.serviceType));
+ const financial=isFinancialAccountingCode(code);
  if(!financial&&!generalExpress&&partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
  if(!financial&&!generalExpress&&partner){const handled=handledItemAnomaly(base,allowed.filter((id:number)=>actual.includes(id)),source.handledPolicy);if(handled)kinds.push(handled);}
  return kinds;

@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {isInternalFundsCode} from '../frontend/src/utils/accountingCode.mjs';
 const require=createRequire(import.meta.url);
-const {accountingAlertKinds,listAccountingAlerts,acknowledgeAccountingAlert,registerAccountingAlertRoutes}=require('../backend/dist/services/accountingAlerts');
+const {accountingAlertKinds,listAccountingAlerts,acknowledgeAccountingAlert,registerAccountingAlertRoutes,isFinancialAccountingCode}=require('../backend/dist/services/accountingAlerts');
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
@@ -38,6 +39,19 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,industryLinks:[{systemIndustryId:1,industry:{partnerRole:{code:'FINANCE'}}},{systemIndustryId:2,industry:{partnerRole:{code:'LOGISTICS'}}}]}}},{classification:{industryIds:[3]}}),['DIRECTION'],'any explicit finance association exempts industry matching while direction remains checked');
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,serviceType:{code:'EQUIPMENT',nameKo:'재무',partnerRole:{code:'MANAGEMENT'}}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
 });
+test('server finance exemption matches the input classification across company and base FKs',()=>{
+ const base={id:1,serviceTypeId:2,cashDirection:'IN',industryLinks:[{systemIndustryId:2,industry:{partnerRole:{code:'MATERIAL_SUPPLIER'}}}]};
+ for(const financial of [{code:'FUNDS'},{code:'LOCAL_FINANCE',partnerRole:{code:'FINANCE'}},{code:'LOCAL_FINANCE',expenseType:{code:'FUNDS'}}]){
+  for(const code of [{base,serviceType:{systemDefault:financial}},{base:{...base,serviceType:financial}}]){
+   assert.equal(isFinancialAccountingCode(code),isInternalFundsCode(code));assert.equal(isFinancialAccountingCode(code),true);
+   assert.deepEqual(accountingAlertKinds({code,direction:'OUT'},{classification:{industryIds:[3]}}),['DIRECTION']);
+  }
+ }
+ const ordinary={base,code:'LNCE',nameEn:'Loan Collection',serviceType:{nameKo:'재무',systemDefault:{partnerRole:{code:'MATERIAL_SUPPLIER'}}}};
+ assert.equal(isFinancialAccountingCode(ordinary),false,'display names and code prefixes never grant finance access');
+ assert.deepEqual(accountingAlertKinds({code:ordinary,direction:'OUT'},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
+});
+
 test('actual company-scoped sources, personal acknowledgement, current-state revisions, immutable ledger and active membership',async()=>{
  const f=await changeApprovalFixture(),db=f.db;try{
   const s=await seedChangeApproval(db),org=s.company.id,base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
@@ -78,6 +92,15 @@ test('actual company-scoped sources, personal acknowledgement, current-state rev
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:1,roleIds:[sourceIndustry.partnerRoleId],industryIds:[sourceIndustry.id]}));assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,0);
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:2,roleIds:[sourceIndustry.partnerRoleId],industryIds:[otherIndustry.id]}));const changed=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.equal(changed.total,2);
   const financeRole=await db.partnerRole.upsert({where:{code:'FINANCE'},create:{code:'FINANCE',nameKo:'재무',nameEn:'Finance',nameVi:'Tài chính'},update:{}});
+  const localFinance=await db.settingServiceDefault.create({data:{code:'ALERT_LOCAL_FINANCE',nameEn:'Local finance',nameKo:'Local finance',nameVi:'Local finance',partnerRoleId:financeRole.id,entryMode:'GENERAL'}});
+  await db.outsourcingServiceType.update({where:{id:s.code.serviceTypeId},data:{systemDefaultId:localFinance.id}});
+  assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,0,'company code finance FK suppresses industry warnings even with a different base association');
+  await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
+  const localFinanceAlerts=await listAccountingAlerts(db,org,s.people.admin.id,permissions);
+  assert.ok(localFinanceAlerts.total>0);assert.ok(localFinanceAlerts.rows.every(row=>row.kind==='DIRECTION'));
+  await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'OUT'}});
+  await db.outsourcingServiceType.update({where:{id:s.code.serviceTypeId},data:{systemDefaultId:sourceIndustry.id}});
+  assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,2);
   await db.settingServiceDefault.update({where:{id:sourceIndustry.id},data:{partnerRoleId:financeRole.id}});
   await db.accountingCodeIndustry.upsert({where:{baseId_systemIndustryId:{baseId:base.id,systemIndustryId:sourceIndustry.id}},create:{baseId:base.id,systemIndustryId:sourceIndustry.id},update:{}});
   const nonFinancial=await db.settingServiceDefault.create({data:{code:'ALERT_NON_FINANCE',nameEn:'Nonfinancial link',nameKo:'Nonfinancial',nameVi:'Nonfinancial',partnerRoleId:sourceIndustry.partnerRoleId,entryMode:'GENERAL'}});await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:nonFinancial.id}});
