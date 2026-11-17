@@ -1,3 +1,4 @@
+import WorkspacePageBoundary from '../components/WorkspacePageBoundary';
 import useWorkspaceLiveUpdates from '../hooks/useWorkspaceLiveUpdates';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
@@ -1991,16 +1992,16 @@ const MainLayout = () => {
                       minWidth: 0,
                     }}
                   >
-                    <PageNamingProvider path={currentPath === path ? currentRoutePath : openTabs.find(tab => tab.id === path)?.path || path}><WorkspaceDialogScope viewportRef={workspaceScrollRef} active={currentPath === path}>{element}</WorkspaceDialogScope></PageNamingProvider>
+                    <PageNamingProvider path={currentPath === path ? currentRoutePath : openTabs.find(tab => tab.id === path)?.path || path}><WorkspaceDialogScope viewportRef={workspaceScrollRef} active={currentPath === path}><WorkspacePageBoundary>{element}</WorkspacePageBoundary></WorkspaceDialogScope></PageNamingProvider>
                   </Box>
                 </RequestScopeBoundary>
               ))}
               {shouldRenderLiveOutlet && isCurrentPathKeepAlive ? (
                 <RequestScopeBoundary scopeId={currentPath} active>
-                  <PageNamingProvider path={currentRoutePath}><WorkspaceDialogScope viewportRef={workspaceScrollRef} active>{routeOutlet}</WorkspaceDialogScope></PageNamingProvider>
+                  <PageNamingProvider path={currentRoutePath}><WorkspaceDialogScope viewportRef={workspaceScrollRef} active><WorkspacePageBoundary>{routeOutlet}</WorkspacePageBoundary></WorkspaceDialogScope></PageNamingProvider>
                 </RequestScopeBoundary>
               ) : null}
-              {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? <PageNamingProvider path={currentRoutePath}>{routeOutlet}</PageNamingProvider> : null}
+              {shouldRenderLiveOutlet && !isCurrentPathKeepAlive ? <PageNamingProvider path={currentRoutePath}><WorkspacePageBoundary key={currentPath}>{routeOutlet}</WorkspacePageBoundary></PageNamingProvider> : null}
             </>
           )}
         </Box>
