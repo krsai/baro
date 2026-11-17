@@ -9,7 +9,9 @@ export default function useWorkspaceLiveUpdates(orgId,accessToken){
   let disposed=false,controller=null,retry=null,attempt=0,batch=null,lastResync=0;const topics=new Set();const resyncTopics=orgId==='SYSTEM'?REFERENCE_SETTINGS_TOPICS:LIVE_TOPICS.filter(topic=>!REFERENCE_SETTINGS_TOPICS.includes(topic));
   const emit=()=>{batch=null;if(disposed||document.visibilityState==='hidden')return;clearGetResponseCache();emitWorkspaceDataChanged({orgId,topics:[...topics],source:'server-change'});topics.clear();};
   const change=event=>{
-   if((orgId==='SYSTEM'?event.orgId!==0:Number(event.orgId)!==Number(orgId))||!Array.isArray(event.topics))return;
+   if(!Array.isArray(event.topics))return;
+   const referenceOnly=event.orgId===0&&event.topics.every(topic=>REFERENCE_SETTINGS_TOPICS.includes(topic));
+   if(orgId==='SYSTEM'?event.orgId!==0:Number(event.orgId)!==Number(orgId)&&!referenceOnly)return;
    for(const topic of event.topics)if(LIVE_TOPICS.includes(topic))topics.add(topic);
    if(topics.size&&!batch)batch=setTimeout(emit,200);
   };

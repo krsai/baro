@@ -40,7 +40,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
    next.on('notification',(message:any)=>{
     let event:any;try{event=JSON.parse(message.payload);}catch{return;}
     if(!Number.isSafeInteger(event.orgId)||!Array.isArray(event.topics)||event.topics.some((topic:any)=>typeof topic!=='string')||typeof event.id!=='string')return;
-    for(const subscriber of subscribers)if(subscriber.orgId===event.orgId&&(!event.origin||subscriber.origin!==event.origin))void subscriber.send({id:event.id,orgId:event.orgId,topics:event.topics,source:'server-change'}).catch(()=>subscriber.close());
+    for(const subscriber of subscribers)if((subscriber.orgId===event.orgId||event.orgId===0&&event.systemOnly!==true&&subscriber.orgId!==0&&event.topics.every((topic:string)=>referenceTopics.includes(topic)))&&(!event.origin||subscriber.origin!==event.origin))void subscriber.send({id:event.id,orgId:event.orgId,topics:event.topics,source:'server-change'}).catch(()=>subscriber.close());
    });
    try{await next.connect();await next.query('LISTEN '+CHANNEL);client=next;}catch{await next.end().catch(()=>{});throw Error('WORKSPACE_EVENTS_UNAVAILABLE');}
   })().finally(()=>{connecting=null;});
@@ -65,7 +65,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
       if(!employee)return;
       const event={id:randomUUID(),orgId:employee.orgId,topics,origin:origin(req)};
       await db.$queryRawUnsafe('SELECT pg_notify($1,$2)::text',CHANNEL,JSON.stringify(event));
-      if(isReferenceUsagePath(req.path))await db.$queryRawUnsafe('SELECT pg_notify($1,$2)::text',CHANNEL,JSON.stringify({id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req)}));
+      if(isReferenceUsagePath(req.path))await db.$queryRawUnsafe('SELECT pg_notify($1,$2)::text',CHANNEL,JSON.stringify({id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req),systemOnly:true}));
      }).catch(()=>{console.warn('Workspace change notification unavailable');});
     }
     return json.call(this,body);
@@ -95,7 +95,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   const employeeId=gates.actorId();
   const employee=employeeId&&await db.employee.findFirst({where:{id:employeeId,orgId:scope.organization.id,status:'ACTIVE'},select:{id:true,orgRole:true}});
   if(!employee)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
-  const topicFeatures:Record<string,string>={'shipping':'FREIGHT','shipping-ports':'FREIGHT','styles':'STYLE','orders':'ORDER','order-shipments':'ORDER','invoice-drafts':'INVOICE','issued-invoices':'INVOICE','assignment-board':'ASSIGNMENT','employees':'EMPLOYEE','sales-prices':'CUSTOMER','customers':'CUSTOMER','business-partners':'CUSTOMER','salary-system-settings':'SALARY_SYSTEM','production-allowance-settings':'SALARY_SYSTEM','payroll-sources':'PAYROLL','expense-requests':'OUTSOURCING_RECORD','expense-approvals':'OUTSOURCING_RECORD','change-approvals':'DASHBOARD','bank-ledger':'BANK_LEDGER','work-requests':'DASHBOARD'};
+  const topicFeatures:Record<string,string>={'accounting-codes':'DASHBOARD','partner-classifications':'DASHBOARD','shipping':'FREIGHT','shipping-ports':'FREIGHT','styles':'STYLE','orders':'ORDER','order-shipments':'ORDER','invoice-drafts':'INVOICE','issued-invoices':'INVOICE','assignment-board':'ASSIGNMENT','employees':'EMPLOYEE','sales-prices':'CUSTOMER','customers':'CUSTOMER','business-partners':'CUSTOMER','salary-system-settings':'SALARY_SYSTEM','production-allowance-settings':'SALARY_SYSTEM','payroll-sources':'PAYROLL','expense-requests':'OUTSOURCING_RECORD','expense-approvals':'OUTSOURCING_RECORD','change-approvals':'DASHBOARD','bank-ledger':'BANK_LEDGER','work-requests':'DASHBOARD'};
   const offered=await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type),features=new Set<string>();
   for(const feature of new Set(Object.values(topicFeatures)))if(offered.includes(feature)&&await gates.canAccess({orgType:scope.organization.type,orgRole:employee.orgRole,feature}))features.add(feature);
   await connect();

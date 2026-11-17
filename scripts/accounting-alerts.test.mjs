@@ -35,7 +35,7 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
    assert.deepEqual(accountingAlertKinds({...source,direction:'IN',code:{base}},{classification:{industryIds:[3]}}),[]);
   }
  }
- assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,industryLinks:[{systemIndustryId:1,industry:{partnerRole:{code:'FINANCE'}}},{systemIndustryId:2,industry:{partnerRole:{code:'LOGISTICS'}}}]}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY'],'a mixed nonfinancial code does not become exempt through one finance link');
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,industryLinks:[{systemIndustryId:1,industry:{partnerRole:{code:'FINANCE'}}},{systemIndustryId:2,industry:{partnerRole:{code:'LOGISTICS'}}}]}}},{classification:{industryIds:[3]}}),['DIRECTION'],'any explicit finance association exempts industry matching while direction remains checked');
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,serviceType:{code:'EQUIPMENT',nameKo:'재무',partnerRole:{code:'MANAGEMENT'}}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
 });
 test('actual company-scoped sources, personal acknowledgement, current-state revisions, immutable ledger and active membership',async()=>{
@@ -79,6 +79,8 @@ test('actual company-scoped sources, personal acknowledgement, current-state rev
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:2,roleIds:[sourceIndustry.partnerRoleId],industryIds:[otherIndustry.id]}));const changed=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.equal(changed.total,2);
   const financeRole=await db.partnerRole.upsert({where:{code:'FINANCE'},create:{code:'FINANCE',nameKo:'재무',nameEn:'Finance',nameVi:'Tài chính'},update:{}});
   await db.settingServiceDefault.update({where:{id:sourceIndustry.id},data:{partnerRoleId:financeRole.id}});
+  await db.accountingCodeIndustry.upsert({where:{baseId_systemIndustryId:{baseId:base.id,systemIndustryId:sourceIndustry.id}},create:{baseId:base.id,systemIndustryId:sourceIndustry.id},update:{}});
+  const nonFinancial=await db.settingServiceDefault.create({data:{code:'ALERT_NON_FINANCE',nameEn:'Nonfinancial link',nameKo:'Nonfinancial',nameVi:'Nonfinancial',partnerRoleId:sourceIndustry.partnerRoleId,entryMode:'GENERAL'}});await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:nonFinancial.id}});
   assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,0,'financial transactions do not require the counterparty to operate in finance');
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
   const financeAlerts=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.ok(financeAlerts.total>0);assert.ok(financeAlerts.rows.some(alert=>alert.kind==='DIRECTION'));assert.ok(!financeAlerts.rows.some(alert=>alert.kind==='PARTNER_INDUSTRY'));

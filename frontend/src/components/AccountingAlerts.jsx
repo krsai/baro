@@ -16,7 +16,7 @@ export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,set
  const [selected,setSelected]=useState(null),[review,setReview]=useState(null),[reviewError,setReviewError]=useState(null);
  const [data,setData]=useState(null),[page,setPage]=useState(0),[reload,setReload]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
  const acknowledging=useRef(false),detailOpen=Boolean(selected||review);
- useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['change-approvals','bank-ledger','expense-requests','accounting-alerts','transaction-codes','partner-classifications','business-partners'].includes(topic)))setReload(value=>value+1);}),[orgId]);
+ useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['change-approvals','bank-ledger','expense-requests','accounting-alerts','transaction-codes','accounting-codes','partner-classifications','business-partners'].includes(topic)))setReload(value=>value+1);}),[orgId]);
  useEffect(()=>{
   if(!active||!kinds||detailOpen)return;
   let live=true,pending=false,lastAttempt=0;const controller=new AbortController();

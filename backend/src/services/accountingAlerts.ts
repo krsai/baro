@@ -17,7 +17,7 @@ export function accountingAlertKinds(source:any,partner:any,generalCustomerId:nu
  const classification=partner?.linkedCompany&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
  const generalExpress=generalCustomerId!=null&&source.partyId===generalCustomerId&&base.code==='EXP';
- const financial=base.expenseType?.code==='FUNDS'||(links.length?links.every((link:any)=>financialIndustry(link.industry)):financialIndustry(base.serviceType));
+ const financial=base.expenseType?.code==='FUNDS'||(links.length?links.some((link:any)=>financialIndustry(link.industry)):financialIndustry(base.serviceType));
  if(!financial&&!generalExpress&&partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
  return kinds;
 }
