@@ -18,6 +18,7 @@ test('retired payment pattern flags later withdrawals without accusing historica
  assert.deepEqual(accountingAlertKinds({...source,direction:'IN'},null),[]);
  assert.deepEqual(accountingAlertKinds({...source,employee:{status:'ACTIVE'}},null),[]);
  assert.deepEqual(accountingAlertKinds({...source,employee:{status:'TERMINATED',leftAt:null}},null),['RETIRED_EMPLOYEE']);
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{cashDirection:'IN',expenseType:{code:'FUNDS'}}}},null),['RETIRED_EMPLOYEE','DIRECTION']);
 });
 test('direction checks both ways and real multi-industry IDs, never names or unknown classifications',()=>{
  const source={direction:'OUT',code:{base:{cashDirection:'IN',industryLinks:[{systemIndustryId:1},{systemIndustryId:2}]}}};
@@ -27,13 +28,14 @@ test('direction checks both ways and real multi-industry IDs, never names or unk
  assert.deepEqual(accountingAlertKinds(source,{classification:{industryIds:[]}}),['DIRECTION']);
  for(const officialClassification of [null,{industryIds:[]}])assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification,classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
  assert.deepEqual(accountingAlertKinds(source,{linkedCompany:{subscriberOrgId:9},officialClassification:{industryIds:[2]},classification:{industryIds:[3]}}),['DIRECTION']);
- assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,expenseType:{code:'FUNDS'}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,expenseType:{code:'FUNDS'}}}},{classification:{industryIds:[3]}}),['DIRECTION']);
  for(const industry of [{code:'TYPE_CUSTOM',expenseType:{code:'FUNDS'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FINANCE'}},{code:'TYPE_CUSTOM',partnerRole:{code:'FUNDS'}}]){
-  for(const base of [{...source.code.base,serviceType:industry},{...source.code.base,industryLinks:[{systemIndustryId:1,industry}]}]){
-   assert.deepEqual(accountingAlertKinds({...source,code:{base}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
-   assert.deepEqual(accountingAlertKinds({...source,direction:'IN',code:{base}},{classification:{industryIds:[3]}}),['PARTNER_INDUSTRY']);
+  for(const base of [{...source.code.base,industryLinks:[],serviceType:industry},{...source.code.base,industryLinks:[{systemIndustryId:1,industry}]}]){
+   assert.deepEqual(accountingAlertKinds({...source,code:{base}},{classification:{industryIds:[3]}}),['DIRECTION']);
+   assert.deepEqual(accountingAlertKinds({...source,direction:'IN',code:{base}},{classification:{industryIds:[3]}}),[]);
   }
  }
+ assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,industryLinks:[{systemIndustryId:1,industry:{partnerRole:{code:'FINANCE'}}},{systemIndustryId:2,industry:{partnerRole:{code:'LOGISTICS'}}}]}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY'],'a mixed nonfinancial code does not become exempt through one finance link');
  assert.deepEqual(accountingAlertKinds({...source,code:{base:{...source.code.base,serviceType:{code:'EQUIPMENT',nameKo:'재무',partnerRole:{code:'MANAGEMENT'}}}}},{classification:{industryIds:[3]}}),['DIRECTION','PARTNER_INDUSTRY']);
 });
 test('actual company-scoped sources, personal acknowledgement, current-state revisions, immutable ledger and active membership',async()=>{
@@ -77,9 +79,9 @@ test('actual company-scoped sources, personal acknowledgement, current-state rev
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,s.people.admin.id,{revision:2,roleIds:[sourceIndustry.partnerRoleId],industryIds:[otherIndustry.id]}));const changed=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.equal(changed.total,2);
   const financeRole=await db.partnerRole.upsert({where:{code:'FINANCE'},create:{code:'FINANCE',nameKo:'재무',nameEn:'Finance',nameVi:'Tài chính'},update:{}});
   await db.settingServiceDefault.update({where:{id:sourceIndustry.id},data:{partnerRoleId:financeRole.id}});
-  assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,2,'finance classifications still require review when partner industries differ');
+  assert.equal((await listAccountingAlerts(db,org,s.people.admin.id,permissions)).total,0,'financial transactions do not require the counterparty to operate in finance');
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
-  const financeAlerts=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.ok(financeAlerts.total>0);assert.ok(financeAlerts.rows.some(alert=>alert.kind==='DIRECTION'));assert.ok(financeAlerts.rows.some(alert=>alert.kind==='PARTNER_INDUSTRY'));
+  const financeAlerts=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.ok(financeAlerts.total>0);assert.ok(financeAlerts.rows.some(alert=>alert.kind==='DIRECTION'));assert.ok(!financeAlerts.rows.some(alert=>alert.kind==='PARTNER_INDUSTRY'));
   await db.employee.update({where:{id:s.people.admin.id},data:{status:'SUSPENDED'}});await assert.rejects(acknowledgeAccountingAlert(db,org,s.people.admin.id,permissions,changed.rows[0].signature),/ACCESS_DENIED/);await assert.rejects(listAccountingAlerts(db,org,s.people.admin.id,permissions),/ACCESS_DENIED/);
   const retained=await db.bankLedgerEntry.findUnique({where:{id:row.id}});assert.equal(retained.amount.toString(),'10');assert.equal(retained.voidedAt,null);assert.equal(retained.evidenceNumber,'Reference');
   await db.employee.update({where:{id:s.people.junior.id},data:{orgRole:'OPERATOR'}});

@@ -7,7 +7,9 @@ import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 import {shippingGeneralCustomerId} from './shippingGeneralCustomer';
 const hash=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const prefix=(orgId:number,actorId:number)=>`ACCOUNTING_ALERT_ACK_USER:${orgId}:${actorId}:`;
-const codeInclude={base:{include:{industryLinks:{include:{industry:true}},serviceType:true,expenseType:true}},serviceType:{include:{systemDefault:true}}};
+const industryInclude={partnerRole:true,expenseType:true};
+const codeInclude={base:{include:{industryLinks:{include:{industry:{include:industryInclude}}},serviceType:{include:industryInclude},expenseType:true}},serviceType:{include:{systemDefault:true}}};
+const financialIndustry=(industry:any)=>industry?.code==='FUNDS'||industry?.expenseType?.code==='FUNDS'||['FINANCE','FUNDS'].includes(industry?.partnerRole?.code);
 export function accountingAlertKinds(source:any,partner:any,generalCustomerId:number|null=null){
  const code=source.code,base=code?.base;if(!code||!base)return [];
  const kinds=[];if(source.employee?.status==='TERMINATED'&&source.direction==='OUT'&&(!source.employee.leftAt||source.date>new Date(source.employee.leftAt).toISOString().slice(0,10)))kinds.push('RETIRED_EMPLOYEE');if(['IN','OUT'].includes(base.cashDirection)&&base.cashDirection!==source.direction)kinds.push('DIRECTION');
@@ -15,7 +17,8 @@ export function accountingAlertKinds(source:any,partner:any,generalCustomerId:nu
  const classification=partner?.linkedCompany&&partner.officialClassification?.industryIds?.length?partner.officialClassification:partner?.classification;
  const actual=classification?.industryIds||[];
  const generalExpress=generalCustomerId!=null&&source.partyId===generalCustomerId&&base.code==='EXP';
- if(!generalExpress&&partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
+ const financial=base.expenseType?.code==='FUNDS'||(links.length?links.every((link:any)=>financialIndustry(link.industry)):financialIndustry(base.serviceType));
+ if(!financial&&!generalExpress&&partner&&allowed.length&&actual.length&&!allowed.some((id:number)=>actual.includes(id)))kinds.push('PARTNER_INDUSTRY');
  return kinds;
 }
 export async function accountingAlertCandidates(db:any,orgId:number,permissions:any){
