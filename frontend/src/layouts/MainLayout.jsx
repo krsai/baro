@@ -1,3 +1,4 @@
+import useWorkspaceLiveUpdates from '../hooks/useWorkspaceLiveUpdates';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import LocalShippingOutlinedIcon from '@mui/icons-material/LocalShippingOutlined';
 import usePendingApprovals from '../hooks/usePendingApprovals';
@@ -292,11 +293,9 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                     {resolveRenderedTabLabel(tab)}
                     <TabStateIndicators editing={tab.isEditing} refreshed={tab.hasExternalChanges} languageCode={languageCode} />
                   </Box>
-                  {isTabLoading && (
-                    <Box component="span" sx={{ display: 'inline-flex', ml: 0.75, color: 'text.secondary' }}>
-                      <CircularProgress size={13} thickness={5} color="inherit" />
-                    </Box>
-                  )}
+                  <Box component="span" sx={{ display: 'inline-flex', width: 13, height: 13, ml: 0.75, flexShrink: 0, color: 'text.secondary' }}>
+                    {isTabLoading && <CircularProgress size={13} thickness={5} color="inherit" />}
+                  </Box>
                   {!tab.isOptimistic && (
                     <IconButton
                       component="span"
@@ -351,6 +350,7 @@ const MainLayout = () => {
     activeOrgId,
     isAuthenticated,
     user,
+    session,
     activeProfile,
   } = useAuth();
   const {
@@ -499,6 +499,7 @@ const MainLayout = () => {
     (options) => resolveFirstAccessiblePath(authState, options),
     [authState]
   );
+  useWorkspaceLiveUpdates(activeProfile?.entryType==='ORG'?activeOrgId:null,session?.access_token);
   const pendingApprovalCount=usePendingApprovals(activeOrgId,activeProfile?.entryType==='ORG'&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&hasPathAccess('/dashboard'));
   const canViewEmployeeMenu = hasPathAccess('/employee');
   const canViewCustomerMenu = activeProfile?.orgType!=='SERVICE' && hasPathAccess('/customer');
@@ -1034,8 +1035,7 @@ const MainLayout = () => {
       return () => {};
     }
     fetchMissingSalesPriceCustomerCount();
-    const intervalId = setInterval(fetchMissingSalesPriceCustomerCount, 30000);
-    return () => clearInterval(intervalId);
+
   }, [canViewCustomerMenu, fetchMissingSalesPriceCustomerCount]);
   useEffect(() => subscribeWorkspaceDataChanged((detail) => {
     if (![
@@ -1059,9 +1059,8 @@ const MainLayout = () => {
       return () => {};
     }
     fetchPendingEmployeeCount();
-    const intervalId = setInterval(fetchPendingEmployeeCount, 30000);
-    return () => clearInterval(intervalId);
-  }, [canViewEmployeeMenu, fetchPendingEmployeeCount]);
+    return subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(activeOrgId)&&event.topics?.includes('employees'))void fetchPendingEmployeeCount();});
+  }, [activeOrgId,canViewEmployeeMenu, fetchPendingEmployeeCount]);
   useEffect(() => {
     if (!canViewEmployeeMenu) return () => {};
     const activeOrgIdNumber = Number(activeOrgId);
@@ -1102,8 +1101,8 @@ const MainLayout = () => {
       return () => {};
     }
     fetchPendingOnboardingCount();
-    const intervalId = setInterval(fetchPendingOnboardingCount, 30000);
-    return () => clearInterval(intervalId);
+    window.addEventListener('focus',fetchPendingOnboardingCount);
+    return()=>window.removeEventListener('focus',fetchPendingOnboardingCount);
   }, [canViewSystemOnboardingMenu, fetchPendingOnboardingCount]);
 
   // The core navigation logic, wrapped in useCallback for stability.

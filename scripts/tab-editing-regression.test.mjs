@@ -69,12 +69,13 @@ test('tab editing aggregates all guards and clears only after every form is save
   assert.ok(tabs.every(tab => !tab.isEditing));
 });
 
-test('background refresh marks completion; foreground refresh clears the notice', async () => {
+test('background refresh stays queued; foreground refresh clears the notice', async () => {
   const source = fs.readFileSync(new URL('../frontend/src/hooks/useWorkspaceRefreshOnEvent.js', import.meta.url), 'utf8');
   const section = source.slice(source.indexOf('    const runRefresh = async'), source.indexOf('    const unsubscribe'));
   for (const visible of [false, true]) {
     const events = [];
     const context = vm.createContext({
+      document:{visibilityState:'visible'},
       cancelled: false,
       pendingRefreshRef: { current: true }, isActiveRef: { current: true },
       isBlockedRef: { current: false }, refreshInFlightRef: { current: false },
@@ -83,7 +84,8 @@ test('background refresh marks completion; foreground refresh clears the notice'
       clearTabChanged: path => events.push(`clear:${path}`), markTabChanged: path => events.push(`mark:${path}`),
     });
     await vm.runInContext(section + '\nrunRefresh();', context);
-    assert.deepEqual(events, ['loaded', `${visible ? 'clear' : 'mark'}:/order`]);
+    assert.deepEqual(events, visible?['loaded','clear:/order']:[]);
+    assert.equal(context.pendingRefreshRef.current,!visible);
   }
 });
 
@@ -94,8 +96,8 @@ test('tab states use compact separate indicators without recoloring the title', 
   assert.doesNotMatch(layout, /\.\.\.\(tab.hasExternalChanges/);
   assert.doesNotMatch(layout, /'수정 중'|'Editing'|'Đang sửa'/);
   assert.match(indicators, /●/); assert.match(indicators, /↻/);
-  assert.match(indicators, /저장하지 않은 변경사항/);
-  assert.match(indicators, /자료가 갱신되었습니다/);
+  assert.match(indicators, /저장하지 않은 변경\s?사항/);
+  assert.match(indicators, /변경된 자료가 있습니다/);
 });
 
 test('failed refresh stays pending without a request loop and succeeds on the next refresh event', async () => {
@@ -104,7 +106,7 @@ test('failed refresh stays pending without a request loop and succeeds on the ne
     const start = source.indexOf(pending ? '    const runPendingRefresh = async' : '    const runRefresh = async');
     const end = source.indexOf(pending ? '\n    void runPendingRefresh();' : '\n    const unsubscribe', start);
     let calls = 0;
-    const context = vm.createContext({cancelled: false, pendingRefreshRef: {current: true}, isActiveRef: {current: true}, isBlockedRef: {current: false}, refreshInFlightRef: {current: false}, blockedNoticeShownRef: {current: false}, isTabVisibleRef: {current: true}, tabPathRef: {current: '/style'}, clearTabChanged: () => {}, markTabChanged: () => {}, onRefreshRef: {current: async () => { calls++; throw Error('offline'); }}});
+    const context = vm.createContext({document:{visibilityState:'visible'},cancelled: false, pendingRefreshRef: {current: true}, isActiveRef: {current: true}, isBlockedRef: {current: false}, refreshInFlightRef: {current: false}, blockedNoticeShownRef: {current: false}, isTabVisibleRef: {current: true}, tabPathRef: {current: '/style'}, clearTabChanged: () => {}, markTabChanged: () => {}, onRefreshRef: {current: async () => { calls++; throw Error('offline'); }}});
     const name = pending ? 'runPendingRefresh' : 'runRefresh';
     await vm.runInContext(source.slice(start, end) + `\n${name}();`, context);
     assert.equal(calls, 1);

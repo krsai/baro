@@ -10,6 +10,13 @@ const requestContext = {
   userEmail: '',
   orgId: null,
 };
+const workspaceClientId=typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'';
+export const clearGetResponseCache=()=>getResponseCache.clear();
+export const fetchWorkspaceEvents=async(orgId,signal,accessToken)=>{
+ const token=accessToken||requestContext.accessToken||await resolveSupabaseSessionAccessToken();
+ if(!token)throw Object.assign(Error('WORKSPACE_CONTEXT_REQUIRED'),{status:403});
+ return fetch(`${API_BASE}/workspace-events?orgId=${encodeURIComponent(orgId)}`,{headers:{Authorization:`Bearer ${token}`,'x-org-id':String(orgId),'x-workspace-client':workspaceClientId},signal,cache:'no-store'});
+};
 const DEFAULT_REQUEST_SCOPE_GROUP = 'workspace';
 const DEFAULT_GET_CACHE_TTL_MS = 45_000;
 const getResponseCache = new Map();
@@ -567,6 +574,7 @@ export const requestJSON = async (path, options = {}) => {
 
     try {
       const headers = new Headers(requestOptions.headers || {});
+      if(workspaceClientId)headers.set('x-workspace-client',workspaceClientId);
       if (requestOptions.body && !headers.has('content-type')) {
         headers.set('Content-Type', 'application/json');
       }

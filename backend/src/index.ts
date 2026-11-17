@@ -1,3 +1,4 @@
+import {createWorkspaceEvents} from './services/workspaceEvents';
 import {savePartnerContacts} from './services/partnerContacts';
 import {companyDocumentContact,entityDocumentContactUpdate,companyDocumentContactUpdate,entityDocumentContactBaseline} from './services/companyDocumentContact';
 import {registerManagementTargetRoutes} from './services/managementTargets';
@@ -218,6 +219,9 @@ app.use(async (req, res, next) => {
   }
 });
 
+const workspaceEvents=createWorkspaceEvents(prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:(scope:any)=>hasRoleAccessPolicyFeature(scope)});
+app.use(workspaceEvents.middleware);
+app.get('/workspace-events',workspaceEvents.stream);
 app.use(industryMenuMiddleware(prisma,requireOrgRole));
 app.use(brandSewingMiddleware(prisma,{getEmail:getRequesterEmail,getOrganization:getOrganizationByQuery,requireOrgRole,loadPolicy:()=>loadRoleAccessPolicySetting()}));
 

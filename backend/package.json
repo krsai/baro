@@ -87,6 +87,7 @@
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "jose": "^6.2.3",
+    "pg": "^8.23.1",
     "prisma": "^6.0.0"
   },
   "devDependencies": {

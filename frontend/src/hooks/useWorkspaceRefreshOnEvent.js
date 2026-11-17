@@ -88,7 +88,7 @@ const useWorkspaceRefreshOnEvent = ({
     const runRefresh = async () => {
       if (cancelled) return;
       if (!pendingRefreshRef.current) return;
-      if (!isActiveRef.current || isBlockedRef.current) return;
+      if (!isActiveRef.current || isBlockedRef.current || !isTabVisibleRef.current || document.visibilityState==='hidden') return;
       if (refreshInFlightRef.current) return;
       if (typeof onRefreshRef.current !== 'function') return;
 
@@ -104,6 +104,7 @@ const useWorkspaceRefreshOnEvent = ({
         else markTabChanged(tabPathRef.current);
       } catch (_error) {
         pendingRefreshRef.current = true;
+        if(!isTabVisibleRef.current||isBlockedRef.current)markTabChanged(tabPathRef.current);
       } finally {
         refreshInFlightRef.current = false;
         if (succeeded && pendingRefreshRef.current && isActiveRef.current && !isBlockedRef.current) {
@@ -119,8 +120,7 @@ const useWorkspaceRefreshOnEvent = ({
       if (typeof shouldHandleRef.current === 'function' && !shouldHandleRef.current(detail)) return;
 
       pendingRefreshRef.current = true;
-
-
+      if(!isTabVisibleRef.current||isBlockedRef.current)markTabChanged(tabPathRef.current);
       if (isBlockedRef.current) {
         if (!blockedNoticeShownRef.current && typeof onBlockedRef.current === 'function') {
           blockedNoticeShownRef.current = true;
@@ -146,6 +146,7 @@ const useWorkspaceRefreshOnEvent = ({
   useEffect(() => {
     if (!pendingRefreshRef.current) return;
     if (!isActive) return;
+    if (!isTabVisibleRef.current || document.visibilityState==='hidden') return;
     if (isBlocked) {
       if (!blockedNoticeShownRef.current && typeof onBlockedRef.current === 'function') {
         blockedNoticeShownRef.current = true;
@@ -190,7 +191,7 @@ const useWorkspaceRefreshOnEvent = ({
     return () => {
       cancelled = true;
     };
-  }, [clearTabChanged, markTabChanged, isActive, isBlocked]);
+  }, [clearTabChanged, markTabChanged, isActive, isBlocked, location.pathname]);
 };
 
 export default useWorkspaceRefreshOnEvent;

@@ -215,9 +215,10 @@ export const AuthProvider = ({ children }) => {
   const [canCreateCompany, setCanCreateCompany] = useState(false);
   const [workspaceReload, setWorkspaceReload] = useState(0);
   useEffect(() => {
-    const refresh = () => setWorkspaceReload(value => value + 1);
+    let lastFocusRefresh=0;
+    const refresh = () => {if(Date.now()-lastFocusRefresh<30000)return;lastFocusRefresh=Date.now();setWorkspaceReload(value => value + 1);};
     const changed = event => {
-      if (event.detail?.source === 'organization-profile') refresh();
+      if (event.detail?.source === 'organization-profile'||event.detail?.source==='server-change'&&event.detail?.topics?.includes('employees')) setWorkspaceReload(value => value + 1);
     };
     window.addEventListener('focus', refresh);
     window.addEventListener('baro:workspace-data-changed', changed);

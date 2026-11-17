@@ -230,7 +230,7 @@ function revisionHookHarness() {
   let index = 0;
   let effects = [];
   const listeners = new Map();
-  let poll;
+  let onChange;
   let request = async () => ({ editRevision: 'first' });
   const react = {
     useState(initial) { const slot = index++; if (!(slot in slots)) slots[slot] = initial; return [slots[slot], value => { slots[slot] = typeof value === 'function' ? value(slots[slot]) : value; }]; },
@@ -248,24 +248,24 @@ function revisionHookHarness() {
   const ts = require('typescript');
   const source = readFileSync(new URL('../frontend/src/hooks/useEditRevision.js', import.meta.url), 'utf8');
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, {
-    exports, require: name => name === 'react' ? react : { requestJSON: (...args) => request(...args) },
-    window: browser, document: browser, setInterval: fn => { poll = fn; return 1; }, clearInterval: () => { poll = null; },
+    exports, require: name => name === 'react' ? react : name.includes('workspaceDataEvents') ? {subscribeWorkspaceDataChanged: fn=>{onChange=fn;return()=>{onChange=null;};}} : { requestJSON: (...args) => request(...args) },
+    window: browser, document: browser, URL, setInterval: () => assert.fail('revision reads must not poll'), clearInterval: () => {},
   });
   return {
-    render(options = {}) { index = 0; effects = []; const result = exports.default({ scope: 'org1', url: '/revision', ...options }); effects.forEach(fn => fn()); return result; },
+    render(options = {}) { index = 0; effects = []; const result = exports.default({ scope: 'org1', url: '/revision?orgId=1', ...options }); effects.forEach(fn => fn()); return result; },
     request(fn) { request = fn; },
-    async poll() { await poll?.(); },
+    async changed() { onChange?.({orgId:1,topics:['assignment-board']});await new Promise(resolve=>setImmediate(resolve)); },
     browser,
   };
 }
 
-test('polling marks the current screen stale without adopting the remote revision', async () => {
+test('a saved-change event marks the current screen stale without adopting the remote revision', async () => {
   const app = revisionHookHarness();
   app.render().accept('first');
   app.render();
   await new Promise(resolve => setImmediate(resolve));
   app.request(async () => ({ editRevision: 'second' }));
-  await app.poll();
+  await app.changed();
   const stale = app.render();
   assert.equal(stale.stale, true);
   assert.equal(stale.revision, 'first');
@@ -273,14 +273,14 @@ test('polling marks the current screen stale without adopting the remote revisio
   assert.equal(app.render().stale, false);
 });
 
-test('poll failures, pending saves and a previous organization response cannot invalidate the new screen', async () => {
+test('read failures, pending saves and a previous organization response cannot invalidate the new screen', async () => {
   const app = revisionHookHarness();
   app.render().accept('first');
   app.render({ busy: true });
   app.request(async () => { throw new Error('offline'); });
-  await app.poll();
+  await app.changed();
   assert.equal(app.render().stale, false);
-  await app.poll();
+  await app.changed();
   assert.equal(app.render().stale, false);
   const previous = app.render();
   const next = app.render({ scope: 'org2' });

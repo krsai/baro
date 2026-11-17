@@ -1,3 +1,4 @@
+import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import DashboardFilter from './DashboardFilter';
 import DashboardAlertItem from './DashboardAlertItem';
 import React,{useCallback,useEffect,useRef,useState} from 'react';
@@ -22,13 +23,14 @@ export default function WorkRequestsCard({orgId,languageCode}){
  const formDirty=editing?title!==editing.title||message!==editing.message:Boolean(title||message||recipient);
  useUnsavedChanges(open&&formDirty);
  const api=useCallback((path='',body)=>requestJSON('/dashboard/work-requests'+path+buildQueryString({orgId,...(!body&&!path?{page,status,direction}:{})}),{skipCache:true,skipGlobalLoading:true,...(body?{method:'POST',body:JSON.stringify(body)}:{})}),[orgId,page,status,direction]);
- useEffect(()=>{if(!active||open||selected||busy)return;let live=true,pending=false,timer,lastAttempt=0;
-  const load=async()=>{if(!live||pending||document.visibilityState==='hidden')return;pending=true;lastAttempt=Date.now();setLoading(true);clearTimeout(timer);
-   try{const result=await api();if(live){if(page>0&&!result.rows.length){setPage(page-1);return;}setData(result);setError('');timer=setTimeout(load,30000);}}
+ useEffect(()=>{if(!active||open||selected||busy)return;let live=true,pending=false,lastAttempt=0;
+  const load=async()=>{if(!live||pending||document.visibilityState==='hidden')return;pending=true;lastAttempt=Date.now();setLoading(true);
+   try{const result=await api();if(live){if(page>0&&!result.rows.length){setPage(page-1);return;}setData(result);setError('');}}
    catch{if(live)setError(t.failed);}finally{pending=false;if(live)setLoading(false);}};
   const focus=()=>{if(document.visibilityState!=='hidden'&&Date.now()-lastAttempt>=30000)void load();};
+  const unsubscribe=subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.includes('work-requests'))void load();});
   void load();window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
-  return()=>{live=false;clearTimeout(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
+  return()=>{live=false;unsubscribe();clearTimeout(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
  },[api,active,reload,t.failed,page,open,Boolean(selected),busy]);
  const loadPeople=async()=>{setPeopleLoading(true);setPeopleFailed(false);try{const rows=await api('/recipients');if(alive.current)setPeople(rows);}catch{if(alive.current)setPeopleFailed(true);}finally{if(alive.current)setPeopleLoading(false);}};
  const create=()=>{clientKey.current=crypto.randomUUID();attempt.current=null;setEditing(null);setRecipient(null);setTitle('');setMessage('');setFormError('');setUncertain(false);setOpen(true);void loadPeople();};

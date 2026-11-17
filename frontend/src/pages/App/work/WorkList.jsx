@@ -1,5 +1,6 @@
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../../components/SearchPanel';
+import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import DeleteActionButton from '../../../components/DeleteActionButton';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import QueryFeedback from '../../../components/QueryFeedback';
@@ -431,6 +432,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
     showNotification,
   ]);
 
+  const refreshQueryKey=JSON.stringify([activeOrgId,selectedFactoryIdNumber,dateFrom,dateTo,recordKind]);
+  const refreshQueryRef=useRef(refreshQueryKey);refreshQueryRef.current=refreshQueryKey;
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['assignment-board'],isBlocked:loading||importing||Boolean(deletingId)||Boolean(quantityReviewDraft),onRefresh:async()=>{
+    try{
+      const rows=await loadWorkLogs({orgId:activeOrgId,factoryId:selectedFactoryIdNumber,dateFrom,dateTo,includeRecords:false,recordKind,skipGlobalLoading:true,forceRefresh:true,skipCache:true});
+      if(refreshQueryRef.current===refreshQueryKey){setLogs(Array.isArray(rows)?rows:[]);setLoadError(false);}
+    }catch(error){showNotification(resolveText(TEXT.fetchError,languageCode,'기록을 불러오지 못했습니다.'),'error');throw error;}
+  }});
   const filteredLogs = useMemo(() => {
     const keyword = String(searchTerm || '').trim().toLowerCase();
     const sorted = [...logs].sort((left, right) => {

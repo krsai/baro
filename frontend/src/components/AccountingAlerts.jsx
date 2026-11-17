@@ -19,19 +19,19 @@ export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,set
  useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['change-approvals','bank-ledger','expense-requests','accounting-alerts','transaction-codes','partner-classifications','business-partners'].includes(topic)))setReload(value=>value+1);}),[orgId]);
  useEffect(()=>{
   if(!active||!kinds||detailOpen)return;
-  let live=true,pending=false,timer,lastAttempt=0;const controller=new AbortController();
+  let live=true,pending=false,lastAttempt=0;const controller=new AbortController();
   const load=async()=>{
    if(!live||pending||document.visibilityState==='hidden')return;
-   pending=true;lastAttempt=Date.now();setLoading(true);clearTimeout(timer);
+   pending=true;lastAttempt=Date.now();setLoading(true);
    try{
     const result=await requestJSON('/dashboard/accounting-alerts'+buildQueryString({orgId,page,kinds}),{skipCache:true,skipGlobalLoading:true,signal:controller.signal});
-    if(live){if(page&&!result.rows.length&&page*10>=result.total)setPage(0);else setData(result);setError('');timer=setTimeout(load,30000);}
+    if(live){if(page&&!result.rows.length&&page*10>=result.total)setPage(0);else setData(result);setError('');}
    }catch(error){if(live&&error.name!=='AbortError')setError(text.failed);}
    finally{pending=false;if(live)setLoading(false);}
   };
   void load();const focus=()=>{if(Date.now()-lastAttempt>=30000)void load();};
   window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
-  return()=>{live=false;controller.abort();clearTimeout(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
+  return()=>{live=false;controller.abort();window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
  },[orgId,page,reload,active,kinds,text.failed,detailOpen]);
  const openReview=row=>{if(acknowledging.current||row.pendingOperation)return;setReviewError(null);setReview(row);};
  const closeReview=()=>{if(!acknowledging.current){setReview(null);setReviewError(null);}};
