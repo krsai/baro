@@ -9,12 +9,13 @@ export function keyboardAction(event,context){
  if(event.key==='Escape')return 'dismiss';
  if(context==='workspace-tab'&&event.key==='Delete')return 'close-tab';
  if(context==='lookup')return event.key==='F2'?'search':event.key==='Enter'?'confirm':null;
- if(context==='segment'||context==='lookup-results'){
-  if(['ArrowRight','ArrowLeft'].includes(event.key)&&context==='lookup-results')return null;
+ if(context==='segment'||context==='lookup-results'||context==='lookup-multiple-results'){
+  if(['ArrowRight','ArrowLeft'].includes(event.key)&&context!=='segment')return null;
   if(['ArrowDown','ArrowRight'].includes(event.key))return 'next-option';
   if(['ArrowUp','ArrowLeft'].includes(event.key))return 'previous-option';
   if(context==='segment'&&event.key==='Home')return 'first-option';
   if(context==='segment'&&event.key==='End')return 'last-option';
+  if(context==='lookup-multiple-results'&&event.key===' ')return 'toggle-option';
   if(event.key==='Enter'||context==='segment'&&event.key===' ')return 'confirm';
  }
  return null;
