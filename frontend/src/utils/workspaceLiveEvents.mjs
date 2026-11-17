@@ -1,5 +1,5 @@
 // Only invalidation metadata crosses the connection; document reads remain authorized APIs.
-export const LIVE_TOPICS=['partner-classifications','accounting-codes','shipping','shipping-ports','styles','orders','order-shipments','invoice-drafts','issued-invoices','assignment-board','employees','sales-prices','customers','business-partners','production-allowance-settings','salary-system-settings','payroll-sources','expense-requests','expense-approvals','change-approvals','bank-ledger','work-requests'];
+export const LIVE_TOPICS=['partner-classifications','accounting-codes','shipping','shipping-ports','styles','orders','order-shipments','invoice-drafts','issued-invoices','assignment-board','holidays','employees','sales-prices','customers','business-partners','production-allowance-settings','salary-system-settings','payroll-sources','expense-requests','expense-approvals','change-approvals','bank-ledger','work-requests'];
 export async function readWorkspaceEvents(response,{signal,onReady,onChange}){
  if(!response.ok||!response.body)throw Object.assign(Error('WORKSPACE_EVENTS_UNAVAILABLE'),{status:response.status});
  const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
@@ -10,7 +10,7 @@ export async function readWorkspaceEvents(response,{signal,onReady,onChange}){
    if(buffer.length>65536)throw Error('WORKSPACE_EVENT_TOO_LARGE');
    let end;while((end=buffer.indexOf('\n\n'))>=0){
     const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);
-    if(frame.startsWith('event: ready'))onReady();
+    if(frame.startsWith('event: ready')){let snapshot={};try{snapshot=JSON.parse(frame.split('data: ').slice(1).join('data: ')||'{}');}catch{}onReady(snapshot);}
     else{const data=frame.split('\n').filter(line=>line.startsWith('data: ')).map(line=>line.slice(6)).join('\n');if(data){let event;try{event=JSON.parse(data);}catch{continue;}onChange(event);}}
    }
   }

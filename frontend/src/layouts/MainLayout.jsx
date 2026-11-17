@@ -1101,8 +1101,8 @@ const MainLayout = () => {
       return () => {};
     }
     fetchPendingOnboardingCount();
-    window.addEventListener('focus',fetchPendingOnboardingCount);
-    return()=>window.removeEventListener('focus',fetchPendingOnboardingCount);
+
+
   }, [canViewSystemOnboardingMenu, fetchPendingOnboardingCount]);
 
   // The core navigation logic, wrapped in useCallback for stability.

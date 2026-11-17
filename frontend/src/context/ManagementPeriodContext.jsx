@@ -18,11 +18,11 @@ export function ManagementPeriodProvider({ children }) {
       } catch { if (alive) setState({ orgId: activeOrgId, startDate: null, factories: [], loading: false, error: true }); }
     };
     load();
-    window.addEventListener('focus',load);
+
     const unsubscribe = subscribeWorkspaceDataChanged(detail => {
       if (Number(detail.orgId) === Number(activeOrgId) && detail.topics?.includes('production-allowance-settings')) load();
     });
-    return () => { alive = false; unsubscribe(); window.removeEventListener('focus',load); };
+    return () => { alive = false; unsubscribe(); };
   }, [activeOrgId, activeOrgType]);
   return <Context.Provider value={state.orgId === activeOrgId ? state : { startDate: null, factories: [], loading: true }}>{children}</Context.Provider>;
 }

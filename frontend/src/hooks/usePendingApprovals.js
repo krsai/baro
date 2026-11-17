@@ -17,8 +17,7 @@ export default function usePendingApprovals(orgId,enabled){
   };
   refresh();
   const unsubscribe=subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['expense-approvals','expense-requests','change-approvals','bank-ledger'].includes(topic)))refresh();});
-  const visible=()=>{if(document.visibilityState!=='hidden')refresh();};window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
-  return()=>{alive=false;unsubscribe();window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);controllers.forEach(controller=>controller.abort());};
+  return()=>{alive=false;unsubscribe();controllers.forEach(controller=>controller.abort());};
  },[orgId,enabled]);
  return result?.orgId===orgId?result.count:0;
 }

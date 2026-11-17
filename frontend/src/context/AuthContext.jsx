@@ -215,15 +215,11 @@ export const AuthProvider = ({ children }) => {
   const [canCreateCompany, setCanCreateCompany] = useState(false);
   const [workspaceReload, setWorkspaceReload] = useState(0);
   useEffect(() => {
-    let lastFocusRefresh=0;
-    const refresh = () => {if(Date.now()-lastFocusRefresh<30000)return;lastFocusRefresh=Date.now();setWorkspaceReload(value => value + 1);};
     const changed = event => {
       if (event.detail?.source === 'organization-profile'||event.detail?.source==='server-change'&&event.detail?.topics?.includes('employees')) setWorkspaceReload(value => value + 1);
     };
-    window.addEventListener('focus', refresh);
     window.addEventListener('baro:workspace-data-changed', changed);
     return () => {
-      window.removeEventListener('focus', refresh);
       window.removeEventListener('baro:workspace-data-changed', changed);
     };
   }, []);
@@ -368,7 +364,7 @@ export const AuthProvider = ({ children }) => {
         if (cancelled) return;
         if(orgId && (data.entryType!=='ORG' || Number(data.orgId)!==orgId))throw new Error('COMPANY_CONTEXT_MISMATCH');
         if(selectedKey==='system' && (data.entryType!=='SYSTEM' || data.systemRole!=='SYSTEM_ADMIN'))throw new Error('SYSTEM_CONTEXT_MISMATCH');
-        setAccessProfile(normalizeAccessProfile(data));
+        setAccessProfile(previous=>{const next=normalizeAccessProfile(data);return JSON.stringify(previous)===JSON.stringify(next)?previous:next;});
       } catch (_error) {
         if (cancelled) return;
         // Token refreshes commonly happen after the browser has been in the

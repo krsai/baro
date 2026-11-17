@@ -1,3 +1,4 @@
+import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {accountingCompactText} from '../../constants/accountingCompact';
 import {paymentScheduleError} from '../../utils/expensePaymentSchedule.mjs';
 import {expensePaymentText} from '../../constants/expensePaymentSchedule';
@@ -77,24 +78,6 @@ export default function TransactionRequestEntry() {
   const tableContainerRef = useRef(null), dragColumnWidths = useRef([]);
   organizationRef.current = activeOrgId;
   const [form, setForm] = useState(newDocument), [data, setData] = useState({ partners: [], codes: [], orders: [], settings: { defaultVatRate: '10' } });
-  useEffect(()=>{
-    let alive=true;
-    const unsubscribe=subscribeWorkspaceDataChanged(detail=>{
-      if(Number(detail?.orgId)!==Number(activeOrgId))return;
-      if(detail?.topics?.includes('business-partners'))requestJSON('/expense-payees'+buildQueryString({orgId:activeOrgId}),{skipCache:true}).then(partners=>{if(alive)setData(previous=>({...previous,partners}));}).catch(()=>{});
-      if(!detail?.topics?.includes('expense-settings'))return;
-      requestJSON(`/transaction-codes${buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'})}`,{skipCache:true})
-        .then(codes=>{if(alive)setData(previous=>({...previous,codes}));}).catch(()=>{});
-    });
-    return()=>{alive=false;unsubscribe();};
-  },[activeOrgId]);
-  useEffect(()=>{
-    if(!isTabActive||!activeOrgId)return;
-    let alive=true;
-    const refresh=()=>requestJSON('/transaction-codes'+buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}),{skipCache:true}).then(codes=>{if(alive)setData(previous=>({...previous,codes}));}).catch(()=>{});
-    refresh();window.addEventListener('focus',refresh);
-    return()=>{alive=false;window.removeEventListener('focus',refresh);};
-  },[activeOrgId,isTabActive]);
   const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false), [reload, setReload] = useState(0);
   const documentScope = `${activeOrgId}:${editorPath}:${reload}`;
   const [loadedDocumentScope, setLoadedDocumentScope] = useState(null);
@@ -103,23 +86,8 @@ export default function TransactionRequestEntry() {
   const [validationAttempt,setValidationAttempt]=useState(0),[validation,setValidation]=useState(''),[approvalStatus,setApprovalStatus]=useState(null);
   const [initialSnapshot,setInitialSnapshot] = useState(()=>documentSnapshot(newDocument()));
   const dirty = documentSnapshot(form) !== initialSnapshot;
-  const refreshState=useRef({});
-  refreshState.current={dirty,saving,active:isTabActive};
-  const previousTabActive=useRef(isTabActive);
-  useEffect(()=>{
-    const activated=isTabActive&&!previousTabActive.current;
-    previousTabActive.current=isTabActive;
-    if(editing&&activated&&!refreshState.current.dirty&&!refreshState.current.saving)setReload(value=>value+1);
-  },[editing,isTabActive]);
-  useEffect(()=>{
-    if(!editing)return;
-    const refresh=()=>{const state=refreshState.current;if(state.active&&!state.dirty&&!state.saving)setReload(value=>value+1);};
-    const unsubscribe=subscribeWorkspaceDataChanged(detail=>{
-      if(Number(detail?.orgId)===Number(activeOrgId)&&detail.topics?.some(topic=>['bank-ledger','ledger-entries','expense-approvals'].includes(topic)))refresh();
-    });
-    window.addEventListener('focus',refresh);
-    return()=>{unsubscribe();window.removeEventListener('focus',refresh);};
-  },[activeOrgId,editing]);
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['bank-ledger','ledger-entries','expense-requests','expense-approvals'],isActive:isTabActive&&editing,isBlocked:dirty||saving,onRefresh:()=>setReload(value=>value+1)});
+  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['business-partners','expense-settings','accounting-codes'],isActive:isTabActive,isBlocked:dirty||saving,onRefresh:async()=>{const [partners,codes]=await Promise.all([requestJSON('/expense-payees'+buildQueryString({orgId:activeOrgId}),{skipCache:true}),requestJSON('/transaction-codes'+buildQueryString({orgId:activeOrgId,forExpenseRequest:'1'}),{skipCache:true})]);setData(previous=>({...previous,partners,codes}));}});
   useUnsavedChanges(dirty);
   useEffect(() => { const draft=newDocument();setForm(draft);setInitialSnapshot(documentSnapshot(draft));setStatuses({}); setApprovalStatus(null); setSubmission(null); setError(''); setSaving(false); }, [activeOrgId,sourceKind,sourceId]);
   useEffect(() => {

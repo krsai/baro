@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import {companyIndustryText} from '../../constants/companyIndustries';
 import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
@@ -101,8 +102,8 @@ export default function BusinessPartners({ type, embedded=false,unified=false,ca
     inFlight.current=request;
     try{await request;}finally{if(inFlight.current===request)inFlight.current=null;if(mounted.current&&refreshPending.current&&!refreshBlockedRef.current)loadPartners();}
   }, [activeOrgId, labels.loadError, type,unified,onDirectoryLoaded,accessProfile,activeOrgRole]);
-  useEffect(() => {if(!refreshBlocked&&(!loaded.current||refreshPending.current||Date.now()-lastAttempt.current>=30000))loadPartners();}, [refreshBlocked,loadPartners]);
-  useEffect(()=>{const refresh=()=>{if(document.visibilityState==='hidden'||Date.now()-lastAttempt.current<30000)return;if(refreshBlockedRef.current){refreshPending.current=true;return;}loadPartners();};window.addEventListener('focus',refresh);return()=>window.removeEventListener('focus',refresh);},[loadPartners]);
+  useChangeDrivenEffect(()=>{loadPartners();},[loadPartners],{active:!refreshBlocked});
+  useEffect(()=>{if(!refreshBlocked&&refreshPending.current)loadPartners();},[refreshBlocked,loadPartners]);
   useEffect(() => subscribeWorkspaceDataChanged(detail => {
     if (Number(detail?.orgId) === Number(activeOrgId) && (['business-partner','customer-detail'].includes(detail.source)||detail.topics?.some(topic=>['customers','business-partners','company-industries'].includes(topic)))) {if(refreshBlockedRef.current||inFlight.current){refreshPending.current=true;return;}loadPartners();}
   }), [activeOrgId, loadPartners]);

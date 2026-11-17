@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 import AppNotice from '../../../components/AppNotice';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../../components/SearchPanel';
@@ -321,17 +322,11 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
     }
   }, [activeOrgId, canViewProcessSummary]);
 
-  useEffect(() => {
+  useChangeDrivenEffect(() => {
     if (!isStyleRouteActive) return;
     refreshAtSyncStatus();
-    let focusTimer;
-    const refresh = () => {
-      clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => { void refreshAtSyncStatus(); }, 150);
-    };
-    window.addEventListener('focus', refresh);
-    return () => { clearTimeout(focusTimer); window.removeEventListener('focus', refresh); };
-  }, [refreshAtSyncStatus, isStyleRouteActive]);
+
+  }, [refreshAtSyncStatus],{active:isStyleRouteActive});
 
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,

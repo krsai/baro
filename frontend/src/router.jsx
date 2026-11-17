@@ -9,43 +9,8 @@ import { readPersonalPreferences } from './utils/personalPreferences';
 import Login from './pages/Auth/Login';
 import SubscriptionRequired from './pages/Auth/SubscriptionRequired';
 
-const DYNAMIC_IMPORT_RELOAD_KEY = 'baro:dynamic-import-reload-at';
-const DYNAMIC_IMPORT_RELOAD_COOLDOWN_MS = 15_000;
-const isDynamicImportChunkError = (error) => {
-  const message = String(error?.message || '').trim();
-  if (!message) return false;
-  return (
-    message.includes('Failed to fetch dynamically imported module') ||
-    message.includes('Importing a module script failed') ||
-    message.includes('Loading chunk')
-  );
-};
-const lazyImportWithRetry = (importer) =>
-  React.lazy(() =>
-    importer()
-      .then((module) => {
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem(DYNAMIC_IMPORT_RELOAD_KEY);
-        }
-        return module;
-      })
-      .catch((error) => {
-        if (typeof window === 'undefined' || !isDynamicImportChunkError(error)) {
-          throw error;
-        }
-        const lastReloadAt = Number(window.sessionStorage.getItem(DYNAMIC_IMPORT_RELOAD_KEY) || 0);
-        const recentlyRetried =
-          Number.isFinite(lastReloadAt) &&
-          lastReloadAt > 0 &&
-          Date.now() - lastReloadAt < DYNAMIC_IMPORT_RELOAD_COOLDOWN_MS;
-        if (recentlyRetried) {
-          throw error;
-        }
-        window.sessionStorage.setItem(DYNAMIC_IMPORT_RELOAD_KEY, String(Date.now()));
-        window.location.reload();
-        return new Promise(() => {});
-      })
-  );
+// A failed chunk reaches the existing error boundary; never discard open drafts by reloading.
+const lazyImportWithRetry = (importer) => React.lazy(importer);
 
 const MainLayout = lazyImportWithRetry(() => import('./layouts/MainLayout'));
 const BrandSewingWorkspace = lazyImportWithRetry(() => import('./pages/App/BrandSewingWorkspace'));

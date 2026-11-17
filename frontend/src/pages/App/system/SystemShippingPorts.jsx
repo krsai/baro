@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
@@ -21,9 +22,9 @@ export default function SystemShippingPorts({embedded=false,onLockChange}){
  useEffect(()=>{onLockChange?.(locked);},[locked,onLockChange]);
  useUnsavedChanges(locked);
  const message=code=>code==='SHIPPING_PORT_IN_USE'?t.blocked:code==='SHIPPING_PORT_CHANGED'||code?.startsWith('STALE_EDIT')?t.changed:t.failed;
- useEffect(()=>{if(!active||lock.current||pending)return;let live=true;setLoading(true);setError('');const timer=setTimeout(()=>{
+ useChangeDrivenEffect(()=>{if(!active||lock.current||pending)return;let live=true;setLoading(true);setError('');const timer=setTimeout(()=>{
   requestJSON(api+buildQueryString({q:query,state:'ALL',page}),{skipCache:true}).then(value=>{if(live){setRows(value.rows);setTotal(value.total);if(page>0&&page*50>=value.total)setPage(Math.max(0,Math.ceil(value.total/50)-1));}}).catch(e=>{if(live){setRows([]);setError(e.message||'FAILED');}}).finally(()=>live&&setLoading(false));
- },180);return()=>{live=false;clearTimeout(timer);};},[query,page,reload,active]);
+ },180);return()=>{live=false;clearTimeout(timer);};},[query,page,reload],{active:active,blocked:locked});
  const change=async request=>{if(lock.current)return;lock.current=true;setBusy(true);setError('');try{
   await requestJSON(api+'/'+request.code,{method:'PUT',body:JSON.stringify(request.body)});
   if(alive.current){setPending(null);setReload(v=>v+1);showNotification(t.saved,'success');emitWorkspaceDataChanged({topics:[WORKSPACE_DATA_TOPICS.SHIPPING_PORTS],source:'system-shipping-ports'});}

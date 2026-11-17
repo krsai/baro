@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
 import {ITEM_ATTRIBUTE_TEXT} from '../../constants/itemAttributes';
 import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
@@ -53,7 +54,7 @@ export default function AccountingCodeSettings(){
   try{const [bases,sources,parents]=await Promise.all([requestJSON(path,{skipCache:true}),requestJSON('/system-setting-defaults/services',{skipCache:true}),requestJSON('/system-setting-defaults/partner-roles',{skipCache:true})]);if(sequence!==loadSequence.current)return;setRows(bases);setIndustries(sources);setRoles(parents);}
   catch{if(sequence===loadSequence.current)setError(text.error);}finally{if(sequence===loadSequence.current)setLoading(false);}
  },[text.error]);
- useEffect(()=>{if(active)load();return()=>{loadSequence.current++;};},[load,active]);
+ useChangeDrivenEffect(()=>{if(active)load();return()=>{loadSequence.current++;};},[load],{active:active});
  useReferenceSettingsRefresh({onRefresh:load,blocked:!!form||saving});
  const linkedIds=row=>row.industryIds||[];
  const inIndustry=(row,id)=>linkedIds(row).includes(id);

@@ -96,3 +96,19 @@ test('SYSTEM reference stream filters company documents and rechecks system role
   role='USER';notify({orgId:0,topics:['accounting-codes']});await settle();assert.equal(res.ended,true);
  }finally{await service.close();for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;}
 });
+
+
+test('durable change revisions increment atomically and remain separated by company and public scope',async()=>{
+ const {PGlite}=await import('@electric-sql/pglite');const sql=new PGlite();
+ const {publishWorkspaceChange}=require('../backend/dist/services/workspaceEvents');
+ try{await sql.exec('CREATE TABLE "SystemSetting" (key text PRIMARY KEY,value jsonb NOT NULL,"createdAt" timestamp NOT NULL,"updatedAt" timestamp NOT NULL)');
+ const db={$queryRawUnsafe:(query,...args)=>sql.query(query,args)};
+ await publishWorkspaceChange(db,{id:'one',orgId:1,topics:['orders','styles']});
+ await publishWorkspaceChange(db,{id:'two',orgId:1,topics:['orders']});
+ await publishWorkspaceChange(db,{id:'three',orgId:2,topics:['orders']});
+ await publishWorkspaceChange(db,{id:'four',orgId:0,topics:['accounting-codes']});
+ await publishWorkspaceChange(db,{id:'five',orgId:0,systemOnly:true,topics:['accounting-codes']});
+ const rows=await sql.query('SELECT key,value FROM "SystemSetting" ORDER BY key');const versions=Object.fromEntries(rows.rows.map(row=>[row.key,row.value.revision]));
+ assert.deepEqual(versions,{'WORKSPACE_CHANGE:ORG:1:orders':'2','WORKSPACE_CHANGE:ORG:1:styles':'1','WORKSPACE_CHANGE:ORG:2:orders':'1','WORKSPACE_CHANGE:SYSTEM:accounting-codes':'1','WORKSPACE_CHANGE:SYSTEM_USAGE:accounting-codes':'1'});
+ }finally{await sql.close();}
+});

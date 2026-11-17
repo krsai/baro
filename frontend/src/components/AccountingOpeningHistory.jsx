@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "./AppNotice";
@@ -14,10 +15,10 @@ export default function AccountingOpeningHistory({orgId,languageCode,active,relo
  const t=accountingOpeningHistoryText[languageCode]||accountingOpeningHistoryText.en,o=accountingOpeningText[languageCode]||accountingOpeningText.en,b=ledgerBalanceText[languageCode]||ledgerBalanceText.en;
  const [data,setData]=useState(null),[page,setPage]=useState(0),[refresh,setRefresh]=useState(0),[loading,setLoading]=useState(false),[error,setError]=useState(''),[selected,setSelected]=useState(null),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false);
  const changeRef=useRef(null),request=useRef(null),sending=useRef(false);
- useEffect(()=>{if(!active)return;let live=true;setLoading(true);setData(null);setError('');
+ useChangeDrivenEffect(()=>{if(!active)return;let live=true;setLoading(true);setData(null);setError('');
   requestJSON('/bank-ledger/opening/history'+buildQueryString({orgId,page}),{skipCache:true}).then(result=>{if(live)setData(result);}).catch(()=>{if(live)setError(o.failed);}).finally(()=>{if(live)setLoading(false);});
   return()=>{live=false;};
- },[orgId,active,page,reload,refresh]);
+ },[orgId,page,reload,refresh],{active});
  useEffect(()=>{onLocked(busy||uncertain);return()=>onLocked(false);},[busy,uncertain,onLocked]);
  const changed=()=>{setRefresh(v=>v+1);onChanged();};
  const remove=async row=>{

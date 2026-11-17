@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
 import {partnerHandledItemsText} from '../../constants/partnerHandledItems';
 import {accountingCodeUsageText,usageCountLabel} from '../../constants/accountingCodeUsage';
 import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
@@ -55,7 +56,7 @@ export default function ExpenseMasterSettings({ units = false }) {
       if(industries)setCategory(current=>parents.some(row=>row.id===current)?current:parents.find(row=>row.code==='PROCESS_OUTSOURCING')?.id||parents[0]?.id||null);
     }catch{if(sequence===loadSequence.current)setError(common.loadError);}finally{if(sequence===loadSequence.current)setLoading(false);}
   },[path,industries,common.loadError]);
-  useEffect(() => {if(active)load();return()=>{loadSequence.current++;};}, [active,load]);
+  useChangeDrivenEffect(() => {if(active)load();return()=>{loadSequence.current++;};}, [load],{active:active});
   useReferenceSettingsRefresh({onRefresh:load,blocked:!!form||!!roleForm||open||saving,enabled:industries});
   const save = async () => {
     setSaving(true); setError('');

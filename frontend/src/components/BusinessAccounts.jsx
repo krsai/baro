@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
 import {accountingCompactText} from '../constants/accountingCompact';
 import BankAccountEditorDialog from './BankAccountEditorDialog';
 import React,{useEffect,useRef,useState} from 'react';
@@ -32,9 +33,9 @@ export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAcc
  const callback=useRef(onAccountsChange);callback.current=onAccountsChange;const scopeRef=useRef('');scopeRef.current=`${scope}:${entityId}`;
  const query=buildQueryString({orgId:scope}),path=`/entities/${entityId}/bank-accounts`;
  const order=JSON.stringify(data.accounts.map(row=>row.id)),dirty=!pending&&!!savedOrder&&order!==savedOrder;useUnsavedChanges(dirty);
- useEffect(()=>{setDraft(null);setReady(false);setData({accounts:[],currencies:[]});setSavedOrder('');setSaving(false);if((!entityId&&!pending)||!active)return;let alive=true;setLoading(true);setError('');
+ useChangeDrivenEffect(()=>{setDraft(null);setReady(false);setData({accounts:[],currencies:[]});setSavedOrder('');setSaving(false);if((!entityId&&!pending)||!active)return;let alive=true;setLoading(true);setError('');
   (pending?requestJSON('/bank-account-currencies'+query,{skipCache:true}).then(currencies=>({accounts:pendingAccounts,currencies})):requestJSON(`${path}${query}`,{skipCache:true})).then(result=>{if(alive){if(!Array.isArray(result?.accounts)||!Array.isArray(result?.currencies)||!result.currencies.length)throw new Error('CURRENCY_LIST_UNAVAILABLE');setData(result);setReady(true);setSavedOrder(JSON.stringify(result.accounts.map(row=>row.id)));if(!pending)callback.current?.(result.accounts);}}).catch(()=>{if(alive)setError(loadText.empty);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};
- },[entityId,scope,reload,active,pending]);
+ },[entityId,scope,reload,pending],{active});
  const save=async(value,isOrder=false)=>{if(saving||disabled||!canManage)return;const token=scopeRef.current;setSaving(true);setError('');try{
   if(pending){const account={...value,id:value.id||crypto.randomUUID(),currency:data.currencies.find(row=>row.id===value.currencyId)},accounts=value.id?data.accounts.map(row=>row.id===value.id?account:row):[...data.accounts,account];setData(current=>({...current,accounts}));onPendingAccountsChange(accounts);setDraft(null);return;}
   await requestJSON(`${path}${isOrder?'/order':value.id?`/${encodeURIComponent(value.id)}`:''}${query}`,{method:isOrder||value.id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});

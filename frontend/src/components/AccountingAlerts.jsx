@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
 import {accountingPendingText} from '../utils/approvalCard';
 import DashboardAlertItem from './DashboardAlertItem';
 import React,{useEffect,useRef,useState} from 'react';
@@ -17,22 +18,22 @@ export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,set
  const [data,setData]=useState(null),[page,setPage]=useState(0),[reload,setReload]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
  const acknowledging=useRef(false),detailOpen=Boolean(selected||review);
  useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['change-approvals','bank-ledger','expense-requests','accounting-alerts','transaction-codes','accounting-codes','partner-classifications','business-partners'].includes(topic)))setReload(value=>value+1);}),[orgId]);
- useEffect(()=>{
+ useChangeDrivenEffect(()=>{
   if(!active||!kinds||detailOpen)return;
-  let live=true,pending=false,lastAttempt=0;const controller=new AbortController();
+  let live=true,pending=false;const controller=new AbortController();
   const load=async()=>{
    if(!live||pending||document.visibilityState==='hidden')return;
-   pending=true;lastAttempt=Date.now();setLoading(true);
+   pending=true;setLoading(true);
    try{
     const result=await requestJSON('/dashboard/accounting-alerts'+buildQueryString({orgId,page,kinds}),{skipCache:true,skipGlobalLoading:true,signal:controller.signal});
     if(live){if(page&&!result.rows.length&&page*10>=result.total)setPage(0);else setData(result);setError('');}
    }catch(error){if(live&&error.name!=='AbortError')setError(text.failed);}
    finally{pending=false;if(live)setLoading(false);}
   };
-  void load();const focus=()=>{if(Date.now()-lastAttempt>=30000)void load();};
-  window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
-  return()=>{live=false;controller.abort();window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
- },[orgId,page,reload,active,kinds,text.failed,detailOpen]);
+  void load();
+
+  return()=>{live=false;controller.abort();};
+ },[orgId,page,reload,kinds,text.failed],{active:active,blocked:detailOpen});
  const openReview=row=>{if(acknowledging.current||row.pendingOperation)return;setReviewError(null);setReview(row);};
  const closeReview=()=>{if(!acknowledging.current){setReview(null);setReviewError(null);}};
  const acknowledge=async row=>{

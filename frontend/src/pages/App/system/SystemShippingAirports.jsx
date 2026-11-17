@@ -1,3 +1,4 @@
+import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 ﻿import React,{useEffect,useState} from 'react';
 import {Button,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import AppNotice from '../../../components/AppNotice';
@@ -13,7 +14,7 @@ const text={
 export default function SystemShippingAirports({embedded=false}){
  const {languageCode}=useLanguage(),t=text[languageCode]||text.en,{active}=useRequestScopeContext();
  const [query,setQuery]=useState(''),[rows,setRows]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState(false),[reload,setReload]=useState(0);
- useEffect(()=>{if(!active)return;let live=true;setLoading(true);setError(false);const timer=setTimeout(()=>requestJSON('/system/shipping-airports'+buildQueryString({q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>{if(live)setError(true);}).finally(()=>{if(live)setLoading(false);}),180);return()=>{live=false;clearTimeout(timer);};},[query,reload,active]);
+ useChangeDrivenEffect(()=>{if(!active)return;let live=true;setLoading(true);setError(false);const timer=setTimeout(()=>requestJSON('/system/shipping-airports'+buildQueryString({q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>{if(live)setError(true);}).finally(()=>{if(live)setLoading(false);}),180);return()=>{live=false;clearTimeout(timer);};},[query,reload],{active:active});
  const Container=embedded?React.Fragment:AppPageContainer;
  return <Container {...(embedded?{}:{title:t.title})}><Stack spacing={2}>
  <Stack direction={{xs:'column',sm:'row'}} gap={1}><TextField size="small" label={t.search} value={query} sx={{width:{xs:'100%',sm:360},maxWidth:'100%'}} slotProps={{htmlInput:{maxLength:160}}} onChange={e=>setQuery(e.target.value)}/></Stack>

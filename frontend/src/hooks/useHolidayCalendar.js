@@ -1,3 +1,4 @@
+import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   fetchHolidayKeys,
@@ -114,16 +115,14 @@ export default function useHolidayCalendar(
       refresh({ forceRefresh: true, silent: true }).catch(() => {});
     };
 
-    const handleWindowFocus = () => {
-      refresh({ forceRefresh: true, silent: true }).catch(() => {});
-    };
 
     window.addEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-    window.addEventListener('focus', handleWindowFocus);
+    const unsubscribe=subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===normalizedOrgId&&event.topics?.includes('holidays'))refresh({forceRefresh:true,silent:true}).catch(()=>{});});
+
 
     return () => {
-      window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
-      window.removeEventListener('focus', handleWindowFocus);
+      unsubscribe();window.removeEventListener(HOLIDAY_UPDATED_EVENT, handleHolidayUpdated);
+
     };
   }, [normalizedOrgId, refresh]);
 

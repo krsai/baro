@@ -34,7 +34,7 @@ try{
  let resolve;release={promise:new Promise(r=>resolve=r)};await event(7);await page.waitForTimeout(100);assert.equal(count,4);assert.equal(await page.getByText('Refresh partner',{exact:true}).isVisible(),true);
  await page.evaluate(()=>{for(let i=0;i<5;i++)window.dispatchEvent(new Event('focus'));});await page.waitForTimeout(100);assert.equal(count,4);
  await event(7);await event(7);await page.waitForTimeout(50);assert.equal(count,4);release=null;resolve();await page.waitForTimeout(150);assert.equal(count,5);
- await page.evaluate(()=>{const now=Date.now();Date.now=()=>now+31000;window.dispatchEvent(new Event('focus'));});await page.waitForTimeout(150);assert.equal(count,6);assert.deepEqual(errors,[]);await page.close();
+ await page.evaluate(()=>{const now=Date.now();Date.now=()=>now+31000;window.dispatchEvent(new Event('focus'));});await page.waitForTimeout(150);assert.equal(count,5,'elapsed time and focus do not reload unchanged data');assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Partner refresh desktop/mobile passed: focus deduplication, company isolation, deferred editor/inactive updates, retained rows during refresh.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);unlinkSync(source);}

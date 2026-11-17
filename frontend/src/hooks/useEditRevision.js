@@ -32,10 +32,8 @@ export default function useEditRevision({ scope, url, enabled = true, busy = fal
     };
     const topics=url.startsWith('/assignment')?['assignment-board','styles','orders']:url.startsWith('/salary-system')?['salary-system-settings','production-allowance-settings','employees']:null;
     const unsubscribe=subscribeWorkspaceDataChanged(event=>{const orgId=new URL(url,'http://baro.local').searchParams.get('orgId');if(Number(event.orgId)===Number(orgId)&&(!topics||event.topics?.some(topic=>topics.includes(topic))))void check();});
-    void check();
-    window.addEventListener('focus', check);
-    document.addEventListener('visibilitychange', check);
-    return () => { cancelled = true; unsubscribe(); window.removeEventListener('focus', check); document.removeEventListener('visibilitychange', check); };
+
+    return () => { cancelled = true; unsubscribe(); };
   }, [scope, enabled, url, revision, stale, markStale, busy]);
   return { revision, stale, markStale, accept };
 }
