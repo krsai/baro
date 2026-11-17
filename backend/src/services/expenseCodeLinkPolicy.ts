@@ -1,6 +1,7 @@
 import {Prisma} from '@prisma/client';
 import {accountingInputs,accountingInputTarget} from './accountingInputs';
 import {createHttpError} from '../utils/http';
+import {industryMaterialSettings} from './materialIndustry';
 
 export const LINK_TARGETS = ['NONE','ORDER','STYLE','PROCESS'] as const;
 export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', auditId: number | null = null, preservedProcess = false, production?: boolean, inputSettings?:any) {
@@ -8,9 +9,10 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
   const process = target === 'PROCESS';
   // Required input is independent of the existing production-record workflow.
   const recordsProduction=production ?? (process && code.base?.entryMode==='PROCESS');
+  const materialSettings=code.base?.materialSettings?industryMaterialSettings(inputSettings?.materialSettings??code.base.materialSettings,code.base.materialSettings.enabled===true,{...code.base,...inputSettings,...(inputSettings?{attributeInputs:inputSettings.attributeInputs??{}}:{})}):undefined;
   return {...code,linkReferenceVersion:2,linkTarget:target,linkPolicyAuditId:auditId,base:{...code.base,
     entryMode:recordsProduction?'PROCESS':'GENERAL',orderInput:target!=='NONE'?'REQUIRED':'OPTIONAL',
-    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...(code.base?.materialSettings!==undefined?{materialSettings:{enabled:false,stockFields:[],colorInput:'HIDDEN',unitInput:'REQUIRED'}}:{}),...inputSettings}:{})}};
+    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...inputSettings}:{}),...(materialSettings?{materialSettings}:{})}};
 }
 
 export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string): Promise<any> {
@@ -20,8 +22,11 @@ export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, 
     const current=effectiveExpenseCode(code,policy,orgType);
     if(edit.record)return {...current,linkTarget:edit.cost?.linkTarget??'PROCESS',linkPolicyAuditId:edit.cost?.linkPolicyAuditId??null,base:{...current.base,entryMode:'PROCESS',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
     const base={...current.base,entryMode:'GENERAL'};
-    for(const [key,present] of Object.entries({order:edit.cost.workOrderId||edit.cost.referenceLinks?.length,style:edit.cost.styleId||edit.cost.referenceLinks?.some((row:any)=>row.styleId),process:edit.cost.styleProcessId||edit.cost.processLinks?.length}))
-      if(present&&base[key+'Input']==='HIDDEN')base[key+'Input']='OPTIONAL';
+    for(const [key,present] of Object.entries({order:edit.cost.workOrderId||edit.cost.referenceLinks?.length,style:edit.cost.styleId||edit.cost.referenceLinks?.some((row:any)=>row.styleId),process:edit.cost.styleProcessId||edit.cost.processLinks?.length})){
+      const stored=edit.cost.linkPolicyAudit?.inputSettings;
+      const previouslyRequired=stored?stored[key+'Input']==='REQUIRED':(key==='order'?['ORDER','STYLE','PROCESS']:key==='style'?['STYLE','PROCESS']:['PROCESS']).includes(edit.cost.linkTarget);
+      if(present&&base[key+'Input']==='HIDDEN'||!present&&!previouslyRequired&&base[key+'Input']==='REQUIRED')base[key+'Input']='OPTIONAL';
+    }
     return {...current,linkTarget:edit.cost.linkTarget??'NONE',linkPolicyAuditId:edit.cost.linkPolicyAuditId??null,base};
   }
   if (!code?.baseId) return code;

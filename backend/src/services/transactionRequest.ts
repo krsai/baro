@@ -74,7 +74,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
       const oldLinks=previous.referenceLinks||[];
       if(keys(metadata.orderIds,metadata.styles)!==keys(oldLinks.filter((row:any)=>!row.styleId).map((row:any)=>row.workOrderId),oldLinks.filter((row:any)=>row.styleId)))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     }
-    for(const field of ['itemCustomerId','itemTypeId'])if(body[field]!==undefined&&(body[field]||null)!==(previous[field]??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
+    for(const field of ['itemCustomerId','itemTypeId','itemOwnerOrgId'])if(body[field]!==undefined&&(body[field]||null)!==(previous[field]??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
     if ((previous.payeeEmployeeId??null)!==(payeeIds.payeeEmployeeId??null)||JSON.stringify(storedExpenseProcessIds(previous))!==JSON.stringify(processIds)) throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');

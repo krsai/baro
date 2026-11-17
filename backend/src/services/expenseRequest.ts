@@ -71,6 +71,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
       ...(item.styleProcessIds===undefined?{}:{styleProcessIds:item.styleProcessIds}), assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,
       ...(item.unitId===undefined?{}:{unitId:item.unitId}),
       ...(item.itemCustomerId===undefined?{}:{itemCustomerId:item.itemCustomerId}),
+      ...(item.itemOwnerOrgId===undefined?{}:{itemOwnerOrgId:item.itemOwnerOrgId}),
       ...(item.itemTypeId===undefined?{}:{itemTypeId:item.itemTypeId}),
       ...(item.linkedOrderIds===undefined?{}:{linkedOrderIds:item.linkedOrderIds}),
       ...(item.linkedStyles===undefined?{}:{linkedStyles:item.linkedStyles}),

@@ -2,10 +2,11 @@ import {createHttpError} from '../utils/http';
 import {Prisma} from '@prisma/client';
 import {normalizeLocalizedName,validLocalizedName} from '../utils/localizedName';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
+import {prepareMaterialOwner,materialOwnerScope,MATERIAL_OWNER_SELECT} from './materialOwner';
 const fail=(message:string):never=>{throw createHttpError(400,message);};
 const names={id:true,code:true,name:true,nameKo:true,nameVi:true};
 export async function prepareCodeItemAttributes(tx:any,orgId:number,body:any,code:any,previous?:any){
- const result:any={};
+ const result:any={...await prepareMaterialOwner(tx,orgId,body,code,previous)};
  for(const [key,field] of [['customer','itemCustomerId'],['type','itemTypeId']] as const){
   const value=body[field]===undefined?previous?.[field]??null:body[field]||null;
   if(value!=null&&(!Number.isSafeInteger(value)||value<=0))fail('INVALID_ITEM_'+key.toUpperCase());
@@ -38,7 +39,8 @@ export function registerCodeItemAttributeRoutes(app:any,db:any,gates:any){
   if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_EXPENSE_CODE_BASE');
   if(!await db.transactionCode.findFirst({where:{ownerOrgId:orgId,baseId,isActive:true}}))fail('INVALID_EXPENSE_CODE_BASE');
   const [links,types]=await Promise.all([db.orgRelationship.findMany({where:{OR:[{manufacturerOrgId:orgId},{brandOrgId:orgId}]},include:{manufacturer:{select:names},brand:{select:names}}}),db.codeItemType.findMany({where:{orgId,baseId},orderBy:{id:'asc'}})]);
-  res.json({customers:[...new Map(links.map((link:any)=>{const entity=link.manufacturerOrgId===orgId?link.brand:link.manufacturer;return [entity.id,entity];})).values()],types});
+  const owners=await db.organization.findMany({where:materialOwnerScope(orgId),select:MATERIAL_OWNER_SELECT,orderBy:[{name:'asc'},{id:'asc'}]});
+  res.json({customers:[...new Map(links.map((link:any)=>{const entity=link.manufacturerOrgId===orgId?link.brand:link.manufacturer;return [entity.id,entity];})).values()],owners,types});
  });
  app.post('/code-item-types',async(req:any,res:any)=>{
   const scope=await access(req,res);if(!scope)return;

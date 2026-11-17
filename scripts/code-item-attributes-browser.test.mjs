@@ -21,17 +21,17 @@ try{
    const req=route.request();if(req.method()==='OPTIONS')return route.fulfill({headers,status:204});
    if(req.method()==='POST'){assert.equal(req.postDataJSON().baseId,70);if(failSave){failSave=false;return route.fulfill({headers,status:500,json:{error:'FAILED'}});}const type={id:32,...req.postDataJSON()};types.push(type);return route.fulfill({headers,json:type});}
    if(failLoad){failLoad=false;return route.fulfill({headers,status:500,json:{error:'FAILED'}});}
-   return route.fulfill({headers,json:{customers:[{id:21,code:'THES',name:'THE SAN',nameKo:'더산',nameVi:'THE SAN'},{id:22,code:'URDK',name:'URD',nameKo:'URD',nameVi:'URD'}],types}});
+   return route.fulfill({headers,json:{owners:[{id:21,code:'THES',name:'THE SAN',nameKo:'더산',nameVi:'THE SAN'},{id:22,code:'URDK',name:'URD',nameKo:'URD',nameVi:'URD'}],types}});
   });
   await page.goto('http://127.0.0.1:43421/code-item-attributes-acceptance.html?lang='+lang);await page.waitForFunction(()=>window.text);const t=await page.evaluate(()=>window.text);
-  for(const key of ['customer','type']){await page.getByRole('combobox',{name:t[key],exact:true}).click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();}
+  for(const key of ['owner','type']){await page.getByRole('combobox',{name:t[key],exact:true}).click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();}
   assert.equal(await page.evaluate(()=>window.valid),false);
-  const search=page.getByRole('textbox',{name:t.search,exact:true});await search.fill(t.type);assert.equal(await page.getByRole('table',{name:({ko:'자재·규격',en:'Material specifications',vi:'Quy cách vật tư'})[lang],exact:true}).getByRole('combobox').count(),1);await search.fill('');
+  const search=page.getByRole('textbox',{name:t.search,exact:true});await search.fill(t.type);assert.equal(await page.getByRole('table',{name:({ko:'규격 정보',en:'Specifications',vi:'Quy cách'})[lang],exact:true}).getByRole('combobox').count(),1);await search.fill('');
   await page.getByRole('button',{name:t.link,exact:true}).click();await page.getByRole('button',{name:t.retry,exact:true}).click();
-  const customer=page.getByRole('textbox',{name:t.customer,exact:false});await customer.waitFor();await customer.fill('TH');await customer.press('Enter');
-  const lookup=page.getByRole('dialog').last();await lookup.getByText('THES',{exact:true}).dblclick();await page.waitForFunction(()=>window.line.itemCustomerId===21);
+  const customer=page.getByRole('textbox',{name:t.owner,exact:false});await customer.waitFor();await customer.fill('TH');await customer.press('Enter');
+  const lookup=page.getByRole('dialog').last();await lookup.getByText('THES',{exact:true}).dblclick();await page.waitForFunction(()=>window.line.itemOwnerOrgId===21);
   const typeField=page.getByRole('textbox',{name:t.type,exact:false});await typeField.fill(lang==='ko'?'메인':lang==='vi'?'Chính':'Main');await typeField.press('Tab');await page.waitForFunction(()=>window.line.itemTypeId===31&&window.valid);
-  assert.equal(await page.evaluate(()=>window.payload.itemCustomerId),21);assert.equal(await page.evaluate(()=>window.payload.itemTypeId),31);
+  assert.equal(await page.evaluate(()=>window.payload.itemOwnerOrgId),21);assert.equal(await page.evaluate(()=>window.payload.itemTypeId),31);
   await page.getByRole('button',{name:t.addType,exact:true}).click();const dialog=page.getByRole('dialog').last();const input=dialog.locator('input');await input.nth(0).fill('Care');assert.equal(await dialog.getByRole('button',{name:t.save,exact:true}).isDisabled(),true);await input.nth(1).fill('케어');await input.nth(2).fill('Chăm sóc');await dialog.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('alert').filter({hasText:t.saveError}).waitFor();assert.equal(await input.nth(0).inputValue(),'Care');await dialog.getByRole('button',{name:t.save,exact:true}).click();await page.waitForFunction(()=>window.line.itemTypeId===32);
   assert.deepEqual(errors,[]);await page.close();console.log('PASS code attributes: required modes, search, customer FK, type creation/retry, preserved draft',lang,width);
  }

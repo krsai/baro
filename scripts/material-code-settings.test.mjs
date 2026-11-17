@@ -9,14 +9,15 @@ const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement');
 const {effectiveExpenseCode,saveExpenseCodeLinkPolicy}=require('../backend/dist/services/expenseCodeLinkPolicy');
 const enabled={enabled:true,colorInput:'OPTIONAL',unitInput:'REQUIRED',stockFields:['customer','type','color','unit']};
 const attributes={customer:'REQUIRED',type:'REQUIRED'};
-test('material eligibility is explicit, validated and never inherited into old company snapshots',()=>{
+test('industry eligibility is authoritative while company input settings remain independent',()=>{
  assert.equal(accountingInputs({}).materialSettings,undefined);
  assert.deepEqual(accountingInputs({attributeInputs:attributes,materialSettings:enabled}).materialSettings,enabled);
  for(const materialSettings of [null,[],{enabled:'true'}, {...enabled,stockFields:['unit','unit']},{...enabled,stockFields:['name','unit']},{...enabled,unitInput:'OPTIONAL'},{...enabled,colorInput:'HIDDEN'}])assert.throws(()=>accountingInputs({attributeInputs:attributes,materialSettings}));
  assert.throws(()=>accountingInputs({materialSettings:enabled}),'hidden attributes cannot separate stock');
  const base={attributeInputs:attributes,materialSettings:enabled};
- assert.equal(effectiveExpenseCode({base},{inputSettings:accountingInputs({}),target:'NONE'}).base.materialSettings.enabled,false);
+ assert.equal(effectiveExpenseCode({base},{inputSettings:accountingInputs({}),target:'NONE'}).base.materialSettings.enabled,true,'industry determines eligibility while company input settings stay independent');
  assert.equal(effectiveExpenseCode({base}).base.materialSettings.enabled,true);
+ assert.equal(effectiveExpenseCode({base},{target:'PROCESS'}).base.orderInput,'REQUIRED','material eligibility must not replace legacy production requirements');
 });
 test('material defaults and company overrides persist with revision, DB guards and idempotent migration',async()=>{
  const f=await changeApprovalFixture();try{
@@ -35,7 +36,7 @@ test('material defaults and company overrides persist with revision, DB guards a
   const policy=await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,s.company.id,s.people.admin.id,base.id,'NONE',{attributeInputs:attributes,materialSettings:{...enabled,enabled:false}}));
   assert.equal(policy.inputSettings.materialSettings.enabled,false);
   await assert.rejects(db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,s.company.id,s.people.admin.id,base.id,'NONE',{attributeInputs:attributes,materialSettings:enabled},null)),/ACCOUNTING_INDUSTRY_CHANGED/);
-  assert.equal(effectiveExpenseCode({base:saved},policy).base.materialSettings.enabled,false);
+  assert.equal(effectiveExpenseCode({base:saved},policy).base.materialSettings.enabled,true);
   await assert.rejects(db.$executeRawUnsafe('UPDATE "TransactionCodeBase" SET "materialSettings"=$1::jsonb WHERE id=$2',JSON.stringify({...enabled,stockFields:['unknown']}),base.id));
   const migration=readFileSync('backend/prisma/migrations/20261117130000_material_code_settings/migration.sql','utf8');
   await f.pg.exec(migration);await f.pg.exec(migration);

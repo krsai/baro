@@ -482,6 +482,7 @@ model PartnerContact {
 }
 
 model Organization {
+  materialItemOwnerCosts PartnerTransactionCost[] @relation("MaterialItemOwner")
   handledPolicies PartnerHandledPolicy[] @relation("HandledOwner")
   handledEntityPolicies PartnerHandledPolicy[] @relation("HandledEntity")
   codeItemTypes CodeItemType[] @relation("ItemTypeOwner")
@@ -2205,6 +2206,9 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  itemOwnerOrgId Int?
+  itemOwnerSnapshot Json?
+  itemOwner Organization? @relation("MaterialItemOwner",map:"Cost_material_owner_fkey",fields:[itemOwnerOrgId],references:[id],onDelete:Restrict,onUpdate:Restrict)
   itemCustomerId Int?
   itemTypeId Int?
   itemAttributeSnapshot Json?
