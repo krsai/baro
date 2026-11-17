@@ -42,6 +42,7 @@ test('code defaults, company overrides, local types, real customer FKs and expen
  registerCodeItemAttributeRoutes(app,db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async()=>true});
  const call=async(method,path,body={},query={})=>{let result;await routes.get(method+' '+path)({body,query},{json:value=>{result=value;}});return result;};
  const type=await call('POST','/code-item-types',{baseId:base.id,nameEn:'Main',nameKo:'메인',nameVi:'Chính'});
+ for(const key of ['nameEn','nameKo','nameVi'])await assert.rejects(call('POST','/code-item-types',{baseId:base.id,nameEn:'Size',nameKo:'사이즈',nameVi:'Kích cỡ',[key]:''}),/INVALID_ITEM_TYPE/);
  assert.equal((await call('POST','/code-item-types',{baseId:base.id,nameEn:' MAIN ',nameKo:'메인',nameVi:'Chính'})).id,type.id);
  const options=await call('GET','/code-item-options',{}, {baseId:base.id,orgId:s.other.id});
  assert.deepEqual(options.customers.map(row=>row.id),[customer.id]);assert.deepEqual(options.types.map(row=>row.id),[type.id]);

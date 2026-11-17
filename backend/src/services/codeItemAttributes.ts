@@ -43,7 +43,7 @@ export function registerCodeItemAttributeRoutes(app:any,db:any,gates:any){
  app.post('/code-item-types',async(req:any,res:any)=>{
   const scope=await access(req,res);if(!scope)return;
   const orgId=scope.organization.id,actorId=gates.actorId(),body=req.body,baseId=body?.baseId;
-  if(!Number.isSafeInteger(baseId)||baseId<=0||!validLocalizedName(body,100))fail('INVALID_ITEM_TYPE');
+  if(!Number.isSafeInteger(baseId)||baseId<=0||!validLocalizedName(body,100)||['nameEn','nameKo','nameVi'].some(key=>typeof body?.[key]!=='string'||!body[key].trim()))fail('INVALID_ITEM_TYPE');
   const {nameEn,nameKo,nameVi}=normalizeLocalizedName(body),data={nameEn,nameKo,nameVi},nameKey=nameEn.normalize('NFKC').trim().toLocaleLowerCase();
   res.json(await db.$transaction(async(tx:any)=>{
    if(!await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}}))throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');

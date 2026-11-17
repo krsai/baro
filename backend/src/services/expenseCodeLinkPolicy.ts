@@ -10,7 +10,7 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
   const recordsProduction=production ?? (process && code.base?.entryMode==='PROCESS');
   return {...code,linkReferenceVersion:2,linkTarget:target,linkPolicyAuditId:auditId,base:{...code.base,
     entryMode:recordsProduction?'PROCESS':'GENERAL',orderInput:target!=='NONE'?'REQUIRED':'OPTIONAL',
-    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...inputSettings}:{})}};
+    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...(code.base?.materialSettings!==undefined?{materialSettings:{enabled:false,stockFields:[],colorInput:'HIDDEN',unitInput:'REQUIRED'}}:{}),...inputSettings}:{})}};
 }
 
 export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string): Promise<any> {
@@ -40,7 +40,7 @@ export function effectiveExpenseCode(code:any,policy?:any,orgType?:string){
  return applyExpenseCodeLinkPolicy(code,orgType==='SERVICE'?'NONE':policy?.target??accountingInputTarget(settings),policy?.auditId??null,false,undefined,settings);
 }
 
-export async function saveExpenseCodeLinkPolicy(tx: any, orgId: number, actorId: number, baseId: number, target: string, inputSettings?:any) {
+export async function saveExpenseCodeLinkPolicy(tx: any, orgId: number, actorId: number, baseId: number, target: string, inputSettings?:any, expectedAuditId?:number|null) {
   const settings=inputSettings===undefined?undefined:accountingInputs(inputSettings);
   if(settings)target=accountingInputTarget(settings);
   if (!Number.isSafeInteger(baseId)||baseId<=0||!LINK_TARGETS.includes(target as any)||!Number.isSafeInteger(actorId)||actorId<=0)
@@ -49,6 +49,7 @@ export async function saveExpenseCodeLinkPolicy(tx: any, orgId: number, actorId:
   await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
   if (!await tx.transactionCodeBase.findFirst({where:{id:baseId,isActive:true,OR:[{expenseTypeId:null},{expenseType:{isActive:true}}]}}))throw createHttpError(400,'INVALID_EXPENSE_CODE_BASE');
   const current=await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId}}});
+  if(expectedAuditId!==undefined&&expectedAuditId!==(current?.auditId??null))throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
   if(current?.target===target&&JSON.stringify(current.inputSettings?accountingInputs(current.inputSettings):null)===JSON.stringify(settings??null))return current;
   const audit=await tx.expenseCodeLinkAudit.create({data:{orgId,baseId,previousTarget:current?.target ?? 'NONE',target,actorId,...(settings?{inputSettings:settings}:{})}});
   return tx.expenseCodeLinkPolicy.upsert({where:{orgId_baseId:{orgId,baseId}},
@@ -64,14 +65,15 @@ export function registerExpenseCodeLinkPolicyRoutes(app: any, db: any, gates: an
       db.expenseCodeLinkPolicy.findMany({where:{orgId:access.organization.id}}),
     ]);
     const byId=new Map(policies.map((row: any)=>[row.baseId,row]));
-    res.json(bases.map((base: any)=>({id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi,
+    res.json(bases.map((base: any)=>({id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi,policyAuditId:(byId.get(base.id) as any)?.auditId??null,
       inputSettings:accountingInputs(effectiveExpenseCode({...base,base},byId.get(base.id),access.organization.type).base),
       target:access.organization.type==='SERVICE'?'NONE':(byId.get(base.id) as any)?.target ?? accountingInputTarget(accountingInputs(base)),updatedAt:(byId.get(base.id) as any)?.updatedAt ?? null})));
   });
   app.put(path,async(req: any,res: any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;
-    const {baseId,target,inputSettings}=req.body ?? {};
+    const {baseId,target,inputSettings,policyAuditId}=req.body ?? {};
+    if(inputSettings?.materialSettings!==undefined&&policyAuditId!==null&&(!Number.isSafeInteger(policyAuditId)||policyAuditId<=0))throw createHttpError(400,'INVALID_INPUT_OPTION');
     if(access.organization.type==='SERVICE'&&(target&&target!=='NONE'||['orderInput','styleInput','processInput'].some(key=>inputSettings?.[key]&&inputSettings[key]!=='HIDDEN')))throw createHttpError(400,'INVALID_INPUT_OPTION');
-    res.json(await db.$transaction((tx: any)=>saveExpenseCodeLinkPolicy(tx,access.organization.id,gates.actorId(),baseId,target,inputSettings),{isolationLevel:'Serializable'}));
+    res.json(await db.$transaction((tx: any)=>saveExpenseCodeLinkPolicy(tx,access.organization.id,gates.actorId(),baseId,target,inputSettings,policyAuditId),{isolationLevel:'Serializable'}));
   });
 }

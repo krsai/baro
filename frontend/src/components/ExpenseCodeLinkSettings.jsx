@@ -36,9 +36,9 @@ export default function ExpenseCodeLinkSettings(){
    .catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};
  },[activeOrgId,reload]);
  const save=async row=>{const orgId=activeOrgId;setSaving(true);setError(false);setSaved(false);
-  try{await requestJSON(`/app-settings/expense-code-links${buildQueryString({orgId})}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseId:row.id,target:row.target,inputSettings:row.inputSettings})});
+  try{const result=await requestJSON(`/app-settings/expense-code-links${buildQueryString({orgId})}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({baseId:row.id,target:row.target,inputSettings:row.inputSettings,policyAuditId:row.policyAuditId??null})});
    emitWorkspaceDataChanged({orgId,topics:['expense-settings'],source:'expense-code-link-policy'});
-   if(scope.current===orgId){setRows(previous=>previous.map(item=>item.id===row.id?{...item,original:JSON.stringify(row.inputSettings)}:item));setSaved(true);setEditingId(null);}
+   if(scope.current===orgId){setRows(previous=>previous.map(item=>item.id===row.id?{...item,policyAuditId:result?.auditId??item.policyAuditId,original:JSON.stringify(row.inputSettings)}:item));setSaved(true);setEditingId(null);}
   }catch{if(scope.current===orgId)setError(true);}finally{if(scope.current===orgId)setSaving(false);}
  };
  return <Paper variant="outlined" sx={{p:'var(--ui-panel-padding, 16px)',width:'100%',minWidth:0}}><Stack spacing={2} sx={{minWidth:0}}>

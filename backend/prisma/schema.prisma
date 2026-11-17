@@ -3477,6 +3477,8 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  materialSettings Json @default("{\"enabled\":false,\"stockFields\":[],\"colorInput\":\"HIDDEN\",\"unitInput\":\"REQUIRED\"}")
+  materialRevision Int @default(1)
   handledSelections PartnerHandledSelection[]
   attributeInputs Json @default("{}")
   itemTypes CodeItemType[]

@@ -1,4 +1,5 @@
 import {createHttpError} from '../utils/http';
+import {materialCodeSettings} from './materialCodeSettings';
 const FIELDS=['transportDate','origin','destination','reference','length','width'];
 export function accountingInputs(value:any){
  const result:any={requiredFields:value?.requiredFields??[]};
@@ -14,6 +15,7 @@ export function accountingInputs(value:any){
   if(!['REQUIRED','OPTIONAL','HIDDEN'].includes(result[key]))throw createHttpError(400,'INVALID_INPUT_OPTION');
  }
  if(result.styleInput!=='HIDDEN'&&result.orderInput==='HIDDEN'||result.processInput!=='HIDDEN'&&(result.orderInput==='HIDDEN'||result.styleInput==='HIDDEN')||result.styleInput==='REQUIRED'&&result.orderInput!=='REQUIRED'||result.processInput==='REQUIRED'&&result.styleInput!=='REQUIRED')throw createHttpError(400,'INVALID_INPUT_OPTION');
+ if(value?.materialSettings!==undefined)result.materialSettings=materialCodeSettings(value.materialSettings,result);
  return result;
 }
 export const accountingInputTarget=(settings:any)=>settings.processInput==='REQUIRED'?'PROCESS':settings.styleInput==='REQUIRED'?'STYLE':settings.orderInput==='REQUIRED'?'ORDER':'NONE';

@@ -1,5 +1,6 @@
 import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
 import {ITEM_ATTRIBUTE_TEXT} from '../../constants/itemAttributes';
+import {MATERIAL_SETTINGS_TEXT} from '../../components/MaterialCodeSettings';
 import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import {accountingCodeUsageText,usageCountLabel} from '../../constants/accountingCodeUsage';
@@ -40,6 +41,7 @@ export default function AccountingCodeSettings(){
  const usageTitle=row=>row.transactionUsage?[usageText.expense+': '+row.transactionUsage.expense,usageText.ledger+': '+row.transactionUsage.ledger,usageText.settlement+': '+row.transactionUsage.settlement,usageText.past+': '+row.transactionUsage.history].join(' / '):'';
  const directionText=accountingDirectionText[languageCode]||accountingDirectionText.en;
  const inputsText=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
+ const materialText=MATERIAL_SETTINGS_TEXT[languageCode]||MATERIAL_SETTINGS_TEXT.en;
  const [panelKind,setPanelKind]=useState('SUBTYPE');
  const subtypePicker=SUBTYPE_PICKER_TEXT[languageCode]||SUBTYPE_PICKER_TEXT.en;
  const [rows,setRows]=useState([]),[industries,setIndustries]=useState([]),[roles,setRoles]=useState([]),[selected,setSelected]=useState('ALL');
@@ -88,20 +90,20 @@ export default function AccountingCodeSettings(){
   <PageContentStack><Typography variant="body2" color="text.secondary">{TRANSACTION_CLASSIFICATION_FLOW[languageCode]||TRANSACTION_CLASSIFICATION_FLOW.en}</Typography>{error&&<Alert severity="error">{error}</Alert>}
    <HierarchyPanel label={text.category} items={items} selectedId={selected} onSelect={setSelected}>
     <Stack direction="row" alignItems="baseline" useFlexGap flexWrap="wrap" gap={1.5} sx={{mb:2}}><Typography variant="subtitle2">{items.find(item=>item.id===selected)?.label||text.all}</Typography>{fundsSelected&&<Typography variant="caption" color="text.secondary">{internalFundsText[languageCode]||internalFundsText.en}</Typography>}</Stack>
-    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,directionText.label,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
+    <TableContainer><Table size="small"><TableHead><TableRow>{[text.code,text.name,text.industry,materialText.enabled,directionText.label,usageText.column,''].map((label,index)=><TableCell key={index}>{label}</TableCell>)}</TableRow></TableHead>
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>
-      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current+row.transactionUsage.history+(row.transactionUsage.types||0)+(row.transactionUsage.handled||0),languageCode)}/>} </TableCell><TableCell><Stack direction="row">
+      <TableCell>{row.materialSettings?.enabled?<Chip size="small" color="primary" label={materialText.enabled}/>:'—'}</TableCell><TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current+row.transactionUsage.history+(row.transactionUsage.types||0)+(row.transactionUsage.handled||0),languageCode)}/>} </TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
        <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={row.transactionUsage?.history&&!row.transactionUsage?.current?usageText.protected:usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
-      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={6}>{text.empty}</TableCell></TableRow>}</TableBody>
+      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={7}>{text.empty}</TableCell></TableRow>}</TableBody>
     </Table></TableContainer>
    </HierarchyPanel>
   </PageContentStack>
   <Dialog open={Boolean(form)} onClose={()=>!saving&&setForm(null)} fullWidth maxWidth={pickerOpen?'xl':'md'} slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)',transition:theme=>theme.transitions.create('max-width',{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}}}>
    <DialogTitle>{form?.id?text.edit:text.add}</DialogTitle>
-   <DialogContent dividers>{form&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:pickerOpen?'minmax(0,1fr) 380px':'minmax(0,1fr) 0px'},columnGap:{xs:0,md:pickerOpen?2.5:0},rowGap:2.5,alignItems:'start',overflowX:'clip',transition:theme=>theme.transitions.create(['grid-template-columns','column-gap'],{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}>{error&&<Alert severity="error" sx={{gridColumn:'1 / -1'}}>{error}</Alert>}<Stack spacing={2.5} sx={{py:1,minWidth:0,display:{xs:showPicker?'none':'flex',md:'flex'}}}>
+   <DialogContent dividers>{form&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:pickerOpen?(panelKind==='INPUT'?'minmax(0,1fr) 500px':'minmax(0,1fr) 380px'):'minmax(0,1fr) 0px'},columnGap:{xs:0,md:pickerOpen?2.5:0},rowGap:2.5,alignItems:'start',overflowX:'clip',transition:theme=>theme.transitions.create(['grid-template-columns','column-gap'],{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}>{error&&<Alert severity="error" sx={{gridColumn:'1 / -1'}}>{error}</Alert>}<Stack spacing={2.5} sx={{py:1,minWidth:0,display:{xs:showPicker?'none':'flex',md:'flex'}}}>
     <TextField required label={text.code} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/>
     {form.legacyUsageDisabled&&<Typography variant="caption" color="text.secondary">{languageCode==='ko'?'기존 사용 중지 설정 유지':languageCode==='vi'?'Giữ cài đặt ngừng sử dụng hiện có':'Existing disabled setting preserved'}</Typography>}
     <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
