@@ -93,7 +93,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     if([start,end].some(value=>value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value))))||start&&end&&start>end)return res.status(400).json({error:'invalid invoice filter'});
     const endExclusive=end?new Date(Date.parse(end+'T00:00:00+07:00')+86400000):undefined;
     if (search.length > 200 || (status && !['ISSUED', 'CANCELLED', 'SUPERSEDED'].includes(status))) return res.status(400).json({ error: 'invalid invoice filter' });
-    const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id,
+    const rows = await db.invoice.findMany({ where: { sellerOrgId: access.organization.id, status: { not: "DELETED" },
       ...(start||end?{issuedAt:{...(start?{gte:new Date(start+'T00:00:00+07:00')} :{}),...(endExclusive?{lt:endExclusive}:{})}}:{}),
       ...(status ? { status } : {}),
       ...(search ? { OR: [
@@ -149,7 +149,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
   });
   app.get("/invoices/issued/:id", async (req: any, res: any) => {
     const access = await requireAccess(req, res); if (!access) return;
-    const row = await db.invoice.findFirst({ where: { id: req.params.id, sellerOrgId: access.organization.id },
+    const row = await db.invoice.findFirst({ where: { id: req.params.id, sellerOrgId: access.organization.id, status: { not: "DELETED" } },
       include: { openingAdjustments:{where:{voidedAt:null}}, orders: { include: { workOrder: { select: { invoiceFinalLockedAt: true, invoiceFinalLockedBy: true,
         invoiceFinalLockInvoiceId: true, invoiceFinalLockReason: true, invoiceFinalRecognizedQuantity: true } } } }, payments: { orderBy: [{ receivedAt: "asc" }, { id: "asc" }], include: {
         allocations: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] },

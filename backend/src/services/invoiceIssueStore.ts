@@ -243,6 +243,7 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
 }
 
 export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: string, invoiceId: string, reason: unknown, approvedTransaction = false) {
+  if (!approvedTransaction) fail("CHANGE_APPROVAL_REQUIRED");
   const cancellationReason = String(reason || "").trim();
   if (!cancellationReason || cancellationReason.length > 1000) fail("INVOICE_CANCELLATION_REASON_REQUIRED");
   const work = async (tx: any) => {
@@ -259,6 +260,31 @@ export async function cancelIssuedInvoice(db: any, sellerOrgId: number, actor: s
     if (later) fail("INVOICE_CANCEL_REVERSE_ORDER_REQUIRED");
     const updated = await tx.invoice.updateMany({ where: { id: invoiceId, sellerOrgId, status: "ISSUED" },
       data: { status: "CANCELLED", cancelledBy: actor, cancelledAt: new Date(), cancellationReason } });
+    if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
+    return tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
+  };
+  return approvedTransaction ? work(db) : editTransaction(db,work);
+}
+
+export async function deleteIssuedInvoice(db: any, sellerOrgId: number, actor: string, invoiceId: string, reason: unknown, approvedTransaction = false) {
+  const deletionReason = String(reason || "").trim();
+  if (!deletionReason || deletionReason.length > 1000) fail("INVOICE_CANCELLATION_REASON_REQUIRED");
+  if (!approvedTransaction) fail("CHANGE_APPROVAL_REQUIRED");
+  const work = async (tx: any) => {
+    const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId }, include: { orders: true } });
+    if (!invoice) throw createHttpError(404, "INVOICE_NOT_FOUND");
+    if (invoice.status === "DELETED") return invoice;
+    if (!["ISSUED", "CANCELLED"].includes(invoice.status)) fail("CHANGE_SOURCE_CHANGED");
+    const lockedOrder = await tx.workOrder.findFirst({
+      where: { sellerOrgId, invoiceFinalLockInvoiceId: invoice.id },
+      select: { id: true },
+    });
+    if (lockedOrder) fail("INVOICE_FINAL_LOCK_UNLOCK_REQUIRED");
+    const later = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: { in: invoice.orders.map((row: any) => row.sourceOrderId) },
+      invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: invoice.sequenceNumber } } } });
+    if (later) fail("INVOICE_CANCEL_REVERSE_ORDER_REQUIRED");
+    const updated = await tx.invoice.updateMany({ where: { id: invoiceId, sellerOrgId, status: { in: ["ISSUED", "CANCELLED"] } },
+      data: { status: "DELETED", deletedBy: actor, deletedAt: new Date(), deletionReason } });
     if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
     return tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
   };

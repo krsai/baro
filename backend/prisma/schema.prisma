@@ -3081,6 +3081,7 @@ model InvoiceDraftLine {
 }
 
 enum InvoiceStatus {
+  DELETED
   ISSUED
   CANCELLED
   SUPERSEDED
@@ -3121,6 +3122,9 @@ model Invoice {
   cancelledBy String?
   cancelledAt DateTime?
   cancellationReason String?
+  deletedAt DateTime?
+  deletedBy String?
+  deletionReason String?
   revisionOfInvoiceId String? @unique
   rootInvoiceId String?
   revisionNumber Int @default(1)

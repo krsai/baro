@@ -1,6 +1,6 @@
 import {dashboardApprovalMenus} from './dashboardAccess';
 import {assertPaidExpenseCorrection,paidExpenseEntries,correctPaidExpense} from './paidExpenseCorrection';
-import {cancelIssuedInvoice} from './invoiceIssueStore';
+import {deleteIssuedInvoice} from './invoiceIssueStore';
 import {calculateRequestAmounts} from './transactionRequest';
 import {approvalDelegate,delegationData,delegatedChangeIds} from './approvalDelegation';
 import {normalizeExpensePaymentSchedule,validateExpensePaymentScheduleTotals} from './expensePaymentSchedule';
@@ -29,7 +29,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
   if(operation!=='DELETE'||kind!=='invoice')fail('CHANGE_INVALID_SOURCE',400);
   if(lock){await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);await db.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',id,orgId);}
   const invoice=await db.invoice.findFirst({where:{id,sellerOrgId:orgId},include:{orders:true,generalLines:true,payments:{include:{allocations:true}},credits:true}});
-  if(!invoice)fail('INVOICE_NOT_FOUND',404);if(await db.accountingOpeningItem.findFirst({where:{orgId,invoiceId:id,voidedAt:null},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');if(invoice.status!=='ISSUED')fail('CHANGE_SOURCE_CHANGED');
+  if(!invoice)fail('INVOICE_NOT_FOUND',404);if(await db.accountingOpeningItem.findFirst({where:{orgId,invoiceId:id,voidedAt:null},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');if(!['ISSUED','CANCELLED'].includes(invoice.status))fail('CHANGE_SOURCE_CHANGED');
   if(invoice.payments.some((p:any)=>!p.voidedAt)||await db.bankLedgerEvidenceAllocation.findFirst({where:{invoiceId:id,entry:{orgId,voidedAt:null}}}))fail('INVOICE_ACTIVE_PAYMENT');
   if(await db.workOrder.findFirst({where:{sellerOrgId:orgId,invoiceFinalLockInvoiceId:id}}))fail('INVOICE_FINAL_LOCK_UNLOCK_REQUIRED');
   if(await db.invoiceOrder.findFirst({where:{sourceOrderId:{in:invoice.orders.map((r:any)=>r.sourceOrderId)},invoice:{sellerOrgId:orgId,status:'ISSUED',sequenceNumber:{gt:invoice.sequenceNumber}}}}))fail('INVOICE_CANCEL_REVERSE_ORDER_REQUIRED');
@@ -138,7 +138,7 @@ export async function requestChangeApproval(db:any,orgId:number,actorId:number,i
 }
 async function applyChange(tx:any,db:any,orgId:number,actor:any,row:any,s:any,gates:any){
  await tx.$queryRawUnsafe("SELECT set_config('baro.change_request_id',$1,true),set_config('baro.change_approver',$2,true)",row.id,String(actor.id));
- if(row.menu==='INVOICE')return cancelIssuedInvoice(tx,orgId,actor.email||String(actor.id),s.id,row.reason,true);
+ if(row.menu==='INVOICE')return deleteIssuedInvoice(tx,orgId,actor.email||String(actor.id),s.id,row.reason,true);
  if(row.menu==='BANK_LEDGER'){
   if(row.operation==='CREATE'){const requester=await tx.employee.findFirst({where:{id:row.requestedByEmployeeId,orgId,status:'ACTIVE'}});return postLedgerSettlementBatch(db,orgId,requester.email||String(requester.id),row.payload,tx);}
   if(s.entry.evidenceType==='ADJUSTMENT'&&actor.orgRole!=='ADMIN')fail('LEDGER_ADJUSTMENT_ADMIN_REQUIRED',403);

@@ -37,7 +37,7 @@ import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 
 export default function InvoiceList({ orgId, languageCode, invoiceId }) {
   const {navigateToPath,showNotification}=useAppActions();const approval=useRef(null),[requesting,setRequesting]=useState(false);const change=changeApprovalText[languageCode]||changeApprovalText.en;
-  const cancelInvoice=async row=>{setRequesting(true);try{const result=await approval.current.prepare({menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:row.id});if(result){setReload(n=>n+1);showNotification(change.submitted);}}finally{setRequesting(false);}};
+  const deleteInvoice=async row=>{setRequesting(true);try{const result=await approval.current.prepare({menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:row.id});if(result){setReload(n=>n+1);showNotification(change.submitted);}}finally{setRequesting(false);}};
   const ui=invoiceUi[languageCode]||invoiceUi.en,d=invoiceDetailText[languageCode]||invoiceDetailText.en;
   const [start,setStart]=useState(()=>dayjs().startOf('month')),[end,setEnd]=useState(()=>dayjs());
   const flow=ledgerFlowText[languageCode]||ledgerFlowText.en,entry=ledgerEntryText[languageCode]||ledgerEntryText.en,bank=bankLedgerMessages[languageCode]||bankLedgerMessages.en,workspace=ledgerWorkspaceText[languageCode]||ledgerWorkspaceText.en;
@@ -92,7 +92,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <TableCell align="right" title={row.openingSettlementKind?`${(accountingOpeningText[languageCode]||accountingOpeningText.en)[row.openingSettlementKind]}: ${amount(row.openingSettlementAmount,row.currencyCode)}`:''}>{amount(row.familyBalanceAmount,row.currencyCode)}</TableCell>
         <TableCell>{row.issuedByName||'\u2014'}</TableCell><TableCell><StatusLabel tone={row.status==='ISSUED'?'blue':'gray'} label={{ISSUED:ui.issued,CANCELLED:ui.cancelled,SUPERSEDED:ui.superseded}[row.status]||row.status}/></TableCell>
         <TableCell><Button aria-label={d.pdf} disabled={pdfBusy} onDoubleClick={event=>event.stopPropagation()} onClick={event=>{event.stopPropagation();printIssued(row);}}><InvoicePdfIcon/></Button></TableCell>
-        <TableCell data-table-actions><DeleteActionButton aria-label={change.requestCancel} disabled={loading||requesting||row.status!=='ISSUED'} onClick={event=>{event.stopPropagation();cancelInvoice(row);}}/></TableCell>
+        <TableCell data-table-actions><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/></TableCell>
       </TableRow>)}
     </TableBody></Table></Box>
     <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><Stack direction="row" alignItems="center" spacing={1}><Button disabled={!page||loading} onClick={()=>setPage(v=>v-1)}>{common.previous}</Button><Typography variant="caption">{page+1}</Typography><Button disabled={!issued.hasMore||loading} onClick={()=>setPage(v=>v+1)}>{common.next}</Button></Stack></Stack>

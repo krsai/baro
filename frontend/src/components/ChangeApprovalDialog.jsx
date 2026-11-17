@@ -29,7 +29,7 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
  };
  const loadError=['settings','preview'].includes(error?.phase);
  const errorText=changeApprovalError(error?.cause||error,t);
- return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.menu==='INVOICE'?t.requestCancel:input?.operation==='CREATE'?t.CREATE:input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
+ return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.menu==='INVOICE'?t.requestDelete:input?.operation==='CREATE'?t.CREATE:input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
   {loading&&<LinearProgress/>}{error&&<Alert severity="error" action={loadError&&!busy&&!uncertain?<Button onClick={()=>setReload(value=>value+1)} disabled={loading}>{t.reloadLine}</Button>:undefined}>{error.uncertain?t.uncertain:loadError?<><Typography variant="body2">{t.lineFailed}</Typography>{errorText!==t.error&&<Typography variant="body2">{errorText}</Typography>}</>:errorText}</Alert>}
   <Typography variant="body2">{preview?.policy?.totals?.map(row=>formatInvoiceMoney(row.amount,row.currency)).join(' / ')}</Typography>
   {!input?.selectionOnly&&<TextField fullWidth label={t.reason} required={reasonRequired} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>{setReason(e.target.value);if(error?.message==='CHANGE_REASON_REQUIRED')setError('');key.current=crypto.randomUUID();submitted.current=null;}}/>}
