@@ -16,6 +16,7 @@ test('deletion reason identifies legacy customer links separately from current c
  assert.equal(systemIndustryUsageReason({_count:{customerIndustries:0},services:[]}), '');
  const details=systemIndustryUsageReason({_count:{partnerClassifications:2},partnerClassifications:[{orgId:10,entityId:10,classification:{owner:{name:'DEX'},entity:{name:'DEX'}}},{orgId:10,entityId:20,classification:{owner:{name:'DEX'},entity:{name:'BARO'}}}]},'en');
  assert.ok(details.includes('DEX → BARO'));assert.ok(details.includes('(2)'));
+ const codes=systemIndustryUsageReason({_count:{codeBases:1},services:[],codeBases:[{code:'ZIP'}],accountingCodeLinks:[{base:{code:'ZIP'}}]},'en');assert.ok(codes.includes('ZIP'));assert.equal(codes.match(/ZIP/g).length,1);
 });
 test('industry usage depends on actual source/local links, not active status, provisioning or metadata overrides',()=>{
  const row={isActive:true,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]};

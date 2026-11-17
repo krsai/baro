@@ -59,6 +59,17 @@ test('SYSTEM reference mutations publish metadata only after success and require
  assert.deepEqual(workspaceTopics('/system-setting-defaults/expense-units'),[]);await service.close();
 });
 
+test('company partner changes invalidate SYSTEM usage counts without forwarding company data',async()=>{
+ const writes=[],db={employee:{findFirst:async()=>({orgId:7})},$queryRawUnsafe:async(...args)=>writes.push(JSON.parse(args[2]))};
+ const service=createWorkspaceEvents(db,{});
+ const req={method:'PUT',path:'/partner-editor/entity/9/contacts',query:{orgId:999},get:()=>''},res=response();
+ await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware(req,res,()=>{});res.json({ok:true,private:'not sent'});await settle();});
+ assert.equal(writes.length,2);assert.equal(writes[0].orgId,7);assert.equal(writes[1].orgId,0);assert.deepEqual(writes[1].topics,['partner-classifications','accounting-codes']);
+ assert.deepEqual(Object.keys(writes[1]).sort(),['id','orgId','origin','topics']);
+ const failed=response();failed.statusCode=409;await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware(req,failed,()=>{});failed.json({error:'CONFLICT'});await settle();});assert.equal(writes.length,2);
+ await service.close();
+});
+
 test('SYSTEM reference stream filters company documents and rechecks system role on delivery',async()=>{
  const previous={DATABASE_URL:process.env.DATABASE_URL,DIRECT_URL:process.env.DIRECT_URL};process.env.DATABASE_URL=process.env.DIRECT_URL='postgresql://test:local@127.0.0.1:5432/test';
  let client,role='SYSTEM_ADMIN';class Client extends EventEmitter{constructor(){super();client=this;}async connect(){}async query(){}async end(){}}

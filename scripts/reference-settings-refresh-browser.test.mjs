@@ -15,26 +15,26 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:null});'}));
   let codeReads=0,industryReads=0,revision=0;
-  const role={id:1,code:'SUPPLIER',nameKo:'CATEGORY',nameEn:'CATEGORY',nameVi:'CATEGORY'},source=()=>({id:10,code:'SUBTYPE',partnerRoleId:1,partnerRole:role,nameKo:'SUBTYPE-'+revision,nameEn:'SUBTYPE-'+revision,nameVi:'SUBTYPE-'+revision,isActive:true,hasUsageHistory:false});
-  await page.route('**/system-setting-defaults/**',r=>{
+  const role={id:1,code:'SUPPLIER',nameKo:'CATEGORY',nameEn:'CATEGORY',nameVi:'CATEGORY'},source=()=>({id:10,code:'SUBTYPE',partnerRoleId:1,partnerRole:role,nameKo:'SUBTYPE-'+revision,nameEn:'SUBTYPE-'+revision,nameVi:'SUBTYPE-'+revision,isActive:true,hasUsageHistory:revision===0,_count:{partnerClassifications:revision===0?1:0},services:[]});
+  const settingsRoute=r=>{
    const req=r.request(),path=new URL(req.url()).pathname,headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
    if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(req.method()!=='GET'){revision++;return r.fulfill({headers,json:{ok:true}});}
    if(path.endsWith('/code-bases')){codeReads++;return r.fulfill({headers,json:[{id:7,code:'ABC',nameKo:'BASE-'+revision,nameEn:'BASE-'+revision,nameVi:'BASE-'+revision,industryIds:[10],industries:[source()],industryRevision:1,entryMode:'GENERAL',requiredFields:[],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN',isActive:true,hasUsageHistory:false}]});}
    if(path.endsWith('/services')){industryReads++;return r.fulfill({headers,json:[source()]});}
    return r.fulfill({headers,json:[role]});
-  });
-  await page.goto(`http://127.0.0.1:${port}/reference-refresh-test.html`);await page.getByRole('cell',{name:'SUBTYPE-0',exact:true}).waitFor();
+  };await page.route('**/system-setting-defaults/**',settingsRoute);await page.route('**/partner-editor/**',settingsRoute);
+  await page.goto(`http://127.0.0.1:${port}/reference-refresh-test.html`);const initiallyUsed=page.getByRole('row').filter({hasText:'SUBTYPE-0'});await initiallyUsed.waitFor();assert.equal(await initiallyUsed.locator('[data-table-action=delete]').isDisabled(),true);
   await page.getByRole('button',{name:'Codes tab',exact:true}).click();await page.getByRole('cell',{name:'BASE-0',exact:true}).waitFor();
   const before=codeReads;await page.evaluate(()=>window.mutate('/system-setting-defaults/services/10'));await page.getByRole('cell',{name:'BASE-1',exact:true}).waitFor();assert.ok(codeReads>before,'industry save refreshes accounting tree and rows');
-  await page.getByRole('button',{name:'Industries tab',exact:true}).click();await page.getByRole('cell',{name:'SUBTYPE-1',exact:true}).waitFor();const hiddenReads=codeReads;
+  await page.getByRole('button',{name:'Industries tab',exact:true}).click();await page.getByRole('cell',{name:'SUBTYPE-1',exact:true}).waitFor();assert.equal(await page.getByRole('row').filter({hasText:'SUBTYPE-1'}).locator('[data-table-action=delete]').isDisabled(),false,'usage removal enables deletion after settings refresh');const hiddenReads=codeReads;
   await page.evaluate(()=>window.mutate('/system-setting-defaults/code-bases/7'));await page.getByRole('cell',{name:'SUBTYPE-2',exact:true}).waitFor();assert.equal(codeReads,hiddenReads,'inactive accounting tab defers reads');
   await page.getByRole('button',{name:'Codes tab',exact:true}).click();await page.getByRole('cell',{name:'BASE-2',exact:true}).waitFor();
   const edit={ko:'수정',en:'Edit',vi:'Sửa'}[lang];await page.getByRole('button',{name:edit,exact:true}).first().click();const dialog=page.getByRole('dialog');await dialog.waitFor();
   const input=dialog.getByRole('textbox').first();await input.fill('XYZ');const draftReads=codeReads;
   await page.evaluate(()=>window.mutate('/system-setting-defaults/services/10'));await page.waitForTimeout(100);assert.equal(codeReads,draftReads,'open editor defers reference refresh');assert.equal(await input.inputValue(),'XYZ');
   await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});await page.getByRole('cell',{name:'BASE-3',exact:true}).waitFor();
-  const remoteBefore=codeReads;revision++;await page.evaluate(()=>window.remoteChange());await page.getByRole('cell',{name:'BASE-4',exact:true}).waitFor();assert.ok(codeReads>remoteBefore);
+  const remoteBefore=codeReads;revision++;await page.evaluate(()=>window.remoteChange());await page.getByRole('cell',{name:'BASE-4',exact:true}).waitFor();assert.ok(codeReads>remoteBefore);await page.evaluate(()=>window.mutate('/partner-editor/entity/9/contacts'));await page.getByRole('cell',{name:'BASE-5',exact:true}).waitFor();
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS reference settings: ko/en/vi reciprocal mutation refresh, inactive deferral, editor preservation and server notices.');

@@ -1,4 +1,25 @@
 import test from 'node:test';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+
+test('explicit vendor classification removes only superseded legacy assignments in its company',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,vendor=s.vendor.id;
+  await db.organization.update({where:{id:vendor},data:{type:'MATERIAL_SUPPLIER'}});
+  const local=await db.outsourcingServiceType.findUnique({where:{id:s.code.serviceTypeId},include:{systemDefault:true}});
+  const other=await db.settingServiceDefault.create({data:{code:'NEW_VENDOR_CLASS',nameKo:'NEW',nameEn:'NEW',nameVi:'NEW',entryMode:'GENERAL',partnerRoleId:local.systemDefault.partnerRoleId}});
+  await db.organizationOutsourcingServiceType.create({data:{ownerOrgId:org,partnerOrgId:vendor,serviceTypeId:local.id}});
+  const before=await db.partnerTransactionCost.findMany({where:{orgId:org,partnerOrgId:vendor}});
+  const body={revision:0,roleIds:[other.partnerRoleId],industryIds:[other.id]};
+  await db.$transaction(tx=>saveClassification(tx,org,vendor,s.people.admin.id,body));
+  assert.equal(await db.organizationOutsourcingServiceType.count({where:{ownerOrgId:org,partnerOrgId:vendor}}),0);
+  assert.deepEqual(await db.partnerTransactionCost.findMany({where:{orgId:org,partnerOrgId:vendor}}),before);
+  assert.ok(await db.outsourcingServiceType.findUnique({where:{id:local.id}}),'source and local definitions survive classification edits');
+  await db.organizationOutsourcingServiceType.create({data:{ownerOrgId:org,partnerOrgId:vendor,serviceTypeId:local.id}});
+  await assert.rejects(db.$transaction(tx=>saveClassification(tx,org,vendor,s.people.admin.id,body)),/PARTNER_CLASSIFICATION_CHANGED/);
+  assert.equal(await db.organizationOutsourcingServiceType.count({where:{ownerOrgId:org,partnerOrgId:vendor}}),1,'stale request never clears legacy links');
+  await db.organization.update({where:{id:vendor},data:{type:'PROCESS_OUTSOURCING'}});await db.$transaction(tx=>saveClassification(tx,org,vendor,s.people.admin.id,{...body,revision:1}));assert.equal(await db.organizationOutsourcingServiceType.count({where:{ownerOrgId:org,partnerOrgId:vendor}}),1,'production supplier eligibility assignments are independent and preserved');
+ }finally{await f.close();}
+});
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createRequire} from 'node:module';
@@ -9,7 +30,7 @@ const sources=[{id:10,code:'ZIPPER',partnerRoleId:2,isActive:true,partnerRole:{i
 const body={revision:0,roleIds:[2,3],industryIds:[10,11]};
 test('current classification attachment never queries legacy links or industry defaults',async()=>{
  const forbidden=async()=>{throw Error('Legacy classification read');};
- const db={partnerClassification:{findMany:async()=>[{entityId:7,revision:3,industries:[{industry:sources[1]}]}]},
+ const db={$queryRawUnsafe:async()=>[],partnerClassification:{findMany:async()=>[{entityId:7,revision:3,industries:[{industry:sources[1]}]}]},
   settingServiceDefault:{findMany:forbidden},organizationOutsourcingServiceType:{findMany:forbidden},
   companyPartnerLink:{findMany:async()=>[]},companyIdentityLink:{findMany:async()=>[]}};
  const rows=await attachPartnerClassifications(db,1,[{entityId:7,serviceTypes:[sources[0]],systemIndustryId:10},{entityId:8,serviceTypes:[sources[0]],systemIndustryId:10}]);
@@ -39,7 +60,7 @@ test('SERVICE customer registration saves its own relationship and connection wi
  const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const names=['isManufacturerOrg','isBrandOrg','resolveCustomerPerspective','buildSharedCustomerOrganizationData'];
  const code=tree.statements.filter(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(d=>names.includes(d.name.getText(tree)))).map(node=>node.getText(tree)).join('\n');
- const helpers=new Function('normalizeLocalizedName','resolvePartnerIdentity','resolveOptionalString','subscriberProfilePatch',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return {resolveCustomerPerspective,buildSharedCustomerOrganizationData};')(value=>({name:value.name}),resolvePartnerIdentity,(v,f)=>v??f,subscriberProfilePatch);
+ const helpers=new Function('normalizeLocalizedName','resolvePartnerIdentity','resolveOptionalString','subscriberProfilePatch','entityDocumentContactUpdate','entityDocumentContactBaseline',ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText+';return {resolveCustomerPerspective,buildSharedCustomerOrganizationData};')(value=>({name:value.name}),resolvePartnerIdentity,(v,f)=>v??f,subscriberProfilePatch,require('../backend/dist/services/companyDocumentContact').entityDocumentContactUpdate,require('../backend/dist/services/companyDocumentContact').entityDocumentContactBaseline);
  assert.equal(helpers.resolveCustomerPerspective({type:'SERVICE'}),'MANUFACTURER');assert.equal(helpers.resolveCustomerPerspective({type:'SYSTEM'}),null);
  const company={id:1845,type:'SERVICE'},canonical={name:'BARO GARMENT',nameKo:'Official localized name',address:'Official address',code:'BARO'};
  let created,relationship,classificationSaved=false,connected=false;
@@ -64,7 +85,7 @@ test('inactive stored industries retain their original FK; stale edits cannot ov
 });
 test('saving uses the authenticated company/active employee, serializes the entity and changes only classification tables',async()=>{
  let stored=null,selected=[],actor,locked=false;const writes=[];
- const db={...validator(),organization:{findFirst:async({where})=>where.ownerOrgId===1&&where.id===7?{id:7,outsourcingServiceAssignments:[]}:null},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>{actor=where;return where.id===8&&where.orgId===1?{id:8}:null;}},
+ const db={...validator(),organizationOutsourcingServiceType:{deleteMany:async({where})=>{assert.deepEqual(where,{ownerOrgId:1,partnerOrgId:7,serviceType:{systemDefaultId:{notIn:[10,11]}}});}},organization:{findFirst:async({where})=>where.ownerOrgId===1&&where.id===7?{id:7,type:'MATERIAL_SUPPLIER',outsourcingServiceAssignments:[]}:null},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>{actor=where;return where.id===8&&where.orgId===1?{id:8}:null;}},
   $queryRawUnsafe:async(_sql,id)=>{assert.equal(id,7);locked=true;},partnerClassification:{findUnique:async()=>stored,create:async({data})=>{assert.equal(locked,true);stored={...data,revision:1,industries:[]};writes.push('header');},updateMany:async()=>({count:0})},
   partnerClassificationIndustry:{deleteMany:async()=>{selected=[];writes.push('industries');},createMany:async({data})=>{selected=data;stored.industries=data.map(row=>({...row,industry:sources.find(s=>s.id===row.systemIndustryId)}));}}};
  const result=await saveClassification(db,1,7,8,body);assert.deepEqual(result.industryIds,[10,11]);assert.equal(result.revision,1);assert.deepEqual(writes,['header','industries']);assert.ok(selected.every(row=>row.orgId===1&&row.entityId===7));assert.equal(actor.status,'ACTIVE');assert.deepEqual(actor.orgRole.in,['ADMIN','OPERATOR','ACCOUNTANT']);

@@ -65,6 +65,9 @@ export async function saveClassification(db:any,orgId:number,entityId:number,emp
   await db.partnerClassificationIndustry.createMany({data:data.industryIds.map(systemIndustryId=>({orgId,entityId,systemIndustryId}))});
   // Explicit classification replaces the old single customer type. Retaining
   // that duplicate FK keeps removed types falsely in use after an edit.
+  // Retire duplicate distribution/logistics tags only on an explicit save.
+  // Production supplier assignments also govern eligibility and stay independent.
+  if(target.kind==='BUSINESS'&&['MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(target.entity.type))await db.organizationOutsourcingServiceType.deleteMany({where:{ownerOrgId:orgId,partnerOrgId:entityId,serviceType:{systemDefaultId:{notIn:data.industryIds}}}});
   if(target.kind==='CUSTOMER')await db.orgRelationship.update({where:{id:target.relationshipId},data:{systemIndustryId:null}});
   return readClassification(db,orgId,entityId);
 }

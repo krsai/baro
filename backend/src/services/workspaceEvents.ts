@@ -5,6 +5,7 @@ const {Client}=require('pg');
 const {assertSafeApplicationDatabaseEnv}=require('../config/databaseTargetGuard');
 const CHANNEL='baro_workspace_changes';
 const referenceTopics=['partner-classifications','accounting-codes'];
+const isReferenceUsagePath=(path:string)=>/^\/(partner-classifications|partner-editor|business-partners|customers|partners|organizations|organization-profile)(\/|$)/.test(path);
 const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|partner-roles|code-bases|codes)(\/|\?|$)/.test(path);
 export const workspaceTopics=(path:string):string[]=>{
  const route=path.split('?')[0]||'';
@@ -19,7 +20,7 @@ export const workspaceTopics=(path:string):string[]=>{
   [/^\/(payroll|salary|production-allowance)/,['payroll-sources','salary-system-settings','employees']],
   [/^\/(expense|change-approval|bank-ledger|bank-accounts|management-targets)/,['expense-requests','expense-approvals','change-approvals','bank-ledger','payroll-sources']],
   [/^\/invoices/,['issued-invoices','invoice-drafts','bank-ledger','change-approvals']],
-  [/^\/(customers|partners|business-partners|organizations|organization-profile|sales-prices)/,['customers','business-partners','sales-prices']],
+  [/^\/(partner-classifications|partner-editor|customers|partners|business-partners|organizations|organization-profile|sales-prices)/,['customers','business-partners','sales-prices']],
   [/^\/dashboard\/work-requests/,['work-requests']],
  ];
  return groups.find(([pattern])=>pattern.test(route))?.[1]||[];
@@ -64,6 +65,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
       if(!employee)return;
       const event={id:randomUUID(),orgId:employee.orgId,topics,origin:origin(req)};
       await db.$queryRawUnsafe('SELECT pg_notify($1,$2)::text',CHANNEL,JSON.stringify(event));
+      if(isReferenceUsagePath(req.path))await db.$queryRawUnsafe('SELECT pg_notify($1,$2)::text',CHANNEL,JSON.stringify({id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req)}));
      }).catch(()=>{console.warn('Workspace change notification unavailable');});
     }
     return json.call(this,body);
