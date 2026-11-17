@@ -6,6 +6,48 @@ const {Prisma}=require('../backend/node_modules/@prisma/client');
 const {registerBankLedgerRoutes}=require('../backend/dist/services/bankLedger');
 const {attachLedgerActorNames}=require('../backend/dist/services/ledgerActors');
 import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
+import {accountCashflowItems,accountCashflowTotal,cashflowSegments} from '../frontend/src/utils/accountCashflow.mjs';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+
+test('real database overview scopes monthly cash flows, excludes voids and leaves ledger records unchanged',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),today=accountReportToday(),{accountHistoryPeriod}=require('../backend/dist/services/accountOverview.js'),start=accountHistoryPeriod(today,1).start;
+  const add=(date,amount,extra={})=>db.bankLedgerEntry.create({data:{orgId:s.company.id,accountId:s.account.id,clientKey:crypto.randomUUID(),transactionDate:date,direction:'IN',amount,purpose:'Test receipt',evidenceNumber:'receipt.pdf',createdBy:'admin@example.test',accountingCodeId:s.code.id,counterpartyOrgId:s.vendor.id,counterpartyName:'Vendor',...extra}});
+  await add(start,'10.01');await add(today,'20.02');await add(shiftReportDate(start,-1),'50');await add(today,'900',{voidedAt:new Date(),voidedBy:'admin@example.test',voidReason:'Duplicate'});
+  const foreign=await db.bankLedgerAccount.create({data:{orgId:s.other.id,clientKey:crypto.randomUUID(),bankName:'Other',accountNumber:'002',accountHolder:'Other',currencyCode:'USD',openingDate:'0001-01-01',openingBalance:'0',createdBy:'other@example.test'}});
+  const otherVendor=await db.organization.create({data:{name:'Other vendor',type:'LOGISTICS_PROVIDER',ownerOrgId:s.other.id}});
+  await db.bankLedgerEntry.create({data:{orgId:s.other.id,accountId:foreign.id,clientKey:crypto.randomUUID(),transactionDate:today,direction:'IN',amount:'9999',purpose:'Other',evidenceNumber:'other.pdf',createdBy:'other@example.test',counterpartyOrgId:otherVendor.id,counterpartyName:'Vendor'}});
+  const before=await db.bankLedgerEntry.findMany({orderBy:{id:'asc'}}),report=await loadAccountOverview(db,s.company.id,{months:1});
+  assert.equal(report.historyStart,start);assert.equal(report.cashflowGroups.length,1);assert.equal(report.cashflowGroups[0].amount,'30.03');assert.equal(report.cashflowGroups[0].baseId,s.code.baseId);assert.equal(report.cashflowGroups[0].entries.length,2);assert.equal(report.accounts[0].currentBalance,'80.03');assert.equal(report.movementAccounts[0].totalIn,'30.03');
+  const year=await loadAccountOverview(db,s.company.id,{months:12});assert.equal(year.cashflowGroups[0].amount,'80.03');assert.deepEqual(await db.bankLedgerEntry.findMany({orderBy:{id:'asc'}}),before);
+ }finally{await f.close();}
+});
+
+test('calendar periods use 1/3/6/12 actual months including leap days and clamped month ends',()=>{
+ const {accountHistoryPeriod}=require('../backend/dist/services/accountOverview.js');
+ assert.deepEqual(accountHistoryPeriod('2026-11-17',1),{months:1,start:'2026-10-18',end:'2026-11-17',days:31});
+ assert.equal(accountHistoryPeriod('2026-11-17',3).start,'2026-08-18');
+ assert.equal(accountHistoryPeriod('2026-11-17',6).start,'2026-05-18');
+ assert.equal(accountHistoryPeriod('2024-03-31',1).start,'2024-03-01');
+ assert.equal(accountHistoryPeriod('2024-03-01',12).days,366);
+ for(const n of [0,2,30,60,13,'bad'])assert.throws(()=>accountHistoryPeriod('2026-11-17',n),/LEDGER_INVALID_RANGE/);
+});
+
+test('cash flows group actual code bases across VAT variants, retain entries and native currency and convert precisely',()=>{
+ const {accountCashFlowReport}=require('../backend/dist/services/accountOverview.js');
+ const accounts=[{id:'a',displayName:'USD cash',currencyCode:'USD'},{id:'b',displayName:'VND bank',currencyCode:'VND'}],base={id:1,code:'ZIP',nameEn:'Zipper'},entry=(id,accountId,direction,amount,code)=>({id,accountId,direction,amount,accountingCode:code,transactionDate:'2026-11-16'});
+ const groups=accountCashFlowReport(accounts,[entry('1','a','IN','10.01',{id:11,code:'ZIP0',base}),entry('2','a','IN','20.02',{id:12,code:'ZIP8',base}),entry('3','b','IN','25000',{id:13,code:'ZIP10',base}),entry('4','a','OUT','5.03',{id:11,code:'ZIP0',base}),entry('5','a','OUT','2',{id:14,code:'OTHER',base:{id:2,code:'OTHER',nameEn:'Zipper'}}),entry('6','b','OUT','100',null)]);
+ assert.equal(groups.length,5);assert.equal(groups.find(row=>row.itemKey==='BASE:1'&&row.currencyCode==='USD'&&row.direction==='IN').amount,'30.03');
+ const items=accountCashflowItems(groups,'','USD',{USD:'1',VND:'25000'}),zip=items.find(row=>row.itemKey==='BASE:1');
+ assert.equal(zip.in,'31.03');assert.equal(zip.out,'5.03');assert.equal(zip.net,'26.00');assert.equal(zip.entries.length,4);assert.deepEqual(zip.entries.map(row=>row.code),['ZIP0','ZIP8','ZIP10','ZIP0']);assert.equal(items.length,3);
+ assert.equal(accountCashflowTotal(items,'IN','USD',{USD:'1',VND:'25000'}),'31.03');
+ assert.equal(accountCashflowItems(groups,'a','USD',{}).find(row=>row.itemKey==='BASE:1').in,'30.03');
+ assert.equal(accountCashflowItems(groups,'','USD',{}).find(row=>row.itemKey==='BASE:1').in,null);
+ const slices=cashflowSegments(items,'out');assert.equal(slices.length,2);assert.equal(slices.at(-1).end,Math.PI*1.5);
+ assert.throws(()=>accountCashFlowReport(accounts,[entry('x','foreign','IN','1',null)]),/LEDGER_ACCOUNT_NOT_FOUND/);
+ const large=accountCashFlowReport(accounts,[entry('large','a','IN','9007199254740993.99',null),entry('small','a','IN','0.01',null)]);
+ assert.equal(large[0].amount,'9007199254740994.00');assert.equal(accountCashflowItems(large,'','USD',{})[0].in,'9007199254740994.00');
+});
 
 test('monthly movements use calendar boundaries, leap years and account names without changing current history',()=>{
  const {accountMovementPeriod}=require('../backend/dist/services/accountOverview.js');
@@ -57,7 +99,7 @@ test('overview reads real Prisma relations and resolves daily counterparties onl
   payrollPayableItem:{findMany:async query=>{validateQuery('PayrollPayableItem',query);assert.equal(query.where.orgId,orgId);return [];}},
   accountingOpeningItem:{findMany:async()=>[]},bankLedgerAccount:{findMany:async query=>{assert.equal(query.where.orgId,orgId);return [{id:'a',currencyCode:'USD',openingDate:'2026-01-01',openingBalance:'100',bankName:'Bank',createdAt:new Date(),entityAccount:null}];}},
   organizationBankAccount:{findMany:async query=>{assert.deepEqual(query.where,{orgId,entityId:orgId});return [];}},
-  bankLedgerEntry:{groupBy:async query=>{ranges.push(query.where.transactionDate);assert.equal(query.where.orgId,orgId);assert.equal(query.where.voidedAt,null);return [];},findMany:async query=>{validateQuery('BankLedgerEntry',query);assert.deepEqual(query.where,{orgId,voidedAt:null,transactionDate:yesterday});return entries;}},
+  bankLedgerEntry:{groupBy:async query=>{ranges.push(query.where.transactionDate);assert.equal(query.where.orgId,orgId);assert.equal(query.where.voidedAt,null);return [];},findMany:async query=>{validateQuery('BankLedgerEntry',query);if(query.select){assert.equal(query.where.orgId,orgId);assert.equal(query.where.voidedAt,null);assert.equal(query.where.transactionDate.lte,asOf);assert.ok(query.where.transactionDate.gte<asOf);return [];}assert.deepEqual(query.where,{orgId,voidedAt:null,transactionDate:yesterday});return entries;}},
   invoice:{findMany:async query=>{validateQuery('Invoice',query);assert.equal(query.where.sellerOrgId,orgId);if(!query.where.id)return [];lookups.push('invoice');assert.deepEqual(query.where.id.in,['inv','foreign']);return [{id:'inv',buyer:{name:'Buyer'}}];}},
   partnerTransactionCost:{findMany:async query=>{validateQuery('PartnerTransactionCost',query);assert.equal(query.where.orgId,orgId);assert.deepEqual(query.where.id.in,['cost','missing']);lookups.push('expense');return [{id:'cost',expenseRequest:{payeeEmployee:{name:'Employee'}}}];}},
   expenseRequest:{findMany:async query=>{validateQuery('ExpenseRequest',query);assert.equal(query.where.orgId,orgId);return [];}},

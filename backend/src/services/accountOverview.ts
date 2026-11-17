@@ -11,15 +11,22 @@ const delta=(rows:any[])=>rows.reduce((sum:bigint,row:any)=>sum+(row.direction==
 const amountSum=(rows:any[],direction:string)=>rows.filter(row=>row.direction===direction).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row._sum.amount||'0'),0n);
 const accountName=(a:any)=>a.displayName||[a.bankName,a.accountNumber].filter(Boolean).join(' / ');
 export function accountHistoryDays(value:unknown=30){const days=Number(value);if(![30,60,90,180].includes(days))throw createHttpError(400,'LEDGER_INVALID_RANGE');return days;}
+export function accountHistoryPeriod(asOf:string,value:unknown=1){
+ const months=Number(value);if(![1,3,6,12].includes(months))throw createHttpError(400,'LEDGER_INVALID_RANGE');
+ const day=Number(asOf.slice(8)),date=new Date(asOf.slice(0,7)+'-01T00:00:00Z');date.setUTCMonth(date.getUTCMonth()-months);
+ const last=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,0)).getUTCDate();date.setUTCDate(Math.min(day,last));
+ const start=shiftReportDate(date.toISOString().slice(0,10),1),days=Math.round((Date.parse(asOf+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000)+1;
+ return {months,start,end:asOf,days};
+}
 export function accountMovementPeriod(value:unknown,today=accountReportToday()){
  const month=value===undefined?today.slice(0,7):String(value);
  if(!/^(19|20)\d{2}-(0[1-9]|1[0-2])$/.test(month)||month>today.slice(0,7))throw createHttpError(400,'LEDGER_INVALID_RANGE');
  const start=month+'-01',date=new Date(start+'T00:00:00Z');date.setUTCMonth(date.getUTCMonth()+1);
  return {month,start,end:month===today.slice(0,7)?today:shiftReportDate(date.toISOString().slice(0,10),-1)};
 }
-export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days=30){
- days=accountHistoryDays(days);
- const monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,1-days);
+export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days=30,movementStart?:string){
+ if(!Number.isSafeInteger(days)||days<1||days>366)throw createHttpError(400,'LEDGER_INVALID_RANGE');
+ const monthStart=movementStart||asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,1-days);
  const summaries=accounts.map(account=>{
   const code=account.currencyCode,own=flows.filter(row=>row.accountId===account.id),month=own.filter(row=>row.transactionDate>=monthStart&&row.transactionDate<=asOf),day=own.filter(row=>row.transactionDate===yesterday),balance=ledgerScale4(account.currentBalance),change=delta(month);
   return {id:account.id,name:accountName(account),currencyCode:code,openingDate:account.openingDate,beginningBalance:ledgerMoney(balance-change,code),totalIn:ledgerMoney(amountSum(month,'IN'),code),totalOut:ledgerMoney(amountSum(month,'OUT'),code),change:ledgerMoney(change,code),currentBalance:ledgerMoney(balance,code),yesterdayIn:ledgerMoney(amountSum(day,'IN'),code),yesterdayOut:ledgerMoney(amountSum(day,'OUT'),code)};
@@ -36,15 +43,27 @@ export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days
  }
  return {asOf,monthStart,yesterday,historyStart,historyDays:days,accounts:summaries,currencyTotals:totals,history};
 }
+export function accountCashFlowReport(accounts:any[],entries:any[]){
+ const known=new Map(accounts.map(row=>[row.id,row])),groups=new Map<string,any>();
+ for(const entry of entries){
+  const account=known.get(entry.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');
+  const code=entry.accountingCode,base=code?.base,itemKey=base?.id?'BASE:'+base.id:code?.id?'CODE:'+code.id:'UNCODED',key=JSON.stringify([itemKey,entry.direction,account.currencyCode]);
+  const group=groups.get(key)||{itemKey,baseId:base?.id??null,code:base?.code||code?.code||'',nameKo:base?.nameKo||code?.nameKo||'',nameEn:base?.nameEn||code?.nameEn||'',nameVi:base?.nameVi||code?.nameVi||'',direction:entry.direction,currencyCode:account.currencyCode,total:0n,entries:[]};
+  group.total+=ledgerScale4(entry.amount);
+  group.entries.push({id:entry.id,date:entry.transactionDate,accountId:entry.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:entry.direction,amount:ledgerMoney(ledgerScale4(entry.amount),account.currencyCode),code:code?.code||'',counterparty:entry.counterpartyName||'',purpose:entry.purpose||''});groups.set(key,group);
+ }
+ return [...groups.values()].map(({total,...group})=>({...group,amount:ledgerMoney(total,group.currencyCode)})).sort((a,b)=>a.code.localeCompare(b.code)||a.itemKey.localeCompare(b.itemKey)||a.direction.localeCompare(b.direction)||a.currencyCode.localeCompare(b.currencyCode));
+}
 export async function loadAccountOverview(db:any,orgId:number,query:any={}){
- const today=accountReportToday(),asOf=ledgerDate(query.asOf||today),days=accountHistoryDays(query.days??30),period=accountMovementPeriod(query.month,today);
+ const today=accountReportToday(),asOf=ledgerDate(query.asOf||today),calendar=query.months!==undefined||query.days===undefined?accountHistoryPeriod(asOf,query.months??1):null,days=calendar?.days??accountHistoryDays(query.days),period=query.month!==undefined||!calendar?accountMovementPeriod(query.month,today):{month:null,start:calendar.start,end:asOf};
  if(asOf!==today)throw createHttpError(400,'LEDGER_INVALID_RANGE');
  return retryEditTransaction(db,async(tx:any)=>{
   const accounts=await readLedgerAccounts(tx,orgId,asOf),monthStart=asOf.slice(0,7)+'-01',yesterday=shiftReportDate(asOf,-1),historyStart=shiftReportDate(asOf,1-days),start=[period.start,monthStart,yesterday,historyStart].sort()[0];
-  const [flows,dailyEntries,outstanding]=await Promise.all([
+  const [flows,dailyEntries,outstanding,periodEntries]=await Promise.all([
    tx.bankLedgerEntry.groupBy({by:['accountId','transactionDate','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:asOf}},_sum:{amount:true}}),
    tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:true,settlementLines:true} satisfies Prisma.BankLedgerEntryInclude,orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
    loadOutstanding(tx,orgId,asOf),
+   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:{gte:historyStart,lte:asOf}},select:{id:true,accountId:true,transactionDate:true,direction:true,amount:true,counterpartyName:true,purpose:true,accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true}}}}},orderBy:[{transactionDate:'desc'},{createdAt:'desc'},{id:'desc'}]} satisfies Prisma.BankLedgerEntryFindManyArgs),
   ]);
   const invoiceIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.invoiceId).filter(Boolean)))];
   const expenseIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.expenseItemId).filter(Boolean)))];
@@ -56,8 +75,8 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
   const known=new Map<string,any>(accounts.map((row:any)=>[row.id,row]));
   const transactions=dailyEntries.map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:row.counterpartyName||[...new Set(row.allocations.map((a:any)=>invoiceNames.get(a.invoiceId)||expenseNames.get(a.expenseItemId)).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
   const monthAccounts=period.end===asOf?accounts:await readLedgerAccounts(tx,orgId,period.end);
-  const movements=accountBalanceReport(monthAccounts.filter((row:any)=>row.openingDate<=period.end),flows,period.end);
-  return {orgId,...accountBalanceReport(accounts,flows,asOf,days),movementMonth:period.month,movementStart:period.start,movementEnd:period.end,movementAccounts:movements.accounts,movementTotals:movements.currencyTotals,transactions,...outstanding};
+  const movements=accountBalanceReport(monthAccounts.filter((row:any)=>row.openingDate<=period.end),flows,period.end,days,period.start);
+  return {orgId,...accountBalanceReport(accounts,flows,asOf,days),historyMonths:calendar?.months??null,movementMonth:period.month,movementStart:period.start,movementEnd:period.end,movementAccounts:movements.accounts,movementTotals:movements.currencyTotals,cashflowGroups:accountCashFlowReport(accounts,periodEntries),transactions,...outstanding};
  },60000);
 }
 async function loadOutstanding(tx:any,orgId:number,asOf:string):Promise<any>{
