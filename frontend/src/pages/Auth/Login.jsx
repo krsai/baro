@@ -173,9 +173,6 @@ const Login = () => {
           <ToggleButtonGroup data-focus-next="group" exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{mb:2,p:0.5,borderRadius:2,bgcolor:'action.hover','& .MuiToggleButtonGroup-grouped':{flex:1,minWidth:0,border:0,borderRadius:'6px !important',minHeight:44,px:0.5,fontSize:{xs:'0.65rem',sm:'0.75rem'},fontWeight:600,whiteSpace:'nowrap'},'& .Mui-selected':{bgcolor:'background.paper',color:'primary.main',boxShadow:'0 1px 4px #20395020'},'& .Mui-selected:hover':{bgcolor:'background.paper'}}}>
             {LOGIN_COMPANIES.map(company=><ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
           </ToggleButtonGroup>
-          <Typography component="p" className="lineos-login-selected-company" variant="caption" color="text.secondary">
-            {loginCopy.selectedCompany}: {[...LOGIN_COMPANIES, ...TEST_LOGIN_COMPANIES].find(company => company.key === loginCompany)?.label}
-          </Typography>
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>

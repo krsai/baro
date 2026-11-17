@@ -1,6 +1,5 @@
 export const LOGIN_COPY = {
   ko: {
-    selectedCompany: "선택한 회사",
     testCompanies: "테스트 회사",
     headline: "다양한 업무를 한곳에,\n회사의 일상을\n하나로 연결합니다.",
     introduction: "거래와 운송부터 인사, 급여, 회계와 결재까지.\n회사에 필요한 업무를 하나의 공간에서 관리하세요.",
@@ -14,7 +13,7 @@ export const LOGIN_COPY = {
     loginError: '로그인을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   },
   en: {
-    testCompanies: 'Test companies', selectedCompany: 'Selected company',
+    testCompanies: 'Test companies',
     headline: 'Everyday business.\nOne workspace.\nAll connected.',
     introduction: 'From orders and transport to people, payroll and finance.\nManage daily business operations in one workspace.',
     welcome: 'Welcome to LINEOS', subtitle: 'Choose your company, then\nsign in with your Google account.',
@@ -26,7 +25,6 @@ export const LOGIN_COPY = {
     loginError: 'Could not start sign-in. Please try again shortly.',
   },
   vi: {
-    selectedCompany: "Công ty đã chọn",
     testCompanies: "Công ty thử nghiệm",
     headline: "Mọi công việc,\nmột không gian,\nkết nối mỗi ngày.",
     introduction: "Từ đơn hàng, vận chuyển đến nhân sự, tiền lương và kế toán.\nQuản lý công việc hằng ngày của doanh nghiệp tại một nơi.",
