@@ -26,7 +26,7 @@ try{
   await page.goto('http://127.0.0.1:43421/code-item-attributes-acceptance.html?lang='+lang);await page.waitForFunction(()=>window.text);const t=await page.evaluate(()=>window.text);
   for(const key of ['customer','type']){await page.getByRole('combobox',{name:t[key],exact:true}).click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();}
   assert.equal(await page.evaluate(()=>window.valid),false);
-  const search=page.getByRole('textbox',{name:t.search,exact:true});await search.fill(t.type);assert.equal(await page.getByRole('table',{name:t.inputs,exact:true}).getByRole('combobox').count(),1);await search.fill('');
+  const search=page.getByRole('textbox',{name:t.search,exact:true});await search.fill(t.type);assert.equal(await page.getByRole('table',{name:({ko:'자재·규격',en:'Material specifications',vi:'Quy cách vật tư'})[lang],exact:true}).getByRole('combobox').count(),1);await search.fill('');
   await page.getByRole('button',{name:t.link,exact:true}).click();await page.getByRole('button',{name:t.retry,exact:true}).click();
   const customer=page.getByRole('textbox',{name:t.customer,exact:false});await customer.waitFor();await customer.fill('TH');await customer.press('Enter');
   const lookup=page.getByRole('dialog').last();await lookup.getByText('THES',{exact:true}).dblclick();await page.waitForFunction(()=>window.line.itemCustomerId===21);
