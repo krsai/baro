@@ -85,3 +85,10 @@
   .lineos-login-footer { left: 24px; right: 24px; bottom: 22px; font-size: 10px; }
 }
 @media (prefers-reduced-motion: reduce) { .lineos-login * { transition: none !important; } }
+
+.lineos-login-selected-company { margin: 0 0 16px; }
+.lineos-login-tests { position: absolute; right: clamp(24px, 5vw, 80px); bottom: 64px; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid #dce5ee; border-radius: 12px; background: #ffffffd9; }
+@media (max-width: 760px) {
+  .lineos-login-content { padding-bottom: 32px; }
+  .lineos-login-tests { position: relative; right: auto; bottom: auto; width: fit-content; max-width: calc(100% - 48px); margin: 0 24px 80px auto; flex-wrap: wrap; justify-content: flex-end; }
+}

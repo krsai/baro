@@ -9,7 +9,7 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from '@mui/material';
-import { Inventory2Outlined, LocalShippingOutlined, QueryStatsOutlined } from '@mui/icons-material';
+import { BusinessCenterOutlined, PeopleOutline, AccountBalanceWalletOutlined } from '@mui/icons-material';
 import { LOGIN_COPY } from './loginCopy';
 import './login.css';
 import AppVersionLabel from '../../components/AppVersionLabel';
@@ -151,7 +151,7 @@ const Login = () => {
     isOAuthReturnPending ||
     isNavigatingAfterAuth;
 
-  const featureIcons = [Inventory2Outlined, LocalShippingOutlined, QueryStatsOutlined];
+  const featureIcons = [BusinessCenterOutlined, PeopleOutline, AccountBalanceWalletOutlined];
   return (
     <Box component="main" className="lineos-login">
       <header className="lineos-login-header">
@@ -173,10 +173,9 @@ const Login = () => {
           <ToggleButtonGroup data-focus-next="group" exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} aria-label={languageCode==='ko'?'로그인 회사':languageCode==='vi'?'Công ty đăng nhập':'Login company'} sx={{mb:2,p:0.5,borderRadius:2,bgcolor:'action.hover','& .MuiToggleButtonGroup-grouped':{flex:1,minWidth:0,border:0,borderRadius:'6px !important',minHeight:44,px:0.5,fontSize:{xs:'0.65rem',sm:'0.75rem'},fontWeight:600,whiteSpace:'nowrap'},'& .Mui-selected':{bgcolor:'background.paper',color:'primary.main',boxShadow:'0 1px 4px #20395020'},'& .Mui-selected:hover':{bgcolor:'background.paper'}}}>
             {LOGIN_COMPANIES.map(company=><ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
           </ToggleButtonGroup>
-          <Typography variant="caption" color="text.secondary">{languageCode === 'ko' ? '봉제 브랜드 테스트' : languageCode === 'vi' ? 'Thử nghiệm thương hiệu may mặc' : 'Sewing brand testing'}</Typography>
-          <ToggleButtonGroup data-focus-next="group" exclusive fullWidth value={loginCompany} onChange={(_event,value)=>{if(value)setLoginCompany(value);}} disabled={isLoginLocked} sx={{mb:2,mt:.5,'& .MuiToggleButton-root':{flex:1,textTransform:'none'}}}>
-            {TEST_LOGIN_COMPANIES.map(company=><ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
-          </ToggleButtonGroup>
+          <Typography component="p" className="lineos-login-selected-company" variant="caption" color="text.secondary">
+            {loginCopy.selectedCompany}: {[...LOGIN_COMPANIES, ...TEST_LOGIN_COMPANIES].find(company => company.key === loginCompany)?.label}
+          </Typography>
           <Button fullWidth variant="outlined" className="lineos-google-button" startIcon={isLoginLocked ? <CircularProgress size={18} color="inherit" /> : <GoogleMark />} onClick={handleGoogleLogin} disabled={isLoginLocked || !isSupabaseConfigured}>
             {isLoginLocked ? loginCopy.loginLoading : loginCopy.loginWithGoogle}
           </Button>
@@ -187,6 +186,12 @@ const Login = () => {
           {isAuthenticated && requiresWorkspaceSelection && <Box sx={{mt:2}}><CompanyChooser languageCode={languageCode} managementOnly/></Box>}
         </section>
       </div>
+      <aside className="lineos-login-tests" aria-label={loginCopy.testCompanies}>
+        <Typography variant="caption" color="text.secondary">{loginCopy.testCompanies}</Typography>
+        <ToggleButtonGroup data-focus-next="group" exclusive value={loginCompany} onChange={(_event, value) => { if (value) setLoginCompany(value); }} disabled={isLoginLocked} aria-label={loginCopy.testCompanies} sx={{'& .MuiToggleButton-root': {textTransform: 'none', px: 1.5}}}>
+          {TEST_LOGIN_COMPANIES.map(company => <ToggleButton key={company.key} value={company.key}>{company.label}</ToggleButton>)}
+        </ToggleButtonGroup>
+      </aside>
       <footer className="lineos-login-footer"><span>LINEOS &copy; {new Date().getFullYear()}</span><AppVersionLabel sx={{fontSize:'inherit',color:'inherit'}} /></footer>
     </Box>
   );
