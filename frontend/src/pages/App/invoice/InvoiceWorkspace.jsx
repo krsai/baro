@@ -1,3 +1,5 @@
+import SearchPanel from '../../../components/SearchPanel';
+import SearchInput from '../../../components/SearchInput';
 import {invoiceNumber} from '../../../utils/invoiceStyleRows.mjs';
 import React, { useEffect, useState } from 'react';
 import {Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
@@ -78,7 +80,7 @@ function InvoiceCustomerWorkspace({ activeOrgId, onBack }) {
       <Dialog open={orderModal} onClose={()=>setOrderModal(false)} fullWidth maxWidth="md">
         <DialogTitle>{t.orders}</DialogTitle>
         <DialogContent dividers>
-          <TextField fullWidth size="small" label={t.search} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} sx={{mb:2}}/>
+          <SearchPanel search={<SearchInput placeholder={t.search} inputProps={{'aria-label':t.search}} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>} sx={{mb:2}}/>
           <Stack spacing={1}>{orders.map(order=>{const selected=pendingChosen.some(row=>row.orderId===order.orderId);return <Button key={order.orderId} variant={selected?'contained':'outlined'} aria-pressed={selected} onClick={()=>setPendingChosen(rows=>selected?rows.filter(row=>row.orderId!==order.orderId):[...rows,order])} sx={{justifyContent:'flex-start',gap:1,flexWrap:'wrap'}}><Checkbox checked={selected} tabIndex={-1} sx={{color:'inherit','&.Mui-checked':{color:'inherit'}}}/>{order.orderNumber} / {invoiceNumber(order.totalQuantity)} PCS<Box component="span" sx={{ml:'auto',fontWeight:400}}>{rateText.progress} {order.progressPercent==null?'—':`${order.progressPercent}%`} · {rateText.billing} {order.billingPercent??0}%</Box></Button>;})}</Stack>
           {!loading&&!orders.length&&<Typography>{t.empty}</Typography>}
           {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}

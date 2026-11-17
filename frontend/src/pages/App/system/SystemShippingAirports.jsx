@@ -1,3 +1,5 @@
+import SearchPanel from '../../../components/SearchPanel';
+import SearchInput from '../../../components/SearchInput';
 import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 ﻿import React,{useEffect,useState} from 'react';
 import {Button,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
@@ -17,7 +19,7 @@ export default function SystemShippingAirports({embedded=false}){
  useChangeDrivenEffect(()=>{if(!active)return;let live=true;setLoading(true);setError(false);const timer=setTimeout(()=>requestJSON('/system/shipping-airports'+buildQueryString({q:query}),{skipCache:true}).then(value=>{if(live)setRows(value.rows);}).catch(()=>{if(live)setError(true);}).finally(()=>{if(live)setLoading(false);}),180);return()=>{live=false;clearTimeout(timer);};},[query,reload],{active:active});
  const Container=embedded?React.Fragment:AppPageContainer;
  return <Container {...(embedded?{}:{title:t.title})}><Stack spacing={2}>
- <Stack direction={{xs:'column',sm:'row'}} gap={1}><TextField size="small" label={t.search} value={query} sx={{width:{xs:'100%',sm:360},maxWidth:'100%'}} slotProps={{htmlInput:{maxLength:160}}} onChange={e=>setQuery(e.target.value)}/></Stack>
+ <SearchPanel search={<SearchInput size="small" placeholder={t.search} inputProps={{'aria-label':t.search}} value={query} slotProps={{htmlInput:{maxLength:160}}} onChange={e=>setQuery(e.target.value)}/>}/>
  {error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(v=>v+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}
  {loading&&<LinearProgress/>}
  <Paper variant="outlined"><TableContainer><Table size="small"><TableHead><TableRow>{['code','icao','name','city','country'].map(key=><TableCell key={key}>{t[key]}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{row.icao}</TableCell><TableCell>{row.name}</TableCell><TableCell>{row.city}</TableCell><TableCell>{row.country}</TableCell></TableRow>)}{!loading&&!error&&!rows.length&&<TableRow><TableCell colSpan={5}>{t.empty}</TableCell></TableRow>}</TableBody></Table></TableContainer>{!error&&<Typography variant="caption" component="div" sx={{p:1}}>{t.total.replace('{count}',String(rows.length))}</Typography>}</Paper>

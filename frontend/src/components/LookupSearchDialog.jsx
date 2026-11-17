@@ -5,6 +5,7 @@ import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 import {advanceFromDialog} from '../utils/formFocus.mjs';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import useKeyboardNavigation from '../hooks/useKeyboardNavigation';
+import {ui} from '../theme/ui';
 const paging={ko:{previous:'이전',next:'다음'},en:{previous:'Previous',next:'Next'},vi:{previous:'Trước',next:'Tiếp'}};
 export default function LookupSearchDialog({open,onClose,title,titleActions,query,onQueryChange,options=[],columns=[],getSearchText,filterOptions,getOptionKey=row=>row.id,onSelect,languageCode,details,highlightedKey,onHighlight,confirmLabel,onConfirm,confirmDisabled=false,multiple=false,selected=[],getOptionDisabled=()=>false,loading=false,feedback,searchInputRef,searchLabel,searchInputProps,tableMinWidth,searchTools,maxWidth}){
  useKeyboardNavigation();
@@ -30,7 +31,7 @@ export default function LookupSearchDialog({open,onClose,title,titleActions,quer
   else if(action==='confirm'){event.preventDefault();event.stopPropagation();if(!event.repeat){if(multiple)confirm();else select(cursor>=0?filtered[cursor]:filtered.length===1?filtered[0]:null);}}
  };
  useEffect(()=>{const row=tableRef.current?.querySelector('[data-lookup-active="true"]');row?.scrollIntoView({block:'nearest'});if(moveRowFocus.current){moveRowFocus.current=false;row?.focus({preventScroll:true});}},[activeKey,current]);
- return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={maxWidth||(details?'lg':'md')} slotProps={{paper:{ref:dialogRef}}} aria-label={title}><DialogTitle sx={{px:2.5,py:2}}><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><span>{title}</span>{titleActions}</Stack></DialogTitle><DialogContent dividers sx={{p:2.5}}><Stack spacing={2}>
+ return <Dialog data-lookup-dialog="true" open={open} onClose={onClose} fullWidth maxWidth={maxWidth||false} slotProps={{paper:{ref:dialogRef,sx:{width:maxWidth?undefined:details?ui.dialog.lookupDetailsWidth:ui.dialog.lookupWidth,height:ui.dialog.lookupHeight,maxWidth:maxWidth?undefined:'calc(100% - 32px)',maxHeight:'calc(100% - 32px)',display:'flex',flexDirection:'column'}}}} aria-label={title}><DialogTitle><Stack direction="row" alignItems="center" justifyContent="space-between" gap={2}><span>{title}</span>{titleActions}</Stack></DialogTitle><DialogContent dividers sx={{minHeight:0,flex:1}}><Stack spacing={2}>
   {searchTools}
   <TextField inputRef={searchInputRef} autoFocus onFocus={event=>event.target.select()} fullWidth size="small" label={searchLabel||t.keyword} inputProps={searchInputProps} value={query} onChange={event=>onQueryChange(event.target.value)} onKeyDown={keyboard}/>
   <Box sx={{display:'grid',gridTemplateColumns:details?{xs:'minmax(0,1fr)',md:'minmax(0,1fr) minmax(0,1fr)'}:'minmax(0,1fr)',gap:2,minWidth:0}}>
@@ -40,5 +41,5 @@ export default function LookupSearchDialog({open,onClose,title,titleActions,quer
    </TableBody></Table></TableContainer><Stack direction="row" spacing={1} alignItems="center" justifyContent="flex-end"><Typography variant="caption" sx={{mr:'auto'}}>{filtered.length}</Typography><Button size="small" disabled={current===0} onClick={()=>setPage(current-1)}>{p.previous}</Button><Typography variant="caption">{current+1} / {pages}</Typography><Button size="small" disabled={current+1>=pages} onClick={()=>setPage(current+1)}>{p.next}</Button></Stack></Stack>
    {details&&<Box sx={{minWidth:0,maxHeight:440,overflow:'auto'}}>{details}</Box>}
   </Box>
- </Stack></DialogContent>{onConfirm&&<DialogActions sx={{px:2.5,py:1.5}}><Button variant="contained" disabled={confirmDisabled} onClick={confirm}>{confirmLabel||t.select}</Button></DialogActions>}</Dialog>;
+ </Stack></DialogContent>{onConfirm&&<DialogActions><Button variant="contained" disabled={confirmDisabled} onClick={confirm}>{confirmLabel||t.select}</Button></DialogActions>}</Dialog>;
 }

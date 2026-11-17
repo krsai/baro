@@ -652,12 +652,7 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장 검색')}
-              sx={{
-                width: { xs: '100%', sm: 'auto' },
-                minWidth: { sm: 320 },
-                maxWidth: { lg: 640 },
-                flex: 1,
-              }}
+
             />}
             controls={<DateRangeSelector languageCode={languageCode} factoryId={selectedFactoryId} startValue={dayjs(dateFilterStart)} endValue={dayjs(dateFilterEnd)} onStartChange={changeFilterDate(setDateFilterStart)} onEndChange={changeFilterDate(setDateFilterEnd)}/>}
           filters={<><FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>

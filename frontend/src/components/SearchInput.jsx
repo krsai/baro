@@ -3,8 +3,9 @@ import { TextField, InputAdornment, IconButton } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import { getUiMessage } from '../constants/uiMessages';
+import { ui } from '../theme/ui';
 
-const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
+const SearchInput = ({ value, onChange, placeholder, sx, inputProps = {}, slotProps = {}, ...props }) => {
   const resolvedPlaceholder = placeholder ?? getUiMessage('common.search', 'Search...');
 
   return (
@@ -24,6 +25,7 @@ const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
           <InputAdornment position="end">
             <IconButton
               size="small"
+              disabled={props.disabled}
               aria-label={getUiMessage('common.clearSearch', 'Clear search')}
               onClick={() => onChange?.({ target: { value: '' } })}
               edge="end"
@@ -34,7 +36,7 @@ const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
         ) : null,
       }}
       sx={{
-        width: { xs: '100%', sm: 320, md: 400 },
+        width: { xs: '100%', sm: ui.search.inputWidth },
         '& .MuiOutlinedInput-root': {
           minHeight: 'var(--ui-control-height, 36px)',
           borderRadius: 1,
@@ -48,6 +50,7 @@ const SearchInput = ({ value, onChange, placeholder, sx, ...props }) => {
         ...sx,
         maxWidth: '100%',
       }}
+      slotProps={{...slotProps,htmlInput:state=>{const merged={...inputProps,...(typeof slotProps.htmlInput==='function'?slotProps.htmlInput(state):slotProps.htmlInput)};return {...merged,'aria-label':merged['aria-label']||props.label||resolvedPlaceholder};}}}
       {...props}
     />
   );

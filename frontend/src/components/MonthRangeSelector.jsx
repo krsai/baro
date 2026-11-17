@@ -71,7 +71,7 @@ const MonthRangeSelector = ({
   const forwardRange=shiftedRange(1),backwardRange=shiftedRange(-1);
   const buttonSx = { minWidth: ui.control.dateNavigationWidth, width: ui.control.dateNavigationWidth, height: ui.control.height, minHeight: ui.control.height, p: 0, flexShrink: 0, alignSelf: 'center' };
   return (
-  <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
+  <Stack data-date-range direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap' }}>
     <Button type="button" variant="outlined" size="small" aria-label={labels.previous} title={labels.previous}
       disabled={disabled || !startValue || !start.isValid() || Boolean(minDate && previous.isBefore(dayjs(minDate), monthOnly ? 'month' : 'day'))}
       onClick={() => onStartChange?.(previous)} sx={buttonSx}><ChevronLeftIcon sx={{ fontSize: ui.control.dateNavigationIconSize }} /></Button>

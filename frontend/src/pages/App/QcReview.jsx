@@ -914,7 +914,7 @@ const QcReview = () => {
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
                 placeholder={copy.searchPlaceholder}
-                sx={{ minWidth: { xs: '100%', sm: 220 } }}
+
               />} filters={<><TextField
                 select
                 size="small"

@@ -1523,7 +1523,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
       )}
       toolbar={(
         <SearchPanel onReset={()=>{setSearchTerm('');setSelectedStatusFilter('ACTIVE');setSelectedFactoryFilterId('');}}
-          search={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={tenantText('searchPlaceholder', languageCode)} sx={{ width: { xs: '100%', md: 320 } }} />}
+          search={<SearchInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={tenantText('searchPlaceholder', languageCode)}  />}
           filters={(
             <>
               <TextField select label={tenantText('statusLabel', languageCode)} size="small" value={selectedStatusFilter} onChange={(e) => setSelectedStatusFilter(e.target.value)} sx={{ minWidth: 160 }}>

@@ -6842,19 +6842,9 @@ const AssignBoard = () => {
             )}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            sx={{ flex: 1, minWidth: { xs: '100%', sm: 320 } }}
-          />} controls={<Stack
-            direction="row"
-            spacing={1}
-            sx={{
-              alignItems: 'center',
-              ml: { xs: 0, md: 'auto' },
-              flexShrink: 0,
-              flexWrap: 'wrap',
-              '& .MuiButton-root': { whiteSpace: 'nowrap' },
-            }}
-          >
-            <DateRangeSelector languageCode={languageCode} startValue={dayjs(viewStart)} endValue={dayjs(viewEnd)} onStartChange={changeViewDate(setViewStart)} onEndChange={changeViewDate(setViewEnd)} minDate={dayjs(assignmentOperationStartDateKey)} disabled={controlsDisabled}/>
+
+          />} controls={<DateRangeSelector languageCode={languageCode} startValue={dayjs(viewStart)} endValue={dayjs(viewEnd)} onStartChange={changeViewDate(setViewStart)} onEndChange={changeViewDate(setViewEnd)} minDate={dayjs(assignmentOperationStartDateKey)} disabled={controlsDisabled}/>}
+          actions={<>
             <Button
               variant="outlined"
               onMouseDown={preventToolbarButtonFocus}
@@ -6879,7 +6869,7 @@ const AssignBoard = () => {
             >
               {getUiMessage('common.reset', '초기화', languageCode)}
             </Button>
-          </Stack>} />
+          </>} />
       }
     >
       <StaleEditNotice stale={edit.stale && isAssignmentRouteActive} dirty={isDirty} busy={loading || persisting} languageCode={languageCode} onRefresh={requestExternalBoardReload} />

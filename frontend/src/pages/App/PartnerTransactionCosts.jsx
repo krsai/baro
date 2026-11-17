@@ -139,7 +139,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
       <Button variant="contained" disableElevation className="cc-primary" disabled={canDraft===false || loading || Boolean(errors.items) || !onNewRequest} onClick={onNewRequest}>{labels.addCost}</Button>
     </div>}><div className="compact-costs cc-live">
     {canDraft===false&&<Alert severity="info">{(expenseDeletionText[languageCode]||expenseDeletionText.en).notAllowed}</Alert>}
-    <SearchPanel compact title={text.query} searchWidth={260} disabled={loading} onReset={reset}
+    <SearchPanel title={text.query}  disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
       filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={hidePaid} disabled={loading} onChange={event=>setHidePaid(event.target.checked)}/>} label={text.hideBankPaid}/> }
       controls={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}

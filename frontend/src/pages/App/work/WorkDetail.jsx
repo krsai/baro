@@ -2927,7 +2927,7 @@ const WorkDetail = ({
           </Stack>
         </Paper>
 
-        <SearchPanel search={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder} sx={{ width: { xs: '100%', sm: 320, md: 420 } }} />} />
+        <SearchPanel search={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder}  />} />
 
         <Paper
           variant="outlined"
