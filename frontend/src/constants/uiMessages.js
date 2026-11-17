@@ -44,7 +44,7 @@ export const UI_MESSAGES = {
     transportExchange:{ko:'운송 의뢰·공유',en:'Transport exchange',vi:'Trao đổi vận chuyển'},
     freight:{ko:'운송',en:'Transport',vi:'Vận chuyển'},
     transportWorkflow:{ko:'운송·영업',en:'Transport & sales',vi:'Vận chuyển & kinh doanh'},
-    transportList:{ko:'운송 의뢰',en:'Shipping Request',vi:'Yêu cầu vận chuyển'},
+    transportList:{"ko":"운송 관리","en":"Transport Management","vi":"Quản lý vận chuyển"},
     customerPartners:{ko:'고객·거래처 관리',en:'Customers & partners',vi:'Khách hàng & đối tác'},
     accountOverview:{ko:'계좌 현황',en:'Account overview',vi:'Tổng quan tài khoản'},
     bankLedger: {ko:'입출금',en:'Transactions',vi:'Thu chi'},
