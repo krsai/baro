@@ -1,3 +1,4 @@
+import CompanyNameField from "../../../components/CompanyNameField";
 import EntityPhoneField from '../../../components/EntityPhoneField';
 import { phoneForCountry } from '../../../utils/entityPhone.mjs';
 import {companyDocumentContactText} from '../../../constants/companyDocumentContact';
@@ -286,7 +287,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
           <Grid size={{xs:12,sm:6,md:4}}>
-            <TextField
+            <CompanyNameField
               fullWidth
               size="small"
               label={localText.nameEn}
@@ -298,7 +299,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
           <Grid size={{xs:12,sm:6,md:4}}>
-            <TextField
+            <CompanyNameField
               fullWidth
               size="small"
               label={localText.nameKo}
@@ -308,7 +309,7 @@ const OrganizationDetail = ({ headerActionsTarget } = {}) => {
             />
           </Grid>
           <Grid size={{xs:12,sm:6,md:4}}>
-            <TextField
+            <CompanyNameField
               fullWidth
               size="small"
               label={localText.nameVi}

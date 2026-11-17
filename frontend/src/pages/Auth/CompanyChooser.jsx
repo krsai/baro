@@ -1,3 +1,4 @@
+import CompanyNameField from '../../components/CompanyNameField';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Stack,TextField,Typography} from '@mui/material';
 import Alert from "../../components/AppNotice";
@@ -30,7 +31,7 @@ export default function CompanyChooser({languageCode,managementOnly=false}){
   {canCreateCompany&&<Button onClick={()=>{key.current=crypto.randomUUID();setError('');setUncertain(false);setOpen(true);}}>{t.add}</Button>}
   <Dialog open={open} onClose={()=>{if(!saving&&!uncertain)setOpen(false);}} fullWidth maxWidth="sm">
    <DialogTitle>{t.add}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
-    {['name','nameKo','nameVi','code'].map(field=><TextField key={field} label={field==='nameVi'?(languageCode==='ko'?'회사명 (베트남어)':languageCode==='vi'?'Tên công ty (tiếng Việt)':'Company name (Vietnamese)'):t[field]} value={form[field]} disabled={saving||uncertain} helperText={field==='code'?(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help:undefined} inputProps={{maxLength:field==='code'?40:160}} onChange={e=>{setForm(previous=>({...previous,[field]:e.target.value}));key.current=crypto.randomUUID();}}/>)}
+    {['name','nameKo','nameVi','code'].map(field=><CompanyNameField key={field} label={field==='nameVi'?(languageCode==='ko'?'회사명 (베트남어)':languageCode==='vi'?'Tên công ty (tiếng Việt)':'Company name (Vietnamese)'):t[field]} value={form[field]} disabled={saving||uncertain} helperText={field==='code'?(ENTITY_CODE_TEXT[languageCode]||ENTITY_CODE_TEXT.en).help:undefined} inputProps={{maxLength:field==='code'?40:160}} onChange={e=>{setForm(previous=>({...previous,[field]:e.target.value}));key.current=crypto.randomUUID();}}/>)}
     {['adminName','managementStartDate','country','currencyCode'].map(field=><TextField key={field} label={details[field]} type={field==='managementStartDate'?'date':'text'} InputLabelProps={field==='managementStartDate'?{shrink:true}:undefined} required value={form[field]} disabled={saving||uncertain} onChange={e=>{setForm(previous=>({...previous,[field]:e.target.value}));key.current=crypto.randomUUID();}}/>)}
     <TextField select label={details.templateOrgId} value={form.templateOrgId} disabled={saving||uncertain} onChange={e=>{setForm(previous=>({...previous,templateOrgId:e.target.value}));key.current=crypto.randomUUID();}}><MenuItem value="">{details.none}</MenuItem>{templates.map(row=><MenuItem key={row.id} value={row.id}>{languageCode==='ko'?row.nameKo||row.name:languageCode==='vi'?row.nameVi||row.name:row.name}</MenuItem>)}</TextField>
     {error&&<Alert severity="error">{error}</Alert>}

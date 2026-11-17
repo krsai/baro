@@ -1,3 +1,4 @@
+import CompanyNameField from './CompanyNameField';
 import EntityPhoneField from './EntityPhoneField';
 import { phoneForCountry, countryCallingCode } from '../utils/entityPhone.mjs';
 
@@ -25,7 +26,7 @@ export default function PartnerProfileFields({value,onChange,disabled=false,lang
  const subscriber=Boolean(value.linkedCompany?.subscriberOrgId);
  const officialNames=['name','nameKo','nameVi','country','businessNumber',...(subscriber?['countryCode',...(value.linkedCompany.partyKind?['partyKind']:[])]:[])];
  const resolved=name=>{if(!value.linkedCompany||!officialNames.includes(name))return value[name]||'';return value.linkedCompany[{contactName:'representative',contactPhone:'phone'}[name]||name]||'';};
- const field=(name,label,props={})=>{const readOnly=Boolean(fieldLocks.includes(name)||value.linkedCompany&&officialNames.includes(name));return <TextField fullWidth size="small" name={name} label={label} value={resolved(name)} {...props} disabled={disabled||Boolean(props.select&&readOnly)} InputProps={{...props.InputProps,readOnly}} SelectProps={props.select?{...props.SelectProps,readOnly}:undefined} onChange={event=>{if(readOnly)return;onChange(name,event.target.value);if(name==='country'){onChange('countryCode',countryCallingCode(event.target.value));if(!fieldLocks.includes('contactPhone'))onChange('contactPhone',phoneForCountry(resolved('contactPhone'),resolved('country'),event.target.value));}}}/>;};
+ const field=(name,label,props={})=>{const readOnly=Boolean(fieldLocks.includes(name)||value.linkedCompany&&officialNames.includes(name));const Field=['name','nameKo','nameVi'].includes(name)?CompanyNameField:TextField;return <Field fullWidth size="small" name={name} label={label} value={resolved(name)} {...props} disabled={disabled||Boolean(props.select&&readOnly)} InputProps={{...props.InputProps,readOnly}} SelectProps={props.select?{...props.SelectProps,readOnly}:undefined} onChange={event=>{if(readOnly)return;onChange(name,event.target.value);if(name==='country'){onChange('countryCode',countryCallingCode(event.target.value));if(!fieldLocks.includes('contactPhone'))onChange('contactPhone',phoneForCountry(resolved('contactPhone'),resolved('country'),event.target.value));}}}/>;};
  const grid={display:'grid',gap:2,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))',md:'repeat(4,minmax(0,1fr))'}};
  return <Stack spacing={2}>
   <EntityDetailSection title={common.identity}>

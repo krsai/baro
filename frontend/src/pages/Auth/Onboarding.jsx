@@ -1,3 +1,4 @@
+import CompanyNameField from "../../components/CompanyNameField";
 import { phoneForCountry } from '../../utils/entityPhone.mjs';
 import EntityPhoneField from '../../components/EntityPhoneField';
 import {companyDocumentContactText,companyDocumentContactError} from '../../constants/companyDocumentContact';
@@ -867,7 +868,7 @@ const Onboarding = () => {
                 </MenuItem>
               ))}
             </TextField>
-            <TextField
+            <CompanyNameField
               fullWidth
               required
               label={t('companyName')}
