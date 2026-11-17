@@ -1,3 +1,4 @@
+import {assertPaidExpenseCorrection,paidExpenseEntries,correctPaidExpense} from './paidExpenseCorrection';
 import {cancelIssuedInvoice} from './invoiceIssueStore';
 import {calculateRequestAmounts} from './transactionRequest';
 import {approvalDelegate,delegationData,delegatedChangeIds} from './approvalDelegation';
@@ -53,7 +54,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  if(loaded.document&&lock)await db.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',loaded.document.id,orgId);
  if(lock&&loaded.costs.length)for(const cost of loaded.costs)await db.$queryRawUnsafe('SELECT id FROM "PartnerTransactionCost" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',cost.id,orgId);
  const current=lock?await loadExpenseEditorSource(db,orgId,kind,id):loaded;
- if(current.document?.bankReconciled)fail('EXPENSE_ALREADY_RECONCILED');
+ if(current.document?.bankReconciled){if(operation!=='UPDATE')fail('EXPENSE_ALREADY_RECONCILED');assertPaidExpenseCorrection(current,input.payload);await paidExpenseEntries(db,orgId,current);}
  if(await db.accountingOpeningItem.findFirst({where:{orgId,voidedAt:null,expenseItemId:{in:current.costs.map((c:any)=>c.id)}},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');
  if(operation==='DELETE'&&!current.document)fail('CHANGE_INVALID_SOURCE',400);
  return {menu,operation,kind:current.kind,id:current.id,revision:expenseEditorRevision(current),version:current.document?.version??null,snapshot:json(current),expense:current,items:current.costs.map((c:any)=>({currency:c.currency,unitPrice:String(c.amount),quantity:'1',vatRate:'0'}))};
@@ -153,7 +154,7 @@ async function applyChange(tx:any,db:any,orgId:number,actor:any,row:any,s:any,ga
  }
  if(row.operation==='UPDATE'){
   const decisions=await tx.changeApprovalDecision.findMany({where:{orgId,requestId:row.id},orderBy:{position:'asc'}});const actual=[] as any[];for(const [index,stage] of row.policy.resolvedStages.entries()){const id=decisions[index]?.actingEmployeeId||stage.employeeId;if(!actual.some((p:any)=>p.employeeId===id)){const person=await tx.employee.findFirst({where:{id,orgId,status:'ACTIVE'}});actual.push({...stage,employeeId:id,gradeId:person?.gradeId??stage.gradeId});}}
- const result=await saveExpenseEditor(tx,orgId,row.requestedByEmployeeId,row.sourceKind,row.sourceId,row.payload,gates.appendQuantityRemark,{ids:row.policy.autoApproved?[]:actual.map((p:any)=>p.employeeId),policy:{...row.policy,exempt:row.policy.autoApproved===true,originalResolvedStages:row.policy.resolvedStages,resolvedStages:actual,delegationDecisions:decisions.filter((d:any)=>d.actingEmployeeId),changeRequestId:row.id,drafterId:s.expense.document?.createdByEmployeeId||row.requestedByEmployeeId}});return result;
+ const save=()=>saveExpenseEditor(tx,orgId,row.requestedByEmployeeId,row.sourceKind,row.sourceId,row.payload,gates.appendQuantityRemark,{ids:row.policy.autoApproved?[]:actual.map((p:any)=>p.employeeId),policy:{...row.policy,exempt:row.policy.autoApproved===true,originalResolvedStages:row.policy.resolvedStages,resolvedStages:actual,delegationDecisions:decisions.filter((d:any)=>d.actingEmployeeId),changeRequestId:row.id,drafterId:s.expense.document?.createdByEmployeeId||row.requestedByEmployeeId}});return s.expense.document?.bankReconciled?correctPaidExpense(tx,orgId,actor,row,s.expense,save):save();
  }
  const original=s.expense,doc=original.document,key=`EXPENSE_REQUEST_EDIT:${orgId}:CHANGE_${row.id}`,company=await tx.organization.findUnique({where:{id:orgId},select:{type:true,country:true}});
  await tx.$queryRawUnsafe("SELECT set_config('baro.expense_editor_org',$1,true),set_config('baro.expense_editor_actor',$2,true),set_config('baro.expense_editor_key',$3,true),set_config('baro.expense_editor_timezone',$4,true)",String(orgId),String(actor.id),key,companyBusinessTimeZone(company));

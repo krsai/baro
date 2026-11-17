@@ -239,6 +239,7 @@ export default function TransactionRequestEntry() {
       if ([400,403,404,409,422].includes(failure.status)) {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
+        if((changeApprovalText[languageCode]||changeApprovalText.en)[code]){setError((changeApprovalText[languageCode]||changeApprovalText.en)[code]);return;}
         if(['INVALID_EXPENSE_PAYMENT_SCHEDULE','EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH','EXPENSE_PAYMENT_SCHEDULE_REFERENCED'].includes(code)){const t=expensePaymentText[languageCode]||expensePaymentText.en;setError(code==='EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH'?t.mismatch:code==='EXPENSE_PAYMENT_SCHEDULE_REFERENCED'?t.referenced:t.invalid);return;}
         if(code==='INVALID_CASH_SCHEDULE_DATE'){setError((cashScheduleText[languageCode]||cashScheduleText.en).invalid);return;}
         const field=line&&({REQUIRED_REQUEST_ORDER:'order',REQUIRED_REQUEST_STYLE:'style',REQUIRED_REQUEST_PROCESS:'process',SELECT_ASSIGNMENT_PLAN:'assignment',ELIGIBLE_ASSIGNMENT_REQUIRED:'assignment'})[line[2]];
@@ -277,11 +278,11 @@ export default function TransactionRequestEntry() {
           <ExpenseApprovalActions compact requestId={!documentLoading&&form.canonicalSource?.kind==='request'?form.canonicalSource.id:null} version={form.version} orgId={activeOrgId} languageCode={languageCode} drafter={form.createdByEmployee} onState={setApprovalStatus} disabled={loading||loadError||saving||Boolean(submission)||dirty} dirty={dirty} onRefresh={()=>setReload(value=>value+1)}/>
         </Stack>}>
           <Stack spacing={1.5}>
-          <ExpensePayeePicker data-entry-field="payee" orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled} lockSelection={form.items.some(line=>line.productionLocked)}
+          <ExpensePayeePicker data-entry-field="payee" orgId={activeOrgId} languageCode={languageCode} options={data.partners} value={partner} disabled={disabled||form.paidCorrectionOnly} lockSelection={form.items.some(line=>line.productionLocked)}
             onChange={(selected,accounts)=>{update({partnerOrgId:selected?.employeeId?null:selected?.id||null,payeeEmployeeId:selected?.employeeId||null});setPayeeBanks({entityId:selected?.id,accounts,loaded:true});}}
             onSaved={saved=>{if(organizationRef.current===activeOrgId&&mountedRef.current)setData(current=>({...current,partners:current.partners.map(row=>row.id===saved.id?saved:row)}));}}/>
           <ReadOnlyField data-entry-field="date" label={labels.date} value={form.requestDate||today()}/>
-          <TextField data-entry-field="date" fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
+          <TextField data-entry-field="date" fullWidth size="small" type="date" label={(cashScheduleText[languageCode]||cashScheduleText.en).payment} value={form.scheduledPaymentDate||''} disabled={disabled||form.paidCorrectionOnly} slotProps={{inputLabel:{shrink:true}}} onChange={event=>update({scheduledPaymentDate:event.target.value})}/>
           </Stack>
         </DocumentEntryHeader>
         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}><Typography variant="subtitle2">{lookup.details} · {form.items.length} {labels.count}</Typography>{loading && <CircularProgress size={20} />}</Stack>
@@ -292,9 +293,9 @@ export default function TransactionRequestEntry() {
             <TableContainer ref={tableContainerRef}><Table data-testid="expense-entry-table" data-table-layout="wide" ref={provided.innerRef} {...provided.droppableProps} size="small" sx={{ minWidth: 1784, tableLayout: 'fixed', '& th':{px:.75,whiteSpace:'nowrap'} }}>
               <colgroup>{[56,128,220,104,84,116,152,88,136,128,144,196,132,100].map((width,index)=><col key={index} style={width ? {width} : undefined} />)}</colgroup>
               <TableHead><TableRow>{['#',labels.code,labels.description,labels.currency,labels.quantity,labels.unit,labels.price,labels.vat,labels.subtotal,labels.tax,labels.total,(accountingCompactText[languageCode]||accountingCompactText.en).payment,(accountingCompactText[languageCode]||accountingCompactText.en).evidence,''].map((label,index) => <TableCell key={index} align={index >= 8 && index <= 10 ? 'right' : 'left'}>{label}</TableCell>)}</TableRow></TableHead>
-              {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled}>{(drag,state) => (
+              {form.items.map((line,index) => <Draggable key={line.key} draggableId={line.key} index={index} disableInteractiveElementBlocking isDragDisabled={disabled||form.paidCorrectionOnly}>{(drag,state) => (
                 <TableBody ref={drag.innerRef} {...drag.draggableProps} style={{...drag.draggableProps.style,...(state.isDragging ? {display:'table',tableLayout:'fixed'} : {})}} sx={{ bgcolor:'background.paper', boxShadow:state.isDragging ? 3 : 'none', ...(state.isDragging ? Object.fromEntries(dragColumnWidths.current.map((width,column)=>['& tr:first-of-type > td:nth-of-type('+(column+1)+')',{width}])) : {}) }}>
-                  <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAdd={addLine} onAddProcess={addProcess} canAddProcess={!disabled} />
+                  <ExpenseRequestLine line={line} index={index} {...data} validationAttempt={validationAttempt} dragHandleProps={drag.dragHandleProps} partner={partner} orgId={activeOrgId} labels={labels} languageCode={languageCode} paidCorrectionOnly={form.paidCorrectionOnly} disabled={disabled} onChange={changeLine} onRemove={removeLine} onStatus={lineStatus} onAdd={addLine} onAddProcess={addProcess} canAddProcess={!disabled} />
                 </TableBody>
               )}</Draggable>)}
               {provided.placeholder}
@@ -302,7 +303,7 @@ export default function TransactionRequestEntry() {
           )}</Droppable>
         </DragDropContext>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(0,1fr) 360px'},gap:3,p:3,bgcolor:'grey.50'}} data-testid="expense-summary">
-          <TextField fullWidth multiline minRows={4} label={header.remark} value={form.remark || ''} disabled={disabled} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
+          <TextField fullWidth multiline minRows={4} label={header.remark} value={form.remark || ''} disabled={disabled||form.paidCorrectionOnly} inputProps={{maxLength:500}} onChange={event=>update({remark:event.target.value})} sx={{height:'100%','& .MuiInputBase-root':{height:'100%',alignItems:'flex-start'},'& textarea':{height:'100% !important',overflow:'auto !important'}}}/>
         <Stack alignItems="flex-end" spacing={1} data-testid="expense-totals" sx={{minWidth:0}}>
           {totals.map(total => <Stack key={total.currency} spacing={1} sx={{ width: '100%' }}>
             <Typography variant="subtitle2">{total.currency}</Typography>

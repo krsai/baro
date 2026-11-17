@@ -1,3 +1,4 @@
+import {paidExpenseEntries} from './paidExpenseCorrection';
 import {attachLinkedCompanies} from './companyConnections';
 import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule,expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {cashScheduleDate} from './cashSchedule';
@@ -227,6 +228,9 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const source = await loadExpenseEditorSource(db,access.organization.id,req.params.kind,req.params.id);
     assertManagedDate(expenseEditorForm(source).requestDate,(await loadManagementPeriod(db,access.organization.id)).startDate);
     const result:any=expenseEditorForm(source);
+    if(source.document?.bankReconciled&&!source.costs.some((cost:any)=>cost.outsourcedWorkRecordId||cost.referenceLinks?.length||cost.processLinks?.length||cost.workOrder?.invoiceFinalLockedAt)){
+      try{await paidExpenseEntries(db,access.organization.id,source);result.paidCorrectionOnly=true;result.readOnly=false;}catch(error:any){if(!['PAID_EXPENSE_CORRECTION_COMPLEX','CHANGE_UPDATE_PENDING'].includes(error.message))throw error;}
+    }
     if(result.partner&&!result.payeeEmployeeId){
       const [partner]=await attachLinkedCompanies(db,access.organization.id,[{...result.partner,entityId:result.partner.id}]);
       result.partner={...partner,code:partner.linkedCompany?.code||partner.code||null};
