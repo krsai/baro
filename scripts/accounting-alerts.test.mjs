@@ -82,6 +82,9 @@ test('actual company-scoped sources, personal acknowledgement, current-state rev
   const financeAlerts=await listAccountingAlerts(db,org,s.people.admin.id,permissions);assert.ok(financeAlerts.total>0);assert.ok(financeAlerts.rows.some(alert=>alert.kind==='DIRECTION'));assert.ok(financeAlerts.rows.some(alert=>alert.kind==='PARTNER_INDUSTRY'));
   await db.employee.update({where:{id:s.people.admin.id},data:{status:'SUSPENDED'}});await assert.rejects(acknowledgeAccountingAlert(db,org,s.people.admin.id,permissions,changed.rows[0].signature),/ACCESS_DENIED/);await assert.rejects(listAccountingAlerts(db,org,s.people.admin.id,permissions),/ACCESS_DENIED/);
   const retained=await db.bankLedgerEntry.findUnique({where:{id:row.id}});assert.equal(retained.amount.toString(),'10');assert.equal(retained.voidedAt,null);assert.equal(retained.evidenceNumber,'Reference');
+  await db.employee.update({where:{id:s.people.junior.id},data:{orgRole:'OPERATOR'}});
+  await assert.rejects(listAccountingAlerts(db,org,s.people.junior.id,permissions),/ACCESS_DENIED/);
+  await assert.rejects(acknowledgeAccountingAlert(db,org,s.people.junior.id,permissions,changed.rows[0].signature),/ACCESS_DENIED/);
   const handlers=new Map(),app={get:(p,h)=>handlers.set('GET '+p,h),post:(p,h)=>handlers.set('POST '+p,h)};
   registerAccountingAlertRoutes(app,db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>s.people.senior.id,canAccess:async()=>false});let error;try{await handlers.get('GET /dashboard/accounting-alerts')({query:{}},{setHeader(){},json(){assert.fail('denied response must contain no data');}});}catch(value){error=value;}assert.equal(error.status,403);
  }finally{await f.close();}

@@ -19,7 +19,7 @@ test('one approval list: legacy deletion, expense registration and changes share
   const legacy=await requestExpenseDeletion(db,org,admin,original.id,{clientKey:randomUUID(),version:original.version,reason:'Old deletion'});
   const change=await requestChangeApproval(db,org,admin,{menu:'EXPENSE',operation:'DELETE',sourceKind:'request',sourceId:String(another.id),version:another.version,payload:{},reason:'New deletion',clientKey:randomUUID()});
   const query={start:'2026-01-01',end:accountReportToday(),status:'ALL',page:0,pageSize:10};
-  const list=await listApprovalReviews(db,org,admin,query);assert.equal(list.rows.length,4);assert.equal(list.total,4);assert.deepEqual(new Set(list.rows.map(r=>r.kind)),new Set(['EXPENSE_REQUEST','CHANGE_APPROVAL','EXPENSE_DELETION']));
+  const list=await listApprovalReviews(db,org,admin,query);assert.equal(list.rows.length,4);assert.equal(list.total,4);assert.equal((await listApprovalReviews(db,org,admin,query,['BANK_LEDGER'])).total,0);assert.equal((await listApprovalReviews(db,org,admin,query,[])).total,0);assert.deepEqual(new Set(list.rows.map(r=>r.kind)),new Set(['EXPENSE_REQUEST','CHANGE_APPROVAL','EXPENSE_DELETION']));
   const pending=await listApprovalReviews(db,org,admin,{...query,status:'UNAPPROVED'});assert.equal(pending.total,2);
   assert.ok(list.rows.every(r=>!('beforeSnapshot' in r)&&!('documentSnapshot' in r)&&!('payload' in r)));
   assert.equal(list.rows.find(r=>r.kind==='EXPENSE_REQUEST').requestDate,list.rows.find(r=>r.id===change.id).requestDate);

@@ -4,12 +4,13 @@ import {ledgerDate} from './bankLedger';
 import {accountReportToday} from './accountOverview';
 import {legacyExpenseNumber} from './documentNumber';
 import {companyBusinessTimeZone} from './serviceCompany';
-export async function listApprovalOverview(db:any,orgId:number,actorId:number,query:any,options:{unpaged?:boolean,submissionDates?:boolean,allDates?:boolean}={}){
+export async function listApprovalOverview(db:any,orgId:number,actorId:number,query:any,options:{unpaged?:boolean,submissionDates?:boolean,allDates?:boolean,skipRows?:boolean}={}){
  const today=accountReportToday(),start=ledgerDate(options.allDates?'0001-01-01':query.start||today.slice(0,7)+'-01'),end=ledgerDate(options.allDates?'9999-12-31':query.end||today),status=String(query.status||'UNAPPROVED'),page=Number(query.page||0),pageSize=Number(query.pageSize||20);
  if(start>end||!options.allDates&&end>today||!['UNAPPROVED','ALL','REQUESTED','IN_REVIEW','APPROVED','REJECTED','UNKNOWN'].includes(status)||!Number.isSafeInteger(page)||page<0||page>100000||![10,20,50].includes(pageSize))throw createHttpError(400,'INVALID_APPROVAL_VIEW');
  return retryEditTransaction(db,async(tx:any)=>{
   const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}}});
   if(!actor)throw createHttpError(403,'LEDGER_ACCESS_DENIED');
+  if(options.skipRows)return {rows:[],total:0,page,pageSize,start,end,status};
   const zone=options.submissionDates?companyBusinessTimeZone(await tx.organization.findUnique({where:{id:orgId},select:{type:true,country:true}})):null;
   const dateField=zone?`to_char(timezone($6,timezone('UTC',r."createdAt")),'YYYY-MM-DD')`:'r."requestDate"';
   const customOperator=actor.orgRole==='OPERATOR'?` AND EXISTS(SELECT 1 FROM "ExpenseRequestAudit" a WHERE a."requestId"=r.id AND a."orgId"=r."orgId" AND a.version=r.version AND a."afterSnapshot"->'approvalPolicy'->'config'->>'version'='2' AND a."afterSnapshot"->'approvalPolicy'->'config'->>'kind'='EXPENSE' AND a."afterSnapshot"->'approvalPolicy'->'resolvedStages' @> jsonb_build_array(jsonb_build_object('employeeId',$4::integer,'role','OPERATOR')))` : '';

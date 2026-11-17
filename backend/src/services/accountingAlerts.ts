@@ -1,3 +1,4 @@
+import {accountingDashboardRole} from './dashboardAccess';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -35,7 +36,7 @@ export async function accountingAlertCandidates(db:any,orgId:number,permissions:
  });}).sort((a:any,b:any)=>b.date.localeCompare(a.date)||a.signature.localeCompare(b.signature));
 }
 export async function listAccountingAlerts(db:any,orgId:number,actorId:number,permissions:any,query:any={}){
- if(!await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true}}))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+ if(!await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}},select:{id:true,orgRole:true}}))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
  const page=Number(query.page||0);if(!Number.isSafeInteger(page)||page<0||page>10000)throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  const kinds=String(query.kinds||'DIRECTION,PARTNER_INDUSTRY,RETIRED_EMPLOYEE').split(',');if(kinds.some(kind=>!['DIRECTION','PARTNER_INDUSTRY','RETIRED_EMPLOYEE'].includes(kind)))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  const candidates=await accountingAlertCandidates(db,orgId,permissions),legacyPrefix=`ACCOUNTING_ALERT_ACK:${orgId}:`;
@@ -47,7 +48,7 @@ export async function listAccountingAlerts(db:any,orgId:number,actorId:number,pe
 export async function acknowledgeAccountingAlert(db:any,orgId:number,actorId:number,permissions:any,signature:unknown){
  if(typeof signature!=='string'||!/^[a-f0-9]{64}$/.test(signature))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
-  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true}});if(!actor)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}},select:{id:true,orgRole:true}});if(!actor||!accountingDashboardRole(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   const current=(await accountingAlertCandidates(tx,orgId,permissions)).find((row:any)=>row.signature===signature);
   if(!current)throw createHttpError(409,'ACCOUNTING_ALERT_CHANGED');
   if(current.pendingOperation)throw createHttpError(409,'ACCOUNTING_ALERT_PENDING');
@@ -56,8 +57,8 @@ export async function acknowledgeAccountingAlert(db:any,orgId:number,actorId:num
 }
 export function registerAccountingAlertRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{
-  const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return;
-  const orgId=ctx.organization.id,actorId=gates.actorId(),actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{orgRole:true}});if(!actor)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+  const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return;
+  const orgId=ctx.organization.id,actorId=gates.actorId(),actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{orgRole:true}});if(!actor||!accountingDashboardRole(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   const features=await companyIndustryMenuFeatures(db,orgId,ctx.organization.type),allowed=async(feature:string)=>features.includes(feature)&&await gates.canAccess({orgType:ctx.organization.type,orgRole:actor.orgRole,feature});
   if(!await allowed('DASHBOARD'))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   const permissions={ledger:await allowed('BANK_LEDGER'),expense:await allowed('OUTSOURCING_RECORD'),invoice:await allowed('INVOICE')};if(!permissions.ledger&&!permissions.expense&&!permissions.invoice)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
