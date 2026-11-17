@@ -40,7 +40,7 @@ try{
   if(handledOnly){
    const input=dialog.locator('input[required]').last();await input.waitFor();
    await dialog.getByRole('button',{name:banks.save,exact:true}).click();assert.equal(writes.length,0);await input.and(page.locator('[aria-invalid="true"]')).waitFor();
-   const root=input.locator('..');await root.getByRole('button').click();const lookup=page.locator('[data-lookup-dialog="true"]');await lookup.waitFor();assert.equal(await lookup.getByText('FOREIGN',{exact:true}).count(),0);await lookup.getByRole('textbox').fill('UNKNOWN');assert.equal(await lookup.getByRole('checkbox').count(),0);await page.keyboard.press('Escape');await lookup.waitFor({state:'hidden'});
+   const root=input.locator('xpath=ancestor::*[contains(@class,"MuiOutlinedInput-root")][1]');await root.getByRole('button').click();const lookup=page.locator('[data-lookup-dialog="true"]');await lookup.waitFor();assert.equal(await lookup.getByText('FOREIGN',{exact:true}).count(),0);await lookup.getByRole('textbox').fill('UNKNOWN');assert.equal(await lookup.getByRole('checkbox').count(),0);await page.keyboard.press('Escape');await lookup.waitFor({state:'hidden'});
    await input.fill('ZI');await input.press('Enter');await lookup.getByRole('row').filter({has:page.getByText('ZIP',{exact:true})}).getByRole('checkbox').check();await lookup.getByRole('button',{name:/^(선택|Select|Chọn)$/}).click();await lookup.waitFor({state:'hidden'});
    await dialog.locator('.MuiChip-deleteIcon').last().click();await dialog.getByRole('button',{name:banks.save,exact:true}).click();assert.equal(writes.length,0);
    await input.fill('ZIP');await input.press('Enter');await dialog.getByText('Zipper',{exact:true}).waitFor();

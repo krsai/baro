@@ -1,5 +1,5 @@
 ﻿import React,{useRef,useState} from 'react';
-import {Autocomplete,Box,Chip,Stack} from '@mui/material';
+import {Autocomplete,Box} from '@mui/material';
 import {normalizeLookupText} from '../utils/expenseLookup.mjs';
 import LookupInput from './LookupInput';
 import LookupSearchDialog from './LookupSearchDialog';
@@ -10,7 +10,7 @@ import {EXPENSE_LOOKUP_TEXT} from '../constants/expenseLookup';
 
 // Compatibility boundary for existing entity selectors; all regular selections
 // use the same commit and search behavior as accounting lookup fields.
-export default function SearchableSelect({label,hideCode=false,options=[],value,onChange,getOptionLabel=option=>option?.name||String(option??''),disabled=false,textFieldProps={},getOptionDisabled,isOptionEqualToValue=(a,b)=>a===b,filterOptions,renderInput,multiple=false,chipsInside=false,onInputChange,onKeyboardSelect,advanceFocusOnKeyboardSelect=false,inputSuffix,inputValue,getOptionKey,lookupColumns,getLookupCode,getLookupValues,getLookupSearchText,languageCode=getCurrentLanguageCode(),...props}){
+export default function SearchableSelect({label,hideCode=false,options=[],value,onChange,getOptionLabel=option=>option?.name||String(option??''),disabled=false,textFieldProps={},getOptionDisabled,isOptionEqualToValue=(a,b)=>a===b,filterOptions,renderInput,multiple=false,onInputChange,onKeyboardSelect,advanceFocusOnKeyboardSelect=false,inputSuffix,inputValue,getOptionKey,lookupColumns,getLookupCode,getLookupValues,getLookupSearchText,languageCode=getCurrentLanguageCode(),...props}){
  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[selected,setSelected]=useState([]),creationRoot=useRef(null);
  const t=EXPENSE_LOOKUP_TEXT[languageCode]||EXPENSE_LOOKUP_TEXT.en;
  const codeLabel=languageCode==='ko'?'코드':languageCode==='vi'?'Mã':'Code';
@@ -23,7 +23,7 @@ export default function SearchableSelect({label,hideCode=false,options=[],value,
  const dialogOptions=props.lookupOptions||eligible;
  const filter=filterOptions||(getLookupSearchText?((rows,{inputValue})=>rows.filter(row=>normalizeLookupText(getLookupSearchText(row)).includes(normalizeLookupText(inputValue)))):createAutocompleteFilterOptions({getOptionLabel}));
  const searchText=getLookupSearchText||(row=>buildAutocompleteSearchBlob(row,getOptionLabel));
- const commit=(row,event)=>{onChange?.(event,multiple?[...(current||[]).filter(item=>!isOptionEqualToValue(item,row)),row]:row,row?'selectOption':'clear');};
+ const commit=(row,event)=>{if(multiple){if(row&&!current.some(item=>isOptionEqualToValue(item,row)))onChange?.(event,[...current,row],'selectOption');return;}onChange?.(event,row,row?'selectOption':'clear');};
  const close=()=>{setOpen(false);props.onClose?.(null,'escape');};
  const advance=(row,event)=>{
   if(onKeyboardSelect){onKeyboardSelect({event,highlightedOption:row,inputElement:event.target});return true;}
@@ -32,10 +32,8 @@ export default function SearchableSelect({label,hideCode=false,options=[],value,
   }
   return false;
  };
- const chips=multiple?current.map(row=><Chip key={key(row)} size="small" label={getOptionLabel(row)} onDelete={disabled||getOptionDisabled?.(row)?undefined:event=>onChange?.(event,current.filter(item=>!isOptionEqualToValue(item,row)),'removeOption')}/>):null;
  return <Box sx={props.sx} className={['MuiAutocomplete-root',props.className].filter(Boolean).join(' ')} data-testid={props['data-testid']}>
-  <LookupInput options={dialogOptions} getOptionDisabled={props.getLookupOptionDisabled} value={multiple?null:current} getLabel={getOptionLabel} getOptionKey={key} getValues={getLookupValues||(row=>[row?.name,row?.nameEn,row?.nameKo,row?.nameVi,row?.label,row?.displayName])} getCode={getLookupCode||(row=>hideCode?'':row?.code||row?.employeeNo||'')} getSearchText={searchText} disabled={disabled||fields.disabled||props.readOnly} label={title} hideLabel={!label&&!fields.label} required={fields.required} error={fields.error} helperText={fields.helperText} placeholder={fields.placeholder} inputValue={inputValue} onInputChange={onInputChange} clearAfterChoose={multiple} hasSelection={multiple&&current.length>0} onChange={commit} onCommit={advance} textFieldProps={{...fields,InputProps:{...fields.InputProps,...(chipsInside&&multiple?{startAdornment:chips,sx:{...fields.InputProps?.sx,flexWrap:'wrap',gap:.5,'& .MuiInputBase-input':{width:60,minWidth:60,flexGrow:1},'& .MuiChip-root':{maxWidth:'100%'}}}:{}),endAdornment:<>{inputSuffix}{fields.InputProps?.endAdornment}</>}}} onSearch={input=>{setQuery(input);setSelected(multiple?[...current]:[]);setOpen(true);props.onOpen?.();}}/>
-  {multiple&&!chipsInside&&<Stack direction="row" useFlexGap flexWrap="wrap" gap={.5} sx={{mt:.5}}>{chips}</Stack>}
+  <LookupInput multiple={multiple} selectedOptions={multiple?current:[]} getOptionRemovable={row=>!getOptionDisabled?.(row)} onRemoveOption={(row,event)=>onChange?.(event,current.filter(item=>!isOptionEqualToValue(item,row)),'removeOption')} options={dialogOptions} getOptionDisabled={props.getLookupOptionDisabled} value={multiple?null:current} getLabel={getOptionLabel} getOptionKey={key} getValues={getLookupValues||(row=>[row?.name,row?.nameEn,row?.nameKo,row?.nameVi,row?.label,row?.displayName])} getCode={getLookupCode||(row=>hideCode?'':row?.code||row?.employeeNo||'')} getSearchText={searchText} disabled={disabled||fields.disabled||props.readOnly} label={title} hideLabel={!label&&!fields.label} required={fields.required} error={fields.error} helperText={fields.helperText} placeholder={fields.placeholder} inputValue={inputValue} onInputChange={onInputChange} clearAfterChoose={multiple} hasSelection={multiple&&current.length>0} onChange={commit} onCommit={advance} textFieldProps={{...fields,InputProps:{...fields.InputProps,endAdornment:<>{inputSuffix}{fields.InputProps?.endAdornment}</>}}} onSearch={input=>{setQuery(input);setSelected(multiple?[...current]:[]);setOpen(true);props.onOpen?.();}}/>
   <LookupSearchDialog open={open&&!disabled} onClose={close} title={title+' \u00b7 '+t.search} query={query} onQueryChange={next=>{setQuery(next);onInputChange?.(null,next,'input');}} options={dialogOptions} getOptionDisabled={props.getLookupOptionDisabled} filterOptions={(rows,inputValue)=>filter(rows,{inputValue,getOptionLabel})} columns={lookupColumns||[...(hideCode?[]:[{key:'code',label:codeLabel,value:row=>row?.code||row?.employeeNo||''}]),{key:'name',label:title,value:getOptionLabel}]} getSearchText={searchText} getOptionKey={key} languageCode={languageCode} multiple={multiple} selected={selected} onSelect={row=>{if(multiple)setSelected(current=>current.some(item=>isOptionEqualToValue(item,row))?current.filter(item=>!isOptionEqualToValue(item,row)):[...current,row]);else{commit(row);onInputChange?.(null,getOptionLabel(row),'reset');close();}}} {...(multiple?{onConfirm:()=>{onChange?.(null,selected,'selectOption');close();}}:{})}/>
  </Box>;
 }
