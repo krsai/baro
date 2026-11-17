@@ -8,7 +8,8 @@ export async function setPayrollManagement(db:any,orgId:number,actorId:number,mo
  return retryEditTransaction(db,tx=>setPayrollManagementInTransaction(tx,orgId,actorId,month,factoryId,input));
 }
 export async function setPayrollManagementInTransaction(tx:any,orgId:number,actorId:number,month:string,factoryId:number,input:any){
- const payableExcluded=input?.payableExcluded??input?.excluded,evidenceExcluded=input?.evidenceExcluded??input?.excluded;
+ const payableExcluded=input?.excluded??input?.payableExcluded??input?.evidenceExcluded,evidenceExcluded=payableExcluded;
+ if(typeof input?.payableExcluded==='boolean'&&typeof input?.evidenceExcluded==='boolean'&&input.payableExcluded!==input.evidenceExcluded)throw createHttpError(400,'PAYROLL_MANAGEMENT_INVALID');
  const fail=(status:number,code:string):never=>{throw createHttpError(status,code);};
  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!Number.isSafeInteger(factoryId)||factoryId<=0||typeof payableExcluded!=='boolean'||typeof evidenceExcluded!=='boolean'||!Number.isSafeInteger(input.revision)||input.revision<0||!Number.isSafeInteger(input.snapshotRevision)||input.snapshotRevision<0||!/^[-\w]{8,100}$/.test(input.clientKey||''))return fail(400,'PAYROLL_MANAGEMENT_INVALID');
 

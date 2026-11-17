@@ -11,6 +11,38 @@ const {searchPayrollEvidence,validatePayrollEvidence}=require('../backend/dist/s
 const {loadAccountOverview}=require('../backend/dist/services/accountOverview');
 const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore');
 const {createOrderShipment,listShippingOrders}=require('../backend/dist/services/orderShipments');
+
+test('legacy differing payroll flags stay intact and exclude both uses until an explicit unified change',async()=>{
+ let seed,snapshot,before;
+ const f=await changeApprovalFixture({beforeMigration:async(f,m)=>{
+  if(m.version!=='20261117090000_unified_payroll_payment_targets')return;
+  seed=await seedChangeApproval(f.db);
+  const factory=await f.db.factory.create({data:{orgId:seed.company.id,name:'Legacy targets'}});
+  snapshot=await f.db.payrollSnapshot.create({data:{orgId:seed.company.id,factoryId:factory.id,month:'2026-10',data:[],isProvisional:true,lockedAt:new Date(),lockedBy:seed.people.admin.email}});
+  await f.db.$transaction(async tx=>{
+   await tx.$queryRawUnsafe("SELECT set_config('baro.payroll_management_actor',$1,true)",String(seed.people.admin.id));
+   await tx.payrollSnapshot.update({where:{id:snapshot.id},data:{evidenceManagementExcluded:true,managementRevision:1}});
+   await tx.payrollManagementEvent.create({data:{orgId:seed.company.id,snapshotId:snapshot.id,revision:1,snapshotRevision:0,excluded:false,evidenceExcluded:true,actorId:seed.people.admin.id,clientKey:randomUUID()}});
+  });
+  before=await f.db.payrollSnapshot.findUnique({where:{id:snapshot.id}});
+ }});
+ try{
+  for(const kind of ['PAYABLE','EVIDENCE']){
+   assert.equal((await listManagementTargets(f.db,seed.company.id,seed.people.admin.id,kind,{excluded:'true'})).rows[0].id,snapshot.id);
+   assert.equal((await listManagementTargets(f.db,seed.company.id,seed.people.admin.id,kind,{excluded:'false'})).rows.length,0);
+  }
+  assert.deepEqual(await f.db.payrollSnapshot.findUnique({where:{id:snapshot.id}}),before);
+  assert.equal(await f.db.payrollManagementEvent.count(),1);
+  const sql=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261117090000_unified_payroll_payment_targets').sql;
+  await f.pg.exec(sql);await f.pg.exec(sql);
+  assert.deepEqual(await f.db.payrollSnapshot.findUnique({where:{id:snapshot.id}}),before);
+  await saveManagementTargets(f.db,seed.company.id,seed.people.admin.id,'EVIDENCE',{rows:[{id:snapshot.id,excluded:false,revision:1,snapshotRevision:0,clientKey:randomUUID()}]});
+  const after=await f.db.payrollSnapshot.findUnique({where:{id:snapshot.id}});
+  assert.equal(after.payableManagementExcluded,false);assert.equal(after.evidenceManagementExcluded,false);
+  assert.deepEqual({...after,payableManagementExcluded:before.payableManagementExcluded,evidenceManagementExcluded:before.evidenceManagementExcluded,managementRevision:before.managementRevision},before);
+  assert.equal(await f.db.payrollManagementEvent.count(),2);
+ }finally{await f.close();}
+});
 test('invoice and shipment exclusions are independent, atomic, audited and preserve existing orders and drafts',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin;
@@ -69,7 +101,7 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   await assert.rejects(save('INVOICE',[change(foreign)]),/TARGET_NOT_FOUND/);
  }finally{await f.close();}
 });
-test('payroll payables and evidence settings are independent without rewriting frozen wages or AP',async()=>{
+test('payroll payment target controls payables and evidence together without rewriting frozen wages or AP',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin;
   await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{code:'SAL'}});
@@ -80,13 +112,13 @@ test('payroll payables and evidence settings are independent without rewriting f
   const before=await db.payrollSnapshot.findUnique({where:{id:snapshot.id}}),list=(kind,excluded)=>listManagementTargets(db,org,a.id,kind,{excluded:String(excluded),q:month});
   const save=async(kind,excluded)=>{const row=(await list(kind,!excluded)).rows[0];assert.ok(row);const input={rows:[{id:row.id,excluded,revision:row.revision,snapshotRevision:row.snapshotRevision,clientKey:randomUUID()}]};await saveManagementTargets(db,org,a.id,kind,input);await saveManagementTargets(db,org,a.id,kind,input);};
   const evidence=()=>searchPayrollEvidence(db,org,{currencyCode:'USD',search:month}),overview=()=>loadAccountOverview(db,org);
-  await save('PAYABLE',true);
-  assert.equal((await overview()).payables.length,0);assert.equal((await evidence()).documents.length,1);
+  await save('EVIDENCE',true);
+  assert.equal((await overview()).payables.length,0);assert.equal((await evidence()).documents.length,0);
   const item=await db.payrollPayableItem.findFirst({where:{document:{snapshotId:snapshot.id}}});
-  await db.$transaction(tx=>validatePayrollEvidence(tx,org,{currencyCode:'USD'},{payrollItemId:item.id,direction:'OUT',amount:'10',accountingCodeId:s.code.id,counterparty:{kind:'EMPLOYEE',id:item.employeeId},transactionDate:'2026-11-10'}));
-  await save('EVIDENCE',true);assert.equal((await evidence()).documents.length,0);
-  await save('PAYABLE',false);assert.equal((await overview()).payables[0].balance,'100.00');assert.equal((await evidence()).documents.length,0);
-  await save('EVIDENCE',false);assert.equal((await evidence()).documents.length,1);
+  await assert.rejects(db.$transaction(tx=>validatePayrollEvidence(tx,org,{currencyCode:'USD'},{payrollItemId:item.id,direction:'OUT',amount:'10',accountingCodeId:s.code.id,counterparty:{kind:'EMPLOYEE',id:item.employeeId},transactionDate:'2026-11-10'})),/PAYROLL_MONTH_MANAGEMENT_EXCLUDED/);
+  await save('EVIDENCE',false);assert.equal((await overview()).payables[0].balance,'100.00');assert.equal((await evidence()).documents.length,1);
+  await save('PAYABLE',true);assert.equal((await overview()).payables.length,0);assert.equal((await evidence()).documents.length,0);
+  await save('PAYABLE',false);assert.equal((await evidence()).documents.length,1);
   const after=await db.payrollSnapshot.findUnique({where:{id:snapshot.id}});
   assert.deepEqual({...after,managementRevision:before.managementRevision,evidenceManagementExcluded:before.evidenceManagementExcluded},before);
   assert.equal(await db.payrollPayableItem.count(),1);assert.equal(await db.payrollManagementEvent.count(),4);assert.equal(await db.bankLedgerEntry.count(),0);

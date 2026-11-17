@@ -24,16 +24,16 @@ try{
   }` }));
   await page.goto(`http://127.0.0.1:${port}/payroll-target-tabs-test.html?lang=${lang}`);
   await page.getByRole('button').first().waitFor();assert.equal(await page.getByRole('button').count(),1);await page.getByRole('button').click();
-  const dialog=page.getByRole('dialog');await dialog.waitFor();assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await dialog.getByRole('tab').count(),3);
+  const dialog=page.getByRole('dialog');await dialog.waitFor();assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await dialog.getByRole('tab').count(),2);
   const month=dialog.locator('input[type=month]');await page.waitForFunction(()=>document.querySelector('input[type=month]')?.value==='2026-11'&&!document.querySelector('input[type=month]').disabled);
   assert.equal(await dialog.getByRole('switch').count(),0);assert.equal(await dialog.getByText('Former Worker',{exact:true}).count(),0);assert.equal(await dialog.getByRole('button',{name:/이번 달부터|다음 달부터|This month|Next month|Từ tháng này|Từ tháng sau/}).count(),0);
   await month.fill('2026-12');await page.waitForFunction(()=>!document.querySelector('input[type=month]').disabled);
   await dialog.getByRole('tab').nth(1).click();let panel=dialog.getByRole('tabpanel');await panel.getByRole('button',{name:/PAY-2026-000001/}).click();
-  await dialog.getByRole('tab').nth(2).click();await dialog.getByRole('tabpanel').getByRole('button',{name:/PAY-2026-000001/}).waitFor();
+  await dialog.getByRole('tab').nth(0).click();
   await dialog.getByRole('tab').nth(1).click();panel=dialog.getByRole('tabpanel');assert.equal(await panel.locator('[data-target-group=true]').getByRole('button',{name:/PAY-2026-000001/}).count(),1);
   page.once('dialog',prompt=>prompt.dismiss());await page.keyboard.press('Escape');assert.equal(await dialog.isVisible(),true,'unsaved drafts require confirmation before closing');
   await panel.getByRole('button',{name:({ko:'저장',en:'Save',vi:'Lưu'})[lang],exact:true}).click();await page.waitForFunction(()=>window.writes?.length===1);
-  assert.equal(await dialog.count(),1);assert.equal((await page.evaluate(()=>window.writes))[0].body.rows[0].excluded,true);
+  assert.equal(await dialog.count(),1);assert.equal((await page.evaluate(()=>window.writes))[0].body.rows[0].excluded,true);assert.ok((await page.evaluate(()=>window.writes))[0].url.startsWith('/management-targets/EVIDENCE?'));
   await dialog.getByRole('tab').nth(0).click();assert.equal(await month.inputValue(),'2026-12');assert.equal(await month.isDisabled(),false);
   assert.ok(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'dialog has no horizontal overflow');assert.deepEqual(errors,[]);await page.close();
  }

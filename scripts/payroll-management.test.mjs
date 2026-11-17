@@ -53,8 +53,8 @@ test('monthly exclusion preserves wages, scope and audit; restores AP and eviden
   const after=await db.payrollSnapshot.findUnique({where:{id:before.id}});
   assert.deepEqual({...after,payableManagementExcluded:false,evidenceManagementExcluded:null,managementRevision:0},before,'all frozen fields unchanged');
   assert.equal(await db.payrollPayableItem.count(),4,'all original AP items retained');
-  await assert.rejects(db.payrollSnapshot.update({where:{id:before.id},data:{payableManagementExcluded:false,managementRevision:2}}),/PAYROLL_PAYABLE_ACCESS_DENIED/);
-  await assert.rejects(db.$transaction(async tx=>{await tx.$queryRawUnsafe("SELECT set_config('baro.payroll_management_actor',$1,true)",String(actor.id));await tx.payrollSnapshot.update({where:{id:before.id},data:{payableManagementExcluded:false,managementRevision:2}});}),/PAYROLL_MANAGEMENT_AUDIT_REQUIRED/);
+  await assert.rejects(db.payrollSnapshot.update({where:{id:before.id},data:{payableManagementExcluded:false,evidenceManagementExcluded:false,managementRevision:2}}),/PAYROLL_PAYABLE_ACCESS_DENIED/);
+  await assert.rejects(db.$transaction(async tx=>{await tx.$queryRawUnsafe("SELECT set_config('baro.payroll_management_actor',$1,true)",String(actor.id));await tx.payrollSnapshot.update({where:{id:before.id},data:{payableManagementExcluded:false,evidenceManagementExcluded:false,managementRevision:2}});}),/PAYROLL_MANAGEMENT_AUDIT_REQUIRED/);
   const event=await db.payrollManagementEvent.findFirst();await assert.rejects(db.payrollManagementEvent.delete({where:{id:event.id}}),/PAYROLL_HISTORY_IMMUTABLE/);
   const restored=await toggle({...input,excluded:false,revision:1,clientKey:randomUUID()});assert.equal(restored.managementRevision,2);
   assert.equal(payableTotal(await overview()),320);assert.equal((await evidence()).documents.length,2);

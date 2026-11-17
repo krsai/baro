@@ -15,7 +15,7 @@ export async function listManagementTargets(db:any,orgId:number,actorId:number,k
  const q=String(query.q||'').trim(),page=Number(query.page||0),excluded=query.excluded==='true';
  if(q.length>120||!Number.isSafeInteger(page)||page<0||page>100000||!['true','false'].includes(query.excluded))fail('TARGET_INVALID');
  if(payrollKind(kind)){
-  const condition=kind==='PAYABLE'?{payableManagementExcluded:excluded}:{OR:[{evidenceManagementExcluded:excluded},{evidenceManagementExcluded:null,payableManagementExcluded:excluded}]};
+  const condition=excluded?{OR:[{payableManagementExcluded:true},{evidenceManagementExcluded:true}]}:{payableManagementExcluded:false,OR:[{evidenceManagementExcluded:false},{evidenceManagementExcluded:null}]};
   const rows=await db.payrollSnapshot.findMany({where:{orgId,...condition,AND:q?[{OR:[{month:{contains:q}},{factory:{name:{contains:q,mode:'insensitive'}}},{factory:{nameKo:{contains:q,mode:'insensitive'}}},{factory:{nameVi:{contains:q,mode:'insensitive'}}},{payableDocument:{managementNumber:{contains:q,mode:'insensitive'}}}]}]:[]},select:{id:true,month:true,factoryId:true,revision:true,managementRevision:true,payableManagementExcluded:true,evidenceManagementExcluded:true,factory:{select:{name:true,nameKo:true,nameVi:true}},payableDocument:{select:{managementNumber:true}}},orderBy:[{month:'desc'},{factoryId:'asc'}],skip:page*50,take:51});
   return {rows:rows.slice(0,50).map((s:any)=>({id:s.id,title:s.month,subtitle:s.factory.name,nameKo:s.factory.nameKo,nameVi:s.factory.nameVi,reference:s.payableDocument?.managementNumber||'',month:s.month,factoryId:s.factoryId,revision:s.managementRevision,snapshotRevision:s.revision,payableExcluded:s.payableManagementExcluded,evidenceExcluded:s.evidenceManagementExcluded??s.payableManagementExcluded,excluded})),hasMore:rows.length>50};
  }
@@ -43,8 +43,8 @@ export async function saveManagementTargets(db:any,orgId:number,actorId:number,k
      if(receipt.actorId!==actorId||receipt.snapshotId!==source.id||receipt.revision!==row.revision+1||receipt.snapshotRevision!==row.snapshotRevision||(kind==='PAYABLE'?receipt.excluded:receipt.evidenceExcluded??receipt.excluded)!==row.excluded)fail('TARGET_CHANGED',409);
      continue;
     }
-    const payableExcluded=kind==='PAYABLE'?row.excluded:source.payableManagementExcluded;
-    const evidenceExcluded=kind==='EVIDENCE'?row.excluded:(source.evidenceManagementExcluded??source.payableManagementExcluded);
+    const payableExcluded=row.excluded;
+    const evidenceExcluded=row.excluded;
     await setPayrollManagementInTransaction(tx,orgId,actorId,source.month,source.factoryId,{payableExcluded,evidenceExcluded,revision:row.revision,snapshotRevision:row.snapshotRevision,clientKey:row.clientKey});
    }else if(kind==='SHIPPING'){
     await saveShippingPolicyInTransaction(tx,orgId,actorId,row.id,{excluded:row.excluded,version:row.revision,clientKey:row.clientKey,reason:reason});

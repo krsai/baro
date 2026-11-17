@@ -23,7 +23,7 @@ try{
   }` }));
   await page.goto(`http://127.0.0.1:${port}/management-target-save-test.html?mode=${mode}&lang=${lang}`);
   await page.getByRole('button').first().waitFor();assert.equal(await page.getByRole('button').count(),1);await page.getByRole('button').click();
-  const dialog=page.getByRole('dialog');await dialog.waitFor();assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await dialog.getByRole('tab').count(),2);
+  const dialog=page.getByRole('dialog');await dialog.waitFor();assert.equal(await page.getByRole('dialog').count(),1);assert.equal(await dialog.getByRole('tab').count(),mode==='payroll'?1:2);
   assert.equal(await dialog.locator('input[required]').count(),0);let panel=dialog.getByRole('tabpanel');
   const card=panel.getByRole('button',{name:/ORDER-001/});await card.waitFor();
   const handle=await card.locator('span[aria-hidden=true]').first().boundingBox(),dest=await panel.locator('[data-target-group=true]').boundingBox();
@@ -33,6 +33,10 @@ try{
   await panel.locator('[data-target-group=true]').getByRole('button',{name:/ORDER-001/}).click();
   assert.equal(await panel.locator('button').last().isDisabled(),true,'returning to original group clears dirty state');
   await panel.locator('[data-target-group=false]').getByRole('button',{name:/ORDER-001/}).click();
+  if(mode==='payroll'){
+   await panel.locator('button').last().click();await page.waitForFunction(()=>window.writes?.length===1);
+   const writes=await page.evaluate(()=>window.writes);assert.ok(writes[0].url.startsWith('/management-targets/EVIDENCE?'));assert.equal(writes[0].body.rows[0].excluded,true);assert.equal('reason' in writes[0].body,false);assert.deepEqual(errors,[]);await page.close();continue;
+  }
   await dialog.getByRole('tab').nth(1).click();
   panel=dialog.getByRole('tabpanel');await panel.getByRole('button',{name:/ORDER-001/}).click();
   await dialog.getByRole('tab').nth(0).click();panel=dialog.getByRole('tabpanel');
@@ -46,5 +50,5 @@ try{
   await page.evaluate(()=>{window.pauseSave=true;});await save();await page.waitForFunction(()=>typeof window.finishSave==='function');await page.waitForFunction(()=>document.querySelector('[role=tab]').disabled);assert.ok(await dialog.getByRole('tab').nth(0).isDisabled());await page.keyboard.press('Escape');assert.equal(await dialog.isVisible(),true);await page.evaluate(()=>{window.pauseSave=false;window.finishSave({});});await page.waitForFunction(()=>!document.querySelector('[role=tab]').disabled);await page.waitForFunction(()=>window.writes?.length===2);writes=await page.evaluate(()=>window.writes);assert.ok(writes[1].url.startsWith('/management-targets/'+(mode==='order'?'SHIPPING':'EVIDENCE')+'?'));assert.equal('reason' in writes[1].body,false);
   assert.ok(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1),'dialog has no horizontal overflow');assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS all four order/payroll targets: ko/en/vi desktop/mobile, single button/dialog, independent drafts without reasons, unsaved-close guard and scoped saves.');
+ console.log('PASS order and unified payroll targets: ko/en/vi desktop/mobile, single button/dialog, independent drafts without reasons, unsaved-close guard and scoped saves.');
 }finally{await browser?.close();server.kill();for(const path of [html,jsx])unlinkSync(path);}
