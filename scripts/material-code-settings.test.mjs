@@ -25,6 +25,7 @@ test('material defaults and company overrides persist with revision, DB guards a
   const s=await seedChangeApproval(db);
   const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
   assert.equal(base.materialSettings.enabled,false);
+  await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true}});
   const body={...base,industryIds:[base.serviceTypeId],industryRevision:base.industryRevision,attributeInputs:attributes,materialSettings:enabled};
   const saved=await db.$transaction(tx=>saveCodeBase(tx,body,base.id));
   assert.deepEqual(saved.materialSettings,enabled);assert.equal(saved.materialRevision,2);

@@ -1,5 +1,6 @@
 import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse,industryHasHistoricalReferences} from './systemIndustryUsage';
 import {isDeepStrictEqual} from 'node:util';
+import {industryMaterialSettings} from './materialIndustry';
 import {accountingCodeUsage} from './accountingCodeUsage';
 import {accountingInputs} from './accountingInputs';
 import {codeIndustrySelection,codeIndustryDto,CODE_INDUSTRY_INCLUDE} from './accountingCodeIndustries';
@@ -52,7 +53,7 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
   Object.assign(data,accountingInputs(data));
   data.attributeInputs=accountingInputs({...data,attributeInputs:body.attributeInputs??previous?.attributeInputs??{}}).attributeInputs??{};
-  const materialSettings=body.materialSettings??previous?.materialSettings;
+  const materialSettings=selection.rows.some((row:any)=>row.materialManagement!==undefined)||body.materialSettings!==undefined||previous?.materialSettings!==undefined?industryMaterialSettings(body.materialSettings??previous?.materialSettings,selection.rows.some((row:any)=>row.isActive&&row.materialManagement),data):undefined;
   if(materialSettings!==undefined){
     data.materialSettings=accountingInputs({...data,materialSettings}).materialSettings;
     if(previous&&body.materialSettings!==undefined&&body.materialRevision!==previous.materialRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');

@@ -6,7 +6,7 @@ export const MATERIAL_SETTINGS_TEXT={
  en:{enabled:'Track as material',title:'Specification and stock identity',field:'Field',input:'Input setting',stock:'Separate stock',customer:'Customer',type:'Option',color:'Color',unit:'Unit',dimensions:'Dimensions (L×W×H)'},
  vi:{enabled:'Quản lý vật tư',title:'Quy cách và phân biệt tồn kho',field:'Trường',input:'Thiết lập nhập',stock:'Tách tồn kho',customer:'Khách hàng',type:'Tùy chọn',color:'Màu sắc',unit:'Đơn vị',dimensions:'Kích thước (L×W×H)'},
 };
-export default function MaterialCodeSettings({value,onChange,languageCode,disabled=false,query='',filter='ALL'}){
+export default function MaterialCodeSettings({value,onChange,languageCode,disabled=false,query='',filter='ALL',eligibilityControlled=false}){
  const t=MATERIAL_SETTINGS_TEXT[languageCode]||MATERIAL_SETTINGS_TEXT.en,m=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const settings=value.materialSettings||{enabled:false,stockFields:[],colorInput:'HIDDEN',unitInput:'REQUIRED'};
  const fields=settings.stockFields||[],mode=key=>key==='unit'?'REQUIRED':key==='color'?settings.colorInput||'HIDDEN':key==='dimensions'?(value.requiredFields||[]).includes('length')?'REQUIRED':'HIDDEN':value.attributeInputs?.[key]||'HIDDEN';
@@ -17,7 +17,7 @@ export default function MaterialCodeSettings({value,onChange,languageCode,disabl
   onChange({...value,materialSettings,...(['customer','type'].includes(key)?{attributeInputs:{...value.attributeInputs,[key]:nextMode}}:{}),...(key==='dimensions'?{requiredFields:[...(value.requiredFields||[]).filter(field=>!['length','width'].includes(field)),...(nextMode==='REQUIRED'?['length','width']:[])]}:{})});
  };
  return <Box sx={{mb:2,border:1,borderColor:'divider',borderRadius:1,p:1.5}}>
-  <FormControlLabel control={<Switch checked={settings.enabled===true} disabled={disabled} onChange={event=>onChange({...value,materialSettings:{...settings,enabled:event.target.checked,stockFields:event.target.checked?[...new Set([...fields,'unit'])]:fields}})}/>} label={t.enabled}/>
+  <FormControlLabel control={<Switch checked={settings.enabled===true} disabled={disabled||eligibilityControlled} onChange={event=>onChange({...value,materialSettings:{...settings,enabled:event.target.checked,stockFields:event.target.checked?[...new Set([...fields,'unit'])]:fields}})}/>} label={t.enabled}/>
   {settings.enabled&&<Stack spacing={1}>
    <Typography component="h3" variant="subtitle2">{t.title}</Typography>
    <Box sx={{overflowX:'auto'}}><Table size="small" aria-label={t.title} data-table-layout="columns"><TableHead><TableRow><TableCell>{t.field}</TableCell><TableCell>{t.input}</TableCell><TableCell>{t.stock}</TableCell></TableRow></TableHead>

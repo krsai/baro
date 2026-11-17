@@ -3341,6 +3341,8 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  materialManagement Boolean @default(false)
+  materialManagementRevision Int @default(0)
   handledItemSelection Boolean @default(false)
   handledItemRevision Int @default(0)
   handledSelections PartnerHandledSelection[]
