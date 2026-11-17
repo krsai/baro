@@ -1,3 +1,4 @@
+import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
 import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
 import {PARTNER_CLASSIFICATION_TEXT} from '../../utils/partnerClassification.mjs';
 import SettingDeleteButton from '../../components/SettingDeleteButton';
@@ -19,7 +20,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
-import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
+
 import {systemIndustryUsageReason} from '../../utils/systemIndustryUsage.mjs';
 
 export default function ExpenseMasterSettings({ units = false }) {
@@ -53,9 +54,7 @@ export default function ExpenseMasterSettings({ units = false }) {
     }catch{if(sequence===loadSequence.current)setError(common.loadError);}finally{if(sequence===loadSequence.current)setLoading(false);}
   },[path,industries,common.loadError]);
   useEffect(() => {if(active)load();return()=>{loadSequence.current++;};}, [active,load]);
-  useEffect(()=>subscribeWorkspaceDataChanged(detail=>{
-    if(active&&detail?.topics?.some(topic=>['customers','business-partners','accounting-codes'].includes(topic)))load();
-  }),[active,load]);
+  useReferenceSettingsRefresh({onRefresh:load,blocked:!!form||!!roleForm||open||saving,enabled:industries});
   const save = async () => {
     setSaving(true); setError('');
     try { await requestJSON(`${path}${form.id?'/'+form.id:''}`, { method: form.id?'PUT':'POST',headers:{'Content-Type':'application/json'}, body: JSON.stringify(form) }); setForm(null); await load(); }

@@ -1,5 +1,5 @@
 // Only invalidation metadata crosses the connection; document reads remain authorized APIs.
-export const LIVE_TOPICS=['shipping','shipping-ports','styles','orders','order-shipments','invoice-drafts','issued-invoices','assignment-board','employees','sales-prices','customers','business-partners','production-allowance-settings','salary-system-settings','payroll-sources','expense-requests','expense-approvals','change-approvals','bank-ledger','work-requests'];
+export const LIVE_TOPICS=['partner-classifications','accounting-codes','shipping','shipping-ports','styles','orders','order-shipments','invoice-drafts','issued-invoices','assignment-board','employees','sales-prices','customers','business-partners','production-allowance-settings','salary-system-settings','payroll-sources','expense-requests','expense-approvals','change-approvals','bank-ledger','work-requests'];
 export async function readWorkspaceEvents(response,{signal,onReady,onChange}){
  if(!response.ok||!response.body)throw Object.assign(Error('WORKSPACE_EVENTS_UNAVAILABLE'),{status:response.status});
  const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';

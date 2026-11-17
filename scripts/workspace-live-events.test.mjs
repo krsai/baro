@@ -44,3 +44,30 @@ test('stream decoder tolerates chunk boundaries and rejects HTTP auth failures',
  await readWorkspaceEvents(response,{signal:new AbortController().signal,onReady:()=>ready++,onChange:event=>events.push(event)});assert.equal(ready,1);assert.equal(events[0].orgId,1);
  await assert.rejects(readWorkspaceEvents(new Response('',{status:403}),{signal:new AbortController().signal}),error=>error.status===403);
 });
+
+
+test('SYSTEM reference mutations publish metadata only after success and require current system authority',async()=>{
+ const writes=[];let allowed=true;
+ const db={$queryRawUnsafe:async(...args)=>writes.push(args)};
+ const service=createWorkspaceEvents(db,{requireSystemAdmin:async()=>allowed?{requesterEmail:'admin@example.test'}:null});
+ const req={method:'PUT',path:'/system-setting-defaults/code-bases/8',get:()=>''};
+ service.middleware(req,response(),()=>{});const res=response();service.middleware(req,res,()=>{});res.json({ok:true});await settle();
+ assert.equal(writes.length,1);assert.deepEqual(JSON.parse(writes[0][2]).topics,['partner-classifications','accounting-codes']);assert.equal(JSON.parse(writes[0][2]).orgId,0);
+ const failed=response();failed.statusCode=409;service.middleware(req,failed,()=>{});failed.json({error:'CONFLICT'});await settle();assert.equal(writes.length,1);
+ allowed=false;const denied=response();service.middleware(req,denied,()=>{});denied.json({ok:true});await settle();assert.equal(writes.length,1);
+ for(const route of ['/system-setting-defaults/services/4','/system-setting-defaults/services/4/delete','/system-setting-defaults/partner-roles/order','/system-setting-defaults/code-bases/4'])assert.deepEqual(workspaceTopics(route),['partner-classifications','accounting-codes']);
+ assert.deepEqual(workspaceTopics('/system-setting-defaults/expense-units'),[]);await service.close();
+});
+
+test('SYSTEM reference stream filters company documents and rechecks system role on delivery',async()=>{
+ const previous={DATABASE_URL:process.env.DATABASE_URL,DIRECT_URL:process.env.DIRECT_URL};process.env.DATABASE_URL=process.env.DIRECT_URL='postgresql://test:local@127.0.0.1:5432/test';
+ let client,role='SYSTEM_ADMIN';class Client extends EventEmitter{constructor(){super();client=this;}async connect(){}async query(){}async end(){}}
+ const db={systemUser:{findUnique:async()=>({systemRole:role})}},service=createWorkspaceEvents(db,{requireSystemAdmin:async()=>({requesterEmail:'admin@example.test'})},()=>new Client()),res=response();
+ try{
+  await service.streamSystem({get:()=>''},res);
+  const notify=event=>client.emit('notification',{payload:JSON.stringify({id:randomUUID(),...event})});
+  notify({orgId:1,topics:['accounting-codes']});notify({orgId:0,topics:['bank-ledger']});await settle();assert.equal(res.frames.filter(frame=>frame.startsWith('data:')).length,0);
+  notify({orgId:0,topics:['partner-classifications','bank-ledger'],private:'secret'});await settle();const data=res.frames.find(frame=>frame.startsWith('data:'));assert.deepEqual(JSON.parse(data.slice(6)).topics,['partner-classifications']);assert.ok(!data.includes('secret'));
+  role='USER';notify({orgId:0,topics:['accounting-codes']});await settle();assert.equal(res.ended,true);
+ }finally{await service.close();for(const [key,value]of Object.entries(previous))if(value===undefined)delete process.env[key];else process.env[key]=value;}
+});

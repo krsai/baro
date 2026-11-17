@@ -4,8 +4,11 @@ import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const {Client}=require('pg');
 const {assertSafeApplicationDatabaseEnv}=require('../config/databaseTargetGuard');
 const CHANNEL='baro_workspace_changes';
+const referenceTopics=['partner-classifications','accounting-codes'];
+const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|partner-roles|code-bases|codes)(\/|\?|$)/.test(path);
 export const workspaceTopics=(path:string):string[]=>{
  const route=path.split('?')[0]||'';
+ if(isReferencePath(route))return referenceTopics;
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
   [/^\/(shipping|freight|shipping-ports)/,['shipping','shipping-ports']],
@@ -49,7 +52,13 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
    const json=res.json;
    res.json=function(body:any){
     const employeeId=getCurrentRequestActorEmployeeId(),successful=res.statusCode>=200&&res.statusCode<300&&body?.ok!==false&&!body?.error;
-    if(employeeId&&successful){
+    if(successful&&isReferencePath(req.path)&&gates.requireSystemAdmin){
+     const quietResponse={status(){return this;},json(){return this;}};
+     void gates.requireSystemAdmin(req,quietResponse).then(async(actor:any)=>{
+      if(!actor)return;
+      await db.$queryRawUnsafe('SELECT pg_notify($1,$2)::text',CHANNEL,JSON.stringify({id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req)}));
+     }).catch(()=>{console.warn('Reference settings notification unavailable');});
+    }else if(employeeId&&successful){
      // The authenticated employee is set by company access resolution, never by query orgId.
      void db.employee.findFirst({where:{id:employeeId,status:'ACTIVE'},select:{orgId:true}}).then(async(employee:any)=>{
       if(!employee)return;
@@ -61,6 +70,23 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
    };
   }
   next();
+ };
+ const streamSystem=async(req:any,res:any)=>{
+  const actor=await gates.requireSystemAdmin(req,res);if(!actor)return;
+  await connect();
+  res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});res.flushHeaders();
+  let closed=false;
+  const close=()=>{if(closed)return;closed=true;clearInterval(heartbeat);clearTimeout(expiry);subscribers.delete(subscriber);res.end();};
+  const subscriber={orgId:0,origin:origin(req),close,send:async(event:any)=>{
+   if(closed)return;const topics=event.topics.filter((topic:string)=>referenceTopics.includes(topic));if(!topics.length)return;
+   const current=await db.systemUser.findUnique({where:{email:actor.requesterEmail},select:{systemRole:true}}).catch(()=>null);
+   if(current?.systemRole!=='SYSTEM_ADMIN')return close();
+   if(!closed){if(!res.write('data: '+JSON.stringify({id:event.id,orgId:0,topics})+'\n\n'))close();else res.flush?.();}
+  }};
+  const heartbeat=setInterval(()=>{if(!closed){res.write(': keepalive\n\n');res.flush?.();}},25000);
+  let expiresAt=Date.now()+3600000;try{const claims=JSON.parse(Buffer.from(String(req.get('authorization')).split('.')[1]||'','base64url').toString());if(Number.isFinite(claims.exp))expiresAt=Math.min(expiresAt,claims.exp*1000);}catch{}
+  const expiry=setTimeout(close,Math.max(1000,expiresAt-Date.now()));
+  subscribers.add(subscriber);res.on('close',close);res.write('event: ready\ndata: {}\n\n');res.flush?.();
  };
  const stream=async(req:any,res:any)=>{
   const scope=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR','WORKER'],allowSystemAdmin:false});if(!scope)return;
@@ -89,5 +115,5 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   let expiresAt=Date.now()+3600000;try{const claims=JSON.parse(Buffer.from(String(req.get('authorization')).split('.')[1]||'','base64url').toString());if(Number.isFinite(claims.exp))expiresAt=Math.min(expiresAt,claims.exp*1000);}catch{}
   const expiry=setTimeout(close,Math.max(1000,expiresAt-Date.now()));res.on('close',()=>clearTimeout(expiry));
  };
- return {middleware,stream,close:async()=>{for(const subscriber of [...subscribers])subscriber.close();await client?.end();client=null;}};
+ return {middleware,stream,streamSystem,close:async()=>{for(const subscriber of [...subscribers])subscriber.close();await client?.end();client=null;}};
 }

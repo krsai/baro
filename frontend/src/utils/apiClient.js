@@ -1,3 +1,4 @@
+import {referenceSettingsTopics} from './referenceSettingsEvents.mjs';
 import { supabase } from '../lib/supabaseClient';
 import { recordLastUpdaterForCurrentPath } from './lastUpdater';
 import { emitWorkspaceDataChanged, WORKSPACE_DATA_TOPICS } from './workspaceDataEvents';
@@ -15,7 +16,7 @@ export const clearGetResponseCache=()=>getResponseCache.clear();
 export const fetchWorkspaceEvents=async(orgId,signal,accessToken)=>{
  const token=accessToken||requestContext.accessToken||await resolveSupabaseSessionAccessToken();
  if(!token)throw Object.assign(Error('WORKSPACE_CONTEXT_REQUIRED'),{status:403});
- return fetch(`${API_BASE}/workspace-events?orgId=${encodeURIComponent(orgId)}`,{headers:{Authorization:`Bearer ${token}`,'x-org-id':String(orgId),'x-workspace-client':workspaceClientId},signal,cache:'no-store'});
+ return fetch(orgId==='SYSTEM'?`${API_BASE}/system-setting-events`:`${API_BASE}/workspace-events?orgId=${encodeURIComponent(orgId)}`,{headers:{Authorization:`Bearer ${token}`,'x-org-id':String(orgId),'x-workspace-client':workspaceClientId},signal,cache:'no-store'});
 };
 const DEFAULT_REQUEST_SCOPE_GROUP = 'workspace';
 const DEFAULT_GET_CACHE_TTL_MS = 45_000;
@@ -626,6 +627,8 @@ export const requestJSON = async (path, options = {}) => {
       if (method !== 'GET') {
         // Mutating requests invalidate related cached GET responses.
         invalidateCacheByPath(path);
+        const referenceTopics=referenceSettingsTopics(path);
+        if(referenceTopics.length&&data?.ok!==false&&!data?.error)emitWorkspaceDataChanged({topics:referenceTopics,source:'reference-settings'});
         if (/^\/(freight|shipping-requests)(\/|\?|$)/.test(path) && !/\/(charges|documents\/share)(\?|$)/.test(path)) {
           emitWorkspaceDataChanged({ topics: [WORKSPACE_DATA_TOPICS.SHIPPING], orgId: new URL(path, 'http://baro.local').searchParams.get('orgId') || requestContext.orgId, source: 'shipping' });
         }

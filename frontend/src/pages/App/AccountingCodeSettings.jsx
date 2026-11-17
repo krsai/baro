@@ -1,8 +1,10 @@
+import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
+import {useRequestScopeContext} from '../../context/RequestScopeContext';
 import {accountingCodeUsageText} from '../../constants/accountingCodeUsage';
 import SelectionSummaryRow from '../../components/SelectionSummaryRow';
 import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
-import React,{useCallback,useEffect,useState} from 'react';
+import React,{useCallback,useEffect,useRef,useState} from 'react';
 import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,MenuItem,Slide,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Tooltip,Typography,useMediaQuery} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import EditIcon from '@mui/icons-material/Edit';
@@ -20,7 +22,7 @@ import {hasLocalizedName} from '../../utils/localizedName.mjs';
 import {classificationName} from '../../utils/partnerClassification.mjs';
 import {useLanguage} from '../../context/LanguageContext';
 import {requestJSON} from '../../utils/apiClient';
-import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
+
 import {TRANSACTION_CLASSIFICATION_FLOW} from '../../constants/industryHierarchy';
 
 const TEXT={
@@ -30,6 +32,7 @@ const TEXT={
 };
 const path='/system-setting-defaults/code-bases';
 export default function AccountingCodeSettings(){
+ const {active}=useRequestScopeContext();
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
  const usageText=accountingCodeUsageText[languageCode]||accountingCodeUsageText.en;
  const usageTitle=row=>row.transactionUsage?[usageText.expense+': '+row.transactionUsage.expense,usageText.ledger+': '+row.transactionUsage.ledger,usageText.settlement+': '+row.transactionUsage.settlement,usageText.past+': '+row.transactionUsage.history].join(' / '):'';
@@ -42,13 +45,15 @@ export default function AccountingCodeSettings(){
  const [pickerOpen,setPickerOpen]=useState(false),[pickerExiting,setPickerExiting]=useState(false);
  const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelDuration=reducedMotion?0:240,showPicker=pickerOpen||pickerExiting;
  useEffect(()=>{if(!form){setPickerOpen(false);setPickerExiting(false);}},[form]);
+ const loadSequence=useRef(0);
  const load=useCallback(async()=>{
+  const sequence=++loadSequence.current;
   setLoading(true);setError('');
-  try{const [bases,sources,parents]=await Promise.all([requestJSON(path,{skipCache:true}),requestJSON('/system-setting-defaults/services',{skipCache:true}),requestJSON('/system-setting-defaults/partner-roles',{skipCache:true})]);setRows(bases);setIndustries(sources);setRoles(parents);}
-  catch{setError(text.error);}finally{setLoading(false);}
+  try{const [bases,sources,parents]=await Promise.all([requestJSON(path,{skipCache:true}),requestJSON('/system-setting-defaults/services',{skipCache:true}),requestJSON('/system-setting-defaults/partner-roles',{skipCache:true})]);if(sequence!==loadSequence.current)return;setRows(bases);setIndustries(sources);setRoles(parents);}
+  catch{if(sequence===loadSequence.current)setError(text.error);}finally{if(sequence===loadSequence.current)setLoading(false);}
  },[text.error]);
- useEffect(()=>{load();},[load]);
- useEffect(()=>{const unsubscribe=subscribeWorkspaceDataChanged(detail=>{if(detail?.source==='transaction-request')load();});window.addEventListener('focus',load);return()=>{unsubscribe();window.removeEventListener('focus',load);};},[load]);
+ useEffect(()=>{if(active)load();return()=>{loadSequence.current++;};},[load,active]);
+ useReferenceSettingsRefresh({onRefresh:load,blocked:!!form||saving});
  const linkedIds=row=>row.industryIds||[];
  const inIndustry=(row,id)=>linkedIds(row).includes(id);
  const inRole=(row,id)=>industries.some(industry=>industry.partnerRoleId===id&&inIndustry(row,industry.id));

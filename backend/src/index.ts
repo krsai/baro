@@ -219,9 +219,10 @@ app.use(async (req, res, next) => {
   }
 });
 
-const workspaceEvents=createWorkspaceEvents(prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:(scope:any)=>hasRoleAccessPolicyFeature(scope)});
+const workspaceEvents=createWorkspaceEvents(prisma,{requireSystemAdmin,requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:(scope:any)=>hasRoleAccessPolicyFeature(scope)});
 app.use(workspaceEvents.middleware);
 app.get('/workspace-events',workspaceEvents.stream);
+app.get('/system-setting-events',workspaceEvents.streamSystem);
 app.use(industryMenuMiddleware(prisma,requireOrgRole));
 app.use(brandSewingMiddleware(prisma,{getEmail:getRequesterEmail,getOrganization:getOrganizationByQuery,requireOrgRole,loadPolicy:()=>loadRoleAccessPolicySetting()}));
 

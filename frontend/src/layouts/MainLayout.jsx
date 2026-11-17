@@ -499,7 +499,7 @@ const MainLayout = () => {
     (options) => resolveFirstAccessiblePath(authState, options),
     [authState]
   );
-  useWorkspaceLiveUpdates(activeProfile?.entryType==='ORG'?activeOrgId:null,session?.access_token);
+  useWorkspaceLiveUpdates(activeProfile?.entryType==='SYSTEM'?'SYSTEM':activeProfile?.entryType==='ORG'?activeOrgId:null,session?.access_token);
   const pendingApprovalCount=usePendingApprovals(activeOrgId,activeProfile?.entryType==='ORG'&&['ADMIN','ACCOUNTANT','OPERATOR'].includes(activeProfile?.orgRole)&&hasPathAccess('/dashboard'));
   const canViewEmployeeMenu = hasPathAccess('/employee');
   const canViewCustomerMenu = activeProfile?.orgType!=='SERVICE' && hasPathAccess('/customer');
