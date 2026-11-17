@@ -3,6 +3,12 @@ const TEXT={
  en:{prefix:'Linked records prevent deletion: ',codes:'Legacy business code settings',codeBases:'Legacy base code links',customerIndustries:'Legacy customer type links',productionPolicies:'Production policies',partnerClassifications:'Partner classifications',accountingCodeLinks:'Business code links',transactionCosts:'Cost records',transactionCodes:'Company business codes',partners:'Company partner links'},
  vi:{prefix:'Không thể xóa do có liên kết: ',codes:'Thiết lập mã nghiệp vụ cũ',codeBases:'Liên kết mã gốc cũ',customerIndustries:'Liên kết loại khách hàng cũ',productionPolicies:'Chính sách sản xuất',partnerClassifications:'Phân loại đối tác',accountingCodeLinks:'Liên kết mã nghiệp vụ',transactionCosts:'Chi phí',transactionCodes:'Mã nghiệp vụ công ty',partners:'Liên kết đối tác công ty'},
 };
+export function systemIndustryUsageCount(row){
+ if(Number.isSafeInteger(row?.usageCount)&&row.usageCount>=0)return row.usageCount;
+ if(row?.hasUsageHistory===false)return 0;
+ if(!row?._count||!Array.isArray(row.services)||row.services.some(local=>!local._count))return null;
+ return [...Object.values(row._count),...row.services.flatMap(local=>Object.values(local._count))].reduce((sum,count)=>sum+Number(count||0),0);
+}
 export function systemIndustryUsageReason(row,language='ko'){
  const text=TEXT[language]||TEXT.en,counts={...row?._count};
  for(const local of row?.services||[])for(const [key,value] of Object.entries(local._count||{}))counts[key]=(counts[key]||0)+Number(value);

@@ -1,13 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {systemIndustryUsageReason} from '../frontend/src/utils/systemIndustryUsage.mjs';
+import {systemIndustryUsageReason,systemIndustryUsageCount} from '../frontend/src/utils/systemIndustryUsage.mjs';
 const require=createRequire(import.meta.url);
-const {systemIndustryInUse,SYSTEM_INDUSTRY_USAGE_INCLUDE}=require('../backend/dist/services/systemIndustryUsage.js');
+const {systemIndustryInUse,systemIndustryUsageView,SYSTEM_INDUSTRY_USAGE_INCLUDE}=require('../backend/dist/services/systemIndustryUsage.js');
 const {deleteSetting}=require('../backend/dist/services/codeBaseManagement.js');
 const {registerTransactionSettingRoutes}=require('../backend/dist/services/transactionSettingRoutes.js');
 const counts=()=>Object.fromEntries(Object.keys(SYSTEM_INDUSTRY_USAGE_INCLUDE._count.select).map(key=>[key,0]));
 const localCounts=()=>({transactionCosts:0,transactionCodes:0,partners:0});
+
+test('compact industry counts count current links once, excluding tax copies and obsolete document anchors',()=>{
+ const base={id:10,code:'LBL',industryLinks:[{systemIndustryId:9}]},code={id:11,base};
+ const row={id:9,_count:{...counts(),codes:3,codeBases:1,accountingCodeLinks:1,partnerClassifications:1},codeBases:[base],codes:[code,code,code],services:[{id:90,_count:{transactionCodes:6,transactionCosts:2,partners:0},transactionCodes:Array(6).fill(code),transactionCosts:[{transactionCode:code},{transactionCode:code}]}]};
+ assert.equal(systemIndustryUsageView(row).usageCount,2,'one vendor classification and one current base link');
+ row._count.accountingCodeLinks=0;row._count.partnerClassifications=0;base.industryLinks=[{systemIndustryId:20}];
+ assert.equal(systemIndustryUsageView(row).usageCount,0);assert.equal(systemIndustryInUse(row),false);
+ assert.equal(systemIndustryUsageCount({usageCount:0}),0);assert.equal(systemIndustryUsageCount({hasUsageHistory:false}),0);assert.equal(systemIndustryUsageCount({}),null);
+});
 test('deletion reason identifies legacy customer links separately from current classification and real local references',()=>{
  for(const [language,expected] of [['ko','기존 고객 유형 연결'],['en','Legacy customer type links'],['vi','Liên kết loại khách hàng cũ']]){
   const reason=systemIndustryUsageReason({_count:{customerIndustries:1,partnerClassifications:0},services:[{_count:{transactionCosts:2}},{_count:{transactionCosts:3}}]},language);

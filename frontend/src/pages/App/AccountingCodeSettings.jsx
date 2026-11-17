@@ -1,7 +1,7 @@
 import {ITEM_ATTRIBUTE_TEXT} from '../../constants/itemAttributes';
 import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
-import {accountingCodeUsageText} from '../../constants/accountingCodeUsage';
+import {accountingCodeUsageText,usageCountLabel} from '../../constants/accountingCodeUsage';
 import SelectionSummaryRow from '../../components/SelectionSummaryRow';
 import {internalFundsText} from '../../constants/internalFunds';
 import {accountingDirectionText} from '../../constants/accountingDirection';
@@ -91,7 +91,7 @@ export default function AccountingCodeSettings(){
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>
-      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Tooltip title={usageTitle(row)}><Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={(row.transactionUsage.current?usageText.current:row.transactionUsage.history?usageText.history:usageText.none)+(row.transactionUsage.current||row.transactionUsage.history?' '+(row.transactionUsage.current||row.transactionUsage.history)+' '+usageText.count:'')}/></Tooltip>}</TableCell><TableCell><Stack direction="row">
+      <TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current+row.transactionUsage.history+(row.transactionUsage.types||0),languageCode)}/>} </TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
        <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={row.transactionUsage?.history&&!row.transactionUsage?.current?usageText.protected:usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
       </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={6}>{text.empty}</TableCell></TableRow>}</TableBody>

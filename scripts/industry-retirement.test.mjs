@@ -9,6 +9,7 @@ const {saveCodeBase,deleteSetting}=require('../backend/dist/services/codeBaseMan
 const {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse,systemIndustryUsageView}=require('../backend/dist/services/systemIndustryUsage');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
+const {accountingAlertCandidates}=require('../backend/dist/services/accountingAlerts');
 
 
 test('moving a used product code and vendor makes its old industry deletable without changing expense or ledger FKs',async()=>{
@@ -28,12 +29,16 @@ test('moving a used product code and vendor makes its old industry deletable wit
   const costs=await db.partnerTransactionCost.findMany({where:{orgId:org}}),ledger=await db.bankLedgerEntry.findMany({where:{orgId:org}}),request=await db.expenseRequest.findMany({where:{orgId:org}});
   const usage=()=>db.settingServiceDefault.findUnique({where:{id:old.id},include:SYSTEM_INDUSTRY_USAGE_INCLUDE});
   assert.equal(systemIndustryInUse(await usage()),true);
+  const mismatches=async()=>(await accountingAlertCandidates(db,org,{ledger:true,expense:true,invoice:false})).filter(row=>row.kind==='PARTNER_INDUSTRY');
+  assert.equal((await mismatches()).length,0);
   await assert.rejects(db.$transaction(tx=>deleteSetting(tx,'services',true,old.id,undefined,false,system.email)),/SETTING_IN_USE/);
   await db.$transaction(tx=>saveClassification(tx,org,s.vendor.id,actor,{revision:1,...selection(target.id)}));
+  const changed=await mismatches();assert.deepEqual([...new Set(changed.map(row=>row.sourceKind))].sort(),['EXPENSE','LEDGER'],'both existing documents read the latest vendor industry without rewriting their FKs');
   const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
   await db.$transaction(tx=>saveCodeBase(tx,{...base,industryIds:[target.id],industryRevision:base.industryRevision},base.id));
+  assert.equal((await mismatches()).length,0,'moving the code also updates the existing financial documents classification immediately');
   const row=await usage();assert.ok(row._count.codeBases>0,'compatibility anchor is still a real historical FK');assert.equal(systemIndustryInUse(row),false);
-  const view=systemIndustryUsageView(row);assert.equal(view._count.codeBases,0);assert.ok(view.services.every(item=>!('transactionCosts' in item)),'catalogue does not expose transaction records');
+  const view=systemIndustryUsageView(row);assert.equal(view._count.codeBases,0);assert.equal(view.usageCount,0);assert.ok(view.services.every(item=>!('transactionCosts' in item)),'catalogue does not expose transaction records');
   await assert.rejects(db.$transaction(tx=>deleteSetting(tx,'services',true,old.id)),/SYSTEM_ADMIN_REQUIRED/);
   await assert.rejects(db.$transaction(async tx=>{await deleteSetting(tx,'services',true,old.id,undefined,false,system.email);throw new Error('rollback retirement');}),/rollback retirement/);
   assert.equal(await db.industryRetirement.count(),0);

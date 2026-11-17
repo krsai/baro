@@ -1,6 +1,6 @@
 import {EXPENSE_TEXT} from '../frontend/src/constants/expenseTypes.js';
 import {ITEM_ATTRIBUTE_TEXT} from '../frontend/src/constants/itemAttributes.js';
-import {accountingCodeUsageText} from '../frontend/src/constants/accountingCodeUsage.js';
+import {accountingCodeUsageText,usageCountLabel} from '../frontend/src/constants/accountingCodeUsage.js';
 import {TRANSACTION_CLASSIFICATION_FLOW} from '../frontend/src/constants/industryHierarchy.js';
 import {accountingDirectionText} from '../frontend/src/constants/accountingDirection.js';
 import assert from 'node:assert/strict';
@@ -36,7 +36,7 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('/code-bases')?bases:url.pathname.endsWith('/partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-code-industries-acceptance.html`);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
-  const usageText=accountingCodeUsageText[lang];assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByText(usageText.history+' 1 '+usageText.count,{exact:true}).waitFor();
+  const usageText=accountingCodeUsageText[lang];assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByText(usageCountLabel(1,lang),{exact:true}).waitFor();
   await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).waitFor();
   if(process.argv.includes('--subtitle-only')){for(const width of [1440,390]){await page.setViewportSize({width,height:900});assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();}assert.deepEqual(errors,[]);await page.close();continue;}
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
@@ -67,7 +67,7 @@ try{
   for(const width of [768,390]){await page.setViewportSize({width,height:900});await page.getByRole('button',{name:edit,exact:true}).click();await openPicker.click();await selector.fill('Extra subtype 79');await panel.getByRole('checkbox',{name:'Extra subtype 79',exact:true}).check();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);const bounds=await panel.boundingBox();assert.ok(bounds.width<=width);await panel.getByRole('button',{name:picker.close,exact:true}).click();await panel.waitFor({state:'hidden'});assert.equal(await dialog.getByText('Extra subtype 79',{exact:true}).count(),1);await dialog.locator('#accounting-input-toggle').click();const inputPanel=dialog.locator('#accounting-input-panel');await inputPanel.waitFor();assert.equal(await inputPanel.getByRole('combobox').count(),9);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await inputPanel.press('Escape');await inputPanel.waitFor({state:'hidden'});await page.keyboard.press('Escape');}await page.setViewportSize({width:1440,height:1000});
   await page.reload();await nav.getByRole('button',{name:'SHIPPING 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
   bases.push({...bases[0],id:9,code:'OLD',nameKo:'Old cost',nameEn:'Old cost',nameVi:'Old cost',isAvailable:false,legacyUsageDisabled:true,entryMode:'PURCHASE',industryIds:[10],industries:[sources[0]]});await page.reload();
-  const old=page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'OLD',exact:true})});await old.waitFor();assert.equal(await old.locator('td').nth(4).innerText(),usageText.history+' 1 '+usageText.count);await old.getByRole('button',{name:edit,exact:true}).click();assert.equal(await dialog.locator('input[type="checkbox"]').count(),0);assert.equal(await dialog.locator('input[value="PURCHASE"]').count(),0);await page.keyboard.press('Escape');
+  const old=page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'OLD',exact:true})});await old.waitFor();assert.equal(await old.locator('td').nth(4).innerText(),usageCountLabel(1,lang));await old.getByRole('button',{name:edit,exact:true}).click();assert.equal(await dialog.locator('input[type="checkbox"]').count(),0);assert.equal(await dialog.locator('input[value="PURCHASE"]').count(),0);await page.keyboard.press('Escape');
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log(process.argv.includes('--subtitle-only')?'PASS accounting code subtitle removed: ko/en/vi desktop/mobile, usage labels and classification flow retained.':'Accounting code industries ko/en/vi: N:M edit, unique category counts, source-prefilled creation, fixed used input mode/FKs, stale edit recovery, persistence and mobile passed.');

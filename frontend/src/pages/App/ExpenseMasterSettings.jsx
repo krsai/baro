@@ -1,3 +1,4 @@
+import {accountingCodeUsageText,usageCountLabel} from '../../constants/accountingCodeUsage';
 import useReferenceSettingsRefresh from '../../hooks/useReferenceSettingsRefresh';
 import {partnerIndustryLabel} from '../../utils/partnerIndustry.mjs';
 import {PARTNER_CLASSIFICATION_TEXT} from '../../utils/partnerClassification.mjs';
@@ -21,7 +22,7 @@ import { useAuth } from '../../context/AuthContext';
 import { requestJSON } from '../../utils/apiClient';
 import {useRequestScopeContext} from '../../context/RequestScopeContext';
 
-import {systemIndustryUsageReason} from '../../utils/systemIndustryUsage.mjs';
+import {systemIndustryUsageReason,systemIndustryUsageCount} from '../../utils/systemIndustryUsage.mjs';
 
 export default function ExpenseMasterSettings({ units = false }) {
   const industries=!units;
@@ -68,8 +69,8 @@ export default function ExpenseMasterSettings({ units = false }) {
   const parents=types;
   const selected=parents.find(row=>row.id===category);
   const visible=industries?rows.filter(row=>(row.partnerRoleId||0)===category&&row.code!=='GENERAL'):rows;
-  const table=<TableContainer><Table size="small"><TableHead><TableRow>{units&&<TableCell>{common.code}</TableCell>}<TableCell>{industries ? tree.industry : text.type}</TableCell><TableCell>{tree.active}</TableCell><TableCell /></TableRow></TableHead><TableBody>
-    {visible.map((row,index)=><TableRow key={row.id}>{units&&<TableCell>{row.code}</TableCell>}<TableCell>{industries?partnerIndustryLabel(row,languageCode):serviceName(row,languageCode)}{industries&&row.hasUsageHistory&&<Typography variant="caption" component="div" color="text.secondary" sx={{mt:.5,overflowWrap:'anywhere'}}>{systemIndustryUsageReason(row,languageCode)}</Typography>}</TableCell><TableCell><StatusLabel tone={row.isActive?'blue':'gray'} label={row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><Stack direction="row" justifyContent="flex-end"><IconButton disabled={saving} color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton>{industries&&<SettingDeleteButton path={path} id={row.id} name={serviceName(row,languageCode)} used={row.hasUsageHistory!==false} usedReason={systemIndustryUsageReason(row,languageCode)} disabled={loading||Boolean(error)} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>}</Stack></TableCell></TableRow>)}
+  const table=<TableContainer><Table size="small"><TableHead><TableRow>{units&&<TableCell>{common.code}</TableCell>}<TableCell>{industries ? tree.industry : text.type}</TableCell><TableCell>{industries?(accountingCodeUsageText[languageCode]||accountingCodeUsageText.en).column:tree.active}</TableCell><TableCell /></TableRow></TableHead><TableBody>
+    {visible.map((row,index)=><TableRow key={row.id}>{units&&<TableCell>{row.code}</TableCell>}<TableCell>{industries?partnerIndustryLabel(row,languageCode):serviceName(row,languageCode)}</TableCell><TableCell><StatusLabel tone={industries?(systemIndustryUsageCount(row)>0?'blue':'gray'):row.isActive?'blue':'gray'} label={industries?usageCountLabel(systemIndustryUsageCount(row),languageCode):row.isActive?tree.active:tree.inactive}/></TableCell><TableCell align="right"><Stack direction="row" justifyContent="flex-end"><IconButton disabled={saving} color="primary" aria-label={tree.edit} onClick={()=>{if(industries){setIndustryId(row.id);setOpen(true);}else setForm(row);}}><EditIcon fontSize="small"/></IconButton>{industries&&<SettingDeleteButton path={path} id={row.id} name={serviceName(row,languageCode)} used={row.hasUsageHistory!==false} usedReason={systemIndustryUsageReason(row,languageCode)} disabled={loading||Boolean(error)} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>}</Stack></TableCell></TableRow>)}
     {!visible.length&&<TableRow><TableCell colSpan={units?4:3}>{tree.empty}</TableCell></TableRow>}
   </TableBody></Table></TableContainer>;
   return <AppPageContainer title={industries ? text.industries : text.types} titleActions={units?<Button variant="contained" disabled={loading} onClick={()=>setForm({code:'',nameEn:'',nameKo:'',nameVi:'',isActive:true,sortOrder:0})}>{unitLabels.add}</Button>:industries && <Stack direction="row" spacing={1}><Button variant="outlined" disabled={loading||saving} onClick={()=>{setRoleError('');setRoleForm({nameEn:'',nameKo:'',nameVi:''});}}>{roleText.add}</Button><Button variant="contained" disabled={loading||Boolean(error)} onClick={() => { setIndustryId(null); setOpen(true); }}>{common.addIndustry}</Button></Stack>}>
