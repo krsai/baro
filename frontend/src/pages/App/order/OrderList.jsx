@@ -1,6 +1,6 @@
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
-import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
+import OrderTargetSettings from './OrderTargetSettings';
 import Autocomplete from '../../../components/SearchableSelect';
 import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
 import {OrderColorDragHandle, OrderColorDropRow, OrderItemsTableContainer} from '../../../components/OrderColorDrag';
@@ -3013,7 +3013,7 @@ const OrderList = () => {
       <AppPageContainer
         title={orderPageText.listTitle}
         titleActions={(
-          <Stack direction="row" spacing={1} alignItems="center">{['INVOICE','SHIPPING'].map(kind=><ManagementTargetSettings key={activeOrgId+kind} orgId={activeOrgId} languageCode={languageCode} kind={kind} disabled={activeOrgType!=='MANUFACTURER'} />)}
+          <Stack direction="row" spacing={1} alignItems="center"><OrderTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} disabled={activeOrgType!=='MANUFACTURER'} />
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
             {orderPageText.addOrder}
           </Button></Stack>
