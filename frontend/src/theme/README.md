@@ -28,6 +28,8 @@
 
 키 해석은 `utils/keyboardPolicy.mjs`, 경계·초기 포커스·다음 입력 이동은 `utils/formFocus.mjs`, 코드 매칭은 `utils/expenseLookup.mjs`, 검색 선택은 `LookupInput`/`LookupSearchDialog`/`SearchableSelect`가 담당한다. 네이티브 버튼·체크박스의 Enter/Space를 상위 검색 핸들러가 다시 처리하지 않는다. IME 조합 중 Enter와 keyCode 229, 수정키 조합, 이미 처리된 이벤트는 공통 명령으로 실행하지 않는다.
 
+검색 결과 행을 마우스로 누르면 실제 행 포커스와 강조 후보를 일치시킨다. 단일 클릭은 탐색이고 Enter·선택 버튼·더블클릭이 확정이다. 행에서 방향키로 탐색하면 실제 포커스도 새 행으로 이동하며 검색 입력에서 탐색할 때는 입력 포커스를 유지한다. 선택 행과 우측 고정 작업 셀은 공통 선택 배경을 사용하고 마우스가 벗어나도 선택 상태의 배경을 유지한다.
+
 페이지는 DOM 순서로 입력 순서를 배치하고 필요한 경우 `data-initial-focus`만 선언한다. 양수 tabindex로 순서를 맞추거나 화면별 타이머/전역 검색으로 포커스를 빼앗지 않는다. 도메인 전용 단축키/특수 편집기는 명시적 경계와 실제 업무 콜백을 유지한다. 읽기 전용·숨김·비활성은 입력 순서에서 제외하며 모달은 내부에서 순환하고, 닫기는 미저장 확인·저장 중 제한을 따른다. 공통 회귀 검사는 `npm run test:keyboard-navigation`이다. 기존 화면 전체의 도메인 단축키 전환 완료를 의미하지 않는다.
 
 세그먼트 버튼은 공통 `MuiToggleButton.defaultProps.disableFocusRipple`로 짙은 포커스 ripple을 끈다. 현재 포커스는 파란 테두리로 표시하며 선택 배경과 클릭 피드백은 유지한다.

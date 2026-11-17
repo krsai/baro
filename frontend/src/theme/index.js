@@ -478,7 +478,10 @@ const theme = createTheme(baseTheme, {
       head: { backgroundColor: ui.color.header, color: ui.color.muted, fontWeight: 600, fontSize: '0.75rem', whiteSpace: 'nowrap' },
       stickyHeader: { backgroundColor: ui.color.header },
     } },
-    MuiTableRow: { styleOverrides: { root: { '&.MuiTableRow-hover:hover': { backgroundColor: ui.color.hover } } } },
+    MuiTableRow: { styleOverrides: { root: {
+      '&.MuiTableRow-hover:hover': { backgroundColor: ui.color.hover },
+      '&.Mui-selected,&.Mui-selected:hover': { backgroundColor: getLabelPalette('blue').background },
+    } } },
     MuiTablePagination: { styleOverrides: { root: { color: ui.color.muted }, toolbar: { minHeight: 52 } } },
     MuiOutlinedInput: { styleOverrides: { root: {
       ...inputSurface,

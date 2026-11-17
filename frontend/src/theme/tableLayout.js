@@ -1,4 +1,5 @@
 import {ui} from './ui';
+import {getLabelPalette} from './labelPalette';
 
 // Lists fit their viewport before scrolling. Dense matrices and printed
 // documents opt out explicitly; editable grids retain their field widths.
@@ -21,6 +22,7 @@ export const responsiveTableStyles={
  },
  [`& > tbody > tr > td${actions}`]:{position:'sticky',right:0,zIndex:2,backgroundColor:ui.color.surface,whiteSpace:'nowrap'},
  [`& > tbody > tr.MuiTableRow-hover:hover > td${actions}`]:{backgroundColor:ui.color.hover},
+ [`& > tbody > tr.Mui-selected > td${actions}, & > tbody > tr.Mui-selected.MuiTableRow-hover:hover > td${actions}`]:{backgroundColor:getLabelPalette('blue').background},
  [`${hasActions} > thead > tr:first-of-type > th:last-child`]:{position:'sticky',right:0,zIndex:3,backgroundColor:ui.color.header},
  '&.MuiTable-stickyHeader > thead > tr > th':{zIndex:3},
  [`${hasActions}.MuiTable-stickyHeader > thead > tr:first-of-type > th:last-child`]:{zIndex:4},
