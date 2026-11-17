@@ -30,7 +30,7 @@ export default function WorkRequestsCard({orgId,languageCode}){
   const focus=()=>{if(document.visibilityState!=='hidden'&&Date.now()-lastAttempt>=30000)void load();};
   const unsubscribe=subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&event.topics?.includes('work-requests'))void load();});
   void load();window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
-  return()=>{live=false;unsubscribe();clearTimeout(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
+  return()=>{live=false;unsubscribe();window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
  },[api,active,reload,t.failed,page,open,Boolean(selected),busy]);
  const loadPeople=async()=>{setPeopleLoading(true);setPeopleFailed(false);try{const rows=await api('/recipients');if(alive.current)setPeople(rows);}catch{if(alive.current)setPeopleFailed(true);}finally{if(alive.current)setPeopleLoading(false);}};
  const create=()=>{clientKey.current=crypto.randomUUID();attempt.current=null;setEditing(null);setRecipient(null);setTitle('');setMessage('');setFormError('');setUncertain(false);setOpen(true);void loadPeople();};
