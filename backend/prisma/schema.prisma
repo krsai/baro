@@ -397,6 +397,7 @@ enum QcPassEventSourceType {
 }
 
 model SystemUser {
+  retiredIndustries IndustryRetirement[]
   systemClassifications PartnerClassification[] @relation("ClassificationSystemEditor")
   id                  Int        @id @default(autoincrement())
   email               String     @unique
@@ -3328,6 +3329,7 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  retirement IndustryRetirement?
   accountingCodeLinks AccountingCodeIndustry[]
   partnerClassifications PartnerClassificationIndustry[]
   productionPolicies IndustryProductionPolicy[]
@@ -3732,4 +3734,14 @@ model OrderInvoicePolicyEvent {
  actor Employee @relation("OrderInvoicePolicyEventActor",fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict,map:"OrderInvoicePolicyEvent_actor_fkey")
  @@unique([orgId,clientKey])
  @@unique([workOrderId,revision])
+}
+
+model IndustryRetirement {
+ systemIndustryId Int @id
+ actorId Int
+ beforeData Json
+ referenceSummary Json
+ createdAt DateTime @default(now())
+ industry SettingServiceDefault @relation(fields:[systemIndustryId],references:[id],onDelete:Restrict)
+ actor SystemUser @relation(fields:[actorId],references:[id],onDelete:Restrict)
 }

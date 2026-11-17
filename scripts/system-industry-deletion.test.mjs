@@ -44,7 +44,7 @@ test('deletion removes unused overridden copies but refuses every source/local r
  const removed=[];let localUsage=localCounts();const sourceUsage=counts();
  const countModel=key=>({count:async()=>sourceUsage[key]});
  const tx={$queryRawUnsafe:async()=>[{id:9}],
- settingServiceDefault:{delete:async()=>removed.push('source')},
+ settingServiceDefault:{findUnique:async()=>({id:9,_count:sourceUsage,services:[{id:90,ownerOrgId:1,_count:localUsage}]}),delete:async()=>removed.push('source')},
  settingTransactionCodeDefault:countModel('codes'),transactionCodeBase:countModel('codeBases'),orgRelationship:countModel('customerIndustries'),industryProductionPolicy:countModel('productionPolicies'),partnerClassificationIndustry:countModel('partnerClassifications'),accountingCodeIndustry:countModel('accountingCodeLinks'),
  outsourcingServiceType:{findMany:async()=>[{id:90,ownerOrgId:1,isOverridden:true}],delete:async()=>removed.push('local')},
  partnerTransactionCost:{count:async()=>localUsage.transactionCosts},transactionCode:{count:async()=>localUsage.transactionCodes},organizationOutsourcingServiceType:{count:async()=>localUsage.partners}};

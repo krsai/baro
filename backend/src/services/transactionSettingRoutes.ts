@@ -10,7 +10,7 @@ import {registerExpenseUnitRoutes} from './expenseMetadata';
 import {saveCatalogueOrder} from './catalogueOrder';
 import {partnerRoleCatalogue} from './partnerRoleCatalogue';
 import {registerPartnerRoleManagement} from './partnerRoleManagement';
-import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse} from './systemIndustryUsage';
+import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse,systemIndustryUsageView} from './systemIndustryUsage';
 import {randomUUID} from 'node:crypto';
 
 export const serviceFields = ['code','nameKo','nameEn','nameVi','entryMode','requiredFields','orderInput','styleInput','processInput','isActive','sortOrder'];
@@ -19,6 +19,7 @@ export const pickSettings = (row: any, keys: string[]) => Object.fromEntries(key
 
 export async function provisionSettingDefaults(tx: any, orgId: number, completeExpenseCatalogue = false) {
   await tx.$queryRaw`SELECT id FROM "Organization" WHERE id=${orgId} FOR UPDATE`;
+  // Inactive archived bridges preserve existing code/cost identities, not menu choices.
   const services = await tx.settingServiceDefault.findMany();
   // A code collision preserves the existing tenant row, without guessing a source FK.
   await tx.outsourcingServiceType.createMany({ data: services.map((row: any) => ({ ...pickSettings(row,serviceFields), ownerOrgId: orgId, systemDefaultId: row.id, isOverridden: false })), skipDuplicates: true });
@@ -112,9 +113,9 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
       // Organization administrators can read the catalogue to explicitly adopt defaults.
       if (req.query.catalogue === '1') { if (!await admin(req,res)) return; }
       else if (!await gates.requireSystemAdmin(req,res)) return;
-      const usageDetails=service&&req.query.catalogue!=='1'?{codeBases:{select:{id:true,code:true}},accountingCodeLinks:{select:{base:{select:{id:true,code:true}}}},partnerClassifications:{select:{orgId:true,entityId:true,classification:{select:{owner:{select:{name:true,nameKo:true,nameVi:true}},entity:{select:{name:true,nameKo:true,nameVi:true}}}}}}}:{};
-      const rows = await defaults.findMany({ include: service ? {...SYSTEM_INDUSTRY_USAGE_INCLUDE,...usageDetails,partnerRole:true,expenseType:true} : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
-      res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...row, hasUsageHistory: service
+      const usageDetails=service&&req.query.catalogue!=='1'?{partnerClassifications:{select:{orgId:true,entityId:true,classification:{select:{owner:{select:{name:true,nameKo:true,nameVi:true}},entity:{select:{name:true,nameKo:true,nameVi:true}}}}}}}:{};
+      const rows = await defaults.findMany({ ...(service?{where:{retirement:null}}:{}),include: service ? {...SYSTEM_INDUSTRY_USAGE_INCLUDE,...usageDetails,partnerRole:true,expenseType:true} : { serviceType: true, taxTreatment: true, base:{include:{expenseType:true}}, codes: { select: { isOverridden: true, _count: { select: { costs: true,ledgerEntries:true,settlementLines:true } } } } }, orderBy: { id: 'asc' } });
+      res.json(rows.filter((row:any)=>service || row.base?.expenseType?.code !== 'OTHER').map((row: any) => ({ ...(service?systemIndustryUsageView(row):row), hasUsageHistory: service
         ? systemIndustryInUse(row)
         : row.codes.some((local: any) => local.isOverridden || Object.values(local._count).some((count:any)=>Number(count)>0)) })));
     });
@@ -145,7 +146,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
         if (!access) return;
         const id = Number(req.params.id);
         if (!Number.isSafeInteger(id) || id <= 0) throw createHttpError(400,'INVALID_SETTING_REFERENCE');
-        try { await db.$transaction((tx: any) => deleteSetting(tx,kind,global,id,global ? undefined : access.organization.id)); }
+        try { await db.$transaction((tx: any) => deleteSetting(tx,kind,global,id,global ? undefined : access.organization.id,false,global?access.requesterEmail:undefined)); }
         catch (error: any) { if (error.code === 'P2003') throw createHttpError(409,'SETTING_IN_USE'); throw error; }
         res.json({ ok: true });
       });
@@ -155,7 +156,7 @@ export function registerTransactionSettingRoutes(app: any, db: any, gates: any) 
           if (!access) return;
           const orgId = global ? undefined : access.organization.id;
           const id = Number(req.params.id);
-          const existing = update && Number.isSafeInteger(id) ? await model.findFirst({ where: { id, ...(!global ? { ownerOrgId: orgId } : {}) } }) : null;
+          const existing = update && Number.isSafeInteger(id) ? await model.findFirst({ where: { id,...(global&&service?{retirement:null}:{}), ...(!global ? { ownerOrgId: orgId } : {}) } }) : null;
           if (update && !existing) return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
           const data: any = { ...(service ? validateServiceDefinition({...req.body,code:existing?.code||'TYPE_'+randomUUID().replace(/-/g,'').toUpperCase()}) : validateTransactionCode(req.body, Boolean(existing && existing.code === req.body?.code && !existing.taxTreatmentId))), isActive: req.body.isActive !== false };
           if(service && global){

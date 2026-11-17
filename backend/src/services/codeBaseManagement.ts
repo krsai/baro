@@ -1,3 +1,4 @@
+import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse,industryHasHistoricalReferences} from './systemIndustryUsage';
 import {accountingCodeUsage} from './accountingCodeUsage';
 import {accountingInputs} from './accountingInputs';
 import {codeIndustrySelection,codeIndustryDto,CODE_INDUSTRY_INCLUDE} from './accountingCodeIndustries';
@@ -88,7 +89,7 @@ async function assertCodeBaseRenameAvailable(tx: any, id: number, code: string) 
 }
 
 // Pure inherited copies are configuration; manual overrides and business use block deletion.
-export async function deleteSetting(tx: any, kind: 'services' | 'codes', global: boolean, id: number, orgId?: number, removingSource = false) {
+export async function deleteSetting(tx: any, kind: 'services' | 'codes', global: boolean, id: number, orgId?: number, removingSource = false, actorEmail?: string) {
   const service = kind === 'services';
   const table = global ? (service ? 'SettingServiceDefault' : 'SettingTransactionCodeDefault') : (service ? 'OutsourcingServiceType' : 'TransactionCode');
   const rows = await tx.$queryRawUnsafe(`SELECT id FROM "${table}" WHERE id=$1${global ? '' : ' AND "ownerOrgId"=$2'} FOR UPDATE`, ...global ? [id] : [id,orgId]);
@@ -97,6 +98,19 @@ export async function deleteSetting(tx: any, kind: 'services' | 'codes', global:
   if (!global && !removingSource) {
     const row = await model.findUnique({ where: { id } });
     if (row?.systemDefaultId) throw createHttpError(409,'SETTING_INHERITED');
+  }
+  if(global&&service){
+    const source=await tx.settingServiceDefault.findUnique({where:{id},include:SYSTEM_INDUSTRY_USAGE_INCLUDE});
+    if(source.retirement)return;
+    if(systemIndustryInUse(source))throw createHttpError(409,'SETTING_IN_USE');
+    if(industryHasHistoricalReferences(source)){
+      const actor=actorEmail&&await tx.systemUser.findUnique({where:{email:actorEmail},select:{id:true,systemRole:true}});
+      if(!actor||actor.systemRole!=='SYSTEM_ADMIN')throw createHttpError(403,'SYSTEM_ADMIN_REQUIRED');
+      const original=await tx.settingServiceDefault.findUnique({where:{id}});
+      await tx.industryRetirement.create({data:{systemIndustryId:id,actorId:actor.id,beforeData:original,referenceSummary:{source:source._count,companies:source.services.map((row:any)=>({id:row.id,orgId:row.ownerOrgId,counts:row._count}))}}});
+      await tx.settingServiceDefault.update({where:{id},data:{isActive:false}});
+      return;
+    }
   }
   if (global) {
     const local = service ? tx.outsourcingServiceType : tx.transactionCode;

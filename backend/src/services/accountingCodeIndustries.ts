@@ -13,7 +13,7 @@ export async function codeIndustrySelection(tx:any,body:any,previous?:any){
  if(!Array.isArray(ids)||!ids.length||new Set(ids).size!==ids.length||ids.some((id:any)=>!Number.isSafeInteger(id)||id<=0))throw createHttpError(400,'ACCOUNTING_INDUSTRY_REQUIRED');
  if(supplied&&previous&&body.industryRevision!==previous.industryRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
  await tx.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=ANY($1::int[]) ORDER BY id FOR SHARE',ids);
- const rows=await tx.settingServiceDefault.findMany({where:{id:{in:ids}},include:{partnerRole:true}});
+ const rows=await tx.settingServiceDefault.findMany({where:{retirement:null,id:{in:ids}},include:{partnerRole:true}});
  const retained=new Set(current.map((row:any)=>row.systemIndustryId));
  if(rows.length!==ids.length||rows.some((row:any)=>row.code==='GENERAL'||!row.partnerRoleId||!row.isActive&&!retained.has(row.id)))throw createHttpError(400,'ACCOUNTING_INDUSTRY_REQUIRED');
  return {ids:ids as number[],rows,supplied};

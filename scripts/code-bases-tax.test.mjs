@@ -19,6 +19,7 @@ function adapter(db) {
   } };
   for (const [name,table] of Object.entries({ accountingCodeIndustry:'AccountingCodeIndustry', expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
     const where = (input, args) => Object.entries(input || {}).map(([key,value]) => {
+      if(key==='retirement'&&value===null)return 'NOT EXISTS (SELECT 1 FROM \"IndustryRetirement\" retired WHERE retired.\"systemIndustryId\"='+q(table)+'.id)';
       if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; if ('not' in value) {args.push(value.not);return `${q(key)}<>$${args.length}`;} throw Error('unsupported condition'); }
       args.push(value); return `${q(key)}=$${args.length}`;
     }).join(' AND ') || 'true';
@@ -57,6 +58,7 @@ async function fixture(legacyCode = 'OLD_CODE') {
   await db.exec(`ALTER TABLE "TransactionCodeBase" ADD COLUMN "cashDirection" TEXT NOT NULL DEFAULT 'BOTH';
     ALTER TABLE "PartnerTransactionCost" ADD COLUMN "orgId" INT DEFAULT 1, ADD COLUMN "expenseRequestId" INT;
     CREATE TABLE "ExpenseRequest"(id INT,"orgId" INT,"deletedAt" TIMESTAMP);
+    CREATE TABLE "IndustryRetirement"("systemIndustryId" INT PRIMARY KEY);
     CREATE TABLE "BankLedgerEntry"(id TEXT,"orgId" INT,"accountingCodeId" INT,"voidedAt" TIMESTAMP);
     CREATE TABLE "BankLedgerSettlementLine"("orgId" INT,"entryId" TEXT,"accountingCodeId" INT);`);
   return db;
@@ -350,7 +352,7 @@ test('tax rollout completes every active family and preserves existing IDs and h
 
 test('industry deletion refuses customer links and removes genuinely unused definitions',async()=>{
  let linked=1,deleted=false;
- const tx={$queryRawUnsafe:async()=>[{id:9}],settingServiceDefault:{delete:async()=>{deleted=true;}},settingTransactionCodeDefault:{count:async()=>0},transactionCodeBase:{count:async()=>0},orgRelationship:{count:async()=>linked},industryProductionPolicy:{count:async()=>0},outsourcingServiceType:{findMany:async()=>[]}};
+ const tx={$queryRawUnsafe:async()=>[{id:9}],settingServiceDefault:{findUnique:async()=>({id:9,_count:{customerIndustries:linked},services:[]}),delete:async()=>{deleted=true;}},settingTransactionCodeDefault:{count:async()=>0},transactionCodeBase:{count:async()=>0},orgRelationship:{count:async()=>linked},industryProductionPolicy:{count:async()=>0},outsourcingServiceType:{findMany:async()=>[]}};
  await assert.rejects(service.deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);assert.equal(deleted,false);
  linked=0;await service.deleteSetting(tx,'services',true,9);assert.equal(deleted,true);
 });

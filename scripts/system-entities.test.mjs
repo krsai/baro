@@ -50,7 +50,7 @@ async function fixture(){
    row.identityLinks=await Promise.all((await q('SELECT * FROM "CompanyIdentityLink" WHERE "entityId"=$1',[row.id])).map(async link=>{const identity=(await q('SELECT * FROM "CompanyIdentity" WHERE id=$1',[link.identityId]))[0];return {...link,identity:{...identity,anchor:all.find(v=>v.id===identity.anchorEntityId)}};}));
   }
   if(table==='CompanyIdentityLink')row.identity=(await q('SELECT * FROM "CompanyIdentity" WHERE id=$1',[row.identityId]))[0];
-  if(table==='SettingServiceDefault')row.partnerRole=(await q('SELECT * FROM "PartnerRole" WHERE id=$1',[row.partnerRoleId]))[0];
+  if(table==='SettingServiceDefault'){row.retirement=null;row.partnerRole=(await q('SELECT * FROM "PartnerRole" WHERE id=$1',[row.partnerRoleId]))[0];}
   if(table==='PartnerClassification')row.industries=await Promise.all((await q('SELECT * FROM "PartnerClassificationIndustry" WHERE "orgId"=$1 AND "entityId"=$2',[row.orgId,row.entityId])).map(async link=>({...link,industry:await hydrate('SettingServiceDefault',(await q('SELECT * FROM "SettingServiceDefault" WHERE id=$1',[link.systemIndustryId]))[0])})));
   return row;
  }

@@ -13,7 +13,7 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAuth=()=>({activeOrgId:null});`}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const showNotification=message=>{let node=document.querySelector('[role=alert]');if(!node){node=document.createElement('div');node.setAttribute('role','alert');document.body.appendChild(node);}node.textContent=message;};const removeNotification=()=>document.querySelector('[role=alert]')?.remove();export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{},showNotification,removeNotification});`}));
   await page.route('**/src/context/RequestScopeContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`import React from '/node_modules/.vite/deps/react.js';let active=true;const listeners=new Set();window.setTestTabActive=value=>{active=value;listeners.forEach(fn=>fn());};export const useRequestScopeContext=()=>({active:React.useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn);},()=>active)});`}));
   let roles=[{id:1,code:'CUSTOMER',nameEn:'Customer',nameKo:'Customer',nameVi:'Customer'}],sources=[],rejectDelete=false,industryDeletes=0;
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
@@ -34,7 +34,7 @@ try{
    return r.fulfill({headers,json:url.pathname.endsWith('partner-roles')?roles:sources});
   });
   await page.goto(`http://127.0.0.1:${port}/partner-role-acceptance.html`);
-  await page.getByText({ko:'구분 > 세부 업종 > 회계 코드',en:'Category > Industry > Accounting code',vi:'Nhóm > Ngành nghề > Mã kế toán'}[lang],{exact:true}).waitFor();
+  await page.getByText({ko:'구분 > 세부 업종 > 취급 코드',en:'Category > Industry > Business code',vi:'Nhóm > Ngành nghề > Mã nghiệp vụ'}[lang],{exact:true}).waitFor();
   await page.getByRole('navigation',{name:{ko:'구분',en:'Category',vi:'Nhóm'}[lang]}).waitFor();
   await page.getByRole('button',{name:{ko:'구분 등록',en:'Add category',vi:'Thêm nhóm'}[lang],exact:true}).click();
   let dialog=page.getByRole('dialog');const inputs=dialog.locator('input');
@@ -62,8 +62,8 @@ try{
   sources=[{id:10,code:'UNUSED',nameEn:'Unused',nameKo:'Unused',nameVi:'Unused',partnerRoleId:1,isActive:true,hasUsageHistory:false},{id:11,code:'USED',nameEn:'Used',nameKo:'Used',nameVi:'Used',partnerRoleId:1,isActive:true,hasUsageHistory:true,_count:{customerIndustries:1},services:[]},{id:12,code:'UNKNOWN',nameEn:'Unknown',nameKo:'Unknown',nameVi:'Unknown',partnerRoleId:1,isActive:true}];
   await page.reload();const unused=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Unused',exact:true})});
   await unused.waitFor();assert.equal(await unused.getByRole('button',{name:removeName,exact:true}).isEnabled(),true);
-  for(const code of ['Used','Unknown'])assert.equal(await page.getByRole('row').filter({has:page.getByRole('cell',{name:code,exact:true})}).getByRole('button',{name:removeName,exact:true}).isDisabled(),true);
-  const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:'Used',exact:true})});
+  for(const code of ['Used','Unknown'])assert.equal(await page.getByRole('row').filter({has:page.getByRole('cell',{name:new RegExp('^'+code)})}).getByRole('button',{name:removeName,exact:true}).isDisabled(),true);
+  const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:/^Used/})});
   await used.getByRole('button',{name:removeName,exact:true}).locator('..').hover();
   await page.getByRole('tooltip').filter({hasText:{ko:'기존 고객 유형 연결 (1)',en:'Legacy customer type links (1)',vi:'Liên kết loại khách hàng cũ (1)'}[lang]}).waitFor();
   sources[1].hasUsageHistory=false;sources[1]._count.customerIndustries=0;

@@ -64,7 +64,7 @@ async function read(db:any,id:number){
  const identityLocked=!!await db.companyIdentity.findUnique({where:{anchorEntityId:canonical.id},select:{id:true}});
  return {requested,entity:canonical,classifications,usage,identityLocked,canDelete:!usage.length,revision:editRevision({requested,entity:canonical,classifications})};
 }
-export async function systemEntityCatalogue(db:any,email:string){await actor(db,email);return {roles:await partnerRoleCatalogue(db),industries:await db.settingServiceDefault.findMany({where:{code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]})};}
+export async function systemEntityCatalogue(db:any,email:string){await actor(db,email);return {roles:await partnerRoleCatalogue(db),industries:await db.settingServiceDefault.findMany({where:{retirement:null,code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]})};}
 export async function listSystemEntities(db:any,email:string,input:any){
  await actor(db,email);const query=String(input.q||'').trim(),page=Number(input.page||0);
  if(query.length>100||!Number.isSafeInteger(page)||page<0||page>100000)fail('INVALID_ENTITY_QUERY');
@@ -96,7 +96,8 @@ function patch(body:any,previous:any){
 async function saveIndustries(tx:any,scope:any,body:any,user:any){
  if(!Number.isSafeInteger(body.revision)||body.revision!==scope.classification.revision)fail('PARTNER_CLASSIFICATION_CHANGED',409);
  const ids=body.industryIds;if(!Array.isArray(ids)||!ids.length||ids.length>100||ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length)fail('PARTNER_CLASSIFICATION_REQUIRED');
- const values=await tx.settingServiceDefault.findMany({where:{id:{in:ids}},select:{id:true,isActive:true,code:true}});
+ await tx.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=ANY($1::int[]) ORDER BY id FOR SHARE',ids);
+ const values=await tx.settingServiceDefault.findMany({where:{retirement:null,id:{in:ids}},select:{id:true,isActive:true,code:true}});
  if(values.length!==ids.length||values.some((row:any)=>row.code==='GENERAL'||!row.isActive&&!scope.classification.industryIds.includes(row.id)))fail('PARTNER_CLASSIFICATION_REQUIRED');
  const key={orgId:scope.orgId,entityId:scope.entityId};
  if(scope.classification.explicit)await tx.partnerClassification.update({where:{orgId_entityId:key},data:{revision:{increment:1},updatedByEmployeeId:null,updatedBySystemUserId:user.id}});

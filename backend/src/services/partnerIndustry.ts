@@ -2,7 +2,7 @@ import {createHttpError} from '../utils/http';
 
 export async function saveSystemIndustry(db: any, data: any, id?: number) {
   await db.$queryRawUnsafe('LOCK TABLE "SettingServiceDefault", "OutsourcingServiceType" IN SHARE ROW EXCLUSIVE MODE');
-  const previous = id ? await db.settingServiceDefault.findFirst({where:{id}}) : null;
+  const previous = id ? await db.settingServiceDefault.findFirst({where:{id,retirement:null}}) : null;
   if (id && !previous) throw createHttpError(404,'SETTING_NOT_FOUND');
   if (previous && previous.entryMode !== data.entryMode) throw createHttpError(409,'SERVICE_ENTRY_MODE_IMMUTABLE');
   const renaming = previous && previous.code !== data.code;
@@ -24,7 +24,7 @@ export async function validateCustomerIndustry(db: any, value: unknown, retained
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (!Number.isSafeInteger(value) || Number(value) <= 0) throw createHttpError(400,'INVALID_CUSTOMER_INDUSTRY');
-  const source = await db.settingServiceDefault.findFirst({where:{id:value,code:{not:'GENERAL'},partnerRoleId:{not:null},...(value===retainedId?{}:{isActive:true})}});
+  const source = await db.settingServiceDefault.findFirst({where:{id:value,retirement:null,code:{not:'GENERAL'},partnerRoleId:{not:null},...(value===retainedId?{}:{isActive:true})}});
   if (!source) throw createHttpError(400,'INVALID_CUSTOMER_INDUSTRY');
   return Number(value);
 }

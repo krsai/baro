@@ -46,7 +46,7 @@ export async function validateClassification(db:any,body:any,orgId:number,entity
   const stored=entityId?await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId}},include:CLASSIFICATION_INCLUDE}):null;
   if((stored?.revision??0)!==body.revision)throw createHttpError(409,'PARTNER_CLASSIFICATION_CHANGED');
   const retained=new Set(stored?.industries.map((row:any)=>row.systemIndustryId)||[]);
-  const industries=await db.settingServiceDefault.findMany({where:{id:{in:industryIds}},include:{partnerRole:true}});
+  const industries=await db.settingServiceDefault.findMany({where:{retirement:null,id:{in:industryIds}},include:{partnerRole:true}});
   if(industries.length!==industryIds.length||industries.some((row:any)=>row.code==='GENERAL'||!row.partnerRoleId||!row.isActive&&!retained.has(row.id))||
     roleIds.some(id=>!industries.some((row:any)=>row.partnerRoleId===id))||industries.some((row:any)=>!roleIds.includes(row.partnerRoleId)))throw createHttpError(400,'PARTNER_CLASSIFICATION_REQUIRED');
   return {revision:body.revision,roleIds,industryIds};
@@ -56,6 +56,7 @@ export async function saveClassification(db:any,orgId:number,entityId:number,emp
   await requireClassificationActor(db,orgId,employeeId);
   if(entityId===orgId&&!await db.employee.findFirst({where:{id:employeeId,orgId,status:'ACTIVE',orgRole:'ADMIN'}}))throw createHttpError(403,'COMPANY_INDUSTRY_ADMIN_REQUIRED');
   await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',entityId);
+  if(Array.isArray(body?.industryIds)&&body.industryIds.every((id:any)=>Number.isSafeInteger(id)&&id>0))await db.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=ANY($1::int[]) ORDER BY id FOR SHARE',body.industryIds);
   const data=await validateClassification(db,body,orgId,entityId);
   if(data.revision){
     const updated=await db.partnerClassification.updateMany({where:{orgId,entityId,revision:data.revision},data:{revision:{increment:1},updatedByEmployeeId:employeeId,updatedBySystemUserId:null}});
@@ -79,7 +80,7 @@ export function registerPartnerClassificationRoutes(app:any,db:any,gates:any){
   const access=(req:any,res:any)=>gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT']});
   app.get('/partner-classifications/options',async(req:any,res:any)=>{
     if(!await access(req,res))return;
-    const [roles,industries]=await Promise.all([partnerRoleCatalogue(db),db.settingServiceDefault.findMany({where:{isActive:true,code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]})]);
+    const [roles,industries]=await Promise.all([partnerRoleCatalogue(db),db.settingServiceDefault.findMany({where:{retirement:null,isActive:true,code:{not:'GENERAL'}},include:{partnerRole:true},orderBy:[{sortOrder:'asc'},{id:'asc'}]})]);
     res.json({roles,industries});
   });
   app.get('/partner-classifications/:entityId',async(req:any,res:any)=>{

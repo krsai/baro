@@ -1,6 +1,6 @@
 import type {Prisma} from '@prisma/client';
 
-const query={orderBy:[{sortOrder:'asc'},{id:'asc'}],include:{_count:{select:{industries:{where:{code:{not:'GENERAL'}}}}}}} satisfies Prisma.PartnerRoleFindManyArgs;
+const query={orderBy:[{sortOrder:'asc'},{id:'asc'}],include:{_count:{select:{industries:{where:{retirement:null,code:{not:'GENERAL'}}}}}}} satisfies Prisma.PartnerRoleFindManyArgs;
 // GENERAL is an archived reference, not a selectable industry. Keep a category
 // visible if any real industry still uses it, even if that industry is inactive.
 export async function partnerRoleCatalogue(db:any){
