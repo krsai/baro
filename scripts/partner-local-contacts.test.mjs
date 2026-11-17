@@ -5,6 +5,29 @@ import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approva
 const require=createRequire(import.meta.url);
 const {savePartnerContacts,attachPartnerContacts}=require('../backend/dist/services/partnerContacts');
 
+test('partner display names are company-local and source switching preserves the saved alias',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id,target=s.other.id;
+  await db.orgRelationship.create({data:{manufacturerOrgId:org,brandOrgId:target}});
+  const {loadPartnerEditor}=require('../backend/dist/services/partnerEditor');
+  const read=()=>loadPartnerEditor(db,org,actor,target);
+  const before=await db.organization.findUnique({where:{id:target}});
+  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:0,mode:'LOCAL',patch:{name:'local dex',nameKo:'바로의 덱스',nameVi:'Tên riêng'}}));
+  let profile=await read();assert.equal(profile.name,'LOCAL DEX');assert.equal(profile.nameKo,'바로의 덱스');assert.equal(profile.nameVi,'TÊN RIÊNG');
+  assert.deepEqual(await db.organization.findUnique({where:{id:target}}),before,'local name never changes the counterparty master');
+  const peer=(await attachPartnerContacts(db,target,[{entityId:org,nameKo:'PEER NAME'}]))[0];assert.notEqual(peer.nameKo,'바로의 덱스');
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:0,patch:{nameKo:'stale'}})),/PARTNER_CONTACT_CHANGED/);
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:1,patch:{businessNumber:'forged'}})),/PARTNER_CONTACT_INVALID/);
+  await assert.rejects(db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:1,patch:{name:''}})),/PARTNER_CONTACT_INVALID/);
+  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:1,mode:'DEFAULT',patch:{}}));
+  profile=await read();assert.equal(profile.name,before.name);assert.equal(profile.contactLocal.nameKo,'바로의 덱스');
+  await db.$transaction(tx=>savePartnerContacts(tx,org,target,actor,{revision:2,mode:'LOCAL',patch:{}}));
+  profile=await read();assert.equal(profile.nameKo,'바로의 덱스');assert.equal(profile.contactRevision,3);
+  await assert.rejects(db.$transaction(async tx=>{await savePartnerContacts(tx,org,target,actor,{revision:3,patch:{nameKo:'rollback'}});throw Error('ROLLBACK');}),/ROLLBACK/);
+  assert.equal((await read()).nameKo,'바로의 덱스');
+ }finally{await f.close();}
+});
+
 test('partner contacts belong to the editing company; defaults, revision and rollback stay independent',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id,target=s.other.id;

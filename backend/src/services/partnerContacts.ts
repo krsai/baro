@@ -5,7 +5,8 @@ import {attachLinkedCompanies} from './companyConnections';
 import {entityProfile} from './entityProfile';
 import {partnerDisplayKeys,profileSnapshot,readCompanyProfileDefaults} from './companyProfileDefaults';
 
-export const partnerContactKeys=partnerDisplayKeys;
+export const partnerNameKeys=['name','nameKo','nameVi'];
+export const partnerContactKeys=[...partnerDisplayKeys,...partnerNameKeys];
 const aliases:any={contactName:'representative',contactPhone:'phone'};
 export async function attachPartnerContacts(db:any,orgId:number,rows:any[]){
  if(!rows.length)return rows;
@@ -17,16 +18,18 @@ export async function attachPartnerContacts(db:any,orgId:number,rows:any[]){
   const stored=contacts.find((item:any)=>item.orgId===orgId&&item.entityId===row.entityId),overrides=stored?.data||{};
   const source=sources.find((item:any)=>item.entityId===row.defaultSourceEntityId);
   const fallback=Object.fromEntries(partnerContactKeys.map(key=>[key,row.linkedCompany?.subscriberOrgId?(row.linkedCompany[aliases[key]||key]??null):(row[key]??row[aliases[key]]??null)]));
-  const registration=source?.registrationData||(source?profileSnapshot(source):fallback);
-  const defaults=source?.selfData||(source?profileSnapshot(source):fallback);
   const localRow=row.localContactProfile||{};
+  const officialNames=Object.fromEntries(partnerNameKeys.map(key=>[key,row.linkedCompany?.[key]??source?.[key]??row[key]??row.entity?.[key]??null]));
+  const localNames=Object.fromEntries(partnerNameKeys.map(key=>[key,localRow[key]??row[key]??row.entity?.[key]??officialNames[key]]));
+  const registration={...localNames,...(source?.registrationData||(source?profileSnapshot(source):fallback))};
+  const defaults={...officialNames,...(source?.selfData||(source?profileSnapshot(source):fallback))};
   const localFields=Object.fromEntries(partnerContactKeys.filter(key=>localRow[key]!=null).map(key=>[key,localRow[key]]));
   // A canonical company row may already contain its new self-managed default.
   // Its original registrar must keep the preserved pre-claim registration.
   const existedBeforeSelf=source?.selfManagedAt&&row.contactConnectedAt&&new Date(row.contactConnectedAt)<new Date(source.selfManagedAt);
   const originalRegistrar=(source?.registrationOwnerOrgId??source?.ownerOrgId??source?.dataOwnerOrgId)===orgId&&row.entityId===source?.entityId;
   const initial=source?.selfData&&!existedBeforeSelf&&!originalRegistrar?defaults:registration;
-  const base=stored?.base||{...initial,...(source?.selfData&&row.entityId===source.entityId?{}:localFields)};
+  const base=stored?.base?{...localNames,...stored.base}:{...initial,...(source?.selfData&&row.entityId===source.entityId?{}:localFields)};
   const local={...base,...overrides};
   const existingRelationshipContact=!row.linkedCompany&&partnerContactKeys.some(key=>localRow[key]!=null&&localRow[key]!==registration[key]);
   const mode=stored?.mode||(Object.keys(overrides).length||existedBeforeSelf||originalRegistrar||existingRelationshipContact?'LOCAL':'DEFAULT');
@@ -53,7 +56,7 @@ export async function savePartnerContacts(tx:any,orgId:number,entityId:number,ac
   const text=(value as string).trim();
   if(key==='address'&&text!==current?.data?.address&&(/[\r\n]/.test(text)||[...text].some(char=>/\p{L}/u.test(char)&&!/\p{Script=Latin}/u.test(char))))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED');
   if(key==='name'&&!text)throw createHttpError(400,'PARTNER_CONTACT_INVALID');
-  data[key]=text;
+  data[key]=partnerNameKeys.includes(key)?text.toUpperCase():text;
  }
  let profile=loadedProfile;
  if(!profile){[profile]=await attachLinkedCompanies(tx,orgId,[{...entityProfile(target.entity),entityId,id:entityId,contactConnectedAt:target.entity.createdAt}]);}
