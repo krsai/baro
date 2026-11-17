@@ -14,17 +14,18 @@ export default function useWorkspaceLiveUpdates(orgId,accessToken){
   };
   const connect=async()=>{
    if(disposed||controller||document.visibilityState==='hidden')return;
-   const current=new AbortController();controller=current;
+   const current=new AbortController();controller=current;const startedAt=Date.now();let ready=false;
    try{
     const response=await fetchWorkspaceEvents(orgId,current.signal,accessToken);
-    await readWorkspaceEvents(response,{signal:current.signal,onReady:()=>{attempt=0;lastResync=Date.now();change({orgId,topics:LIVE_TOPICS});},onChange:change});
+    await readWorkspaceEvents(response,{signal:current.signal,onReady:()=>{ready=true;lastResync=Date.now();change({orgId,topics:LIVE_TOPICS});},onChange:change});
    }catch(error){if([401,403].includes(error.status))attempt=6;}
    finally{
     if(controller===current)controller=null;
+    if(ready&&Date.now()-startedAt>=30000)attempt=0;
     if(!disposed&&!current.signal.aborted&&attempt<6&&document.visibilityState!=='hidden')retry=setTimeout(connect,Math.min(60000,1000*2**attempt++));
    }
   };
-  const visible=()=>{clearTimeout(retry);if(document.visibilityState==='hidden'){controller?.abort();controller=null;}else{attempt=0;if(controller&&Date.now()-lastResync>=30000){lastResync=Date.now();change({orgId,topics:LIVE_TOPICS});}void connect();}};
+  const visible=()=>{clearTimeout(retry);if(document.visibilityState==='hidden'){controller?.abort();controller=null;}else{if(controller&&Date.now()-lastResync>=30000){lastResync=Date.now();change({orgId,topics:LIVE_TOPICS});}void connect();}};
   void connect();window.addEventListener('focus',visible);document.addEventListener('visibilitychange',visible);
   return()=>{disposed=true;controller?.abort();clearTimeout(retry);clearTimeout(batch);window.removeEventListener('focus',visible);document.removeEventListener('visibilitychange',visible);};
  },[orgId,accessToken]);

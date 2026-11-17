@@ -7,10 +7,10 @@ const TEXT = {
   vi: { editing: 'Thay đổi chưa lưu', refreshed: 'Có dữ liệu đã thay đổi' },
 };
 
-export default function TabStateIndicators({ editing, refreshed, languageCode }) {
+export default function TabStateIndicators({ editing, refreshed, languageCode, compact = false }) {
   const text = TEXT[languageCode] || TEXT.en;
-  return <Box component="span" sx={{display:'inline-flex',alignItems:'center',justifyContent:'flex-end',gap:0.5,width:30,ml:0.75,flexShrink:0}}>
-    {editing && <Tooltip title={text.editing}><Box component="span" role="img" aria-label={text.editing} sx={{ color: 'text.secondary', fontSize: 10, lineHeight: 1 }}>●</Box></Tooltip>}
-    {refreshed && <Tooltip title={text.refreshed}><Box component="span" role="img" aria-label={text.refreshed} sx={{ color: 'text.secondary', fontSize: 16, lineHeight: 1 }}>↻</Box></Tooltip>}
+  return <Box component="span" sx={{display:'inline-flex',alignItems:'center',justifyContent:'flex-end',gap:compact?0:0.5,width:compact?16:30,ml:compact?0:0.75,flexShrink:0}}>
+    {editing && <Tooltip title={text.editing}><Box component="span" role="img" aria-label={text.editing} sx={{ color: 'text.secondary', fontSize: compact ? 6 : 10, lineHeight: 1 }}>●</Box></Tooltip>}
+    {refreshed && <Tooltip title={text.refreshed}><Box component="span" role="img" aria-label={text.refreshed} sx={{ color: 'text.secondary', fontSize: compact ? 10 : 16, lineHeight: 1 }}>↻</Box></Tooltip>}
   </Box>;
 }

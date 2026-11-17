@@ -28,7 +28,7 @@ try{
   await page.goto(`http://127.0.0.1:${port}/${path.basename(html)}?lang=${lang}`);
   const first=page.getByRole('tab').first();await first.focus();await first.press('Delete');await page.waitForFunction(()=>window.closedTab==='/page/0');await page.getByRole('tab').first().and(page.locator(':focus')).waitFor();assert.equal(await page.getByRole('tab').count(),19);
   const closeName=({ko:'탭 닫기',en:'Close tab',vi:'Đóng tab'})[lang];
-  const close=page.getByRole('button',{name:closeName+': Page 1',exact:true});const before=await close.boundingBox();
+  assert.ok((await page.getByRole('tab').first().boundingBox()).width<=145,'short workspace tab stays compact with stable status space');const close=page.getByRole('button',{name:closeName+': Page 1',exact:true});const before=await close.boundingBox();
   await page.mouse.move(before.x+before.width/2,before.y+before.height/2);await page.mouse.down();await page.evaluate(()=>{window.setTabBusy(true);window.markTabs();});await page.waitForTimeout(80);const after=await close.boundingBox();
   assert.ok(Math.abs(before.x-after.x)<1,'background refresh must not move the close button during activation');await page.mouse.up();await page.waitForFunction(()=>window.closedTab==='/page/1');assert.equal(await page.getByRole('tab').count(),18);
   const button=page.getByRole('button',{name:({ko:'모든 탭 닫기',en:'Close all tabs',vi:'Đóng tất cả các tab'})[lang],exact:true});await button.waitFor();

@@ -4,10 +4,10 @@ import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import {chromium} from 'playwright-core';
 const html='frontend/workspace-live-test.html',jsx='frontend/workspace-live-test.jsx',port=43488;
-const streams=new Set(),values=new Map([[1,0],[2,0]]);
+const streams=new Set(),values=new Map([[1,0],[2,0],[3,0]]);let unstableConnections=0;
 const api=createServer((req,res)=>{
  res.setHeader('Access-Control-Allow-Origin','*');const url=new URL(req.url,'http://local'),orgId=Number(url.searchParams.get('orgId'));
- if(url.pathname==='/events'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('event: ready\ndata: {}\n\n');const entry={orgId,res};streams.add(entry);req.on('close',()=>streams.delete(entry));return;}
+ if(url.pathname==='/events'){res.writeHead(200,{'Content-Type':'text/event-stream'});res.write('event: ready\ndata: {}\n\n');if(orgId===3){unstableConnections++;res.end();return;}const entry={orgId,res};streams.add(entry);req.on('close',()=>streams.delete(entry));return;}
  if(url.pathname==='/save'){values.set(orgId,values.get(orgId)+1);for(const stream of streams)if(stream.orgId===orgId)stream.res.write('data: '+JSON.stringify({orgId,topics:['orders']})+'\n\n');}
  res.end(JSON.stringify({revision:values.get(orgId)}));
 });await new Promise(resolve=>api.listen(0,'127.0.0.1',resolve));const apiPort=api.address().port;
@@ -31,5 +31,11 @@ try{
  await b.getByRole('button',{name:'Other tab'}).click();const inactive=await b.evaluate(()=>window.reads);await save();await b.waitForTimeout(400);assert.equal(await b.evaluate(()=>window.reads),inactive);await b.getByRole('button',{name:'Back',exact:true}).click();await b.waitForFunction(()=>document.querySelector('[data-revision]').textContent==='3');
  for(const stream of [...streams])if(stream.orgId===1){streams.delete(stream);stream.res.end();}await save();await b.waitForFunction(()=>document.querySelector('[data-revision]').textContent==='4');
  await b.clock.install();const idle=await b.evaluate(()=>window.reads);await b.clock.runFor(120000);assert.equal(await b.evaluate(()=>window.reads),idle,'idle time does not poll business data');
+ const unstable=await browser.newPage();await unstable.clock.install();
+ await unstable.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={markTabChanged:()=>{},clearTabChanged:()=>{}};export const useAppActions=()=>actions;'}));
+ await unstable.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const clearGetResponseCache=()=>{};export const fetchWorkspaceEvents=(orgId,signal)=>fetch('http://127.0.0.1:${apiPort}/events?orgId='+orgId,{signal});`}));
+ await unstable.goto(`http://127.0.0.1:${port}/workspace-live-test.html?org=3`);await unstable.waitForFunction(()=>document.querySelector('[data-revision]')?.textContent==='0');
+ for(let i=0;i<180;i++){await unstable.clock.runFor(1000);await unstable.waitForTimeout(15);}
+ assert.equal(unstableConnections,7,'ready then immediate disconnect must stop after six retries');const stopped=await unstable.evaluate(()=>window.reads);await unstable.clock.runFor(120000);assert.equal(await unstable.evaluate(()=>window.reads),stopped,'broken live transport must not become endless business polling');await unstable.close();
  console.log('PASS live refresh: independent browser sessions, company isolation, save-driven refresh, protected draft, inactive tab queue, reconnect catch-up and zero idle polling.');
 }finally{await browser?.close();vite.kill();for(const stream of streams)stream.res.end();api.closeAllConnections();await new Promise(resolve=>api.close(resolve));for(const path of [html,jsx])if(existsSync(path))unlinkSync(path);}

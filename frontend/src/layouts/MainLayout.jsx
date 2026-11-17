@@ -284,17 +284,17 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                 '& .MuiTab-wrapper': {
                   flexDirection: 'row',
                 },
-                p: '0 16px',
-                minWidth: '120px',
+                p: '0 12px',
+                minWidth: 'unset',
               }}
               label={
                 <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
                   <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
                     {resolveRenderedTabLabel(tab)}
-                    <TabStateIndicators editing={tab.isEditing} refreshed={tab.hasExternalChanges} languageCode={languageCode} />
-                  </Box>
-                  <Box component="span" sx={{ display: 'inline-flex', width: 13, height: 13, ml: 0.75, flexShrink: 0, color: 'text.secondary' }}>
-                    {isTabLoading && <CircularProgress size={13} thickness={5} color="inherit" />}
+                    <Box component="span" sx={{ position: 'relative', display: 'inline-flex', width: 16, height: 16, ml: 0.75, flexShrink: 0 }}>
+                      <Box component="span" sx={{ visibility: isTabLoading ? 'hidden' : 'visible' }}><TabStateIndicators compact editing={tab.isEditing} refreshed={tab.hasExternalChanges} languageCode={languageCode} /></Box>
+                      {isTabLoading && <CircularProgress size={13} thickness={5} color="inherit" sx={{position:'absolute', inset:0, m:'auto'}} />}
+                    </Box>
                   </Box>
                   {!tab.isOptimistic && (
                     <IconButton
