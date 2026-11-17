@@ -1,3 +1,4 @@
+import {registerPartnerHandledItemRoutes} from './partnerHandledItems';
 import {registerCodeItemAttributeRoutes} from './codeItemAttributes';
 import { effectiveExpenseCode, registerExpenseCodeLinkPolicyRoutes } from './expenseCodeLinkPolicy';
 import { validateServiceDefinition } from './partnerTransactionCost';
@@ -69,6 +70,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
   registerExpenseUnitRoutes(app,db,gates);
+  registerPartnerHandledItemRoutes(app,db,gates);
   registerCodeItemAttributeRoutes(app,db,gates);
   registerCodeBaseRoutes(app,db,gates);
   registerExpenseCodeLinkPolicyRoutes(app,db,gates);

@@ -30,7 +30,7 @@ test('deletion reason identifies legacy customer links separately from current c
 test('industry usage depends on actual source/local links, not active status, provisioning or metadata overrides',()=>{
  const row={isActive:true,_count:counts(),services:[{isOverridden:true,_count:localCounts()}]};
  assert.equal(systemIndustryInUse(row),false);
- for(const key of Object.keys(row._count)){row._count[key]=1;assert.equal(systemIndustryInUse(row),true,key);row._count[key]=0;}
+ for(const key of Object.keys(row._count).filter(key=>key!=='handledSelections')){row._count[key]=1;assert.equal(systemIndustryInUse(row),true,key);row._count[key]=0;}
  for(const key of Object.keys(row.services[0]._count)){row.services[0]._count[key]=1;assert.equal(systemIndustryInUse(row),true,key);row.services[0]._count[key]=0;}
  assert.equal(systemIndustryInUse({}),true);
 });
@@ -57,7 +57,7 @@ test('deletion removes unused overridden copies but refuses every source/local r
  settingTransactionCodeDefault:countModel('codes'),transactionCodeBase:countModel('codeBases'),orgRelationship:countModel('customerIndustries'),industryProductionPolicy:countModel('productionPolicies'),partnerClassificationIndustry:countModel('partnerClassifications'),accountingCodeIndustry:countModel('accountingCodeLinks'),
  outsourcingServiceType:{findMany:async()=>[{id:90,ownerOrgId:1,isOverridden:true}],delete:async()=>removed.push('local')},
  partnerTransactionCost:{count:async()=>localUsage.transactionCosts},transactionCode:{count:async()=>localUsage.transactionCodes},organizationOutsourcingServiceType:{count:async()=>localUsage.partners}};
- for(const key of Object.keys(sourceUsage)){sourceUsage[key]=1;await assert.rejects(deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);sourceUsage[key]=0;}
+ for(const key of Object.keys(sourceUsage).filter(key=>key!=='handledSelections')){sourceUsage[key]=1;await assert.rejects(deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);sourceUsage[key]=0;}
  for(const key of Object.keys(localUsage)){localUsage[key]=1;await assert.rejects(deleteSetting(tx,'services',true,9),/SETTING_IN_USE/);localUsage[key]=0;}
  assert.deepEqual(removed,[]);await deleteSetting(tx,'services',true,9);assert.deepEqual(removed,['local','source']);
 });

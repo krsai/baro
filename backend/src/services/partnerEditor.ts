@@ -1,3 +1,4 @@
+import {readHandledItems,saveHandledItems} from './partnerHandledItems';
 import {savePartnerContacts} from './partnerContacts';
 import {saveClassification} from './partnerClassification';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -22,7 +23,7 @@ export async function loadPartnerEditor(db:any,orgId:number,actorId:number,entit
  const entity=target.entity,classification=await readClassification(db,orgId,entity.id);
  const canEditProfile=entity.ownerOrgId===orgId||entity.dataOwnerOrgId===orgId||entity.ownerOrgId==null&&entity.dataOwnerOrgId==null&&!await db.employee.findFirst({where:{orgId:entity.id},select:{id:true}});
  const [profile]=await attachLinkedCompanies(db,orgId,[{...entityProfile(entity),contactConnectedAt:relationship?.createdAt||entity.createdAt,id:entity.id,type:entity.type,isActive:entity.isActive,sourceKind:target.kind,relationshipId:target.relationshipId??null,classification,localClassification:classification,contactName:entity.representative??relationship?.managerName??null,contactPhone:entity.phone??relationship?.managerPhone??null,email:entity.email??relationship?.managerEmail??null,...(relationship?{defaultSizeSetCode:relationship.defaultSizeSetCode}:{}),canEditProfile}]);
- return {...profile,canEditProfile:profile.contactSourceProtected&&profile.defaultSourceEntityId===entity.id&&entity.ownerOrgId==null?false:canEditProfile};
+ return {...profile,handledItems:await readHandledItems(db,orgId,entity.id),canEditProfile:profile.contactSourceProtected&&profile.defaultSourceEntityId===entity.id&&entity.ownerOrgId==null?false:canEditProfile};
 }
 export function registerPartnerEditorRoutes(app:any,db:any,gates:any){
  const read=(relationship:boolean)=>async(req:any,res:any)=>{
@@ -40,6 +41,7 @@ export function registerPartnerEditorRoutes(app:any,db:any,gates:any){
    if(profile.id!==entityId)throw createHttpError(400,'INVALID_PARTNER_ID');
    await savePartnerContacts(tx,orgId,entityId,actorId,req.body?.contacts,profile);
    if(req.body?.classification!==undefined){if(!profile.canEditProfile)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');await saveClassification(tx,orgId,entityId,actorId,req.body.classification);}
+   if(req.body?.handledItems!==undefined)await saveHandledItems(tx,orgId,entityId,actorId,req.body.handledItems);
    if(req.body?.defaultSizeSetCode!==undefined){
     if(!profile.canEditProfile||profile.sourceKind!=='CUSTOMER'||!profile.relationshipId)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');
     await tx.orgRelationship.update({where:{id:profile.relationshipId},data:{defaultSizeSetCode:req.body.defaultSizeSetCode==='URD_NUMERIC'?'URD_NUMERIC':'LEGACY_APPAREL'}});

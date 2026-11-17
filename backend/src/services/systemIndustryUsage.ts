@@ -4,13 +4,15 @@ const codeSelect={id:true,base:{select:baseSelect}};
 // Current taxonomy comes from N:M code links. Compatibility anchors are history.
 export const SYSTEM_INDUSTRY_USAGE_INCLUDE={
  retirement:true,
- _count:{select:{codes:true,codeBases:true,customerIndustries:true,productionPolicies:true,partnerClassifications:true,accountingCodeLinks:true}},
+ _count:{select:{handledSelections:true,codes:true,codeBases:true,customerIndustries:true,productionPolicies:true,partnerClassifications:true,accountingCodeLinks:true}},
  codes:{select:codeSelect},codeBases:{select:baseSelect},accountingCodeLinks:{select:{base:{select:{id:true,code:true}}}},
  services:{select:{id:true,ownerOrgId:true,_count:{select:{transactionCosts:true,transactionCodes:true,partners:true}},transactionCodes:{select:codeSelect},transactionCosts:{select:{transactionCode:{select:codeSelect}}}}},
 } satisfies Prisma.SettingServiceDefaultInclude;
 const liveBase=(base:any,id:number)=>!Number.isSafeInteger(id)||!base||!Array.isArray(base.industryLinks)||!base.industryLinks.length||base.industryLinks.some((link:any)=>link.systemIndustryId===id);
 export function systemIndustryUsageView(row:any){
  const counts={...row?._count};
+ // Retained local item choices are historical metadata, not current taxonomy links.
+ if('handledSelections' in counts)counts.handledSelections=0;
  if(Array.isArray(row?.codeBases))counts.codeBases=row.codeBases.filter((base:any)=>liveBase(base,row.id)).length;
  if(Array.isArray(row?.codes))counts.codes=row.codes.filter((code:any)=>liveBase(code.base,row.id)).length;
  const services=(row?.services||[]).map((local:any)=>{

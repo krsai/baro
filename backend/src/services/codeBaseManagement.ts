@@ -153,7 +153,8 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
     FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id
     WHERE code."baseId"=ANY($1::int[])`+ledgerUsage,ids) as { id: number }[];
   const types=db.codeItemType?await db.codeItemType.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
-  return new Set([...rows.map(row=>row.id),...types.map((type:any)=>type.baseId)]);
+  const handled=db.partnerHandledSelection?await db.partnerHandledSelection.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
+  return new Set([...rows.map(row=>row.id),...types.map((type:any)=>type.baseId),...handled.map((row:any)=>row.baseId)]);
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {

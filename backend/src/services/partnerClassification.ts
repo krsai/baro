@@ -1,3 +1,4 @@
+import {saveHandledItems} from './partnerHandledItems';
 import {attachLinkedCompanies} from './companyConnections';
 import {createHttpError} from '../utils/http';
 import {entityProfile} from './entityProfile';
@@ -70,6 +71,7 @@ export async function saveClassification(db:any,orgId:number,entityId:number,emp
   // Production supplier assignments also govern eligibility and stay independent.
   if(target.kind==='BUSINESS'&&['MATERIAL_SUPPLIER','LOGISTICS_PROVIDER'].includes(target.entity.type))await db.organizationOutsourcingServiceType.deleteMany({where:{ownerOrgId:orgId,partnerOrgId:entityId,serviceType:{systemDefaultId:{notIn:data.industryIds}}}});
   if(target.kind==='CUSTOMER')await db.orgRelationship.update({where:{id:target.relationshipId},data:{systemIndustryId:null}});
+  if(body.handledItems!==undefined)await saveHandledItems(db,orgId,entityId,employeeId!,body.handledItems);
   return readClassification(db,orgId,entityId);
 }
 export async function requireClassificationActor(db:any,orgId:number,employeeId:number|null){

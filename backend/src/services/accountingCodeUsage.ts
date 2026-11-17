@@ -17,5 +17,6 @@ export async function accountingCodeUsage(db:any,ids:number[]){
  const result=new Map(ids.map(id=>[id,{current:0,history:0,expense:0,ledger:0,settlement:0}]));
  for(const row of rows){const value:any=result.get(row.id);if(!value)continue;const current=Number(row.current),total=Number(row.total);value.current+=current;value.history+=total-current;value[row.source]=current;}
  if(db.codeItemType)for(const row of await db.codeItemType.groupBy({by:['baseId'],where:{baseId:{in:ids}},_count:{_all:true}})){const value:any=result.get(row.baseId);if(value)value.types=row._count._all;}
+ if(db.partnerHandledSelection)for(const row of await db.partnerHandledSelection.groupBy({by:['baseId'],where:{baseId:{in:ids}},_count:{_all:true}})){const value:any=result.get(row.baseId);if(value)value.handled=row._count._all;}
  return result;
 }

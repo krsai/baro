@@ -1,3 +1,5 @@
+import {partnerHandledItemsText} from '../constants/partnerHandledItems';
+import PartnerHandledItemsFields from './PartnerHandledItemsFields';
 import {companyDocumentContactError,partnerContactText} from '../constants/companyDocumentContact';
 import PartnerClassificationFields from './PartnerClassificationFields';
 import {CompanyConnectionField} from './CompanyConnections';
@@ -55,6 +57,7 @@ export const getBusinessPartnerTypeLabel = (type, languageCode = 'ko') => {
 };
 
 const buildFormFromPartner = (partner, initialType) => ({
+  handledItems:partner?.handledItems||{revision:0,industries:[]},
   contactPatch:{},contactMode:partner?.contactMode||'DEFAULT',localContactDraft:partner?.contactLocal||null,
   linkedCompany:partner?.linkedCompany||null,
   partyKind:partner?.id?partner.partyKind||'':'CORPORATE',
@@ -122,14 +125,15 @@ function PartnerEditorState({
 
   const save = async () => {
     if(saveLock.current||locked)return;
+    const handledPayload=form.handledItems&&(form.handledItems.revision>0||form.handledItems.industries.length)?form.handledItems:undefined;
     if(isEdit&&(form.linkedCompany||profileLocked)){
      if(!profileLocked&&(!classificationLoaded||!optionsReady||!classificationComplete(displayedClassification)))return setError(classificationText.required);
      saveLock.current=true;setSaving(true);setError('');
      try{
-      const saved=await requestJSON('/partner-editor/entity/'+record.id+'/contacts'+buildQueryString({orgId:activeOrgId}),{method:'PUT',body:JSON.stringify({...(record.sourceKind==='CUSTOMER'?{relationshipId:record.relationshipId}:{}),...(record.sourceKind==='CUSTOMER'&&!profileLocked&&form.defaultSizeSetCode!==record.defaultSizeSetCode?{defaultSizeSetCode:form.defaultSizeSetCode}:{}),contacts:{revision:record.contactRevision??0,patch:form.contactPatch,mode:form.contactMode,baseMode:form.contactBaseMode,defaultRevision:record?.contactDefaultRevision},...(!profileLocked?{classification:classificationPayload({...displayedClassification,revision:form.classification.revision})}:{})})});
+      const saved=await requestJSON('/partner-editor/entity/'+record.id+'/contacts'+buildQueryString({orgId:activeOrgId}),{method:'PUT',body:JSON.stringify({...(handledPayload?{handledItems:handledPayload}:{}),...(record.sourceKind==='CUSTOMER'?{relationshipId:record.relationshipId}:{}),...(record.sourceKind==='CUSTOMER'&&!profileLocked&&form.defaultSizeSetCode!==record.defaultSizeSetCode?{defaultSizeSetCode:form.defaultSizeSetCode}:{}),contacts:{revision:record.contactRevision??0,patch:form.contactPatch,mode:form.contactMode,baseMode:form.contactBaseMode,defaultRevision:record?.contactDefaultRevision},...(!profileLocked?{classification:classificationPayload({...displayedClassification,revision:form.classification.revision})}:{})})});
       emitWorkspaceDataChanged({topics:['business-partners','customers'],orgId:activeOrgId,source:'business-partner'});
       if(live.current){(onSaved||onCreated)?.(saved);onClose?.();}
-     }catch(failure){if(live.current){const text=partnerContactText[languageCode]||partnerContactText.en;setError(failure.message==='PARTNER_CONTACT_CHANGED'?text.changed:failure.message==='PARTNER_CONTACT_INVALID'?text.invalid:companyDocumentContactError(failure,languageCode,labels.errorEdit));}}
+     }catch(failure){if(live.current){const text=partnerContactText[languageCode]||partnerContactText.en;setError(failure.message==='PARTNER_HANDLED_ITEMS_CHANGED'?(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en).stale:failure.message==='PARTNER_CONTACT_CHANGED'?text.changed:failure.message==='PARTNER_CONTACT_INVALID'?text.invalid:companyDocumentContactError(failure,languageCode,labels.errorEdit));}}
      finally{saveLock.current=false;if(live.current)setSaving(false);}return;
     }
     if (!hasLocalizedName(form, 'name')) return setError(labels.required);
@@ -144,7 +148,7 @@ function PartnerEditorState({
         ...Object.fromEntries(['code','nameKo','nameVi','businessNumber','country','countryCode','address','email'].map(key=>[key,form[key].trim()||null])),
         contactName: form.contactName.trim() || null,
         contactPhone: form.contactPhone.trim() || null,
-        classification: classificationPayload({...displayedClassification,revision:form.classification.revision}),
+        classification: {...classificationPayload({...displayedClassification,revision:form.classification.revision}),...(handledPayload?{handledItems:handledPayload}:{})},
         ...(form.companyConnection?{companyConnection:form.companyConnection}:{}),
         ...(!isEdit&&pendingAccounts.length?{bankAccounts:pendingAccounts.map(account=>Object.fromEntries(['accountKind','displayName','bankName','accountNumber','accountHolder','currencyId'].map(key=>[key,account[key]])))}:{}),
 
@@ -168,7 +172,7 @@ function PartnerEditorState({
       emitWorkspaceDataChanged({ topics: ['business-partners','customers'], orgId: activeOrgId, source: 'business-partner' });
       if(live.current){(onSaved || onCreated)?.(customer?{...record,...savedPartner,id:record.id,entityId:record.id,relationshipId:record.relationshipId,contactName:savedPartner.manager??form.contactName,contactPhone:savedPartner.phoneNumber??form.contactPhone}:savedPartner);onClose?.();}
     } catch (saveError) {
-      if(live.current)setError(['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:companyDocumentContactError(saveError,languageCode,entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind)));
+      if(live.current)setError(saveError?.message==='PARTNER_HANDLED_ITEMS_CHANGED'?(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en).stale:['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:companyDocumentContactError(saveError,languageCode,entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind)));
     } finally {
       saveLock.current=false;if(live.current)setSaving(false);
     }
@@ -188,6 +192,7 @@ function PartnerEditorState({
           <EntityBankAccounts hideGuidance entityId={record?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={isEdit?undefined:setPendingAccounts} disabled={locked}/>
 
           <PartnerClassificationFields title={common.role} expandable sidePanelTarget={panelKind==='classification'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='classification'} onPanelOpenChange={togglePanel} value={displayedClassification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||hasOfficialClassification} languageCode={languageCode} onReady={setOptionsReady}/>
+          <PartnerHandledItemsFields value={form.handledItems} classification={displayedClassification} onChange={handledItems=>setForm(current=>({...current,handledItems}))} orgId={activeOrgId} enabled={open&&classificationLoaded} disabled={locked} languageCode={languageCode}/>
 
 
           {record?.sourceKind==='CUSTOMER'&&hasApparelBrandIndustry(displayedClassification)&&<EntityDetailSection title={editorText.order}><TextField fullWidth select size="small" label={editorText.size} value={normalizeSizeSetCode(form.defaultSizeSetCode)} disabled={locked||profileLocked} onChange={event=>setForm(current=>({...current,defaultSizeSetCode:event.target.value}))}>{getSizeSetOptions(languageCode).map(option=><MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}</TextField></EntityDetailSection>}

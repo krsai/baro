@@ -482,6 +482,8 @@ model PartnerContact {
 }
 
 model Organization {
+  handledPolicies PartnerHandledPolicy[] @relation("HandledOwner")
+  handledEntityPolicies PartnerHandledPolicy[] @relation("HandledEntity")
   codeItemTypes CodeItemType[] @relation("ItemTypeOwner")
   itemCustomerCosts PartnerTransactionCost[] @relation("ItemCustomer")
  companyDefault CompanyProfileDefault? @relation("CompanyDefaultEntity")
@@ -1132,6 +1134,8 @@ model Warehouse {
 
 
 model Employee {
+  handledPolicies PartnerHandledPolicy[]
+  handledAudits PartnerHandledAudit[]
   createdCodeItemTypes CodeItemType[]
  companyDefaultEdits CompanyProfileDefault[] @relation("CompanyDefaultActor")
  partnerContactEdits PartnerContact[] @relation("PartnerContactActor")
@@ -3337,6 +3341,9 @@ model InvoiceLine {
 }
 
 model SettingServiceDefault {
+  handledItemSelection Boolean @default(false)
+  handledItemRevision Int @default(0)
+  handledSelections PartnerHandledSelection[]
   retirement IndustryRetirement?
   accountingCodeLinks AccountingCodeIndustry[]
   partnerClassifications PartnerClassificationIndustry[]
@@ -3470,6 +3477,7 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  handledSelections PartnerHandledSelection[]
   attributeInputs Json @default("{}")
   itemTypes CodeItemType[]
   cashDirection String @default("BOTH")
@@ -3772,4 +3780,42 @@ model CodeItemType {
  costs PartnerTransactionCost[]
  @@unique([id,orgId])
  @@unique([orgId,baseId,nameKey])
+}
+
+model PartnerHandledPolicy {
+ orgId Int
+ entityId Int
+ revision Int @default(1)
+ updatedByEmployeeId Int
+ updatedAt DateTime @updatedAt
+ writeXid BigInt @default(dbgenerated("txid_current()"))
+ owner Organization @relation("HandledOwner",fields:[orgId],references:[id],onDelete:Restrict)
+ entity Organization @relation("HandledEntity",fields:[entityId],references:[id],onDelete:Restrict)
+ actor Employee @relation(fields:[updatedByEmployeeId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ selections PartnerHandledSelection[]
+ audits PartnerHandledAudit[]
+ @@id([orgId,entityId])
+}
+model PartnerHandledSelection {
+ orgId Int
+ entityId Int
+ industryId Int
+ baseId Int
+ policy PartnerHandledPolicy @relation(fields:[orgId,entityId],references:[orgId,entityId],onDelete:Restrict)
+ industry SettingServiceDefault @relation(fields:[industryId],references:[id],onDelete:Restrict)
+ base TransactionCodeBase @relation(fields:[baseId],references:[id],onDelete:Restrict)
+ @@id([orgId,entityId,industryId,baseId])
+}
+model PartnerHandledAudit {
+ id Int @id @default(autoincrement())
+ orgId Int
+ entityId Int
+ revision Int
+ actorId Int
+ before Json
+ after Json
+ createdAt DateTime @default(now())
+ policy PartnerHandledPolicy @relation(fields:[orgId,entityId],references:[orgId,entityId],onDelete:Restrict)
+ actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
+ @@unique([orgId,entityId,revision])
 }

@@ -65,7 +65,7 @@ try{
   await unused.waitFor();assert.equal(await unused.getByRole('button',{name:removeName,exact:true}).isEnabled(),true);
   for(const code of ['Used','Unknown'])assert.equal(await page.getByRole('row').filter({has:page.getByRole('cell',{name:new RegExp('^'+code)})}).getByRole('button',{name:removeName,exact:true}).isDisabled(),true);
   const used=page.getByRole('row').filter({has:page.getByRole('cell',{name:/^Used/})});
-  await page.getByRole('columnheader',{name:accountingCodeUsageText[lang].column,exact:true}).waitFor();assert.equal(await used.locator('td').first().innerText(),'Used');assert.equal(await used.locator('td').nth(1).innerText(),usageCountLabel(1,lang));
+  await page.getByRole('columnheader',{name:accountingCodeUsageText[lang].column,exact:true}).waitFor();assert.equal(await used.locator('td').first().innerText(),'Used');assert.equal(await used.locator('td').nth(2).innerText(),usageCountLabel(1,lang));
   await used.getByRole('button',{name:removeName,exact:true}).locator('..').hover();
   await page.getByRole('tooltip').filter({hasText:{ko:'기존 고객 유형 연결 (1)',en:'Legacy customer type links (1)',vi:'Liên kết loại khách hàng cũ (1)'}[lang]}).waitFor();
   sources[1].hasUsageHistory=false;sources[1]._count.customerIndustries=0;
