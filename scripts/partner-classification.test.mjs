@@ -42,7 +42,7 @@ const {resolvePartnerCode,resolvePartnerIdentity,subscriberProfilePatch}=require
 function sourceRoute(method,path,dependencies){
  const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
  const node=tree.statements.find(node=>ts.isExpressionStatement(node)&&ts.isCallExpression(node.expression)&&node.expression.expression.getText(tree)===`app.${method}`&&node.expression.arguments[0]?.text===path);
- let handler;const bindings={linkedPartnerCompany:async()=>null,assertPartnerProfileEditable:async()=>{},app:{[method]:(_path,fn)=>handler=fn},resolvePartnerCode,resolvePartnerIdentity,ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),...dependencies};
+ let handler;const bindings={connectPartnerCompany:async()=>null,linkedPartnerCompany:async()=>null,assertPartnerProfileEditable:async()=>{},app:{[method]:(_path,fn)=>handler=fn},resolvePartnerCode,resolvePartnerIdentity,ORG_MANAGEMENT_ROLES:['ADMIN'],requireOrgRole:async()=>({organization:{id:1}}),...dependencies};
  new Function(...Object.keys(bindings),ts.transpileModule(node.getText(tree),{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText)(...Object.values(bindings));return handler;
 }
 test('production eligibility is checked independently of displayed industries',async()=>{
@@ -54,7 +54,7 @@ test('production eligibility is checked independently of displayed industries',a
  assert.deepEqual(where.OR,[{outsourcingServiceAssignments:{none:{}}},{outsourcingServiceAssignments:{some:{serviceType:{entryMode:'PROCESS'}}}}]);
  await route({query:{}},{json:()=>{}});assert.equal(where.OR,undefined);
 });
-const validator=(stored=null)=>({partnerClassification:{findUnique:async()=>stored},settingServiceDefault:{findMany:async({where})=>sources.filter(row=>where.id.in.includes(row.id))}});
+const validator=(stored=null)=>({companyPartnerLink:{findMany:async()=>[]},companyIdentityLink:{findMany:async()=>[]},partnerClassification:{findUnique:async()=>stored},settingServiceDefault:{findMany:async({where})=>sources.filter(row=>where.id.in.includes(row.id)&&(!where.handledItemSelection||row.handledItemSelection))}});
 
 test('SERVICE customer registration saves its own relationship and connection without production bucket defaults',async()=>{
  const source=readFileSync('backend/src/index.ts','utf8'),tree=ts.createSourceFile('index.ts',source,ts.ScriptTarget.Latest,true);
@@ -86,7 +86,7 @@ test('inactive stored industries retain their original FK; stale edits cannot ov
 test('saving uses the authenticated company/active employee, serializes the entity and changes only classification tables',async()=>{
  let stored=null,selected=[],actor,locked=false;const writes=[];
  const db={...validator(),organizationOutsourcingServiceType:{deleteMany:async({where})=>{assert.deepEqual(where,{ownerOrgId:1,partnerOrgId:7,serviceType:{systemDefaultId:{notIn:[10,11]}}});}},organization:{findFirst:async({where})=>where.ownerOrgId===1&&where.id===7?{id:7,type:'MATERIAL_SUPPLIER',outsourcingServiceAssignments:[]}:null},orgRelationship:{findFirst:async()=>null},employee:{findFirst:async({where})=>{actor=where;return where.id===8&&where.orgId===1?{id:8}:null;}},
-  $queryRawUnsafe:async(sql,id)=>{if(sql.includes('SettingServiceDefault')){assert.deepEqual(id,[10,11]);assert.match(sql,/FOR SHARE/);}else{assert.equal(id,7);locked=true;}},partnerClassification:{findUnique:async()=>stored,create:async({data})=>{assert.equal(locked,true);stored={...data,revision:1,industries:[]};writes.push('header');},updateMany:async()=>({count:0})},
+  $queryRawUnsafe:async(sql,id)=>{if(sql.includes('SettingServiceDefault')){assert.deepEqual(id,[10,11]);assert.match(sql,/FOR SHARE/);}else if(sql.startsWith('SELECT id FROM')){assert.equal(id,7);locked=true;}return [];},partnerClassification:{findUnique:async()=>stored,create:async({data})=>{assert.equal(locked,true);stored={...data,revision:1,industries:[]};writes.push('header');},updateMany:async()=>({count:0})},
   partnerClassificationIndustry:{deleteMany:async()=>{selected=[];writes.push('industries');},createMany:async({data})=>{selected=data;stored.industries=data.map(row=>({...row,industry:sources.find(s=>s.id===row.systemIndustryId)}));}}};
  const result=await saveClassification(db,1,7,8,body);assert.deepEqual(result.industryIds,[10,11]);assert.equal(result.revision,1);assert.deepEqual(writes,['header','industries']);assert.ok(selected.every(row=>row.orgId===1&&row.entityId===7));assert.equal(actor.status,'ACTIVE');assert.deepEqual(actor.orgRole.in,['ADMIN','OPERATOR','ACCOUNTANT']);
  await assert.rejects(saveClassification(db,2,7,8,body),/PARTNER_NOT_FOUND/);await assert.rejects(saveClassification(db,1,7,99,{...body,revision:1}),/ACTIVE_EMPLOYEE_REQUIRED/);

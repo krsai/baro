@@ -27773,9 +27773,9 @@ app.post("/business-partners", async (req, res) => {
         create: { ...partnerProfilePatch(req.body,entityDocumentContactBaseline(retained,linkedCompany)), ...identity, ownerOrgId: organization.id, name, type: type as any, createdBy: actor, ...subscriberProfilePatch(linkedCompany) },
         update: { ...partnerProfilePatch(req.body,entityDocumentContactBaseline(retained,linkedCompany)), ...identity, ...subscriberProfilePatch(linkedCompany) },
       });
+      await connectPartnerCompany(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       await saveClassification(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if(req.body?.bankAccounts!==undefined)await saveNewPartnerBankAccounts(tx,organization.id,getCurrentRequestActorEmployeeId()!,partner.id,req.body.bankAccounts);
-      await connectPartnerCompany(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
       if(req.body?.contacts)await savePartnerContacts(tx,organization.id,partner.id,getCurrentRequestActorEmployeeId()!,req.body.contacts);
       if(Array.isArray(req.body?.serviceTypeIds))await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: partner.id } });
       if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: partner.id, serviceTypeId, ownerOrgId: organization.id })) });
@@ -27830,8 +27830,8 @@ app.put("/business-partners/:id", async (req, res) => {
       const retained = await tx.organizationOutsourcingServiceType.findMany({where:{partnerOrgId:id,ownerOrgId:organization.id},select:{serviceTypeId:true}});
       const serviceTypeIds = await resolvePartnerServiceTypeIds(tx, organization.id, req.body?.serviceTypeIds, type,retained.map(row=>row.serviceTypeId));
       await tx.organization.update({ where: { id }, data: { ...partnerProfilePatch(req.body,entityDocumentContactBaseline(existing,linkedCompany)), ...identity, name, type: type as any, isActive, ...subscriberProfilePatch(linkedCompany) } });
-      await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       await connectPartnerCompany(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
+      await saveClassification(tx,organization.id,id,getCurrentRequestActorEmployeeId(),req.body?.classification);
       if (hasServiceTypeSelection) {
         await tx.organizationOutsourcingServiceType.deleteMany({ where: { partnerOrgId: id } });
         if (serviceTypeIds.length) await tx.organizationOutsourcingServiceType.createMany({ data: serviceTypeIds.map((serviceTypeId) => ({ partnerOrgId: id, serviceTypeId, ownerOrgId: organization.id })) });
@@ -29830,8 +29830,8 @@ app.post("/customers", async (req, res) => {
     },
     include: { brand: true, manufacturer: true, systemIndustry: true },
   });
-  await saveClassification(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body.classification);
   await connectPartnerCompany(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
+  await saveClassification(tx,organization.id,targetOrganization.id,getCurrentRequestActorEmployeeId(),req.body.classification);
   if (organization.type !== "SERVICE" && (!relationship.salesBucketSetVersionId || !relationship.timeBucketSetVersionId)) {
       const actor = getCurrentRequestActor();
       const salesVersion = relationship.salesBucketSetVersionId
@@ -29978,8 +29978,8 @@ app.put("/customers/:id", async (req, res) => {
     data: relationshipUpdateData,
   });
 
-  await saveClassification(tx,organization.id,targetOrganizationId,getCurrentRequestActorEmployeeId(),req.body?.classification);
   await connectPartnerCompany(tx,organization.id,targetOrganizationId,getCurrentRequestActorEmployeeId(),req.body?.companyConnection);
+  await saveClassification(tx,organization.id,targetOrganizationId,getCurrentRequestActorEmployeeId(),req.body?.classification);
   return tx.orgRelationship.findUnique({
     where: { id: existing.id },
     include: { brand: true, manufacturer: true, systemIndustry: true },

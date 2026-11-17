@@ -1,4 +1,4 @@
-import {readHandledItems,saveHandledItems} from './partnerHandledItems';
+import {readHandledItems,saveHandledItems,requireHandledItems} from './partnerHandledItems';
 import {savePartnerContacts} from './partnerContacts';
 import {saveClassification} from './partnerClassification';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -40,8 +40,9 @@ export function registerPartnerEditorRoutes(app:any,db:any,gates:any){
    const profile=await loadPartnerEditor(tx,orgId,actorId,relationshipId===undefined?entityId:undefined,relationshipId);
    if(profile.id!==entityId)throw createHttpError(400,'INVALID_PARTNER_ID');
    await savePartnerContacts(tx,orgId,entityId,actorId,req.body?.contacts,profile);
-   if(req.body?.classification!==undefined){if(!profile.canEditProfile)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');await saveClassification(tx,orgId,entityId,actorId,req.body.classification);}
-   if(req.body?.handledItems!==undefined)await saveHandledItems(tx,orgId,entityId,actorId,req.body.handledItems);
+   if(req.body?.classification!==undefined){if(!profile.canEditProfile)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');await saveClassification(tx,orgId,entityId,actorId,{...req.body.classification,...(req.body.handledItems!==undefined?{handledItems:req.body.handledItems}:{})});}
+   else if(req.body?.handledItems!==undefined)await saveHandledItems(tx,orgId,entityId,actorId,req.body.handledItems);
+   else await requireHandledItems(tx,orgId,entityId);
    if(req.body?.defaultSizeSetCode!==undefined){
     if(!profile.canEditProfile||profile.sourceKind!=='CUSTOMER'||!profile.relationshipId)throw createHttpError(403,'COMPANY_PROFILE_IS_PRIVATE');
     await tx.orgRelationship.update({where:{id:profile.relationshipId},data:{defaultSizeSetCode:req.body.defaultSizeSetCode==='URD_NUMERIC'?'URD_NUMERIC':'LEGACY_APPAREL'}});

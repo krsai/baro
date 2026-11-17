@@ -99,6 +99,7 @@ function PartnerEditorState({
   const [saving, setSaving] = useState(false);
   const locked=saving||loadingProfile||profileFailed;
   const [error, setError] = useState('');
+  const [handledValidation,setHandledValidation]=useState({ready:false,missing:false}),[showHandledErrors,setShowHandledErrors]=useState(false);
   const [panelKind,setPanelKind]=useState('classification'),[pendingAccounts,setPendingAccounts]=useState([]),[panelOpen,setPanelOpen]=useState(false),[panelExiting,setPanelExiting]=useState(false),[panelTarget,setPanelTarget]=useState(null);
   const reducedMotion=useMediaQuery('(prefers-reduced-motion: reduce)'),panelVisible=panelOpen||panelExiting;
   const togglePanel=(next,kind='classification')=>{if(next)setPanelKind(kind);if(!next&&panelOpen)setPanelExiting(true);setPanelOpen(next);};
@@ -112,6 +113,7 @@ function PartnerEditorState({
     if (open) {
       setForm(buildFormFromPartner(partner, initialType));
       setError('');
+      setShowHandledErrors(false);setHandledValidation({ready:false,missing:false});
       setPendingAccounts([]);setPanelOpen(false);setPanelExiting(false);
     }
   }, [initialType, open, partner]);
@@ -125,6 +127,10 @@ function PartnerEditorState({
 
   const save = async () => {
     if(saveLock.current||locked)return;
+    setShowHandledErrors(true);
+    const handledText=partnerHandledItemsText[languageCode]||partnerHandledItemsText.en;
+    if(!handledValidation.ready)return setError(handledText.failed);
+    if(handledValidation.missing)return setError(handledText.required);
     const handledPayload=form.handledItems&&(form.handledItems.revision>0||form.handledItems.industries.length)?form.handledItems:undefined;
     if(isEdit&&(form.linkedCompany||profileLocked)){
      if(!profileLocked&&(!classificationLoaded||!optionsReady||!classificationComplete(displayedClassification)))return setError(classificationText.required);
@@ -133,7 +139,7 @@ function PartnerEditorState({
       const saved=await requestJSON('/partner-editor/entity/'+record.id+'/contacts'+buildQueryString({orgId:activeOrgId}),{method:'PUT',body:JSON.stringify({...(handledPayload?{handledItems:handledPayload}:{}),...(record.sourceKind==='CUSTOMER'?{relationshipId:record.relationshipId}:{}),...(record.sourceKind==='CUSTOMER'&&!profileLocked&&form.defaultSizeSetCode!==record.defaultSizeSetCode?{defaultSizeSetCode:form.defaultSizeSetCode}:{}),contacts:{revision:record.contactRevision??0,patch:form.contactPatch,mode:form.contactMode,baseMode:form.contactBaseMode,defaultRevision:record?.contactDefaultRevision},...(!profileLocked?{classification:classificationPayload({...displayedClassification,revision:form.classification.revision})}:{})})});
       emitWorkspaceDataChanged({topics:['business-partners','customers'],orgId:activeOrgId,source:'business-partner'});
       if(live.current){(onSaved||onCreated)?.(saved);onClose?.();}
-     }catch(failure){if(live.current){const text=partnerContactText[languageCode]||partnerContactText.en;setError(failure.message==='PARTNER_HANDLED_ITEMS_CHANGED'?(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en).stale:failure.message==='PARTNER_CONTACT_CHANGED'?text.changed:failure.message==='PARTNER_CONTACT_INVALID'?text.invalid:companyDocumentContactError(failure,languageCode,labels.errorEdit));}}
+     }catch(failure){if(live.current){const text=partnerContactText[languageCode]||partnerContactText.en;setError(failure.message==='PARTNER_HANDLED_ITEMS_REQUIRED'?handledText.required:failure.message==='PARTNER_HANDLED_ITEMS_CHANGED'?(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en).stale:failure.message==='PARTNER_CONTACT_CHANGED'?text.changed:failure.message==='PARTNER_CONTACT_INVALID'?text.invalid:companyDocumentContactError(failure,languageCode,labels.errorEdit));}}
      finally{saveLock.current=false;if(live.current)setSaving(false);}return;
     }
     if (!hasLocalizedName(form, 'name')) return setError(labels.required);
@@ -172,7 +178,7 @@ function PartnerEditorState({
       emitWorkspaceDataChanged({ topics: ['business-partners','customers'], orgId: activeOrgId, source: 'business-partner' });
       if(live.current){(onSaved || onCreated)?.(customer?{...record,...savedPartner,id:record.id,entityId:record.id,relationshipId:record.relationshipId,contactName:savedPartner.manager??form.contactName,contactPhone:savedPartner.phoneNumber??form.contactPhone}:savedPartner);onClose?.();}
     } catch (saveError) {
-      if(live.current)setError(saveError?.message==='PARTNER_HANDLED_ITEMS_CHANGED'?(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en).stale:['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:companyDocumentContactError(saveError,languageCode,entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind)));
+      if(live.current)setError(saveError?.message==='PARTNER_HANDLED_ITEMS_REQUIRED'?handledText.required:saveError?.message==='PARTNER_HANDLED_ITEMS_CHANGED'?(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en).stale:['INVALID_BANK_ACCOUNT','INVALID_CURRENCY'].includes(saveError?.message)?common.error:saveError?.message==='PARTNER_CLASSIFICATION_CHANGED'?classificationText.changed:saveError?.message==='PARTNER_CLASSIFICATION_REQUIRED'?classificationText.required:companyDocumentContactError(saveError,languageCode,entityCodeError(saveError,languageCode,isEdit ? labels.errorEdit : labels.error,form.partyKind)));
     } finally {
       saveLock.current=false;if(live.current)setSaving(false);
     }
@@ -192,7 +198,7 @@ function PartnerEditorState({
           <EntityBankAccounts hideGuidance entityId={record?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={isEdit?undefined:setPendingAccounts} disabled={locked}/>
 
           <PartnerClassificationFields title={common.role} expandable sidePanelTarget={panelKind==='classification'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='classification'} onPanelOpenChange={togglePanel} value={displayedClassification} onChange={classification=>setForm(current=>({...current,classification}))} orgId={activeOrgId} enabled={open} disabled={locked||profileLocked||!classificationLoaded||hasOfficialClassification} languageCode={languageCode} onReady={setOptionsReady}/>
-          <PartnerHandledItemsFields value={form.handledItems} classification={displayedClassification} onChange={handledItems=>setForm(current=>({...current,handledItems}))} orgId={activeOrgId} enabled={open&&classificationLoaded} disabled={locked} languageCode={languageCode}/>
+          <PartnerHandledItemsFields value={form.handledItems} classification={displayedClassification} onChange={handledItems=>setForm(current=>({...current,handledItems}))} orgId={activeOrgId} enabled={open&&classificationLoaded} disabled={locked} languageCode={languageCode} onValidationChange={setHandledValidation} showErrors={showHandledErrors}/>
 
 
           {record?.sourceKind==='CUSTOMER'&&hasApparelBrandIndustry(displayedClassification)&&<EntityDetailSection title={editorText.order}><TextField fullWidth select size="small" label={editorText.size} value={normalizeSizeSetCode(form.defaultSizeSetCode)} disabled={locked||profileLocked} onChange={event=>setForm(current=>({...current,defaultSizeSetCode:event.target.value}))}>{getSizeSetOptions(languageCode).map(option=><MenuItem key={option.code} value={option.code}>{option.label}</MenuItem>)}</TextField></EntityDetailSection>}

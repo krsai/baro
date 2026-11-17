@@ -10,6 +10,23 @@ export async function readHandledItems(db:any,orgId:number,entityId:number){
  for(const selected of row?.selections||[]){if(!groups.has(selected.industryId))groups.set(selected.industryId,{industryId:selected.industryId,baseIds:[],bases:[]});const group=groups.get(selected.industryId);group.baseIds.push(selected.baseId);group.bases.push(selected.base);}
  return {revision:row?.revision??0,industries:[...groups.values()].sort((a,b)=>a.industryId-b.industryId)};
 }
+async function effectiveHandledClassification(db:any,orgId:number,entityId:number){
+ const local=await readClassification(db,orgId,entityId),[party]=await attachLinkedCompanies(db,orgId,[{entityId,id:entityId,classification:local}]);
+ return party?.linkedCompany&&party.officialClassification?.industryIds?.length?party.officialClassification:local;
+}
+export async function requireHandledItems(db:any,orgId:number,entityId:number,groups?:any[],classification?:any){
+ if(orgId===entityId)return;
+ const current=classification||await effectiveHandledClassification(db,orgId,entityId);
+ const ids=current.industryIds||[];
+ await db.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=ANY($1::int[]) ORDER BY id FOR SHARE',ids);
+ const required=await db.settingServiceDefault.findMany({where:{id:{in:ids},handledItemSelection:true,isActive:true,retirement:null},select:{id:true}});
+ const selections=groups??(await readHandledItems(db,orgId,entityId)).industries;
+ for(const industry of required){
+  const baseIds=selections.find((group:any)=>group.industryId===industry.id)?.baseIds||[];
+  const valid=baseIds.length&&await db.transactionCodeBase.findFirst({where:{id:{in:baseIds},isActive:true,industryLinks:{some:{systemIndustryId:industry.id}}},select:{id:true}});
+  if(!valid)throw createHttpError(400,'PARTNER_HANDLED_ITEMS_REQUIRED');
+ }
+}
 export async function saveHandledItems(tx:any,orgId:number,entityId:number,actorId:number,body:any){
  await classificationTarget(tx,orgId,entityId);await requireClassificationActor(tx,orgId,actorId);
  if(orgId===entityId)throw createHttpError(403,'PARTNER_HANDLED_ITEMS_LOCAL_ONLY');
@@ -17,8 +34,7 @@ export async function saveHandledItems(tx:any,orgId:number,entityId:number,actor
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
  const before=await readHandledItems(tx,orgId,entityId);
  if(body.revision!==before.revision)throw createHttpError(409,'PARTNER_HANDLED_ITEMS_CHANGED');
- const local=await readClassification(tx,orgId,entityId),[party]=await attachLinkedCompanies(tx,orgId,[{entityId,id:entityId,classification:local}]);
- const classification=party?.linkedCompany&&party.officialClassification?.industryIds?.length?party.officialClassification:local;
+ const classification=await effectiveHandledClassification(tx,orgId,entityId);
  const current=new Set(classification.industryIds),groups=new Map(canonical(before.industries).map(group=>[group.industryId,group])),seen=new Set();
  const ids=body.industries.map((group:any)=>group?.industryId);
  if(ids.some((id:any)=>!Number.isSafeInteger(id)||id<=0))fail();
@@ -36,6 +52,7 @@ export async function saveHandledItems(tx:any,orgId:number,entityId:number,actor
   if(baseIds.length)groups.set(industryId,next);else groups.delete(industryId);
  }
  const after=canonical([...groups.values()]),old=canonical(before.industries);
+ await requireHandledItems(tx,orgId,entityId,after,classification);
  if(JSON.stringify(old)===JSON.stringify(after))return before;
  const revision=before.revision+1;
  if(before.revision)await tx.partnerHandledPolicy.update({where:{orgId_entityId:{orgId,entityId}},data:{revision,updatedByEmployeeId:actorId}});
