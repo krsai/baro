@@ -1385,16 +1385,8 @@ const WorkDetail = ({
         };
         setCoverageSuggestion(nextCoverageSuggestion);
         if (!initialLog?.id && !coverageStartDateEditedRef.current) {
-          const suggestedStartDate = nextCoverageSuggestion.suggestedCoverageStartDate
-            ? dayjs(nextCoverageSuggestion.suggestedCoverageStartDate)
-            : null;
           setCoverageStartDate(
-            suggestedStartDate?.isValid?.()
-              ? clampWorkLogDay(suggestedStartDate, workLogOperationStartDateKey)
-              : clampWorkLogDay(
-                  workDate?.isValid?.() ? workDate : dayjs(),
-                  workLogOperationStartDateKey
-                )
+            clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs(), workLogOperationStartDateKey)
           );
         }
         setFactoryScopeContextReady(true);
@@ -2289,7 +2281,7 @@ const WorkDetail = ({
       isFirstFactoryWorkLog: false,
     });
     setCoverageStartDate((current) => {
-      if (!current?.isValid?.()) return resolvedNextDate;
+      if (!coverageStartDateEditedRef.current || !current?.isValid?.()) return resolvedNextDate;
       const normalizedCurrent = clampWorkLogDay(current, workLogOperationStartDateKey);
       return normalizedCurrent.isAfter(resolvedNextDate, 'day') ? resolvedNextDate : normalizedCurrent;
     });
@@ -2893,14 +2885,16 @@ const WorkDetail = ({
           sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2.5, backgroundColor: '#fbfcff' }}
         >
           <Stack spacing={1.5}>
-            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
+            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(0, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
                 <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
                 <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
+              <Box sx={{ gridColumn: { xl: 4 }, minWidth: 0 }}>
               <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
+              </Box>
             </Box>
             <TextField
               label={LABELS.note}
@@ -2916,17 +2910,6 @@ const WorkDetail = ({
               multiline
               minRows={2}
             />
-            {!initialLog?.id && selectedFactoryId && !factoryScopeDataLoading && coverageSuggestion.previousCoverageEndDate && coverageSuggestion.suggestedCoverageStartDate ? (
-              <Alert severity="info">
-                {`${LABELS.coverageSuggestionPrefix} ${coverageSuggestion.previousCoverageEndDate}${messages.previousEndConnector}${messages.suggestedFromConnector}${coverageSuggestion.suggestedCoverageStartDate} ${LABELS.coverageSuggestionSuffix}`}
-              </Alert>
-            ) : null}
-            {!initialLog?.id && selectedFactoryId && !factoryScopeDataLoading && coverageSuggestion.isFirstFactoryWorkLog ? (
-              <Alert severity="info">{LABELS.firstFactoryScopeCoverage}</Alert>
-            ) : null}
-            {!initialLog?.id && selectedFactoryId && !factoryScopeDataLoading && !coverageSuggestion.previousCoverageEndDate && !coverageSuggestion.isFirstFactoryWorkLog ? (
-              <Alert severity="info">{LABELS.zeroCoverageHint}</Alert>
-            ) : null}
             {isAggregateLegacyLog ? <Alert severity="warning">{messages.legacyReadOnly}</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
             {duplicateGroups.length > 0 ? (
