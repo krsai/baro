@@ -9,6 +9,16 @@ import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
 import {accountCashflowItems,accountCashflowTotal,cashflowSegments,categorizeCashflow} from '../frontend/src/utils/accountCashflow.mjs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 
+test('payables show each outstanding request with its payment date, main code and original totals',()=>{
+ const line=(id,amount,code)=>({id,currency:'VND',amount,description:code,transactionCode:{base:{code}}});
+ const request={partnerOrgId:7,partner:{name:'Vendor'},scheduledPaymentDate:'2026-11-20'};
+ const result=outstandingReport([], [{...request,id:1,managementNumber:'EXP-1',items:[line('a','100','BTH'),line('b','200','CUT')]},{...request,id:2,managementNumber:'EXP-2',items:[line('c','30','MRK')]}],[{expenseItemId:'b',amount:'50'}]);
+ assert.deepEqual(result.payableRows.map(row=>[row.number,row.date,row.representativeCode,row.lines,row.debt,row.matched,row.balance]),[
+  ['EXP-1','2026-11-20','CUT',['BTH','CUT'],'300','50','250'],['EXP-2','2026-11-20','MRK',['MRK'],'30','0','30'],
+ ]);
+ assert.equal(result.outstandingTotals[0].payable,'280');
+});
+
 test('cashflow groups by role without duplicating amounts across multiple industries',()=>{
  const role={id:1,nameEn:'Outsourcing'},industry={id:10,nameEn:'Cutting',partnerRole:role};
  const group=(itemKey,industries,amount)=>({itemKey,industries,direction:'OUT',currencyCode:'VND',entries:[{amount,direction:'OUT'}]});
