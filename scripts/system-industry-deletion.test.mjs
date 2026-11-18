@@ -9,6 +9,15 @@ const {registerTransactionSettingRoutes}=require('../backend/dist/services/trans
 const counts=()=>Object.fromEntries(Object.keys(SYSTEM_INDUSTRY_USAGE_INCLUDE._count.select).map(key=>[key,0]));
 const localCounts=()=>({transactionCosts:0,transactionCodes:0,partners:0});
 
+test('current company count excludes code references and inactive companies while deletion remains protected',()=>{
+ const row={id:9,_count:{...counts(),accountingCodeLinks:2},codeBases:[],codes:[],services:[],partnerClassifications:[]};
+ assert.equal(systemIndustryUsageView(row).activeCompanyCount,0);
+ assert.equal(systemIndustryInUse(row),true);
+ const link=(entityId,active=true)=>({entityId,classification:{owner:{isActive:true},entity:{isActive:active}}});
+ row.partnerClassifications=[link(12),link(12),link(13,false)];
+ assert.equal(systemIndustryUsageView(row).activeCompanyCount,1);
+});
+
 test('compact industry counts count current links once, excluding tax copies and obsolete document anchors',()=>{
  const base={id:10,code:'LBL',industryLinks:[{systemIndustryId:9}]},code={id:11,base};
  const row={id:9,_count:{...counts(),codes:3,codeBases:1,accountingCodeLinks:1,partnerClassifications:1},codeBases:[base],codes:[code,code,code],services:[{id:90,_count:{transactionCodes:6,transactionCosts:2,partners:0},transactionCodes:Array(6).fill(code),transactionCosts:[{transactionCode:code},{transactionCode:code}]}]};

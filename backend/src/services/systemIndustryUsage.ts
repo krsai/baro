@@ -41,7 +41,10 @@ export function systemIndustryUsageView(row:any){
  const usageCount=detailed
   ? ['customerIndustries','productionPolicies','partnerClassifications','accountingCodeLinks'].reduce((sum,key)=>sum+Number(counts[key]||0),0)+services.reduce((sum:number,local:any)=>sum+Number(local._count.partners||0),0)+references.size
   : Object.values(counts).reduce((sum:number,count)=>sum+Number(count||0),0)+services.reduce((sum:number,local:any)=>sum+Object.values(local._count).reduce((total:number,count)=>total+Number(count||0),0),0);
- return {...visible,...(Array.isArray(row?.codeBases)?{codeBases:row.codeBases.filter((base:any)=>liveBase(base,row.id))}:{}),_count:counts,services,usageCount};
+ const activeCompanyCount=Array.isArray(row?.partnerClassifications)
+  ? new Set(row.partnerClassifications.filter((link:any)=>link.classification?.owner?.isActive===true&&link.classification?.entity?.isActive===true).map((link:any)=>link.entityId)).size
+  : undefined;
+ return {...visible,activeCompanyCount,...(Array.isArray(row?.codeBases)?{codeBases:row.codeBases.filter((base:any)=>liveBase(base,row.id))}:{}),_count:counts,services,usageCount};
 }
 export function systemIndustryInUse(row:any):boolean{
  if(!row?._count||!Array.isArray(row.services))return true;
