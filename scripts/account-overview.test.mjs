@@ -47,7 +47,9 @@ test('real database overview scopes monthly cash flows, excludes voids and leave
   const foreign=await db.bankLedgerAccount.create({data:{orgId:s.other.id,clientKey:crypto.randomUUID(),bankName:'Other',accountNumber:'002',accountHolder:'Other',currencyCode:'USD',openingDate:'0001-01-01',openingBalance:'0',createdBy:'other@example.test'}});
   const otherVendor=await db.organization.create({data:{name:'Other vendor',type:'LOGISTICS_PROVIDER',ownerOrgId:s.other.id}});
   await db.bankLedgerEntry.create({data:{orgId:s.other.id,accountId:foreign.id,clientKey:crypto.randomUUID(),transactionDate:today,direction:'IN',amount:'9999',purpose:'Other',evidenceNumber:'other.pdf',createdBy:'other@example.test',counterpartyOrgId:otherVendor.id,counterpartyName:'Vendor'}});
+  await db.partnerContact.create({data:{orgId:s.company.id,entityId:s.vendor.id,updatedByEmployeeId:s.people.admin.id,mode:'LOCAL',data:{name:'CURRENT VENDOR NAME'}}});
   const before=await db.bankLedgerEntry.findMany({orderBy:{id:'asc'}}),report=await loadAccountOverview(db,s.company.id,{months:1});
+  assert.ok(report.cashflowGroups[0].entries.every(row=>row.counterparty==='CURRENT VENDOR NAME'));
   assert.equal(report.historyStart,start);assert.equal(report.cashflowGroups.length,1);assert.equal(report.cashflowGroups[0].amount,'30.03');assert.equal(report.cashflowGroups[0].baseId,s.code.baseId);assert.equal(report.cashflowGroups[0].entries.length,2);assert.equal(report.accounts[0].currentBalance,'80.03');assert.equal(report.movementAccounts[0].totalIn,'30.03');
   const year=await loadAccountOverview(db,s.company.id,{months:12});assert.equal(year.cashflowGroups[0].amount,'80.03');assert.deepEqual(await db.bankLedgerEntry.findMany({orderBy:{id:'asc'}}),before);
  }finally{await f.close();}
