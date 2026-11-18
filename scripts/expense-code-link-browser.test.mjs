@@ -30,16 +30,27 @@ try{
    const t=EXPENSE_TEXT[lang];
    await page.getByRole('cell',{name:'BTH',exact:true}).waitFor();
    assert.equal(await page.locator('tbody tr').count(),2);
+   const otherCode=page.getByRole('row').filter({has:page.getByRole('cell',{name:'PRT',exact:true})});
+   const otherCodeBefore=await otherCode.innerText();
    await page.locator('tbody tr').first().getByRole('button').click();const dialog=page.getByRole('dialog');
    await dialog.waitFor();const select=dialog.getByRole('combobox',{name:t.process,exact:false});await select.waitFor();
-   assert.equal(await dialog.locator('.MuiInputLabel-root').count(),0);assert.equal(await dialog.getByRole('combobox',{name:t.reference,exact:true}).count(),0);
+   assert.equal(await dialog.getByRole('combobox',{name:t.reference,exact:true}).count(),0);
    if(role==='ADMIN'){
-    assert.equal(await select.isDisabled(),false);await select.click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();
+    assert.equal(await select.isDisabled(),false);
+    const order=dialog.getByRole('combobox',{name:t.order,exact:true});
+    const style=dialog.getByRole('combobox',{name:t.style,exact:true});
+    const required=page.getByRole('option',{name:t.REQUIRED,exact:true});
+    await select.click();assert.equal(await required.isDisabled(),true);await page.keyboard.press('Escape');
+    await order.click();await required.click();
+    assert.equal(await style.innerText(),t.HIDDEN);
+    await style.click();await required.click();
+    assert.equal(await select.innerText(),t.HIDDEN);
+    await select.click();await required.click();
     await dialog.getByRole('combobox',{name:t.origin,exact:false}).click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();
     await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
     assert.equal(writes.length,1);assert.equal(writes[0].baseId,10);assert.equal(writes[0].target,'PROCESS');
     assert.deepEqual(writes[0].inputSettings,{orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',requiredFields:['origin']});
-    assert.equal(await page.locator('tbody tr').nth(1).getByRole('cell',{name:defaultLabel,exact:true}).count(),1);
+    assert.equal(await otherCode.innerText(),otherCodeBefore);
    }else{assert.equal(await select.isDisabled(),true);assert.equal(await dialog.getByRole('button',{name:save,exact:true}).count(),0);assert.deepEqual(writes,[]);await dialog.getByRole('button').click();}
    await page.setViewportSize({width:390,height:844});
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);
