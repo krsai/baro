@@ -53,7 +53,7 @@ export function accountCashFlowReport(accounts:any[],entries:any[]){
   const industries=(base?.industryLinks||[]).map((link:any)=>link.industry);
   const group=groups.get(key)||{itemKey,baseId:base?.id??null,code:base?.code||code?.code||'',nameKo:base?.nameKo||code?.nameKo||'',nameEn:base?.nameEn||code?.nameEn||'',nameVi:base?.nameVi||code?.nameVi||'',industries,direction:entry.direction,currencyCode:account.currencyCode,total:0n,entries:[]};
   group.total+=ledgerScale4(entry.amount);
-  group.entries.push({id:entry.id,date:entry.transactionDate,accountId:entry.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:entry.direction,amount:ledgerMoney(ledgerScale4(entry.amount),account.currencyCode),code:code?.code||'',counterparty:entry.counterpartyName||'',purpose:entry.purpose||''});groups.set(key,group);
+  group.entries.push({id:entry.id,date:entry.transactionDate,accountId:entry.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:entry.direction,amount:ledgerMoney(ledgerScale4(entry.amount),account.currencyCode),code:code?.code||'',nameKo:code?.nameKo||base?.nameKo||'',nameEn:code?.nameEn||base?.nameEn||'',nameVi:code?.nameVi||base?.nameVi||'',counterparty:entry.counterpartyName||'',purpose:entry.purpose||''});groups.set(key,group);
  }
  return [...groups.values()].map(({total,...group})=>({...group,amount:ledgerMoney(total,group.currencyCode)})).sort((a,b)=>a.code.localeCompare(b.code)||a.itemKey.localeCompare(b.itemKey)||a.direction.localeCompare(b.direction)||a.currencyCode.localeCompare(b.currencyCode));
 }
