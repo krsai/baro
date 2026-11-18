@@ -94,7 +94,7 @@ export const UI_MESSAGES = {
     attendance: { ko: '출퇴근', en: 'Attendance', vi: 'Chấm công' },
     inventory: { ko: '재고 관리', en: 'Inventory', vi: 'Tồn kho' },
     inventoryIssue: { ko: '재고 불출', en: 'Inventory Issue', vi: 'Xuat kho' },
-    inventoryStock: { ko: '재고 현황', en: 'Stock Overview', vi: 'Tồn kho hiện tại' },
+    inventoryStock: { ko: '자재 현황', en: 'Material Stock', vi: 'Tình trạng vật tư' },
     inventoryEntry: { ko: '입출고', en: 'Stock Movement', vi: 'Nhập xuat kho' },
     inventoryHistory: { ko: '입출고', en: 'Stock Movements', vi: 'Nhập xuất kho' },
     inventoryTransactions: { ko: '재고 거래', en: 'Stock Transactions', vi: 'Giao dich kho' },

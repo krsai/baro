@@ -2,8 +2,8 @@
 const GROUPS = [
   ['ORDER', 'salesWorkflow', ['/business-partner', '/style', '/order', '/customer-production-report']],
   ['RECORDS', 'productionWorkflow', ['/assignment', '/work-history']],
-  ['INVENTORY', 'inventoryMaterials', ['/inventory/materials', '/inventory/stock', '/inventory/movements', '/order-shipments', '/inventory/settings']],
-  ['LOGISTICS', 'logistics', ['/shipping']],
+  ['INVENTORY', 'inventoryMaterials', ['/inventory/movements', '/inventory/stock', '/inventory/materials']],
+  ['LOGISTICS', 'logistics', ['/shipping', '/order-shipments']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/work-time', '/holiday']],
   ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']],
   ['OPERATIONS', 'managementAnalysis', ['/account-overview', '/revenue-analysis']],
@@ -29,6 +29,9 @@ export function organizeCompanyMenu(items, translate, orgType) {
   }
   const transport=orgType==='SERVICE'&&shipping;
   const used = new Set();
+  // One navigation entry; retain the original independently authorized nodes.
+  const material=leaves.get('/inventory/materials'),reference=leaves.get('/inventory/settings');
+  if(material&&reference){leaves.set(material.path,{...material,mergedEntry:true,accessChildren:[material,reference]});used.add(reference.path);}
   const result = [...items.filter(item => !item.isParent && !['/shipping','/transport-exchange','/freight'].includes(item.path))];
   for (const [key, labelKey, paths] of GROUPS) {
     if(orgType==='SERVICE'&&key==='INVENTORY'){paths.forEach(path=>used.add(path));continue;}
@@ -36,6 +39,7 @@ export function organizeCompanyMenu(items, translate, orgType) {
     const children = paths.map(path => {
       used.add(path);
       const leaf=leaves.get(path);
+      if(orgType==='SERVICE'&&path==='/order-shipments')return null;
       return transport&&path==='/business-partner'&&leaf?{...leaf,label:translate('menu.customerPartners')}:leaf;
     }).filter(Boolean);
     if (source && children.length) result.push({ ...source, label: translate(`menu.${orgType==='SERVICE'&&key==='ORDER'?'sales':labelKey}`), children });
@@ -49,4 +53,10 @@ export function organizeCompanyMenu(items, translate, orgType) {
     else result.push({ ...item, children });
   }
   return result;
+}
+
+export function resolveMergedMenuAccess(node,hasAccess){
+ if(!node.mergedEntry)return hasAccess(node.path)?node:null;
+ const children=node.accessChildren.filter(child=>hasAccess(child.path));
+ return children.length?{...node,path:children[0].path,accessChildren:children}:null;
 }

@@ -34,6 +34,7 @@ const NON_EDITABLE_FEATURE_KEYS = new Set([
 
 const buildMenuTree = (nodes = [], parentId = 'root', orgType = 'SERVICE') =>
   (Array.isArray(nodes) ? nodes : [])
+    .flatMap(node => node?.mergedEntry ? node.accessChildren : [node])
     .map((node, index) => {
       const nodeLabel = String(node?.label || '').trim();
       const path = String(node?.path || '').trim();

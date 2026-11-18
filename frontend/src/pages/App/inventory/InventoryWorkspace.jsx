@@ -1,8 +1,10 @@
 import SearchPanel from '../../../components/SearchPanel';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Grid,MenuItem,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs,TextField,Typography} from '@mui/material';
 import {useLanguage} from '../../../context/LanguageContext';
+import {useAuth} from '../../../context/AuthContext';
+import {canAccessPath} from '../../../utils/accessControl';
 import Alert from "../../../components/AppNotice";
 import AddIcon from '@mui/icons-material/Add';
 import SaveIcon from '@mui/icons-material/Save';
@@ -43,11 +45,11 @@ const SETTINGS = {
 };
 
 const PAGE_META = {
-  stock: ['재고 현황', '창고·소유자·자재별 현재고와 가용재고를 조회합니다.'],
+  stock: ['자재 현황', '창고·소유자·자재별 현재고와 가용재고를 조회합니다.'],
   entry: ['입출고 등록', '구매·입고·출고·이동·반환·손실·조정 거래를 등록합니다.'],
   history: ['입출고', '모든 재고 증감과 정정 이력을 조회하고 신규 거래를 등록합니다.'],
   materials: ['자재 목록', '실제 입출고와 BOM에서 사용할 정확한 자재 품목을 관리합니다.'],
-  settings: ['자재 기준정보', '자재 종류·단위·규격·세부 구분 마스터를 관리합니다.'],
+  settings: ['자재 목록', '자재 종류·단위·규격·세부 구분 마스터를 관리합니다.'],
 };
 
 const UiNotice = () => (
@@ -126,6 +128,13 @@ const SettingsView = () => {
 
 const InventoryWorkspace = ({ view = 'stock' }) => {
   const navigate = useNavigate();
+  const auth=useAuth(),{languageCode}=useLanguage();
+  const canViewMaterials=canAccessPath('/inventory/materials',auth),canViewReference=canAccessPath('/inventory/settings',auth);
+  const [materialSection,setMaterialSection]=useState(view==='settings'?'reference':'materials');
+  useEffect(()=>setMaterialSection(view==='settings'?'reference':'materials'),[view]);
+  const mergedMaterials=['materials','settings'].includes(view);
+  const activeSection=materialSection==='reference'&&canViewReference?'reference':canViewMaterials?'materials':'reference';
+  const sections=({ko:{materials:'자재 목록',reference:'기준정보'},en:{materials:'Materials',reference:'Reference data'},vi:{materials:'Vật tư',reference:'Dữ liệu chuẩn'}})[languageCode]||{materials:'Materials',reference:'Reference data'};
   const [title, description] = PAGE_META[view] || PAGE_META.stock;
   const [keyword, setKeyword] = useState('');
   const [searchResetVersion, setSearchResetVersion] = useState(0);
@@ -135,10 +144,8 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const resetSearch = () => { setKeyword(''); setHistoryStartMonth(dayjs('2026-08-01')); setHistoryEndMonth(dayjs('2026-08-01').endOf('month')); setSearchResetVersion(value => value + 1); };
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>입출고 등록</Button>
-  ) : view === 'materials' ? (
+  ) : mergedMaterials && activeSection==='materials' && canViewMaterials ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>자재 등록</Button>
-  ) : view === 'settings' ? (
-    <Button variant="contained" startIcon={<AddIcon />}>새 항목</Button>
   ) : null;
   const toolbar = view === 'stock' ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch}
@@ -151,10 +158,10 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
       controls={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="입출고 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField></Stack>}
       dates={<DateRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} />}
     />
-  ) : view === 'materials' ? (
+  ) : mergedMaterials && activeSection==='materials' && canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
   ) : null;
-  const content = { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView />, materials: <MaterialsView keyword={keyword} />, settings: <SettingsView /> }[view] || <StockView keyword={keyword} />;
+  const content = mergedMaterials ? <Stack spacing={2}><Tabs data-material-master-tabs value={activeSection} onChange={(_,value)=>setMaterialSection(value)} variant="scrollable">{canViewMaterials&&<Tab value="materials" label={sections.materials}/>} {canViewReference&&<Tab value="reference" label={sections.reference}/>}</Tabs>{activeSection==='materials'&&canViewMaterials?<MaterialsView keyword={keyword}/>:canViewReference?<SettingsView/>:null}</Stack> : { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView /> }[view] || <StockView keyword={keyword} />;
   return (
     <>
       <AppPageContainer

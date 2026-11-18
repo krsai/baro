@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
-import { organizeCompanyMenu } from '../frontend/src/utils/companyMenuLayout.mjs';
+import { organizeCompanyMenu,resolveMergedMenuAccess } from '../frontend/src/utils/companyMenuLayout.mjs';
 import { organizeSystemMenu, findMenuGroupForPath } from '../frontend/src/utils/systemMenuLayout.mjs';
 
 const require = createRequire(import.meta.url);
@@ -27,7 +27,7 @@ function source(system) {
   for (const name of body.matchAll(/isOpen:\s*(\w+)/g)) context[name[1]] = false;
   return vm.runInNewContext(`${code}; blueprint()`, context);
 }
-const flatten = items => items.flatMap(item => item.isParent ? flatten(item.children || []) : [item]);
+const flatten = items => items.flatMap(item => item.isParent ? flatten(item.children || []) : item.mergedEntry?flatten(item.accessChildren):[item]);
 test('sewing brands expose their existing business menus and shipping without manufacturer or accounting entries',()=>{
  const menu=organizeCompanyMenu(source(false),key=>key,'BRAND');
  assert.deepEqual(flatten(menu).map(row=>row.path),['/style','/order','/customer-production-report','/shipping']);
@@ -72,16 +72,26 @@ test('company groups, direct entry, partner scopes and notifications follow the 
     ['/attendance', 'ADMIN'], ['/payroll', 'ACCOUNTING'], ['/payroll/2026-11', 'ACCOUNTING'], ['/employee-system', 'SETTINGS'],
     ['/salary-system', 'SETTINGS'],
     ['/business', 'SETTINGS'], ['/inventory/stock', 'INVENTORY'],
-    ['/shipping', 'LOGISTICS'], ['/order-shipments', 'INVENTORY'],
+    ['/shipping', 'LOGISTICS'], ['/order-shipments', 'LOGISTICS'], ['/inventory/settings','INVENTORY'],
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],
   ]) assert.equal(findMenuGroupForPath(menu, path), group);
   assert.deepEqual(menu.find(item => item.menuGroupKey === 'ACCOUNTING').children.map(item => item.path), ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']);
-  assert.deepEqual(menu.find(item=>item.menuGroupKey==='INVENTORY').children.map(item=>item.path),['/inventory/materials','/inventory/stock','/inventory/movements','/order-shipments','/inventory/settings']);
+  assert.deepEqual(menu.find(item=>item.menuGroupKey==='INVENTORY').children.map(item=>item.path),['/inventory/movements','/inventory/stock','/inventory/materials']);
+  assert.deepEqual(menu.find(item=>item.menuGroupKey==='LOGISTICS').children.map(item=>item.path),['/shipping','/order-shipments']);
   assert.equal(menu.find(item=>item.menuGroupKey==='INVENTORY').label,'menu.inventoryMaterials');
   const partner = menu.find(item => item.menuGroupKey === 'ORDER').children[0];
   assert.equal(partner.path, '/business-partner');
   assert.equal(partner.notificationActive, true);
   assert.equal(partner.accessChildren.length, 4);
   assert.match(layout, /const currentMenuGroup = findMenuGroupForPath\(menuItems, currentPath/);
+});
+
+test('merged material navigation preserves independent list/reference grants',()=>{
+ const node=organizeCompanyMenu(source(false),key=>key).find(group=>group.menuGroupKey==='INVENTORY').children[2];
+ for(const grants of [[],['/inventory/materials'],['/inventory/settings'],['/inventory/materials','/inventory/settings']]){
+  const visible=resolveMergedMenuAccess(node,path=>grants.includes(path));
+  assert.equal(visible?.path||null,grants[0]||null);
+  if(visible)assert.deepEqual(visible.accessChildren.map(child=>child.path),grants);
+ }
 });

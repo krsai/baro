@@ -79,7 +79,8 @@ export function resolvePageNaming(path, languageCode, translate) {
   const nameKey = base === '/customer' && rest ? 'customer'
     : base === '/inventory/movements' && rest === '/new' ? 'inventoryEntry' : key;
   const menuLabel = translate(`menu.${nameKey}`);
-  return {path:pathname, key:nameKey, mode, menuLabel, title:formatPageTitle(menuLabel,mode,languageCode)};
+  const screenLabel=base==='/inventory/settings'?translate('menu.materials'):menuLabel;
+  return {path:pathname, key:nameKey, mode, menuLabel, title:formatPageTitle(screenLabel,mode,languageCode)};
 }
 
 export function applyPageMenuNames(items, languageCode, translate) {

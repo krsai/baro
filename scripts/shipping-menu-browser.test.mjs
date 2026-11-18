@@ -23,6 +23,15 @@ try{
   const drawer=page.locator('.MuiDrawer-paper:visible');await drawer.getByText(name,{exact:true}).waitFor();assert.equal(await drawer.getByText(name,{exact:true}).count(),1);assert.equal(await drawer.getByText(old,{exact:true}).count(),0);
   const [logistics,inventory]=await page.evaluate(async lang=>{const {getUiMessage}=await import('/src/constants/uiMessages.js');return [getUiMessage('menu.logistics','Logistics',lang),getUiMessage('menu.inventoryMaterials','Inventory & materials',lang)];},lang);
   const logisticsGroup=drawer.locator('li').filter({has:page.getByText(logistics,{exact:true})}).first();await drawer.getByText(logistics,{exact:true}).waitFor();assert.equal(await logisticsGroup.getByText(name,{exact:true}).count(),1);
+  const labels=await page.evaluate(async lang=>{const {getUiMessage}=await import('/src/constants/uiMessages.js');return ['orderShipments','inventoryHistory','inventoryStock','materials','materialSettings'].map(key=>getUiMessage('menu.'+key,key,lang));},lang);
+  assert.equal(await logisticsGroup.getByText(labels[0],{exact:true}).count(),type==='MANUFACTURER'?1:0,'shipments belong to logistics');
+  if(type==='MANUFACTURER'){
+   await drawer.getByText(inventory,{exact:true}).click();const group=drawer.locator('li').filter({has:page.getByText(inventory,{exact:true})}).first();
+   for(const label of labels.slice(1,4))await group.getByText(label,{exact:true}).waitFor();
+   assert.equal(await group.getByText(labels[4],{exact:true}).count(),0,'reference data is inside materials');
+   for(let i=1;i<3;i++)assert.equal(await group.evaluate((el,{a,b})=>{const nodes=[...el.querySelectorAll('.MuiListItemText-primary')];return nodes.findIndex(n=>n.textContent===a)<nodes.findIndex(n=>n.textContent===b);},{a:labels[i],b:labels[i+1]}),true);
+   await drawer.getByText(logistics,{exact:true}).click();await drawer.getByText(name,{exact:true}).waitFor();
+  }
   assert.equal(await drawer.getByText(inventory,{exact:true}).count(),type==='MANUFACTURER'?1:0);
   await drawer.getByText(logistics,{exact:true}).click();await drawer.getByText(name,{exact:true}).waitFor({state:'hidden'});await drawer.getByText(logistics,{exact:true}).click();await drawer.getByText(name,{exact:true}).waitFor();
   await page.setViewportSize({width:390,height:900});await page.locator('.MuiDrawer-paper:visible').getByText(name,{exact:true}).waitFor();assert.equal(await page.locator('.MuiDrawer-paper:visible').getByText(old,{exact:true}).count(),0);

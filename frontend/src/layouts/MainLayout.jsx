@@ -7,7 +7,7 @@ import { PageNamingProvider } from '../context/PageNamingContext';
 import { applyPageMenuNames, resolvePageNaming } from '../utils/pageNaming.mjs';
 import { ManagementPeriodProvider } from '../context/ManagementPeriodContext';
 import { MenuBlueprintContext } from '../context/MenuBlueprintContext';
-import { organizeCompanyMenu } from '../utils/companyMenuLayout.mjs';
+import { organizeCompanyMenu, resolveMergedMenuAccess } from '../utils/companyMenuLayout.mjs';
 import { organizeSystemMenu, findMenuGroupForPath } from '../utils/systemMenuLayout.mjs';
 import WorkspaceDialogScope from '../components/WorkspaceDialogScope';
 import TabStateIndicators from '../components/TabStateIndicators';
@@ -684,7 +684,7 @@ const MainLayout = () => {
         isOpen: inventoryOpen,
         children: [
           {
-            label: getUiMessage('menu.inventoryStock', '재고 현황', languageCode),
+            label: getUiMessage('menu.inventoryStock', '자재 현황', languageCode),
             icon: <Inventory2Icon />,
             path: '/inventory/stock',
           },
@@ -967,7 +967,7 @@ const MainLayout = () => {
               children: visibleNestedChildren,
             };
           }
-          return hasPathAccess(child.path) ? child : null;
+          return resolveMergedMenuAccess(child,hasPathAccess);
         })
         .filter(Boolean);
 
@@ -1699,7 +1699,7 @@ const MainLayout = () => {
           );
         }
 
-        const isItemSelected = matchesMenuPath(item.path, currentPath);
+        const isItemSelected = matchesMenuPath(item.path, currentPath)||(item.mergedEntry&&item.accessChildren.some(child=>matchesMenuPath(child.path,currentPath)));
         const isItemDisabled = Boolean(item.disabled);
 
         return (
