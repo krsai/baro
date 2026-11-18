@@ -1,9 +1,9 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createPortal} from 'react-dom';
-import {Box,Button,Checkbox,FormControlLabel,IconButton,Stack,TextField,Typography} from '@mui/material';
+import {Box,Button,Checkbox,Chip,FormControlLabel,IconButton,Stack,TextField,Typography} from '@mui/material';
 import {Close,ViewSidebarOutlined} from '@mui/icons-material';
 import ExpenseLookupField from './ExpenseLookupField';
-import LookupInput from './LookupInput';
+import SelectionSummaryRow from './SelectionSummaryRow';
 import {keyboardAction} from '../utils/keyboardPolicy.mjs';
 import AppNotice from './AppNotice';
 import {classificationName} from '../utils/partnerClassification.mjs';
@@ -14,7 +14,7 @@ export default function PartnerHandledItemsFields({value,classification,onChange
  const t={...(partnerHandledItemsText[languageCode]||partnerHandledItemsText.en),...(partnerHandledItemsPanelText[languageCode]||partnerHandledItemsPanelText.en)};
  const [options,setOptions]=useState(null),[error,setError]=useState(false),[reload,setReload]=useState(0);
  const [industryId,setIndustryId]=useState(null),[query,setQuery]=useState('');
- const origin=useRef(null),skipFocus=useRef(false),panelSearch=useRef(null),focusSearch=useRef(false);
+ const origin=useRef(null),panelSearch=useRef(null),focusSearch=useRef(false);
  useEffect(()=>{if(sidePanelOpen&&focusSearch.current&&panelSearch.current){focusSearch.current=false;panelSearch.current.focus();}});
  useEffect(()=>{if(!enabled||!orgId)return;let alive=true;setOptions(null);setError(false);
   requestJSON('/partner-handled-items/options'+buildQueryString({orgId}),{skipCache:true}).then(data=>{if(alive)setOptions(data);}).catch(()=>{if(alive)setError(true);});return()=>{alive=false;};
@@ -27,7 +27,7 @@ export default function PartnerHandledItemsFields({value,classification,onChange
  if(error)return <AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>;
  const select=(industry,selected)=>onChange({revision:value?.revision??0,industries:[...(value?.industries||[]).filter(row=>row.industryId!==industry.id),{industryId:industry.id,baseIds:selected.map(row=>row.id),bases:selected}]});
  const openPanel=(industry,search='',source,focus=false)=>{if(disabled)return;setIndustryId(industry.id);setQuery(search);if(source)origin.current=source;if(focus){focusSearch.current=true;panelSearch.current?.focus();}onPanelOpenChange(true);};
- const closePanel=()=>{onPanelOpenChange(false);skipFocus.current=Boolean(origin.current?.matches('input'));origin.current?.focus();};
+ const closePanel=()=>{onPanelOpenChange(false);origin.current?.focus();};
  const activeBases=activeIndustry?handledIndustryBases(options,activeIndustry.id):[];
  const activeGroup=value?.industries?.find(row=>row.industryId===industryId);
  const selectedBases=[...activeBases,...(activeGroup?.bases||[]).filter(base=>base&&!activeBases.some(row=>row.id===base.id))].filter(base=>activeGroup?.baseIds?.includes(base.id));
@@ -39,8 +39,11 @@ export default function PartnerHandledItemsFields({value,classification,onChange
   if(expandable){
    const selected=rows.filter(base=>group?.baseIds?.includes(base.id)),label=classificationName(industry,languageCode)+' · '+t.items;
    return <Stack key={industry.id} spacing={.5}>
-    <Box sx={{display:'flex',justifyContent:'flex-end'}}><Button size="small" startIcon={<ViewSidebarOutlined/>} disabled={disabled} aria-label={label+' · '+t.choose} aria-expanded={sidePanelOpen&&industryId===industry.id} onClick={event=>openPanel(industry,'',event.currentTarget,true)}>{t.choose}</Button></Box>
-    <LookupInput multiple selectedOptions={selected} options={available} value={null} clearAfterChoose hasSelection={selected.length>0} required error={showErrors&&missing.some(row=>row.id===industry.id)} label={label} disabled={disabled} getLabel={base=>classificationName(base,languageCode)} getCode={base=>base.code} getValues={base=>[base.nameEn,base.nameKo,base.nameVi]} getOptionKey={base=>base.id} onChange={base=>{if(base&&!selected.some(row=>row.id===base.id))select(industry,[...selected,base]);}} onRemoveOption={base=>select(industry,selected.filter(row=>row.id!==base.id))} onSearch={search=>openPanel(industry,search,undefined,true)} searchLabel={label+' · '+t.choose} textFieldProps={{onFocus:event=>{if(skipFocus.current){skipFocus.current=false;return;}if(!sidePanelOpen||industryId!==industry.id)openPanel(industry,'',event.target);}}}/>
+    <SelectionSummaryRow title={label} action={<Button size="small" startIcon={<ViewSidebarOutlined/>} disabled={disabled} aria-label={label+' · '+t.choose} aria-expanded={sidePanelOpen&&industryId===industry.id} onClick={event=>sidePanelOpen&&industryId===industry.id?closePanel():openPanel(industry,'',event.currentTarget,true)}>{t.choose}</Button>}>
+     {selected.map(base=><Chip key={base.id} size="small" label={classificationName(base,languageCode)} onDelete={disabled?undefined:()=>select(industry,selected.filter(row=>row.id!==base.id))}/>)}
+     {!selected.length&&<Typography variant="body2" color="text.secondary">—</Typography>}
+    </SelectionSummaryRow>
+    {showErrors&&missing.some(row=>row.id===industry.id)&&<Typography variant="caption" color="error" role="alert">{t.required}</Typography>}
    </Stack>;
   }
   return <ExpenseLookupField key={industry.id} required error={showErrors&&missing.some(row=>row.id===industry.id)} label={classificationName(industry,languageCode)+' · '+t.items} multiple options={available} value={rows.filter(base=>group?.baseIds?.includes(base.id))} languageCode={languageCode} disabled={disabled} getOptionLabel={row=>classificationName(row,languageCode)} getCode={row=>row.code} columns={[{key:'code',label:t.code,value:row=>row.code},{key:'name',label:t.name,value:row=>classificationName(row,languageCode)}]} onChange={selected=>onChange({revision:value?.revision??0,industries:[...(value?.industries||[]).filter(row=>row.industryId!==industry.id),{industryId:industry.id,baseIds:selected.map(row=>row.id),bases:selected}]})}/>;
