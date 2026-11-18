@@ -14,7 +14,7 @@ const TEXT = {
 
 // Screens own query state, defaults and requests. This shared shell owns only
 // presentation and disclosure; collapsing never clears or unmounts filters.
-export default function SearchPanel({ title, search, controls, filters, actions, onReset, disabled = false, sx, className }) {
+export default function SearchPanel({ title, search, controls, filters, dates, actions, onReset, disabled = false, sx, className }) {
   const { languageCode } = useLanguage();
   const text = TEXT[languageCode] || TEXT.en;
   const [expanded, setExpanded] = useState(true);
@@ -32,18 +32,24 @@ export default function SearchPanel({ title, search, controls, filters, actions,
         sx={{ color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}>{expanded ? text.collapse : text.expand}</Button>}
     </Stack>
     <Box data-search-body sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap', gap: ui.search.gap, p: ui.search.padding, minWidth: 0,
-      '& [data-search-slot]': { minWidth: 0, maxWidth: '100%', m: 0, justifyContent: 'flex-start', alignItems: 'center', flexWrap: 'wrap', gap: ui.search.gap },
+      '& [data-search-slot]': { minWidth: 0, maxWidth: '100%', justifyContent: 'flex-start', alignItems: 'center', flexWrap: 'wrap', gap: ui.search.gap },
       '& [data-search-slot] > .MuiStack-root:not([data-date-range])': { m: 0, minWidth: 0, maxWidth: '100%', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center', flexWrap: 'wrap', gap: ui.search.gap, '& > :not(style)': { m: 0 } },
-      '& [data-search-slot] .MuiFormControl-root:not([data-date-range] .MuiFormControl-root)': { width: ui.search.filterWidth, minWidth: 0, maxWidth: '100%', m: 0 },
+      '& [data-search-slot]:not([data-search-dates]) .MuiFormControl-root:not([data-date-range] .MuiFormControl-root)': { width: ui.search.filterWidth, minWidth: 0, maxWidth: '100%', m: 0 },
       '& [data-search-slot] .MuiFormControlLabel-root': { m: 0 },
     }}>
       {search && <Box data-search-input sx={{ flex: { xs: '0 1 100%', sm: `0 1 ${ui.search.inputWidth}px` }, width: ui.search.inputWidth, maxWidth: '100%', minWidth: 0, '& > .MuiFormControl-root': { width: '100%', maxWidth: '100%', minWidth: 0, m: 0 } }}>{search}</Box>}
       {controls && <Stack data-search-slot data-search-controls direction="row" useFlexGap>{controls}</Stack>}
-      {filters && <Box id={filterId} data-search-filters hidden={!expanded} sx={{ minWidth: 0, maxWidth: '100%', flex: { xs: '1 1 100%', md: '0 1 auto' },
+      {filters && <Box id={filterId} data-search-filters hidden={!expanded} sx={{ minWidth: 0, maxWidth: '100%', flex: '0 1 auto',
         '& > .MuiStack-root': { flexWrap: 'wrap', gap: ui.search.gap },
       }}><Stack data-search-slot direction="row" useFlexGap flexWrap="wrap" alignItems="center">{filters}</Stack></Box>}
-      {onReset && <Button data-search-reset variant="outlined" size="small" startIcon={<RestartAltOutlined />} disabled={disabled} onClick={onReset} sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{text.reset}</Button>}
       {actions && <Stack data-search-slot data-search-actions direction="row" useFlexGap>{actions}</Stack>}
+      {(dates || onReset) && <Stack data-search-right direction="row" useFlexGap sx={{ ml: 'auto', minWidth: 0, maxWidth: '100%', flex: '0 1 auto', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', gap: ui.search.gap }}>
+      {dates && <Stack data-search-slot data-search-dates direction="row" useFlexGap sx={{ flex: '0 1 auto',
+        '&&': { justifyContent: 'flex-end' },
+        '& [data-date-range]': { justifyContent: 'flex-end', maxWidth: '100%' },
+      }}>{dates}</Stack>}
+      {onReset && <Button type="button" data-search-reset variant="outlined" size="small" startIcon={<RestartAltOutlined />} disabled={disabled} onClick={onReset} sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{text.reset}</Button>}
+      </Stack>}
     </Box>
   </Box>;
 }

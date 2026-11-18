@@ -142,7 +142,7 @@ export default function PartnerTransactionCosts({ onNewRequest, onOpenRequest })
     <SearchPanel title={text.query}  disabled={loading} onReset={reset}
       search={<SearchInput value={search} onChange={event=>setSearch(event.target.value)} placeholder={text.search} inputProps={{'aria-label':text.search}} />}
       filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={hidePaid} disabled={loading} onChange={event=>setHidePaid(event.target.checked)}/>} label={text.hideBankPaid}/> }
-      controls={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
+      dates={<DateRangeSelector disabled={loading} monthOnly={false} languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={changeDate(setDateFrom)} onEndChange={changeDate(setDateTo)} onShift={shiftRange} slotProps={{textField:{sx:{width:140,minWidth:140}}}} />}
 
     />
     <section className="cc-panel cc-results">

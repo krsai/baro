@@ -725,7 +725,7 @@ const AttendanceList = () => {
         </Stack>
       )}
       toolbar={(
-        <SearchPanel
+        <SearchPanel onReset={()=>{setSearchTerm('');setDateFrom(dayjs().startOf('month').format('YYYY-MM-DD'));setDateTo(dayjs().endOf('month').format('YYYY-MM-DD'));setSelectedFactoryId(String(factories.find(row=>String(row.id)===String(activeFactoryId))?.id||factories[0]?.id||''));}}
           search={(
             <SearchInput
               value={searchTerm}
@@ -733,7 +733,7 @@ const AttendanceList = () => {
               placeholder={text(TEXT.searchPlaceholder, languageCode, 'Search date')}
             />
           )}
-          controls={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom?dayjs(dateFrom):null} endValue={dateTo?dayjs(dateTo):null} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value.format('YYYY-MM-DD'))}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value.format('YYYY-MM-DD'))}} disabled={loadingRows}/>}
+          dates={<DateRangeSelector factoryId={selectedFactoryId} languageCode={languageCode} startValue={dateFrom?dayjs(dateFrom):null} endValue={dateTo?dayjs(dateTo):null} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value.format('YYYY-MM-DD'))}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value.format('YYYY-MM-DD'))}} disabled={loadingRows}/>}
           filters={<><FormControl key="factory" size="small" sx={{ minWidth: 190 }}>
               <InputLabel id="attendance-list-factory-label">
                 {text(TEXT.factory, languageCode, 'Factory')}

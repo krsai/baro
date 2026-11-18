@@ -29,7 +29,7 @@
     "test:global-lookup": "node scripts/global-lookup-browser.test.mjs && node scripts/compact-lookup-browser.test.mjs && node scripts/lookup-sticky-header-browser.test.mjs",
     "test:lookup-multiple-keyboard": "node scripts/lookup-multiple-keyboard-browser.test.mjs",
     "test:lookup-chip-input": "node scripts/lookup-chip-input-browser.test.mjs",
-    "test:search-layout": "node scripts/search-layout-browser.test.mjs",
+    "test:search-layout": "node --test scripts/search-panel-contract.test.mjs && node scripts/search-layout-browser.test.mjs",
     "test:dashboard-card-hover": "node scripts/dashboard-card-hover-browser.test.mjs",
     "test:document-entry-summary": "node --test scripts/ledger-entry-totals.test.mjs && node scripts/document-entry-summary-browser.test.mjs",
     "test:notification-toast": "node scripts/notification-toast-browser.test.mjs",

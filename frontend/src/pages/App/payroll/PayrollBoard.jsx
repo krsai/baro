@@ -448,7 +448,7 @@ const PayrollBoard = () => {
     >
       <SearchPanel
         search={<SearchInput value={search} placeholder={resolveText(languageCode,'searchPlaceholder')} inputProps={{'aria-label':resolveText(languageCode,'searchPlaceholder')}} disabled={loading||calculating||!!mutating} onChange={event=>setSearch(event.target.value)}/>}
-        controls={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} disabled={loading||calculating||!!mutating}/>}
+        dates={<DateRangeSelector independentDateBounds languageCode={languageCode} startValue={dateFrom} endValue={dateTo} onStartChange={value=>{if(value?.isValid?.())setDateFrom(value)}} onEndChange={value=>{if(value?.isValid?.())setDateTo(value)}} disabled={loading||calculating||!!mutating}/>}
         onReset={resetSearch} disabled={loading||calculating||!!mutating}
       />
       {payableError&&<Alert severity="error" sx={{mb:2}}>{payableError}</Alert>}

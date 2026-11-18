@@ -647,14 +647,14 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               </Stack>
             )}
           />
-          <SearchPanel
+          <SearchPanel onReset={()=>{setSearchTerm('');setDateFilterStart(dayjs().startOf('month').toDate());setDateFilterEnd(dayjs().endOf('month').toDate());setSelectedFactoryId(String(factories.find(row=>String(row.id)===String(activeFactoryId))?.id||factories[0]?.id||''));}}
             search={<SearchInput
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder={resolveText(TEXT.searchPlaceholder, languageCode, '날짜, 공장 검색')}
 
             />}
-            controls={<DateRangeSelector languageCode={languageCode} factoryId={selectedFactoryId} startValue={dayjs(dateFilterStart)} endValue={dayjs(dateFilterEnd)} onStartChange={changeFilterDate(setDateFilterStart)} onEndChange={changeFilterDate(setDateFilterEnd)}/>}
+            dates={<DateRangeSelector languageCode={languageCode} factoryId={selectedFactoryId} startValue={dayjs(dateFilterStart)} endValue={dayjs(dateFilterEnd)} onStartChange={changeFilterDate(setDateFilterStart)} onEndChange={changeFilterDate(setDateFilterEnd)}/>}
           filters={<><FormControl size="small" sx={{ width: { xs: '100%', sm: 180 }, flexShrink: 0, ml: { lg: 'auto' } }}>
               <InputLabel id="work-list-factory-filter-label">
                 {resolveText(TEXT.factory, languageCode, '공장')}

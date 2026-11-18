@@ -24,6 +24,14 @@ try{
   assert.equal(await page.getByLabel('End date').inputValue(),'2026-10-31');await page.getByLabel('Start date').fill('2026-09-15');await page.getByLabel('End date').fill('2026-10-20');
   await page.waitForFunction(()=>document.querySelector('input[aria-label="End date"]')?.value==='2026-10-20');await page.waitForTimeout(300);
   const target=kind==='attendance'?'attendance':'work';assert.ok(reads.some(r=>r.path===target&&r.from==='2026-09-15'&&r.to==='2026-10-20'),JSON.stringify({kind,reads,errors}));
+  const panel=page.locator('[data-search-panel]');
+  await panel.locator('[data-search-input] input').fill('Worker');
+  await panel.locator('[data-search-reset]').click();
+  assert.equal(await panel.locator('[data-search-input] input').inputValue(),'');
+  assert.equal(await page.getByLabel('Start date').inputValue(),'2026-10-01');
+  assert.equal(await page.getByLabel('End date').inputValue(),'2026-10-31');
+  assert.equal(await panel.getByRole('combobox').textContent(),'Hanoi');
+  await page.waitForFunction(()=>document.querySelector('[data-search-right]')?.lastElementChild?.hasAttribute('data-search-reset'));
   {
     recordedMonths=[];await page.reload();await page.waitForTimeout(500);
     // Reopening always starts this month, even with legacy session filters present.

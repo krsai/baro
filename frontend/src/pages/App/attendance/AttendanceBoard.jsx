@@ -538,7 +538,7 @@ const AttendanceBoard = ({
         </Stack>
       )}
       toolbar={(
-        <SearchPanel
+        <SearchPanel onReset={()=>{setSearchTerm('');setSelectedDate(resolveInitialDate(initialWorkDate));setSelectedFactoryId(String(factories.find(row=>String(row.id)===String(activeFactoryId))?.id||factories[0]?.id||''));}} disabled={hasUnsavedEntryChanges||savingEntries}
           search={(
             <SearchInput
               value={searchTerm}
@@ -546,7 +546,7 @@ const AttendanceBoard = ({
               placeholder={text(TEXT.searchWorker, languageCode, 'Search worker')}
             />
           )}
-          controls={<><CustomDatePicker
+          dates={<><CustomDatePicker
                 label={text(TEXT.workDate, languageCode, 'Work date')}
                 value={managedDate}
                 minDate={operationStartDay}

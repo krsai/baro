@@ -6834,7 +6834,7 @@ const AssignBoard = () => {
         </Box>
       }
       toolbar={
-        <SearchPanel filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event=>setIncludeManagementClosed(event.target.checked)}/>} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)}/>} search={<SearchInput
+        <SearchPanel onReset={()=>{setSearchTerm('');setIncludeManagementClosed(false);const start=clampAssignmentViewDate(getMonthStartDate(),assignmentOperationStartDateKey);setViewStart(start);setViewEnd(getMonthEndDate(start));}} disabled={controlsDisabled} filters={<FormControlLabel sx={{m:0}} control={<Checkbox size="small" checked={includeManagementClosed} onChange={event=>setIncludeManagementClosed(event.target.checked)}/>} label={getUiMessage('assign.includeManagementClosed', 'Include closed assignments', languageCode)}/>} search={<SearchInput
             placeholder={getUiMessage(
               'assign.searchPlaceholder',
               '스타일/고객사/색상 검색',
@@ -6843,7 +6843,7 @@ const AssignBoard = () => {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
 
-          />} controls={<DateRangeSelector languageCode={languageCode} startValue={dayjs(viewStart)} endValue={dayjs(viewEnd)} onStartChange={changeViewDate(setViewStart)} onEndChange={changeViewDate(setViewEnd)} minDate={dayjs(assignmentOperationStartDateKey)} disabled={controlsDisabled}/>}
+          />} dates={<DateRangeSelector languageCode={languageCode} startValue={dayjs(viewStart)} endValue={dayjs(viewEnd)} onStartChange={changeViewDate(setViewStart)} onEndChange={changeViewDate(setViewEnd)} minDate={dayjs(assignmentOperationStartDateKey)} disabled={controlsDisabled}/>}
           actions={<>
             <Button
               variant="outlined"

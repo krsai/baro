@@ -952,7 +952,7 @@ const CustomerPricingBoard = () => {
         </Stack>
       }
       toolbar={
-        <SearchPanel
+        <SearchPanel onReset={()=>setSearchTerm('')}
           search={(
             <SearchInput
               placeholder={text.searchStyle}
