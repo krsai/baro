@@ -33,6 +33,8 @@ try{
   const notifications=page.locator('[data-dashboard-widget="notifications"]'),suspected=page.locator('[data-dashboard-widget="suspected-errors"]');
   await notifications.getByText(t.unassigned,{exact:true}).waitFor();assert.equal(await notifications.getByText(/STYLE/).count(),0);await suspected.locator('[data-dashboard-alert-kind="missing-record"]').waitFor();assert.equal(await suspected.getByTestId('production-excess-card').count(),1);
   const settingsLabel={ko:'설정',en:'Settings',vi:'Cài đặt'}[lang];
+  const assertSettingsAligned=async()=>{for(const widget of [notifications,suspected]){const gap=await widget.getByRole('button',{name:new RegExp(' '+settingsLabel+'$')}).evaluate(node=>node.parentElement.getBoundingClientRect().right-node.getBoundingClientRect().right);assert.ok(Math.abs(gap)<1,'settings button aligns to the right edge of its header');}};
+  await assertSettingsAligned();
   for(const widget of await page.locator('[data-dashboard-widget]').all())assert.equal(await widget.getByRole('button',{name:new RegExp(' '+settingsLabel+'$')}).count(),1,'each live widget exposes one settings button');
   await notifications.getByRole('button',{name:t.notifications+' '+settingsLabel,exact:true}).click();
   await page.getByRole('dialog').getByRole('checkbox',{name:dashboardRecipientText[lang].ACCOUNTANT,exact:true}).waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
@@ -55,7 +57,7 @@ try{
   await dialog.getByRole('button',{name:lang==='ko'?'저장':lang==='vi'?'Lưu':'Save',exact:true}).click();await dialog.waitFor({state:'hidden'});
   assert.equal(await notifications.getByText(t.unassigned,{exact:true}).count(),0);assert.equal(await suspected.locator('[data-dashboard-alert-kind="missing-record"]').count(),0);assert.equal(await suspected.locator('[data-dashboard-alert-kind="production-excess"]').count(),1);
   await page.reload();await page.getByTestId('dashboard-work-requests').waitFor();assert.equal(await notifications.getByText(t.unassigned,{exact:true}).count(),0);assert.equal(await suspected.locator('[data-dashboard-alert-kind="missing-record"]').count(),0);await suspected.locator('[data-dashboard-alert-kind="production-excess"]').waitFor();
-  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
+  await page.setViewportSize({width:390,height:844});await assertSettingsAligned();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('Dashboard alerts ko/en/vi: unassigned orders, suspected records separation, two-page settings, drag order, equal viewport rows, persistence and mobile passed.');
 }finally{await browser?.close();server.kill();if(existsSync(file))unlinkSync(file);}

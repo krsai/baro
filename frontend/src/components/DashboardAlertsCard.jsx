@@ -6,7 +6,7 @@ import DashboardAlertItem from './DashboardAlertItem';
 import DashboardWidgetSettings from './DashboardWidgetSettings';
 export default function DashboardAlertsCard({title,items,loading,error,onRetry,onSelect,text,children,languageCode}){
  return <Paper variant="outlined" sx={dashboardWidgetPaperSx}>
-  <Stack direction="row" alignItems="center" spacing={1} sx={{mb:1.5,flexShrink:0}}><Typography variant="subtitle1" sx={{...dashboardWidgetTitleSx,mr:'auto'}}>{title}</Typography><DashboardWidgetSettings/></Stack>
+  <Stack direction="row" alignItems="center" spacing={1} sx={{mb:1.5,flexShrink:0}}><Typography variant="subtitle1" sx={{...dashboardWidgetTitleSx,flex:1,minWidth:0}}>{title}</Typography><DashboardWidgetSettings/></Stack>
   {error&&<Alert severity="error" action={<Button onClick={onRetry}>{text.retry}</Button>}>{text.failed}</Alert>}
   <Box sx={{flex:1,minHeight:0,overflow:'auto'}} aria-busy={loading}><Stack spacing={1}>{loading&&!items.length&&!children&&<CircularProgress size={20}/>}{!loading&&!error&&!items.length&&!children&&<Typography color="text.secondary">{text.empty}</Typography>}{items.map(item=><DashboardAlertItem languageCode={languageCode} key={item.key} title={item.text} countLabel={item.countLabel} kind={item.recordAlert?'missing-record':'notification'} onClick={()=>onSelect(item)} detail={item.recordAlert?[item.recordAlert.factoryName,item.recordAlert.processes.map(process=>`${process.processCode||process.styleProcessId}: 0 / ${process.targetQuantity}`).join(' · ')].filter(Boolean).join(' · '):null}/>)}{children}</Stack></Box>
  </Paper>;
