@@ -1,4 +1,3 @@
-import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import TenureRecognitionDialog from '../../../components/TenureRecognitionDialog';
 import {tenureRecognitionText} from '../../../constants/tenureRecognition';
@@ -14,7 +13,6 @@ import SaveButton from '../../../components/SaveButton';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { useAuth } from '../../../context/AuthContext';
-import { useAppActions } from '../../../context/AppContext';
 import { useLanguage } from '../../../context/LanguageContext';
 import { getPayTypeOptions, PAY_TYPE_KEYS } from '../../../constants/payType';
 import { TOP_OFFSET_DRAWER_PAPER_SX } from '../../../constants/layout';
@@ -45,25 +43,9 @@ const EMPLOYEE_BOARD_TEXT = {
   addEmployee: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   drawerAddTitle: { ko: '직원 추가', en: 'Add Employee', vi: 'Them nhan vien' },
   drawerEditTitle: { ko: '직원 수정', en: 'Edit Employee', vi: 'Sua nhan vien' },
-  requiredHint: {
-    ko: '* 표시 항목은 필수 입력입니다.',
-    en: '* Marked fields are required.',
-    vi: '* Cac muc danh dau la bat buoc.',
-  },
   loginEmailLabel: { ko: '로그인 이메일', en: 'Login Email', vi: 'Email dang nhap' },
-  loginEmailHelperRequired: {
-    ko: '관리자/운영자/회계사는 로그인 이메일이 필요합니다.',
-    en: 'Admin/Operator/Accountant roles require a login email.',
-    vi: 'Vai tro Quan tri/Van hanh/Kế toán can email dang nhap.',
-  },
-  loginEmailHelperOptional: {
-    ko: '작업자는 이메일을 비워둘 수 있습니다.',
-    en: 'Workers may leave the email blank.',
-    vi: 'Cong nhan co the de trong email nay.',
-  },
   employeeCodePrefix: { ko: '사번', en: 'Employee Code', vi: 'Ma nhan vien' },
   nameLabel: { ko: '이름', en: 'Name', vi: 'Ten' },
-  requiredInput: { ko: '필수 입력', en: 'Required', vi: 'Bat buoc' },
   bankLabel: { ko: '은행', en: 'Bank', vi: 'Ngan hang' },
   accountLabel: { ko: '계좌번호', en: 'Account Number', vi: 'So tai khoan' },
   roleLabel: { ko: '권한', en: 'Role', vi: 'Quyen' },
@@ -369,6 +351,20 @@ const isValidDateInput = (value) => {
   const date = new Date(`${text}T00:00:00`);
   return !Number.isNaN(date.getTime());
 };
+const drawerValidationErrors = (draft, email, orgType) => {
+  const errors = {}, normalizedEmail = normalizeEmail(email);
+  if (isLoginRequiredRole(String(draft.orgRole || '').toUpperCase()) && !normalizedEmail) errors.email = 'errNeedLoginEmail';
+  else if (normalizedEmail && !normalizedEmail.includes('@')) errors.email = 'errInvalidEmail';
+  if (!String(draft.name || '').trim()) errors.name = 'errNameRequired';
+  if (orgType !== 'BRAND') {
+    if (!draft.factoryId) errors.factoryId = 'errNeedFactory';
+    else if (!Number.isFinite(Number(draft.factoryId))) errors.factoryId = 'errInvalidFactory';
+  }
+  if (!isValidDateInput(draft.joinedAt)) errors.joinedAt = 'errInvalidDateRange';
+  if (!isValidDateInput(draft.leftAt)) errors.leftAt = 'errInvalidDateRange';
+  if (draft.joinedAt && draft.leftAt && draft.joinedAt > draft.leftAt) errors.leftAt = 'errLeftBeforeJoin';
+  return errors;
+};
 const normalizeSearchText = (value) => String(value || '').trim().toLowerCase();
 const resolveFactoryIdForSave = (value) => {
   if (!value) return null;
@@ -634,7 +630,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     devProfile,
     isAuthenticated,
   } = useAuth();
-  const { showNotification } = useAppActions();
   const { languageCode } = useLanguage();
 
   const activeOrgId = overrideOrgId != null ? overrideOrgId : authOrgId;
@@ -663,6 +658,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   const [rejectingId, setRejectingId] = useState(null);
   const [tenureOpen,setTenureOpen]=useState(false);
   const [isDrawerSaving, setIsDrawerSaving] = useState(false);
+  const [drawerValidationAttempted, setDrawerValidationAttempted] = useState(false);
+  const drawerFieldsRef = useRef(null);
   const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState('create');
   const [selectedMemberId, setSelectedMemberId] = useState(null);
@@ -733,12 +730,6 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     });
     return map;
   }, [factories]);
-
-  useEffect(() => {
-    if (!statusMessage) return;
-    showNotification(statusMessage.text, statusMessage.type || 'info');
-    setStatusMessage(null);
-  }, [showNotification, statusMessage]);
 
   const fetchMemberships = useCallback(async (orgId) => {
     try {
@@ -1107,6 +1098,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   }, [jobRoleOptions]);
 
   const openAddDrawer = useCallback(() => {
+    setDrawerValidationAttempted(false);
+    setStatusMessage(current => current?.source === 'drawer-validation' ? null : current);
     const defaultRole = resolveDefaultInviteRole(roleOptions);
     const defaultFactoryId =
       activeOrgType === 'BRAND'
@@ -1143,6 +1136,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   ]);
 
   const openEditDrawer = useCallback((member) => {
+    setDrawerValidationAttempted(false);
+    setStatusMessage(current => current?.source === 'drawer-validation' ? null : current);
     const employee = employeeByMembership.get(member.id) || null;
     const normalizedMemberEmail = normalizeEmail(member?.email);
     const draft = buildEmployeeDraft(member, employee, {
@@ -1158,6 +1153,8 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   }, [activeOrgType, currentUserName, employeeByMembership, myEmail]);
 
   const closeEmployeeDrawer = useCallback(() => {
+    setDrawerValidationAttempted(false);
+    setStatusMessage(current => current?.source === 'drawer-validation' ? null : current);
     const focusedElement = document.activeElement;
     if (focusedElement instanceof HTMLElement) {
       focusedElement.blur();
@@ -1166,6 +1163,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   }, []);
 
   const handleDrawerDraftChange = useCallback((patch) => {
+    setStatusMessage(current => current?.source === 'drawer-validation' ? null : current);
     setDrawerDraft((prev) => {
       const next = { ...prev, ...patch };
       const normalizedRole = String(next.orgRole || '').toUpperCase();
@@ -1218,39 +1216,15 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
     const roleNeedsLoginEmail = isLoginRequiredRole(normalizedOrgRole);
     const selectedFactoryId = drawerDraft.factoryId;
 
-    if (!normalizedName) {
-      setStatusMessage({ type: 'error', text: tenantText('errNameRequired', languageCode) });
+    setDrawerValidationAttempted(true);
+    const errors = drawerValidationErrors(drawerDraft, drawerEmail, activeOrgType);
+    const firstInvalid = Object.keys(errors)[0];
+    if (firstInvalid) {
+      setStatusMessage({ type: 'error', source: 'drawer-validation', text: tenantText(errors[firstInvalid], languageCode) });
+      const field = drawerFieldsRef.current?.querySelector(`[data-employee-field="${firstInvalid}"]`);
+      field?.scrollIntoView({ block: 'nearest' });
+      field?.querySelector('input:not([aria-hidden="true"]), [role="combobox"]')?.focus({ preventScroll: true });
       return;
-    }
-    if (roleNeedsLoginEmail && !normalizedDrawerEmail) {
-      setStatusMessage({ type: 'error', text: tenantText('errNeedLoginEmail', languageCode) });
-      return;
-    }
-    if (normalizedDrawerEmail && !normalizedDrawerEmail.includes('@')) {
-      setStatusMessage({ type: 'error', text: tenantText('errInvalidEmail', languageCode) });
-      return;
-    }
-    if (!isValidDateInput(normalizedJoinedAt) || !isValidDateInput(normalizedLeftAt)) {
-      setStatusMessage({ type: 'error', text: tenantText('errInvalidDateRange', languageCode) });
-      return;
-    }
-    if (normalizedJoinedAt && normalizedLeftAt && normalizedJoinedAt > normalizedLeftAt) {
-      setStatusMessage({ type: 'error', text: tenantText('errLeftBeforeJoin', languageCode) });
-      return;
-    }
-
-    if (activeOrgType !== 'BRAND') {
-      if (!selectedFactoryId) {
-        setStatusMessage({ type: 'error', text: tenantText('errNeedFactory', languageCode) });
-        return;
-      }
-      if (
-        selectedFactoryId &&
-        !Number.isFinite(Number(selectedFactoryId))
-      ) {
-        setStatusMessage({ type: 'error', text: tenantText('errInvalidFactory', languageCode) });
-        return;
-      }
     }
 
     setIsDrawerSaving(true);
@@ -1502,6 +1476,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
   );
   const drawerIsWorker = isWorkerOrgRole(drawerDraft.orgRole);
   const drawerNeedsLoginEmail = isLoginRequiredRole(drawerDraft.orgRole);
+  const drawerErrors = drawerValidationAttempted ? drawerValidationErrors(drawerDraft, drawerEmail, activeOrgType) : {};
   const isDrawerDirty = drawerMode !== 'edit' || !drawerBaseline || (
     buildDrawerSignature(drawerEmail, drawerDraft) !== buildDrawerSignature(drawerBaseline.email, drawerBaseline.draft)
   );
@@ -1561,6 +1536,7 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
             }}
           >
             <Box
+              ref={drawerFieldsRef}
               sx={{
                 width: '100%',
                 height: '100%',
@@ -1576,24 +1552,18 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   ? tenantText('drawerAddTitle', languageCode)
                   : tenantText('drawerEditTitle', languageCode)}
               </Typography>
-              <GlobalNotice severity="error">
-                {tenantText('requiredHint', languageCode)}
-              </GlobalNotice>
               <TextField
+                data-employee-field="email"
+                error={!!drawerErrors.email}
                 size="small"
                 label={tenantText('loginEmailLabel', languageCode)}
                 required={drawerNeedsLoginEmail}
                 value={drawerEmail}
-                onChange={(e) => setDrawerEmail(e.target.value)}
+                onChange={(e) => { setDrawerEmail(e.target.value); setStatusMessage(current => current?.source === 'drawer-validation' ? null : current); }}
                 placeholder="admin@company.com"
                 disabled={isDrawerSaving}
                 autoFocus
-                helperText={text(
-                  drawerNeedsLoginEmail
-                    ? 'loginEmailHelperRequired'
-                    : 'loginEmailHelperOptional',
-                  languageCode
-                )}
+                inputProps={{'aria-description':drawerErrors.email ? tenantText(drawerErrors.email, languageCode) : undefined}}
               />
               <TextField
                 size="small"
@@ -1610,11 +1580,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
               <TextField
                 size="small"
                 label={tenantText('nameLabel', languageCode)}
+                data-employee-field="name"
+                error={!!drawerErrors.name}
                 required
                 value={drawerDraft.name}
                 onChange={(e) => handleDrawerDraftChange({ name: e.target.value })}
                 disabled={isDrawerSaving}
-                helperText={tenantText('requiredInput', languageCode)}
+                inputProps={{'aria-description':drawerErrors.name ? tenantText(drawerErrors.name, languageCode) : undefined}}
               />
               <TextField
                 size="small"
@@ -1679,11 +1651,13 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                   select
                   size="small"
                   label={tenantText('factoryLabel', languageCode)}
+                  data-employee-field="factoryId"
+                  error={!!drawerErrors.factoryId}
                   required
                   value={drawerDraft.factoryId}
                   onChange={(e) => handleDrawerDraftChange({ factoryId: e.target.value })}
                   disabled={isDrawerSaving}
-                  helperText={tenantText('requiredInput', languageCode)}
+                  SelectProps={{SelectDisplayProps:{'aria-description':drawerErrors.factoryId ? tenantText(drawerErrors.factoryId, languageCode) : undefined}}}
                 >
                   <MenuItem value="">{tenantText('factorySelect', languageCode)}</MenuItem>
                   {factories.map((factory) => (
@@ -1712,6 +1686,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 size="small"
                 type="date"
                 label={tenantText('joinedAtLabel', languageCode)}
+                data-employee-field="joinedAt"
+                error={!!drawerErrors.joinedAt}
+                inputProps={{'aria-description':drawerErrors.joinedAt ? tenantText(drawerErrors.joinedAt, languageCode) : undefined}}
                 value={drawerDraft.joinedAt || ''}
                 onChange={(e) => handleDrawerDraftChange({ joinedAt: e.target.value })}
                 disabled={isDrawerSaving}
@@ -1721,6 +1698,9 @@ const EmployeeBoard = ({ orgId: overrideOrgId, orgType: overrideOrgType }) => {
                 size="small"
                 type="date"
                 label={tenantText('leftAtLabel', languageCode)}
+                data-employee-field="leftAt"
+                error={!!drawerErrors.leftAt}
+                inputProps={{'aria-description':drawerErrors.leftAt ? tenantText(drawerErrors.leftAt, languageCode) : undefined}}
                 value={drawerDraft.leftAt || ''}
                 onChange={(e) => handleDrawerDraftChange({ leftAt: e.target.value })}
                 disabled={isDrawerSaving}

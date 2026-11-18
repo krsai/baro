@@ -139,6 +139,7 @@
     "test:style-loading-browser": "node scripts/style-loading-browser.test.mjs",
     "test:database-target-guard": "node --test scripts/database-target-guard-regression.test.mjs",
     "test:employee-number": "npm --prefix backend run build && node --test scripts/employee-number-regression.test.mjs",
+    "test:employee-validation": "node scripts/employee-validation-browser.test.mjs",
     "test:work-record-response": "npm --prefix backend run build && node --test scripts/work-record-response-regression.test.mjs",
     "test:customer-production-report": "node --test scripts/customer-production-report-regression.test.mjs",
     "test:outsourced-work-record": "node --test scripts/outsourced-work-record-regression.test.mjs",
