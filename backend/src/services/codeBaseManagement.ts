@@ -160,9 +160,11 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
   const ledgerUsage=db.bankLedgerEntry&&db.bankLedgerSettlementLine?`
     UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerEntry" entry ON entry."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])
     UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerSettlementLine" line ON line."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])`:'';
+  const invoiceUsage=db.invoiceGeneralLine?`
+    UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "InvoiceGeneralLine" line ON line."transactionCodeId"=code.id WHERE code."baseId"=ANY($1::int[])`:'';
   const rows = await db.$queryRawUnsafe(`SELECT DISTINCT code."baseId" AS id
     FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id
-    WHERE code."baseId"=ANY($1::int[])`+ledgerUsage,ids) as { id: number }[];
+    WHERE code."baseId"=ANY($1::int[])`+ledgerUsage+invoiceUsage,ids) as { id: number }[];
   const types=db.codeItemType?await db.codeItemType.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
   const handled=db.partnerHandledSelection?await db.partnerHandledSelection.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
   return new Set([...rows.map(row=>row.id),...types.map((type:any)=>type.baseId),...handled.map((row:any)=>row.baseId)]);

@@ -470,7 +470,7 @@ const ProcessMasterSection = ({
               <TableCell sx={{ width: '21%', fontWeight: 700 }}>한국어</TableCell>
               <TableCell sx={{ width: '21%', fontWeight: 700 }}>영어</TableCell>
               <TableCell sx={{ width: '21%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>스타일 공정 참조</TableCell>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
               <TableCell sx={{ width: '5%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
@@ -600,7 +600,7 @@ const ProcessMasterSection = ({
                     </TableCell>
                     <TableCell sx={{ textAlign: 'center' }}>
                       {usageConflict ? (
-                        <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
+                        <Tooltip title="스타일 공정에 연결되어 삭제할 수 없습니다.">
                           <span>
                             <DeleteActionButton size="small" disabled />
                           </span>
@@ -1037,7 +1037,7 @@ const ProcessMasterLinkedSpecSection = ({
               <TableCell sx={{ width: '20%', fontWeight: 700 }}>한국어</TableCell>
               <TableCell sx={{ width: '20%', fontWeight: 700 }}>영어</TableCell>
               <TableCell sx={{ width: '20%', fontWeight: 700 }}>베트남어</TableCell>
-              <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>사용중</TableCell>
+              <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>스타일 공정 참조</TableCell>
               <TableCell sx={{ width: '7%', textAlign: 'center', fontWeight: 700 }}>중복</TableCell>
               <TableCell sx={{ width: '6%', textAlign: 'center', fontWeight: 700 }}>삭제</TableCell>
             </TableRow>
@@ -1139,7 +1139,7 @@ const ProcessMasterLinkedSpecSection = ({
                   </TableCell>
                   <TableCell sx={{ textAlign: 'center' }}>
                     {usageConflict ? (
-                      <Tooltip title="사용 중인 항목은 삭제할 수 없습니다.">
+                      <Tooltip title="스타일 공정에 연결되어 삭제할 수 없습니다.">
                         <span>
                           <DeleteActionButton size="small" disabled />
                         </span>

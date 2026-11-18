@@ -39,7 +39,7 @@ export default function AccountingCodeSettings(){
  const {active}=useRequestScopeContext();
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
  const usageText=accountingCodeUsageText[languageCode]||accountingCodeUsageText.en;
- const usageTitle=row=>row.transactionUsage?[usageText.expense+': '+row.transactionUsage.expense,usageText.ledger+': '+row.transactionUsage.ledger,usageText.settlement+': '+row.transactionUsage.settlement,usageText.past+': '+row.transactionUsage.history].join(' / '):'';
+ const usageTitle=row=>row.transactionUsage?[usageText.expense+': '+row.transactionUsage.expense,usageText.ledger+': '+row.transactionUsage.ledger,usageText.settlement+': '+row.transactionUsage.settlement,usageText.invoice+': '+(row.transactionUsage.invoice||0),usageText.past+': '+row.transactionUsage.history,usageText.types+': '+(row.transactionUsage.types||0),usageText.handled+': '+(row.transactionUsage.handled||0)].join(' / '):'';
  const directionText=accountingDirectionText[languageCode]||accountingDirectionText.en;
  const inputsText=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const materialText=MATERIAL_SETTINGS_TEXT[languageCode]||MATERIAL_SETTINGS_TEXT.en;
@@ -97,9 +97,9 @@ export default function AccountingCodeSettings(){
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>
-      <TableCell>{row.materialSettings?.enabled?<Chip size="small" color="primary" label={materialText.enabled}/>:'—'}</TableCell><TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current+row.transactionUsage.history+(row.transactionUsage.types||0)+(row.transactionUsage.handled||0),languageCode)}/>} </TableCell><TableCell><Stack direction="row">
+      <TableCell>{row.materialSettings?.enabled?<Chip size="small" color="primary" label={materialText.enabled}/>:'—'}</TableCell><TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current,languageCode)}/>} </TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
-       <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={row.transactionUsage?.history&&!row.transactionUsage?.current?usageText.protected:usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
+       <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
       </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={7}>{text.empty}</TableCell></TableRow>}</TableBody>
     </Table></TableContainer>
    </HierarchyPanel>
