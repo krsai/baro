@@ -9,9 +9,12 @@ function preparationPlan(mode = 'prepare') {
   const schema = { script: 'prisma:deploy:safe' };
   const sql = [{ script: 'prisma:apply:migration-fix' }, { script: 'prisma:apply:factory-child-org-integrity' }];
   const maintenance = value => ({ node: 'scripts/application-database-maintenance.js', args: [value] });
-  if (mode === 'initialize') return [generate, { node: 'scripts/assert-empty-database.js' }, schema, ...sql, { node: 'scripts/migrate-expenses.js' }, { node: 'scripts/migrate-entity-profiles.js' }, maintenance('prepare')];
-  return [generate, ...(mode === 'legacy' ? [...legacySteps, maintenance('legacy')] : []),
-    ...sql, schema, { node: 'scripts/migrate-expenses.js' }, { node: 'scripts/migrate-entity-profiles.js' }, maintenance('prepare'), ...(mode === 'legacy' ? [maintenance('historical-cards')] : [])];
+  const migrations = [{ node: 'scripts/migrate-expenses.js' }, { node: 'scripts/migrate-entity-profiles.js' }];
+  if (mode === 'initialize') return [generate, { node: 'scripts/assert-empty-database.js' }, schema, ...sql, ...migrations, maintenance('prepare')];
+  if (mode === 'legacy') return [generate, ...legacySteps, maintenance('legacy'), ...sql, schema, ...migrations, maintenance('prepare'), maintenance('historical-cards')];
+  // Existing installations use the same checksummed migrations as Railway preflight.
+  // Replaying bootstrap SQL/db push would rewrite SQL-managed schema and historical ST.
+  return [generate, ...migrations, maintenance('verify')];
 }
 
 function runPlan(plan, run = spawnSync) {

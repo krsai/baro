@@ -4,6 +4,9 @@
 
 ## Railway 서비스별 빌드 설정
 
+- 일반 배포의 `database:prepare`는 Prisma Client 생성 → 기존 `migrate-expenses.js`·`migrate-entity-profiles.js`의 버전/체크섬 기반 미적용 SQL → `application-database-maintenance.js verify`의 읽기 전용 런타임 검사를 실행한다. `migration_fix.sql`·공장 과거 자료 보정·`db push`·과거 localization 정리는 빈 DB 초기화 또는 명시적 legacy 업그레이드에서만 실행한다. DB target guard·회사 FK·이관 영수증·필수 열/enum/제약·활성 트리거 검사와 Railway prestart 검사는 유지한다. 운영 DB의 SQL 관리 테이블/부분 인덱스/FK를 Prisma 전체 동기화로 재작성하지 않는다. 정상 배포에는 임의 추가 SQL 필터도 사용하지 않는다.
+- `e57728cd`의 프런트 자산 보존 옵션이 당시 잘못 지정된 백엔드 Config File `/frontend/railway.json`을 통해 tsc에 전달됐다. `02e6d054`는 프런트 명령의 옵션 유출을 수정했다. 올바른 백엔드 설정을 적용한 뒤 실행된 기존 전체 준비 절차에서 관계 ST 재이관·Organization 지연 DDL·SQL 관리 테이블 삭제 차이가 연속 노출됐다. 프런트 자산 파일 보존 자체가 업무 DB/ST를 변경하지 않는다. 관련 검수는 정상/초기화/legacy 계획·실패 중단·읽기 전용 검증·Railway 실제 버전 SQL 재시도/원자료 보존 회귀다.
+
 - migration_fix에서 Organization DML 후 DDL을 실행할 때는 pg_temp.baro_validate_organization_ddl로 해당 테이블의 실제 deferrable 제약을 실행·검증하고 선언된 초기 모드를 복원한다. pending trigger events 오류를 피하려 트리거를 비활성화하거나 전체 제약 모드를 영구 변경하지 않는다. 잘못된 동일성/FK는 계속 롤백하며 helper는 세션 임시 함수다.
 
 - 과거 관계 버킷 이관은 timeBucketSetVersionId가 아직 없는 관계에 한정한다. 이미 설정된 관계의 현재 버킷에 과거 StyleProcessStandard를 재복사하거나 현재 수량 구간을 과거 전체 구간과 비교하지 않는다. 새 이관 관계의 실제 원본 ST 복사 보존 검사는 같은 DO 트랜잭션 안에서 관계별로 수행하고 누락 시 해당 이관 전체를 롤백한다. 브랜드 스타일 원본과 실제 제조사/sourceOrgId=0 공정·ST 범위를 유지한다.

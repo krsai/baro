@@ -32423,9 +32423,13 @@ const refreshAj1867UnassignedCardOnce = async () => {
 let startupLifecycleState: StartupLifecycleState = "booting";
 
 // Explicit operator/deploy entrypoint. Normal API startup never calls this.
-export const runDatabaseMaintenance = async (mode: "prepare" | "legacy" | "historical-cards") => {
+export const runDatabaseMaintenance = async (mode: "verify" | "prepare" | "legacy" | "historical-cards") => {
   try {
     await ensureDatabaseReady();
+    if (mode === "verify") {
+      await ensureRuntimeSchemaReady();
+      return;
+    }
     if (mode === "legacy") {
       await ensureBusinessPartnerMergedIntoOrganization();
       return;

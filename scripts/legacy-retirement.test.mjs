@@ -116,14 +116,20 @@ test('normal start and dev startup do not run database preparation or historical
 
 test('deployment, empty schema initialization, and legacy upgrades have separate ordered plans', () => {
   const current=preparationPlan();
-  assert.ok(current.some(step=>step.script==='prisma:apply:migration-fix'));
-  assert.ok(current.some(step=>step.script==='prisma:deploy:safe'));
+  assert.deepEqual(current,[
+    {script:'prisma:prepare-client'},
+    {node:'scripts/migrate-expenses.js'},
+    {node:'scripts/migrate-entity-profiles.js'},
+    {node:'scripts/application-database-maintenance.js',args:['verify']},
+  ]);
   assert.ok(current.every(step=>!JSON.stringify(step).match(/remove-line|ownership|backfill|historical-cards/)));
   const initialize=preparationPlan('initialize');
   assert.equal(initialize[1].node,'scripts/assert-empty-database.js');
   assert.equal(initialize[2].script,'prisma:deploy:safe');
   assert.ok(initialize.every(step=>!JSON.stringify(step).match(/reset-to-baseline|--force-reset/)));
   const legacy=preparationPlan('legacy');
+  assert.ok(legacy.some(step=>step.script==='prisma:apply:migration-fix'));
+  assert.ok(legacy.some(step=>step.script==='prisma:deploy:safe'));
   assert.ok(legacy.some(step=>step.node==='scripts/transfer-manufacturer-ownership.js'));
   assert.ok(legacy.some(step=>step.script==='prisma:remove-line-domain'));
   assert.throws(()=>preparationPlan('unknown'));
@@ -166,7 +172,7 @@ test('maintenance modes separate schema preparation from historical data writes 
   const current = ['ensureOrganizationLocalizationColumnsReady','ensureWorkOrderLocalizationColumnsReady',
     'ensureStyleLocalizationColumnsReady','ensureWorkRecordCanonicalSchemaReady','ensureWorkOrderStatusSchemaReady',
     'ensureProcessMasterOptionTypeSchemaReady','ensureProcessMasterOptionRelationSchemaReady','ensureHardcodedSystemAdmin','ensureRuntimeSchemaReady'];
-  for (const mode of ['prepare','legacy','historical-cards']) {
+  for (const mode of ['verify','prepare','legacy','historical-cards']) {
     const calls=[];
     const helpers=['ensureDatabaseReady',...current,'ensureBusinessPartnerMergedIntoOrganization','refreshAj1867UnassignedCardOnce'];
     const { runDatabaseMaintenance }=loadSourceBindings('backend/src/index.ts',['runDatabaseMaintenance'],{
@@ -174,6 +180,17 @@ test('maintenance modes separate schema preparation from historical data writes 
       prisma:{$disconnect:async()=>{calls.push('disconnect');}},
     });
     await runDatabaseMaintenance(mode);
-    assert.deepEqual(calls,['ensureDatabaseReady',...(mode==='prepare'?current:mode==='legacy'?['ensureBusinessPartnerMergedIntoOrganization']:['refreshAj1867UnassignedCardOnce']),'disconnect']);
+    assert.deepEqual(calls,['ensureDatabaseReady',...(mode==='verify'?['ensureRuntimeSchemaReady']:mode==='prepare'?current:mode==='legacy'?['ensureBusinessPartnerMergedIntoOrganization']:['refreshAj1867UnassignedCardOnce']),'disconnect']);
   }
+});
+
+test('deployment verification rejects schema drift and disconnects without historical writes', async () => {
+  const calls=[];
+  const {runDatabaseMaintenance}=loadSourceBindings('backend/src/index.ts',['runDatabaseMaintenance'],{
+    ensureDatabaseReady:async()=>{calls.push('connect');},
+    ensureRuntimeSchemaReady:async()=>{calls.push('verify');throw Error('required company FK missing');},
+    prisma:{$disconnect:async()=>{calls.push('disconnect');}},
+  });
+  await assert.rejects(runDatabaseMaintenance('verify'),/required company FK missing/);
+  assert.deepEqual(calls,['connect','verify','disconnect']);
 });
