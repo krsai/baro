@@ -7,6 +7,7 @@ import ViewColumnOutlinedIcon from '@mui/icons-material/ViewColumnOutlined';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import {DndContext,PointerSensor,closestCenter,useDraggable,useDroppable,useSensor,useSensors} from '@dnd-kit/core';
 import AppPageContainer from './AppPageContainer';
+import {DashboardWidgetSettingsContext} from './DashboardWidgetSettings';
 import {dashboardWidgetStorageKey,moveDashboardWidget,normalizeDashboardWidgets,resolveDashboardWidgetLayout} from '../utils/dashboardWidgets.mjs';
 
 const TEXT={
@@ -18,7 +19,7 @@ function readStoredLayout(key){
  let value=null;try{const raw=localStorage.getItem(key);if(raw!==null){const parsed=JSON.parse(raw);if(Array.isArray(parsed))value={legacy:true,items:parsed};else if(parsed?.version===2&&Array.isArray(parsed.items))value=parsed;}}catch{}
  return {key,value};
 }
-const SETTINGS_TEXT={ko:{settings:'설정',back:'배치로 돌아가기'},en:{settings:'Settings',back:'Back to layout'},vi:{settings:'Cài đặt',back:'Trở về bố cục'}};
+const SETTINGS_TEXT={ko:{settings:'설정',back:'배치로 돌아가기',cancel:'취소'},en:{settings:'Settings',back:'Back to layout',cancel:'Cancel'},vi:{settings:'Cài đặt',back:'Trở về bố cục',cancel:'Hủy'}};
 function PreviewTile({item,label,onWidth,onMove,t}){
  const {attributes,listeners,setNodeRef,transform,isDragging}=useDraggable({id:item.id});
  const {setNodeRef:setDropRef,isOver}=useDroppable({id:item.id});
@@ -36,6 +37,7 @@ export default function DashboardWidgets({title,widgets,companyId,userId,languag
  const t=TEXT[languageCode]||TEXT.en,key=dashboardWidgetStorageKey(companyId,userId);
  const [stored,setStored]=useState(()=>readStoredLayout(key)),[open,setOpen]=useState(false),[draft,setDraft]=useState([]),[error,setError]=useState(false);
  const [settingsId,setSettingsId]=useState(null),[gridHeight,setGridHeight]=useState(null),gridRef=useRef(null),s=SETTINGS_TEXT[languageCode]||SETTINGS_TEXT.en;
+ const [directSettings,setDirectSettings]=useState(false);
  useEffect(()=>{setStored(readStoredLayout(key));setOpen(false);setError(false);},[key]);
  const savedValue=stored?.key===key?stored.value:readStoredLayout(key).value;
  const layout=resolveDashboardWidgetLayout(savedValue,widgets);
@@ -48,15 +50,16 @@ export default function DashboardWidgets({title,widgets,companyId,userId,languag
  },[key,layout.length]);
  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}));
  const dirty=JSON.stringify(draft)!==JSON.stringify(layout);
- const close=()=>{setOpen(false);setSettingsId(null);setError(false);};
+ const close=()=>{setOpen(false);setSettingsId(null);setDirectSettings(false);setError(false);};
+ const openWidgetSettings=id=>{setDraft(layout);setSettingsId(id);setDirectSettings(true);setError(false);setOpen(true);};
  const save=()=>{const next=normalizeDashboardWidgets(draft,widgets);try{localStorage.setItem(key,JSON.stringify({version:2,items:next,defaultsApplied:widgets.map(widget=>widget.defaultTag).filter(Boolean)}));}catch{setError(true);return;}setStored({key,value:{version:2,items:next,defaultsApplied:widgets.map(widget=>widget.defaultTag).filter(Boolean)}});close();onSaved?.(t.saved);};
- return <AppPageContainer title={title} titleActions={<Button variant="outlined" startIcon={<DashboardCustomizeIcon/>} onClick={()=>{setDraft(layout);setSettingsId(null);setError(false);setOpen(true);}}>{t.select}</Button>}>
+ return <AppPageContainer title={title} titleActions={<Button variant="outlined" startIcon={<DashboardCustomizeIcon/>} onClick={()=>{setDraft(layout);setSettingsId(null);setDirectSettings(false);setError(false);setOpen(true);}}>{t.select}</Button>}>
   <Box ref={gridRef} data-testid="dashboard-widget-layout" sx={{display:layout.length?'grid':'none',height:gridHeight??'calc(100dvh - 180px)',minHeight:0,gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gridAutoRows:'minmax(0,1fr)',gap:2,alignItems:'stretch'}}>
-   {layout.map(item=><Box key={item.id} data-dashboard-widget={item.id} sx={{gridColumn:{lg:item.width==='full'?'span 2':'span 1'},minWidth:0,minHeight:0,'& > .MuiPaper-root':{height:'100%',minHeight:0,boxSizing:'border-box',overflow:'hidden'}}}>{typeof byId.get(item.id)?.content==='function'?byId.get(item.id).content(item):byId.get(item.id)?.content}</Box>)}
+   {layout.map(item=><Box key={item.id} data-dashboard-widget={item.id} sx={{gridColumn:{lg:item.width==='full'?'span 2':'span 1'},minWidth:0,minHeight:0,'& > .MuiPaper-root':{height:'100%',minHeight:0,boxSizing:'border-box',overflow:'hidden'}}}><DashboardWidgetSettingsContext.Provider value={{label:byId.get(item.id)?.label+' '+s.settings,open:()=>openWidgetSettings(item.id)}}>{typeof byId.get(item.id)?.content==='function'?byId.get(item.id).content(item):byId.get(item.id)?.content}</DashboardWidgetSettingsContext.Provider></Box>)}
   </Box>
   {!layout.length&&<Typography color="text.secondary">{t.empty}</Typography>}
   {children}
-  <Dialog open={open} onClose={()=>settingsId?setSettingsId(null):close()} fullWidth maxWidth="md"><DialogTitle>{settingsId?byId.get(settingsId)?.label+' · '+s.settings:t.select}</DialogTitle><DialogContent>{settingsId?<Stack spacing={2} data-testid="dashboard-widget-settings">
+  <Dialog open={open} onClose={()=>settingsId&&!directSettings?setSettingsId(null):close()} fullWidth maxWidth="md"><DialogTitle>{settingsId?byId.get(settingsId)?.label+' · '+s.settings:t.select}</DialogTitle><DialogContent>{settingsId?<Stack spacing={2} data-testid="dashboard-widget-settings">
    <TextField select size="small" label={t.width} value={draft.find(item=>item.id===settingsId)?.width||'half'} onChange={event=>setDraft(current=>current.map(item=>item.id===settingsId?{...item,width:event.target.value}:item))}><MenuItem value="half">{t.half}</MenuItem><MenuItem value="full">{t.full}</MenuItem></TextField>
    {byId.get(settingsId)?.options?.map(option=><FormControlLabel key={option.id} label={option.label} control={<Checkbox checked={draft.find(item=>item.id===settingsId)?.settings?.[option.id]!==false} onChange={event=>setDraft(current=>current.map(row=>row.id===settingsId?{...row,settings:{...row.settings,[option.id]:event.target.checked}}:row))}/>}/>)}</Stack>:<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'200px minmax(0,1fr)'},gap:2}}>
    <Stack><Typography variant="subtitle2" sx={{mb:1}}>{t.available}</Typography>{[...draft.map(item=>byId.get(item.id)).filter(Boolean),...widgets.filter(widget=>!draft.some(item=>item.id===widget.id))].map(widget=>{const index=draft.findIndex(item=>item.id===widget.id),item=draft[index];return <Box key={widget.id}>
@@ -69,6 +72,6 @@ export default function DashboardWidgets({title,widgets,companyId,userId,languag
      </Box>
     </DndContext>
    </Stack>
-  </Box>}{error&&<Alert severity="error" sx={{mt:2}}>{t.error}</Alert>}</DialogContent><DialogActions sx={{px:3,pb:2}}>{settingsId?<Button onClick={()=>setSettingsId(null)}>{s.back}</Button>:<><Button onClick={()=>setDraft(normalizeDashboardWidgets(null,widgets))}>{t.reset}</Button><Button variant="contained" disabled={!dirty} onClick={save}>{t.apply}</Button></>}</DialogActions></Dialog>
+  </Box>}{error&&<Alert severity="error" sx={{mt:2}}>{t.error}</Alert>}</DialogContent><DialogActions sx={{px:3,pb:2}}>{settingsId&&!directSettings?<Button onClick={()=>setSettingsId(null)}>{s.back}</Button>:<>{directSettings&&<Button onClick={close}>{s.cancel}</Button>}{!directSettings&&<Button onClick={()=>setDraft(normalizeDashboardWidgets(null,widgets))}>{t.reset}</Button>}<Button variant="contained" disabled={!dirty} onClick={save}>{t.apply}</Button></>}</DialogActions></Dialog>
  </AppPageContainer>;
 }

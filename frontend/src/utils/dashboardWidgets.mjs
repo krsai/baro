@@ -2,7 +2,7 @@ export function normalizeDashboardWidgets(value,widgets){
  const allowed=new Set(widgets.map(widget=>widget.id)),seen=new Set();
  return (Array.isArray(value)?value:widgets.map(({id,width='half'})=>({id,width})))
   .filter(item=>item&&allowed.has(item.id)&&!seen.has(item.id)&&seen.add(item.id))
-  .map(item=>{const widget=widgets.find(widget=>widget.id===item.id);return {id:item.id,width:item.width==='full'?'full':'half',...(widget.options?.length?{settings:Object.fromEntries(widget.options.map(option=>[option.id,item.settings?.[option.id]!==false]))}:{})};});
+  .map(item=>{const widget=widgets.find(widget=>widget.id===item.id);return {id:item.id,width:item.width==='full'?'full':'half',...(widget.options?.length?{settings:Object.fromEntries(widget.options.map(option=>[option.id,(item.settings?.[option.id]??item.settings?.[option.legacyId])!==false]))}:{})};});
 }
 export function moveDashboardWidget(layout,activeId,overId){
  const from=layout.findIndex(item=>item.id===activeId),to=layout.findIndex(item=>item.id===overId);

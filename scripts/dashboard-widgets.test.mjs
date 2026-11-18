@@ -1,7 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {dashboardWidgetStorageKey,moveDashboardWidget,normalizeDashboardWidgets,resolveDashboardWidgetLayout} from '../frontend/src/utils/dashboardWidgets.mjs';
+import {accountingAlertOptions,accountingAlertTitle} from '../frontend/src/constants/accountingAlerts.js';
 const widgets=[{id:'excess',width:'full'},{id:'notifications'},{id:'todo'}];
+test('handled-item settings inherit the old partner choice and then save independently',()=>{
+ const available=[{id:'notifications',options:accountingAlertOptions('ko')}];
+ const settings=normalizeDashboardWidgets([{id:'notifications',settings:{'accounting-partner':false}}],available)[0].settings;
+ assert.equal(settings['accounting-handled'],false);
+ const explicit=normalizeDashboardWidgets([{id:'notifications',settings:{...settings,'accounting-handled':true}}],available)[0].settings;
+ assert.equal(explicit['accounting-partner'],false);assert.equal(explicit['accounting-handled'],true);
+ for(const lang of ['ko','en','vi']){
+  const options=accountingAlertOptions(lang);assert.ok(options.some(option=>option.id==='accounting-handled'));
+  const titles=['EXPENSE','LEDGER','SETTLEMENT','INVOICE'].map(sourceKind=>accountingAlertTitle({sourceKind,kind:'PARTNER_HANDLED_ITEM'},lang));
+  assert.equal(new Set(titles).size,4);assert.ok(titles.every(title=>title.includes(': ')&&!title.includes('undefined')));
+ }
+ assert.equal(accountingAlertTitle({sourceKind:'EXPENSE',kind:'PARTNER_HANDLED_ITEM'},'ko'),'비용 신청: 거래처 취급 품목 불일치');
+ assert.equal(accountingAlertTitle({sourceKind:'LEDGER',kind:'PARTNER_HANDLED_ITEM'},'ko'),'입출금: 거래처 취급 품목 불일치');
+ assert.equal(accountingAlertTitle({sourceKind:'EXPENSE',path:'/outsourcing-record/edit/cost/12',kind:'PARTNER_HANDLED_ITEM'},'ko'),'비용 입력: 거래처 취급 품목 불일치');
+});
 test('new service notifications appear once and an explicit later removal remains removed',()=>{
  const available=[{id:'tasks'},{id:'notifications',defaultTag:'finance-v1'}];
  assert.deepEqual(resolveDashboardWidgetLayout({version:2,items:[{id:'tasks'}]},available).map(item=>item.id),['tasks','notifications']);

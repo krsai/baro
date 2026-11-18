@@ -4,6 +4,7 @@ import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {dashboardAlertText} from '../frontend/src/constants/dashboardAlerts.js';
+import {accountingAlertOptions} from '../frontend/src/constants/accountingAlerts.js';
 import {productionExcessText} from '../frontend/src/constants/productionExcess.js';
 const file=path.resolve('frontend/dashboard-alerts-acceptance.html'),port=43383;
 assert.ok(!existsSync(file));writeFileSync(file,`<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div data-workspace-viewport style="position:fixed;top:100px;bottom:40px;left:0;right:0;overflow:auto"><div id="root"></div></div><script type="module">import React from'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Page from'/src/pages/App/WorkspaceDashboard.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script></body></html>`);
@@ -12,11 +13,10 @@ try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/${path.basename(file)}`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
  for(const lang of ['ko','en','vi']){
-  const page=await browser.newPage({viewport:{width:1500,height:1000}}),errors=[],t=dashboardAlertText[lang];page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));
+  const page=await browser.newPage({viewport:{width:1500,height:1000}}),errors=[],t=dashboardAlertText[lang];page.setDefaultTimeout(20000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"const p={entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',employeeId:1};const auth={activeOrgId:1,activeProfile:p,accessProfile:p,user:{id:'admin'},isAuthenticated:true};export const useAuth=()=>auth;"}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={confirmDiscardUnsavedChanges:()=>true,navigateToPath:p=>window.navigation=p,showNotification:()=>{},markTabChanged:()=>{},clearTabChanged:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;export const AppActionsScope=({children})=>children;'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  await page.route('**/src/utils/accessControl*',r=>r.fulfill({contentType:'application/javascript',body:'export const canAccessPath=()=>true;'}));
   await page.route('**/src/pages/App/Order*',r=>r.fulfill({contentType:'application/javascript',body:'export default function Order(){return null;}'}));
   const json=(r,value)=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:value});
   await page.route('**/dashboard/accounting-alerts?*',r=>json(r,{rows:[],total:0,page:0}));
@@ -31,6 +31,10 @@ try{
   await page.goto(`http://127.0.0.1:${port}/${path.basename(file)}`);
   const notifications=page.locator('[data-dashboard-widget="notifications"]'),suspected=page.locator('[data-dashboard-widget="suspected-errors"]');
   await notifications.getByText(t.unassigned,{exact:true}).waitFor();assert.equal(await notifications.getByText(/STYLE/).count(),0);await suspected.locator('[data-dashboard-alert-kind="missing-record"]').waitFor();assert.equal(await suspected.getByTestId('production-excess-card').count(),1);
+  const settingsLabel={ko:'설정',en:'Settings',vi:'Cài đặt'}[lang];
+  for(const widget of await page.locator('[data-dashboard-widget]').all())assert.equal(await widget.getByRole('button',{name:new RegExp(' '+settingsLabel+'$')}).count(),1,'each live widget exposes one settings button');
+  await notifications.getByRole('button',{name:t.notifications+' '+settingsLabel,exact:true}).click();
+  await page.getByRole('dialog').getByRole('checkbox',{name:accountingAlertOptions(lang).find(option=>option.id==='accounting-handled').label,exact:true}).waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
   assert.equal(await page.getByText(t.notificationDescription,{exact:true}).count(),0);assert.equal(await page.getByText(t.suspectedDescription,{exact:true}).count(),0);
   const missingItem=suspected.locator('[data-dashboard-alert-kind="missing-record"]'),excessItem=suspected.locator('[data-dashboard-alert-kind="production-excess"]');await excessItem.waitFor();assert.match(await excessItem.innerText(),/130/);assert.match(await excessItem.innerText(),/100/);assert.match(await excessItem.innerText(),/\+30/);assert.equal(await suspected.locator('table').count(),0,'both error types use one list UI instead of an embedded table');
   for(const item of [missingItem,excessItem])assert.equal(await item.locator('[data-dashboard-card-title] .MuiChip-root').count(),1,'suspected-error count belongs to its title row');

@@ -1,7 +1,7 @@
 import {canShowAccountingAlerts,canShowApprovals} from '../../utils/dashboardAccess.mjs';
 import AccountingAlerts from '../../components/AccountingAlerts';
 import DashboardAlertsCard from '../../components/DashboardAlertsCard';
-import {accountingAlertText} from '../../constants/accountingAlerts';
+import {accountingAlertOptions} from '../../constants/accountingAlerts';
 import {dashboardAlertText} from '../../constants/dashboardAlerts';
 import WorkRequestsCard from '../../components/WorkRequestsCard';
 import {workRequestText} from '../../constants/dashboardWorkRequests';
@@ -13,9 +13,9 @@ import {useLanguage} from '../../context/LanguageContext';
 import {useAppActions} from '../../context/AppContext';
 export default function ServiceDashboard(){
  const auth=useAuth(),{activeOrgId,activeProfile}=auth,{languageCode}=useLanguage(),{navigateToPath,showNotification}=useAppActions();
- const accountingText=accountingAlertText[languageCode]||accountingAlertText.en,a=dashboardAlertText[languageCode]||dashboardAlertText.en;
+ const a=dashboardAlertText[languageCode]||dashboardAlertText.en;
  const widgets=[
- ...(canShowAccountingAlerts(auth)?[{id:'notifications',defaultTag:'accounting-notifications-v1',label:a.notifications,options:[{id:'accounting-retired',label:accountingText.RETIRED_EMPLOYEE},{id:'accounting-direction',label:accountingText.DIRECTION},{id:'accounting-partner',label:accountingText.PARTNER_INDUSTRY}],content:({settings})=><DashboardAlertsCard languageCode={languageCode} title={a.notifications} text={a} items={[]}><AccountingAlerts key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} settings={settings} showEmpty/></DashboardAlertsCard>}]:[]),
+ ...(canShowAccountingAlerts(auth)?[{id:'notifications',defaultTag:'accounting-notifications-v1',label:a.notifications,options:accountingAlertOptions(languageCode),content:({settings})=><DashboardAlertsCard languageCode={languageCode} title={a.notifications} text={a} items={[]}><AccountingAlerts key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onNavigate={navigateToPath} settings={settings} showEmpty/></DashboardAlertsCard>}]:[]),
  {id:"work-requests",newDefault:true,label:(workRequestText[languageCode]||workRequestText.en).title,content:<WorkRequestsCard key={activeOrgId+":"+activeProfile?.employeeId} orgId={activeOrgId} languageCode={languageCode}/>},
  ...(canShowApprovals(auth)?[{id:'approvals',label:({ko:'결재 현황',en:'Approvals',vi:'Phê duyệt'})[languageCode]||'Approvals',content:<ApprovalDashboardCard orgId={activeOrgId} role={activeProfile.orgRole} languageCode={languageCode} onNavigate={navigateToPath}/>}]:[]),
  ];

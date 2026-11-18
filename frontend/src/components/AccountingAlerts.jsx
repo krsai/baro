@@ -5,7 +5,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import DashboardDocumentDialog from './DashboardDocumentDialog';
 import {Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
-import {accountingAlertText} from '../constants/accountingAlerts';
+import {accountingAlertText,accountingAlertTitle} from '../constants/accountingAlerts';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {emitWorkspaceDataChanged,subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import {useRequestScopeContext} from '../context/RequestScopeContext';
@@ -13,7 +13,7 @@ import {useRequestScopeContext} from '../context/RequestScopeContext';
 export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,settings={},showEmpty=false}){
  const text=accountingAlertText[languageCode]||accountingAlertText.en,{active}=useRequestScopeContext();
  const pendingText=(accountingPendingText[languageCode]||accountingPendingText.en).pending;
- const kinds=[...(settings['accounting-retired']===false?[]:['RETIRED_EMPLOYEE']),...(settings['accounting-direction']===false?[]:['DIRECTION']),...(settings['accounting-partner']===false?[]:['PARTNER_INDUSTRY','PARTNER_HANDLED_ITEM','PARTNER_HANDLED_SETTINGS'])].join(',');
+ const kinds=[...(settings['accounting-retired']===false?[]:['RETIRED_EMPLOYEE']),...(settings['accounting-direction']===false?[]:['DIRECTION']),...(settings['accounting-partner']===false?[]:['PARTNER_INDUSTRY']),...((settings['accounting-handled']??settings['accounting-partner'])===false?[]:['PARTNER_HANDLED_ITEM','PARTNER_HANDLED_SETTINGS'])].join(',');
  const [selected,setSelected]=useState(null),[review,setReview]=useState(null),[reviewError,setReviewError]=useState(null);
  const [data,setData]=useState(null),[page,setPage]=useState(0),[reload,setReload]=useState(0),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false);
  const acknowledging=useRef(false),detailOpen=Boolean(selected||review);
@@ -54,14 +54,14 @@ export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,set
   {error&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{text.retry}</Button>}>{error}</Alert>}
   {loading&&!data&&<CircularProgress size={20}/>}
   {showEmpty&&data?.total===0&&!error&&<Typography color="text.secondary">{text.empty}</Typography>}
-  {data?.rows.map(row=><Box key={row.signature} data-accounting-alert={row.kind} sx={{position:'relative'}}>
-   <DashboardAlertItem languageCode={languageCode} showConfirm={false} title={text[row.kind]} detail={[row.date,row.reference,row.partyName,row.code,row.description,row.kind==='DIRECTION'?text.expected+': '+text[row.expectedDirection]+' · '+text.actual+': '+text[row.actualDirection]:null].filter(Boolean).join(' · ')} onClick={row.pendingOperation?undefined:()=>setSelected(row)} actions={<Button size="small" disabled={busy||Boolean(row.pendingOperation)} onClick={()=>openReview(row)}>{row.pendingOperation?pendingText:text.confirm}</Button>}/>
+  {data?.rows.filter(row=>kinds.split(',').includes(row.kind)).map(row=><Box key={row.signature} data-accounting-alert={row.kind} sx={{position:'relative'}}>
+   <DashboardAlertItem languageCode={languageCode} showConfirm={false} title={accountingAlertTitle(row,languageCode)} detail={[row.date,row.reference,row.partyName,row.code,row.description,row.kind==='DIRECTION'?text.expected+': '+text[row.expectedDirection]+' · '+text.actual+': '+text[row.actualDirection]:null].filter(Boolean).join(' · ')} onClick={row.pendingOperation?undefined:()=>setSelected(row)} actions={<Button size="small" disabled={busy||Boolean(row.pendingOperation)} onClick={()=>openReview(row)}>{row.pendingOperation?pendingText:text.confirm}</Button>}/>
   </Box>)}
   {!!data?.total&&data.total>10&&<Stack direction="row" justifyContent="flex-end" spacing={1}><Button disabled={!page||loading||busy} onClick={()=>setPage(value=>value-1)}>{text.previous}</Button><Button disabled={(page+1)*10>=data.total||loading||busy} onClick={()=>setPage(value=>value+1)}>{text.next}</Button></Stack>}
   <Dialog open={Boolean(review)} onClose={closeReview} fullWidth maxWidth="sm" aria-labelledby="accounting-alert-review-title">
    <DialogTitle id="accounting-alert-review-title">{text.review}</DialogTitle>
    <DialogContent><Stack spacing={2}>
-    <Alert severity="warning">{text[review?.kind]}</Alert>
+    <Alert severity="warning">{accountingAlertTitle(review,languageCode)}</Alert>
     {reviewError&&<Alert severity="error" action={reviewError.stale?<Button disabled={busy} onClick={()=>{closeReview();setReload(value=>value+1);}}>{text.refreshAlert}</Button>:undefined}>{reviewError.pending?pendingText:reviewError.stale?text.stale:text.failed}</Alert>}
     <Box component="dl" sx={{display:'grid',gridTemplateColumns:{xs:'1fr',sm:'auto 1fr'},gap:1.25,m:0}}>
      {[[text.date,review?.date],[text.party,review?.partyName],[text.reference,review?.reference],[text.code,review?.code],[text.description,review?.description],...(review?.kind==='DIRECTION'?[[text.expected,text[review.expectedDirection]],[text.actual,text[review.actualDirection]]]:[])].filter(([,value])=>value).map(([label,value])=><React.Fragment key={label}><Typography component="dt" variant="body2" color="text.secondary">{label}</Typography><Typography component="dd" variant="body2" sx={{m:0,overflowWrap:'anywhere'}}>{value}</Typography></React.Fragment>)}

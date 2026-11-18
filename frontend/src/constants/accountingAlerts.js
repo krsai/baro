@@ -3,6 +3,21 @@ const handledAlerts={
  en:{PARTNER_HANDLED_ITEM:'Partner handled item mismatch',PARTNER_HANDLED_SETTINGS:'Review partner handled item settings'},
  vi:{PARTNER_HANDLED_ITEM:'Mặt hàng không thuộc phạm vi đối tác',PARTNER_HANDLED_SETTINGS:'Kiểm tra cài đặt mặt hàng đối tác'},
 };
+const SOURCE_TEXT={
+ ko:{EXPENSE:'비용 신청',COST:'비용 입력',LEDGER:'입출금',SETTLEMENT:'입출금 정산',INVOICE:'청구서',UNKNOWN:'회계 업무'},
+ en:{EXPENSE:'Expense request',COST:'Cost entry',LEDGER:'Bank transaction',SETTLEMENT:'Bank settlement',INVOICE:'Invoice',UNKNOWN:'Accounting'},
+ vi:{EXPENSE:'Đề nghị chi phí',COST:'Ghi nhận chi phí',LEDGER:'Thu chi',SETTLEMENT:'Quyết toán thu chi',INVOICE:'Hóa đơn',UNKNOWN:'Kế toán'},
+};
+export function accountingAlertTitle(row,languageCode='en'){
+ const text=accountingAlertText[languageCode]||accountingAlertText.en,source=SOURCE_TEXT[languageCode]||SOURCE_TEXT.en;
+ const sourceKind=row?.sourceKind==='EXPENSE'&&row?.path?.startsWith('/outsourcing-record/edit/cost/')?'COST':row?.sourceKind;
+ return `${source[sourceKind]||source.UNKNOWN}: ${text[row?.kind]||text.review}`;
+}
+export function accountingAlertOptions(languageCode='en'){
+ const text=accountingAlertText[languageCode]||accountingAlertText.en;
+ const audience={ko:'관리자 · 회계',en:'Administrator · Accountant',vi:'Quản trị viên · Kế toán'};
+ return [{id:'accounting-retired',label:text.RETIRED_EMPLOYEE},{id:'accounting-direction',label:text.DIRECTION},{id:'accounting-partner',label:text.PARTNER_INDUSTRY},{id:'accounting-handled',legacyId:'accounting-partner',label:`${text.PARTNER_HANDLED_ITEM} (${audience[languageCode]||audience.en})`}];
+}
 export const accountingAlertText={
  ko:{...handledAlerts.ko,RETIRED_EMPLOYEE:'퇴사자 지급 확인',DIRECTION:'회계 코드 입출금 방향 불일치',PARTNER_INDUSTRY:'거래처·회계 코드 업종 불일치',confirm:'확인',IN:'입금',OUT:'출금',expected:'코드 기준',actual:'입력 방향',retry:'재시도',failed:'회계 알림을 불러오거나 확인하지 못했습니다.',previous:'이전',next:'다음',stale:'항목이 변경되었습니다. 새로 조회한 내용을 확인해 주세요.'},
  en:{...handledAlerts.en,RETIRED_EMPLOYEE:'Review payment to former employee',DIRECTION:'Accounting code direction mismatch',PARTNER_INDUSTRY:'Partner / accounting code industry mismatch',confirm:'Acknowledge',IN:'Deposit',OUT:'Withdrawal',expected:'Code direction',actual:'Recorded direction',retry:'Retry',failed:'Could not load or acknowledge accounting alerts.',previous:'Previous',next:'Next',stale:'The item changed. Review the refreshed record.'},
