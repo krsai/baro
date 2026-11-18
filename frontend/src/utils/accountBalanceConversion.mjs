@@ -22,3 +22,17 @@ export function convertAccountBalances(rows,target,rates={}){
  const units=absolute/d+(absolute%d*2n>=d?1n:0n),text=String(units).padStart(digits+1,'0');
  return (negative&&units!==0n?'-':'')+(digits?text.slice(0,-digits)+'.'+text.slice(-digits):text);
 }
+
+function negateAmount(value) {
+ const text=String(value);
+ return text.startsWith('-') ? text.slice(1) : '-'+text;
+}
+
+export function convertAccountFinalBalance(currencyTotals,outstandingTotals,target,rates) {
+ const outstandingBalances=outstandingTotals.flatMap(row=>[
+  {currencyCode:row.currencyCode,balance:row.receivable},
+  {currencyCode:row.currencyCode,balance:negateAmount(row.payable)},
+  {currencyCode:row.currencyCode,balance:negateAmount(row.customerCredit??'0')},
+ ]);
+ return convertAccountBalances([...currencyTotals,...outstandingBalances],target,rates);
+}

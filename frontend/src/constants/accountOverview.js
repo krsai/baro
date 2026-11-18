@@ -22,3 +22,6 @@ Object.assign(accountOverviewText.en,{ending:'Closing balance'});
 Object.assign(accountOverviewText.vi,{ending:'Số dư cuối kỳ'});
 Object.assign(accountOverviewText.vi,{balances:'Biến động tài khoản',month:'Tháng',previousMonth:'Tháng trước',nextMonth:'Tháng sau'});
 Object.assign(accountOverviewText.vi,{capture:'Lưu ảnh',captureFailed:'Không thể lưu ảnh.',close:'Đóng'});
+Object.assign(accountOverviewText.ko,{finalBalance:'최종 잔액'});
+Object.assign(accountOverviewText.en,{finalBalance:'Final balance'});
+Object.assign(accountOverviewText.vi,{finalBalance:'Số dư cuối cùng'});
