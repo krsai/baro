@@ -681,7 +681,7 @@ const PayrollEntry = () => {
           right={
             data ? (
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <PayrollTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} initialSearch={month} includeEmployees={false} disabled={!data.canManagePayables || togglingLock} />
+                <PayrollTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} initialSearch={month} disabled={!data.canManagePayables || togglingLock} />
                 <Tooltip title={(LOCK_TEXT[languageCode] || LOCK_TEXT.en)[locked ? "lockedHelp" : "unlockedHelp"]}>
                   <span>
                     <Button size="small" variant="contained" color="inherit" startIcon={locked ? <LockOutlinedIcon /> : <LockOpenOutlinedIcon />} disabled={togglingLock} onClick={handleLockToggle} sx={getPayrollLockButtonSx(locked)}>

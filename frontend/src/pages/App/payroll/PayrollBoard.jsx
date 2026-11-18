@@ -428,7 +428,7 @@ const PayrollBoard = () => {
       titleActions={(
         <Stack direction="row" spacing={1} alignItems="center">
           <LastUpdaterLabel />
-          <PayrollTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} showNotification={showNotification} onSaved={()=>load({silent:true})} />
+          <PayrollTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} onSaved={()=>load({silent:true})} />
         </Stack>
       )}
       toolbar={<PageToolbar showLastUpdater={false} right={(
