@@ -30,7 +30,7 @@ const INDUSTRY_FALLBACK={
  vi:{MANUFACTURER:'Sản xuất',BRAND:'Thương hiệu',SERVICE:'Dịch vụ'},
 };
 const COUNTRY_REQUIRED={ko:'업체를 조회하려면 국가를 선택해 주세요.',en:'Select a country to look up the company.',vi:'Vui lòng chọn quốc gia để tìm công ty.'};
-export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId,actionsTarget,knownCompany=null,searchMode=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange}){
+export function CompanyConnectionField({orgId,name,businessNumber,country,value,onChange,disabled,languageCode='ko',entityId,currentEntity=null,actionsTarget,knownCompany=null,searchMode=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange}){
  const text=COMPANY_CONNECTION_TEXT[languageCode]||COMPANY_CONNECTION_TEXT.en;
  const confirm=CONFIRM[languageCode]||CONFIRM.en;
  const labels=PROFILE_LABELS[languageCode]||PROFILE_LABELS.en;
@@ -57,7 +57,7 @@ export function CompanyConnectionField({orgId,name,businessNumber,country,value,
  const status=error||(linked?`${text.connected}: ${linked.name} (${linked.code})`:selected?`${confirm.selected}: ${selected.name} (${selected.code})`:value?.separate?confirm.separate:checked&&!options.length?text.none:'');
  const button=<Button ref={buttonRef} variant="outlined" size="small" title={status||confirm.find} onClick={()=>searchMode?onPanelOpenChange(!sidePanelOpen):linked?setStatusOpen(true):find()} disabled={disabled||loading||(!searchMode&&!linked&&!businessNumber&&String(name||'').trim().length<3)} sx={{whiteSpace:'nowrap'}}>{confirm.find}</Button>;
  return <>{actionsTarget?createPortal(button,actionsTarget):actionsTarget===undefined?button:null}
-  {searchMode&&sidePanelTarget&&createPortal(<CompanyPublicSearchPanel orgId={orgId} entityId={entityId} languageCode={languageCode} initialQuery={businessNumber||name} active={sidePanelOpen} onClose={()=>onPanelOpenChange(false)} onSelect={accept} profileRows={profileRows} labels={labels} currentCompany={linked||selected} fixed={Boolean(entityId&&linked&&!value)}/>,sidePanelTarget)}
+  {searchMode&&sidePanelTarget&&createPortal(<CompanyPublicSearchPanel currentEntity={currentEntity} orgId={orgId} entityId={entityId} languageCode={languageCode} initialQuery={businessNumber||name} active={sidePanelOpen} onClose={()=>onPanelOpenChange(false)} onSelect={accept} profileRows={profileRows} labels={labels} currentCompany={linked||selected} fixed={Boolean(entityId&&linked&&!value)}/>,sidePanelTarget)}
   <Popper open={!searchMode&&!!status&&statusOpen&&!!buttonRef.current&&!review&&!disabled} anchorEl={buttonRef.current} placement="bottom-end" sx={{zIndex:theme=>theme.zIndex.modal+1}} modifiers={[{name:'offset',options:{offset:[0,8]}}]}><ClickAwayListener onClickAway={()=>setStatusOpen(false)}><Paper elevation={3} sx={{p:1.5,maxWidth:'min(360px,calc(100vw - 32px))'}}><Box role="status" aria-live="polite" sx={{overflowWrap:'anywhere'}}>{error?<Alert severity="error">{error}</Alert>:<Typography variant="body2">{status}</Typography>}</Box></Paper></ClickAwayListener></Popper>
 
   <Dialog open={review&&!disabled} onClose={()=>setReview(false)} fullWidth maxWidth="sm" aria-labelledby="company-review-title">
