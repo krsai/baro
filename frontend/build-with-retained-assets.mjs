@@ -10,6 +10,20 @@ const MAX_FILES = 6000;
 const validName = name => typeof name === 'string' && /^[\w.-]+$/.test(name) && !name.startsWith('.');
 const digest = data => createHash('sha256').update(data).digest('hex');
 
+export function retentionOrigin(args = [], env = {}) {
+  const option = args.find(arg => arg.startsWith('--retain-from='));
+  if (option) {
+    const value = option.slice('--retain-from='.length);
+    if (!value) throw Error('Asset retention origin is empty');
+    return value;
+  }
+  if (env.FRONTEND_RETAIN_FROM) return env.FRONTEND_RETAIN_FROM;
+  // Keep frontend-only options inside this frontend-owned entry point.
+  // A generic Railway build command must also remain valid in backend/.
+  return env.RAILWAY_SERVICE_ID && env.RAILWAY_ENVIRONMENT_NAME === 'production'
+    ? 'https://www.barogarment.com' : null;
+}
+
 // Only public, same-origin static assets are copied. Never carry HTML, API
 // responses, credentials or application data into the next deployment.
 export async function collectPreviousAssets(origin, { now = Date.now(), fetcher = fetch } = {}) {
@@ -88,7 +102,7 @@ export async function mergeAssets(distDir, previous, now = Date.now()) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = dirname(fileURLToPath(import.meta.url));
-  const origin = process.argv.find(arg => arg.startsWith('--retain-from='))?.slice('--retain-from='.length);
+  const origin = retentionOrigin(process.argv.slice(2), process.env);
   // Download before building; an unavailable previous release blocks deployment
   // rather than silently publishing a release that breaks existing tabs.
   const previous = origin ? await collectPreviousAssets(origin) : new Map();

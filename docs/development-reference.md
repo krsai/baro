@@ -2,6 +2,12 @@
 
 # 개발 세부 기준·과거 변경 기록
 
+## Railway 서비스별 빌드 설정
+
+- BARO BACKEND는 Root Directory `/backend`, Railway Config File `/backend/railway.json`을 사용한다. 빌드는 Prisma 클라이언트 준비 후 TypeScript 빌드이며 배포 전 `railway:predeploy`와 `/ready` 검사를 유지한다. BARO FRONTEND는 `/frontend`와 `/frontend/railway.json`을 사용하고 프런트 package의 빌드·서버·`/health`만 실행한다. 루트 폴더를 지정해도 설정 파일 경로는 별도이므로 두 서비스가 같은 프런트 설정을 읽게 두지 않는다.
+- 2026-11-18 사용자가 확인한 백엔드 설정은 Root Directory `/backend` + Config File `/frontend/railway.json`이었다. 그 결과 프런트의 `--retain-from` 옵션이 `tsc`로 전달되어 TS5023으로 빌드가 실패했다. 프런트 Railway 명령은 인자 없는 `npm run build`로 두고 자산 보존 origin 결정은 프런트 빌드 파일 안에서만 수행한다. 해당 서비스의 설정 파일 경로 정정은 별도로 필요하며 정상 DB preflight/시작 검사 우회로 해결하지 않는다.
+- 프런트는 Railway 서비스 ID가 있고 환경 이름이 `production`인 빌드에서 공식 운영 origin의 이전 파일을 자동 수집한다. 명시 origin은 `FRONTEND_RETAIN_FROM` 또는 기존 CLI 옵션으로 지정할 수 있고 로컬/일반 CI 빌드는 외부 수집을 하지 않는다. 운영 이전 파일 검증 실패 시 배포 중단·14일 보존·무결성 검사는 유지한다. `deployment-build-config.test.mjs`를 회귀 CI에 포함해 프런트 전용 인자의 백엔드 유출과 백엔드 preflight 설정 퇴행을 검사한다.
+
 ## 대시보드 위젯별 설정과 알림 발생 업무
 
 - 알림·오류 의심의 설정 버튼은 제목 행 오른쪽 끝에 정렬한다. DashboardAlertsCard의 제목이 남은 너비를 채우게 하여 Stack의 간격 스타일이 자동 여백을 덮어써도 정렬을 유지한다. 업무 요청 등록은 공통 AddActionButton 아이콘을 사용하고 기존 번역의 등록 접근성 이름·툴팁·생성 권한을 유지한다. 회사 수신 설정 버튼의 관리자 제한과 서버 권한은 변경하지 않는다.
@@ -13,7 +19,7 @@
 ## 배포 간 프런트 화면 파일 보존
 
 - Railway 프런트 빌드는 공식 운영 origin의 이전 정적 화면 파일을 검증해 새 dist에 함께 제공한다. 현재 빌드에서 사용하지 않는 파일은 마지막 사용 빌드 기준 14일간 보존하며 보존만으로 만료를 연장하지 않는다. HTML과 업무/API 자료는 복사하지 않는다. 해시 파일명 충돌·manifest 무결성 오류·운영 파일 조회 실패는 배포 빌드를 중단한다. 공개 정적 manifest에는 파일명·크기·SHA-256·마지막 사용 시각만 저장하고 HTML과 같이 캐시하지 않는다.
-- 첫 적용은 기존 HTML과 Vite 의존성 맵의 해시 파일을 따라 이전 배포를 수집한다. 이미 앞선 배포에서 없어진 파일은 복원할 수 없으며 14일을 넘긴 열린 탭의 복구는 기존 명시적 다시 불러오기와 미저장 확인을 사용한다. 자동 새로고침·초안 폐기·다른 버전 모듈로 임의 대체하지 않는다. 운영 origin을 바꾸면 frontend/railway.json의 retain-from도 변경한다. 로컬 빌드는 외부 수집 없이 현재 manifest만 생성한다.
+- 첫 적용은 기존 HTML과 Vite 의존성 맵의 해시 파일을 따라 이전 배포를 수집한다. 이미 앞선 배포에서 없어진 파일은 복원할 수 없으며 14일을 넘긴 열린 탭의 복구는 기존 명시적 다시 불러오기와 미저장 확인을 사용한다. 자동 새로고침·초안 폐기·다른 버전 모듈로 임의 대체하지 않는다. 운영 origin을 바꾸면 프런트 FRONTEND_RETAIN_FROM 설정 또는 프런트 빌드 코드의 기본 origin을 변경한다. 로컬 빌드는 외부 수집 없이 현재 manifest만 생성한다.
 
 ## 직원 입력 검증 알림
 
