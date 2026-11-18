@@ -5,14 +5,17 @@ function additiveSchemaPlan(sql) {
     const match = statement.match(/^DROP TABLE "([^"]+)"$/);
     return match ? [match[1]] : [];
   }));
+  const unsupported = [];
   const changes = statements.filter(statement => {
     if (/^DROP TABLE /.test(statement)) return false;
     const alter = statement.match(/^ALTER TABLE "([^"]+)"/);
     if (alter && externalTables.has(alter[1])) return false;
     if (/^CREATE (UNIQUE )?INDEX /.test(statement) || /^CREATE TABLE /.test(statement)) return true;
     if (alter && /^ALTER TABLE "[^"]+"\s+ADD (COLUMN|CONSTRAINT)\b/.test(statement) && !/\bDROP\b|\bALTER COLUMN\b/.test(statement)) return true;
-    throw new Error('Schema preparation requires an explicit migration for: ' + statement.split('\n')[0]);
+    unsupported.push(statement);
+    return false;
   });
+  if (unsupported.length) throw new Error('Schema preparation requires explicit migrations (' + unsupported.length + ' statements):\n' + unsupported.join(';\n'));
   // Repeatable preparation creates an equivalent partial index for nullable factory codes.
   const body = changes.join(';\n').replace('CREATE UNIQUE INDEX "Factory_orgId_factoryCode_key"', 'CREATE UNIQUE INDEX IF NOT EXISTS "Factory_orgId_factoryCode_key"');
   return { sql: changes.length ? 'BEGIN;\n' + body + ';\nCOMMIT;\n' : '', preservedTables: [...externalTables] };
