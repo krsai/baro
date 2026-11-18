@@ -16,12 +16,12 @@ const port=43289,server=spawn(process.execPath,['node_modules/vite/bin/vite.js',
 try{
  for(let i=0;i<100;i++){try{if((await fetch(`http://127.0.0.1:${port}/account-overview-layout-acceptance.html`)).ok)break;}catch{}await new Promise(r=>setTimeout(r,100));}
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
- for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
+ for(const lang of ['ko','en','vi'])for(const width of [1920,1440,390]){
   const page=await browser.newPage({viewport:{width,height:1000},acceptDownloads:true}),errors=[];page.setDefaultTimeout(9000);page.on('pageerror',e=>errors.push(e.message));const t=accountOverviewText[lang];
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const auth={activeOrgId:1};export const useAuth=()=>auth;'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>{},showNotification:message=>{window.toast=message;}});'}));
-  await page.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const buildQueryString=q=>'?'+new URLSearchParams(q);export const requestJSON=async url=>{window.calls=(window.calls||0)+1;if(url.includes('exchange-rates'))return {date:'2026-11-05',rates:{VND:1},stale:false};const account={id:'a',name:'Main account',currencyCode:'VND',yesterdayIn:'16465275',yesterdayOut:'0',beginningBalance:'0',totalIn:'16465275',totalOut:'0',change:'16465275',currentBalance:'16465275'};return {asOf:'2026-11-05',yesterday:'2026-11-04',monthStart:'2026-11-01',historyStart:'2026-10-07',accounts:[account],currencyTotals:[account],transactions:[{id:'tx',accountName:account.name,counterparty:'BARO',purpose:'Detail only',direction:'IN',currencyCode:'VND',amount:'16465275',settlementLines:[]}],cashflowGroups:[{itemKey:'BASE:1',code:'CUT',direction:'IN',currencyCode:'VND',industries:[{id:2,nameEn:'Cutting',partnerRole:{id:1,nameEn:'Outsourcing'}}],entries:[{id:'cash-1',direction:'IN',accountId:'a',amount:'16465275',accountName:account.name,currencyCode:'VND',date:'2026-11-04',code:'CUT',nameKo:'재단',nameEn:'Cutting cost',nameVi:'Chi phí cắt',purpose:'Original ledger remark'}]}],outstandingTotals:[],receivables:[],payables:[],history:[{date:'2026-11-04',accounts:[{accountId:'a',balance:'16465275'}]},{date:'2026-11-05',accounts:[{accountId:'a',balance:'16465275'}]}]};};`}));
+  await page.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const buildQueryString=q=>'?'+new URLSearchParams(q);export const requestJSON=async url=>{window.calls=(window.calls||0)+1;if(url.includes('exchange-rates'))return {date:'2026-11-05',rates:{VND:1},stale:false};const account={id:'a',name:'Main account',currencyCode:'VND',yesterdayIn:'16465275',yesterdayOut:'0',beginningBalance:'0',totalIn:'16465275',totalOut:'0',change:'16465275',currentBalance:'16465275'};return {asOf:'2026-11-05',yesterday:'2026-11-04',monthStart:'2026-11-01',historyStart:'2026-10-07',accounts:[account],currencyTotals:[account],transactions:[{id:'tx',accountName:account.name,counterparty:'BARO',purpose:'Detail only',direction:'IN',currencyCode:'VND',amount:'16465275',settlementLines:[]}],cashflowGroups:[...Array.from({length:24},(_,i)=>({itemKey:'BASE:extra'+i,code:'X'+i,direction:i%2?'OUT':'IN',currencyCode:'VND',industries:[{id:100+i,nameEn:'Industry '+i,partnerRole:{id:100+i,nameEn:'Category '+i}}],entries:[{id:'extra'+i,direction:i%2?'OUT':'IN',accountId:'a',amount:'100',currencyCode:'VND'}]})),{itemKey:'BASE:1',code:'CUT',direction:'IN',currencyCode:'VND',industries:[{id:2,nameEn:'Cutting',partnerRole:{id:1,nameEn:'Outsourcing'}}],entries:[{id:'cash-1',direction:'IN',accountId:'a',amount:'16465275',accountName:account.name,currencyCode:'VND',date:'2026-11-04',code:'CUT',nameKo:'재단',nameEn:'Cutting cost',nameVi:'Chi phí cắt',purpose:'Original ledger remark'}]}],outstandingTotals:[],receivables:[],payables:[],history:[{date:'2026-11-04',accounts:[{accountId:'a',balance:'16465275'}]},{date:'2026-11-05',accounts:[{accountId:'a',balance:'16465275'}]}]};};`}));
   await page.goto(`http://127.0.0.1:${port}/account-overview-layout-acceptance.html`);
   await page.getByTestId('all-account-balance').waitFor();
   assert.equal(await page.getByRole('button',{name:t.reload,exact:true}).count(),0);
@@ -30,7 +30,29 @@ try{
   const category=items.getByRole('button',{name:'Outsourcing',exact:true});
   await category.waitFor();
   if(width===1440)assert.ok(Math.abs((await charts.boundingBox()).height-(await items.boundingBox()).height)<2);
+  const beforeHeight=(await items.boundingBox()).height;
+  const callsBefore=await page.evaluate(()=>window.calls);
   await category.focus();
+  assert.ok(Math.abs((await items.boundingBox()).height-beforeHeight)<2,'hover/focus must not resize the list');
+  if(width===1920){
+   const scroller=items.locator('[data-cashflow-list="IN"]').locator('..');
+   await scroller.evaluate(el=>{el.scrollTop=el.scrollHeight;});
+   const before=await scroller.evaluate(el=>({top:el.scrollTop,height:el.clientHeight}));
+   assert.ok(before.top>0,'fixture must overflow');
+   const bounds=await scroller.boundingBox();
+   await page.mouse.move(bounds.x+bounds.width/4,bounds.y+30);
+   await page.mouse.wheel(0,-60);
+   await page.waitForTimeout(150);
+   const afterWheel=await scroller.evaluate(el=>el.scrollTop);
+   await page.mouse.move(bounds.x+bounds.width*3/4,bounds.y+30);
+   await page.waitForTimeout(150);
+   assert.equal(await scroller.evaluate(el=>el.scrollTop),afterWheel,'crossing directions must preserve wheel position');
+   assert.equal(await scroller.evaluate(el=>el.clientHeight),before.height);
+   await page.mouse.move(0,0);
+   await category.evaluate(el=>el.blur());
+   await category.focus();
+  }
+  assert.equal(await page.evaluate(()=>window.calls),callsBefore,'hover and wheel must not fetch data');
   await charts.getByTestId('cashflow-tooltip').getByText(/Cutting/).waitFor();
   await category.click();
   const detail=page.getByRole('dialog');
