@@ -33,7 +33,7 @@ function PreviewTile({item,label,onWidth,onMove,t}){
   </Paper>
  </Box>;
 }
-export default function DashboardWidgets({title,widgets,companyId,userId,languageCode,onSaved,children}){
+export default function DashboardWidgets({title,widgets,companyId,userId,languageCode,onSaved,children,onWidgetSettings,canManageWidgetSettings=true}){
  const t=TEXT[languageCode]||TEXT.en,key=dashboardWidgetStorageKey(companyId,userId);
  const [stored,setStored]=useState(()=>readStoredLayout(key)),[open,setOpen]=useState(false),[draft,setDraft]=useState([]),[error,setError]=useState(false);
  const [settingsId,setSettingsId]=useState(null),[gridHeight,setGridHeight]=useState(null),gridRef=useRef(null),s=SETTINGS_TEXT[languageCode]||SETTINGS_TEXT.en;
@@ -55,7 +55,7 @@ export default function DashboardWidgets({title,widgets,companyId,userId,languag
  const save=()=>{const next=normalizeDashboardWidgets(draft,widgets);try{localStorage.setItem(key,JSON.stringify({version:2,items:next,defaultsApplied:widgets.map(widget=>widget.defaultTag).filter(Boolean)}));}catch{setError(true);return;}setStored({key,value:{version:2,items:next,defaultsApplied:widgets.map(widget=>widget.defaultTag).filter(Boolean)}});close();onSaved?.(t.saved);};
  return <AppPageContainer title={title} titleActions={<Button variant="outlined" startIcon={<DashboardCustomizeIcon/>} onClick={()=>{setDraft(layout);setSettingsId(null);setDirectSettings(false);setError(false);setOpen(true);}}>{t.select}</Button>}>
   <Box ref={gridRef} data-testid="dashboard-widget-layout" sx={{display:layout.length?'grid':'none',height:gridHeight??'calc(100dvh - 180px)',minHeight:0,gridTemplateColumns:{xs:'minmax(0,1fr)',lg:'repeat(2,minmax(0,1fr))'},gridAutoRows:'minmax(0,1fr)',gap:2,alignItems:'stretch'}}>
-   {layout.map(item=><Box key={item.id} data-dashboard-widget={item.id} sx={{gridColumn:{lg:item.width==='full'?'span 2':'span 1'},minWidth:0,minHeight:0,'& > .MuiPaper-root':{height:'100%',minHeight:0,boxSizing:'border-box',overflow:'hidden'}}}><DashboardWidgetSettingsContext.Provider value={{label:byId.get(item.id)?.label+' '+s.settings,open:()=>openWidgetSettings(item.id)}}>{typeof byId.get(item.id)?.content==='function'?byId.get(item.id).content(item):byId.get(item.id)?.content}</DashboardWidgetSettingsContext.Provider></Box>)}
+   {layout.map(item=><Box key={item.id} data-dashboard-widget={item.id} sx={{gridColumn:{lg:item.width==='full'?'span 2':'span 1'},minWidth:0,minHeight:0,'& > .MuiPaper-root':{height:'100%',minHeight:0,boxSizing:'border-box',overflow:'hidden'}}}><DashboardWidgetSettingsContext.Provider value={canManageWidgetSettings?{label:byId.get(item.id)?.label+' '+s.settings,open:()=>onWidgetSettings?onWidgetSettings({id:item.id,label:byId.get(item.id)?.label}):openWidgetSettings(item.id)}:null}>{typeof byId.get(item.id)?.content==='function'?byId.get(item.id).content(item):byId.get(item.id)?.content}</DashboardWidgetSettingsContext.Provider></Box>)}
   </Box>
   {!layout.length&&<Typography color="text.secondary">{t.empty}</Typography>}
   {children}

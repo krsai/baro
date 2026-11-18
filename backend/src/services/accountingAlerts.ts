@@ -1,4 +1,5 @@
 import {accountingDashboardRole} from './dashboardAccess';
+import {readDashboardRecipients,receivesAccountingAlert} from './dashboardAlertRecipients';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
@@ -59,34 +60,45 @@ export async function accountingAlertCandidates(db:any,orgId:number,permissions:
  });}).sort((a:any,b:any)=>b.date.localeCompare(a.date)||a.signature.localeCompare(b.signature));
 }
 export async function listAccountingAlerts(db:any,orgId:number,actorId:number,permissions:any,query:any={}){
- if(!await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}},select:{id:true,orgRole:true}}))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+ if(!Number.isSafeInteger(actorId)||actorId<=0)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+ const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}},select:{id:true,orgRole:true}});
+ const recipients=await readDashboardRecipients(db,orgId);
+ if(!actor||!accountingDashboardRole(actor.orgRole)&&!recipients.handledRoles.includes(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
  const page=Number(query.page||0);if(!Number.isSafeInteger(page)||page<0||page>10000)throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  const kinds=String(query.kinds||'DIRECTION,PARTNER_INDUSTRY,PARTNER_HANDLED_ITEM,PARTNER_HANDLED_SETTINGS,RETIRED_EMPLOYEE').split(',');if(kinds.some(kind=>!['DIRECTION','PARTNER_INDUSTRY','PARTNER_HANDLED_ITEM','PARTNER_HANDLED_SETTINGS','RETIRED_EMPLOYEE'].includes(kind)))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  const candidates=await accountingAlertCandidates(db,orgId,permissions),legacyPrefix=`ACCOUNTING_ALERT_ACK:${orgId}:`;
  const receipts=await db.systemSetting.findMany({where:{OR:[{key:{startsWith:prefix(orgId,actorId)}},{key:{startsWith:legacyPrefix}}]},select:{key:true,value:true}});
  // Historical company receipts retain their original signer, never hide peers' alerts.
  const acknowledged=new Set(receipts.flatMap((row:any)=>row.key.startsWith(prefix(orgId,actorId))?[row.key.slice(prefix(orgId,actorId).length)]:row.value?.actorId===actorId&&row.value?.orgId===orgId?[row.key.slice(legacyPrefix.length)]:[]));
- const rows=candidates.filter((row:any)=>kinds.includes(row.kind)&&!acknowledged.has(row.signature));return {rows:rows.slice(page*10,page*10+10),total:rows.length,page};
+ const rows=candidates.filter((row:any)=>receivesAccountingAlert(row.kind,actor.orgRole,recipients)&&kinds.includes(row.kind)&&!acknowledged.has(row.signature));return {rows:rows.slice(page*10,page*10+10),total:rows.length,page};
 }
 export async function acknowledgeAccountingAlert(db:any,orgId:number,actorId:number,permissions:any,signature:unknown){
+ if(!Number.isSafeInteger(actorId)||actorId<=0)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
  if(typeof signature!=='string'||!/^[a-f0-9]{64}$/.test(signature))throw createHttpError(400,'ACCOUNTING_ALERT_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
-  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT']}},select:{id:true,orgRole:true}});if(!actor||!accountingDashboardRole(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','ACCOUNTANT','OPERATOR']}},select:{id:true,orgRole:true}});
+  const recipients=await readDashboardRecipients(tx,orgId);
+  if(!actor||!accountingDashboardRole(actor.orgRole)&&!recipients.handledRoles.includes(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   const current=(await accountingAlertCandidates(tx,orgId,permissions)).find((row:any)=>row.signature===signature);
   if(!current)throw createHttpError(409,'ACCOUNTING_ALERT_CHANGED');
+  if(!receivesAccountingAlert(current.kind,actor.orgRole,recipients))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   if(current.pendingOperation)throw createHttpError(409,'ACCOUNTING_ALERT_PENDING');
   await tx.systemSetting.upsert({where:{key:prefix(orgId,actorId)+signature},create:{key:prefix(orgId,actorId)+signature,value:{signature,orgId,actorId,acknowledgedAt:new Date().toISOString()},updatedByEmployeeId:actorId},update:{}});return {acknowledged:true};
  });
 }
 export function registerAccountingAlertRoutes(app:any,db:any,gates:any){
- const access=async(req:any,res:any)=>{
-  const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return;
-  const orgId=ctx.organization.id,actorId=gates.actorId(),actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{orgRole:true}});if(!actor||!accountingDashboardRole(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+ const access=async(req:any,res:any,scopeOnly=false)=>{
+  const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return;
+  const orgId=ctx.organization.id,actorId=gates.actorId(),actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{orgRole:true}});
+  if(!Number.isSafeInteger(actorId)||actorId<=0)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
+  const recipients=await readDashboardRecipients(db,orgId);
+  if(!actor||!['ADMIN','ACCOUNTANT','OPERATOR'].includes(actor.orgRole)||!scopeOnly&&!accountingDashboardRole(actor.orgRole)&&!recipients.handledRoles.includes(actor.orgRole))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   const features=await companyIndustryMenuFeatures(db,orgId,ctx.organization.type),allowed=async(feature:string)=>features.includes(feature)&&await gates.canAccess({orgType:ctx.organization.type,orgRole:actor.orgRole,feature});
   if(!await allowed('DASHBOARD'))throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
   const permissions={ledger:await allowed('BANK_LEDGER'),expense:await allowed('OUTSOURCING_RECORD'),invoice:await allowed('INVOICE')};if(!permissions.ledger&&!permissions.expense&&!permissions.invoice)throw createHttpError(403,'ACCOUNTING_ALERT_ACCESS_DENIED');
-  res.setHeader('Cache-Control','no-store');return {orgId,actorId,permissions};
+  res.setHeader('Cache-Control','no-store');return {orgId,actorId,permissions,handled:recipients.handledRoles.includes(actor.orgRole)};
  };
+ app.get('/dashboard/accounting-alert-scope',async(req:any,res:any)=>{const ctx=await access(req,res,true);if(ctx)res.json({handled:ctx.handled});});
  app.get('/dashboard/accounting-alerts',async(req:any,res:any)=>{const ctx=await access(req,res);if(ctx)res.json(await listAccountingAlerts(db,ctx.orgId,ctx.actorId,ctx.permissions,req.query));});
  app.post('/dashboard/accounting-alerts/acknowledge',async(req:any,res:any)=>{const ctx=await access(req,res);if(ctx)res.json(await acknowledgeAccountingAlert(db,ctx.orgId,ctx.actorId,ctx.permissions,req.body?.signature));});
 }

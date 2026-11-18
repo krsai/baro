@@ -3,14 +3,9 @@ import test from 'node:test';
 import {dashboardWidgetStorageKey,moveDashboardWidget,normalizeDashboardWidgets,resolveDashboardWidgetLayout} from '../frontend/src/utils/dashboardWidgets.mjs';
 import {accountingAlertOptions,accountingAlertTitle} from '../frontend/src/constants/accountingAlerts.js';
 const widgets=[{id:'excess',width:'full'},{id:'notifications'},{id:'todo'}];
-test('handled-item settings inherit the old partner choice and then save independently',()=>{
- const available=[{id:'notifications',options:accountingAlertOptions('ko')}];
- const settings=normalizeDashboardWidgets([{id:'notifications',settings:{'accounting-partner':false}}],available)[0].settings;
- assert.equal(settings['accounting-handled'],false);
- const explicit=normalizeDashboardWidgets([{id:'notifications',settings:{...settings,'accounting-handled':true}}],available)[0].settings;
- assert.equal(explicit['accounting-partner'],false);assert.equal(explicit['accounting-handled'],true);
+test('accounting alert titles distinguish source workflows in all languages',()=>{
  for(const lang of ['ko','en','vi']){
-  const options=accountingAlertOptions(lang);assert.ok(options.some(option=>option.id==='accounting-handled'));
+  assert.equal(accountingAlertOptions(lang).some(option=>option.id==='accounting-handled'),false,'company recipients are not a personal display toggle');
   const titles=['EXPENSE','LEDGER','SETTLEMENT','INVOICE'].map(sourceKind=>accountingAlertTitle({sourceKind,kind:'PARTNER_HANDLED_ITEM'},lang));
   assert.equal(new Set(titles).size,4);assert.ok(titles.every(title=>title.includes(': ')&&!title.includes('undefined')));
  }

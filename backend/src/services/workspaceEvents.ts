@@ -30,6 +30,7 @@ const isReferenceUsagePath=(path:string)=>/^\/(partner-classifications|partner-e
 const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|partner-roles|code-bases|codes)(\/|\?|$)/.test(path);
 export const workspaceTopics=(path:string):string[]=>{
  const route=path.split('?')[0]||'';
+ if(route==='/dashboard/alert-recipients')return ['accounting-alerts'];
  if(isReferencePath(route))return referenceTopics;
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
@@ -117,7 +118,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   const employeeId=gates.actorId();
   const employee=employeeId&&await db.employee.findFirst({where:{id:employeeId,orgId:scope.organization.id,status:'ACTIVE'},select:{id:true,orgRole:true}});
   if(!employee)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
-  const topicFeatures:Record<string,string>={'accounting-codes':'DASHBOARD','partner-classifications':'DASHBOARD','shipping':'SHIPPING_REQUEST','shipping-ports':'FREIGHT','styles':'STYLE','orders':'ORDER','order-shipments':'ORDER_SHIPMENTS','invoice-drafts':'INVOICE','issued-invoices':'INVOICE','assignment-board':'ASSIGNMENT','holidays':'HOLIDAY','employees':'EMPLOYEE','sales-prices':'CUSTOMER','customers':'CUSTOMER','business-partners':'CUSTOMER','salary-system-settings':'SALARY_SYSTEM','production-allowance-settings':'SALARY_SYSTEM','payroll-sources':'PAYROLL','expense-requests':'OUTSOURCING_RECORD','expense-approvals':'OUTSOURCING_RECORD','change-approvals':'DASHBOARD','bank-ledger':'BANK_LEDGER','work-requests':'DASHBOARD'};
+  const topicFeatures:Record<string,string>={'accounting-alerts':'DASHBOARD','accounting-codes':'DASHBOARD','partner-classifications':'DASHBOARD','shipping':'SHIPPING_REQUEST','shipping-ports':'FREIGHT','styles':'STYLE','orders':'ORDER','order-shipments':'ORDER_SHIPMENTS','invoice-drafts':'INVOICE','issued-invoices':'INVOICE','assignment-board':'ASSIGNMENT','holidays':'HOLIDAY','employees':'EMPLOYEE','sales-prices':'CUSTOMER','customers':'CUSTOMER','business-partners':'CUSTOMER','salary-system-settings':'SALARY_SYSTEM','production-allowance-settings':'SALARY_SYSTEM','payroll-sources':'PAYROLL','expense-requests':'OUTSOURCING_RECORD','expense-approvals':'OUTSOURCING_RECORD','change-approvals':'DASHBOARD','bank-ledger':'BANK_LEDGER','work-requests':'DASHBOARD'};
   const offered=await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type),features=new Set<string>();
   for(const feature of new Set(Object.values(topicFeatures)))if(offered.includes(feature)&&await gates.canAccess({orgType:scope.organization.type,orgRole:employee.orgRole,feature}))features.add(feature);
   await connect();

@@ -16,7 +16,7 @@ export function accountingAlertTitle(row,languageCode='en'){
 export function accountingAlertOptions(languageCode='en'){
  const text=accountingAlertText[languageCode]||accountingAlertText.en;
  const audience={ko:'관리자 · 회계',en:'Administrator · Accountant',vi:'Quản trị viên · Kế toán'};
- return [{id:'accounting-retired',label:text.RETIRED_EMPLOYEE},{id:'accounting-direction',label:text.DIRECTION},{id:'accounting-partner',label:text.PARTNER_INDUSTRY},{id:'accounting-handled',legacyId:'accounting-partner',label:`${text.PARTNER_HANDLED_ITEM} (${audience[languageCode]||audience.en})`}];
+ return [{id:'accounting-retired',label:text.RETIRED_EMPLOYEE},{id:'accounting-direction',label:text.DIRECTION},{id:'accounting-partner',label:text.PARTNER_INDUSTRY}];
 }
 export const accountingAlertText={
  ko:{...handledAlerts.ko,RETIRED_EMPLOYEE:'퇴사자 지급 확인',DIRECTION:'회계 코드 입출금 방향 불일치',PARTNER_INDUSTRY:'거래처·회계 코드 업종 불일치',confirm:'확인',IN:'입금',OUT:'출금',expected:'코드 기준',actual:'입력 방향',retry:'재시도',failed:'회계 알림을 불러오거나 확인하지 못했습니다.',previous:'이전',next:'다음',stale:'항목이 변경되었습니다. 새로 조회한 내용을 확인해 주세요.'},

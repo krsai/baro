@@ -4,7 +4,7 @@ import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {chromium} from 'playwright-core';
 import {dashboardAlertText} from '../frontend/src/constants/dashboardAlerts.js';
-import {accountingAlertOptions} from '../frontend/src/constants/accountingAlerts.js';
+import {dashboardRecipientText} from '../frontend/src/constants/dashboardRecipientSettings.js';
 import {productionExcessText} from '../frontend/src/constants/productionExcess.js';
 const file=path.resolve('frontend/dashboard-alerts-acceptance.html'),port=43383;
 assert.ok(!existsSync(file));writeFileSync(file,`<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div data-workspace-viewport style="position:fixed;top:100px;bottom:40px;left:0;right:0;overflow:auto"><div id="root"></div></div><script type="module">import React from'react';import{createRoot}from'react-dom/client';import{MemoryRouter}from'react-router-dom';import{ThemeProvider,CssBaseline}from'@mui/material';import theme from'/src/theme';import Page from'/src/pages/App/WorkspaceDashboard.jsx';createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));</script></body></html>`);
@@ -19,6 +19,7 @@ try{
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/pages/App/Order*',r=>r.fulfill({contentType:'application/javascript',body:'export default function Order(){return null;}'}));
   const json=(r,value)=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:value});
+  await page.route('**/dashboard/alert-recipients?*',r=>json(r,{revision:0,handledRoles:['ADMIN','ACCOUNTANT']}));
   await page.route('**/dashboard/accounting-alerts?*',r=>json(r,{rows:[],total:0,page:0}));
   await page.route('**/orders?*',r=>json(r,[{orderId:'new-order',orderNumber:'NEW',hasAssignments:false,workflowStatus:'RECEIVED',productionAssignments:[]},{orderId:'assigned',orderNumber:'ASSIGNED',hasAssignments:true,workflowStatus:'PRODUCTION',productionAssignments:[{id:'plan-1',style:'STYLE',factory:'Factory',missingRecordProcesses:[{processCode:'P1',targetQuantity:10}]}]}]));
   await page.route('**/assignment-board-view?*',r=>json(r,{assignments:[]}));
@@ -34,7 +35,7 @@ try{
   const settingsLabel={ko:'설정',en:'Settings',vi:'Cài đặt'}[lang];
   for(const widget of await page.locator('[data-dashboard-widget]').all())assert.equal(await widget.getByRole('button',{name:new RegExp(' '+settingsLabel+'$')}).count(),1,'each live widget exposes one settings button');
   await notifications.getByRole('button',{name:t.notifications+' '+settingsLabel,exact:true}).click();
-  await page.getByRole('dialog').getByRole('checkbox',{name:accountingAlertOptions(lang).find(option=>option.id==='accounting-handled').label,exact:true}).waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+  await page.getByRole('dialog').getByRole('checkbox',{name:dashboardRecipientText[lang].ACCOUNTANT,exact:true}).waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
   assert.equal(await page.getByText(t.notificationDescription,{exact:true}).count(),0);assert.equal(await page.getByText(t.suspectedDescription,{exact:true}).count(),0);
   const missingItem=suspected.locator('[data-dashboard-alert-kind="missing-record"]'),excessItem=suspected.locator('[data-dashboard-alert-kind="production-excess"]');await excessItem.waitFor();assert.match(await excessItem.innerText(),/130/);assert.match(await excessItem.innerText(),/100/);assert.match(await excessItem.innerText(),/\+30/);assert.equal(await suspected.locator('table').count(),0,'both error types use one list UI instead of an embedded table');
   for(const item of [missingItem,excessItem])assert.equal(await item.locator('[data-dashboard-card-title] .MuiChip-root').count(),1,'suspected-error count belongs to its title row');

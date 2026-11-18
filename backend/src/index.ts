@@ -6,6 +6,7 @@ import {attachExpensePaymentCompletion} from './services/expensePaymentCompletio
 import {importAttendanceFile} from './services/attendanceImport';
 import {registerWorkTimeRoutes} from './services/workTimeRequests';
 import {registerAccountingAlertRoutes} from './services/accountingAlerts';
+import {registerDashboardRecipientRoutes} from './services/dashboardAlertRecipients';
 import {workLogStyleOverview} from './services/workLogStyleOverview';
 import {registerDashboardWorkRequestRoutes} from './services/dashboardWorkRequests';
 import {registerTransportExchangeRoutes} from './services/transportExchange';
@@ -19079,6 +19080,7 @@ app.get("/ready", (_req, res) => {
 });
 
 registerAccountingAlertRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
+registerDashboardRecipientRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerDashboardWorkRequestRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature});
 registerProductionExcessRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId,canAccess:hasRoleAccessPolicyFeature,loadQuantities:loadStyleGenderQuantityMapForWorkOrderIds,targetForProcess:resolveStyleProcessRowApplicableQuantity});
 registerManagementTargetRoutes(app,prisma,{requireOrgRole,actorId:getCurrentRequestActorEmployeeId});
