@@ -38,20 +38,17 @@ test('missing-code kind is ledger-only and uses null FK rather than code names',
  assert.deepEqual(accountingAlertKinds({sourceKind:'LEDGER',accountingCodeId:1,code:null},null),[]);
 });
 
-test('linked item codes prevent a false missing representative code alert',()=>{
- const source={sourceKind:'LEDGER',accountingCodeId:null,code:null};
- assert.deepEqual(accountingAlertKinds({...source,hasLinkedCodes:true},null),[]);
- assert.deepEqual(accountingAlertKinds({...source,hasLinkedCodes:false},null),['UNCODED_LEDGER']);
-});
-
 test('candidate lookup resolves actual company expense FKs and settlement codes',async()=>{
  const {accountingAlertCandidates}=require('../backend/dist/services/accountingAlerts');
  const make=(id,allocations=[],settlementLines=[])=>({id,allocations,settlementLines,amount:'10',transactionDate:'2026-11-19',direction:'OUT',accountingCodeId:null});
- const entries=[make('coded',[{expenseItemId:'a'},{expenseItemId:'b'}]),make('partial',[{expenseItemId:'a'},{expenseItemId:'missing'}]),make('bare'),make('settled',[],[{id:'line',accountingCode:{id:4,base:{cashDirection:'BOTH'}}}])];
+ const entries=[make('coded',[{id:'alloc-a',expenseItemId:'a',amount:'4'},{id:'alloc-b',expenseItemId:'b',amount:'6'}]),make('partial',[{id:'alloc-c',expenseItemId:'a',amount:'7'},{id:'alloc-missing',expenseItemId:'missing',amount:'3'}]),make('bare'),make('settled',[],[{id:'line',kind:'FEE',amount:'1',accountingCode:{id:4,base:{cashDirection:'BOTH'}}}])];
  const db={bankLedgerEntry:{findMany:async()=>entries},partnerTransactionCost:{findMany:async query=>{
   assert.equal(query.where.orgId,7);assert.deepEqual(new Set(query.where.id.in),new Set(['a','b','missing']));
-  return [{id:'a',transactionCodeId:1},{id:'b',transactionCodeId:2}];
+  return [{id:'a',transactionCodeId:1,transactionCode:{id:1,base:{cashDirection:'BOTH'}}},{id:'b',transactionCodeId:2,transactionCode:{id:2,base:{cashDirection:'IN'}}}];
  }},changeApprovalRequest:{findMany:async()=>[]}};
  const rows=await accountingAlertCandidates(db,7,{ledger:true});
- assert.deepEqual(new Set(rows.filter(row=>row.kind==='UNCODED_LEDGER').map(row=>row.sourceId)),new Set(['partial','bare']));
+ assert.equal(rows.find(row=>row.sourceId==='alloc-missing').amount,'3');
+ assert.ok(rows.some(row=>row.sourceId==='alloc-b'&&row.kind==='DIRECTION'&&row.path==='/bank-ledger/edit/coded'));
+ assert.ok(!rows.some(row=>row.sourceId==='line'));
+ assert.deepEqual(new Set(rows.filter(row=>row.kind==='UNCODED_LEDGER').map(row=>row.sourceId)),new Set(['alloc-missing','bare','settled']));
 });

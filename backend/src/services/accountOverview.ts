@@ -1,3 +1,4 @@
+import {attachLedgerReportItems,ledgerReportItems} from './ledgerReportItems';
 import {attachLedgerCounterpartyNames} from './ledgerCounterparty';
 import {openingSum} from './accountingOpening';
 import type {Prisma} from '@prisma/client';
@@ -6,6 +7,7 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {ledgerDate,ledgerScale4,ledgerMoney,readLedgerAccounts} from './bankLedger';
 import {attachExpenseApprovalStates} from './bankEvidence';
 import {legacyExpenseNumber} from './documentNumber';
+const reportCodeInclude={base:{include:{industryLinks:{include:{industry:{include:{partnerRole:true}}}},serviceType:{include:{partnerRole:true}}}}};
 export const accountReportToday=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 export function shiftReportDate(value:string,days:number){const date=new Date(value+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+days);return date.toISOString().slice(0,10);}
 const delta=(rows:any[])=>rows.reduce((sum:bigint,row:any)=>sum+(row.direction==='IN'?1n:-1n)*ledgerScale4(row._sum.amount||'0'),0n);
@@ -46,15 +48,16 @@ export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days
 }
 export function accountCashFlowReport(accounts:any[],entries:any[]){
  const known=new Map(accounts.map(row=>[row.id,row])),groups=new Map<string,any>();
- for(const entry of entries){
+ for(const entry of entries.flatMap(ledgerReportItems).filter((row:any)=>row.cashMovement!==false)){
   const account=known.get(entry.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');
   const baseCode=entry.accountingCode?.base?.code;
   if(entry.counterpartyAccountId||entry.internalTransferSourceId||baseCode==='FXC'||baseCode==='IBT')continue;
   const code=entry.accountingCode,base=code?.base,itemKey=base?.id?'BASE:'+base.id:code?.id?'CODE:'+code.id:'UNCODED',key=JSON.stringify([itemKey,entry.direction,account.currencyCode]);
-  const industries=(base?.industryLinks||[]).map((link:any)=>link.industry);
+  const links=(base?.industryLinks||[]).map((link:any)=>link.industry);
+  const industries=links.length?links:base?.serviceType?[base.serviceType]:[];
   const group=groups.get(key)||{itemKey,baseId:base?.id??null,code:base?.code||code?.code||'',nameKo:base?.nameKo||code?.nameKo||'',nameEn:base?.nameEn||code?.nameEn||'',nameVi:base?.nameVi||code?.nameVi||'',industries,direction:entry.direction,currencyCode:account.currencyCode,total:0n,entries:[]};
   group.total+=ledgerScale4(entry.amount);
-  group.entries.push({id:entry.id,date:entry.transactionDate,accountId:entry.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:entry.direction,amount:ledgerMoney(ledgerScale4(entry.amount),account.currencyCode),code:code?.code||'',nameKo:code?.nameKo||base?.nameKo||'',nameEn:code?.nameEn||base?.nameEn||'',nameVi:code?.nameVi||base?.nameVi||'',counterparty:entry.currentCounterpartyName||entry.counterpartyName||'',purpose:entry.purpose||''});groups.set(key,group);
+  group.entries.push({id:entry.id,itemId:entry.itemId,date:entry.transactionDate,accountId:entry.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:entry.direction,amount:ledgerMoney(ledgerScale4(entry.amount),account.currencyCode),code:code?.code||'',nameKo:code?.nameKo||base?.nameKo||'',nameEn:code?.nameEn||base?.nameEn||'',nameVi:code?.nameVi||base?.nameVi||'',counterparty:entry.currentCounterpartyName||entry.counterpartyName||'',purpose:entry.purpose||''});groups.set(key,group);
  }
  return [...groups.values()].map(({total,...group})=>({...group,amount:ledgerMoney(total,group.currencyCode)})).sort((a,b)=>a.code.localeCompare(b.code)||a.itemKey.localeCompare(b.itemKey)||a.direction.localeCompare(b.direction)||a.currencyCode.localeCompare(b.currencyCode));
 }
@@ -67,7 +70,7 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
    tx.bankLedgerEntry.groupBy({by:['accountId','transactionDate','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:asOf}},_sum:{amount:true}}),
    tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:true,settlementLines:true} satisfies Prisma.BankLedgerEntryInclude,orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
    loadOutstanding(tx,orgId,asOf),
-   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:{gte:historyStart,lte:asOf}},select:{id:true,accountId:true,transactionDate:true,direction:true,amount:true,counterpartyName:true,counterpartyOrgId:true,counterpartyAccountId:true,internalTransferSourceId:true,purpose:true,accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,industryLinks:{select:{industry:{select:{id:true,nameKo:true,nameEn:true,nameVi:true,partnerRole:{select:{id:true,nameKo:true,nameEn:true,nameVi:true}}}}}}}}}}},orderBy:[{transactionDate:'desc'},{createdAt:'desc'},{id:'desc'}]} satisfies Prisma.BankLedgerEntryFindManyArgs),
+   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:{gte:historyStart,lte:asOf}},select:{id:true,accountId:true,transactionDate:true,direction:true,amount:true,counterpartyName:true,counterpartyOrgId:true,counterpartyAccountId:true,internalTransferSourceId:true,purpose:true,allocations:{where:{orgId},select:{id:true,expenseItemId:true,amount:true}},settlementLines:{include:{accountingCode:{include:reportCodeInclude}}},accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,serviceType:{include:{partnerRole:true}},industryLinks:{select:{industry:{select:{id:true,nameKo:true,nameEn:true,nameVi:true,partnerRole:{select:{id:true,nameKo:true,nameEn:true,nameVi:true}}}}}}}}}}},orderBy:[{transactionDate:'desc'},{createdAt:'desc'},{id:'desc'}]} satisfies Prisma.BankLedgerEntryFindManyArgs),
   ]);
   const invoiceIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.invoiceId).filter(Boolean)))];
   const expenseIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.expenseItemId).filter(Boolean)))];
@@ -77,7 +80,8 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
   ]);
   const invoiceNames=new Map<string,string>(invoices.map((row:any)=>[row.id,row.buyer?.name||''])),expenseNames=new Map<string,string>(expenses.map((row:any)=>[row.id,row.expenseRequest?.partner?.name||row.expenseRequest?.payeeEmployee?.name||row.partner?.name||row.payeeEmployee?.name||'']));
   const known=new Map<string,any>(accounts.map((row:any)=>[row.id,row]));
-  const namedEntries=await attachLedgerCounterpartyNames(tx,orgId,[...dailyEntries,...periodEntries]);
+  const itemEntries=await attachLedgerReportItems(tx,orgId,periodEntries,reportCodeInclude);
+  const namedEntries=await attachLedgerCounterpartyNames(tx,orgId,[...dailyEntries,...itemEntries]);
   const transactions=namedEntries.slice(0,dailyEntries.length).map((row:any)=>{const account=known.get(row.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');return {id:row.id,accountId:row.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:row.direction,amount:ledgerMoney(ledgerScale4(row.amount),account.currencyCode),purpose:row.purpose,counterparty:row.currentCounterpartyName||row.counterpartyName||[...new Set(row.allocations.map((a:any)=>invoiceNames.get(a.invoiceId)||expenseNames.get(a.expenseItemId)).filter(Boolean))].join(', '),settlementLines:row.settlementLines.map((line:any)=>({id:line.id,kind:line.kind,amount:ledgerMoney(ledgerScale4(line.amount),account.currencyCode),purpose:line.purpose}))};});
   const monthAccounts=period.end===asOf?accounts:await readLedgerAccounts(tx,orgId,period.end);
   const movements=accountBalanceReport(monthAccounts.filter((row:any)=>row.openingDate<=period.end),flows,period.end,days,period.start);

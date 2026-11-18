@@ -22,7 +22,7 @@
 ## 대시보드 위젯별 설정과 알림 발생 업무
 
 - 코드 미지정 입출금(UNCODED_LEDGER)은 취소되지 않은 회사 BankLedgerEntry의 accountingCodeId가 실제 null인 경우에만 오류 의심 위젯에 표시한다. 비용·청구서·정산 행이나 이름으로 추정하지 않으며 원본 입출금 수정으로 연결한다. 제조사 외 회사도 실제 BANK_LEDGER·DASHBOARD 제공/역할 권한이 있으면 제공하고 개인 확인·원본 변경 후 재판정·진행 중 결재 표시를 유지한다. 오류 의심 설정에서 이 항목의 회사 수신 역할(기본 관리자·회계)을 독립 관리하며 관리자 포함 전체 해제가 가능하다. 기존 handledRoles와 새 uncodedRoles는 같은 회사 revision/감사 트랜잭션 안에서 변경 범위만 저장하고 기존 설정은 보존한다.
-- Representative-code exception: exclude a ledger entry when all linked expense items (resolved by actual IDs within orgId) or all settlement rows have codes. Preserve original ledger records and acknowledgement receipts.
+- 최신 사용자 정정: 한 비용 신청/입출금에 여러 코드와 구분이 있을 수 있다. 알람과 계좌 현황은 대표 코드나 묶음 전체의 코드 유무로 판정하지 않고 실제 회사 범위의 비용 항목·지급 배분 FK와 항목별 금액으로 나눈다. 코드 없는 항목만 해당 금액으로 감지하고 방향·업종·취급 품목도 각 항목의 코드로 검사한다. 은행 수수료는 자체 코드·출금 방향으로 따로 분류하며 정상 본 항목의 구분을 미지정으로 바꾸지 않는다. 수수료를 포함한 출금/차감된 입금은 본 금액과 수수료를 중복 없이 분해하고 대손 정산을 실제 현금 흐름으로 합산하지 않는다. 기존 원장·배분·확인 영수증·발행 snapshot은 재작성하지 않는다.
 
 - 앱 공통 제목은 실제 대상과 작업을 간결하게 표시한다. 알림 수신 창은 ‘알림 설정’이며 범위를 반복해 붙이지 않는다. 독립 팝업에는 ‘등록/수정/삭제’만 쓰지 않고 ‘업무 요청 등록’, ‘기초 잔액 삭제’처럼 대상을 명시한다. 제목만 바꾸기 위해 버튼 명칭·업무 상태·권한·저장 동작을 바꾸지 않는다.
 

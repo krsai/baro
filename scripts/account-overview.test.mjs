@@ -39,6 +39,26 @@ test('cashflow excludes internal account transfers and exchanges while retaining
  assert.deepEqual(report.map(row=>[row.code,row.amount]),[['BNF','100']]);
 });
 
+test('cashflow classifies actual paid expense items and fee rows independently without duplicating totals',()=>{
+ const {accountCashFlowReport}=require('../backend/dist/services/accountOverview.js');
+ const role={id:1,nameEn:'Production'},finance={id:2,nameEn:'Finance'};
+ const code=(id,partnerRole)=>({id,code:'C'+id,base:{id,code:'B'+id,serviceType:{id,partnerRole}}});
+ const entries=[{id:'expense',accountId:'a',direction:'OUT',amount:'100',allocations:[
+  {id:'a1',expenseItemId:'c1',amount:'30',expenseItem:{transactionCodeId:1,transactionCode:code(1,role)}},
+  {id:'a2',expenseItemId:'c2',amount:'60',expenseItem:{transactionCodeId:2,transactionCode:code(2,finance)}},
+  {id:'a3',expenseItemId:'c3',amount:'5',expenseItem:{transactionCodeId:null}},
+ ],settlementLines:[{id:'fee',kind:'FEE',amount:'5',accountingCode:code(3,finance)}]},
+ {id:'receipt',accountId:'a',direction:'IN',amount:'90',accountingCode:code(1,role),settlementLines:[{id:'fee2',kind:'FEE',amount:'10',accountingCode:code(3,finance)}]}];
+ const groups=accountCashFlowReport([{id:'a',currencyCode:'USD'}],entries);
+ const items=accountCashflowItems(categorizeCashflow(groups,{unclassified:{nameEn:'Unknown'}}),'','USD');
+ assert.equal(accountCashflowTotal(items,'IN','USD'),'100.00');
+ assert.equal(accountCashflowTotal(items,'OUT','USD'),'110.00');
+ assert.equal(items.find(row=>row.itemKey==='ROLE:1').out,'30.00');
+ assert.equal(items.find(row=>row.itemKey==='ROLE:2').out,'75.00');
+ assert.equal(items.find(row=>row.itemKey==='UNCODED').out,'5.00');
+ assert.deepEqual(groups.find(row=>row.itemKey==='UNCODED').entries.map(row=>[row.id,row.itemId]),[['expense','a3']]);
+});
+
 test('real database overview scopes monthly cash flows, excludes voids and leaves ledger records unchanged',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),today=accountReportToday(),{accountHistoryPeriod}=require('../backend/dist/services/accountOverview.js'),start=accountHistoryPeriod(today,1).start;
