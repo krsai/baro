@@ -1,4 +1,10 @@
 // External endpoints identify a party, never a bank account owned by that party.
+export function ledgerFlowPreservesEvidence(row,patch,accounts){
+ const next={...row,...patch};
+ const currency=id=>accounts.find(account=>account.id===id)?.currencyCode;
+ return currency(row.accountId)===currency(next.accountId)&&row.direction===next.direction&&
+  row.counterparty?.kind===next.counterparty?.kind&&row.counterparty?.id===next.counterparty?.id;
+}
 export function ledgerFlowEndpoints(row,account){
  if(row.evidenceType==='ADJUSTMENT')return {from:null,to:null};
  if('flowFrom' in row||'flowTo' in row)return {from:row.flowFrom||null,to:row.flowTo||null};

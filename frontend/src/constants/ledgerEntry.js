@@ -33,4 +33,7 @@ Object.assign(ledgerEntryText.vi,{confirm:'X\u00e1c nh\u1eadn',BANK_FEE:ledgerEn
 for(const language of ['ko','en','vi'])Object.assign(ledgerEntryText[language],ledgerTaxText[language]);
 Object.assign(ledgerEntryText.ko,{vatUnsplit:'기존 내역은 VAT가 분리되어 있지 않습니다. 세율을 입력하면 실제 입출금액을 유지하며 분리합니다.'});
 Object.assign(ledgerEntryText.en,{vatUnsplit:'This record has no VAT breakdown. Enter a rate to split it while preserving the cash amount.'});
+Object.assign(ledgerEntryText.ko,{evidenceReset:'상대·통화 또는 입출금 방향이 변경되어 증빙을 다시 선택해야 합니다.'});
+Object.assign(ledgerEntryText.en,{evidenceReset:'The party, currency or transaction direction changed. Select the evidence again.'});
+Object.assign(ledgerEntryText.vi,{evidenceReset:'Đối tác, tiền tệ hoặc chiều thu chi đã thay đổi. Vui lòng chọn lại chứng từ.'});
 Object.assign(ledgerEntryText.vi,{vatUnsplit:'Bản ghi chưa tách VAT. Nhập thuế suất để tách và giữ nguyên số tiền thu chi.'});
