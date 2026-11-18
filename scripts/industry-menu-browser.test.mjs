@@ -34,6 +34,11 @@ export const requestJSON=async(url,options={})=>{
   assert.deepEqual((await page.getByRole('columnheader').allTextContents()).slice(2),expected);
   assert.equal(await row('/bank-ledger').getByRole('switch').count(),4);
   assert.equal(await availability('/personal-settings').getAttribute('aria-pressed'),'true');assert.equal(await availability('/personal-settings').isDisabled(),true);
+  const buttonStyle=button=>button.evaluate(el=>{const s=getComputedStyle(el);return {height:s.height,color:s.color,background:s.backgroundColor,border:s.borderColor,shadow:s.boxShadow};});
+  await page.waitForTimeout(300);
+  const enabledStyle=await buttonStyle(availability('/style'));
+  assert.equal(enabledStyle.height,'28px');assert.equal(enabledStyle.shadow,'none');
+  assert.deepEqual(await buttonStyle(availability('/personal-settings')),enabledStyle,'personal settings uses the same active appearance');
   for(const toggle of await row('/personal-settings').getByRole('switch').all()){assert.equal(await toggle.isChecked(),true);assert.equal(await toggle.isDisabled(),true);}
   const activeColor=await row('/style').evaluate(el=>getComputedStyle(el).backgroundColor);
   await availability('/style').click();assert.notEqual(await row('/style').evaluate(el=>getComputedStyle(el).backgroundColor),activeColor);assert.equal(await row('/style').getByRole('switch').nth(0).isDisabled(),true);
