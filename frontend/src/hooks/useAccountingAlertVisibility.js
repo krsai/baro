@@ -15,8 +15,8 @@ export default function useAccountingAlertVisibility(auth){
  useEffect(()=>{if(!needsScope||!active||!visible||lastFailedScope.current===scope+':'+reload)return;let live=true;const controller=new AbortController();lastAttempt.current=Date.now();
   // Keep an already mounted widget while scope changes so an open source editor
   // survives. Its list/ack APIs independently enforce the latest recipient rule.
-  requestJSON('/dashboard/accounting-alert-scope'+buildQueryString({orgId}),{skipCache:true,skipGlobalLoading:true,signal:controller.signal}).then(value=>{if(live){setResult(current=>({scope,shown:value.handled||current?.scope===scope&&current.shown}));setError(false);failed.current=false;}}).catch(e=>{if(live&&e.name!=='AbortError'){setError(true);failed.current=true;lastFailedScope.current=scope+':'+reload;}});
+  requestJSON('/dashboard/accounting-alert-scope'+buildQueryString({orgId}),{skipCache:true,skipGlobalLoading:true,signal:controller.signal}).then(value=>{if(live){setResult(current=>({scope,shown:value.handled||current?.scope===scope&&current.shown,shownUncoded:value.uncoded||current?.scope===scope&&current.shownUncoded}));setError(false);failed.current=false;}}).catch(e=>{if(live&&e.name!=='AbortError'){setError(true);failed.current=true;lastFailedScope.current=scope+':'+reload;}});
   return()=>{live=false;controller.abort();};
  },[orgId,scope,needsScope,active,visible,reload]);
- return {show:canShowAccountingAlerts(auth)||needsScope&&result?.scope===scope&&result.shown,error:needsScope&&error,retry:()=>setReload(n=>n+1)};
+ return {showUncoded:canAccessPath('/bank-ledger',auth)&&(canShowAccountingAlerts(auth)||needsScope&&result?.scope===scope&&result.shownUncoded),show:canShowAccountingAlerts(auth)||needsScope&&result?.scope===scope&&result.shown,error:needsScope&&error,retry:()=>setReload(n=>n+1)};
 }

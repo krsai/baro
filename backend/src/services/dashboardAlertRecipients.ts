@@ -12,15 +12,16 @@ const normalize=(roles:any):string[]=>{
 export const handledRecipientKind=(kind:string)=>['PARTNER_HANDLED_ITEM','PARTNER_HANDLED_SETTINGS'].includes(kind);
 export async function readDashboardRecipients(db:any,orgId:number){
  const row=await db.systemSetting.findUnique({where:{key:key(orgId)}});
- if(!row)return {revision:0,handledRoles:['ADMIN','ACCOUNTANT']};
+ if(!row)return {revision:0,handledRoles:['ADMIN','ACCOUNTANT'],uncodedRoles:['ADMIN','ACCOUNTANT']};
  const value=row.value as any;
  if(value?.orgId!==orgId||value.version!==1||!Number.isSafeInteger(value.revision)||value.revision<1)fail(500,'DASHBOARD_RECIPIENTS_CORRUPT');
  let handledRoles:string[];
  try{handledRoles=normalize(value.handledRoles);}catch{fail(500,'DASHBOARD_RECIPIENTS_CORRUPT');}
- return {revision:value.revision,handledRoles:handledRoles!};
+ let uncodedRoles:string[];try{uncodedRoles=normalize(value.uncodedRoles===undefined?['ADMIN','ACCOUNTANT']:value.uncodedRoles);}catch{fail(500,'DASHBOARD_RECIPIENTS_CORRUPT');}
+ return {revision:value.revision,handledRoles:handledRoles!,uncodedRoles:uncodedRoles!};
 }
-export function receivesAccountingAlert(kind:string,role:string,policy:{handledRoles:string[]}){
- return handledRecipientKind(kind)?policy.handledRoles.includes(role):['ADMIN','ACCOUNTANT'].includes(role);
+export function receivesAccountingAlert(kind:string,role:string,policy:{handledRoles:string[],uncodedRoles?:string[]}){
+ return kind==='UNCODED_LEDGER'?(policy.uncodedRoles??['ADMIN','ACCOUNTANT']).includes(role):handledRecipientKind(kind)?policy.handledRoles.includes(role):['ADMIN','ACCOUNTANT'].includes(role);
 }
 async function admin(db:any,orgId:number,actorId:number){
  if(!Number.isSafeInteger(orgId)||orgId<=0||!Number.isSafeInteger(actorId)||actorId<=0)fail(403,'DASHBOARD_RECIPIENTS_ADMIN_REQUIRED');
@@ -30,14 +31,15 @@ export async function getDashboardRecipients(db:any,orgId:number,actorId:number)
  await admin(db,orgId,actorId);return readDashboardRecipients(db,orgId);
 }
 export async function saveDashboardRecipients(db:any,orgId:number,actorId:number,input:any){
- if(!input||Object.keys(input).some(field=>!['revision','handledRoles'].includes(field))||!Number.isSafeInteger(input.revision)||input.revision<0)fail(400,'DASHBOARD_RECIPIENTS_INVALID');
- const handledRoles=normalize(input.handledRoles);
+ if(!input||Object.keys(input).some(field=>!['revision','handledRoles','uncodedRoles'].includes(field))||!Number.isSafeInteger(input.revision)||input.revision<0)fail(400,'DASHBOARD_RECIPIENTS_INVALID');
+ const handledPatch=input.handledRoles===undefined?undefined:normalize(input.handledRoles),uncodedPatch=input.uncodedRoles===undefined?undefined:normalize(input.uncodedRoles);
+ if(handledPatch===undefined&&uncodedPatch===undefined)fail(400,'DASHBOARD_RECIPIENTS_INVALID');
  return retryEditTransaction(db,async tx=>{
   await admin(tx,orgId,actorId);
-  const before=await readDashboardRecipients(tx,orgId),same=JSON.stringify(before.handledRoles)===JSON.stringify(handledRoles);
+  const before=await readDashboardRecipients(tx,orgId),handledRoles=handledPatch??before.handledRoles,uncodedRoles=uncodedPatch??before.uncodedRoles,same=JSON.stringify(before.handledRoles)===JSON.stringify(handledRoles)&&JSON.stringify(before.uncodedRoles)===JSON.stringify(uncodedRoles);
   if(before.revision!==input.revision){if(same&&before.revision===input.revision+1)return before;fail(409,'DASHBOARD_RECIPIENTS_CHANGED');}
   if(same)return before;
-  const after={revision:before.revision+1,handledRoles},value={version:1,orgId,...after};
+  const after={revision:before.revision+1,handledRoles,uncodedRoles},value={version:1,orgId,...after};
   await tx.systemSetting.upsert({where:{key:key(orgId)},create:{key:key(orgId),value,updatedByEmployeeId:actorId},update:{value,updatedByEmployeeId:actorId}});
   await tx.systemSetting.create({data:{key:`DASHBOARD_ALERT_RECIPIENTS_AUDIT:${orgId}:${after.revision}`,value:{orgId,actorId,before,after,at:new Date().toISOString()},updatedByEmployeeId:actorId}});
   return after;

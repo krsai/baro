@@ -4,6 +4,10 @@ export const dashboardRecipientText={
  vi:{title:'Cài đặt',handled:'Mặt hàng không thuộc phạm vi đối tác',ADMIN:'Quản trị viên',ACCOUNTANT:'Kế toán',OPERATOR:'Vận hành',roles:'Vai trò nhận thông báo',mandatory:'Quản trị viên nhận tất cả thông báo.',permission:'Người nhận cũng cần quyền truy cập nghiệp vụ gốc.',empty:'Chưa có quy tắc người nhận.',save:'Lưu',close:'Đóng',retry:'Thử lại',reload:'Tải cài đặt mới nhất',failed:'Không thể tải hoặc lưu cài đặt thông báo công ty.',changed:'Quản trị viên khác đã thay đổi cài đặt. Tải cài đặt mới nhất trước khi áp dụng thay đổi.',saved:'Đã lưu người nhận thông báo công ty.',discard:'Bỏ thay đổi người nhận chưa lưu?'},
 };
 
+dashboardRecipientText.ko.uncoded='코드 미지정 입출금';
+dashboardRecipientText.en.uncoded='Bank transactions without accounting codes';
+dashboardRecipientText.vi.uncoded='Thu chi chưa có mã kế toán';
+
 export function dashboardSettingsTitle(label,languageCode){
  const t=dashboardRecipientText[languageCode]||dashboardRecipientText.en;
  return languageCode==='vi'?`${t.title} ${label}`:`${label} ${t.title}`;

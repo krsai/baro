@@ -18,7 +18,7 @@ test('company recipients enforce actual roles on lists and acknowledgement; revi
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,admin=s.people.admin.id,accountant=s.people.senior.id;
   const operator=await db.employee.create({data:{orgId:org,name:'Operations',orgRole:'OPERATOR',status:'ACTIVE',gradeId:s.people.junior.gradeId}});
-  assert.deepEqual(await getDashboardRecipients(db,org,admin),{revision:0,handledRoles:['ADMIN','ACCOUNTANT']});
+  assert.deepEqual(await getDashboardRecipients(db,org,admin),{revision:0,handledRoles:['ADMIN','ACCOUNTANT'],uncodedRoles:['ADMIN','ACCOUNTANT']});
   for(const id of [accountant,operator.id]){
    await assert.rejects(getDashboardRecipients(db,org,id),/ADMIN_REQUIRED/);
    await assert.rejects(saveDashboardRecipients(db,org,id,{revision:0,handledRoles:['ADMIN']}),/ADMIN_REQUIRED/);
@@ -39,7 +39,7 @@ test('company recipients enforce actual roles on lists and acknowledgement; revi
   await db.transactionCodeBase.update({where:{id:base.id},data:{cashDirection:'IN'}});
   const initial=await listAccountingAlerts(db,org,admin,permissions);assert.equal(initial.total,4);
   await assert.rejects(listAccountingAlerts(db,org,operator.id,permissions),/ACCESS_DENIED/);
-  const first=await saveDashboardRecipients(db,org,admin,{revision:0,handledRoles:['OPERATOR','ADMIN']});assert.deepEqual(first,{revision:1,handledRoles:['ADMIN','OPERATOR']});
+  const first=await saveDashboardRecipients(db,org,admin,{revision:0,handledRoles:['OPERATOR','ADMIN']});assert.deepEqual(first,{revision:1,handledRoles:['ADMIN','OPERATOR'],uncodedRoles:['ADMIN','ACCOUNTANT']});
   assert.deepEqual(await saveDashboardRecipients(db,org,admin,{revision:0,handledRoles:['ADMIN','OPERATOR']}),first,'unknown-result retry is idempotent');
   await assert.rejects(saveDashboardRecipients(db,org,admin,{revision:0,handledRoles:['ADMIN']}),/CHANGED/);
   const operations=await listAccountingAlerts(db,org,operator.id,permissions,{kinds:'DIRECTION,PARTNER_HANDLED_ITEM'});assert.equal(operations.total,2);assert.ok(operations.rows.every(row=>row.kind==='PARTNER_HANDLED_ITEM'));
@@ -54,7 +54,7 @@ test('company recipients enforce actual roles on lists and acknowledgement; revi
   const second=await saveDashboardRecipients(db,org,admin,{revision:1,handledRoles:['ADMIN']});assert.equal(second.revision,2);
   await assert.rejects(acknowledgeAccountingAlert(db,org,operator.id,permissions,operations.rows[1].signature),/ACCESS_DENIED/);
   await assert.rejects(listAccountingAlerts(db,org,operator.id,permissions),/ACCESS_DENIED/);
-  assert.deepEqual(await readDashboardRecipients(db,s.other.id),{revision:0,handledRoles:['ADMIN','ACCOUNTANT']});
+  assert.deepEqual(await readDashboardRecipients(db,s.other.id),{revision:0,handledRoles:['ADMIN','ACCOUNTANT'],uncodedRoles:['ADMIN','ACCOUNTANT']});
   assert.equal(await db.systemSetting.count({where:{key:{startsWith:`DASHBOARD_ALERT_RECIPIENTS_AUDIT:${org}:`}}}),2);
   const failAudit={$transaction:(run,options)=>db.$transaction(tx=>run(new Proxy(tx,{get(target,property){if(property==='systemSetting')return new Proxy(target.systemSetting,{get(model,method){return method==='create'?async()=>{throw Error('AUDIT_FAILED');}:typeof model[method]==='function'?model[method].bind(model):model[method];}});return typeof target[property]==='function'?target[property].bind(target):target[property];}})),options)};
   await assert.rejects(saveDashboardRecipients(failAudit,org,admin,{revision:2,handledRoles:['ADMIN','ACCOUNTANT']}),/AUDIT_FAILED/);
