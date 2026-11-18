@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, Paper, Stack, TextField, Typography, Tooltip } from '@mui/material';
 import MonthSelector from '../../../components/MonthSelector';
 import SearchInput from '../../../components/SearchInput';
+import { ui } from '../../../theme/ui';
 import { isFormerEmployee } from '../attendance/attendanceEmployment';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
@@ -109,8 +110,11 @@ const PayrollSettingsDialog = ({ open, onClose, orgId, languageCode, onSaved, sh
     {!embedded&&<DialogTitle>{text.title}</DialogTitle>}
     <DialogContent>
       <Stack spacing={2}>
-        <MonthSelector allowFuture label={text.month} value={effectiveMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} />
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>{factories.length > 1 && <TextField select size="small" label={text.factory} value={factoryId} onChange={(event) => setFactoryId(event.target.value)} sx={{ minWidth: 180 }}><MenuItem value="">{text.all}</MenuItem>{factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{languageCode === 'ko' ? factory.nameKo || factory.name : languageCode === 'vi' ? factory.nameVi || factory.name : factory.name}</MenuItem>)}</TextField>}<SearchInput placeholder={text.search} value={search} onChange={(event) => setSearch(event.target.value)} /></Stack>
+        <Stack data-employee-management-toolbar direction="row" useFlexGap flexWrap="wrap" alignItems="center" sx={{gap:ui.search.gap,minWidth:0}}>
+          <SearchInput placeholder={text.search} value={search} onChange={(event) => setSearch(event.target.value)} />
+          {factories.length > 1 && <TextField select size="small" label={text.factory} value={factoryId} onChange={(event) => setFactoryId(event.target.value)} sx={{width:ui.search.filterWidth,maxWidth:'100%'}}><MenuItem value="">{text.all}</MenuItem>{factories.map((factory) => <MenuItem key={factory.id} value={String(factory.id)}>{languageCode === 'ko' ? factory.nameKo || factory.name : languageCode === 'vi' ? factory.nameVi || factory.name : factory.name}</MenuItem>)}</TextField>}
+          <Box data-employee-management-month sx={{ml:'auto',maxWidth:'100%'}}><MonthSelector allowFuture label={text.month} value={effectiveMonth} onChange={setEffectiveMonth} disabled={loading || saving || dirty} /></Box>
+        </Stack>
         <DragDropContext onDragEnd={move}><Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5}><EmployeeList text={text} id="normal" title={text.normal} rows={visible.filter((row) => !attendanceSelected.has(Number(row.id)) && !payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="attendance-exception" title={text.attendance} rows={visible.filter((row) => attendanceSelected.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /><EmployeeList text={text} id="payroll-exception" title={text.payroll} rows={visible.filter((row) => payrollExcluded.has(Number(row.id)))} empty={text.empty} retired={text.retired} disabled={loading || saving} /></Stack></DragDropContext>
       </Stack>
     </DialogContent>
