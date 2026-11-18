@@ -4,6 +4,8 @@
 
 ## Railway 서비스별 빌드 설정
 
+- 관계 버킷 이관 후 ST 보존 검사는 원본 StyleProcessStandard와 원본 버전/수량 FK가 실제 존재하는 행의 대상 복사본을 검사한다. 모든 공정×모든 수량 구간을 완성하도록 강제하거나 미설정 ST를 임의 생성하지 않는다. 실제 원본의 복사 누락·대상 수량 누락은 계속 차단한다.
+
 - migration_fix의 과거 관계 시간 버킷 이관은 원본 CUSTOMER_DEFAULT 버전도 해당 제조사의 sourceOrgId=0 공정도 없는 관계를 미설정 상태로 보존한다. 신규/서비스 관계에 버킷·ST를 추정 생성하지 않는다. 실제 공정이 있는데 원본이 누락됐거나 원본 버전이 복수인 경우는 계속 실패·롤백한다. UI 변경 배포를 위해 원자료 보정·target guard·preflight 우회를 하지 않는다. 검수는 scripts/relationship-bucket-predeploy.test.mjs를 사용한다.
 
 - BARO BACKEND는 Root Directory `/backend`, Railway Config File `/backend/railway.json`을 사용한다. 빌드는 Prisma 클라이언트 준비 후 TypeScript 빌드이며 배포 전 `railway:predeploy`와 `/ready` 검사를 유지한다. BARO FRONTEND는 `/frontend`와 `/frontend/railway.json`을 사용하고 프런트 package의 빌드·서버·`/health`만 실행한다. 루트 폴더를 지정해도 설정 파일 경로는 별도이므로 두 서비스가 같은 프런트 설정을 읽게 두지 않는다.

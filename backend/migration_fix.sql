@@ -4241,13 +4241,22 @@ BEGIN
   JOIN "Style" s ON s."customerOrgId" = r."brandOrgId"
   JOIN "StyleProcess" sp
     ON sp."styleId" = s.id AND sp."orgId" = r."manufacturerOrgId" AND sp."sourceOrgId"=0
+  -- Preserve actual source snapshots without inventing ST for unset quantities.
+  JOIN "StyleProcessStandard" original
+    ON original."styleProcessId" = sp.id
+   AND original."orgId" = r."manufacturerOrgId"
+   AND original."quantityBucketSetVersionId" = s."timeBucketSetVersionId"
+  JOIN "QuantityBucketEntry" original_entry
+    ON original_entry.id = original."quantityBucketEntryId"
+   AND original_entry."quantityBucketSetVersionId" = original."quantityBucketSetVersionId"
   LEFT JOIN "OrgRelationshipStyleTimeBucket" override
     ON override."orgRelationshipId" = r.id AND override."styleId" = s.id
-  JOIN "QuantityBucketEntry" e
+  LEFT JOIN "QuantityBucketEntry" e
     ON e."quantityBucketSetVersionId" = COALESCE(
       override."quantityBucketSetVersionId",
       r."timeBucketSetVersionId"
     )
+   AND e."bucketQuantity" = original_entry."bucketQuantity"
   LEFT JOIN "StyleProcessStandard" x
     ON x."styleProcessId" = sp.id
    AND x."orgId" = r."manufacturerOrgId"
