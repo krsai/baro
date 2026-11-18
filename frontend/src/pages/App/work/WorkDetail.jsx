@@ -5,7 +5,6 @@ import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import StatusLabel from '../../../components/StatusLabel';
 import {buildWorkStyleLookupOptions,workStyleProgressText,workStyleLookupText} from '../../../utils/workStyleLookup.mjs';
 import WorkQuantityReviewDialog from './WorkQuantityReviewDialog';
-import SearchPanel from '../../../components/SearchPanel';
 import PageContentStack from '../../../components/PageContentStack';
 import PageSectionHeader from '../../../components/PageSectionHeader';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -2885,31 +2884,18 @@ const WorkDetail = ({
           sx={{ p: 'var(--ui-panel-padding, 16px)', borderRadius: 2.5, backgroundColor: '#fbfcff' }}
         >
           <Stack spacing={1.5}>
-            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', xl: 'minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(0, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
+            <Box sx={{ display: 'grid', gap: 1.25, gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))', xl: '180px 180px minmax(0, 1fr) minmax(220px, 1fr)' }, alignItems: 'start' }}>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
                 <DatePicker label={LABELS.coverageStartDate} value={coverageStartDate} onChange={handleCoverageStartDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
               <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale={languageCode} localeText={buildDatePickerLocaleText(languageCode)}>
                 <DatePicker label={LABELS.workDate} value={workDate} onChange={handleWorkDateChange} minDate={workLogOperationStartDay} format="YYYY-MM-DD" slotProps={{ textField: { size: 'small', fullWidth: true } }} />
               </LocalizationProvider>
-              <Box sx={{ gridColumn: { xl: 4 }, minWidth: 0 }}>
+              <Box sx={{ gridColumn: { sm: '1 / -1', xl: 4 }, minWidth: 0 }}>
               <SearchableSelect label={!loading && factories.length === 1 ? LABELS.autoFactory : LABELS.factory} options={factories} value={selectedFactory} onChange={(_event, value) => handleFactoryChange(value)} disabled={factories.length === 1} autoHighlight openOnFocus selectOnFocus clearOnBlur={false} handleHomeEndKeys getOptionLabel={(option) => option?.name || ''} isOptionEqualToValue={(option, value) => String(option?.id || '') === String(value?.id || '')} textFieldProps={{ size: 'small' }} />
               </Box>
             </Box>
-            <TextField
-              label={LABELS.note}
-              value={buildCombinedNote({
-                manualNote: note,
-                autoNote: autoExceededNote,
-                employmentAutoNote: savedEmploymentAutoNote,
-              })}
-              onChange={(event) => setNote(stripAutoNoteFromText(event.target.value))}
-              placeholder={LABELS.notePlaceholder}
-              size="small"
-              fullWidth
-              multiline
-              minRows={2}
-            />
+
             {isAggregateLegacyLog ? <Alert severity="warning">{messages.legacyReadOnly}</Alert> : null}
             {formError ? <Alert severity="error">{formError}</Alert> : null}
             {duplicateGroups.length > 0 ? (
@@ -2927,7 +2913,6 @@ const WorkDetail = ({
           </Stack>
         </Paper>
 
-        <SearchPanel search={<SearchInput value={searchTerm} onChange={(event) => { setSearchTerm(event.target.value); }} placeholder={LABELS.searchPlaceholder}  />} />
 
         <Paper
           variant="outlined"
@@ -2941,6 +2926,7 @@ const WorkDetail = ({
         >
 
 
+          <Box data-testid="work-row-search" sx={{mb:1.5}}><SearchInput value={searchTerm} onChange={event=>setSearchTerm(event.target.value)} placeholder={LABELS.searchPlaceholder} inputProps={{'aria-label':LABELS.searchPlaceholder}}/></Box>
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!selectedFactoryId ? (
               <Alert severity="info">{messages.selectFactory}</Alert>
@@ -3827,6 +3813,22 @@ const WorkDetail = ({
             </Stack>
           )}
           </Box>
+        </Paper>
+        <Paper variant="outlined" data-testid="work-note" sx={{p:'var(--ui-panel-padding, 16px)',borderRadius:2.5}}>
+            <TextField
+              label={LABELS.note}
+              value={buildCombinedNote({
+                manualNote: note,
+                autoNote: autoExceededNote,
+                employmentAutoNote: savedEmploymentAutoNote,
+              })}
+              onChange={(event) => setNote(stripAutoNoteFromText(event.target.value))}
+              placeholder={LABELS.notePlaceholder}
+              size="small"
+              fullWidth
+              multiline
+              minRows={2}
+            />
         </Paper>
       </PageContentStack>
       <WorkQuantityReviewDialog review={quantityReview} languageCode={languageCode} busy={reviewSaving}
