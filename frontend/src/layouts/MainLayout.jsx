@@ -689,17 +689,17 @@ const MainLayout = () => {
             path: '/inventory/stock',
           },
           {
-            label: getUiMessage('menu.inventoryTransactions', '재고 거래', languageCode),
+            label: getUiMessage('menu.inventoryHistory', '입출고', languageCode),
             icon: <LocalShippingIcon />,
             path: '/inventory/movements',
           },
           {
-            label: getUiMessage('menu.materials', '자재 관리', languageCode),
+            label: getUiMessage('menu.materials', '자재 목록', languageCode),
             icon: <ListAltIcon />,
             path: '/inventory/materials',
           },
           {
-            label: getUiMessage('menu.materialSettings', '자재 설정', languageCode),
+            label: getUiMessage('menu.materialSettings', '자재 기준정보', languageCode),
             icon: <TuneIcon />,
             path: '/inventory/settings',
           },
