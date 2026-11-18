@@ -47,8 +47,11 @@ export function accountCashFlowReport(accounts:any[],entries:any[]){
  const known=new Map(accounts.map(row=>[row.id,row])),groups=new Map<string,any>();
  for(const entry of entries){
   const account=known.get(entry.accountId);if(!account)throw createHttpError(409,'LEDGER_ACCOUNT_NOT_FOUND');
+  const baseCode=entry.accountingCode?.base?.code;
+  if(entry.counterpartyAccountId||entry.internalTransferSourceId||baseCode==='FXC'||baseCode==='IBT')continue;
   const code=entry.accountingCode,base=code?.base,itemKey=base?.id?'BASE:'+base.id:code?.id?'CODE:'+code.id:'UNCODED',key=JSON.stringify([itemKey,entry.direction,account.currencyCode]);
-  const group=groups.get(key)||{itemKey,baseId:base?.id??null,code:base?.code||code?.code||'',nameKo:base?.nameKo||code?.nameKo||'',nameEn:base?.nameEn||code?.nameEn||'',nameVi:base?.nameVi||code?.nameVi||'',direction:entry.direction,currencyCode:account.currencyCode,total:0n,entries:[]};
+  const industries=(base?.industryLinks||[]).map((link:any)=>link.industry);
+  const group=groups.get(key)||{itemKey,baseId:base?.id??null,code:base?.code||code?.code||'',nameKo:base?.nameKo||code?.nameKo||'',nameEn:base?.nameEn||code?.nameEn||'',nameVi:base?.nameVi||code?.nameVi||'',industries,direction:entry.direction,currencyCode:account.currencyCode,total:0n,entries:[]};
   group.total+=ledgerScale4(entry.amount);
   group.entries.push({id:entry.id,date:entry.transactionDate,accountId:entry.accountId,accountName:accountName(account),currencyCode:account.currencyCode,direction:entry.direction,amount:ledgerMoney(ledgerScale4(entry.amount),account.currencyCode),code:code?.code||'',counterparty:entry.counterpartyName||'',purpose:entry.purpose||''});groups.set(key,group);
  }
@@ -63,7 +66,7 @@ export async function loadAccountOverview(db:any,orgId:number,query:any={}){
    tx.bankLedgerEntry.groupBy({by:['accountId','transactionDate','direction'],where:{orgId,voidedAt:null,transactionDate:{gte:start,lte:asOf}},_sum:{amount:true}}),
    tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:yesterday},include:{allocations:true,settlementLines:true} satisfies Prisma.BankLedgerEntryInclude,orderBy:[{accountId:'asc'},{createdAt:'asc'},{id:'asc'}]}),
    loadOutstanding(tx,orgId,asOf),
-   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:{gte:historyStart,lte:asOf}},select:{id:true,accountId:true,transactionDate:true,direction:true,amount:true,counterpartyName:true,purpose:true,accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true}}}}},orderBy:[{transactionDate:'desc'},{createdAt:'desc'},{id:'desc'}]} satisfies Prisma.BankLedgerEntryFindManyArgs),
+   tx.bankLedgerEntry.findMany({where:{orgId,voidedAt:null,transactionDate:{gte:historyStart,lte:asOf}},select:{id:true,accountId:true,transactionDate:true,direction:true,amount:true,counterpartyName:true,counterpartyAccountId:true,internalTransferSourceId:true,purpose:true,accountingCode:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,base:{select:{id:true,code:true,nameKo:true,nameEn:true,nameVi:true,industryLinks:{select:{industry:{select:{id:true,nameKo:true,nameEn:true,nameVi:true,partnerRole:{select:{id:true,nameKo:true,nameEn:true,nameVi:true}}}}}}}}}}},orderBy:[{transactionDate:'desc'},{createdAt:'desc'},{id:'desc'}]} satisfies Prisma.BankLedgerEntryFindManyArgs),
   ]);
   const invoiceIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.invoiceId).filter(Boolean)))];
   const expenseIds=[...new Set<string>(dailyEntries.flatMap((row:any)=>row.allocations.map((a:any)=>a.expenseItemId).filter(Boolean)))];

@@ -6,8 +6,28 @@ const {Prisma}=require('../backend/node_modules/@prisma/client');
 const {registerBankLedgerRoutes}=require('../backend/dist/services/bankLedger');
 const {attachLedgerActorNames}=require('../backend/dist/services/ledgerActors');
 import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
-import {accountCashflowItems,accountCashflowTotal,cashflowSegments} from '../frontend/src/utils/accountCashflow.mjs';
+import {accountCashflowItems,accountCashflowTotal,cashflowSegments,categorizeCashflow} from '../frontend/src/utils/accountCashflow.mjs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+
+test('cashflow groups by role without duplicating amounts across multiple industries',()=>{
+ const role={id:1,nameEn:'Outsourcing'},industry={id:10,nameEn:'Cutting',partnerRole:role};
+ const group=(itemKey,industries,amount)=>({itemKey,industries,direction:'OUT',currencyCode:'VND',entries:[{amount,direction:'OUT'}]});
+ const rows=categorizeCashflow([group('BASE:1',[industry],12),group('BASE:2',[industry,{...industry,id:11}],30),group('BASE:3',[industry,{id:12,partnerRole:{id:2}}],8)],{unclassified:{nameEn:'Unclassified'}});
+ assert.equal(rows[0].sourceIndustry.id,10);
+ assert.equal(rows[1].sourceIndustry.nameEn,'Unclassified');
+ const items=accountCashflowItems(rows,'','VND');
+ assert.equal(items.find(row=>row.itemKey==='ROLE:1').out,'42');
+ assert.equal(items.find(row=>row.itemKey==='UNCLASSIFIED').out,'8');
+ assert.equal(accountCashflowTotal(items,'OUT','VND'),'50');
+});
+
+test('cashflow excludes internal account transfers and exchanges while retaining bank fees',()=>{
+ const {accountCashFlowReport}=require('../backend/dist/services/accountOverview.js');
+ const account={id:'a',currencyCode:'VND'};
+ const entry=(id,code,extra={})=>({id,accountId:'a',direction:'OUT',amount:'100',accountingCode:code?{base:{id,code}}:null,...extra});
+ const report=accountCashFlowReport([account],[entry(1,'FXC'),entry(2,'IBT'),entry(3,null,{counterpartyAccountId:'b'}),entry(4,null,{internalTransferSourceId:'a1'}),entry(5,'BNF')]);
+ assert.deepEqual(report.map(row=>[row.code,row.amount]),[['BNF','100']]);
+});
 
 test('real database overview scopes monthly cash flows, excludes voids and leaves ledger records unchanged',async()=>{
  const f=await changeApprovalFixture();try{

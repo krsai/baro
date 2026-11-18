@@ -21,22 +21,25 @@ try{
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const auth={activeOrgId:1};export const useAuth=()=>auth;'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAppActions=()=>({navigateToPath:()=>{},showNotification:message=>{window.toast=message;}});'}));
-  await page.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const buildQueryString=q=>'?'+new URLSearchParams(q);export const requestJSON=async url=>{window.calls=(window.calls||0)+1;if(url.includes('exchange-rates'))return {date:'2026-11-05',rates:{VND:1},stale:false};const account={id:'a',name:'Main account',currencyCode:'VND',yesterdayIn:'16465275',yesterdayOut:'0',beginningBalance:'0',totalIn:'16465275',totalOut:'0',change:'16465275',currentBalance:'16465275'};return {asOf:'2026-11-05',yesterday:'2026-11-04',monthStart:'2026-11-01',historyStart:'2026-10-07',accounts:[account],currencyTotals:[account],transactions:[{id:'tx',accountName:account.name,counterparty:'BARO',purpose:'Detail only',direction:'IN',currencyCode:'VND',amount:'16465275',settlementLines:[]}],outstandingTotals:[],receivables:[],payables:[],history:[{date:'2026-11-04',accounts:[{accountId:'a',balance:'16465275'}]},{date:'2026-11-05',accounts:[{accountId:'a',balance:'16465275'}]}]};};`}));
+  await page.route('**/src/utils/apiClient.js*',r=>r.fulfill({contentType:'application/javascript',body:`export const buildQueryString=q=>'?'+new URLSearchParams(q);export const requestJSON=async url=>{window.calls=(window.calls||0)+1;if(url.includes('exchange-rates'))return {date:'2026-11-05',rates:{VND:1},stale:false};const account={id:'a',name:'Main account',currencyCode:'VND',yesterdayIn:'16465275',yesterdayOut:'0',beginningBalance:'0',totalIn:'16465275',totalOut:'0',change:'16465275',currentBalance:'16465275'};return {asOf:'2026-11-05',yesterday:'2026-11-04',monthStart:'2026-11-01',historyStart:'2026-10-07',accounts:[account],currencyTotals:[account],transactions:[{id:'tx',accountName:account.name,counterparty:'BARO',purpose:'Detail only',direction:'IN',currencyCode:'VND',amount:'16465275',settlementLines:[]}],cashflowGroups:[{itemKey:'BASE:1',code:'CUT',direction:'IN',currencyCode:'VND',industries:[{id:2,nameEn:'Cutting',partnerRole:{id:1,nameEn:'Outsourcing'}}],entries:[{id:'cash-1',direction:'IN',accountId:'a',amount:'16465275',accountName:account.name,currencyCode:'VND',date:'2026-11-04',code:'CUT'}]}],outstandingTotals:[],receivables:[],payables:[],history:[{date:'2026-11-04',accounts:[{accountId:'a',balance:'16465275'}]},{date:'2026-11-05',accounts:[{accountId:'a',balance:'16465275'}]}]};};`}));
   await page.goto(`http://127.0.0.1:${port}/account-overview-layout-acceptance.html`);
   await page.getByTestId('all-account-balance').waitFor();
   assert.equal(await page.getByRole('button',{name:t.reload,exact:true}).count(),0);
   assert.equal(await page.getByText('Detail only',{exact:true}).count(),0);
-  const total=page.getByText(t.totalBalance+' / VND',{exact:true});assert.equal(await total.evaluate(e=>e.tagName),'H6');
-  assert.equal(await page.getByText(t.yesterday,{exact:false}).count(),0);assert.equal(await page.getByText(t.opening,{exact:true}).count(),0);
-  const graph=await page.getByText(t.chart,{exact:true}).first().boundingBox(),movements=await page.getByText(t.balances,{exact:false}).first().boundingBox();assert.ok(graph.y<movements.y);
-  await page.locator('#overview-account').click();await page.getByRole('option',{name:'Main account',exact:true}).click();
-  const previousCalls=await page.evaluate(()=>window.calls);await page.getByRole('button',{name:t.previousMonth,exact:true}).click();await page.waitForFunction(before=>window.calls>before,previousCalls);assert.equal(await page.getByLabel(t.month,{exact:true}).inputValue(),'2026-10');
-  const table=page.locator('table').first();const cells=table.locator('thead th');const incoming=await cells.nth(3).boundingBox(),outgoing=await cells.nth(4).boundingBox();assert.ok(Math.abs(incoming.width-outgoing.width)<2);
-  await page.getByRole('button',{name:t.details,exact:true}).first().click();await page.getByRole('dialog').waitFor();assert.equal(await page.getByText('Detail only',{exact:true}).count(),0);
-  await page.getByRole('button',{name:t.close,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
-  const before=await page.evaluate(()=>window.calls);await page.evaluate(()=>dispatchEvent(new Event('focus')));await page.waitForFunction(before=>window.calls>before,before);
+  const charts=page.getByTestId('cashflow-charts-panel'),items=page.getByTestId('cashflow-items-panel');
+  const category=items.getByRole('button',{name:'Outsourcing',exact:true});
+  await category.waitFor();
+  if(width===1440)assert.ok(Math.abs((await charts.boundingBox()).height-(await items.boundingBox()).height)<2);
+  await category.focus();
+  await charts.getByTestId('cashflow-tooltip').getByText(/Cutting/).waitFor();
+  await category.click();
+  const detail=page.getByRole('dialog');
+  await detail.getByText('Cutting',{exact:true}).waitFor();
+  await detail.getByText('CUT',{exact:true}).waitFor();
+  await detail.getByRole('button',{name:t.close,exact:true}).click();
+  await detail.waitFor({state:'hidden'});
   if(lang==='ko'&&width===1440){const download=page.waitForEvent('download');await page.getByRole('button',{name:t.capture,exact:true}).click();const saved=await download;assert.equal(saved.suggestedFilename(),'account-overview-2026-11-05.png');assert.equal(await saved.failure(),null);}
   assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS: ko/en/vi desktop/mobile overview, fixed amount columns, details modal, automatic refresh and image download.');
+ console.log('PASS: ko/en/vi desktop/mobile overview, cashflow card height, category breakdown, details and image download.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);}

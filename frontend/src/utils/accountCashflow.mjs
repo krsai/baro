@@ -12,6 +12,15 @@ export function accountCashflowItems(groups,accountId,target,rates){
  return [...items.values()].map(item=>({...item,in:convertAccountBalances(item.native.filter(row=>row.direction==='IN'),target,rates),out:convertAccountBalances(item.native.filter(row=>row.direction==='OUT'),target,rates),net:convertAccountBalances(item.native.map(row=>({...row,balance:row.direction==='OUT'?'-'+row.balance:row.balance})),target,rates)})).sort((a,b)=>a.code.localeCompare(b.code)||a.itemKey.localeCompare(b.itemKey));
 }
 export function accountCashflowTotal(items,direction,target,rates){return convertAccountBalances(items.flatMap(item=>item.native.filter(row=>row.direction===direction)),target,rates);}
+export function categorizeCashflow(groups,labels){
+ return (groups||[]).map(group=>{
+  if(!Array.isArray(group.industries)||group.itemKey==='UNCODED')return group;
+  const roles=new Map(group.industries.filter(industry=>industry.partnerRole).map(industry=>[industry.partnerRole.id,industry.partnerRole]));
+  const role=roles.size===1?[...roles.values()][0]:null;
+  const category=role||labels.unclassified;
+  return {...group,...category,code:'',itemKey:role?`ROLE:${role.id}`:'UNCLASSIFIED',sourceIndustry:group.industries.length===1?group.industries[0]:labels.unclassified};
+ });
+}
 export function cashflowSegments(items,direction){
  const rows=items.filter(row=>row[direction]!=null&&scaled(row[direction])>0n),total=rows.reduce((sum,row)=>sum+scaled(row[direction]),0n);let angle=-Math.PI/2;
  return rows.map((row,index)=>{const start=angle,ratio=Number(scaled(row[direction])*1000000000n/total)/1000000000;angle=index===rows.length-1?Math.PI*1.5:angle+ratio*Math.PI*2;return {...row,start,end:angle,ratio};});
