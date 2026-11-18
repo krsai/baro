@@ -3,6 +3,7 @@ import { Button, Stack } from '@mui/material';
 import AppNotice from './AppNotice';
 import { useAppActions } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
+import {reloadAfterConfirmation} from '../utils/confirmedReload.mjs';
 
 const TEXT = {
   ko: { failed: '화면을 불러오지 못했습니다. 배포 후 화면 파일이 변경되었거나 연결이 끊겼을 수 있습니다. 다른 탭의 입력을 저장한 후 최신 화면을 다시 불러와 주세요.', reload: '최신 화면 다시 불러오기' },
@@ -26,7 +27,7 @@ export class WorkspacePageErrorBoundary extends React.Component {
 export default function WorkspacePageBoundary({ children }) {
   const { languageCode } = useLanguage();
   const { confirmDiscardUnsavedChanges } = useAppActions();
-  return <WorkspacePageErrorBoundary languageCode={languageCode} onReload={() => {
-    if (confirmDiscardUnsavedChanges()) window.location.reload();
+  return <WorkspacePageErrorBoundary languageCode={languageCode} onReload={async () => {
+    if (await confirmDiscardUnsavedChanges()) reloadAfterConfirmation();
   }}>{children}</WorkspacePageErrorBoundary>;
 }

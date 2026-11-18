@@ -21,7 +21,7 @@ export default function PayrollTargetSettings({orgId,languageCode='en',onSaved,s
  useUnsavedChanges(open&&Object.values(states).some(state=>state.dirty));
  const close=async()=>{
   if(locked)return;
-  if(Object.values(states).some(state=>state.dirty)&&!await dialogs.confirm((managementTargetText[languageCode]||managementTargetText.en).discard))return;
+  if(Object.values(states).some(state=>state.dirty)&&!await dialogs.confirm((managementTargetText[languageCode]||managementTargetText.en).discard,{purpose:'discard'}))return;
   setOpen(false);setStates({});
  };
  return <>

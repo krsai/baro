@@ -46,7 +46,7 @@ function CompanyRequests({orgId}){
  const reloadFormPolicy=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{const c=await api('/catalog');if(live.current){setCatalog(c);setForm(f=>f?{...f,policyRevision:c.policy.revision}:f);setError('');refresh();}}catch(e){if(live.current)setError(errorText(t,e));}finally{lock.current=false;if(live.current)setBusy(false);}};
  const submit=()=>run(async()=>{const d=await api('/requests',{method:'POST',body:JSON.stringify(form)});if(live.current){setForm(null);setDetailId(d.id);}});
  const decide=decision=>run(async()=>{const d=await api('/requests/'+detail.id+'/decision',{method:'POST',body:JSON.stringify({decision,revision:detail.revision,reason:decisionReason,approvedMinutes:Number(minutes)})});if(live.current)setDetail(d);});
- const closeForm=async()=>{if(!busy&&(!dirty||await dialogs.confirm(t.discard))){setForm(null);setError('');}};
+ const closeForm=async()=>{if(!busy&&(!dirty||await dialogs.confirm(t.discard,{purpose:'discard'}))){setForm(null);setError('');}};
  const rows=(result?.rows||[]).filter(r=>(!status||r.status===status)&&(!query||[r.employee.name,r.employee.employeeNo,r.drafter.name,r.reason].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())));
  const extra=form&&['OVERTIME','SPECIAL'].includes(form.kind),single=form&&['OVERTIME','SPECIAL','ANNUAL_AM','ANNUAL_PM'].includes(form.kind);
  return <AppPageContainer title={t.title} titleActions={<Stack direction="row" spacing={1}><Button variant="contained" disabled={loading||!catalog?.policy.approverIds.length||!(catalog?.policy.drafterRoles.includes(catalog.actor.orgRole)||catalog?.canProxy)} onClick={()=>begin()}>{t.new}</Button></Stack>}>

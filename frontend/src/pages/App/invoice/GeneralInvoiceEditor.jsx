@@ -56,7 +56,7 @@ export default function GeneralInvoiceEditor({orgId,buyerOrgId,languageCode='ko'
  const changeLine=(key,patch)=>change(()=>setLines(current=>current.map(row=>row.key===key?{...row,...patch}:row)));
  const changeField=(key,value)=>change(()=>setFields(current=>({...current,[key]:value})));
  const requestChange=async action=>{
-  if(locked)return;if((dirty||draft.current)&&!await dialogs.confirm(ui.discard))return;
+  if(locked)return;if((dirty||draft.current)&&!await dialogs.confirm(ui.discard,{purpose:'discard'}))return;
   draft.current=null;submission.current=null;clientKey.current=crypto.randomUUID();setSource(null);setFields(null);setDirty(false);setReviewed(false);action();
  };
  const issue=async(options={})=>{

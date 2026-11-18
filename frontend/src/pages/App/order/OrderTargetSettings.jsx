@@ -22,7 +22,7 @@ export default function OrderTargetSettings({orgId,languageCode='en',disabled=fa
  useUnsavedChanges(open&&dirty);
  const close=async()=>{
   if(locked)return;
-  if(dirty&&!await dialogs.confirm((managementTargetText[languageCode]||managementTargetText.en).discard))return;
+  if(dirty&&!await dialogs.confirm((managementTargetText[languageCode]||managementTargetText.en).discard,{purpose:'discard'}))return;
   setOpen(false);setStates({});
  };
  return <>

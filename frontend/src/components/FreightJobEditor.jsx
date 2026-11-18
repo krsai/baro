@@ -39,7 +39,7 @@ export default function FreightJobEditor({t,options,initial,onClose,onSave,busy,
  const setValue=fn=>commit(v=>{const next=fn(v);return next.data.notifySameAsConsignee?{...next,data:{...next.data,notifyId:next.data.consigneeId??null,notifyParty:next.data.consigneeParty??null}}:next;});
  const data=(key,val)=>setValue(v=>({...v,data:{...v.data,[key]:val}}));
  const cargoData=patch=>setValue(v=>({...v,data:{...v.data,shipmentType:v.data.shipmentType||(v.mode==='SEA'?'FCL':v.mode),...patch,cargoSchemaVersion:1}}));
- const close=async()=>{if(partyRole||preset||locationNode)return;if(!locked&&(!dirty||await dialogs.confirm(x.discard)))onClose();};
+ const close=async()=>{if(partyRole||preset||locationNode)return;if(!locked&&(!dirty||await dialogs.confirm(x.discard,{purpose:'discard'})))onClose();};
  const field=(key,type='text',cargo=false)=><TextField key={key} fullWidth size="small" label={e[key]||t[key]} type={type} disabled={locked} onFocus={type==='date'?ev=>{try{ev.target.showPicker?.();}catch{/* Native calendar can still be opened with its button. */}}:undefined} value={value.data[key]??''} onChange={ev=>cargo?cargoData({[key]:ev.target.value}):data(key,ev.target.value)} slotProps={{inputLabel:{shrink:type==='date'||undefined},htmlInput:{maxLength:key==='cargo'?2000:['origin','destination'].includes(key)?160:key==='dangerousGoodsDetails'?500:1000,...(type==='number'?{min:0,step:'any'}:{})}}}/>;
  const allParties=options.customers||[],customer=allParties.find(row=>row.id===value.customerId)||value.data.customer||null;
  const counterparties=allParties.filter(row=>row.id!==orgId&&row.id!==options.self?.id&&!row.isShippingGeneralCustomer);

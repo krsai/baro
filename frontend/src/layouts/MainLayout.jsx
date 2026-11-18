@@ -208,6 +208,17 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
     if(!pending||tabsForRender.some(tab=>tab.id===pending.id))return;
     pendingKeyboardClose.current=null;
     const active=document.activeElement;
+    if(active?.closest('[data-page-confirmation]')){
+      // The confirmation fades out after the tab has closed. Restore focus
+      // after its own focus trap releases, without overriding a user's move.
+      setTimeout(()=>{
+        const current=document.activeElement;
+        if(current!==document.body&&current!==pending.origin&&current?.isConnected)return;
+        const targets=[...tabsRoot.current?.querySelectorAll('[data-workspace-tab]')||[]];
+        (targets.find(node=>node.dataset.workspaceTab===pending.next)||targets[0])?.focus();
+      },250);
+      return;
+    }
     if(active!==document.body&&active!==pending.origin&&active?.isConnected)return;
     const targets=[...tabsRoot.current?.querySelectorAll('[data-workspace-tab]')||[]];
     (targets.find(node=>node.dataset.workspaceTab===pending.next)||targets[0])?.focus();
@@ -261,11 +272,11 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
               key={tab.id}
               value={tab.id}
               data-workspace-tab={tab.id}
-              onKeyDown={event=>{if(event.target===event.currentTarget&&!tab.isOptimistic&&keyboardAction(event,'workspace-tab')==='close-tab'){
+              onKeyDown={async event=>{if(event.target===event.currentTarget&&!tab.isOptimistic&&keyboardAction(event,'workspace-tab')==='close-tab'){
                 event.preventDefault();event.stopPropagation();
                 const index=tabsForRender.findIndex(row=>row.id===tab.id);
                 pendingKeyboardClose.current={id:tab.id,next:(tabsForRender[index+1]||tabsForRender[index-1])?.id,origin:event.currentTarget};
-                if(onCloseTab(event,tab.id)===false)pendingKeyboardClose.current=null;
+                if(await onCloseTab(event,tab.id)===false)pendingKeyboardClose.current=null;
               }}}
               component="div"
               sx={{
@@ -1103,7 +1114,7 @@ const MainLayout = () => {
 
   // The core navigation logic, wrapped in useCallback for stability.
   const handleNavigation = React.useCallback(
-    (path, options) => {
+    async (path, options) => {
       const requestedPath =
         typeof path === 'string' && path.trim() ? path : resolveAccessiblePath();
       const requestedPathname = toPathname(requestedPath);
@@ -1137,7 +1148,7 @@ const MainLayout = () => {
       if (isEmptyWorkspaceNavigation) {
         pendingTabOpenRef.current = null;
         if (closeTabId && !skipUnsavedChangesCheck) {
-          const confirmed = confirmDiscardUnsavedChanges({ path: closeTabId });
+          const confirmed = await confirmDiscardUnsavedChanges({ path: closeTabId });
           if (!confirmed) return;
         }
         skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;
@@ -1206,7 +1217,7 @@ const MainLayout = () => {
           destructivePaths.add(currentPath);
         }
         for (const destructivePath of destructivePaths) {
-          const confirmed = confirmDiscardUnsavedChanges({ path: destructivePath });
+          const confirmed = await confirmDiscardUnsavedChanges({ path: destructivePath });
           if (!confirmed) return;
         }
       }
@@ -1492,13 +1503,13 @@ const MainLayout = () => {
     });
   }, [handleNavigation, resolveRenderedTabLabel, tabsForRender]);
 
-  const handleCloseTab = React.useCallback((e, tabIdToClose) => {
+  const handleCloseTab = React.useCallback(async (e, tabIdToClose) => {
     e.preventDefault();
     e.stopPropagation();
 
     const closingTab = openTabs.find((tab) => tab.id === tabIdToClose);
     if (!closingTab) return false;
-    const confirmed = confirmDiscardUnsavedChanges({ path: tabIdToClose });
+    const confirmed = await confirmDiscardUnsavedChanges({ path: tabIdToClose });
     if (!confirmed) return false;
     pendingManualTabCloseRef.current = null;
 
@@ -1575,8 +1586,8 @@ const MainLayout = () => {
     schedulePendingNavigationCleanup,
   ]);
 
-  const handleCloseAllTabs = React.useCallback(() => {
-    if (!confirmDiscardUnsavedChanges()) return;
+  const handleCloseAllTabs = React.useCallback(async () => {
+    if (!await confirmDiscardUnsavedChanges()) return;
     const sourcePath = currentPathRef.current;
     const activeTab = openTabs.find(tab => tab.id === sourcePath);
     skipAutoOpenPathRef.current = EMPTY_WORKSPACE_PATH;

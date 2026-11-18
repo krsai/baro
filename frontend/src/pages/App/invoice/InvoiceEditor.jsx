@@ -204,7 +204,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
   };
   const requestSelectionChange = async change => {
     if (saving || uncertain) return;
-    if ((dirty || savedDraft) && !await pageDialogs.confirm(ui.discard)) return;
+    if ((dirty || savedDraft) && !await pageDialogs.confirm(ui.discard,{purpose:'discard'})) return;
     draftRef.current = null; setSavedDraft(null); clientKey.current = globalThis.crypto.randomUUID();
     setDirty(false); setReviewed(false); setSource(null); setFields(null); setError('');
     change();
@@ -255,7 +255,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
       <Stack spacing={0} sx={{minWidth:0}}>
         {renderSelection&&<Box sx={{p:2,borderBottom:1,borderColor:'divider'}}>{renderSelection({requestChange:requestSelectionChange,disabled:saving||uncertain})}</Box>}
         {loading && <CircularProgress />}
-        {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard)) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
+        {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard,{purpose:'discard'})) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
           <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField}/>
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>

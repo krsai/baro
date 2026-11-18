@@ -40,13 +40,13 @@ test('expense forms share one slot even on automatic route opens and stale relab
   assert.equal(tabs[1].id,'/outsourcing-record/new');assert.equal(guards.has('draft'),false);
 });
 
-test('opening another expense from the list confirms a hidden dirty detail and cancellation preserves it',()=>{
+test('opening another expense from the list confirms a hidden dirty detail and cancellation preserves it',async()=>{
   const source=fs.readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
   const start=source.indexOf('      if (!skipUnsavedChangesCheck) {',source.indexOf('const handleNavigation ='));
   const block=source.slice(start,source.indexOf('      const label = resolveTabLabel',start));
   const calls=[];
   const context=vm.createContext({skipUnsavedChangesCheck:false,closeTabId:null,isSamePathNavigation:false,currentPath:'/outsourcing-record',nextPathname:'/outsourcing-record/edit/request/2',openOptions:{replacePrefix:'/outsourcing-record/'},openTabs:[{id:'/outsourcing-record'},{id:'/outsourcing-record/edit/request/1'}],confirmDiscardUnsavedChanges:({path})=>{calls.push(path);return false;}});
-  assert.equal(vm.runInContext('(function(){'+block+'return "proceed";})()',context),undefined);
+  assert.equal(await vm.runInContext('(async function(){'+block+'return "proceed";})()',context),undefined);
   assert.deepEqual(calls,['/outsourcing-record/edit/request/1']);
 });
 
@@ -122,12 +122,12 @@ test('failed refresh stays pending without a request loop and succeeds on the ne
   }
 });
 
-test('close all confirms every dirty tab before changing anything and closes the active tab after neutral navigation',()=>{
+test('close all confirms every dirty tab before changing anything and closes the active tab after neutral navigation',async()=>{
  const source=fs.readFileSync('frontend/src/layouts/MainLayout.jsx','utf8');
  const callback=source.slice(source.indexOf('  const handleCloseAllTabs ='),source.indexOf('  const isCurrentPathKeepAlive ='));
  const calls=[],refs={skipAutoOpenPathRef:{current:null},pendingCloseTabRef:{current:null},pendingManualTabCloseRef:{current:null},pendingNavigationPathRef:{current:null},recentTabHistoryRef:{current:['/style','/work']},currentPathRef:{current:'/work'}};
  let allow=false;
  const context=vm.createContext({...refs,React:{useCallback:fn=>fn},EMPTY_WORKSPACE_PATH:'/workspace',openTabs:[{id:'/style'},{id:'/work'}],confirmDiscardUnsavedChanges:(options)=>{calls.push(['confirm',options]);return allow;},closeTab:id=>calls.push(['close',id]),navigate:(...args)=>calls.push(['navigate',...args]),schedulePendingNavigationCleanup:(...args)=>calls.push(['cleanup',...args])});
- vm.runInContext(callback+'globalThis.closeAll=handleCloseAllTabs;',context);context.closeAll();assert.deepEqual(calls,[['confirm',undefined]]);assert.equal(refs.pendingCloseTabRef.current,null);assert.equal(refs.recentTabHistoryRef.current.length,2);
- allow=true;calls.length=0;context.closeAll();assert.deepEqual(calls[0],['confirm',undefined]);assert.deepEqual(calls[1],['close','/style']);assert.equal(calls[2][0],'navigate');assert.equal(calls[2][1],'/workspace');assert.equal(calls[2][2].replace,true);assert.equal(refs.pendingCloseTabRef.current,'/work');assert.equal(refs.pendingManualTabCloseRef.current.targetPath,'/workspace');assert.equal(refs.recentTabHistoryRef.current.length,0);
+ vm.runInContext(callback+'globalThis.closeAll=handleCloseAllTabs;',context);await context.closeAll();assert.deepEqual(calls,[['confirm',undefined]]);assert.equal(refs.pendingCloseTabRef.current,null);assert.equal(refs.recentTabHistoryRef.current.length,2);
+ allow=true;calls.length=0;await context.closeAll();assert.deepEqual(calls[0],['confirm',undefined]);assert.deepEqual(calls[1],['close','/style']);assert.equal(calls[2][0],'navigate');assert.equal(calls[2][1],'/workspace');assert.equal(calls[2][2].replace,true);assert.equal(refs.pendingCloseTabRef.current,'/work');assert.equal(refs.pendingManualTabCloseRef.current.targetPath,'/workspace');assert.equal(refs.recentTabHistoryRef.current.length,0);
 });

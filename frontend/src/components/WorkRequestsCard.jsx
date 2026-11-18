@@ -1,3 +1,4 @@
+import {usePageDialogs} from './PageDialogProvider';
 import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
 import {subscribeWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import DashboardFilter from './DashboardFilter';
@@ -14,6 +15,7 @@ import {workRequestText} from '../constants/dashboardWorkRequests';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import {dashboardWidgetPaperSx,dashboardWidgetTitleSx} from './dashboardWidgetStyles';
 export default function WorkRequestsCard({orgId,languageCode}){
+ const dialogs=usePageDialogs();
  const t=workRequestText[languageCode]||workRequestText.en,{active}=useRequestScopeContext(),{showNotification}=useAppActions();
  const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[page,setPage]=useState(0),[status,setStatus]=useState('ALL'),[direction,setDirection]=useState('ALL'),[reload,setReload]=useState(0);
  const [open,setOpen]=useState(false),[people,setPeople]=useState([]),[peopleFailed,setPeopleFailed]=useState(false),[peopleLoading,setPeopleLoading]=useState(false),[recipient,setRecipient]=useState(null),[title,setTitle]=useState(''),[message,setMessage]=useState(''),[formError,setFormError]=useState(''),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false);
@@ -46,7 +48,7 @@ export default function WorkRequestsCard({orgId,languageCode}){
   <Box sx={{flex:1,minHeight:0,overflow:'auto'}}>{loading&&!data?<CircularProgress size={20}/>:!error&&data?.rows.length===0?<Typography color="text.secondary">{t.empty}</Typography>:<Stack spacing={1}>{data?.rows.map(row=><DashboardAlertItem languageCode={languageCode} key={row.id} title={row.title} countLabel={t[row.status]} detail={row.senderName+' → '+row.recipientName+' · '+new Date(row.completedAt||row.createdAt).toLocaleString({ko:'ko-KR',en:'en-GB',vi:'vi-VN'}[languageCode]||'en-GB')} onClick={()=>setSelected(row)} actions={<>{row.status==='OPEN'&&row.senderId===data.actorId&&data.canCreate&&<Button disabled={busy} onClick={()=>edit(row)}>{t.edit}</Button>}{row.status==='OPEN'&&row.recipientId===data.actorId&&<Button disabled={busy} onClick={()=>act(row,'COMPLETE')}>{t.complete}</Button>}{row.status==='DONE'&&<DeleteActionButton aria-label={t.hide} title={t.hide} disabled={busy} onClick={()=>act(row,'HIDE')}/>}</>}/>)}</Stack>}</Box>
   <Stack direction="row" justifyContent="flex-end"><Button disabled={!page||loading} onClick={()=>setPage(n=>n-1)}>{t.previous}</Button><Button disabled={!data?.hasMore||loading} onClick={()=>setPage(n=>n+1)}>{t.next}</Button></Stack>
   <Dialog open={!!selected} onClose={()=>setSelected(null)} fullWidth maxWidth="sm"><DialogTitle>{selected?.title}</DialogTitle><DialogContent><Typography variant="caption" color="text.secondary">{selected?.senderName} → {selected?.recipientName}</Typography><Typography sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',mt:2}}>{selected?.message}</Typography></DialogContent></Dialog>
-  <Dialog open={open} onClose={()=>{if(!busy&&!uncertain&&(!formDirty||window.confirm(t.discard)))setOpen(false);}} fullWidth maxWidth="sm"><DialogTitle>{editing?t.edit:t.create}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
+  <Dialog open={open} onClose={async()=>{if(!busy&&!uncertain&&(!formDirty||await dialogs.confirm(t.discard,{purpose:'discard'})))setOpen(false);}} fullWidth maxWidth="sm"><DialogTitle>{editing?t.edit:t.create}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
    {formError&&<Alert severity="error">{formError}</Alert>}{!editing&&peopleFailed&&<Alert severity="error" action={<Button onClick={loadPeople}>{t.retry}</Button>}>{t.failed}</Alert>}
    {!editing&&<SearchableSelect options={people} value={recipient} onChange={(_event,value)=>setRecipient(value)} disabled={busy||uncertain||peopleLoading||peopleFailed} getOptionLabel={person=>[person.employeeNo,person.name].filter(Boolean).join(' · ')} isOptionEqualToValue={(a,b)=>a.id===b.id} renderInput={params=><TextField {...params} size="small" required label={t.recipient}/>}/> }
    <TextField size="small" required label={t.subject} value={title} disabled={busy||uncertain} onChange={e=>setTitle(e.target.value)} inputProps={{maxLength:200}}/>

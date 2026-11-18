@@ -3,6 +3,7 @@ import { useRequestScopeContext } from '../context/RequestScopeContext';
 import { useLocation } from 'react-router-dom';
 import { useAppActions } from '../context/AppContext';
 import { getCurrentLanguageCode } from '../utils/appLanguage';
+import {isConfirmedReload} from '../utils/confirmedReload.mjs';
 
 const DEFAULT_CONFIRM_MESSAGE = {
   ko: "저장하지 않은 변경 사항이 있습니다. 저장하지 않고 이동하시겠습니까?",
@@ -59,7 +60,7 @@ const useUnsavedChanges = (isDirty, options = {}) => {
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
-      if (!isDirtyRef.current) return;
+      if (!isDirtyRef.current||isConfirmedReload()) return;
       event.preventDefault();
       event.returnValue = '';
     };

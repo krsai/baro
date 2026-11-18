@@ -1,6 +1,7 @@
 import {createNotificationQueue} from '../utils/notificationQueue.mjs';
 import {NOTIFICATION_EVENT} from '../utils/appNotifications';
 import NotificationToast from '../components/NotificationToast';
+import PageDialogProvider,{usePageDialogs} from '../components/PageDialogProvider';
 import React, {
   createContext,
   useContext,
@@ -13,10 +14,11 @@ import React, {
 
 const AppStateContext = createContext(null);
 const AppActionsContext = createContext(null);
-const DEFAULT_UNSAVED_CHANGES_CONFIRM_MESSAGE = "저장되지 않은 변경 사항이 있습니다. 저장하지 않고 이동하시겠습니까?";
 
 // AppProvider component
-export const AppProvider = ({ children }) => {
+export const AppProvider = ({ children }) => <PageDialogProvider><AppProviderState>{children}</AppProviderState></PageDialogProvider>;
+const AppProviderState = ({ children }) => {
+  const dialogs=usePageDialogs(),discardPending=useRef(false);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const notifications=useRef(null);
@@ -216,7 +218,7 @@ export const AppProvider = ({ children }) => {
     );
   }, []);
 
-  const confirmDiscardUnsavedChanges = useCallback((options = {}) => {
+  const confirmDiscardUnsavedChanges = useCallback(async (options = {}) => {
     const fallbackMessage =
       typeof options?.message === 'string' ? options.message.trim() : '';
     const targetPath = typeof options?.path === 'string' ? options.path.trim() : '';
@@ -226,16 +228,17 @@ export const AppProvider = ({ children }) => {
       return String(guard?.path || '').trim() === targetPath;
     });
     if (dirtyGuards.length === 0) return true;
-    if (typeof window === 'undefined') return true;
+    if (discardPending.current) return false;
     const messageFromGuard = dirtyGuards
       .map((guard) => String(guard?.message || '').trim())
       .find(Boolean);
     const confirmMessage =
       fallbackMessage ||
       messageFromGuard ||
-      DEFAULT_UNSAVED_CHANGES_CONFIRM_MESSAGE;
-    return window.confirm(confirmMessage);
-  }, []);
+      '';
+    discardPending.current=true;
+    try{return await dialogs.confirm(confirmMessage,{purpose:'discard'});}finally{discardPending.current=false;}
+  }, [dialogs]);
 
   const showNotification=useCallback((message,type='info',options)=>notifications.current.show(message,type,options),[]);
   const dismissNotification=useCallback(()=>notifications.current.dismiss(),[]);

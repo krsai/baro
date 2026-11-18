@@ -69,7 +69,9 @@ try{
    assert.equal(await dialog.getByTestId('dashboard-document-load-error').count(),0);assert.equal(requests,1);assert.equal(navigations,1);
    assert.equal(await page.getByRole('textbox',{name:'Draft',includeHidden:true}).inputValue(),'Keep my draft');
    assert.equal(await page.evaluate(()=>window.dashboardRouterPath),'/dashboard');
-   await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
+   await page.keyboard.press('Escape');
+   const discard={ko:['저장하지 않은 변경 사항','변경 사항 버리기'],en:['Unsaved changes','Discard changes'],vi:['Thay đổi chưa lưu','Bỏ thay đổi']}[lang];
+   await page.getByRole('dialog',{name:discard[0],exact:true}).getByRole('button',{name:discard[1],exact:true}).click();await dialog.waitFor({state:'hidden'});
    await page.getByRole('heading',{name:'Dashboard',exact:true}).waitFor();await page.close();continue;
   }
   const dialog=page.getByRole('dialog');await dialog.getByTestId('dashboard-document-load-error').waitFor();

@@ -38,7 +38,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
  useEffect(()=>{onStateChange?.({dirty,locked});},[dirty,locked,onStateChange]);
  const Container=embedded?Box:Dialog;
  const show=()=>{setQ(initialSearch);setSearch(initialSearch);setPages([0,0]);setChanges({});setError('');setUncertain(false);request.current=null;setOpen(true);};
- const close=async()=>{if(locked)return;if(dirty&&!await dialogs.confirm(t.discard))return;setOpen(false);};
+ const close=async()=>{if(locked)return;if(dirty&&!await dialogs.confirm(t.discard,{purpose:'discard'}))return;setOpen(false);};
  const move=(row,excluded)=>{
   if(locked||loading||loadError)return;
   request.current=null;setError('');setChanges(current=>{

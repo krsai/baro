@@ -28,7 +28,7 @@ export default forwardRef(function ApprovalRuleEditor({rules,settings,grades=[],
  const gradeName=row=>row?.[languageCode==='ko'?'nameKo':languageCode==='vi'?'nameVi':'nameEn']||row?.name||'';
  const updateGroup=(base,currency,next,reflow=false)=>{const source=groups.find(group=>group.currency===currency);return replaceApprovalGroup(base,source.group,reflow?reflowApprovalBands(next,currency):next);};
  const openConditions=row=>{const values=Object.fromEntries(row.entries.map(entry=>[entry.currency,entry.rule.max??'']));setConditionDraft({row,values,initial:JSON.stringify(values)});};
- const closeConditions=async()=>{if(!conditionsDirty||await dialogs.confirm(t.discardConditions))setConditionDraft(null);};
+ const closeConditions=async()=>{if(!conditionsDirty||await dialogs.confirm(t.discardConditions,{purpose:'discard'}))setConditionDraft(null);};
  const amountSummary=entry=>boundedApprovalBand(entry.rule)?`${entry.currency} ≤ ${formatEditableDecimal(entry.rule.max??'')}`:entry.rule.min==='0'?`${entry.currency} · ${t.noAmountCondition}`:`${entry.currency} > ${formatEditableDecimal(previousApprovalAmount(entry.rule.min,entry.currency))}`;
  let conditionResult=rules,conditionInvalid=false;
  if(conditionDraft){for(const entry of conditionDraft.row.entries){if(!boundedApprovalBand(entry.rule))continue;const max=conditionDraft.values[entry.currency];if(max===(entry.rule.max??''))continue;const source=groups.find(group=>group.currency===entry.currency);if(approvalAmountUnits(max,entry.currency)===null)conditionInvalid=true;conditionResult=updateGroup(conditionResult,entry.currency,source.rows.map((rule,index)=>index===entry.index?{...rule,max,__bounded:true}:rule),true);}conditionInvalid||=approvalBandOrderErrors(conditionResult).size>0;}

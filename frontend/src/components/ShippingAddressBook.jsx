@@ -27,7 +27,7 @@ export default function ShippingAddressBook({orgId,customerId,current,registered
   requestJSON(url,{skipCache:true}).then(value=>{if(live)setRows(value);}).catch(()=>live&&setReadError(true)).finally(()=>live&&setLoading(false));
   return()=>{live=false;};
  },[url,reload,scopeCustomerId]);
- const leave=async()=>!blocked&&(!dirty||await dialogs.confirm(t.discard));
+ const leave=async()=>!blocked&&(!dirty||await dialogs.confirm(t.discard,{purpose:'discard'}));
  const open=async row=>{
   if(!await leave())return;
   const next=row?.registered?{id:crypto.randomUUID(),...addressValue({...row.data,label:row.label})}:row?record(row):{id:crypto.randomUUID(),...addressValue()};
