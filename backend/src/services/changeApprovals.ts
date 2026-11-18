@@ -21,7 +21,7 @@ import {postLedgerSettlementBatch,validateLedgerMoney,ledgerScale4} from './bank
 const fail=(code:string,status=409):never=>{throw createHttpError(status,code);};
 const json=(v:any)=>JSON.parse(JSON.stringify(v));
 const digest=(v:any)=>createHash('sha256').update(JSON.stringify(json(v))).digest('hex');
-const person={orgId:true,id:true,name:true,orgRole:true,gradeId:true,status:true,grade:{select:{sortOrder:true,setId:true,isActive:true,set:{select:{isActive:true}}}}};
+const person={orgId:true,id:true,name:true,orgRole:true,gradeId:true,status:true,grade:{select:{id:true,name:true,nameKo:true,nameEn:true,nameVi:true,sortOrder:true,setId:true,isActive:true,set:{select:{isActive:true}}}}};
 async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  const menu=String(input.menu),operation=String(input.operation),kind=String(input.sourceKind||'request'),id=String(input.sourceId||'');
  approvalActionKey(orgId,menu,operation);if(!/^[-\w]{1,100}$/.test(id))fail('CHANGE_INVALID_SOURCE',400);
@@ -104,7 +104,7 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
  const preview=s.menu==='BANK_LEDGER'&&s.operation==='CREATE'?await previewLedgerRegistration(db,orgId,actor,s,config,input.selection):await resolveExpenseApproval(resolver,orgId,actorId,amounts(s,input.payload),input.selection||{},true,config);
  let highestSelfDeletion=false;
  // Legacy administrator exemption still requires verified highest-company authority.
- if(s.menu==='INVOICE'&&preview.policy.exempt&&preview.policy.exemptionReason==='ADMIN_DRAFTER'&&await isHighestCompanyApprover(db,orgId,actor)){
+ if((s.menu==='INVOICE'||s.menu==='EXPENSE'&&s.operation==='UPDATE')&&preview.policy.exempt&&preview.policy.exemptionReason==='ADMIN_DRAFTER'&&await isHighestCompanyApprover(db,orgId,actor)){
   const finalDrafterStage={role:'ADMIN',gradeId:actor.gradeId};
   Object.assign(preview.policy,{exemptionReason:'FINAL_DRAFTER',finalDrafterStage,config:{...preview.policy.config,registrationStages:[finalDrafterStage]}});
  }
@@ -112,9 +112,12 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
  if(automatic){preview.stages=[{key:'final-self',role:actor.orgRole,gradeId:actor.gradeId,employeeId:actor.id,name:actor.name,candidates:[actor]}];preview.ids=[actor.id];preview.complete=true;}else if(preview.policy.exempt&&s.menu==='EXPENSE'&&s.operation==='DELETE'&&s.expense.document&&await isHighestCompanyApprover(db,orgId,actor)){
   highestSelfDeletion=true;preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:actor.gradeId,employeeId:actor.id,candidates:[{id:actor.id,name:actor.name,gradeId:actor.gradeId}]}];preview.ids=[actor.id];preview.complete=true;
  }else if(preview.policy.exempt){
-  const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'ADMIN',id:{notIn:excluded}},select:{id:true,name:true,gradeId:true},orderBy:{id:'asc'}});
+  // An unspecified final grade must not send a request down the hierarchy.
+  // Compare only active grades in the drafter's actual company grade set.
+  const minimum=actor.grade?.isActive&&actor.grade.set?.isActive?actor.grade:null;
+  const candidates=minimum?await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:'ADMIN',id:{notIn:excluded},grade:{orgId,setId:minimum.setId,sortOrder:{gte:minimum.sortOrder},isActive:true,set:{isActive:true}}},select:{id:true,name:true,gradeId:true,grade:{include:{set:true}}},orderBy:{id:'asc'}}):[];
   const id=input.selection?.changeAdminEmployeeId??(candidates.length===1?candidates[0].id:null),chosen=candidates.find((p:any)=>p.id===id);
-  preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:null,employeeId:chosen?.id||null,candidates}];preview.ids=chosen?[chosen.id]:[];preview.complete=!!chosen;
+  preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:null,minimumGradeId:minimum?.id||null,gradeMatch:'MINIMUM',requiredGrade:minimum,employeeId:chosen?.id||null,candidates}];preview.ids=chosen?[chosen.id]:[];preview.complete=!!chosen;
  }
  const stages=preview.stages.filter((stage:any)=>!stage.vacant);
  const policy={...preview.policy,highestSelfDeletion,autoApproved:automatic,exempt:false,requestedByRole:actor.orgRole,requestedByGradeId:actor.gradeId??null,menu:s.menu,operation:s.operation,resolvedStages:stages.filter((stage:any)=>stage.employeeId).map((stage:any)=>({employeeId:stage.employeeId,role:stage.role,gradeId:(preview.policy as any).resolvedStages?.find((resolved:any)=>resolved.employeeId===stage.employeeId)?.gradeId??stage.gradeId??null}))};

@@ -76,7 +76,7 @@ test('real Prisma and PostgreSQL guards: required parties, inherited policies, s
    const document=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-04-02',clientKey:randomUUID(),items:[item]}),{timeout:30000});
    const source=await loadExpenseEditorSource(db,org,'request',String(document.id));
    const payload={partnerOrgId:s.vendor.id,requestDate:document.requestDate,revision:expenseEditorRevision(source),version:document.version,clientKey:randomUUID(),items:[{...item,itemId:document.items[0].id,unitPrice:'120'}]};
-   const editor=(await db.employee.create({data:{orgId:org,name:'Another editor',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}})).id,editApprover=s.people.admin.id;
+   const editor=(await db.employee.create({data:{orgId:org,name:'Another editor',orgRole:'ADMIN',gradeId:s.people.lead.gradeId,status:'ACTIVE'}})).id,editApprover=s.people.admin.id;
    const change=await requestChangeApproval(db,org,editor,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(document.id),payload,selection:{changeAdminEmployeeId:editApprover},clientKey:randomUUID()});
    assert.equal((await db.expenseRequest.findUnique({where:{id:document.id}})).version,document.version);
    await decideChangeApproval(db,org,editApprover,change.id,{decision:'APPROVED'});

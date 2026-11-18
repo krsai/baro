@@ -30,3 +30,46 @@ test('final drafter auto-approves expenses and ledger once; intermediate-only au
   const edited=await requestChangeApproval(db,org,s.people.lead.id,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(expense.id),payload:update,clientKey:randomUUID()});assert.equal(edited.status,'APPROVED');assert.equal((await approvalState(db,org,expense.id,s.people.lead.id)).approved,true);assert.equal(await db.expenseApprovalDecision.count(),0);
  }finally{await f.close();}
 });
+
+test('legacy expense update selects the highest admin drafter and never offers a lower admin',async()=>{
+ const f=await changeApprovalFixture({registration:true});try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,admin=s.people.admin;
+  const lower=await db.employee.create({data:{orgId:org,name:'Lower admin',orgRole:'ADMIN',status:'ACTIVE',gradeId:s.people.senior.gradeId}});
+  const expenseBody={partnerOrgId:s.vendor.id,automaticRequestDate:true,clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'LEGACY-SELF',evidenceFile:'fixture-evidence.pdf'}}]};
+  const expense=await db.$transaction(tx=>registerExpenseRequest(tx,org,admin.id,expenseBody));
+  const source=await loadExpenseEditorSource(db,org,'request',String(expense.id));
+  const payload={partnerOrgId:s.vendor.id,requestDate:expense.requestDate,revision:expenseEditorRevision(source),version:expense.version,clientKey:randomUUID(),items:[{...expenseBody.items[0],itemId:expense.items[0].id,unitPrice:'12'}]};
+  const input={menu:'EXPENSE',operation:'UPDATE',reason:'Correct details',sourceKind:'request',sourceId:String(expense.id),payload,clientKey:randomUUID()};
+  const preview=await previewChangeApproval(db,org,admin.id,input);
+  assert.equal(preview.policy.autoApproved,true);
+  assert.deepEqual(preview.preview.ids,[admin.id]);
+  assert.equal(preview.preview.stages[0].gradeId,admin.gradeId);
+  const done=await requestChangeApproval(db,org,admin.id,input);
+  assert.equal(done.status,'APPROVED');assert.equal(done.decidedByEmployeeId,admin.id);
+  assert.equal((await requestChangeApproval(db,org,admin.id,input)).id,done.id);
+  assert.equal(await db.changeApprovalDecision.count({where:{requestId:done.id}}),1);
+  assert.equal((await db.expenseRequest.findUnique({where:{id:expense.id},include:{items:true}})).items[0].unitPrice.toString(),'12');
+  // A lower administrator needs a separate approver at their grade or above.
+  const lowerPreview=await previewChangeApproval(db,org,lower.id,{...input,payload:undefined,operation:'DELETE'});
+  assert.equal(lowerPreview.policy.autoApproved,false);
+  assert.ok(lowerPreview.preview.stages[0].candidates.every(p=>p.id!==lower.id));
+  const higherGrade=await db.employeeGrade.create({data:{orgId:org,setId:(await db.employeeGrade.findUnique({where:{id:admin.gradeId}})).setId,code:'TOP',name:'Top',nameKo:'Top',nameEn:'Top',nameVi:'Top',sortOrder:4}});
+  const higher=await db.employee.create({data:{orgId:org,name:'Higher admin',orgRole:'ADMIN',status:'ACTIVE',gradeId:higherGrade.id}});
+  await db.employee.create({data:{orgId:org,name:'Inactive admin',orgRole:'ADMIN',status:'SUSPENDED',gradeId:higherGrade.id}});
+  const otherSet=await db.employeeGradeSet.create({data:{orgId:s.other.id,code:'OTHER',name:'Other grades'}});
+  const otherGrade=await db.employeeGrade.create({data:{orgId:s.other.id,setId:otherSet.id,code:'TOP',name:'Top',nameKo:'Top',nameEn:'Top',nameVi:'Top',sortOrder:4}});
+  await db.employee.create({data:{orgId:s.other.id,name:'Other company admin',orgRole:'ADMIN',status:'ACTIVE',gradeId:otherGrade.id}});
+  const current=await loadExpenseEditorSource(db,org,'request',String(expense.id));
+  const pending=await previewChangeApproval(db,org,admin.id,{...input,payload:{...payload,revision:expenseEditorRevision(current),version:current.document.version},version:current.document.version});
+  assert.equal(pending.policy.autoApproved,false);
+  assert.deepEqual(pending.preview.stages[0].candidates.map(p=>p.id),[higher.id]);
+  assert.equal(pending.preview.stages[0].minimumGradeId,admin.gradeId);
+  const staleSelection=await previewChangeApproval(db,org,admin.id,{...input,payload:{...payload,revision:expenseEditorRevision(current),version:current.document.version},selection:{changeAdminEmployeeId:lower.id}});
+  assert.equal(staleSelection.preview.complete,false);
+  assert.deepEqual(staleSelection.preview.ids,[]);
+  await db.employee.update({where:{id:higher.id},data:{status:'SUSPENDED'}});
+  const blocked=await previewChangeApproval(db,org,admin.id,{...input,payload:{...payload,revision:expenseEditorRevision(current),version:current.document.version}});
+  assert.equal(blocked.policy.autoApproved,false,'vacancy does not grant the configured highest company grade');
+  assert.deepEqual(blocked.preview.stages[0].candidates,[]);
+ }finally{await f.close();}
+});
