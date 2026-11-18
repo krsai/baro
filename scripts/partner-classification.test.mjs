@@ -51,7 +51,7 @@ test('production eligibility is checked independently of displayed industries',a
   prisma:{organization:{findMany:async query=>{where=query.where;return[];}}},BUSINESS_PARTNER_SERVICE_INCLUDE:{},getBusinessPartnerUsage:async()=>new Set(),attachPartnerClassifications:async()=>[]});
  await route({query:{forProduction:'1'}},{json:()=>{}});
  assert.equal(where.ownerOrgId,1);assert.equal(where.type,'PROCESS_OUTSOURCING');assert.equal(where.isActive,true);
- assert.deepEqual(where.OR,[{outsourcingServiceAssignments:{none:{}}},{outsourcingServiceAssignments:{some:{serviceType:{entryMode:'PROCESS'}}}}]);
+ assert.deepEqual(where,{ownerOrgId:1,type:'PROCESS_OUTSOURCING',isActive:true});
  await route({query:{}},{json:()=>{}});assert.equal(where.OR,undefined);
 });
 const validator=(stored=null)=>({companyPartnerLink:{findMany:async()=>[]},companyIdentityLink:{findMany:async()=>[]},partnerClassification:{findUnique:async()=>stored},settingServiceDefault:{findMany:async({where})=>sources.filter(row=>where.id.in.includes(row.id)&&(!where.handledItemSelection||row.handledItemSelection))}});

@@ -9102,10 +9102,6 @@ const syncOutsourcedRecordRefs = async ({
           id: { in: outsourcingPartnerIds },
           type: "PROCESS_OUTSOURCING",
           isActive: true,
-          OR: [
-            { outsourcingServiceAssignments: { none: {} } },
-            { outsourcingServiceAssignments: { some: { serviceType: { entryMode: "PROCESS" } } } },
-          ],
         },
         select: { id: true, name: true },
       })
@@ -27754,8 +27750,8 @@ app.get("/business-partners", async (req, res) => {
     where: {
       ownerOrgId: organization.id,
       type: type ? (type as any) : { in: ['PROCESS_OUTSOURCING', 'MATERIAL_SUPPLIER', 'LOGISTICS_PROVIDER'] },
-      // Production eligibility is a capability check, never an industry fallback.
-      ...(String(req.query.forProduction)==='1'?{type:'PROCESS_OUTSOURCING' as const,isActive:true,OR:[{outsourcingServiceAssignments:{none:{}}},{outsourcingServiceAssignments:{some:{serviceType:{entryMode:'PROCESS' as const}}}}]}:{}),
+      // The work record links the selected process and vendor directly.
+      ...(String(req.query.forProduction)==='1'?{type:'PROCESS_OUTSOURCING' as const,isActive:true}:{}),
     },
     orderBy: [{ isActive: "desc" }, { name: "asc" }],
     include: BUSINESS_PARTNER_SERVICE_INCLUDE,
