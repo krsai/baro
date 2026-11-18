@@ -40,6 +40,7 @@ const sendJson = (res, statusCode, payload) => {
 };
 
 const resolveCacheControl = (filePath) => {
+  if (filePath === path.join(distDir, 'asset-retention.json')) return HTML_CACHE_CONTROL;
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".html") return HTML_CACHE_CONTROL;
 

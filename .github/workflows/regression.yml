@@ -45,6 +45,7 @@ jobs:
       - run: npm --prefix backend ci
       - run: npm --prefix frontend ci
       - run: npm run test:regression
+      - run: node --test scripts/asset-retention.test.mjs scripts/module-load-failure.test.mjs
       - run: npm --prefix frontend run build
         if: ${{ !cancelled() }}
       - run: npm run check:i18n && npm run check:encoding
