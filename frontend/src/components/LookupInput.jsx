@@ -49,7 +49,7 @@ export default function LookupInput({options=[],getOptionDisabled=()=>false,valu
   const inputLayout={
    '& > .MuiInputBase-input':{paddingRight:0,textOverflow:'ellipsis',...(clearAfterChoose&&merged.startAdornment?{}:{minWidth:0,width:0,flex:'1 1 0'})},
    '& > .MuiInputAdornment-root':{flexShrink:0},
-   ...(multiple?{'&&&':{height:'auto'},'& [data-lookup-values] > input':{padding:0,width:0,minWidth:'min(60px, 100%)',flex:'1 1 60px',height:'20px',minHeight:20,textOverflow:'ellipsis'}}:{}),
+   ...(multiple?{'&&&':{height:'auto'},'& [data-lookup-values] > input':{border:0,outline:0,background:'transparent',font:'inherit',color:'inherit',boxSizing:'border-box',padding:0,width:0,minWidth:'min(60px, 100%)',flex:'1 1 60px',height:'20px',minHeight:20,textOverflow:'ellipsis'}}:{}),
   };
   return {...merged,...((state.variant||fieldProps.variant||props.variant||'outlined')==='outlined'?{notched:!hideLabel&&Boolean(label)}:{}),
    sx:[...(Array.isArray(merged.sx)?merged.sx:[merged.sx]),inputLayout],
