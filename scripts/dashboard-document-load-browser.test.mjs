@@ -20,7 +20,7 @@ try{
   page.on('framenavigated',frame=>{if(frame===page.mainFrame())navigations++;});
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:"export const useAuth=()=>{const profile={entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',orgId:2};return {isAuthenticated:true,activeOrgId:2,activeProfile:profile,accessProfile:profile};};"}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  if(mode==='failure')await page.route('**/pages/App/BankLedgerEntry*',r=>{requests++;return r.abort('failed');});
+  if(mode==='failure')await page.route('**/pages/App/BankLedgerEntry*',r=>{requests++;return r.fulfill({contentType:'application/javascript',body:"export default function Detail(){if(!window.detailCanRender)throw new Error('Injected detail render failure');return 'Recovered detail';}"});});
   else{
    const headers={'Access-Control-Allow-Origin':'*'},partner={id:11,name:'Source vendor',isActive:true,type:'MATERIAL_SUPPLIER',serviceTypes:[]};
    const mocks={
@@ -40,6 +40,7 @@ try{
    for(const [endpoint,json] of Object.entries(mocks))await page.route(`**/${endpoint}?*`,r=>{if(endpoint==='expense-request-editor/request/18')requests++;return r.fulfill({headers,json});});
   }
   await page.goto(`http://127.0.0.1:${port}/dashboard-document-load-test.html?lang=${lang}&mode=${mode}`);
+  if(mode==='failure')assert.equal(requests,1,'the source module is loaded before opening the alert');
   await page.getByRole('button',{name:'Open alert',exact:true}).click();
   if(mode==='expense'||mode==='paid'){
    const dialog=page.getByRole('dialog'),remark=dialog.getByTestId('expense-summary').getByRole('textbox');
@@ -73,14 +74,16 @@ try{
   }
   const dialog=page.getByRole('dialog');await dialog.getByTestId('dashboard-document-load-error').waitFor();
   assert.equal(requests,1);assert.equal(navigations,1);assert.equal(await page.getByText('Unexpected Application Error!',{exact:true}).count(),0);
-  assert.equal(await dialog.getByTestId('dashboard-document-load-error').getByRole('button').count(),1);
+  assert.equal(await dialog.getByTestId('dashboard-document-load-error').getAttribute('data-error-kind'),'render');
+  assert.equal(await dialog.getByTestId('dashboard-document-load-error').getByRole('button').count(),2);
+  await page.evaluate(()=>window.detailCanRender=true);await dialog.getByTestId('dashboard-document-load-error').getByRole('button').first().click();await dialog.getByText('Recovered detail',{exact:true}).waitFor();assert.equal(navigations,1);assert.equal(requests,1);
   assert.equal(await page.getByRole('textbox',{name:'Draft',includeHidden:true}).inputValue(),'Keep my draft');
   await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
   await page.getByRole('heading',{name:'Dashboard',exact:true}).waitFor();
   assert.equal(await page.getByRole('textbox',{name:'Draft'}).inputValue(),'Keep my draft');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
-  await page.getByRole('button',{name:'Open alert',exact:true}).click();await page.getByTestId('dashboard-document-load-error').waitFor();assert.equal(navigations,1);
+  await page.getByRole('button',{name:'Open alert',exact:true}).click();await dialog.getByText('Recovered detail',{exact:true}).waitFor();assert.equal(navigations,1);assert.equal(requests,1);
   await page.close();
  }
- console.log('PASS dashboard document routes: ko/en/vi desktop/mobile, actual expense editor draft survives parent loading/error refresh without remount, source params preserved, module failure stays local and close/reopen preserves dashboard.');
+ console.log('PASS dashboard document routes: ko/en/vi desktop/mobile, actual expense editor draft survives parent loading/error refresh without remount, source params preserved, editors preload before the alert opens, render failures recover locally and close/reopen preserves dashboard.');
 }finally{await browser?.close();server.kill();for(const file of [html,jsx])if(existsSync(file))unlinkSync(file);}
