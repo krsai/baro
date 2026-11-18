@@ -132,6 +132,7 @@
     "test:st-buckets": "node --test scripts/st-bucket-regression.test.mjs",
     "test:assignment-st-snapshot": "node --test scripts/assignment-st-snapshot-regression.test.mjs",
     "test:sales-prices": "npm --prefix backend run build && node --test scripts/sales-price-regression.test.mjs",
+    "test:ledger-expense-code": "npm --prefix backend run build && node --test scripts/paid-expense-correction.test.mjs scripts/change-approvals.test.mjs && node scripts/ledger-expense-code-browser.test.mjs",
     "test:relationship-bucket-integration": "npm --prefix backend run build && node scripts/relationship-time-bucket-integration.test.mjs",
     "test:attendance-fallback": "npm --prefix backend run build && node --test scripts/attendance-fallback-regression.test.mjs",
     "test:attendance-import": "node --test scripts/attendance-import-regression.test.mjs scripts/attendance-day-summary-import-regression.test.mjs scripts/attendance-employment-regression.test.mjs scripts/attendance-management-regression.test.mjs",

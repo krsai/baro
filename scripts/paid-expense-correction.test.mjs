@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {expenseCodeCorrectionInput} from '../frontend/src/utils/ledgerExpenseCodeCorrection.mjs';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createRequire} from 'node:module';
@@ -76,7 +77,10 @@ test('highest admin code correction follows allocated expense FKs for every part
   }
   const source=await loadExpenseEditorSource(db,org,'request',String(doc.id));
   const payload={...expenseEditorForm(source),clientKey:randomUUID(),items:expenseEditorForm(source).items.map(i=>({...i,transactionCodeId:codes[1].id}))};
-  const input={menu:'EXPENSE',operation:'UPDATE',sourceKind:'request',sourceId:String(doc.id),reason:'Correct accounting code on linked documents',clientKey:randomUUID(),payload};
+  const {ledgerEntryRevision}=require('../backend/dist/services/bankLedgerEdit');
+  const input={...expenseCodeCorrectionInput(expenseEditorForm(source),doc.items[0].id,codes[1].id,randomUUID(),{entryId:originals[0].id,revision:ledgerEntryRevision(originals[0])}),reason:'Correct accounting code on linked documents',clientKey:randomUUID()};
+  await assert.rejects(requestChangeApproval(db,org,actor.id,{...input,clientKey:randomUUID(),payload:{...input.payload,ledgerCodeOrigin:{...input.payload.ledgerCodeOrigin,revision:'stale'}}}),/CHANGE_SOURCE_CHANGED/);
+  await assert.rejects(requestChangeApproval(db,org,actor.id,{...input,clientKey:randomUUID(),payload:{...input.payload,ledgerCodeOrigin:{...input.payload.ledgerCodeOrigin,itemId:'other-item'}}}),/CHANGE_SOURCE_CHANGED/);
   await f.pg.exec(`CREATE FUNCTION reject_auto_replacement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'AUTO_REPLACEMENT_FAILURE'; END $$; CREATE TRIGGER auto_replacement BEFORE INSERT ON "BankLedgerEntry" FOR EACH ROW EXECUTE FUNCTION reject_auto_replacement();`);
   await assert.rejects(requestChangeApproval(db,org,actor.id,input),/AUTO_REPLACEMENT_FAILURE/);
   assert.equal(await db.changeApprovalRequest.count({where:{clientKey:input.clientKey}}),0);
@@ -86,6 +90,7 @@ test('highest admin code correction follows allocated expense FKs for every part
   await f.pg.exec('DROP TRIGGER auto_replacement ON "BankLedgerEntry"; DROP FUNCTION reject_auto_replacement();');
   const done=await requestChangeApproval(db,org,actor.id,input);
   assert.equal(done.status,'APPROVED');assert.equal(done.policy.autoApproved,true);
+  assert.equal(done.result.entryReplacements.length,2);
   const after=await loadExpenseEditorSource(db,org,'request',String(doc.id));
   assert.equal(after.costs[0].id,doc.items[0].id);assert.equal(after.costs[0].transactionCodeId,codes[1].id);assert.equal(after.document.version,2);
   const active=await db.bankLedgerEntry.findMany({where:{orgId:org,voidedAt:null},include:{allocations:true}});

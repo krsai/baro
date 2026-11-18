@@ -58,5 +58,5 @@ export async function correctPaidExpense(tx:any,orgId:number,actor:any,change:an
   await tx.bankLedgerEntry.create({data:{...data,id:replacementId,clientKey:randomUUID(),revisesEntryId:id,accountingCodeId:codeId,createdBy:requester.email||String(requester.id)}});
   for(const allocation of allocations){const {id:allocationId,...copy}=allocation;await tx.bankLedgerEvidenceAllocation.create({data:{...copy,entryId:replacementId,requestVersion:costs.find((c:any)=>c.id===allocation.expenseItemId)?.expenseRequest?.version}});}
  }
- return {...result,entryIds:plans.map((p:any)=>p.replacementId)};
+ return {...result,entryIds:plans.map((p:any)=>p.replacementId),entryReplacements:plans.map((p:any)=>({originalEntryId:p.entry.id,replacementEntryId:p.replacementId}))};
 }

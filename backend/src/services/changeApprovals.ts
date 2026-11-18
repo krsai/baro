@@ -55,6 +55,13 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
  if(loaded.document&&lock)await db.$queryRawUnsafe('SELECT id FROM "ExpenseRequest" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',loaded.document.id,orgId);
  if(lock&&loaded.costs.length)for(const cost of loaded.costs)await db.$queryRawUnsafe('SELECT id FROM "PartnerTransactionCost" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',cost.id,orgId);
  const current=lock?await loadExpenseEditorSource(db,orgId,kind,id):loaded;
+ if(input.payload?.ledgerCodeOrigin){
+  const origin=input.payload.ledgerCodeOrigin;
+  if(typeof origin.entryId!=='string'||typeof origin.revision!=='string'||!current.costs.some((cost:any)=>cost.id===origin.itemId))fail('CHANGE_SOURCE_CHANGED');
+  if(lock)await db.$queryRawUnsafe('SELECT id FROM "BankLedgerEntry" WHERE id=$1 AND "orgId"=$2 FOR UPDATE',origin.entryId,orgId);
+  const entry=await db.bankLedgerEntry.findFirst({where:{id:origin.entryId,orgId,voidedAt:null},include:{allocations:true,bankFeeLinks:{include:{fee:true}}}});
+  if(!entry||entry.evidenceType!=='EXPENSE'||ledgerEntryRevision(entry)!==origin.revision||!entry.allocations.some((allocation:any)=>allocation.expenseItemId===origin.itemId))fail('CHANGE_SOURCE_CHANGED');
+ }
  if(current.document?.bankReconciled){if(operation!=='UPDATE')fail('EXPENSE_ALREADY_RECONCILED');assertPaidExpenseCorrection(current,input.payload);await paidExpenseEntries(db,orgId,current);}
  if(await db.accountingOpeningItem.findFirst({where:{orgId,voidedAt:null,expenseItemId:{in:current.costs.map((c:any)=>c.id)}},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');
  if(operation==='DELETE'&&!current.document)fail('CHANGE_INVALID_SOURCE',400);
