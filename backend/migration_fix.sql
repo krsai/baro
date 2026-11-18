@@ -4113,6 +4113,7 @@ DECLARE
   version_id INTEGER;
   next_version INTEGER;
   source_version_id INTEGER;
+  missing_standard_count INTEGER;
 BEGIN
   FOR rel IN SELECT * FROM "OrgRelationship" ORDER BY id LOOP
     IF rel."timeBucketSetVersionId" IS NULL THEN
@@ -4166,7 +4167,8 @@ BEGIN
       UPDATE "QuantityBucketSet" SET "currentVersionId" = version_id WHERE id = set_id;
       UPDATE "OrgRelationship" SET "timeBucketSetVersionId" = version_id WHERE id = rel.id;
     ELSE
-      version_id := rel."timeBucketSetVersionId";
+      -- Already configured: never replay historical ST into current buckets.
+      CONTINUE;
     END IF;
 
     FOR style_row IN
@@ -4222,20 +4224,6 @@ BEGIN
       WHERE sp."styleId" = style_row.id AND sp."orgId" = rel."manufacturerOrgId" AND sp."sourceOrgId"=0
       ON CONFLICT ("styleProcessId", "quantityBucketEntryId") DO NOTHING;
     END LOOP;
-  END LOOP;
-
-  UPDATE "AssignmentPlan" plan
-  SET "orgRelationshipId" = relationship_row.id
-  FROM "OrgRelationship" relationship_row
-  WHERE plan."orgRelationshipId" IS NULL
-    AND plan."orgId" = relationship_row."manufacturerOrgId"
-    AND plan."buyerOrgId" = relationship_row."brandOrgId";
-END $$;
-
-DO $$
-DECLARE
-  missing_standard_count INTEGER;
-BEGIN
   SELECT COUNT(*) INTO missing_standard_count
   FROM "OrgRelationship" r
   JOIN "Style" s ON s."customerOrgId" = r."brandOrgId"
@@ -4262,14 +4250,25 @@ BEGIN
    AND x."orgId" = r."manufacturerOrgId"
    AND x."quantityBucketEntryId" = e.id
    AND x."quantityBucketSetVersionId" = e."quantityBucketSetVersionId"
-  WHERE x.id IS NULL;
+  WHERE r.id = rel.id AND x.id IS NULL;
 
   IF missing_standard_count > 0 THEN
     RAISE EXCEPTION
       'relationship time bucket backfill left % active StyleProcessStandard rows missing',
       missing_standard_count;
   END IF;
+
+  END LOOP;
+
+  UPDATE "AssignmentPlan" plan
+  SET "orgRelationshipId" = relationship_row.id
+  FROM "OrgRelationship" relationship_row
+  WHERE plan."orgRelationshipId" IS NULL
+    AND plan."orgId" = relationship_row."manufacturerOrgId"
+    AND plan."buyerOrgId" = relationship_row."brandOrgId";
 END $$;
+
+
 
 -- Step 0v: decouple order locking from sales prices and normalize price axes (20260727)
 DO $$

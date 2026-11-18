@@ -4,6 +4,8 @@
 
 ## Railway 서비스별 빌드 설정
 
+- 과거 관계 버킷 이관은 timeBucketSetVersionId가 아직 없는 관계에 한정한다. 이미 설정된 관계의 현재 버킷에 과거 StyleProcessStandard를 재복사하거나 현재 수량 구간을 과거 전체 구간과 비교하지 않는다. 새 이관 관계의 실제 원본 ST 복사 보존 검사는 같은 DO 트랜잭션 안에서 관계별로 수행하고 누락 시 해당 이관 전체를 롤백한다. 브랜드 스타일 원본과 실제 제조사/sourceOrgId=0 공정·ST 범위를 유지한다.
+
 - 관계 버킷 이관 후 ST 보존 검사는 원본 StyleProcessStandard와 원본 버전/수량 FK가 실제 존재하는 행의 대상 복사본을 검사한다. 모든 공정×모든 수량 구간을 완성하도록 강제하거나 미설정 ST를 임의 생성하지 않는다. 실제 원본의 복사 누락·대상 수량 누락은 계속 차단한다.
 
 - migration_fix의 과거 관계 시간 버킷 이관은 원본 CUSTOMER_DEFAULT 버전도 해당 제조사의 sourceOrgId=0 공정도 없는 관계를 미설정 상태로 보존한다. 신규/서비스 관계에 버킷·ST를 추정 생성하지 않는다. 실제 공정이 있는데 원본이 누락됐거나 원본 버전이 복수인 경우는 계속 실패·롤백한다. UI 변경 배포를 위해 원자료 보정·target guard·preflight 우회를 하지 않는다. 검수는 scripts/relationship-bucket-predeploy.test.mjs를 사용한다.

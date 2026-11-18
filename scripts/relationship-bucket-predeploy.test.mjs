@@ -8,8 +8,6 @@ const require=createRequire(import.meta.url);
 const sql=readFileSync('backend/migration_fix.sql','utf8');
 const start=sql.lastIndexOf('DO $$',sql.indexOf('  rel RECORD;'));
 const backfill=sql.slice(start,sql.indexOf('END $$;',start)+7);
-const guardStart=sql.lastIndexOf('DO $$',sql.indexOf('  missing_standard_count INTEGER;'));
-const guard=sql.slice(guardStart,sql.indexOf('END $$;',guardStart)+7);
 const schema=execFileSync(process.execPath,[require.resolve('../backend/node_modules/prisma/build/index.js'),'migrate','diff','--from-empty','--to-schema-datamodel','backend/prisma/schema.prisma','--script'],{encoding:'utf8',maxBuffer:8*1024*1024});
 async function fixture(run){const db=new PGlite();try{
  await db.exec(schema);
@@ -59,10 +57,16 @@ test('sparse ST is preserved without invented values; missing real copies still 
  INSERT INTO "StyleProcess" (id,"orgId","styleId","processCode","processName","ptSeconds","updatedAt") VALUES (1,1,1,'SEW','Sew',12,now());
  INSERT INTO "StyleProcessStandard" ("orgId","styleProcessId","quantityBucketEntryId","quantityBucketSetVersionId","bucketStSeconds","updatedAt") VALUES (1,1,1,1,37,now());
  SELECT setval(pg_get_serial_sequence('"QuantityBucketSet"','id'),2,false),setval(pg_get_serial_sequence('"QuantityBucketSetVersion"','id'),2,false),setval(pg_get_serial_sequence('"QuantityBucketEntry"','id'),3,false);`);
- await db.exec(backfill);await db.exec(guard);await db.exec(backfill);await db.exec(guard);
+ await db.exec(`CREATE FUNCTION suppress_bucket_copy() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW."quantityBucketSetVersionId"<>1 THEN RETURN NULL; END IF; RETURN NEW; END $$;
+ CREATE TRIGGER suppress_bucket_copy BEFORE INSERT ON "StyleProcessStandard" FOR EACH ROW EXECUTE FUNCTION suppress_bucket_copy();`);
+ await assert.rejects(db.exec(backfill),/StyleProcessStandard rows missing/);
+ assert.equal((await db.query('SELECT "timeBucketSetVersionId" FROM "OrgRelationship" WHERE id=4')).rows[0].timeBucketSetVersionId,null);
+ await db.exec('DROP TRIGGER suppress_bucket_copy ON "StyleProcessStandard"; DROP FUNCTION suppress_bucket_copy();');
+ await db.exec(backfill);await db.exec(backfill);
  const version=(await db.query('SELECT "timeBucketSetVersionId" AS id FROM "OrgRelationship" WHERE id=4')).rows[0].id;
  assert.deepEqual((await db.query('SELECT "bucketStSeconds" FROM "StyleProcessStandard" WHERE "quantityBucketSetVersionId"=$1',[version])).rows,[{bucketStSeconds:37}]);
  await db.query('DELETE FROM "StyleProcessStandard" WHERE "quantityBucketSetVersionId"=$1',[version]);
- await assert.rejects(db.exec(guard),/StyleProcessStandard rows missing/);
+ await db.exec(backfill);
+ assert.equal((await db.query('SELECT count(*)::int AS n FROM "StyleProcessStandard" WHERE "quantityBucketSetVersionId"=$1',[version])).rows[0].n,0,'configured relationships are not backfilled again');
  assert.equal((await db.query('SELECT "bucketStSeconds" FROM "StyleProcessStandard" WHERE "quantityBucketSetVersionId"=1')).rows[0].bucketStSeconds,37);
 }));
