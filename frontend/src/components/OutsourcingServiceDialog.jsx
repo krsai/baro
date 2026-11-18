@@ -1,3 +1,4 @@
+import {dialogTitle} from '../constants/dialogTitles';
 import {systemIndustryUsageReason} from '../utils/systemIndustryUsage.mjs';
 import LocalizedNameFields from './LocalizedNameFields';
 import { hasLocalizedName } from '../utils/localizedName.mjs';
@@ -54,7 +55,7 @@ export default function OutsourcingServiceDialog({ open, onClose, onSaved, orgId
       setForm({ code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [] });
     } catch (error) { setError(labels.error); } finally { setSaving(false); }
   };
-  return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="sm"><DialogTitle>{initialServiceId ? tree.edit : labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2}>
+  return <Dialog open={open} onClose={() => !saving && onClose()} fullWidth maxWidth="sm"><DialogTitle>{initialServiceId ? dialogTitle('industryEdit',languageCode) : labels.addIndustry}</DialogTitle><DialogContent><Stack spacing={2}>
     {error && <Alert severity="error">{error}</Alert>}
     {!systemDefaults && !initialServiceId && <TextField select label={labels.industry} value={editingId} onChange={event => { const id = event.target.value; setEditingId(id); const service = services.find(item => item.id === id); setForm(service ? { ...service } : { code: '', nameKo: '', nameEn: '', nameVi: '', entryMode: 'PROCESS', requiredFields: [],partnerRoleId:initialPartnerRoleId||'' }); }}><MenuItem value="">{labels.addIndustry}</MenuItem>{services.map(service => <MenuItem key={service.id} value={service.id}>{serviceName(service, languageCode)}</MenuItem>)}</TextField>}
     {!systemDefaults && open && <SettingInheritanceControls kind="services" row={editingId ? form : null} orgId={orgId} languageCode={languageCode} onSaved={() => { onSaved?.(); onClose(); }} />}

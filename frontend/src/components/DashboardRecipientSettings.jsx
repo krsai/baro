@@ -5,7 +5,7 @@ import {useAppActions} from '../context/AppContext';
 import {usePageDialogs} from './PageDialogProvider';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
-import {dashboardRecipientText} from '../constants/dashboardRecipientSettings';
+import {dashboardRecipientText,dashboardSettingsTitle} from '../constants/dashboardRecipientSettings';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 
 export default function DashboardRecipientSettings({orgId,widget,languageCode,onClose}){
@@ -26,7 +26,7 @@ export default function DashboardRecipientSettings({orgId,widget,languageCode,on
   catch(e){if(alive.current)setError(e.status===409?'changed':'save');}finally{saving.current=false;if(alive.current)setBusy(false);}
  };
  return <Dialog open onClose={close} fullWidth maxWidth="sm" aria-labelledby="dashboard-recipients-title">
-  <DialogTitle id="dashboard-recipients-title">{widget.label} ? {t.title}</DialogTitle>
+  <DialogTitle id="dashboard-recipients-title">{dashboardSettingsTitle(widget.label,languageCode)}</DialogTitle>
   <DialogContent><Stack spacing={2} sx={{pt:1}}>
    {error&&<AppNotice severity="error" action={<Button disabled={busy} onClick={error==='save'?save:refresh}>{error==='changed'?t.reload:t.retry}</Button>}>{error==='changed'?t.changed:t.failed}</AppNotice>}
    {!supported?<Typography color="text.secondary">{t.empty}</Typography>:loading?<CircularProgress size={22}/>:loaded?<><Typography fontWeight={600}>{t.handled}</Typography><Stack direction="row" useFlexGap flexWrap="wrap" columnGap={2} role="group" aria-label={t.roles}>{['ADMIN','ACCOUNTANT','OPERATOR'].map(role=><FormControlLabel key={role} label={t[role]} control={<Checkbox checked={roles.includes(role)} disabled={busy} onChange={event=>setRoles(current=>['ADMIN','ACCOUNTANT','OPERATOR'].filter(item=>item===role?event.target.checked:current.includes(item)))}/>}/>)}</Stack></>:null}

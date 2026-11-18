@@ -1,3 +1,4 @@
+import {dialogTitle} from '../constants/dialogTitles';
 import React,{useEffect,useState} from 'react';
 import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import Alert from "./AppNotice";
@@ -31,7 +32,7 @@ export default function ProductionExcessCard({orgId,languageCode='ko',onNavigate
     <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{p:1}}><Button disabled={loading||page===0} onClick={()=>setPage(value=>value-1)}>{t.previous}</Button><Button disabled={loading||(page+1)*5>=data.total} onClick={()=>setPage(value=>value+1)}>{t.next}</Button></Stack>
    </>}
   </>}
-  <Dialog open={!!selected} onClose={close} fullWidth maxWidth="lg"><DialogTitle>{t.details}</DialogTitle><DialogContent>
+  <Dialog open={!!selected} onClose={close} fullWidth maxWidth="lg"><DialogTitle>{dialogTitle('productionDetails',languageCode)}</DialogTitle><DialogContent>
    <Stack spacing={2}>{detailLoading&&<LinearProgress/>}{detailError&&<Alert severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</Alert>}
     <Typography variant="subtitle2">{selected?.orderNumber} · {selected?.styleCode||selected?.styleName} · {selected?.processCode} {selected?.processName}</Typography>
     {detail?.resolved&&<Alert severity="success">{t.resolved}</Alert>}{detail?.unverified>0&&<Alert severity="warning">{t.unverified}</Alert>}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import {spawn} from 'node:child_process';
 import {chromium} from 'playwright-core';
-import {dashboardRecipientText} from '../frontend/src/constants/dashboardRecipientSettings.js';
+import {dashboardRecipientText,dashboardSettingsTitle} from '../frontend/src/constants/dashboardRecipientSettings.js';
 const html='frontend/dashboard-recipients-test.html',jsx='frontend/dashboard-recipients-test.jsx',port=43523;
 assert.ok(!existsSync(html)&&!existsSync(jsx));
 writeFileSync(html,'<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/dashboard-recipients-test.jsx"></script></html>');
@@ -32,7 +32,7 @@ try{
    await page.goto(`http://127.0.0.1:${port}/dashboard-recipients-test.html?lang=${lang}`);return page;
   };
   const admin=await setup('ADMIN'),operator=await setup('OPERATOR');await operator.getByTestId('alert-visible').filter({hasText:'false'}).waitFor();assert.equal(await operator.getByRole('button',{name:'Settings',exact:true}).count(),0);
-  await admin.getByRole('button',{name:'Settings',exact:true}).click();await admin.getByText(t.failed,{exact:true}).waitFor();let dialog=admin.getByRole('dialog');assert.equal(await dialog.getByRole('checkbox').count(),0);await admin.getByRole('button',{name:t.retry,exact:true}).click();await dialog.getByRole('checkbox',{name:t.ACCOUNTANT,exact:true}).waitFor();
+  await admin.getByRole('button',{name:'Settings',exact:true}).click();await admin.getByText(t.failed,{exact:true}).waitFor();let dialog=admin.getByRole('dialog');await dialog.getByRole('heading',{name:dashboardSettingsTitle('Notifications',lang),exact:true}).waitFor();assert.equal(await dialog.getByRole('checkbox').count(),0);await admin.getByRole('button',{name:t.retry,exact:true}).click();await dialog.getByRole('checkbox',{name:t.ACCOUNTANT,exact:true}).waitFor();
   assert.equal(await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).isChecked(),true);assert.equal(await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).isDisabled(),false);
   const boxes=await dialog.getByRole('checkbox').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y};}));
   if(width>600){assert.equal(boxes[0].y,boxes[1].y);assert.ok(boxes[1].x>boxes[0].x);}

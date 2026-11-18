@@ -1,3 +1,4 @@
+import {dialogTitle} from '../constants/dialogTitles';
 import React,{Suspense,useCallback} from 'react';
 import {Routes,Route,UNSAFE_RouteContext} from 'react-router-dom';
 import {Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle} from '@mui/material';
@@ -24,7 +25,7 @@ export default function DashboardDocumentDialog({row,languageCode,onClose,onNavi
  const close=useCallback(async()=>{if(await actions.confirmDiscardUnsavedChanges())onClose();},[actions,onClose]);
  const navigate=useCallback(async(path,options)=>{if(options?.skipUnsavedChangesCheck){onClose();return;}if(!await actions.confirmDiscardUnsavedChanges())return;if(['/bank-ledger','/outsourcing-record','/invoices'].includes(path)){onClose();return;}onClose();onNavigate(path,{...options,skipUnsavedChangesCheck:true});},[actions,onClose,onNavigate]);
  if(!row||!canAccessPath(row.path,auth))return null;
- return <Dialog open onClose={close} fullWidth maxWidth="xl" slotProps={row.path.startsWith('/outsourcing-record/edit/')?{paper:{sx:{width:'100%',maxWidth:2080}}}:undefined}><DialogTitle>{t.title}</DialogTitle><DialogContent dividers sx={{
+ return <Dialog open onClose={close} fullWidth maxWidth="xl" slotProps={row.path.startsWith('/outsourcing-record/edit/')?{paper:{sx:{width:'100%',maxWidth:2080}}}:undefined}><DialogTitle>{dialogTitle('source',languageCode)}</DialogTitle><DialogContent dividers sx={{
   '& .app-page':{minHeight:0},
   '& .app-page > .app-page-layout':{px:0,pb:0,minHeight:0},
   '& .app-page-header':{pt:0,bgcolor:'background.paper'},
