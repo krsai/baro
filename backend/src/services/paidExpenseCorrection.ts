@@ -48,8 +48,12 @@ export async function correctPaidExpense(tx:any,orgId:number,actor:any,change:an
  const result=await save();
  for(const {entry,replacementId} of plans){
   const costs=await tx.partnerTransactionCost.findMany({where:{orgId,id:{in:entry.allocations.map((a:any)=>a.expenseItemId)}},select:{id:true,transactionCodeId:true,expenseRequest:{select:{version:true}}}});
-  const oldRepresentative=source.costs.find((c:any)=>c.transactionCodeId===entry.accountingCodeId&&entry.allocations.some((a:any)=>a.expenseItemId===c.id));
-  const codeId=oldRepresentative?costs.find((c:any)=>c.id===oldRepresentative.id)?.transactionCodeId:entry.accountingCodeId;
+  // Follow the allocated item FKs even when the old payment code is missing or
+  // inconsistent. Never arbitrarily pick the first of several new codes.
+  const representatives=source.costs.filter((c:any)=>c.transactionCodeId===entry.accountingCodeId&&entry.allocations.some((a:any)=>a.expenseItemId===c.id));
+  const mapped=representatives.length?costs.filter((c:any)=>representatives.some((old:any)=>old.id===c.id)):costs;
+  const codes=[...new Set(mapped.map((c:any)=>c.transactionCodeId))];
+  const codeId=codes.length===1?codes[0]:!representatives.length&&costs.some((c:any)=>c.transactionCodeId===entry.accountingCodeId)?entry.accountingCodeId:fail('PAID_EXPENSE_CORRECTION_COMPLEX');
   const {id,createdAt,voidedAt,voidedBy,voidReason,allocations,settlementLines,bankFeeLinks,...data}=entry;
   await tx.bankLedgerEntry.create({data:{...data,id:replacementId,clientKey:randomUUID(),revisesEntryId:id,accountingCodeId:codeId,createdBy:requester.email||String(requester.id)}});
   for(const allocation of allocations){const {id:allocationId,...copy}=allocation;await tx.bankLedgerEvidenceAllocation.create({data:{...copy,entryId:replacementId,requestVersion:costs.find((c:any)=>c.id===allocation.expenseItemId)?.expenseRequest?.version}});}
