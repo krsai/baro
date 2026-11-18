@@ -36,6 +36,10 @@ try{
    const initial=page.locator('button[data-initial-focus]');
    await initial.and(page.locator(':focus')).waitFor();
    await initial.click();await page.getByRole('complementary').getByRole('textbox').and(page.locator(':focus')).waitFor();
+   const left=page.getByRole('dialog').locator('section').first(),right=page.getByRole('complementary');
+   if(width>900){const a=await left.boundingBox(),b=await right.boundingBox();assert.ok(Math.abs(a.y-b.y)<1,'both panels start at the same height');assert.ok(b.x>a.x+a.width,'search panel is to the right');}
+   const radius=node=>{const s=getComputedStyle(node);return [s.borderTopLeftRadius,s.borderTopRightRadius,s.borderBottomLeftRadius,s.borderBottomRightRadius];};
+   assert.deepEqual(await right.evaluate(radius),await left.evaluate(radius),'panels use the same corner radius');
    assert.equal(writes.length,0);assert.deepEqual(errors,[]);await page.close();continue;
   }
   if(['directory','service'].includes(screen)){await page.getByText('Partial company',{exact:true}).waitFor();const price={ko:'\uB2E8\uAC00',en:'Pricing',vi:'\u0110\u01a1n gi\u00e1'}[lang];assert.equal(await page.getByRole('button',{name:price,exact:true}).count(),screen==='service'?0:1);if(screen==='service')assert.equal(await page.getByText(price,{exact:true}).count(),0,'No logistics pricing attention badge');}
