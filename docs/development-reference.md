@@ -4,6 +4,8 @@
 
 ## Railway 서비스별 빌드 설정
 
+- migration_fix에서 Organization DML 후 DDL을 실행할 때는 pg_temp.baro_validate_organization_ddl로 해당 테이블의 실제 deferrable 제약을 실행·검증하고 선언된 초기 모드를 복원한다. pending trigger events 오류를 피하려 트리거를 비활성화하거나 전체 제약 모드를 영구 변경하지 않는다. 잘못된 동일성/FK는 계속 롤백하며 helper는 세션 임시 함수다.
+
 - 과거 관계 버킷 이관은 timeBucketSetVersionId가 아직 없는 관계에 한정한다. 이미 설정된 관계의 현재 버킷에 과거 StyleProcessStandard를 재복사하거나 현재 수량 구간을 과거 전체 구간과 비교하지 않는다. 새 이관 관계의 실제 원본 ST 복사 보존 검사는 같은 DO 트랜잭션 안에서 관계별로 수행하고 누락 시 해당 이관 전체를 롤백한다. 브랜드 스타일 원본과 실제 제조사/sourceOrgId=0 공정·ST 범위를 유지한다.
 
 - 관계 버킷 이관 후 ST 보존 검사는 원본 StyleProcessStandard와 원본 버전/수량 FK가 실제 존재하는 행의 대상 복사본을 검사한다. 모든 공정×모든 수량 구간을 완성하도록 강제하거나 미설정 ST를 임의 생성하지 않는다. 실제 원본의 복사 누락·대상 수량 누락은 계속 차단한다.

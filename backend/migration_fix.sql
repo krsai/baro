@@ -1,3 +1,21 @@
+-- Run queued Organization constraints before its later DDL. Validate rather
+-- than disabling triggers; restore each constraint's declared initial mode.
+CREATE OR REPLACE FUNCTION pg_temp.baro_validate_organization_ddl() RETURNS void LANGUAGE plpgsql AS $$
+DECLARE constraint_row RECORD;
+BEGIN
+  FOR constraint_row IN
+    SELECT DISTINCT n.nspname, c.conname, c.condeferred
+    FROM pg_trigger t JOIN pg_constraint c ON c.oid=t.tgconstraint
+    JOIN pg_namespace n ON n.oid=c.connamespace
+    WHERE t.tgrelid=to_regclass('"Organization"') AND t.tgdeferrable
+  LOOP
+    EXECUTE format('SET CONSTRAINTS %I.%I IMMEDIATE',constraint_row.nspname,constraint_row.conname);
+    IF constraint_row.condeferred THEN
+      EXECUTE format('SET CONSTRAINTS %I.%I DEFERRED',constraint_row.nspname,constraint_row.conname);
+    END IF;
+  END LOOP;
+END $$;
+
 -- Preserve the customer identity before the manufacturer ownership transfer.
 ALTER TABLE "Style" ADD COLUMN IF NOT EXISTS "customerOrgId" INTEGER;
 UPDATE "Style" SET "customerOrgId"="orgId" WHERE "customerOrgId" IS NULL;
@@ -1191,6 +1209,7 @@ WHERE o.id = matches."organizationId"
   AND matches.rn = 1
   AND matches.match_count = 1;
 
+SELECT pg_temp.baro_validate_organization_ddl();
 CREATE INDEX IF NOT EXISTS "Organization_representativeEmployeeId_idx"
   ON "Organization"("representativeEmployeeId");
 
@@ -1219,7 +1238,8 @@ BEGIN
   END IF;
 END $$;
 
-DO $$ BEGIN
+SELECT pg_temp.baro_validate_organization_ddl();
+DO $ BEGIN
   ALTER TABLE "Organization"
     ADD CONSTRAINT "Organization_representativeEmployeeId_fkey"
     FOREIGN KEY ("representativeEmployeeId") REFERENCES "Employee"("id")
@@ -4673,8 +4693,10 @@ BEGIN
   END IF;
 END $$;
 
+SELECT pg_temp.baro_validate_organization_ddl();
 CREATE UNIQUE INDEX IF NOT EXISTS "Organization_ownerOrgId_type_name_key"
   ON "Organization"("ownerOrgId", "type", "name");
+SELECT pg_temp.baro_validate_organization_ddl();
 CREATE INDEX IF NOT EXISTS "Organization_ownerOrgId_type_isActive_idx"
   ON "Organization"("ownerOrgId", "type", "isActive");
 
@@ -4846,6 +4868,7 @@ UPDATE "SalaryItem" SET "paymentMonths"=CASE "payCycle" WHEN 'QUARTERLY' THEN '[
 ALTER TABLE "SalaryItem" ALTER COLUMN "paymentMonths" SET NOT NULL;
 ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "salaryCurrencyId" INTEGER;
 UPDATE "Organization" organization SET "salaryCurrencyId"=currency.id FROM "Currency" currency WHERE organization."salaryCurrencyId" IS NULL AND currency.code='VND';
+SELECT pg_temp.baro_validate_organization_ddl();
 CREATE INDEX IF NOT EXISTS "Organization_salaryCurrencyId_idx" ON "Organization"("salaryCurrencyId");
 DO $$ BEGIN ALTER TABLE "Organization" ADD CONSTRAINT "Organization_salaryCurrency_fkey" FOREIGN KEY ("salaryCurrencyId") REFERENCES "Currency"("id") ON DELETE RESTRICT; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 ALTER TABLE "Organization" DROP CONSTRAINT IF EXISTS "Organization_salaryCurrencyCode_check";
@@ -5495,6 +5518,7 @@ END $$;
 
 -- 2026-09-25: outsourcing service taxonomy. Keep this after the standalone
 -- invoice-ledger section so focused invoice bootstrap tests stay isolated.
+SELECT pg_temp.baro_validate_organization_ddl();
 CREATE UNIQUE INDEX IF NOT EXISTS "Organization_id_ownerOrgId_key" ON "Organization"("id", "ownerOrgId");
 CREATE TABLE IF NOT EXISTS "OutsourcingServiceType" (
   "id" SERIAL PRIMARY KEY, "ownerOrgId" INTEGER NOT NULL, "code" TEXT NOT NULL,
