@@ -1239,7 +1239,7 @@ BEGIN
 END $$;
 
 SELECT pg_temp.baro_validate_organization_ddl();
-DO $ BEGIN
+DO $$ BEGIN
   ALTER TABLE "Organization"
     ADD CONSTRAINT "Organization_representativeEmployeeId_fkey"
     FOREIGN KEY ("representativeEmployeeId") REFERENCES "Employee"("id")
