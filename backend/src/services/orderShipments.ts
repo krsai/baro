@@ -15,7 +15,7 @@ export async function requireOrderTargetAdmin(db:any,orgId:number,actorId:number
  if(actor.orgRole!=='ADMIN')fail('TARGET_ACCESS_DENIED',403);
  const policy=await db.systemSetting.findUnique({where:{key:'ROLE_ACCESS_POLICY'}});
  const configured=policy?.value?.MANUFACTURER?.ADMIN;
- if(Array.isArray(configured)&&!configured.includes('ORDER'))fail('TARGET_ACCESS_DENIED',403);
+ if(Array.isArray(configured)&&!configured.includes(Number(policy?.value?.__schemaVersion||0)<19?'ORDER':'ORDER_SHIPMENTS'))fail('TARGET_ACCESS_DENIED',403);
  return actor;
 }
 async function order(db:any,orgId:number,id:number,lock=false){
@@ -91,7 +91,7 @@ export function registerOrderShipmentRoutes(app:any,db:any,gates:any){
  const route=(method:string,path:string,action:any)=>app[method](path,async(req:any,res:any)=>{
   const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!access)return;
   const orgId=access.organization.id,actorId=gates.actorId();const actor=await shippingActor(db,orgId,actorId);
-  if(!await gates.canAccess({orgType:access.organization.type,orgRole:actor.orgRole,feature:'ORDER'}))fail('SHIPPING_ACCESS_DENIED',403);
+  if(!await gates.canAccess({orgType:access.organization.type,orgRole:actor.orgRole,feature:'ORDER_SHIPMENTS'}))fail('SHIPPING_ACCESS_DENIED',403);
   res.json(await action(req,orgId,actorId));
  });
  route('get','/orders/shipments',(r:any,o:number,a:number)=>listShippingOrders(db,o,a,r.query));

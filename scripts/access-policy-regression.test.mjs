@@ -12,6 +12,23 @@ import {
 import { canAccessPath,resolveFeatureByPath } from '../frontend/src/utils/accessControl.js';
 import {loadSourceBindings} from './helpers/source-bindings.mjs';
 import {normalizeOrganizationType} from '../frontend/src/constants/organizationType.js';
+import {readFileSync} from 'node:fs';
+
+test('every visible company menu has disjoint permission keys and split policies retain explicit denials',()=>{
+ const paths=[...new Set([...readFileSync('frontend/src/utils/companyMenuLayout.mjs','utf8').split('export function')[0].matchAll(/'(\/[^']+)'/g)].map(match=>match[1]))].filter(path=>!path.startsWith('/system-'));
+ const {buildMenuTree}=loadSourceBindings('frontend/src/pages/App/system/AccessPolicyBoard.jsx',['buildMenuTree'],{resolveFeatureByPath,NON_EDITABLE_FEATURE_KEYS:new Set(['PROFILE'])});
+ for(const orgType of ['MANUFACTURER','SERVICE']){
+  const rows=buildMenuTree(paths.map(path=>({path,label:path,...(path==='/business-partner'?{accessChildren:['/customer','/outsourcing-partner','/material-supplier','/logistics-partner'].map(path=>({path,label:path}))}:{})})),'root',orgType);
+  for(const row of rows)for(const other of rows)if(row.path!==other.path)assert.deepEqual(row.featureKeys.filter(key=>other.featureKeys.includes(key)),[],`${orgType}: ${row.path} overlaps ${other.path}`);
+ }
+ const legacy=sanitizeRoleAccessPolicy({__schemaVersion:18,MANUFACTURER:{ACCOUNTANT:['ORDER','INVENTORY','CUSTOMER','REVENUE_ANALYSIS'],WORKER:[]},SERVICE:{ACCOUNTANT:['FREIGHT']}});
+ assert.ok(['PRODUCTION_STATUS','ORDER_SHIPMENTS','INVENTORY_STOCK','INVENTORY_MATERIALS','INVENTORY_MOVEMENTS','INVENTORY_SETTINGS','SHIPPING_REQUEST','REVENUE_FORECAST'].every(key=>legacy.MANUFACTURER.ACCOUNTANT.includes(key)));
+ assert.ok(legacy.SERVICE.ACCOUNTANT.includes('SHIPPING_REQUEST'));
+ assert.deepEqual(legacy.MANUFACTURER.WORKER,[]);
+ const current=sanitizeRoleAccessPolicy(withCurrentPolicyVersion({MANUFACTURER:{ACCOUNTANT:['ORDER','INVENTORY','CUSTOMER','REVENUE_ANALYSIS']}}));
+ assert.equal(current.MANUFACTURER.ACCOUNTANT.includes('PRODUCTION_STATUS'),false);
+ assert.equal(current.MANUFACTURER.ACCOUNTANT.includes('SHIPPING_REQUEST'),false);
+});
 
 const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
@@ -37,12 +54,12 @@ test('shared port management belongs only to the SYSTEM administrator',()=>{
 });
 
 test('brand shipping follows its saved order permission and industry availability without opening freight operations',()=>{
- const auth=features=>({isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'BRAND',orgRole:'ADMIN',industryMenuFeatures:['ORDER'],accessPolicy:withCurrentPolicyVersion({BRAND:{ADMIN:features}})}});
- assert.equal(resolveFeatureByPath('/shipping','BRAND'),'ORDER');
- assert.equal(canAccessPath('/shipping',auth(['ORDER'])),true);
+ const auth=features=>({isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'BRAND',orgRole:'ADMIN',industryMenuFeatures:['SHIPPING_REQUEST'],accessPolicy:withCurrentPolicyVersion({BRAND:{ADMIN:features}})}});
+ assert.equal(resolveFeatureByPath('/shipping','BRAND'),'SHIPPING_REQUEST');
+ assert.equal(canAccessPath('/shipping',auth(['SHIPPING_REQUEST'])),true);
  assert.equal(canAccessPath('/shipping',auth(['STYLE'])),false);
  assert.equal(canAccessPath('/freight',auth(['ORDER'])),false);
- const unavailable=auth(['ORDER']);unavailable.accessProfile.industryMenuFeatures=['STYLE'];assert.equal(canAccessPath('/shipping',unavailable),false);
+ const unavailable=auth(['SHIPPING_REQUEST']);unavailable.accessProfile.industryMenuFeatures=['STYLE'];assert.equal(canAccessPath('/shipping',unavailable),false);
  assert.equal(canAccessPath('/shipping',{isAuthenticated:true,accessProfile:{entryType:'SYSTEM',systemRole:'SYSTEM_ADMIN'}}),false);
 });
 
@@ -64,7 +81,7 @@ test('profile editor preserves saved logistics and archived brand roles instead 
 test('freight is independently configurable, defaults to administrators on upgrade and rejects SYSTEM/worker access',()=>{
  assert.equal(resolveFeatureByPath('/freight'),'FREIGHT');
  const legacy=sanitizeRoleAccessPolicy({__schemaVersion:15,SERVICE:{ADMIN:[],OPERATOR:[],ACCOUNTANT:[],WORKER:[]}});
- assert.deepEqual(legacy.SERVICE.ADMIN,['WORK_TIME','FREIGHT']);assert.deepEqual(legacy.SERVICE.OPERATOR,['WORK_TIME']);
+ assert.deepEqual(legacy.SERVICE.ADMIN,['WORK_TIME','FREIGHT','SHIPPING_REQUEST']);assert.deepEqual(legacy.SERVICE.OPERATOR,['WORK_TIME']);
  for(const role of ['ADMIN','OPERATOR','ACCOUNTANT','WORKER']){
   const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'SERVICE',orgRole:role,accessPolicy:withCurrentPolicyVersion({SERVICE:{[role]:['FREIGHT']}})}};
   assert.equal(canAccessPath('/freight',state),role!=='WORKER');

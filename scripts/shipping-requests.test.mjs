@@ -75,7 +75,7 @@ test('one owner job from submission through receipt; actual Prisma types, privac
   const routes=new Map();let policy={MANUFACTURER:{ADMIN:[]}},context={organization:{id:customerOrg,type:'MANUFACTURER'},employee:{orgRole:'ADMIN'}};
   registerShippingRequestRoutes({delete:(path,fn)=>routes.set('delete:'+path,fn),get:(path,fn)=>routes.set('get:'+path,fn),post:(path,fn)=>routes.set('post:'+path,fn)},db,{requireOrgRole:async()=>context,actorId:()=>context.organization.id===customerOrg?employee:context.organization.type==='BRAND'?brandActor.id:admin.id,loadPolicy:async()=>({policy})});
   await assert.rejects(routes.get('get:/shipping-requests')({},{json:()=>{}}),/SHIPPING_ACCESS_DENIED/);
-  policy={MANUFACTURER:{ADMIN:['CUSTOMER']}};let listed;
+  policy={MANUFACTURER:{ADMIN:['SHIPPING_REQUEST']}};let listed;
   await routes.get('get:/shipping-requests')({},{json:value=>{listed=value;}});assert.equal(listed.length,2);
   context={organization:{id:forwarder,type:'SERVICE'},employee:{orgRole:'ADMIN'}};policy={SERVICE:{ADMIN:['CUSTOMER']}};
   await assert.rejects(routes.get('get:/shipping-requests')({},{json:()=>{}}),/SHIPPING_ACCESS_DENIED/);
@@ -90,7 +90,7 @@ test('one owner job from submission through receipt; actual Prisma types, privac
   const brand=await submitShippingRequest(db,brandOrg.id,brandActor.id,{...input,clientKey:randomUUID(),mode:'AIR',data:{...input.data,cargoSchemaVersion:1,shipmentType:'AIR',transportService:'EXPRESS',customerRole:'shipper',shipperParty:{name:'Brand',id:99999,internalCost:99},weightKg:'20',packages:[{quantity:'2',lengthM:'1',widthM:'0.5',heightM:'0.25'}]}});
   const brandJob=(await db.$queryRawUnsafe('SELECT * FROM "FreightJob" WHERE id=$1',brand.id))[0];assert.equal(brandJob.service,'EXPRESS');assert.equal(brandJob.customerId,brandCustomer.id);assert.equal(brandJob.data.shipperId,brandCustomer.id);assert.equal(brandJob.data.cbm,'0.250000');assert.equal(brandJob.data.shipperParty.id,undefined);
   context={organization:{id:brandOrg.id,type:'BRAND'},employee:{orgRole:'ADMIN'}};policy={BRAND:{ADMIN:[]}};await assert.rejects(routes.get('get:/shipping-requests')({},{json:()=>{}}),/SHIPPING_ACCESS_DENIED/);
-  policy={BRAND:{ADMIN:['ORDER']}};await routes.get('get:/shipping-requests')({},{json:value=>{listed=value;}});assert.equal(listed.some(row=>row.id===brand.id),true);
+  policy={BRAND:{ADMIN:['SHIPPING_REQUEST']}};await routes.get('get:/shipping-requests')({},{json:value=>{listed=value;}});assert.equal(listed.some(row=>row.id===brand.id),true);
   assert.deepEqual(await financial(),before);
  }finally{await f.close();}
 });

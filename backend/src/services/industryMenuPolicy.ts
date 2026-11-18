@@ -3,26 +3,30 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 
 export const INDUSTRY_MENU_KEY='INDUSTRY_MENU_POLICY:1';
-export const INDUSTRY_MENU_FEATURES=['APPROVAL_SETTINGS','WORK_TIME','FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
+export const INDUSTRY_MENU_FEATURES=['INVENTORY_MATERIALS','INVENTORY_STOCK','INVENTORY_MOVEMENTS','INVENTORY_SETTINGS','PRODUCTION_STATUS','ORDER_SHIPMENTS','SHIPPING_REQUEST','APPROVAL_SETTINGS','WORK_TIME','FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
 export const SUBSCRIBER_TYPES=['MANUFACTURER','SERVICE'];
-export const INDUSTRY_SPECIFIC_FEATURES=['FREIGHT','ORDER','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','WORK_HISTORY','REVENUE_FORECAST','REVENUE_ANALYSIS'];
+export const INDUSTRY_SPECIFIC_FEATURES=['INVENTORY_MATERIALS','INVENTORY_STOCK','INVENTORY_MOVEMENTS','INVENTORY_SETTINGS','PRODUCTION_STATUS','ORDER_SHIPMENTS','SHIPPING_REQUEST','FREIGHT','ORDER','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','WORK_HISTORY','REVENUE_FORECAST','REVENUE_ANALYSIS'];
 export const COMMON_MENU_FEATURES=INDUSTRY_MENU_FEATURES.filter(feature=>!INDUSTRY_SPECIFIC_FEATURES.includes(feature));
+const MENU_SPLIT_SOURCES={INVENTORY_MATERIALS:'INVENTORY',INVENTORY_STOCK:'INVENTORY',INVENTORY_MOVEMENTS:'INVENTORY',INVENTORY_SETTINGS:'INVENTORY',PRODUCTION_STATUS:'ORDER',ORDER_SHIPMENTS:'ORDER',SHIPPING_REQUEST:'CUSTOMER',REVENUE_FORECAST:'REVENUE_ANALYSIS'};
 const required=['DASHBOARD','BUSINESS'];
 export async function readIndustryMenuPolicy(db:any){
  const row=await db.systemSetting.findUnique({where:{key:INDUSTRY_MENU_KEY}});
- const subscribers=row?.value?.subscribers?Object.fromEntries(Object.entries(row.value.subscribers).map(([type,features]:any)=>[type,!row.value.approvalSettingsSplit&&features.includes('OUTSOURCING_RECORD')?[...new Set([...features,'APPROVAL_SETTINGS'])]:features])):undefined;
- return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.approvalSettingsSplit?{approvalSettingsSplit:true}:{}),...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers}:{})};
+ const subscribers=row?.value?.subscribers?Object.fromEntries(Object.entries(row.value.subscribers).map(([type,features]:any)=>[type,[...new Set([...features,...(!row.value.approvalSettingsSplit&&features.includes('OUTSOURCING_RECORD')?['APPROVAL_SETTINGS']:[])])]])):undefined;
+ if(subscribers&&!row?.value?.menuSplitVersion)for(const [type,features] of Object.entries(subscribers) as [string,string[]][])for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES)){const original=target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source;const allowed=features.includes(original)||!row.value.fullScopeTypes?.includes(type)&&COMMON_MENU_FEATURES.includes(original);const index=features.indexOf(target);if(index>=0)features.splice(index,1);if(allowed)features.push(target);}
+ return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.menuSplitVersion?{menuSplitVersion:row.value.menuSplitVersion}:{}),...(row?.value?.approvalSettingsSplit?{approvalSettingsSplit:true}:{}),...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers}:{})};
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
  const policy=await readIndustryMenuPolicy(db);
- if(Object.hasOwn(policy.subscribers??{},orgType))return orgType==='BRAND'?policy.subscribers[orgType].filter((feature:string)=>['STYLE','ORDER'].includes(feature)):policy.fullScopeTypes?.includes(orgType)?policy.subscribers[orgType]:[...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
+ if(Object.hasOwn(policy.subscribers??{},orgType))return orgType==='BRAND'?policy.subscribers[orgType].filter((feature:string)=>['STYLE','ORDER','PRODUCTION_STATUS','SHIPPING_REQUEST'].includes(feature)):policy.fullScopeTypes?.includes(orgType)?policy.subscribers[orgType]:[...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
  const classification=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId:orgId}},include:{industries:true}});
  const defaults=INDUSTRY_MENU_FEATURES.filter(feature=>orgType==='SERVICE'||feature!=='FREIGHT');
 
  const ids=(classification?.industries??[]).map((row:any)=>row.systemIndustryId);
  const selected=ids.length?ids.flatMap((id:number)=>policy.industries[String(id)]??defaults):defaults;
- if(orgType==='BRAND')return ['STYLE','ORDER'].filter(feature=>selected.includes(feature));
- return [...new Set([...COMMON_MENU_FEATURES,...selected])];
+ if(orgType==='BRAND')return ['STYLE','ORDER','PRODUCTION_STATUS','SHIPPING_REQUEST'].filter(feature=>selected.includes(feature)||['PRODUCTION_STATUS','SHIPPING_REQUEST'].includes(feature)&&selected.includes('ORDER'));
+ const effective=[...new Set([...COMMON_MENU_FEATURES,...selected])];
+ for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES))if(effective.includes(target==='SHIPPING_REQUEST'?(orgType==='SERVICE'?'FREIGHT':'CUSTOMER'):source)&&!effective.includes(target))effective.push(target);
+ return effective;
 }
 export function industryMenuMiddleware(db:any,requireOrgRole:any,canAccess?:any){
  return async(req:any,res:any,next:any)=>{
@@ -30,7 +34,7 @@ export function industryMenuMiddleware(db:any,requireOrgRole:any,canAccess?:any)
   const feature=settingsRequest?'APPROVAL_SETTINGS':industryMenuApiFeature(req.path);if(!feature)return next();
   try{
    const context=await requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT','WORKER'],allowSystemAdmin:false});if(!context)return;
-   if(settingsRequest&&canAccess&&!await canAccess({orgType:context.organization.type,orgRole:context.employee?.orgRole,feature:'APPROVAL_SETTINGS'}))return res.status(403).json({error:'FEATURE_ACCESS_DENIED'});
+   if((settingsRequest||['INVENTORY_MATERIALS','INVENTORY_STOCK','INVENTORY_MOVEMENTS','INVENTORY_SETTINGS','PRODUCTION_STATUS','ORDER_SHIPMENTS','SHIPPING_REQUEST','REVENUE_FORECAST'].includes(feature))&&canAccess&&!await canAccess({orgType:context.organization.type,orgRole:context.employee?.orgRole,feature}))return res.status(403).json({error:'FEATURE_ACCESS_DENIED'});
    const allowed=await companyIndustryMenuFeatures(db,context.organization.id,context.organization.type);
    if(!allowed.includes(feature))return res.status(403).json({error:'INDUSTRY_MENU_UNAVAILABLE'});
    return next();
@@ -52,7 +56,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
   await tx.$queryRawUnsafe('SELECT key FROM "SystemSetting" WHERE key=$1 FOR UPDATE',INDUSTRY_MENU_KEY);
   const current=await readIndustryMenuPolicy(tx);
   if(current.revision!==input.revision)throw createHttpError(409,'INDUSTRY_MENU_POLICY_CHANGED');
-  const value={...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),approvalSettingsSplit:true,revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
+  const value={...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),menuSplitVersion:19,approvalSettingsSplit:true,revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
   await tx.systemSetting.update({where:{key:INDUSTRY_MENU_KEY},data:{value,updatedBy:email}});
   return value;
  });
@@ -62,6 +66,9 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
 // lookups keep their existing permissions so permitted forms can still resolve FKs.
 export function industryMenuApiFeature(path:string){
  const rules:[RegExp,string][]=[
+  [/^\/customer-production-reports(?:\/|$)/,'PRODUCTION_STATUS'],
+  [/^\/shipping-requests(?:\/|$)/,'SHIPPING_REQUEST'],
+  [/^\/orders\/(?:shipments(?:\/|$)|\d+\/(?:shipments|shipping-policy)(?:\/|$))/,'ORDER_SHIPMENTS'],
   [/^\/employees\/\d+\/tenure-recognition\/?$/,'EMPLOYEE'],
   [/^\/employees\/?$/,'EMPLOYEE'],[/^\/holidays(?:\/|$)/,'HOLIDAY'],
   [/^\/(?:work-time-requests|employee-leaves)(?:\/|$)/,'WORK_TIME'],

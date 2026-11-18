@@ -17,14 +17,14 @@ test('a brand-only admin cannot turn the limited portal into company provisionin
 });
 
 test('brand menus and login matching never turn SYSTEM, labels or another company into a brand membership',()=>{
- const policy=getDefaultRoleAccessPolicy(),auth={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'BRAND',orgRole:'ADMIN',accessPolicy:policy,industryMenuFeatures:['STYLE','ORDER']}};
- assert.deepEqual(new Set(getAllowedFeaturesForRole({orgType:'BRAND',orgRole:'ADMIN',policy})),new Set(['STYLE','ORDER']));
+ const policy=getDefaultRoleAccessPolicy(),auth={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'BRAND',orgRole:'ADMIN',accessPolicy:policy,industryMenuFeatures:['STYLE','ORDER','PRODUCTION_STATUS']}};
+ assert.deepEqual(new Set(getAllowedFeaturesForRole({orgType:'BRAND',orgRole:'ADMIN',policy})),new Set(['STYLE','ORDER','PRODUCTION_STATUS','SHIPPING_REQUEST']));
  for(const path of ['/style','/order','/customer-production-report'])assert.equal(canAccessPath(path,auth),true);
  for(const path of ['/dashboard','/assignment','/work-history','/bank-ledger','/payroll','/employee','/shipping'])assert.equal(canAccessPath(path,auth),false,path);
  const system={key:'system',type:'SYSTEM',role:'SYSTEM_ADMIN'};assert.equal(findLoginWorkspace([system],'TEST_THESAN'),null);
  assert.equal(findLoginWorkspace([{key:'org:1',code:'THES',type:'MANUFACTURER'}],'TEST_THESAN'),null);
  assert.equal(findLoginWorkspace([{key:'org:2',code:'THES',type:'BRAND'}],'TEST_THESAN').key,'org:2');
- assert.equal(brandSewingApiFeature('/brand-sewing/styles/7'),'STYLE');assert.equal(brandSewingApiFeature('/brand-sewing/progress'),'ORDER');assert.equal(brandSewingApiFeature('/styles/7/bom'),null);
+ assert.equal(brandSewingApiFeature('/brand-sewing/styles/7'),'STYLE');assert.equal(brandSewingApiFeature('/brand-sewing/progress'),'PRODUCTION_STATUS');assert.equal(brandSewingApiFeature('/styles/7/bom'),null);
 });
 
 const context=()=>({organization:{id:2,type:'BRAND',ownerOrgId:null,isActive:true,subscription:{status:'ACTIVE'}},employee:{id:9,orgId:2,status:'ACTIVE',orgRole:'ADMIN'}});

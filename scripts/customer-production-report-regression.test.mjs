@@ -109,7 +109,7 @@ test('report has no export or print action', () => {
 test('sales report is routed and permissioned', () => {
   assert.match(router, /path:\s*'customer-production-report'/);
   assert.match(layout, /customer-production-report/);
-  assert.match(access, /\/customer-production-report.*FEATURE_KEYS\.ORDER/);
+  assert.match(access, /\/customer-production-report.*FEATURE_KEYS\.PRODUCTION_STATUS/);
 
   assert.doesNotMatch(page, /estimateBasis|text\.basis|const BASIS/);
   assert.doesNotMatch(page, /PARTIALLY_ASSIGNED|Partially assigned|일부 미배정/);

@@ -13,6 +13,13 @@ export const ORG_ROLE_KEYS = {
 };
 
 export const ACCESS_FEATURE_KEYS = {
+  INVENTORY_MATERIALS: 'INVENTORY_MATERIALS',
+  INVENTORY_STOCK: 'INVENTORY_STOCK',
+  INVENTORY_MOVEMENTS: 'INVENTORY_MOVEMENTS',
+  INVENTORY_SETTINGS: 'INVENTORY_SETTINGS',
+  PRODUCTION_STATUS: 'PRODUCTION_STATUS',
+  ORDER_SHIPMENTS: 'ORDER_SHIPMENTS',
+  SHIPPING_REQUEST: 'SHIPPING_REQUEST',
   FREIGHT: 'FREIGHT',
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
@@ -46,7 +53,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 18;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 19;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
@@ -59,6 +66,7 @@ const POLICY_FEATURES = Object.values(ACCESS_FEATURE_KEYS).filter(
   (featureKey) => featureKey !== ACCESS_FEATURE_KEYS.SUBSCRIPTION
 );
 
+const MENU_SPLIT_SOURCES={INVENTORY_MATERIALS:'INVENTORY',INVENTORY_STOCK:'INVENTORY',INVENTORY_MOVEMENTS:'INVENTORY',INVENTORY_SETTINGS:'INVENTORY',PRODUCTION_STATUS:'ORDER',ORDER_SHIPMENTS:'ORDER',SHIPPING_REQUEST:'CUSTOMER',REVENUE_FORECAST:'REVENUE_ANALYSIS'};
 const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
   [ORG_TYPE_KEYS.SERVICE]: Object.freeze(SERVICE_ROLE_DEFAULTS),
   [ORG_TYPE_KEYS.MANUFACTURER]: Object.freeze({
@@ -258,8 +266,16 @@ const applyLegacySalarySystemDefault = (policy) => {
   });
 };
 
-export const getDefaultRoleAccessPolicy = () =>
-  cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
+export const getDefaultRoleAccessPolicy = () => {
+  const policy=cloneDeepJson(DEFAULT_ROLE_ACCESS_POLICY);
+  for(const [type,roles] of Object.entries(policy))for(const features of Object.values(roles)){
+    for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES)){
+      const original=target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source;
+      if(features.includes(original)&&!features.includes(target))features.push(target);
+    }
+  }
+  return policy;
+};
 
 export const sanitizeRoleAccessPolicy = (candidate) => {
   const base = getDefaultRoleAccessPolicy();
@@ -314,6 +330,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     if(sourceSchemaVersion<16&&!roles.ADMIN.includes('FREIGHT'))roles.ADMIN.push('FREIGHT');
   }
   if(sourceSchemaVersion<18)for(const roles of Object.values(base))for(const features of Object.values(roles)){const index=features.indexOf('APPROVAL_SETTINGS');if(index>=0)features.splice(index,1);if(features.includes('OUTSOURCING_RECORD'))features.push('APPROVAL_SETTINGS');}
+  if(sourceSchemaVersion<19)for(const [type,roles] of Object.entries(base))for(const features of Object.values(roles))for(const [target,source] of Object.entries(MENU_SPLIT_SOURCES)){const old=features.indexOf(target);const granted=features.includes(target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source);if(old>=0)features.splice(old,1);if(granted)features.push(target);}
   return base;
 };
 
@@ -341,7 +358,7 @@ export const getAllowedFeaturesForRole = ({ orgType, orgRole, policy = null }) =
   const normalizedOrgRole = normalizeRoleKey(orgRole);
   if (!normalizedOrgType || !normalizedOrgRole) return [];
   const features=sanitizeFeatureArray(resolvedPolicy?.[normalizedOrgType]?.[normalizedOrgRole]);
-  if(normalizedOrgType==='BRAND')return features.filter(key=>['STYLE','ORDER'].includes(key));
+  if(normalizedOrgType==='BRAND')return features.filter(key=>['STYLE','ORDER','PRODUCTION_STATUS','SHIPPING_REQUEST'].includes(key));
   return normalizedOrgType==='SERVICE'?features.filter(key=>SERVICE_FEATURES.includes(key)):features;
 };
 

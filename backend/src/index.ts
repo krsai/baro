@@ -1330,9 +1330,16 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 18;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 19;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
+  "INVENTORY_MATERIALS",
+  "INVENTORY_STOCK",
+  "INVENTORY_MOVEMENTS",
+  "INVENTORY_SETTINGS",
+  "PRODUCTION_STATUS",
+  "ORDER_SHIPMENTS",
+  "SHIPPING_REQUEST",
   "WORK_TIME",
   "FREIGHT",
   "ACCOUNT_OVERVIEW",
@@ -1381,6 +1388,9 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
     OPERATOR: [
       "DASHBOARD",
       "ORDER",
+      "PRODUCTION_STATUS",
+      "ORDER_SHIPMENTS",
+      "SHIPPING_REQUEST",
       "OUTSOURCING_PARTNER",
       "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER",
       "STYLE",
@@ -1389,6 +1399,10 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "ASSIGNMENT",
       "PRODUCTION_PLAN",
       "INVENTORY",
+      "INVENTORY_MATERIALS",
+      "INVENTORY_STOCK",
+      "INVENTORY_MOVEMENTS",
+      "INVENTORY_SETTINGS",
       "WORK_TIME",
       "ATTENDANCE",
       "WORK_HISTORY",
@@ -1591,6 +1605,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     if(sourceSchemaVersion<16&&!roles.ADMIN.includes('FREIGHT'))roles.ADMIN.push('FREIGHT');
   }
   if(sourceSchemaVersion<18)for(const roles of Object.values(policy))for(const features of Object.values(roles)){const index=features.indexOf('APPROVAL_SETTINGS');if(index>=0)features.splice(index,1);if(features.includes('OUTSOURCING_RECORD'))features.push('APPROVAL_SETTINGS');}
+  if(sourceSchemaVersion<19)for(const [type,roles] of Object.entries(policy))for(const features of Object.values(roles))for(const [target,source] of Object.entries({INVENTORY_MATERIALS:'INVENTORY',INVENTORY_STOCK:'INVENTORY',INVENTORY_MOVEMENTS:'INVENTORY',INVENTORY_SETTINGS:'INVENTORY',PRODUCTION_STATUS:'ORDER',ORDER_SHIPMENTS:'ORDER',SHIPPING_REQUEST:'CUSTOMER',REVENUE_FORECAST:'REVENUE_ANALYSIS'})){const feature=target as RoleAccessPolicyFeature,old=features.indexOf(feature),granted=features.includes((target==='SHIPPING_REQUEST'?(type==='SERVICE'?'FREIGHT':type==='BRAND'?'ORDER':'CUSTOMER'):source) as RoleAccessPolicyFeature);if(old>=0)features.splice(old,1);if(granted)features.push(feature);}
   return policy;
 };
 const serializeRoleAccessPolicy = (

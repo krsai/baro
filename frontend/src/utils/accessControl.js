@@ -18,6 +18,13 @@ const ORG_ROLES = {
 };
 
 const FEATURE_KEYS = {
+  INVENTORY_MATERIALS: 'INVENTORY_MATERIALS',
+  INVENTORY_STOCK: 'INVENTORY_STOCK',
+  INVENTORY_MOVEMENTS: 'INVENTORY_MOVEMENTS',
+  INVENTORY_SETTINGS: 'INVENTORY_SETTINGS',
+  PRODUCTION_STATUS: 'PRODUCTION_STATUS',
+  ORDER_SHIPMENTS: 'ORDER_SHIPMENTS',
+  SHIPPING_REQUEST: 'SHIPPING_REQUEST',
   FREIGHT: 'FREIGHT',
   DASHBOARD: 'DASHBOARD',
   ORDER: 'ORDER',
@@ -164,7 +171,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
 
 export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   const path = normalizePathname(pathname);
-  if(path==='/shipping'||path.startsWith('/shipping/'))return orgType==='BRAND'?FEATURE_KEYS.ORDER:orgType==='MANUFACTURER'?FEATURE_KEYS.CUSTOMER:FEATURE_KEYS.FREIGHT;
+  if(path==='/shipping'||path.startsWith('/shipping/'))return FEATURE_KEYS.SHIPPING_REQUEST;
   if (path.replace(/\/+$/,'') === '/business-partner') return null; // Composite of existing partner permissions.
   if (path.startsWith('/transport-exchange')) return FEATURE_KEYS.CUSTOMER;
   if (path.startsWith('/freight')) return FEATURE_KEYS.FREIGHT;
@@ -175,8 +182,9 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path === '/invoices' || path.startsWith('/invoices/')) return FEATURE_KEYS.INVOICE;
   if (path === '/') return null;
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;
+  if (path.startsWith('/order-shipments')) return FEATURE_KEYS.ORDER_SHIPMENTS;
   if (path.startsWith('/order')) return FEATURE_KEYS.ORDER;
-  if (path.startsWith('/customer-production-report')) return FEATURE_KEYS.ORDER;
+  if (path.startsWith('/customer-production-report')) return FEATURE_KEYS.PRODUCTION_STATUS;
   if (path.startsWith('/outsourcing-partner')) return FEATURE_KEYS.OUTSOURCING_PARTNER;
   if (path.startsWith('/logistics-partner')) return FEATURE_KEYS.LOGISTICS_PARTNER;
   if (path.startsWith('/material-supplier')) return FEATURE_KEYS.MATERIAL_SUPPLIER;
@@ -185,14 +193,18 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path.startsWith('/shipment-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
   if (path.startsWith('/qc-review')) return FEATURE_KEYS.SHIPMENT_REVIEW;
   if (path.startsWith('/assignment')) return FEATURE_KEYS.ASSIGNMENT;
-  if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY;
+  if (path.startsWith('/inventory/materials')) return FEATURE_KEYS.INVENTORY_MATERIALS;
+  if (path.startsWith('/inventory/stock')) return FEATURE_KEYS.INVENTORY_STOCK;
+  if (path.startsWith('/inventory/movements')) return FEATURE_KEYS.INVENTORY_MOVEMENTS;
+  if (path.startsWith('/inventory/settings')) return FEATURE_KEYS.INVENTORY_SETTINGS;
+  if (path.startsWith('/inventory')) return FEATURE_KEYS.INVENTORY_STOCK;
   if (path.startsWith('/work-time')) return FEATURE_KEYS.WORK_TIME;
   if (path.startsWith('/attendance')) return FEATURE_KEYS.ATTENDANCE;
   if (path.startsWith('/work-history')) return FEATURE_KEYS.WORK_HISTORY;
   if (path.startsWith('/outsourcing-record')) return FEATURE_KEYS.OUTSOURCING_RECORD;
   if (path.startsWith('/payroll')) return FEATURE_KEYS.PAYROLL;
   if (path.startsWith('/revenue-analysis')) return FEATURE_KEYS.REVENUE_ANALYSIS;
-  if (path.startsWith('/revenue-forecast')) return FEATURE_KEYS.REVENUE_ANALYSIS;
+  if (path.startsWith('/revenue-forecast')) return FEATURE_KEYS.REVENUE_FORECAST;
   if (path.startsWith('/business')) return FEATURE_KEYS.BUSINESS;
   if (path.startsWith('/employee-system')) return FEATURE_KEYS.EMPLOYEE_SYSTEM;
   if (path.startsWith('/salary-system')) return FEATURE_KEYS.SALARY_SYSTEM;
@@ -212,7 +224,7 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
 export const canAccessPath = (pathname, authState) => {
   const context = buildAccessContext(authState || {});
   const path = normalizePathname(pathname);
-  if(path==='/shipping'||path.startsWith('/shipping/'))return context?.entryType==='ORG'&&['SERVICE','MANUFACTURER','BRAND'].includes(context.orgType)&&hasOrgRole(context,'ADMIN','OPERATOR','ACCOUNTANT')&&canAccessFeatureByContext(context.orgType==='SERVICE'?FEATURE_KEYS.FREIGHT:context.orgType==='BRAND'?FEATURE_KEYS.ORDER:FEATURE_KEYS.CUSTOMER,context);
+  if(path==='/shipping'||path.startsWith('/shipping/'))return context?.entryType==='ORG'&&['SERVICE','MANUFACTURER','BRAND'].includes(context.orgType)&&hasOrgRole(context,'ADMIN','OPERATOR','ACCOUNTANT')&&canAccessFeatureByContext(FEATURE_KEYS.SHIPPING_REQUEST,context);
   if(path.startsWith('/system-setting/entities'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/shipping-ports'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/order-shipments')&&(!context||context.entryType!=='ORG'||context.orgType!=='MANUFACTURER'))return false;

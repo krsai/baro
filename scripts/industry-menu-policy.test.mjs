@@ -7,6 +7,18 @@ import {getDefaultRoleAccessPolicy} from '../frontend/src/utils/roleAccessPolicy
 const require=createRequire(import.meta.url);
 const {readIndustryMenuPolicy,saveIndustryMenuPolicy,companyIndustryMenuFeatures,industryMenuMiddleware,industryMenuApiFeature,registerIndustryMenuRoutes,COMMON_MENU_FEATURES,INDUSTRY_SPECIFIC_FEATURES}=require('../backend/dist/services/industryMenuPolicy.js');
 
+test('split business APIs require their own menu without inheriting another menu permission',async()=>{
+ for(const [path,feature] of [['/customer-production-reports','PRODUCTION_STATUS'],['/orders/shipments','ORDER_SHIPMENTS'],['/orders/12/shipping-policy','ORDER_SHIPMENTS'],['/shipping-requests','SHIPPING_REQUEST'],['/revenue-forecast','REVENUE_FORECAST']]){
+  assert.equal(industryMenuApiFeature(path),feature);
+  const db={systemSetting:{findUnique:async()=>({value:{menuSplitVersion:19,approvalSettingsSplit:true,fullScopeTypes:['MANUFACTURER'],subscribers:{MANUFACTURER:[feature]}}})}};
+  for(const permitted of [true,false]){
+   let passed=false,denied=false;
+   await industryMenuMiddleware(db,async()=>({organization:{id:1,type:'MANUFACTURER'},employee:{orgRole:'ACCOUNTANT'}}),async scope=>{assert.equal(scope.feature,feature);return permitted;})({path,method:'GET',query:{}},{status(code){assert.equal(code,403);denied=true;return this;},json(){}},()=>{passed=true;});
+   assert.equal(passed,permitted);assert.equal(denied,!permitted);
+  }
+ }
+});
+
 test('approval management gates use their independent permission while expense form reads keep working',async()=>{
  const db={systemSetting:{findUnique:async()=>({value:{approvalSettingsSplit:true,fullScopeTypes:['MANUFACTURER'],subscribers:{MANUFACTURER:['APPROVAL_SETTINGS']}}})}};
  const context={organization:{id:1,type:'MANUFACTURER'},employee:{orgRole:'ACCOUNTANT'}};
@@ -23,8 +35,8 @@ test('approval management gates use their independent permission while expense f
 test('subscriber profiles use two explicit company categories and bypass old partner classifications',async()=>{
  let reads=0;
  const db={systemSetting:{findUnique:async()=>({value:{revision:3,industries:{9:['DASHBOARD','BUSINESS','STYLE']},subscribers:{MANUFACTURER:['DASHBOARD','BUSINESS','STYLE'],SERVICE:['DASHBOARD','BUSINESS','FREIGHT']}}})},partnerClassification:{findUnique:async()=>{reads++;throw Error('legacy classification read');}}};
- assert.deepEqual(await companyIndustryMenuFeatures(db,1,'SERVICE'),[...COMMON_MENU_FEATURES,'FREIGHT']);
- assert.deepEqual(await companyIndustryMenuFeatures(db,1,'MANUFACTURER'),[...COMMON_MENU_FEATURES,'STYLE']);
+ assert.deepEqual(await companyIndustryMenuFeatures(db,1,'SERVICE'),[...COMMON_MENU_FEATURES,'FREIGHT','SHIPPING_REQUEST']);
+ assert.deepEqual(await companyIndustryMenuFeatures(db,1,'MANUFACTURER'),[...COMMON_MENU_FEATURES,'STYLE','SHIPPING_REQUEST']);
  assert.equal(reads,0);
  for(const subscribers of [{BRAND:['DASHBOARD','BUSINESS']},{SERVICE:['DASHBOARD','BUSINESS','STYLE']},{MANUFACTURER:['DASHBOARD','BUSINESS','FREIGHT']},{SERVICE:['FREIGHT']}])
   await assert.rejects(saveIndustryMenuPolicy(db,{revision:3,industries:{},subscribers},'system@test'),/INVALID_INDUSTRY_MENU_POLICY/);
@@ -52,7 +64,7 @@ test('real DB: own industry, menu union, revisions, unknown values and retained 
   await db.partnerClassification.create({data:{orgId,entityId:seed.vendor.id,updatedByEmployeeId:seed.people.admin.id,industries:{create:{systemIndustryId:industryId}}}});
   assert.ok((await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER')).includes('STYLE'));
   await db.partnerClassification.create({data:{orgId,entityId:orgId,updatedByEmployeeId:seed.people.admin.id,industries:{create:{systemIndustryId:industryId}}}});
-  assert.deepEqual((await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER')).sort(),[...COMMON_MENU_FEATURES,'FREIGHT'].sort());
+  assert.deepEqual((await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER')).sort(),[...COMMON_MENU_FEATURES,'FREIGHT','SHIPPING_REQUEST'].sort());
   assert.ok((await companyIndustryMenuFeatures(db,seed.other.id,'MANUFACTURER')).includes('STYLE'),'other company isolated');
   await assert.rejects(saveIndustryMenuPolicy(db,{revision:0,industries:{}},'system@example.test'),/INDUSTRY_MENU_POLICY_CHANGED/);
   await assert.rejects(saveIndustryMenuPolicy(db,{revision:1,industries:{[industryId]:[...common,'FAKE']}},'system@example.test'),/INVALID_INDUSTRY_MENU_POLICY/);

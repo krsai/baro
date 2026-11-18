@@ -131,7 +131,7 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{
   const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return null;
   const orgId=ctx.organization.id,actorId=gates.actorId(),org=await actor(db,orgId,actorId),policy=(await gates.loadPolicy()).policy;
-  const feature=org.type==='SERVICE'?'FREIGHT':org.type==='BRAND'?'ORDER':'CUSTOMER';
+  const feature='SHIPPING_REQUEST';
   if(!policy?.[org.type]?.[ctx.employee.orgRole]?.includes(feature)||!(await companyIndustryMenuFeatures(db,orgId,org.type)).includes(feature))fail('SHIPPING_ACCESS_DENIED',403);
   return {orgId,actorId,org};
  };

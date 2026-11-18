@@ -4,6 +4,8 @@
 
 ## 접근 권한 메뉴 독립성
 
+- 역할 정책 schema 19부터 표시되는 메뉴 항목끼리 권한 키를 공유하지 않는다. 현황판은 PRODUCTION_STATUS, 출고는 ORDER_SHIPMENTS, 운송의뢰는 SHIPPING_REQUEST이며 재고 4메뉴는 INVENTORY_MATERIALS/STOCK/MOVEMENTS/SETTINGS를 각각 사용한다. 예상 수익도 REVENUE_FORECAST를 사용한다. 기존 유효 권한을 초기 계승하고 분리 후 명시적 거부는 복구하지 않는다. 업종 제공은 menuSplitVersion으로 최초 계승과 이후 명시 설정을 구분한다. 개인 설정의 고정 접근과 실제 회사/역할 제한, 자료 소유권·참조·원장·확정 snapshot은 변경하지 않는다.
+
 - 비용 신청은 OUTSOURCING_RECORD, 결재선 설정은 APPROVAL_SETTINGS 독립 권한을 사용한다. 역할 정책 schema 18 이전의 결재선 접근은 기존 비용 신청 권한으로 초기 계승하며 이후 명시적 거부를 복구하거나 두 키를 함께 변경하지 않는다.
 - 업종 제공도 별도 키로 저장한다. 기존 업종 저장본의 최초 분리에는 비용 신청 제공 상태를 계승하고, 분리 후 approvalSettingsSplit 표식으로 명시적 설정을 보존한다. 설정 관리 화면은 accessSettings 조회 구분과 쓰기 경로에서 서버의 ACTIVE 회사·역할·저장된 APPROVAL_SETTINGS 권한과 업종 제공을 검사한다. 업무 신청 화면에서 사용하는 결재 후보/설정 조회는 해당 업무의 기존 권한을 유지한다. 설정 변경의 기존 ADMIN 제한·revision·원자 저장·과거 결재 snapshot은 유지한다.
 

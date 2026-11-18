@@ -3,11 +3,12 @@ import {createStyleProduct,updateStyleProduct,STYLE_PRODUCT_FIELDS} from './styl
 import {invoiceOrderProgress} from './invoiceOrderProgress';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 
-export const BRAND_SEWING_FEATURES=['STYLE','ORDER'];
+export const BRAND_SEWING_FEATURES=['STYLE','ORDER','PRODUCTION_STATUS','SHIPPING_REQUEST'];
 const activeWorkspace=(ctx:any)=>ctx.organization?.type==='BRAND'&&ctx.organization.isActive!==false&&ctx.organization.ownerOrgId===null&&['ACTIVE','TRIAL','GRACE'].includes(ctx.organization.subscription?.status)&&ctx.employee?.orgId===ctx.organization.id&&ctx.employee.status==='ACTIVE';
 export function brandSewingApiFeature(path:string){
  if(/^\/brand-sewing\/styles(?:\/\d+)?\/?$/.test(path))return 'STYLE';
- if(/^\/brand-sewing\/(?:orders|progress)\/?$/.test(path))return 'ORDER';
+ if(/^\/brand-sewing\/orders\/?$/.test(path))return 'ORDER';
+ if(/^\/brand-sewing\/progress\/?$/.test(path))return 'PRODUCTION_STATUS';
  return null;
 }
 
@@ -62,5 +63,5 @@ export function registerBrandSewingRoutes(app:any,db:any,gates:any){
   if(Object.keys(req.body||{}).some(key=>!['fields','revision'].includes(key)))throw createHttpError(400,'STYLE_PRODUCT_FIELDS_INVALID');
   if(!await db.styleProduct.findFirst({where:{id,ownerOrgId:ctx.organization.id},select:{id:true}}))throw createHttpError(404,'STYLE_PRODUCT_NOT_FOUND');
   res.json(await updateStyleProduct(db,ctx.organization.id,ctx.employee.id,id,{fields:req.body.fields,revision:req.body.revision}));});
- for(const path of ['orders','progress'])app.get('/brand-sewing/'+path,async(req:any,res:any)=>{const ctx=await access(req,res,'ORDER');if(!ctx)return;res.json(await readBrandSewingOrders(db,ctx.organization.id,gates.loadProgress));});
+ for(const path of ['orders','progress'])app.get('/brand-sewing/'+path,async(req:any,res:any)=>{const ctx=await access(req,res,path==='progress'?'PRODUCTION_STATUS':'ORDER');if(!ctx)return;res.json(await readBrandSewingOrders(db,ctx.organization.id,gates.loadProgress));});
 }
