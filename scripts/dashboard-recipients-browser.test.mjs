@@ -33,9 +33,14 @@ try{
   };
   const admin=await setup('ADMIN'),operator=await setup('OPERATOR');await operator.getByTestId('alert-visible').filter({hasText:'false'}).waitFor();assert.equal(await operator.getByRole('button',{name:'Settings',exact:true}).count(),0);
   await admin.getByRole('button',{name:'Settings',exact:true}).click();await admin.getByText(t.failed,{exact:true}).waitFor();let dialog=admin.getByRole('dialog');assert.equal(await dialog.getByRole('checkbox').count(),0);await admin.getByRole('button',{name:t.retry,exact:true}).click();await dialog.getByRole('checkbox',{name:t.ACCOUNTANT,exact:true}).waitFor();
-  assert.equal(await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).isChecked(),true);assert.equal(await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).isDisabled(),true);
+  assert.equal(await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).isChecked(),true);assert.equal(await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).isDisabled(),false);
+  const boxes=await dialog.getByRole('checkbox').evaluateAll(nodes=>nodes.map(node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y};}));
+  if(width>600){assert.equal(boxes[0].y,boxes[1].y);assert.ok(boxes[1].x>boxes[0].x);}
+  assert.equal(await dialog.getByText(t.mandatory,{exact:true}).count(),0);
+  assert.equal(await dialog.getByText(t.permission,{exact:true}).count(),0);
+  await dialog.getByRole('checkbox',{name:t.ADMIN,exact:true}).uncheck();
   await dialog.getByRole('checkbox',{name:t.ACCOUNTANT,exact:true}).uncheck();await dialog.getByRole('checkbox',{name:t.OPERATOR,exact:true}).check();await dialog.getByRole('button',{name:t.save,exact:true}).click();await admin.getByText(t.failed,{exact:true}).waitFor();assert.equal(await dialog.getByRole('checkbox',{name:t.OPERATOR,exact:true}).isChecked(),true);
-  await admin.getByRole('button',{name:t.retry,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.deepEqual(policies.get(1),{revision:1,handledRoles:['ADMIN','OPERATOR']});
+  await admin.getByRole('button',{name:t.retry,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.length,2);assert.deepEqual(writes[0],writes[1]);assert.deepEqual(policies.get(1),{revision:1,handledRoles:['OPERATOR']});
   await operator.evaluate(async()=>{const{emitWorkspaceDataChanged}=await import('/src/utils/workspaceDataEvents.js');emitWorkspaceDataChanged({orgId:1,topics:['accounting-alerts']});});await operator.getByTestId('alert-visible').filter({hasText:'true'}).waitFor();
   await admin.getByRole('button',{name:'Settings',exact:true}).click();dialog=admin.getByRole('dialog');await dialog.getByRole('checkbox',{name:t.OPERATOR,exact:true}).waitFor();assert.equal(await dialog.getByRole('checkbox',{name:t.OPERATOR,exact:true}).isChecked(),true);assert.equal(await dialog.getByRole('checkbox',{name:t.ACCOUNTANT,exact:true}).isChecked(),false);
   // A second administrator changes the company rule while this form stays open.

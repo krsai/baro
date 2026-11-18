@@ -6,7 +6,7 @@ export const dashboardRecipientRoles=['ADMIN','ACCOUNTANT','OPERATOR'] as const;
 const key=(orgId:number)=>`DASHBOARD_ALERT_RECIPIENTS:${orgId}`;
 const fail=(status:number,message:string):never=>{throw createHttpError(status,message);};
 const normalize=(roles:any):string[]=>{
- if(!Array.isArray(roles)||!roles.includes('ADMIN')||roles.some(role=>!dashboardRecipientRoles.includes(role))||new Set(roles).size!==roles.length)fail(400,'DASHBOARD_RECIPIENTS_INVALID');
+ if(!Array.isArray(roles)||roles.some(role=>!dashboardRecipientRoles.includes(role))||new Set(roles).size!==roles.length)fail(400,'DASHBOARD_RECIPIENTS_INVALID');
  return dashboardRecipientRoles.filter(role=>roles.includes(role));
 };
 export const handledRecipientKind=(kind:string)=>['PARTNER_HANDLED_ITEM','PARTNER_HANDLED_SETTINGS'].includes(kind);
