@@ -223,7 +223,7 @@ const workspaceEvents=createWorkspaceEvents(prisma,{requireSystemAdmin,requireOr
 app.use(workspaceEvents.middleware);
 app.get('/workspace-events',workspaceEvents.stream);
 app.get('/system-setting-events',workspaceEvents.streamSystem);
-app.use(industryMenuMiddleware(prisma,requireOrgRole));
+app.use(industryMenuMiddleware(prisma,requireOrgRole,(scope:any)=>hasRoleAccessPolicyFeature(scope)));
 app.use(brandSewingMiddleware(prisma,{getEmail:getRequesterEmail,getOrganization:getOrganizationByQuery,requireOrgRole,loadPolicy:()=>loadRoleAccessPolicySetting()}));
 
 const WORK_LOG_RECORD_INCLUDE = WORK_RECORD_WITH_REFS_INCLUDE;
@@ -1330,7 +1330,7 @@ const ROLE_ACCESS_POLICY_SETTING_KEY = "ROLE_ACCESS_POLICY";
 // re-apply ALL legacy defaults (including outsourcing-
 // record/etc auto-add) on every load, silently reverting saved toggles -
 // this is exactly the bug that motivated this comment.
-const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 17;
+const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 18;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = "__schemaVersion";
 const ROLE_ACCESS_POLICY_FEATURES = [
   "WORK_TIME",
@@ -1356,6 +1356,7 @@ const ROLE_ACCESS_POLICY_FEATURES = [
   "EMPLOYEE",
   "EMPLOYEE_SYSTEM",
   "SALARY_SYSTEM",
+  "APPROVAL_SETTINGS",
   "CUSTOMER",
   "OUTSOURCING_PARTNER",
   "MATERIAL_SUPPLIER", "LOGISTICS_PARTNER",
@@ -1392,6 +1393,7 @@ const DEFAULT_ROLE_ACCESS_POLICY: RoleAccessPolicy = {
       "ATTENDANCE",
       "WORK_HISTORY",
       "OUTSOURCING_RECORD",
+      "APPROVAL_SETTINGS",
       "EMPLOYEE",
       "CUSTOMER",
     ],
@@ -1588,6 +1590,7 @@ const sanitizeRoleAccessPolicy = (value: unknown): RoleAccessPolicy => {
     if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
     if(sourceSchemaVersion<16&&!roles.ADMIN.includes('FREIGHT'))roles.ADMIN.push('FREIGHT');
   }
+  if(sourceSchemaVersion<18)for(const roles of Object.values(policy))for(const features of Object.values(roles)){const index=features.indexOf('APPROVAL_SETTINGS');if(index>=0)features.splice(index,1);if(features.includes('OUTSOURCING_RECORD'))features.push('APPROVAL_SETTINGS');}
   return policy;
 };
 const serializeRoleAccessPolicy = (

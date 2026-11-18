@@ -3,14 +3,15 @@ import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
 
 export const INDUSTRY_MENU_KEY='INDUSTRY_MENU_POLICY:1';
-export const INDUSTRY_MENU_FEATURES=['WORK_TIME','FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
+export const INDUSTRY_MENU_FEATURES=['APPROVAL_SETTINGS','WORK_TIME','FREIGHT','DASHBOARD','ORDER','INVOICE','BANK_LEDGER','ACCOUNT_OVERVIEW','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','ATTENDANCE','WORK_HISTORY','OUTSOURCING_RECORD','PAYROLL','REVENUE_FORECAST','REVENUE_ANALYSIS','BUSINESS','EMPLOYEE','EMPLOYEE_SYSTEM','SALARY_SYSTEM','CUSTOMER','OUTSOURCING_PARTNER','MATERIAL_SUPPLIER','LOGISTICS_PARTNER','PERMISSION','HOLIDAY'];
 export const SUBSCRIBER_TYPES=['MANUFACTURER','SERVICE'];
 export const INDUSTRY_SPECIFIC_FEATURES=['FREIGHT','ORDER','STYLE','ST_REVIEW','SHIPMENT_REVIEW','ASSIGNMENT','PRODUCTION_PLAN','INVENTORY','WORK_HISTORY','REVENUE_FORECAST','REVENUE_ANALYSIS'];
 export const COMMON_MENU_FEATURES=INDUSTRY_MENU_FEATURES.filter(feature=>!INDUSTRY_SPECIFIC_FEATURES.includes(feature));
 const required=['DASHBOARD','BUSINESS'];
 export async function readIndustryMenuPolicy(db:any){
  const row=await db.systemSetting.findUnique({where:{key:INDUSTRY_MENU_KEY}});
- return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers:row.value.subscribers}:{})};
+ const subscribers=row?.value?.subscribers?Object.fromEntries(Object.entries(row.value.subscribers).map(([type,features]:any)=>[type,!row.value.approvalSettingsSplit&&features.includes('OUTSOURCING_RECORD')?[...new Set([...features,'APPROVAL_SETTINGS'])]:features])):undefined;
+ return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.approvalSettingsSplit?{approvalSettingsSplit:true}:{}),...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers}:{})};
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
  const policy=await readIndustryMenuPolicy(db);
@@ -23,11 +24,13 @@ export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:st
  if(orgType==='BRAND')return ['STYLE','ORDER'].filter(feature=>selected.includes(feature));
  return [...new Set([...COMMON_MENU_FEATURES,...selected])];
 }
-export function industryMenuMiddleware(db:any,requireOrgRole:any){
+export function industryMenuMiddleware(db:any,requireOrgRole:any,canAccess?:any){
  return async(req:any,res:any,next:any)=>{
-  const feature=industryMenuApiFeature(req.path);if(!feature)return next();
+  const settingsRequest=(req.path.startsWith('/approval-action-settings')||req.path==='/expense-approval-settings')&&(req.method==='PUT'||req.query?.accessSettings==='1');
+  const feature=settingsRequest?'APPROVAL_SETTINGS':industryMenuApiFeature(req.path);if(!feature)return next();
   try{
    const context=await requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT','WORKER'],allowSystemAdmin:false});if(!context)return;
+   if(settingsRequest&&canAccess&&!await canAccess({orgType:context.organization.type,orgRole:context.employee?.orgRole,feature:'APPROVAL_SETTINGS'}))return res.status(403).json({error:'FEATURE_ACCESS_DENIED'});
    const allowed=await companyIndustryMenuFeatures(db,context.organization.id,context.organization.type);
    if(!allowed.includes(feature))return res.status(403).json({error:'INDUSTRY_MENU_UNAVAILABLE'});
    return next();
@@ -49,7 +52,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
   await tx.$queryRawUnsafe('SELECT key FROM "SystemSetting" WHERE key=$1 FOR UPDATE',INDUSTRY_MENU_KEY);
   const current=await readIndustryMenuPolicy(tx);
   if(current.revision!==input.revision)throw createHttpError(409,'INDUSTRY_MENU_POLICY_CHANGED');
-  const value={...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
+  const value={...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),approvalSettingsSplit:true,revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
   await tx.systemSetting.update({where:{key:INDUSTRY_MENU_KEY},data:{value,updatedBy:email}});
   return value;
  });

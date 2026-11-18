@@ -43,7 +43,7 @@ function CompanyApprovalSettings({activeOrgId}){
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{let alive=true;setLoading(true);
   Promise.all(operations.map(async operation=>{
-   const key=keyFor(menu,operation),registration=registrationFor(menu,operation),path=menu==='EXPENSE'&&operation==='CREATE'?'/expense-approval-settings'+buildQueryString({orgId:activeOrgId}):'/approval-action-settings'+buildQueryString({orgId:activeOrgId,menu,operation});
+   const key=keyFor(menu,operation),registration=registrationFor(menu,operation),path=menu==='EXPENSE'&&operation==='CREATE'?'/expense-approval-settings'+buildQueryString({orgId:activeOrgId,accessSettings:1}):'/approval-action-settings'+buildQueryString({orgId:activeOrgId,menu,operation,accessSettings:1});
    try{const data=await requestJSON(path,{skipCache:true}),form=formFrom(data.settings,registration);if(alive)setEntries(current=>{const previous=current[key];return {...current,[key]:{menu,operation,data,form:dirtyEntry(previous)?previous.form:form,initial:dirtyEntry(previous)?previous.initial:JSON.stringify(form),error:''}};});}
    catch{if(alive)setEntries(current=>({...current,[key]:{...current[key],menu,operation,error:t.error}}));}
   })).finally(()=>{if(alive)setLoading(false);});

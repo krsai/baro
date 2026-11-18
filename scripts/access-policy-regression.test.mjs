@@ -17,6 +17,20 @@ const withCurrentPolicyVersion = (policy) => ({
   __schemaVersion: ROLE_ACCESS_POLICY_SCHEMA_VERSION,
   ...policy,
 });
+
+test('approval settings and expense access are independent after legacy policy upgrade',()=>{
+ assert.equal(resolveFeatureByPath('/approval-settings'),'APPROVAL_SETTINGS');
+ for(const orgType of ['MANUFACTURER','SERVICE']){
+  const migrated=sanitizeRoleAccessPolicy({__schemaVersion:17,[orgType]:{ACCOUNTANT:['OUTSOURCING_RECORD'],WORKER:[]}});
+  assert.ok(migrated[orgType].ACCOUNTANT.includes('APPROVAL_SETTINGS'));
+  assert.equal(migrated[orgType].WORKER.includes('APPROVAL_SETTINGS'),false);
+  for(const feature of ['APPROVAL_SETTINGS','OUTSOURCING_RECORD']){
+   const auth={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType,orgRole:'ACCOUNTANT',accessPolicy:withCurrentPolicyVersion({[orgType]:{ACCOUNTANT:[feature]}})}};
+   assert.equal(canAccessPath('/approval-settings',auth),feature==='APPROVAL_SETTINGS');
+   assert.equal(canAccessPath('/outsourcing-record',auth),feature==='OUTSOURCING_RECORD');
+  }
+ }
+});
 test('shared port management belongs only to the SYSTEM administrator',()=>{
  for(const systemRole of ['SYSTEM_ADMIN','USER'])assert.equal(canAccessPath('/system-setting/shipping-ports',{isAuthenticated:true,accessProfile:{entryType:'SYSTEM',systemRole}}),systemRole==='SYSTEM_ADMIN');
  for(const orgType of ['SERVICE','MANUFACTURER','BRAND'])assert.equal(canAccessPath('/system-setting/shipping-ports',{isAuthenticated:true,accessProfile:{entryType:'ORG',orgType,orgRole:'ADMIN'}}),false);

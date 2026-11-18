@@ -41,6 +41,7 @@ const FEATURE_KEYS = {
   EMPLOYEE: 'EMPLOYEE',
   EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
   SALARY_SYSTEM: 'SALARY_SYSTEM',
+  APPROVAL_SETTINGS: 'APPROVAL_SETTINGS',
   CUSTOMER: 'CUSTOMER',
   OUTSOURCING_PARTNER: 'OUTSOURCING_PARTNER',
   MATERIAL_SUPPLIER: 'MATERIAL_SUPPLIER',
@@ -170,7 +171,7 @@ export const resolveFeatureByPath = (pathname, orgType = 'SERVICE') => {
   if (path.startsWith('/account-overview')) return FEATURE_KEYS.ACCOUNT_OVERVIEW;
   if (path.startsWith('/bank-ledger')) return FEATURE_KEYS.BANK_LEDGER;
   if (path.startsWith('/approval-inbox')) return FEATURE_KEYS.OUTSOURCING_RECORD;
-  if (path.startsWith('/approval-settings')) return FEATURE_KEYS.OUTSOURCING_RECORD;
+  if (path.startsWith('/approval-settings')) return FEATURE_KEYS.APPROVAL_SETTINGS;
   if (path === '/invoices' || path.startsWith('/invoices/')) return FEATURE_KEYS.INVOICE;
   if (path === '/') return null;
   if (path.startsWith('/dashboard')) return FEATURE_KEYS.DASHBOARD;

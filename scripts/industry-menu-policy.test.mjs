@@ -7,6 +7,19 @@ import {getDefaultRoleAccessPolicy} from '../frontend/src/utils/roleAccessPolicy
 const require=createRequire(import.meta.url);
 const {readIndustryMenuPolicy,saveIndustryMenuPolicy,companyIndustryMenuFeatures,industryMenuMiddleware,industryMenuApiFeature,registerIndustryMenuRoutes,COMMON_MENU_FEATURES,INDUSTRY_SPECIFIC_FEATURES}=require('../backend/dist/services/industryMenuPolicy.js');
 
+test('approval management gates use their independent permission while expense form reads keep working',async()=>{
+ const db={systemSetting:{findUnique:async()=>({value:{approvalSettingsSplit:true,fullScopeTypes:['MANUFACTURER'],subscribers:{MANUFACTURER:['APPROVAL_SETTINGS']}}})}};
+ const context={organization:{id:1,type:'MANUFACTURER'},employee:{orgRole:'ACCOUNTANT'}};
+ for(const permission of [true,false])for(const request of [{path:'/expense-approval-settings',method:'GET',query:{accessSettings:'1'}},{path:'/approval-action-settings/batch',method:'PUT',query:{}}]){
+  let allowed=false,status;
+  await industryMenuMiddleware(db,async()=>context,async scope=>{assert.equal(scope.feature,'APPROVAL_SETTINGS');return permission;})(request,{status(code){status=code;return this;},json(){}},()=>{allowed=true;});
+  assert.equal(allowed,permission);if(!permission)assert.equal(status,403);
+ }
+ const legacy={systemSetting:{findUnique:async()=>({value:{fullScopeTypes:['MANUFACTURER'],subscribers:{MANUFACTURER:['OUTSOURCING_RECORD']}}})}};
+ assert.deepEqual(await companyIndustryMenuFeatures(legacy,1,'MANUFACTURER'),['OUTSOURCING_RECORD','APPROVAL_SETTINGS']);
+ assert.deepEqual(await companyIndustryMenuFeatures(db,1,'MANUFACTURER'),['APPROVAL_SETTINGS']);
+});
+
 test('subscriber profiles use two explicit company categories and bypass old partner classifications',async()=>{
  let reads=0;
  const db={systemSetting:{findUnique:async()=>({value:{revision:3,industries:{9:['DASHBOARD','BUSINESS','STYLE']},subscribers:{MANUFACTURER:['DASHBOARD','BUSINESS','STYLE'],SERVICE:['DASHBOARD','BUSINESS','FREIGHT']}}})},partnerClassification:{findUnique:async()=>{reads++;throw Error('legacy classification read');}}};

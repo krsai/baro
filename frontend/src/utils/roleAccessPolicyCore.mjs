@@ -36,6 +36,7 @@ export const ACCESS_FEATURE_KEYS = {
   EMPLOYEE: 'EMPLOYEE',
   EMPLOYEE_SYSTEM: 'EMPLOYEE_SYSTEM',
   SALARY_SYSTEM: 'SALARY_SYSTEM',
+  APPROVAL_SETTINGS: 'APPROVAL_SETTINGS',
   CUSTOMER: 'CUSTOMER',
   OUTSOURCING_PARTNER: 'OUTSOURCING_PARTNER',
   MATERIAL_SUPPLIER: 'MATERIAL_SUPPLIER',
@@ -45,7 +46,7 @@ export const ACCESS_FEATURE_KEYS = {
   SUBSCRIPTION: 'SUBSCRIPTION',
 };
 
-export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 17;
+export const ROLE_ACCESS_POLICY_SCHEMA_VERSION = 18;
 const ROLE_ACCESS_POLICY_SCHEMA_VERSION_KEY = '__schemaVersion';
 const POLICY_ORG_TYPES = [ORG_TYPE_KEYS.MANUFACTURER, ORG_TYPE_KEYS.BRAND, ORG_TYPE_KEYS.SERVICE];
 const POLICY_ORG_ROLES = [
@@ -78,6 +79,7 @@ const DEFAULT_ROLE_ACCESS_POLICY = Object.freeze({
       ACCESS_FEATURE_KEYS.ATTENDANCE,
       ACCESS_FEATURE_KEYS.WORK_HISTORY,
       ACCESS_FEATURE_KEYS.OUTSOURCING_RECORD,
+      ACCESS_FEATURE_KEYS.APPROVAL_SETTINGS,
       ACCESS_FEATURE_KEYS.EMPLOYEE,
       ACCESS_FEATURE_KEYS.CUSTOMER,
     ]),
@@ -311,6 +313,7 @@ export const sanitizeRoleAccessPolicy = (candidate) => {
     if(sourceSchemaVersion<15&&!roles.ADMIN.includes('ACCOUNT_OVERVIEW'))roles.ADMIN.push('ACCOUNT_OVERVIEW');
     if(sourceSchemaVersion<16&&!roles.ADMIN.includes('FREIGHT'))roles.ADMIN.push('FREIGHT');
   }
+  if(sourceSchemaVersion<18)for(const roles of Object.values(base))for(const features of Object.values(roles)){const index=features.indexOf('APPROVAL_SETTINGS');if(index>=0)features.splice(index,1);if(features.includes('OUTSOURCING_RECORD'))features.push('APPROVAL_SETTINGS');}
   return base;
 };
 
