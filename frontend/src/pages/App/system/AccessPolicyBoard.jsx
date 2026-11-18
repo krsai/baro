@@ -1,7 +1,7 @@
 import useIndustryMenuPolicy from '../../../hooks/useIndustryMenuPolicy';
 import {SERVICE_FEATURES} from '../../../utils/serviceCompany.mjs';
 import {fetchRoleAccessPolicy,saveRoleAccessPolicy} from '../../../utils/roleAccessPolicy';
-import {accessPolicyLayoutText} from '../../../constants/accessPolicyLayout';
+import {accessPolicyLayoutText,accessPolicyActionText} from '../../../constants/accessPolicyLayout';
 import {subscriberMenuBlueprint} from '../../../utils/subscriberMenus.mjs';
 import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
@@ -122,6 +122,7 @@ function AccessPolicyBoard(){
  const roleDirty=!!policy&&JSON.stringify(policy)!==JSON.stringify(original),dirty=menus.dirty||roleDirty;
  useUnsavedChanges(dirty);
  const locked=menus.loading||saving||!menus.loaded||!policy||roleError;
+ const actionText=accessPolicyActionText[languageCode]||accessPolicyActionText.en;
  const toggleRole=(features,role,checked)=>setPolicy(previous=>({...previous,[type]:{...previous[type],[role]:checked?[...new Set([...previous[type][role],...features])]:previous[type][role].filter(key=>!features.includes(key))}}));
  const save=async()=>{if(locked||!dirty)return;setSaving(true);try{if(menus.dirty)await menus.save();if(roleDirty){const saved=toEditablePolicy(await saveRoleAccessPolicy(policy));setPolicy(saved);setOriginal(saved);}showNotification(layout.saved,'success');}catch{showNotification(layout.partial,'error');}finally{setSaving(false);}};
  return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)} titleActions={allowed?<Button variant="contained" disabled={locked||!dirty} onClick={save}>{layout.save}</Button>:null}>
@@ -137,10 +138,10 @@ function AccessPolicyBoard(){
  const supported=features.every(feature=>type==='SERVICE'?SERVICE_FEATURES.includes(feature):feature!=='FREIGHT');
  const enabled=supported&&(row.fixedAccess||features.every(feature=>menus.features(type).includes(feature)));
  const unavailable=!enabled||row.disabled;
- return <TableRow key={row.path} data-menu-path={row.path} data-enabled={!unavailable} sx={{bgcolor:unavailable?'action.hover':undefined,'& .MuiTypography-root':{color:unavailable?'text.disabled':'text.primary'}}}>
+ return <TableRow key={row.path} data-menu-path={row.path} data-enabled={!unavailable} sx={{bgcolor:unavailable?'action.selected':'background.paper','& > td':{color:unavailable?'text.secondary':'text.primary'},'& > td:nth-of-type(2)':{borderRight:1,borderRightColor:'divider'},'& .MuiTypography-root':{color:unavailable?'text.secondary':'text.primary'}}}>
  <TableCell><Stack direction="row" spacing={1} alignItems="center" sx={{pl:row.depth*2}}><Typography>{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography>{!supported&&<Chip size="small" label={layout.unsupported}/>}</Stack></TableCell>
- <TableCell align="center">{row.fixedAccess?<Chip size="small" label={layout.commonProvided}/>:<Switch size="small" checked={enabled} disabled={locked||!supported||row.disabled} onChange={(_,checked)=>features.forEach(feature=>menus.toggle(type,feature,checked))} slotProps={{input:{role:'switch','aria-label':row.label+' '+layout.provided}}}/>}</TableCell>
- {roles.map((role,index)=><TableCell key={role} align="center">{row.fixedAccess?'?':<Switch size="small" checked={features.every(feature=>policy?.[type]?.[role]?.includes(feature))} disabled={locked||unavailable||(role==='WORKER'&&features.some(feature=>['FREIGHT','INVOICE'].includes(feature)))} onChange={(_,checked)=>toggleRole(features,role,checked)} slotProps={{input:{role:'switch','aria-label':row.label+' '+labels[index]}}}/>}</TableCell>)}
+ <TableCell align="center"><Button size="small" variant={enabled?'contained':'outlined'} aria-pressed={enabled} aria-label={row.label+' '+layout.provided} title={row.fixedAccess?actionText.always:undefined} disabled={locked||!supported||row.disabled||row.fixedAccess} onClick={()=>features.forEach(feature=>menus.toggle(type,feature,!enabled))} sx={{minWidth:88}}>{enabled?actionText.enabled:actionText.disabled}</Button></TableCell>
+ {roles.map((role,index)=><TableCell key={role} align="center"><Switch size="small" checked={row.fixedAccess||features.every(feature=>policy?.[type]?.[role]?.includes(feature))} disabled={locked||unavailable||row.fixedAccess||(role==='WORKER'&&features.some(feature=>['FREIGHT','INVOICE'].includes(feature)))} onChange={(_,checked)=>toggleRole(features,role,checked)} slotProps={{input:{role:'switch','aria-label':row.label+' '+labels[index]}}}/></TableCell>)}
  </TableRow>;
  })}</TableBody></Table></TableContainer></Paper></>}
  </AppPageContainer>;

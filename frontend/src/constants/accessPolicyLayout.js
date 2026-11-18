@@ -1,3 +1,8 @@
+export const accessPolicyActionText={
+ ko:{enabled:'활성화',disabled:'비활성화',always:'항상 활성화'},
+ en:{enabled:'Enabled',disabled:'Disabled',always:'Always enabled'},
+ vi:{enabled:'Bật',disabled:'Tắt',always:'Luôn bật'},
+};
 export const accessPolicyLayoutText={
  ko:{unsupported:'미지원',intro:'업종에 제공할 메뉴와 직원 역할별 접근 범위를 한곳에서 관리합니다.',common:'공통 메뉴',industry:'업종 전용 메뉴',commonNote:'회계·비용 신청·인사·거래처 등 공통 메뉴입니다. 직원 역할별 접근 권한을 설정하세요.',industryNote:'업종에 제공할 메뉴를 먼저 선택하고, 해당 메뉴를 사용할 직원 역할을 지정하세요.',provided:'업종 제공',commonProvided:'공통 제공',notProvided:'제공 안 함',save:"변경 사항 저장",resetRoles:'직원 권한 초기화',reload:'다시 불러오기',saved:'메뉴 및 접근 권한을 저장했습니다.',partial:'일부 설정을 저장하지 못했습니다. 오류가 표시된 설정을 확인해 주세요.',pending:"저장하지 않은 변경 사항",factoryNote:'주문 · 스타일 · 생산',logisticsNote:'운송 · 포워딩 업무'},
  en:{unsupported:'Unsupported',intro:'Manage industry menus and employee access together.',common:'Common menus',industry:'Industry menus',commonNote:'Shared finance, payment requests, people and partner menus. Set access for each employee role.',industryNote:'Choose which menus the industry receives, then assign employee access.',provided:'Industry availability',commonProvided:'Shared menu',notProvided:'Not provided',save:'Save changes',resetRoles:'Reset role permissions',reload:'Reload settings',saved:'Menus and access permissions saved.',partial:'Some settings could not be saved. Review the settings showing an error.',pending:'Unsaved changes',factoryNote:'Orders · Styles · Production',logisticsNote:'Transport · Forwarding'},
