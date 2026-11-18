@@ -95,7 +95,10 @@ test('tab states use compact separate indicators without recoloring the title', 
   assert.match(layout, /<TabStateIndicators editing=\{tab.isEditing\} refreshed=\{tab.hasExternalChanges\}/);
   assert.doesNotMatch(layout, /\.\.\.\(tab.hasExternalChanges/);
   assert.doesNotMatch(layout, /'수정 중'|'Editing'|'Đang sửa'/);
-  assert.match(indicators, /●/); assert.match(indicators, /↻/);
+  assert.doesNotMatch(indicators, /●|↻/);
+  assert.match(indicators, /borderRadius:'50%'/);
+  assert.match(indicators, /RefreshOutlinedIcon/);
+  assert.match(indicators, /CircularProgress/);
   assert.match(indicators, /저장하지 않은 변경\s?사항/);
   assert.match(indicators, /변경된 자료가 있습니다/);
 });

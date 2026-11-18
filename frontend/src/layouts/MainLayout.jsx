@@ -22,7 +22,6 @@ import {
   Tooltip,
   Button,
   Box,
-  CircularProgress,
   Drawer,
   List,
   ListItemButton,
@@ -289,14 +288,9 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                 minWidth: 'unset',
               }}
               label={
-                <Box component="span" sx={{ display: 'flex', alignItems: 'center', fontSize: '0.875rem' }}>
-                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                    {resolveRenderedTabLabel(tab)}
-                    <Box component="span" sx={{ position: 'relative', display: 'inline-flex', width: 16, height: 16, ml: 0.75, flexShrink: 0 }}>
-                      <Box component="span" sx={{ visibility: isTabLoading ? 'hidden' : 'visible' }}><TabStateIndicators compact editing={tab.isEditing} refreshed={tab.hasExternalChanges} languageCode={languageCode} /></Box>
-                      {isTabLoading && <CircularProgress size={13} thickness={5} color="inherit" sx={{position:'absolute', inset:0, m:'auto'}} />}
-                    </Box>
-                  </Box>
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap:1, fontSize: '0.875rem',lineHeight:'20px',whiteSpace:'nowrap',minWidth:0,maxWidth:'100%' }}>
+                  <Box component="span" data-tab-title title={String(resolveRenderedTabLabel(tab)||'')} sx={{lineHeight:'20px',minWidth:0,overflow:'hidden',textOverflow:'ellipsis'}}>{resolveRenderedTabLabel(tab)}</Box>
+                  <TabStateIndicators editing={tab.isEditing} refreshed={tab.hasExternalChanges} loading={isTabLoading} languageCode={languageCode}/>
                   {!tab.isOptimistic && (
                     <IconButton
                       component="span"
@@ -310,8 +304,9 @@ const WorkspaceTabsBar = React.memo(function WorkspaceTabsBar({
                       }}
                       onClick={(e) => onCloseTab(e, tab.id)}
                       sx={{
-                        ml: 1,
-                        mr: -1.5,
+                        width:20,
+                        height:20,
+                        flexShrink:0,
                         p: '2px',
                         '&:hover': {
                           bgcolor: 'rgba(0, 0, 0, 0.08)',
