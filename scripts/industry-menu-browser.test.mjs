@@ -30,6 +30,8 @@ export const requestJSON=async(url,options={})=>{
   const availability=path=>row(path).getByRole('switch').first();
   await row('/style').waitFor();await page.waitForFunction(()=>window.called.includes('/system/access-policy'));
   assert.equal(await page.getByRole('tab').count(),2);
+  const expected={ko:['관리자','운영자','회계','직원'],en:['Administrator','Operator','Accountant','Worker'],vi:['Quản trị','Điều hành','Kế toán','Nhân viên']}[language];
+  assert.deepEqual((await page.getByRole('columnheader').allTextContents()).slice(2),expected);
   assert.equal(await row('/bank-ledger').getByRole('switch').count(),5);
   await availability('/style').uncheck();assert.equal(await row('/style').getByRole('switch').nth(1).isDisabled(),true);
   await page.getByRole('tab',{name:t.logistics,exact:true}).click();

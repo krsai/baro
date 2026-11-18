@@ -118,7 +118,7 @@ function AccessPolicyBoard(){
  React.useEffect(()=>{if(allowed)loadRoles();},[allowed,loadRoles]);
  const rows=React.useMemo(()=>flattenMenuTree(buildMenuTree(organizeCompanyMenu(blueprint,key=>getUiMessage(key,key,languageCode),'MANUFACTURER'),'root','MANUFACTURER')),[blueprint,languageCode]);
  const roles=['ADMIN','OPERATOR','ACCOUNTANT','WORKER'];
- const labels={ko:['???','???','??','??'],en:['Administrator','Operator','Accountant','Worker'],vi:['Qu?n tr?','?i?u h?nh','K? to?n','Nh?n vi?n']}[languageCode]||['Administrator','Operator','Accountant','Worker'];
+ const labels={ko:['관리자','운영자','회계','직원'],en:['Administrator','Operator','Accountant','Worker'],vi:['Quản trị','Điều hành','Kế toán','Nhân viên']}[languageCode]||['Administrator','Operator','Accountant','Worker'];
  const roleDirty=!!policy&&JSON.stringify(policy)!==JSON.stringify(original),dirty=menus.dirty||roleDirty;
  useUnsavedChanges(dirty);
  const locked=menus.loading||saving||!menus.loaded||!policy||roleError;
