@@ -1,3 +1,4 @@
+import {partnerHandledItemsPanelText} from '../frontend/src/constants/partnerHandledItems.js';
 import {partnerContactText} from '../frontend/src/constants/companyDocumentContact.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -40,10 +41,17 @@ try{
   if(handledOnly){
    const input=dialog.locator('input[required]').last();await input.waitFor();
    await dialog.getByRole('button',{name:banks.save,exact:true}).click();assert.equal(writes.length,0);await input.and(page.locator('[aria-invalid="true"]')).waitFor();
-   const root=input.locator('xpath=ancestor::*[contains(@class,"MuiOutlinedInput-root")][1]');await root.getByRole('button').click();const lookup=page.locator('[data-lookup-dialog="true"]');await lookup.waitFor();assert.equal(await lookup.getByText('FOREIGN',{exact:true}).count(),0);await lookup.getByRole('textbox').fill('UNKNOWN');assert.equal(await lookup.getByRole('checkbox').count(),0);await page.keyboard.press('Escape');await lookup.waitFor({state:'hidden'});
-   await input.fill('ZI');await input.press('Enter');await lookup.getByRole('row').filter({has:page.getByText('ZIP',{exact:true})}).getByRole('checkbox').check();await lookup.getByRole('button',{name:/^(선택|Select|Chọn)$/}).click();await lookup.waitFor({state:'hidden'});
+   const items=partnerHandledItemsPanelText[lang];
+   await input.focus();const lookup=page.getByRole('complementary',{name:items.choose,exact:true});await lookup.waitFor();assert.equal(writes.length,0,'focus never saves or selects');
+   if(profile.canEditProfile){await dialog.getByRole('button',{name:panel.select,exact:true}).click();await lookup.waitFor({state:'hidden'});await page.getByRole('complementary').getByRole('checkbox',{name:'Office',exact:true}).waitFor();await input.focus();await lookup.waitFor();assert.equal(await page.getByRole('complementary').count(),1,'item and classification searches share the side panel');}
+   assert.equal(await lookup.getByText('FOREIGN',{exact:true}).count(),0);
+   await lookup.getByRole('textbox',{name:items.search,exact:true}).fill('UNKNOWN');assert.equal(await lookup.getByRole('checkbox').count(),0);await page.keyboard.press('Escape');await lookup.waitFor({state:'hidden'});await input.and(page.locator(':focus')).waitFor();
+   await dialog.getByRole('button',{name:new RegExp(items.choose)}).first().click();await lookup.getByRole('textbox',{name:items.search,exact:true}).and(page.locator(':focus')).waitFor();await lookup.getByRole('button',{name:items.close,exact:true}).click();await lookup.waitFor({state:'hidden'});
+   await input.fill('ZI');await input.press('Enter');await lookup.getByRole('textbox',{name:items.search,exact:true}).and(page.locator(':focus')).waitFor();await lookup.getByRole('checkbox').check();assert.equal(await page.locator('[data-lookup-dialog="true"]').count(),0,'handled items use the side panel');
+   await lookup.getByRole('button',{name:items.close,exact:true}).click();await lookup.waitFor({state:'hidden'});
    await dialog.locator('.MuiChip-deleteIcon').last().click();await dialog.getByRole('button',{name:banks.save,exact:true}).click();assert.equal(writes.length,0);
-   await input.fill('ZIP');await input.press('Enter');await dialog.getByText('Zipper',{exact:true}).waitFor();
+   await input.fill('ZIP');await input.press('Enter');await dialog.locator('[data-lookup-value]').filter({hasText:'Zipper'}).waitFor();
+   if(await lookup.count())await lookup.getByRole('button',{name:items.close,exact:true}).click();
   }
   if(screen==='local')await dialog.locator('input[name=nameKo]').fill('Local Korean name');
   await dialog.locator('input[name=contactName]').fill('Updated contact');await dialog.getByRole('button',{name:banks.save,exact:true}).click();await page.waitForFunction(()=>!document.querySelector('input[name=name]'));
