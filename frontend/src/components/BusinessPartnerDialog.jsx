@@ -71,7 +71,12 @@ const buildFormFromPartner = (partner, initialType) => ({
   defaultSizeSetCode:partner?.defaultSizeSetCode??null,
 });
 
-export default function BusinessPartnerDialog(props){return <PartnerEditorState key={`${props.activeOrgId}:${props.partner?.id||'new'}:${props.relationshipId||''}`} {...props}/>;}
+export default function BusinessPartnerDialog(props){
+ const [selectedPartner,setSelectedPartner]=useState(null);
+ useEffect(()=>{setSelectedPartner(null);},[props.open,props.activeOrgId,props.partner?.id]);
+ const partner=selectedPartner||props.partner;
+ return <PartnerEditorState key={`${props.activeOrgId}:${partner?.id||'new'}:${props.relationshipId||''}`} {...props} partner={partner} onSelectExisting={row=>setSelectedPartner({id:row.existingEntityId})}/>;
+}
 function PartnerEditorState({
   open,
   onClose,
@@ -85,6 +90,7 @@ function PartnerEditorState({
   title,
   onAccountsChange,
   relationshipId,
+  onSelectExisting,
 }) {
   const labels = TEXT[languageCode] || TEXT.ko;
   const common = ENTITY_TEXT[languageCode] || ENTITY_TEXT.en;
@@ -194,7 +200,7 @@ function PartnerEditorState({
       {error&&<Alert severity="error" sx={{mx:3,mb:1,flexShrink:0}}>{error}</Alert>}
       <DialogContent dividers sx={{minHeight:0,overflowY:"auto",overflowX:"hidden"}}>
         <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:panelVisible?'minmax(0,1fr) 340px':'minmax(0,1fr)'},gap:panelVisible?2:0,alignItems:'start',pt:1}}><Stack spacing={2} sx={{minWidth:0}}>
-          <CompanyConnectionField currentEntity={isEdit?record:null} searchMode sidePanelTarget={panelKind==='connections'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='connections'} onPanelOpenChange={next=>togglePanel(next,'connections')} knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={record?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany&&companyConnection?{...Object.fromEntries(['name','nameKo','nameVi','country','businessNumber'].map(key=>[key,linkedCompany[key]||''])),...(companyConnection?{address:linkedCompany.address||'',email:linkedCompany.email||'',contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',contactPatch:{},contactMode:'DEFAULT',contactBaseMode:undefined,localContactDraft:null}:{}),...(!isEdit&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={locked||(profileLocked&&!form.linkedCompany)} languageCode={languageCode}/>
+          <CompanyConnectionField onSelectExisting={onSelectExisting} currentEntity={isEdit?record:null} searchMode sidePanelTarget={panelKind==='connections'?panelTarget:null} sidePanelOpen={panelOpen&&panelKind==='connections'} onPanelOpenChange={next=>togglePanel(next,'connections')} knownCompany={form.linkedCompany} actionsTarget={connectionActionsTarget} orgId={activeOrgId} entityId={record?.id} name={form.name} businessNumber={form.businessNumber} country={form.country} value={form.companyConnection} onChange={(companyConnection,linkedCompany)=>setForm(current=>({...current,companyConnection,...(linkedCompany!==undefined?{linkedCompany}:{}),...(linkedCompany&&companyConnection?{...Object.fromEntries(['name','nameKo','nameVi','country','businessNumber'].map(key=>[key,linkedCompany[key]||''])),...(companyConnection?{address:linkedCompany.address||'',email:linkedCompany.email||'',contactName:linkedCompany.representative||'',contactPhone:linkedCompany.phone||'',contactPatch:{},contactMode:'DEFAULT',contactBaseMode:undefined,localContactDraft:null}:{}),...(!isEdit&&linkedCompany.officialClassification?{classification:{...linkedCompany.officialClassification,revision:0}}:{})}:{})}))} disabled={locked||(profileLocked&&!form.linkedCompany)} languageCode={languageCode}/>
           <PartnerProfileFields hideGuidance value={form} languageCode={languageCode} disabled={locked} fieldLocks={profileLocked||isEdit&&form.linkedCompany?['partyKind','code','businessNumber','country']:[]} autoFocus={isEdit} defaultSourceKind={record?.contactDefaultSource?.kind||'REGISTRATION'} onUseLocal={form.linkedCompany||profileLocked?()=>setForm(current=>({...current,...(current.localContactDraft||record?.contactLocal||record?.contactDefaults||{}),contactMode:'LOCAL'})):undefined} onUseDefaults={form.linkedCompany||profileLocked?()=>setForm(current=>({...current,...(record?.contactDefaults||Object.fromEntries(['name','nameKo','nameVi','contactName','contactPhone','email','address'].map(key=>[key,form.linkedCompany?.[{contactName:'representative',contactPhone:'phone'}[key]||key]||'']))),...(current.contactMode==='LOCAL'?{localContactDraft:Object.fromEntries(['name','nameKo','nameVi','contactName','contactPhone','email','address'].map(key=>[key,current[key]]))}:{}),contactMode:'DEFAULT'})):undefined} onChange={(key,value)=>setForm(current=>({...current,[key]:value,...(['name','nameKo','nameVi','contactName','contactPhone','email','address'].includes(key)?{contactMode:'LOCAL',...(current.contactMode==='DEFAULT'?{contactBaseMode:'DEFAULT'}:{}),contactPatch:{...current.contactPatch,[key]:value}}:{})}))}/>
           <EntityBankAccounts hideGuidance entityId={record?.id} orgId={activeOrgId} languageCode={languageCode} onAccountsChange={onAccountsChange} pendingAccounts={pendingAccounts} onPendingAccountsChange={isEdit?undefined:setPendingAccounts} disabled={locked}/>
 

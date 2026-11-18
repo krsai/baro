@@ -16,13 +16,19 @@ test('public company name/number search is scoped, bounded and never returns pri
   await db.orgRelationship.create({data:{manufacturerOrgId:s.company.id,brandOrgId:s.other.id}});
   const shared={revision:0,roleIds:[industry.partnerRoleId],industryIds:[industry.id]};
   await db.$transaction(tx=>saveClassification(tx,s.company.id,s.other.id,s.people.admin.id,shared));
+  await db.organization.update({where:{id:s.vendor.id},data:{name:'THE SAN LOCAL',nameKo:'\uB354\uC0B0 \uB85C\uCEEC',businessNumber:'987-654-321'}});
+  for(const query of ['THE SAN','\uB354\uC0B0','987654','987-654']){const rows=await searchPublicCompanies(db,s.company.id,{query});assert.ok(rows.some(row=>row.existingEntityId===s.vendor.id&&row.alreadyConnected),query);}
+  assert.equal((await searchPublicCompanies(db,s.other.id,{query:'THE SAN LOCAL'})).length,0,'Another company cannot search our unpublished vendor');
+  await db.partnerContact.create({data:{orgId:s.company.id,entityId:s.vendor.id,updatedByEmployeeId:s.people.admin.id,mode:'LOCAL',data:{nameVi:'LOCAL DISPLAY ALIAS'}}});
+  assert.equal((await searchPublicCompanies(db,s.company.id,{query:'DISPLAY ALIAS'}))[0].existingEntityId,s.vendor.id,'Search includes our saved local display names');
+  assert.equal((await searchPublicCompanies(db,s.other.id,{query:'DISPLAY ALIAS'})).length,0,'Local display names stay private');
   const found=await searchPublicCompanies(db,s.company.id,{query:'Forward'});assert.equal(found.length,1);assert.equal(found[0].sourceEntityId,s.other.id);assert.equal(found[0].representative,'Public representative');assert.ok(found[0].revision);assert.equal(found[0].subscriberOrgId,s.other.id);assert.deepEqual(found[0].officialClassification.industryIds,[industry.id]);assert.equal(found[0].officialClassification.source,'SHARED');
-  assert.equal((await searchPublicCompanies(db,s.company.id,{query:'\uB354\uC0B0'}))[0].sourceEntityId,s.other.id);
+  assert.ok((await searchPublicCompanies(db,s.company.id,{query:'\uB354\uC0B0'})).some(row=>row.existingEntityId===s.other.id));
   for(const key of ['employees','bankAccounts','accounts','accountNumber','documents','prices','ownerOrgId','subscription'])assert.equal(key in found[0],false,key);
   assert.equal(JSON.stringify(found).includes('Private employee name'),false);
   assert.equal((await searchPublicCompanies(db,s.company.id,{query:'123-456'}))[0].sourceEntityId,s.other.id);
   await db.companyIdentity.create({data:{anchorEntityId:s.other.id,code:s.other.code,name:'Old public name',country:'VN',businessNumber:'123456789'}});
-  const linked=await searchPublicCompanies(db,s.company.id,{query:'Forward'});assert.equal(linked.length,1);assert.ok(linked[0].identityId);assert.equal(linked[0].name,found[0].name);assert.equal((await searchPublicCompanies(db,s.company.id,{query:'\uB354\uC0B0'}))[0].identityId,linked[0].identityId);
+  const linked=await searchPublicCompanies(db,s.company.id,{query:'Forward'});assert.equal(linked.length,1);assert.ok(linked[0].identityId);assert.equal(linked[0].name,found[0].name);assert.ok((await searchPublicCompanies(db,s.company.id,{query:'\uB354\uC0B0'})).some(row=>row.identityId===linked[0].identityId));
   await db.organization.update({where:{id:s.vendor.id},data:{country:'VN',businessNumber:'123456789'}});
   await db.companyIdentityLink.create({data:{orgId:s.company.id,entityId:s.vendor.id,identityId:linked[0].identityId,createdByEmployeeId:s.people.admin.id}});
   let attached=(await attachLinkedCompanies(db,s.company.id,[{entityId:s.vendor.id}]))[0];assert.deepEqual(attached.officialClassification.industryIds,[industry.id]);assert.equal(attached.linkedCompany.officialClassification.source,'SHARED');
@@ -38,7 +44,7 @@ test('public company name/number search is scoped, bounded and never returns pri
   let allowed=false,actor=999999;registerCompanyConnectionRoutes(app,db,{requireOrgRole:async(_req,_res,options)=>{assert.equal(options.allowSystemAdmin,false);return allowed?{organization:s.company}:null;},getActor:()=>actor});
   const run=()=>handlers.get('get/company-connections/search')({query:{query:'Forward'}},{json:()=>{}});
   await run();allowed=true;await assert.rejects(run(),/ACTIVE_EMPLOYEE_REQUIRED/);actor=s.people.admin.id;await run();
-  await db.organization.update({where:{id:s.other.id},data:{isActive:false}});assert.equal((await searchPublicCompanies(db,s.company.id,{query:'Forward'})).length,0);
+  await db.organization.update({where:{id:s.other.id},data:{isActive:false}});assert.ok((await searchPublicCompanies(db,s.company.id,{query:'Forward'})).every(row=>row.alreadyConnected),'Existing relationships remain searchable when a public company is inactive');
   assert.equal(await db.expenseRequest.count(),0);assert.equal(await db.bankLedgerEntry.count(),0);
  }finally{await f.close();}
 });

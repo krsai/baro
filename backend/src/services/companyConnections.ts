@@ -21,7 +21,19 @@ export async function searchPublicCompanies(db:any,orgId:number,input:any){
  const pattern='%'+query.replace(/[\\%_]/g,'\\$&')+'%',number=normalizedBusinessNumber(query);
  const common=await db.$queryRawUnsafe(`SELECT c.* FROM "CompanyIdentity" c LEFT JOIN "Organization" a ON a.id=c."anchorEntityId" WHERE c."anchorEntityId"<>$1 AND a."isActive" AND (COALESCE(a.name,c.name) ILIKE $2 OR COALESCE(a."nameKo",c."nameKo") ILIKE $2 OR COALESCE(a."nameVi",c."nameVi") ILIKE $2 OR ($3<>'' AND c."businessNumber" LIKE '%'||$3||'%')) ORDER BY c.id LIMIT 21`,orgId,pattern,number);
  const sources=await db.$queryRawUnsafe(`SELECT id,name,"nameKo","nameVi",code,country,"businessNumber",address,"partyKind","businessLegalForm","countryCode",industry,representative,phone,email FROM "Organization" o WHERE id<>$1 AND "ownerOrgId" IS NULL AND "isActive" AND type::text IN ('MANUFACTURER','BRAND','SERVICE') AND EXISTS(SELECT 1 FROM "Employee" e WHERE e."orgId"=o.id AND e.status::text='ACTIVE') AND (name ILIKE $2 OR "nameKo" ILIKE $2 OR "nameVi" ILIKE $2 OR ($3<>'' AND regexp_replace(upper("businessNumber"),'[^A-Z0-9]','','g') LIKE '%'||$3||'%')) AND NOT EXISTS(SELECT 1 FROM "CompanyIdentity" c WHERE c."anchorEntityId"=o.id) ORDER BY id LIMIT 21`,orgId,pattern,number);
- return [...await Promise.all(common.map(async(row:any)=>identityDto(await currentIdentity(db,row),true))),...await Promise.all(sources.map(async(row:any)=>identityDto(await publicCompanyDetails(db,row))))].slice(0,21);
+ const published=[...await Promise.all(common.map(async(row:any)=>identityDto(await currentIdentity(db,row),true))),...await Promise.all(sources.map(async(row:any)=>identityDto(await publicCompanyDetails(db,row))))];
+ // Only our real vendor/customer FKs grant access to local display names.
+ const local=await db.$queryRawUnsafe(`SELECT o.id,o.name,o."nameKo",o."nameVi",o.code,o.country,o."businessNumber",o.address,o."partyKind",o.representative,o.phone,o.email,l."identityId",p."targetOrgId"
+ FROM "Organization" o
+ LEFT JOIN "CompanyIdentityLink" l ON l."orgId"=$1 AND l."entityId"=o.id
+ LEFT JOIN "CompanyPartnerLink" p ON p."orgId"=$1 AND p."entityId"=o.id
+ WHERE o.id<>$1 AND ((o."ownerOrgId"=$1 AND o.type::text IN ('PROCESS_OUTSOURCING','MATERIAL_SUPPLIER','LOGISTICS_PROVIDER')) OR EXISTS(SELECT 1 FROM "OrgRelationship" r WHERE (r."manufacturerOrgId"=$1 AND r."brandOrgId"=o.id) OR (r."brandOrgId"=$1 AND r."manufacturerOrgId"=o.id))) ORDER BY o.id`,orgId);
+ const contacts=await attachLinkedCompanies(db,orgId,local.map((row:any)=>({...row,entityId:row.id})));
+ const matches=(row:any)=>[row.name,row.nameKo,row.nameVi].some(value=>String(value||'').toLocaleLowerCase().includes(query.toLocaleLowerCase()))||Boolean(number&&normalizedBusinessNumber(row.businessNumber).includes(number));
+ const same=(candidate:any,row:any)=>Boolean(candidate.identityId&&(candidate.identityId===row.identityId||common.some((identity:any)=>identity.id===candidate.identityId&&identity.anchorEntityId===row.id))||candidate.sourceEntityId&&(candidate.sourceEntityId===row.id||candidate.sourceEntityId===row.targetOrgId));
+ const existing=contacts.filter((row:any)=>matches(row)||matches(local.find((source:any)=>source.id===row.id)||{})||published.some(candidate=>same(candidate,row)));
+ const registered=await Promise.all(existing.slice(0,21).map(async(row:any)=>({...identityDto(await publicCompanyDetails(db,row)),...(published.find(candidate=>same(candidate,row))||row.linkedCompany||{}),...Object.fromEntries(['name','nameKo','nameVi'].map(key=>[key,row[key]])),existingEntityId:row.id,alreadyConnected:true})));
+ return [...registered,...published.filter(candidate=>!existing.some((row:any)=>same(candidate,row)))].slice(0,21);
 }
 export async function companyConnectionCandidates(db:any,orgId:number,input:any){
  const name=String(input.name||'').trim(),number=normalizedBusinessNumber(input.businessNumber),country=String(input.country||'').trim();
