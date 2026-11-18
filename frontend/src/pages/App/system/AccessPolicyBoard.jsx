@@ -1,12 +1,13 @@
 import useIndustryMenuPolicy from '../../../hooks/useIndustryMenuPolicy';
-import {INDUSTRY_SPECIFIC_FEATURES} from '../../../utils/industryMenuFeatures.mjs';
+import {SERVICE_FEATURES} from '../../../utils/serviceCompany.mjs';
+import {fetchRoleAccessPolicy,saveRoleAccessPolicy} from '../../../utils/roleAccessPolicy';
 import {accessPolicyLayoutText} from '../../../constants/accessPolicyLayout';
 import {subscriberMenuBlueprint} from '../../../utils/subscriberMenus.mjs';
 import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
-import {Button,Chip,Paper,Stack,Switch,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import {Button,Chip,Paper,Stack,Switch,Tabs,Tab,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useAuth } from '../../../context/AuthContext';
@@ -84,17 +85,6 @@ const flattenMenuTree = (nodes = [], depth = 0) =>
     ...(node.type === 'group' ? flattenMenuTree(node.children, depth + 1) : []),
   ]);
 
-const cloneMenuIcon = (icon) => {
-  if (!React.isValidElement(icon)) return null;
-  return React.cloneElement(icon, {
-    sx: {
-      ...(icon.props?.sx || {}),
-      color: 'text.secondary',
-      fontSize: 20,
-    },
-  });
-};
-
 const toEditablePolicy = (policy) => {
   const defaults = getDefaultRoleAccessPolicy();
   const source =
@@ -121,23 +111,38 @@ function AccessPolicyBoard(){
  const allowed=activeProfile?.entryType==='SYSTEM'&&activeProfile?.systemRole==='SYSTEM_ADMIN';
  const menus=useIndustryMenuPolicy(allowed),blueprint=useMenuBlueprint();
  const t=subscriberAccessText[languageCode]||subscriberAccessText.en,layout=accessPolicyLayoutText[languageCode]||accessPolicyLayoutText.en;
- const [saving,setSaving]=React.useState(false);
- const trees=React.useMemo(()=>Object.fromEntries(TYPES.map(type=>[type,buildMenuTree(subscriberMenuBlueprint(organizeCompanyMenu(blueprint,key=>getUiMessage(key,key,languageCode),type),type),'root',type)])),[blueprint,languageCode]);
- const byType=React.useMemo(()=>Object.fromEntries(TYPES.map(type=>[type,new Map(flattenMenuTree(trees[type]).filter(row=>row.path).map(row=>[row.path,row]))])),[trees]);
- const rows=React.useMemo(()=>flattenMenuTree(mergeMenus(trees.MANUFACTURER,trees.SERVICE)),[trees]);
- useUnsavedChanges(menus.dirty);
- const save=async()=>{if(!allowed||saving||!menus.dirty)return;setSaving(true);try{await menus.save();showNotification(t.saved,'success');}catch{}finally{setSaving(false);}};
- return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)} titleActions={allowed?<Button variant="contained" disabled={!menus.dirty||menus.loading||saving||!menus.loaded} onClick={save}>{layout.save}</Button>:null}>
-  {!allowed?<Alert severity="error">{t.denied}</Alert>:<>
-   {menus.error&&<Alert severity="error" action={<Button onClick={menus.reload} disabled={saving}>{layout.reload}</Button>}>{t[menus.error]}</Alert>}
-   <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small" stickyHeader>
-    <TableHead><TableRow><TableCell>{getUiMessage('accessPolicy.menuTree','Menu structure',languageCode)}</TableCell><TableCell align="center">{t.factory}</TableCell><TableCell align="center">{t.logistics}</TableCell></TableRow></TableHead>
-    <TableBody>{rows.map(row=>row.type==='group'?<TableRow key={row.id} sx={{bgcolor:'action.hover'}}><TableCell colSpan={3}><Stack direction="row" alignItems="center" spacing={1}>{cloneMenuIcon(row.icon)}<Typography variant="subtitle2" fontWeight={700}>{row.label}</Typography></Stack></TableCell></TableRow>:<TableRow key={row.path} data-menu-path={row.path} hover>
-     <TableCell><Stack direction="row" spacing={1} alignItems="center" sx={{pl:row.depth*2}}>{cloneMenuIcon(row.icon)}<Typography>{row.label}</Typography></Stack></TableCell>
-     {TYPES.map(type=>{const item=byType[type].get(row.path),features=item?.featureKeys.filter(feature=>INDUSTRY_SPECIFIC_FEATURES.includes(feature))||[];return <TableCell key={type} align="center">{!item?'\u2014':!features.length?<Chip size="small" variant="outlined" label={layout.commonProvided}/>:<Switch size="small" checked={features.every(feature=>menus.features(type).includes(feature))} disabled={menus.loading||saving||!menus.loaded||item.disabled} onChange={(_,checked)=>features.forEach(feature=>menus.toggle(type,feature,checked))} slotProps={{input:{role:'switch','aria-label':row.label+' '+(type==='MANUFACTURER'?t.factory:t.logistics)}}}/>}</TableCell>;})}
-    </TableRow>)}{!rows.length&&<TableRow><TableCell colSpan={3}>{getUiMessage('accessPolicy.noMenu','Menu blueprint not available',languageCode)}</TableCell></TableRow>}</TableBody>
-   </Table></TableContainer></Paper>
-  </>}
+
+ const [saving,setSaving]=React.useState(false),[type,setType]=React.useState('MANUFACTURER');
+ const [policy,setPolicy]=React.useState(null),[original,setOriginal]=React.useState(null),[roleError,setRoleError]=React.useState(false);
+ const loadRoles=React.useCallback(async()=>{setRoleError(false);try{const value=toEditablePolicy((await fetchRoleAccessPolicy()).policy);setPolicy(value);setOriginal(value);}catch{setRoleError(true);}},[]);
+ React.useEffect(()=>{if(allowed)loadRoles();},[allowed,loadRoles]);
+ const rows=React.useMemo(()=>flattenMenuTree(buildMenuTree(organizeCompanyMenu(blueprint,key=>getUiMessage(key,key,languageCode),'MANUFACTURER'),'root','MANUFACTURER')),[blueprint,languageCode]);
+ const roles=['ADMIN','OPERATOR','ACCOUNTANT','WORKER'];
+ const labels={ko:['???','???','??','??'],en:['Administrator','Operator','Accountant','Worker'],vi:['Qu?n tr?','?i?u h?nh','K? to?n','Nh?n vi?n']}[languageCode]||['Administrator','Operator','Accountant','Worker'];
+ const roleDirty=!!policy&&JSON.stringify(policy)!==JSON.stringify(original),dirty=menus.dirty||roleDirty;
+ useUnsavedChanges(dirty);
+ const locked=menus.loading||saving||!menus.loaded||!policy||roleError;
+ const toggleRole=(features,role,checked)=>setPolicy(previous=>({...previous,[type]:{...previous[type],[role]:checked?[...new Set([...previous[type][role],...features])]:previous[type][role].filter(key=>!features.includes(key))}}));
+ const save=async()=>{if(locked||!dirty)return;setSaving(true);try{if(menus.dirty)await menus.save();if(roleDirty){const saved=toEditablePolicy(await saveRoleAccessPolicy(policy));setPolicy(saved);setOriginal(saved);}showNotification(layout.saved,'success');}catch{showNotification(layout.partial,'error');}finally{setSaving(false);}};
+ return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)} titleActions={allowed?<Button variant="contained" disabled={locked||!dirty} onClick={save}>{layout.save}</Button>:null}>
+ {!allowed?<Alert severity="error">{t.denied}</Alert>:<>
+ {menus.error&&<Alert severity="error" action={<Button onClick={menus.reload} disabled={saving}>{layout.reload}</Button>}>{t[menus.error]}</Alert>}
+ {roleError&&<Alert severity="error" action={<Button onClick={loadRoles} disabled={saving}>{layout.reload}</Button>}>{t.failed}</Alert>}
+ <Tabs value={type} onChange={(_,value)=>setType(value)} aria-label={t.title}><Tab value="MANUFACTURER" label={t.factory}/><Tab value="SERVICE" label={t.logistics}/></Tabs>
+ <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small" stickyHeader sx={{minWidth:760}}>
+ <TableHead><TableRow><TableCell>{getUiMessage('accessPolicy.menuTree','Menu structure',languageCode)}</TableCell><TableCell align="center">{layout.provided}</TableCell>{roles.map((role,index)=><TableCell key={role} align="center">{labels[index]}</TableCell>)}</TableRow></TableHead>
+ <TableBody>{rows.map(row=>{
+ if(row.type==='group')return <TableRow key={row.id} sx={{bgcolor:'action.hover'}}><TableCell colSpan={6}><Typography variant="subtitle2" fontWeight={700}>{row.label}</Typography></TableCell></TableRow>;
+ const features=row.path==='/shipping'?(type==='SERVICE'?['FREIGHT']:['CUSTOMER']):row.featureKeys;
+ const supported=features.every(feature=>type==='SERVICE'?SERVICE_FEATURES.includes(feature):feature!=='FREIGHT');
+ const enabled=supported&&(row.fixedAccess||features.every(feature=>menus.features(type).includes(feature)));
+ const unavailable=!enabled||row.disabled;
+ return <TableRow key={row.path} data-menu-path={row.path} data-enabled={!unavailable} sx={{bgcolor:unavailable?'action.hover':undefined,'& .MuiTypography-root':{color:unavailable?'text.disabled':'text.primary'}}}>
+ <TableCell><Stack direction="row" spacing={1} alignItems="center" sx={{pl:row.depth*2}}><Typography>{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography>{!supported&&<Chip size="small" label={layout.unsupported}/>}</Stack></TableCell>
+ <TableCell align="center">{row.fixedAccess?<Chip size="small" label={layout.commonProvided}/>:<Switch size="small" checked={enabled} disabled={locked||!supported||row.disabled} onChange={(_,checked)=>features.forEach(feature=>menus.toggle(type,feature,checked))} slotProps={{input:{role:'switch','aria-label':row.label+' '+layout.provided}}}/>}</TableCell>
+ {roles.map((role,index)=><TableCell key={role} align="center">{row.fixedAccess?'?':<Switch size="small" checked={features.every(feature=>policy?.[type]?.[role]?.includes(feature))} disabled={locked||unavailable||(role==='WORKER'&&features.some(feature=>['FREIGHT','INVOICE'].includes(feature)))} onChange={(_,checked)=>toggleRole(features,role,checked)} slotProps={{input:{role:'switch','aria-label':row.label+' '+labels[index]}}}/>}</TableCell>)}
+ </TableRow>;
+ })}</TableBody></Table></TableContainer></Paper></>}
  </AppPageContainer>;
 }
 export default AccessPolicyBoard;

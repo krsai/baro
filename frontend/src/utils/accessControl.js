@@ -138,7 +138,7 @@ const canAccessFeatureByContext = (featureKey, context) => {
     );
   }
 
-  if (INDUSTRY_SPECIFIC_FEATURES.includes(featureKey) && Array.isArray(context.industryMenuFeatures) && !context.industryMenuFeatures.includes(featureKey) && featureKey !== FEATURE_KEYS.PROFILE) return false;
+  if (Array.isArray(context.industryMenuFeatures) && !context.industryMenuFeatures.includes(featureKey) && featureKey !== FEATURE_KEYS.PROFILE) return false;
   const isOrgMember = hasOrgType(context, ORG_TYPES.MANUFACTURER, ORG_TYPES.BRAND, ORG_TYPES.SERVICE);
   const featureSet = resolveFeatureSetForContext(context);
 

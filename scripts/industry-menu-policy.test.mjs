@@ -7,14 +7,6 @@ import {getDefaultRoleAccessPolicy} from '../frontend/src/utils/roleAccessPolicy
 const require=createRequire(import.meta.url);
 const {readIndustryMenuPolicy,saveIndustryMenuPolicy,companyIndustryMenuFeatures,industryMenuMiddleware,industryMenuApiFeature,registerIndustryMenuRoutes,COMMON_MENU_FEATURES,INDUSTRY_SPECIFIC_FEATURES}=require('../backend/dist/services/industryMenuPolicy.js');
 
-test('common APIs ignore industry masks and still leave authorization to their own role gates',async()=>{
- const gate=industryMenuMiddleware(new Proxy({},{get(){throw Error('industry settings read for common API');}}),()=>{throw Error('industry membership gate called for common API');});
- let calls=0;for(const path of ['/bank-ledger','/bank-ledger/overview','/payroll','/expense-requests','/invoices'])await gate({path},{},()=>calls++);
- assert.equal(calls,5);
- const policy=getDefaultRoleAccessPolicy();policy.__schemaVersion=999;policy.MANUFACTURER.ADMIN=[];
- assert.equal(canAccessPath('/bank-ledger',{isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',accessPolicy:policy,industryMenuFeatures:[]}}),false);
-});
-
 test('subscriber profiles use two explicit company categories and bypass old partner classifications',async()=>{
  let reads=0;
  const db={systemSetting:{findUnique:async()=>({value:{revision:3,industries:{9:['DASHBOARD','BUSINESS','STYLE']},subscribers:{MANUFACTURER:['DASHBOARD','BUSINESS','STYLE'],SERVICE:['DASHBOARD','BUSINESS','FREIGHT']}}})},partnerClassification:{findUnique:async()=>{reads++;throw Error('legacy classification read');}}};
@@ -28,7 +20,7 @@ test('client caps menu and direct routes without granting additional role privil
  const state={isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:'ADMIN',accessPolicy:getDefaultRoleAccessPolicy(),industryMenuFeatures:['DASHBOARD','BUSINESS','STYLE']}};
  assert.equal(canAccessPath('/style',state),true);
  for(const path of ['/freight','/freight/jobs/123','/FrEiGhT/jobs/123'])assert.equal(canAccessPath(path,state),false,path);
- for(const path of ['/payroll','/bank-ledger','/account-overview'])assert.equal(canAccessPath(path,state),true,'shared menus use role permissions');
+ for(const path of ['/payroll','/bank-ledger','/account-overview'])assert.equal(canAccessPath(path,state),false,'all provided menus follow the industry mask');
  state.accessProfile.orgRole='WORKER';assert.equal(canAccessPath('/style',state),false,'industry does not grant a worker admin access');
  state.accessProfile.entryType='SYSTEM';state.accessProfile.systemRole='SYSTEM_ADMIN';assert.equal(canAccessPath('/system-setting/industry-menus',state),true);
  assert.equal(canAccessPath('/freight',state),false,'SYSTEM does not get company data');
@@ -65,6 +57,12 @@ test('real DB: own industry, menu union, revisions, unknown values and retained 
   assert.deepEqual(await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER'),[...COMMON_MENU_FEATURES,'STYLE']);
   assert.deepEqual(await companyIndustryMenuFeatures(db,orgId,'SERVICE'),[...COMMON_MENU_FEATURES,'FREIGHT']);
   await assert.rejects(saveIndustryMenuPolicy(db,{...current,subscribers:{SERVICE:common}},'system@example.test'),/INDUSTRY_MENU_POLICY_CHANGED/);
+  const full=await saveIndustryMenuPolicy(db,{...profiles,fullScopeTypes:['MANUFACTURER','SERVICE'],subscribers:{MANUFACTURER:['STYLE'],SERVICE:['FREIGHT']}},'system@example.test');
+  assert.deepEqual(await companyIndustryMenuFeatures(db,orgId,'MANUFACTURER'),['STYLE']);
+  assert.deepEqual(await companyIndustryMenuFeatures(db,orgId,'SERVICE'),['FREIGHT']);
+  let denied=false;
+  await industryMenuMiddleware(db,async()=>({organization:{id:orgId,type:'MANUFACTURER'}}))({path:'/bank-ledger'},{status(code){assert.equal(code,403);return this;},json(){denied=true;}},()=>assert.fail('disabled common API allowed'));
+  assert.equal(denied,true);assert.equal(full.revision,profiles.revision+1);
  }finally{await fixture.close();}
 });
 test('API gate denies blocked data and requires membership, preserving existing role gates',async()=>{

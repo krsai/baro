@@ -10,11 +10,11 @@ export const COMMON_MENU_FEATURES=INDUSTRY_MENU_FEATURES.filter(feature=>!INDUST
 const required=['DASHBOARD','BUSINESS'];
 export async function readIndustryMenuPolicy(db:any){
  const row=await db.systemSetting.findUnique({where:{key:INDUSTRY_MENU_KEY}});
- return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.subscribers?{subscribers:row.value.subscribers}:{})};
+ return {revision:row?.value?.revision??0,industries:row?.value?.industries??{},...(row?.value?.fullScopeTypes?{fullScopeTypes:row.value.fullScopeTypes}:{}),...(row?.value?.subscribers?{subscribers:row.value.subscribers}:{})};
 }
 export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:string){
  const policy=await readIndustryMenuPolicy(db);
- if(Object.hasOwn(policy.subscribers??{},orgType))return orgType==='BRAND'?policy.subscribers[orgType].filter((feature:string)=>['STYLE','ORDER'].includes(feature)):[...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
+ if(Object.hasOwn(policy.subscribers??{},orgType))return orgType==='BRAND'?policy.subscribers[orgType].filter((feature:string)=>['STYLE','ORDER'].includes(feature)):policy.fullScopeTypes?.includes(orgType)?policy.subscribers[orgType]:[...new Set([...COMMON_MENU_FEATURES,...policy.subscribers[orgType]])];
  const classification=await db.partnerClassification.findUnique({where:{orgId_entityId:{orgId,entityId:orgId}},include:{industries:true}});
  const defaults=INDUSTRY_MENU_FEATURES.filter(feature=>orgType==='SERVICE'||feature!=='FREIGHT');
 
@@ -25,7 +25,7 @@ export async function companyIndustryMenuFeatures(db:any,orgId:number,orgType:st
 }
 export function industryMenuMiddleware(db:any,requireOrgRole:any){
  return async(req:any,res:any,next:any)=>{
-  const feature=industryMenuApiFeature(req.path);if(!feature||COMMON_MENU_FEATURES.includes(feature))return next();
+  const feature=industryMenuApiFeature(req.path);if(!feature)return next();
   try{
    const context=await requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT','WORKER'],allowSystemAdmin:false});if(!context)return;
    const allowed=await companyIndustryMenuFeatures(db,context.organization.id,context.organization.type);
@@ -37,7 +37,8 @@ export function industryMenuMiddleware(db:any,requireOrgRole:any){
 export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
  if(!Number.isSafeInteger(input?.revision)||input.revision<0||!input.industries||typeof input.industries!=='object'||Array.isArray(input.industries))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
  const subscribers=input.subscribers;
- if(subscribers!==undefined&&(!subscribers||typeof subscribers!=='object'||Array.isArray(subscribers)||Object.entries(subscribers).some(([type,features]:any)=>!SUBSCRIBER_TYPES.includes(type)||!Array.isArray(features)||new Set(features).size!==features.length||features.some((feature:string)=>!INDUSTRY_MENU_FEATURES.includes(feature)||(type==='SERVICE'?!SERVICE_FEATURES.includes(feature):feature==='FREIGHT'))||required.some(feature=>!features.includes(feature)))))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
+ if(input.fullScopeTypes!==undefined&&(!Array.isArray(input.fullScopeTypes)||input.fullScopeTypes.some((type:string)=>!SUBSCRIBER_TYPES.includes(type))))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
+ if(subscribers!==undefined&&(!subscribers||typeof subscribers!=='object'||Array.isArray(subscribers)||Object.entries(subscribers).some(([type,features]:any)=>!SUBSCRIBER_TYPES.includes(type)||!Array.isArray(features)||new Set(features).size!==features.length||features.some((feature:string)=>!INDUSTRY_MENU_FEATURES.includes(feature)||(type==='SERVICE'?!SERVICE_FEATURES.includes(feature):feature==='FREIGHT'))||(!input.fullScopeTypes?.includes(type)&&required.some(feature=>!features.includes(feature))))))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
  const entries=Object.entries(input.industries);
  if(entries.length>2000||entries.some(([id,features])=>!/^\d+$/.test(id)||String(Number(id))!==id||!Number.isSafeInteger(Number(id))||Number(id)<=0||!Array.isArray(features)||features.length>INDUSTRY_MENU_FEATURES.length||new Set(features).size!==features.length||features.some(feature=>!INDUSTRY_MENU_FEATURES.includes(feature))||required.some(feature=>!features.includes(feature))))throw createHttpError(400,'INVALID_INDUSTRY_MENU_POLICY');
  return retryEditTransaction(db,async(tx:any)=>{
@@ -48,7 +49,7 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
   await tx.$queryRawUnsafe('SELECT key FROM "SystemSetting" WHERE key=$1 FOR UPDATE',INDUSTRY_MENU_KEY);
   const current=await readIndustryMenuPolicy(tx);
   if(current.revision!==input.revision)throw createHttpError(409,'INDUSTRY_MENU_POLICY_CHANGED');
-  const value={revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
+  const value={...((input.fullScopeTypes??current.fullScopeTypes)?{fullScopeTypes:input.fullScopeTypes??current.fullScopeTypes}:{}),revision:current.revision+1,industries:Object.fromEntries(entries),...((subscribers??current.subscribers)?{subscribers:subscribers??current.subscribers}:{})};
   await tx.systemSetting.update({where:{key:INDUSTRY_MENU_KEY},data:{value,updatedBy:email}});
   return value;
  });
@@ -59,6 +60,9 @@ export async function saveIndustryMenuPolicy(db:any,input:any,email:string){
 export function industryMenuApiFeature(path:string){
  const rules:[RegExp,string][]=[
   [/^\/employees\/\d+\/tenure-recognition\/?$/,'EMPLOYEE'],
+  [/^\/employees\/?$/,'EMPLOYEE'],[/^\/holidays(?:\/|$)/,'HOLIDAY'],
+  [/^\/(?:work-time-requests|employee-leaves)(?:\/|$)/,'WORK_TIME'],
+  [/^\/(?:employee-grades|employee-roles|employee-departments)(?:\/|$)/,'EMPLOYEE_SYSTEM'],
   [/^\/freight(?:\/|$)/,'FREIGHT'],[/^\/bank-ledger\/(?:overview|exchange-rates)(?:\/|$)/,'ACCOUNT_OVERVIEW'],
   [/^\/bank-ledger(?:\/|$)/,'BANK_LEDGER'],[/^\/invoices(?:\/|$)/,'INVOICE'],
   [/^\/(?:orders|order-items)(?:\/|$)/,'ORDER'],[/^\/(?:styles|style-processes|style-products)(?:\/|$)/,'STYLE'],

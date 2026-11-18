@@ -26,16 +26,27 @@ export const requestJSON=async(url,options={})=>{
  if(options.method==='PUT'){window.roleSaves=(window.roleSaves||0)+1;window.lastRoles=JSON.parse(options.body);window.roles=window.lastRoles.policy;localStorage.setItem('roles',JSON.stringify(window.roles));}return {policy:structuredClone(window.roles)};
 };`}));
   await page.goto('http://127.0.0.1:43292/industry-menu-acceptance.html');
-  const row=path=>page.locator(`[data-menu-path="${path}"]`),toggle=(label,type)=>page.getByRole('switch',{name:label+' '+(type==='MANUFACTURER'?t.factory:t.logistics),exact:true});
-  await row('/bank-ledger').waitFor();await toggle('Styles','MANUFACTURER').waitFor();await row('/shipping').getByRole('switch').first().waitFor();
-  assert.equal(await page.getByRole('tab').count(),0,'one table replaces industry and scope tabs');assert.equal(await row('/bank-ledger').getByRole('switch').count(),0,'common menus stay provided, not role defaults');assert.equal(await row('/style').getByRole('switch').count(),1);
-  await toggle('Styles','MANUFACTURER').uncheck();await row('/shipping').getByRole('switch').first().uncheck();
-  const save=page.getByRole('button',{name:l.save,exact:true});await save.click();await page.waitForFunction(()=>window.lastMenus);
-  assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.MANUFACTURER.includes('STYLE')),false);assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.SERVICE.includes('FREIGHT')),false);assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.MANUFACTURER.includes('BANK_LEDGER')),true);assert.deepEqual(await page.evaluate(()=>window.lastMenus.industries),{9:['DASHBOARD','BUSINESS','STYLE']});assert.equal(await page.evaluate(()=>window.roleSaves||0),0,'menu defaults never rewrite employee role policies');assert.equal(await page.evaluate(()=>window.called.some(path=>path.includes('/system/access-policy'))),false);
-  await page.reload();await toggle('Styles','MANUFACTURER').waitFor();assert.equal(await toggle('Styles','MANUFACTURER').isChecked(),false);assert.equal(await row('/shipping').getByRole('switch').first().isChecked(),false);
-  await toggle('Styles','MANUFACTURER').check();await page.evaluate(()=>window.failMenus=true);await save.click();await page.waitForFunction(()=>!!window.notice||window.failMenus);await page.waitForTimeout(100);assert.equal(await toggle('Styles','MANUFACTURER').isChecked(),true,'failed save preserves menu draft');
-  await page.evaluate(()=>window.failMenus=false);await save.click();await page.waitForFunction(()=>window.menus.subscribers.MANUFACTURER.includes('STYLE'));assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);await page.close();
+  const row=path=>page.locator(`[data-menu-path="${path}"]`);
+  const availability=path=>row(path).getByRole('switch').first();
+  await row('/style').waitFor();await page.waitForFunction(()=>window.called.includes('/system/access-policy'));
+  assert.equal(await page.getByRole('tab').count(),2);
+  assert.equal(await row('/bank-ledger').getByRole('switch').count(),5);
+  await availability('/style').uncheck();assert.equal(await row('/style').getByRole('switch').nth(1).isDisabled(),true);
+  await page.getByRole('tab',{name:t.logistics,exact:true}).click();
+  assert.equal(await row('/style').count(),1);assert.equal(await availability('/style').isDisabled(),true);
+  await row('/bank-ledger').getByRole('switch').nth(1).uncheck();
+  await availability('/shipping').uncheck();
+  const save=page.getByRole('button',{name:l.save,exact:true});await save.click();await page.waitForFunction(()=>window.lastRoles);
+  assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.MANUFACTURER.includes('STYLE')),false);
+  assert.equal(await page.evaluate(()=>window.lastMenus.subscribers.SERVICE.includes('FREIGHT')),false);
+  assert.equal(await page.evaluate(()=>window.lastRoles.policy.SERVICE.ADMIN.includes('BANK_LEDGER')),false);
+  assert.equal(await page.evaluate(()=>window.lastRoles.policy.MANUFACTURER.ADMIN.includes('BANK_LEDGER')),true);
+  await page.reload();await row('/style').waitFor();assert.equal(await availability('/style').isChecked(),false);
+  await availability('/style').check();await page.evaluate(()=>window.failMenus=true);await save.click();await page.waitForTimeout(150);
+  assert.equal(await availability('/style').isChecked(),true);
+  await page.evaluate(()=>window.failMenus=false);await save.click();await page.waitForFunction(()=>window.menus.subscribers.MANUFACTURER.includes('STYLE'));
+  assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);await page.close();
  }
 
- console.log('PASS simplified defaults: ko/en/vi PC/mobile, two industry columns, common menus, independent toggles, one save, retry and unchanged role policies.');
+ console.log('PASS industry tabs and role permissions: ko/en/vi PC/mobile, shared menu rows, availability and role toggles, draft preservation, save/reload and retry.');
 }finally{await browser?.close();server.kill();if(existsSync(file))unlinkSync(file);}
