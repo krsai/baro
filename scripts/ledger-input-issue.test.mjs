@@ -9,6 +9,10 @@ test('inline bank fee requires amount and code, without recipient or evidence; r
  assert.deepEqual(ledgerInputIssue([main,{...fee,amount:''}],accounts,[]),{field:'amount',index:1,rowNumber:1,fee:true});
  assert.equal(ledgerInputIssue([main,{...fee,accountingCodeId:''}],accounts,[]).field,'code');
  assert.equal(ledgerInputIssue([{...main,evidenceNumber:''},fee],accounts,[]).field,'evidence');
+ assert.equal(ledgerInputIssue([{...main,evidenceNumber:'   '},fee],accounts,[]).field,'evidence');
+ for(const evidenceType of ['INVOICE','EXPENSE','OPENING','PAYROLL']){
+  for(const document of [null,{}, {id:''}])assert.equal(ledgerInputIssue([{...main,evidenceType,document}],accounts,[]).field,'document');
+ }
  assert.equal(ledgerInputIssue([{...main,counterparty:null},fee],accounts,[]).field,'counterparty');
  assert.equal(ledgerInputIssue([main,fee,{...main,clientKey:'second',amount:''}],accounts,[]).rowNumber,2);
  assert.equal(ledgerInputIssue([main,{...fee,accountId:'foreign'}],accounts,[]).field,'account');

@@ -14,7 +14,7 @@ export function ledgerInputIssue(rows,accounts,parties){
    else if(row.counterparty?.kind==='ACCOUNT'&&ledgerTransferCurrency(row,accounts,parties)!==account.currencyCode&&!row.transferAmount?.trim())field='transferAmount';
    else if(row.evidenceType==='FILE'&&!row.counterparty)field='counterparty';
    else if(row.evidenceType==='FILE'&&row.counterparty?.kind!=='ACCOUNT'&&!row.evidenceNumber?.trim())field='evidence';
-   else if(['INVOICE','EXPENSE','OPENING','PAYROLL'].includes(row.evidenceType)&&!row.document)field='document';
+   else if(['INVOICE','EXPENSE','OPENING','PAYROLL'].includes(row.evidenceType)&&!row.document?.id)field='document';
    else if(row.evidenceType==='EXPENSE'&&!row.expenseItems?.length)field='allocation';
    else if(row.evidenceType==='EXPENSE'&&row.document?.paymentSchedule?.some(schedule=>row.expenseItems.some(item=>item.itemId===schedule.expenseItemId))&&!row.paymentScheduleId)field='schedule';
   }
