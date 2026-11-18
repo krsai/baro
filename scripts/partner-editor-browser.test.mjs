@@ -55,6 +55,16 @@ try{
    await choose.click();const lookup=page.getByRole('complementary',{name:items.choose,exact:true});await lookup.waitFor();
    await lookup.getByRole('textbox',{name:items.search,exact:true}).and(page.locator(':focus')).waitFor();
    if(profile.canEditProfile){await dialog.getByRole('button',{name:panel.select,exact:true}).click();await lookup.waitFor({state:'hidden'});await page.getByRole('complementary').getByRole('checkbox',{name:'Office',exact:true}).waitFor();await choose.click();await lookup.waitFor();assert.equal(await page.getByRole('complementary').count(),1);}
+   if(profile.canEditProfile){
+    await dialog.getByRole('button',{name:panel.select,exact:true}).click();
+    const classification=page.getByRole('complementary').getByRole('checkbox',{name:'Office',exact:true});
+    await classification.uncheck();await classification.click({noWaitAfter:true});
+    await lookup.getByRole('textbox',{name:items.search,exact:true}).and(page.locator(':focus')).waitFor();
+    assert.equal(await page.getByRole('complementary').count(),1,'required item selection follows industry selection');
+   }
+   assert.equal(await lookup.getByText('ZIP',{exact:true}).count(),0,'code is searchable but not displayed');
+   const row=lookup.locator('label.MuiFormControlLabel-root').first(),checkbox=await row.getByRole('checkbox').boundingBox(),label=await row.getByText('Zipper',{exact:true}).boundingBox();
+   assert.ok(Math.abs(checkbox.y+checkbox.height/2-label.y-label.height/2)<1,'checkbox and item name are centered');
    assert.equal(await lookup.getByText('FOREIGN',{exact:true}).count(),0);
    await lookup.getByRole('textbox',{name:items.search,exact:true}).fill('UNKNOWN');assert.equal(await lookup.getByRole('checkbox').count(),0);
    await page.keyboard.press('Escape');await lookup.waitFor({state:'hidden'});await choose.and(page.locator(':focus')).waitFor();

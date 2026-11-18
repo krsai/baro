@@ -10,7 +10,7 @@ import {partnerClassificationPanelText} from '../constants/partnerClassification
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {classificationName,PARTNER_CLASSIFICATION_TEXT} from '../utils/partnerClassification.mjs';
 
-export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady,inline=false,expandable=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange,catalogue,deriveRoles=false,title}){
+export default function PartnerClassificationFields({value,onChange,orgId,enabled=true,disabled=false,languageCode='ko',onReady,inline=false,expandable=false,sidePanelTarget,sidePanelOpen=false,onPanelOpenChange,catalogue,deriveRoles=false,title,onIndustrySelect}){
  const text=PARTNER_CLASSIFICATION_TEXT[languageCode]||PARTNER_CLASSIFICATION_TEXT.en;
  const [options,setOptions]=useState({roles:[],industries:[]}),[error,setError]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0);
  const [search,setSearch]=useState(''),panelText=partnerClassificationPanelText[languageCode]||partnerClassificationPanelText.en;
@@ -29,7 +29,7 @@ export default function PartnerClassificationFields({value,onChange,orgId,enable
  const name=row=>classificationName(row,languageCode);
  const filterOptions=createFilterOptions({stringify:row=>[row.code,row.nameEn,row.nameKo,row.nameVi].join(' ')});
  const change=(roleIds,industryIds)=>onChange({...value,roleIds,industryIds,industries:industries.filter(row=>industryIds.includes(row.id))});
- const toggleIndustry=row=>{const ids=value.industryIds.includes(row.id)?value.industryIds.filter(id=>id!==row.id):[...value.industryIds,row.id];change([...new Set(industries.filter(item=>ids.includes(item.id)).map(item=>item.partnerRoleId))],ids);};
+ const toggleIndustry=row=>{const ids=value.industryIds.includes(row.id)?value.industryIds.filter(id=>id!==row.id):[...value.industryIds,row.id];change([...new Set(industries.filter(item=>ids.includes(item.id)).map(item=>item.partnerRoleId))],ids);if(!value.industryIds.includes(row.id))onIndustrySelect?.(row.id);};
  if(expandable){
   const matches=filterOptions(industries.map(row=>({...row,nameEn:[row.nameEn,roles.find(role=>role.id===row.partnerRoleId)?.nameEn].join(' '),nameKo:[row.nameKo,roles.find(role=>role.id===row.partnerRoleId)?.nameKo].join(' '),nameVi:[row.nameVi,roles.find(role=>role.id===row.partnerRoleId)?.nameVi].join(' ')})),{inputValue:search,getOptionLabel:name});
   const visible=roles.filter(role=>!search||filterOptions([role],{inputValue:search,getOptionLabel:name}).length||matches.some(row=>row.partnerRoleId===role.id));
