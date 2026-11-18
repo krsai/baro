@@ -16,13 +16,13 @@ try{
  for(const lang of ['ko','en','vi'])for(const width of [1440,390]){
   const page=await browser.newPage({viewport:{width,height:900}}),errors=[],text=ledgerFlowText[lang],labels=PARTNER_CLASSIFICATION_TEXT[lang];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${port}/ledger-flow-lookup-test.html?lang=${lang}`);
-  const input=page.getByRole('textbox',{name:text.to,exact:true});assert.equal(await input.inputValue(),'THRE / NGUYEN THI MINH NGUYET');
+  const input=page.getByRole('textbox',{name:text.to,exact:true});assert.equal(await input.inputValue(),'NGUYEN THI MINH NGUYET');
   await page.getByRole('button').click();const dialog=page.getByRole('dialog');await dialog.getByRole('cell',{name:'THRE',exact:true}).waitFor();
-  assert.equal(await dialog.getByRole('textbox').inputValue(),'THRE / NGUYEN THI MINH NGUYET');
+  assert.equal(await dialog.getByRole('textbox').inputValue(),'NGUYEN THI MINH NGUYET');
   await dialog.getByRole('columnheader',{name:labels.category,exact:true}).waitFor();await dialog.getByRole('columnheader',{name:labels.industry,exact:true}).waitFor();
   await dialog.getByRole('cell',{name:{ko:'유통',en:'Distribution',vi:'Phân phối'}[lang],exact:true}).waitFor();
   await dialog.getByRole('cell',{name:{ko:'장비',en:'Equipment',vi:'Thiết bị'}[lang],exact:true}).waitFor();
-  for(const query of ['THRE','NGUYEN THI MINH NGUYET','THRE / NGUYEN THI MINH NGUYET']){await dialog.getByRole('textbox').fill(query);await dialog.getByRole('cell',{name:'THRE',exact:true}).waitFor();}
+  for(const query of ['THRE','NGUYEN THI MINH NGUYET','NGUYEN THI MINH NGUYET']){await dialog.getByRole('textbox').fill(query);await dialog.getByRole('cell',{name:'THRE',exact:true}).waitFor();}
   await dialog.getByRole('textbox').fill('');assert.equal(await dialog.getByRole('cell',{name:'OLD001',exact:true}).count(),0);
   await dialog.getByRole('textbox').fill('Retired worker');await dialog.getByRole('cell',{name:'OLD001',exact:true}).waitFor();
   await dialog.getByRole('cell',{name:'Retired worker · '+({ko:'퇴사자',en:'Former employee',vi:'Đã nghỉ việc'}[lang]),exact:true}).waitFor();
@@ -30,7 +30,7 @@ try{
   await dialog.getByRole('row').filter({hasText:'THRE'}).getByRole('button').click();await dialog.waitFor({state:'hidden'});
   assert.equal((await page.evaluate(()=>window.row.counterparty)).id,11);
   await input.fill('TH');await input.press('Enter');await dialog.waitFor();await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
-  await input.fill('THRE');await input.press('Tab');assert.equal(await input.inputValue(),'THRE / NGUYEN THI MINH NGUYET');
+  await input.fill('THRE');await input.press('Tab');assert.equal(await input.inputValue(),'NGUYEN THI MINH NGUYET');
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS ledger flow lookup: selected code/name finds itself, code/name searches, category and industry columns, partial confirmation and exact Tab; ko/en/vi desktop/mobile.');
