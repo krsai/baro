@@ -46,6 +46,7 @@ jobs:
       - run: npm --prefix frontend ci
       - run: npm run test:regression
       - run: node --test scripts/deployment-build-config.test.mjs scripts/asset-retention.test.mjs scripts/module-load-failure.test.mjs
+      - run: node --test scripts/relationship-bucket-predeploy.test.mjs
       - run: npm --prefix frontend run build
         if: ${{ !cancelled() }}
       - run: npm run check:i18n && npm run check:encoding

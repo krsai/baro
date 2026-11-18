@@ -4,6 +4,8 @@
 
 ## Railway 서비스별 빌드 설정
 
+- migration_fix의 과거 관계 시간 버킷 이관은 원본 CUSTOMER_DEFAULT 버전도 해당 제조사의 sourceOrgId=0 공정도 없는 관계를 미설정 상태로 보존한다. 신규/서비스 관계에 버킷·ST를 추정 생성하지 않는다. 실제 공정이 있는데 원본이 누락됐거나 원본 버전이 복수인 경우는 계속 실패·롤백한다. UI 변경 배포를 위해 원자료 보정·target guard·preflight 우회를 하지 않는다. 검수는 scripts/relationship-bucket-predeploy.test.mjs를 사용한다.
+
 - BARO BACKEND는 Root Directory `/backend`, Railway Config File `/backend/railway.json`을 사용한다. 빌드는 Prisma 클라이언트 준비 후 TypeScript 빌드이며 배포 전 `railway:predeploy`와 `/ready` 검사를 유지한다. BARO FRONTEND는 `/frontend`와 `/frontend/railway.json`을 사용하고 프런트 package의 빌드·서버·`/health`만 실행한다. 루트 폴더를 지정해도 설정 파일 경로는 별도이므로 두 서비스가 같은 프런트 설정을 읽게 두지 않는다.
 - 2026-11-18 사용자가 확인한 백엔드 설정은 Root Directory `/backend` + Config File `/frontend/railway.json`이었다. 그 결과 프런트의 `--retain-from` 옵션이 `tsc`로 전달되어 TS5023으로 빌드가 실패했다. 프런트 Railway 명령은 인자 없는 `npm run build`로 두고 자산 보존 origin 결정은 프런트 빌드 파일 안에서만 수행한다. 해당 서비스의 설정 파일 경로 정정은 별도로 필요하며 정상 DB preflight/시작 검사 우회로 해결하지 않는다.
 - 프런트는 Railway 서비스 ID가 있고 환경 이름이 `production`인 빌드에서 공식 운영 origin의 이전 파일을 자동 수집한다. 명시 origin은 `FRONTEND_RETAIN_FROM` 또는 기존 CLI 옵션으로 지정할 수 있고 로컬/일반 CI 빌드는 외부 수집을 하지 않는다. 운영 이전 파일 검증 실패 시 배포 중단·14일 보존·무결성 검사는 유지한다. `deployment-build-config.test.mjs`를 회귀 CI에 포함해 프런트 전용 인자의 백엔드 유출과 백엔드 preflight 설정 퇴행을 검사한다.

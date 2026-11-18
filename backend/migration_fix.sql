@@ -4116,6 +4116,22 @@ DECLARE
 BEGIN
   FOR rel IN SELECT * FROM "OrgRelationship" ORDER BY id LOOP
     IF rel."timeBucketSetVersionId" IS NULL THEN
+      -- New/service relationships may have no manufacturing bucket history.
+      -- Leave them unconfigured; never fabricate a source version or ST.
+      -- Actual manufacturer processes still require the historical source.
+      IF NOT EXISTS (
+        SELECT 1 FROM "Style" s
+        WHERE s."customerOrgId" = rel."brandOrgId"
+          AND s."timeBucketSetVersionId" IS NOT NULL
+          AND s."timeBucketSource" = 'CUSTOMER_DEFAULT'
+      ) AND NOT EXISTS (
+        SELECT 1 FROM "Style" s
+        JOIN "StyleProcess" sp ON sp."styleId" = s.id
+        WHERE s."customerOrgId" = rel."brandOrgId"
+          AND sp."orgId" = rel."manufacturerOrgId" AND sp."sourceOrgId" = 0
+      ) THEN
+        CONTINUE;
+      END IF;
       INSERT INTO "QuantityBucketSet" ("orgId", name, "createdBy", "updatedAt")
       VALUES (rel."manufacturerOrgId", 'RELATIONSHIP_TIME_BUCKETS_' || rel.id, 'SYSTEM:RELATIONSHIP_TIME_BUCKET_BACKFILL', CURRENT_TIMESTAMP)
       ON CONFLICT ("orgId", name) DO UPDATE SET "updatedAt" = "QuantityBucketSet"."updatedAt"
