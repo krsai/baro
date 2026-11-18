@@ -7,6 +7,7 @@ import ViewColumnOutlinedIcon from '@mui/icons-material/ViewColumnOutlined';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import {DndContext,PointerSensor,closestCenter,useDraggable,useDroppable,useSensor,useSensors} from '@dnd-kit/core';
 import AppPageContainer from './AppPageContainer';
+import {dashboardSettingsTitle} from '../constants/dashboardRecipientSettings';
 import {DashboardWidgetSettingsContext} from './DashboardWidgetSettings';
 import {dashboardWidgetStorageKey,moveDashboardWidget,normalizeDashboardWidgets,resolveDashboardWidgetLayout} from '../utils/dashboardWidgets.mjs';
 
@@ -59,7 +60,7 @@ export default function DashboardWidgets({title,widgets,companyId,userId,languag
   </Box>
   {!layout.length&&<Typography color="text.secondary">{t.empty}</Typography>}
   {children}
-  <Dialog open={open} onClose={()=>settingsId&&!directSettings?setSettingsId(null):close()} fullWidth maxWidth="md"><DialogTitle>{settingsId?byId.get(settingsId)?.label+' · '+s.settings:t.select}</DialogTitle><DialogContent>{settingsId?<Stack spacing={2} data-testid="dashboard-widget-settings">
+  <Dialog open={open} onClose={()=>settingsId&&!directSettings?setSettingsId(null):close()} fullWidth maxWidth="md"><DialogTitle>{settingsId?dashboardSettingsTitle(byId.get(settingsId)?.label,languageCode):t.select}</DialogTitle><DialogContent>{settingsId?<Stack spacing={2} data-testid="dashboard-widget-settings">
    <TextField select size="small" label={t.width} value={draft.find(item=>item.id===settingsId)?.width||'half'} onChange={event=>setDraft(current=>current.map(item=>item.id===settingsId?{...item,width:event.target.value}:item))}><MenuItem value="half">{t.half}</MenuItem><MenuItem value="full">{t.full}</MenuItem></TextField>
    {byId.get(settingsId)?.options?.map(option=><FormControlLabel key={option.id} label={option.label} control={<Checkbox checked={draft.find(item=>item.id===settingsId)?.settings?.[option.id]!==false} onChange={event=>setDraft(current=>current.map(row=>row.id===settingsId?{...row,settings:{...row.settings,[option.id]:event.target.checked}}:row))}/>}/>)}</Stack>:<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'200px minmax(0,1fr)'},gap:2}}>
    <Stack><Typography variant="subtitle2" sx={{mb:1}}>{t.available}</Typography>{[...draft.map(item=>byId.get(item.id)).filter(Boolean),...widgets.filter(widget=>!draft.some(item=>item.id===widget.id))].map(widget=>{const index=draft.findIndex(item=>item.id===widget.id),item=draft[index];return <Box key={widget.id}>
