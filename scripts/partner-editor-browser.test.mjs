@@ -33,9 +33,7 @@ try{
   for(const prefix of ['business-partners','customers'])await page.route('**/'+prefix+'/*?*',r=>{if(r.request().method()==='OPTIONS')return r.fulfill({headers});assert.equal(r.request().method(),'PUT');writes.push({path:new URL(r.request().url()).pathname,body:r.request().postDataJSON()});return r.fulfill({headers,json:{id:prefix==='customers'?44:9,...r.request().postDataJSON()}});});
   await page.goto(`http://127.0.0.1:${port}/partner-editor-acceptance.html?lang=${lang}&screen=${screen}`);
   if(screen==='registration'){
-   const initial=page.locator('button[data-initial-focus]');
-   await initial.and(page.locator(':focus')).waitFor();
-   await initial.click();await page.getByRole('complementary').getByRole('textbox').and(page.locator(':focus')).waitFor();
+   await page.getByRole('complementary').getByRole('textbox').and(page.locator(':focus')).waitFor();
    const left=page.getByRole('dialog').locator('section').first(),right=page.getByRole('complementary');
    if(width>900){const a=await left.boundingBox(),b=await right.boundingBox();assert.ok(Math.abs(a.y-b.y)<1,'both panels start at the same height');assert.ok(b.x>a.x+a.width,'search panel is to the right');}
    const radius=node=>{const s=getComputedStyle(node);return [s.borderTopLeftRadius,s.borderTopRightRadius,s.borderBottomLeftRadius,s.borderBottomRightRadius];};
