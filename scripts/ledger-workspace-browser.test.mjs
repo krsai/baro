@@ -56,6 +56,17 @@ try{
   assert.equal(await page.getByTestId('all-account-balance').textContent(),'₫2,500,500');
   assert.equal(await page.getByTestId('final-balance').textContent(),'₫3,889,500');
   assert.equal(await page.getByTestId('final-balance-row').getByRole('cell').first().textContent(),o.finalBalance);
+  await page.getByTestId('account-status-panel').getByRole('button',{name:o.payable,exact:true}).click();
+  const outstandingDialog=page.getByRole('dialog');
+  assert.equal(await outstandingDialog.getByRole('tab',{name:o.payable,exact:true}).getAttribute('aria-selected'),'true');
+  assert.equal(await outstandingDialog.getByText(o.basis,{exact:true}).count(),0);
+  assert.equal(await outstandingDialog.getByRole('table').count(),1);
+  await outstandingDialog.getByRole('tab',{name:o.receivable,exact:true}).click();
+  assert.equal(await outstandingDialog.getByRole('tab',{name:o.receivable,exact:true}).getAttribute('aria-selected'),'true');
+  await page.keyboard.press('Escape');
+  await page.getByTestId('account-status-panel').getByRole('button',{name:o.receivable,exact:true}).click();
+  assert.equal(await outstandingDialog.getByRole('tab',{name:o.receivable,exact:true}).getAttribute('aria-selected'),'true');
+  await page.keyboard.press('Escape');
   const chartCurrency=page.locator('#overview-currency'),chartAccount=page.locator('#overview-account'),chartPeriod=page.locator('#overview-period');
   assert.equal(await chartCurrency.evaluate(el=>getComputedStyle(el).textAlign),'left');
   const cb=await chartCurrency.boundingBox(),pb=await chartPeriod.boundingBox();assert.ok(pb.x>cb.x+cb.width);
