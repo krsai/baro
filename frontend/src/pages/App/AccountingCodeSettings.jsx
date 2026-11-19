@@ -1,4 +1,5 @@
 import {dialogTitle} from '../../constants/dialogTitles';
+import {accountingCompactText} from '../../constants/accountingCompact';
 import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
 import {ITEM_ATTRIBUTE_TEXT} from '../../constants/itemAttributes';
 import {MATERIAL_SETTINGS_TEXT} from '../../components/MaterialCodeSettings';
@@ -39,7 +40,9 @@ export default function AccountingCodeSettings(){
  const {active}=useRequestScopeContext();
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
  const usageText=accountingCodeUsageText[languageCode]||accountingCodeUsageText.en;
- const usageTitle=row=>row.transactionUsage?[usageText.expense+': '+row.transactionUsage.expense,usageText.ledger+': '+row.transactionUsage.ledger,usageText.settlement+': '+row.transactionUsage.settlement,usageText.invoice+': '+(row.transactionUsage.invoice||0),usageText.past+': '+row.transactionUsage.history,usageText.types+': '+(row.transactionUsage.types||0),usageText.handled+': '+(row.transactionUsage.handled||0)].join(' / '):'';
+ const usageEntries=row=>['expense','ledger','settlement','invoice','history','types','handled'].map(key=>({key,label:usageText[key==='history'?'past':key],count:row.transactionUsage?.[key]||0}));
+ const usageTitle=row=>row.transactionUsage?usageEntries(row).filter(item=>item.count).map(item=>item.label+': '+item.count).join(' / '):'';
+ const [usageRow,setUsageRow]=useState(null);
  const directionText=accountingDirectionText[languageCode]||accountingDirectionText.en;
  const inputsText=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const materialText=MATERIAL_SETTINGS_TEXT[languageCode]||MATERIAL_SETTINGS_TEXT.en;
@@ -97,13 +100,14 @@ export default function AccountingCodeSettings(){
      <TableBody>{visible.map(row=><TableRow key={row.id}>
       <TableCell><Typography fontWeight={700}>{row.code}</Typography></TableCell><TableCell>{name(row)}</TableCell>
       <TableCell>{(row.industries||[]).map(industry=>[name(industry.partnerRole),name(industry)].filter(Boolean).join(' > ')).join(', ')||'—'}</TableCell>
-      <TableCell>{row.materialSettings?.enabled?<Chip size="small" color="primary" label={materialText.enabled}/>:'—'}</TableCell><TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current,languageCode)}/>} </TableCell><TableCell><Stack direction="row">
+      <TableCell>{row.materialSettings?.enabled?<Chip size="small" color="primary" label={materialText.enabled}/>:'—'}</TableCell><TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip component="button" type="button" onClick={()=>setUsageRow(row)} aria-label={row.code+' · '+usageText.column+' · '+usageCountLabel(row.transactionUsage.current,languageCode)} size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current,languageCode)}/>} </TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
        <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory} usedReason={usageTitle(row)||undefined} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
       </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={7}>{text.empty}</TableCell></TableRow>}</TableBody>
     </Table></TableContainer>
    </HierarchyPanel>
   </PageContentStack>
+  <Dialog open={Boolean(usageRow)} onClose={()=>setUsageRow(null)} fullWidth maxWidth="xs"><DialogTitle>{usageRow?.code} · {usageText.details}</DialogTitle><DialogContent>{usageRow&&<Table size="small"><TableBody>{usageEntries(usageRow).map(item=><TableRow key={item.key}><TableCell>{item.label}</TableCell><TableCell align="right">{usageCountLabel(item.count,languageCode)}</TableCell></TableRow>)}</TableBody></Table>}</DialogContent><DialogActions><Button onClick={()=>setUsageRow(null)}>{(accountingCompactText[languageCode]||accountingCompactText.en).close}</Button></DialogActions></Dialog>
   <Dialog open={Boolean(form)} onClose={()=>!saving&&setForm(null)} fullWidth maxWidth={pickerOpen?'xl':'md'} slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)',transition:theme=>theme.transitions.create('max-width',{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}}}>
    <DialogTitle>{form?.id?dialogTitle('baseCodeEdit',languageCode):text.add}</DialogTitle>
    <DialogContent dividers>{form&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:pickerOpen?'minmax(0,1fr) 380px':'minmax(0,1fr) 0px'},columnGap:{xs:0,md:pickerOpen?2.5:0},rowGap:2.5,alignItems:'start',overflowX:'clip',transition:theme=>theme.transitions.create(['grid-template-columns','column-gap'],{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}>{error&&<Alert severity="error" sx={{gridColumn:'1 / -1'}}>{error}</Alert>}<Stack spacing={1.5} sx={{py:1,minWidth:0,display:{xs:showPicker?'none':'flex',md:'flex'}}}>

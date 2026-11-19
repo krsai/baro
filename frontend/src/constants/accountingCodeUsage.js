@@ -5,3 +5,7 @@ export const accountingCodeUsageText={
 };
 
 export const usageCountLabel=(count,language='ko')=>count==null?'—':language==='ko'?count+'건':count+' '+(accountingCodeUsageText[language]||accountingCodeUsageText.en).count;
+
+Object.assign(accountingCodeUsageText.ko,{details:'사용 내역·삭제 제한'});
+Object.assign(accountingCodeUsageText.en,{details:'Usage and deletion restrictions'});
+Object.assign(accountingCodeUsageText.vi,{details:'Sử dụng và hạn chế xóa'});

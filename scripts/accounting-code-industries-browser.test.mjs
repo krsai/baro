@@ -37,6 +37,10 @@ try{
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-code-industries-acceptance.html`);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
   const usageText=accountingCodeUsageText[lang];assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByText(usageCountLabel(0,lang),{exact:true}).waitFor();
+  await page.getByRole('button',{name:'ZIP · '+usageText.column+' · '+usageCountLabel(0,lang),exact:true}).click();
+  const usageDialog=page.getByRole('dialog');assert.equal(await usageDialog.getByRole('row').filter({hasText:usageText.past}).getByRole('cell').last().innerText(),usageCountLabel(1,lang));
+  for(const key of ['types','handled'])assert.equal(await usageDialog.getByRole('row').filter({hasText:usageText[key]}).getByRole('cell').last().innerText(),usageCountLabel(0,lang));
+  await page.keyboard.press('Escape');await usageDialog.waitFor({state:'hidden'});
   await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).waitFor();
   if(process.argv.includes('--subtitle-only')){for(const width of [1440,390]){await page.setViewportSize({width,height:900});assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();}assert.deepEqual(errors,[]);await page.close();continue;}
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);
