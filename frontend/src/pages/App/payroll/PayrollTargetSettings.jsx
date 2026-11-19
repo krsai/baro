@@ -1,7 +1,7 @@
 import React,{useCallback,useState} from 'react';
-import {Box,Button,Dialog,DialogTitle} from '@mui/material';
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import {Box,Dialog,DialogTitle} from '@mui/material';
 import ManagementTargetSettings from '../../../components/ManagementTargetSettings';
+import PageSettingsButton from '../../../components/PageSettingsButton';
 import {usePageDialogs} from '../../../components/PageDialogProvider';
 import {managementTargetText} from '../../../constants/managementTargets';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
@@ -23,7 +23,7 @@ export default function PayrollTargetSettings({orgId,languageCode='en',onSaved,d
   setOpen(false);setState({});
  };
  return <>
-  <Button variant="outlined" startIcon={<SettingsOutlinedIcon/>} disabled={disabled||!orgId} onClick={()=>{setState({});setOpen(true);}}>{t.title}</Button>
+  <PageSettingsButton label={t.title} disabled={disabled||!orgId} onClick={()=>{setState({});setOpen(true);}}/>
   <Dialog open={open} onClose={close} fullWidth maxWidth="lg" aria-labelledby="payroll-target-settings-title">
    <DialogTitle id="payroll-target-settings-title">{t.title}</DialogTitle>
    {open&&<Box sx={{overflowY:'auto'}}>

@@ -6,7 +6,7 @@ import { resolveScopedFactoryManagementStartDay } from '../../../utils/factoryMa
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import { isAttendanceEmployeeVisibleOnDate } from './attendanceEmployment';
 import PayrollSettingsDialog from '../payroll/PayrollSettingsDialog';
-import SettingsIcon from '@mui/icons-material/Settings';
+import PageSettingsButton from '../../../components/PageSettingsButton';
 import useWorkspaceRefreshOnEvent from '../../../hooks/useWorkspaceRefreshOnEvent';
 import { WORKSPACE_DATA_TOPICS } from '../../../utils/workspaceDataEvents';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -700,9 +700,11 @@ const AttendanceList = () => {
       title={getUiMessage('menu.attendance', 'Attendance', languageCode)}
       titleActions={(
         <Stack direction="row" spacing={1}>
-          <Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setSettingsOpen(true)} disabled={!activeOrgId || importingFile}>
-            {text({ ko: '관리 대상 설정', en: 'Manage Employees', vi: 'Đối tượng quản lý' }, languageCode)}
-          </Button>
+          <PageSettingsButton
+            label={text({ ko: '관리 대상 설정', en: 'Manage Employees', vi: 'Đối tượng quản lý' }, languageCode)}
+            onClick={() => setSettingsOpen(true)}
+            disabled={!activeOrgId || importingFile}
+          />
           <Button
             variant="outlined"
             startIcon={importingFile ? <CircularProgress size={16} /> : <UploadFileIcon />}

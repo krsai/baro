@@ -12,7 +12,7 @@ try{
  browser=await chromium.launch({executablePath:['C:/Program Files/Google/Chrome/Application/chrome.exe','/usr/bin/chromium'].find(existsSync),headless:true});
  for(const lang of ['ko','en','vi'])for(const width of [1440,430]){
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[],t=orderShipmentText[lang];page.setDefaultTimeout(10000);page.on('pageerror',error=>errors.push(error.message));
-  await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeProfile:{orgRole:window.testRole||"ADMIN"}});'}));
+  await page.route('**/src/context/AuthContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"MANUFACTURER",activeProfile:{orgRole:window.testRole||"ADMIN"}});'}));
   await page.route('**/src/context/LanguageContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',route=>route.fulfill({contentType:'application/javascript',body:`const actions={markTabChanged:()=>{},clearTabChanged:()=>{},showNotification:(message)=>{window.toasts=(window.toasts||[]).concat(message);},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>({...actions,navigateToPath:path=>window.testNavigate(path)});`}));
   let policy={excluded:false,version:0,reason:''},shipments=[],events=[];

@@ -7,6 +7,7 @@ import {useParams} from 'react-router-dom';
 import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,MenuItem,Typography,LinearProgress} from '@mui/material';
 import Alert from "../../components/AppNotice";
 import AppPageContainer from '../../components/AppPageContainer';
+import ManagementTargetSettingsButton from '../../components/ManagementTargetSettingsButton';
 import SaveButton from '../../components/SaveButton';
 import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
@@ -21,7 +22,8 @@ const number=value=>Number(value||0).toLocaleString('en-US');
 const errorText=(error,t)=>String(error.message).includes('SHIPPING_EXCEEDS_ORDER')?t.exceeds:String(error.message).includes('SHIPPING_CHANGED')?t.changed:String(error.message).includes('SHIPPING_EXCLUDED')?t.excluded:t.failed;
 export default function OrderShipments(){const {activeOrgId}=useAuth();const {orderId}=useParams();return <ShipmentWorkspace key={activeOrgId+':'+(orderId||'list')} orgId={activeOrgId} orderId={orderId}/>;}
 function ShipmentWorkspace({orgId,orderId}){
- const {activeProfile}=useAuth();const canManageTargets=activeProfile?.orgRole==='ADMIN';
+ const {activeOrgType,activeProfile}=useAuth();
+ const canManageTargets=activeOrgType==='MANUFACTURER'&&activeProfile?.orgRole==='ADMIN';
  const {languageCode}=useLanguage(),{navigateToPath,showNotification}=useAppActions(),t=orderShipmentText[languageCode]||orderShipmentText.en;
  const [q,setQ]=useState(''),[mode,setMode]=useState('TRACKED'),[page,setPage]=useState(0),[data,setData]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[reload,setReload]=useState(0);
  const [values,setValues]=useState({}),[date,setDate]=useState(today),[remark,setRemark]=useState(''),[busy,setBusy]=useState(false),[uncertain,setUncertain]=useState(false),[dialog,setDialog]=useState(null);
@@ -56,7 +58,15 @@ function ShipmentWorkspace({orgId,orderId}){
  const sizes=[...new Set((data?.cells||[]).map(cell=>cell.size))];
  const groups=[...new Map((data?.cells||[]).map(cell=>[cell.itemId,cell])).values()];
  const totals=data?.totals;
- return <AppPageContainer title={t.title} titleActions={orderId?<Stack direction="row" spacing={1}><Button disabled={busy||uncertain} onClick={()=>navigateToPath('/order-shipments')}>{t.back}</Button>{canManageTargets&&<Button variant="outlined" disabled={locked||dirty||!data} onClick={()=>setDialog({kind:'policy',excluded:!excluded,reason:'',clientKey:crypto.randomUUID()})}>{excluded?t.resume:t.exclude}</Button>}</Stack>:null}>
+ const actions = orderId ? (
+  <Stack direction="row" spacing={1}>
+   <Button disabled={busy||uncertain} onClick={()=>navigateToPath('/order-shipments')}>{t.back}</Button>
+   {canManageTargets&&<Button variant="outlined" disabled={locked||dirty||!data} onClick={()=>setDialog({kind:'policy',excluded:!excluded,reason:'',clientKey:crypto.randomUUID()})}>{excluded?t.resume:t.exclude}</Button>}
+  </Stack>
+ ) : canManageTargets ? (
+  <ManagementTargetSettingsButton orgId={orgId} languageCode={languageCode} kind="SHIPPING" />
+ ) : null;
+ return <AppPageContainer title={t.title} titleActions={actions}>
   <Stack spacing={2}>
    {loading&&<LinearProgress/>}{error&&<Alert severity="error">{error}</Alert>}
    {!orderId?<>

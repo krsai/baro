@@ -1,13 +1,13 @@
 import React, {useEffect,useRef,useState} from 'react';
-import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,ListItemButton,Paper,Stack,Tooltip,Typography} from '@mui/material';
+import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,ListItemButton,Paper,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import {DragDropContext,Draggable,Droppable} from '@hello-pangea/dnd';
 import {usePageDialogs} from './PageDialogProvider';
 import SaveButton from './SaveButton';
+import PageSettingsButton from './PageSettingsButton';
 import SearchInput from './SearchInput';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
@@ -67,7 +67,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
  const errorCode=({SHIPPING_CHANGED:'TARGET_CHANGED',SHIPPING_REASON_REQUIRED:'TARGET_REASON_REQUIRED',SHIPPING_ACCESS_DENIED:'TARGET_ACCESS_DENIED'})[error]||error;
  const errorMessage=t[errorCode]||(payrollManagementText[languageCode]||payrollManagementText.en)[errorCode]||t.saveFailed;
  return <>
-  {!embedded&&<Tooltip title={t[kind]}><span><IconButton aria-label={t[kind]} disabled={disabled||!orgId} onClick={show}><SettingsOutlinedIcon/></IconButton></span></Tooltip>}
+  {!embedded&&<PageSettingsButton label={t[kind]} disabled={disabled||!orgId} onClick={show}/>}
   <Container {...(embedded?{}:{open,onClose:close,fullWidth:true,maxWidth:'md','aria-labelledby':'target-settings-'+kind})}>
    {!embedded&&<DialogTitle id={'target-settings-'+kind}>{t[kind]}</DialogTitle>}
    <DialogContent><Stack spacing={2} sx={{pt:1}}>

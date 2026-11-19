@@ -55,6 +55,10 @@ try {
       }`);
     await page.goto('http://127.0.0.1:' + port + '/management-target-save-test.html?kind=' + kind + '&lang=' + lang);
     const trigger = page.getByRole('button').first();
+    await trigger.waitFor();
+    assert.equal((await trigger.textContent()).trim(), '');
+    assert.equal(await trigger.locator('svg').count(), 1);
+    assert.ok(await trigger.getAttribute('aria-label'));
     await trigger.click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor();

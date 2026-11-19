@@ -1,9 +1,9 @@
 import React, { useId, useState } from 'react';
-import { Box, Button, Dialog, DialogTitle } from '@mui/material';
-import SettingsOutlinedIcon from '@mui/icons-material/SettingsOutlined';
+import { Box, Dialog, DialogTitle } from '@mui/material';
 import { managementTargetText } from '../constants/managementTargets';
 import useUnsavedChanges from '../hooks/useUnsavedChanges';
 import ManagementTargetSettings from './ManagementTargetSettings';
+import PageSettingsButton from './PageSettingsButton';
 import { usePageDialogs } from './PageDialogProvider';
 
 export default function ManagementTargetSettingsButton({ orgId, languageCode = 'en', kind }) {
@@ -23,9 +23,7 @@ export default function ManagementTargetSettingsButton({ orgId, languageCode = '
   };
 
   return <>
-    <Button variant="outlined" startIcon={<SettingsOutlinedIcon />} disabled={!orgId} onClick={() => setOpen(true)}>
-      {text[kind]}
-    </Button>
+    <PageSettingsButton label={text[kind]} disabled={!orgId} onClick={() => setOpen(true)} />
     <Dialog open={open} onClose={close} fullWidth maxWidth="md" aria-labelledby={titleId}>
       <DialogTitle id={titleId}>{text[kind]}</DialogTitle>
       {open && <Box sx={{ overflowY: 'auto' }}>

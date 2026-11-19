@@ -21,10 +21,12 @@ import { MemoryRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import theme from '/src/theme';
 import OrderList from '/src/pages/App/order/OrderList.jsx';
 import InvoiceWorkspace from '/src/pages/App/invoice/InvoiceWorkspace.jsx';
+import OrderShipments from '/src/pages/App/OrderShipments.jsx';
 function Menus() {
   window.testNavigate = useNavigate();
   return React.createElement(Routes, null,
     React.createElement(Route, { path: '/order', element: React.createElement(OrderList) }),
+    React.createElement(Route, { path: '/order-shipments', element: React.createElement(OrderShipments) }),
     React.createElement(Route, { path: '/invoices', element: React.createElement(InvoiceWorkspace) })
   );
 }
@@ -38,7 +40,7 @@ const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host
 });
 
 async function configurePage(page, language, orgType, orgRole) {
-  const reads = [], writes = [];
+  const reads = [], writes = [], shipmentReads = [];
   const saved = { INVOICE: { excluded: false, revision: 0 }, SHIPPING: { excluded: false, revision: 0 } };
   const stub = (name, body) => page.route('**/src/context/' + name + '.jsx*', route => route.fulfill({ contentType: 'application/javascript', body }));
   await stub('AuthContext', 'const auth=' + JSON.stringify({ activeOrgId: 1, activeOrgType: orgType, activeProfile: { entryType: 'ORG', orgType, orgRole } }) + ';export const useAuth=()=>auth;');
@@ -71,9 +73,18 @@ async function configurePage(page, language, orgType, orgRole) {
       } });
     }
     if (url.pathname === '/invoices/issued') return route.fulfill({ headers, json: { rows: [], hasMore: false } });
+    if (url.pathname === '/orders/shipments') {
+      const mode = url.searchParams.get('mode');
+      const { excluded } = saved.SHIPPING;
+      shipmentReads.push(mode);
+      const rows = mode === 'ALL' || (mode === 'EXCLUDED') === excluded
+        ? [{ id: 17, orderNumber: 'SHIP-LIST-ORDER', customer: 'Partner', ordered: 20, shipped: 5, excluded }]
+        : [];
+      return route.fulfill({ headers, json: { rows, page: 0, total: rows.length } });
+    }
     return route.fulfill({ headers, json: [] });
   });
-  return { reads, writes, saved };
+  return { reads, writes, saved, shipmentReads };
 }
 
 let browser;
@@ -90,16 +101,31 @@ try {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const { reads, writes, saved } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
+    const { reads, writes, saved, shipmentReads } = await configurePage(page, language, 'MANUFACTURER', 'ADMIN');
     const labels = managementTargetText[language];
     const button = kind => page.getByRole('button', { name: labels[kind], exact: true });
     await page.goto(origin + '/' + filename);
+    await page.getByRole('heading', { level: 1 }).waitFor();
+    assert.equal(await button('SHIPPING').count(), 0);
+    assert.equal(await button('INVOICE').count(), 0);
+    await page.evaluate(() => window.testNavigate('/order-shipments'));
     await button('SHIPPING').waitFor();
+    const shipment = page.locator('main table').getByText('SHIP-LIST-ORDER', { exact: true });
+    await shipment.waitFor();
     assert.equal(await button('INVOICE').count(), 0);
     assert.deepEqual(reads, []);
 
     async function changeTarget(kind) {
-      await button(kind).click();
+      const gear = button(kind);
+      assert.equal((await gear.textContent()).trim(), '', 'settings trigger displays only the gear');
+      assert.equal(await gear.locator('svg').count(), 1);
+      assert.equal(await gear.getAttribute('aria-haspopup'), 'dialog');
+      if (width === 1440) {
+        await gear.hover();
+        await page.getByRole('tooltip', { name: labels[kind], exact: true }).waitFor();
+      }
+      await gear.focus();
+      await page.keyboard.press('Enter');
       const dialog = page.getByRole('dialog', { name: labels[kind], exact: true });
       await dialog.waitFor();
       assert.equal(await dialog.getByRole('tab').count(), 0);
@@ -121,6 +147,8 @@ try {
     }
 
     await changeTarget('SHIPPING');
+    await shipment.waitFor({ state: 'hidden' });
+    assert.ok(shipmentReads.filter(mode => mode === 'TRACKED').length >= 2, 'shipment list reloads after saving target inclusion');
     assert.equal(saved.INVOICE.excluded, false);
     assert.ok(reads.length > 0 && reads.every(kind => kind === 'SHIPPING'));
     const previousReadCount = reads.length;
@@ -147,6 +175,9 @@ try {
     await page.goto(origin + '/' + filename);
     await page.getByRole('heading', { level: 1 }).waitFor();
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.SHIPPING, exact: true }).count(), 0);
+    await page.evaluate(() => window.testNavigate('/order-shipments'));
+    await page.locator('main table').getByText('SHIP-LIST-ORDER', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: managementTargetText.en.SHIPPING, exact: true }).count(), 0);
     await page.evaluate(() => window.testNavigate('/invoices'));
     await page.getByRole('button', { name: invoiceMessages.en.newInvoice, exact: true }).waitFor();
     assert.equal(await page.getByRole('button', { name: managementTargetText.en.INVOICE, exact: true }).count(), 0);
@@ -154,7 +185,7 @@ try {
     assert.deepEqual(writes, []);
     await page.close();
   }
-  console.log('PASS order and invoice menus: ko/en/vi desktop/mobile, separate settings, scoped saves and manufacturer admin access.');
+  console.log('PASS shipment and invoice menus: ko/en/vi desktop/mobile, gear, tooltip, keyboard, scoped saves, shipment refresh and manufacturer admin access.');
 } finally {
   await browser?.close();
   server.kill();

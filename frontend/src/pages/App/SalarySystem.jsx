@@ -17,12 +17,12 @@ import {Box,Button,Checkbox,Chip,Dialog,DialogActions,DialogContent,DialogTitle,
 import AddIcon from '@mui/icons-material/Add';
 import FunctionsIcon from '@mui/icons-material/Functions';
 import HistoryIcon from '@mui/icons-material/History';
-import SettingsIcon from '@mui/icons-material/Settings';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import DragIndicatorIcon from '@mui/icons-material/DragIndicator';
 import { DragDropContext, Draggable, Droppable } from '@hello-pangea/dnd';
 import AppPageContainer from '../../components/AppPageContainer';
+import PageSettingsButton from '../../components/PageSettingsButton';
 import SaveButton from '../../components/SaveButton';
 import { currentVersionMonth, versionTimelineMonths } from '../../utils/versionApplication.mjs';
 import PayTypeScheduleSettingsDialog from './PayTypeScheduleSettingsDialog';
@@ -518,7 +518,12 @@ const SalarySystem = () => {
     <TextField size="small" label={t('상한값 (선택)')} value={value.capValue || ''} onChange={(e) => onChange('capValue', optionalMoney(e.target.value))} placeholder={t('계산 결과 최대 금액')} inputProps={{ inputMode: 'numeric', style: { textAlign: 'right' } }} InputProps={{ startAdornment: <InputAdornment position="start">{currencySymbol(currencyCode)}</InputAdornment> }} />
   </>;
 
-  return <AppPageContainer title={t('급여 설정')} titleActions={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><Button variant="outlined" onClick={() => setEmployeePreviewOpen(true)}>{languageCode === 'ko' ? '직원별 예상 급여' : languageCode === 'vi' ? 'Lương dự kiến theo nhân viên' : 'Employee salary estimate'}</Button><Button variant="outlined" startIcon={<SettingsIcon />} onClick={() => setScheduleSettingsOpen(true)}>{t('설정')}</Button></Stack>}><Box sx={{ width: '100%' }}>
+  return <AppPageContainer title={t('급여 설정')} titleActions={
+    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+      <Button variant="outlined" onClick={() => setEmployeePreviewOpen(true)}>{languageCode === 'ko' ? '직원별 예상 급여' : languageCode === 'vi' ? 'Lương dự kiến theo nhân viên' : 'Employee salary estimate'}</Button>
+      <PageSettingsButton label={t('설정')} onClick={() => setScheduleSettingsOpen(true)} />
+    </Stack>
+  }><Box sx={{ width: '100%' }}>
     <EmployeeSalaryPreview open={employeePreviewOpen} onClose={() => setEmployeePreviewOpen(false)} orgId={activeOrgId} languageCode={languageCode} />
     <StaleEditNotice stale={edit.stale && isRouteActive} dirty={isDirty || hasVersionBoundaryChanges || dialogOpen || formulaDialogOpen} busy={saving || versionBusy} languageCode={languageCode} onRefresh={async () => { const result = await load(); if (result) { setVersionDialogOpen(false); setDialogOpen(false); setFormulaDialogOpen(false); setVersionBoundaries({}); setSavedVersionBoundaries({}); } }} />
     {factories.length > 0 && <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'stretch', md: 'center' }} spacing={1} sx={{ mb: 2, borderBottom: 1, borderColor: 'divider' }}>
