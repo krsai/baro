@@ -67,15 +67,9 @@ try{
   await page.getByTestId('account-status-panel').getByRole('button',{name:o.receivable,exact:true}).click();
   assert.equal(await outstandingDialog.getByRole('tab',{name:o.receivable,exact:true}).getAttribute('aria-selected'),'true');
   await page.keyboard.press('Escape');
-  const chartCurrency=page.locator('#overview-currency'),chartAccount=page.locator('#overview-account'),chartPeriod=page.locator('#overview-period');
-  assert.equal(await chartCurrency.evaluate(el=>getComputedStyle(el).textAlign),'left');
-  const cb=await chartCurrency.boundingBox(),pb=await chartPeriod.boundingBox();assert.ok(pb.x>cb.x+cb.width);
-  await chartCurrency.click();await page.getByRole('option',{name:'USD',exact:true}).click();assert.equal(await page.getByTestId('all-account-balance').textContent(),'$100.02');
-  assert.equal(await page.getByTestId('final-balance').textContent(),'$155.58');
-  assert.ok((await page.getByTestId('account-balance-chart').innerText()).includes('$100.02'));
-  await chartAccount.click();await page.getByRole('option',{name:'Bank',exact:true}).click();assert.ok((await page.getByTestId('account-balance-chart').innerText()).includes('$0.02'));
-  assert.equal(await page.getByTestId('final-balance').textContent(),'$155.58');
-  await page.getByRole('listbox').waitFor({state:'hidden'});await chartAccount.click();await page.getByRole('option',{name:o.all,exact:true}).click();
+  const chartPeriod=page.locator('#overview-period');
+  assert.equal(await page.locator('#overview-currency, #overview-account, [data-search-filters]').count(),0);
+  const pb=await chartPeriod.boundingBox(),capture=await page.getByRole('button',{name:o.capture,exact:true}).boundingBox();assert.ok(pb.x+pb.width<=capture.x,'period precedes image save');
   for(const n of [3,6,12,1]){await page.getByRole('listbox').waitFor({state:'hidden'});await chartPeriod.click();await page.getByRole('option',{name:n+' '+o.monthUnit,exact:true}).click();await page.waitForFunction(n=>document.querySelector('[data-testid="account-balance-chart"] polyline')?.getAttribute('points').split(' ').length===n,accountHistoryPeriod('2026-10-30',n).days);}
   assert.ok(await page.getByTestId('account-balance-chart').locator('svg text').count()<=13);
   if(process.argv.includes('--overview-only')){
@@ -84,16 +78,16 @@ try{
    const refresh=()=>page.evaluate(()=>dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{orgId:1,source:'bank-ledger'}})));
    outstandingTotals=[{currencyCode:'USD',receivable:'0',payable:'200.01',customerCredit:'3.01'}];
    await refresh();
-   await finalBalance.filter({hasText:'-$103.00'}).waitFor();
+   await finalBalance.filter({hasText:'-₫2,575,000'}).waitFor();
    outstandingTotals=[];
    await refresh();
-   await finalBalance.filter({hasText:'$100.02'}).waitFor();
+   await finalBalance.filter({hasText:'₫2,500,500'}).waitFor();
    exchangeRatesUnavailable=true;
    await refresh();
    await finalBalance.filter({hasText:'—'}).waitFor();
    exchangeRatesUnavailable=false;
    await page.getByRole('alert').filter({hasText:o.fxUnavailable}).getByRole('button',{name:o.retry,exact:true}).click();
-   await finalBalance.filter({hasText:'$100.02'}).waitFor();
+   await finalBalance.filter({hasText:'₫2,500,500'}).waitFor();
    assert.deepEqual(errors,[]);await page.close();continue;
   }
   assert.equal(await page.getByText('Company',{exact:true}).count(),0);assert.equal(await page.getByRole('dialog').count(),0);assert.equal(await page.locator('thead').first().locator('th').nth(1).evaluate(el=>getComputedStyle(el).textAlign),'right');await page.evaluate(()=>window.testNavigate('/bank-ledger'));await page.getByRole('button',{name:t.addEntry,exact:true}).waitFor();
