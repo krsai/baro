@@ -10,6 +10,7 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
   // Required input is independent of the existing production-record workflow.
   const recordsProduction=production ?? (process && code.base?.entryMode==='PROCESS');
   const materialSettings=code.base?.materialSettings?industryMaterialSettings(inputSettings?.materialSettings??code.base.materialSettings,code.base.materialSettings.enabled===true,{...code.base,...inputSettings,...(inputSettings?{attributeInputs:inputSettings.attributeInputs??{}}:{})}):undefined;
+  if(materialSettings&&code.base.materialSettings.masterInputs!==undefined)materialSettings.masterInputs=code.base.materialSettings.masterInputs;
   return {...code,linkReferenceVersion:2,linkTarget:target,linkPolicyAuditId:auditId,base:{...code.base,
     entryMode:recordsProduction?'PROCESS':'GENERAL',orderInput:target!=='NONE'?'REQUIRED':code.base?.orderInput==='OPTIONAL'?'OPTIONAL':'HIDDEN',
     styleInput:process||target==='STYLE'?'REQUIRED':code.base?.styleInput==='OPTIONAL'?'OPTIONAL':'HIDDEN',processInput:process?'REQUIRED':preservedProcess||code.base?.processInput==='OPTIONAL'?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...inputSettings}:{}),...(materialSettings?{materialSettings}:{})}};

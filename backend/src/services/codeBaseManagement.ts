@@ -58,7 +58,7 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   if(materialSettings!==undefined){
     data.materialSettings=accountingInputs({...data,materialSettings}).materialSettings;
     if(previous&&body.materialSettings!==undefined&&body.materialRevision!==previous.materialRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
-    if(previous&&(!isDeepStrictEqual(previous.materialSettings,data.materialSettings)||data.materialSettings.enabled&&(!isDeepStrictEqual(previous.attributeInputs,data.attributeInputs)||!isDeepStrictEqual(previous.requiredFields,data.requiredFields)))){
+    if(previous&&(!isDeepStrictEqual(previous.materialSettings,data.materialSettings)||data.materialSettings.enabled&&data.materialSettings.masterInputs===undefined&&(!isDeepStrictEqual(previous.attributeInputs,data.attributeInputs)||!isDeepStrictEqual(previous.requiredFields,data.requiredFields)))){
       if(body.materialRevision!==previous.materialRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
       data.materialRevision={increment:1};
     }

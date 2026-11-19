@@ -5,6 +5,7 @@ import {effectiveExpenseCode} from './expenseCodeLinkPolicy';
 import {prepareCodeItemAttributes} from './codeItemAttributes';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 import {validLocalizedName,normalizeLocalizedName} from '../utils/localizedName';
+import {materialMasterCode} from './materialCodeSettings';
 
 const fail=(code:string):never=>{throw createHttpError(400,code);};
 export const materialSnapshot=(row:any)=>({id:row.id,baseId:row.baseId,industryId:row.industryId,unitId:row.unitId,...row.data});
@@ -28,7 +29,8 @@ export async function prepareLedgerMaterial(tx:any,orgId:number,body:any,previou
  return prepareMaterialSelection(tx,orgId,code,body,historical);
 }
 export async function registerMaterialItem(tx:any,orgId:number,actorId:number,body:any){
- if(!validLocalizedName(body,100)||typeof body.clientKey!=='string'||!/^[\w-]{8,100}$/.test(body.clientKey))fail('INVALID_MATERIAL_ITEM');
+ const named=['nameEn','nameKo','nameVi'].some(key=>typeof body[key]==='string'&&body[key].trim());
+ if(named&&!validLocalizedName(body,100)||['nameEn','nameKo','nameVi'].some(key=>body[key]!=null&&typeof body[key]!=='string')||typeof body.clientKey!=='string'||!/^[\w-]{8,100}$/.test(body.clientKey))fail('INVALID_MATERIAL_ITEM');
  if(!Number.isSafeInteger(body.baseId)||body.baseId<=0||!Number.isSafeInteger(body.unitId)||body.unitId<=0||body.colorId!=null&&(!Number.isSafeInteger(body.colorId)||body.colorId<=0))fail('INVALID_MATERIAL_ITEM');
  const requestHash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
  const previous=await tx.materialItem.findUnique({where:{orgId_clientKey:{orgId,clientKey:body.clientKey}}});
@@ -45,7 +47,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  if(!local)fail('INVALID_MATERIAL_CODE');
  const policy=await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId:base.id}}});
  if(body.policyAuditId!==(policy?.auditId??null))throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
- const code=effectiveExpenseCode(local,policy),attributes=await prepareCodeItemAttributes(tx,orgId,body,code);
+ const code=materialMasterCode(effectiveExpenseCode(local,policy)),attributes=await prepareCodeItemAttributes(tx,orgId,body,code);
  const details:any={};for(const key of ['length','width','height'])if(body.details?.[key])details[key]=String(body.details[key]).trim();
  const dimensions=code.base.requiredFields?.includes('length');
  if(dimensions){for(const key of ['length','width','height'])if(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key]||'')||Number(details[key])<=0)fail('INVALID_MATERIAL_DIMENSIONS');}
@@ -54,7 +56,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const color=body.colorId?await tx.attrColor.findUnique({where:{id:body.colorId}}):null;
  const colorMode=code.base.materialSettings?.colorInput??'HIDDEN';
  if(body.colorId&&!color||colorMode==='REQUIRED'&&!color||colorMode==='HIDDEN'&&color)fail('INVALID_MATERIAL_COLOR');
- const data={...normalizeLocalizedName(body),...attributes,details,unit,color,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
+ const data={...normalizeLocalizedName(named?body:base),...attributes,details,unit,color,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
  const identityDetails=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,new Prisma.Decimal(value as string).toString()]));
  const identityKey=createHash('sha256').update(JSON.stringify({name:data.nameEn.toUpperCase(),owner:attributes.itemOwnerOrgId,customer:attributes.itemCustomerId,type:attributes.itemTypeId,unitId:unit.id,colorId:color?.id??null,details:identityDetails})).digest('hex');
  return tx.materialItem.create({data:{id:randomUUID(),orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,ownerOrgId:attributes.itemOwnerOrgId??null,customerId:attributes.itemCustomerId??null,typeId:attributes.itemTypeId??null,colorId:color?.id??null,policyAuditId:policy?.auditId??null,data,identityKey,clientKey:body.clientKey,requestHash,createdByEmployeeId:actorId}});
@@ -80,7 +82,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const codes=await db.transactionCode.findMany({where:{ownerOrgId:scope.orgId,isActive:true,base:{isActive:true}},include:{base:{include:{industryLinks:{include:{industry:{include:{retirement:true}}}}}}}});
   const policies=await db.expenseCodeLinkPolicy.findMany({where:{orgId:scope.orgId}});
-  const seen=new Set();res.json({codes:codes.filter((code:any)=>code.base?.materialSettings?.enabled&&!seen.has(code.baseId)&&seen.add(code.baseId)).map((code:any)=>effectiveExpenseCode(code,policies.find((p:any)=>p.baseId===code.baseId))),units:await db.expenseUnit.findMany({where:{isActive:true},orderBy:{sortOrder:'asc'}}),colors:await db.attrColor.findMany({orderBy:{code:'asc'}})});
+ const seen=new Set();res.json({codes:codes.filter((code:any)=>code.base?.materialSettings?.enabled&&!seen.has(code.baseId)&&seen.add(code.baseId)).map((code:any)=>materialMasterCode(effectiveExpenseCode(code,policies.find((p:any)=>p.baseId===code.baseId)))),units:await db.expenseUnit.findMany({where:{isActive:true},orderBy:{sortOrder:'asc'}}),colors:await db.attrColor.findMany({orderBy:{code:'asc'}})});
  });
  app.post('/material-items',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;

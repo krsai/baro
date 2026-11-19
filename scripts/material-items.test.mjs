@@ -32,7 +32,7 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
   await db.accountingCodeIndustry.upsert({where:{baseId_systemIndustryId:{baseId:base.id,systemIndustryId:base.serviceTypeId}},create:{baseId:base.id,systemIndustryId:base.serviceTypeId},update:{}});
   const industry=await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true,materialManagementRevision:{increment:1}}});
-  const configured=await db.transactionCodeBase.update({where:{id:base.id},data:{attributeInputs:{owner:'REQUIRED'},requiredFields:['length','width'],materialSettings:{enabled:true,stockFields:['unit','dimensions'],colorInput:'HIDDEN',unitInput:'REQUIRED'},materialRevision:{increment:1}}});
+  const configured=await db.transactionCodeBase.update({where:{id:base.id},data:{attributeInputs:{},requiredFields:[],materialSettings:{enabled:true,stockFields:['unit'],colorInput:'HIDDEN',unitInput:'REQUIRED',masterInputs:{owner:'REQUIRED',dimensions:'REQUIRED',type:'HIDDEN',color:'HIDDEN',customer:'HIDDEN'}},materialRevision:{increment:1}}});
   const oldForm=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(legacy.id)));
   const oldChange=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'UPDATE',reason:'Update old evidence without inventing material',sourceKind:'request',sourceId:String(legacy.id),revision:oldForm.revision,payload:{...oldForm,clientKey:randomUUID(),remark:'Kept legacy material fields'},selection:{},clientKey:randomUUID()});
   if(oldChange.status!=='APPROVED')await decideChangeApproval(db,org,actor,oldChange.id,{decision:'APPROVED'});
@@ -45,8 +45,11 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const unit=await db.expenseUnit.create({data:{code:'TEST_UNIT',nameKo:'개',nameEn:'Each',nameVi:'Cái'}});
   const body={clientKey:randomUUID(),policyAuditId:null,baseId:base.id,nameKo:'테스트 박스',nameEn:'TEST BOX',nameVi:'Hộp thử',unitId:unit.id,itemOwnerOrgId:org,details:{length:'100',width:'200',height:'300'},materialRevision:configured.materialRevision,industryRevision:industry.materialManagementRevision};
   const create=body=>db.$transaction(tx=>registerMaterialItem(tx,org,actor,body));
+  await assert.rejects(create({...body,clientKey:randomUUID(),itemOwnerOrgId:null}),/REQUIRED_ITEM_OWNER/);
   await assert.rejects(create({...body,clientKey:randomUUID(),details:{length:'100',width:'200'}}),/INVALID_MATERIAL_DIMENSIONS/);
   const item=await create(body);assert.equal((await create(body)).id,item.id);
+  assert.deepEqual(configured.requiredFields,[]);assert.deepEqual(configured.attributeInputs,{});
+  assert.deepEqual(item.data.inputSettings.requiredFields,['length','width']);
   const routes=new Map(),app={get:(path,handler)=>routes.set('GET '+path,handler),post:(path,handler)=>routes.set('POST '+path,handler)},features=[];
   const gates={requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async scope=>{features.push(scope.feature);return true;}};
   registerMaterialItemRoutes(app,db,gates);registerCodeItemAttributeRoutes(app,db,gates);
@@ -71,6 +74,10 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const original=await db.partnerTransactionCost.findUnique({where:{id:cost.id}});
   await db.$transaction(tx=>saveCodeBase(tx,{...configured,nameEn:'Renamed material category',industryIds:[industry.id],industryRevision:configured.industryRevision},base.id));
   assert.deepEqual((await db.materialItem.findUnique({where:{id:item.id}})).data,item.data,'renaming the code preserves the registered master and its original industry FK');
+  const current=await db.transactionCodeBase.findUnique({where:{id:base.id}});
+  const generated=await create({...body,clientKey:randomUUID(),nameEn:'',nameKo:'',nameVi:'',materialRevision:current.materialRevision});
+  assert.equal(generated.data.nameEn,'Renamed material category');assert.equal(generated.ownerOrgId,org);assert.equal(generated.data.details.height,'300');
+  const separationMigration=readFileSync('backend/prisma/migrations/20261119150000_material_master_inputs/migration.sql','utf8');await f.pg.exec(separationMigration);await f.pg.exec(separationMigration);
   const migration=readFileSync('backend/prisma/migrations/20261119120000_material_item_master/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
   assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:cost.id}}),original);
  }finally{await f.close();}
