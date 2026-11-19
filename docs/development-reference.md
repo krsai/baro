@@ -1985,6 +1985,7 @@ SHA-256은 원문의 줄바꿈을 LF로 정규화한 기준입니다.
 - **원인**: 스타일 검색 드롭다운(`SearchableSelect`)이 별도 `filterOptions`를 넘기지 않아 기본 검색 로직(`autocompleteSearch.js`)을 그대로 썼다. 이 기본 로직은 옵션 객체의 모든 원시값 필드를 검색 대상에 포함하는데, 스타일 옵션 객체에 `customer`(고객사명) 필드가 들어있었다. 주문 상세의 스타일 후보 목록은 이미 그 주문의 고객사 하나로 좁혀져 있어 모든 후보의 `customer`가 동일한 값("THE SAN")이므로, 고객사명의 일부("SAN")를 입력해도 전부 매칭되어 필터가 안 걸리는 것처럼 보였다.
 - **수정**: 스타일 검색 전용 필터 함수(`filterStyleAutocompleteOptions`)를 만들어 스타일코드·스타일명 두 필드만 검색 대상으로 좁혔다(`frontend/src/pages/App/order/OrderList.jsx`). 세로형·가로형 두 레이아웃의 스타일 검색란 모두에 적용했다. 색상·성별 등 다른 검색란은 이번 범위에서 손대지 않았다.
 - `scripts/order-list-filter-regression.test.mjs`에 고객사명으로는 매칭되지 않고 스타일코드/스타일명으로는 매칭되는지, 두 레이아웃 모두 이 필터가 실제로 연결돼 있는지 확인하는 테스트를 추가하고 `test:regression`에 연결했다.
+- 주문 등록·수정의 가로·세로 스타일 선택에는 스타일 API의 `styleCode`를 공통 선택의 `code`로 전달한다. 모달 코드 열과 유일한 정확 일치는 이 값을 읽고, 확정한 주문 항목은 실제 `styleId`를 사용한다. 스타일명으로 생성한 코드와 직접 입력한 코드는 모두 저장된 값으로 표시한다. 발주 회사 FK로 후보를 제한하며 `node scripts/order-style-lookup-browser.test.mjs`로 두 레이아웃을 검증한다.
 
 ## 2026-09-10 공정 버전 저장이 SNAPSHOT_REFERENCE_INVALID로 계속 실패하던 두 번째 사전 검사 제거
 

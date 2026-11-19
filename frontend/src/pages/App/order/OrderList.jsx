@@ -1639,21 +1639,21 @@ const OrderList = () => {
         .map((style) => ({
           id: style.id,
           name: style.name || '',
-          styleCode: style.styleCode || '',
+          code: style.styleCode || '',
           customer: style.customer || '',
           customerOrgId: style.customerOrgId,
         }))
         .sort((a, b) => {
-          const labelA = String(a.name || a.styleCode || '').trim();
-          const labelB = String(b.name || b.styleCode || '').trim();
+          const labelA = String(a.name || a.code || '').trim();
+          const labelB = String(b.name || b.code || '').trim();
           const byLabel = labelA.localeCompare(
             labelB,
             languageCode === 'ko' ? 'ko' : undefined,
             { numeric: true, sensitivity: 'base' }
           );
           if (byLabel !== 0) return byLabel;
-          return String(a.styleCode || '').localeCompare(
-            String(b.styleCode || ''),
+          return a.code.localeCompare(
+            b.code,
             undefined,
             { numeric: true, sensitivity: 'base' }
           );
@@ -1785,19 +1785,12 @@ const OrderList = () => {
   const getSelectedColorOption = (item) => getResolvedColorOption(item);
   const getSelectedGenderOption = (item) =>
     genderOptionByCode.get(normalizeGenderCode(item?.gender, '')) || null;
-  // SearchableSelect's default filter matches against every primitive field
-  // on the option object (see collectPrimitiveValues in autocompleteSearch.js),
-  // which for a style option includes `customer`. availableStyleOptions is
-  // already narrowed to the order's single buyer, so every option shares the
-  // same customer name - typing part of that name (e.g. "SAN" matching
-  // "THE SAN") then matched every style and made the filter look like it
-  // wasn't narrowing anything down. Only match on the fields a user is
-  // actually searching by here: style code and name.
+  // The buyer is selected separately. Search the matching styles by code and name.
   const filterStyleAutocompleteOptions = (options, params) => {
     const inputValue = params?.inputValue ?? '';
     return (Array.isArray(options) ? options : []).filter((option) =>
       matchesAutocompleteSearch(
-        { name: option?.name, styleCode: option?.styleCode },
+        { name: option?.name, code: option?.code },
         inputValue,
         (candidate) => candidate?.name || ''
       )
@@ -2407,7 +2400,7 @@ const OrderList = () => {
 
     const nextStyleId = style?.id || '';
     const nextStyleName = style?.name || '';
-    const nextStyleCode = style?.styleCode || '';
+    const nextStyleCode = style?.code || '';
     const nextStyleIdentity = nextStyleId || nextStyleName || nextStyleCode;
 
     const previewItems = formData.items.map((item) =>
@@ -3610,7 +3603,7 @@ const OrderList = () => {
                         ? {
                             id: group.styleId || `group-${group.key}`,
                             name: group.styleName,
-                            styleCode: group.styleCode || '',
+                            code: group.styleCode || '',
                             customer: selectedBuyerName,
                           }
                         : null);
@@ -4051,7 +4044,7 @@ const OrderList = () => {
                             ? {
                                 id: group.styleId || `group-${group.key}`,
                                 name: group.styleName,
-                                styleCode: group.styleCode || '',
+                                code: group.styleCode || '',
                                 customer: selectedBuyerName,
                               }
                             : null);

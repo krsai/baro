@@ -58,18 +58,19 @@ test('order row style search matches style code/name only, not the shared custom
   // default SearchableSelect filter matches against every primitive field on
   // the option object, so typing part of the customer name (e.g. "SAN"
   // matching "THE SAN") matched every style and made the filter look broken.
-  // filterStyleAutocompleteOptions strips the option down to name/styleCode
+  // filterStyleAutocompleteOptions strips the option down to name/code
   // before matching - reproduce that stripping here directly.
-  const styleOption = { id: 3, name: 'AM01622', styleCode: 'AM01622', customer: 'THE SAN' };
+  const styleOption = { id: 3, name: 'AM01622', code: 'CUSTOM-016', customer: 'THE SAN' };
   const matchesNarrowed = (option, inputValue) =>
     matchesAutocompleteSearch(
-      { name: option.name, styleCode: option.styleCode },
+      { name: option.name, code: option.code },
       inputValue,
       (candidate) => candidate?.name || ''
     );
   assert.equal(matchesNarrowed(styleOption, 'SAN'), false);
   assert.equal(matchesNarrowed(styleOption, 'AM01622'), true);
   assert.equal(matchesNarrowed(styleOption, '01622'), true);
+  assert.equal(matchesNarrowed(styleOption, 'CUSTOM-016'), true);
 
   // Also guard the actual wiring: both the vertical and horizontal order
   // detail layouts render a style SearchableSelect off availableStyleOptions,
