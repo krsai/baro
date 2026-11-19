@@ -11,16 +11,14 @@
   position: absolute;
   z-index: -2;
   inset: 0;
-  background: radial-gradient(ellipse at 90% 10%, #c8dcfa 0%, transparent 48%), radial-gradient(ellipse at 70% 95%, #c8e6e5 0%, transparent 50%), linear-gradient(135deg, #f6f9fe, #e7eef9);
+  background: #c8ddeb url('/images/lineos-login-architecture.jpg') center / cover no-repeat;
 }
 .lineos-login::after {
   content: '';
   position: absolute;
   z-index: -1;
   inset: 0;
-  background-image: linear-gradient(#ffffff40 1px, transparent 1px), linear-gradient(90deg, #ffffff40 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(90deg, transparent, #000);
+  background: linear-gradient(90deg, #f4f8fcf5 0%, #eef5fbe6 40%, #eaf2fa66 100%);
 }
 .lineos-login-header {
   position: absolute;
@@ -70,6 +68,7 @@
   .lineos-login-card { padding: 36px 24px; }
 }
 @media (max-width: 760px) {
+  .lineos-login::after { background: linear-gradient(180deg, #f4f8fcf2, #eef5fbe6 55%, #eaf2facc); }
   .lineos-login-header { top: 24px; left: 24px; right: 24px; }
   .lineos-login-brand { font-size: 24px; }
   .lineos-login-brand-caption { font-size: 7px; letter-spacing: 1.4px; }

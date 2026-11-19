@@ -1164,6 +1164,8 @@ SHA-256은 원문의 줄바꿈을 LF로 정규화한 기준입니다.
 
 ## 2026-10-27 로그인 준비 상태·헤더 회사 선택 제거
 
+- 로그인 배경은 `frontend/public/images/lineos-login-architecture.jpg`를 앱과 함께 제공한다. 출처는 [Yender Fonseca / Pexels, 사진 29464842](https://www.pexels.com/photo/abstract-modern-architecture-with-blue-glass-facade-29464842/)이며 [Pexels License](https://www.pexels.com/license/)의 웹/앱 사용·수정 허용을 확인했다(2026-11-19). 원본을 1920px JPEG로 내려받아 외부 이미지 요청 없이 사용하고 PC는 좌우, 모바일은 상하 밝은 오버레이로 가독성을 유지한다. 사진을 서비스 로고나 상표로 사용하지 않는다. 로그인 회사 선택·인증 동작은 기존 흐름을 따른다.
+
 - 회사 선택/권한 context 조회 도중 유효한 계정 profile이 아직 없으면 로딩을 유지한다. 단순 미진입/오류/선택 대기를 가입으로 추측하지 않으며 서버의 명시적 ONBOARDING 응답에만 가입 화면을 마운트한다. 기존 profile이 유효한 백그라운드 토큰 갱신은 작업공간을 유지한다.
 - 사용자 최신 지시로 메인 헤더의 회사 선택 버튼을 제거했다. 회사는 첫 로그인 화면의 BARO/DEX/SYSTEM 스위치에서 선택한다. 기존 로그아웃은 유지하며 과거 회사 전환 버튼 구현을 복원하지 않는다.
 
