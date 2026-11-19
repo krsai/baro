@@ -76,7 +76,7 @@ test('company groups, direct entry, partner scopes and notifications follow the 
     ['/business-partner', 'ORDER'], ['/customer/4', 'ORDER'],
     ['/outsourcing-partner/4', 'ORDER'], ['/system-setting/access-policy', 'SETTINGS'],
   ]) assert.equal(findMenuGroupForPath(menu, path), group);
-  assert.deepEqual(menu.find(item => item.menuGroupKey === 'ACCOUNTING').children.map(item => item.path), ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']);
+  assert.deepEqual(menu.find(item => item.menuGroupKey === 'ACCOUNTING').children.map(item => item.path), ['/invoices', '/outsourcing-record', '/payroll', '/bank-ledger']);
   assert.deepEqual(menu.find(item=>item.menuGroupKey==='INVENTORY').children.map(item=>item.path),['/inventory/movements','/inventory/stock','/inventory/materials']);
   assert.deepEqual(menu.find(item=>item.menuGroupKey==='LOGISTICS').children.map(item=>item.path),['/order-shipments','/shipping']);
   assert.equal(menu.find(item=>item.menuGroupKey==='INVENTORY').label,'menu.inventoryMaterials');

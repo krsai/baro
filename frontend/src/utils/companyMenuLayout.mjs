@@ -5,7 +5,7 @@ const GROUPS = [
   ['INVENTORY', 'inventoryMaterials', ['/inventory/movements', '/inventory/stock', '/inventory/materials']],
   ['LOGISTICS', 'logistics', ['/order-shipments', '/shipping']],
   ['ADMIN', 'peoplePayroll', ['/employee', '/attendance', '/work-time', '/holiday']],
-  ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/bank-ledger', '/payroll']],
+  ['ACCOUNTING', 'finance', ['/invoices', '/outsourcing-record', '/payroll', '/bank-ledger']],
   ['OPERATIONS', 'managementAnalysis', ['/account-overview', '/revenue-analysis']],
   ['SETTINGS', 'settings', ['/business', '/employee-system', '/salary-system', '/approval-settings', '/personal-settings', '/app-settings', '/system-setting/access-policy']],
 ];
