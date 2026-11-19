@@ -36,7 +36,7 @@ test('company input settings override system defaults and current requirements r
  const code={baseId:30,base:{entryMode:'GENERAL',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED',requiredFields:['destination']}};
  assert.equal(policy.effectiveExpenseCode(code).linkTarget,'PROCESS');
  assert.deepEqual(policy.effectiveExpenseCode(code,{target:'ORDER',auditId:7,inputSettings:settings}).base,{...code.base,...settings,entryMode:'GENERAL'});
- assert.throws(()=>accountingInputs({...settings,orderInput:'HIDDEN'}),/INVALID_INPUT_OPTION/);
+ assert.equal(accountingInputs({...settings,orderInput:'HIDDEN'}).styleInput,'OPTIONAL');
  const edited=await policy.resolveExpenseCodeLink({expenseCodeLinkPolicy:{findUnique:async()=>({target:'ORDER',auditId:8,inputSettings:settings})}},1,code,{cost:{linkTarget:'ORDER',linkPolicyAuditId:7}});
  assert.deepEqual(edited.base.requiredFields,['origin']);assert.equal(edited.base.styleInput,'OPTIONAL');
  const line=expenseCodeForLine({itemId:'saved',inputSettings:settings,linkTarget:'ORDER'},policy.effectiveExpenseCode(code,{target:'ORDER',inputSettings:settings}));

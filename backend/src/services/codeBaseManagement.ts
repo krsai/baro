@@ -51,7 +51,6 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
     data[key] = body[key] ?? previous?.[key] ?? 'HIDDEN';
     if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(data[key])) throw createHttpError(400,'INVALID_INPUT_OPTION');
   }
-  if (data.styleInput !== 'HIDDEN' && data.orderInput === 'HIDDEN' || data.processInput !== 'HIDDEN' && (data.orderInput === 'HIDDEN' || data.styleInput === 'HIDDEN')) throw createHttpError(400,'INVALID_INPUT_OPTION');
   Object.assign(data,accountingInputs(data));
   data.attributeInputs=accountingInputs({...data,attributeInputs:body.attributeInputs??previous?.attributeInputs??{}}).attributeInputs??{};
   const materialSettings=selection.rows.some((row:any)=>row.materialManagement!==undefined)||body.materialSettings!==undefined||previous?.materialSettings!==undefined?industryMaterialSettings(body.materialSettings??previous?.materialSettings,selection.rows.some((row:any)=>row.isActive&&row.materialManagement),data):undefined;

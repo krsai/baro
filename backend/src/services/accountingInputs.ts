@@ -14,7 +14,6 @@ export function accountingInputs(value:any){
   result[key]=value?.[key]??'HIDDEN';
   if(!['REQUIRED','OPTIONAL','HIDDEN'].includes(result[key]))throw createHttpError(400,'INVALID_INPUT_OPTION');
  }
- if(result.styleInput!=='HIDDEN'&&result.orderInput==='HIDDEN'||result.processInput!=='HIDDEN'&&(result.orderInput==='HIDDEN'||result.styleInput==='HIDDEN')||result.styleInput==='REQUIRED'&&result.orderInput!=='REQUIRED'||result.processInput==='REQUIRED'&&result.styleInput!=='REQUIRED')throw createHttpError(400,'INVALID_INPUT_OPTION');
  if(value?.materialSettings!==undefined)result.materialSettings=materialCodeSettings(value.materialSettings,result);
  return result;
 }

@@ -18,13 +18,7 @@ export default function AccountingInputSettings({value,onChange,languageCode,dis
  const update=(key,mode)=>{
   if(ATTRIBUTES.includes(key)){onChange({...value,attributeInputs:{...value.attributeInputs,[key]:mode},...(!systemDefaults&&value.materialSettings&&mode==='HIDDEN'?{materialSettings:{...value.materialSettings,stockFields:(value.materialSettings.stockFields||[]).filter(field=>field!==key)}}:{})});return;}
   if(!PRODUCTION.includes(key)){const fields=key==='dimensions'?['length','width']:[key];onChange({...value,requiredFields:[...(value.requiredFields||[]).filter(field=>!fields.includes(field)),...(mode==='REQUIRED'?fields:[])]});return;}
-  // Adjust the dependent selections in one draft update instead of locking a toggle.
-  const rank={HIDDEN:0,OPTIONAL:1,REQUIRED:2},index=PRODUCTION.indexOf(key);
   const next={...value,[key+'Input']:mode};
-  for(const [position,field] of PRODUCTION.entries()){
-   if(position<index&&rank[modeFor(field)]<rank[mode])next[field+'Input']=mode;
-   if(position>index&&rank[modeFor(field)]>rank[mode])next[field+'Input']=mode;
-  }
   onChange(next);
  };
  return <Box sx={compact?{display:'flex',flexDirection:'column',minHeight:0,flex:1}:undefined}>

@@ -12,6 +12,31 @@ const {saveExpenseCodeLinkPolicy}=require('../backend/dist/services/expenseCodeL
 const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeItemAttributes');
 const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/services/expenseRequestEditor');
 const modes={customer:'REQUIRED',type:'REQUIRED'};
+
+test('all 27 production input configurations save independently in system and company settings',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db;
+  for(const [id,code,suffix] of [[1,'VAT','V'],[2,'ZERO','Z'],[3,'EXEMPT','E']])await db.taxTreatment.create({data:{id,code,suffix,nameEn:code,nameKo:code,nameVi:code}});
+  const s=await seedChangeApproval(db),base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  for(const orderInput of ['HIDDEN','OPTIONAL','REQUIRED'])for(const styleInput of ['HIDDEN','OPTIONAL','REQUIRED'])for(const processInput of ['HIDDEN','OPTIONAL','REQUIRED']){
+   const inputs={orderInput,styleInput,processInput,requiredFields:[]};
+   const normalized=accountingInputs(inputs);assert.equal(normalized.orderInput,orderInput);assert.equal(normalized.styleInput,styleInput);assert.equal(normalized.processInput,processInput);
+   const current=await db.transactionCodeBase.findUnique({where:{id:base.id}});
+   await db.$transaction(tx=>saveCodeBase(tx,{...current,...inputs,taxTreatmentIds:[s.code.taxTreatmentId],industryIds:[base.serviceTypeId]},base.id));
+   const stored=await db.transactionCodeBase.findUnique({where:{id:base.id}});for(const key of ['orderInput','styleInput','processInput'])assert.equal(stored[key],inputs[key]);
+   const policy=await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,s.company.id,s.people.admin.id,base.id,'NONE',inputs));
+   for(const key of ['orderInput','styleInput','processInput'])assert.equal(policy.inputSettings[key],inputs[key]);
+   const [{valid}]=await db.$queryRawUnsafe('SELECT baro_accounting_inputs_valid($1::jsonb) AS valid',JSON.stringify(normalized));assert.equal(valid,true);
+  }
+  for(const settings of [{orderInput:'WRONG',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[]},{orderInput:'HIDDEN',styleInput:'REQUIRED',processInput:'HIDDEN',requiredFields:['INVALID']}]){
+   const [{valid}]=await db.$queryRawUnsafe('SELECT baro_accounting_inputs_valid($1::jsonb) AS valid',JSON.stringify(settings));assert.equal(valid,false);
+  }
+  await f.pg.exec(`ALTER TABLE "TransactionCodeBase" ADD CONSTRAINT test_old_input_hierarchy CHECK("styleInput"='HIDDEN' OR "orderInput"<>'HIDDEN'); ALTER TABLE "TransactionCodeBase" ADD CONSTRAINT test_input_enum CHECK("orderInput" IN ('HIDDEN','OPTIONAL','REQUIRED'));`);
+  const migration=readFileSync('backend/prisma/migrations/20261119230000_independent_accounting_inputs/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
+  await db.transactionCodeBase.update({where:{id:base.id},data:{orderInput:'HIDDEN',styleInput:'REQUIRED',processInput:'HIDDEN'}});
+  await assert.rejects(db.$executeRawUnsafe('UPDATE "TransactionCodeBase" SET "orderInput"=$1 WHERE id=$2','INVALID',base.id));
+ }finally{await f.close();}
+});
 test('shared customer/type modes validate independently and preserve old snapshots',()=>{
  assert.equal(accountingInputs({}).attributeInputs,undefined);
  assert.deepEqual(accountingInputs({attributeInputs:modes}).attributeInputs,modes);
