@@ -25,3 +25,6 @@ Object.assign(accountOverviewText.vi,{capture:'Lưu ảnh',captureFailed:'Không
 Object.assign(accountOverviewText.ko,{finalBalance:'최종 잔액'});
 Object.assign(accountOverviewText.en,{finalBalance:'Final balance'});
 Object.assign(accountOverviewText.vi,{finalBalance:'Số dư cuối cùng'});
+Object.assign(accountOverviewText.ko,{details:'어제 증감',balances:'어제 증감',yesterdayUnavailable:'어제 증감을 불러오지 못했습니다.'});
+Object.assign(accountOverviewText.en,{details:'Yesterday’s changes',balances:'Yesterday’s changes',yesterdayUnavailable:'Could not load yesterday’s changes.'});
+Object.assign(accountOverviewText.vi,{details:'Biến động hôm qua',balances:'Biến động hôm qua',yesterdayUnavailable:'Không thể tải biến động hôm qua.'});

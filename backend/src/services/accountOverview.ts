@@ -37,6 +37,12 @@ export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days
  const currencies=[...new Set<string>(accounts.map(row=>row.currencyCode))];
  const fields=['beginningBalance','totalIn','totalOut','change','currentBalance','yesterdayIn','yesterdayOut'];
  const totals=currencies.map(code=>({currencyCode:code,...Object.fromEntries(fields.map(field=>[field,ledgerMoney(summaries.filter(row=>row.currencyCode===code).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row[field]),0n),code)]))}));
+ const yesterdayAccounts=accounts.filter(account=>account.openingDate<=yesterday).map(account=>{
+  const code=account.currencyCode,own=flows.filter(row=>row.accountId===account.id),day=own.filter(row=>row.transactionDate===yesterday);
+  const closing=ledgerScale4(account.currentBalance)-delta(own.filter(row=>row.transactionDate===asOf)),change=delta(day);
+  return {id:account.id,name:accountName(account),currencyCode:code,beginningBalance:ledgerMoney(closing-change,code),totalIn:ledgerMoney(amountSum(day,'IN'),code),totalOut:ledgerMoney(amountSum(day,'OUT'),code),change:ledgerMoney(change,code),currentBalance:ledgerMoney(closing,code)};
+ });
+ const yesterdayTotals=[...new Set(yesterdayAccounts.map(row=>row.currencyCode))].map(code=>({currencyCode:code,...Object.fromEntries(fields.filter(field=>!field.startsWith('yesterday')).map(field=>[field,ledgerMoney(yesterdayAccounts.filter(row=>row.currencyCode===code).reduce((sum:bigint,row:any)=>sum+ledgerScale4(row[field]),0n),code)]))}));
  const balances=new Map<string,bigint>(accounts.map(row=>[row.id,ledgerScale4(row.currentBalance)])),history:any[]=[];
  const dailyChanges=new Map<string,bigint>();for(const row of flows){const key=JSON.stringify([row.accountId,row.transactionDate]);dailyChanges.set(key,(dailyChanges.get(key)||0n)+(row.direction==='IN'?1n:-1n)*ledgerScale4(row._sum.amount||'0'));}
  for(let index=0;index<days;index++){
@@ -44,7 +50,7 @@ export function accountBalanceReport(accounts:any[],flows:any[],asOf:string,days
   history.unshift({date,accounts:dailyAccounts,currencyTotals:currencies.map(code=>({currencyCode:code,balance:ledgerMoney(accounts.filter(row=>row.currencyCode===code).reduce((sum:bigint,row)=>sum+balances.get(row.id)!,0n),code)}))});
   for(const account of accounts){let balance=balances.get(account.id)!-(dailyChanges.get(JSON.stringify([account.id,date]))||0n);if(account.openingDate===date)balance-=ledgerScale4(account.openingBalance);balances.set(account.id,balance);}
  }
- return {asOf,monthStart,yesterday,historyStart,historyDays:days,accounts:summaries,currencyTotals:totals,history};
+ return {asOf,monthStart,yesterday,historyStart,historyDays:days,accounts:summaries,currencyTotals:totals,history,yesterdayAccounts,yesterdayTotals};
 }
 export function accountCashFlowReport(accounts:any[],entries:any[]){
  const known=new Map(accounts.map(row=>[row.id,row])),groups=new Map<string,any>();

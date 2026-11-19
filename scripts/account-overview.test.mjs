@@ -170,6 +170,7 @@ test('account report uses actual closing balances, fills all 30 days and keeps o
 });
 test('month boundary history retains negative balances and exact amounts above Number precision',()=>{
  const report=accountBalanceReport([{id:'a',currencyCode:'USD',openingDate:'0001-01-01',openingBalance:'0',currentBalance:'9007199254740993.99'}],[{accountId:'a',transactionDate:'2026-10-31',direction:'IN',_sum:{amount:'9007199254741000.00'}}],'2026-11-01');
+ assert.equal(report.yesterdayAccounts[0].currentBalance,'9007199254740993.99');assert.equal(report.yesterdayAccounts[0].beginningBalance,'-6.01');
  assert.equal(report.yesterday,'2026-10-31');assert.equal(report.accounts[0].currentBalance,'9007199254740993.99');assert.equal(report.accounts[0].totalIn,'0.00');assert.equal(report.history[0].accounts[0].balance,'-6.01');
 });
 test('outstanding uses real partner/currency keys, avoids installment double counting and never adds separate invoice receipts twice',()=>{
