@@ -10,11 +10,14 @@ const [page, statuses, backend] = await Promise.all([
   readFile(new URL('../backend/src/index.ts', import.meta.url), 'utf8'),
 ]);
 
-test('order deletion flags include employee, outsourced and card-linked history across organizations', async () => {
+test('order list resolves invoice exclusions in the seller view and keeps production history and deletion flags', async () => {
   const require = createRequire(import.meta.url);
   const ts = require('../backend/node_modules/typescript');
   const route = backend.slice(backend.indexOf('app.get("/orders"'), backend.indexOf('app.get("/customer-production-reports"'));
-  const orders = [1, 2, 3, 4, 5].map(id => ({ id, orderId: String(id) }));
+  const orders = [1, 2, 3, 4, 5].map(id => ({ id, orderId: String(id), sellerOrgId: id === 3 ? 77 : 99 }));
+  orders[0].invoiceTargetPolicy = { orgId: 99, excluded: true };
+  orders[1].invoiceTargetPolicy = { orgId: 99, excluded: false };
+  orders[2].invoiceTargetPolicy = { orgId: 77, excluded: true };
   let handler, response;
   const deps = {
     ...require('../backend/dist/services/invoiceWorkflow.js'),
@@ -47,6 +50,8 @@ test('order deletion flags include employee, outsourced and card-linked history 
   const code = ts.transpileModule(route, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function(...Object.keys(deps), code)(...Object.values(deps));
   await handler({}, { json: value => { response = value; } });
+  assert.deepEqual(response.map(order => order.workflowStatus), ['COLLECTION', 'PRODUCTION', 'PRODUCTION', 'RECEIVED', 'RECEIVED']);
+  assert.equal(response[0].productionProgressPercent, 0);
   assert.deepEqual(response.map(order => order.hasProductionRecords), [true, true, true, false, false]);
   assert.deepEqual(response.map(order => order.hasAssignments), [true, true, true, true, false]);
   assert.match(page, /const deletable = !order\?\.isModificationLocked && !order.hasProductionRecords && !order.hasAssignments/);

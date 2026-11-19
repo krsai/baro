@@ -11,6 +11,7 @@ const {searchPayrollEvidence,validatePayrollEvidence}=require('../backend/dist/s
 const {loadAccountOverview}=require('../backend/dist/services/accountOverview');
 const {issueInvoiceDraft}=require('../backend/dist/services/invoiceIssueStore');
 const {createOrderShipment,listShippingOrders}=require('../backend/dist/services/orderShipments');
+const {loadOrderWorkflowStatuses}=require('../backend/dist/services/orderWorkflow');
 
 test('legacy differing payroll flags stay intact and exclude both uses until an explicit unified change',async()=>{
  let seed,snapshot,before;
@@ -51,11 +52,18 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   const list=(kind,excluded)=>listManagementTargets(db,org,a.id,kind,{excluded:String(excluded)});
   const save=(kind,rows)=>saveManagementTargets(db,org,a.id,kind,{rows});
   const change=(order,revision=0,excluded=true)=>({id:order.id,revision,excluded,clientKey:randomUUID()});
+  const workflow=async viewerOrgId=>{
+   const order=await db.workOrder.findUnique({where:{id:orders[0].id},include:{invoiceTargetPolicy:true}});
+   return (await loadOrderWorkflowStatuses(db,[order],async()=>[],viewerOrgId)).get(order.id);
+  };
+  assert.equal(await workflow(org),'RECEIVED');
   assert.equal((await list('INVOICE',false)).rows.length,2);
   await assert.rejects(save('INVOICE',[change(orders[0]),change(orders[1],9)]),/TARGET_CHANGED/);
   assert.equal(await db.orderInvoicePolicy.count(),0,'failure rolls back all rows');
   const input=[change(orders[0])];await save('INVOICE',input);await save('INVOICE',input);
   assert.equal(await db.orderInvoicePolicyEvent.count(),1);
+  assert.equal(await workflow(org),'COLLECTION');
+  assert.equal(await workflow(s.vendor.id),'RECEIVED');
   assert.equal((await list('INVOICE',true)).rows[0].id,orders[0].id);
   assert.equal((await list('SHIPPING',true)).rows.length,0);
   assert.equal((await listShippingOrders(db,org,a.id,{})).rows.length,2);
@@ -70,6 +78,9 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   await assert.rejects(createOrderShipment(db,org,a.id,orders[0].id,{clientKey:randomUUID(),shipmentDate:'2026-11-13',lines:[{itemId:123,size:'S',quantity:1}]}),/SHIPPING_EXCLUDED/);
   await save('INVOICE',[change(orders[0],1,false)]);
   assert.equal((await list('INVOICE',true)).rows.length,0);assert.equal((await list('SHIPPING',true)).rows.length,1);
+  assert.equal(await workflow(org),'RECEIVED');
+  assert.equal(await db.invoicePayment.count(),0);
+  assert.equal(await db.bankLedgerEntry.count(),0);
   assert.deepEqual({...await db.workOrder.findUnique({where:{id:orders[0].id}}),invoiceTargetRevision:0},orders[0],'order fields and updatedAt remain unchanged');
   await assert.rejects(db.orderInvoicePolicyEvent.deleteMany({where:{orgId:org}}),/TARGET_HISTORY_IMMUTABLE/);
   await assert.rejects(db.orderInvoicePolicy.update({where:{workOrderId:orders[0].id},data:{excluded:true,revision:3}}),/TARGET_AUDIT_REQUIRED/);

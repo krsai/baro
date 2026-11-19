@@ -42,7 +42,11 @@ function harness({ lock = false, stale = false, conflict = false, failCards = fa
     guardOrderSaveAssignments: async (db) => { assert.equal(db, tx); if (failImpact) throw Error('assignment review'); },
     annotateAssignmentPlanRowsWithPayrollLocks: () => {},
     recordOrderQuantityReduction, getRequesterEmail: () => 'test@baro.local',
-    loadOrderWorkflowStatuses: async () => new Map([[1, 'RECEIVED']]),
+    buildAssignmentPlanProgressRows: async () => [],
+    loadOrderWorkflowStatuses: async (_db, _orders, _loadProgress, viewerOrgId) => {
+      assert.equal(viewerOrgId, 7);
+      return new Map([[1, 'RECEIVED']]);
+    },
     rebuildOrderPartyCardsTx: async (db, orgIds) => { assert.equal(db, tx); assert.ok(orgIds.includes(7)); assert.ok(orgIds.includes(8)); if (failCards) throw Error('card failed'); },
     getOrderModificationLockState: async () => ({}), toOrderResponse: value => value,
   };

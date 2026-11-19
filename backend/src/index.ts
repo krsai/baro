@@ -8225,6 +8225,7 @@ const WORK_ORDER_RESPONSE_INCLUDE = {
   ...WORK_ORDER_PARTY_INCLUDE,
   workOrderItems: WORK_ORDER_ITEM_WITH_COLOR_INCLUDE,
   priorCompletions: { include: priorCompletionInclude },
+  invoiceTargetPolicy: { select: { orgId: true, excluded: true } },
 };
 
 const resolveCurrencyIdOrThrow = async (
@@ -29028,10 +29029,14 @@ app.get("/orders", async (req, res) => {
       {
         const orderKey = resolveOptionalString(order?.orderId ?? order?.id, null) ?? "";
         const production = invoiceOrderProgress(order, orderPlans, orderProgressRows);
+        const workflowStatus = orderWorkflowStatus({
+          ...order,
+          isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production),
+        }, deletionPlans, production, organization.id);
         return { ...toOrderResponse(order, {
           isAssignmentModificationLocked: Boolean(assignmentLockMap.get(orderKey)),
           currentOrderValue: currentOrderValueByOrderDbId.get(order.id),
-        }), workflowStatus: orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(invoiceCoverage.get(order.id), production) }, deletionPlans, production), productionProgressPercent: production.progressPercent,
+        }), workflowStatus, productionProgressPercent: production.progressPercent,
           hasProductionRecords: productionOrderIds.has(order.id),
           hasAssignments: assignedOrderIds.has(order.id),
           producedQuantity: production.producedQuantity,
@@ -29307,7 +29312,7 @@ app.post("/orders", async (req, res) => {
     normalized,
   });
   const orderLockState = await getOrderModificationLockState(order);
-  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [order], buildAssignmentPlanProgressRows);
+  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [order], buildAssignmentPlanProgressRows, organization.id);
   res.status(created ? 201 : 200).json(
     { ...toOrderResponse(order, {
       isAssignmentModificationLocked: orderLockState.isAssignmentLocked,
@@ -29475,7 +29480,7 @@ app.put("/orders/:orderId", async (req, res) => {
   });
 
   const updatedLockState = await getOrderModificationLockState(updated);
-  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [updated], buildAssignmentPlanProgressRows);
+  const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [updated], buildAssignmentPlanProgressRows, organization.id);
   res.json(
     { ...toOrderResponse(updated, {
       isAssignmentModificationLocked: updatedLockState.isAssignmentLocked,

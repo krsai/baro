@@ -60,6 +60,7 @@ test('30% and 100% advances can be issued before production finishes without clo
   const plan={externalId:'a',workOrderId:1,styleId:7,orgId:1,assignmentQuantity:100,_count:{workRecords:1}};
   const rows=()=>[{id:'a',workOrderId:1,styleId:7,plannedQuantity:100,producedQuantity:finished?100:started?50:0,isCompleted:finished}];
   const db={invoiceDraft:{findFirst:async()=>({id:'draft',revision:1,buyerOrgId:2,content})},workOrder:{findMany:async()=>[advanceOrder]},orgRelationship:{findFirst:async()=>null},
+   orderInvoicePolicy:{findFirst:async()=>null},
    assignmentPlan:{findMany:async()=>[{...plan,isCompleted:finished,_count:{workRecords:started?1:0}}]},
    organizationBankAccount:{findMany:async()=>[]},
    invoiceOrder:{findMany:async()=>ledger,findFirst:async()=>null,create:async({data})=>{const row={id:10,...data,invoice:invoices[0],lines:[]};ledger.push(row);return row;}},

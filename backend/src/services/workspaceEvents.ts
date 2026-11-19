@@ -32,6 +32,7 @@ export const workspaceTopics=(path:string):string[]=>{
  const route=path.split('?')[0]||'';
  if(route==='/dashboard/alert-recipients')return ['accounting-alerts'];
  if(isReferencePath(route))return referenceTopics;
+ if(/^\/management-targets\/INVOICE\/?$/i.test(route))return ['orders','invoice-drafts'];
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
   [/^\/(shipping|freight|shipping-ports)/,['shipping','shipping-ports']],

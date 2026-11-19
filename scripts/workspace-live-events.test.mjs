@@ -30,9 +30,9 @@ test('metadata stream isolates companies, honors features, suppresses own client
 
 test('successful company writes publish metadata using resolved employee company, never request orgId; failed writes and previews publish nothing',async()=>{
  const writes=[],db={employee:{findFirst:async()=>({orgId:7})},$queryRawUnsafe:async(...args)=>writes.push(args)};
- const service=createWorkspaceEvents(db,{}),req={method:'PUT',path:'/bank-ledger/10',query:{orgId:999},get:()=>''},res=response();
+ const service=createWorkspaceEvents(db,{}),req={method:'PUT',path:'/management-targets/INVOICE',query:{orgId:999},get:()=>''},res=response();
  await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware(req,res,()=>{});res.json({ok:true});await settle();});
- assert.equal(writes.length,1);const event=JSON.parse(writes[0][2]);assert.equal(event.orgId,7);assert.deepEqual(Object.keys(event).sort(),['id','orgId','origin','topics']);
+ assert.equal(writes.length,1);const event=JSON.parse(writes[0][2]);assert.equal(event.orgId,7);assert.deepEqual(event.topics,['orders','invoice-drafts']);assert.deepEqual(Object.keys(event).sort(),['id','orgId','origin','topics']);
  const failed=response();failed.statusCode=409;await runWithRequestActor('test@example.test',async()=>{setCurrentRequestActorEmployeeId(3);service.middleware(req,failed,()=>{});failed.json({error:'CONFLICT'});await settle();});assert.equal(writes.length,1);
  assert.deepEqual(workspaceTopics('/expense/preview'),[]);assert.deepEqual(workspaceTopics('/system/users'),[]);
  await service.close();

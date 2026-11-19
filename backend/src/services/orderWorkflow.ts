@@ -6,7 +6,16 @@ export { orderAssignmentPlans } from './orderAssignments';
 export type OrderWorkflowStatus = 'RECEIVED' | 'PRODUCTION' | 'BILLING' | 'COLLECTION' | 'COMPLETED';
 
 // A production percentage is never evidence of an approved completion.
-export function orderWorkflowStatus(order: any, plans: any[], production?: { isCompleted: boolean; assignments?: Array<{ completed: boolean }> }): OrderWorkflowStatus {
+export function orderWorkflowStatus(
+  order: any,
+  plans: any[],
+  production?: { isCompleted: boolean; assignments?: Array<{ completed: boolean }> },
+  viewerOrgId?: number,
+): OrderWorkflowStatus {
+  const target = order.invoiceTargetPolicy;
+  if (viewerOrgId && viewerOrgId === order.sellerOrgId && target?.orgId === viewerOrgId && target.excluded === true) {
+    return 'COLLECTION';
+  }
   const related = orderAssignmentPlans(order.id, plans);
   const prior = (order.priorCompletions || []).filter((entry: any) => !entry.canceledAt);
   const history = prior.length > 0 || related.some(plan => plan._count?.workRecords > 0 || plan._count?.outsourcedWorkRecords > 0 || plan.isCompleted);
@@ -31,7 +40,12 @@ export function orderWorkflowStatus(order: any, plans: any[], production?: { isC
   return history ? 'PRODUCTION' : 'RECEIVED';
 }
 
-export async function loadOrderWorkflowStatuses(db: any, orders: any[], loadProgress?: (orgId: number, ids: string[]) => Promise<any[]>): Promise<Map<number, OrderWorkflowStatus>> {
+export async function loadOrderWorkflowStatuses(
+  db: any,
+  orders: any[],
+  loadProgress?: (orgId: number, ids: string[]) => Promise<any[]>,
+  viewerOrgId?: number,
+): Promise<Map<number, OrderWorkflowStatus>> {
   if (!orders.length) return new Map();
   const billing = await loadInvoiceBillingCoverage(db, orders);
   orders = orders.map(order => ({ ...order, isFullyInvoiced: billing.get(order.id)?.complete === true }));
@@ -42,7 +56,7 @@ export async function loadOrderWorkflowStatuses(db: any, orders: any[], loadProg
     assignmentCard: { select: { workOrderId: true } },
     _count: { select: { workRecords: true, outsourcedWorkRecords: true } },
   } });
-  if (!loadProgress) return new Map(orders.map(order => [order.id, orderWorkflowStatus(order, plans)]));
+  if (!loadProgress) return new Map(orders.map(order => [order.id, orderWorkflowStatus(order, plans, undefined, viewerOrgId)]));
   const orgIds = [...new Set<number>(plans.map((plan: any) => plan.orgId))];
   const progressByOrg = new Map(await Promise.all(orgIds.map(async orgId => [orgId,
     await loadProgress(orgId, plans.filter((plan: any) => plan.orgId === orgId).map((plan: any) => plan.externalId)),
@@ -55,6 +69,6 @@ export async function loadOrderWorkflowStatuses(db: any, orders: any[], loadProg
       .map(row => ({ ...row, id: `${plan.orgId}:${row.id}` })));
     const scopedPlans = related.map(plan => ({ ...plan, externalId: `${plan.orgId}:${plan.externalId}` }));
     const production = invoiceOrderProgress(order, scopedPlans, progress);
-    return [order.id, orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(billing.get(order.id), production) }, plans, production)];
+    return [order.id, orderWorkflowStatus({ ...order, isFullyInvoiced: billingCoversProduction(billing.get(order.id), production) }, plans, production, viewerOrgId)];
   }));
 }
