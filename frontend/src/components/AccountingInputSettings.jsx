@@ -11,7 +11,7 @@ export default function AccountingInputSettings({value,onChange,languageCode,dis
  const [query,setQuery]=useState(''),[filter,setFilter]=useState('ALL'),[groupFilter,setGroupFilter]=useState(null);
  const picker=SUBTYPE_PICKER_TEXT[languageCode]||SUBTYPE_PICKER_TEXT.en;
  const material=value.materialSettings?.enabled===true;
- const groups=[{title:l[0],keys:material?[]:['owner']},{title:({ko:'거래 연결 정보',en:'Business links',vi:'Liên kết giao dịch'})[languageCode]||'Business links',keys:!material&&value.attributeInputs?.customer&&value.attributeInputs.customer!=='HIDDEN'?['customer']:[]},{title:l[1],keys:material?[]:['type','dimensions']},{title:l[2],keys:productionEnabled?PRODUCTION:[]},{title:l[3],keys:['transportDate','origin','destination']}];
+ const groups=[{title:l[0],keys:['owner']},{title:({ko:'거래 연결 정보',en:'Business links',vi:'Liên kết giao dịch'})[languageCode]||'Business links',keys:value.attributeInputs?.customer&&value.attributeInputs.customer!=='HIDDEN'?['customer']:[]},{title:l[1],keys:['type','dimensions']},{title:l[2],keys:productionEnabled?PRODUCTION:[]},{title:l[3],keys:['transportDate','origin','destination']}];
  const modeFor=key=>ATTRIBUTES.includes(key)?value.attributeInputs?.[key]||'HIDDEN':PRODUCTION.includes(key)?value[key+'Input']||'HIDDEN':(value.requiredFields||[]).includes(key==='dimensions'?'length':key)?'REQUIRED':'HIDDEN';
  const labelFor=key=>ATTRIBUTES.includes(key)?a[key]:t[key];
  const matches=(key,title)=>(groupFilter===null||groupFilter===title)&&[labelFor(key),key,title].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())&&(filter==='ALL'||filter==='ACTIVE'&&modeFor(key)!=='HIDDEN'||filter==='REQUIRED'&&modeFor(key)==='REQUIRED');
