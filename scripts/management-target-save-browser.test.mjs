@@ -50,7 +50,9 @@ try {
           window.writes=[...(window.writes||[]),{url,body:JSON.parse(options.body)}];
           return new Promise(resolve=>{window.finishSave=()=>resolve({ok:true});});
         }
-        const excluded=new URL(url,location.origin).searchParams.get('excluded')==='true';
+        const params=new URL(url,location.origin).searchParams;
+        if(params.get('blocked')==='true')return {rows:[{id:99,title:'PARTIAL-30',subtitle:'Hanoi',blocked:true,excluded:false}],hasMore:false};
+        const excluded=params.get('excluded')==='true';
         return {rows:excluded?[]:[{id:1,title:'ORDER-001',subtitle:'Hanoi',revision:0,snapshotRevision:3,excluded:false}],hasMore:false};
       }`);
     await page.goto('http://127.0.0.1:' + port + '/management-target-save-test.html?kind=' + kind + '&lang=' + lang);
@@ -62,6 +64,13 @@ try {
     await trigger.click();
     const dialog = page.getByRole('dialog');
     await dialog.waitFor();
+    if(kind==='INVOICE'){
+      const blocked=dialog.locator('[data-target-group="blocked"]');
+      await blocked.getByText('PARTIAL-30',{exact:true}).waitFor();
+      assert.equal(await blocked.locator('[data-rfd-draggable-id]').count(),0);
+      assert.equal(await blocked.getByRole('button',{name:/PARTIAL-30/}).count(),0);
+      await blocked.getByText(managementTargetText[lang].alreadyIssued,{exact:true}).waitFor();
+    }
     assert.equal(await dialog.getByRole('tab').count(), 0);
     assert.equal(await dialog.locator('input[required]').count(), 0);
     const card = excluded => dialog.locator('[data-target-group="' + excluded + '"]').getByRole('button', { name: /ORDER-001/ });

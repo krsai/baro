@@ -722,6 +722,7 @@ SHA-256은 원문의 줄바꿈을 LF로 정규화한 기준입니다.
 
 ## 2026-10-31 청구 대상 중복 제외·진행률/청구율
 
+- 최신 사용자 정정: 실제 InvoiceOrder.workOrderId로 연결된 현재 판매 회사의 유효 ISSUED 청구서가 하나라도 있는 주문은 청구율·금액이 일부여도 대상 제외를 금지한다. 포함/제외 이동 목록에서 분리한 ‘제외 설정 불가’ 읽기 전용 목록에 표시하며 같은 검색과 독립 페이지를 제공한다. 저장 시 회사·주문 잠금 안에서 재검사하고 SQL guard도 우회를 차단한다. 취소된 발행본은 유효 발행으로 판정하지 않으며 기존 제외 정책·발행 snapshot·원장을 자동 정정하지 않는다. 신규 migration `20261119220000_invoice_target_issued_guard`는 공통 실행기·Railway preflight·읽기 전용 시작 검사에 등록한다. 일괄 자료 변경 없이 멱등 재실행하며 롤백 시 제외 쓰기를 중지하고 기존 정책·감사를 보존한다.
 - 최신 사용자 정정: 청구서 대상은 청구서 목록, 출고 대상은 출고 목록 상단 기어에서 관리한다. 기어의 툴팁·접근 가능한 이름은 설정 이름이며 각 창은 자기 대상만 조회·저장한다. 기존 제조사 관리자 권한, 포함·제외 저장 API, 검색·페이지·클릭/드래그·미저장/저장 중 보호와 출고 상세의 단건 포함·제외 동작을 유지한다. 진입점·요청 구분·저장 후 출고 목록 갱신은 `node scripts/order-target-menu-browser.test.mjs`로 검증한다.
 
 - 공통 ManagementTargetSettings(주문 INVOICE/SHIPPING, 급여 PAYABLE/EVIDENCE)는 급여 직원 관리와 같은 @hello-pangea/dnd의 DragDropContext/Droppable/Draggable을 사용한다. 클릭/드래그는 목적 포함·제외 값을 명시하고 originalExcluded와 비교해 초안을 관리한다. 변경 시 저장 활성, 원상 복귀 시 비활성, 같은 목적 상태의 반복 적용은 멱등이며 검색/탭 이동으로 초안을 버리지 않는다. 조회 중/조회 실패/저장 중 보호와 결과 미확인 재시도는 유지한다. 과거 사유 필수 조건은 저장 활성 조건으로 복원하지 않는다. 통합 검증은 `node scripts/management-target-save-browser.test.mjs`다.

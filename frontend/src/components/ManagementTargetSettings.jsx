@@ -32,7 +32,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
  useEffect(()=>{if(q.trim()===search)return;const timer=setTimeout(()=>{setSearch(q.trim());setPages([0,0]);},250);return()=>clearTimeout(timer);},[q,search]);
  useEffect(()=>{
   if(!isOpen||!orgId)return;let live=true;setLoading(true);setLoadError(false);
-  Promise.all([false,true].map((excluded,i)=>requestJSON('/management-targets/'+kind+buildQueryString({orgId,excluded,q:search,page:pages[i]}),{forceRefresh:true,skipCache:true}))).then(result=>{if(live)setLists(result);}).catch(()=>{if(live)setLoadError(true);}).finally(()=>{if(live)setLoading(false);});
+  Promise.all((kind==='INVOICE'?[false,true,'blocked']:[false,true]).map((group,i)=>requestJSON('/management-targets/'+kind+buildQueryString({orgId,excluded:group===true,...(group==='blocked'?{blocked:true}:{}),q:search,page:pages[i]||0}),{forceRefresh:true,skipCache:true}))).then(result=>{if(live)setLists(result);}).catch(()=>{if(live)setLoadError(true);}).finally(()=>{if(live)setLoading(false);});
   return()=>{live=false;};
  },[isOpen,orgId,kind,search,pages,reload]);
  useEffect(()=>{onStateChange?.({dirty,locked});},[dirty,locked,onStateChange]);
@@ -40,7 +40,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
  const show=()=>{setQ(initialSearch);setSearch(initialSearch);setPages([0,0]);setChanges({});setError('');setUncertain(false);request.current=null;setOpen(true);};
  const close=async()=>{if(locked)return;if(dirty&&!await dialogs.confirm(t.discard,{purpose:'discard'}))return;setOpen(false);};
  const move=(row,excluded)=>{
-  if(locked||loading||loadError)return;
+  if(locked||loading||loadError||row.blocked)return;
   request.current=null;setError('');setChanges(current=>{
    const next={...current},originalExcluded=current[row.id]?.originalExcluded??row.excluded;
    if(excluded===originalExcluded)delete next[row.id];
@@ -91,6 +91,13 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
       </TargetPanel>;
      })}
     </Box></DragDropContext>
+    {kind==='INVOICE'&&<Paper variant="outlined" data-target-group="blocked" sx={{overflow:'hidden'}}>
+     <Typography variant="subtitle2" sx={{p:1.5,bgcolor:'grey.50',borderBottom:1,borderColor:'divider'}}>{t.blocked}</Typography>
+     <Box sx={{p:1,maxHeight:240,overflowY:'auto'}} aria-busy={loading}>
+      {loading?<CircularProgress size={20}/>:!(lists[2]?.rows||[]).length?<Typography variant="body2" color="text.secondary" sx={{p:1}}>{t.empty}</Typography>:(lists[2]?.rows||[]).map(row=><Box key={row.id} sx={{p:1.5,border:1,borderColor:'divider',borderRadius:1,mb:1}}><Stack direction="row" alignItems="center" gap={1}><Typography variant="body2" fontWeight={700}>{row.title}</Typography><Chip size="small" label={t.alreadyIssued}/></Stack><Typography variant="body2" color="text.secondary">{(languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.subtitle)||row.subtitle}</Typography></Box>)}
+     </Box>
+     <Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{p:1}}><Button disabled={locked||loading||!(pages[2]||0)} onClick={()=>setPages(p=>[p[0],p[1],(p[2]||0)-1])}>{t.previous}</Button><Typography variant="caption">{(pages[2]||0)+1}</Typography><Button disabled={locked||loading||!lists[2]?.hasMore} onClick={()=>setPages(p=>[p[0],p[1],(p[2]||0)+1])}>{t.next}</Button></Stack>
+    </Paper>}
 
    </Stack></DialogContent>
    <DialogActions><SaveButton loading={busy} disabled={!dirty||loading||loadError} onClick={save}>{uncertain?t.retry:t.save}</SaveButton></DialogActions>

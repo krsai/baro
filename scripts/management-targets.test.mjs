@@ -112,6 +112,33 @@ test('invoice and shipment exclusions are independent, atomic, audited and prese
   await assert.rejects(save('INVOICE',[change(foreign)]),/TARGET_NOT_FOUND/);
  }finally{await f.close();}
 });
+test('partial issued invoices are separate read-only targets and block atomic exclusion in API and SQL',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin;
+  await db.organization.update({where:{id:org},data:{type:'MANUFACTURER'}});
+  const order=async name=>db.workOrder.create({data:{orgId:org,sellerOrgId:org,buyerOrgId:s.vendor.id,customerId:s.vendor.id,orderId:randomUUID(),orderNumber:name,totalQuantity:10}});
+  const partial=await order('PARTIAL-30'),free=await order('UNBILLED'),cancelled=await order('CANCELLED-BILL');
+  for(const [index,w,status] of [[1,partial,'ISSUED'],[2,cancelled,'CANCELLED']]){
+   const i=await db.invoice.create({data:{sellerOrgId:org,buyerOrgId:s.vendor.id,invoiceNumber:'TARGET-PARTIAL-'+index,clientKey:randomUUID(),sequenceNumber:index,pricingBasis:'MANUFACTURING_SERVICE_PRICE',currencyCode:'USD',subtotal:'30',total:'30',snapshot:{},issuedBy:a.email,status}});
+   await db.invoiceOrder.create({data:{invoiceId:i.id,workOrderId:w.id,sourceOrderId:w.orderId,sourceOrderNumber:w.orderNumber,sourceUpdatedAt:w.updatedAt,billingPercentage:'30',basisAmount:'100',billedAmount:'30',installmentNumber:1}});
+  }
+  const list=query=>listManagementTargets(db,org,a.id,'INVOICE',{excluded:'false',...query});
+  assert.deepEqual((await list({blocked:'true'})).rows.map(r=>r.id),[partial.id]);
+  assert.equal((await list({blocked:'true',q:'PARTIAL'})).rows[0].blocked,true);
+  assert.equal((await list({blocked:'true',q:'UNBILLED'})).rows.length,0);
+  assert.equal((await list({blocked:'true',page:'1'})).rows.length,0);
+  assert.ok((await list({})).rows.some(r=>r.id===cancelled.id));assert.ok(!(await list({})).rows.some(r=>r.id===partial.id));
+  const row=w=>({id:w.id,excluded:true,revision:0,clientKey:randomUUID()});
+  await assert.rejects(saveManagementTargets(db,org,a.id,'INVOICE',{rows:[row(free),row(partial)]}),/INVOICE_TARGET_ALREADY_ISSUED/);
+  assert.equal(await db.orderInvoicePolicy.count(),0);assert.equal(await db.orderInvoicePolicyEvent.count(),0);
+  await assert.rejects(db.orderInvoicePolicy.create({data:{workOrderId:partial.id,orgId:org,excluded:true,updatedByEmployeeId:a.id}}),/INVOICE_TARGET_ALREADY_ISSUED/);
+  await saveManagementTargets(db,org,a.id,'INVOICE',{rows:[row(cancelled)]});
+  assert.equal((await list({excluded:'true'})).rows[0].id,cancelled.id);
+  const migration=require('../backend/scripts/migrate-entity-profiles').migrations().find(m=>m.version==='20261119220000_invoice_target_issued_guard');await f.pg.exec(migration.sql);await f.pg.exec(migration.sql);
+  assert.equal(await db.invoice.count(),2);assert.equal(await db.invoiceOrder.count(),2);
+ }finally{await f.close();}
+});
+
 test('payroll payment target controls payables and evidence together without rewriting frozen wages or AP',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,a=s.people.admin;
