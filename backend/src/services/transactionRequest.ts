@@ -1,3 +1,4 @@
+import {prepareMaterialSelection} from './materialItems';
 import {prepareCodeItemAttributes} from './codeItemAttributes';
 import {expensePayeeIds,requireEmployeePayee,expensePartnerScope} from './expensePayee';
 import { normalizeExpenseProcessIds, storedExpenseProcessIds, validateExpenseProcessLinks } from './expenseProcessLinks';
@@ -63,17 +64,22 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     if (!COST_STORED_DETAIL_FIELDS.includes(key as any) || typeof value !== 'string' || value.length > 500) return invalid('INVALID_TRANSACTION_DETAILS');
     details[key] = value.trim();
   }
-  validateCostDimensions(details);
+  validateCostDimensions(details,edit?.cost?.details);
   if (details.transportDate) validateCostDate(details.transportDate);
   const previous = edit ? null : await tx.partnerTransactionCost.findUnique({ where: { orgId_clientKey: { orgId, clientKey: body.clientKey } }, include: REQUEST_INCLUDE });
   const metadata=await prepareExpenseMetadata(tx,orgId,body,edit?.cost||previous||(edit?.record?{workOrderId:edit.record.assignmentPlan?.workOrderId,styleId:edit.record.styleId}:null));
   if (previous) {
+    if(previous.materialItemId){
+      for(const key of ['length','width','height']){delete details[key];if(previous.materialItemSnapshot?.details?.[key])details[key]=previous.materialItemSnapshot.details[key];}
+      metadata.unitId=previous.unitId;
+    }
     if(body.unitId!==undefined&&metadata.unitId!==(previous.unitId??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if(metadata.supplied){
       const keys=(orders:any[],styles:any[])=>JSON.stringify([...orders.map(id=>`${id}:`),...styles.map(row=>`${row.workOrderId}:${row.styleId}`)].sort());
       const oldLinks=previous.referenceLinks||[];
       if(keys(metadata.orderIds,metadata.styles)!==keys(oldLinks.filter((row:any)=>!row.styleId).map((row:any)=>row.workOrderId),oldLinks.filter((row:any)=>row.styleId)))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     }
+    if((body.materialItemId||null)!==(previous.materialItemId??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     for(const field of ['itemCustomerId','itemTypeId','itemOwnerOrgId'])if(body[field]!==undefined&&(body[field]||null)!==(previous[field]??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
@@ -86,11 +92,14 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
-  const itemAttributes=await prepareCodeItemAttributes(tx,orgId,body,code,edit?.cost);
+  const material=await prepareMaterialSelection(tx,orgId,code,body,edit?.cost);
+  const materialData=material.materialItemSnapshot;
+  if(materialData){for(const key of ['length','width','height']){delete details[key];if(materialData.details?.[key])details[key]=materialData.details[key];}}
+  const itemAttributes=materialData?{itemOwnerOrgId:materialData.itemOwnerOrgId??null,itemOwnerSnapshot:materialData.itemOwnerSnapshot??null,itemCustomerId:materialData.itemCustomerId??null,itemTypeId:materialData.itemTypeId??null,itemAttributeSnapshot:materialData.itemAttributeSnapshot??null}:await prepareCodeItemAttributes(tx,orgId,body,code,edit?.cost);
 
   if(useSystemMaster)description=(edit?.cost?.transactionCodeId===transactionCodeId?edit.cost.description:null) || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
-  const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
+  const service = { ...code.base,...(code.base.materialSettings?.enabled?{requiredFields:code.base.requiredFields.filter((key:string)=>!['length','width','height'].includes(key))}:{}), id: code.serviceTypeId ?? code.serviceType.id };
   if(edit?.cost)for(const key of code.configuredHiddenInputs||[]){
     const field=({order:'workOrderId',style:'styleId',process:'styleProcessId'} as Record<string,string>)[key]!;
     if((body[field]||null)!==(edit.cost[field]??null))return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
@@ -104,7 +113,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
   }
   for(const key of ['transportDate','origin','destination','length','width','height']){
-    if(!service.requiredFields.includes(key==='height'?'length':key)&&(details[key]||'')!==(edit?.cost?.details?.[key]||''))return invalid('INVALID_TRANSACTION_DETAILS');
+    if(!(materialData&&['length','width','height'].includes(key))&&!service.requiredFields.includes(key==='height'?'length':key)&&(details[key]||'')!==(edit?.cost?.details?.[key]||''))return invalid('INVALID_TRANSACTION_DETAILS');
   }
   if(partnerOrgId===orgId)return invalid('INVALID_PARTNER_SERVICE');
   const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: {...expensePartnerScope(orgId),id:partnerOrgId} });
@@ -176,12 +185,12 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     }
   } else if (assignmentPlanId) return invalid('UNEXPECTED_ASSIGNMENT_PLAN');
   // Production is recorded only in the vendor table, never employee work or AT.
-  const data = { ...itemAttributes,linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
+  const data = { ...material,...itemAttributes,linkTarget:code.linkTarget,linkPolicyAuditId:code.linkPolicyAuditId,...payeeIds,payeeEmployeeId:payeeIds.payeeEmployeeId??null, serviceTypeId: service.id, transactionCodeId, workOrderId, styleId, styleProcessId, outsourcedWorkRecordId, transactionDate, description, currency: body.currency, details, ...amounts,
     ...(edit?.request ? {expenseRequestId:edit.request.id,expenseRequestLine:edit.request.line} : {}) };
   const previousIds=storedExpenseProcessIds(edit?.cost);
   const replaceLinks=JSON.stringify(previousIds)!==JSON.stringify(processIds);
   if(replaceLinks&&previousIds.length)await tx.expenseCostProcess.deleteMany({where:{costId:edit!.cost.id,orgId}});
-  const unitData=body.unitId!==undefined||edit?.cost?.unitId!=null?{unitId:metadata.unitId}:{};
+  const unitData=materialData||body.unitId!==undefined||edit?.cost?.unitId!=null?{unitId:materialData?.unitId??metadata.unitId}:{};
   const saved = edit?.cost ? await tx.partnerTransactionCost.update({ where: { id: edit.cost.id }, data:{...data,...unitData}, include: REQUEST_INCLUDE }) :
     await tx.partnerTransactionCost.create({ data: { ...data,...unitData, orgId, clientKey: body.clientKey, createdByEmployeeId: actorId }, include: REQUEST_INCLUDE });
   if(replaceLinks&&processIds.length)await tx.expenseCostProcess.createMany({data:processIds.map(styleProcessId=>({costId:saved.id,orgId,styleId:styleId!,styleProcessId}))});

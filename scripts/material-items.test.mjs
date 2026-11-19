@@ -1,0 +1,77 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
+import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+const require=createRequire(import.meta.url),{registerMaterialItem,prepareMaterialSelection,registerMaterialItemRoutes}=require('../backend/dist/services/materialItems');
+const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
+const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
+const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/services/expenseRequestEditor');
+const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
+const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
+const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement');
+const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeItemAttributes');
+test('material routes reject missing company access before reading any data',async()=>{
+ const routes=[];registerMaterialItemRoutes({get:(_p,h)=>routes.push(h),post:(_p,h)=>routes.push(h)},new Proxy({},{get(){throw Error('unauthorized database access');}}),{requireOrgRole:async()=>null});
+ for(const route of routes)await route({},{});
+});
+
+test('legacy exemption only applies while retaining the original code',async()=>{
+ const code={id:2,base:{materialSettings:{enabled:true}}};
+ assert.deepEqual(await prepareMaterialSelection({},1,code,{}, {transactionCodeId:2,materialItemId:null}),{});
+ await assert.rejects(prepareMaterialSelection({},1,code,{}, {transactionCodeId:1,materialItemId:null}),/MATERIAL_ITEM_REQUIRED/);
+});
+test('registered material identity and snapshots flow to expenses and direct bank entries; no stock is written',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db;for(const [id,code,suffix] of [[1,'VAT','V'],[2,'ZERO','Z'],[3,'EXEMPT','E']])await db.taxTreatment.upsert({where:{id},create:{id,code,suffix,nameKo:code,nameEn:code,nameVi:code},update:{}});
+  const s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const legacy=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-11-18',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,currency:'USD',quantity:'1',unitPrice:'1',vatRate:'0',details:{evidenceFile:'legacy.pdf'}}]}));
+  const legacyBankBody={clientKey:randomUUID(),transactionDate:'2026-11-18',direction:'OUT',amount:'1',purpose:'Legacy',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'legacy.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id}};
+  const legacyBank=await postLedgerEntry(db,org,'admin@example.test',s.account.id,legacyBankBody);
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  await db.accountingCodeIndustry.upsert({where:{baseId_systemIndustryId:{baseId:base.id,systemIndustryId:base.serviceTypeId}},create:{baseId:base.id,systemIndustryId:base.serviceTypeId},update:{}});
+  const industry=await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true,materialManagementRevision:{increment:1}}});
+  const configured=await db.transactionCodeBase.update({where:{id:base.id},data:{attributeInputs:{owner:'REQUIRED'},requiredFields:['length','width'],materialSettings:{enabled:true,stockFields:['unit','dimensions'],colorInput:'HIDDEN',unitInput:'REQUIRED'},materialRevision:{increment:1}}});
+  const oldForm=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(legacy.id)));
+  const oldChange=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'UPDATE',reason:'Update old evidence without inventing material',sourceKind:'request',sourceId:String(legacy.id),revision:oldForm.revision,payload:{...oldForm,clientKey:randomUUID(),remark:'Kept legacy material fields'},selection:{},clientKey:randomUUID()});
+  if(oldChange.status!=='APPROVED')await decideChangeApproval(db,org,actor,oldChange.id,{decision:'APPROVED'});
+  assert.equal((await db.partnerTransactionCost.findFirst({where:{expenseRequestId:legacy.id}})).materialItemId,null);
+  const reviewer=await db.employee.create({data:{orgId:org,name:'Material reviewer',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}});
+  const oldLedger=await readLedgerEdit(db,org,legacyBank.id);
+  const ledgerChange=await requestChangeApproval(db,org,actor,{menu:'BANK_LEDGER',operation:'UPDATE',reason:'Preserve old bank material identity',sourceKind:'ledger',sourceId:legacyBank.id,revision:oldLedger.revision,selection:{changeAdminEmployeeId:reviewer.id,step1EmployeeId:s.people.junior.id,step2EmployeeId:s.people.lead.id},clientKey:randomUUID(),payload:{schemaVersion:2,accountingCodeVersion:1,clientKey:randomUUID(),rows:[{...legacyBankBody,clientKey:randomUUID(),entryKind:'BANK',accountId:s.account.id,purpose:'Legacy updated'}]}});
+  if(ledgerChange.status!=='APPROVED')for(const stage of ledgerChange.policy.resolvedStages)await decideChangeApproval(db,org,stage.employeeId,ledgerChange.id,{decision:'APPROVED'});
+  assert.equal(await db.bankLedgerEntry.count({where:{orgId:org,revisesEntryId:legacyBank.id,materialItemId:null}}),1);
+  const unit=await db.expenseUnit.create({data:{code:'TEST_UNIT',nameKo:'개',nameEn:'Each',nameVi:'Cái'}});
+  const body={clientKey:randomUUID(),policyAuditId:null,baseId:base.id,nameKo:'테스트 박스',nameEn:'TEST BOX',nameVi:'Hộp thử',unitId:unit.id,itemOwnerOrgId:org,details:{length:'100',width:'200',height:'300'},materialRevision:configured.materialRevision,industryRevision:industry.materialManagementRevision};
+  const create=body=>db.$transaction(tx=>registerMaterialItem(tx,org,actor,body));
+  await assert.rejects(create({...body,clientKey:randomUUID(),details:{length:'100',width:'200'}}),/INVALID_MATERIAL_DIMENSIONS/);
+  const item=await create(body);assert.equal((await create(body)).id,item.id);
+  const routes=new Map(),app={get:(path,handler)=>routes.set('GET '+path,handler),post:(path,handler)=>routes.set('POST '+path,handler)},features=[];
+  const gates={requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async scope=>{features.push(scope.feature);return true;}};
+  registerMaterialItemRoutes(app,db,gates);registerCodeItemAttributeRoutes(app,db,gates);
+  let own;await routes.get('GET /material-items/options')({query:{orgId:s.other.id,baseId:base.id,context:'LEDGER'}},{json:rows=>{own=rows;}});assert.equal(own.length,1);assert.equal(own[0].orgId,org);
+  await routes.get('GET /code-item-options')({query:{orgId:s.other.id,baseId:base.id,context:'MATERIAL'}},{json:()=>{}});assert.ok(features.includes('BANK_LEDGER'));assert.ok(features.includes('INVENTORY_MATERIALS'));
+  await assert.rejects(create({...body,clientKey:randomUUID(),details:{length:'100.00',width:'200',height:'300'}}),error=>error.code==='P2002');
+  await assert.rejects(create({...body,clientKey:randomUUID(),materialRevision:0}),/ACCOUNTING_INDUSTRY_CHANGED/);
+  const input=()=>({partnerOrgId:s.vendor.id,requestDate:'2026-11-19',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,materialItemId:item.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{evidenceFile:'receipt.pdf'}}]});
+  await assert.rejects(db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{...input(),items:[{...input().items[0],materialItemId:null}]})),/MATERIAL_ITEM_REQUIRED/);
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,input()));
+  const cost=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});
+  assert.equal(cost.materialItemId,item.id);assert.equal(cost.unitId,unit.id);assert.equal(cost.itemOwnerOrgId,org);assert.equal(cost.details.height,'300');assert.equal(cost.materialItemSnapshot.nameEn,'TEST BOX');
+  const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));assert.equal(form.items[0].materialItemId,item.id);assert.deepEqual(form.items[0].materialItemSnapshot,cost.materialItemSnapshot);
+  const bank={clientKey:randomUUID(),transactionDate:'2026-11-19',direction:'OUT',amount:'10',purpose:'Material purchase',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id},materialItemId:item.id};
+  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank);assert.equal(entry.materialItemId,item.id);assert.deepEqual(entry.materialItemSnapshot,cost.materialItemSnapshot);
+  assert.equal((await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank)).id,entry.id);
+  await assert.rejects(db.$transaction(tx=>prepareMaterialSelection(tx,s.other.id,{...s.code,base:{materialSettings:{enabled:true}}},{materialItemId:item.id})),/INVALID_MATERIAL_ITEM/);
+  await assert.rejects(db.materialItem.update({where:{id:item.id},data:{data:{nameEn:'FORGED'}}}),/immutable/);
+  await assert.rejects(db.partnerTransactionCost.update({where:{id:cost.id},data:{materialItemSnapshot:{nameEn:'FORGED'}}}),/snapshot/);
+  await assert.rejects(db.settingServiceDefault.update({where:{id:industry.id},data:{materialManagement:false}}),/registered material/);
+  await assert.rejects(db.transactionCodeBase.update({where:{id:base.id},data:{materialSettings:{enabled:false,stockFields:[],colorInput:'HIDDEN',unitInput:'REQUIRED'}}}),/registered material/);
+  const original=await db.partnerTransactionCost.findUnique({where:{id:cost.id}});
+  await db.$transaction(tx=>saveCodeBase(tx,{...configured,nameEn:'Renamed material category',industryIds:[industry.id],industryRevision:configured.industryRevision},base.id));
+  assert.deepEqual((await db.materialItem.findUnique({where:{id:item.id}})).data,item.data,'renaming the code preserves the registered master and its original industry FK');
+  const migration=readFileSync('backend/prisma/migrations/20261119120000_material_item_master/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
+  assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:cost.id}}),original);
+ }finally{await f.close();}
+});

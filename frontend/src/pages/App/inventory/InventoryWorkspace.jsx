@@ -1,3 +1,5 @@
+import {materialItemText} from '../../../constants/materialItems';
+import MaterialMasterList from '../../../components/MaterialMasterList';
 import SearchPanel from '../../../components/SearchPanel';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -114,12 +116,6 @@ const EntryView = () => {
 
 const HistoryView = () => <Stack spacing={2}><UiNotice /><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['일자','입출고 유형','문서번호','자재','수량','출발','도착','소유자','상태'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MOVEMENTS.map((row) => <TableRow hover key={row.doc}><TableCell>{row.date}</TableCell><TableCell><Chip size="small" label={row.type} variant="outlined" /></TableCell><TableCell sx={{ fontWeight: 700 }}>{row.doc}</TableCell><TableCell>{row.material}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.quantity}</TableCell><TableCell>{row.from}</TableCell><TableCell>{row.to}</TableCell><TableCell>{row.owner}</TableCell><TableCell><Chip size="small" color="success" label={row.status} /></TableCell></TableRow>)}</TableBody></Table></Paper></Stack>;
 
-const MaterialDialog = ({ open, onClose }) => (
-  <Dialog open={open} onClose={onClose} fullWidth maxWidth="md"><DialogTitle>자재 품목 등록</DialogTitle><DialogContent dividers><Stack spacing={2}><Alert severity="info">자재 종류를 먼저 선택하면 연결된 규격과 세부 구분만 제안됩니다.</Alert><Grid container spacing={2}><Grid item xs={12} md={4}><TextField fullWidth select size="small" label="자재 종류 *" defaultValue="SNAP"><MenuItem value="SNAP">일반 스냅</MenuItem><MenuItem value="FABRIC">겉감</MenuItem><MenuItem value="POLYBAG">폴리백</MenuItem></TextField></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="품명" placeholder="HS-SCW-90003" /></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="제조사" /></Grid><Grid item xs={12} md={4}><TextField fullWidth size="small" label="외부 고유번호" /></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="색상" defaultValue="BLACK"><MenuItem value="BLACK">BLACK</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="규격" defaultValue="13"><MenuItem value="13">13mm</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="세부 구분" defaultValue="B"><MenuItem value="B">B</MenuItem></TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="단위 *" defaultValue="EA"><MenuItem value="EA">EA</MenuItem></TextField></Grid><Grid item xs={6} md={3}><TextField fullWidth select size="small" label="lot 관리" defaultValue="yes"><MenuItem value="yes">사용</MenuItem><MenuItem value="no">미사용</MenuItem></TextField></Grid><Grid item xs={6} md={3}><TextField fullWidth select size="small" label="기본 소비 유형" defaultValue="per"><MenuItem value="per">생산수량당 사용량</MenuItem><MenuItem value="pack">1단위당 포장 수량</MenuItem><MenuItem value="fixed">주문당 고정 사용량</MenuItem></TextField></Grid></Grid></Stack></DialogContent><DialogActions><Button variant="contained" onClick={onClose}>등록</Button></DialogActions></Dialog>
-);
-
-const MaterialsView = ({keyword}) => <Stack spacing={2}><UiNotice /><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['자재코드','자재 종류','품명','제조사','규격','색상','단위','lot 관리'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MATERIALS.filter(item=>Object.values(item).join(' ').toLowerCase().includes(keyword.toLowerCase())).map((item) => <TableRow hover key={item.code}><TableCell sx={{ fontWeight: 700 }}>{item.code}</TableCell><TableCell>{item.type}</TableCell><TableCell>{item.name}</TableCell><TableCell>{item.maker}</TableCell><TableCell>{item.spec}</TableCell><TableCell>{item.color}</TableCell><TableCell>{item.unit}</TableCell><TableCell>사용</TableCell></TableRow>)}</TableBody></Table></Paper></Stack>;
-
 const SettingsView = () => {
   const [tab, setTab] = useState('types');
   const labels = { types: ['코드','자재 종류','기본 단위','사용 속성'], units: ['코드','표시명','소수 자릿수','수량 방식'], specs: ['코드','표시값','자재 종류','구분'] };
@@ -145,7 +141,7 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>입출고 등록</Button>
   ) : mergedMaterials && activeSection==='materials' && canViewMaterials ? (
-    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>자재 등록</Button>
+    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>{(materialItemText[languageCode]||materialItemText.en).add}</Button>
   ) : null;
   const toolbar = view === 'stock' ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch}
@@ -161,18 +157,18 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   ) : mergedMaterials && activeSection==='materials' && canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
   ) : null;
-  const content = mergedMaterials ? <Stack spacing={2}><Tabs data-material-master-tabs value={activeSection} onChange={(_,value)=>setMaterialSection(value)} variant="scrollable">{canViewMaterials&&<Tab value="materials" label={sections.materials}/>} {canViewReference&&<Tab value="reference" label={sections.reference}/>}</Tabs>{activeSection==='materials'&&canViewMaterials?<MaterialsView keyword={keyword}/>:canViewReference?<SettingsView/>:null}</Stack> : { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView /> }[view] || <StockView keyword={keyword} />;
+  const content = mergedMaterials ? <Stack spacing={2}><Tabs data-material-master-tabs value={activeSection} onChange={(_,value)=>setMaterialSection(value)} variant="scrollable">{canViewMaterials&&<Tab value="materials" label={sections.materials}/>} {canViewReference&&<Tab value="reference" label={sections.reference}/>}</Tabs>{activeSection==='materials'&&canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:canViewReference?<SettingsView/>:null}</Stack> : { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView /> }[view] || <StockView keyword={keyword} />;
   return (
     <>
       <AppPageContainer
-        title={title}
+        title={mergedMaterials?sections.materials:title}
         titleActions={titleActions}
-        description={description}
+        description={mergedMaterials?'':description}
         toolbar={toolbar}
       >
         {content}
       </AppPageContainer>
-      <MaterialDialog open={materialDialogOpen} onClose={() => setMaterialDialogOpen(false)} />
+
     </>
   );
 };

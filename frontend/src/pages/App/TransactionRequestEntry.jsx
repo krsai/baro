@@ -1,3 +1,4 @@
+import {materialItemText} from '../../constants/materialItems';
 import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {accountingCompactText} from '../../constants/accountingCompact';
 import {paymentScheduleError} from '../../utils/expensePaymentSchedule.mjs';
@@ -174,11 +175,13 @@ export default function TransactionRequestEntry() {
         if(statuses[line.key])return;
         const code=expenseCodeForLine(line,data.codes.find(code=>code.id===line.transactionCodeId)),fields=[];
         if(!code)fields.push(labels.code);
+        if(code?.base?.materialSettings?.enabled&&!line.materialItemId&&(!line.itemId||line.materialItemWasRequired))fields.push((materialItemText[languageCode]||materialItemText.en).title);
         if(!Number(line.quantity)||Number(line.quantity)<0)fields.push(labels.quantity);
         if(!Number(line.unitPrice)||Number(line.unitPrice)<0)fields.push(labels.price);
         for(const key of ['order','style','process'])if(inputMode(code,key)==='REQUIRED'&&!line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]]&&!(key==='process'&&line.styleProcessIds?.length))fields.push(labels[key]);
         if(!line.productionLinked&&code?.base?.entryMode!=='PROCESS'&&!line.details?.evidenceFile?.trim())fields.push((ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference);
         for(const key of (code?.base?.requiredFields||[]).filter(key=>key!=='reference'))if(!line.details?.[key]?.trim())fields.push(detailLabels[key]||key);
+        if(code?.base?.requiredFields?.includes('length')&&!line.details?.height&&!(line.itemId&&['length','width','height'].every(key=>(line.details?.[key]||'')===(line.originalDetails?.[key]||''))))fields.push(detailLabels.height);
         if(code?.base?.entryMode==='PROCESS'&&!line.assignmentPlanId)fields.push(labels.assignment);
         missing.push(`${labels.row} ${index+1}: ${fields.join(', ')||labels.invalid}`);
       });
@@ -207,6 +210,8 @@ export default function TransactionRequestEntry() {
       if ([400,403,404,409,422].includes(failure.status)) {
         setSubmission(null);
         const code=failure.details?.error || failure.message, line=String(code).match(/^EXPENSE_LINE:(\d+):(.+)$/);
+        if((line?.[2]||code)==='MATERIAL_ITEM_REQUIRED'){setError((materialItemText[languageCode]||materialItemText.en).required);return;}
+        if((line?.[2]||code)==='INVALID_MATERIAL_ITEM'){setError((materialItemText[languageCode]||materialItemText.en).changed);return;}
         if((changeApprovalText[languageCode]||changeApprovalText.en)[code]){setError((changeApprovalText[languageCode]||changeApprovalText.en)[code]);return;}
         if(['INVALID_EXPENSE_PAYMENT_SCHEDULE','EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH','EXPENSE_PAYMENT_SCHEDULE_REFERENCED'].includes(code)){const t=expensePaymentText[languageCode]||expensePaymentText.en;setError(code==='EXPENSE_PAYMENT_SCHEDULE_TOTAL_MISMATCH'?t.mismatch:code==='EXPENSE_PAYMENT_SCHEDULE_REFERENCED'?t.referenced:t.invalid);return;}
         if(code==='INVALID_CASH_SCHEDULE_DATE'){setError((cashScheduleText[languageCode]||cashScheduleText.en).invalid);return;}

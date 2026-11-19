@@ -8,6 +8,7 @@ export const expenseCodeForLine = (line,code) => {
   if (line.productionLinked) return {...code,linkTarget:'PROCESS',base:{...code.base,entryMode:'PROCESS',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
   // Preserve stored references for validation; hidden historical fields are read only in the editor.
   const base={...code.base,entryMode:line.itemId?'GENERAL':code.base?.entryMode};
+  if(base.materialSettings?.enabled){base.attributeInputs={};base.requiredFields=(base.requiredFields||[]).filter(key=>!['length','width','height'].includes(key));}
   if(line.itemId&&line.transactionCode?.id===code.id){
     base.attributeInputs={...base.attributeInputs};
     for(const [key,field] of [['customer','itemCustomerId'],['type','itemTypeId'],['owner','itemOwnerOrgId']])if(!line[field]&&line.inputSettings?.attributeInputs?.[key]!=='REQUIRED'&&base.attributeInputs[key]==='REQUIRED')base.attributeInputs[key]='OPTIONAL';
@@ -43,8 +44,9 @@ export function expenseDocumentTotals(lines, currency) {
 export function validExpenseLine(line, code, currency) {
   code = expenseCodeForLine(line,code);
   if (!code || !expenseLineAmounts(line, currency)) return false;
+  if(code.base?.materialSettings?.enabled&&!line.materialItemId&&(!line.itemId||line.materialItemWasRequired))return false;
   if(['customer','type','owner'].some(key=>code.base?.attributeInputs?.[key]==='REQUIRED'&&!line[key==='owner'?'itemOwnerOrgId':key==='customer'?'itemCustomerId':'itemTypeId']))return false;
-  if(['length','width','height'].some(key=>line.details[key])&&(!line.details.length||!line.details.width))return false;
+  if(['length','width','height'].some(key=>line.details[key])&&(!line.details.length||!line.details.width||!line.details.height)&&!(line.itemId&&['length','width','height'].every(key=>(line.details[key]||'')===(line.originalDetails?.[key]||''))))return false;
   if(['length','width','height'].some(key=>line.details[key]&&(!/^\d{1,12}(\.\d{1,4})?$/.test(line.details[key])||Number(line.details[key])<=0)))return false;
   if(!line.productionLinked&&code.base?.entryMode!=='PROCESS'&&!line.details.evidenceFile?.trim())return false;
   if (!code.vatEnabled && Number(line.vatRate) !== 0) return false;
@@ -53,7 +55,7 @@ export function validExpenseLine(line, code, currency) {
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(key==='process' ? line.styleProcessId || line.styleProcessIds?.length : line[{order:'workOrderId',style:'styleId'}[key]])) &&
     (code.base?.requiredFields || []).filter(key=>key!=='reference').every(key => line.details[key]?.trim());
 }
-export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency, paymentSchedule:line.paymentSchedule||[],
+export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId,materialItemId:line.materialItemId||null, currency: line.currency, paymentSchedule:line.paymentSchedule||[],
   itemOwnerOrgId:line.itemOwnerOrgId||null,itemCustomerId:line.itemCustomerId||null,itemTypeId:line.itemTypeId||null,unitId:line.unitId||null,linkedOrderIds:line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]),linkedStyles:line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]),quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   ...(line.styleProcessIds===undefined?{}:{styleProcessIds:line.styleProcessIds}),

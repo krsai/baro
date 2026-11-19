@@ -6,6 +6,6 @@ export const accountingCodeUsageText={
 
 export const usageCountLabel=(count,language='ko')=>count==null?'—':language==='ko'?count+'건':count+' '+(accountingCodeUsageText[language]||accountingCodeUsageText.en).count;
 
-Object.assign(accountingCodeUsageText.ko,{details:'사용 내역·삭제 제한',unavailable:'사용 내역을 확인하지 못했습니다. 목록을 다시 조회해 주세요.'});
-Object.assign(accountingCodeUsageText.en,{details:'Usage and deletion restrictions',unavailable:'Usage details are unavailable. Reload the list.'});
-Object.assign(accountingCodeUsageText.vi,{details:'Sử dụng và hạn chế xóa',unavailable:'Chưa xác minh được chi tiết sử dụng. Hãy tải lại danh sách.'});
+Object.assign(accountingCodeUsageText.ko,{materials:'등록된 자재 품목',details:'사용 내역·삭제 제한',unavailable:'사용 내역을 확인하지 못했습니다. 목록을 다시 조회해 주세요.'});
+Object.assign(accountingCodeUsageText.en,{materials:'Registered materials',details:'Usage and deletion restrictions',unavailable:'Usage details are unavailable. Reload the list.'});
+Object.assign(accountingCodeUsageText.vi,{materials:'Vật tư đã đăng ký',details:'Sử dụng và hạn chế xóa',unavailable:'Chưa xác minh được chi tiết sử dụng. Hãy tải lại danh sách.'});

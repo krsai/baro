@@ -68,3 +68,7 @@ Object.assign(bankLedgerMessages.en.errors,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Ba
 Object.assign(bankLedgerMessages.vi.errors,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Không thể dùng mã phí ngân hàng miễn thuế BNFE. Kiểm tra thiết lập mã kế toán."});
 
 for (const language of ['ko','en','vi']) Object.assign(bankLedgerMessages[language].errors, Object.fromEntries(Object.entries(payrollManagementText[language]).filter(([key]) => key.startsWith('PAYROLL_'))));
+
+Object.assign(bankLedgerMessages.ko.errors,{MATERIAL_ITEM_REQUIRED:'등록된 자재 품목을 선택해 주세요.',INVALID_MATERIAL_ITEM:'이 회사와 코드의 등록 자재를 선택해 주세요.'});
+Object.assign(bankLedgerMessages.en.errors,{MATERIAL_ITEM_REQUIRED:'Select a registered material item.',INVALID_MATERIAL_ITEM:'Select a material registered for this company and code.'});
+Object.assign(bankLedgerMessages.vi.errors,{MATERIAL_ITEM_REQUIRED:'Chọn mặt hàng vật tư đã đăng ký.',INVALID_MATERIAL_ITEM:'Chọn vật tư đã đăng ký cho công ty và mã này.'});

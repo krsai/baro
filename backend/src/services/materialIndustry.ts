@@ -13,6 +13,7 @@ export async function setIndustryMaterialManagement(tx:any,id:number,enabled:boo
  if(!industry)throw createHttpError(404,'SETTING_NOT_FOUND');
  if(industry.materialManagementRevision!==revision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
  if(industry.materialManagement===enabled)return industry;
+ if(!enabled&&tx.materialItem&&await tx.materialItem.count({where:{industryId:id}}))throw createHttpError(409,'MATERIAL_ITEMS_IN_USE');
  const saved=await tx.settingServiceDefault.update({where:{id},data:{materialManagement:enabled,materialManagementRevision:{increment:1}}});
  const bases=await tx.transactionCodeBase.findMany({where:{industryLinks:{some:{systemIndustryId:id}}},include:{industryLinks:{include:{industry:{include:{retirement:true}}}}}});
  for(const base of bases){

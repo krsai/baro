@@ -57,7 +57,7 @@ export async function loadExpenseEditorSource(db: any, orgId: number, kind: stri
 export function expenseEditorRevision(source: any) {
   return hash(snapshot({ kind: source.kind, id: source.id, document: source.document && {
     id: source.document.id, version: source.document.version,...(source.document.paymentSchedule?.length?{paymentSchedule:source.document.paymentSchedule}:{}), ...(source.document.scheduledPaymentDate?{scheduledPaymentDate:source.document.scheduledPaymentDate}:{}), remark: source.document.remark, requestDate: source.document.requestDate, partnerOrgId: source.document.partnerOrgId,payeeEmployeeId:source.document.payeeEmployeeId,
-  }, costs: source.costs.map((cost: any) => ({...cost,partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
+  }, costs: source.costs.map((cost: any) => ({...cost,...(!cost.materialItemId?{materialItemId:undefined,materialItemSnapshot:undefined}:{}),partner:undefined,serviceType:undefined,transactionCode:undefined,workOrder:undefined,style:undefined,styleProcess:undefined,createdByEmployee:undefined})), record: source.record }));
 }
 
 function editorLine(cost: any, record: any) {
@@ -65,7 +65,7 @@ function editorLine(cost: any, record: any) {
   const refs = record && { order: record.assignmentPlan.workOrder,
     style: { ...record.style, styleProcesses: [record.styleProcess] },
     plan: { id: record.assignmentPlanId, styleId: record.styleId, processIds: [record.styleProcessId] } };
-  return { inputSettings:cost?.linkPolicyAudit?.inputSettings??null,linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
+  return { materialItemWasRequired:Boolean(cost?.materialItemId),materialItemId:cost?.materialItemId??null,materialItemSnapshot:cost?.materialItemSnapshot??null,originalDetails:cost?.details??{},inputSettings:cost?.linkPolicyAudit?.inputSettings??null,linkTarget:cost?.linkTarget ?? (record?'PROCESS':'NONE'),linkPolicyAuditId:cost?.linkPolicyAuditId ?? null,itemId: cost?.id || null, sourceRecordId: record?.id || null,
     transactionCodeId: cost?.transactionCodeId || '', currency: cost?.currency || 'VND',
     transactionCode:cost?.transactionCode || null, description: cost?.description || [record?.style?.name,record?.styleProcess?.processName].filter(Boolean).join(' · '),
     itemCustomerId:cost?.itemCustomerId??null,itemOwnerOrgId:cost?.itemOwnerOrgId??null,itemOwnerSnapshot:cost?.itemOwnerSnapshot??null,itemTypeId:cost?.itemTypeId??null,itemAttributeSnapshot:cost?.itemAttributeSnapshot??null,

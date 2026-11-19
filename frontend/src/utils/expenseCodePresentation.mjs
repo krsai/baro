@@ -1,3 +1,4 @@
+import {materialItemName,materialItemSpec} from '../constants/materialItems.js';
 import {accountingCodeDescription,isInternalFundsCode} from './accountingCode.mjs';
 export const expenseCodeDescription=accountingCodeDescription;
 
@@ -8,7 +9,7 @@ export function expenseLineDescription(line, language = 'ko', codes = []) {
   const attributes=line.itemAttributeSnapshot;
   const customer=attributes?.customer?.[language==='ko'?'nameKo':language==='vi'?'nameVi':'name']||attributes?.customer?.name;
   const type=attributes?.type?.[language==='ko'?'nameKo':language==='vi'?'nameVi':'nameEn']||attributes?.type?.nameEn;
-  return [code ? expenseCodeDescription(code,language) : line?.description || '',customer,type].filter(Boolean).join(' · ');
+  return [code ? expenseCodeDescription(code,language) : line?.description || '',...(line.materialItemSnapshot?[]:[customer,type]),materialItemName(line.materialItemSnapshot,language),materialItemSpec(line.materialItemSnapshot)].filter(Boolean).join(' · ');
 }
 
 export function expenseRequestSummary(document, language = 'ko', codes = []) {

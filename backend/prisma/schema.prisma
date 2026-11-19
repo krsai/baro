@@ -739,6 +739,8 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  materialItemId String?
+  materialItemSnapshot Json?
   bankFeeLinks BankLedgerFeeLink[] @relation("BankFeeParent")
   bankFeeParent BankLedgerFeeLink? @relation("BankFeeDebit")
   payrollAllocations PayrollPayableAllocation[]
@@ -2206,6 +2208,8 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  materialItemId String?
+  materialItemSnapshot Json?
   itemOwnerOrgId Int?
   itemOwnerSnapshot Json?
   itemOwner Organization? @relation("MaterialItemOwner",map:"Cost_material_owner_fkey",fields:[itemOwnerOrgId],references:[id],onDelete:Restrict,onUpdate:Restrict)
@@ -3826,4 +3830,27 @@ model PartnerHandledAudit {
  policy PartnerHandledPolicy @relation(fields:[orgId,entityId],references:[orgId,entityId],onDelete:Restrict)
  actor Employee @relation(fields:[actorId,orgId],references:[id,orgId],onDelete:Restrict,onUpdate:Restrict)
  @@unique([orgId,entityId,revision])
+}
+
+model MaterialItem {
+ policyAuditId Int?
+ id String @id
+ orgId Int
+ baseId Int
+ industryId Int
+ unitId Int
+ ownerOrgId Int?
+ customerId Int?
+ typeId Int?
+ colorId Int?
+ data Json
+ identityKey String
+ clientKey String
+ requestHash String
+ createdByEmployeeId Int
+ createdAt DateTime @default(now())
+ @@unique([id,orgId,baseId],map:"MaterialItem_scope_key")
+ @@unique([orgId,clientKey],map:"MaterialItem_request_key")
+ @@unique([orgId,baseId,identityKey],map:"MaterialItem_identity_key")
+ @@index([orgId,baseId],map:"MaterialItem_company_code_idx")
 }

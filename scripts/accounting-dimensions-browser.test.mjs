@@ -20,14 +20,14 @@ try{
   await page.getByRole('combobox',{name:t.dimensions,exact:true}).click();await page.getByRole('option',{name:t.REQUIRED,exact:true}).click();
   await page.getByRole('button',{name:t.link,exact:true}).click();
   const length=page.getByRole('textbox',{name:t.length,exact:false}),w=page.getByRole('textbox',{name:t.width,exact:false}),height=page.getByRole('textbox',{name:t.height,exact:false});
-  await length.waitFor();assert.equal(await length.getAttribute('required'),'');assert.equal(await w.getAttribute('required'),'');assert.equal(await height.getAttribute('required'),null);
-  await length.fill('210.5');await w.fill('297');await page.waitForFunction(()=>window.valid);assert.equal(await page.evaluate(()=>window.line.details.height),undefined);
+  await length.waitFor();assert.equal(await length.getAttribute('required'),'');assert.equal(await w.getAttribute('required'),'');assert.equal(await height.getAttribute('required'),'');
+  await length.fill('210.5');await w.fill('297');await page.waitForFunction(()=>!window.valid);assert.equal(await page.evaluate(()=>window.line.details.height),undefined);
   await height.fill('0');await page.waitForFunction(()=>!window.valid);assert.equal(await height.getAttribute('aria-invalid'),'true');
   await height.fill('12.5');await page.waitForFunction(()=>window.valid);
   await page.getByRole('button',{name:t.close,exact:true}).click();
   await page.getByRole('combobox',{name:t.dimensions,exact:true}).click();await page.getByRole('option',{name:t.HIDDEN,exact:true}).click();
   await page.getByRole('button',{name:t.link,exact:true}).click();
   assert.equal(await height.inputValue(),'12.5');assert.equal(await length.inputValue(),'210.5');assert.deepEqual(await page.evaluate(()=>window.settings.requiredFields),[]);assert.deepEqual(errors,[]);
-  await page.close();console.log('PASS dimensions settings, required L/W, optional H, retained values',lang,width);
+  await page.close();console.log('PASS dimensions settings, required L/W/H, retained values',lang,width);
  }
 }finally{await browser?.close();server.kill();unlinkSync(file);unlinkSync(entry);}

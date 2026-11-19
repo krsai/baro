@@ -1,3 +1,4 @@
+import {registerMaterialItemRoutes} from './materialItems';
 import {registerPartnerHandledItemRoutes} from './partnerHandledItems';
 import {registerMaterialIndustryRoutes} from './materialIndustry';
 import {registerCodeItemAttributeRoutes} from './codeItemAttributes';
@@ -71,6 +72,7 @@ export async function adoptSetting(tx: any, orgId: number, kind: 'services' | 'c
 
 export function registerTransactionSettingRoutes(app: any, db: any, gates: any) {
   registerExpenseUnitRoutes(app,db,gates);
+  registerMaterialItemRoutes(app,db,gates);
   registerPartnerHandledItemRoutes(app,db,gates);
   registerMaterialIndustryRoutes(app,db,gates);
   registerCodeItemAttributeRoutes(app,db,gates);

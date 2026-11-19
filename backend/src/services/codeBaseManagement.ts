@@ -31,6 +31,7 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   if(previous&&body.serviceTypeId!=null&&body.serviceTypeId!==previous.serviceTypeId)throw createHttpError(409,'CODE_BASE_IDENTITY_IMMUTABLE');
   if(previous?.expenseType?.code==='OTHER')throw createHttpError(410,'OTHER_EXPENSE_TYPE_RETIRED');
   const selection=await codeIndustrySelection(tx,body,previous);
+  if(id&&tx.materialItem&&await tx.materialItem.count({where:{baseId:id,industryId:{notIn:selection.ids}}}))throw createHttpError(409,'MATERIAL_ITEMS_IN_USE');
   data.serviceTypeId=previous?.serviceTypeId??selection.ids[0];
   await tx.$queryRawUnsafe('SELECT id FROM "SettingServiceDefault" WHERE id=$1 FOR UPDATE', data.serviceTypeId);
   if (!await tx.settingServiceDefault.findUnique({ where: { id: data.serviceTypeId } })) throw createHttpError(400,'INVALID_SERVICE_TYPE');
@@ -66,8 +67,8 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   if (renaming) await assertCodeBaseRenameAvailable(tx, id!, data.code);
   const base = id ? await tx.transactionCodeBase.update({ where: { id }, data }) : await tx.transactionCodeBase.create({ data });
   if(!previous||selection.supplied){
-    await tx.accountingCodeIndustry.deleteMany({where:{baseId:base.id}});
-    await tx.accountingCodeIndustry.createMany({data:selection.ids.map(systemIndustryId=>({baseId:base.id,systemIndustryId}))});
+    await tx.accountingCodeIndustry.deleteMany({where:{baseId:base.id,systemIndustryId:{notIn:selection.ids}}});
+    await tx.accountingCodeIndustry.createMany({skipDuplicates:true,data:selection.ids.map(systemIndustryId=>({baseId:base.id,systemIndustryId}))});
   }
   if (renaming) {
     // Rename disabled variants too; re-enabling must reuse the same IDs.
@@ -167,7 +168,8 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
     WHERE code."baseId"=ANY($1::int[])`+ledgerUsage+invoiceUsage,ids) as { id: number }[];
   const types=db.codeItemType?await db.codeItemType.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
   const handled=db.partnerHandledSelection?await db.partnerHandledSelection.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
-  return new Set([...rows.map(row=>row.id),...types.map((type:any)=>type.baseId),...handled.map((row:any)=>row.baseId)]);
+  const materials=db.materialItem?await db.materialItem.findMany({where:{baseId:{in:ids}},select:{baseId:true},distinct:['baseId']}):[];
+  return new Set([...materials.map((row:any)=>row.baseId),...rows.map(row=>row.id),...types.map((type:any)=>type.baseId),...handled.map((row:any)=>row.baseId)]);
 }
 
 export function registerCodeBaseRoutes(app: any, db: any, gates: any) {

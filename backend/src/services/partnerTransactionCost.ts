@@ -33,9 +33,10 @@ export function historicalOutsourcingRows(records: any[]) {
     createdAt: record.createdAt,
   }));
 }
-export function validateCostDimensions(details:Record<string,string>){
+export function validateCostDimensions(details:Record<string,string>,previous?:any){
+ if(previous&&['length','width','height'].every(key=>(details[key]||'')===(previous[key]||'')))return;
  for(const key of ['length','width','height'])if(details[key]&&(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key])||new Prisma.Decimal(details[key]).lte(0)))throw createHttpError(400,'INVALID_TRANSACTION_DETAILS');
- if(['length','width','height'].some(key=>details[key])&&(!details.length||!details.width))throw createHttpError(400,'REQUIRED_TRANSACTION_FIELD:'+(!details.length?'length':'width'));
+ if(['length','width','height'].some(key=>details[key])&&(!details.length||!details.width||!details.height))throw createHttpError(400,'REQUIRED_TRANSACTION_FIELD:'+(!details.length?'length':!details.width?'width':'height'));
 }
 const fail = (message: string): never => { throw createHttpError(400, message); };
 export function validateCostDate(value: unknown): string {

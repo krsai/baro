@@ -29,8 +29,13 @@ export async function prepareCodeItemAttributes(tx:any,orgId:number,body:any,cod
 export function registerCodeItemAttributeRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any)=>{
   const scope=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!scope)return null;
+  const feature=req.query?.context==='MATERIAL'?'INVENTORY_MATERIALS':'OUTSOURCING_RECORD';
   const employee=await db.employee.findFirst({where:{id:gates.actorId(),orgId:scope.organization.id,status:'ACTIVE'},select:{orgRole:true}});
-  if(!employee||!gates.canAccessCodeItems||!(await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type)).includes('OUTSOURCING_RECORD')||!await gates.canAccessCodeItems({orgType:scope.organization.type,orgRole:employee.orgRole,feature:'OUTSOURCING_RECORD'}))throw createHttpError(403,'ITEM_ATTRIBUTE_ACCESS_DENIED');
+  if(!employee||!gates.canAccessCodeItems||!(await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type)).includes(feature)||!await gates.canAccessCodeItems({orgType:scope.organization.type,orgRole:employee.orgRole,feature}))throw createHttpError(403,'ITEM_ATTRIBUTE_ACCESS_DENIED');
+  if(feature==='INVENTORY_MATERIALS'){
+   const baseId=Number(req.query?.baseId??req.body?.baseId);
+   if(!Number.isSafeInteger(baseId)||baseId<=0||!await db.transactionCode.findFirst({where:{ownerOrgId:scope.organization.id,baseId,isActive:true,base:{isActive:true,materialSettings:{path:['enabled'],equals:true}}},select:{id:true}}))throw createHttpError(400,'INVALID_ITEM_BASE');
+  }
   return scope;
  };
  app.get('/code-item-options',async(req:any,res:any)=>{

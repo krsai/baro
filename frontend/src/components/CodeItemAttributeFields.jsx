@@ -8,7 +8,7 @@ import {ITEM_ATTRIBUTE_TEXT} from '../constants/itemAttributes';
 import {serviceName} from './OutsourcingServiceDialog';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 
-export default function CodeItemAttributeFields({line,code,orgId,languageCode,disabled,onChange,onBusyChange,validationAttempt}){
+export default function CodeItemAttributeFields({line,code,orgId,languageCode,disabled,onChange,onBusyChange,validationAttempt,context}){
  const t=ITEM_ATTRIBUTE_TEXT[languageCode]||ITEM_ATTRIBUTE_TEXT.en;
  const [options,setOptions]=useState(null),[failed,setFailed]=useState(false),[reload,setReload]=useState(0),[draft,setDraft]=useState(null),[saving,setSaving]=useState(false),[saveError,setSaveError]=useState(false);
  const fields=['owner','customer','type'].filter(key=>(code.base?.attributeInputs?.[key]??'HIDDEN')!=='HIDDEN'||line[key==='owner'?'itemOwnerOrgId':key==='customer'?'itemCustomerId':'itemTypeId']);
@@ -20,13 +20,13 @@ export default function CodeItemAttributeFields({line,code,orgId,languageCode,di
   let alive=true;setOptions(null);setFailed(false);setDraft(null);setSaveError(false);setSaving(false);
   if(!editableFields.length||disabled){onBusyChange(false);return()=>{alive=false;};}
   onBusyChange(true);
-  requestJSON(`/code-item-options${buildQueryString({orgId,baseId})}`,{skipCache:true}).then(data=>{if(alive){setOptions(data);onBusyChange(false);}}).catch(()=>{if(alive){setFailed(true);onBusyChange(true);}});
+  requestJSON(`/code-item-options${buildQueryString({orgId,baseId,context})}`,{skipCache:true}).then(data=>{if(alive){setOptions(data);onBusyChange(false);}}).catch(()=>{if(alive){setFailed(true);onBusyChange(true);}});
   return()=>{alive=false;onBusyChange(false);};
- },[orgId,baseId,reload,disabled,Boolean(editableFields.length),onBusyChange]);
+ },[orgId,baseId,context,reload,disabled,Boolean(editableFields.length),onBusyChange]);
  const save=async()=>{
   const savingScope=scope.current.key;
   setSaving(true);setSaveError(false);
-  try{const type=await requestJSON(`/code-item-types${buildQueryString({orgId})}`,{method:'POST',body:JSON.stringify({...draft,baseId})});if(!scope.current.mounted||scope.current.key!==savingScope)return;setOptions(previous=>({...previous,types:[...(previous?.types||[]).filter(row=>row.id!==type.id),type]}));onChange(line.key,{itemTypeId:type.id,itemAttributeSnapshot:{...line.itemAttributeSnapshot,type}});setDraft(null);}
+  try{const type=await requestJSON(`/code-item-types${buildQueryString({orgId,context})}`,{method:'POST',body:JSON.stringify({...draft,baseId})});if(!scope.current.mounted||scope.current.key!==savingScope)return;setOptions(previous=>({...previous,types:[...(previous?.types||[]).filter(row=>row.id!==type.id),type]}));onChange(line.key,{itemTypeId:type.id,itemAttributeSnapshot:{...line.itemAttributeSnapshot,type}});setDraft(null);}
   catch{if(scope.current.mounted&&scope.current.key===savingScope)setSaveError(true);}finally{if(scope.current.mounted&&scope.current.key===savingScope)setSaving(false);}
  };
  return <>

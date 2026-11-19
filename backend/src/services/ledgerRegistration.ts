@@ -1,3 +1,4 @@
+import {prepareLedgerMaterial} from './materialItems';
 import {bankFeeAccountingCode} from './accountingCode';
 import {ledgerTaxSnapshot,ledgerTaxInput} from './ledgerVat';
 import {Prisma} from '@prisma/client';
@@ -32,13 +33,13 @@ export async function validateLedgerRegistration(db:any,orgId:number,input:any){
  }
  return {revision:input.revision,registrationStages:stages,drafterScope:scope};
 }
-export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
+export async function ledgerRegistrationSource(db:any,orgId:number,input:any,previousEntry?:any){
  const payload=input.payload,parents=payload?.rows?.filter((r:any)=>r.entryKind==='BANK');
  if(!parents?.length||payload.rows.length>50||parents.some((r:any)=>r.transactionDate!==parents[0].transactionDate||r.evidenceType==='ADJUSTMENT'))fail('LEDGER_SINGLE_ACCOUNT_REQUIRED');
  if(parents.some((fee:any)=>fee.feeForClientKey&&(fee.evidenceType!=='BANK_FEE'||!parents.some((parent:any)=>parent.clientKey===fee.feeForClientKey&&!['BANK_FEE','ADJUSTMENT'].includes(parent.evidenceType)&&parent.accountId===fee.accountId&&parent.transactionDate===fee.transactionDate))))fail('LEDGER_INVALID_SETTLEMENT');
  if(!payload.clientKey||input.sourceId!==payload.clientKey)fail('INVALID_TRANSACTION_KEY');
  const rows=[],items=[],transferTargets=[],accountSources=[];
- for(const suppliedRow of parents){
+ for(const [parentIndex,suppliedRow] of parents.entries()){
  const row=suppliedRow.evidenceType==='BANK_FEE'?{...suppliedRow,accountingCodeId:(await bankFeeAccountingCode(db,orgId)).id}:suppliedRow;
  const accountId=row.accountId;
  const ledger=await db.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
@@ -73,7 +74,8 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any){
    if(currency!==account.currencyCode)items.push({currency,unitPrice:/^\d+(\.\d{1,4})?$/.test(value)?value:'0',quantity:'1',vatRate:'0'});
   }
   items.push({currency:account.currencyCode,unitPrice:/^\d+(\.\d{1,4})?$/.test(row.amount)?row.amount:'0',quantity:'1',vatRate:'0'});
-  rows.push({...row,...transfer,counterparty:entryCounterparty(party)});
+  const material=input.allowIncomplete&&!row.materialItemId?{}:await prepareLedgerMaterial(db,orgId,row,parentIndex===0?previousEntry:undefined);
+  rows.push({...row,...material,...transfer,counterparty:entryCounterparty(party)});
  }
  const first=accountSources[0]!,account={id:first.accountId,entityAccountId:first.masterId,currencyCode:first.currency};
  const snapshot={account:{name:first.name,currencyCode:first.currency},accounts:accountSources,rows};

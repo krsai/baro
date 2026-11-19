@@ -20,7 +20,7 @@ function adapter(db) {
   for (const [name,table] of Object.entries({ accountingCodeIndustry:'AccountingCodeIndustry', expenseType:'ExpenseType', transactionCodeBase:'TransactionCodeBase', settingServiceDefault:'SettingServiceDefault', settingTransactionCodeDefault:'SettingTransactionCodeDefault', taxTreatment:'TaxTreatment', transactionCode:'TransactionCode', outsourcingServiceType:'OutsourcingServiceType', partnerTransactionCost:'PartnerTransactionCost', organizationOutsourcingServiceType:'OrganizationOutsourcingServiceType' })) {
     const where = (input, args) => Object.entries(input || {}).map(([key,value]) => {
       if(key==='retirement'&&value===null)return 'NOT EXISTS (SELECT 1 FROM \"IndustryRetirement\" retired WHERE retired.\"systemIndustryId\"='+q(table)+'.id)';
-      if (value && typeof value === 'object') { if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; if ('not' in value) {args.push(value.not);return `${q(key)}<>$${args.length}`;} throw Error('unsupported condition'); }
+      if (value && typeof value === 'object') { if ('notIn' in value) {args.push(value.notIn);return `NOT (`+q(key)+`=ANY($`+args.length+`::int[]))`;} if ('in' in value) { args.push(value.in); return `${q(key)}=ANY($${args.length}::int[])`; } if (value.not === null) return `${q(key)} IS NOT NULL`; if ('not' in value) {args.push(value.not);return `${q(key)}<>$${args.length}`;} throw Error('unsupported condition'); }
       args.push(value); return `${q(key)}=$${args.length}`;
     }).join(' AND ') || 'true';
     const find = async ({where:input}={})=>{const args=[];return (await db.query(`SELECT * FROM ${q(table)} WHERE ${where(input,args)} ORDER BY ${table==="AccountingCodeIndustry"?q("baseId")+","+q("systemIndustryId"):"id"}`,args)).rows;};
@@ -60,7 +60,7 @@ async function fixture(legacyCode = 'OLD_CODE') {
     CREATE TABLE "ExpenseRequest"(id INT,"orgId" INT,"deletedAt" TIMESTAMP);
     CREATE TABLE "IndustryRetirement"("systemIndustryId" INT PRIMARY KEY);
     CREATE TABLE "BankLedgerEntry"(id TEXT,"orgId" INT,"accountingCodeId" INT,"voidedAt" TIMESTAMP);
-    CREATE TABLE "BankLedgerSettlementLine"("orgId" INT,"entryId" TEXT,"accountingCodeId" INT);`);
+    CREATE TABLE "BankLedgerSettlementLine"("orgId" INT,"entryId" TEXT,"accountingCodeId" INT); CREATE TABLE "Invoice"(id TEXT,"sellerOrgId" INT,status TEXT,"deletedAt" TIMESTAMP,"cancelledAt" TIMESTAMP);CREATE TABLE "InvoiceGeneralLine"("invoiceId" TEXT,"sellerOrgId" INT,"transactionCodeId" INT);`);
   return db;
 }
 

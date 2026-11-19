@@ -1,3 +1,4 @@
+import {materialIndustryText} from '../../constants/materialIndustry';
 import {dialogTitle} from '../../constants/dialogTitles';
 import {accountingCompactText} from '../../constants/accountingCompact';
 import useChangeDrivenEffect from '../../hooks/useChangeDrivenEffect';
@@ -40,7 +41,7 @@ export default function AccountingCodeSettings(){
  const {active}=useRequestScopeContext();
  const {languageCode}=useLanguage(),text=TEXT[languageCode]||TEXT.en,name=row=>classificationName(row,languageCode);
  const usageText=accountingCodeUsageText[languageCode]||accountingCodeUsageText.en;
- const usageEntries=row=>['expense','ledger','settlement','invoice','history','types','handled'].map(key=>({key,label:usageText[key==='history'?'past':key],count:row.transactionUsage?.[key]||0}));
+ const usageEntries=row=>['expense','ledger','settlement','invoice','history','types','handled','materials'].map(key=>({key,label:usageText[key==='history'?'past':key],count:row.transactionUsage?.[key]||0}));
  const usageTitle=row=>row.transactionUsage?usageEntries(row).filter(item=>item.count).map(item=>item.label+': '+item.count).join(' / '):'';
  const [usageRow,setUsageRow]=useState(null);
  const directionText=accountingDirectionText[languageCode]||accountingDirectionText.en;
@@ -89,7 +90,7 @@ export default function AccountingCodeSettings(){
   try{
    const {expenseTypeId,expenseType,industryLinks,industries:oldIndustries,variants,isActive,isAvailable,...body}=form;
    await requestJSON(path+(form.id?'/'+form.id:''),{method:form.id?'PUT':'POST',body:JSON.stringify({...body,taxTreatmentIds:[1,2,3]})});setForm(null);await load();
-  }catch(failure){setError(failure?.message==='CODE_RENAME_CONFLICT'?text.conflict:failure?.message==='ACCOUNTING_INDUSTRY_CHANGED'?text.stale:text.error);}finally{setSaving(false);}
+  }catch(failure){setError(failure?.message==='MATERIAL_ITEMS_IN_USE'?(materialIndustryText[languageCode]||materialIndustryText.en).inUse:failure?.message==='CODE_RENAME_CONFLICT'?text.conflict:failure?.message==='ACCOUNTING_INDUSTRY_CHANGED'?text.stale:text.error);}finally{setSaving(false);}
  };
  const options=sourceRows.filter(row=>row.isActive||form?.industryIds.includes(row.id)).sort((a,b)=>(roles.findIndex(row=>row.id===a.partnerRoleId)-roles.findIndex(row=>row.id===b.partnerRoleId))||a.id-b.id);
  return <AppPageContainer title={text.title} titleActions={<Button variant="contained" disabled={loading||saving} onClick={openCreate}>{text.add}</Button>}>

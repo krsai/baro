@@ -224,6 +224,7 @@
     "test:page-layout-browser": "node scripts/page-layout-browser.test.mjs",
     "test:expense-editor-postgres": "npm --prefix backend run build && node scripts/expense-editor-postgres.test.mjs",
     "test:recorded-month-range": "node --test scripts/recorded-month-range.test.mjs",
+    "test:material-items": "npm --prefix backend run build && node --test scripts/material-items.test.mjs scripts/accounting-dimensions.test.mjs scripts/railway-schema-preflight.test.mjs && node scripts/material-items-browser.test.mjs",
     "test:material-code-settings": "npm --prefix backend run build && node --test scripts/material-owner.test.mjs scripts/material-industry.test.mjs scripts/material-code-settings.test.mjs scripts/code-item-attributes.test.mjs scripts/expense-code-link-policy.test.mjs scripts/railway-schema-preflight.test.mjs",
     "test:material-code-settings-browser": "node scripts/material-code-settings-browser.test.mjs",
     "logs:collect": "node scripts/collect-logs.mjs",
