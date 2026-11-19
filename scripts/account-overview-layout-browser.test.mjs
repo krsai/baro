@@ -37,7 +37,7 @@ try{
   const charts=page.getByTestId('cashflow-charts-panel'),items=page.getByTestId('cashflow-items-panel');
   const category=items.getByRole('button',{name:'Outsourcing',exact:true});
   await category.waitFor();
-  if(width===1440)assert.ok(Math.abs((await charts.boundingBox()).height-(await items.boundingBox()).height)<2);
+  if(width>=1440){const panels=await Promise.all([balancePanel,statusPanel,charts,items].map(panel=>panel.boundingBox()));assert.ok(Math.max(...panels.map(p=>p.height))-Math.min(...panels.map(p=>p.height))<2,'all four cards have matching heights');}
   const beforeHeight=(await items.boundingBox()).height;
   const callsBefore=await page.evaluate(()=>window.calls);
   await category.focus();
