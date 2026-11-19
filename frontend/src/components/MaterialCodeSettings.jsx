@@ -7,10 +7,11 @@ export const MATERIAL_SETTINGS_TEXT={
 };
 export function masterInputModes(value){
  const m=value.materialSettings||{};
- return m.masterInputs||Object.fromEntries(['owner','customer','type','color','dimensions'].map(key=>[key,key==='color'?m.colorInput&&m.colorInput!=='HIDDEN'?'REQUIRED':'HIDDEN':key==='dimensions'?(value.requiredFields||[]).includes('length')?'REQUIRED':'HIDDEN':value.attributeInputs?.[key]&&value.attributeInputs[key]!=='HIDDEN'?'REQUIRED':'HIDDEN']));
+ const {customer,...inputs}=m.masterInputs||Object.fromEntries(['owner','customer','type','color','dimensions'].map(key=>[key,key==='color'?m.colorInput&&m.colorInput!=='HIDDEN'?'REQUIRED':'HIDDEN':key==='dimensions'?(value.requiredFields||[]).includes('length')?'REQUIRED':'HIDDEN':value.attributeInputs?.[key]&&value.attributeInputs[key]!=='HIDDEN'?'REQUIRED':'HIDDEN']));
+ return inputs;
 }
 export default function MaterialCodeSettings({value,onChange,languageCode,disabled=false,query='',filter='ALL'}){
  const t=MATERIAL_SETTINGS_TEXT[languageCode]||MATERIAL_SETTINGS_TEXT.en,modes=masterInputModes(value);
  if(!value.materialSettings?.enabled)return null;
- return <Box>{['owner','customer','type','color','dimensions','unit'].filter(key=>[t[key],key].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())&&(filter!=='ACTIVE'||key==='unit'||modes[key]==='REQUIRED')).map(key=><FormControlLabel key={key} sx={{m:0,display:'flex',px:1,py:.25,minHeight:40,bgcolor:key==='unit'||modes[key]==='REQUIRED'?'action.selected':undefined}} control={<Checkbox size="small" checked={key==='unit'||modes[key]==='REQUIRED'} disabled={disabled||key==='unit'} onChange={event=>onChange({...value,materialSettings:{...value.materialSettings,masterInputs:{...modes,[key]:event.target.checked?'REQUIRED':'HIDDEN'}}})}/>} label={t[key]}/>)}</Box>;
+ return <Box>{['owner','type','color','dimensions','unit'].filter(key=>[t[key],key].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())&&(filter!=='ACTIVE'||key==='unit'||modes[key]==='REQUIRED')).map(key=><FormControlLabel key={key} sx={{m:0,display:'flex',px:1,py:.25,minHeight:40,bgcolor:key==='unit'||modes[key]==='REQUIRED'?'action.selected':undefined}} control={<Checkbox size="small" checked={key==='unit'||modes[key]==='REQUIRED'} disabled={disabled||key==='unit'} onChange={event=>onChange({...value,materialSettings:{...value.materialSettings,masterInputs:{...modes,[key]:event.target.checked?'REQUIRED':'HIDDEN'}}})}/>} label={t[key]}/>)}</Box>;
 }

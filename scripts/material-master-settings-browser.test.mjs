@@ -29,6 +29,7 @@ try{
   for(const kind of ['subtypes','inputs','master'])assert.ok((await dialog.locator(`[data-accounting-summary="${kind}"]`).boundingBox()).height<=(width===1440?56:140));
   await dialog.locator('#accounting-master-toggle').click();const panel=dialog.locator('#accounting-input-panel');
   assert.equal(await panel.getByRole('combobox').count(),0);assert.equal(await panel.getByRole('table').count(),0);
+  assert.equal(await panel.getByRole('checkbox',{name:t.customer,exact:true}).count(),0);
   for(const key of ['owner','type','color','dimensions'])await panel.getByRole('checkbox',{name:t[key],exact:true}).check();
   assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isChecked(),true);assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isDisabled(),true);
   await panel.press('Escape');await panel.waitFor({state:'hidden'});

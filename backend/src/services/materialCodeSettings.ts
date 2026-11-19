@@ -16,6 +16,6 @@ export function materialCodeSettings(value:any,inputs?:any){
 // An absent masterInputs retains the meaning of already saved catalogue settings.
 export function materialMasterCode(code:any){
  const base=code.base??code,m=base.materialSettings??{},inputs=m.masterInputs;
- if(inputs===undefined)return code;
- return {...code,base:{...base,attributeInputs:Object.fromEntries(['owner','customer','type'].map(key=>[key,inputs[key]??'HIDDEN'])),requiredFields:inputs.dimensions==='REQUIRED'?['length','width']:[],materialSettings:{...m,colorInput:inputs.color??'HIDDEN'}}};
+ if(inputs===undefined)return {...code,base:{...base,attributeInputs:{...base.attributeInputs,customer:'HIDDEN'}}};
+ return {...code,base:{...base,attributeInputs:{...Object.fromEntries(['owner','type'].map(key=>[key,inputs[key]??'HIDDEN'])),customer:'HIDDEN'},requiredFields:inputs.dimensions==='REQUIRED'?['length','width']:[],materialSettings:{...m,colorInput:inputs.color??'HIDDEN'}}};
 }
