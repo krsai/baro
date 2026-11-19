@@ -6,7 +6,7 @@ const {Prisma}=require('../backend/node_modules/@prisma/client');
 const {registerBankLedgerRoutes}=require('../backend/dist/services/bankLedger');
 const {attachLedgerActorNames}=require('../backend/dist/services/ledgerActors');
 import {formatLedgerAmount} from '../frontend/src/utils/bankLedgerMoney.mjs';
-import {accountCashflowItems,accountCashflowTotal,cashflowSegments,categorizeCashflow} from '../frontend/src/utils/accountCashflow.mjs';
+import {accountCashflowItems,accountCashflowTotal,accountCashflowNet,cashflowSegments,categorizeCashflow} from '../frontend/src/utils/accountCashflow.mjs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 
 test('payables show each outstanding request with its payment date, main code and original totals',()=>{
@@ -53,6 +53,10 @@ test('cashflow classifies actual paid expense items and fee rows independently w
  const items=accountCashflowItems(categorizeCashflow(groups,{unclassified:{nameEn:'Unknown'}}),'','USD');
  assert.equal(accountCashflowTotal(items,'IN','USD'),'100.00');
  assert.equal(accountCashflowTotal(items,'OUT','USD'),'110.00');
+ assert.equal(accountCashflowNet(items,'USD'),'-10.00');
+ assert.equal(accountCashflowNet([],'VND'),'0');
+ assert.equal(accountCashflowNet([{native:[{direction:'IN',currencyCode:'USD',balance:'9007199254740993.01'},{direction:'OUT',currencyCode:'USD',balance:'9007199254740993.00'}]}],'USD'),'0.01');
+ assert.equal(accountCashflowNet([{native:[{direction:'IN',currencyCode:'USD',balance:'1.00'}]}],'VND'),null);
  assert.equal(items.find(row=>row.itemKey==='ROLE:1').out,'30.00');
  assert.equal(items.find(row=>row.itemKey==='ROLE:2').out,'75.00');
  assert.equal(items.find(row=>row.itemKey==='UNCODED').out,'5.00');

@@ -35,6 +35,10 @@ try{
   const rowHeights=await statusPanel.locator('tr').evaluateAll(rows=>rows.map(row=>row.getBoundingClientRect().height));assert.ok(Math.max(...rowHeights)-Math.min(...rowHeights)<2,'account and AR/AP rows have uniform height '+JSON.stringify(rowHeights));assert.equal(await statusPanel.getByRole('link',{name:'Frankfurter'}).count(),0);
   await statusPanel.getByRole('button',{name:t.details,exact:true}).click();const yesterdayDialog=page.getByRole('dialog',{name:t.balances,exact:true});await yesterdayDialog.waitFor();await yesterdayDialog.getByText('2026-11-04',{exact:true}).waitFor();const amounts=await yesterdayDialog.locator('tbody tr').first().locator('td').allTextContents();assert.match(amounts[2],/123/);assert.match(amounts[5],/30/);assert.match(amounts[6],/153/);await yesterdayDialog.getByRole('button',{name:t.close,exact:true}).click();await yesterdayDialog.waitFor({state:'hidden'});
   const charts=page.getByTestId('cashflow-charts-panel'),items=page.getByTestId('cashflow-items-panel');
+  await charts.getByTestId('cashflow-net').getByText(t.cashflowNet,{exact:true}).waitFor();
+  assert.match(await charts.getByTestId('cashflow-net').textContent(),/\+₫16,465,275/);
+  const netBox=await charts.getByTestId('cashflow-net').boundingBox(),donutBoxes=await charts.locator('[data-cashflow-chart] svg').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {bottom:box.bottom};}));
+  assert.ok(donutBoxes.every(box=>box.bottom<=netBox.y),'net change is below both charts');
   const category=items.getByRole('button',{name:'Outsourcing',exact:true});
   await category.waitFor();
   if(width>=1440){const panels=await Promise.all([balancePanel,statusPanel,charts,items].map(panel=>panel.boundingBox()));assert.ok(Math.max(...panels.map(p=>p.height))-Math.min(...panels.map(p=>p.height))<2,'all four cards have matching heights');}

@@ -12,6 +12,10 @@ export function accountCashflowItems(groups,accountId,target,rates){
  return [...items.values()].map(item=>({...item,in:convertAccountBalances(item.native.filter(row=>row.direction==='IN'),target,rates),out:convertAccountBalances(item.native.filter(row=>row.direction==='OUT'),target,rates),net:convertAccountBalances(item.native.map(row=>({...row,balance:row.direction==='OUT'?'-'+row.balance:row.balance})),target,rates)})).sort((a,b)=>a.code.localeCompare(b.code)||a.itemKey.localeCompare(b.itemKey));
 }
 export function accountCashflowTotal(items,direction,target,rates){return convertAccountBalances(items.flatMap(item=>item.native.filter(row=>row.direction===direction)),target,rates);}
+export function accountCashflowNet(items,target,rates){
+ const incoming=accountCashflowTotal(items,'IN',target,rates),outgoing=accountCashflowTotal(items,'OUT',target,rates);
+ return incoming===null||outgoing===null?null:money(scaled(incoming)-scaled(outgoing),target);
+}
 export function categorizeCashflow(groups,labels){
  return (groups||[]).map(group=>{
   if(!Array.isArray(group.industries)||group.itemKey==='UNCODED')return group;
