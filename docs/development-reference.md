@@ -722,6 +722,8 @@ SHA-256은 원문의 줄바꿈을 LF로 정규화한 기준입니다.
 
 ## 2026-10-31 청구 대상 중복 제외·진행률/청구율
 
+- 최신 사용자 정정: 청구서 목록 상단의 ‘청구서 대상 설정’과 주문 목록 상단의 ‘출고 대상 설정’에서 각각 관리한다. 두 대상을 한 창의 탭으로 나누던 방식은 이 배치로 대체한다. 제조사 관리자 진입·기존 서버 권한, 포함·제외 저장 API, 검색·페이지·클릭/드래그·미저장/저장 중 보호를 유지한다. 두 진입점과 요청 구분은 `node scripts/order-target-menu-browser.test.mjs`로 검증한다.
+
 - 공통 ManagementTargetSettings(주문 INVOICE/SHIPPING, 급여 PAYABLE/EVIDENCE)는 급여 직원 관리와 같은 @hello-pangea/dnd의 DragDropContext/Droppable/Draggable을 사용한다. 클릭/드래그는 목적 포함·제외 값을 명시하고 originalExcluded와 비교해 초안을 관리한다. 변경 시 저장 활성, 원상 복귀 시 비활성, 같은 목적 상태의 반복 적용은 멱등이며 검색/탭 이동으로 초안을 버리지 않는다. 조회 중/조회 실패/저장 중 보호와 결과 미확인 재시도는 유지한다. 과거 사유 필수 조건은 저장 활성 조건으로 복원하지 않는다. 통합 검증은 `node scripts/management-target-save-browser.test.mjs`다.
 
 - 최신 사용자 정정: 주문의 청구서/출고 대상 설정은 변경 사유 입력 없이 저장한다. 기존 사유·감사·원본을 지우지 않으며 새 무사유 변경은 빈 reason으로 감사에 기록한다. 회사의 실제 ACTIVE ADMIN은 직급 서열과 무관하게 사용할 수 있고 OPERATOR/ACCOUNTANT 및 SYSTEM 단독 접근은 거절한다. 주문 목록 버튼과 기존 출고 상세의 정책 설정에 같은 기준을 적용하며 일반 출고 등록/취소·급여 대상 설정 권한은 확대/축소하지 않는다. 주문 메뉴의 저장된 허용 정책·회사/주문 FK·revision·원자적 저장·멱등 재시도는 유지한다.

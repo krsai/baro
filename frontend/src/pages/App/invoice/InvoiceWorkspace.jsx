@@ -5,6 +5,7 @@ import React, { useEffect, useState } from 'react';
 import {Box,Button,Checkbox,Typography,Dialog,DialogTitle,DialogContent,DialogActions,TextField,Stack} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
+import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
 import InvoicePartyPicker from '../../../components/InvoicePartyPicker';
 import { useAuth } from '../../../context/AuthContext';
 import { useAppActions } from '../../../context/AppContext';
@@ -19,11 +20,12 @@ import InvoiceList from './InvoiceList';
 import {useLocation,useParams} from 'react-router-dom';
 
 export default function InvoiceWorkspace({ view = 'list' } = {}) {
-  const { activeOrgId } = useAuth();
-  return <InvoiceMenuWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} view={view} />;
+  const { activeOrgId, activeOrgType, activeProfile } = useAuth();
+  const canManageInvoiceTargets = activeOrgType === 'MANUFACTURER' && activeProfile?.orgRole === 'ADMIN';
+  return <InvoiceMenuWorkspace key={activeOrgId || 'none'} activeOrgId={activeOrgId} canManageInvoiceTargets={canManageInvoiceTargets} view={view} />;
 }
 
-function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
+function InvoiceMenuWorkspace({ activeOrgId, canManageInvoiceTargets, view = 'list' }) {
   const { navigateToPath } = useAppActions();
   const { languageCode } = useLanguage();
   const t = invoiceMessages[languageCode] || invoiceMessages.en;
@@ -32,7 +34,13 @@ function InvoiceMenuWorkspace({ activeOrgId, view = 'list' }) {
     return <InvoiceCustomerWorkspace activeOrgId={activeOrgId} onBack={() => navigateToPath('/invoices')} />;
   }
   if(view==='detail')return <InvoiceList key={invoiceId} orgId={activeOrgId} languageCode={languageCode} invoiceId={invoiceId}/>;
-  return <AppPageContainer title={t.title} titleActions={<Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>}>
+  const actions = (
+    <Stack direction="row" gap={1} sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+      {canManageInvoiceTargets && <ManagementTargetSettingsButton orgId={activeOrgId} languageCode={languageCode} kind="INVOICE" />}
+      <Button variant="contained" disabled={!activeOrgId} onClick={() => navigateToPath('/invoices/new')}>{t.newInvoice}</Button>
+    </Stack>
+  );
+  return <AppPageContainer title={t.title} titleActions={actions}>
     <InvoiceList orgId={activeOrgId} languageCode={languageCode}/>
   </AppPageContainer>;
 }

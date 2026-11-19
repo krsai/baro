@@ -1,6 +1,6 @@
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
-import OrderTargetSettings from './OrderTargetSettings';
+import ManagementTargetSettingsButton from '../../../components/ManagementTargetSettingsButton';
 import Autocomplete from '../../../components/SearchableSelect';
 import {DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter} from '@dnd-kit/core';
 import {OrderColorDragHandle, OrderColorDropRow, OrderItemsTableContainer} from '../../../components/OrderColorDrag';
@@ -3013,10 +3013,14 @@ const OrderList = () => {
       <AppPageContainer
         title={orderPageText.listTitle}
         titleActions={(
-          <Stack direction="row" spacing={1} alignItems="center">{activeProfile?.orgRole==='ADMIN'&&<OrderTargetSettings key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} disabled={activeOrgType!=='MANUFACTURER'} />}
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
-            {orderPageText.addOrder}
-          </Button></Stack>
+          <Stack direction="row" gap={1} sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {activeOrgType === 'MANUFACTURER' && activeProfile?.orgRole === 'ADMIN' && (
+              <ManagementTargetSettingsButton key={activeOrgId} orgId={activeOrgId} languageCode={languageCode} kind="SHIPPING" />
+            )}
+            <Button variant="contained" startIcon={<AddIcon />} onClick={handleAdd}>
+              {orderPageText.addOrder}
+            </Button>
+          </Stack>
         )}
         toolbar={(
           <SearchPanel onReset={()=>{setSearchTerm('');setProgressFilter(ORDER_FILTER_ALL);}}
