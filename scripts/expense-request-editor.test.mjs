@@ -110,10 +110,10 @@ test('another employee edits a draft without replacing its author and records an
  await assert.rejects(db.save({...next,clientKey:'forged-drafter-001',approvalSelection:{drafterEmployeeId:22}},'request','1',1,22,approvedChange),/EXPENSE_DRAFTER_FIXED/);
  assert.deepEqual(db.state(),before);
 });
-test('a missing evidence number identifies the invalid expense row and rolls back every item',async()=>{
+test('a missing evidence file identifies the invalid expense row and rolls back every item',async()=>{
  const db=harness(),body=await input(db),before=structuredClone(db.state());
  body.items.push({transactionCodeId:7,currency:'USD',description:'Missing evidence',quantity:'2',unitPrice:'1.25',vatRate:'0',details:{}});
- await assert.rejects(db.save(body),/EXPENSE_LINE:2:REQUIRED_TRANSACTION_FIELD:reference/);
+ await assert.rejects(db.save(body),/EXPENSE_LINE:2:REQUIRED_TRANSACTION_FIELD:evidenceFile/);
  assert.deepEqual(db.state(),before);
 });
 

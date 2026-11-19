@@ -18,7 +18,7 @@ try{
   const page=await browser.newPage({viewport:{width:1720,height:1000}}),errors=[],t=ledgerEvidenceText[lang];page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(8000);
   await page.goto(`http://127.0.0.1:${port}/expense-evidence-acceptance.html?lang=${lang}`);
   await page.locator('button[title="MJ-001"]').click();const links=page.getByTestId('expense-line-links');await links.waitFor();
-  assert.equal(await page.locator('output').innerText(),'false');assert.equal(await links.getByLabel(t.supplierReference,{exact:false}).inputValue(),'MJ-001');
+  assert.equal(await page.locator('output').innerText(),'false');assert.equal(await links.getByLabel(t.supplierReference,{exact:false}).count(),0);
   const file=links.getByLabel(t.reference,{exact:false});assert.equal(await file.getAttribute('required'),'');await file.fill('"Z:/Proof/Invoice-001.pdf"');assert.equal(await file.inputValue(),'Z:/Proof/Invoice-001.pdf');
   await page.waitForFunction(()=>document.querySelector('output').textContent==='true');assert.equal(await page.evaluate(()=>window.line.details.reference),'MJ-001');assert.equal(await page.evaluate(()=>window.line.details.evidenceFile),'Z:/Proof/Invoice-001.pdf');
   assert.deepEqual(errors,[]);await page.close();

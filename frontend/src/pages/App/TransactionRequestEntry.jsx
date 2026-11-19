@@ -178,7 +178,7 @@ export default function TransactionRequestEntry() {
         if(!Number(line.unitPrice)||Number(line.unitPrice)<0)fields.push(labels.price);
         for(const key of ['order','style','process'])if(inputMode(code,key)==='REQUIRED'&&!line[{order:'workOrderId',style:'styleId',process:'styleProcessId'}[key]]&&!(key==='process'&&line.styleProcessIds?.length))fields.push(labels[key]);
         if(!line.productionLinked&&code?.base?.entryMode!=='PROCESS'&&!line.details?.evidenceFile?.trim())fields.push((ledgerEvidenceText[languageCode]||ledgerEvidenceText.en).reference);
-        for(const key of new Set(['reference',...(code?.base?.requiredFields||[])]))if(!line.details?.[key]?.trim())fields.push(detailLabels[key]||key);
+        for(const key of (code?.base?.requiredFields||[]).filter(key=>key!=='reference'))if(!line.details?.[key]?.trim())fields.push(detailLabels[key]||key);
         if(code?.base?.entryMode==='PROCESS'&&!line.assignmentPlanId)fields.push(labels.assignment);
         missing.push(`${labels.row} ${index+1}: ${fields.join(', ')||labels.invalid}`);
       });

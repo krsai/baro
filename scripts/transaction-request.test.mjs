@@ -28,9 +28,9 @@ function store(process = false) {
     outsourcedWorkRecord: { create: async ({ data }) => { writes.push(['production',data]); return { id: 90 }; } },
   };
 }
-test('evidence reference is mandatory regardless of code settings and blank input creates no cost',async()=>{
+test('evidence reference is optional',async()=>{
  for(const reference of [undefined,'','   ']){
-  const db=store();await assert.rejects(register(db,1,20,{...input(),details:reference===undefined?{}:{reference}}),/REQUIRED_TRANSACTION_FIELD:reference/);assert.equal(db.writes.length,0);
+  const db=store();await register(db,1,20,{...input(),details:{evidenceFile:input().details.evidenceFile,...(reference===undefined?{}:{reference})}});assert.equal(db.writes.length,1);
  }
 });
 test('unusual expense direction remains saveable',async()=>{
