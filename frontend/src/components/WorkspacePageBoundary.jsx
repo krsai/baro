@@ -4,6 +4,13 @@ import AppNotice from './AppNotice';
 import { useAppActions } from '../context/AppContext';
 import { useLanguage } from '../context/LanguageContext';
 import {reloadAfterConfirmation} from '../utils/confirmedReload.mjs';
+import {isModuleLoadFailure} from '../utils/moduleLoadFailure.mjs';
+
+const RENDER_TEXT = {
+  ko: { failed: '화면을 표시하는 중 오류가 발생했습니다. 다시 시도해 주세요.', retry: '화면 다시 표시' },
+  en: { failed: 'An error occurred while displaying this page. Please try again.', retry: 'Try displaying page again' },
+  vi: { failed: 'Đã xảy ra lỗi khi hiển thị trang. Vui lòng thử lại.', retry: 'Thử hiển thị lại trang' },
+};
 
 const TEXT = {
   ko: { failed: '화면을 불러오지 못했습니다. 배포 후 화면 파일이 변경되었거나 연결이 끊겼을 수 있습니다. 다른 탭의 입력을 저장한 후 최신 화면을 다시 불러와 주세요.', reload: '최신 화면 다시 불러오기' },
@@ -12,14 +19,17 @@ const TEXT = {
 };
 
 export class WorkspacePageErrorBoundary extends React.Component {
-  state = { failed: false };
-  static getDerivedStateFromError() { return { failed: true }; }
+  state = { failed: false, error: null };
+  static getDerivedStateFromError(error) { return { failed: true, error }; }
+  componentDidCatch(error, info) { console.error('[WorkspacePageBoundary]', error, info.componentStack); }
   render() {
     if (!this.state.failed) return this.props.children;
     const text = TEXT[this.props.languageCode] || TEXT.en;
-    return <Stack spacing={2} sx={{ p: 2 }} data-testid="workspace-page-load-error">
-      <AppNotice severity="error">{text.failed}</AppNotice>
-      <Button sx={{ alignSelf: 'flex-start' }} onClick={this.props.onReload}>{text.reload}</Button>
+    const moduleFailure = isModuleLoadFailure(this.state.error);
+    const renderText = RENDER_TEXT[this.props.languageCode] || RENDER_TEXT.en;
+    return <Stack spacing={2} sx={{ p: 2 }} data-testid="workspace-page-load-error" data-error-kind={moduleFailure ? 'module' : 'render'}>
+      <AppNotice severity="error">{moduleFailure ? text.failed : renderText.failed}</AppNotice>
+      <Button sx={{ alignSelf: 'flex-start' }} onClick={moduleFailure ? this.props.onReload : () => this.setState({ failed: false, error: null })}>{moduleFailure ? text.reload : renderText.retry}</Button>
     </Stack>;
   }
 }

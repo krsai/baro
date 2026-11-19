@@ -8,7 +8,7 @@ const jsx = 'frontend/workspace-page-load-test.jsx';
 assert.ok(!existsSync(html) && !existsSync(jsx));
 writeFileSync(html, '<html><meta charset="utf-8"><div id="root"></div><script type="module" src="/workspace-page-load-test.jsx"></script></html>');
 writeFileSync(jsx, `import React,{Suspense,lazy} from 'react';import{createRoot}from'react-dom/client';import Boundary from '/src/components/WorkspacePageBoundary';
-const missing='/missing-workspace-page.js';const Broken=lazy(()=>import(/* @vite-ignore */ missing));function Demo(){const[open,setOpen]=React.useState(false);return <><input aria-label="Draft" defaultValue="Keep my draft"/><button onClick={()=>setOpen(true)}>Open materials</button>{open&&<Boundary><Suspense fallback="Loading"><Broken/></Suspense></Boundary>}</>;}createRoot(document.getElementById('root')).render(<Demo/>);`);
+const missing='/missing-workspace-page.js';const Broken=lazy(()=>import(/* @vite-ignore */ missing));function RenderFailure(){if(!window.renderFixed)throw new ReferenceError('Typography is not defined');return <span>Recovered page</span>;}function Demo(){const[open,setOpen]=React.useState(false);return <><input aria-label="Draft" defaultValue="Keep my draft"/><button onClick={()=>setOpen(true)}>Open materials</button>{open&&<Boundary><Suspense fallback="Loading">{location.search.includes('render')?<RenderFailure/>:<Broken/>}</Suspense></Boundary>}</>;}createRoot(document.getElementById('root')).render(<Demo/>);`);
 const port = 43501;
 const server = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: 'frontend', stdio: 'ignore', windowsHide: true });
 let browser;
@@ -39,6 +39,12 @@ try {
     page.once('dialog', dialog => dialog.accept());
     await Promise.all([page.waitForEvent('framenavigated'), error.getByRole('button').click()]);
     assert.equal(navigations, 2, 'explicitly confirmed reload');
+    await page.goto('http://127.0.0.1:'+port+'/workspace-page-load-test.html?render');
+    await page.getByRole('button',{name:'Open materials'}).click();
+    await error.waitFor();assert.equal(await error.getAttribute('data-error-kind'),'render');
+    const beforeRetry=navigations;await page.evaluate(()=>{window.renderFixed=true;});await error.getByRole('button').click();
+    await page.getByText('Recovered page',{exact:true}).waitFor();assert.equal(navigations,beforeRetry);
+    assert.equal(await page.getByRole('textbox',{name:'Draft'}).inputValue(),'Keep my draft');
     await page.close();
   }
   console.log('Workspace page load failure: ko/en/vi, sibling draft preservation and confirmed reload passed.');
