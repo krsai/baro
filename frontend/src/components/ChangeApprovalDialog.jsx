@@ -27,8 +27,9 @@ export default forwardRef(function ChangeApprovalDialog({orgId,languageCode='ko'
   catch(e){if(scope.current===company){const unknown=!e.status||e.status>=500;setUncertain(unknown);setError(unknown?{uncertain:true}:e);if(!unknown)submitted.current=null;}}
   finally{locked.current=false;if(scope.current===company)setBusy(false);}
  };
- const loadError=['settings','preview'].includes(error?.phase);
  const errorText=changeApprovalError(error?.cause||error,t);
+ const policyError=error?.phase==='preview'&&error?.cause?.status>=400&&error?.cause?.status<500&&errorText!==t.error;
+ const loadError=['settings','preview'].includes(error?.phase)&&!policyError;
  return <Dialog open={!!input} onClose={()=>{if(!busy&&!uncertain)finish(null);}} fullWidth maxWidth="md"><DialogTitle>{t[input?.menu]} · {input?.menu==='INVOICE'?t.requestDelete:input?.operation==='CREATE'?t.CREATE:input?.operation==='DELETE'?t.requestDelete:t.requestUpdate}</DialogTitle><DialogContent dividers><Stack spacing={2}>
   {loading&&<LinearProgress/>}{error&&<Alert severity="error" action={loadError&&!busy&&!uncertain?<Button onClick={()=>setReload(value=>value+1)} disabled={loading}>{t.reloadLine}</Button>:undefined}>{error.uncertain?t.uncertain:loadError?<><Typography variant="body2">{t.lineFailed}</Typography>{errorText!==t.error&&<Typography variant="body2">{errorText}</Typography>}</>:errorText}</Alert>}
   {summary&&input?.menu==='EXPENSE'&&<Typography variant="body2" sx={{whiteSpace:'pre-line'}}>{summary}</Typography>}

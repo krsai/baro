@@ -1,11 +1,11 @@
 import {createHttpError} from '../utils/http';
-// Voided financial records are history and must never be cascaded away.
+// Only reversed, unallocated AR document-balancing rows may be purged with an approved invoice deletion.
 export async function assertInvoiceDeletable(db:any,orgId:number,id:string){
  const rows=await db.$queryRawUnsafe(`SELECT
   EXISTS(SELECT 1 FROM "InvoicePayment" WHERE "invoiceId"=$1) OR
   EXISTS(SELECT 1 FROM "BankLedgerEvidenceAllocation" WHERE "invoiceId"=$1) OR
   EXISTS(SELECT 1 FROM "InvoiceCredit" WHERE "invoiceId"=$1) OR
-  EXISTS(SELECT 1 FROM "AccountingOpeningItem" WHERE "invoiceId"=$1) OR
+  NOT baro_invoice_opening_purgeable($1::text,$2::integer) OR
   EXISTS(SELECT 1 FROM "InvoiceFinalLockEvent" WHERE "invoiceId"=$1) OR
   EXISTS(SELECT 1 FROM "WorkOrder" WHERE "invoiceFinalLockInvoiceId"=$1) OR
   EXISTS(SELECT 1 FROM "InvoiceDraft" WHERE "revisionOfInvoiceId"=$1) OR

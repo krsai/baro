@@ -21,6 +21,33 @@ test('invoice deletion requires staged approval, real invoice FK, current financ
   assert.equal(ownRequest.status,'APPROVED');assert.equal(await db.invoice.findUnique({where:{id:ownInvoice.id}}),null);
   assert.equal((await requestChangeApproval(db,org,s.people.admin.id,ownInput)).id,ownRequest.id);
   const invoice=await make(),input={menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:invoice.id,reason:'Wrong invoice',clientKey:randomUUID()};
+  const {reconcileLedgerBalances}=require('../backend/dist/services/ledgerBalance');
+  const {voidAccountingOpening}=require('../backend/dist/services/accountingOpening');
+  const balanced=await make(),untouched=await make();
+  const balance=async bill=>{await reconcileLedgerBalances(db,{orgId:org,actorId:s.people.admin.id,actor:s.people.admin.email},{clientKey:randomUUID(),balanceDate:'2026-11-19',reason:'Before management settled',accounts:[],openingRows:[{kind:'SETTLED',side:'AR',sourceId:bill.id,expectedRemaining:'100.00'}]});return db.accountingOpeningItem.findFirst({where:{invoiceId:bill.id}});};
+  const opening=await balance(balanced),otherOpening=await balance(untouched);
+  const balancedInput={...input,sourceId:balanced.id,clientKey:randomUUID()};
+  await assert.rejects(previewChangeApproval(db,org,actor,balancedInput),/INVOICE_DELETE_LINKED_DATA/);
+  await voidAccountingOpening(db,org,s.people.admin.id,opening.id,'Remove mistaken balancing');
+  await assert.rejects(db.accountingOpeningItem.delete({where:{id:opening.id}}),/OPENING_HISTORY_IMMUTABLE/);
+  const balancedRequest=await requestChangeApproval(db,org,actor,balancedInput);
+  assert.equal(balancedRequest.status,'PENDING');assert.ok(await db.accountingOpeningItem.findUnique({where:{id:opening.id}}));
+  // A later failure must roll back both the purge and approval, allowing the same decision to retry.
+  await f.pg.exec(`CREATE FUNCTION test_invoice_delete_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'TEST_DELETE_FAILURE'; END $$; CREATE TRIGGER zz_test_invoice_delete_failure BEFORE DELETE ON "Invoice" FOR EACH ROW EXECUTE FUNCTION test_invoice_delete_failure();`);
+  const stages=balancedRequest.policy.resolvedStages;
+  for(const stage of stages.slice(0,-1))await decideChangeApproval(db,org,stage.employeeId,balancedRequest.id,{decision:'APPROVED'});
+  await assert.rejects(decideChangeApproval(db,org,stages.at(-1).employeeId,balancedRequest.id,{decision:'APPROVED'}),/TEST_DELETE_FAILURE/);
+  assert.ok(await db.invoice.findUnique({where:{id:balanced.id}}));assert.ok(await db.accountingOpeningItem.findUnique({where:{id:opening.id}}));
+  await f.pg.exec('DROP TRIGGER zz_test_invoice_delete_failure ON "Invoice"; DROP FUNCTION test_invoice_delete_failure()');
+  await decideChangeApproval(db,org,stages.at(-1).employeeId,balancedRequest.id,{decision:'APPROVED'});
+  assert.equal(await db.invoice.findUnique({where:{id:balanced.id}}),null);assert.equal(await db.accountingOpeningItem.findUnique({where:{id:opening.id}}),null);
+  assert.ok(await db.accountingOpeningItem.findUnique({where:{id:otherOpening.id}}));
+  const replacementBill=await make();
+  await reconcileLedgerBalances(db,{orgId:org,actorId:s.people.admin.id,actor:s.people.admin.email},{clientKey:randomUUID(),balanceDate:'2026-11-19',reason:'Replacement balance',accounts:[],openingRows:[{kind:'OPENING',side:'AR',currencyCode:'USD',amount:'80',accountingCodeId:s.code.id,counterparty:{kind:'PARTNER',id:s.vendor.id},source:{side:'AR',sourceId:replacementBill.id,expectedRemaining:'100.00'}}]});
+  const replacementSource=await db.accountingOpeningItem.findFirst({where:{invoiceId:replacementBill.id}});
+  await voidAccountingOpening(db,org,s.people.admin.id,replacementSource.id,'Reverse replacement');
+  await assert.rejects(previewChangeApproval(db,org,actor,{...input,sourceId:replacementBill.id}),/INVOICE_DELETE_LINKED_DATA/);
+  assert.ok(await db.accountingOpeningItem.findFirst({where:{replacesItemId:replacementSource.id}}));
   await assert.rejects(cancelIssuedInvoice(db,org,'actor',invoice.id,'Direct cancellation'),/CHANGE_APPROVAL_REQUIRED/);
   const routes=new Map();let allowed=false;require('../backend/dist/services/changeApprovals').registerChangeApprovalRoutes({post:(path,fn)=>routes.set(path,fn),get:()=>{}},db,{requireOrgRole:async()=>({organization:s.company,employee:s.people.junior}),actorId:()=>actor,canAccess:async()=>allowed});
   await assert.rejects(routes.get('/change-approval-preview')({body:input},{}),/INVOICE_ACCESS_DENIED/);allowed=true;let response;await routes.get('/change-approval-preview')({body:input},{json:v=>{response=v;}});assert.ok(response.stages.length);
@@ -57,5 +84,7 @@ test('invoice deletion requires staged approval, real invoice FK, current financ
   assert.equal(deletedAfterRejection.status,'APPROVED');assert.equal(await db.invoice.findUnique({where:{id:rejected.id}}),null);
   const rejectedAudit=await db.changeApprovalRequest.findUnique({where:{id:rejection.id}});assert.equal(rejectedAudit.invoiceId,null);assert.equal(rejectedAudit.beforeSnapshot.invoice.id,rejected.id);assert.equal(rejectedAudit.status,'REJECTED');
   await f.pg.exec(readFileSync('backend/prisma/migrations/20261119200000_invoice_accounting_and_hard_delete/migration.sql','utf8'));
+  await f.pg.exec(readFileSync('backend/prisma/migrations/20261119210000_invoice_voided_ar_purge/migration.sql','utf8'));
+  await f.pg.exec(readFileSync('backend/prisma/migrations/20261119210000_invoice_voided_ar_purge/migration.sql','utf8'));
  }finally{await f.close();}
 });

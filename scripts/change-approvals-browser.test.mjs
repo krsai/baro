@@ -31,17 +31,25 @@ try{
   await dialog.getByRole('textbox',{name:t.reason,exact:false}).fill('Keep this reason');
   for(let attempt=0;attempt<100&&!pendingPreview;attempt++)await page.waitForTimeout(20);assert.ok(pendingPreview);
   await page.evaluate(()=>window.setTestLanguage('en'));
-  await pendingPreview.fulfill({headers,status:400,json:{error:lang==='en'?'CHANGE_ALREADY_PENDING':'TEST_PREVIEW_FAILED'}});
+  await pendingPreview.fulfill({headers,status:400,json:{error:'TEST_PREVIEW_FAILED'}});
   await page.getByRole('alert').getByText(changeApprovalText.en.lineFailed,{exact:true}).waitFor();
   for(const next of ['vi','ko','en']){await page.evaluate(language=>window.setTestLanguage(language),next);await page.getByRole('alert').getByText(changeApprovalText[next].lineFailed,{exact:true}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText[next].reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText[next].request,exact:true}).isDisabled(),true);}
   assert.equal(await dialog.getByTestId('approval-dialog-flow').count(),0,'failed preview must not show an empty drafter or invented approvers');
-  if(lang==='en')await page.getByRole('alert').getByText(changeApprovalText.en.already,{exact:true}).waitFor();
+
   failPreview=false;await page.getByRole('alert').getByRole('button',{name:changeApprovalText.en.reloadLine,exact:true}).click();
   await dialog.locator('[data-approval-flow-card="senior"]').waitFor();assert.equal(await dialog.locator('[data-approval-flow-card]').count(),2);assert.equal(await page.getByRole('alert').count(),0);
   assert.equal(await dialog.getByRole('textbox',{name:changeApprovalText.en.reason,exact:false}).inputValue(),'Keep this reason');assert.equal(await dialog.getByRole('button',{name:changeApprovalText.en.request,exact:true}).isEnabled(),true);
   assert.equal(posts.length,1,'loading the approval line never submits the request');
   await page.goto(`http://127.0.0.1:${port}/change-approvals-acceptance.html?lang=${lang}&operation=${operation}&selectionOnly=true`);
   await page.getByRole('button',{name:'Open request'}).click();await dialog.locator('[data-approval-flow-card="senior"]').waitFor();assert.equal(await dialog.getByRole('textbox',{name:t.reason,exact:false}).count(),0);await dialog.getByRole('button',{name:t.request,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(posts.length,1,'choosing an approval line is not a submission');
+  failPreview=true;pendingPreview=null;await page.getByRole('button',{name:'Open request'}).click();
+  for(let attempt=0;attempt<100&&!pendingPreview;attempt++)await page.waitForTimeout(20);assert.ok(pendingPreview);
+  await pendingPreview.fulfill({headers,status:409,json:{error:'INVOICE_DELETE_LINKED_DATA'}});
+  await page.getByRole('alert').getByText(t.INVOICE_DELETE_LINKED_DATA,{exact:true}).waitFor();
+  assert.equal(await page.getByRole('alert').getByText(t.lineFailed,{exact:true}).count(),0);
+  assert.equal(await page.getByRole('alert').getByRole('button',{name:t.reloadLine,exact:true}).count(),0);
+  assert.equal(await dialog.getByRole('button',{name:t.request,exact:true}).isDisabled(),true);
+  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});failPreview=false;
   autoPreview=true;await page.getByRole('button',{name:'Open request'}).click();const self=dialog.locator('[data-approval-flow-card="final-self"]');await self.waitFor();assert.equal(await self.getByRole('textbox').nth(1).inputValue(),'Chief');assert.equal(await self.getByRole('textbox').nth(2).inputValue(),'Self admin');assert.equal(await page.getByRole('alert').count(),0);assert.equal(await dialog.getByRole('button',{name:t.request,exact:true}).isEnabled(),true);
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.close();
  }

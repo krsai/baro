@@ -296,6 +296,7 @@ export async function deleteIssuedInvoice(db: any, sellerOrgId: number, actor: s
       invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: invoice.sequenceNumber } } } });
     if (later) fail("INVOICE_CANCEL_REVERSE_ORDER_REQUIRED");
     await assertInvoiceDeletable(tx,sellerOrgId,invoiceId);
+    await tx.accountingOpeningItem.deleteMany({where:{orgId:sellerOrgId,invoiceId,side:'AR',kind:{in:['SETTLED','EXCLUDED']},voidedAt:{not:null}}});
     // sourceId and beforeSnapshot retain the approval evidence after detaching its live FK.
     await tx.changeApprovalRequest.updateMany({where:{orgId:sellerOrgId,invoiceId},data:{invoiceId:null}});
     await tx.invoiceLine.deleteMany({where:{invoiceId}});

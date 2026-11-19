@@ -136,7 +136,7 @@ test('prior invoice settlement clears only remaining debt, preserves source, blo
   assert.equal(outstandingReport([{...invoice,buyer:s.vendor,payments:[],credits:[]}],[],[],[item]).receivables.length,0);
   assert.equal((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search:'OLD'})).documents.length,0);
   await assert.rejects(reconcileLedgerBalances(db,scope,{...body,clientKey:randomUUID()}),/OPENING_SOURCE_CHANGED/);
-  await assert.rejects(db.invoice.update({where:{id:invoice.id},data:{status:'CANCELLED'}}),/OPENING_SOURCE_LOCKED|CHANGE_APPROVAL/);
+  await assert.rejects(db.invoice.update({where:{id:invoice.id},data:{status:'CANCELLED'}}),/OPENING_SOURCE_LOCKED|CHANGE_APPROVAL|INVOICE_USE_DELETION/);
   await voidAccountingOpening(db,org,scope.actorId,item.id,'Reopen receivable');
   assert.equal((await searchLedgerEvidence(db,org,{type:'INVOICE',currencyCode:'USD',search:'OLD'})).documents[0].remaining,'100.00');
   await assert.rejects(reconcileLedgerBalances(db,scope,{...body,clientKey:randomUUID(),openingRows:[{...body.openingRows[0],expectedRemaining:'90'}]}),/OPENING_SOURCE_CHANGED/);
