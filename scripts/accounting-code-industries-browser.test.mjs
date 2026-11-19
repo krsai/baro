@@ -43,7 +43,7 @@ try{
   await page.keyboard.press('Escape');await usageDialog.waitFor({state:'hidden'});
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:1000});
-   await page.getByRole('button',{name:{ko:'삭제 제한 확인',en:'View deletion restrictions',vi:'Xem hạn chế xóa'}[lang],exact:true}).click();
+   await page.getByRole('button',{name:'ZIP · '+usageText.column+' · '+usageCountLabel(0,lang),exact:true}).click();
    await usageDialog.waitFor();assert.equal(await usageDialog.getByRole('row').filter({hasText:usageText.past}).getByRole('cell').last().innerText(),usageCountLabel(1,lang));
    assert.equal(writes.length,0,'viewing restrictions must not submit a delete request');await page.keyboard.press('Escape');await usageDialog.waitFor({state:'hidden'});
   }
