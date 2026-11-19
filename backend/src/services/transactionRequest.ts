@@ -91,6 +91,21 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   if(useSystemMaster)description=(edit?.cost?.transactionCodeId===transactionCodeId?edit.cost.description:null) || code.base.nameEn || code.nameEn || code.code;
   if (!description || description.length > 2000) return invalid('TRANSACTION_DESCRIPTION_REQUIRED');
   const service = { ...code.base, id: code.serviceTypeId ?? code.serviceType.id };
+  if(edit?.cost)for(const key of code.configuredHiddenInputs||[]){
+    const field=({order:'workOrderId',style:'styleId',process:'styleProcessId'} as Record<string,string>)[key]!;
+    if((body[field]||null)!==(edit.cost[field]??null))return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
+    if(key==='process'&&JSON.stringify(processIds)!==JSON.stringify(storedExpenseProcessIds(edit.cost)))return invalid('UNEXPECTED_REQUEST_PROCESS');
+    if(metadata.supplied&&key!=='process'){
+      const old=key==='order'?[edit.cost.workOrderId,...(edit.cost.referenceLinks||[]).map((row:any)=>row.workOrderId)].filter(Boolean):(edit.cost.referenceLinks||[]).filter((row:any)=>row.styleId).map((row:any)=>`${row.workOrderId}:${row.styleId}`);
+      if(key==='style'&&edit.cost.styleId)old.push(`${edit.cost.workOrderId}:${edit.cost.styleId}`);
+      const next=key==='order'?metadata.orderIds:metadata.styles.map((row:any)=>`${row.workOrderId}:${row.styleId}`);
+      const canonical=(values:any[])=>JSON.stringify([...new Set(values)].sort());
+      if(canonical(old)!==canonical(next))return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
+    }
+  }
+  for(const key of ['transportDate','origin','destination','length','width','height']){
+    if(!service.requiredFields.includes(key==='height'?'length':key)&&(details[key]||'')!==(edit?.cost?.details?.[key]||''))return invalid('INVALID_TRANSACTION_DETAILS');
+  }
   if(partnerOrgId===orgId)return invalid('INVALID_PARTNER_SERVICE');
   const partner = payeeIds.payeeEmployeeId ? await requireEmployeePayee(tx,orgId,payeeIds.payeeEmployeeId) : await tx.organization.findFirst({ where: {...expensePartnerScope(orgId),id:partnerOrgId} });
   if (!partner) return invalid('INVALID_PARTNER_SERVICE');
@@ -106,6 +121,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
     const option = process || edit?.record ? 'REQUIRED' : service[`${key}Input`];
     if (option === 'REQUIRED' && !selections[key]) return invalid(`REQUIRED_REQUEST_${key.toUpperCase()}`);
     if (option === 'HIDDEN' && selections[key]) return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
+    if (option === 'HIDDEN' && key==='process' && processIds.length) return invalid('UNEXPECTED_REQUEST_PROCESS');
     if(metadata.supplied&&option==='HIDDEN'&&(key==='order'&&metadata.orderIds.length||key==='style'&&metadata.styles.length))return invalid(`UNEXPECTED_REQUEST_${key.toUpperCase()}`);
   }
   if (styleId && !workOrderId || styleProcessId && !styleId) return invalid('INVALID_REQUEST_REFERENCE');

@@ -6,7 +6,7 @@ export const newExpenseLine = () => ({ key: crypto.randomUUID(), transactionCode
 export const expenseCodeForLine = (line,code) => {
   if (!code) return code;
   if (line.productionLinked) return {...code,linkTarget:'PROCESS',base:{...code.base,entryMode:'PROCESS',orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'REQUIRED'}};
-  // Current configuration governs editing; keep stored references editable without restoring old requirements.
+  // Preserve stored references for validation; hidden historical fields are read only in the editor.
   const base={...code.base,entryMode:line.itemId?'GENERAL':code.base?.entryMode};
   if(line.itemId&&line.transactionCode?.id===code.id){
     base.attributeInputs={...base.attributeInputs};
@@ -20,7 +20,7 @@ export const expenseCodeForLine = (line,code) => {
   }
   return {...code,base};
 };
-export const inputMode = (code, key) => code?.base?.entryMode === 'PROCESS' ? 'REQUIRED' : code?.base?.[`${key}Input`] || (key === 'order' ? 'OPTIONAL' : 'HIDDEN');
+export const inputMode = (code, key) => code?.base?.[`${key}Input`] ?? 'HIDDEN';
 export const visibleInput = (line, code, key) => inputMode(code, key) === 'REQUIRED' || inputMode(code, key) === 'OPTIONAL' && line.enabled[key];
 export function expenseLineAmounts(line, currency) {
   const numeric = value => /^\d{1,12}(\.\d{1,4})?$/.test(String(value)) ? parseDecimalUnits(value, 4) : null;
@@ -51,7 +51,7 @@ export function validExpenseLine(line, code, currency) {
   if(line.styleProcessIds?.length&&(!line.workOrderId||!line.styleId||line.styleProcessIds.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(line.styleProcessIds).size!==line.styleProcessIds.length))return false;
   if (code.base?.entryMode === 'PROCESS' && (currency !== 'VND' || !Number.isInteger(Number(line.quantity)) || Number(line.quantity) > 2147483647 || !line.assignmentPlanId)) return false;
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(key==='process' ? line.styleProcessId || line.styleProcessIds?.length : line[{order:'workOrderId',style:'styleId'}[key]])) &&
-    [...new Set(['reference',...(code.base?.requiredFields || [])])].every(key => line.details[key]?.trim());
+    (code.base?.requiredFields || []).filter(key=>key!=='reference').every(key => line.details[key]?.trim());
 }
 export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId, currency: line.currency, paymentSchedule:line.paymentSchedule||[],
   itemOwnerOrgId:line.itemOwnerOrgId||null,itemCustomerId:line.itemCustomerId||null,itemTypeId:line.itemTypeId||null,unitId:line.unitId||null,linkedOrderIds:line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]),linkedStyles:line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]),quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,

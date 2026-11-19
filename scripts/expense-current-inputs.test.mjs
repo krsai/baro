@@ -1,4 +1,4 @@
-﻿import test from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {randomUUID} from 'node:crypto';import {readFileSync} from 'node:fs';import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';import {expenseCodeForLine} from '../frontend/src/utils/expenseRequest.mjs';
+import test from 'node:test';import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {randomUUID} from 'node:crypto';import {readFileSync} from 'node:fs';import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';import {expenseCodeForLine} from '../frontend/src/utils/expenseRequest.mjs';
 const require=createRequire(import.meta.url),{resolveExpenseCodeLink}=require('../backend/dist/services/expenseCodeLinkPolicy');
 test('current settings replace old requirements while preserving populated references and production identity',async()=>{
  const settings={orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:['destination']};const code={baseId:4,base:{entryMode:'GENERAL',...settings}};
@@ -21,7 +21,7 @@ test('SQL guard validates latest required fields on real document edits without 
  const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
  const reviewer=await db.employee.create({data:{orgId:org,name:'Reviewer',orgRole:'ADMIN',gradeId:s.people.admin.gradeId,status:'ACTIVE'}});
  const change=await requestChangeApproval(db,org,actor,{menu:'EXPENSE',operation:'UPDATE',reason:'Correct recorded details',sourceKind:'request',sourceId:String(doc.id),payload,selection:{changeAdminEmployeeId:reviewer.id},clientKey:randomUUID()});
- await decideChangeApproval(db,org,reviewer.id,change.id,{decision:'APPROVED'});
+ if(change.status!=='APPROVED')await decideChangeApproval(db,org,reviewer.id,change.id,{decision:'APPROVED'});
  const saved=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});assert.equal(saved.details.origin,'Old origin');assert.equal(saved.details.destination,'New destination');assert.equal(saved.linkPolicyAuditId,doc.items[0].linkPolicyAuditId);
  assert.deepEqual(await db.expenseRequestAudit.findMany({where:{requestId:doc.id,version:1}}),audits);
  const migration=readFileSync('backend/prisma/migrations/20261107030000_current_expense_inputs/migration.sql','utf8');await f.pg.exec(migration);

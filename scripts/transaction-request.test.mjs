@@ -33,13 +33,31 @@ test('evidence reference is optional',async()=>{
   const db=store();await register(db,1,20,{...input(),details:{evidenceFile:input().details.evidenceFile,...(reference===undefined?{}:{reference})}});assert.equal(db.writes.length,1);
  }
 });
+
+test('hidden transport and dimension inputs reject new values but preserve saved snapshots',async()=>{
+ for(const details of [{origin:'NEW'},{transportDate:'2026-11-19'},{length:'10',width:'20',height:'5'}]){
+  const db=store();await assert.rejects(register(db,1,20,{...input(),details:{...input().details,...details}}),/INVALID_TRANSACTION_DETAILS/);assert.equal(db.writes.length,0);
+  db.partnerTransactionCost.update=async({data})=>data;
+  const old={id:'old',details:{...input().details,...details}};
+  const kept=await register(db,1,20,{...input(),details:old.details},undefined,false,{cost:old});
+  assert.deepEqual(kept.details,old.details);
+ }
+});
+
+test('hidden saved references cannot be replaced or removed by editing a cost',async()=>{
+ const db=store(),cost={id:'old',workOrderId:30,styleId:40,styleProcessId:50};
+ db.code.base.orderInput='HIDDEN';db.partnerTransactionCost.update=async({data})=>data;
+ const body={...input(),styleId:40,styleProcessId:50};
+ const kept=await register(db,1,20,body,undefined,false,{cost});assert.equal(kept.workOrderId,30);
+ for(const patch of [{workOrderId:null,styleId:null,styleProcessId:null},{workOrderId:31},{styleId:41},{styleProcessId:51}])await assert.rejects(register(db,1,20,{...body,...patch},undefined,false,{cost}),/UNEXPECTED_REQUEST_/);
+});
 test('unusual expense direction remains saveable',async()=>{
  const db=store();db.code.base.cashDirection='IN';await register(db,1,20,input());assert.equal(db.writes.length,1);
 });
 
 test('style-scope sewing selects zero or multiple processes without recording production or multiplying its cost',async()=>{
  for(const ids of [[],[50,51]]){
-  const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE',auditId:1});
+  const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE',auditId:1,inputSettings:{orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'OPTIONAL',requiredFields:[]}});
   const links=[];let saved;
   db.styleProcess.findMany=async({where})=>{assert.equal(where.orgId,1);assert.equal(where.styleId,40);return where.id.in.map(id=>({id}));};
   db.expenseCostProcess={deleteMany:async()=>{},createMany:async({data})=>links.push(...data)};
@@ -52,7 +70,7 @@ test('style-scope sewing selects zero or multiple processes without recording pr
 
 test('one monetary item persists multiple orders and styles plus its unit alongside multiple process references',async()=>{
  const db=store(true),links=[],processes=[];let saved;
- db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE'});
+ db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE',inputSettings:{orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'OPTIONAL',requiredFields:[]}});
  db.workOrder.findMany=async()=>[{id:30},{id:31}];
  db.expenseUnit={findUnique:async()=>({id:1,isActive:true})};
  db.styleProcess.findMany=async()=>[{id:50},{id:51}];
@@ -66,7 +84,7 @@ test('one monetary item persists multiple orders and styles plus its unit alongs
 
 test('multiple references reject duplicates and inactive, wrong-style or cross-company process IDs',async()=>{
  for(const ids of [[50,50],[0],[50,51]]){
-  const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE'});db.styleProcess.findMany=async()=>[{id:50}];
+  const db=store(true);db.expenseCodeLinkPolicy.findUnique=async()=>({target:'STYLE',inputSettings:{orderInput:'REQUIRED',styleInput:'REQUIRED',processInput:'OPTIONAL',requiredFields:[]}});db.styleProcess.findMany=async()=>[{id:50}];
   await assert.rejects(register(db,1,20,{...input(),styleId:40,styleProcessIds:ids,vatRate:'0'}),/INVALID_REQUEST_PROCESSES/);
   assert.equal(db.writes.length,0);
  }
@@ -173,7 +191,7 @@ test('process rejects missing references, fractional quantities, completed/ambig
 test('code scope, industry options and order/style/process membership are enforced', async () => {
   const missing = store(); missing.transactionCode.findFirst = async () => null; await assert.rejects(register(missing,1,20,input()),/INVALID_TRANSACTION_CODE/);
   const vendor = store(); vendor.organization.findFirst = async () => null; await assert.rejects(register(vendor,1,20,input()),/INVALID_PARTNER_SERVICE/);
-  const hidden = store(); await assert.rejects(register(hidden,1,20,{ ...input(),styleId:40,styleProcessId:50 }),/UNEXPECTED_REQUEST_PROCESS/);
+  const hidden = store(); hidden.code.base.styleInput='OPTIONAL'; await assert.rejects(register(hidden,1,20,{ ...input(),styleId:40,styleProcessId:50 }),/UNEXPECTED_REQUEST_PROCESS/);
   const taxable = store(); taxable.code.vatEnabled = false; await assert.rejects(register(taxable,1,20,input()),/VAT_NOT_ENABLED/);
   const mismatch = store(true); mismatch.workOrderItem.findFirst = async () => null; await assert.rejects(register(mismatch,1,20,{ ...input(),vatRate:'0',styleId:40,styleProcessId:50 }),/INVALID_REQUEST_STYLE/);
 });

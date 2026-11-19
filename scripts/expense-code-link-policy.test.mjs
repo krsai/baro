@@ -10,6 +10,12 @@ test('missing input settings default to disabled independently of technical entr
  const {accountingInputs}=await import('../backend/dist/services/accountingInputs.js');
  for(const entryMode of [undefined,'GENERAL','LOGISTICS','PROCESS'])assert.deepEqual(accountingInputs({entryMode}),{requiredFields:['reference'],orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN'});
  assert.equal(accountingInputs({orderInput:'REQUIRED'}).orderInput,'REQUIRED');
+ for(const entryMode of ['PROCESS','GENERAL','LOGISTICS'])for(const field of ['order','style','process']){
+  assert.equal(inputMode({base:{entryMode}},field),'HIDDEN');
+  assert.equal(inputMode({base:{entryMode,[field+'Input']:'HIDDEN'}},field),'HIDDEN');
+ }
+ for(const field of ['order','style','process'])assert.equal(inputMode(policy.applyExpenseCodeLinkPolicy({base:{}},'NONE'),field),'HIDDEN');
+ assert.equal(inputMode(policy.applyExpenseCodeLinkPolicy({base:{orderInput:'OPTIONAL'}},'NONE'),'order'),'OPTIONAL');
 });
 
 test('disabled production inputs stay disabled for every tax variant despite legacy entry mode',async()=>{
@@ -56,9 +62,9 @@ test('SQL input overrides enforce details and references while preserving earlie
  }finally{await db.close();}
 });
 
-test('hierarchy requires parent references while style scope supports an optional process set without production',()=>{
+test('link targets do not enable unspecified optional inputs',()=>{
  const base={entryMode:'PROCESS',requiredFields:[]},line={quantity:'2',unitPrice:'10',vatRate:'0',details:{reference:'REF-001',evidenceFile:'server/receipt.pdf'},enabled:{},workOrderId:40,styleId:50,styleProcessIds:[55,56]};
- for(const [target,expected] of [['ORDER',['REQUIRED','HIDDEN','HIDDEN']],['STYLE',['REQUIRED','REQUIRED','OPTIONAL']],['PROCESS',['REQUIRED','REQUIRED','REQUIRED']]]){
+ for(const [target,expected] of [['ORDER',['REQUIRED','HIDDEN','HIDDEN']],['STYLE',['REQUIRED','REQUIRED','HIDDEN']],['PROCESS',['REQUIRED','REQUIRED','REQUIRED']]]){
   const code=policy.applyExpenseCodeLinkPolicy({base,vatEnabled:false},target);
   assert.deepEqual(['order','style','process'].map(key=>inputMode(code,key)),expected);
   if(target==='STYLE'){

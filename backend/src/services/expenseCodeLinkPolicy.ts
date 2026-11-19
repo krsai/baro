@@ -11,8 +11,8 @@ export function applyExpenseCodeLinkPolicy(code: any, target: string = 'NONE', a
   const recordsProduction=production ?? (process && code.base?.entryMode==='PROCESS');
   const materialSettings=code.base?.materialSettings?industryMaterialSettings(inputSettings?.materialSettings??code.base.materialSettings,code.base.materialSettings.enabled===true,{...code.base,...inputSettings,...(inputSettings?{attributeInputs:inputSettings.attributeInputs??{}}:{})}):undefined;
   return {...code,linkReferenceVersion:2,linkTarget:target,linkPolicyAuditId:auditId,base:{...code.base,
-    entryMode:recordsProduction?'PROCESS':'GENERAL',orderInput:target!=='NONE'?'REQUIRED':'OPTIONAL',
-    styleInput:target==='ORDER'?'HIDDEN':process||target==='STYLE'?'REQUIRED':'OPTIONAL',processInput:process?'REQUIRED':target==='STYLE'||preservedProcess?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...inputSettings}:{}),...(materialSettings?{materialSettings}:{})}};
+    entryMode:recordsProduction?'PROCESS':'GENERAL',orderInput:target!=='NONE'?'REQUIRED':code.base?.orderInput==='OPTIONAL'?'OPTIONAL':'HIDDEN',
+    styleInput:process||target==='STYLE'?'REQUIRED':code.base?.styleInput==='OPTIONAL'?'OPTIONAL':'HIDDEN',processInput:process?'REQUIRED':preservedProcess||code.base?.processInput==='OPTIONAL'?'OPTIONAL':'HIDDEN',...(inputSettings?{...(code.base?.attributeInputs!==undefined?{attributeInputs:{}}:{}),...inputSettings}:{}),...(materialSettings?{materialSettings}:{})}};
 }
 
 export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, edit?: any, orgType?: string): Promise<any> {
@@ -27,7 +27,7 @@ export async function resolveExpenseCodeLink(tx: any, orgId: number, code: any, 
       const previouslyRequired=stored?stored[key+'Input']==='REQUIRED':(key==='order'?['ORDER','STYLE','PROCESS']:key==='style'?['STYLE','PROCESS']:['PROCESS']).includes(edit.cost.linkTarget);
       if(present&&base[key+'Input']==='HIDDEN'||!present&&!previouslyRequired&&base[key+'Input']==='REQUIRED')base[key+'Input']='OPTIONAL';
     }
-    return {...current,linkTarget:edit.cost.linkTarget??'NONE',linkPolicyAuditId:edit.cost.linkPolicyAuditId??null,base};
+    return {...current,configuredHiddenInputs:['order','style','process'].filter(key=>current.base[key+'Input']==='HIDDEN'),linkTarget:edit.cost.linkTarget??'NONE',linkPolicyAuditId:edit.cost.linkPolicyAuditId??null,base};
   }
   if (!code?.baseId) return code;
   const policy=await tx.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId:code.baseId}}});
