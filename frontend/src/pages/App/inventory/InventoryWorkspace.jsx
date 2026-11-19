@@ -1,7 +1,7 @@
 import {materialItemText} from '../../../constants/materialItems';
 import MaterialMasterList from '../../../components/MaterialMasterList';
 import SearchPanel from '../../../components/SearchPanel';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Grid,MenuItem,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs,TextField,Typography} from '@mui/material';
 import {useLanguage} from '../../../context/LanguageContext';
@@ -126,10 +126,7 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const navigate = useNavigate();
   const auth=useAuth(),{languageCode}=useLanguage();
   const canViewMaterials=canAccessPath('/inventory/materials',auth),canViewReference=canAccessPath('/inventory/settings',auth);
-  const [materialSection,setMaterialSection]=useState(view==='settings'?'reference':'materials');
-  useEffect(()=>setMaterialSection(view==='settings'?'reference':'materials'),[view]);
   const mergedMaterials=['materials','settings'].includes(view);
-  const activeSection=materialSection==='reference'&&canViewReference?'reference':canViewMaterials?'materials':'reference';
   const sections=({ko:{materials:'자재 목록',reference:'기준정보'},en:{materials:'Materials',reference:'Reference data'},vi:{materials:'Vật tư',reference:'Dữ liệu chuẩn'}})[languageCode]||{materials:'Materials',reference:'Reference data'};
   const [title, description] = PAGE_META[view] || PAGE_META.stock;
   const [keyword, setKeyword] = useState('');
@@ -140,7 +137,7 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const resetSearch = () => { setKeyword(''); setHistoryStartMonth(dayjs('2026-08-01')); setHistoryEndMonth(dayjs('2026-08-01').endOf('month')); setSearchResetVersion(value => value + 1); };
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>입출고 등록</Button>
-  ) : mergedMaterials && activeSection==='materials' && canViewMaterials ? (
+  ) : view==='materials' && canViewMaterials ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>{(materialItemText[languageCode]||materialItemText.en).add}</Button>
   ) : null;
   const toolbar = view === 'stock' ? (
@@ -154,10 +151,10 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
       controls={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="입출고 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField></Stack>}
       dates={<DateRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} />}
     />
-  ) : mergedMaterials && activeSection==='materials' && canViewMaterials ? (
+  ) : view==='materials' && canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
   ) : null;
-  const content = mergedMaterials ? <Stack spacing={2}><Tabs data-material-master-tabs value={activeSection} onChange={(_,value)=>setMaterialSection(value)} variant="scrollable">{canViewMaterials&&<Tab value="materials" label={sections.materials}/>} {canViewReference&&<Tab value="reference" label={sections.reference}/>}</Tabs>{activeSection==='materials'&&canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:canViewReference?<SettingsView/>:null}</Stack> : { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView /> }[view] || <StockView keyword={keyword} />;
+  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView /> }[view] || <StockView keyword={keyword} />;
   return (
     <>
       <AppPageContainer
