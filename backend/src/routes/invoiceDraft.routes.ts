@@ -132,7 +132,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
       receivableAdded: String(row.receivableAdded),
       issuedAt: row.issuedAt, issuedBy: row.issuedBy, issuedByName:actors.find((actor:any)=>actor.id===row.id)?.createdByName||null, orders: row.orders,
       sellerName:(row.snapshot as any)?.fields?.seller?.name||access.organization.name,
-      accountingCodes:[...new Set(((row.snapshot as any)?.lines||[]).map((line:any)=>line.code).filter(Boolean))],
+      accountingCodes:[...new Set([(row.snapshot as any)?.accounting?.code,...((row.snapshot as any)?.lines||[]).map((line:any)=>line.code)].filter(Boolean))],
       descriptions:[...new Set(((row.snapshot as any)?.lines||[]).map((line:any)=>line.description||line.styleCode).filter(Boolean))],
       revisionOfInvoiceId: row.revisionOfInvoiceId, revisionNumber: row.revisionNumber, revisionReason: row.revisionReason,
       // A partially unlocked document must still offer Unlock for its remaining

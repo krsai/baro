@@ -98,7 +98,7 @@ export const escapeInvoiceHtml = (value) => String(value ?? '').replace(/[&<>"']
 
 // Each order is rounded independently, after summing its rounded line amounts.
 // This percentage changes money only; it never consumes a percentage of units.
-export function applyOrderBillingPercentages(source, calculation, percentages = {}, settlements = {}, currencyCode = '') {
+export function applyOrderBillingPercentages(source, calculation, percentages = {}, settlements = {}, currencyCode = '', tax = {}) {
   const digits = calculation.total.includes('.') ? calculation.total.split('.')[1].length : 0;
   const deductionMinor = value => {
     if (!/^\d+(\.\d{1,4})?$/.test(String(value))) return null;
@@ -126,7 +126,12 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
     const adjustment = (adjustmentText.startsWith('-') ? -1n : 1n) * (adjustmentValue ?? 0n);
     if (adjustmentValue == null) issues.push('ADJUSTMENT');
     if (adjustment !== 0n && !String(settlements[order.orderId]?.reason || '').trim()) issues.push('ADJUSTMENT_REASON');
-    const amount = (subtotal * percent + 5000n) / 10000n + adjustment;
+    const supplyAmount = (subtotal * percent + 5000n) / 10000n + adjustment;
+    const rateText=String(tax.vatRate??'0');
+    const validTax=/^\d+(\.\d{1,2})?$/.test(rateText)&&Number(rateText)<=100&&((tax.vatTreatment||'E')==='V'||Number(rateText)===0);
+    if(!validTax)issues.push('VAT');
+    const vatAmount=validTax?(supplyAmount*BigInt(Math.round(Number(rateText)*100))+5000n)/10000n:0n;
+    const amount = supplyAmount+vatAmount;
     if (amount < 0n) issues.push('ADJUSTMENT');
     const settlementContext = order.settlementsByCurrency?.[currencyCode] || {};
     const defaultText = String(settlementContext.defaultDeductionAmount || '0');
@@ -145,6 +150,7 @@ export function applyOrderBillingPercentages(source, calculation, percentages = 
     total += netAmount;
     receivableAddedTotal += receivableAdded;
     return { orderId: order.orderId, orderNumber: order.orderNumber, percentage: valid ? raw : null,
+      vatRate:rateText,vatAmount:formatMinor(vatAmount,digits),supplyAmount:formatMinor(supplyAmount,digits),
       adjustmentAmount: formatMinor(adjustment, digits),
       subtotal: known ? formatMinor(subtotal, digits) : null,
       amount: known && valid ? formatMinor(amount, digits) : null, priorBilledAmount: settlementContext.priorBilledAmount || '0',

@@ -18,6 +18,10 @@ export async function accountingCodeUsage(db:any,ids:number[]){
  FROM "TransactionCode" c JOIN "InvoiceGeneralLine" l ON l."transactionCodeId"=c.id
  JOIN "Invoice" i ON i.id=l."invoiceId" AND i."sellerOrgId"=l."sellerOrgId"
  WHERE c."baseId"=ANY($1::int[])
+ UNION ALL
+ SELECT c."baseId",'invoice',i.status='ISSUED' AND i."deletedAt" IS NULL AND i."cancelledAt" IS NULL
+ FROM "TransactionCode" c JOIN "Invoice" i ON i."transactionCodeId"=c.id AND i."sellerOrgId"=c."ownerOrgId"
+ WHERE c."baseId"=ANY($1::int[])
  ) SELECT id,source,count(*)::int AS total,count(*) FILTER(WHERE current)::int AS current FROM refs GROUP BY id,source`,ids);
  const result=new Map(ids.map(id=>[id,{current:0,history:0,expense:0,ledger:0,settlement:0,invoice:0}]));
  for(const row of rows){const value:any=result.get(row.id);if(!value)continue;const current=Number(row.current),total=Number(row.total);value.current+=current;value.history+=total-current;value[row.source]=current;}

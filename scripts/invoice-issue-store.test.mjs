@@ -304,3 +304,16 @@ test('signed amount adjustments change billed amount and receivable, with a requ
  input.settlements.o1.adjustment='1e2';assert.throws(()=>calculateInvoiceIssueSnapshot(input,sources),/INVALID_ADJUSTMENT/);
  input.settlements.o1.adjustment='-1';assert.throws(()=>calculateInvoiceIssueSnapshot(input,sources,{o1:{priorBilledAmount:'3'}}),/CREDIT_REVIEW_REQUIRED/);
 });
+
+test('order VAT is rounded per order, included once in debt, and rejects invalid or exempt rates',async()=>{
+ const sources=[source('o1','A','1.2345'),source('o2','B','2')];
+ const input={...content,fields:{...content.fields,vatTreatment:'V',vatRate:'10'}};
+ const result=calculateInvoiceIssueSnapshot(input,sources);
+ assert.equal(result.total,'7.37');assert.equal(result.receivableAdded,'7.37');
+ assert.deepEqual(result.orders.map(row=>row.vatAmount),['0.37','0.30']);
+ assert.equal(result.orders[0].supplyAmount,'3.70');
+ for(const fields of [{vatTreatment:'E',vatRate:'10'},{vatTreatment:'Z',vatRate:'10'},{vatTreatment:'V',vatRate:'101'},{vatTreatment:'V',vatRate:'-1'},{vatTreatment:'V',vatRate:'abc'}])assert.throws(()=>calculateInvoiceIssueSnapshot({...input,fields},sources),/INVOICE_DRAFT_INVALID/);
+ const {applyOrderBillingPercentages}=await import('../frontend/src/utils/invoiceDraft.mjs');
+ const preview=applyOrderBillingPercentages({orders:content.orders},{lines:[{orderId:'o1',amount:'3.70',quantity:3},{orderId:'o2',amount:'6.00',quantity:3}],issues:[],total:'9.70'},content.percentages,{},'USD',input.fields);
+ assert.equal(preview.total,result.total);assert.equal(preview.receivableAdded,result.receivableAdded);
+});

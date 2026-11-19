@@ -1,3 +1,5 @@
+import {orderInvoiceAccounting} from './invoiceAccounting';
+import {assertInvoiceDeletable} from './invoiceDeletion';
 import {invoicePrimaryAccountText} from './invoicePrimaryAccounts';
 import { createHttpError } from "../utils/http";
 import {issueGeneralInvoice} from './generalInvoice';
@@ -46,6 +48,9 @@ const percentage = (value: unknown) => {
 
 export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], settlementContext: Record<string, any> = {}) => {
   const digits = currencyDigits(content.currency);
+  const rateText=String(content.fields?.vatRate??'0');
+  if(!/^\d+(\.\d{1,2})?$/.test(rateText)||Number(rateText)>100||!['E','Z','V'].includes(content.fields?.vatTreatment||'E')||(content.fields?.vatTreatment||'E')!=='V'&&Number(rateText)!==0)fail('INVOICE_DRAFT_INVALID');
+  const rate=BigInt(Math.round(Number(rateText)*100));
   const sourceLines = new Map<string, any>();
   const sourceStyles = new Map<string, any>();
   const sourceOrders = new Map<string, any>();
@@ -101,7 +106,9 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
     if (adjustmentScale4 === null) fail("INVOICE_ISSUE_INVALID_ADJUSTMENT");
     const adjustmentMinor = (adjustmentText.startsWith('-') ? -1n : 1n) * ((adjustmentScale4! + divisor / 2n) / divisor);
     if (adjustmentMinor !== 0n && !String(content.fields?.notes || '').trim()) fail("INVOICE_ISSUE_ADJUSTMENT_REASON_REQUIRED");
-    const billedMinor = (basisMinor * percent.basisPoints + 5000n) / 10000n + adjustmentMinor;
+    const supplyMinor = (basisMinor * percent.basisPoints + 5000n) / 10000n + adjustmentMinor;
+    const vatMinor = (supplyMinor * rate + 5000n) / 10000n;
+    const billedMinor = supplyMinor + vatMinor;
     if (billedMinor < 0n) fail("INVOICE_ISSUE_INVALID_ADJUSTMENT");
     const context = settlementContext[input.orderId] || {};
     const defaultScale4 = parseMoneyScale4(context.defaultDeductionAmount) ?? 0n;
@@ -125,6 +132,7 @@ export const calculateInvoiceIssueSnapshot = (content: any, sources: any[], sett
     receivableAddedMinor += newReceivableMinor;
     return { workOrderId: source.workOrderId, sourceOrderId: source.orderId, sourceOrderNumber: source.orderNumber,
       sourceUpdatedAt: source.sourceUpdatedAt, billingPercentage: percent.raw,
+      vatRate:rateText,vatAmount:decimal(vatMinor,digits),supplyAmount:decimal(supplyMinor,digits),
       adjustmentAmount: decimal(adjustmentMinor, digits),
       basisAmount: decimal(basisMinor, digits), billedAmount: decimal(billedMinor, digits),
       priorBilledAmount: String(context.priorBilledAmount || "0"), priorReceivedAmount: String(context.priorReceivedAmount || "0"),
@@ -207,7 +215,10 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
       settlementContext[source.orderId] = invoiceSettlement(previous, revisedFrom ? invoiceFamily(revisedFrom) : undefined);
     }
     content.fields.bank=await invoicePrimaryAccountText(tx,sellerOrgId);
+    if(content.basis==='MANUFACTURING_SERVICE_PRICE'){content.fields.vatTreatment??='E';content.fields.vatRate??='0';}
+    const accounting = await orderInvoiceAccounting(tx,sellerOrgId,content);
     const calculated = calculateInvoiceIssueSnapshot(content, sources, settlementContext);
+    if(accounting)(calculated.snapshot as any).accounting=accounting;
     for (const order of calculated.orders) {
       const revisedOrder = revisedFrom?.orders.find((row: any) => row.sourceOrderId === order.sourceOrderId);
       const prior = revisedOrder ? null : await tx.invoiceOrder.findFirst({ where: { sourceOrderId: order.sourceOrderId,
@@ -220,12 +231,13 @@ export async function issueInvoiceDraft(db: any, sellerOrgId: number, actor: str
     const latest = await tx.invoice.findFirst({ where: { sellerOrgId }, orderBy: { sequenceNumber: "desc" }, select: { sequenceNumber: true } });
     const invoice = await tx.invoice.create({ data: { sellerOrgId, buyerOrgId: draft.buyerOrgId, invoiceNumber,
       clientKey: issueKey, sequenceNumber: (latest?.sequenceNumber || 0) + 1, pricingBasis: calculated.pricingBasis,
+      transactionCodeId:accounting?.transactionCodeId??null,
       currencyCode: calculated.currencyCode, subtotal: calculated.subtotal, total: calculated.total, receivableAdded: calculated.receivableAdded,
       snapshot: calculated.snapshot, issuedBy: actor, revisionOfInvoiceId: revisedFrom?.id ?? null,
       rootInvoiceId: revisedFrom ? (revisedFrom.rootInvoiceId || revisedFrom.id) : null,
       revisionNumber: revisedFrom ? revisedFrom.revisionNumber + 1 : 1, revisionReason } });
     for (const order of calculated.orders) {
-      const { adjustmentAmount: _adjustmentAmount, ...storedOrder } = order;
+      const { adjustmentAmount: _adjustmentAmount, vatRate:_vatRate,vatAmount:_vatAmount,supplyAmount:_supplyAmount, ...storedOrder } = order;
       const orderRow = await tx.invoiceOrder.create({ data: { invoiceId: invoice.id, ...storedOrder } });
       const related = calculated.lines.filter((line: any) => line.orderId === order.sourceOrderId);
       if (related.length) await tx.invoiceLine.createMany({ data: related.map(({ orderId: _orderId, ...line }: any) => ({
@@ -283,10 +295,14 @@ export async function deleteIssuedInvoice(db: any, sellerOrgId: number, actor: s
     const later = await tx.invoiceOrder.findFirst({ where: { sourceOrderId: { in: invoice.orders.map((row: any) => row.sourceOrderId) },
       invoice: { sellerOrgId, status: "ISSUED", sequenceNumber: { gt: invoice.sequenceNumber } } } });
     if (later) fail("INVOICE_CANCEL_REVERSE_ORDER_REQUIRED");
-    const updated = await tx.invoice.updateMany({ where: { id: invoiceId, sellerOrgId, status: { in: ["ISSUED", "CANCELLED"] } },
-      data: { status: "DELETED", deletedBy: actor, deletedAt: new Date(), deletionReason } });
-    if (updated.count !== 1) throw createHttpError(409, STALE_EDIT);
-    return tx.invoice.findFirst({ where: { id: invoiceId, sellerOrgId } });
+    await assertInvoiceDeletable(tx,sellerOrgId,invoiceId);
+    // sourceId and beforeSnapshot retain the approval evidence after detaching its live FK.
+    await tx.changeApprovalRequest.updateMany({where:{orgId:sellerOrgId,invoiceId},data:{invoiceId:null}});
+    await tx.invoiceLine.deleteMany({where:{invoiceId}});
+    await tx.invoiceOrder.deleteMany({where:{invoiceId}});
+    await tx.invoiceGeneralLine.deleteMany({where:{invoiceId,sellerOrgId}});
+    await tx.invoice.delete({where:{id:invoiceId}});
+    return {id:invoiceId,deleted:true};
   };
   return approvedTransaction ? work(db) : editTransaction(db,work);
 }

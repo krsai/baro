@@ -1,3 +1,4 @@
+import {invoiceEvidenceAccounting} from './invoiceAccounting';
 import {prepareLedgerMaterial} from './materialItems';
 import {bankFeeAccountingCode} from './accountingCode';
 import {ledgerTaxSnapshot,ledgerTaxInput} from './ledgerVat';
@@ -40,13 +41,14 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
  if(!payload.clientKey||input.sourceId!==payload.clientKey)fail('INVALID_TRANSACTION_KEY');
  const rows=[],items=[],transferTargets=[],accountSources=[];
  for(const [parentIndex,suppliedRow] of parents.entries()){
- const row=suppliedRow.evidenceType==='BANK_FEE'?{...suppliedRow,accountingCodeId:(await bankFeeAccountingCode(db,orgId)).id}:suppliedRow;
+ let row=suppliedRow.evidenceType==='BANK_FEE'?{...suppliedRow,accountingCodeId:(await bankFeeAccountingCode(db,orgId)).id}:suppliedRow;
  const accountId=row.accountId;
  const ledger=await db.bankLedgerAccount.findFirst({where:{id:accountId,orgId}});
  const masterId=ledger?.entityAccountId||String(accountId).replace(/^entity:/,'');
  const master=await db.organizationBankAccount.findFirst({where:{id:masterId,orgId,entityId:orgId,isActive:true},include:{currency:true}});
  if(!master)fail('LEDGER_ACCOUNT_NOT_FOUND');
  const account=ledger||{id:accountId,entityAccountId:master.id,currencyCode:master.currency.code};
+ row=await invoiceEvidenceAccounting(db,orgId,row,account.currencyCode);
  accountSources.push({accountId,masterId:master.id,currency:account.currencyCode,name:master.displayName||[master.bankName,master.accountNumber].filter(Boolean).join(' / ')});
   const allocations:any[]=[];
   if(!input.allowIncomplete){if(row.evidenceType==='EXPENSE'&&Object.keys(ledgerTaxInput(row)).length)fail('LEDGER_INVALID_VAT');await ledgerTaxSnapshot(db,orgId,row.accountingCodeId,row,account.currencyCode);for(const item of row.expenseItems||[]){if(item.subtotal!=null||item.vatRate!=null){const cost=await db.partnerTransactionCost.findFirst({where:{id:item.itemId,orgId},select:{transactionCodeId:true}});if(!cost)fail('LEDGER_INVALID_EVIDENCE');await ledgerTaxSnapshot(db,orgId,cost.transactionCodeId,item,account.currencyCode);}}}

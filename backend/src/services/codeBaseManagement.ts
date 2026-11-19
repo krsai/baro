@@ -162,6 +162,7 @@ export async function getCodeBaseUsage(db: any, ids: number[]): Promise<Set<numb
     UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerEntry" entry ON entry."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])
     UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "BankLedgerSettlementLine" line ON line."accountingCodeId"=code.id WHERE code."baseId"=ANY($1::int[])`:'';
   const invoiceUsage=db.invoiceGeneralLine?`
+    UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "Invoice" invoice ON invoice."transactionCodeId"=code.id WHERE code."baseId"=ANY($1::int[])
     UNION SELECT DISTINCT code."baseId" AS id FROM "TransactionCode" code JOIN "InvoiceGeneralLine" line ON line."transactionCodeId"=code.id WHERE code."baseId"=ANY($1::int[])`:'';
   const rows = await db.$queryRawUnsafe(`SELECT DISTINCT code."baseId" AS id
     FROM "TransactionCode" code JOIN "PartnerTransactionCost" cost ON cost."transactionCodeId"=code.id

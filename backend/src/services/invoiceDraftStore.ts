@@ -43,7 +43,7 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   }));
   if (new Set(lines.map((row: any) => row.key)).size !== lines.length) return bad();
   const expectedCollectionDate=cashScheduleDate(body.fields?.expectedCollectionDate);
-  const fields = { ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
+  const fields = { ...(body.fields?.vatTreatment!==undefined?{vatTreatment:text(body.fields.vatTreatment,1),vatRate:text(body.fields.vatRate??'0',8)}:{}), ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
     seller: { ...pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
       ...(body.fields.seller.contactName!==undefined?{contactName:text(body.fields.seller.contactName,200)}:{}),
       ...(body.fields.seller.code !== undefined ? { code: text(body.fields.seller.code, 200) } : {}) },

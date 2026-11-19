@@ -34,3 +34,7 @@ Object.assign(changeApprovalText.en,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Bank fee 
 Object.assign(changeApprovalText.vi,{LEDGER_BANK_FEE_CODE_UNAVAILABLE:"Không thể dùng mã phí ngân hàng miễn thuế BNFE. Kiểm tra thiết lập mã kế toán."});
 
 for (const language of ['ko','en','vi']) Object.assign(changeApprovalText[language], Object.fromEntries(Object.entries(payrollManagementText[language]).filter(([key]) => key.startsWith('PAYROLL_'))));
+
+Object.assign(changeApprovalText.ko,{INVOICE_DELETE_LINKED_DATA:'연결된 입금·기초잔액·개정본·마감 이력이 있어 삭제할 수 없습니다. 연결 자료를 먼저 정리한 후 청구서를 삭제하고 다시 등록해 주세요. 취소된 자료도 이력이 남아 있으면 삭제할 수 없습니다.',INVOICE_CMT_CODE_UNAVAILABLE:'회사 회계 코드에 활성 봉제 공임(CMT) 코드를 설정해 주세요.'});
+Object.assign(changeApprovalText.en,{INVOICE_DELETE_LINKED_DATA:'Linked payments, opening balances, revisions or closing history prevent deletion. Resolve linked records first, then delete and register the invoice again. Voided records also retain history.'});
+Object.assign(changeApprovalText.vi,{INVOICE_DELETE_LINKED_DATA:'Không thể xóa vì có khoản thu, số dư đầu kỳ, bản sửa đổi hoặc lịch sử chốt liên kết. Xử lý dữ liệu liên kết trước, sau đó xóa và đăng ký lại hóa đơn. Chứng từ đã hủy vẫn lưu lịch sử.'});

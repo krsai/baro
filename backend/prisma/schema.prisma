@@ -2445,6 +2445,7 @@ model CodeBaseUsageRollout {
 }
 
 model TransactionCode {
+  orderInvoices Invoice[] @relation("InvoiceAccountingCode")
   payrollPayableDocuments PayrollPayableDocument[]
   accountingOpenings AccountingOpeningItem[]
   invoiceGeneralLines InvoiceGeneralLine[]
@@ -3121,6 +3122,8 @@ enum InvoicePaymentKind {
 
 // Immutable issuance snapshot. Corrections and settlements are appended in later phases.
 model Invoice {
+  transactionCodeId Int?
+  accountingCode TransactionCode? @relation("InvoiceAccountingCode",fields:[transactionCodeId,sellerOrgId],references:[id,ownerOrgId],onDelete:Restrict,onUpdate:Restrict,map:"Invoice_accounting_code_scope_fkey")
   openingAdjustments AccountingOpeningItem[]
   cancellationRequests ChangeApprovalRequest[] @relation("InvoiceChangeSource")
   documentKind String @default("ORDER")

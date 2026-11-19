@@ -1,3 +1,4 @@
+import {assertInvoiceDeletable} from './invoiceDeletion';
 import {dashboardApprovalMenus} from './dashboardAccess';
 import {assertPaidExpenseCorrection,paidExpenseEntries,correctPaidExpense} from './paidExpenseCorrection';
 import {deleteIssuedInvoice} from './invoiceIssueStore';
@@ -29,7 +30,7 @@ async function source(db:any,orgId:number,input:any,lock=false):Promise<any>{
   if(operation!=='DELETE'||kind!=='invoice')fail('CHANGE_INVALID_SOURCE',400);
   if(lock){await db.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);await db.$queryRawUnsafe('SELECT id FROM "Invoice" WHERE id=$1 AND "sellerOrgId"=$2 FOR UPDATE',id,orgId);}
   const invoice=await db.invoice.findFirst({where:{id,sellerOrgId:orgId},include:{orders:true,generalLines:true,payments:{include:{allocations:true}},credits:true}});
-  if(!invoice)fail('INVOICE_NOT_FOUND',404);if(await db.accountingOpeningItem.findFirst({where:{orgId,invoiceId:id,voidedAt:null},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');if(!['ISSUED','CANCELLED'].includes(invoice.status))fail('CHANGE_SOURCE_CHANGED');
+  if(!invoice)fail('INVOICE_NOT_FOUND',404);await assertInvoiceDeletable(db,orgId,id);if(await db.accountingOpeningItem.findFirst({where:{orgId,invoiceId:id,voidedAt:null},select:{id:true}}))fail('OPENING_SOURCE_LOCKED');if(!['ISSUED','CANCELLED'].includes(invoice.status))fail('CHANGE_SOURCE_CHANGED');
   if(invoice.payments.some((p:any)=>!p.voidedAt)||await db.bankLedgerEvidenceAllocation.findFirst({where:{invoiceId:id,entry:{orgId,voidedAt:null}}}))fail('INVOICE_ACTIVE_PAYMENT');
   if(await db.workOrder.findFirst({where:{sellerOrgId:orgId,invoiceFinalLockInvoiceId:id}}))fail('INVOICE_FINAL_LOCK_UNLOCK_REQUIRED');
   if(await db.invoiceOrder.findFirst({where:{sourceOrderId:{in:invoice.orders.map((r:any)=>r.sourceOrderId)},invoice:{sellerOrgId:orgId,status:'ISSUED',sequenceNumber:{gt:invoice.sequenceNumber}}}}))fail('INVOICE_CANCEL_REVERSE_ORDER_REQUIRED');

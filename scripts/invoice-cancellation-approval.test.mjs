@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url),{saveInvoiceDraft}=require('../backend/dist/services/invoiceDraftStore'),{issueInvoiceDraft,cancelIssuedInvoice,recordInvoicePayment}=require('../backend/dist/services/invoiceIssueStore'),{previewChangeApproval,requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
-test('invoice deletion requires staged approval, real invoice FK, current financial state and preserves issued history',async()=>{
+test('invoice deletion requires staged approval, real invoice FK, current financial state and preserves approval snapshots while physically deleting unlinked documents',async()=>{
  const f=await changeApprovalFixture({registration:true});try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.junior.id;
   const make=async()=>{const draft=await saveInvoiceDraft(db,org,'actor',{clientKey:randomUUID(),documentKind:'GENERAL',buyerOrgId:s.vendor.id,orders:[],currency:'USD',fields:{date:'2026-11-11',seller:{name:'Seller'},buyer:{name:'Buyer'}},lines:[{key:randomUUID(),transactionCodeId:s.code.id,description:'Service',unit:'pcs',quantity:'1',unitPrice:'100',vatRate:'0'}]});return issueInvoiceDraft(db,org,'actor',draft.id,draft.revision);};
@@ -18,7 +18,7 @@ test('invoice deletion requires staged approval, real invoice FK, current financ
   const ownPreview=await previewChangeApproval(db,org,s.people.admin.id,ownInput);
   assert.equal(ownPreview.preview.complete,true);assert.equal(ownPreview.policy.autoApproved,true);assert.equal(ownPreview.policy.exemptionReason,'FINAL_DRAFTER');
   const ownRequest=await requestChangeApproval(db,org,s.people.admin.id,ownInput);
-  assert.equal(ownRequest.status,'APPROVED');assert.equal((await db.invoice.findUnique({where:{id:ownInvoice.id}})).status,'DELETED');
+  assert.equal(ownRequest.status,'APPROVED');assert.equal(await db.invoice.findUnique({where:{id:ownInvoice.id}}),null);
   assert.equal((await requestChangeApproval(db,org,s.people.admin.id,ownInput)).id,ownRequest.id);
   const invoice=await make(),input={menu:'INVOICE',operation:'DELETE',sourceKind:'invoice',sourceId:invoice.id,reason:'Wrong invoice',clientKey:randomUUID()};
   await assert.rejects(cancelIssuedInvoice(db,org,'actor',invoice.id,'Direct cancellation'),/CHANGE_APPROVAL_REQUIRED/);
@@ -32,27 +32,30 @@ test('invoice deletion requires staged approval, real invoice FK, current financ
   await assert.rejects(previewChangeApproval(db,org,actor,{...input,sourceId:randomUUID()}),/INVOICE_NOT_FOUND/);
   await assert.rejects(decideChangeApproval(db,org,actor,request.id,{decision:'APPROVED'}),/CHANGE_APPROVER_REQUIRED/);
   for(const stage of request.policy.resolvedStages)await decideChangeApproval(db,org,stage.employeeId,request.id,{decision:'APPROVED'});
-  const cancelled=await db.invoice.findUnique({where:{id:invoice.id}});assert.equal(cancelled.status,'DELETED');assert.equal(cancelled.deletionReason,input.reason);assert.deepEqual(cancelled.snapshot,invoice.snapshot);assert.equal(String(cancelled.total),'100');assert.equal(await db.invoiceGeneralLine.count({where:{invoiceId:invoice.id}}),1);
-  await assert.rejects(db.invoice.update({where:{id:invoice.id},data:{status:'ISSUED'}}),/INVOICE_HISTORY_REQUIRED/);
+  assert.equal(await db.invoice.findUnique({where:{id:invoice.id}}),null);assert.equal(await db.invoiceGeneralLine.count({where:{invoiceId:invoice.id}}),0);
+  await assert.rejects(db.invoice.delete({where:{id:(await make()).id}}),/CHANGE_APPROVAL_REQUIRED|GENERAL_INVOICE_IMMUTABLE/);
   const legacy=await make();
   await f.pg.exec('ALTER TABLE "Invoice" DISABLE TRIGGER "Invoice_cancellation_approval_guard"');
   await db.invoice.update({where:{id:legacy.id},data:{status:'CANCELLED',cancellationReason:'Legacy cancellation'}});
   await f.pg.exec('ALTER TABLE "Invoice" ENABLE TRIGGER "Invoice_cancellation_approval_guard"');
   const legacyRequest=await requestChangeApproval(db,org,s.people.admin.id,{...input,sourceId:legacy.id,clientKey:randomUUID(),reason:'Remove legacy cancelled invoice'});
   assert.equal(legacyRequest.status,'APPROVED');
-  const legacyDeleted=await db.invoice.findUnique({where:{id:legacy.id}});assert.equal(legacyDeleted.status,'DELETED');assert.equal(legacyDeleted.cancellationReason,'Legacy cancellation');assert.ok(legacyDeleted.deletedAt);
+  assert.equal(await db.invoice.findUnique({where:{id:legacy.id}}),null);assert.equal(legacyRequest.beforeSnapshot.invoice.cancellationReason,'Legacy cancellation');
   const review=await require('../backend/dist/services/approvalReview').approvalReviewDetail(db,org,actor,'CHANGE_APPROVAL',request.id);assert.equal(review.before.invoice.id,invoice.id);assert.deepEqual(review.before.invoice.snapshot,invoice.snapshot);
   const last=request.policy.resolvedStages.at(-1).employeeId;assert.equal((await decideChangeApproval(db,org,last,request.id,{decision:'APPROVED'})).status,'APPROVED');
   const paid=await make(),paidInput={...input,sourceId:paid.id,clientKey:randomUUID(),selection};const pending=await requestChangeApproval(db,org,actor,paidInput);
   await recordInvoicePayment(db,org,'actor',paid.id,{clientKey:randomUUID(),amount:'10',receivedAt:'2026-11-11'});
-  await assert.rejects(decideChangeApproval(db,org,pending.policy.resolvedStages[0].employeeId,pending.id,{decision:'APPROVED'}),/INVOICE_ACTIVE_PAYMENT|CHANGE_SOURCE_CHANGED/);
-  await assert.rejects(previewChangeApproval(db,org,actor,paidInput),/INVOICE_ACTIVE_PAYMENT/);assert.equal((await db.invoice.findUnique({where:{id:paid.id}})).status,'ISSUED');
+  await assert.rejects(decideChangeApproval(db,org,pending.policy.resolvedStages[0].employeeId,pending.id,{decision:'APPROVED'}),/INVOICE_DELETE_LINKED_DATA|CHANGE_SOURCE_CHANGED/);
+  await assert.rejects(previewChangeApproval(db,org,actor,paidInput),/INVOICE_DELETE_LINKED_DATA/);assert.equal((await db.invoice.findUnique({where:{id:paid.id}})).status,'ISSUED');
   const rejected=await make(),rejection=await requestChangeApproval(db,org,actor,{...input,sourceId:rejected.id,selection,clientKey:randomUUID()});await decideChangeApproval(db,org,rejection.policy.resolvedStages[0].employeeId,rejection.id,{decision:'REJECTED',reason:'Keep original'});assert.equal((await db.invoice.findUnique({where:{id:rejected.id}})).status,'ISSUED');
   const gets=new Map();require('../backend/dist/routes/invoiceDraft.routes').registerInvoiceDraftRoutes({get:(path,fn)=>gets.set(path,fn),post:()=>{},put:()=>{},delete:()=>{}},{db,requireAccess:async()=>({organization:s.company}),actor:()=> 'actor'});
   let result,status;const res={setHeader:()=>{},json:value=>{result=value;return res;},status:value=>{status=value;return res;}};
   await gets.get('/invoices/issued')({query:{}},res);assert.ok(result.rows.every(row=>![invoice.id,ownInvoice.id,legacy.id].includes(row.id)));
   await gets.get('/invoices/issued/:id')({query:{},params:{id:invoice.id}},res);assert.equal(status,404);
-  assert.equal((await db.changeApprovalRequest.findUnique({where:{id:request.id}})).invoiceId,invoice.id);
-  await f.pg.exec(readFileSync('backend/prisma/migrations/20261117070000_invoice_deletion/migration.sql','utf8'));
+  assert.equal((await db.changeApprovalRequest.findUnique({where:{id:request.id}})).invoiceId,null);
+  const deletedAfterRejection=await requestChangeApproval(db,org,s.people.admin.id,{...input,sourceId:rejected.id,clientKey:randomUUID(),reason:'Remove unlinked incorrect document'});
+  assert.equal(deletedAfterRejection.status,'APPROVED');assert.equal(await db.invoice.findUnique({where:{id:rejected.id}}),null);
+  const rejectedAudit=await db.changeApprovalRequest.findUnique({where:{id:rejection.id}});assert.equal(rejectedAudit.invoiceId,null);assert.equal(rejectedAudit.beforeSnapshot.invoice.id,rejected.id);assert.equal(rejectedAudit.status,'REJECTED');
+  await f.pg.exec(readFileSync('backend/prisma/migrations/20261119200000_invoice_accounting_and_hard_delete/migration.sql','utf8'));
  }finally{await f.close();}
 });

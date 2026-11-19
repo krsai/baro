@@ -61,6 +61,7 @@ test('30% and 100% advances can be issued before production finishes without clo
   const rows=()=>[{id:'a',workOrderId:1,styleId:7,plannedQuantity:100,producedQuantity:finished?100:started?50:0,isCompleted:finished}];
   const db={invoiceDraft:{findFirst:async()=>({id:'draft',revision:1,buyerOrgId:2,content})},workOrder:{findMany:async()=>[advanceOrder]},orgRelationship:{findFirst:async()=>null},
    orderInvoicePolicy:{findFirst:async()=>null},
+   transactionCode:{findFirst:async()=>({id:91,isActive:true,base:{isActive:true,code:'CMT',cashDirection:'IN',variants:[{id:1,isActive:true,isEnabled:true,taxTreatmentId:1}]},taxTreatmentId:1,taxTreatment:{code:'EXEMPT',suffix:'E'}})},
    assignmentPlan:{findMany:async()=>[{...plan,isCompleted:finished,_count:{workRecords:started?1:0}}]},
    organizationBankAccount:{findMany:async()=>[]},
    invoiceOrder:{findMany:async()=>ledger,findFirst:async()=>null,create:async({data})=>{const row={id:10,...data,invoice:invoices[0],lines:[]};ledger.push(row);return row;}},
@@ -68,7 +69,7 @@ test('30% and 100% advances can be issued before production finishes without clo
    invoice:{findFirst:async({where,orderBy})=>orderBy?invoices.at(-1):where.clientKey?invoices.find(row=>row.clientKey===where.clientKey):invoices.find(row=>row.invoiceNumber.toLowerCase()===where.invoiceNumber.equals.toLowerCase()),create:async({data})=>{const row={id:'issued',status:'ISSUED',...data};invoices.push(row);return row;}},
    systemSetting:{findUnique:async({where})=>settings.get(where.key)||null,upsert:async({where,update})=>settings.set(where.key,update)},$queryRawUnsafe:async()=>[]};
   db.$transaction=async fn=>fn(db);
-  const invoice=await issueInvoiceDraft(db,1,'test','draft',1);assert.equal(invoice.total,percentage==='30'?'300.00':'1000.00');assert.equal(finished,false);
+  const invoice=await issueInvoiceDraft(db,1,'test','draft',1);assert.equal(invoice.transactionCodeId,91);assert.equal(invoice.snapshot.accounting.code,'CMTE');assert.equal(invoice.total,percentage==='30'?'300.00':'1000.00');assert.equal(finished,false);
   const preview=applyOrderBillingPercentages({orders:[{orderId:'advance'}]},{total:'1000.00',issues:['PRODUCTION'],lines:[{orderId:'advance',quantity:100,amount:'1000.00'}]},{advance:percentage},{},'USD');
   assert.deepEqual(preview.issues,[]);assert.deepEqual(preview.warnings,['PRODUCTION']);
   assert.equal((await loadOrderWorkflowStatuses(db,[advanceOrder],async()=>rows())).get(1),'RECEIVED');

@@ -1,3 +1,4 @@
+import {invoiceAccountingText} from '../../../constants/invoiceAccounting';
 import {managementTargetText} from '../../../constants/managementTargets';
 import {cashScheduleText} from '../../../constants/cashSchedule';
 import {useAppActions} from '../../../context/AppContext';
@@ -8,7 +9,7 @@ import {invoiceDocumentText} from '../../../constants/invoiceDocument';
 import {documentNumberText,documentNumberError} from '../../../constants/documentNumber';
 import { usePageDialogs } from '../../../components/PageDialogProvider';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {Box,Button,Checkbox,CircularProgress,FormControlLabel,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Box,Button,Checkbox,CircularProgress,FormControlLabel,Stack,MenuItem,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import InvoiceSheet from '../../../components/InvoiceSheet';
@@ -191,7 +192,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     return () => { cancelled = true; };
   }, [open, orderId, orderIds, orgId, buyerOrgId, draftId, revisionInvoice, reload, t.load, storageText.sourceChanged]);
   const calculation = useMemo(() => !source ? null : applyOrderBillingPercentages(source,
-    calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency), [source, lines, basis, currency, percentages, settlements]);
+    calculateInvoiceDraft(source, lines, basis, currency), percentages, settlements, currency, fields||{}), [source, lines, basis, currency, percentages, settlements, fields]);
   const styleRows = useMemo(() => invoiceStyleRows(calculation?.lines || []), [calculation]);
   const draftLinesByKey = useMemo(() => new Map(lines.map(line => [line.key, line])), [lines]);
   const changeBilling = (setter, value) => { if (saving) return; setter(value); setReviewed(false); setDirty(true); };
@@ -245,7 +246,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
     } catch (e) {
       const unknown = !e.status || e.status >= 500;
       setUncertain(unknown);
-      setError((managementTargetText[languageCode]||managementTargetText.en)[e.message] || (e.message==='INVALID_CASH_SCHEDULE_DATE'?(cashScheduleText[languageCode]||cashScheduleText.en).invalid:'') || documentNumberError(e.details?.error||e.message,languageCode) || (String(e.message).includes('INVOICE_ORDER_FULLY_BILLED') ? (languageCode==='ko'?'이미 100% 이상 청구된 주문이 있습니다. 청구 대상을 다시 선택하세요.':languageCode==='vi'?'Có đơn hàng đã được lập hóa đơn đủ 100%. Vui lòng chọn lại đơn hàng.':'An order is already fully billed. Please select the orders again.') : unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed));
+      setError((managementTargetText[languageCode]||managementTargetText.en)[e.message] || (e.message==='INVALID_CASH_SCHEDULE_DATE'?(cashScheduleText[languageCode]||cashScheduleText.en).invalid:'') || documentNumberError(e.details?.error||e.message,languageCode) || (e.message==='INVOICE_CMT_CODE_UNAVAILABLE'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).unavailable:'') || (String(e.message).includes('INVOICE_ORDER_FULLY_BILLED') ? (languageCode==='ko'?'이미 100% 이상 청구된 주문이 있습니다. 청구 대상을 다시 선택하세요.':languageCode==='vi'?'Có đơn hàng đã được lập hóa đơn đủ 100%. Vui lòng chọn lại đơn hàng.':'An order is already fully billed. Please select the orders again.') : unknown ? ui.uncertain : String(e.message).includes('INVOICE_CREDIT_') ? ui.credit : String(e.message).includes('SOURCE_CHANGED') ? ui.sourceChanged : ui.failed));
     } finally { setSaving(false); }
   };
   return <AppPageContainer keyboardEntry title={revisionInvoice ? (languageCode==='ko'?'청구서 상세':languageCode==='vi'?'Chi tiết hóa đơn':'Invoice detail') : draftId ? ui.edit : ui.create} titleActions={<Stack direction="row" spacing={1}>
@@ -257,6 +258,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
         {loading && <CircularProgress />}
         {error && <Alert severity="error" action={<Button disabled={saving || uncertain} onClick={async () => { if (!dirty || await pageDialogs.confirm(storageText.discard,{purpose:'discard'})) setReload((v) => v + 1); }}>{t.retry}</Button>}>{error}</Alert>}
         {source && fields && <Box component="fieldset" disabled={saving || uncertain} sx={{ border: 0, m: 0, p: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {basis==='MANUFACTURING_SERVICE_PRICE'&&<Stack direction="row" spacing={2} sx={{p:2,flexWrap:'wrap'}}><TextField select label={(invoiceAccountingText[languageCode]||invoiceAccountingText.en).treatment} value={fields.vatTreatment||'E'} onChange={e=>{changeField('vatTreatment',e.target.value);changeField('vatRate','0');}} sx={{minWidth:260}}>{['E','Z','V'].map(value=><MenuItem key={value} value={value}>{(invoiceAccountingText[languageCode]||invoiceAccountingText.en)[value]}</MenuItem>)}</TextField><DecimalAmountField label="VAT (%)" value={fields.vatRate??'0'} onValueChange={value=>changeField('vatRate',value)} disabled={(fields.vatTreatment||'E')!=='V'} sx={{width:140}}/></Stack>}
           <InvoiceFormHeader fields={fields} languageCode={languageCode} onChange={changeField}/>
           <Typography className="invoice-section-title">{ui.details} · {invoiceNumber(styleRows.length)}</Typography>
           <Box sx={{overflowX:'auto'}}><Table data-table-layout="document" className="invoice-lines" size="small" sx={{minWidth:820,'& td':{verticalAlign:'middle'},'& th':{whiteSpace:'nowrap'}}}><colgroup>{[40,110,null,100,130,120,150].map((width,index)=><col key={index} style={width?{width}:undefined}/>)}</colgroup><TableHead><TableRow>
@@ -274,7 +276,7 @@ export default function InvoiceEditor({ open = true, onClose, onIssued, orderId,
           </TableRow></React.Fragment>;})}</TableBody></Table></Box>
           <Stack spacing={1.5} sx={{p:2}}>{source.orders.map(order=><Stack key={order.orderId} direction="row" spacing={1.5} alignItems="center"><Typography>{order.orderNumber}</Typography><DecimalAmountField size="small" currencyCode={currency} allowNegative allowPositiveSign label={languageCode==='ko'?'금액 조정 (+/-)':languageCode==='vi'?'Điều chỉnh (+/-)':'Amount adjustment (+/-)'} value={settlements[order.orderId]?.adjustment??''} onValueChange={value=>changeBilling(setSettlements,{...settlements,[order.orderId]:{...settlements[order.orderId],adjustment:value,reason:fields.notes||''}})} sx={{width:200}}/></Stack>)}</Stack>
           <InvoiceFormSummary fields={{...fields,bank:invoiceBankInfo(source?.sellerBankAccounts||[])}} total={calculation.total} orders={calculation.orders} currencyCode={currency} languageCode={languageCode} onRemark={changeRemark}/>
-          {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue] || adjustmentErrors[issue]}</Alert>)}
+          {calculation.issues.map((issue) => <Alert severity="warning" key={issue}>{billingText.errors[issue] || t.issues[issue] || adjustmentErrors[issue] || (issue==='VAT'?(invoiceAccountingText[languageCode]||invoiceAccountingText.en).invalid:'')}</Alert>)}
           {calculation.warnings.map((issue) => <Alert severity="warning" key={issue}>{t.issues[issue]}</Alert>)}
           <FormControlLabel control={<Checkbox checked={reviewed} onChange={(e) => setReviewed(e.target.checked)} />} label={t.review} />
         </Box>}
