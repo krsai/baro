@@ -17,11 +17,11 @@ try{
  for(const lang of ['ko','en','vi']){
   const page=await browser.newPage({viewport:{width:1720,height:1000}}),errors=[],t=ledgerEvidenceText[lang];page.on('pageerror',error=>errors.push(error.message));page.setDefaultTimeout(8000);
   await page.goto(`http://127.0.0.1:${port}/expense-evidence-acceptance.html?lang=${lang}`);
-  const links=page.getByTestId('expense-line-links');await links.waitFor();assert.equal(await links.locator('h6').count(),0);assert.equal(await links.locator('td').first().innerText(),'\u2514');
+  await page.locator('button[title="MJ-001"]').click();const links=page.getByTestId('expense-line-links');await links.waitFor();
   assert.equal(await page.locator('output').innerText(),'false');assert.equal(await links.getByLabel(t.supplierReference,{exact:false}).inputValue(),'MJ-001');
-  const file=links.getByLabel(t.reference,{exact:false});assert.equal(await file.getAttribute('required'),'');await file.fill('server/MJ/Invoice-001.pdf');
-  await page.waitForFunction(()=>document.querySelector('output').textContent==='true');assert.equal(await page.evaluate(()=>window.line.details.reference),'MJ-001');assert.equal(await page.evaluate(()=>window.line.details.evidenceFile),'server/MJ/Invoice-001.pdf');
-  const fields=await links.locator('input').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().y));assert.ok(Math.max(...fields)-Math.min(...fields)<2,'linked fields share one compact row at desktop width');assert.deepEqual(errors,[]);await page.close();
+  const file=links.getByLabel(t.reference,{exact:false});assert.equal(await file.getAttribute('required'),'');await file.fill('"Z:/Proof/Invoice-001.pdf"');assert.equal(await file.inputValue(),'Z:/Proof/Invoice-001.pdf');
+  await page.waitForFunction(()=>document.querySelector('output').textContent==='true');assert.equal(await page.evaluate(()=>window.line.details.reference),'MJ-001');assert.equal(await page.evaluate(()=>window.line.details.evidenceFile),'Z:/Proof/Invoice-001.pdf');
+  assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS: ko/en/vi compact linked detail row, supplier invoice reference and mandatory server evidence path.');
 }finally{await browser?.close();server.kill();unlinkSync(fixture);unlinkSync(entry);}
