@@ -1,6 +1,9 @@
 // Suspected omission, never proof of completion or a reason to invent records.
-export function missingProcessRecords(processes: any[], options: { completed: boolean; invalidReferences: boolean }) {
-  if (options.completed || options.invalidReferences) return [];
+export function missingProcessRecords(processes: any[], options: { completed: boolean; invalidReferences: boolean; completionConfirmed?: boolean }) {
+  // A gap in an ongoing assignment is ordinary work in progress. Only explicit
+  // completion/closure or full QC confirmation justifies an omission warning.
+  // Keep already accepted historical completions outside this review queue.
+  if (!options.completionConfirmed || options.completed || options.invalidReferences) return [];
   const required = processes.filter(process => Number(process.applicableQuantity) > 0);
   if (required.length < 3 || required.some(process => !Number.isSafeInteger(process.styleProcessId) || process.styleProcessId <= 0 ||
     !Number.isFinite(Number(process.quantity)))) return [];

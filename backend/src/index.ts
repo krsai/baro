@@ -22711,6 +22711,8 @@ const buildAssignmentPlanProgressRows = async (
       missingRecordProcesses: missingProcessRecords(reviewProcessTotals, {
         completed: scheduleStatus === ASSIGNMENT_STATUS_PRODUCTION_COMPLETED,
         invalidReferences: hasInvalidProductionProcessReferences,
+        completionConfirmed: Boolean(productionCompletedDateKey) ||
+          (completionTargetQuantity != null && completionTargetQuantity > 0 && qcPassedTotal >= completionTargetQuantity),
       }),
       quantityReview: includeQuantityReviewDetails
         ? {
