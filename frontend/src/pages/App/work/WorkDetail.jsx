@@ -1021,6 +1021,8 @@ const WorkDetail = ({
   const [baseLoading, setBaseLoading] = useState(() => !initialLog?.id);
   const [factoryScopeDataLoading, setFactoryScopeDataLoading] = useState(false);
   const [factoryScopeContextReady, setFactoryScopeContextReady] = useState(false);
+  const [resolvedContextKey, setResolvedContextKey] = useState('');
+  const [contextQueryError, setContextQueryError] = useState(false);
   const [assignmentContextRefreshKey, setAssignmentContextRefreshKey] = useState(0);
   const [factories, setFactories] = useState(() => {
     const initialFactory = buildFactorySelection(initialLog);
@@ -1149,6 +1151,7 @@ const WorkDetail = ({
     if (!selectedFactoryId || !workDateKey) return '';
     return `${selectedFactoryId}:${workDateKey}:${coverageStartDateKey || workDateKey}`;
   }, [selectedFactoryId, workDateKey, coverageStartDateKey]);
+  const contextReady = factoryScopeContextReady && resolvedContextKey === currentContextKey;
   const workerDebugEnabled = false;
   const isCancelledRequestError = useCallback(
     (error) =>
@@ -1333,12 +1336,15 @@ const WorkDetail = ({
         suggestedCoverageStartDate: initialContext?.suggestedCoverageStartDate || null,
         isFirstFactoryWorkLog: Boolean(initialContext?.isFirstFactoryWorkLog),
       });
+      setResolvedContextKey(currentContextKey);
+      setContextQueryError(false);
       setFactoryScopeContextReady(true);
       setFactoryScopeDataLoading(false);
       return;
     }
     const abortController = new AbortController();
     let cancelled = false;
+    setContextQueryError(false);
     setFactoryScopeContextReady(false);
     setFactoryScopeDataLoading(true);
     loadWorkLogContext({
@@ -1388,6 +1394,7 @@ const WorkDetail = ({
             clampWorkLogDay(workDate?.isValid?.() ? workDate : dayjs(), workLogOperationStartDateKey)
           );
         }
+        setResolvedContextKey(currentContextKey);
         setFactoryScopeContextReady(true);
       })
       .catch((error) => {
@@ -1402,11 +1409,8 @@ const WorkDetail = ({
           message: error?.message || String(error || ''),
           details: error?.details ?? null,
         });
-        setAllAssignmentPlans([]);
-        setStyleOverview([]);
-        setAssignmentOptions([]);
-        setFactoryScopeWorkers([]);
-        setFactoryScopeContextReady(true);
+        setFactoryScopeContextReady(false);
+        setContextQueryError(true);
       })
       .finally(() => {
         if (!cancelled) setFactoryScopeDataLoading(false);
@@ -2437,7 +2441,7 @@ const WorkDetail = ({
       setFormError(messages.factoryRequired || '공장을 선택해 주세요.');
       return;
     }
-    if (!selectedFactoryId) {
+    if (!contextReady || factoryScopeDataLoading) {
       setFormError(messages.factoryScopeRequired || '공장의 작업 정보를 확인해 주세요.');
       return;
     }
@@ -2494,7 +2498,7 @@ const WorkDetail = ({
         employmentAutoNote: savedEmploymentAutoNote,
       }),
     });
-  }, [autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, saveWithQuantityReview, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
+  }, [contextReady, factoryScopeDataLoading, autoExceededNote, coverageStartDateKey, currentFactory?.name, duplicateGroups, entryMode, hasFactoryWage, initialLog?.id, isDirty, isOutsourcingMode, languageCode, factoryScopeWorkers, missingAssignmentPlanLinkMessage, note, saveWithQuantityReview, recordKind, savedEmploymentAutoNote, selectedFactoryId, selectedFactoryWagePerSecond, currentFactory?.name, selectedFactoryId, summary.records, summary.workLogCtTotalSeconds, summary.workerCount, workDateKey, workLogOperationStartDateKey, workLogOperationStartErrorMessage]);
   const rowOrderIndexById = useMemo(() => {
     const map = new Map();
     rows.forEach((row, index) => {
@@ -2854,7 +2858,7 @@ const WorkDetail = ({
         <LastUpdaterLabel fallbackName={initialLog?.updatedBy} />
         <SaveButton
           onClick={handleSave}
-          disabled={loading || baseLoading || factoryScopeDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
+          disabled={loading || baseLoading || !contextReady || factoryScopeDataLoading || isAggregateLegacyLog || (Boolean(initialLog?.id) && !isDirty)}
           loading={saving}
         />
       </Stack>}
@@ -2930,9 +2934,9 @@ const WorkDetail = ({
           <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {!selectedFactoryId ? (
               <Alert severity="info">{messages.selectFactory}</Alert>
-            ) : !selectedFactoryId ? (
-              <Alert severity="info">{messages.selectFactoryScope}</Alert>
-            ) : factoryScopeDataLoading && rows.length === 0 ? (
+            ) : contextQueryError ? (
+              <QueryFeedback error onRetry={() => setAssignmentContextRefreshKey(value => value + 1)} />
+            ) : (!contextReady || factoryScopeDataLoading) && rows.length === 0 ? (
               <Typography role="status">{messages.loadingFactoryScope}</Typography>
             ) : rows.length === 0 ? (
               <Stack spacing={1.5} alignItems="flex-start">
@@ -2943,7 +2947,7 @@ const WorkDetail = ({
               <Typography role="status">{messages.noSearchResults}</Typography>
             ) : (
               <Stack spacing={1.25} sx={{ flex: 1, minHeight: 0 }}>
-              {factoryScopeWorkers.length === 0 ? (
+              {contextReady && !factoryScopeDataLoading && factoryScopeWorkers.length === 0 ? (
                 <Alert severity="warning">
                   {isOutsourcingMode ? messages.noOutsourcingPartners : messages.noWorkers}
                 </Alert>
