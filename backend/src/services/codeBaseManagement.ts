@@ -2,7 +2,7 @@ import {SYSTEM_INDUSTRY_USAGE_INCLUDE,systemIndustryInUse,industryHasHistoricalR
 import {isDeepStrictEqual} from 'node:util';
 import {industryMaterialSettings} from './materialIndustry';
 import {accountingCodeUsage} from './accountingCodeUsage';
-import {accountingInputs} from './accountingInputs';
+import {requiredAccountingInputs as accountingInputs} from './accountingInputs';
 import {codeIndustrySelection,codeIndustryDto,CODE_INDUSTRY_INCLUDE} from './accountingCodeIndustries';
 import { normalizeLocalizedName, validLocalizedName } from '../utils/localizedName';
 import { createHttpError } from '../utils/http';

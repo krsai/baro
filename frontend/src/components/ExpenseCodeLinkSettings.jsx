@@ -1,3 +1,4 @@
+import {requiredAccountingInputs} from '../utils/requiredAccountingInputs.mjs';
 import {dialogTitle} from '../constants/dialogTitles';
 import ActionNotice from './ActionNotice';
 import AccountingInputSettings from './AccountingInputSettings';
@@ -33,7 +34,7 @@ export default function ExpenseCodeLinkSettings(){
  const update=settings=>setRows(previous=>previous.map(row=>row.id===editingId?{...row,inputSettings:settings,target:settings.processInput==='REQUIRED'?'PROCESS':settings.styleInput==='REQUIRED'?'STYLE':settings.orderInput==='REQUIRED'?'ORDER':'NONE'}:row));
  useEffect(()=>{let alive=true;setEditingId(null);setRows([]);setLoading(true);setSaving(false);setError(false);setSaved(false);
   requestJSON(`/app-settings/expense-code-links${buildQueryString({orgId:activeOrgId})}`,{skipCache:true})
-   .then(data=>{if(alive)setRows(data.map(row=>({...row,original:JSON.stringify(row.inputSettings)})));})
+   .then(data=>{if(alive)setRows(data.map(row=>({...row,inputSettings:requiredAccountingInputs(row.inputSettings),original:JSON.stringify(row.inputSettings)})));})
    .catch(()=>{if(alive)setError(true);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;};
  },[activeOrgId,reload]);
  const save=async row=>{const orgId=activeOrgId;setSaving(true);setError(false);setSaved(false);

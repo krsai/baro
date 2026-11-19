@@ -13,7 +13,15 @@ const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeIt
 const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/services/expenseRequestEditor');
 const modes={customer:'REQUIRED',type:'REQUIRED'};
 
-test('all 27 production input configurations save independently in system and company settings',async()=>{
+test('configuration writes promote optional inputs without mutating historical settings',()=>{
+ const {requiredAccountingInputs}=require('../backend/dist/services/accountingInputs');
+ const original={orderInput:'OPTIONAL',styleInput:'HIDDEN',processInput:'OPTIONAL',requiredFields:[],attributeInputs:{customer:'OPTIONAL',type:'HIDDEN'}};
+ const before=structuredClone(original),saved=requiredAccountingInputs(original);
+ assert.equal(saved.orderInput,'REQUIRED');assert.equal(saved.processInput,'REQUIRED');assert.equal(saved.styleInput,'HIDDEN');assert.equal(saved.attributeInputs.customer,'REQUIRED');
+ assert.equal(accountingInputs(original).orderInput,'OPTIONAL');assert.deepEqual(original,before);
+});
+
+test('legacy combinations save independently as required or hidden in system and company settings',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db;
   for(const [id,code,suffix] of [[1,'VAT','V'],[2,'ZERO','Z'],[3,'EXEMPT','E']])await db.taxTreatment.create({data:{id,code,suffix,nameEn:code,nameKo:code,nameVi:code}});
@@ -23,9 +31,9 @@ test('all 27 production input configurations save independently in system and co
    const normalized=accountingInputs(inputs);assert.equal(normalized.orderInput,orderInput);assert.equal(normalized.styleInput,styleInput);assert.equal(normalized.processInput,processInput);
    const current=await db.transactionCodeBase.findUnique({where:{id:base.id}});
    await db.$transaction(tx=>saveCodeBase(tx,{...current,...inputs,taxTreatmentIds:[s.code.taxTreatmentId],industryIds:[base.serviceTypeId]},base.id));
-   const stored=await db.transactionCodeBase.findUnique({where:{id:base.id}});for(const key of ['orderInput','styleInput','processInput'])assert.equal(stored[key],inputs[key]);
+   const stored=await db.transactionCodeBase.findUnique({where:{id:base.id}});for(const key of ['orderInput','styleInput','processInput'])assert.equal(stored[key],inputs[key]==='OPTIONAL'?'REQUIRED':inputs[key]);
    const policy=await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,s.company.id,s.people.admin.id,base.id,'NONE',inputs));
-   for(const key of ['orderInput','styleInput','processInput'])assert.equal(policy.inputSettings[key],inputs[key]);
+   for(const key of ['orderInput','styleInput','processInput'])assert.equal(policy.inputSettings[key],inputs[key]==='OPTIONAL'?'REQUIRED':inputs[key]);
    const [{valid}]=await db.$queryRawUnsafe('SELECT baro_accounting_inputs_valid($1::jsonb) AS valid',JSON.stringify(normalized));assert.equal(valid,true);
   }
   for(const settings of [{orderInput:'WRONG',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[]},{orderInput:'HIDDEN',styleInput:'REQUIRED',processInput:'HIDDEN',requiredFields:['INVALID']}]){
@@ -62,7 +70,7 @@ test('code defaults, company overrides, local types, real customer FKs and expen
  const register=body=>db.$transaction(tx=>registerExpenseRequest(tx,org,actor,body),{timeout:30000});
  const legacy=await register(input()),before=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:legacy.id}});
  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
- await db.$transaction(tx=>saveCodeBase(tx,{...base,attributeInputs:modes,industryIds:[base.serviceTypeId],industryRevision:base.industryRevision},base.id));
+ await db.$transaction(tx=>saveCodeBase(tx,{...base,orderInput:'HIDDEN',attributeInputs:modes,industryIds:[base.serviceTypeId],industryRevision:base.industryRevision},base.id));
  const routes=new Map(),app={get:(p,h)=>routes.set('GET '+p,h),post:(p,h)=>routes.set('POST '+p,h)};
  registerCodeItemAttributeRoutes(app,db,{requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async()=>true});
  const call=async(method,path,body={},query={})=>{let result;await routes.get(method+' '+path)({body,query},{json:value=>{result=value;}});return result;};
@@ -89,6 +97,9 @@ test('code defaults, company overrides, local types, real customer FKs and expen
  await assert.rejects(db.partnerTransactionCost.update({where:{id:cost.id},data:{itemAttributeSnapshot:{type:{nameEn:'Forged'}}}}),/immutable/);
  await assert.rejects(db.codeItemType.update({where:{id:type.id},data:{nameEn:'Changed'}}),/immutable/);
  await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,org,actor,base.id,'NONE',{attributeInputs:{customer:'OPTIONAL',type:'HIDDEN'}}));
+ assert.equal((await db.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId:org,baseId:base.id}}})).inputSettings.attributeInputs.customer,'REQUIRED');
+ await assert.rejects(register(input()),/REQUIRED_ITEM_CUSTOMER/);
+ await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,org,actor,base.id,'NONE',{attributeInputs:{customer:'HIDDEN',type:'HIDDEN'}}));
  await register(input());
  await db.$transaction(tx=>saveExpenseCodeLinkPolicy(tx,org,actor,base.id,'NONE',{requiredFields:[]}));
  const untyped=await register(input()); // A pre-existing company snapshot without attributes stays hidden.

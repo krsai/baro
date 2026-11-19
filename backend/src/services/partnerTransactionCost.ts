@@ -58,7 +58,7 @@ export function validateServiceDefinition(body: any) {
   if (!/^[A-Z][A-Z0-9_]{0,49}$/.test(code) || !validLocalizedName(body, 100)) return fail('INVALID_SERVICE_NAME');
   const options: Record<string,string> = {};
   for (const key of ['orderInput','styleInput','processInput']) {
-    const option = body[key] ?? (key === 'orderInput' ? 'OPTIONAL' : 'HIDDEN');
+    const option = body[key] === 'OPTIONAL' ? 'REQUIRED' : body[key] ?? 'HIDDEN';
     if (!['REQUIRED','OPTIONAL','HIDDEN'].includes(option)) return fail('INVALID_INPUT_OPTION');
     options[key] = option;
   }

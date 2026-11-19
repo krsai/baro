@@ -1,3 +1,4 @@
+import {requiredAccountingInputs} from './accountingInputs';
 import {Prisma} from '@prisma/client';
 import {accountingInputs,accountingInputTarget} from './accountingInputs';
 import {createHttpError} from '../utils/http';
@@ -47,7 +48,7 @@ export function effectiveExpenseCode(code:any,policy?:any,orgType?:string){
 }
 
 export async function saveExpenseCodeLinkPolicy(tx: any, orgId: number, actorId: number, baseId: number, target: string, inputSettings?:any, expectedAuditId?:number|null) {
-  const settings=inputSettings===undefined?undefined:accountingInputs(inputSettings);
+  const settings=inputSettings===undefined?undefined:requiredAccountingInputs(inputSettings);
   if(settings)target=accountingInputTarget(settings);
   if (!Number.isSafeInteger(baseId)||baseId<=0||!LINK_TARGETS.includes(target as any)||!Number.isSafeInteger(actorId)||actorId<=0)
     throw createHttpError(400,'INVALID_EXPENSE_CODE_LINK_POLICY');

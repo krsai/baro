@@ -18,3 +18,11 @@ export function accountingInputs(value:any){
  return result;
 }
 export const accountingInputTarget=(settings:any)=>settings.processInput==='REQUIRED'?'PROCESS':settings.styleInput==='REQUIRED'?'STYLE':settings.orderInput==='REQUIRED'?'ORDER':'NONE';
+// Only explicit configuration writes upgrade legacy enabled/optional fields.
+// Historical document snapshots continue to use accountingInputs unchanged.
+export function requiredAccountingInputs(value:any){
+ const result=accountingInputs(value);
+ for(const key of ['orderInput','styleInput','processInput'])if(result[key]==='OPTIONAL')result[key]='REQUIRED';
+ if(result.attributeInputs)result.attributeInputs=Object.fromEntries(Object.entries(result.attributeInputs).map(([key,mode])=>[key,mode==='OPTIONAL'?'REQUIRED':mode]));
+ return result;
+}
