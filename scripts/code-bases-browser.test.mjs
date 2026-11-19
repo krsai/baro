@@ -25,6 +25,7 @@ try{
     const expenseType={id:2,code:'LOGISTICS',nameKo:'물류 서비스',nameEn:'Logistics services',nameVi:'Dịch vụ vận chuyển',entryMode:'LOGISTICS',isActive:true};
     await page.route('**/expense-types',route=>route.fulfill({headers,status:404,json:{error:'organization not found'}}));
     let bases=[{id:7,code:'TRK',nameKo:'운송',nameEn:'Trucking',nameVi:'Vận chuyển',industryIds:[4],industries:[industry],industryRevision:1,expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:false,variants:taxes.map((tax,i)=>({id:i+1,code:'TRK'+['V','Z','E'][i],taxTreatmentId:tax.id,taxTreatment:tax,isEnabled:true,isActive:true}))},{id:8,code:'SEW',nameKo:'봉제',nameEn:'Sewing',nameVi:'May',industryIds:[4],industries:[industry],industryRevision:1,expenseTypeId:2,expenseType,entryMode:"LOGISTICS",requiredFields:[],orderInput:"OPTIONAL",styleInput:"HIDDEN",processInput:"HIDDEN",serviceTypeId:4,serviceType:industry,isActive:true,hasUsageHistory:true,variants:[]}];
+    if(process.argv.includes('--delete-state-only'))bases.push({...bases[1],id:9,code:'UNK',hasUsageHistory:undefined});
     await page.route('**/system-setting-defaults/**',route=>{
       const url=new URL(route.request().url()),method=route.request().method();
       if(method==='OPTIONS')return route.fulfill({headers,status:204});
@@ -46,6 +47,17 @@ try{
     });
     const labels=lang==='ko'?{add:'기본 코드 등록',code:'기본 코드',save:'저장',remove:'삭제',industry:'업종·입력 옵션 관리',used:'사용 이력이나 연결 설정이 있어'}:lang==='en'?{add:'Add base code',code:'Base code',save:'Save',remove:'Delete',industry:'Industries & input options',used:'Usage history or linked settings'}:{add:'Thêm mã gốc',code:'Mã gốc',save:'Lưu',remove:'Xóa',industry:'Ngành và tùy chọn nhập',used:'Không thể xóa do có lịch sử sử dụng'};
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
+    if(process.argv.includes('--delete-state-only')){
+      const free=page.locator('tbody tr').filter({has:page.getByText('TRK',{exact:true})}),blocked=page.locator('tbody tr').filter({has:page.getByText('SEW',{exact:true})});
+      const active=free.getByRole('button',{name:labels.remove,exact:true}),inactive=blocked.getByRole('button',{name:labels.remove,exact:true});
+      await inactive.waitFor();assert.equal(await inactive.isDisabled(),true);assert.equal(await active.isEnabled(),true);
+      assert.equal(await page.locator('tbody tr').filter({hasText:'UNK'}).getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
+      assert.notEqual(await active.evaluate(el=>getComputedStyle(el).color),await inactive.evaluate(el=>getComputedStyle(el).color));
+      await inactive.click({force:true});assert.equal(await page.getByRole('dialog').count(),0);assert.equal(writes.length,0);
+      await page.setViewportSize({width:390,height:844});assert.equal(await inactive.isDisabled(),true);assert.equal(await active.isEnabled(),true);
+      await active.click();const confirm=page.getByRole('dialog');await confirm.waitFor();assert.equal(writes.length,0);await page.keyboard.press('Escape');await confirm.waitFor({state:'hidden'});
+      assert.deepEqual(errors,[]);await page.close();continue;
+    }
     const reason={ko:'삭제 제한 확인',en:'View deletion restrictions',vi:'Xem hạn chế xóa'}[lang];const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:reason,exact:true}).isEnabled(),true);
     await used.getByRole('button',{name:reason,exact:true}).focus();await page.keyboard.press('Enter');
     const restrictions=page.getByRole('dialog');await restrictions.getByText({ko:'사용 내역을 확인하지 못했습니다. 목록을 다시 조회해 주세요.',en:'Usage details are unavailable. Reload the list.',vi:'Chưa xác minh được chi tiết sử dụng. Hãy tải lại danh sách.'}[lang],{exact:true}).waitFor();
