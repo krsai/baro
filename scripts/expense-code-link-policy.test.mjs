@@ -12,6 +12,18 @@ test('missing input settings default to disabled independently of technical entr
  assert.equal(accountingInputs({orderInput:'REQUIRED'}).orderInput,'REQUIRED');
 });
 
+test('disabled production inputs stay disabled for every tax variant despite legacy entry mode',async()=>{
+ const settings={orderInput:'HIDDEN',styleInput:'HIDDEN',processInput:'HIDDEN',requiredFields:[]};
+ for(const tax of ['E','V','Z'])for(const entryMode of ['PROCESS','LOGISTICS','GENERAL']){
+  const raw={id:7,baseId:30,code:'CFS'+tax,vatEnabled:false,base:{entryMode,...settings}};
+  const effective=await policy.resolveExpenseCodeLink({expenseCodeLinkPolicy:{findUnique:async()=>null}},1,raw);
+  assert.equal(effective.linkTarget,'NONE');assert.equal(effective.base.entryMode,'GENERAL');
+  for(const field of ['order','style','process'])assert.equal(inputMode(effective,field),'HIDDEN');
+  assert.equal(validExpenseLine({transactionCodeId:7,quantity:'1',unitPrice:'10',vatRate:'0',details:{reference:'REF',evidenceFile:'FILE'}},effective,'VND'),true);
+  assert.equal(raw.base.entryMode,entryMode);
+ }
+});
+
 test('company input settings override system defaults and current requirements replace old document settings',async()=>{
  const {accountingInputs}=await import('../backend/dist/services/accountingInputs.js');
  const settings={orderInput:'REQUIRED',styleInput:'OPTIONAL',processInput:'HIDDEN',requiredFields:['origin']};

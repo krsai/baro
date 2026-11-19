@@ -17,17 +17,21 @@ export default function AccountingInputSettings({value,onChange,languageCode,dis
  const labelFor=key=>ATTRIBUTES.includes(key)?a[key]:t[key];
  const modeAllowed=(key,mode)=>{
   if(systemDefaults&&mode==='HIDDEN'&&value.materialSettings?.enabled&&value.materialSettings.stockFields?.includes(key))return false;
-  if(!PRODUCTION.includes(key)||mode===modeFor(key))return true;
-  const rank={HIDDEN:0,OPTIONAL:1,REQUIRED:2};
-  const [order,style,process]=PRODUCTION.map(field=>rank[field===key?mode:modeFor(field)]);
-  return order>=style&&style>=process;
+  return true;
  };
  const matches=(key,title)=>(groupFilter===null||groupFilter===title)&&[labelFor(key),key,title].join(' ').toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())&&(filter==='ALL'||filter==='ACTIVE'&&modeFor(key)!=='HIDDEN'||filter==='REQUIRED'&&modeFor(key)==='REQUIRED');
  const update=(key,mode)=>{
   if(!modeAllowed(key,mode))return;
   if(ATTRIBUTES.includes(key)){onChange({...value,attributeInputs:{...value.attributeInputs,[key]:mode},...(!systemDefaults&&value.materialSettings&&mode==='HIDDEN'?{materialSettings:{...value.materialSettings,stockFields:(value.materialSettings.stockFields||[]).filter(field=>field!==key)}}:{})});return;}
   if(!PRODUCTION.includes(key)){const fields=key==='dimensions'?['length','width']:[key];onChange({...value,requiredFields:[...(value.requiredFields||[]).filter(field=>!fields.includes(field)),...(mode==='REQUIRED'?fields:[])]});return;}
-  if(modeAllowed(key,mode))onChange({...value,[key+'Input']:mode});
+  // Adjust the dependent selections in one draft update instead of locking a toggle.
+  const rank={HIDDEN:0,OPTIONAL:1,REQUIRED:2},index=PRODUCTION.indexOf(key);
+  const next={...value,[key+'Input']:mode};
+  for(const [position,field] of PRODUCTION.entries()){
+   if(position<index&&rank[modeFor(field)]<rank[mode])next[field+'Input']=mode;
+   if(position>index&&rank[modeFor(field)]>rank[mode])next[field+'Input']=mode;
+  }
+  onChange(next);
  };
  return <Box sx={compact?{display:'flex',flexDirection:'column',minHeight:0,flex:1}:undefined}>
   {compact?<Box sx={{p:1.5,borderBottom:1,borderColor:'divider'}}>

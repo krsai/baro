@@ -29,7 +29,7 @@ try{
    if(['PUT','POST'].includes(req.method())){
     const body=req.postDataJSON();writes.push(body);assert.ok(!('isActive'in body));assert.ok(!('expenseTypeId'in body));assert.ok(!('expenseType'in body));assert.deepEqual(body.taxTreatmentIds,[1,2,3]);
     if(reject){reject=false;return r.fulfill({headers,status:409,json:{error:'ACCOUNTING_INDUSTRY_CHANGED'}});}
-    if(req.method()==='PUT'){assert.equal(body.serviceTypeId,10);assert.equal(body.entryMode,'GENERAL');bases=bases.map(row=>row.id===body.id?{...row,...body,industryRevision:row.industryRevision+1,industries:sources.filter(source=>body.industryIds.includes(source.id))}:row);}
+    if(req.method()==='PUT'){assert.equal(body.serviceTypeId,bases.find(row=>row.id===body.id).serviceTypeId);assert.equal(body.entryMode,'GENERAL');bases=bases.map(row=>row.id===body.id?{...row,...body,industryRevision:row.industryRevision+1,industries:sources.filter(source=>body.industryIds.includes(source.id))}:row);}
     else bases.push({...body,id:8,industryRevision:1,industryIds:body.industryIds,industries:sources.filter(source=>body.industryIds.includes(source.id)),hasUsageHistory:false,variants:[]});
     return r.fulfill({headers,json:{ok:true}});
    }
@@ -58,12 +58,26 @@ try{
   assert.equal(await inputPanel.getByRole('checkbox').count(),10,'nine configurable fields and selected-only filter');
   assert.equal(await inputPanel.getByRole('combobox').count(),0);
   await page.waitForFunction(()=>Math.abs(document.querySelector('#accounting-input-panel').getBoundingClientRect().width-380)<1);const inputBounds=await inputPanel.boundingBox();assert.ok(inputBounds.height<=460);assert.ok(Math.abs(inputBounds.width-right.width)<2);
+  const production=Object.fromEntries(['order','style','process'].map(key=>[key,inputPanel.getByRole('checkbox',{name:EXPENSE_TEXT[lang][key].replace(/ 입력$| input$|^Nhập /g,''),exact:true})]));
+  await production.process.check();for(const field of Object.values(production))assert.equal(await field.isChecked(),true);
+  await production.order.uncheck();for(const field of Object.values(production))assert.equal(await field.isChecked(),false,'parent uncheck clears dependents without locking');
+  await production.process.check();await production.style.uncheck();assert.equal(await production.order.isChecked(),true);assert.equal(await production.style.isChecked(),false);assert.equal(await production.process.isChecked(),false);
+  await production.process.check();await production.process.uncheck();assert.equal(await production.order.isChecked(),true);assert.equal(await production.style.isChecked(),true);assert.equal(await production.process.isChecked(),false);
+  await production.order.uncheck();
   await inputPanel.getByRole('checkbox',{name:EXPENSE_TEXT[lang].order.replace(/ 입력$| input$|^Nhập /g,''),exact:true}).check();
   await dialog.getByRole('textbox',{name:lang==='ko'?'기본 코드':lang==='vi'?'Mã gốc':'Base code',exact:true}).fill('BNC');await dialog.getByRole('textbox',{name:lang==='ko'?'이름 (영어 · 대표)':lang==='vi'?'Tên (tiếng Anh · chính)':'Name (English · primary)',exact:true}).fill('Button cost');
   for(const key of ['owner','type'])await inputPanel.getByRole('checkbox',{name:ITEM_ATTRIBUTE_TEXT[lang][key],exact:true}).check();
   const search=inputPanel.getByRole('textbox');await search.fill(EXPENSE_TEXT[lang].origin);assert.equal(await inputPanel.getByRole('checkbox').count(),2);await search.fill('');
   await inputPanel.getByRole('checkbox',{name:picker.selected,exact:true}).check();assert.equal(await inputPanel.getByRole('checkbox').count(),4);await inputPanel.getByRole('checkbox',{name:picker.selected,exact:true}).uncheck();
   assert.equal(await dialog.getByRole('switch').count(),0);await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).materialSettings.enabled,false);assert.deepEqual(writes.at(-1).materialSettings.stockFields,[]);assert.deepEqual(writes.at(-1).attributeInputs,{owner:'REQUIRED',type:'REQUIRED'});assert.deepEqual(writes.at(-1).industryIds,[20]);assert.equal(writes.at(-1).entryMode,'GENERAL');assert.equal(writes.at(-1).orderInput,'REQUIRED');
+  await page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'BNC',exact:true})}).getByRole('button',{name:edit,exact:true}).click();
+  await dialog.locator('#accounting-input-toggle').click();await inputPanel.waitFor();
+  await production.process.check();await production.order.uncheck();
+  await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  for(const key of ['orderInput','styleInput','processInput'])assert.equal(writes.at(-1)[key],'HIDDEN');
+  await page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'BNC',exact:true})}).getByRole('button',{name:edit,exact:true}).click();
+  await dialog.locator('#accounting-input-toggle').click();await inputPanel.waitFor();for(const field of Object.values(production))assert.equal(await field.isChecked(),false,'saved hidden fields stay unchecked on reopen');
+  await inputPanel.press('Escape');await inputPanel.waitFor({state:'hidden'});await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
   await page.locator('tbody tr').filter({has:page.getByRole('cell',{name:'ZIP',exact:true})}).getByRole('button',{name:edit,exact:true}).click();
   await openPicker.click();await selector.fill('SHIPPING');await panel.getByRole('checkbox',{name:'SHIPPING',exact:true}).check();await selector.press('Escape');await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
   await nav.getByRole('button',{name:'SHIPPING 1',exact:true}).click();await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();
