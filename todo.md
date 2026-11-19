@@ -1,5 +1,7 @@
 # 작업 상태
 
+- 스타일 목록 장애의 운영 배포 복구: 구현·관련 검증 완료 / 운영 배포 확인 중. Railway에서 `eb12e6b0`부터 스타일 수정본 `d97f8e3e` 및 `afd30b31`까지 프런트 배포가 실패했다. 기존 운영 파일 5,052개·152.3MiB를 기존 150MiB 빌드에서 조회해 용량 초과를 재현했다. 새 빌드는 파일 단위로 검증·기록하고 합집합 용량을 검사해 14일 보존을 유지한다. 운영 조건 로컬 빌드에서 기존과 동일한 파일 62개를 재사용하고 4,990개를 보존했다. 배포 구성/무결성/만료/JSX 참조 9검사, 지연 로딩 6조합·오류 복구·번역/인코딩 통과.
+
 - 스타일 화면 Typography 참조 오류: 거래처 스타일 가져오기 로딩 분기의 누락 import 수정. 프런트 전체 JSX 컴포넌트 참조 검사와 `check:jsx-bindings` 추가. 공통 업무 탭 오류 경계는 모듈 오류와 일반 렌더 오류를 구분하고 일반 오류는 해당 화면만 재표시한다. 한영베 오류 분기·형제 초안 보존·확인 후 새로고침 및 렌더 오류 재시도, 전체 JSX 참조 검사·프런트 빌드·번역/인코딩 통과. style-loading-browser는 AT 포커스 갱신 기대 대기(74행)에서 중단돼 전체 통과 미확인. 운영 배포·실사용 인수 미확인. DB 변경 없음. style-product-loading-browser: 6 language/viewport cases passed with delayed loading. style-product-ownership-browser: stopped at the existing inline alert expectation (line 37); full pass unverified.
 
 - 계좌 현황 검색 바 제거: 구현·관련 검증 완료 / 운영 배포·인수 미확인. SearchPanel 및 통화/계좌 선택을 제거하고 1/3/6/12개월 기간 선택기만 상단 이미지 저장 버튼 왼쪽으로 이동했다. 전체 계좌·VND 환산 기본 표시와 조회/재시도·이미지 저장은 유지한다. 한영베 PC·모바일/태블릿 화면·버튼 배치·네 기간 변경 재조회·이미지 다운로드, 프런트 빌드·번역/인코딩 검증. 별도 ledger-workspace-browser --overview-only는 상세창 행 수 기대 2/실제 4 불일치로 중단되어 전체 통과 미확인. DB 변경 없음.
