@@ -33,7 +33,7 @@ try{
   assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isChecked(),true);assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isDisabled(),true);
   await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await dialog.locator('#accounting-input-toggle').click();
-  assert.equal(await panel.getByRole('checkbox',{name:t.owner,exact:true}).isChecked(),false);assert.equal(await panel.getByRole('checkbox',{name:t.dimensions,exact:true}).isChecked(),false);
+  assert.equal(await panel.getByRole('checkbox',{name:t.owner,exact:true}).count(),0);assert.equal(await panel.getByRole('checkbox',{name:t.dimensions,exact:true}).count(),0);
   await panel.getByRole('checkbox',{name:d.transportDate,exact:true}).check();await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await Promise.all([page.waitForResponse(r=>r.status()===400),dialog.getByRole('button',{name:save,exact:true}).click()]);await dialog.locator('#accounting-master-toggle').click();assert.equal(await panel.getByRole('checkbox',{name:t.owner,exact:true}).isChecked(),true);await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
