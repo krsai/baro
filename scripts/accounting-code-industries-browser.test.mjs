@@ -41,6 +41,13 @@ try{
   const usageDialog=page.getByRole('dialog');assert.equal(await usageDialog.getByRole('row').filter({hasText:usageText.past}).getByRole('cell').last().innerText(),usageCountLabel(1,lang));
   for(const key of ['types','handled'])assert.equal(await usageDialog.getByRole('row').filter({hasText:usageText[key]}).getByRole('cell').last().innerText(),usageCountLabel(0,lang));
   await page.keyboard.press('Escape');await usageDialog.waitFor({state:'hidden'});
+  for(const width of [1440,390]){
+   await page.setViewportSize({width,height:1000});
+   await page.getByRole('button',{name:{ko:'삭제 제한 확인',en:'View deletion restrictions',vi:'Xem hạn chế xóa'}[lang],exact:true}).click();
+   await usageDialog.waitFor();assert.equal(await usageDialog.getByRole('row').filter({hasText:usageText.past}).getByRole('cell').last().innerText(),usageCountLabel(1,lang));
+   assert.equal(writes.length,0,'viewing restrictions must not submit a delete request');await page.keyboard.press('Escape');await usageDialog.waitFor({state:'hidden'});
+  }
+  await page.setViewportSize({width:1440,height:1000});
   await page.getByText(TRANSACTION_CLASSIFICATION_FLOW[lang],{exact:true}).waitFor();
   if(process.argv.includes('--subtitle-only')){for(const width of [1440,390]){await page.setViewportSize({width,height:900});assert.equal(await page.getByText(usageText.explanation,{exact:true}).count(),0);await page.getByRole('cell',{name:'ZIP',exact:true}).waitFor();}assert.deepEqual(errors,[]);await page.close();continue;}
   const nav=page.getByRole('navigation');await nav.getByRole('button',{name:'ZIPPER 1',exact:true}).click();assert.equal(await page.locator('tbody tr').count(),1);

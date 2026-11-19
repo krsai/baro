@@ -46,10 +46,14 @@ try{
     });
     const labels=lang==='ko'?{add:'기본 코드 등록',code:'기본 코드',save:'저장',remove:'삭제',industry:'업종·입력 옵션 관리',used:'사용 이력이나 연결 설정이 있어'}:lang==='en'?{add:'Add base code',code:'Base code',save:'Save',remove:'Delete',industry:'Industries & input options',used:'Usage history or linked settings'}:{add:'Thêm mã gốc',code:'Mã gốc',save:'Lưu',remove:'Xóa',industry:'Ngành và tùy chọn nhập',used:'Không thể xóa do có lịch sử sử dụng'};
     await page.goto(`http://127.0.0.1:${port}/code-bases-acceptance.html`);
-    const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).isDisabled(),true);
+    const reason={ko:'삭제 제한 확인',en:'View deletion restrictions',vi:'Xem hạn chế xóa'}[lang];const used=page.locator('tbody tr').filter({hasText:'SEW'});await used.waitFor();assert.equal(await used.getByRole('button',{name:reason,exact:true}).isEnabled(),true);
+    await used.getByRole('button',{name:reason,exact:true}).focus();await page.keyboard.press('Enter');
+    const restrictions=page.getByRole('dialog');await restrictions.getByText({ko:'사용 내역을 확인하지 못했습니다. 목록을 다시 조회해 주세요.',en:'Usage details are unavailable. Reload the list.',vi:'Chưa xác minh được chi tiết sử dụng. Hãy tải lại danh sách.'}[lang],{exact:true}).waitFor();
+    assert.equal(await restrictions.getByRole('row').count(),0,'unknown usage must not be presented as zero');assert.equal(writes.length,0);await page.keyboard.press('Escape');await restrictions.waitFor({state:'hidden'});
+    if(process.argv.includes('--delete-restrictions-only')){assert.deepEqual(errors,[]);await page.close();continue;}
     assert.equal(await page.locator('.MuiAlert-standardError').count(),0);
     assert.equal(await page.locator('thead th').count(),6);
-    assert.equal(await used.getByRole('button',{name:labels.remove,exact:true}).locator('[data-testid="DeleteOutlineIcon"]').count(),1);
+    assert.equal(await used.getByRole('button',{name:reason,exact:true}).locator('[data-testid="InfoOutlinedIcon"]').count(),1);
     assert.equal(await used.locator('[data-testid="EditIcon"]').count(),1);
     await used.getByRole('button').filter({has:page.locator('[data-testid="EditIcon"]')}).click();
     const editDialog=page.getByRole('dialog');
@@ -79,11 +83,11 @@ try{
     await dialog.waitFor({state:'hidden'});assert.equal(writes.at(-1).body.code,'AIR');assert.deepEqual(writes.at(-1).body.taxTreatmentIds,[1,2,3]);
     bases[0].hasUsageHistory=true;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{source:'transaction-request',topics:['orders'],orgId:1}})));
-    await page.waitForFunction(({remove,add})=>{
+    await page.waitForFunction(({remove,add,reason})=>{
       const row=[...document.querySelectorAll('tbody tr')].find(row=>row.textContent.includes('TRK'));
       const addButton=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()===add);
-      return row?.querySelector(`button[aria-label="${remove}"]`)?.disabled && addButton && !addButton.disabled;
-    },{remove:labels.remove,add:labels.add});
+      return row?.querySelector(`button[aria-label="${reason}"]`) && !row.querySelector(`button[aria-label="${remove}"]`) && addButton && !addButton.disabled;
+    },{remove:labels.remove,add:labels.add,reason});
     bases[0].hasUsageHistory=false;
     await page.evaluate(()=>window.dispatchEvent(new CustomEvent('baro:workspace-data-changed',{detail:{source:'transaction-request',topics:['orders'],orgId:1}})));
     await page.waitForFunction(remove=>{
@@ -99,5 +103,5 @@ try{
     assert.deepEqual(errors,[]);
     await page.close();
   }
-  console.log('Code base UI passed in ko/en/vi: uppercase 3-letter input, selected suffixes, used deletion disabled, unused deletion, industry mapping and independent code input configuration.');
+  console.log(process.argv.includes('--delete-restrictions-only')?'Deletion restrictions passed ko/en/vi: keyboard access, unknown usage stays unknown, no delete request.':'Code base UI passed in ko/en/vi: uppercase 3-letter input, selected suffixes, protected deletion details, unused deletion, industry mapping and independent code input configuration.');
 }finally{await browser?.close();vite.kill();unlinkSync(fixture);}
