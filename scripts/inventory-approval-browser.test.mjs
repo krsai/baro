@@ -38,7 +38,8 @@ try{
    if(path.endsWith('/history'))return r.fulfill({headers,json:deleted?[]:[{...row,deletePending:pending}]});
    if(path.endsWith('/approvals'))return r.fulfill({headers,json:pending&&!deleted?[{...row,id:'approval',operation:'DELETE',revision:1,canDecide:true,drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager'}]}]:[]});
    if(path.endsWith('/approval-preview')){assert.equal(url.searchParams.get('orgId'),'1');if(language==='en'&&url.searchParams.get('operation')==='DELETE'){const chosen=JSON.parse(url.searchParams.get('selection')||'{}').step1EmployeeId;return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{key:'step1',role:'ACCOUNTANT',employeeId:chosen||null,candidates:[{id:4,name:'Manager'},{id:5,name:'Backup'}]}]}});}return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager',key:'step1'}]}});}
-   if(path.endsWith('/masters'))return r.fulfill({headers,json:[]});
+   if(path.endsWith('/items'))return r.fulfill({headers,json:[]});
+   if(path.endsWith('/employees'))return r.fulfill({headers,json:{currentEmployeeId:3,employees:[{id:3,name:'Drafter'}]}});
    writes.push({path,body:req.postDataJSON()});
    if(path.endsWith('/delete-request'))pending=true;
    if(path.endsWith('/decision'))deleted=true;

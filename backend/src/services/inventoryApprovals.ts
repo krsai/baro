@@ -37,7 +37,7 @@ export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
  });
  app.get('/inventory-entry/approvals',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT r.id,r.operation,r.revision,r."movementId",m."movementDate"::text AS date,m.quantity::text,m.remark,m."purchaseSnapshot",i.data AS master,v.attributes,
+  res.json(await db.$queryRaw`SELECT r.id,r.operation,r.revision,r."movementId",m."movementDate"::text AS date,m.quantity::text,m.remark,m."userSnapshot",m."purchaseSnapshot",i.data AS master,v.attributes,
     jsonb_build_object('id',e.id,'name',e.name,'orgRole',e."orgRole",'gradeId',e."gradeId",'grade',(SELECT jsonb_build_object('id',g.id,'name',g.name,'nameKo',g."nameKo",'nameEn',g."nameEn",'nameVi',g."nameVi") FROM "EmployeeGrade" g WHERE g.id=e."gradeId" AND g."orgId"=e."orgId")) AS drafter,
     (SELECT jsonb_agg(jsonb_build_object('employeeId',s."employeeId",'name',s."employeeName",'decision',s.decision) ORDER BY s.position) FROM "InventoryApprovalStep" s WHERE s."requestId"=r.id) AS stages,
     ((SELECT s."employeeId" FROM "InventoryApprovalStep" s WHERE s."requestId"=r.id AND s.decision IS NULL ORDER BY s.position LIMIT 1)=${scope.actorId}

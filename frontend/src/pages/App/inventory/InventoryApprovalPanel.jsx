@@ -1,3 +1,4 @@
+import {inventoryEntryText} from '../../../constants/inventoryEntry';
 import {approvalDefaultsText} from '../../../constants/approvalDefaults';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Typography} from '@mui/material';
@@ -57,6 +58,7 @@ export default function InventoryApprovalPanel({onChanged}){
  };
  return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button disabled={busy} onClick={()=>pending.current?decide():setReload(n=>n+1)}>{m.retry}</Button>}>{error}</AppNotice>}{rows.map(row=><Paper variant="outlined" key={row.id} sx={{p:2}}><Stack spacing={1}>
   <Typography variant="subtitle2">{t[row.operation]} · {row.date} · {materialItemName(row.master,languageCode)} · {row.quantity} {materialItemName(row.master.unit,languageCode)}</Typography>
+  {row.userSnapshot&&<Typography variant="body2">{(inventoryEntryText[languageCode]||inventoryEntryText.en).user} ? {[row.userSnapshot.employeeNo,row.userSnapshot.name].filter(Boolean).join(' / ')}</Typography>}
   {row.purchaseSnapshot&&<Typography variant="body2">{t.purchase} · {row.purchaseSnapshot.managementNumber||row.purchaseSnapshot.requestId} / {row.purchaseSnapshot.line} · {row.purchaseSnapshot.description}</Typography>}
   <ApprovalStageFlow drafter={row.drafter} stages={stagesFor(row.stages)} languageCode={languageCode} readOnly renderStatus={stage=><Typography variant="caption">{stage.decision?t[stage.decision]:t.PENDING}</Typography>}/>
   {row.canDecide&&<Stack direction="row" spacing={1} justifyContent="flex-end"><Button disabled={busy||Boolean(pending.current)} onClick={()=>decide(row,'REJECTED')}>{t.reject}</Button><Button variant="contained" disabled={busy||Boolean(pending.current)} onClick={()=>decide(row,'APPROVED')}>{t.approve}</Button></Stack>}

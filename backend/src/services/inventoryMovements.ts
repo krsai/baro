@@ -26,6 +26,18 @@ async function readMaster(db:any,orgId:number,id:string,actorId?:number){
 
 export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  registerInventoryApprovalRoutes(app,db,access);
+ app.get('/inventory-entry/employees',async(req:any,res:any)=>{
+  const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
+  res.json({currentEmployeeId:scope.actorId,employees:await db.employee.findMany({where:{orgId:scope.orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:[{name:'asc'},{id:'asc'}]})});
+ });
+ app.get('/inventory-entry/items',async(req:any,res:any)=>{
+  const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
+  const allowed=await systemMaterialOptions(db,scope.orgId),ids=allowed.map((row:any)=>row.baseId);
+  if(!ids.length){res.json([]);return;}
+  res.json(await db.$queryRaw`SELECT v.id,v."masterId",v."baseId",v.revision,v.attributes,i.data AS master
+   FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId"
+   WHERE v."orgId"=${scope.orgId} AND v."baseId"=ANY(${ids}::integer[]) ORDER BY i.data->'baseSnapshot'->>'code',v.id`);
+ });
  app.get('/inventory-entry/purchase-expenses',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
   const {master}=await readMaster(db,scope.orgId,String(req.query.masterId||''));
@@ -78,10 +90,17 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
    }
    const [deletedPrior]=await tx.$queryRaw`SELECT id,operation,"requestHash","drafterId" FROM "InventoryApprovalRequest" WHERE "orgId"=${orgId} AND "clientKey"=${body.clientKey}`;
    if(deletedPrior){if(deletedPrior.operation!=='CREATE'||deletedPrior.drafterId!==actorId||deletedPrior.requestHash!==hash)throw createHttpError(409,'INVENTORY_RETRY_MISMATCH');return {id:deletedPrior.id};}
+   const userEmployeeId=body.userEmployeeId??actorId;
+   if(!Number.isSafeInteger(userEmployeeId)||userEmployeeId<=0)throw invalid();
+   const user=await tx.employee.findFirst({where:{id:userEmployeeId,orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true}});
+   if(!user)throw createHttpError(400,'INVALID_INVENTORY_USER');
    const {master,fields}=await readMaster(tx,orgId,body.masterId,actorId);
    let variantId=body.variantId;
    if(variantId){
-    if(typeof variantId!=='string'||!(await tx.$queryRaw`SELECT id FROM "InventoryVariant" WHERE id=${variantId} AND "orgId"=${orgId} AND "masterId"=${master.id}`).length)throw invalid();
+    if(typeof variantId!=='string')throw invalid();
+    const [selected]=await tx.$queryRaw`SELECT id,revision FROM "InventoryVariant" WHERE id=${variantId} AND "orgId"=${orgId} AND "masterId"=${master.id} FOR UPDATE`;
+    if(!selected)throw invalid();
+    if(body.variantRevision!==undefined&&(!Number.isSafeInteger(body.variantRevision)||selected.revision!==body.variantRevision))throw createHttpError(409,'VARIANT_CHANGED');
    }else{
     if(!Number.isSafeInteger(body.ownerId)||body.ownerId<=0)throw invalid();
     const owner=await tx.organization.findFirst({where:{AND:[materialOwnerScope(orgId),{id:body.ownerId}]},select:MATERIAL_OWNER_SELECT});
@@ -106,8 +125,8 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
    }
    const purchase=await prepareInventoryPurchase(tx,orgId,master.id,variantId,body.quantity,body);
    const id=randomUUID();
-   await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","clientKey","requestHash","movementDate",quantity,remark,status,"purchaseRequired","expenseItemId","expenseRequestId","expenseRequestVersion","purchaseSnapshot")
-    VALUES (${id},${orgId},${variantId},${actorId},${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()},'PENDING',${purchase.required},${purchase.source?.expenseItemId??null},${purchase.source?.requestId??null},${purchase.source?.version??null},${purchase.source?JSON.stringify(purchase.source):null}::jsonb)`;
+   await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","userEmployeeId","userSnapshot","clientKey","requestHash","movementDate",quantity,remark,status,"purchaseRequired","expenseItemId","expenseRequestId","expenseRequestVersion","purchaseSnapshot")
+    VALUES (${id},${orgId},${variantId},${actorId},${user.id},${JSON.stringify(user)}::jsonb,${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()},'PENDING',${purchase.required},${purchase.source?.expenseItemId??null},${purchase.source?.requestId??null},${purchase.source?.version??null},${purchase.source?JSON.stringify(purchase.source):null}::jsonb)`;
    await createInventoryApproval(tx,scope,{id,revision:1},'CREATE',body);
    return {id};
   });
@@ -115,7 +134,7 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  });
  app.get('/inventory-entry/history',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT m.id,m.revision,m.status,m."movementDate"::text AS date,m.quantity::text,m.remark,m."purchaseSnapshot",v.attributes,i.data AS master,
+  res.json(await db.$queryRaw`SELECT m.id,m.revision,m.status,m."movementDate"::text AS date,m.quantity::text,m.remark,m."userEmployeeId",m."userSnapshot",m."purchaseSnapshot",v.attributes,i.data AS master,
    EXISTS(SELECT 1 FROM "InventoryApprovalRequest" r WHERE r."movementId"=m.id AND r.operation='DELETE' AND r.status='PENDING') AS "deletePending"
    FROM "InventoryMovement" m JOIN "InventoryVariant" v ON v.id=m."variantId"
    JOIN "MaterialItem" i ON i.id=v."masterId" WHERE m."orgId"=${scope.orgId} ORDER BY m."movementDate" DESC,m."createdAt" DESC`);
