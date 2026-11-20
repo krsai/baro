@@ -496,7 +496,9 @@ const theme = createTheme(baseTheme, {
     MuiInputLabel: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiInputBase: { styleOverrides: { root: { fontSize: ui.control.fontSize, lineHeight: ui.control.lineHeight } } },
     MuiMenu: { styleOverrides: { paper: { border: `1px solid ${ui.color.border}`, boxShadow: '0 8px 24px rgba(16, 24, 40, 0.08)' } } },
-    MuiMenuItem: { styleOverrides: { root: {
+    MuiMenuItem: { defaultProps: { onMouseMove: event => { if (!event.buttons && event.currentTarget.getAttribute('aria-disabled') !== 'true' && document.activeElement !== event.currentTarget) event.currentTarget.focus({ preventScroll: true }); } }, styleOverrides: { root: {
+      minHeight: 32, lineHeight: ui.control.lineHeight, color: ui.color.text,
+      '&:hover, &.Mui-focusVisible': { backgroundColor: getLabelPalette('blue').background, color: getLabelPalette('blue').text },
       fontSize: ui.control.fontSize,
       '&.Mui-selected': { backgroundColor: getLabelPalette('blue').background, color: getLabelPalette('blue').text },
       '&.Mui-selected:hover': { backgroundColor: getLabelPalette('blue').border },

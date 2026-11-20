@@ -1,3 +1,4 @@
+import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 import {paidExpenseEntries} from './paidExpenseCorrection';
 import {attachLinkedCompanies} from './companyConnections';
 import {normalizeExpensePaymentSchedule,replaceExpensePaymentSchedule,expensePaymentScheduleStatus} from './expensePaymentSchedule';
@@ -191,10 +192,11 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
     const orgId=access.organization.id;
     const drafter=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true}});
     if(!drafter)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
-    const setting=await db.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
+    const defaults=await effectiveApprovalDefault(db,orgId,'EXPENSE','CREATE');
+    const setting=defaults?{value:defaults}:await db.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
     const candidates=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:EXPENSE_APPROVAL_ROLES}},select:{id:true,name:true,orgRole:true,gradeId:true},orderBy:[{name:'asc'},{id:'asc'}]});
     const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},select:{id:true,code:true,name:true,nameKo:true,nameEn:true,nameVi:true},orderBy:{sortOrder:'asc'}});
-    res.json({drafter,candidates,grades,subjects:APPROVAL_SUBJECTS,subject:APPROVAL_SUBJECTS[0],canDraft:canDraftExpense(drafter,setting?.value),settings:{drafterScope:setting?.value?.drafterScope||{role:'ALL',gradeId:null},fallbackGrades:{senior:setting?.value?.seniorGradeId||grades.find((grade:any)=>grade.code==='CL2')?.id||null,lead:setting?.value?.leadGradeId||grades.find((grade:any)=>grade.code==='CL3')?.id||null},limits:setting?.value?.limits||defaultApprovalSettings().limits,...(setting?.value?.stageAuthorityVersion===1?{stageAuthorityVersion:1}:{}),...(setting?.value?.version===2?{version:2,kind:'EXPENSE',revision:setting.value.revision,rules:setting.value.rules}: {})},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
+    res.json({drafter,candidates,grades,subjects:APPROVAL_SUBJECTS,subject:APPROVAL_SUBJECTS[0],canDraft:canDraftExpense(drafter,setting?.value),settings:{revision:setting?.value?.revision||0,source:defaults?'SYSTEM':'LOCAL',drafterScope:setting?.value?.drafterScope||{role:'ALL',gradeId:null},fallbackGrades:{senior:setting?.value?.seniorGradeId||grades.find((grade:any)=>grade.code==='CL2')?.id||null,lead:setting?.value?.leadGradeId||grades.find((grade:any)=>grade.code==='CL3')?.id||null},limits:setting?.value?.limits||defaultApprovalSettings().limits,...(setting?.value?.stageAuthorityVersion===1?{stageAuthorityVersion:1}:{}),...(setting?.value?.version===2?{version:2,kind:'EXPENSE',revision:setting.value.revision,rules:setting.value.rules}: {})},configured:!!setting,canEdit:drafter.orgRole==='ADMIN'});
   });
   app.put('/expense-approval-settings',async(req:any,res:any)=>{
     const access=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN']});if(!access)return;
@@ -204,15 +206,16 @@ export function registerExpenseEditorRoutes(app: any, db: any, gates: any) {
       const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:'ADMIN'}});
       if(!actor)throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
       const value=await validateApprovalSettings(tx,orgId,req.body);
-      const current=await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
+      const inherited=await effectiveApprovalDefault(tx,orgId,'EXPENSE','CREATE');
+      const current=inherited?{value:inherited}:await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
       if(req.body?.drafterScope===undefined&&current?.value?.drafterScope)value.drafterScope=current.value.drafterScope;
-      if(current?.value?.version===2&&req.body?.rules===undefined||req.body?.rules!==undefined&&(req.body.revision!==(current?.value?.revision||0)))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
+      if(inherited&&req.body?.revision!==inherited.revision||current?.value?.version===2&&req.body?.rules===undefined||req.body?.rules!==undefined&&(req.body.revision!==(current?.value?.revision||0)))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
       if(value.version===2){
         value.revision=(current?.value?.revision||0)+1;
         for(const key of ['seniorGradeId','leadGradeId'])if(current?.value?.[key]!=null)value[key]=current.value[key];
       }
       const data={value,updatedByEmployeeId:actorId};
-      await tx.systemSetting.upsert({where:{key:approvalSettingKey(orgId)},create:{key:approvalSettingKey(orgId),...data},update:data});
+      await tx.systemSetting.upsert({where:{key:approvalSettingKey(orgId)},create:{key:approvalSettingKey(orgId),...data},update:data});await localApprovalMode(tx,orgId,'EXPENSE','CREATE',actorId);
     },{isolationLevel:'Serializable'});
     res.json({ok:true});
   });

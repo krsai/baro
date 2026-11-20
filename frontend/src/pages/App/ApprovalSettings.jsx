@@ -1,3 +1,4 @@
+import {approvalDefaultsText} from '../../constants/approvalDefaults';
 import {inventoryApprovalText} from '../../constants/inventoryApproval';
 import {workTimeText} from '../../constants/workTime';
 import {useLocation} from 'react-router-dom';
@@ -27,16 +28,16 @@ const keyFor=(menu,operation)=>menu+':'+operation;
 const registrationFor=(menu,operation)=>menu==='BANK_LEDGER'&&operation==='CREATE';
 const formFrom=(settings,registration)=>{
  if(!settings)throw new Error('INVALID_APPROVAL_SETTINGS');
- if(Array.isArray(settings.stages))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,stages:settings.stages};
+ if(Array.isArray(settings.stages))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,...(settings.proxyRoles?{proxyRoles:settings.proxyRoles}:{}),stages:settings.stages};
  if(Array.isArray(settings.approverIds))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,proxyRoles:settings.proxyRoles,approverIds:settings.approverIds,...(settings.legacyStages?{legacyStages:settings.legacyStages}:{})};
  return {...(registration?{version:2}:{}),kind:registration?'BANK_LEDGER':'EXPENSE',drafterScope:settings.drafterScope||{role:'ALL',gradeId:null},limits:settings.limits,rules:registration?ledgerApprovalBands(settings):settings.rules||[],revision:settings.revision||0};
 };
-const invalidInventory=entry=>!entry.form.drafterRoles?.length||(entry.form.stages?!entry.form.stages.length||entry.form.stages.some(stage=>!['ADMIN','ACCOUNTANT','OPERATOR'].includes(stage.role)||stage.gradeMatch!=='ANY'&&!stage.gradeId):!entry.form.approverIds?.length||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length);
-const invalidEntry=entry=>entry.menu==='INVENTORY'?invalidInventory(entry):['WORK_TIME','INVENTORY'].includes(entry.menu)?!entry.form.drafterRoles?.length||!entry.form.approverIds?.length||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length:invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
+const invalidInventory=entry=>!entry.form.drafterRoles?.length||(entry.form.stages?entry.form.stages.some(stage=>!['ADMIN','ACCOUNTANT','OPERATOR'].includes(stage.role)||stage.gradeMatch!=='ANY'&&!stage.gradeId):!Array.isArray(entry.form.approverIds)||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length);
+const invalidEntry=entry=>['WORK_TIME','INVENTORY'].includes(entry.menu)?invalidInventory(entry):invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
 const dirtyEntry=entry=>Boolean(entry?.form&&JSON.stringify(entry.form)!==entry.initial);
 
-export default function ApprovalSettings(){const {activeOrgId}=useAuth();return <CompanyApprovalSettings key={activeOrgId} activeOrgId={activeOrgId}/>;}
-function CompanyApprovalSettings({activeOrgId}){
+export default function ApprovalSettings({systemDefaults=false}){const {activeOrgId}=useAuth();return <CompanyApprovalSettings key={String(systemDefaults)+activeOrgId} activeOrgId={activeOrgId} systemDefaults={systemDefaults}/>;}
+function CompanyApprovalSettings({activeOrgId,systemDefaults}){
  const location=useLocation();
  const {languageCode}=useLanguage(),{showNotification}=useAppActions();
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,subject=approvalSubjectText[languageCode]||approvalSubjectText.en,actionText=changeApprovalText[languageCode]||changeApprovalText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en;
@@ -47,12 +48,12 @@ function CompanyApprovalSettings({activeOrgId}){
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useEffect(()=>{let alive=true;setLoading(true);
   Promise.all(operations.map(async operation=>{
-   const key=keyFor(menu,operation),registration=registrationFor(menu,operation),path=menu==='EXPENSE'&&operation==='CREATE'?'/expense-approval-settings'+buildQueryString({orgId:activeOrgId,accessSettings:1}):'/approval-action-settings'+buildQueryString({orgId:activeOrgId,menu,operation,accessSettings:1});
+   const key=keyFor(menu,operation),registration=registrationFor(menu,operation),path=(systemDefaults?'/system-approval-action-settings':'/approval-action-settings')+buildQueryString({orgId:activeOrgId,menu,operation,accessSettings:1});
    try{const data=await requestJSON(path,{skipCache:true}),form=formFrom(data.settings,registration);if(alive)setEntries(current=>{const previous=current[key];return {...current,[key]:{menu,operation,data,form:dirtyEntry(previous)?previous.form:form,initial:dirtyEntry(previous)?previous.initial:JSON.stringify(form),error:''}};});}
    catch{if(alive)setEntries(current=>({...current,[key]:{...current[key],menu,operation,error:t.error}}));}
   })).finally(()=>{if(alive)setLoading(false);});
   return()=>{alive=false;};
- },[activeOrgId,menu,reload]);
+ },[activeOrgId,menu,reload,systemDefaults]);
  const dirty=Object.values(entries).filter(dirtyEntry);
  useUnsavedChanges(dirty.length>0);
  useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['approval-settings','work-time-policy'],isBlocked:saving||dirty.length>0,
@@ -62,30 +63,35 @@ function CompanyApprovalSettings({activeOrgId}){
  const save=async()=>{
   if(lock.current||disabled||!dirty.length||invalid)return;lock.current=true;setSaving(true);setError('');const orgId=activeOrgId;
   const changes=dirty.map(entry=>({menu:entry.menu,operation:entry.operation,settings:['WORK_TIME','INVENTORY'].includes(entry.menu)?entry.form:{...entry.form,stageAuthorityVersion:1,rules:cleanApprovalBands(entry.form.rules)}}));
-  try{const result=await requestJSON('/approval-action-settings/batch'+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify({changes})});if(!live.current||scope.current!==orgId)return;
+  try{const result=await requestJSON((systemDefaults?'/system-approval-action-settings/batch':'/approval-action-settings/batch')+buildQueryString({orgId}),{method:'PUT',body:JSON.stringify({changes})});if(!live.current||scope.current!==orgId)return;
    const expected=new Map(changes.map(row=>[keyFor(row.menu,row.operation),row.settings.revision+1]));
    if(!Array.isArray(result?.saved)||result.saved.length!==changes.length||new Set(result.saved.map(row=>keyFor(row.menu,row.operation))).size!==changes.length||result.saved.some(row=>!expected.has(keyFor(row.menu,row.operation))||expected.get(keyFor(row.menu,row.operation))!==row.settings?.revision))throw new Error('INVALID_APPROVAL_SETTINGS');
    const saved=result.saved.map(row=>({...row,form:formFrom(row.settings,registrationFor(row.menu,row.operation))}));
-   setEntries(current=>{const next={...current};for(const row of saved){const key=keyFor(row.menu,row.operation),entry=next[key],form=row.form;next[key]={...entry,data:{...entry.data,settings:{...entry.data.settings,...row.settings}},form,initial:JSON.stringify(form),error:''};}return next;});
+   setEntries(current=>{const next={...current};for(const row of saved){const key=keyFor(row.menu,row.operation),entry=next[key],form=row.form;next[key]={...entry,data:{...entry.data,settings:{...entry.data.settings,...row.settings,source:systemDefaults?'SYSTEM':row.settings.source||'LOCAL'}},form,initial:JSON.stringify(form),error:''};}return next;});
    const workTimeTopics=saved.some(row=>row.menu==='WORK_TIME')?['work-time-policy','work-time','payroll-sources']:[];
    showNotification(t.saved,'success');emitWorkspaceDataChanged({orgId,source:'approval-settings-save',topics:['approval-settings','expense-approval-settings',...workTimeTopics]});setReload(value=>value+1);
   }catch(failure){if(live.current&&scope.current===orgId)setError(['APPROVAL_SETTINGS_CHANGED','WORK_TIME_POLICY_CHANGED'].includes(failure.message)?messages.changed:messages.error);}finally{lock.current=false;if(live.current)setSaving(false);}
  };
- return <AppPageContainer title={t.title} titleActions={<SaveButton loading={saving} disabled={disabled||!dirty.length||invalid} onClick={save}>{t.save}</SaveButton>} contentSx={{flex:1,minWidth:0}}>
+ return <AppPageContainer title={systemDefaults?(approvalDefaultsText[languageCode]||approvalDefaultsText.en).system:t.title} titleActions={<SaveButton loading={saving} disabled={disabled||!dirty.length||invalid} onClick={save}>{t.save}</SaveButton>} contentSx={{flex:1,minWidth:0}}>
   <Stack spacing={3} data-testid="approval-settings-page" sx={{width:'100%',maxWidth:'none',minWidth:0,flex:1}}>
    <TextField select size="small" label={subject.label} value={menu} disabled={saving} onChange={event=>{setMenu(event.target.value);setError('');}} sx={{width:{xs:'100%',sm:320}}}>{['EXPENSE','BANK_LEDGER','INVOICE','WORK_TIME','INVENTORY'].map(key=><MenuItem key={key} value={key}>{key==='INVENTORY'?(inventoryApprovalText[languageCode]||inventoryApprovalText.en).title:key==='WORK_TIME'?(workTimeText[languageCode]||workTimeText.en).title:actionText[key]}</MenuItem>)}</TextField>
    {error&&<Alert severity="error">{error}</Alert>}
-   {operations.map(operation=><ApprovalOperationSettings key={keyFor(menu,operation)} entry={entries[keyFor(menu,operation)]} menu={menu} operation={operation} disabled={disabled} onChange={patch=>update(operation,patch)} onReload={()=>setReload(value=>value+1)} languageCode={languageCode}/>)}
+   {operations.map(operation=><ApprovalOperationSettings key={keyFor(menu,operation)} entry={entries[keyFor(menu,operation)]} menu={menu} operation={operation} disabled={disabled} onChange={patch=>update(operation,patch)} onReload={()=>setReload(value=>value+1)} languageCode={languageCode} systemDefaults={systemDefaults}/>)}
   </Stack>
  </AppPageContainer>;
 }
 
-function ApprovalOperationSettings({entry,menu,operation,disabled,onChange,onReload,languageCode}){
+function ApprovalOperationSettings({entry,menu,operation,disabled,onChange,onReload,languageCode,systemDefaults}){
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,band=approvalBandText[languageCode]||approvalBandText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en,actions=changeApprovalText[languageCode]||changeApprovalText.en;
+ const {activeOrgId}=useAuth(),{showNotification}=useAppActions();
+ const defaults=approvalDefaultsText[languageCode]||approvalDefaultsText.en;
+ const [sourceBusy,setSourceBusy]=useState(false),[sourceError,setSourceError]=useState('');
  const editor=useRef(null),[editorError,setEditorError]=useState(''),form=entry?.form,data=entry?.data,locked=disabled||!data?.canEdit||!!entry?.error,registration=registrationFor(menu,operation);
- if(['WORK_TIME','INVENTORY'].includes(menu))return <Stack spacing={2}>{menu==='INVENTORY'&&<Typography component="h2" variant="h6">{actions[operation]}</Typography>}{entry?.error&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry.error}</Alert>}{form&&<WorkTimeApprovalSettings roleGradeStages={menu==='INVENTORY'?(form.stages||form.legacyStages||[]):undefined} grades={data?.grades||[]} onStagesChange={stages=>onChange({stages,approverIds:undefined,legacyStages:undefined})} showProxy={menu!=='INVENTORY'} form={form} managers={data?.managers||[]} onChange={onChange} disabled={locked} languageCode={languageCode}/>}</Stack>;
+ const changeSource=async()=>{setSourceBusy(true);setSourceError('');try{await requestJSON('/approval-action-settings/source'+buildQueryString({orgId:activeOrgId}),{method:'PUT',body:JSON.stringify({menu,operation,revision:form.revision,mode:data.settings.source==='SYSTEM'?'LOCAL':'DEFAULT'})});showNotification(defaults.saved,'success');onReload();}catch{setSourceError(defaults.error);}finally{setSourceBusy(false);}};
+ const sourceControl=!systemDefaults&&data&&<Stack direction="row" spacing={1} alignItems="center"><Typography variant="caption" color="text.secondary">{data.settings.source==='SYSTEM'?defaults.system:defaults.local}</Typography>{data.canEdit&&<Button data-approval-source disabled={locked||sourceBusy||dirtyEntry(entry)} onClick={changeSource}>{data.settings.source==='SYSTEM'?defaults.useLocal:defaults.useDefault}</Button>}</Stack>;
+ if(['WORK_TIME','INVENTORY'].includes(menu))return <Stack spacing={2}>{sourceControl}{sourceError&&<Alert severity="error">{sourceError}</Alert>}{menu==='INVENTORY'&&<Typography component="h2" variant="h6">{actions[operation]}</Typography>}{entry?.error&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry.error}</Alert>}{form&&<WorkTimeApprovalSettings roleGradeStages={menu==='INVENTORY'||systemDefaults&&menu==='WORK_TIME'?(form.stages||form.legacyStages||[]):undefined} grades={data?.grades||[]} onStagesChange={stages=>onChange({stages,approverIds:undefined,legacyStages:undefined})} showProxy={menu!=='INVENTORY'} form={form} managers={data?.managers||[]} onChange={onChange} disabled={locked} languageCode={languageCode}/>}</Stack>;
  return <Stack component="section" aria-label={actions[operation]} data-approval-operation={operation} spacing={2} sx={{minWidth:0}}>
-  <Typography component="h2" variant="h6">{actions[operation]}</Typography>
+  <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography component="h2" variant="h6">{actions[operation]}</Typography>{sourceControl}</Stack>{sourceError&&<Alert severity="error">{sourceError}</Alert>}
   {(entry?.error||editorError)&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry?.error||editorError}</Alert>}
   {form&&approvalBandOrderErrors(form.rules).size>0&&<Alert severity="warning">{band.orderError}</Alert>}
   {form&&<ApprovalRuleEditor allowGradeRange ref={editor} rules={form.rules} drafterScope={form.drafterScope} onScopeChange={drafterScope=>onChange({drafterScope})} settings={{...data.settings,limits:form.limits}} grades={data.grades} onChange={rules=>onChange({rules})} disabled={locked} languageCode={languageCode} headerActions={<Button startIcon={<Add/>} disabled={locked} sx={{whiteSpace:'nowrap'}} onClick={()=>{if(editor.current?.addCondition()===false)setEditorError(messages.error);}}>{band.addCondition}</Button>}/>}

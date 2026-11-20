@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { calculateRequestAmounts } from './transactionRequest';
 import {validateApprovalRules,resolveApprovalRules} from './approvalRules';
 import {EXPENSE_APPROVAL_SUBJECT,approvalPolicyNamespace} from './approvalSubjects';
+import {effectiveApprovalDefault,noApprovalPolicy} from './approvalDefaults';
 
 export const EXPENSE_APPROVAL_ROLES = ['ADMIN','ACCOUNTANT'];
 export const approvalSettingKey = (orgId:number) => approvalPolicyNamespace(EXPENSE_APPROVAL_SUBJECT,orgId);
@@ -41,7 +42,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
   const drafter = await tx.employee.findFirst({where:{id:drafterId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{select:{code:true,name:true,nameKo:true,nameEn:true,nameVi:true,isActive:true,set:{select:{isActive:true}}}}}});
   if(!drafter) throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');
   const setting = await tx.systemSetting.findUnique({where:{key:approvalSettingKey(orgId)}});
-  const config=savedConfig||setting?.value||defaultApprovalSettings();
+  const config=savedConfig||await effectiveApprovalDefault(tx,orgId,'EXPENSE','CREATE')||setting?.value||defaultApprovalSettings();
   if(!savedConfig&&!canDraftExpense(drafter,config))throw createHttpError(403,'EXPENSE_DRAFTER_NOT_ALLOWED');
   if(selection!==undefined && (!selection||typeof selection!=='object'||Array.isArray(selection)))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
   if(selection?.drafterEmployeeId!==undefined&&selection.drafterEmployeeId!==drafterId)throw createHttpError(400,'EXPENSE_DRAFTER_FIXED');
@@ -63,6 +64,7 @@ export async function resolveExpenseApproval(tx:any, orgId:number, drafterId:num
     return legacy.stages.filter((stage:any)=>!stage.vacant).map((stage:any)=>({role:stage.key==='admin'?'ADMIN':'ACCOUNTANT',gradeId:stage.key==='admin'?null:config[stage.key+'GradeId']||stage.candidates[0]?.gradeId||null}));
   });
   if(custom)return custom;
+  if(config.approvalRequired===false)return {ids:[],stages:[],complete:true,drafter,policy:noApprovalPolicy(config,drafterId)};
   let level=0;
   for(const [currency,amount] of totals){
     const limits=config.limits?.[currency];

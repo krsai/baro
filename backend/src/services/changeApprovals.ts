@@ -116,10 +116,11 @@ export async function previewChangeApproval(db:any,orgId:number,actorId:number,i
   const finalDrafterStage={role:'ADMIN',gradeId:actor.gradeId};
   Object.assign(preview.policy,{exemptionReason:'FINAL_DRAFTER',finalDrafterStage,config:{...preview.policy.config,registrationStages:[finalDrafterStage]}});
  }
+ const noApproval=(preview.policy as any).noApprovalRequired===true;
  const automatic=preview.policy.exempt&&preview.policy.exemptionReason==='FINAL_DRAFTER';
- if(automatic){preview.stages=[{key:'final-self',role:actor.orgRole,gradeId:actor.gradeId,employeeId:actor.id,name:actor.name,candidates:[actor]}];preview.ids=[actor.id];preview.complete=true;}else if(preview.policy.exempt&&s.menu==='EXPENSE'&&s.operation==='DELETE'&&s.expense.document&&await isHighestCompanyApprover(db,orgId,actor)){
+ if(automatic){preview.stages=[{key:'final-self',role:actor.orgRole,gradeId:actor.gradeId,employeeId:actor.id,name:actor.name,candidates:[actor]}];preview.ids=[actor.id];preview.complete=true;}else if(!noApproval&&preview.policy.exempt&&s.menu==='EXPENSE'&&s.operation==='DELETE'&&s.expense.document&&await isHighestCompanyApprover(db,orgId,actor)){
   highestSelfDeletion=true;preview.stages=[{key:'changeAdmin',role:'ADMIN',gradeId:actor.gradeId,employeeId:actor.id,candidates:[{id:actor.id,name:actor.name,gradeId:actor.gradeId}]}];preview.ids=[actor.id];preview.complete=true;
- }else if(preview.policy.exempt){
+ }else if(!noApproval&&preview.policy.exempt){
   // An unspecified final grade must not send a request down the hierarchy.
   // Compare only active grades in the drafter's actual company grade set.
   const minimum=actor.grade?.isActive&&actor.grade.set?.isActive?actor.grade:null;
@@ -138,7 +139,7 @@ export async function requestChangeApproval(db:any,orgId:number,actorId:number,i
  return retryEditTransaction(db,async(tx:any)=>{
   const prior=await tx.changeApprovalRequest.findUnique({where:{orgId_clientKey:{orgId,clientKey:input.clientKey}}});if(prior){if(prior.requestHash!==requestHash||prior.requestedByEmployeeId!==actorId)fail('CHANGE_RETRY_CONFLICT');return prior;}
   if(['UPDATE','DELETE'].includes(input.operation)&&!reason)fail('CHANGE_REASON_REQUIRED',400);
-  const {source:s,preview,policy}=await previewChangeApproval(tx,orgId,actorId,input,true);if(!preview.complete||!policy.resolvedStages.length)fail('EXPENSE_APPROVER_REQUIRED',400);
+  const {source:s,preview,policy}=await previewChangeApproval(tx,orgId,actorId,input,true);if(!preview.complete||!policy.resolvedStages.length&&!(policy as any).noApprovalRequired)fail('EXPENSE_APPROVER_REQUIRED',400);
   const pending=await tx.changeApprovalRequest.findFirst({where:{orgId,menu:s.menu,sourceKind:s.kind,sourceId:s.transferPeerId?{in:[s.id,s.transferPeerId]}:s.id,status:'PENDING'}});if(pending)fail('CHANGE_ALREADY_PENDING');
   const payload=input.operation!=='DELETE'?json(input.payload):{};
   if(s.menu==='EXPENSE'&&s.operation==='UPDATE'){cashScheduleDate(payload?.scheduledPaymentDate);for(const [index,item] of (payload?.items||[]).entries()){const rows=normalizeExpensePaymentSchedule(item?.paymentSchedule);if(rows.length){const expenseItemId=String(index);validateExpensePaymentScheduleTotals(rows.map(row=>({...row,expenseItemId})),[{id:expenseItemId,currency:item.currency,amount:calculateRequestAmounts(item.unitPrice,item.quantity,item.currency,item.vatRate).amount}]);}}}
@@ -166,7 +167,7 @@ async function applyChange(tx:any,db:any,orgId:number,actor:any,row:any,s:any,ga
  }
  if(row.operation==='UPDATE'){
   const decisions=await tx.changeApprovalDecision.findMany({where:{orgId,requestId:row.id},orderBy:{position:'asc'}});const actual=[] as any[];for(const [index,stage] of row.policy.resolvedStages.entries()){const id=decisions[index]?.actingEmployeeId||stage.employeeId;if(!actual.some((p:any)=>p.employeeId===id)){const person=await tx.employee.findFirst({where:{id,orgId,status:'ACTIVE'}});actual.push({...stage,employeeId:id,gradeId:person?.gradeId??stage.gradeId});}}
- const save=()=>saveExpenseEditor(tx,orgId,row.requestedByEmployeeId,row.sourceKind,row.sourceId,row.payload,gates.appendQuantityRemark,{ids:row.policy.autoApproved?[]:actual.map((p:any)=>p.employeeId),policy:{...row.policy,exempt:row.policy.autoApproved===true,originalResolvedStages:row.policy.resolvedStages,resolvedStages:actual,delegationDecisions:decisions.filter((d:any)=>d.actingEmployeeId),changeRequestId:row.id,drafterId:s.expense.document?.createdByEmployeeId||row.requestedByEmployeeId}});return s.expense.document?.bankReconciled?correctPaidExpense(tx,orgId,actor,row,s.expense,save):save();
+ const save=()=>saveExpenseEditor(tx,orgId,row.requestedByEmployeeId,row.sourceKind,row.sourceId,row.payload,gates.appendQuantityRemark,{ids:row.policy.autoApproved?[]:actual.map((p:any)=>p.employeeId),policy:{...row.policy,exempt:row.policy.autoApproved===true||row.policy.noApprovalRequired===true,originalResolvedStages:row.policy.resolvedStages,resolvedStages:actual,delegationDecisions:decisions.filter((d:any)=>d.actingEmployeeId),changeRequestId:row.id,drafterId:s.expense.document?.createdByEmployeeId||row.requestedByEmployeeId}});return s.expense.document?.bankReconciled?correctPaidExpense(tx,orgId,actor,row,s.expense,save):save();
  }
  const original=s.expense,doc=original.document,key=`EXPENSE_REQUEST_EDIT:${orgId}:CHANGE_${row.id}`,company=await tx.organization.findUnique({where:{id:orgId},select:{type:true,country:true}});
  await tx.$queryRawUnsafe("SELECT set_config('baro.expense_editor_org',$1,true),set_config('baro.expense_editor_actor',$2,true),set_config('baro.expense_editor_key',$3,true),set_config('baro.expense_editor_timezone',$4,true)",String(orgId),String(actor.id),key,companyBusinessTimeZone(company));
@@ -179,7 +180,14 @@ export async function decideChangeApproval(db:any,orgId:number,actorId:number,id
  if(!['APPROVED','REJECTED'].includes(body?.decision))fail('INVALID_APPROVAL_DECISION',400);const reason=typeof body.reason==='string'?body.reason.trim():'';if(body.decision==='REJECTED'&&(!reason||reason.length>1000))fail('CHANGE_REASON_REQUIRED',400);
  return retryEditTransaction(db,tx=>decideChangeApprovalTx(tx,db,orgId,actorId,id,body,gates),60000);
 }
-async function automaticResult(tx:any,db:any,orgId:number,actorId:number,row:any,gates:any){return row.policy.autoApproved?decideChangeApprovalTx(tx,db,orgId,actorId,row.id,{decision:'APPROVED'},gates,true):row;}
+async function automaticResult(tx:any,db:any,orgId:number,actorId:number,row:any,gates:any){
+ if(row.policy.noApprovalRequired){
+  const actor=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'}});if(!actor)fail('ACTIVE_EMPLOYEE_REQUIRED',403);
+  const current=await source(tx,orgId,row,true);if(current.revision!==row.revision)fail('CHANGE_SOURCE_CHANGED');
+  const saved=await tx.changeApprovalRequest.update({where:{id:row.id},data:{status:'APPROVED',decidedByEmployeeId:actorId,decidedAt:new Date(),appliedAt:new Date()}});
+  const result=json(await applyChange(tx,db,orgId,actor,saved,current,gates));await tx.changeApprovalRequest.update({where:{id:row.id},data:{result}});return {...saved,result};
+ }
+ return row.policy.autoApproved?decideChangeApprovalTx(tx,db,orgId,actorId,row.id,{decision:'APPROVED'},gates,true):row;}
 async function decideChangeApprovalTx(tx:any,db:any,orgId:number,actorId:number,id:string,body:any,gates:any={},automatic=false){
  const reason=typeof body.reason==='string'?body.reason.trim():'';
   let row=await tx.changeApprovalRequest.findFirst({where:{id,orgId}});if(!row)fail('CHANGE_NOT_FOUND',404);

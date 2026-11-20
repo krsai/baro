@@ -2,6 +2,7 @@ import {invoiceEvidenceAccounting} from './invoiceAccounting';
 import {prepareLedgerMaterial} from './materialItems';
 import {bankFeeAccountingCode} from './accountingCode';
 import {ledgerTaxSnapshot,ledgerTaxInput} from './ledgerVat';
+import {noApprovalPolicy} from './approvalDefaults';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -25,7 +26,7 @@ export async function validateLedgerRegistration(db:any,orgId:number,input:any){
   if(!Array.isArray(input.rules)||!input.rules.length)fail('INVALID_APPROVAL_RULE');
   return {...(input.stageAuthorityVersion===1?{stageAuthorityVersion:1}:{}),version:2,kind:'BANK_LEDGER',revision:input.revision,drafterScope:scope,limits:defaultApprovalSettings().limits,rules:await validateApprovalRules(db,orgId,input.rules,subject)};
  }
- if(!Array.isArray(input?.registrationStages)||!input.registrationStages.length||input.registrationStages.length>10)fail('INVALID_APPROVAL_RULE');
+ if(!Array.isArray(input?.registrationStages)||input.registrationStages.length>10)fail('INVALID_APPROVAL_RULE');
  const stages=[];
  for(const stage of input.registrationStages){
   if(!['ADMIN','ACCOUNTANT','OPERATOR'].includes(stage.role)||!['ANY','EXACT','MINIMUM'].includes(stage.gradeMatch))fail('INVALID_APPROVAL_RULE');
@@ -88,6 +89,7 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
 export async function previewLedgerRegistration(db:any,orgId:number,drafter:any,source:any,config:any,selection:any={}){
  const currencyTotals=new Map<string,Prisma.Decimal>();for(const item of source.items)currencyTotals.set(item.currency||source.entry.account.currencyCode,(currencyTotals.get(item.currency||source.entry.account.currencyCode)||new Prisma.Decimal(0)).add(item.unitPrice));
  const totals=[...currencyTotals].map(([currency,amount])=>({currency,amount:amount.toString()}));
+ if(config.approvalRequired===false||Array.isArray(config.registrationStages)&&config.registrationStages.length===0)return {ids:[],stages:[],complete:true,drafter,policy:{...noApprovalPolicy(config,drafter.id),totals}};
  if(config.version===2&&config.kind==='BANK_LEDGER'){
   const result=await resolveApprovalRules(db,orgId,drafter,currencyTotals,config,selection,true,subject);
   if(!result)fail('APPROVAL_RULE_NOT_FOUND');return result!;

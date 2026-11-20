@@ -6,14 +6,16 @@ import {inventoryApprovalText} from '../frontend/src/constants/inventoryApproval
 import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
 import {workTimeText} from '../frontend/src/constants/workTime.js';
 import {approvalBandText} from '../frontend/src/constants/approvalBands.js';
+import {approvalDefaultsText} from '../frontend/src/constants/approvalDefaults.js';
 
 const fixture='frontend/inventory-approval-acceptance.html',port=43294;
 assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';
 import Workspace from '/src/pages/App/inventory/InventoryWorkspace.jsx';import ApprovalSettings from '/src/pages/App/ApprovalSettings.jsx';
+import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';
 const settings=new URLSearchParams(location.search).has('settings');
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:[settings?'/approval-settings?menu=INVENTORY':'/inventory/movements']},settings?React.createElement(ApprovalSettings):React.createElement(Workspace,{view:'history'})));
+createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,{initialEntries:[settings?'/approval-settings?menu=INVENTORY':'/inventory/movements']},settings?React.createElement(ApprovalSettings,{systemDefaults:new URLSearchParams(location.search).has('system')}):React.createElement(Workspace,{view:'history'}))));
 </script>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore'});
 let browser;
@@ -72,6 +74,10 @@ try{
  await stages.first().waitFor();assert.equal(await stages.count(),1);
  await editor.getByRole('button',{name:workTimeText.en.add,exact:true}).click();assert.equal(await stages.count(),2);
  await stages.nth(1).getByRole('combobox',{name:approvalBandText.en.role+' 2',exact:true}).click();
+ const adminOption=page.getByRole('option',{name:approvalBandText.en.ADMIN,exact:true});
+ await adminOption.hover();
+ assert.equal(await adminOption.evaluate(node=>document.activeElement===node),true,'mouse candidate and keyboard focus agree');
+ assert.equal(await adminOption.evaluate(node=>{const text=document.createRange();text.selectNodeContents(node);const r=text.getBoundingClientRect(),box=node.getBoundingClientRect(),style=getComputedStyle(node);return r.height>0&&r.top>=box.top&&r.bottom<=box.bottom&&style.color!==style.backgroundColor&&style.color!=='rgba(0, 0, 0, 0)';}),true,'third option text fits and remains visible');
  await page.getByRole('option',{name:approvalBandText.en.ADMIN,exact:true}).click();
  await editor.getByRole('button',{name:approvalBandText.en.addMiddle,exact:true}).first().click();assert.equal(await stages.count(),3);
  await stages.first().getByRole('button',{name:approvalBandText.en.remove,exact:true}).click();assert.equal(await stages.count(),2);
@@ -80,5 +86,35 @@ try{
  await page.getByRole('button',{name:approvalSettingsText.en.save,exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('[data-testid="approval-settings-page"]'));
  assert.equal(writes.length,1);assert.equal(writes[0].changes.length,1);assert.equal(writes[0].changes[0].menu,'INVENTORY');assert.equal(writes[0].changes[0].operation,'CREATE');assert.equal(writes[0].changes[0].settings.rules,undefined);assert.deepEqual(writes[0].changes[0].settings.drafterRoles,['ADMIN','OPERATOR','ACCOUNTANT']);assert.deepEqual(writes[0].changes[0].settings.stages.map(stage=>stage.role),['ADMIN','ACCOUNTANT']);assert.equal(writes[0].changes[0].settings.stages[1].gradeId,1);
- await page.close();console.log('PASS inventory registration modal, deletion approval and physical removal UI (ko/en/vi desktop/mobile); shared approval settings batch save');
+ await page.getByRole('button',{name:approvalSettingsText.en.save,exact:true}).waitFor({state:'visible'});
+ await page.waitForFunction(()=>!document.querySelector('button.MuiLoadingButton-loading'));
+ while(await stages.count())await stages.first().getByRole('button',{name:approvalBandText.en.remove,exact:true}).click();
+ await editor.getByText(approvalDefaultsText.en.noApproval,{exact:true}).waitFor();
+ await editor.getByRole('button',{name:workTimeText.en.add,exact:true}).click();assert.equal(await stages.count(),1);
+ await stages.first().getByRole('button',{name:approvalBandText.en.remove,exact:true}).click();
+ await page.getByRole('button',{name:approvalSettingsText.en.save,exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[data-testid="approval-settings-page"]'));
+ assert.deepEqual(writes.at(-1).changes[0].settings.stages,[],'last final card can be removed and empty line saved');
+ await page.close();
+ const system=await browser.newPage({viewport:{width:1440,height:1000}}),systemWrites=[];
+ await system.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:null});'}));
+ await system.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:"en"});'}));
+ await system.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const noop=()=>{};export const useAppActions=()=>({showNotification:noop,setUnsavedChangesGuard:noop,clearUnsavedChangesGuard:noop});'}));
+ await system.route('**/system-approval-action-settings**',r=>{
+  if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+  if(r.request().method()==='PUT'){const body=r.request().postDataJSON();systemWrites.push(body);return r.fulfill({headers,json:{saved:body.changes.map(change=>({...change,settings:{...change.settings,revision:change.settings.revision+1}}))}});}
+  return r.fulfill({headers,json:{canEdit:true,grades:[],settings:{revision:1,source:'SYSTEM',drafterRoles:['ADMIN','OPERATOR','ACCOUNTANT'],stages:[]}}});
+ });
+ await system.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}?settings&system`);
+ await system.getByRole('heading',{name:approvalDefaultsText.en.system,exact:true}).waitFor();
+ assert.equal(await system.locator('[data-approval-source]').count(),0);
+ const systemEditor=system.getByTestId('work-time-approval-settings').first();
+ await systemEditor.getByText(approvalDefaultsText.en.noApproval,{exact:true}).waitFor();
+ await systemEditor.getByRole('button',{name:workTimeText.en.add,exact:true}).click();
+ const systemSaved=system.waitForResponse(response=>response.url().includes('/system-approval-action-settings/batch')&&response.request().method()==='PUT');
+ await system.getByRole('button',{name:approvalSettingsText.en.save,exact:true}).click();
+ await systemSaved;
+ assert.equal(systemWrites.length,1);assert.equal(systemWrites[0].changes[0].menu,'INVENTORY');
+ await system.close();
+ console.log('PASS inventory registration modal, deletion approval and physical removal UI (ko/en/vi desktop/mobile); system/company settings; hover/focus and last-card removal');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

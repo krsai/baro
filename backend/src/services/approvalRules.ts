@@ -14,7 +14,7 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
   const grade=async(id:any)=>{if(id==null||id==='')return null;if(!Number.isSafeInteger(id)||!await db.employeeGrade.findFirst({where:{id,orgId,isActive:true,set:{isActive:true}}}))return fail();return id;};
   const money=(value:any,empty=false)=>{if(empty&&(value===''||value==null))return null;if(typeof value!=='string'||!(row.currency==='USD'?/^\d{1,15}(\.\d{1,2})?$/:/^\d{1,15}$/).test(value))return fail();return new Prisma.Decimal(value).toFixed();};
   const min=subject.hasAmount?money(row.min):null,max=subject.hasAmount?money(row.max,true):null;if(max!=null&&new Prisma.Decimal(min!).gt(max))return fail();
-  if(!Array.isArray(row.stages)||!row.stages.length||row.stages.length>10)return fail();
+  if(!Array.isArray(row.stages)||row.stages.length>10)return fail();
   const stages=[];
   for(const stage of row.stages){
    if(!stage||!roles.includes(stage.role))return fail();
@@ -24,7 +24,7 @@ export async function validateApprovalRules(db:any,orgId:number,input:any,subjec
    if((stage.gradeMatch==='ANY'&&gradeId||['EXACT','MINIMUM'].includes(stage.gradeMatch)&&!gradeId))return fail();
    stages.push({role:stage.role,gradeId,...(stage.gradeMatch!==undefined||subject.key==='BANK_LEDGER'?{gradeMatch:stage.gradeMatch||(gradeId?'EXACT':'ANY')}: {})});
   }
-  if(subject.key==='EXPENSE'&&['ALL','OPERATOR'].includes(row.drafterRole)&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
+  if(stages.length&&subject.key==='EXPENSE'&&['ALL','OPERATOR'].includes(row.drafterRole)&&!stages.some(stage=>stage.role==='ACCOUNTANT'))return fail('APPROVAL_ACCOUNTANT_REQUIRED');
   rules.push({id:row.id,name:row.name.trim(),drafterRole:row.drafterRole,drafterGradeId:await grade(row.drafterGradeId),currency:subject.hasAmount?row.currency:null,min,max,stages});
  }
  return rules;
@@ -48,6 +48,7 @@ export async function resolveApprovalRules(db:any,orgId:number,drafter:any,total
  // Merge currencies without comparing or converting their amounts. Keep every
  // chain's ordering; contradictory chains must be fixed rather than guessed.
  const nodes=new Map<string,any>(),edges=new Map<string,Set<string>>();
+ if(matched.length&&matched.every(rule=>rule.stages.length===0))return {ids:[],stages:[],complete:true,drafter,policy:{exempt:true,noApprovalRequired:true,exemptionReason:'NO_APPROVAL_REQUIRED',drafterId:drafter.id,config,resolvedStages:[],ruleIds:matched.map(rule=>rule.id),totals:[...totals].map(([currency,amount])=>({currency,amount:amount.toString()}))}};
  for(const rule of matched){let previous:string|null=null;const occurrences=new Map<string,number>();for(const stage of rule.stages){const category=stage.role+':'+(stage.gradeId||'')+':'+(stage.gradeMatch||'EXACT'),occurrence=(occurrences.get(category)||0)+1;occurrences.set(category,occurrence);const key=category+':'+occurrence;nodes.set(key,stage);if(!edges.has(key))edges.set(key,new Set());if(previous)edges.get(previous)!.add(key);previous=key;}}
  const ordered:any[]=[];const remaining=new Set(nodes.keys());
  while(remaining.size){const key=[...remaining].find(key=>![...remaining].some(other=>edges.get(other)?.has(key)));if(!key)return fail('APPROVAL_RULE_ORDER_CONFLICT');remaining.delete(key);ordered.push(nodes.get(key));}

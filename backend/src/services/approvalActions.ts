@@ -1,8 +1,10 @@
+import {registerSystemApprovalDefaults} from './systemApprovalDefaults';
 import {createHttpError} from '../utils/http';
 import {defaultApprovalSettings,validateApprovalSettings} from './expenseApproval';
 import {defaultLedgerRegistration,validateLedgerRegistration} from './ledgerRegistration';
 import {saveWorkTimePolicyInTransaction,workTimePolicy,workTimeActor} from './workTimeRequests';
 import {inventoryApprovalPolicy,saveInventoryApprovalPolicy} from './inventoryApprovalPolicy';
+import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 export const approvalActions=(menu:string)=>menu==='INVENTORY'?['CREATE','DELETE']:menu==='WORK_TIME'?['CREATE']:menu==='INVOICE'?['DELETE']:['EXPENSE','BANK_LEDGER'].includes(menu)?['CREATE','UPDATE','DELETE']:[];
 export function approvalActionKey(orgId:number,menu='EXPENSE',operation='CREATE'){
  if(!approvalActions(menu).includes(operation))throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
@@ -10,6 +12,8 @@ export function approvalActionKey(orgId:number,menu='EXPENSE',operation='CREATE'
 }
 export async function approvalActionSettings(db:any,orgId:number,menu:string,operation:string){
  const key=approvalActionKey(orgId,menu,operation),stored=await db.systemSetting.findUnique({where:{key}});
+ const inherited=await effectiveApprovalDefault(db,orgId,menu,operation);
+ if(inherited)return {key,stored,value:inherited,inherited:true};
  if(menu==='WORK_TIME')return {key,stored,value:await workTimePolicy(db,orgId),inherited:false};
  if(menu==='INVENTORY')return {key,stored,value:await inventoryApprovalPolicy(db,orgId,operation),inherited:false};
  if(menu==='BANK_LEDGER'&&operation==='CREATE')return {key,stored,value:stored?.value||await defaultLedgerRegistration(db,orgId),inherited:false};
@@ -32,17 +36,18 @@ export async function saveApprovalActionBatch(db:any,orgId:number,actorId:number
    if(change.menu==='INVENTORY'){saved.push({menu:change.menu,operation:change.operation,settings:await saveInventoryApprovalPolicy(tx,orgId,actorId,change.operation,change.settings)});continue;}
    if(change.menu==='WORK_TIME'){saved.push({menu:change.menu,operation:change.operation,settings:await saveWorkTimePolicyInTransaction(tx,orgId,actorId,change.settings)});continue;}
    const revision=change.settings?.revision,current=selected[index]!;
-   if(!Number.isSafeInteger(revision)||revision<0||revision!==(current.stored?.value?.revision||0))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
+   if(!Number.isSafeInteger(revision)||revision<0||revision!==(current.inherited?current.value.revision:current.stored?.value?.revision||0))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
    const value:any=change.menu==='BANK_LEDGER'&&change.operation==='CREATE'?await validateLedgerRegistration(tx,orgId,change.settings):await validateApprovalSettings(tx,orgId,change.settings);
    value.revision=revision+1;
    for(const field of ['seniorGradeId','leadGradeId'])if(current.value?.[field]!=null)value[field]=current.value[field];
    saved.push({menu:change.menu,operation:change.operation,settings:value,key:current.key});
   }
-  for(const row of saved){if(['WORK_TIME','INVENTORY'].includes(row.menu))continue;const data={value:row.settings,updatedByEmployeeId:actorId};await tx.systemSetting.upsert({where:{key:row.key},create:{key:row.key,...data},update:data});}
+  for(const row of saved){if(['WORK_TIME','INVENTORY'].includes(row.menu))continue;const data={value:row.settings,updatedByEmployeeId:actorId};await tx.systemSetting.upsert({where:{key:row.key},create:{key:row.key,...data},update:data});await localApprovalMode(tx,orgId,row.menu,row.operation,actorId);}
   return saved.map(({key,...row})=>row);
  },{isolationLevel:'Serializable'});
 }
 export function registerApprovalActionRoutes(app:any,db:any,gates:any){
+ if(gates.requireSystemAdmin)registerSystemApprovalDefaults(app,db,gates);
  const access=async(req:any,res:any,edit=false)=>{
   const ctx=await gates.requireOrgRole(req,res,{allowedRoles:edit?['ADMIN']:['ADMIN','ACCOUNTANT','OPERATOR'],allowSystemAdmin:false});if(!ctx)return null;
   const actor=await db.employee.findFirst({where:{id:gates.actorId(),orgId:ctx.organization.id,status:'ACTIVE',orgRole:{in:edit?['ADMIN']:['ADMIN','ACCOUNTANT','OPERATOR']}}});
@@ -64,15 +69,15 @@ export function registerApprovalActionRoutes(app:any,db:any,gates:any){
    return res.json({menu,operation,canEdit:actor.orgRole==='ADMIN',settings:config,managers});
   }
   const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},select:{id:true,code:true,name:true,nameKo:true,nameEn:true,nameVi:true},orderBy:{sortOrder:'asc'}});
-  res.json({menu,operation,drafter:actor,canEdit:actor.orgRole==='ADMIN',inherited:selected.inherited,grades,settings:{...config,kind:menu==='BANK_LEDGER'&&operation==='CREATE'?'BANK_LEDGER':'EXPENSE',rules:config.rules||[],revision:selected.stored?.value?.revision||0,drafterScope:config.drafterScope||{role:'ALL',gradeId:null},fallbackGrades:{senior:config.seniorGradeId||grades.find((g:any)=>g.code==='CL2')?.id||null,lead:config.leadGradeId||grades.find((g:any)=>g.code==='CL3')?.id||null}}});
+  res.json({menu,operation,drafter:actor,canEdit:actor.orgRole==='ADMIN',inherited:selected.inherited,grades,settings:{...config,kind:menu==='BANK_LEDGER'&&operation==='CREATE'?'BANK_LEDGER':'EXPENSE',rules:config.rules||[],revision:selected.inherited?config.revision||0:selected.stored?.value?.revision||0,drafterScope:config.drafterScope||{role:'ALL',gradeId:null},fallbackGrades:{senior:config.seniorGradeId||grades.find((g:any)=>g.code==='CL2')?.id||null,lead:config.leadGradeId||grades.find((g:any)=>g.code==='CL3')?.id||null}}});
  });
  app.put('/approval-action-settings',async(req:any,res:any)=>{const scope=await access(req,res,true);if(!scope)return;const {orgId,actor}=scope,menu=String(req.query.menu||''),operation=String(req.query.operation||'');
   if(['WORK_TIME','INVENTORY'].includes(menu)){res.json({saved:await saveApprovalActionBatch(db,orgId,actor.id,[{menu,operation,settings:req.body}])});return;}
   await db.$transaction(async(tx:any)=>{await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR UPDATE',orgId);
-   const selected=await approvalActionSettings(tx,orgId,menu,operation);if(req.body?.revision!==(selected.stored?.value?.revision||0))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
+   const selected=await approvalActionSettings(tx,orgId,menu,operation);if(req.body?.revision!==(selected.inherited?selected.value.revision:selected.stored?.value?.revision||0))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
    const value:any=menu==='BANK_LEDGER'&&operation==='CREATE'?await validateLedgerRegistration(tx,orgId,req.body):await validateApprovalSettings(tx,orgId,req.body);value.revision=req.body.revision+1;
    for(const field of ['seniorGradeId','leadGradeId'])if(selected.value?.[field]!=null)value[field]=selected.value[field];
-   const data={value,updatedByEmployeeId:actor.id};await tx.systemSetting.upsert({where:{key:selected.key},create:{key:selected.key,...data},update:data});
+   const data={value,updatedByEmployeeId:actor.id};await tx.systemSetting.upsert({where:{key:selected.key},create:{key:selected.key,...data},update:data});await localApprovalMode(tx,orgId,menu,operation,actor.id);
   },{isolationLevel:'Serializable'});res.json({ok:true});
  });
 }

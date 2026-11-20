@@ -890,6 +890,7 @@ const MainLayout = () => {
           },
 
           { label: languageCode === 'ko' ? '앱 기본 설정' : languageCode === 'vi' ? 'Mặc định ứng dụng' : 'App defaults', icon: <TuneIcon />, path: '/system-setting/app-defaults' },
+          { label: languageCode === 'ko' ? '결재선 기본 설정' : languageCode === 'vi' ? 'Phê duyệt mặc định' : 'Approval defaults', icon: <TuneIcon />, path: '/system-setting/approval-defaults' },
           { label: getUiMessage('menu.transactionMasters', 'Accounting codes', languageCode), icon: <DnsIcon />, path: '/system-setting/transaction-codes' },
           { label: getUiMessage('menu.expenseUnits', 'Units', languageCode), icon: <DnsIcon />, path: '/system-setting/expense-units' },
           { label: getUiMessage('menu.shippingPorts', 'Ports', languageCode), icon: <LocalShippingOutlinedIcon />, path: '/system-setting/shipping-ports' },

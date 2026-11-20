@@ -5,6 +5,7 @@ import {retryEditTransaction} from '../utils/editRevision';
 import {normalizeEmployeePayTypePolicy,isPolicyWorkday} from '../employees/employeePayTypePolicy';
 import {resolveEmployeeEffectivePayType} from '../employees/employeeCompensation';
 import {employmentDateKey} from '../employees/salaryTenure';
+import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 
 export const WORK_TIME_KINDS=['OVERTIME','SPECIAL','ANNUAL','ANNUAL_AM','ANNUAL_PM','PAID','UNPAID'];
 const roles=['ADMIN','OPERATOR','ACCOUNTANT','WORKER'];
@@ -24,7 +25,7 @@ export async function workTimeActor(db:any,orgId:number,actorId:number){
 }
 export async function workTimePolicy(db:any,orgId:number){
  const row=await db.systemSetting.findUnique({where:{key:key(orgId)}});
- return row?.value||{revision:0,drafterRoles:roles,proxyRoles:['ADMIN','OPERATOR'],approverIds:[]};
+ return await effectiveApprovalDefault(db,orgId,'WORK_TIME','CREATE')||row?.value||{revision:0,drafterRoles:roles,proxyRoles:['ADMIN','OPERATOR'],approverIds:[]};
 }
 export async function saveWorkTimePolicy(db:any,orgId:number,actorId:number,input:any){
  return retryEditTransaction(db,async(tx:any)=>saveWorkTimePolicyInTransaction(tx,orgId,actorId,input));
@@ -38,11 +39,11 @@ export async function saveWorkTimePolicyInTransaction(tx:any,orgId:number,actorI
    if(input?.revision+1===current.revision&&receipt?.value?.actorId===actorId&&['drafterRoles','proxyRoles','approverIds'].every(k=>JSON.stringify(input[k])===JSON.stringify(current[k])))return current;
    fail('WORK_TIME_POLICY_CHANGED',409);
   }
-  if(!Array.isArray(input.drafterRoles)||!input.drafterRoles.length||input.drafterRoles.some((r:any)=>!roles.includes(r))||!Array.isArray(input.proxyRoles)||input.proxyRoles.some((r:any)=>!['ADMIN','OPERATOR','ACCOUNTANT'].includes(r))||!Array.isArray(input.approverIds)||!input.approverIds.length||input.approverIds.length>10||new Set(input.approverIds).size!==input.approverIds.length||input.approverIds.some((id:any)=>!Number.isSafeInteger(id)))fail('WORK_TIME_INVALID_POLICY');
+  if(!Array.isArray(input.drafterRoles)||!input.drafterRoles.length||input.drafterRoles.some((r:any)=>!roles.includes(r))||!Array.isArray(input.proxyRoles)||input.proxyRoles.some((r:any)=>!['ADMIN','OPERATOR','ACCOUNTANT'].includes(r))||!Array.isArray(input.approverIds)||input.approverIds.length>10||new Set(input.approverIds).size!==input.approverIds.length||input.approverIds.some((id:any)=>!Number.isSafeInteger(id)))fail('WORK_TIME_INVALID_POLICY');
   const people=await tx.employee.count({where:{orgId,id:{in:input.approverIds},status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}});if(people!==input.approverIds.length)fail('WORK_TIME_INVALID_POLICY');
   const value={revision:current.revision+1,drafterRoles:[...new Set(input.drafterRoles)],proxyRoles:[...new Set(input.proxyRoles)],approverIds:input.approverIds};
   await tx.systemSetting.create({data:{key:key(orgId)+':REV:'+value.revision,value:{before:current,after:value,actorId,at:new Date().toISOString()},updatedByEmployeeId:actorId}});
-  await tx.systemSetting.upsert({where:{key:key(orgId)},create:{key:key(orgId),value,updatedByEmployeeId:actorId},update:{value,updatedByEmployeeId:actorId}});return value;
+  await tx.systemSetting.upsert({where:{key:key(orgId)},create:{key:key(orgId),value,updatedByEmployeeId:actorId},update:{value,updatedByEmployeeId:actorId}});await localApprovalMode(tx,orgId,'WORK_TIME','CREATE',actorId);return value;
 }
 export async function workTimeAnnualBalance(db:any,orgId:number,employeeId:number,year:string){
  return (await employeeLeaveBalance(db,orgId,employeeId,Number(year))).remaining;
@@ -96,11 +97,19 @@ export async function submitWorkTimeRequest(db:any,orgId:number,actorId:number,i
   }else source={...input,...await sourceDays(tx,orgId,employee,input)};
   if(!input.cancelsRequestId)await noOverlap(tx,orgId,employee.id,input.kind,source.days);
   const people=await tx.employee.findMany({where:{orgId,id:{in:config.approverIds},status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}});
-  if(!config.approverIds.length||people.length!==config.approverIds.length)fail('WORK_TIME_APPROVERS_REQUIRED');
+  if(people.length!==config.approverIds.length)fail('WORK_TIME_APPROVERS_REQUIRED');
   if(config.approverIds.includes(actorId)||config.approverIds.includes(employee.id))fail('WORK_TIME_SELF_APPROVAL');
-  const row=await tx.workTimeRequest.create({data:{orgId,employeeId:employee.id,drafterId:actorId,kind:source.kind,startDate:source.startDate,endDate:source.endDate,startTime:['OVERTIME','SPECIAL'].includes(source.kind)?source.startTime:null,endTime:['OVERTIME','SPECIAL'].includes(source.kind)?source.endTime:null,requestedMinutes:source.requestedMinutes,reason:source.reason.trim(),policy:{...config,drafterRole:actor.orgRole,calendarSnapshot:source.calendarSnapshot||null,requestedDays:source.days},clientKey:input.clientKey,requestHash:hash,cancelsRequestId:input.cancelsRequestId||null}});
+  const noApprovalRequired=config.approverIds.length===0;
+  if(noApprovalRequired&&!input.cancelsRequestId&&source.kind.startsWith('ANNUAL')){
+   const balance=await employeeLeaveBalance(tx,orgId,employee.id,Number(source.startDate.slice(0,4)));
+   const legacy=new Set(balance.leaves.filter((d:any)=>d.kind==='ANNUAL'&&d.counted).map((d:any)=>d.leaveDate));
+   const incremental=source.days.filter((d:any)=>!legacy.has(d.workDate)).reduce((sum:number,d:any)=>sum+Number(d.portion),0);
+   if(balance.remaining<incremental)fail('WORK_TIME_LEAVE_BALANCE',409);
+  }
+  const row=await tx.workTimeRequest.create({data:{orgId,employeeId:employee.id,drafterId:actorId,kind:source.kind,startDate:source.startDate,endDate:source.endDate,startTime:['OVERTIME','SPECIAL'].includes(source.kind)?source.startTime:null,endTime:['OVERTIME','SPECIAL'].includes(source.kind)?source.endTime:null,requestedMinutes:source.requestedMinutes,reason:source.reason.trim(),...(noApprovalRequired?{status:'APPROVED',approvedMinutes:source.requestedMinutes??null,decidedAt:new Date()}:{}),policy:{...config,...(noApprovalRequired?{noApprovalRequired:true}:{}),drafterRole:actor.orgRole,calendarSnapshot:source.calendarSnapshot||null,requestedDays:source.days},clientKey:input.clientKey,requestHash:hash,cancelsRequestId:input.cancelsRequestId||null}});
   if(source.days.length)await tx.workTimeDay.createMany({data:source.days.map((d:any)=>({...d,orgId,requestId:row.id}))});
   await tx.workTimeStep.createMany({data:config.approverIds.map((id:number,position:number)=>({orgId,requestId:row.id,employeeId:id,position:position+1,role:people.find((p:any)=>p.id===id).orgRole}))});
+  if(noApprovalRequired&&input.cancelsRequestId)await tx.workTimeRequest.update({where:{id:input.cancelsRequestId},data:{status:'CANCELLED',revision:{increment:1},decidedAt:new Date()}});
   return readWorkTimeRequest(tx,orgId,actorId,row.id);
  },60000);
 }

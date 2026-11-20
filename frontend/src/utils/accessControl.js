@@ -225,6 +225,7 @@ export const canAccessPath = (pathname, authState) => {
   const context = buildAccessContext(authState || {});
   const path = normalizePathname(pathname);
   if(path==='/shipping'||path.startsWith('/shipping/'))return context?.entryType==='ORG'&&['SERVICE','MANUFACTURER','BRAND'].includes(context.orgType)&&hasOrgRole(context,'ADMIN','OPERATOR','ACCOUNTANT')&&canAccessFeatureByContext(FEATURE_KEYS.SHIPPING_REQUEST,context);
+  if(path.startsWith('/system-setting/approval-defaults'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/entities'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/system-setting/shipping-ports'))return context?.entryType==='SYSTEM'&&context?.systemRole==='SYSTEM_ADMIN';
   if(path.startsWith('/order-shipments')&&(!context||context.entryType!=='ORG'||context.orgType!=='MANUFACTURER'))return false;

@@ -88,7 +88,7 @@ function MovementForm({orgId,onClose,onSaved}){
    if(!live.current)return;
    pending.current=null;
    emitWorkspaceDataChanged({orgId,topics:['inventory-movements','inventory-stock']});
-   showNotification(a.submitted,'success');
+   showNotification(approval?.stages.length?a.submitted:saved,'success');
    if(onSaved){onSaved();return;}
    if(navigateToPath)navigateToPath('/inventory/movements',{closeTabId:'/inventory/movements/new',skipUnsavedChangesCheck:true});
    else navigate('/inventory/movements');

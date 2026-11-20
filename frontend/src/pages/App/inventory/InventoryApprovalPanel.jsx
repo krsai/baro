@@ -1,3 +1,4 @@
+import {approvalDefaultsText} from '../../../constants/approvalDefaults';
 import React,{useEffect,useRef,useState} from 'react';
 import {Button,Dialog,DialogActions,DialogContent,DialogTitle,Paper,Stack,Typography} from '@mui/material';
 import {useNavigate} from 'react-router-dom';
@@ -28,7 +29,7 @@ export function InventoryDeleteDialog({row,onClose,onSaved}){
  const save=async()=>{
   if(lock.current||!preview||preview.stages.some(stage=>!stage.employeeId))return;lock.current=true;setBusy(true);setError('');
   pending.current??={clientKey:crypto.randomUUID(),revision:row.revision,approvalRevision:preview.policy.revision,approvalSelection:Object.fromEntries(preview.stages.map(stage=>[stage.key+'EmployeeId',stage.employeeId]))};
-  try{await request('/'+row.id+'/delete-request',orgId,{method:'POST',body:JSON.stringify(pending.current)});if(!live.current)return;pending.current=null;changed(orgId);showNotification(t.submitted,'success');onSaved();}
+  try{await request('/'+row.id+'/delete-request',orgId,{method:'POST',body:JSON.stringify(pending.current)});if(!live.current)return;pending.current=null;changed(orgId);showNotification(preview?.stages.length?t.submitted:(approvalDefaultsText[languageCode]||approvalDefaultsText.en).noApproval,'success');onSaved();}
   catch(e){if(live.current){if(e.status>=400&&e.status<500)pending.current=null;setError(inventoryApprovalError(e,t,m.failed));}}
   finally{lock.current=false;if(live.current)setBusy(false);}
  };

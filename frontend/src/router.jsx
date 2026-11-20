@@ -274,6 +274,7 @@ const router = createBrowserRouter([
           { path: 'system-setting/shipping-ports', element: <SystemShippingLocations /> },
           { path: 'system-setting/shipping-airports', element: <Navigate to="/system-setting/shipping-ports?mode=AIR" replace /> },
           { path: 'system-setting/app-defaults', element: <ApplicationSettings systemDefaults /> },
+          { path: 'system-setting/approval-defaults', element: <ApprovalSettings systemDefaults /> },
           { path: 'app-settings', element: <ApplicationSettings />,
           },
           { path: 'approval-inbox', element: <Navigate to="/" replace /> },

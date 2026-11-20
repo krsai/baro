@@ -32,6 +32,19 @@ test('a short normal workday preserves historical thresholds without using them 
  const paid=attendance({month:'2026-10',payType:'GENERAL',policy:normalizeEmployeePayTypePolicy(policy),holidayDateKeys:[],attendanceEntries:[{workDate:'2026-10-05',workedSeconds:2*3600}]});
  assert.equal(paid.ACTUAL_WORKDAYS,1);
 });
+test('empty approval line applies requested time and cancellation immediately without fabricated decisions',async()=>{
+ const f=await fixture();try{
+  const {db,p,org,worker}=f;
+  await policy(db,org,p.admin.id,{revision:1,drafterRoles:['WORKER'],proxyRoles:['ADMIN'],approverIds:[]});
+  const input=f.request({policyRevision:2});
+  const row=await submit(db,org,worker.id,input);
+  assert.equal(row.status,'APPROVED');assert.equal(row.approvedMinutes,120);assert.deepEqual(row.decisions,[]);assert.deepEqual(row.steps,[]);
+  assert.equal((await approvedWorkTime(db,org,'2026-10')).length,1);
+  const cancellation=await submit(db,org,worker.id,f.request({policyRevision:2,cancelsRequestId:row.id}));
+  assert.equal(cancellation.status,'APPROVED');assert.deepEqual(cancellation.decisions,[]);
+  assert.equal((await read(db,org,worker.id,row.id)).status,'CANCELLED');assert.equal((await approvedWorkTime(db,org,'2026-10')).length,0);
+ }finally{await f.close();}
+});
 async function fixture(){
  const f=await changeApprovalFixture({registration:true});const db=f.db,s=await seedChangeApproval(db),org=s.company.id,p=s.people;
  const worker=await db.employee.create({data:{orgId:org,name:'Worker',employeeNo:'W1',gradeId:p.junior.gradeId,orgRole:'WORKER',status:'ACTIVE',payType:'GENERAL',joinedAt:new Date('2020-01-01')}});

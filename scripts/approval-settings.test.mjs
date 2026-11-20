@@ -102,7 +102,7 @@ test('zero-step historical requests require matching explicit current-version po
 });
 test('company rule updates require an active administrator and ignore forged tenant/drafter fields',async()=>{
  const {db,config}=fixture(),handlers=new Map();let current=1,writes=0;
- db.$transaction=async run=>run(db);db.systemSetting.upsert=async({where,update})=>{writes++;assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');assert.equal(update.updatedByEmployeeId,4);assert.deepEqual(Object.keys(update.value),['limits']);};
+ db.$transaction=async run=>run(db);db.systemSetting.upsert=async({where,update})=>{if(where.key.startsWith('APPROVAL_MODE:')){assert.equal(update.value.mode,'LOCAL');return;}writes++;assert.equal(where.key,'EXPENSE_APPROVAL_POLICY:7');assert.equal(update.updatedByEmployeeId,4);assert.deepEqual(Object.keys(update.value),['limits']);};
  registerExpenseEditorRoutes({get:(p,fn)=>handlers.set('GET '+p,fn),put:(p,fn)=>handlers.set('PUT '+p,fn),post:(p,fn)=>handlers.set('POST '+p,fn)},db,{actorId:()=>current,requireOrgRole:async(_req,_res,{allowedRoles})=>allowedRoles.includes(current===4?'ADMIN':'OPERATOR')?{organization:{id:7}}:null});
  const response={json:()=>{},status:()=>response};
  await handlers.get('PUT /expense-approval-settings')({body:config},response);assert.equal(writes,0);
@@ -151,7 +151,7 @@ test('drafter selection cannot impersonate another employee and default stages e
 });
 test('rule settings enforce optimistic revision and refuse old clients overwriting saved rules',async()=>{
  const {db,config}=fixture();config.version=2;config.kind='EXPENSE';config.rules=[];config.revision=1;let writes=0;
- db.$transaction=async fn=>fn(db);db.systemSetting.upsert=async({update})=>{writes++;assert.equal(update.value.revision,2);};
+ db.$transaction=async fn=>fn(db);db.systemSetting.upsert=async({where,update})=>{if(where.key.startsWith('APPROVAL_MODE:')){assert.equal(update.value.mode,'LOCAL');return;}writes++;assert.equal(update.value.revision,2);};
  const routes=new Map();registerExpenseEditorRoutes(Object.fromEntries(['get','put','post'].map(method=>[method,(path,fn)=>routes.set(method+path,fn)])),db,{actorId:()=>4,requireOrgRole:async()=>({organization:{id:7}})});
  const save=routes.get('put/expense-approval-settings'),res={json:()=>{}};
  await assert.rejects(save({body:{limits:config.limits,rules:[],revision:0}},res),/APPROVAL_SETTINGS_CHANGED/);

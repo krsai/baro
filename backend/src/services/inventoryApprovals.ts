@@ -2,6 +2,7 @@ import {randomUUID,createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {resolveInventoryApproval} from './inventoryApprovalPolicy';
 import {validateInventoryPurchase} from './inventoryPurchase';
+import {noApprovalPolicy} from './approvalDefaults';
 const approvalHash=(operation:string,movementId:string,body:any)=>createHash('sha256').update(JSON.stringify(operation==='DELETE'?[movementId,body]:body)).digest('hex');
 
 export async function createInventoryApproval(tx:any,scope:any,movement:any,operation:string,body:any){
@@ -9,10 +10,21 @@ export async function createInventoryApproval(tx:any,scope:any,movement:any,oper
  const resolved=await resolveInventoryApproval(tx,orgId,actorId,operation,body.approvalRevision,body.approvalSelection??{});
  if(!Number.isSafeInteger(body.approvalRevision))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
  const id=operation==='CREATE'?movement.id:randomUUID(),hash=approvalHash(operation,movement.id,body);
- const policy=resolved.policy.version===2?{...resolved.policy,config:resolved.policy,approverIds:resolved.stages.map((stage:any)=>stage.employeeId),resolvedStages:resolved.stages.map((stage:any)=>{const person=stage.candidates.find((p:any)=>p.id===stage.employeeId);return {employeeId:person.id,role:person.orgRole,gradeId:person.gradeId,grade:person.grade};})}:resolved.policy;
+ const policy=!resolved.stages.length?{...resolved.policy,...noApprovalPolicy(resolved.policy,actorId),approverIds:[]}:resolved.policy.version===2?{...resolved.policy,config:resolved.policy,approverIds:resolved.stages.map((stage:any)=>stage.employeeId),resolvedStages:resolved.stages.map((stage:any)=>{const person=stage.candidates.find((p:any)=>p.id===stage.employeeId);return {employeeId:person.id,role:person.orgRole,gradeId:person.gradeId,grade:person.grade};})}:resolved.policy;
  await tx.$executeRaw`INSERT INTO "InventoryApprovalRequest" (id,"orgId","movementId",operation,"targetRevision","drafterId","clientKey","requestHash",policy)
  VALUES (${id},${orgId},${movement.id},${operation},${movement.revision},${actorId},${body.clientKey},${hash},${JSON.stringify(policy)}::jsonb)`;
  for(const [position,stage] of resolved.stages.entries())await tx.$executeRaw`INSERT INTO "InventoryApprovalStep" ("requestId","orgId",position,"employeeId","employeeName") VALUES (${id},${orgId},${position},${stage.employeeId},${stage.name})`;
+ if(!resolved.stages.length){
+  if(operation==='CREATE')await validateInventoryPurchase(tx,orgId,movement.id);
+  await tx.$executeRaw`UPDATE "InventoryApprovalRequest" SET status='APPROVED',revision=revision+1 WHERE id=${id}`;
+  if(operation==='CREATE')await tx.$executeRaw`UPDATE "InventoryMovement" SET status='APPROVED',revision=revision+1 WHERE id=${movement.id}`;
+  else{
+   const [row]=await tx.$queryRaw`SELECT "variantId" FROM "InventoryMovement" WHERE id=${movement.id} AND "orgId"=${orgId}`;
+   await tx.$executeRaw`UPDATE "InventoryApprovalRequest" SET status='CANCELLED',revision=revision+1 WHERE "movementId"=${movement.id} AND operation='CREATE' AND status='PENDING'`;
+   await tx.$executeRaw`DELETE FROM "InventoryMovement" WHERE id=${movement.id} AND "orgId"=${orgId}`;
+   await tx.$executeRaw`DELETE FROM "InventoryVariant" v WHERE v.id=${row.variantId} AND v."orgId"=${orgId} AND NOT EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."variantId"=v.id)`;
+  }
+ }
  return id;
 }
 

@@ -19,6 +19,7 @@ export const PAGE_ROUTES = [
   ['/approval-inbox','approvalInbox','page'],
   ['/approval-settings','approvalSettings','page'],
   ['/system-setting/app-defaults','appDefaults','page'],
+  ['/system-setting/approval-defaults','approvalDefaults','page'],
   ['/system-setting/expense-units','expenseUnits','page'],
   ['/system-setting/expense-types','transactionMasters','page'],
   ['/system-setting/partner-industries','partnerIndustries','page'],

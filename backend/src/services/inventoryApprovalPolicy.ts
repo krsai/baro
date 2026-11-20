@@ -1,10 +1,11 @@
 import {createHttpError} from '../utils/http';
 import {validateApprovalRules} from './approvalRules';
+import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
 
 export const inventoryPolicyKey=(orgId:number,operation:string)=>`APPROVAL_POLICY:INVENTORY:${operation}:${orgId}`;
 export async function inventoryApprovalPolicy(db:any,orgId:number,operation:string){
  if(!['CREATE','DELETE'].includes(operation))throw createHttpError(400,'INVALID_APPROVAL_SUBJECT');
- return (await db.systemSetting.findUnique({where:{key:inventoryPolicyKey(orgId,operation)}}))?.value??{revision:0,drafterRoles:['ADMIN','OPERATOR','ACCOUNTANT'],approverIds:[]};
+ return await effectiveApprovalDefault(db,orgId,'INVENTORY',operation)||(await db.systemSetting.findUnique({where:{key:inventoryPolicyKey(orgId,operation)}}))?.value||{version:2,revision:0,drafterRoles:['ADMIN','OPERATOR','ACCOUNTANT'],stages:[]};
 }
 export async function saveInventoryApprovalPolicy(tx:any,orgId:number,actorId:number,operation:string,input:any){
  const current=await inventoryApprovalPolicy(tx,orgId,operation);
@@ -16,7 +17,7 @@ export async function saveInventoryApprovalPolicy(tx:any,orgId:number,actorId:nu
   const rules=await validateApprovalRules(tx,orgId,[{id:'inventory',name:'Inventory',drafterRole:'ALL',stages:input.stages}],{key:'INVENTORY',menuPath:'/inventory/movements',hasAmount:false,enabled:true});
   line={version:2,stages:rules[0]!.stages};
  }else{
-  if(!Array.isArray(input.approverIds)||!input.approverIds.length||input.approverIds.length>10||new Set(input.approverIds).size!==input.approverIds.length||input.approverIds.some((id:any)=>!Number.isSafeInteger(id)||id<=0))throw createHttpError(400,'INVENTORY_INVALID_POLICY');
+  if(!Array.isArray(input.approverIds)||input.approverIds.length>10||new Set(input.approverIds).size!==input.approverIds.length||input.approverIds.some((id:any)=>!Number.isSafeInteger(id)||id<=0))throw createHttpError(400,'INVENTORY_INVALID_POLICY');
   const count=await tx.employee.count({where:{orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']},id:{in:input.approverIds}}});
   if(count!==input.approverIds.length)throw createHttpError(400,'INVENTORY_INVALID_POLICY');
   line={approverIds:input.approverIds};
@@ -25,6 +26,7 @@ export async function saveInventoryApprovalPolicy(tx:any,orgId:number,actorId:nu
  const key=inventoryPolicyKey(orgId,operation);
  await tx.systemSetting.create({data:{key:key+':REV:'+value.revision,value:{before:current,after:value,actorId},updatedByEmployeeId:actorId}});
  await tx.systemSetting.upsert({where:{key},create:{key,value,updatedByEmployeeId:actorId},update:{value,updatedByEmployeeId:actorId}});
+ await localApprovalMode(tx,orgId,'INVENTORY',operation,actorId);
  return value;
 }
 export async function resolveInventoryApproval(tx:any,orgId:number,actorId:number,operation:string,revision?:number,selection:any={},allowIncomplete=false){
@@ -32,7 +34,7 @@ export async function resolveInventoryApproval(tx:any,orgId:number,actorId:numbe
  const drafter=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'}});
  if(!drafter||!policy.drafterRoles.includes(drafter.orgRole))throw createHttpError(403,'INVENTORY_DRAFTER_NOT_ALLOWED');
  if(policy.version===2){
-  if(!policy.stages?.length)throw createHttpError(400,'INVENTORY_APPROVAL_NOT_CONFIGURED');
+  if(!Array.isArray(policy.stages))throw createHttpError(400,'INVENTORY_APPROVAL_NOT_CONFIGURED');
   if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
   if(!selection||typeof selection!=='object'||Array.isArray(selection))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
   const ids:number[]=[],stages:any[]=[];
@@ -48,6 +50,7 @@ export async function resolveInventoryApproval(tx:any,orgId:number,actorId:numbe
   }
   return {policy,drafter:{id:drafter.id,name:drafter.name,orgRole:drafter.orgRole,gradeId:drafter.gradeId},stages,complete:stages.every(stage=>stage.employeeId)};
  }
+ if(Array.isArray(policy.approverIds)&&!policy.approverIds.length){if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');return {policy,drafter:{id:drafter.id,name:drafter.name,orgRole:drafter.orgRole,gradeId:drafter.gradeId},stages:[],complete:true};}
  if(!policy.approverIds?.length)throw createHttpError(400,'INVENTORY_APPROVAL_NOT_CONFIGURED');
  if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
  if(policy.approverIds.includes(actorId))throw createHttpError(400,'INVENTORY_SELF_APPROVAL');

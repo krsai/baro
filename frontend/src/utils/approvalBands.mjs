@@ -35,7 +35,7 @@ export function invalidApprovalBands(rules,{requireAccountant=true}={}){
  if(approvalBandOrderErrors(rules).size)return true;
  return rules.some(row=>{
   const min=approvalAmountUnits(row.min,row.currency),max=boundedApprovalBand(row)?approvalAmountUnits(row.max,row.currency):null;
-  if(min===null||boundedApprovalBand(row)&&(max===null||max<min)||!row.stages?.length||row.stages.length>10||requireAccountant&&['ALL','OPERATOR'].includes(row.drafterRole)&&!row.stages.some(stage=>stage.role==='ACCOUNTANT'))return true;
+  if(min===null||boundedApprovalBand(row)&&(max===null||max<min)||!Array.isArray(row.stages)||row.stages.length>10||row.stages.length>0&&requireAccountant&&['ALL','OPERATOR'].includes(row.drafterRole)&&!row.stages.some(stage=>stage.role==='ACCOUNTANT'))return true;
   return row.stages.some(stage=>!stage.role||stage.role!=='ADMIN'&&!stage.gradeId&&stage.gradeMatch!=='ANY');
  });
 }

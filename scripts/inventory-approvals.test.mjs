@@ -23,7 +23,8 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   const master=await db.$transaction(tx=>registerMaterialItem(tx,org,actor,{clientKey:randomUUID(),baseId:base.id,unitId:unit.id,sharedMaster:true,details:{},policyAuditId:null,materialRevision:configured.materialRevision,industryRevision:industry.materialManagementRevision}));
   const routes=new Map();registerInventoryMovementRoutes({get:(p,h)=>routes.set('GET '+p,h),post:(p,h)=>routes.set('POST '+p,h)},db,async req=>({orgId:req.orgId??org,actorId:req.actorId??actor}));
   const call=async(method,path,req={})=>{let result;await routes.get(method+' '+path)({query:{},params:{},...req},{status(){return this;},json(value){result=value;}});return result;};
-  await assert.rejects(call('GET','/inventory-entry/approval-preview'),/INVENTORY_APPROVAL_NOT_CONFIGURED/);
+  assert.deepEqual((await call('GET','/inventory-entry/approval-preview')).stages,[]);
+  for(const operation of ['CREATE','DELETE'])await db.systemSetting.create({data:{key:`APPROVAL_POLICY:INVENTORY:${operation}:${org}`,value:{revision:0,drafterRoles:['ACCOUNTANT'],approverIds:[]}}});
   const settings={revision:0,drafterRoles:['ACCOUNTANT'],approverIds:[s.people.senior.id,reviewer]};
   await saveApprovalActionBatch(db,org,reviewer,['CREATE','DELETE'].map(operation=>({menu:'INVENTORY',operation,settings})));
   await assert.rejects(saveApprovalActionBatch(db,org,reviewer,[{menu:'INVENTORY',operation:'CREATE',settings}]),/APPROVAL_SETTINGS_CHANGED/);
@@ -145,5 +146,14 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   const roleHistory=await call('GET','/inventory-entry/history');
   assert.equal(roleHistory.find(row=>row.id===roleSubmitted.id).status,'APPROVED');
   await f.pg.exec(roleMigration);assert.deepEqual(await call('GET','/inventory-entry/history'),roleHistory);
+  await f.pg.exec(readFileSync('backend/prisma/migrations/20261120080000_system_approval_defaults/migration.sql','utf8'));
+  await saveApprovalActionBatch(db,org,reviewer,['CREATE','DELETE'].map(operation=>({menu:'INVENTORY',operation,settings:{revision:2,drafterRoles:['ACCOUNTANT'],stages:[]}})));
+  const immediate=await call('POST','/inventory-entry',{body:{...otherReceipt,clientKey:randomUUID(),approvalRevision:3}});
+  const immediateRow=(await call('GET','/inventory-entry/history')).find(row=>row.id===immediate.id);
+  assert.equal(immediateRow.status,'APPROVED');
+  assert.deepEqual(await db.$queryRaw`SELECT * FROM "InventoryApprovalStep" WHERE "requestId"=${immediate.id}`,[]);
+  const removed=await call('POST','/inventory-entry/:id/delete-request',{params:{id:immediate.id},body:{clientKey:randomUUID(),revision:immediateRow.revision,approvalRevision:3}});
+  assert.equal((await call('GET','/inventory-entry/history')).some(row=>row.id===immediate.id),false);
+  assert.deepEqual(await db.$queryRaw`SELECT * FROM "InventoryApprovalStep" WHERE "requestId"=${removed.id}`,[]);
  }finally{await f.close();}
 });
