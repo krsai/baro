@@ -55,6 +55,8 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const gates={requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async scope=>{features.push(scope.feature);return true;}};
   registerMaterialItemRoutes(app,db,gates);registerCodeItemAttributeRoutes(app,db,gates);
   let own;await routes.get('GET /material-items/options')({query:{orgId:s.other.id,baseId:base.id,context:'LEDGER'}},{json:rows=>{own=rows;}});assert.equal(own.length,1);assert.equal(own[0].orgId,org);
+  const partnerOwned=await create({...body,clientKey:randomUUID(),itemOwnerOrgId:s.vendor.id});
+  assert.notEqual(partnerOwned.id,item.id);assert.equal(partnerOwned.ownerOrgId,s.vendor.id);assert.deepEqual(partnerOwned.data.details,item.data.details);
   await routes.get('GET /code-item-options')({query:{orgId:s.other.id,baseId:base.id,context:'MATERIAL'}},{json:()=>{}});assert.ok(features.includes('BANK_LEDGER'));assert.ok(features.includes('INVENTORY_MATERIALS'));
   let detail;await routes.get('POST /code-item-types')({query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'MAIN',nameKo:'메인',nameVi:'Nhãn chính'}},{json:row=>{detail=row;}});assert.equal(detail.orgId,org);assert.equal(detail.baseId,base.id);assert.equal(detail.nameKo,'메인');
   await assert.rejects(create({...body,clientKey:randomUUID(),details:{length:'100.00',width:'200',height:'300'}}),error=>error.code==='P2002');
@@ -63,7 +65,7 @@ test('registered material identity and snapshots flow to expenses and direct ban
   await assert.rejects(db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{...input(),items:[{...input().items[0],materialItemId:null}]})),/MATERIAL_ITEM_REQUIRED/);
   const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,input()));
   const cost=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});
-  assert.equal(cost.materialItemId,item.id);assert.equal(cost.unitId,unit.id);assert.equal(cost.itemOwnerOrgId,org);assert.equal(cost.details.height,'300');assert.equal(cost.materialItemSnapshot.nameEn,'TEST BOX');
+  assert.equal(cost.materialItemId,item.id);assert.equal(cost.unitId,unit.id);assert.equal(cost.itemOwnerOrgId,org);assert.equal(cost.details.height,'300');assert.equal(cost.materialItemSnapshot.nameEn,base.nameEn);
   const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));assert.equal(form.items[0].materialItemId,item.id);assert.deepEqual(form.items[0].materialItemSnapshot,cost.materialItemSnapshot);
   const bank={clientKey:randomUUID(),transactionDate:'2026-11-19',direction:'OUT',amount:'10',purpose:'Material purchase',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id},materialItemId:item.id};
   const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank);assert.equal(entry.materialItemId,item.id);assert.deepEqual(entry.materialItemSnapshot,cost.materialItemSnapshot);

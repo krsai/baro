@@ -4,7 +4,7 @@ import {Prisma} from '@prisma/client';
 import {effectiveExpenseCode} from './expenseCodeLinkPolicy';
 import {prepareCodeItemAttributes} from './codeItemAttributes';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
-import {validLocalizedName,normalizeLocalizedName} from '../utils/localizedName';
+import {normalizeLocalizedName} from '../utils/localizedName';
 import {materialMasterCode} from './materialCodeSettings';
 
 const fail=(code:string):never=>{throw createHttpError(400,code);};
@@ -29,8 +29,7 @@ export async function prepareLedgerMaterial(tx:any,orgId:number,body:any,previou
  return prepareMaterialSelection(tx,orgId,code,body,historical);
 }
 export async function registerMaterialItem(tx:any,orgId:number,actorId:number,body:any){
- const named=['nameEn','nameKo','nameVi'].some(key=>typeof body[key]==='string'&&body[key].trim());
- if(named&&!validLocalizedName(body,100)||['nameEn','nameKo','nameVi'].some(key=>body[key]!=null&&typeof body[key]!=='string')||typeof body.clientKey!=='string'||!/^[\w-]{8,100}$/.test(body.clientKey))fail('INVALID_MATERIAL_ITEM');
+ if(typeof body.clientKey!=='string'||!/^[\w-]{8,100}$/.test(body.clientKey))fail('INVALID_MATERIAL_ITEM');
  if(!Number.isSafeInteger(body.baseId)||body.baseId<=0||!Number.isSafeInteger(body.unitId)||body.unitId<=0||body.colorId!=null&&(!Number.isSafeInteger(body.colorId)||body.colorId<=0))fail('INVALID_MATERIAL_ITEM');
  const requestHash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
  const previous=await tx.materialItem.findUnique({where:{orgId_clientKey:{orgId,clientKey:body.clientKey}}});
@@ -56,7 +55,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const color=body.colorId?await tx.attrColor.findUnique({where:{id:body.colorId}}):null;
  const colorMode=code.base.materialSettings?.colorInput??'HIDDEN';
  if(body.colorId&&!color||colorMode==='REQUIRED'&&!color||colorMode==='HIDDEN'&&color)fail('INVALID_MATERIAL_COLOR');
- const data={...normalizeLocalizedName(named?body:base),...attributes,details,unit,color,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
+ const data={...normalizeLocalizedName(base),...attributes,details,unit,color,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
  const identityDetails=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,new Prisma.Decimal(value as string).toString()]));
  const identityKey=createHash('sha256').update(JSON.stringify({name:data.nameEn.toUpperCase(),owner:attributes.itemOwnerOrgId,customer:attributes.itemCustomerId,type:attributes.itemTypeId,unitId:unit.id,colorId:color?.id??null,details:identityDetails})).digest('hex');
  return tx.materialItem.create({data:{id:randomUUID(),orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,ownerOrgId:attributes.itemOwnerOrgId??null,customerId:attributes.itemCustomerId??null,typeId:attributes.itemTypeId??null,colorId:color?.id??null,policyAuditId:policy?.auditId??null,data,identityKey,clientKey:body.clientKey,requestHash,createdByEmployeeId:actorId}});
