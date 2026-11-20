@@ -694,7 +694,7 @@ const MainLayout = () => {
             path: '/inventory/movements',
           },
           {
-            label: getUiMessage('menu.materials', '자재 목록', languageCode),
+            label: getUiMessage('menu.materials', '자재 마스터', languageCode),
             icon: <ListAltIcon />,
             path: '/inventory/materials',
           },

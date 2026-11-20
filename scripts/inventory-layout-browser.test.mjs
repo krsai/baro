@@ -29,7 +29,7 @@ try{
   const names=await page.evaluate(async lang=>{const {getUiMessage}=await import('/src/constants/uiMessages.js');const {resolvePageNaming}=await import('/src/utils/pageNaming.mjs');return ['/inventory/materials','/inventory/movements','/inventory/settings'].map(path=>resolvePageNaming(path,lang,key=>getUiMessage(key,key,lang)));},lang);
   assert.ok(names.slice(0,2).every(n=>n.title===n.menuLabel),'menu/tab/heading use one name without appending list twice');
   assert.equal(names[2].title,names[0].title,'legacy reference URL opens the merged material screen');
-  if(lang==='ko')assert.deepEqual(names.map(n=>n.title),['자재 목록','입출고','자재 목록']);
+  if(lang==='ko')assert.deepEqual(names.map(n=>n.title),['자재 마스터','입출고','자재 마스터']);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'wide table scrolls inside the page');
   if(view==='materials'){assert.equal(await page.getByRole('tab').count(),0);assert.equal(await page.locator('[data-material-master-tabs]').count(),0);assert.equal(await page.getByRole('cell',{name:'MAT-000001',exact:true}).count(),1);}
   assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);await page.close();console.log('PASS inventory layout',lang,width,view);

@@ -42,12 +42,21 @@ try{
   assert.match(await charts.getByTestId('cashflow-net').textContent(),/\+₫16,465,275/);
   const netBox=await charts.getByTestId('cashflow-net').boundingBox(),donutBoxes=await charts.locator('[data-cashflow-chart] svg').evaluateAll(nodes=>nodes.map(node=>{const box=node.getBoundingClientRect();return {bottom:box.bottom};}));
   assert.ok(donutBoxes.every(box=>box.bottom<=netBox.y),'net change is below both charts');
+  const chartSegment=charts.locator('[data-cashflow-chart="in"] [data-cashflow-item]').first();
+  await chartSegment.focus();
+  await items.getByTestId('cashflow-tooltip').waitFor();
+  assert.equal(await charts.getByTestId('cashflow-tooltip').count(),0,'chart preview overlays the right card');
+  const previewBounds=await items.getByTestId('cashflow-tooltip').boundingBox(),rightBounds=await items.boundingBox();
+  assert.ok(previewBounds.x>=rightBounds.x&&previewBounds.x+previewBounds.width<=rightBounds.x+rightBounds.width);
+  await chartSegment.evaluate(el=>el.blur());
   const category=items.getByRole('button',{name:'Outsourcing',exact:true});
   await category.waitFor();
   if(width>=1440){const panels=await Promise.all([balancePanel,statusPanel,charts,items].map(panel=>panel.boundingBox()));assert.ok(Math.max(...panels.map(p=>p.height))-Math.min(...panels.map(p=>p.height))<2,'all four cards have matching heights');}
   const beforeHeight=(await items.boundingBox()).height;
   const callsBefore=await page.evaluate(()=>window.calls);
   await category.focus();
+  await charts.getByTestId('cashflow-tooltip').waitFor();
+  assert.equal(await items.getByTestId('cashflow-tooltip').count(),0,'item preview overlays the left card');
   assert.ok(Math.abs((await items.boundingBox()).height-beforeHeight)<2,'hover/focus must not resize the list');
   if(width===1920){
    const scroller=items.locator('[data-cashflow-list="IN"]').locator('..');
