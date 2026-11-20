@@ -33,7 +33,7 @@ try{
    return r.fulfill({headers,json:items});
   });
   await page.goto('http://127.0.0.1:'+port+'/material-items-acceptance.html?lang='+lang);await page.getByText(t.empty,{exact:true}).waitFor().catch(async e=>{throw Error(errors.join(' | ')||await page.locator('body').innerText()||e.message)});await page.getByRole('button',{name:'ADD',exact:true}).click();
-  const dialog=page.getByRole('dialog'),code=dialog.getByRole('textbox',{name:t.code,exact:false});await code.fill('TST');await code.press('Enter');
+  const dialog=page.getByRole('dialog'),code=dialog.getByRole('textbox',{name:t.productSearch,exact:false});await code.fill('TST');await code.press('Enter');
   const names={ko:['이름 (영어 · 대표)','이름 (한국어)','이름 (베트남어)'],en:['Name (English · primary)','Name (Korean)','Name (Vietnamese)'],vi:['Tên (tiếng Anh · chính)','Tên (tiếng Hàn)','Tên (tiếng Việt)']}[lang];
   for(const [i,value] of ['TEST BOX','테스트 박스','Hộp thử'].entries())await dialog.getByLabel(names[i],{exact:true}).evaluate((input,expected)=>{if(!input.readOnly||input.value!==expected)throw Error('Expected read-only SYSTEM name');},value);
   const unitField=dialog.getByRole('textbox',{name:t.unit,exact:false});await unitField.fill('EA');await unitField.press('Tab');
