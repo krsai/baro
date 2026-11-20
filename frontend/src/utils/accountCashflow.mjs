@@ -29,6 +29,6 @@ export function cashflowSegments(items,direction){
  const rows=items.filter(row=>row[direction]!=null&&scaled(row[direction])>0n),total=rows.reduce((sum,row)=>sum+scaled(row[direction]),0n);let angle=-Math.PI/2;
  return rows.map((row,index)=>{const start=angle,ratio=Number(scaled(row[direction])*1000000000n/total)/1000000000;angle=index===rows.length-1?Math.PI*1.5:angle+ratio*Math.PI*2;return {...row,start,end:angle,ratio};});
 }
-// Bright pastel categories shared by chart segments and item markers.
-const colors=['#91bfff','#83d9c5','#b9a3ee','#ffbd98','#f5a9cc','#a4d5f2','#b9dea0','#f3d786','#d2b2ef','#8ddcd8'];
+// Muted pastel categories shared by chart segments and item markers.
+const colors=['#96aecb','#95bdb0','#b1a1c7','#d2ae98','#c6a1b5','#9db9ca','#adbf9d','#cebd91','#bca8c7','#96bbb9'];
 export function cashflowColor(key){let hash=0;for(const char of key)hash=(hash*31+char.charCodeAt(0))>>>0;return colors[hash%colors.length];}
