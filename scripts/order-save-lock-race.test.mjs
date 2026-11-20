@@ -51,7 +51,10 @@ function harness({ lock = false, stale = false, conflict = false, failCards = fa
     getOrderModificationLockState: async () => ({}), toOrderResponse: value => value,
   };
   new Function(...Object.keys(deps), code)(...Object.values(deps));
-  return { run: () => handler({ params: { orderId: 'a' }, body: {} }, { json: value => value }),
+  return { run: (body = {}) => handler({ params: { orderId: 'a' }, body }, {
+    locals: {}, status(status) { this.statusCode = status; return this; },
+    json(value) { return { ...value, statusCode: this.statusCode }; },
+  }),
     state: () => ({ writes, checkedTx, committed }) };
 }
 
@@ -63,6 +66,13 @@ test('order edit rechecks a newly acquired lock inside the write transaction', a
 test('order edit refuses a source changed during normalization before writing items', async () => {
   const app = harness({ stale: true });
   await assert.rejects(app.run(), /STALE_EDIT/);
+  assert.equal(app.state().writes, 0);
+});
+test('order edit rejects the outdated revision supplied by a second editor', async () => {
+  const app = harness();
+  const result = await app.run({ expectedUpdatedAt: '2026-09-15T00:00:00.000Z' });
+  assert.equal(result.statusCode, 409);
+  assert.equal(result.error, STALE_EDIT);
   assert.equal(app.state().writes, 0);
 });
 test('successful edit commits; serialization conflict never reports success', async () => {

@@ -269,7 +269,7 @@ const AttendanceBoard = ({
   useUnsavedChanges(hasUnsavedEntryChanges);
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES],
+    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES, 'attendance', 'holidays', 'work-time'],
     isBlocked: hasUnsavedEntryChanges || savingEntries,
     onRefresh: () => setReloadToken((value) => value + 1),
   });

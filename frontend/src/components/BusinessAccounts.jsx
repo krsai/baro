@@ -39,7 +39,7 @@ export default function BusinessAccounts({entityId,orgId,languageCode='ko',onAcc
  const save=async(value,isOrder=false)=>{if(saving||disabled||!canManage)return;const token=scopeRef.current;setSaving(true);setError('');try{
   if(pending){const account={...value,id:value.id||crypto.randomUUID(),currency:data.currencies.find(row=>row.id===value.currencyId)},accounts=value.id?data.accounts.map(row=>row.id===value.id?account:row):[...data.accounts,account];setData(current=>({...current,accounts}));onPendingAccountsChange(accounts);setDraft(null);return;}
   await requestJSON(`${path}${isOrder?'/order':value.id?`/${encodeURIComponent(value.id)}`:''}${query}`,{method:isOrder||value.id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
-  if(token!==scopeRef.current)return;setDraft(null);setReload(n=>n+1);emitWorkspaceDataChanged({orgId:scope,topics:['business-partners'],source:'business-accounts'});
+  if(token!==scopeRef.current)return;setDraft(null);setReload(n=>n+1);emitWorkspaceDataChanged({orgId:scope,topics:['business-partners','bank-ledger'],source:'business-accounts'});
  }catch(e){if(token===scopeRef.current)setError(money.errors[e.message]||`${labels.error} ${e.message||''}`);}finally{if(token===scopeRef.current)setSaving(false);}};
 
  const edit=account=>{if(canManage&&!disabled)setDraft({...account});};

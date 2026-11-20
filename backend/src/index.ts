@@ -29311,6 +29311,7 @@ app.post("/orders", async (req, res) => {
   const { order, created } = await createOrReuseSharedOrder({
     normalized,
   });
+  if(created)res.locals.workspaceOrder={id:order.orderId,orgIds:[order.orgId,order.buyerOrgId,order.sellerOrgId]};
   const orderLockState = await getOrderModificationLockState(order);
   const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [order], buildAssignmentPlanProgressRows, organization.id);
   res.status(created ? 201 : 200).json(
@@ -29353,6 +29354,10 @@ app.put("/orders/:orderId", async (req, res) => {
   });
   if (!existing) {
     return res.status(404).json({ ok: false, error: "order not found" });
+  }
+  if(req.body?.expectedUpdatedAt!==undefined&&
+    new Date(req.body.expectedUpdatedAt).getTime()!==existing.updatedAt.getTime()){
+    return res.status(409).json({ok:false,error:STALE_EDIT});
   }
   if (await isOrderModificationLocked(existing)) {
     return res.status(409).json({
@@ -29480,6 +29485,7 @@ app.put("/orders/:orderId", async (req, res) => {
   });
 
   const updatedLockState = await getOrderModificationLockState(updated);
+  res.locals.workspaceOrder={id:updated.orderId,orgIds:[existing.orgId,existing.buyerOrgId,existing.sellerOrgId,updated.orgId,updated.buyerOrgId,updated.sellerOrgId]};
   const workflowStatuses = await loadOrderWorkflowStatuses(prisma, [updated], buildAssignmentPlanProgressRows, organization.id);
   res.json(
     { ...toOrderResponse(updated, {
@@ -29683,6 +29689,7 @@ app.delete("/orders/:orderId", async (req, res) => {
     await tx.workOrder.delete({ where: { id: current.id } });
     await rebuildOrderPartyCardsTx(tx, [current.buyerOrgId, current.sellerOrgId], [current.id]);
   });
+  res.locals.workspaceOrder={id:existing.orderId,orgIds:[existing.orgId,existing.buyerOrgId,existing.sellerOrgId]};
   res.status(204).send();
 });
 

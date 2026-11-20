@@ -31,7 +31,7 @@ export default function EmployeeSalaryPreview({open,onClose,orgId,languageCode})
       .then(value=>{if(!cancelled)setData(value);}).catch(()=>{if(!cancelled)setError(true);}).finally(()=>{if(!cancelled)setLoading(false);});
     return ()=>{cancelled=true;controller.abort();};
   },[open,orgId,month,all,reload]);
-  useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(open&&Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['salary-system-settings','employee-leaves','production-allowance-settings'].includes(topic)))setReload(value=>value+1);}),[open,orgId]);
+  useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(open&&Number(event.orgId)===Number(orgId)&&event.topics?.some(topic=>['salary-system-settings','employee-leaves','production-allowance-settings','payroll-sources'].includes(topic)))setReload(value=>value+1);}),[open,orgId]);
   const money=(value,currencyCode)=>value===null?text.unknown:value===0?'—':formatCurrency(value,{currencyCode,languageCode});
   const reasonText=reason=>({NOT_APPLICABLE:text.notApplicable,PAYROLL_EXCLUDED:text.excluded,NOT_PAYMENT_MONTH:text.unpaid,TENURE_INELIGIBLE:text.ineligible,TENURE_ZERO_YEARS:tenureText.zero,MISSING_RATE:text.missingRate,MISSING_BASE_SALARY:text.missingRate,MISSING_PRODUCTION_RATE:text.missingProduction,INVALID_FORMULA:text.badFormula}[reason] || '');
   const sticky={position:'sticky',left:0,zIndex:1,bgcolor:ui.color.surface,minWidth:160};

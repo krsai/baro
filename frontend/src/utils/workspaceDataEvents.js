@@ -46,6 +46,7 @@ export const emitWorkspaceDataChanged = ({
   styleIds = [],
   assignmentIds = [],
   employeeIds = [],
+  orderIds = [],
   source = '',
 } = {}) => {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
@@ -63,6 +64,7 @@ export const emitWorkspaceDataChanged = ({
         styleIds: normalizeStringList(styleIds),
         assignmentIds: normalizeStringList(assignmentIds),
         employeeIds: normalizeStringList(employeeIds),
+        orderIds: normalizeStringList(orderIds),
         source: String(source || '').trim(),
         at: Date.now(),
       },

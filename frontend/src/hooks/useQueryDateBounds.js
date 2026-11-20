@@ -7,10 +7,17 @@ export default function useQueryDateBounds({ min, max, allowFuture = false, inde
   const period = useManagementPeriod();
   const [currentMonth, setCurrentMonth] = useState(() => dayjs().format('YYYY-MM'));
   useEffect(() => {
-    const refresh = () => setCurrentMonth(dayjs().format('YYYY-MM'));
-    const timer = window.setInterval(refresh, 60000);
+    let timer;
+    const refresh = () => {
+      const now = dayjs();
+      setCurrentMonth(now.format('YYYY-MM'));
+      window.clearTimeout(timer);
+      const nextMonth = now.add(1, 'month').startOf('month');
+      timer = window.setTimeout(refresh, Math.min(nextMonth.diff(now) + 100, 2 ** 31 - 1));
+    };
+    refresh();
     window.addEventListener('focus', refresh);
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+    return () => { window.clearTimeout(timer); window.removeEventListener('focus', refresh); };
   }, []);
   const dateKey = value => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '';
   const minimum = [independentDateBounds ? '' : dateKey(period.startDate), dateKey(min)].filter(Boolean).sort().at(-1) || '';

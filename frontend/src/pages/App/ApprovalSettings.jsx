@@ -16,6 +16,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {useAppActions} from '../../context/AppContext';
 import useUnsavedChanges from '../../hooks/useUnsavedChanges';
+import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
 import {approvalSettingsText} from '../../constants/approvalSettings';
 import {emitWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
@@ -51,6 +52,8 @@ function CompanyApprovalSettings({activeOrgId}){
  },[activeOrgId,menu,reload]);
  const dirty=Object.values(entries).filter(dirtyEntry);
  useUnsavedChanges(dirty.length>0);
+ useWorkspaceRefreshOnEvent({orgId:activeOrgId,topics:['approval-settings','work-time-policy'],isBlocked:saving||dirty.length>0,
+  shouldHandle:event=>event.source!=='approval-settings-save',onRefresh:()=>setReload(value=>value+1)});
  const update=(operation,patch)=>{setError('');setEntries(current=>{const key=keyFor(menu,operation),entry=current[key];if(!entry?.form)return current;return {...current,[key]:{...entry,form:{...entry.form,...patch}}};});};
  const disabled=saving||loading,invalid=dirty.some(entry=>invalidEntry(entry)||!entry.data?.canEdit||entry.error);
  const save=async()=>{
@@ -61,7 +64,8 @@ function CompanyApprovalSettings({activeOrgId}){
    if(!Array.isArray(result?.saved)||result.saved.length!==changes.length||new Set(result.saved.map(row=>keyFor(row.menu,row.operation))).size!==changes.length||result.saved.some(row=>!expected.has(keyFor(row.menu,row.operation))||expected.get(keyFor(row.menu,row.operation))!==row.settings?.revision))throw new Error('INVALID_APPROVAL_SETTINGS');
    const saved=result.saved.map(row=>({...row,form:formFrom(row.settings,registrationFor(row.menu,row.operation))}));
    setEntries(current=>{const next={...current};for(const row of saved){const key=keyFor(row.menu,row.operation),entry=next[key],form=row.form;next[key]={...entry,data:{...entry.data,settings:{...entry.data.settings,...row.settings}},form,initial:JSON.stringify(form),error:''};}return next;});
-   showNotification(t.saved,'success');emitWorkspaceDataChanged({orgId,topics:['expense-approval-settings','work-time-policy']});setReload(value=>value+1);
+   const workTimeTopics=saved.some(row=>row.menu==='WORK_TIME')?['work-time-policy','work-time','payroll-sources']:[];
+   showNotification(t.saved,'success');emitWorkspaceDataChanged({orgId,source:'approval-settings-save',topics:['approval-settings','expense-approval-settings',...workTimeTopics]});setReload(value=>value+1);
   }catch(failure){if(live.current&&scope.current===orgId)setError(['APPROVAL_SETTINGS_CHANGED','WORK_TIME_POLICY_CHANGED'].includes(failure.message)?messages.changed:messages.error);}finally{lock.current=false;if(live.current)setSaving(false);}
  };
  return <AppPageContainer title={t.title} titleActions={<SaveButton loading={saving} disabled={disabled||!dirty.length||invalid} onClick={save}>{t.save}</SaveButton>} contentSx={{flex:1,minWidth:0}}>

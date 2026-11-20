@@ -30,13 +30,25 @@ const isReferenceUsagePath=(path:string)=>/^\/(partner-classifications|partner-e
 const isReferencePath=(path:string)=>/^\/system-setting-defaults\/(services|partner-roles|code-bases|codes)(\/|\?|$)/.test(path);
 export const workspaceTopics=(path:string):string[]=>{
  const route=path.split('?')[0]||'';
+ if(/\/(?:acknowledge|read-receipt)(?:\/|$)/.test(route))return [];
  if(route==='/dashboard/alert-recipients')return ['accounting-alerts'];
  if(isReferencePath(route))return referenceTopics;
  if(/^\/management-targets\/INVOICE\/?$/i.test(route))return ['orders','invoice-drafts'];
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
   [/^\/(shipping|freight|shipping-ports)/,['shipping','shipping-ports']],
+  [/^\/orders(?:\/[^/]+)?\/?$/,['orders','order-records','order-shipments','invoice-drafts','assignment-board']],
   [/^\/(orders|work-orders|order-shipments)/,['orders','order-shipments','invoice-drafts','assignment-board']],
+  [/^\/work-time\/policy$/,['work-time-policy','work-time','payroll-sources']],
+  [/^\/work-time\//,['work-time','payroll-sources']],
+  [/^\/(approval-action-settings|expense-approval-settings)(?:\/|$)/,['approval-settings','expense-approval-settings']],
+  [/^\/attendance(?:-entries)?(?:\/|$)/,['attendance','payroll-sources','assignment-board']],
+  [/^\/(employee-leaves?|leave)(?:[/-]|$)/,['employee-leaves','employees','payroll-sources']],
+  [/^\/company-industries(?:\/|$)/,['company-industries','business-partners']],
+  [/^\/organizations\/[^/]+\/profile(?:\/|$)/,['organization-profile','business-partners','customers']],
+  [/^\/entities\/[^/]+\/bank-accounts(?:\/|$)/,['bank-ledger','business-partners']],
+  [/^\/organization-profile(?:\/|$)/,['organization-profile','business-partners','customers']],
+  [/^\/accounting-opening(?:\/|$)/,['bank-ledger','issued-invoices','expense-requests','payroll-sources']],
   [/^\/styles/,['styles','assignment-board']],
   [/^\/(assignment|work-logs|production)/,['assignment-board','payroll-sources','styles']],
   [/^\/holidays/,['holidays','payroll-sources']],
@@ -47,7 +59,8 @@ export const workspaceTopics=(path:string):string[]=>{
   [/^\/(partner-classifications|partner-editor|customers|partners|business-partners|organizations|organization-profile|sales-prices)/,['customers','business-partners','sales-prices']],
   [/^\/dashboard\/work-requests/,['work-requests']],
  ];
- return groups.find(([pattern])=>pattern.test(route))?.[1]||[];
+ const topics=groups.find(([pattern])=>pattern.test(route))?.[1]||[];
+ return topics.some(topic=>['bank-ledger','expense-requests','issued-invoices'].includes(topic))?[...topics,'account-overview']:topics;
 };
 export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Client({connectionString:process.env.DATABASE_URL,connectionTimeoutMillis:10000,application_name:'baro-workspace-events'})){
  let client:any=null,connecting:Promise<void>|null=null;
@@ -64,7 +77,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
    next.on('notification',(message:any)=>{
     let event:any;try{event=JSON.parse(message.payload);}catch{return;}
     if(!Number.isSafeInteger(event.orgId)||!Array.isArray(event.topics)||event.topics.some((topic:any)=>typeof topic!=='string')||typeof event.id!=='string')return;
-    for(const subscriber of subscribers)if((subscriber.orgId===event.orgId||event.orgId===0&&event.systemOnly!==true&&subscriber.orgId!==0&&event.topics.every((topic:string)=>referenceTopics.includes(topic)))&&(!event.origin||subscriber.origin!==event.origin))void subscriber.send({id:event.id,orgId:event.orgId,topics:event.topics,versions:event.versions,source:'server-change'}).catch(()=>subscriber.close());
+    for(const subscriber of subscribers)if((subscriber.orgId===event.orgId||event.orgId===0&&event.systemOnly!==true&&subscriber.orgId!==0&&event.topics.every((topic:string)=>referenceTopics.includes(topic)))&&(!event.origin||subscriber.origin!==event.origin))void subscriber.send({id:event.id,orgId:event.orgId,topics:event.topics,versions:event.versions,source:'server-change',orderId:event.orderId}).catch(()=>subscriber.close());
    });
    try{await next.connect();await next.query('LISTEN '+CHANNEL);client=next;}catch{await next.end().catch(()=>{});throw Error('WORKSPACE_EVENTS_UNAVAILABLE');}
   })().finally(()=>{connecting=null;});
@@ -74,9 +87,11 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
  const middleware=(req:any,res:any,next:any)=>{
   const topics=workspaceTopics(req.path);
   if(topics.length&&['POST','PUT','PATCH','DELETE'].includes(req.method)){
-   const json=res.json;
-   res.json=function(body:any){
+   let notified=false;
+   const notify=(body:any)=>{
     const employeeId=getCurrentRequestActorEmployeeId(),successful=res.statusCode>=200&&res.statusCode<300&&body?.ok!==false&&!body?.error;
+    if(notified||!successful)return;
+    notified=true;
     if(successful&&isReferencePath(req.path)&&gates.requireSystemAdmin){
      const quietResponse={status(){return this;},json(){return this;}};
      void gates.requireSystemAdmin(req,quietResponse).then(async(actor:any)=>{
@@ -85,15 +100,23 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
      }).catch(()=>{console.warn('Reference settings notification unavailable');});
     }else if(employeeId&&successful){
      // The authenticated employee is set by company access resolution, never by query orgId.
+     const order=res.locals?.workspaceOrder;
+     const changedTopics=topics.includes('approval-settings')&&body?.saved?.some((row:any)=>row.menu==='WORK_TIME')
+      ?[...topics,'work-time-policy','work-time','payroll-sources']:topics;
      void db.employee.findFirst({where:{id:employeeId,status:'ACTIVE'},select:{orgId:true}}).then(async(employee:any)=>{
       if(!employee)return;
-      const event={id:randomUUID(),orgId:employee.orgId,topics,origin:origin(req)};
-      await publishWorkspaceChange(db,event);
+      const orgIds=new Set<number>([employee.orgId,...(order?.orgIds||[])]);
+      await Promise.all([...orgIds].filter(id=>Number.isSafeInteger(id)&&id>0).map(orgId=>publishWorkspaceChange(db,{
+       id:randomUUID(),orgId,topics:changedTopics,origin:origin(req),...(order?.id?{orderId:order.id}:{}),
+      })));
       if(isReferenceUsagePath(req.path))await publishWorkspaceChange(db,{id:randomUUID(),orgId:0,topics:referenceTopics,origin:origin(req),systemOnly:true});
      }).catch(()=>{console.warn('Workspace change notification unavailable');});
     }
-    return json.call(this,body);
    };
+   const json=res.json;
+   res.json=function(body:any){notify(body);return json.call(this,body);};
+   const send=res.send;
+   if(send)res.send=function(body:any){if(res.statusCode===204)notify(body);return send.call(this,body);};
   }
   next();
  };
@@ -120,6 +143,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   const employee=employeeId&&await db.employee.findFirst({where:{id:employeeId,orgId:scope.organization.id,status:'ACTIVE'},select:{id:true,orgRole:true}});
   if(!employee)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
   const topicFeatures:Record<string,string>={'accounting-alerts':'DASHBOARD','accounting-codes':'DASHBOARD','partner-classifications':'DASHBOARD','shipping':'SHIPPING_REQUEST','shipping-ports':'FREIGHT','styles':'STYLE','orders':'ORDER','order-shipments':'ORDER_SHIPMENTS','invoice-drafts':'INVOICE','issued-invoices':'INVOICE','assignment-board':'ASSIGNMENT','holidays':'HOLIDAY','employees':'EMPLOYEE','sales-prices':'CUSTOMER','customers':'CUSTOMER','business-partners':'CUSTOMER','salary-system-settings':'SALARY_SYSTEM','production-allowance-settings':'SALARY_SYSTEM','payroll-sources':'PAYROLL','expense-requests':'OUTSOURCING_RECORD','expense-approvals':'OUTSOURCING_RECORD','change-approvals':'DASHBOARD','bank-ledger':'BANK_LEDGER','work-requests':'DASHBOARD'};
+  Object.assign(topicFeatures,{'account-overview':'ACCOUNT_OVERVIEW','approval-settings':'APPROVAL_SETTINGS','expense-approval-settings':'OUTSOURCING_RECORD','order-records':'ORDER','work-time':'WORK_TIME','work-time-policy':'APPROVAL_SETTINGS','attendance':'ATTENDANCE','employee-leaves':'EMPLOYEE','organization-profile':'BUSINESS','company-industries':'BUSINESS'});
   const offered=await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type),features=new Set<string>();
   for(const feature of new Set(Object.values(topicFeatures)))if(offered.includes(feature)&&await gates.canAccess({orgType:scope.organization.type,orgRole:employee.orgRole,feature}))features.add(feature);
   await connect();
@@ -132,7 +156,8 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
    // A connection is no authorization lease: recheck membership on each delivery.
    const current=await db.employee.findFirst({where:{id:employeeId,orgId:scope.organization.id,status:'ACTIVE',orgRole:employee.orgRole},select:{id:true}}).catch(()=>null);
    if(!current)return close();
-   if(!closed){if(!res.write('data: '+JSON.stringify({...event,topics,versions:filterVersions(event.versions,topics)})+'\n\n'))close();else res.flush?.();}
+   const {orderId,...metadata}=event;
+   if(!closed){if(!res.write('data: '+JSON.stringify({...metadata,topics,versions:filterVersions(event.versions,topics),orderId:topics.includes('order-records')?orderId:undefined})+'\n\n'))close();else res.flush?.();}
   }};
   const heartbeat=setInterval(()=>{if(!closed){res.write(': keepalive\n\n');res.flush?.();}},25000);
   subscribers.add(subscriber);res.on('close',close);

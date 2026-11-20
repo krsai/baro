@@ -45,6 +45,21 @@ test('stream decoder tolerates chunk boundaries and rejects HTTP auth failures',
  await assert.rejects(readWorkspaceEvents(new Response('',{status:403}),{signal:new AbortController().signal}),error=>error.status===403);
 });
 
+test('order deletion publishes to the stored parties and salary settings invalidate payroll',async()=>{
+ const writes=[],db={employee:{findFirst:async()=>({orgId:7})},$queryRawUnsafe:async(...args)=>writes.push(JSON.parse(args[2]))};
+ const service=createWorkspaceEvents(db,{});
+ const req={method:'DELETE',path:'/orders/order-1',query:{orgId:999},get:()=>''};
+ const res=Object.assign(response(),{locals:{workspaceOrder:{id:'order-1',orgIds:[7,8,null]}},send(){}});
+ await runWithRequestActor('test@example.test',async()=>{
+  setCurrentRequestActorEmployeeId(3);service.middleware(req,res,()=>{});res.status(204).send();await settle();
+ });
+ assert.deepEqual(writes.map(event=>event.orgId).sort(),[7,8]);
+ assert.ok(writes.every(event=>event.orderId==='order-1'&&event.topics.includes('invoice-drafts')));
+ assert.ok(workspaceTopics('/salary-system/version-boundaries').includes('payroll-sources'));
+ assert.ok(workspaceTopics('/work-time/requests/1/decision').includes('payroll-sources'));
+ await service.close();
+});
+
 
 test('SYSTEM reference mutations publish metadata only after success and require current system authority',async()=>{
  const writes=[];let allowed=true;

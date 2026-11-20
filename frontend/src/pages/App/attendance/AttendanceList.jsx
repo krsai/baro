@@ -324,7 +324,7 @@ const AttendanceList = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
-    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES],
+    topics: [WORKSPACE_DATA_TOPICS.EMPLOYEES, 'attendance', 'holidays', 'work-time'],
     isBlocked: importingFile || Boolean(importReview),
     onRefresh: () => setReloadToken((value) => value + 1),
   });

@@ -77,6 +77,25 @@ try{
  await page.waitForFunction(()=>document.querySelector('[data-order-style-item-row] input')?.value==='Zulu');
  await page.getByRole('button',{name:/^(Save|\uC800\uC7A5)$/}).first().click();
  await page.waitForFunction(()=>window.savedOrder?.items[0]?.styleId==='s1');
+ const emitOrderChange=async(id,number)=>page.evaluate(async({id,number})=>{
+  if(number){
+   const [order]=JSON.parse(localStorage.getItem('dragOrder'));
+   localStorage.setItem('dragOrder',JSON.stringify([{...order,orderNumber:number,updatedAt:new Date().toISOString()}]));
+  }
+  const {emitWorkspaceDataChanged}=await import('/src/utils/workspaceDataEvents.js');
+  emitWorkspaceDataChanged({orgId:1,topics:['order-records'],orderIds:[id],source:'server-change'});
+ },{id,number});
+ const orderNumber=page.locator('input[name="orderNumber"]');
+ await emitOrderChange('order-1','PO-REMOTE');
+ await page.waitForFunction(()=>document.querySelector('input[name="orderNumber"]').value==='PO-REMOTE');
+ await orderNumber.fill('PO-DRAFT');
+ await emitOrderChange('order-2');
+ assert.equal(await page.getByRole('button',{name:'Load latest order'}).count(),0);
+ await emitOrderChange('order-1','PO-REMOTE-2');
+ await page.getByRole('button',{name:'Load latest order'}).waitFor();
+ assert.equal(await orderNumber.inputValue(),'PO-DRAFT');
+ assert.ok(await page.getByRole('button',{name:/^(Save|\uC800\uC7A5)$/}).first().isDisabled());
+ assert.ok(await page.evaluate(()=>window.notices.some(([message,type])=>type==='warning'&&message.includes('changed in another screen'))));
  await page.evaluate(()=>{const [order]=JSON.parse(localStorage.getItem('dragOrder'));order.isModificationLocked=true;localStorage.setItem('dragOrder',JSON.stringify([order]));});
  await page.reload();await page.getByRole('button',{name:'Reorder style',exact:true}).first().waitFor();
  assert.ok(await page.locator('[data-order-color-drag]').evaluateAll(nodes=>nodes.every(node=>node.disabled)));

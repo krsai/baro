@@ -7,15 +7,29 @@ export default function useWorkspaceLiveUpdates(orgId,accessToken){
  const revisions=useRef(new Map());
  useEffect(()=>{
   if(!orgId)return;
-  let disposed=false,controller=null,retry=null,attempt=0,batch=null;const topics=new Set();
+  let disposed=false,controller=null,retry=null,attempt=0,batch=null,unscopedOrders=false;
+  const topics=new Set(),orderIds=new Set(),pendingVersions=new Map();
   const known=revisions.current.get(orgId)||new Map();revisions.current.set(orgId,known);
-  const acceptVersions=values=>{for(const [key,value] of Object.entries(values||{}))if(/^\d+$/.test(value)&&(!known.has(key)||BigInt(value)>BigInt(known.get(key))))known.set(key,value);};
-  const emit=()=>{batch=null;if(disposed||document.visibilityState==='hidden')return;clearGetResponseCache();emitWorkspaceDataChanged({orgId,topics:[...topics],source:'server-change'});topics.clear();};
+  const emit=()=>{
+   batch=null;if(disposed||document.visibilityState==='hidden')return;
+   clearGetResponseCache();
+   emitWorkspaceDataChanged({orgId,topics:[...topics],orderIds:unscopedOrders?[]:[...orderIds],source:'server-change'});
+   for(const [key,value] of pendingVersions)known.set(key,value);
+   pendingVersions.clear();
+   topics.clear();orderIds.clear();unscopedOrders=false;
+  };
   const change=event=>{
    if(!Array.isArray(event.topics))return;
    const referenceOnly=event.orgId===0&&event.topics.every(topic=>REFERENCE_SETTINGS_TOPICS.includes(topic));
    if(orgId==='SYSTEM'?event.orgId!==0:Number(event.orgId)!==Number(orgId)&&!referenceOnly)return;
-   acceptVersions(event.versions);
+   for(const [key,value] of Object.entries(event.versions||{})){
+    const previous=pendingVersions.get(key)??known.get(key);
+    if(/^\d+$/.test(value)&&(previous===undefined||BigInt(value)>BigInt(previous)))pendingVersions.set(key,value);
+   }
+   if(event.topics.includes('order-records')){
+    if(typeof event.orderId==='string'&&event.orderId)orderIds.add(event.orderId);
+    else unscopedOrders=true;
+   }
    for(const topic of event.topics)if(LIVE_TOPICS.includes(topic))topics.add(topic);
    if(topics.size&&!batch)batch=setTimeout(emit,200);
   };
@@ -24,7 +38,17 @@ export default function useWorkspaceLiveUpdates(orgId,accessToken){
    const current=new AbortController();controller=current;const startedAt=Date.now();let ready=false;
    try{
     const response=await fetchWorkspaceEvents(orgId,current.signal,accessToken);
-    await readWorkspaceEvents(response,{signal:current.signal,onReady:snapshot=>{ready=true;const changed=new Set();for(const [key,value] of Object.entries(snapshot?.versions||{})){if(/^\d+$/.test(value)&&known.has(key)&&BigInt(value)>BigInt(known.get(key)))changed.add(key.split(':').at(-1));}acceptVersions(snapshot?.versions);if(changed.size)change({orgId:orgId==='SYSTEM'?0:orgId,topics:[...changed]});},onChange:change});
+    await readWorkspaceEvents(response,{signal:current.signal,onReady:snapshot=>{
+     ready=true;
+     const changed={};
+     for(const [key,value] of Object.entries(snapshot?.versions||{})){
+      if(!/^\d+$/.test(value))continue;
+      const previous=pendingVersions.get(key)??known.get(key);
+      if(previous===undefined)known.set(key,value);
+      else if(BigInt(value)>BigInt(previous))changed[key]=value;
+     }
+     if(Object.keys(changed).length)change({orgId:orgId==='SYSTEM'?0:orgId,topics:[...new Set(Object.keys(changed).map(key=>key.split(':').at(-1)))],versions:changed});
+    },onChange:change});
    }catch(error){if([401,403].includes(error.status))attempt=6;}
    finally{
     if(controller===current)controller=null;

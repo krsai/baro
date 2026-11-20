@@ -2060,6 +2060,8 @@ const OrderList = () => {
     return orders.find((order) => order.id === orderId) || null;
   }, [isNewOrder, orderId, orders]);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [orderChangedElsewhere, setOrderChangedElsewhere] = useState(false);
+  const [reloadingOrder, setReloadingOrder] = useState(false);
   const [saveIssueRows, setSaveIssueRows] = useState([]);
   const [saveIssueDialogOpen, setSaveIssueDialogOpen] = useState(false);
   const [orderValueDetailId, setOrderValueDetailId] = useState(null);
@@ -2068,10 +2070,11 @@ const OrderList = () => {
     [orderValueDetailId, orders]
   );
   const orderDataChangedEventSourceRef = useRef(createId('order-data'));
-  const emitOrderDataChanged = useCallback(() => {
+  const emitOrderDataChanged = useCallback((id) => {
     emitWorkspaceDataChanged({
-      topics: [WORKSPACE_DATA_TOPICS.ORDERS],
+      topics: [WORKSPACE_DATA_TOPICS.ORDERS, 'order-records', WORKSPACE_DATA_TOPICS.ASSIGNMENT_BOARD, WORKSPACE_DATA_TOPICS.INVOICE_DRAFTS, 'order-shipments'],
       orgId: activeOrgId,
+      orderIds: [id],
       source: orderDataChangedEventSourceRef.current,
     });
   }, [activeOrgId]);
@@ -2120,6 +2123,48 @@ const OrderList = () => {
     return hasFormChanges;
   }, [hasFormChanges, isDetailMode]);
   useUnsavedChanges(hasUnsavedChanges);
+  const orderDraftInUse = useRef(false);
+  orderDraftInUse.current = hasUnsavedChanges || isSavingOrder;
+  const orderRefreshText = ({
+    ko: ['다른 화면에서 이 주문이 변경되었습니다. 입력 내용을 확인한 뒤 최신 주문을 불러와 주세요.', '최신 주문 불러오기', '저장하지 않은 입력을 버리고 최신 주문을 불러오시겠습니까?'],
+    en: ['This order changed in another screen. Review your draft, then load the latest order.', 'Load latest order', 'Discard unsaved edits and load the latest order?'],
+    vi: ['Đơn hàng đã thay đổi ở màn hình khác. Hãy kiểm tra bản nháp rồi tải đơn hàng mới nhất.', 'Tải đơn hàng mới nhất', 'Bỏ thay đổi chưa lưu và tải đơn hàng mới nhất?'],
+  })[languageCode] || ['This order changed in another screen.', 'Load latest order', 'Discard unsaved edits?'];
+  const warnOrderChanged = () => {
+    setOrderChangedElsewhere(true);
+    showNotification(orderRefreshText[0], 'warning', {source: `order-changed:${orderId}`});
+  };
+  const refreshOrderDetail = async (discardConfirmed = false) => {
+    const latest = await fetchOrdersFromApi({orgId:activeOrgId,forceRefresh:true});
+    const target = latest.find(order => order.id === orderId);
+    if(!discardConfirmed && orderDraftInUse.current){
+      if(!target || target.updatedAt !== currentDetailOrder?.updatedAt) warnOrderChanged();
+      return;
+    }
+    setOrders(latest);
+    if(target) setFormData(normalizeOrderForm(target));
+    else {
+      showNotification(orderPageText.orderNotFound, 'warning');
+      navigateToPath('/order', {closeTabId:`/order/${orderId}`,label:orderPageText.listTitle,skipUnsavedChangesCheck:true});
+    }
+    setOrderChangedElsewhere(false);
+  };
+  useWorkspaceRefreshOnEvent({
+    orgId:activeOrgId,
+    topics:isDetailMode&&!isNewOrder?['order-records']:[],
+    isActive:isOrderDetailRouteActive,
+    isBlocked:hasUnsavedChanges||isSavingOrder||reloadingOrder,
+    shouldHandle:event=>event.source!==orderDataChangedEventSourceRef.current&&(!event.orderIds?.length||event.orderIds.includes(orderId)),
+    onBlocked:warnOrderChanged,
+    onRefresh:()=>refreshOrderDetail(),
+  });
+  const reloadLatestOrder = async () => {
+    if(hasUnsavedChanges&&!await pageDialogs.confirm(orderRefreshText[2]))return;
+    setReloadingOrder(true);
+    try { await refreshOrderDetail(true); }
+    catch(error) {showNotification(error?.message||orderPageText.ordersLoadError,'error');}
+    finally {setReloadingOrder(false);}
+  };
   const hasChangesForForm = (candidateFormData) => {
     if (isNewOrder) {
       const baselineSnapshot = toComparableOrderSnapshot(buildInitialFormData(), fixedSellerOrg);
@@ -2176,7 +2221,7 @@ const OrderList = () => {
         orderId: order.id,
         source: orderDataChangedEventSourceRef.current,
       });
-      emitOrderDataChanged();
+      emitOrderDataChanged(order.id);
       showNotification(orderPageText.deleteSuccess, 'success');
     } catch (error) {
       const issueRows = extractOrderSaveIssueRows(error);
@@ -2902,7 +2947,7 @@ const OrderList = () => {
   };
 
   const handleSave = async () => {
-    if (isSavingOrder) return;
+    if (isSavingOrder || orderChangedElsewhere || reloadingOrder) return;
     if (isCurrentOrderModificationLocked) {
       showNotification(orderPageText.modificationLocked, 'warning');
       return;
@@ -2946,6 +2991,7 @@ const OrderList = () => {
           return;
         }
         payload.id = existingOrder.id;
+        payload.expectedUpdatedAt = existingOrder.updatedAt;
         payload.createdAt = existingOrder.createdAt || payload.updatedAt;
         // Assignment card/plan sync (create/update/removal-with-guard) now
         // happens atomically inside PUT /orders/:orderId on the backend -
@@ -2968,7 +3014,7 @@ const OrderList = () => {
         setOrders((prev) => [created, ...prev]);
       }
 
-      emitOrderDataChanged();
+      emitOrderDataChanged(createdOrder?.id || orderId);
       showNotification(orderPageText.orderSaved, 'success');
       if (isNewOrder && createdOrder?.id) {
         navigateToPath(`/order/${createdOrder.id}`, {
@@ -2978,6 +3024,10 @@ const OrderList = () => {
         });
       }
     } catch (error) {
+      if(String(error?.message||'').startsWith('STALE_EDIT:')){
+        warnOrderChanged();
+        return;
+      }
       const issueRows = extractOrderSaveIssueRows(error);
       if (issueRows.length > 0) {
         setSaveIssueRows(issueRows);
@@ -3331,10 +3381,11 @@ const OrderList = () => {
           sx={{ alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap' }}
         >
           <LastUpdaterLabel />
+          {orderChangedElsewhere&&<Button onClick={reloadLatestOrder} disabled={isSavingOrder||reloadingOrder}>{orderRefreshText[1]}</Button>}
           <SaveButton
             onClick={handleSave}
             disabled={
-              isSavingOrder || !hasFormChanges || isCurrentOrderModificationLocked
+              isSavingOrder || orderChangedElsewhere || reloadingOrder || !hasFormChanges || isCurrentOrderModificationLocked
             }
             loading={isSavingOrder}
           />
@@ -3384,7 +3435,7 @@ const OrderList = () => {
             <SaveButton
               onClick={handleSave}
               disabled={
-                isSavingOrder || !hasFormChanges || isCurrentOrderModificationLocked
+                isSavingOrder || orderChangedElsewhere || reloadingOrder || !hasFormChanges || isCurrentOrderModificationLocked
               }
               loading={isSavingOrder}
             />

@@ -9,7 +9,7 @@ import {useAuth} from '../../context/AuthContext';
 import {useLanguage} from '../../context/LanguageContext';
 import {useAppActions} from '../../context/AppContext';
 import {requestJSON,buildQueryString} from '../../utils/apiClient';
-import {subscribeWorkspaceDataChanged} from '../../utils/workspaceDataEvents';
+import useWorkspaceRefreshOnEvent from '../../hooks/useWorkspaceRefreshOnEvent';
 import {formatLedgerMoney} from '../../utils/bankLedgerMoney.mjs';
 import {convertAccountBalances,convertAccountFinalBalance} from '../../utils/accountBalanceConversion.mjs';
 import {accountCashflowItems,accountCashflowTotal,accountCashflowNet,cashflowColor,categorizeCashflow} from '../../utils/accountCashflow.mjs';
@@ -32,7 +32,7 @@ function Report({orgId}){
  useEffect(()=>()=>clearTimeout(hoverClose.current),[]);
  const [outstandingTab,setOutstandingTab]=useState('receivable');
  const [data,setData]=useState(null),[error,setError]=useState(false),[loading,setLoading]=useState(true),[reload,setReload]=useState(0),[months,setMonths]=useState(1),[fx,setFx]=useState(null),[fxError,setFxError]=useState(false);
- useEffect(()=>subscribeWorkspaceDataChanged(event=>{if(Number(event.orgId)===Number(orgId)&&(['bank-ledger','business-accounts','transaction-request','expense-approval'].includes(event.source)||event.topics?.some(topic=>['bank-ledger','expense-requests','expense-approvals'].includes(topic))))setReload(n=>n+1);}),[orgId]);
+ useWorkspaceRefreshOnEvent({orgId,topics:['account-overview','bank-ledger','business-accounts','expense-requests','expense-approvals','issued-invoices'],isBlocked:capturing||!!details,onRefresh:()=>setReload(n=>n+1)});
  useEffect(()=>{if(!orgId)return;let alive=true;const controller=new AbortController();setLoading(true);setError(false);requestJSON('/bank-ledger/overview'+buildQueryString({orgId,months}),{skipCache:true,signal:controller.signal}).then(result=>{if(alive)setData(result);}).catch(e=>{if(alive&&e.name!=='AbortError')setError(true);}).finally(()=>{if(alive)setLoading(false);});return()=>{alive=false;controller.abort();};},[orgId,reload,months]);
  useEffect(()=>{if(!orgId)return;let alive=true;const controller=new AbortController();setFxError(false);requestJSON('/bank-ledger/exchange-rates'+buildQueryString({orgId}),{skipCache:true,signal:controller.signal}).then(result=>{if(alive)setFx(result);}).catch(e=>{if(alive&&e.name!=='AbortError'){setFx(null);setFxError(true);}});return()=>{alive=false;controller.abort();};},[orgId,reload]);
  const code='VND',accounts=data?.accounts||[],selected='';

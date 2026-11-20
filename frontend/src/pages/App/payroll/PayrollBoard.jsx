@@ -227,6 +227,7 @@ const PayrollBoard = () => {
   useEffect(() => { load(); }, [load]);
   useWorkspaceRefreshOnEvent({
     orgId: activeOrgId,
+    isBlocked: calculating || Boolean(mutating),
     topics: [
       WORKSPACE_DATA_TOPICS.PRODUCTION_ALLOWANCE_SETTINGS,
       WORKSPACE_DATA_TOPICS.SALARY_SYSTEM_SETTINGS,

@@ -1,197 +1,77 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAppActions } from '../context/AppContext';
-import {
-  hasWorkspaceDataTopic,
-  subscribeWorkspaceDataChanged,
-} from '../utils/workspaceDataEvents';
+import { subscribeWorkspaceDataChanged } from '../utils/workspaceDataEvents';
 
-const toPositiveIntOrNull = (value) => {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return Math.trunc(parsed);
-};
-
-const normalizeTopics = (value) => {
-  const raw = Array.isArray(value) ? value : [value];
-  return Array.from(
-    new Set(
-      raw
-        .map((item) => String(item || '').trim())
-        .filter(Boolean)
-    )
-  );
-};
-
-const matchesOrgId = (detailOrgId, currentOrgId) => {
-  if (detailOrgId == null || currentOrgId == null) return true;
-  return Number(detailOrgId) === Number(currentOrgId);
-};
-
-const useWorkspaceRefreshOnEvent = ({
-  orgId = null,
-  topics = [],
-  isActive = true,
-  isBlocked = false,
-  onRefresh,
-  shouldHandle = null,
-  onBlocked = null,
-}) => {
-  const location = useLocation();
+export default function useWorkspaceRefreshOnEvent({
+  orgId = null, topics = [], isActive = true, isBlocked = false,
+  onRefresh, shouldHandle, onBlocked,
+}) {
+  const { pathname } = useLocation();
   const { markTabChanged, clearTabChanged } = useAppActions();
-  const tabPathRef = useRef(location.pathname);
-  const normalizedOrgId = useMemo(() => toPositiveIntOrNull(orgId), [orgId]);
-  const normalizedTopics = useMemo(() => normalizeTopics(topics), [topics]);
-  const topicsKey = normalizedTopics.join('|');
-  const pendingRefreshRef = useRef(false);
-  const refreshInFlightRef = useRef(false);
-  const blockedNoticeShownRef = useRef(false);
-  const onRefreshRef = useRef(onRefresh);
-  const shouldHandleRef = useRef(shouldHandle);
-  const onBlockedRef = useRef(onBlocked);
-  const isActiveRef = useRef(isActive);
-  const isBlockedRef = useRef(isBlocked);
-  const isTabVisibleRef = useRef(location.pathname === tabPathRef.current);
+  const tabPath = useRef(pathname).current;
+  const visible = pathname === tabPath && isActive;
+  const current = useRef(null);
+  current.current = { visible, isBlocked, onRefresh, shouldHandle, onBlocked };
+  const pump = useRef(null);
+  const topicKey = [...new Set(Array.isArray(topics) ? topics : [topics])].filter(Boolean).sort().join('|');
 
   useEffect(() => {
-    onRefreshRef.current = onRefresh;
-  }, [onRefresh]);
+    if (!(Number(orgId) > 0) || !topicKey) return undefined;
+    const accepted = new Set(topicKey.split('|'));
+    let disposed = false;
+    let pending = null;
+    let running = false;
+    let warned = false;
 
-  useEffect(() => {
-    shouldHandleRef.current = shouldHandle;
-  }, [shouldHandle]);
-
-  useEffect(() => {
-    onBlockedRef.current = onBlocked;
-  }, [onBlocked]);
-
-  useEffect(() => {
-    isActiveRef.current = isActive;
-  }, [isActive]);
-
-  useEffect(() => {
-    isBlockedRef.current = isBlocked;
-  }, [isBlocked]);
-
-  useEffect(() => {
-    isTabVisibleRef.current = location.pathname === tabPathRef.current;
-    if (isTabVisibleRef.current && !pendingRefreshRef.current && !refreshInFlightRef.current) clearTabChanged(tabPathRef.current);
-  }, [location.pathname, clearTabChanged]);
-
-  useEffect(() => {
-    if (normalizedOrgId == null || normalizedTopics.length === 0) {
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    const runRefresh = async () => {
-      if (cancelled) return;
-      if (!pendingRefreshRef.current) return;
-      if (!isActiveRef.current || isBlockedRef.current || !isTabVisibleRef.current || document.visibilityState==='hidden') return;
-      if (refreshInFlightRef.current) return;
-      if (typeof onRefreshRef.current !== 'function') return;
-
-      refreshInFlightRef.current = true;
-      pendingRefreshRef.current = false;
-      blockedNoticeShownRef.current = false;
-
-      let succeeded = false;
-      try {
-        await onRefreshRef.current();
-        succeeded = true;
-        if (isTabVisibleRef.current) clearTabChanged(tabPathRef.current);
-        else markTabChanged(tabPathRef.current);
-      } catch (_error) {
-        pendingRefreshRef.current = true;
-        if(!isTabVisibleRef.current||isBlockedRef.current)markTabChanged(tabPathRef.current);
-      } finally {
-        refreshInFlightRef.current = false;
-        if (succeeded && pendingRefreshRef.current && isActiveRef.current && !isBlockedRef.current) {
-          void runRefresh();
-        }
-      }
-    };
-
-    const unsubscribe = subscribeWorkspaceDataChanged((detail) => {
-      if (!detail) return;
-      if (!matchesOrgId(detail?.orgId, normalizedOrgId)) return;
-      if (!normalizedTopics.some((topic) => hasWorkspaceDataTopic(detail, topic))) return;
-      if (typeof shouldHandleRef.current === 'function' && !shouldHandleRef.current(detail)) return;
-
-      pendingRefreshRef.current = true;
-      if(!isTabVisibleRef.current||isBlockedRef.current)markTabChanged(tabPathRef.current);
-      if (isBlockedRef.current) {
-        if (!blockedNoticeShownRef.current && typeof onBlockedRef.current === 'function') {
-          blockedNoticeShownRef.current = true;
-          onBlockedRef.current(detail);
+    const refresh = async () => {
+      if (disposed || !pending || running) return;
+      const state = current.current;
+      if (!state.visible || document.visibilityState === 'hidden') return;
+      if (state.isBlocked) {
+        if (!warned && state.onBlocked) {
+          warned = true;
+          state.onBlocked(pending);
         }
         return;
       }
-
-      if (!isActiveRef.current) return;
-      void runRefresh();
-    });
-
-    if (pendingRefreshRef.current && isActiveRef.current && !isBlockedRef.current) {
-      void runRefresh();
-    }
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [clearTabChanged, markTabChanged, normalizedOrgId, normalizedTopics.length, topicsKey]);
-
-  useEffect(() => {
-    if (!pendingRefreshRef.current) return;
-    if (!isActive) return;
-    if (!isTabVisibleRef.current || document.visibilityState==='hidden') return;
-    if (isBlocked) {
-      if (!blockedNoticeShownRef.current && typeof onBlockedRef.current === 'function') {
-        blockedNoticeShownRef.current = true;
-        onBlockedRef.current(null);
-      }
-      return;
-    }
-    if (refreshInFlightRef.current) return;
-    if (typeof onRefreshRef.current !== 'function') return;
-
-    let cancelled = false;
-
-    const runPendingRefresh = async () => {
-      refreshInFlightRef.current = true;
-      pendingRefreshRef.current = false;
-      blockedNoticeShownRef.current = false;
-
-      let succeeded = false;
+      if (!state.onRefresh) return;
+      const event = pending;
+      pending = null;
+      warned = false;
+      running = true;
       try {
-        await onRefreshRef.current();
-        succeeded = true;
-        if (isTabVisibleRef.current) clearTabChanged(tabPathRef.current);
-        else markTabChanged(tabPathRef.current);
-      } catch (_error) {
-        pendingRefreshRef.current = true;
+        await state.onRefresh();
+      } catch {
+        if (!disposed) pending ||= event;
+        return;
       } finally {
-        refreshInFlightRef.current = false;
-        if (
-          !cancelled &&
-          succeeded &&
-          pendingRefreshRef.current &&
-          isActiveRef.current &&
-          !isBlockedRef.current
-        ) {
-          void runPendingRefresh();
-        }
+        running = false;
       }
+      if (disposed) return;
+      if (pending) void refresh();
+      else clearTabChanged(tabPath);
     };
 
-    void runPendingRefresh();
-
+    const unsubscribe = subscribeWorkspaceDataChanged(event => {
+      if (!event || (event.orgId != null && Number(event.orgId) !== Number(orgId))) return;
+      if (!event.topics?.some(topic => accepted.has(topic))) return;
+      if (current.current.shouldHandle && !current.current.shouldHandle(event)) return;
+      pending = event;
+      if (!current.current.visible || current.current.isBlocked || document.visibilityState === 'hidden') {
+        markTabChanged(tabPath);
+      }
+      void refresh();
+    });
+    pump.current = refresh;
+    document.addEventListener('visibilitychange', refresh);
     return () => {
-      cancelled = true;
+      disposed = true;
+      pump.current = null;
+      unsubscribe();
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [clearTabChanged, markTabChanged, isActive, isBlocked, location.pathname]);
-};
+  }, [orgId, topicKey, tabPath, markTabChanged, clearTabChanged]);
 
-export default useWorkspaceRefreshOnEvent;
+  useEffect(() => { void pump.current?.(); }, [visible, isBlocked]);
+}
