@@ -1,9 +1,11 @@
 import {inventoryApprovalText,inventoryApprovalError} from '../../../constants/inventoryApproval';
+import {approvalVacancyText} from '../../../constants/approvalVacancy';
 import ApprovalStageFlow from '../../../components/ApprovalStageFlow';
 import {usePageDialogs} from '../../../components/PageDialogProvider';
 import InventoryApprovalPanel,{InventoryDeleteDialog} from './InventoryApprovalPanel';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
+import {Add} from '@mui/icons-material';
 import {useNavigate} from 'react-router-dom';
 import {useAuth} from '../../../context/AuthContext';
 import {useLanguage} from '../../../context/LanguageContext';
@@ -44,7 +46,7 @@ export function InventoryEntry({onClose,onSaved}){
 function MovementForm({orgId,onClose,onSaved}){
  const {languageCode}=useLanguage(),{showNotification,navigateToPath}=useAppActions(),navigate=useNavigate(),dialogs=usePageDialogs();
  const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
- const [approval,setApproval]=useState(null),[approvalSelection,setApprovalSelection]=useState({});
+ const [approval,setApproval]=useState(null),[approvalSelection,setApprovalSelection]=useState({}),[approvalOpen,setApprovalOpen]=useState(false);
  const t=materialItemText[languageCode]||materialItemText.en,d=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const [receipt,issue,itemLabel,add,ownerLabel,typeLabel,qty,dateLabel,remarkLabel,saved,directionLabel]=labels[languageCode]||labels.en;
  const [masters,setMasters]=useState([]),[master,setMaster]=useState(null),[options,setOptions]=useState(null),[variant,setVariant]=useState(null),[creating,setCreating]=useState(false);
@@ -53,6 +55,7 @@ function MovementForm({orgId,onClose,onSaved}){
  const [purchase,setPurchase]=useState(null),[purchaseRows,setPurchaseRows]=useState(null),[purchaseError,setPurchaseError]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
  const pending=useRef(null),locked=useRef(false),live=useRef(true);
+ const initialDate=useRef(date),dirty=Boolean(master||quantity||remark||direction!=='IN'||date!==initialDate.current);
  const needsPurchase=direction==='IN'&&Number(creating?owner?.id:variant?.attributes.owner?.id)===Number(orgId);
  useEffect(()=>{setPurchase(null);},[master?.id,needsPurchase]);
  useEffect(()=>{
@@ -61,10 +64,10 @@ function MovementForm({orgId,onClose,onSaved}){
   return()=>{active=false;};
  },[needsPurchase,master?.id,orgId,reload,t.failed]);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
- useUnsavedChanges(Boolean(master||quantity||remark));
- const close=async()=>{if(busy||pending.current)return;if((!master&&!quantity&&!remark)||await dialogs.confirm('',{purpose:'discard'}))onClose?.();};
- useEffect(()=>{let active=true;setApproval(null);requestJSON('/inventory-entry/approval-preview'+buildQueryString({orgId,selection:JSON.stringify(approvalSelection)}),{skipCache:true}).then(value=>{if(active)setApproval(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,a,t.failed));});return()=>{active=false;};},[orgId,reload,a,t.failed,approvalSelection]);
- useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements'],isBlocked:Boolean(master||quantity||remark||busy),onRefresh:()=>setReload(n=>n+1)});
+ useUnsavedChanges(dirty);
+ const close=async()=>{if(busy||pending.current)return;if(!dirty||await dialogs.confirm('',{purpose:'discard'}))onClose?.();};
+ useEffect(()=>{if(!approvalOpen)return;let active=true;setApproval(null);setError('');requestJSON('/inventory-entry/approval-preview'+buildQueryString({orgId,selection:JSON.stringify(approvalSelection)}),{skipCache:true}).then(value=>{if(active)setApproval(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,a,t.failed));});return()=>{active=false;};},[approvalOpen,orgId,reload,a,t.failed,approvalSelection]);
+ useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements'],isBlocked:dirty||busy||approvalOpen,onRefresh:()=>setReload(n=>n+1)});
  useEffect(()=>{let active=true;request('/masters',orgId).then(rows=>{if(active)setMasters(rows);}).catch(()=>{if(active)setError(t.failed);});return()=>{active=false;};},[orgId,reload,t.failed]);
  useEffect(()=>{
   if(!master)return;
@@ -88,7 +91,7 @@ function MovementForm({orgId,onClose,onSaved}){
    if(!live.current)return;
    pending.current=null;
    emitWorkspaceDataChanged({orgId,topics:['inventory-movements','inventory-stock']});
-   showNotification(approval?.stages.length?a.submitted:saved,'success');
+   showNotification(approval?.stages.length&&!approval.automatic?a.submitted:saved,'success');
    if(onSaved){onSaved();return;}
    if(navigateToPath)navigateToPath('/inventory/movements',{closeTabId:'/inventory/movements/new',skipUnsavedChangesCheck:true});
    else navigate('/inventory/movements');
@@ -97,14 +100,21 @@ function MovementForm({orgId,onClose,onSaved}){
   }finally{locked.current=false;if(live.current)setBusy(false);}
  };
  const fieldGrid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(3,minmax(0,1fr))'},gap:2};
- return <Dialog open fullWidth maxWidth="md" onClose={close}><DialogTitle>{a.register}</DialogTitle><DialogContent><Stack spacing={2.5} sx={{pt:1.5,pb:1}}>
-  {error&&<AppNotice severity="error" action={<Button onClick={()=>pending.current?save():(setError(''),setReload(n=>n+1))}>{t.retry}</Button>}>{error}</AppNotice>}
-  {!approval&&<Button onClick={()=>navigate('/approval-settings?menu=INVENTORY')}>{a.settings}</Button>}
-  {approval&&<ApprovalStageFlow drafter={approval.drafter} stages={approval.stages.map(stage=>({...stage,candidates:stage.candidates||[{id:stage.employeeId,name:stage.name}]}))} languageCode={languageCode} value={approvalSelection} onChange={(key,id)=>setApprovalSelection(current=>({...current,[key+'EmployeeId']:id}))} disabled={unavailable}/>}
-  {lookup(masterLabels[languageCode]||masterLabels.en,masters,master,selectMaster,languageCode,row=>[row.data.baseSnapshot.code,materialItemName(row,languageCode),materialItemName(row.data.unit,languageCode)].join(' \u00b7 '),{required:true,disabled:unavailable,getCode:row=>row.data.baseSnapshot.code})}
+ return <><Dialog open fullWidth maxWidth="lg" onClose={close}><DialogTitle>{a.register}</DialogTitle><DialogContent><Stack spacing={2.5} sx={{pt:2,pb:1}}>
+  {error&&!approvalOpen&&<AppNotice severity="error" action={<Button onClick={()=>pending.current?save():(setError(''),setReload(n=>n+1))}>{t.retry}</Button>}>{error}</AppNotice>}
+  <Stack direction={{xs:'column',sm:'row'}} spacing={2}>
+   <TextField required size="small" type="date" label={dateLabel} value={date} disabled={unavailable} slotProps={{inputLabel:{shrink:true}}} onChange={e=>setDate(e.target.value)} sx={{width:{xs:'100%',sm:180}}}/>
+   <TextField select size="small" value={direction} label={directionLabel} disabled={unavailable} onChange={e=>setDirection(e.target.value)} sx={{width:{xs:'100%',sm:180}}}><MenuItem value="IN">{receipt}</MenuItem><MenuItem value="OUT">{issue}</MenuItem></TextField>
+  </Stack>
+  <Paper variant="outlined" sx={{p:2}}><Stack spacing={2}>
+  <Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'minmax(0,3fr) minmax(100px,1fr) minmax(100px,1fr)'},gap:2,alignItems:'start'}}>
+   {lookup(masterLabels[languageCode]||masterLabels.en,masters,master,selectMaster,languageCode,row=>[row.data.baseSnapshot.code,materialItemName(row,languageCode),materialItemName(row.data.unit,languageCode)].join(' \u00b7 '),{required:true,disabled:unavailable,getCode:row=>row.data.baseSnapshot.code})}
+   <TextField required size="small" label={qty} value={quantity} disabled={unavailable} slotProps={{htmlInput:{inputMode:'decimal'}}} onChange={e=>setQuantity(e.target.value)}/>
+   <TextField size="small" label={t.unit} value={master?materialItemName(master.data.unit,languageCode):''} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>
+  </Box>
   {options&&<Stack direction={{xs:'column',sm:'row'}} spacing={2} alignItems={{sm:'center'}}>
    <Box sx={{flex:1}}>{lookup(itemLabel,options.variants,variant,row=>{setVariant(row);setCreating(false);},languageCode,row=>variantName(row.attributes,languageCode),{disabled:unavailable})}</Box>
-   <Button variant="outlined" disabled={unavailable} onClick={()=>{setVariant(null);setCreating(true);}}>{add}</Button>
+   <Button variant="outlined" startIcon={<Add/>} disabled={unavailable} onClick={()=>{setVariant(null);setCreating(true);}} sx={{whiteSpace:'nowrap'}}>{add}</Button>
   </Stack>}
   {creating&&options&&<Paper variant="outlined" sx={{p:2}}><Stack spacing={2}>
    <Box sx={fieldGrid}>
@@ -114,18 +124,21 @@ function MovementForm({orgId,onClose,onSaved}){
    </Box>
    {options.fields.dimensions&&<Box sx={fieldGrid}>{axes.map(axis=><TextField key={axis} required size="small" label={d[axis]} value={dimensions[axis]||''} disabled={unavailable} onChange={e=>setDimensions({...dimensions,[axis]:e.target.value})}/>)}</Box>}
   </Stack></Paper>}
-  <Box sx={fieldGrid}>
-   <TextField select size="small" value={direction} label={directionLabel} disabled={unavailable} onChange={e=>setDirection(e.target.value)}><MenuItem value="IN">{receipt}</MenuItem><MenuItem value="OUT">{issue}</MenuItem></TextField>
-   <TextField required size="small" type="date" label={dateLabel} value={date} disabled={unavailable} slotProps={{inputLabel:{shrink:true}}} onChange={e=>setDate(e.target.value)}/>
-   <TextField required size="small" label={qty} value={quantity} disabled={unavailable} onChange={e=>setQuantity(e.target.value)} helperText={master?materialItemName(master.data.unit,languageCode):undefined}/>
-  </Box>
   {needsPurchase&&<Stack spacing={1}>
    <ExpenseLookupField label={a.purchase} required disabled={unavailable||!purchaseRows||Boolean(purchaseError)} languageCode={languageCode} options={purchaseRows||[]} value={purchase} onChange={setPurchase} getOptionKey={row=>row.expenseItemId} getCode={row=>(row.managementNumber||String(row.requestId))+'-'+row.line} getOptionLabel={row=>[row.managementNumber||row.requestId,row.line,row.description].join(' · ')} columns={[{key:'number',label:a.purchase,value:row=>row.managementNumber||row.requestId},{key:'date',label:dateLabel,value:row=>row.requestDate},{key:'description',label:t.name,value:row=>row.description},{key:'quantity',label:qty,value:row=>row.quantity}]}/>
    {purchaseError&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{purchaseError}</AppNotice>}
    {purchaseRows?.length===0&&<AppNotice severity="warning">{a.purchaseEmpty}</AppNotice>}
   </Stack>}
-  <TextField size="small" label={remarkLabel} value={remark} disabled={unavailable} slotProps={{htmlInput:{maxLength:500}}} onChange={e=>setRemark(e.target.value)}/>
- </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date||!approval||approval.stages.some(stage=>!stage.employeeId)||needsPurchase&&(!purchase||!purchaseRows||Boolean(purchaseError))} onClick={save}>{a.submit}</SaveButton></DialogActions></Dialog>;
+  </Stack></Paper>
+  <TextField size="small" label={remarkLabel} multiline minRows={2} value={remark} disabled={unavailable} slotProps={{htmlInput:{maxLength:500}}} onChange={e=>setRemark(e.target.value)}/>
+ </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton disabled={unavailable||!master||!validQuantity||!validVariant||!date||needsPurchase&&(!purchase||!purchaseRows||Boolean(purchaseError))} onClick={()=>setApprovalOpen(true)}>{t.save}</SaveButton></DialogActions></Dialog>
+ <Dialog open={approvalOpen} fullWidth maxWidth="md" onClose={()=>{if(!unavailable)setApprovalOpen(false);}}><DialogTitle>{a.title} · {a.CREATE}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:2}}>
+  <Typography variant="body2">{[date,direction==='IN'?receipt:issue,master&&materialItemName(master,languageCode),quantity,master&&materialItemName(master.data.unit,languageCode)].filter(Boolean).join(' · ')}</Typography>
+  {!approval&&!error&&<LinearProgress/>}
+  {approval?.automatic&&<Typography variant="body2">{(approvalVacancyText[languageCode]||approvalVacancyText.en).automatic}</Typography>}
+  {approval&&<ApprovalStageFlow drafter={approval.drafter} stages={approval.stages.map(stage=>({...stage,candidates:stage.candidates||[{id:stage.employeeId,name:stage.name}]}))} languageCode={languageCode} value={approvalSelection} onChange={(key,id)=>setApprovalSelection(current=>({...current,[key+'EmployeeId']:id}))} disabled={unavailable}/>}
+  {error&&<AppNotice severity="error" action={<Button disabled={busy} onClick={()=>pending.current?save():setReload(n=>n+1)}>{t.retry}</Button>}>{error}</AppNotice>}
+ </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={()=>setApprovalOpen(false)}>{a.cancel}</Button><SaveButton loading={busy} disabled={!approval||!!error&&!pending.current||approval.stages.some(stage=>!stage.employeeId)} onClick={save}>{pending.current&&error?t.retry:a.submit}</SaveButton></DialogActions></Dialog></>;
 }
 
 export function InventoryRows({view,keyword='',start='',end=''}){

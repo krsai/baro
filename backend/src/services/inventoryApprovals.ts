@@ -10,12 +10,13 @@ export async function createInventoryApproval(tx:any,scope:any,movement:any,oper
  const resolved=await resolveInventoryApproval(tx,orgId,actorId,operation,body.approvalRevision,body.approvalSelection??{});
  if(!Number.isSafeInteger(body.approvalRevision))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
  const id=operation==='CREATE'?movement.id:randomUUID(),hash=approvalHash(operation,movement.id,body);
- const policy=!resolved.stages.length?{...resolved.policy,...noApprovalPolicy(resolved.policy,actorId),approverIds:[]}:resolved.policy.version===2?{...resolved.policy,config:resolved.policy,approverIds:resolved.stages.map((stage:any)=>stage.employeeId),resolvedStages:resolved.stages.map((stage:any)=>{const person=stage.candidates.find((p:any)=>p.id===stage.employeeId);return {employeeId:person.id,role:person.orgRole,gradeId:person.gradeId,grade:person.grade};})}:resolved.policy;
+ const policy=!resolved.stages.length?{...resolved.policy,...noApprovalPolicy(resolved.policy,actorId),approverIds:[]}:resolved.policy.version===2?{...resolved.policy,...(('automatic' in resolved&&resolved.automatic)?{...resolved.authority,autoApproved:true,drafterId:actorId}:{}),config:resolved.policy,approverIds:resolved.stages.map((stage:any)=>stage.employeeId),resolvedStages:resolved.stages.map((stage:any)=>{const person=stage.candidates.find((p:any)=>p.id===stage.employeeId);return {employeeId:person.id,role:person.orgRole,gradeId:person.gradeId,grade:person.grade};})}:resolved.policy;
  await tx.$executeRaw`INSERT INTO "InventoryApprovalRequest" (id,"orgId","movementId",operation,"targetRevision","drafterId","clientKey","requestHash",policy)
  VALUES (${id},${orgId},${movement.id},${operation},${movement.revision},${actorId},${body.clientKey},${hash},${JSON.stringify(policy)}::jsonb)`;
  for(const [position,stage] of resolved.stages.entries())await tx.$executeRaw`INSERT INTO "InventoryApprovalStep" ("requestId","orgId",position,"employeeId","employeeName") VALUES (${id},${orgId},${position},${stage.employeeId},${stage.name})`;
- if(!resolved.stages.length){
+ if(!resolved.stages.length||'automatic' in resolved&&resolved.automatic){
   if(operation==='CREATE')await validateInventoryPurchase(tx,orgId,movement.id);
+  if('automatic' in resolved&&resolved.automatic)await tx.$executeRaw`UPDATE "InventoryApprovalStep" SET decision='APPROVED',"decidedAt"=now() WHERE "requestId"=${id} AND position=0`;
   await tx.$executeRaw`UPDATE "InventoryApprovalRequest" SET status='APPROVED',revision=revision+1 WHERE id=${id}`;
   if(operation==='CREATE')await tx.$executeRaw`UPDATE "InventoryMovement" SET status='APPROVED',revision=revision+1 WHERE id=${movement.id}`;
   else{
@@ -37,7 +38,7 @@ export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
  app.get('/inventory-entry/approvals',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
   res.json(await db.$queryRaw`SELECT r.id,r.operation,r.revision,r."movementId",m."movementDate"::text AS date,m.quantity::text,m.remark,m."purchaseSnapshot",i.data AS master,v.attributes,
-    jsonb_build_object('id',e.id,'name',e.name,'orgRole',e."orgRole",'gradeId',e."gradeId") AS drafter,
+    jsonb_build_object('id',e.id,'name',e.name,'orgRole',e."orgRole",'gradeId',e."gradeId",'grade',(SELECT jsonb_build_object('id',g.id,'name',g.name,'nameKo',g."nameKo",'nameEn',g."nameEn",'nameVi',g."nameVi") FROM "EmployeeGrade" g WHERE g.id=e."gradeId" AND g."orgId"=e."orgId")) AS drafter,
     (SELECT jsonb_agg(jsonb_build_object('employeeId',s."employeeId",'name',s."employeeName",'decision',s.decision) ORDER BY s.position) FROM "InventoryApprovalStep" s WHERE s."requestId"=r.id) AS stages,
     ((SELECT s."employeeId" FROM "InventoryApprovalStep" s WHERE s."requestId"=r.id AND s.decision IS NULL ORDER BY s.position LIMIT 1)=${scope.actorId}
       AND NOT (r.operation='CREATE' AND EXISTS(SELECT 1 FROM "InventoryApprovalRequest" deletion WHERE deletion."movementId"=r."movementId" AND deletion.operation='DELETE' AND deletion.status='PENDING'))) AS "canDecide"

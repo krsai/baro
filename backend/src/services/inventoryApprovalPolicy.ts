@@ -1,6 +1,7 @@
 import {createHttpError} from '../utils/http';
 import {validateApprovalRules} from './approvalRules';
 import {effectiveApprovalDefault,localApprovalMode} from './approvalDefaults';
+import {flexibleApprovalStages} from './flexibleApprovalStages';
 
 export const inventoryPolicyKey=(orgId:number,operation:string)=>`APPROVAL_POLICY:INVENTORY:${operation}:${orgId}`;
 export async function inventoryApprovalPolicy(db:any,orgId:number,operation:string){
@@ -31,12 +32,17 @@ export async function saveInventoryApprovalPolicy(tx:any,orgId:number,actorId:nu
 }
 export async function resolveInventoryApproval(tx:any,orgId:number,actorId:number,operation:string,revision?:number,selection:any={},allowIncomplete=false){
  const policy=await inventoryApprovalPolicy(tx,orgId,operation);
- const drafter=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'}});
+ const drafter=await tx.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE'},select:{id:true,name:true,orgRole:true,gradeId:true,grade:{include:{set:true}}}});
  if(!drafter||!policy.drafterRoles.includes(drafter.orgRole))throw createHttpError(403,'INVENTORY_DRAFTER_NOT_ALLOWED');
  if(policy.version===2){
   if(!Array.isArray(policy.stages))throw createHttpError(400,'INVENTORY_APPROVAL_NOT_CONFIGURED');
   if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
   if(!selection||typeof selection!=='object'||Array.isArray(selection))throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');
+  const final=policy.stages.at(-1);
+  if(final){
+   const authority=await flexibleApprovalStages(tx,orgId,drafter,[final],{},true);
+   if('exemptionReason' in authority.policy&&authority.policy.exemptionReason==='FINAL_DRAFTER')return {policy,drafter,complete:true,automatic:true,authority:authority.policy,stages:[{...final,key:'final-self',employeeId:drafter.id,name:drafter.name,candidates:[drafter]}]};
+  }
   const ids:number[]=[],stages:any[]=[];
   for(const [index,stage] of policy.stages.entries()){
    const people=await tx.$queryRaw`SELECT e.id,e.name,e."orgRole",e."gradeId",jsonb_build_object('name',g.name,'nameKo',g."nameKo",'nameEn',g."nameEn",'nameVi',g."nameVi") AS grade FROM "Employee" e LEFT JOIN "EmployeeGrade" g ON g.id=e."gradeId" AND g."orgId"=e."orgId" WHERE e."orgId"=${orgId} AND baro_inventory_stage_eligible(${orgId}::integer,e.id,${JSON.stringify(stage)}::jsonb) AND e.id<>${actorId} ORDER BY e.name,e.id`;
@@ -48,13 +54,13 @@ export async function resolveInventoryApproval(tx:any,orgId:number,actorId:numbe
    const requiredGrade=stage.gradeId?await tx.employeeGrade.findFirst({where:{id:stage.gradeId,orgId,isActive:true,set:{isActive:true}},select:{id:true,name:true,nameKo:true,nameEn:true,nameVi:true}}):null;
    stages.push({...stage,gradeId:stage.gradeMatch==='MINIMUM'?null:stage.gradeId,minimumGradeId:stage.gradeMatch==='MINIMUM'?stage.gradeId:null,requiredGrade,key,employeeId:person?.id??null,name:person?.name,candidates,invalid:Boolean(chosen&&!person)});
   }
-  return {policy,drafter:{id:drafter.id,name:drafter.name,orgRole:drafter.orgRole,gradeId:drafter.gradeId},stages,complete:stages.every(stage=>stage.employeeId)};
+  return {policy,drafter,stages,complete:stages.every(stage=>stage.employeeId)};
  }
- if(Array.isArray(policy.approverIds)&&!policy.approverIds.length){if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');return {policy,drafter:{id:drafter.id,name:drafter.name,orgRole:drafter.orgRole,gradeId:drafter.gradeId},stages:[],complete:true};}
+ if(Array.isArray(policy.approverIds)&&!policy.approverIds.length){if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');return {policy,drafter,stages:[],complete:true};}
  if(!policy.approverIds?.length)throw createHttpError(400,'INVENTORY_APPROVAL_NOT_CONFIGURED');
  if(revision!==undefined&&revision!==policy.revision)throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
  if(policy.approverIds.includes(actorId))throw createHttpError(400,'INVENTORY_SELF_APPROVAL');
  const people=await tx.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']},id:{in:policy.approverIds}},select:{id:true,name:true,orgRole:true,gradeId:true}});
  if(people.length!==policy.approverIds.length)throw createHttpError(409,'INVENTORY_APPROVER_UNAVAILABLE');
- return {policy,drafter:{id:drafter.id,name:drafter.name,orgRole:drafter.orgRole,gradeId:drafter.gradeId},stages:policy.approverIds.map((id:number,index:number)=>({...people.find((p:any)=>p.id===id),employeeId:id,key:'step'+(index+1)}))};
+ return {policy,drafter,stages:policy.approverIds.map((id:number,index:number)=>({...people.find((p:any)=>p.id===id),employeeId:id,key:'step'+(index+1)}))};
 }

@@ -7,7 +7,8 @@ const fixture='frontend/inventory-movement-acceptance.html',port=43293;
 assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,Route,Routes} from 'react-router-dom';import {InventoryEntry,InventoryRows} from '/src/pages/App/inventory/InventoryMovements.jsx';
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,{initialEntries:['/inventory/movements/new']},React.createElement(Routes,null,React.createElement(Route,{path:'/inventory/movements/new',element:React.createElement(InventoryEntry)}),React.createElement(Route,{path:'/inventory/movements',element:React.createElement(InventoryRows,{view:'history'})}))));
+import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';
+createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,{initialEntries:['/inventory/movements/new']},React.createElement(Routes,null,React.createElement(Route,{path:'/inventory/movements/new',element:React.createElement(InventoryEntry)}),React.createElement(Route,{path:'/inventory/movements',element:React.createElement(InventoryRows,{view:'history'})})))));
 </script>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore'});
 let browser;
@@ -29,7 +30,7 @@ try{
   await page.route('**/inventory-entry**',r=>{
    const req=r.request(),path=new URL(req.url()).pathname;
    if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
-   if(path.endsWith('/approval-preview'))return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager',key:'step1'}]}});
+   if(path.endsWith('/approval-preview')){const drafter={id:3,name:'Drafter',orgRole:'ADMIN',gradeId:1,grade:{id:1,name:'Director',nameEn:'Director'}};return r.fulfill({headers,json:{policy:{revision:1},drafter,automatic:mode==='other',stages:mode==='other'?[{employeeId:3,name:'Drafter',role:'ADMIN',key:'final-self',candidates:[drafter]}]:[{employeeId:4,name:'Manager',role:'ADMIN',key:'step1'}]}});}
    if(path.endsWith('/approvals'))return r.fulfill({headers,json:[]});
    if(path.endsWith('/purchase-expenses'))return r.fulfill({headers,json:[{expenseItemId:'purchase-line',requestId:1,version:1,managementNumber:'EXP-1',requestDate:'2026-11-19',line:1,description:'Carton purchase',quantity:'100'}]});
    if(path.endsWith('/masters'))return r.fulfill({headers,json:[master]});
@@ -52,9 +53,24 @@ try{
    await pick(/Owner/i,mode==='self'?'BARO':'THE SAN');
    assert.equal(await page.getByRole('textbox',{name:/Length|Width|Height/i}).count(),0);
   }
-  if(mode!=='other'){assert.equal(await page.getByRole('button',{name:'Submit for approval',exact:true}).isDisabled(),true);await pick(/Purchase expense request/i,'EXP-1-1');}
+  assert.equal(await page.getByTestId('approval-dialog-flow').count(),0,'entry form collects the movement before approval confirmation');
+  if(mode!=='other'){assert.equal(await page.getByRole('button',{name:'Save',exact:true}).isDisabled(),true);await pick(/Purchase expense request/i,'EXP-1-1');}
   else assert.equal(await page.getByRole('textbox',{name:/Purchase expense request/i}).count(),0);
   await page.getByRole('textbox',{name:/Quantity/i}).fill('1250').catch(async error=>{throw new Error(JSON.stringify({cause:error.message,errors,body:await page.locator('body').innerText()}));});
+  await page.getByRole('button',{name:'Save',exact:true}).waitFor();
+  if(width===1440&&mode==='other'){await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(button=>button.textContent==='Save'&&!button.disabled));await page.screenshot({path:'logs/inventory-entry-preview.png'});}
+  await page.getByRole('button',{name:'Save',exact:true}).click();
+  await page.getByTestId('approval-dialog-flow').waitFor();
+  assert.equal(await page.locator('[data-approval-person-stage="drafter"]').getByRole('textbox',{name:'Grade',exact:true}).inputValue(),'Director','drafter shows their actual localized grade');
+  if(mode==='other'){
+   assert.equal(await page.getByRole('dialog').last().getByRole('combobox').count(),0,'final drafter is selected read-only instead of requiring an empty higher-approver choice');
+   assert.equal(await page.locator('[data-approval-person-stage="final-self"]').getByRole('textbox',{name:'Name',exact:true}).inputValue(),'Drafter');
+   if(width===1440)await page.screenshot({path:'logs/inventory-approval-preview.png'});
+  }
+  assert.equal(writes.length,0,'Save opens the ledger-style approval confirmation without writing');
+  await page.getByRole('dialog').last().getByRole('button',{name:'Cancel',exact:true}).click();
+  assert.equal(await page.getByRole('textbox',{name:/Quantity/i}).inputValue(),'1250','closing confirmation preserves the complete movement draft');
+  await page.getByRole('button',{name:'Save',exact:true}).click();
   await page.getByRole('button',{name:'Submit for approval',exact:true}).click({timeout:5000});
   await page.getByRole('cell',{name:'1,250',exact:true}).waitFor();
   assert.equal(writes.length,1);
