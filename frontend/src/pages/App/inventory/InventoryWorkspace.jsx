@@ -1,31 +1,17 @@
 import {materialItemText} from '../../../constants/materialItems';
+import {InventoryEntry,InventoryRows} from './InventoryMovements';
 import MaterialMasterList from '../../../components/MaterialMasterList';
 import SearchPanel from '../../../components/SearchPanel';
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {Box,Button,Chip,Dialog,DialogActions,DialogContent,DialogTitle,Grid,MenuItem,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs,TextField,Typography} from '@mui/material';
+import {Button,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs} from '@mui/material';
 import {useLanguage} from '../../../context/LanguageContext';
 import {useAuth} from '../../../context/AuthContext';
 import {canAccessPath} from '../../../utils/accessControl';
 import Alert from "../../../components/AppNotice";
 import AddIcon from '@mui/icons-material/Add';
-import SaveIcon from '@mui/icons-material/Save';
 import AppPageContainer from '../../../components/AppPageContainer';
 import SearchInput from '../../../components/SearchInput';
-import DateRangeSelector from '../../../components/DateRangeSelector';
-import dayjs from 'dayjs';
-
-const MATERIALS = [
-  { code: 'MAT-000001', type: '일반 스냅', name: 'HS-SCW-90003', maker: 'YKK', spec: '13mm / B', color: 'BLACK', unit: 'EA', stock: 2800, reserved: 600 },
-  { code: 'MAT-000002', type: '폴리백', name: 'OPP 접착식', maker: '-', spec: '30×40cm', color: '-', unit: 'EA', stock: 12500, reserved: 3000 },
-  { code: 'MAT-000003', type: '겉감', name: 'N66 TASLAN', maker: 'HANIL', spec: '58 inch', color: 'NAVY', unit: 'M', stock: 842.5, reserved: 310 },
-];
-
-const MOVEMENTS = [
-  { date: '2026-08-04', type: '구매', doc: 'IN-20260804-001', material: 'HS-SCW-90003 / BLACK', quantity: '+3,000 EA', from: '-', to: '기본 창고', owner: 'BARO', status: '확정' },
-  { date: '2026-08-04', type: '생산 투입', doc: 'OUT-20260804-003', material: 'N66 TASLAN / NAVY', quantity: '-120 M', from: '기본 창고', to: '-', owner: 'BARO', status: '확정' },
-  { date: '2026-08-03', type: '고객 지급 입고', doc: 'IN-20260803-002', material: '브랜드 라벨 / WHITE', quantity: '+5,000 EA', from: '-', to: '기본 창고', owner: '고객 A', status: '확정' },
-];
 
 const SETTINGS = {
   types: [
@@ -60,62 +46,6 @@ const UiNotice = () => (
   </Alert>
 );
 
-const EmptyAction = ({ children }) => (
-  <Button variant="contained" startIcon={<SaveIcon />} onClick={() => {}}>{children}</Button>
-);
-
-const StockView = ({ keyword }) => {
-  const {languageCode}=useLanguage();
-  const labels=({ko:['자재 정보','보관 위치','수량','자재코드','자재 종류','품명·규격','색상','단위','소유자','창고','현재고','예약','가용재고','조회 결과'],en:['Material','Location','Quantities','Material code','Material type','Name / specification','Color','Unit','Owner','Warehouse','On hand','Reserved','Available','Results'],vi:['Vật tư','Vị trí','Số lượng','Mã vật tư','Loại vật tư','Tên / quy cách','Màu','Đơn vị','Chủ sở hữu','Kho','Hiện có','Đã giữ','Khả dụng','Kết quả']})[languageCode]||['Material','Location','Quantities','Material code','Material type','Name / specification','Color','Unit','Owner','Warehouse','On hand','Reserved','Available','Results','Shortage'];
-  const rows = useMemo(() => MATERIALS.filter((item) => Object.values(item).join(' ').toLowerCase().includes(keyword.toLowerCase())), [keyword]);
-  return (
-    <Stack spacing={2}>
-      <UiNotice />
-      <Paper variant="outlined" sx={{ overflow:'hidden' }}>
-        <Stack direction="row" justifyContent="space-between" sx={{px:1.5,py:1,borderBottom:1,borderColor:'divider'}}><Typography variant="body2">{labels[13]} {rows.length}</Typography></Stack>
-        <Box sx={{overflowX:'auto'}}><Table data-inventory-stock data-table-layout="wide" size="small" sx={{minWidth:1080,'& th, & td':{whiteSpace:'nowrap'},'& [data-stock-available]':{bgcolor:'action.selected'}}}><TableHead>
-          <TableRow><TableCell colSpan={5}>{labels[0]}</TableCell><TableCell colSpan={2}>{labels[1]}</TableCell><TableCell colSpan={3} align="right">{labels[2]}</TableCell></TableRow>
-          <TableRow>{labels.slice(3,13).map((label,index) => <TableCell key={label} align={index>=7?'right':'left'}>{label}</TableCell>)}</TableRow></TableHead>
-          <TableBody>{rows.map((item) => <TableRow hover key={item.code}><TableCell sx={{ fontWeight: 700 }}>{item.code}</TableCell><TableCell>{item.type}</TableCell><TableCell>{item.name}<Typography variant="caption" display="block" color="text.secondary">{item.spec}</Typography></TableCell><TableCell>{item.color}</TableCell><TableCell>{item.unit}</TableCell><TableCell>BARO</TableCell><TableCell>기본 창고</TableCell><TableCell align="right">{item.stock.toLocaleString()}</TableCell><TableCell align="right">{item.reserved.toLocaleString()}</TableCell><TableCell data-stock-available align="right" sx={{ fontWeight: 700,color:item.stock-item.reserved<0?'error.main':'primary.main' }}>{(item.stock-item.reserved).toLocaleString()}</TableCell></TableRow>)}{!rows.length&&<TableRow><TableCell colSpan={10}>—</TableCell></TableRow>}</TableBody>
-        </Table>
-        </Box>
-      </Paper>
-    </Stack>
-  );
-};
-
-const EntryView = () => {
-  const navigate = useNavigate();
-  const [type, setType] = useState('PURCHASE');
-  const isTransfer = type === 'TRANSFER';
-  const isDecrease = ['PRODUCTION_ISSUE', 'DELIVERY', 'LOSS'].includes(type);
-  return (
-    <Stack spacing={2}>
-      <UiNotice />
-      <Paper variant="outlined" sx={{ p: 2.5 }}>
-        <Stack spacing={2.5}>
-          <Box><Typography variant="subtitle1" fontWeight={800}>입출고 기본 정보</Typography><Typography variant="body2" color="text.secondary">입출고 유형에 맞는 창고 방향만 입력합니다.</Typography></Box>
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}><TextField fullWidth select size="small" label="입출고 유형" value={type} onChange={(event) => setType(event.target.value)}>{[['PURCHASE','구매'],['CUSTOMER_IN','고객 지급 입고'],['TRANSFER','창고 이동'],['PRODUCTION_ISSUE','생산 투입'],['PRODUCTION_RETURN','생산 반환'],['DELIVERY','납품'],['LOSS','폐기·손실'],['ADJUSTMENT','실사 조정']].map(([value,label]) => <MenuItem value={value} key={value}>{label}</MenuItem>)}</TextField></Grid>
-            <Grid item xs={12} md={4}><TextField fullWidth size="small" type="date" label="처리일" defaultValue="2026-08-05" InputLabelProps={{ shrink: true }} /></Grid>
-            <Grid item xs={12} md={4}><TextField fullWidth size="small" label="증빙번호" placeholder="선택 입력" /></Grid>
-            {(isDecrease || isTransfer) && <Grid item xs={12} md={6}><TextField fullWidth select size="small" label="출발 창고" defaultValue="default"><MenuItem value="default">하노이 / 기본 창고</MenuItem></TextField></Grid>}
-            {(!isDecrease || isTransfer) && <Grid item xs={12} md={6}><TextField fullWidth select size="small" label="도착 창고" defaultValue="default"><MenuItem value="default">하노이 / 기본 창고</MenuItem></TextField></Grid>}
-            <Grid item xs={12} md={6}><TextField fullWidth select size="small" label="소유자" defaultValue="baro"><MenuItem value="baro">BARO</MenuItem><MenuItem value="customer">고객 A</MenuItem></TextField></Grid>
-            <Grid item xs={12} md={6}><TextField fullWidth size="small" label="공급처·고객" placeholder="선택 입력" /></Grid>
-          </Grid>
-          <Box><Typography variant="subtitle1" fontWeight={800}>자재 내역</Typography></Box>
-          <Paper variant="outlined" sx={{ p: 2 }}><Grid container spacing={1.5}><Grid item xs={12} md={5}><TextField fullWidth select size="small" label="자재" defaultValue="MAT-000001">{MATERIALS.map((item) => <MenuItem key={item.code} value={item.code}>{item.code} · {item.name} · {item.color}</MenuItem>)}</TextField></Grid><Grid item xs={6} md={2}><TextField fullWidth size="small" label="수량" defaultValue="1000" /></Grid><Grid item xs={6} md={1}><TextField fullWidth size="small" label="단위" value="EA" InputProps={{ readOnly: true }} /></Grid><Grid item xs={6} md={2}><TextField fullWidth size="small" label="단가" placeholder="선택" /></Grid><Grid item xs={6} md={2}><TextField fullWidth select size="small" label="통화" defaultValue="VND"><MenuItem value="VND">VND</MenuItem><MenuItem value="USD">USD</MenuItem></TextField></Grid></Grid></Paper>
-          <TextField fullWidth multiline minRows={2} label="메모" />
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}><Button onClick={() => navigate('/inventory/movements')}>목록</Button><EmptyAction>입출고 저장</EmptyAction></Box>
-        </Stack>
-      </Paper>
-    </Stack>
-  );
-};
-
-const HistoryView = () => <Stack spacing={2}><UiNotice /><Paper variant="outlined" sx={{ overflowX: 'auto' }}><Table size="small"><TableHead><TableRow>{['일자','입출고 유형','문서번호','자재','수량','출발','도착','소유자','상태'].map((label) => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{MOVEMENTS.map((row) => <TableRow hover key={row.doc}><TableCell>{row.date}</TableCell><TableCell><Chip size="small" label={row.type} variant="outlined" /></TableCell><TableCell sx={{ fontWeight: 700 }}>{row.doc}</TableCell><TableCell>{row.material}</TableCell><TableCell sx={{ fontWeight: 700 }}>{row.quantity}</TableCell><TableCell>{row.from}</TableCell><TableCell>{row.to}</TableCell><TableCell>{row.owner}</TableCell><TableCell><Chip size="small" color="success" label={row.status} /></TableCell></TableRow>)}</TableBody></Table></Paper></Stack>;
-
 const SettingsView = () => {
   const [tab, setTab] = useState('types');
   const labels = { types: ['코드','자재 종류','기본 단위','사용 속성'], units: ['코드','표시명','소수 자릿수','수량 방식'], specs: ['코드','표시값','자재 종류','타입'] };
@@ -128,39 +58,25 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const canViewMaterials=canAccessPath('/inventory/materials',auth),canViewReference=canAccessPath('/inventory/settings',auth);
   const mergedMaterials=['materials','settings'].includes(view);
   const sections=({ko:{materials:'자재 마스터',reference:'기준정보'},en:{materials:'Material master',reference:'Reference data'},vi:{materials:'Danh mục vật tư',reference:'Dữ liệu chuẩn'}})[languageCode]||{materials:'Material master',reference:'Reference data'};
-  const [title, description] = PAGE_META[view] || PAGE_META.stock;
+  const [title] = PAGE_META[view] || PAGE_META.stock;
   const [keyword, setKeyword] = useState('');
   const [searchResetVersion, setSearchResetVersion] = useState(0);
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
-  const [historyStartMonth, setHistoryStartMonth] = useState(() => dayjs('2026-08-01'));
-  const [historyEndMonth, setHistoryEndMonth] = useState(() => dayjs('2026-08-01').endOf('month'));
-  const resetSearch = () => { setKeyword(''); setHistoryStartMonth(dayjs('2026-08-01')); setHistoryEndMonth(dayjs('2026-08-01').endOf('month')); setSearchResetVersion(value => value + 1); };
+  const resetSearch = () => { setKeyword(''); setSearchResetVersion(value => value + 1); };
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>입출고 등록</Button>
   ) : view==='materials' && canViewMaterials ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>{(materialItemText[languageCode]||materialItemText.en).add}</Button>
   ) : null;
-  const toolbar = view === 'stock' ? (
-    <SearchPanel key={searchResetVersion} onReset={resetSearch}
-      search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="자재코드, 종류, 품명, 규격 검색" />}
-      controls={<Stack direction="row" spacing={1} useFlexGap flexWrap="wrap"><TextField select label="공장" defaultValue="HN" sx={{ minWidth: 150 }}><MenuItem value="HN">하노이</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="default">기본 창고</MenuItem></TextField><TextField select label="소유자" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="baro">BARO</MenuItem><MenuItem value="customer">고객 소유</MenuItem></TextField><TextField select label="재고 상태" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem><MenuItem value="short">부족</MenuItem><MenuItem value="negative">음수</MenuItem></TextField></Stack>}
-    />
-  ) : view === 'history' ? (
-    <SearchPanel key={searchResetVersion} onReset={resetSearch}
-      search={<SearchInput placeholder="문서번호, 자재, 처리자 검색" />}
-      controls={<Stack direction="row" spacing={1} alignItems="center" useFlexGap flexWrap="wrap"><TextField select label="입출고 유형" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField><TextField select label="창고" defaultValue="all" sx={{ minWidth: 150 }}><MenuItem value="all">전체</MenuItem></TextField></Stack>}
-      dates={<DateRangeSelector startValue={historyStartMonth} endValue={historyEndMonth} onStartChange={setHistoryStartMonth} onEndChange={setHistoryEndMonth} />}
-    />
-  ) : view==='materials' && canViewMaterials ? (
-    <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="코드, 종류, 품명, 제조사, 규격 검색" />} />
+  const toolbar = view==='stock'||view==='history'||view==='materials'&&canViewMaterials ? (
+    <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={event=>setKeyword(event.target.value)}/>} />
   ) : null;
-  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : { stock: <StockView keyword={keyword} />, entry: <EntryView />, history: <HistoryView /> }[view] || <StockView keyword={keyword} />;
+  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows view={view} keyword={keyword}/>;
   return (
     <>
       <AppPageContainer
         title={mergedMaterials?sections.materials:title}
         titleActions={titleActions}
-        description={mergedMaterials?'':description}
         toolbar={toolbar}
       >
         {content}

@@ -5,6 +5,7 @@ import {effectiveExpenseCode} from './expenseCodeLinkPolicy';
 import {prepareCodeItemAttributes} from './codeItemAttributes';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 import {normalizeLocalizedName} from '../utils/localizedName';
+import {registerInventoryMovementRoutes} from './inventoryMovements';
 import {materialMasterCode} from './materialCodeSettings';
 
 const fail=(code:string):never=>{throw createHttpError(400,code);};
@@ -50,11 +51,13 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  if(body.policyAuditId!==(policy?.auditId??null))throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
  const code=materialMasterCode(effectiveExpenseCode(local,policy)),attributes=await prepareCodeItemAttributes(tx,orgId,body,code);
  const details:any={};for(const key of ['length','width','height'])if(body.details?.[key])details[key]=String(body.details[key]).trim();
- const dimensions=code.base.requiredFields?.includes('length');
+ const sharedMaster=body.sharedMaster===true;
+ if(sharedMaster&&await tx.materialItem.findFirst({where:{orgId,baseId:base.id},select:{id:true}}))throw createHttpError(409,'MATERIAL_ITEM_DUPLICATE');
+ const dimensions=!sharedMaster&&code.base.requiredFields?.includes('length');
  if(dimensions){for(const key of ['length','width','height'])if(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key]||'')||Number(details[key])<=0)fail('INVALID_MATERIAL_DIMENSIONS');}
  else if(Object.keys(details).length)fail('INVALID_MATERIAL_DIMENSIONS');
  const unit=await tx.expenseUnit.findFirst({where:{id:body.unitId,isActive:true}});if(!unit)fail('INVALID_EXPENSE_UNIT');
- const data={...normalizeLocalizedName(base),...attributes,details,unit,color:null,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
+ const data={...normalizeLocalizedName(base),...attributes,details,unit,color:null,...(sharedMaster?{sharedMaster}:{}),baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:sharedMaster?[]:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
  const identityDetails=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,new Prisma.Decimal(value as string).toString()]));
  const identityKey=createHash('sha256').update(JSON.stringify({name:data.nameEn.toUpperCase(),owner:attributes.itemOwnerOrgId,customer:attributes.itemCustomerId,type:attributes.itemTypeId,unitId:unit.id,colorId:null,details:identityDetails})).digest('hex');
  return tx.materialItem.create({data:{id:randomUUID(),orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,ownerOrgId:attributes.itemOwnerOrgId??null,customerId:attributes.itemCustomerId??null,typeId:attributes.itemTypeId??null,colorId:null,policyAuditId:policy?.auditId??null,data,identityKey,clientKey:body.clientKey,requestHash,createdByEmployeeId:actorId}});
@@ -67,6 +70,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
   if(!employee||!roles.includes(employee.orgRole)||!(await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type)).includes(feature)||!await gates.canAccessCodeItems?.({orgType:scope.organization.type,orgRole:employee.orgRole,feature}))throw createHttpError(403,'FEATURE_ACCESS_DENIED');
   return {orgId:scope.organization.id,actorId:employee.id};
  };
+ registerInventoryMovementRoutes(app,db,access);
  app.get('/material-items/options',async(req:any,res:any)=>{
   const scope=await access(req,res,req.query?.context==='LEDGER'?'BANK_LEDGER':'OUTSOURCING_RECORD');if(!scope)return;
   const baseId=Number(req.query.baseId);if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_MATERIAL_CODE');

@@ -36,6 +36,8 @@ export const workspaceTopics=(path:string):string[]=>{
  if(/^\/management-targets\/INVOICE\/?$/i.test(route))return ['orders','invoice-drafts'];
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
+  [/^\/material-items\/?$/,['inventory-movements']],
+  [/^\/inventory-entry(?:\/|$)/,['inventory-movements','inventory-stock']],
   [/^\/(shipping|freight|shipping-ports)/,['shipping','shipping-ports']],
   [/^\/orders(?:\/[^/]+)?\/?$/,['orders','order-records','order-shipments','invoice-drafts','assignment-board']],
   [/^\/(orders|work-orders|order-shipments)/,['orders','order-shipments','invoice-drafts','assignment-board']],
@@ -143,7 +145,7 @@ export function createWorkspaceEvents(db:any,gates:any,clientFactory=()=>new Cli
   const employee=employeeId&&await db.employee.findFirst({where:{id:employeeId,orgId:scope.organization.id,status:'ACTIVE'},select:{id:true,orgRole:true}});
   if(!employee)return res.status(403).json({error:'ACTIVE_EMPLOYEE_REQUIRED'});
   const topicFeatures:Record<string,string>={'accounting-alerts':'DASHBOARD','accounting-codes':'DASHBOARD','partner-classifications':'DASHBOARD','shipping':'SHIPPING_REQUEST','shipping-ports':'FREIGHT','styles':'STYLE','orders':'ORDER','order-shipments':'ORDER_SHIPMENTS','invoice-drafts':'INVOICE','issued-invoices':'INVOICE','assignment-board':'ASSIGNMENT','holidays':'HOLIDAY','employees':'EMPLOYEE','sales-prices':'CUSTOMER','customers':'CUSTOMER','business-partners':'CUSTOMER','salary-system-settings':'SALARY_SYSTEM','production-allowance-settings':'SALARY_SYSTEM','payroll-sources':'PAYROLL','expense-requests':'OUTSOURCING_RECORD','expense-approvals':'OUTSOURCING_RECORD','change-approvals':'DASHBOARD','bank-ledger':'BANK_LEDGER','work-requests':'DASHBOARD'};
-  Object.assign(topicFeatures,{'account-overview':'ACCOUNT_OVERVIEW','approval-settings':'APPROVAL_SETTINGS','expense-approval-settings':'OUTSOURCING_RECORD','order-records':'ORDER','work-time':'WORK_TIME','work-time-policy':'APPROVAL_SETTINGS','attendance':'ATTENDANCE','employee-leaves':'EMPLOYEE','organization-profile':'BUSINESS','company-industries':'BUSINESS'});
+  Object.assign(topicFeatures,{'inventory-movements':'INVENTORY_MOVEMENTS','inventory-stock':'INVENTORY_STOCK','account-overview':'ACCOUNT_OVERVIEW','approval-settings':'APPROVAL_SETTINGS','expense-approval-settings':'OUTSOURCING_RECORD','order-records':'ORDER','work-time':'WORK_TIME','work-time-policy':'APPROVAL_SETTINGS','attendance':'ATTENDANCE','employee-leaves':'EMPLOYEE','organization-profile':'BUSINESS','company-industries':'BUSINESS'});
   const offered=await companyIndustryMenuFeatures(db,scope.organization.id,scope.organization.type),features=new Set<string>();
   for(const feature of new Set(Object.values(topicFeatures)))if(offered.includes(feature)&&await gates.canAccess({orgType:scope.organization.type,orgRole:employee.orgRole,feature}))features.add(feature);
   await connect();

@@ -41,9 +41,12 @@ try{
   for(const [i,value] of ['TEST BOX','테스트 박스','Hộp thử'].entries())await dialog.getByLabel(names[i],{exact:true}).evaluate((input,expected)=>{if(!input.readOnly||input.value!==expected)throw Error('Expected read-only SYSTEM name');},value);
   const unitField=dialog.getByRole('textbox',{name:t.unit,exact:false});await unitField.fill('EA');await unitField.press('Tab');
   assert.equal(await dialog.getByRole('textbox',{name:t.color,exact:false}).count(),0);
-  for(const key of ['length','width','height'])assert.equal(await dialog.getByRole('textbox',{name:d[key],exact:false}).getAttribute('required'),'');
-  await dialog.getByRole('textbox',{name:d.length,exact:false}).fill('100');await dialog.getByRole('textbox',{name:d.width,exact:false}).fill('200');await dialog.getByRole('button',{name:t.save,exact:true}).click();assert.equal(writes.length,0,'height is required before posting');
-  await dialog.getByRole('textbox',{name:d.height,exact:false}).fill('300');await dialog.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('alert').filter({hasText:t.failed}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:d.height,exact:false}).inputValue(),'300');
+  for(const key of ['length','width','height'])assert.equal(await dialog.getByRole('textbox',{name:d[key],exact:false}).count(),0);
+  await dialog.getByRole('button',{name:t.save,exact:true}).click();
+  await page.getByRole('alert').filter({hasText:t.failed}).waitFor();
+  assert.ok(await unitField.inputValue());
+  assert.equal(writes[0].sharedMaster,true);
+  assert.deepEqual(writes[0].details,{});
   await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes[0],writes[1],'retry retains the exact identity and draft');await page.getByRole('cell',{name:'TEST BOX',exact:true}).or(page.getByRole('cell',{name:'테스트 박스',exact:true})).or(page.getByRole('cell',{name:'Hộp thử',exact:true})).waitFor();
   await page.getByRole('button',{name:'ADD',exact:true}).click();
   await dialog.getByRole('button',{name:new RegExp(t.productSearch)}).click();
@@ -55,7 +58,7 @@ try{
   for(const view of ['EXPENSE','LEDGER']){
    await page.getByRole('button',{name:view,exact:true}).click();await page.locator('button[title="proof.pdf"]').click();
    const evidence=page.getByRole('dialog'),picker=evidence.getByRole('textbox',{name:t.title,exact:false});await picker.fill('TEST BOX');await picker.press('Enter');
-   if(view==='EXPENSE'){await page.waitForFunction(()=>window.expenseLine.materialItemId==='material-1'&&window.expenseValid);assert.equal(await page.evaluate(()=>window.expenseLine.details.height),'300');}
+   if(view==='EXPENSE'){await page.waitForFunction(()=>window.expenseLine.materialItemId==='material-1'&&window.expenseValid);assert.equal(await page.evaluate(()=>window.expenseLine.details.height),undefined);}
    else {await page.waitForFunction(()=>window.ledgerRows[0].materialItemId==='material-1');assert.equal(await page.locator('[data-ledger-entry-row]').count(),1,'no auxiliary material row');}
    for(const key of ['length','width','height'])assert.equal(await evidence.getByRole('textbox',{name:d[key],exact:false}).count(),0,'specifications come from the selected master');
    await page.keyboard.press('Escape');await evidence.waitFor({state:'hidden'});

@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
 const require=createRequire(import.meta.url),{registerMaterialItem,prepareMaterialSelection,registerMaterialItemRoutes}=require('../backend/dist/services/materialItems');
+const {registerInventoryMovementRoutes}=require('../backend/dist/services/inventoryMovements');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
 const {postLedgerEntry}=require('../backend/dist/services/bankLedger');
 const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/services/expenseRequestEditor');
@@ -44,6 +45,17 @@ test('registered material identity and snapshots flow to expenses and direct ban
   assert.equal(await db.bankLedgerEntry.count({where:{orgId:org,revisesEntryId:legacyBank.id,materialItemId:null}}),1);
   const unit=await db.expenseUnit.create({data:{code:'TEST_UNIT',nameKo:'개',nameEn:'Each',nameVi:'Cái'}});
   const body={clientKey:randomUUID(),policyAuditId:null,baseId:base.id,nameKo:'테스트 박스',nameEn:'TEST BOX',nameVi:'Hộp thử',unitId:unit.id,details:{length:'100',width:'200',height:'300'},materialRevision:configured.materialRevision,industryRevision:industry.materialManagementRevision};
+  const stockMigration=readFileSync('backend/prisma/migrations/20261120030000_inventory_movements/migration.sql','utf8');
+  await f.pg.exec(stockMigration);
+  const rollback=new Error('rollback test master');
+  await assert.rejects(db.$transaction(async tx=>{
+   const shared=await registerMaterialItem(tx,org,actor,{...body,sharedMaster:true,details:{}});
+   assert.equal(shared.data.sharedMaster,true);
+   assert.deepEqual(shared.data.details,{});
+   assert.deepEqual(shared.data.inputSettings.requiredFields,[]);
+   await assert.rejects(registerMaterialItem(tx,org,actor,{...body,clientKey:randomUUID(),sharedMaster:true,details:{}}),/MATERIAL_ITEM_DUPLICATE/);
+   throw rollback;
+  }),error=>error===rollback);
   const create=body=>db.$transaction(tx=>registerMaterialItem(tx,org,actor,body));
   await assert.rejects(create({...body,clientKey:randomUUID(),itemOwnerOrgId:org}),/INVALID_MATERIAL_ITEM/);
   await assert.rejects(create({...body,clientKey:randomUUID(),details:{length:'100',width:'200'}}),/INVALID_MATERIAL_DIMENSIONS/);
@@ -92,6 +104,27 @@ test('registered material identity and snapshots flow to expenses and direct ban
   assert.equal((await create(colorless)).colorId,null);
   await assert.rejects(create({...colorless,clientKey:randomUUID(),colorId:1}),/INVALID_MATERIAL_COLOR/);
   const migration=readFileSync('backend/prisma/migrations/20261119120000_material_item_master/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
+  await f.pg.exec(stockMigration);await f.pg.exec(stockMigration);
+  await db.transactionCodeBase.update({where:{id:base.id},data:{
+   materialSettings:{...settings.materialSettings,masterInputs:{...settings.materialSettings.masterInputs,color:'HIDDEN'}},
+   materialRevision:{increment:1},
+  }});
+  const movementRoutes={};
+  registerInventoryMovementRoutes({get:(path,fn)=>{movementRoutes[path]=fn;},post:(path,fn)=>{movementRoutes[path]=fn;}},db,async req=>({orgId:req.orgId||org,actorId:actor}));
+  const call=async(path,req)=>{let data;await movementRoutes[path](req,{status(){return this;},json(body){data=body;}});return data;};
+  const receipt={clientKey:randomUUID(),masterId:generated.id,ownerId:org,dimensions:{length:'10',width:'10',height:'10'},date:'2026-11-20',quantity:'10',remark:''};
+  const first=await call('/inventory-entry',{body:receipt});
+  assert.deepEqual(await call('/inventory-entry',{body:receipt}),first);
+  await assert.rejects(call('/inventory-entry',{body:{...receipt,quantity:'11'}}),/INVENTORY_RETRY_MISMATCH/);
+  await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),ownerId:s.vendor.id,quantity:'25'}});
+  const options=await call('/inventory-entry/options',{query:{masterId:generated.id}});
+  assert.equal(options.variants.length,2);
+  const ownVariant=options.variants.find(row=>row.attributes.owner.id===org);
+  await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),variantId:ownVariant.id,quantity:'-3'}});
+  const stock=await call('/inventory-entry/stock',{});
+  assert.deepEqual(stock.map(row=>Number(row.quantity)).sort((a,b)=>a-b),[7,25]);
+  assert.equal((await call('/inventory-entry/history',{})).length,3);
+  assert.deepEqual(await call('/inventory-entry/stock',{orgId:s.vendor.id}),[]);
   assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:cost.id}}),original);
  }finally{await f.close();}
 });
