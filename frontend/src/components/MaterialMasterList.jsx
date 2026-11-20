@@ -1,5 +1,6 @@
 import MaterialVariantRows,{materialVariantSearch} from './MaterialVariantRows';
 import MaterialVariantEditor from './MaterialVariantEditor';
+import ExpenseLookupField from './ExpenseLookupField';
 import {materialVariantManagementText,variantManagementError} from '../constants/materialVariantManagement';
 import {usePageDialogs} from './PageDialogProvider';
 import {useAppActions} from '../context/AppContext';
@@ -18,13 +19,14 @@ export default function MaterialMasterList({keyword=''}){
  const {activeOrgId:orgId}=useAuth(),{languageCode}=useLanguage(),t=materialItemText[languageCode]||materialItemText.en;
  const [catalogue,setCatalogue]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
  const [variants,setVariants]=useState([]),[selectedBaseId,setSelectedBaseId]=useState(null);
+ const [registerOpen,setRegisterOpen]=useState(false),[registerCode,setRegisterCode]=useState(null);
  const [editor,setEditor]=useState(null),[deleting,setDeleting]=useState(false),[variantError,setVariantError]=useState('');
  const deletion=useRef(null),dialogs=usePageDialogs(),{showNotification}=useAppActions(),m=materialVariantManagementText[languageCode]||materialVariantManagementText.en;
  const detailTitleId=useId();
  const sequence=useRef(0),scope=useRef(orgId);scope.current=orgId;
  const load=useCallback(async()=>{const token=++sequence.current;setLoading(true);setError('');setVariants([]);setCatalogue(null);try{const [options,stockItems]=await Promise.all([requestJSON('/material-items/catalogue'+buildQueryString({orgId}),{skipCache:true}),requestJSON('/material-items/variants'+buildQueryString({orgId}),{skipCache:true})]);if(token!==sequence.current)return;setCatalogue(options);setVariants(stockItems);}catch{if(token===sequence.current)setError(t.failed);}finally{if(token===sequence.current)setLoading(false);}},[orgId,t.failed]);
  useEffect(()=>{scope.current=orgId;load();return()=>{sequence.current++;scope.current=null;};},[load]);
- useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements','inventory-stock','accounting-codes'],isBlocked:selectedBaseId!==null,onRefresh:load});
+ useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements','inventory-stock','accounting-codes'],isBlocked:registerOpen||selectedBaseId!==null,onRefresh:load});
  const search=keyword.trim().toLocaleLowerCase();
  const grouped=new Map();for(const item of variants){if(!grouped.has(item.baseId))grouped.set(item.baseId,[]);grouped.get(item.baseId).push(item);}
  const matchesCode=row=>[row.base.code,row.base.nameEn,row.base.nameKo,row.base.nameVi].join(' ').toLocaleLowerCase().includes(search);
@@ -34,6 +36,11 @@ export default function MaterialMasterList({keyword=''}){
  const remove=async row=>{if(deleting)return;if(!deletion.current&&!await dialogs.confirm(m.confirm,{title:m.remove}))return;deletion.current??=row;setDeleting(true);setVariantError('');try{await requestJSON('/material-items/variants/'+row.id+buildQueryString({orgId}),{method:'DELETE',body:JSON.stringify({revision:row.revision})});if(scope.current!==orgId)return;deletion.current=null;showNotification(m.deleted,'success');changed();await load();}catch(e){if(scope.current!==orgId)return;if(e.status>=400&&e.status<500)deletion.current=null;setVariantError(variantManagementError(e,m));}finally{if(scope.current===orgId)setDeleting(false);}};
  const closeDetails=()=>{if(!deleting&&!deletion.current&&!editor){setSelectedBaseId(null);setVariantError('');}};
  return <Stack spacing={2}>{error&&selectedBaseId===null&&<AppNotice severity="error" action={<Button onClick={load} disabled={loading}>{t.retry}</Button>}>{error}</AppNotice>}
+ <Box sx={{display:'flex',justifyContent:'flex-end'}}><Button variant="contained" startIcon={<AddIcon/>} disabled={loading||!catalogue||Boolean(error)} onClick={()=>{setRegisterCode(null);setRegisterOpen(true);}}>{t.registerMaster}</Button></Box>
+ <Dialog open={registerOpen} onClose={()=>setRegisterOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t.registerMaster}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:2}}>
+  <ExpenseLookupField label={t.code} getOptionKey={row=>row.baseId} options={catalogue?.codes||[]} value={registerCode} onChange={setRegisterCode} languageCode={languageCode} getCode={row=>row.base.code} getOptionLabel={row=>[row.base.code,materialItemName(row.base,languageCode)].filter(Boolean).join(' · ')} columns={[{key:'code',label:t.code,value:row=>row.base.code},{key:'name',label:t.name,value:row=>materialItemName(row.base,languageCode)}]}/>
+  <Box sx={{display:'flex',justifyContent:'flex-end',gap:1}}><Button onClick={()=>setRegisterOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={!registerCode?.base.materialUnitId} onClick={()=>{setSelectedBaseId(registerCode.baseId);setRegisterOpen(false);setEditor({row:null});}}>{m.add}</Button></Box>
+ </Stack></DialogContent></Dialog>
  <TableContainer><Table size="small" data-table-layout="fixed" sx={{width:'100%',tableLayout:'fixed',minWidth:620}}><colgroup><col style={{width:'14%'}}/><col/><col style={{width:'16%'}}/><col style={{width:'12%'}}/><col style={{width:176}}/></colgroup><TableHead><TableRow>{[t.code,t.name,t.unit,t.items,t.actions].map((label,index)=><TableCell key={label} align={index===3?'center':index===4?'right':'left'} sx={index===4?{position:'sticky',right:0,bgcolor:'background.paper',width:176}:undefined}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
   {visibleCodes.map(row=><TableRow key={row.baseId}><TableCell>{row.base.code}</TableCell><TableCell>{materialItemName(row.base,languageCode)}</TableCell><TableCell>{materialItemName(catalogue.units.find(unit=>unit.id===row.base.materialUnitId),languageCode)||'\u2014'}</TableCell><TableCell align="center">{(grouped.get(row.baseId)||[]).length}</TableCell><TableCell align="right" data-table-actions sx={{position:'sticky',right:0,bgcolor:'background.paper',whiteSpace:'nowrap'}}><Button size="small" aria-haspopup="dialog" aria-label={t.viewItems+' \u00b7 '+row.base.code+' \u00b7 '+materialItemName(row.base,languageCode)} onClick={()=>setSelectedBaseId(row.baseId)}>{t.viewItems}</Button></TableCell></TableRow>)}
   {!loading&&!error&&!visibleCodes.length&&<TableRow><TableCell colSpan={5}>{t.empty}</TableCell></TableRow>}

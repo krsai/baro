@@ -43,7 +43,15 @@ try{
   const details=page.getByRole('dialog');await details.getByRole('cell',{name:'Used item',exact:true}).waitFor();
   assert.equal(await details.getByRole('button',{name:m.edit,exact:true}).isDisabled(),true);
   assert.equal(await details.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
-  await details.getByRole('button',{name:m.add,exact:true}).click();
+  await details.getByRole('button',{name:t.close,exact:true}).click();
+  await details.waitFor({state:'hidden'});
+  await page.getByRole('button',{name:t.registerMaster,exact:true}).click();
+  const registration=page.getByRole('dialog',{name:t.registerMaster,exact:true});
+  assert.equal(await registration.getByRole('button',{name:m.add,exact:true}).isDisabled(),true);
+  await registration.getByRole('textbox',{name:t.code,exact:true}).fill('CTN');
+  await registration.getByRole('textbox',{name:t.code,exact:true}).press('Enter');
+  assert.equal(writes.length,0,'selecting a code must not write');
+  await registration.getByRole('button',{name:m.add,exact:true}).click();
   let editor=page.getByRole('dialog').last();
   await editor.getByRole('textbox',{name:a.owner,exact:true}).fill('TSAN');await editor.getByRole('textbox',{name:a.owner,exact:true}).press('Enter');
   await editor.getByRole('button',{name:t.addVariant,exact:true}).click();
