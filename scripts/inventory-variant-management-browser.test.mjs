@@ -9,7 +9,8 @@ const fixture='frontend/variant-management-acceptance.html',port=43544;assert.ok
 writeFileSync(fixture,`<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">
 import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';import Master from '/src/components/MaterialMasterList';
 import {MemoryRouter} from 'react-router-dom';
-createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Master))));
+function Page(){const [target,setTarget]=React.useState(null);return React.createElement('div',null,React.createElement('header',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},React.createElement('h1',null,'Material master'),React.createElement('div',{ref:setTarget})),React.createElement(Master,{actionContainer:target}));}
+createRoot(document.getElementById('root')).render(React.createElement(MemoryRouter,null,React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(Page))));
 </script>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore',windowsHide:true});let browser;
 try{
@@ -45,7 +46,11 @@ try{
   assert.equal(await details.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
   await details.getByRole('button',{name:t.close,exact:true}).click();
   await details.waitFor({state:'hidden'});
-  await page.getByRole('button',{name:t.registerMaster,exact:true}).click();
+  const register=page.locator('header').getByRole('button',{name:t.registerMaster,exact:true});
+  assert.equal(await page.getByRole('button',{name:t.registerMaster,exact:true}).count(),1);
+  const buttonBounds=await register.boundingBox(),titleBounds=await page.getByRole('heading',{name:'Material master',exact:true}).boundingBox();
+  assert.ok(Math.abs(buttonBounds.y+buttonBounds.height/2-titleBounds.y-titleBounds.height/2)<3,'register is on the page title row');
+  await register.click();
   const registration=page.getByRole('dialog',{name:t.registerMaster,exact:true});
   assert.equal(await registration.getByRole('button',{name:m.add,exact:true}).isDisabled(),true);
   await registration.getByRole('textbox',{name:t.code,exact:true}).fill('CTN');

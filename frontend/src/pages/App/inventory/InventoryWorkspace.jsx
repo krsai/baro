@@ -6,7 +6,7 @@ import MaterialMasterList from '../../../components/MaterialMasterList';
 import SearchPanel from '../../../components/SearchPanel';
 import React, { useEffect,useState } from 'react';
 import { useLocation,useNavigate } from 'react-router-dom';
-import {Button,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs} from '@mui/material';
+import {Box,Button,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs} from '@mui/material';
 import {useLanguage} from '../../../context/LanguageContext';
 import {useAuth} from '../../../context/AuthContext';
 import {canAccessPath} from '../../../utils/accessControl';
@@ -65,16 +65,17 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const materialsTitle=getUiMessage('menu.materials','Materials',languageCode);
   const [title] = PAGE_META[view] || PAGE_META.stock;
   const [keyword, setKeyword] = useState('');
+  const [materialActionContainer,setMaterialActionContainer]=useState(null);
   const [searchResetVersion, setSearchResetVersion] = useState(0);
   const resetSearch = () => { setKeyword(''); setSearchResetVersion(value => value + 1); };
   if(view==='entry')return <InventoryEntry/>;
-  const titleActions = view === 'history' ? (
+  const titleActions = view==='materials'&&canViewMaterials ? <Box ref={setMaterialActionContainer}/> : view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigateToPath?navigateToPath('/inventory/movements/new'):navigate('/inventory/movements/new')}>{movementText.register}</Button>
   ) : null;
   const toolbar = view==='stock'||view==='history'||view==='materials'&&canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={event=>setKeyword(event.target.value)}/>} />
   ) : null;
-  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList key={auth.activeOrgId} keyword={keyword}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
+  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList key={auth.activeOrgId} keyword={keyword} actionContainer={materialActionContainer}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
   return (
     <>
       <AppPageContainer

@@ -1,3 +1,4 @@
+import {createPortal} from 'react-dom';
 import MaterialVariantRows,{materialVariantSearch} from './MaterialVariantRows';
 import MaterialVariantEditor from './MaterialVariantEditor';
 import ExpenseLookupField from './ExpenseLookupField';
@@ -15,7 +16,7 @@ import {useAuth} from '../context/AuthContext';
 import {useLanguage} from '../context/LanguageContext';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {materialItemText,materialItemName} from '../constants/materialItems';
-export default function MaterialMasterList({keyword=''}){
+export default function MaterialMasterList({keyword='',actionContainer}){
  const {activeOrgId:orgId}=useAuth(),{languageCode}=useLanguage(),t=materialItemText[languageCode]||materialItemText.en;
  const [catalogue,setCatalogue]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
  const [variants,setVariants]=useState([]),[selectedBaseId,setSelectedBaseId]=useState(null);
@@ -35,8 +36,9 @@ export default function MaterialMasterList({keyword=''}){
  const changed=()=>emitWorkspaceDataChanged({orgId,topics:['inventory-movements','inventory-stock']});
  const remove=async row=>{if(deleting)return;if(!deletion.current&&!await dialogs.confirm(m.confirm,{title:m.remove}))return;deletion.current??=row;setDeleting(true);setVariantError('');try{await requestJSON('/material-items/variants/'+row.id+buildQueryString({orgId}),{method:'DELETE',body:JSON.stringify({revision:row.revision})});if(scope.current!==orgId)return;deletion.current=null;showNotification(m.deleted,'success');changed();await load();}catch(e){if(scope.current!==orgId)return;if(e.status>=400&&e.status<500)deletion.current=null;setVariantError(variantManagementError(e,m));}finally{if(scope.current===orgId)setDeleting(false);}};
  const closeDetails=()=>{if(!deleting&&!deletion.current&&!editor){setSelectedBaseId(null);setVariantError('');}};
+ const registrationAction=<Box sx={{display:'flex',justifyContent:'flex-end'}}><Button variant="contained" startIcon={<AddIcon/>} disabled={loading||!catalogue||Boolean(error)} onClick={()=>{setRegisterCode(null);setRegisterOpen(true);}}>{t.registerMaster}</Button></Box>;
  return <Stack spacing={2}>{error&&selectedBaseId===null&&<AppNotice severity="error" action={<Button onClick={load} disabled={loading}>{t.retry}</Button>}>{error}</AppNotice>}
- <Box sx={{display:'flex',justifyContent:'flex-end'}}><Button variant="contained" startIcon={<AddIcon/>} disabled={loading||!catalogue||Boolean(error)} onClick={()=>{setRegisterCode(null);setRegisterOpen(true);}}>{t.registerMaster}</Button></Box>
+ {actionContainer===undefined?registrationAction:actionContainer?createPortal(registrationAction,actionContainer):null}
  <Dialog open={registerOpen} onClose={()=>setRegisterOpen(false)} fullWidth maxWidth="sm"><DialogTitle>{t.registerMaster}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:2}}>
   <ExpenseLookupField label={t.code} getOptionKey={row=>row.baseId} options={catalogue?.codes||[]} value={registerCode} onChange={setRegisterCode} languageCode={languageCode} getCode={row=>row.base.code} getOptionLabel={row=>[row.base.code,materialItemName(row.base,languageCode)].filter(Boolean).join(' · ')} columns={[{key:'code',label:t.code,value:row=>row.base.code},{key:'name',label:t.name,value:row=>materialItemName(row.base,languageCode)}]}/>
   <Box sx={{display:'flex',justifyContent:'flex-end',gap:1}}><Button onClick={()=>setRegisterOpen(false)}>{t.cancel}</Button><Button variant="contained" disabled={!registerCode?.base.materialUnitId} onClick={()=>{setSelectedBaseId(registerCode.baseId);setRegisterOpen(false);setEditor({row:null});}}>{m.add}</Button></Box>
