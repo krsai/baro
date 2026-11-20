@@ -57,7 +57,7 @@ try{
   await page.getByRole('textbox',{name:'Search',exact:true}).fill('THE SAN');await view.click();
   dialog=page.getByRole('dialog');await dialog.getByRole('cell',{name:'10x10x10',exact:true}).waitFor();
   assert.equal(await dialog.getByRole('cell',{name:'BARO',exact:true}).count(),1,'the modal shows all products belonging to the code');
-  await dialog.getByRole('button',{name:t.close,exact:true}).click();await dialog.waitFor({state:'hidden'});
+  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});
   assert.equal(await page.getByRole('textbox',{name:'Search',exact:true}).inputValue(),'THE SAN');
   await page.getByRole('textbox',{name:'Search',exact:true}).fill('10x10x10');
   await view.waitFor();assert.equal(await page.getByRole('button',{name:new RegExp(t.viewItems+' .*LBL')}).count(),0);

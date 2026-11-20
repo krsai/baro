@@ -8,9 +8,8 @@ import {useAppActions} from '../context/AppContext';
 import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import AddIcon from '@mui/icons-material/Add';
 import useWorkspaceRefreshOnEvent from '../hooks/useWorkspaceRefreshOnEvent';
-import CloseIcon from '@mui/icons-material/Close';
 import React,{useCallback,useEffect,useId,useRef,useState} from 'react';
-import {Box,Button,Dialog,DialogContent,DialogTitle,IconButton,LinearProgress,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow} from '@mui/material';
+import {Box,Button,Dialog,DialogContent,DialogTitle,LinearProgress,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow} from '@mui/material';
 import AppNotice from './AppNotice';
 import {useAuth} from '../context/AuthContext';
 import {useLanguage} from '../context/LanguageContext';
@@ -45,8 +44,8 @@ export default function MaterialMasterList({keyword='',actionContainer}){
   {!loading&&!error&&!visibleCodes.length&&<TableRow><TableCell colSpan={5}>{t.empty}</TableCell></TableRow>}
  </TableBody></Table></TableContainer>
  <Dialog open={selectedBaseId!==null} onClose={closeDetails} fullWidth maxWidth="md" aria-labelledby={detailTitleId}>
-  <DialogTitle id={detailTitleId} sx={{display:'flex',alignItems:'center',gap:1}}><Box component="span" sx={{flex:1}}>{[selectedCode?.base.code,materialItemName(selectedCode?.base,languageCode),t.items].filter(Boolean).join(' \u00b7 ')}</Box><IconButton aria-label={t.close} disabled={deleting||Boolean(deletion.current)} onClick={closeDetails}><CloseIcon/></IconButton></DialogTitle>
-  <DialogContent><Stack spacing={2} sx={{pt:2}}><Box sx={{display:'flex',justifyContent:'flex-end'}}><Button variant="contained" startIcon={<AddIcon/>} disabled={loading||deleting||Boolean(deletion.current)||!selectedCode?.base.materialUnitId} onClick={()=>setEditor({row:null})}>{m.add}</Button></Box>{variantError&&<AppNotice severity="error" action={deletion.current?<Button onClick={()=>remove(deletion.current)} disabled={deleting}>{t.retry}</Button>:undefined}>{variantError}</AppNotice>}{loading&&<LinearProgress/>}{error&&<AppNotice severity="error" action={<Button onClick={load}>{t.retry}</Button>}>{error}</AppNotice>}{!loading&&!error&&<MaterialVariantRows rows={grouped.get(selectedBaseId)||[]} languageCode={languageCode} onEdit={row=>setEditor({row})} onDelete={remove} disabled={deleting||Boolean(deletion.current)}/>}</Stack></DialogContent>
+  <DialogTitle id={detailTitleId} sx={{display:'flex',alignItems:'center',gap:1}}><Box component="span" sx={{flex:1,minWidth:0,overflowWrap:'anywhere'}}>{[selectedCode?.base.code,materialItemName(selectedCode?.base,languageCode),t.items].filter(Boolean).join(' \u00b7 ')}</Box><Button variant="contained" sx={{flexShrink:0,whiteSpace:'nowrap'}} startIcon={<AddIcon/>} disabled={loading||deleting||Boolean(deletion.current)||!selectedCode?.base.materialUnitId} onClick={()=>setEditor({row:null})}>{m.add}</Button></DialogTitle>
+  <DialogContent><Stack spacing={2} sx={{pt:2}}>{variantError&&<AppNotice severity="error" action={deletion.current?<Button onClick={()=>remove(deletion.current)} disabled={deleting}>{t.retry}</Button>:undefined}>{variantError}</AppNotice>}{loading&&<LinearProgress/>}{error&&<AppNotice severity="error" action={<Button onClick={load}>{t.retry}</Button>}>{error}</AppNotice>}{!loading&&!error&&<MaterialVariantRows rows={grouped.get(selectedBaseId)||[]} languageCode={languageCode} onEdit={row=>setEditor({row})} onDelete={remove} disabled={deleting||Boolean(deletion.current)}/>}</Stack></DialogContent>
  </Dialog>
  {editor&&<MaterialVariantEditor orgId={orgId} baseId={selectedBaseId} row={editor.row} languageCode={languageCode} onClose={()=>setEditor(null)} onSaved={()=>{setEditor(null);showNotification(m.saved,'success');changed();load();}}/>}
  </Stack>;

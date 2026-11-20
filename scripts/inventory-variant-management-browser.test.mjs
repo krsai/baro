@@ -44,7 +44,9 @@ try{
   const details=page.getByRole('dialog');await details.getByRole('cell',{name:'Used item',exact:true}).waitFor();
   assert.equal(await details.getByRole('button',{name:m.edit,exact:true}).isDisabled(),true);
   assert.equal(await details.getByRole('button',{name:m.remove,exact:true}).isDisabled(),true);
-  await details.getByRole('button',{name:t.close,exact:true}).click();
+  assert.equal(await details.getByRole('button',{name:t.close,exact:true}).count(),0);
+  assert.equal(await details.locator('.MuiDialogTitle-root').getByRole('button',{name:m.add,exact:true}).count(),1);
+  await page.keyboard.press('Escape');
   await details.waitFor({state:'hidden'});
   const register=page.locator('header').getByRole('button',{name:t.registerMaster,exact:true});
   assert.equal(await page.getByRole('button',{name:t.registerMaster,exact:true}).count(),1);
