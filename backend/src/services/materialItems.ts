@@ -85,7 +85,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const codes=await db.transactionCode.findMany({where:{ownerOrgId:scope.orgId,isActive:true,base:{isActive:true}},include:{base:{include:{industryLinks:{include:{industry:{include:{retirement:true}}}}}}}});
   const policies=await db.expenseCodeLinkPolicy.findMany({where:{orgId:scope.orgId}});
- const seen=new Set();res.json({codes:codes.filter((code:any)=>code.base?.materialSettings?.enabled&&!seen.has(code.baseId)&&seen.add(code.baseId)).map((code:any)=>materialMasterCode(effectiveExpenseCode(code,policies.find((p:any)=>p.baseId===code.baseId)))),units:await db.expenseUnit.findMany({where:{isActive:true},orderBy:{sortOrder:'asc'}})});
+ const seen=new Set();res.json({codes:codes.filter((code:any)=>code.base?.materialSettings?.enabled&&code.base.industryLinks.some((link:any)=>link.industry.isActive&&!link.industry.retirement&&link.industry.materialManagement)&&!seen.has(code.baseId)&&seen.add(code.baseId)).map((code:any)=>materialMasterCode(effectiveExpenseCode(code,policies.find((p:any)=>p.baseId===code.baseId)))),units:await db.expenseUnit.findMany({where:{isActive:true},orderBy:{sortOrder:'asc'}})});
  });
  app.post('/material-items',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;

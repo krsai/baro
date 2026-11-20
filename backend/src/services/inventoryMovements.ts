@@ -8,7 +8,7 @@ const axes=['length','width','height'];
 const quantityPattern=/^-?\d{1,16}(\.\d{1,4})?$/;
 const digest=(value:any)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const modes=(base:any)=>({
- dimensions:(base.materialSettings?.masterInputs?.dimensions??(base.requiredFields?.includes('length')?'REQUIRED':'HIDDEN'))==='REQUIRED',
+ dimensions:false,
  color:base.materialSettings?.masterInputs?.color??base.materialSettings?.colorInput??'HIDDEN',
  type:base.materialSettings?.masterInputs?.type??base.attributeInputs?.type??'HIDDEN',
 });

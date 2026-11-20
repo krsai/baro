@@ -1,5 +1,8 @@
 # 작업 상태
 
+- 자재 마스터: 자재 대상 세부 업종 FK에 속한 코드·품명·단위를 바로 조회하고 페이지를 유지한다. 개별 품목 설정은 소유자·단위(필수), 타입·색상(필수 선택 가능)만 표시한다. 신규 입출고 품목의 LWH 입력을 제거하고 기존 치수·FK·snapshot은 보존한다. 운영 배포·인수 미확인.
+  - Validation: frontend/backend builds, encoding/i18n and material-input-simplification test passed. Existing material-code-settings/material-industry suites: 2 failures at fixture code creation (MATERIAL_CODE_UNIT_REQUIRED); 2 passed. Browser/production verification pending.
+
 - SYSTEM 자재 대상 코드 저장 시 활성 세는 단위를 필수로 설정한다. 자재 마스터는 설정된 단위를 자동 표시하며 기존 등록 단위는 보존한다. 코드 편집 제목과 모달 높이를 조정했다. 운영 배포·마이그레이션 미확인.
 
 - 자재 마스터·개별 품목·입출고 분리 구현. 마스터는 기본 코드별 다국어 이름과 세는 단위로 등록한다. 입출고의 첫 수불에 품목을 생성하고, 이후 등록된 품목을 선택한다. 동일 치수라도 소유자가 다르면 잔량을 분리한다. 실제 입출고 목록 및 회사별 품목 잔량에 연결했다. 기존 비용·입출금 참조를 보존한다. 창고별 수불은 별도 과제이며 운영 배포·마이그레이션은 미확인.
