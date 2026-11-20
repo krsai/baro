@@ -42,8 +42,8 @@ function VariantForm({orgId,baseId,row,languageCode,onClose,onSaved,selector,dir
     }
     pending.current={clientKey:clientKey.current,baseId,masterId:row?.masterId||options.master.id,revision:row?.revision,ownerId:owner.id,typeId,colorId:color?.id??null};
    }
-   await requestJSON('/material-items/variants'+(row?'/'+row.id:'')+buildQueryString({orgId}),{method:row?'PUT':'POST',body:JSON.stringify(pending.current)});
-   if(live.current){pending.current=null;onSaved();}
+   const saved=await requestJSON('/material-items/variants'+(row?'/'+row.id:'')+buildQueryString({orgId}),{method:row?'PUT':'POST',body:JSON.stringify(pending.current)});
+   if(live.current){pending.current=null;onSaved(saved);}
   }catch(e){if(live.current){if(e.status>=400&&e.status<500)pending.current=null;setError(variantManagementError(e,m));}}
   finally{lock.current=false;if(live.current){locked.current=Boolean(pending.current);setBusy(false);}}
  };

@@ -80,6 +80,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
       if(keys(metadata.orderIds,metadata.styles)!==keys(oldLinks.filter((row:any)=>!row.styleId).map((row:any)=>row.workOrderId),oldLinks.filter((row:any)=>row.styleId)))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     }
     if((body.materialItemId||null)!==(previous.materialItemId??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
+    if((body.materialVariantId??null)!==(previous.materialItemSnapshot?.variantId??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     for(const field of ['itemCustomerId','itemTypeId','itemOwnerOrgId'])if(body[field]!==undefined&&(body[field]||null)!==(previous[field]??null))throw createHttpError(409,'TRANSACTION_RETRY_MISMATCH');
     if(useSystemMaster)description=previous.description;
     const amounts = calculateRequestAmounts(body.unitPrice, body.quantity, body.currency, body.vatRate ?? previous.vatRate.toString());
@@ -92,7 +93,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
-  const material=await prepareMaterialSelection(tx,orgId,code,body,edit?.cost,actorId);
+  const material=await prepareMaterialSelection(tx,orgId,code,{...body,materialVariantRequired:true},edit?.cost,actorId);
   const materialData=material.materialItemSnapshot;
   if(materialData){for(const key of ['length','width','height']){delete details[key];if(materialData.details?.[key])details[key]=materialData.details[key];}}
   const itemAttributes=materialData?{itemOwnerOrgId:materialData.itemOwnerOrgId??null,itemOwnerSnapshot:materialData.itemOwnerSnapshot??null,itemCustomerId:materialData.itemCustomerId??null,itemTypeId:materialData.itemTypeId??null,itemAttributeSnapshot:materialData.itemAttributeSnapshot??null}:await prepareCodeItemAttributes(tx,orgId,body,code,edit?.cost);

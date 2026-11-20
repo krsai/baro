@@ -4,7 +4,7 @@ import {expensePaymentScheduleStatus} from './expensePaymentSchedule';
 import {entryCounterparty} from './ledgerCounterparty';
 import {Prisma} from '@prisma/client';
 import {createHash} from 'node:crypto';
-const scalarLedgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['materialItemId','materialItemSnapshot','internalTransferSourceId','internalTransferAmount','subtotal','vatRate','vatAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
+const scalarLedgerEntryRevision=(row:any)=>createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.keys(Prisma.BankLedgerEntryScalarFieldEnum).filter(key=>!['expenseComparison','materialItemId','materialItemSnapshot','internalTransferSourceId','internalTransferAmount','subtotal','vatRate','vatAmount'].includes(key)||row[key]!=null).map(key=>[key,row[key]??null])))).digest('hex');
 export const ledgerEntryRevision=(row:any)=>row.bankFeeLinks?.length?createHash('sha256').update(JSON.stringify({entry:scalarLedgerEntryRevision(row),fees:row.bankFeeLinks.map((link:any)=>({id:link.feeEntryId,revision:scalarLedgerEntryRevision(link.fee)})).sort((a:any,b:any)=>a.id.localeCompare(b.id))})).digest('hex'):scalarLedgerEntryRevision(row);
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';

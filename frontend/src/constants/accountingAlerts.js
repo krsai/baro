@@ -35,3 +35,7 @@ accountingAlertText.vi.UNCODED_LEDGER='Thu chi ch\u01b0a c\u00f3 m\u00e3 k\u1ebf
 accountingAlertText.ko.amount='금액';
 accountingAlertText.en.amount='Amount';
 accountingAlertText.vi.amount='Số tiền';
+
+Object.assign(accountingAlertText.ko,{EXPENSE_PAYMENT_DIFFERENCE:'비용 신청·지급 금액 차이',expenseExpected:'증빙 잔액',paymentActual:'지급 금액',reason:'차이 사유'});
+Object.assign(accountingAlertText.en,{EXPENSE_PAYMENT_DIFFERENCE:'Expense / payment amount difference',expenseExpected:'Evidence balance',paymentActual:'Payment amount',reason:'Reason for difference'});
+Object.assign(accountingAlertText.vi,{EXPENSE_PAYMENT_DIFFERENCE:'Chênh lệch đề nghị chi và thanh toán',expenseExpected:'Số dư chứng từ',paymentActual:'Số tiền thanh toán',reason:'Lý do chênh lệch'});

@@ -13,12 +13,23 @@ const fail=(code:string):never=>{throw createHttpError(400,code);};
 export const materialSnapshot=(row:any)=>({id:row.id,baseId:row.baseId,industryId:row.industryId,unitId:row.unitId,...row.data});
 export async function prepareMaterialSelection(tx:any,orgId:number,code:any,body:any,previous?:any,actorId?:number){
  const id=body.materialItemId===undefined?previous?.materialItemId??null:body.materialItemId||null;
+ const variantId=body.materialVariantId===undefined?previous?.materialItemSnapshot?.variantId??null:body.materialVariantId;
+ const unchangedVariant=variantId===(previous?.materialItemSnapshot?.variantId??null);
+ if(variantId&&!id)fail('INVALID_MATERIAL_ITEM');
+ if(unchangedVariant&&variantId&&body.materialVariantRevision!=null&&body.materialVariantRevision!==previous?.materialItemSnapshot?.variantRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
  if(previous?.transactionCodeId===code.id&&!previous.materialItemId&&!id)return {};
- if(previous?.transactionCodeId===code.id&&id===(previous.materialItemId??null))return id?{materialItemId:id,materialItemSnapshot:previous.materialItemSnapshot}:{};
+ if(previous?.transactionCodeId===code.id&&id===(previous.materialItemId??null)&&unchangedVariant)return id?{materialItemId:id,materialItemSnapshot:previous.materialItemSnapshot}:{};
  if(!id){if(code.base?.materialSettings?.enabled)fail('MATERIAL_ITEM_REQUIRED');return previous?.materialItemId?{materialItemId:null,materialItemSnapshot:Prisma.DbNull}:{};}
  if(typeof id!=='string'||id.length>100)fail('INVALID_MATERIAL_ITEM');
  const row=id.startsWith('system:')?await resolveSystemMaterialMaster(tx,orgId,id,true,actorId):await tx.materialItem.findFirst({where:{id,orgId,baseId:code.baseId}});
  if(!row||row.baseId!==code.baseId||!code.base?.materialSettings?.enabled)fail('INVALID_MATERIAL_ITEM');
+ if(body.materialVariantRequired||variantId){
+  if(typeof variantId!=='string'||!Number.isSafeInteger(body.materialVariantRevision))fail('MATERIAL_ITEM_REQUIRED');
+  const [variant]=await tx.$queryRaw`SELECT id,revision,attributes FROM "InventoryVariant" WHERE id=${variantId} AND "orgId"=${orgId} AND "masterId"=${row.id} AND "baseId"=${code.baseId} FOR SHARE`;
+  if(!variant||variant.revision!==body.materialVariantRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
+  const a=variant.attributes;
+  return {materialItemId:row.id,materialItemSnapshot:{...materialSnapshot(row),variantId:variant.id,variantRevision:variant.revision,itemOwnerOrgId:a.owner.id,itemOwnerSnapshot:a.owner,itemTypeId:a.type?.id??null,itemAttributeSnapshot:{type:a.type??null},color:a.color??null,details:a.dimensions??{}}};
+ }
  return {materialItemId:row.id,materialItemSnapshot:materialSnapshot(row)};
 }
 export async function prepareLedgerMaterial(tx:any,orgId:number,body:any,previous?:any){
@@ -98,6 +109,10 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  app.get('/material-items/options',async(req:any,res:any)=>{
   const scope=await access(req,res,req.query?.context==='LEDGER'?'BANK_LEDGER':'OUTSOURCING_RECORD');if(!scope)return;
   const baseId=Number(req.query.baseId);if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_MATERIAL_CODE');
+  if(req.query.variants==='1'){
+   const rows=await db.$queryRaw`SELECT i.id,i."baseId",i."industryId",i."unitId",i.data,v.id AS "variantId",v.revision AS "variantRevision",v.attributes FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId" WHERE v."orgId"=${scope.orgId} AND v."baseId"=${baseId} ORDER BY v.id`;
+   return res.json(rows.map((row:any)=>({...row,data:{...row.data,variantId:row.variantId,variantRevision:row.variantRevision,itemOwnerOrgId:row.attributes.owner.id,itemOwnerSnapshot:row.attributes.owner,itemTypeId:row.attributes.type?.id??null,itemAttributeSnapshot:{type:row.attributes.type??null},color:row.attributes.color??null,details:row.attributes.dimensions??{}}})));
+  }
   const rows=await db.materialItem.findMany({where:{orgId:scope.orgId,baseId},orderBy:{createdAt:'desc'}});
   const defaults=req.query?.context==='LEDGER'?[]:await systemMaterialOptions(db,scope.orgId,baseId);
   res.json([...rows,...defaults.filter((row:any)=>!rows.some((saved:any)=>saved.id===row.id))]);
@@ -108,7 +123,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  });
  app.get('/material-items/variants',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",v.revision,v.managed,EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."orgId"=v."orgId" AND m."variantId"=v.id) AS used,jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
+  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",v.revision,v.managed,EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."orgId"=v."orgId" AND m."variantId"=v.id) OR EXISTS(SELECT 1 FROM "PartnerTransactionCost" c WHERE c."orgId"=v."orgId" AND c."materialVariantId"=v.id) AS used,jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
    FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId"
    WHERE v."orgId"=${scope.orgId} ORDER BY i."baseId",v.id`);
  });

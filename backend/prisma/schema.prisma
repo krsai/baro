@@ -739,6 +739,7 @@ model BankLedgerAccount {
 }
 
 model BankLedgerEntry {
+  expenseComparison Json?
   materialItemId String?
   materialItemSnapshot Json?
   bankFeeLinks BankLedgerFeeLink[] @relation("BankFeeParent")
@@ -2208,6 +2209,8 @@ model OrganizationOutsourcingServiceType {
 }
 
 model PartnerTransactionCost {
+  // materialVariantId is a stored generated column from materialItemSnapshot.variantId.
+  // The company/master-scoped InventoryVariant FK is maintained by migration SQL.
   materialItemId String?
   materialItemSnapshot Json?
   itemOwnerOrgId Int?

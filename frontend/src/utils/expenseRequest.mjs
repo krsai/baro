@@ -55,7 +55,7 @@ export function validExpenseLine(line, code, currency) {
   return ['order','style','process'].every(key => inputMode(code,key) !== 'REQUIRED' || Boolean(key==='process' ? line.styleProcessId || line.styleProcessIds?.length : line[{order:'workOrderId',style:'styleId'}[key]])) &&
     (code.base?.requiredFields || []).filter(key=>key!=='reference').every(key => line.details[key]?.trim());
 }
-export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId,materialItemId:line.materialItemId||null, currency: line.currency, paymentSchedule:line.paymentSchedule||[],
+export const expenseLinePayload = line => ({ ...(line.itemId ? {itemId:line.itemId} : {}), ...(line.sourceRecordId ? {sourceRecordId:line.sourceRecordId} : {}), transactionCodeId: line.transactionCodeId,materialItemId:line.materialItemId||null, materialVariantId:line.materialItemSnapshot?.variantId??null,materialVariantRevision:line.materialItemSnapshot?.variantRevision??null,currency: line.currency, paymentSchedule:line.paymentSchedule||[],
   itemOwnerOrgId:line.itemOwnerOrgId||null,itemCustomerId:line.itemCustomerId||null,itemTypeId:line.itemTypeId||null,unitId:line.unitId||null,linkedOrderIds:line.linkedOrderIds??(line.workOrderId?[line.workOrderId]:[]),linkedStyles:line.linkedStyles??(line.styleId?[{workOrderId:line.workOrderId,styleId:line.styleId}]:[]),quantity: line.quantity, unitPrice: line.unitPrice, vatRate: line.vatRate,
   workOrderId: line.workOrderId || null, styleId: line.styleId || null, styleProcessId: line.styleProcessId || null,
   ...(line.styleProcessIds===undefined?{}:{styleProcessIds:line.styleProcessIds}),

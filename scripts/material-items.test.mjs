@@ -1,3 +1,4 @@
+import {seedExpenseVariant} from './helpers/expense-variant-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -13,7 +14,7 @@ const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/servi
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement');
-test('system unit defaults work on the first expense save without company master registration',async()=>{
+test('system units resolve during variant registration; new expenses require a real registered item',async()=>{
  const f=await changeApprovalFixture();try{
   const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
   const {systemMaterialOptions,resolveSystemMaterialMaster}=require('../backend/dist/services/materialItems');
@@ -23,7 +24,8 @@ test('system unit defaults work on the first expense save without company master
   const unit=await db.expenseUnit.create({data:{code:'SYSUNIT',nameKo:'개',nameEn:'Each',nameVi:'Cái'}});
   await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}},materialRevision:{increment:1}}});
   const [option]=await systemMaterialOptions(db,org);assert.ok(option.id.startsWith('system:'));assert.equal(await db.materialItem.count(),0);
-  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,materialItemId:option.id,unitId:unit.id,currency:'USD',quantity:'10',unitPrice:'1',vatRate:'0',details:{evidenceFile:'purchase.pdf'}}]}));
+  const selection=await seedExpenseVariant(db,s,option.id);
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,...selection,unitId:unit.id,currency:'USD',quantity:'10',unitPrice:'1',vatRate:'0',details:{evidenceFile:'purchase.pdf'}}]}));
   const cost=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});
   assert.ok(cost.materialItemId&&!cost.materialItemId.startsWith('system:'));assert.equal(cost.unitId,unit.id);assert.equal(await db.materialItem.count(),1);
   await db.transactionCodeBase.update({where:{id:base.id},data:{materialRevision:{increment:1}}});
@@ -91,14 +93,15 @@ test('registered material identity and snapshots flow to expenses and direct ban
   let detail;await routes.get('POST /code-item-types')({query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'MAIN',nameKo:'메인',nameVi:'Nhãn chính'}},{json:row=>{detail=row;}});assert.equal(detail.orgId,org);assert.equal(detail.baseId,base.id);assert.equal(detail.nameKo,'메인');
   await assert.rejects(create({...body,clientKey:randomUUID(),details:{length:'100.00',width:'200',height:'300'}}),error=>error.code==='P2002');
   await assert.rejects(create({...body,clientKey:randomUUID(),materialRevision:0}),/ACCOUNTING_INDUSTRY_CHANGED/);
-  const input=()=>({partnerOrgId:s.vendor.id,requestDate:'2026-11-19',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,materialItemId:item.id,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{evidenceFile:'receipt.pdf'}}]});
-  await assert.rejects(db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{...input(),items:[{...input().items[0],materialItemId:null}]})),/MATERIAL_ITEM_REQUIRED/);
+  const expenseSelection=await seedExpenseVariant(db,s,item.id);
+  const input=()=>({partnerOrgId:s.vendor.id,requestDate:'2026-11-19',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,...expenseSelection,currency:'USD',quantity:'1',unitPrice:'10',vatRate:'0',details:{evidenceFile:'receipt.pdf'}}]});
+  await assert.rejects(db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{...input(),items:[{...input().items[0],materialItemId:null,materialVariantId:null}]})),/MATERIAL_ITEM_REQUIRED/);
   const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,input()));
   const cost=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});
-  assert.equal(cost.materialItemId,item.id);assert.equal(cost.unitId,unit.id);assert.equal(cost.itemOwnerOrgId,null);assert.equal(cost.details.height,'300');assert.equal(cost.materialItemSnapshot.nameEn,base.nameEn);
+  assert.equal(cost.materialItemId,item.id);assert.equal(cost.unitId,unit.id);assert.equal(cost.itemOwnerOrgId,org);assert.equal(cost.details.height,undefined);assert.equal(cost.materialItemSnapshot.nameEn,base.nameEn);
   const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(doc.id)));assert.equal(form.items[0].materialItemId,item.id);assert.deepEqual(form.items[0].materialItemSnapshot,cost.materialItemSnapshot);
   const bank={clientKey:randomUUID(),transactionDate:'2026-11-19',direction:'OUT',amount:'10',purpose:'Material purchase',accountingCodeId:s.code.id,evidenceType:'FILE',evidenceNumber:'receipt.pdf',counterparty:{kind:'PARTNER',id:s.vendor.id},materialItemId:item.id};
-  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank);assert.equal(entry.materialItemId,item.id);assert.deepEqual(entry.materialItemSnapshot,cost.materialItemSnapshot);
+  const entry=await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank);assert.equal(entry.materialItemId,item.id);assert.equal(entry.materialItemSnapshot.variantId,undefined);assert.equal(cost.materialItemSnapshot.variantId,expenseSelection.materialVariantId);
   assert.equal((await postLedgerEntry(db,org,'admin@example.test',s.account.id,bank)).id,entry.id);
   await assert.rejects(db.$transaction(tx=>prepareMaterialSelection(tx,s.other.id,{...s.code,base:{materialSettings:{enabled:true}}},{materialItemId:item.id})),/INVALID_MATERIAL_ITEM/);
   await assert.rejects(db.materialItem.update({where:{id:item.id},data:{data:{nameEn:'FORGED'}}}),/immutable/);
@@ -137,7 +140,7 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const movementRoutes={};
   await db.systemSetting.create({data:{key:`APPROVAL_POLICY:INVENTORY:CREATE:${org}`,value:{revision:1,drafterRoles:['ADMIN'],approverIds:[reviewer.id]}}});
   registerInventoryMovementRoutes({get:(path,fn)=>{movementRoutes[path]=fn;},post:(path,fn)=>{movementRoutes[path]=fn;}},db,async req=>({orgId:req.orgId||org,actorId:req.actorId||actor}));
-  const call=async(path,req)=>{let data;await movementRoutes[path](req,{status(){return this;},json(body){data=body;}});return data;};
+  const call=async(path,req)=>{let data;await movementRoutes[path]({query:{},...req},{status(){return this;},json(body){data=body;}});return data;};
   const approve=async id=>call('/inventory-entry/approvals/:id/decision',{actorId:reviewer.id,params:{id},body:{revision:1,decision:'APPROVED'}});
   const receipt={clientKey:randomUUID(),masterId:generated.id,ownerId:org,dimensions:{},date:'2026-11-20',quantity:'10',remark:'',approvalRevision:1,...purchase};
   const first=await call('/inventory-entry',{body:receipt});
@@ -153,7 +156,7 @@ test('registered material identity and snapshots flow to expenses and direct ban
   assert.deepEqual(stock.map(row=>Number(row.quantity)).sort((a,b)=>a-b),[7,25]);
   let variants;
   await routes.get('GET /material-items/variants')({query:{orgId:s.other.id}},{json:value=>{variants=value;}});
-  assert.equal(variants.length,2);
+  variants=variants.filter(row=>row.masterId===generated.id);assert.equal(variants.length,2);
   assert.ok(variants.every(row=>row.baseId===base.id&&row.masterId===generated.id));
   assert.deepEqual(variants.map(row=>row.ownerId).sort((a,b)=>a-b),[org,s.vendor.id].sort((a,b)=>a-b));
   assert.ok(variants.every(row=>!('quantity' in row)&&!('purchaseSnapshot' in row)&&!('orgId' in row)), 'master browsing returns item definitions without movement or financial data');

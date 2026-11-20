@@ -1,3 +1,4 @@
+import {expensePaymentComparison} from './expensePaymentComparison';
 import {invoiceEvidenceAccounting} from './invoiceAccounting';
 import {prepareLedgerMaterial} from './materialItems';
 import {bankFeeAccountingCode} from './accountingCode';
@@ -52,6 +53,7 @@ export async function ledgerRegistrationSource(db:any,orgId:number,input:any,pre
  row=await invoiceEvidenceAccounting(db,orgId,row,account.currencyCode);
  accountSources.push({accountId,masterId:master.id,currency:account.currencyCode,name:master.displayName||[master.bankName,master.accountNumber].filter(Boolean).join(' / ')});
   const allocations:any[]=[];
+  if(!input.allowIncomplete)await expensePaymentComparison(db,orgId,row,account.currencyCode,parentIndex===0?previousEntry?.id:undefined);
   if(!input.allowIncomplete){if(row.evidenceType==='EXPENSE'&&Object.keys(ledgerTaxInput(row)).length)fail('LEDGER_INVALID_VAT');await ledgerTaxSnapshot(db,orgId,row.accountingCodeId,row,account.currencyCode);for(const item of row.expenseItems||[]){if(item.subtotal!=null||item.vatRate!=null){const cost=await db.partnerTransactionCost.findFirst({where:{id:item.itemId,orgId},select:{transactionCodeId:true}});if(!cost)fail('LEDGER_INVALID_EVIDENCE');await ledgerTaxSnapshot(db,orgId,cost.transactionCodeId,item,account.currencyCode);}}}
   if(row.evidenceType==='INVOICE'){const invoice=await db.invoice.findFirst({where:{sellerOrgId:orgId,invoiceNumber:row.evidenceNumber,status:'ISSUED'},select:{id:true}});if(!invoice)fail('LEDGER_INVOICE_NOT_FOUND');allocations.push({invoiceId:invoice.id});}
   if(row.evidenceType==='EXPENSE')for(const item of row.expenseItems||[])allocations.push({expenseItemId:item.itemId});

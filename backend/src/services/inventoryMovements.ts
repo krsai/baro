@@ -51,7 +51,7 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
   const {master}=await readMaster(db,scope.orgId,String(req.query.masterId||''));
   const rows=await db.$queryRaw`SELECT baro_inventory_purchase_source(${scope.orgId}::integer,${master.id}::text,c.id,r.version) AS source
    FROM "PartnerTransactionCost" c JOIN "ExpenseRequest" r ON r.id=c."expenseRequestId" AND r."orgId"=c."orgId"
-   WHERE c."orgId"=${scope.orgId} AND c."materialItemId"=${master.id} AND r."deletedAt" IS NULL ORDER BY r."requestDate" DESC,r.id DESC,c."expenseRequestLine"`;
+   WHERE c."orgId"=${scope.orgId} AND c."materialItemId"=${master.id} AND r."deletedAt" IS NULL AND (c."materialVariantId" IS NULL OR c."materialVariantId"=${String(req.query.variantId||'')}) ORDER BY r."requestDate" DESC,r.id DESC,c."expenseRequestLine"`;
   res.json(rows.map((row:any)=>row.source).filter(Boolean));
  });
  app.get('/inventory-entry/masters',async(req:any,res:any)=>{

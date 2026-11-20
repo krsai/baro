@@ -123,7 +123,7 @@ export async function postLedgerEntryInTransaction(tx:any,orgId:number,actor:str
       return previous;
     }
     if(codeId!==null){const selected=await ledgerAccountingCode(tx,orgId,codeId,body.direction);if(generatedPurpose)data.purpose=selected.description;}
-    const evidence=await resolveEvidence(tx,orgId,account,{...body,amount:data.amount,bankFee:settlement?.fee||body.bankFee,writeOffAmount:settlement?.writeOff||'0'});
+    const evidence=await resolveEvidence(tx,orgId,account,{...body,comparisonSourceEntryId:settlement?.revisesEntryId,amount:data.amount,bankFee:settlement?.fee||body.bankFee,writeOffAmount:settlement?.writeOff||'0'});
     const {allocations,openingItemId,payrollItemId,...fields}=evidence as any;
     const party=await resolveLedgerCounterparty(tx,orgId,account,body,allocations);
     const priorMaterial=settlement?.revisesEntryId?await tx.bankLedgerEntry.findFirst({where:{id:settlement.revisesEntryId,orgId}}):undefined;
@@ -204,7 +204,7 @@ export async function postLedgerSettlementBatch(db:any,orgId:number,actor:string
   if(r.entryKind!=='BANK'){if(Object.keys(ledgerTaxInput(r)).length)return fail('LEDGER_INVALID_VAT');return {...base,parentClientKey:clientKey(r.parentClientKey)};}
   if(typeof r.accountId!=='string'||r.accountId.length>100||r.bankFee&&ledgerScale4(r.bankFee)!==0n||r.writeOffAmount&&ledgerScale4(r.writeOffAmount)!==0n)return fail('LEDGER_INVALID_SETTLEMENT');
   if(r.expenseItems!==undefined&&!Array.isArray(r.expenseItems))return fail('LEDGER_INVALID_SETTLEMENT');
-  return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',...(r.evidenceType==='OPENING'?{openingItemId:r.openingItemId}:{}),...(r.evidenceType==='PAYROLL'?{payrollItemId:r.payrollItemId}:{}),evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({itemId:i.itemId,amount:i.amount}))};
+  return {...base,...(r.counterparty===undefined?{}:{counterparty:counterpartyInput(r.counterparty)}),...(r.transferAmount===undefined?{}:{transferAmount:r.transferAmount}),...(r.transferCurrencyCode===undefined?{}:{transferCurrencyCode:r.transferCurrencyCode}),accountId:r.accountId,transactionDate:r.transactionDate,direction:r.direction,evidenceType:r.evidenceType||'FILE',...(r.evidenceType==='OPENING'?{openingItemId:r.openingItemId}:{}),...(r.evidenceType==='PAYROLL'?{payrollItemId:r.payrollItemId}:{}),evidenceNumber:r.evidenceNumber||'',expenseRequestId:r.expenseRequestId,expenseVersion:r.expenseVersion,...(r.paymentScheduleId?{paymentScheduleId:r.paymentScheduleId}:{}),expenseItems:(r.expenseItems||[]).map((i:any)=>({...ledgerTaxInput(i),itemId:i.itemId,amount:i.amount}))};
  });
  if(new Set(normalized.map((r:any)=>r.clientKey)).size!==rows.length)return fail('LEDGER_INVALID_BATCH');
  const parents=normalized.filter((r:any)=>r.entryKind==='BANK');

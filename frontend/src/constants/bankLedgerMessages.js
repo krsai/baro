@@ -72,3 +72,6 @@ for (const language of ['ko','en','vi']) Object.assign(bankLedgerMessages[langua
 Object.assign(bankLedgerMessages.ko.errors,{MATERIAL_ITEM_REQUIRED:'등록된 자재 품목을 선택해 주세요.',INVALID_MATERIAL_ITEM:'이 회사와 코드의 등록 자재를 선택해 주세요.'});
 Object.assign(bankLedgerMessages.en.errors,{MATERIAL_ITEM_REQUIRED:'Select a registered material item.',INVALID_MATERIAL_ITEM:'Select a material registered for this company and code.'});
 Object.assign(bankLedgerMessages.vi.errors,{MATERIAL_ITEM_REQUIRED:'Chọn mặt hàng vật tư đã đăng ký.',INVALID_MATERIAL_ITEM:'Chọn vật tư đã đăng ký cho công ty và mã này.'});
+Object.assign(bankLedgerMessages.ko.errors,{LEDGER_EXPENSE_VAT_MISMATCH:'비용 신청 증빙과 부가세율을 맞춰 주세요.',LEDGER_EXPENSE_DIFFERENCE_REASON_REQUIRED:'비용 신청과 지급 금액이 다른 이유를 리마크에 입력해 주세요.'});
+Object.assign(bankLedgerMessages.en.errors,{LEDGER_EXPENSE_VAT_MISMATCH:'Match the VAT rate to the expense evidence.',LEDGER_EXPENSE_DIFFERENCE_REASON_REQUIRED:'Explain the expense / payment amount difference in Remark.'});
+Object.assign(bankLedgerMessages.vi.errors,{LEDGER_EXPENSE_VAT_MISMATCH:'Thuế suất phải khớp chứng từ đề nghị chi.',LEDGER_EXPENSE_DIFFERENCE_REASON_REQUIRED:'Nhập lý do chênh lệch đề nghị chi và thanh toán vào ghi chú.'});

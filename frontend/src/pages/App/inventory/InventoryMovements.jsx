@@ -63,12 +63,12 @@ function MovementForm({orgId,onClose,onSaved}){
  const pending=useRef(null),locked=useRef(false),live=useRef(true);
  const initialUser=useRef(null),initialDate=useRef(date),dirty=Boolean(selectedItem||quantity||remark||direction!=='IN'||date!==initialDate.current||user&&user.id!==initialUser.current);
  const needsPurchase=direction==='IN'&&Number(variant?.attributes.owner?.id)===Number(orgId);
- useEffect(()=>{setPurchase(null);},[master?.id,needsPurchase]);
+ useEffect(()=>{setPurchase(null);},[master?.id,variant?.id,needsPurchase]);
  useEffect(()=>{
   let active=true;setPurchaseRows(null);setPurchaseError('');
-  if(needsPurchase&&master)requestJSON('/inventory-entry/purchase-expenses'+buildQueryString({orgId,masterId:master.id}),{skipCache:true}).then(rows=>{if(active){setPurchaseRows(rows);setPurchase(current=>rows.find(row=>row.expenseItemId===current?.expenseItemId&&row.version===current?.version)||null);}}).catch(()=>{if(active)setPurchaseError(t.failed);});
+  if(needsPurchase&&master)requestJSON('/inventory-entry/purchase-expenses'+buildQueryString({orgId,masterId:master.id,variantId:variant?.id}),{skipCache:true}).then(rows=>{if(active){setPurchaseRows(rows);setPurchase(current=>rows.find(row=>row.expenseItemId===current?.expenseItemId&&row.version===current?.version)||null);}}).catch(()=>{if(active)setPurchaseError(t.failed);});
   return()=>{active=false;};
- },[needsPurchase,master?.id,orgId,reload,t.failed]);
+ },[needsPurchase,master?.id,variant?.id,orgId,reload,t.failed]);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useUnsavedChanges(dirty);
  const close=async()=>{if(busy||pending.current)return;if(!dirty||await dialogs.confirm('',{purpose:'discard'})){if(onClose)onClose();else if(navigateToPath)navigateToPath('/inventory/movements',{closeTabId:'/inventory/movements/new',skipUnsavedChangesCheck:true});else navigate('/inventory/movements');}};

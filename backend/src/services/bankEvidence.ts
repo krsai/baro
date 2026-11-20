@@ -1,3 +1,5 @@
+import {expensePaymentComparison} from './expensePaymentComparison';
+import {Prisma} from '@prisma/client';
 import {ledgerTaxSnapshot} from './ledgerVat';
 import {validatePayrollEvidence} from './payrollPayables';
 import {documentOpeningAmount,openingCashEvidence,invoiceOpeningRemaining} from './accountingOpening';
@@ -113,7 +115,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
  if(ledgerScale4(fee)<0n||ledgerScale4(writeOff)<0n||type!=='INVOICE'&&ledgerScale4(writeOff)!==0n)return fail('LEDGER_INVALID_AMOUNT');
  const amount=ledgerScale4(body.amount),bankFee=ledgerScale4(fee),loss=ledgerScale4(writeOff);
  let reference=typeof body.evidenceNumber==='string'?body.evidenceNumber.trim():'';
- const allocations:any[]=[];
+ const allocations:any[]=[];let comparison:any=null;
  if(type==='PAYROLL'){
   if(bankFee||loss)return fail('LEDGER_INVALID_EVIDENCE');
   const item=await validatePayrollEvidence(tx,orgId,account,body);
@@ -153,6 +155,7 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   const scheduled=await tx.expensePaymentSchedule.findMany({where:{orgId,requestId:{in:requestIds},expenseItemId:{in:ids},active:true}});
   const schedule=body.paymentScheduleId?scheduled.find((row:any)=>row.id===body.paymentScheduleId&&row.currency===code):null;
   if((scheduled.length||body.paymentScheduleId)&&(!schedule||requestIds.length!==1||ids.length!==1||ids[0]!==schedule.expenseItemId))return fail('INVALID_EXPENSE_PAYMENT_SCHEDULE');
+  comparison=await expensePaymentComparison(tx,orgId,body,code,body.comparisonSourceEntryId);
   let allocated=0n;const refs:string[]=[];
   for(const row of [...body.expenseItems].sort((a,b)=>a.itemId.localeCompare(b.itemId))){
    const cost=await tx.partnerTransactionCost.findFirst({where:{id:row.itemId,orgId}});
@@ -163,7 +166,11 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
    const used=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,expenseItemId:row.itemId,entry:{voidedAt:null}}});
    if(used.reduce((s:bigint,r:any)=>s+ledgerScale4(r.amount),0n)+minor+await documentOpeningAmount(tx,orgId,{expenseItemId:cost.id})>ledgerScale4(cost.amount))return fail('LEDGER_EXCEEDS_DOCUMENT');
    allocated+=minor;refs.push(`${state.managementNumber} #${cost.expenseRequestLine}`);
-   allocations.push({...await ledgerTaxSnapshot(tx,orgId,cost.transactionCodeId,row,code),expenseItemId:row.itemId,requestVersion:state.version,amount:value,...(schedule?{paymentScheduleId:schedule.id}:{})});
+   const rate=cost.vatRate==null?null:new Prisma.Decimal(cost.vatRate);
+   const precision=code==='USD'?2:0;
+   const subtotal=rate&&row.subtotal==null?new Prisma.Decimal(value).div(new Prisma.Decimal(1).add(rate.div(100))).toDecimalPlaces(precision,Prisma.Decimal.ROUND_HALF_UP):null;
+   const taxRow=subtotal?{...row,subtotal:subtotal.toString(),vatRate:rate!.toString()}:row;
+   allocations.push({...await ledgerTaxSnapshot(tx,orgId,cost.transactionCodeId,taxRow,code),expenseItemId:row.itemId,requestVersion:state.version,amount:value,...(schedule?{paymentScheduleId:schedule.id}:{})});
   }
   if(schedule){
    const paid=await tx.bankLedgerEvidenceAllocation.findMany({where:{orgId,paymentScheduleId:schedule.id,entry:{voidedAt:null}}});
@@ -171,5 +178,5 @@ export async function resolveEvidence(tx:any,orgId:number,account:any,body:any){
   }
   if(allocated+bankFee!==amount)return fail('LEDGER_ALLOCATION_MISMATCH');reference=refs.join(', ');
  }
- return {evidenceType:type,evidenceNumber:reference,bankFee:fee,writeOffAmount:writeOff,allocations};
+ return {evidenceType:type,evidenceNumber:reference,bankFee:fee,writeOffAmount:writeOff,allocations,...(comparison?{expenseComparison:comparison}:{})};
 }

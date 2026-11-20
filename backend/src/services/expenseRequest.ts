@@ -66,6 +66,7 @@ export async function registerExpenseRequest(tx: any, orgId: number, actorId: nu
     if (item.partnerOrgId != null && item.partnerOrgId !== body.partnerOrgId) fail('EXPENSE_REQUEST_HEADER_MISMATCH');
     if (item.transactionDate != null && item.transactionDate !== requestDate) fail('EXPENSE_REQUEST_DATE_MISMATCH');
     return { transactionDate: requestDate, transactionCodeId: item.transactionCodeId,...(item.materialItemId?{materialItemId:item.materialItemId}:{}),
+      ...(item.materialVariantId?{materialVariantId:item.materialVariantId,materialVariantRevision:item.materialVariantRevision}:{}),
       unitPrice: item.unitPrice, quantity: item.quantity, vatRate: item.vatRate,
       workOrderId: item.workOrderId ?? null, styleId: item.styleId ?? null, styleProcessId: item.styleProcessId ?? null,
       ...(item.styleProcessIds===undefined?{}:{styleProcessIds:item.styleProcessIds}), assignmentPlanId: item.assignmentPlanId ?? null, details: item.details,

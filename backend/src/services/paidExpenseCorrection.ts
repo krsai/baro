@@ -14,6 +14,7 @@ export function assertPaidExpenseCorrection(source:any,body:any){
   const cost=source.costs.find((c:any)=>c.id===item.itemId);if(!cost||seen.has(cost.id)||source.costs[index]?.id!==cost.id)fail();seen.add(cost.id);
   for(const key of ['quantity','unitPrice','vatRate']){try{if(!new Prisma.Decimal(String(item[key]??cost[key])).eq(cost[key]))fail();}catch{fail();}}
   if(item.currency!==cost.currency)fail();
+  if(item.materialVariantId!==undefined&&scalar(item.materialVariantId)!==scalar(cost.materialItemSnapshot?.variantId))fail();
   for(const key of ['materialItemId','itemCustomerId','itemTypeId','itemOwnerOrgId'])if(item[key]!==undefined&&scalar(item[key])!==scalar(cost[key]))fail();
   for(const key of ['unitId','workOrderId','styleId','styleProcessId'])if(scalar(item[key])!==scalar(cost[key]))fail();
   if(cost.outsourcedWorkRecordId||cost.referenceLinks?.length||cost.processLinks?.length)fail('PAID_EXPENSE_CORRECTION_COMPLEX');

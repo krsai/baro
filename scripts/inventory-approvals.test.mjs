@@ -37,7 +37,8 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   const purchase=await seedInventoryPurchase(db,s,master.id);
   const unapprovedPurchase=await seedInventoryPurchase(db,s,master.id,actor);
   const receipt={clientKey:randomUUID(),masterId:systemMaster.id,ownerId:org,dimensions:{},date:'2026-11-20',quantity:'10',remark:'Receive',approvalRevision:1,...purchase};
-  const purchaseOptions=await call('GET','/inventory-entry/purchase-expenses',{query:{masterId:master.id}});
+  const [purchaseVariant]=await db.$queryRaw`SELECT id FROM "InventoryVariant" WHERE "orgId"=${org} AND "masterId"=${master.id}`;
+  const purchaseOptions=await call('GET','/inventory-entry/purchase-expenses',{query:{masterId:master.id,variantId:purchaseVariant.id}});
   assert.equal(purchaseOptions.length,1,'unapproved purchase expenses cannot be selected');
   assert.equal(purchaseOptions[0].expenseItemId,purchase.expenseItemId);
   assert.equal(purchaseOptions[0].amount,undefined,'inventory lookup must not expose financial amounts');
@@ -48,7 +49,7 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,ownerId:s.vendor.id}}),/INVALID_INVENTORY_PURCHASE/);
   await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,clientKey:randomUUID(),approvalRevision:0}}),/APPROVAL_SETTINGS_CHANGED/);
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryMovement" WHERE "orgId"=${org}`).length,0);
-  assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE "orgId"=${org}`).length,0);
+  assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE "orgId"=${org}`).length,1,'expense-linked registered items are preserved');
   await assert.rejects(saveApprovalActionBatch(db,org,reviewer,[{menu:'INVENTORY',operation:'CREATE',settings:{...settings,revision:1}},{menu:'INVENTORY',operation:'DELETE',settings:{...settings,revision:1,approverIds:[999999]}}]),/INVENTORY_INVALID_POLICY/);
   assert.equal((await db.systemSetting.findUnique({where:{key:`APPROVAL_POLICY:INVENTORY:CREATE:${org}`}})).value.revision,1);
   const submitted=await call('POST','/inventory-entry',{body:receipt});
@@ -75,7 +76,7 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   await decide(s.people.senior.id,1);await decide(reviewer,2);
   assert.deepEqual(await call('GET','/inventory-entry/history'),[]);
   assert.deepEqual(await call('GET','/inventory-entry/stock'),[]);
-  assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE "orgId"=${org}`).length,0);
+  assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE "orgId"=${org}`).length,1,'expense-linked registered items survive movement deletion');
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryApprovalRequest" WHERE "orgId"=${org} AND "movementId" IS NULL`).length,2);
   assert.deepEqual(await call('POST','/inventory-entry',{body:receipt}),submitted);
   assert.deepEqual(await call('GET','/inventory-entry/history'),[]);
