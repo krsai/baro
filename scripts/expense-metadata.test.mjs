@@ -3,7 +3,23 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 import metadata from '../backend/dist/services/expenseMetadata.js';
+import {changeApprovalFixture} from './helpers/change-approval-fixture.mjs';
 const {prepareExpenseMetadata,registerExpenseUnitRoutes}=metadata;
+
+test('SYSTEM unit registration and editing accept PKG localized names through real Prisma without unsupported columns',async()=>{
+ const f=await changeApprovalFixture();try{
+  const handlers=new Map(),app=Object.fromEntries(['get','post','put'].map(method=>[method,(path,fn)=>handlers.set(method+path,fn)]));
+  registerExpenseUnitRoutes(app,f.db,{requireSystemAdmin:async req=>req.system?{}:null,requireOrgRole:async()=>null});
+  const response=()=>({json(value){this.body=value;}}),body={code:'PKG',nameEn:'Package',nameKo:'패키지',nameVi:'Kiện',isActive:true};
+  let res=response();await handlers.get('post/system-setting-defaults/expense-units')({system:false,body},res);
+  assert.equal(await f.db.expenseUnit.count({where:{code:'PKG'}}),0);
+  res=response();await handlers.get('post/system-setting-defaults/expense-units')({system:true,body},res);
+  const saved=res.body;assert.equal(saved.code,'PKG');assert.equal(saved.nameVi,'Kiện');assert.equal(saved.name,undefined);
+  await assert.rejects(handlers.get('post/system-setting-defaults/expense-units')({system:true,body},response()),error=>error.status===409&&error.message==='EXPENSE_UNIT_DUPLICATE');
+  res=response();await handlers.get('put/system-setting-defaults/expense-units/:id')({system:true,params:{id:String(saved.id)},body:{...body,nameKo:'포장',sortOrder:42}},res);
+  assert.equal(res.body.id,saved.id);assert.equal(res.body.nameKo,'포장');assert.equal(res.body.sortOrder,42);assert.equal(res.body.nameVi,'Kiện');
+ }finally{await f.close();}
+});
 test('multiple order/style references validate every tenant and membership, preserve inactive retained units',async()=>{
  const tx={workOrder:{findMany:async({where})=>where.orgId===1?where.id.in.filter(id=>id!==99).map(id=>({id})):[]},workOrderItem:{findFirst:async({where})=>where.styleId===999?null:{id:1}},expenseUnit:{findUnique:async({where})=>where.id===1?{id:1,isActive:true}:where.id===2?{id:2,isActive:false}:null}};
  const body={unitId:1,linkedOrderIds:[10,20],linkedStyles:[{workOrderId:10,styleId:30},{workOrderId:20,styleId:40}]};

@@ -49,7 +49,10 @@ export function registerExpenseUnitRoutes(app:any,db:any,gates:any){
     if(!await gates.requireSystemAdmin(req,res))return;
     const body=req.body;
     if(!validLocalizedName(body,100)||!/^[A-Z][A-Z0-9_]{0,29}$/.test(body.code)||!Number.isSafeInteger(body.sortOrder??0))fail('INVALID_EXPENSE_UNIT');
-    const data={...normalizeLocalizedName(body),code:body.code,isActive:body.isActive!==false,sortOrder:body.sortOrder??0};
+    // ExpenseUnit has localized columns only; the common normalizer also emits
+    // `name` for other catalogues, which Prisma rejects for this model.
+    const {nameEn,nameKo,nameVi}=normalizeLocalizedName(body);
+    const data={nameEn,nameKo,nameVi,code:body.code,isActive:body.isActive!==false,sortOrder:body.sortOrder??0};
     if(update&&!positive(Number(req.params.id)))fail('INVALID_EXPENSE_UNIT');
     try{res.json(update?await db.expenseUnit.update({where:{id:Number(req.params.id)},data}):await db.expenseUnit.create({data}));}
     catch(error:any){if(error.code==='P2002')throw createHttpError(409,'EXPENSE_UNIT_DUPLICATE');throw error;}
