@@ -42,6 +42,11 @@ try{
   if(fail){await page.getByRole('alert').waitFor().catch(async e=>{throw Error(JSON.stringify({errors,body:await page.locator('body').innerText(),cause:e.message}));});assert.equal(await page.getByText(t.empty,{exact:true}).count(),0);fail=false;await page.getByRole('button',{name:t.retry,exact:true}).click();}
   const view=page.getByRole('button',{name:new RegExp(t.viewItems+' .*CTN')});
   await view.waitFor();assert.equal(await page.getByRole('cell',{name:'10x10x10',exact:true}).count(),0);
+  const mainTable=page.locator('table').first();
+  assert.equal(await mainTable.getAttribute('data-table-layout'),'fixed');
+  if(width===1440){const tableBox=await mainTable.boundingBox(),actionBox=await view.locator('xpath=..').boundingBox();assert.ok(Math.abs(actionBox.x+actionBox.width-tableBox.x-tableBox.width)<2,'action column reaches the right edge of the full-width list');}
+  assert.equal(await mainTable.locator('thead th').nth(3).evaluate(cell=>getComputedStyle(cell).textAlign),'center');
+  assert.equal(await mainTable.locator('tbody tr').first().locator('td').nth(3).evaluate(cell=>getComputedStyle(cell).textAlign),'center');
   assert.equal(await view.locator('xpath=..').evaluate(cell=>cell===cell.parentElement.lastElementChild&&getComputedStyle(cell).position==='sticky'),true);
   await view.focus();await page.keyboard.press('Enter');
   let dialog=page.getByRole('dialog');await dialog.waitFor();

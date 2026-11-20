@@ -92,7 +92,7 @@ export async function registerTransactionRequest(tx: any, orgId: number, actorId
   const rawCode = useSystemMaster ? resolveAccountingCode(localCode) : localCode;
   const code = await resolveExpenseCodeLink(tx,orgId,rawCode,edit,orgType);
   if (!code || !code.taxTreatmentId || !code.baseId) return invalid('INVALID_TRANSACTION_CODE');
-  const material=await prepareMaterialSelection(tx,orgId,code,body,edit?.cost);
+  const material=await prepareMaterialSelection(tx,orgId,code,body,edit?.cost,actorId);
   const materialData=material.materialItemSnapshot;
   if(materialData){for(const key of ['length','width','height']){delete details[key];if(materialData.details?.[key])details[key]=materialData.details[key];}}
   const itemAttributes=materialData?{itemOwnerOrgId:materialData.itemOwnerOrgId??null,itemOwnerSnapshot:materialData.itemOwnerSnapshot??null,itemCustomerId:materialData.itemCustomerId??null,itemTypeId:materialData.itemTypeId??null,itemAttributeSnapshot:materialData.itemAttributeSnapshot??null}:await prepareCodeItemAttributes(tx,orgId,body,code,edit?.cost);

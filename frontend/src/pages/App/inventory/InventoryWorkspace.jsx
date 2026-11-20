@@ -1,4 +1,3 @@
-import {materialItemText} from '../../../constants/materialItems';
 import {inventoryApprovalText} from '../../../constants/inventoryApproval';
 import {InventoryEntry,InventoryRows} from './InventoryMovements';
 import MaterialMasterList from '../../../components/MaterialMasterList';
@@ -65,17 +64,14 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const [title] = PAGE_META[view] || PAGE_META.stock;
   const [keyword, setKeyword] = useState('');
   const [searchResetVersion, setSearchResetVersion] = useState(0);
-  const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const resetSearch = () => { setKeyword(''); setSearchResetVersion(value => value + 1); };
   const titleActions = view === 'history' ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setEntryOpen(true)}>{movementText.register}</Button>
-  ) : view==='materials' && canViewMaterials ? (
-    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>{(materialItemText[languageCode]||materialItemText.en).add}</Button>
   ) : null;
   const toolbar = view==='stock'||view==='history'||view==='materials'&&canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={event=>setKeyword(event.target.value)}/>} />
   ) : null;
-  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList key={auth.activeOrgId} keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
+  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList key={auth.activeOrgId} keyword={keyword}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
   return (
     <>
       <AppPageContainer

@@ -2,59 +2,34 @@ import MaterialVariantRows,{materialVariantSearch} from './MaterialVariantRows';
 import useWorkspaceRefreshOnEvent from '../hooks/useWorkspaceRefreshOnEvent';
 import CloseIcon from '@mui/icons-material/Close';
 import React,{useCallback,useEffect,useId,useRef,useState} from 'react';
-import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,IconButton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
+import {Box,Button,Dialog,DialogContent,DialogTitle,IconButton,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow} from '@mui/material';
 import AppNotice from './AppNotice';
-import ExpenseLookupField from './ExpenseLookupField';
-import LocalizedNameFields from './LocalizedNameFields';
-import SaveButton from './SaveButton';
 import {useAuth} from '../context/AuthContext';
 import {useLanguage} from '../context/LanguageContext';
-import {useAppActions} from '../context/AppContext';
-import {emitWorkspaceDataChanged} from '../utils/workspaceDataEvents';
 import {requestJSON,buildQueryString} from '../utils/apiClient';
 import {materialItemText,materialItemName} from '../constants/materialItems';
-import useUnsavedChanges from '../hooks/useUnsavedChanges';
-export default function MaterialMasterList({keyword='',open,onClose}){
- const {activeOrgId:orgId}=useAuth(),{languageCode}=useLanguage(),{showNotification}=useAppActions(),t=materialItemText[languageCode]||materialItemText.en;
- const [rows,setRows]=useState([]),[catalogue,setCatalogue]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[form,setForm]=useState(null);
- const [pending,setPending]=useState(null),[variants,setVariants]=useState([]),[selectedBaseId,setSelectedBaseId]=useState(null);
- useUnsavedChanges(Boolean(open&&(form?.baseId||pending)));
+export default function MaterialMasterList({keyword=''}){
+ const {activeOrgId:orgId}=useAuth(),{languageCode}=useLanguage(),t=materialItemText[languageCode]||materialItemText.en;
+ const [catalogue,setCatalogue]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+ const [variants,setVariants]=useState([]),[selectedBaseId,setSelectedBaseId]=useState(null);
  const detailTitleId=useId();
  const sequence=useRef(0),scope=useRef(orgId);scope.current=orgId;
- const load=useCallback(async()=>{const token=++sequence.current;setLoading(true);setError('');setRows([]);setVariants([]);setCatalogue(null);try{const [items,options,stockItems]=await Promise.all([requestJSON('/material-items'+buildQueryString({orgId}),{skipCache:true}),requestJSON('/material-items/catalogue'+buildQueryString({orgId}),{skipCache:true}),requestJSON('/material-items/variants'+buildQueryString({orgId}),{skipCache:true})]);if(token!==sequence.current)return;setRows(items);setCatalogue(options);setVariants(stockItems);}catch{if(token===sequence.current)setError(t.failed);}finally{if(token===sequence.current)setLoading(false);}},[orgId,t.failed]);
+ const load=useCallback(async()=>{const token=++sequence.current;setLoading(true);setError('');setVariants([]);setCatalogue(null);try{const [options,stockItems]=await Promise.all([requestJSON('/material-items/catalogue'+buildQueryString({orgId}),{skipCache:true}),requestJSON('/material-items/variants'+buildQueryString({orgId}),{skipCache:true})]);if(token!==sequence.current)return;setCatalogue(options);setVariants(stockItems);}catch{if(token===sequence.current)setError(t.failed);}finally{if(token===sequence.current)setLoading(false);}},[orgId,t.failed]);
  useEffect(()=>{scope.current=orgId;load();return()=>{sequence.current++;scope.current=null;};},[load]);
- useEffect(()=>{if(open){setPending(null);setForm({key:'material',clientKey:crypto.randomUUID(),baseId:null,unitId:null,details:{}});}},[open,orgId]);
- useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements','inventory-stock'],isBlocked:Boolean(open||saving||pending||selectedBaseId!==null),onRefresh:load});
+ useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements','inventory-stock','accounting-codes'],isBlocked:selectedBaseId!==null,onRefresh:load});
  const search=keyword.trim().toLocaleLowerCase();
  const grouped=new Map();for(const item of variants){if(!grouped.has(item.baseId))grouped.set(item.baseId,[]);grouped.get(item.baseId).push(item);}
  const matchesCode=row=>[row.base.code,row.base.nameEn,row.base.nameKo,row.base.nameVi].join(' ').toLocaleLowerCase().includes(search);
  const visibleCodes=(catalogue?.codes||[]).filter(row=>matchesCode(row)||(grouped.get(row.baseId)||[]).some(item=>materialVariantSearch(item).includes(search)));
  const selectedCode=catalogue?.codes.find(row=>row.baseId===selectedBaseId);
- const registeredBaseIds=new Set(rows.map(row=>row.baseId));
- const availableCodes=(catalogue?.codes||[]).filter(row=>!registeredBaseIds.has(row.baseId));
- const code=catalogue?.codes.find(row=>row.baseId===form?.baseId);
- const selectedUnit=catalogue?.units.find(row=>row.id===form?.unitId);
- const save=async()=>{if(!pending&&(!code||!selectedUnit)){setError(t.invalid);return;}
-  const saveScope=orgId;setSaving(true);setError('');try{const industry=code.base.industryLinks.find(link=>link.industry.isActive&&!link.industry.retirement&&link.industry.materialManagement).industry;const payload=pending||{...form,sharedMaster:true,policyAuditId:code.linkPolicyAuditId??null,materialRevision:code.base.materialRevision,industryRevision:industry.materialManagementRevision};setPending(payload);await requestJSON('/material-items'+buildQueryString({orgId}),{method:'POST',body:JSON.stringify(payload)});if(scope.current!==saveScope)return;setPending(null);emitWorkspaceDataChanged({orgId,topics:['inventory-movements']});onClose();showNotification?.(t.saved,'success');await load();}catch(e){if(scope.current===saveScope){if([400,403,404,409,422].includes(e.status))setPending(null);setError(e.message==='MATERIAL_ITEM_DUPLICATE'?t.duplicate:e.message==='ACCOUNTING_INDUSTRY_CHANGED'?t.changed:t.failed);}}finally{if(scope.current===saveScope)setSaving(false);}};
- return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={pending?save:load} disabled={loading||saving}>{t.retry}</Button>}>{error}</AppNotice>}
- <TableContainer><Table size="small"><TableHead><TableRow>{[t.code,t.name,t.unit,t.items,t.actions].map((label,index)=><TableCell key={label} sx={index===4?{position:'sticky',right:0,bgcolor:'background.paper',width:140}:undefined}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
-  {visibleCodes.map(row=><TableRow key={row.baseId}><TableCell>{row.base.code}</TableCell><TableCell>{materialItemName(row.base,languageCode)}</TableCell><TableCell>{materialItemName(catalogue.units.find(unit=>unit.id===row.base.materialUnitId),languageCode)||'\u2014'}</TableCell><TableCell>{(grouped.get(row.baseId)||[]).length}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper',whiteSpace:'nowrap'}}><Button size="small" aria-haspopup="dialog" aria-label={t.viewItems+' \u00b7 '+row.base.code+' \u00b7 '+materialItemName(row.base,languageCode)} onClick={()=>setSelectedBaseId(row.baseId)}>{t.viewItems}</Button></TableCell></TableRow>)}
+ return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={load} disabled={loading}>{t.retry}</Button>}>{error}</AppNotice>}
+ <TableContainer><Table size="small" data-table-layout="fixed" sx={{width:'100%',tableLayout:'fixed',minWidth:620}}><colgroup><col style={{width:'14%'}}/><col/><col style={{width:'16%'}}/><col style={{width:'12%'}}/><col style={{width:176}}/></colgroup><TableHead><TableRow>{[t.code,t.name,t.unit,t.items,t.actions].map((label,index)=><TableCell key={label} align={index===3?'center':index===4?'right':'left'} sx={index===4?{position:'sticky',right:0,bgcolor:'background.paper',width:176}:undefined}>{label}</TableCell>)}</TableRow></TableHead><TableBody>
+  {visibleCodes.map(row=><TableRow key={row.baseId}><TableCell>{row.base.code}</TableCell><TableCell>{materialItemName(row.base,languageCode)}</TableCell><TableCell>{materialItemName(catalogue.units.find(unit=>unit.id===row.base.materialUnitId),languageCode)||'\u2014'}</TableCell><TableCell align="center">{(grouped.get(row.baseId)||[]).length}</TableCell><TableCell align="right" data-table-actions sx={{position:'sticky',right:0,bgcolor:'background.paper',whiteSpace:'nowrap'}}><Button size="small" aria-haspopup="dialog" aria-label={t.viewItems+' \u00b7 '+row.base.code+' \u00b7 '+materialItemName(row.base,languageCode)} onClick={()=>setSelectedBaseId(row.baseId)}>{t.viewItems}</Button></TableCell></TableRow>)}
   {!loading&&!error&&!visibleCodes.length&&<TableRow><TableCell colSpan={5}>{t.empty}</TableCell></TableRow>}
  </TableBody></Table></TableContainer>
  <Dialog open={selectedBaseId!==null} onClose={()=>setSelectedBaseId(null)} fullWidth maxWidth="md" aria-labelledby={detailTitleId}>
   <DialogTitle id={detailTitleId} sx={{display:'flex',alignItems:'center',gap:1}}><Box component="span" sx={{flex:1}}>{[selectedCode?.base.code,materialItemName(selectedCode?.base,languageCode),t.items].filter(Boolean).join(' \u00b7 ')}</Box><IconButton aria-label={t.close} onClick={()=>setSelectedBaseId(null)}><CloseIcon/></IconButton></DialogTitle>
   <DialogContent><MaterialVariantRows rows={grouped.get(selectedBaseId)||[]} languageCode={languageCode}/></DialogContent>
- </Dialog>
- <Dialog open={Boolean(open&&form)} onClose={()=>!saving&&!pending&&onClose()} fullWidth maxWidth="md"
-   slotProps={{paper:{sx:{maxWidth:760}}}}>
-  <DialogTitle>{t.add}</DialogTitle>
-  <DialogContent>
-   <Stack spacing={2.5} sx={{pt:1.5,pb:1}}>{error&&<AppNotice severity="error">{error}</AppNotice>}<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:code?'minmax(0,1fr) minmax(140px, 24%)':'minmax(0,1fr)'},gap:2}}><ExpenseLookupField label={t.productSearch} required disabled={saving||Boolean(pending)||!catalogue} languageCode={languageCode} options={availableCodes} value={code||null} getOptionLabel={row=>row.base.code+' · '+materialItemName(row.base,languageCode)} getCode={row=>row.base.code} columns={[{key:'code',label:t.code,value:row=>row.base.code},{key:'name',label:t.name,value:row=>materialItemName(row.base,languageCode)}]} onChange={row=>setForm(current=>({...current,baseId:row?.baseId??null,unitId:row?.base?.materialUnitId??null,details:{}}))}/>{code&&(code.base.materialUnitId?<TextField size="small" label={t.unit} value={materialItemName(selectedUnit,languageCode)} error={!selectedUnit} helperText={!selectedUnit?t.changed:undefined} slotProps={{input:{readOnly:true},inputLabel:{shrink:true}}}/>:<ExpenseLookupField label={t.unit} required languageCode={languageCode} disabled={saving||Boolean(pending)} options={catalogue.units} value={selectedUnit||null} getOptionLabel={row=>materialItemName(row,languageCode)} getCode={row=>row.code} columns={[{key:'code',label:t.code,value:row=>row.code},{key:'name',label:t.unit,value:row=>materialItemName(row,languageCode)}]} onChange={row=>setForm(current=>({...current,unitId:row?.id??null}))}/>)}</Box>{code&&<LocalizedNameFields readOnly value={code.base} languageCode={languageCode}/>}</Stack>
-  </DialogContent>
-  <DialogActions sx={{borderTop:1,borderColor:'divider'}}>
-   <Button variant="outlined" sx={{minWidth:88}} disabled={saving||Boolean(pending)} onClick={onClose}>{t.cancel}</Button>
-   <SaveButton loading={saving} disabled={loading||!catalogue} onClick={save}>{t.save}</SaveButton>
-  </DialogActions>
  </Dialog>
  </Stack>;
 }

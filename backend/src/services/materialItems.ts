@@ -10,15 +10,15 @@ import {materialMasterCode} from './materialCodeSettings';
 
 const fail=(code:string):never=>{throw createHttpError(400,code);};
 export const materialSnapshot=(row:any)=>({id:row.id,baseId:row.baseId,industryId:row.industryId,unitId:row.unitId,...row.data});
-export async function prepareMaterialSelection(tx:any,orgId:number,code:any,body:any,previous?:any){
+export async function prepareMaterialSelection(tx:any,orgId:number,code:any,body:any,previous?:any,actorId?:number){
  const id=body.materialItemId===undefined?previous?.materialItemId??null:body.materialItemId||null;
  if(previous?.transactionCodeId===code.id&&!previous.materialItemId&&!id)return {};
  if(previous?.transactionCodeId===code.id&&id===(previous.materialItemId??null))return id?{materialItemId:id,materialItemSnapshot:previous.materialItemSnapshot}:{};
  if(!id){if(code.base?.materialSettings?.enabled)fail('MATERIAL_ITEM_REQUIRED');return previous?.materialItemId?{materialItemId:null,materialItemSnapshot:Prisma.DbNull}:{};}
  if(typeof id!=='string'||id.length>100)fail('INVALID_MATERIAL_ITEM');
- const row=await tx.materialItem.findFirst({where:{id,orgId,baseId:code.baseId}});
- if(!row||!code.base?.materialSettings?.enabled)fail('INVALID_MATERIAL_ITEM');
- return {materialItemId:id,materialItemSnapshot:materialSnapshot(row)};
+ const row=id.startsWith('system:')?await resolveSystemMaterialMaster(tx,orgId,id,true,actorId):await tx.materialItem.findFirst({where:{id,orgId,baseId:code.baseId}});
+ if(!row||row.baseId!==code.baseId||!code.base?.materialSettings?.enabled)fail('INVALID_MATERIAL_ITEM');
+ return {materialItemId:row.id,materialItemSnapshot:materialSnapshot(row)};
 }
 export async function prepareLedgerMaterial(tx:any,orgId:number,body:any,previous?:any){
  if((body.evidenceType||'FILE')!=='FILE'||body.counterparty?.kind==='ACCOUNT'){
@@ -29,7 +29,7 @@ export async function prepareLedgerMaterial(tx:any,orgId:number,body:any,previou
  const historical=previous?.evidenceType==='FILE'&&previous.accountingCodeId===code.id?{...previous,transactionCodeId:previous.accountingCodeId}:undefined;
  return prepareMaterialSelection(tx,orgId,code,body,historical);
 }
-export async function registerMaterialItem(tx:any,orgId:number,actorId:number,body:any){
+export async function registerMaterialItem(tx:any,orgId:number,actorId:number,body:any,systemDefault=false){
  if(typeof body.clientKey!=='string'||!/^[\w-]{8,100}$/.test(body.clientKey))fail('INVALID_MATERIAL_ITEM');
  if(!Number.isSafeInteger(body.baseId)||body.baseId<=0||!Number.isSafeInteger(body.unitId)||body.unitId<=0||body.colorId!=null&&(!Number.isSafeInteger(body.colorId)||body.colorId<=0))fail('INVALID_MATERIAL_ITEM');
  const requestHash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
@@ -52,7 +52,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const code=materialMasterCode(effectiveExpenseCode(local,policy)),attributes=await prepareCodeItemAttributes(tx,orgId,body,code);
  const details:any={};for(const key of ['length','width','height'])if(body.details?.[key])details[key]=String(body.details[key]).trim();
  const sharedMaster=body.sharedMaster===true;
- if(sharedMaster&&await tx.materialItem.findFirst({where:{orgId,baseId:base.id},select:{id:true}}))throw createHttpError(409,'MATERIAL_ITEM_DUPLICATE');
+ if(sharedMaster&&await tx.materialItem.findFirst({where:{orgId,baseId:base.id,...(systemDefault?{unitId:body.unitId}:{})},select:{id:true}}))throw createHttpError(409,'MATERIAL_ITEM_DUPLICATE');
  const dimensions=!sharedMaster&&code.base.requiredFields?.includes('length');
  if(dimensions){for(const key of ['length','width','height'])if(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key]||'')||Number(details[key])<=0)fail('INVALID_MATERIAL_DIMENSIONS');}
  else if(Object.keys(details).length)fail('INVALID_MATERIAL_DIMENSIONS');
@@ -62,6 +62,27 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const identityDetails=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,new Prisma.Decimal(value as string).toString()]));
  const identityKey=createHash('sha256').update(JSON.stringify({name:data.nameEn.toUpperCase(),owner:attributes.itemOwnerOrgId,customer:attributes.itemCustomerId,type:attributes.itemTypeId,unitId:unit.id,colorId:null,details:identityDetails})).digest('hex');
  return tx.materialItem.create({data:{id:randomUUID(),orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,ownerOrgId:attributes.itemOwnerOrgId??null,customerId:attributes.itemCustomerId??null,typeId:attributes.itemTypeId??null,colorId:null,policyAuditId:policy?.auditId??null,data,identityKey,clientKey:body.clientKey,requestHash,createdByEmployeeId:actorId}});
+}
+// Read-only system references; a real company FK is created only by a business save.
+export async function systemMaterialOptions(db:any,orgId:number,baseId?:number){
+ const codes=await db.transactionCode.findMany({where:{ownerOrgId:orgId,isActive:true,...(baseId?{baseId}:{}),base:{isActive:true}},include:{base:{include:{industryLinks:{include:{industry:{include:{retirement:true}}}}}}}});
+ const [units,existing]=await Promise.all([db.expenseUnit.findMany({where:{isActive:true}}),db.materialItem.findMany({where:{orgId,...(baseId?{baseId}:{})},orderBy:{createdAt:'asc'}})]);
+ const seen=new Set();return codes.filter((code:any)=>!seen.has(code.baseId)&&seen.add(code.baseId)).flatMap((code:any)=>{
+  const base=code.base,industry=base.industryLinks.find((link:any)=>link.industry.isActive&&!link.industry.retirement&&link.industry.materialManagement)?.industry,unit=units.find((u:any)=>u.id===base.materialUnitId);
+  if(!base.materialSettings?.enabled||!industry||!unit)return [];
+  const saved=existing.find((row:any)=>row.baseId===base.id&&row.unitId===unit.id&&row.data.sharedMaster)||existing.find((row:any)=>row.baseId===base.id&&row.unitId===unit.id);
+  return [saved||{id:`system:${base.id}:${unit.id}:${base.materialRevision}`,orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,data:{...normalizeLocalizedName(base),sharedMaster:true,unit,details:{},baseSnapshot:{id:base.id,code:base.code,...normalizeLocalizedName(base)},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision}}];
+ });
+}
+export async function resolveSystemMaterialMaster(db:any,orgId:number,id:string,write=false,actorId?:number){
+ const match=/^system:([1-9]\d*):([1-9]\d*):(\d+)$/.exec(id);if(!match)return fail('INVALID_MATERIAL_ITEM');
+ if(write){if(!Number.isSafeInteger(actorId)||!await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}}}))throw createHttpError(403,'ACTIVE_EMPLOYEE_REQUIRED');await db.$queryRaw`SELECT id FROM "Organization" WHERE id=${orgId} FOR UPDATE`;}
+ const [row]=await systemMaterialOptions(db,orgId,Number(match[1]));
+ const base=await db.transactionCodeBase.findFirst({where:{id:Number(match[1]),isActive:true}});
+ if(!row||base?.materialUnitId!==Number(match[2])||base.materialRevision!==Number(match[3]))throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
+ if(!write||!row.id.startsWith('system:'))return row;
+ const policy=await db.expenseCodeLinkPolicy.findUnique({where:{orgId_baseId:{orgId,baseId:row.baseId}}});
+ return registerMaterialItem(db,orgId,actorId!,{clientKey:randomUUID(),baseId:row.baseId,unitId:row.unitId,sharedMaster:true,details:{},policyAuditId:policy?.auditId??null,materialRevision:base.materialRevision,industryRevision:row.data.industryRevision},true);
 }
 export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any,feature:string)=>{
@@ -75,7 +96,9 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  app.get('/material-items/options',async(req:any,res:any)=>{
   const scope=await access(req,res,req.query?.context==='LEDGER'?'BANK_LEDGER':'OUTSOURCING_RECORD');if(!scope)return;
   const baseId=Number(req.query.baseId);if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_MATERIAL_CODE');
-  res.json(await db.materialItem.findMany({where:{orgId:scope.orgId,baseId},orderBy:{createdAt:'desc'}}));
+  const rows=await db.materialItem.findMany({where:{orgId:scope.orgId,baseId},orderBy:{createdAt:'desc'}});
+  const defaults=req.query?.context==='LEDGER'?[]:await systemMaterialOptions(db,scope.orgId,baseId);
+  res.json([...rows,...defaults.filter((row:any)=>!rows.some((saved:any)=>saved.id===row.id))]);
  });
  app.get('/material-items',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;

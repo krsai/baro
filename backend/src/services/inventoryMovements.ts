@@ -4,6 +4,7 @@ import {createHttpError} from '../utils/http';
 import {materialOwnerScope,MATERIAL_OWNER_SELECT} from './materialOwner';
 import {createInventoryApproval,registerInventoryApprovalRoutes} from './inventoryApprovals';
 import {prepareInventoryPurchase} from './inventoryPurchase';
+import {systemMaterialOptions,resolveSystemMaterialMaster} from './materialItems';
 
 const invalid=()=>createHttpError(400,'INVALID_INVENTORY_MOVEMENT');
 const axes=['length','width','height'];
@@ -15,8 +16,8 @@ const modes=(base:any)=>({
  type:base.materialSettings?.masterInputs?.type??base.attributeInputs?.type??'HIDDEN',
 });
 const masterOptions=(db:any,orgId:number)=>db.materialItem.findMany({where:{orgId},orderBy:{createdAt:'asc'}});
-async function readMaster(db:any,orgId:number,id:string){
- const master=await db.materialItem.findFirst({where:{id,orgId}});
+async function readMaster(db:any,orgId:number,id:string,actorId?:number){
+ const master=id.startsWith('system:')?await resolveSystemMaterialMaster(db,orgId,id,actorId!==undefined,actorId):await db.materialItem.findFirst({where:{id,orgId}});
  if(!master)throw invalid();
  const base=await db.transactionCodeBase.findFirst({where:{id:master.baseId,isActive:true}});
  if(!base?.materialSettings?.enabled)throw invalid();
@@ -45,7 +46,8 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
    const key=row.baseId+':'+row.unitId;
    if(!unique.has(key))unique.set(key,row);
   }
-  res.json([...unique.values()]);
+  const defaults=await systemMaterialOptions(db,scope.orgId);
+  res.json([...defaults,...[...unique.values()].filter((row:any)=>!defaults.some((d:any)=>d.baseId===row.baseId&&d.unitId===row.unitId))]);
  });
  app.get('/inventory-entry/options',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
@@ -76,7 +78,7 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
    }
    const [deletedPrior]=await tx.$queryRaw`SELECT id,operation,"requestHash","drafterId" FROM "InventoryApprovalRequest" WHERE "orgId"=${orgId} AND "clientKey"=${body.clientKey}`;
    if(deletedPrior){if(deletedPrior.operation!=='CREATE'||deletedPrior.drafterId!==actorId||deletedPrior.requestHash!==hash)throw createHttpError(409,'INVENTORY_RETRY_MISMATCH');return {id:deletedPrior.id};}
-   const {master,fields}=await readMaster(tx,orgId,body.masterId);
+   const {master,fields}=await readMaster(tx,orgId,body.masterId,actorId);
    let variantId=body.variantId;
    if(variantId){
     if(typeof variantId!=='string'||!(await tx.$queryRaw`SELECT id FROM "InventoryVariant" WHERE id=${variantId} AND "orgId"=${orgId} AND "masterId"=${master.id}`).length)throw invalid();

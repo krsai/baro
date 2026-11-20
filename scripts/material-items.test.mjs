@@ -13,6 +13,24 @@ const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/servi
 const {readLedgerEdit}=require('../backend/dist/services/bankLedgerEdit');
 const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 const {saveCodeBase}=require('../backend/dist/services/codeBaseManagement');
+test('system unit defaults work on the first expense save without company master registration',async()=>{
+ const f=await changeApprovalFixture();try{
+  const db=f.db,s=await seedChangeApproval(db),org=s.company.id,actor=s.people.admin.id;
+  const {systemMaterialOptions,resolveSystemMaterialMaster}=require('../backend/dist/services/materialItems');
+  const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
+  await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:base.serviceTypeId}});
+  await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true,materialManagementRevision:{increment:1}}});
+  const unit=await db.expenseUnit.create({data:{code:'SYSUNIT',nameKo:'개',nameEn:'Each',nameVi:'Cái'}});
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}},materialRevision:{increment:1}}});
+  const [option]=await systemMaterialOptions(db,org);assert.ok(option.id.startsWith('system:'));assert.equal(await db.materialItem.count(),0);
+  const doc=await db.$transaction(tx=>registerExpenseRequest(tx,org,actor,{partnerOrgId:s.vendor.id,requestDate:'2026-11-20',clientKey:randomUUID(),items:[{transactionCodeId:s.code.id,materialItemId:option.id,unitId:unit.id,currency:'USD',quantity:'10',unitPrice:'1',vatRate:'0',details:{evidenceFile:'purchase.pdf'}}]}));
+  const cost=await db.partnerTransactionCost.findFirst({where:{expenseRequestId:doc.id}});
+  assert.ok(cost.materialItemId&&!cost.materialItemId.startsWith('system:'));assert.equal(cost.unitId,unit.id);assert.equal(await db.materialItem.count(),1);
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialRevision:{increment:1}}});
+  await assert.rejects(db.$transaction(tx=>resolveSystemMaterialMaster(tx,org,option.id,true,actor)),/ACCOUNTING_INDUSTRY_CHANGED/);
+  assert.equal(await db.materialItem.count(),1,'stale system selection creates no extra company rows');
+ }finally{await f.close();}
+});
 const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeItemAttributes');
 test('material routes reject missing company access before reading any data',async()=>{
  const routes=[];registerMaterialItemRoutes({get:(_p,h)=>routes.push(h),post:(_p,h)=>routes.push(h)},new Proxy({},{get(){throw Error('unauthorized database access');}}),{requireOrgRole:async()=>null});
