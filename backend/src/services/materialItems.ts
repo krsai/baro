@@ -34,6 +34,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const requestHash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
  const previous=await tx.materialItem.findUnique({where:{orgId_clientKey:{orgId,clientKey:body.clientKey}}});
  if(previous){if(previous.requestHash!==requestHash||previous.createdByEmployeeId!==actorId)fail('MATERIAL_RETRY_MISMATCH');return previous;}
+ if(body.itemOwnerOrgId!=null||body.itemTypeId!=null)fail('INVALID_MATERIAL_ITEM');
  // Match catalogue writers; key-share the company before the FK/audited-policy work.
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR KEY SHARE',orgId);
  await tx.$queryRawUnsafe('LOCK TABLE "TransactionCodeBase", "SettingTransactionCodeDefault", "TransactionCode" IN SHARE ROW EXCLUSIVE MODE');

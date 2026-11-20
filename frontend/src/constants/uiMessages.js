@@ -98,7 +98,7 @@ export const UI_MESSAGES = {
     inventoryEntry: { ko: '입출고', en: 'Stock Movement', vi: 'Nhập xuat kho' },
     inventoryHistory: { ko: '입출고', en: 'Stock Movements', vi: 'Nhập xuất kho' },
     inventoryTransactions: { ko: '재고 거래', en: 'Stock Transactions', vi: 'Giao dich kho' },
-    materials: { ko: '자재 목록', en: 'Material List', vi: 'Danh sách vật tư' },
+    materials: { ko: '자재 마스터', en: 'Material Master', vi: 'Danh mục vật tư' },
     materialSettings: { ko: '자재 기준정보', en: 'Material Reference Data', vi: 'Dữ liệu chuẩn vật tư' },
     accounting: { ko: '회계 관리', en: 'Accounting', vi: 'Kế toán' },
     payroll: { ko: '급여 계산', en: 'Payroll', vi: 'Tính lương' },

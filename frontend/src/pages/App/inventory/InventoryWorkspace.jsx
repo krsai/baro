@@ -50,8 +50,8 @@ const PAGE_META = {
   stock: ['자재 현황', '창고·소유자·자재별 현재고와 가용재고를 조회합니다.'],
   entry: ['입출고 등록', '구매·입고·출고·이동·반환·손실·조정 거래를 등록합니다.'],
   history: ['입출고', '모든 재고 증감과 정정 이력을 조회하고 신규 거래를 등록합니다.'],
-  materials: ['자재 목록', '실제 입출고와 BOM에서 사용할 정확한 자재 품목을 관리합니다.'],
-  settings: ['자재 목록', '자재 종류·단위·규격·타입 마스터를 관리합니다.'],
+  materials: ['자재 마스터', '실제 입출고와 BOM에서 사용할 정확한 자재 품목을 관리합니다.'],
+  settings: ['자재 마스터', '자재 종류·단위·규격·타입 마스터를 관리합니다.'],
 };
 
 const UiNotice = () => (
@@ -127,7 +127,7 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const auth=useAuth(),{languageCode}=useLanguage();
   const canViewMaterials=canAccessPath('/inventory/materials',auth),canViewReference=canAccessPath('/inventory/settings',auth);
   const mergedMaterials=['materials','settings'].includes(view);
-  const sections=({ko:{materials:'자재 목록',reference:'기준정보'},en:{materials:'Materials',reference:'Reference data'},vi:{materials:'Vật tư',reference:'Dữ liệu chuẩn'}})[languageCode]||{materials:'Materials',reference:'Reference data'};
+  const sections=({ko:{materials:'자재 마스터',reference:'기준정보'},en:{materials:'Material master',reference:'Reference data'},vi:{materials:'Danh mục vật tư',reference:'Dữ liệu chuẩn'}})[languageCode]||{materials:'Material master',reference:'Reference data'};
   const [title, description] = PAGE_META[view] || PAGE_META.stock;
   const [keyword, setKeyword] = useState('');
   const [searchResetVersion, setSearchResetVersion] = useState(0);
