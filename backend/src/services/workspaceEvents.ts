@@ -36,7 +36,7 @@ export const workspaceTopics=(path:string):string[]=>{
  if(/^\/management-targets\/INVOICE\/?$/i.test(route))return ['orders','invoice-drafts'];
  if(/(?:\/|-)(preview|validate|search|recipients)(?:\/|$)/.test(route))return [];
  const groups:[RegExp,string[]][]=[
-  [/^\/material-items\/?$/,['inventory-movements']],
+  [/^\/material-items(?:\/variants(?:\/[^/]+)?)?\/?$/,['inventory-movements']],
   [/^\/inventory-entry(?:\/|$)/,['inventory-movements','inventory-stock']],
   [/^\/(shipping|freight|shipping-ports)/,['shipping','shipping-ports']],
   [/^\/orders(?:\/[^/]+)?\/?$/,['orders','order-records','order-shipments','invoice-drafts','assignment-board']],

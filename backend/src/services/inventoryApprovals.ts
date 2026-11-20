@@ -23,7 +23,7 @@ export async function createInventoryApproval(tx:any,scope:any,movement:any,oper
    const [row]=await tx.$queryRaw`SELECT "variantId" FROM "InventoryMovement" WHERE id=${movement.id} AND "orgId"=${orgId}`;
    await tx.$executeRaw`UPDATE "InventoryApprovalRequest" SET status='CANCELLED',revision=revision+1 WHERE "movementId"=${movement.id} AND operation='CREATE' AND status='PENDING'`;
    await tx.$executeRaw`DELETE FROM "InventoryMovement" WHERE id=${movement.id} AND "orgId"=${orgId}`;
-   await tx.$executeRaw`DELETE FROM "InventoryVariant" v WHERE v.id=${row.variantId} AND v."orgId"=${orgId} AND NOT EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."variantId"=v.id)`;
+   await tx.$executeRaw`DELETE FROM "InventoryVariant" v WHERE v.id=${row.variantId} AND v."orgId"=${orgId} AND NOT v.managed AND NOT EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."variantId"=v.id)`;
   }
  }
  return id;
@@ -93,7 +93,7 @@ export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
     else if(status==='APPROVED'){
      await tx.$executeRaw`UPDATE "InventoryApprovalRequest" SET status='CANCELLED',revision=revision+1 WHERE "movementId"=${movement.id} AND operation='CREATE' AND status='PENDING'`;
      await tx.$executeRaw`DELETE FROM "InventoryMovement" WHERE id=${movement.id} AND "orgId"=${scope.orgId}`;
-     await tx.$executeRaw`DELETE FROM "InventoryVariant" v WHERE v.id=${movement.variantId} AND v."orgId"=${scope.orgId} AND NOT EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."variantId"=v.id)`;
+     await tx.$executeRaw`DELETE FROM "InventoryVariant" v WHERE v.id=${movement.variantId} AND v."orgId"=${scope.orgId} AND NOT v.managed AND NOT EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."variantId"=v.id)`;
     }
    }
    return {status};

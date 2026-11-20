@@ -33,7 +33,7 @@ test('system unit defaults work on the first expense save without company master
 });
 const {registerCodeItemAttributeRoutes}=require('../backend/dist/services/codeItemAttributes');
 test('material routes reject missing company access before reading any data',async()=>{
- const routes=[];registerMaterialItemRoutes({get:(_p,h)=>routes.push(h),post:(_p,h)=>routes.push(h)},new Proxy({},{get(){throw Error('unauthorized database access');}}),{requireOrgRole:async()=>null});
+ const routes=[];registerMaterialItemRoutes(Object.fromEntries(['get','post','put','delete'].map(method=>[method,(_p,h)=>routes.push(h)])),new Proxy({},{get(){throw Error('unauthorized database access');}}),{requireOrgRole:async()=>null});
  for(const route of routes)await route({},{});
 });
 
@@ -82,7 +82,7 @@ test('registered material identity and snapshots flow to expenses and direct ban
   assert.equal(item.customerId,null);assert.equal(item.data.inputSettings.attributeInputs.customer,'HIDDEN','legacy customer requirements do not apply to new material registrations');
   assert.deepEqual(configured.requiredFields,[]);assert.deepEqual(configured.attributeInputs,{});
   assert.deepEqual(item.data.inputSettings.requiredFields,['length','width']);
-  const routes=new Map(),app={get:(path,handler)=>routes.set('GET '+path,handler),post:(path,handler)=>routes.set('POST '+path,handler)},features=[];
+  const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,handler)=>routes.set(method.toUpperCase()+' '+path,handler)])),features=[];
   const gates={requireOrgRole:async()=>({organization:s.company}),actorId:()=>actor,canAccessCodeItems:async scope=>{features.push(scope.feature);return true;}};
   registerMaterialItemRoutes(app,db,gates);registerCodeItemAttributeRoutes(app,db,gates);
   let own;await routes.get('GET /material-items/options')({query:{orgId:s.other.id,baseId:base.id,context:'LEDGER'}},{json:rows=>{own=rows;}});assert.equal(own.length,1);assert.equal(own[0].orgId,org);

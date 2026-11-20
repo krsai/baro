@@ -7,6 +7,7 @@ import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 import {normalizeLocalizedName} from '../utils/localizedName';
 import {registerInventoryMovementRoutes} from './inventoryMovements';
 import {materialMasterCode} from './materialCodeSettings';
+import {registerInventoryVariantRoutes} from './inventoryVariants';
 
 const fail=(code:string):never=>{throw createHttpError(400,code);};
 export const materialSnapshot=(row:any)=>({id:row.id,baseId:row.baseId,industryId:row.industryId,unitId:row.unitId,...row.data});
@@ -93,6 +94,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
   return {orgId:scope.organization.id,actorId:employee.id};
  };
  registerInventoryMovementRoutes(app,db,access);
+ registerInventoryVariantRoutes(app,db,access);
  app.get('/material-items/options',async(req:any,res:any)=>{
   const scope=await access(req,res,req.query?.context==='LEDGER'?'BANK_LEDGER':'OUTSOURCING_RECORD');if(!scope)return;
   const baseId=Number(req.query.baseId);if(!Number.isSafeInteger(baseId)||baseId<=0)fail('INVALID_MATERIAL_CODE');
@@ -106,7 +108,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  });
  app.get('/material-items/variants',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
+  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",v.revision,v.managed,EXISTS(SELECT 1 FROM "InventoryMovement" m WHERE m."orgId"=v."orgId" AND m."variantId"=v.id) AS used,jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
    FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId"
    WHERE v."orgId"=${scope.orgId} ORDER BY i."baseId",v.id`);
  });
