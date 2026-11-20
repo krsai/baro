@@ -1,6 +1,7 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {resolveInventoryApproval} from './inventoryApprovalPolicy';
+import {validateInventoryPurchase} from './inventoryPurchase';
 const approvalHash=(operation:string,movementId:string,body:any)=>createHash('sha256').update(JSON.stringify(operation==='DELETE'?[movementId,body]:body)).digest('hex');
 
 export async function createInventoryApproval(tx:any,scope:any,movement:any,operation:string,body:any){
@@ -21,7 +22,7 @@ export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
  });
  app.get('/inventory-entry/approvals',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT r.id,r.operation,r.revision,r."movementId",m."movementDate"::text AS date,m.quantity::text,m.remark,i.data AS master,v.attributes,
+  res.json(await db.$queryRaw`SELECT r.id,r.operation,r.revision,r."movementId",m."movementDate"::text AS date,m.quantity::text,m.remark,m."purchaseSnapshot",i.data AS master,v.attributes,
     jsonb_build_object('id',e.id,'name',e.name,'orgRole',e."orgRole",'gradeId',e."gradeId") AS drafter,
     (SELECT jsonb_agg(jsonb_build_object('employeeId',s."employeeId",'name',s."employeeName",'decision',s.decision) ORDER BY s.position) FROM "InventoryApprovalStep" s WHERE s."requestId"=r.id) AS stages,
     ((SELECT s."employeeId" FROM "InventoryApprovalStep" s WHERE s."requestId"=r.id AND s.decision IS NULL ORDER BY s.position LIMIT 1)=${scope.actorId}
@@ -63,6 +64,7 @@ export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
    if(!next||next.employeeId!==scope.actorId||request.drafterId===scope.actorId)throw createHttpError(403,'INVENTORY_APPROVAL_FORBIDDEN');
    const [movement]=await tx.$queryRaw`SELECT id,revision,"variantId" FROM "InventoryMovement" WHERE id=${request.movementId} AND "orgId"=${scope.orgId} FOR UPDATE`;
    if(!movement||movement.revision!==request.targetRevision)throw createHttpError(409,'INVENTORY_MOVEMENT_CHANGED');
+   if(request.operation==='CREATE'&&body.decision==='APPROVED'&&next.position===steps.length-1)await validateInventoryPurchase(tx,scope.orgId,movement.id);
    await tx.$executeRaw`UPDATE "InventoryApprovalStep" SET decision=${body.decision},"decidedAt"=now() WHERE "requestId"=${request.id} AND position=${next.position}`;
    const status=body.decision==='REJECTED'?'REJECTED':next.position===steps.length-1?'APPROVED':'PENDING';
    if(status==='PENDING'){

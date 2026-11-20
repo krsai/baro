@@ -4,10 +4,13 @@ import {createRequire} from 'node:module';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
+import {seedInventoryPurchase} from './helpers/inventory-purchase-fixture.mjs';
 const require=createRequire(import.meta.url);
 const {registerInventoryMovementRoutes}=require('../backend/dist/services/inventoryMovements');
 const {registerMaterialItem}=require('../backend/dist/services/materialItems');
 const {saveApprovalActionBatch}=require('../backend/dist/services/approvalActions');
+const {loadExpenseEditorSource,expenseEditorForm}=require('../backend/dist/services/expenseRequestEditor');
+const {requestChangeApproval,decideChangeApproval}=require('../backend/dist/services/changeApprovals');
 
 test('inventory approval lines, final-only stock, independent deletion, physical purge and retries',async()=>{
  const f=await changeApprovalFixture();try{
@@ -24,7 +27,18 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   const settings={revision:0,drafterRoles:['ACCOUNTANT'],approverIds:[s.people.senior.id,reviewer]};
   await saveApprovalActionBatch(db,org,reviewer,['CREATE','DELETE'].map(operation=>({menu:'INVENTORY',operation,settings})));
   await assert.rejects(saveApprovalActionBatch(db,org,reviewer,[{menu:'INVENTORY',operation:'CREATE',settings}]),/APPROVAL_SETTINGS_CHANGED/);
-  const receipt={clientKey:randomUUID(),masterId:master.id,ownerId:org,dimensions:{},date:'2026-11-20',quantity:'10',remark:'Receive',approvalRevision:1};
+  const purchase=await seedInventoryPurchase(db,s,master.id);
+  const unapprovedPurchase=await seedInventoryPurchase(db,s,master.id,actor);
+  const receipt={clientKey:randomUUID(),masterId:master.id,ownerId:org,dimensions:{},date:'2026-11-20',quantity:'10',remark:'Receive',approvalRevision:1,...purchase};
+  const purchaseOptions=await call('GET','/inventory-entry/purchase-expenses',{query:{masterId:master.id}});
+  assert.equal(purchaseOptions.length,1,'unapproved purchase expenses cannot be selected');
+  assert.equal(purchaseOptions[0].expenseItemId,purchase.expenseItemId);
+  assert.equal(purchaseOptions[0].amount,undefined,'inventory lookup must not expose financial amounts');
+  await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,expenseItemId:null,expenseRequestVersion:null}}),/INVENTORY_PURCHASE_REQUIRED/);
+  await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,expenseItemId:'forged'}}),/INVENTORY_PURCHASE_CHANGED/);
+  await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,expenseRequestVersion:99}}),/INVENTORY_PURCHASE_CHANGED/);
+  await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,...unapprovedPurchase}}),/INVENTORY_PURCHASE_CHANGED/);
+  await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,ownerId:s.vendor.id}}),/INVALID_INVENTORY_PURCHASE/);
   await assert.rejects(call('POST','/inventory-entry',{body:{...receipt,clientKey:randomUUID(),approvalRevision:0}}),/APPROVAL_SETTINGS_CHANGED/);
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryMovement" WHERE "orgId"=${org}`).length,0);
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE "orgId"=${org}`).length,0);
@@ -44,6 +58,7 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   await decide(reviewer,2);
   assert.equal((await call('GET','/inventory-entry/stock'))[0].quantity,'10.0000');
   const history=await call('GET','/inventory-entry/history');assert.equal(history[0].status,'APPROVED');
+  assert.equal(history[0].purchaseSnapshot.expenseItemId,purchase.expenseItemId);
   const deleteBody={clientKey:randomUUID(),revision:history[0].revision,approvalRevision:1};
   const requestDelete=body=>call('POST','/inventory-entry/:id/delete-request',{params:{id:submitted.id},body});
   const deletion=await requestDelete(deleteBody);
@@ -85,7 +100,20 @@ test('inventory approval lines, final-only stock, independent deletion, physical
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE "orgId"=${org}`).length,1,'a variant referenced by another movement must survive');
   assert.equal((await call('GET','/inventory-entry/history')).length,1);
   assert.deepEqual(await call('GET','/inventory-entry/stock'),[]);
+  const awaiting=await call('POST','/inventory-entry',{body:{...receipt,clientKey:randomUUID()}});
+  const cost=await db.partnerTransactionCost.findUnique({where:{id:purchase.expenseItemId}});
+  const form=expenseEditorForm(await loadExpenseEditorSource(db,org,'request',String(cost.expenseRequestId)));
+  const edit=await requestChangeApproval(db,org,reviewer,{menu:'EXPENSE',operation:'UPDATE',reason:'Revise original purchase note',sourceKind:'request',sourceId:String(cost.expenseRequestId),revision:form.revision,payload:{...form,clientKey:randomUUID(),remark:'Revised purchase'},selection:{},clientKey:randomUUID()});
+  if(edit.status!=='APPROVED')for(const step of edit.policy.resolvedStages)await decideChangeApproval(db,org,step.employeeId,edit.id,{decision:'APPROVED'});
+  pending=awaiting;await decide(s.people.senior.id,1);
+  await assert.rejects(decide(reviewer,2),/INVENTORY_PURCHASE_CHANGED/);
+  assert.deepEqual(await call('GET','/inventory-entry/stock'),[]);
+  await decide(reviewer,2,'REJECTED');
+  assert.equal((await call('GET','/inventory-entry/history')).find(row=>row.id===awaiting.id).purchaseSnapshot.version,1);
   const migration=readFileSync('backend/prisma/migrations/20261120050000_inventory_approvals/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
+  const purchaseMigration=readFileSync('backend/prisma/migrations/20261120060000_inventory_purchase_expense/migration.sql','utf8');
+  const preserved=await call('GET','/inventory-entry/history');await f.pg.exec(purchaseMigration);await f.pg.exec(purchaseMigration);
+  assert.deepEqual(await call('GET','/inventory-entry/history'),preserved,'migration retries preserve prior source snapshots');
   await assert.rejects(db.$executeRaw`DELETE FROM "InventoryApprovalStep" WHERE "requestId"=${deletion.id}`,/immutable/);
  }finally{await f.close();}
 });

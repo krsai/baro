@@ -50,8 +50,16 @@ function MovementForm({orgId,onClose,onSaved}){
  const [masters,setMasters]=useState([]),[master,setMaster]=useState(null),[options,setOptions]=useState(null),[variant,setVariant]=useState(null),[creating,setCreating]=useState(false);
  const [owner,setOwner]=useState(null),[color,setColor]=useState(null),[type,setType]=useState(null),[dimensions,setDimensions]=useState({});
  const [direction,setDirection]=useState('IN'),[date,setDate]=useState(today),[quantity,setQuantity]=useState(''),[remark,setRemark]=useState('');
+ const [purchase,setPurchase]=useState(null),[purchaseRows,setPurchaseRows]=useState(null),[purchaseError,setPurchaseError]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[reload,setReload]=useState(0);
  const pending=useRef(null),locked=useRef(false),live=useRef(true);
+ const needsPurchase=direction==='IN'&&Number(creating?owner?.id:variant?.attributes.owner?.id)===Number(orgId);
+ useEffect(()=>{setPurchase(null);},[master?.id,needsPurchase]);
+ useEffect(()=>{
+  let active=true;setPurchaseRows(null);setPurchaseError('');
+  if(needsPurchase&&master)requestJSON('/inventory-entry/purchase-expenses'+buildQueryString({orgId,masterId:master.id}),{skipCache:true}).then(rows=>{if(active){setPurchaseRows(rows);setPurchase(current=>rows.find(row=>row.expenseItemId===current?.expenseItemId&&row.version===current?.version)||null);}}).catch(()=>{if(active)setPurchaseError(t.failed);});
+  return()=>{active=false;};
+ },[needsPurchase,master?.id,orgId,reload,t.failed]);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useUnsavedChanges(Boolean(master||quantity||remark));
  const close=async()=>{if(busy||pending.current)return;if((!master&&!quantity&&!remark)||await dialogs.confirm('',{purpose:'discard'}))onClose?.();};
@@ -71,9 +79,9 @@ function MovementForm({orgId,onClose,onSaved}){
  const validQuantity=positive.test(quantity)&&Number(quantity)>0;
  const validVariant=variant||creating&&owner&&(options?.fields.color!=='REQUIRED'||color)&&(options?.fields.type!=='REQUIRED'||type)&&(!options?.fields.dimensions||axes.every(axis=>positive.test(dimensions[axis]||'')&&Number(dimensions[axis])>0));
  const save=async()=>{
-  if(locked.current||!master||!validQuantity||!validVariant||!approval)return;
+  if(locked.current||!master||!validQuantity||!validVariant||!approval||needsPurchase&&(!purchase||!purchaseRows||purchaseError))return;
   locked.current=true;setBusy(true);setError('');
-  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,ownerId:owner?.id??null,colorId:color?.id??null,typeId:type?.id??null,approvalRevision:approval.policy.revision,dimensions,date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
+  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,ownerId:owner?.id??null,colorId:color?.id??null,typeId:type?.id??null,expenseItemId:needsPurchase?purchase.expenseItemId:null,expenseRequestVersion:needsPurchase?purchase.version:null,approvalRevision:approval.policy.revision,dimensions,date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
   pending.current=payload;
   try{
    await request('',orgId,{method:'POST',body:JSON.stringify(payload)});
@@ -111,8 +119,13 @@ function MovementForm({orgId,onClose,onSaved}){
    <TextField required size="small" type="date" label={dateLabel} value={date} disabled={unavailable} slotProps={{inputLabel:{shrink:true}}} onChange={e=>setDate(e.target.value)}/>
    <TextField required size="small" label={qty} value={quantity} disabled={unavailable} onChange={e=>setQuantity(e.target.value)} helperText={master?materialItemName(master.data.unit,languageCode):undefined}/>
   </Box>
+  {needsPurchase&&<Stack spacing={1}>
+   <ExpenseLookupField label={a.purchase} required disabled={unavailable||!purchaseRows||Boolean(purchaseError)} languageCode={languageCode} options={purchaseRows||[]} value={purchase} onChange={setPurchase} getOptionKey={row=>row.expenseItemId} getCode={row=>(row.managementNumber||String(row.requestId))+'-'+row.line} getOptionLabel={row=>[row.managementNumber||row.requestId,row.line,row.description].join(' · ')} columns={[{key:'number',label:a.purchase,value:row=>row.managementNumber||row.requestId},{key:'date',label:dateLabel,value:row=>row.requestDate},{key:'description',label:t.name,value:row=>row.description},{key:'quantity',label:qty,value:row=>row.quantity}]}/>
+   {purchaseError&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{purchaseError}</AppNotice>}
+   {purchaseRows?.length===0&&<AppNotice severity="warning">{a.purchaseEmpty}</AppNotice>}
+  </Stack>}
   <TextField size="small" label={remarkLabel} value={remark} disabled={unavailable} slotProps={{htmlInput:{maxLength:500}}} onChange={e=>setRemark(e.target.value)}/>
- </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date||!approval} onClick={save}>{a.submit}</SaveButton></DialogActions></Dialog>;
+ </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date||!approval||needsPurchase&&(!purchase||!purchaseRows||Boolean(purchaseError))} onClick={save}>{a.submit}</SaveButton></DialogActions></Dialog>;
 }
 
 export function InventoryRows({view,keyword='',start='',end=''}){
@@ -130,7 +143,7 @@ export function InventoryRows({view,keyword='',start='',end=''}){
   return()=>{active=false;};
  },[orgId,history,reload]);
  useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],onRefresh:()=>setReload(n=>n+1)});
- const columns=[...(history?[dateLabel]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[remarkLabel,a.status,a.actions]:[])];
+ const columns=[...(history?[dateLabel]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[a.purchase,remarkLabel,a.status,a.actions]:[])];
  const displayed=rows?.filter(row=>(!history||(!start||row.date>=start)&&(!end||row.date<=end))&&[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode),row.remark].join(' ').toLowerCase().includes(keyword.trim().toLowerCase()));
  if(error)return <AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>;
  return <Stack spacing={2}>{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}<TableContainer component={Paper} variant="outlined"><Table size="small">
@@ -138,7 +151,7 @@ export function InventoryRows({view,keyword='',start='',end=''}){
   <TableBody>{displayed?.map(row=><TableRow key={row.id}>
    {history&&<TableCell>{row.date}</TableCell>}<TableCell>{materialItemName(row.master,languageCode)}</TableCell>
    <TableCell>{variantName(row.attributes,languageCode)}</TableCell><TableCell>{quantityText(row.quantity)}</TableCell>
-   <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{history&&<><TableCell>{row.remark}</TableCell><TableCell>{row.deletePending?a.DELETE+' \u00b7 '+a.PENDING:a[row.status]}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper'}}><Button disabled={row.deletePending} onClick={()=>setDeleting(row)}>{a.delete}</Button></TableCell></>}
+   <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{history&&<><TableCell>{row.purchaseSnapshot?[row.purchaseSnapshot.managementNumber||row.purchaseSnapshot.requestId,row.purchaseSnapshot.line].join(' / '):'\u2014'}</TableCell><TableCell>{row.remark}</TableCell><TableCell>{row.deletePending?a.DELETE+' \u00b7 '+a.PENDING:a[row.status]}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper'}}><Button disabled={row.deletePending} onClick={()=>setDeleting(row)}>{a.delete}</Button></TableCell></>}
   </TableRow>)}{rows&&!displayed.length&&<TableRow><TableCell colSpan={columns.length}>{t.empty}</TableCell></TableRow>}</TableBody>
  </Table></TableContainer>{deleting&&<InventoryDeleteDialog row={deleting} onClose={()=>setDeleting(null)} onSaved={()=>{setDeleting(null);setReload(n=>n+1);}}/>}</Stack>;
 }

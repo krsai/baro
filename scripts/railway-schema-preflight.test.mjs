@@ -60,6 +60,7 @@ test('preflight applies the bounded additive transaction, preserves legacy costs
     await db.exec('ALTER TABLE "EmployeeGrade" ADD COLUMN "orgId" INT, ADD COLUMN "setId" INT, ADD COLUMN "sortOrder" INT,ADD COLUMN "isActive" BOOL DEFAULT true,ADD UNIQUE(id,"orgId"); CREATE TABLE "EmployeeGradeSet"("orgId" INT,id INT PRIMARY KEY,"isActive" BOOL DEFAULT true)');
     await db.exec('ALTER TABLE "TaxTreatment" ADD COLUMN code TEXT,ADD COLUMN suffix TEXT');
     await db.exec(`UPDATE "Organization" SET name='Fixture organization '||id WHERE name IS NULL`);
+    await db.exec('ALTER TABLE \"PartnerTransactionCost\" ADD COLUMN description TEXT, ADD COLUMN quantity NUMERIC');
     const dependencies={env,log:quiet,createClient:()=>({$queryRawUnsafe:async sql=>(await db.query(sql)).rows,$disconnect:async()=>{closed++;}}),run:async(_exe,args,options)=>{
       runs++;assert.ok(!args.includes(env.DATABASE_URL));assert.equal(options.shell,undefined);
       assert.match(options.input,/BEGIN;[\s\S]*pg_advisory_xact_lock[\s\S]*COMMIT;/);

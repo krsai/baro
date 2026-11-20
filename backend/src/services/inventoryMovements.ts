@@ -3,6 +3,7 @@ import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {materialOwnerScope,MATERIAL_OWNER_SELECT} from './materialOwner';
 import {createInventoryApproval,registerInventoryApprovalRoutes} from './inventoryApprovals';
+import {prepareInventoryPurchase} from './inventoryPurchase';
 
 const invalid=()=>createHttpError(400,'INVALID_INVENTORY_MOVEMENT');
 const axes=['length','width','height'];
@@ -24,6 +25,14 @@ async function readMaster(db:any,orgId:number,id:string){
 
 export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  registerInventoryApprovalRoutes(app,db,access);
+ app.get('/inventory-entry/purchase-expenses',async(req:any,res:any)=>{
+  const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
+  const {master}=await readMaster(db,scope.orgId,String(req.query.masterId||''));
+  const rows=await db.$queryRaw`SELECT baro_inventory_purchase_source(${scope.orgId}::integer,${master.id}::text,c.id,r.version) AS source
+   FROM "PartnerTransactionCost" c JOIN "ExpenseRequest" r ON r.id=c."expenseRequestId" AND r."orgId"=c."orgId"
+   WHERE c."orgId"=${scope.orgId} AND c."materialItemId"=${master.id} AND r."deletedAt" IS NULL ORDER BY r."requestDate" DESC,r.id DESC,c."expenseRequestLine"`;
+  res.json(rows.map((row:any)=>row.source).filter(Boolean));
+ });
  app.get('/inventory-entry/masters',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
   const masters=await masterOptions(db,scope.orgId);
@@ -93,9 +102,10 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
     if(!existing)await tx.$executeRaw`INSERT INTO "InventoryVariant" (id,"orgId","masterId","baseId","ownerId","colorId","typeId",attributes,identity)
      VALUES (${variantId},${orgId},${master.id},${master.baseId},${owner.id},${colorId},${typeId},${JSON.stringify({owner,color,type,dimensions})}::jsonb,${identity})`;
    }
+   const purchase=await prepareInventoryPurchase(tx,orgId,master.id,variantId,body.quantity,body);
    const id=randomUUID();
-   await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","clientKey","requestHash","movementDate",quantity,remark,status)
-    VALUES (${id},${orgId},${variantId},${actorId},${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()},'PENDING')`;
+   await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","clientKey","requestHash","movementDate",quantity,remark,status,"purchaseRequired","expenseItemId","expenseRequestId","expenseRequestVersion","purchaseSnapshot")
+    VALUES (${id},${orgId},${variantId},${actorId},${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()},'PENDING',${purchase.required},${purchase.source?.expenseItemId??null},${purchase.source?.requestId??null},${purchase.source?.version??null},${purchase.source?JSON.stringify(purchase.source):null}::jsonb)`;
    await createInventoryApproval(tx,scope,{id,revision:1},'CREATE',body);
    return {id};
   });
@@ -103,7 +113,7 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  });
  app.get('/inventory-entry/history',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT m.id,m.revision,m.status,m."movementDate"::text AS date,m.quantity::text,m.remark,v.attributes,i.data AS master,
+  res.json(await db.$queryRaw`SELECT m.id,m.revision,m.status,m."movementDate"::text AS date,m.quantity::text,m.remark,m."purchaseSnapshot",v.attributes,i.data AS master,
    EXISTS(SELECT 1 FROM "InventoryApprovalRequest" r WHERE r."movementId"=m.id AND r.operation='DELETE' AND r.status='PENDING') AS "deletePending"
    FROM "InventoryMovement" m JOIN "InventoryVariant" v ON v.id=m."variantId"
    JOIN "MaterialItem" i ON i.id=v."masterId" WHERE m."orgId"=${scope.orgId} ORDER BY m."movementDate" DESC,m."createdAt" DESC`);

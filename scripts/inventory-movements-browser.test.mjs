@@ -18,7 +18,8 @@ try{
  const variants=[{id:'own',attributes:{owner:{id:1,name:'BARO'},dimensions:{length:'10',width:'10',height:'10'}}}];
  const owners=[{id:1,name:'BARO'},{id:2,name:'THE SAN'}];
  const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
- for(const width of [1440,390])for(const useExisting of [false,true]){
+ for(const width of [1440,390])for(const mode of ['other','self','existing']){
+  const useExisting=mode==='existing';
   const page=await browser.newPage({viewport:{width,height:900}}),writes=[],errors=[];
   page.setDefaultTimeout(8000);
   page.on('pageerror',error=>errors.push(error.message));
@@ -30,6 +31,7 @@ try{
    if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(path.endsWith('/approval-preview'))return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager',key:'step1'}]}});
    if(path.endsWith('/approvals'))return r.fulfill({headers,json:[]});
+   if(path.endsWith('/purchase-expenses'))return r.fulfill({headers,json:[{expenseItemId:'purchase-line',requestId:1,version:1,managementNumber:'EXP-1',requestDate:'2026-11-19',line:1,description:'Carton purchase',quantity:'100'}]});
    if(path.endsWith('/masters'))return r.fulfill({headers,json:[master]});
    if(path.endsWith('/options'))return r.fulfill({headers,json:{variants,owners,colors:[],types:[],fields:{dimensions:false,color:'HIDDEN',type:'HIDDEN'}}});
    if(path.endsWith('/history'))return r.fulfill({headers,json:[{id:'one',status:'PENDING',revision:1,date:'2026-11-20',quantity:'1250.0000',remark:'',master:master.data,attributes:variants[0].attributes}]});
@@ -47,16 +49,20 @@ try{
    await lookup.getByRole('button',{name:'Select',exact:true}).click();
   }else{
    await page.getByRole('button',{name:'Register new item'}).click();
-   await pick(/Owner/i,'THE SAN');
+   await pick(/Owner/i,mode==='self'?'BARO':'THE SAN');
    assert.equal(await page.getByRole('textbox',{name:/Length|Width|Height/i}).count(),0);
   }
+  if(mode!=='other'){assert.equal(await page.getByRole('button',{name:'Submit for approval',exact:true}).isDisabled(),true);await pick(/Purchase expense request/i,'EXP-1-1');}
+  else assert.equal(await page.getByRole('textbox',{name:/Purchase expense request/i}).count(),0);
   await page.getByRole('textbox',{name:/Quantity/i}).fill('1250').catch(async error=>{throw new Error(JSON.stringify({cause:error.message,errors,body:await page.locator('body').innerText()}));});
   await page.getByRole('button',{name:'Submit for approval',exact:true}).click({timeout:5000});
   await page.getByRole('cell',{name:'1,250',exact:true}).waitFor();
   assert.equal(writes.length,1);
   assert.equal(writes[0].masterId,'box');
   assert.equal(writes[0].variantId,useExisting?'own':null);
-  if(!useExisting){assert.equal(writes[0].ownerId,2);assert.deepEqual(writes[0].dimensions,{});}
+  if(!useExisting){assert.equal(writes[0].ownerId,mode==='self'?1:2);assert.deepEqual(writes[0].dimensions,{});}
+  assert.equal(writes[0].expenseItemId,mode==='other'?null:'purchase-line');
+  assert.equal(writes[0].expenseRequestVersion,mode==='other'?null:1);
   assert.deepEqual(errors,[]);
   await page.close();
  }
