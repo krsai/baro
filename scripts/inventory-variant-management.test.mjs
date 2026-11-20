@@ -15,7 +15,7 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   const base=await db.transactionCodeBase.findUnique({where:{id:s.code.baseId}});
   await db.accountingCodeIndustry.create({data:{baseId:base.id,systemIndustryId:base.serviceTypeId}});
   await db.settingServiceDefault.update({where:{id:base.serviceTypeId},data:{materialManagement:true,materialManagementRevision:{increment:1}}});
-  await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}},materialRevision:{increment:1}}});
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialUnitId:unit.id,materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'REQUIRED',color:'HIDDEN'}},materialRevision:{increment:1}}});
   const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,h)=>routes.set(method+path,h)]));
   const access=async req=>({orgId:req.testOrg??org,actorId:req.testActor??actor});
   registerInventoryVariantRoutes(app,db,access);registerInventoryMovementRoutes(app,db,access);
@@ -23,6 +23,7 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   const call=async(method,path,req={})=>{let value;await routes.get(method+path)({query:{},params:{},...req},{status(){return this;},json(v){value=v;}});return value;};
   const type=await call('post','/code-item-types',{query:{context:'MATERIAL'},body:{baseId:base.id,nameEn:'10x10x10',nameKo:'10x10x10',nameVi:'10x10x10'}});
   const options=await call('get','/material-items/variant-options',{query:{baseId:base.id}});
+  assert.deepEqual(options.fields,{type:'REQUIRED',color:'HIDDEN'});
   assert.equal(await db.materialItem.count(),0,'opening the item editor writes no master or stock');
   const body={clientKey:randomUUID(),baseId:base.id,masterId:options.master.id,ownerId:s.vendor.id,typeId:type.id,colorId:null};
   const item=await call('post','/material-items/variants',{body});
@@ -53,5 +54,13 @@ test('stock item CRUD shares inventory identities, keeps managed definitions, pr
   assert.equal((await db.$queryRaw`SELECT * FROM "InventoryVariant" WHERE id=${retained.id}`).length,1,'registered definitions survive deletion of their last movement');
   const migration=readFileSync('backend/prisma/migrations/20261120100000_inventory_variant_management/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
   assert.deepEqual((await db.$queryRaw`SELECT attributes FROM "InventoryVariant" WHERE id=${retained.id}`)[0].attributes,definition.attributes);
+  await db.transactionCodeBase.update({where:{id:base.id},data:{materialSettings:{enabled:true,stockFields:['unit'],unitInput:'REQUIRED',colorInput:'HIDDEN',masterInputs:{owner:'REQUIRED',type:'HIDDEN',color:'HIDDEN'}},materialRevision:{increment:1}}});
+  const hidden=await call('get','/material-items/variant-options',{query:{baseId:base.id}});
+  assert.deepEqual(hidden.fields,{type:'HIDDEN',color:'HIDDEN'});
+  await assert.rejects(call('post','/material-items/variants',{body:{...body,masterId:hidden.master.id,clientKey:randomUUID()}}),/VARIANT_INVALID/);
+  await call('put','/material-items/variants/:id',{params:{id:retained.id},body:{...body,revision:1,ownerId:org}});
+  const [preserved]=await db.$queryRaw`SELECT attributes FROM "InventoryVariant" WHERE id=${retained.id}`;
+  assert.equal(preserved.attributes.type.id,type.id,'old hidden type is preserved during an unrelated edit');
+
  }finally{await f.close();}
 });

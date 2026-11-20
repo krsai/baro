@@ -3,7 +3,8 @@ import {createHttpError} from '../utils/http';
 import {systemMaterialOptions,resolveSystemMaterialMaster} from './materialItems';
 import {materialOwnerScope,MATERIAL_OWNER_SELECT} from './materialOwner';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
-const requirements=(base:any)=>({type:(base.materialSettings?.masterInputs?.type??base.attributeInputs?.type)==='REQUIRED'?'REQUIRED':'OPTIONAL',color:(base.materialSettings?.masterInputs?.color??base.materialSettings?.colorInput)==='REQUIRED'?'REQUIRED':'OPTIONAL'});
+const inputMode=(value:any)=>value==='REQUIRED'?'REQUIRED':value==='OPTIONAL'?'OPTIONAL':'HIDDEN';
+const requirements=(base:any)=>{const settings=base.materialSettings??{},inputs=settings.masterInputs;return {type:inputMode(inputs===undefined?base.attributeInputs?.type:inputs.type),color:inputMode(inputs===undefined?settings.colorInput:inputs.color)};};
 export function registerInventoryVariantRoutes(app:any,db:any,access:any){
  app.get('/material-items/variant-options',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
@@ -38,6 +39,7 @@ export function registerInventoryVariantRoutes(app:any,db:any,access:any){
    if(!owner||body.typeId!=null&&!type||body.colorId!=null&&!color)fail('VARIANT_INVALID');
    const base=await tx.transactionCodeBase.findUnique({where:{id:baseId}}),fields=requirements(base);
    if(fields.type==='REQUIRED'&&!type||fields.color==='REQUIRED'&&!color)fail('VARIANT_INVALID');
+   if(fields.type==='HIDDEN'&&type&&type.id!==old?.attributes?.type?.id||fields.color==='HIDDEN'&&color&&color.id!==old?.attributes?.color?.id)fail('VARIANT_INVALID');
    const dimensions=old?.attributes?.dimensions||{},attributes={owner,type,color,dimensions};
    const identity=createHash('sha256').update(JSON.stringify([owner.id,color?.id??null,type?.id??null,dimensions])).digest('hex');
    if(old){
