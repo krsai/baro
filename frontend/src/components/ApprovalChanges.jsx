@@ -15,9 +15,9 @@ const TEXT={
 const canonical=value=>String(value??'').replace(/^(\d+)(?:\.(\d*?))?0*$/,(_all,whole,fraction)=>whole.replace(/^0+(?=\d)/,'')+(fraction?'.'+fraction:''));
 const quantityText=value=>String(value??'').replace(/^-?\d+/,whole=>whole.replace(/\B(?=(\d{3})+(?!\d))/g,','));
 const expenseSummary={
- ko:{total:'?? ?? ??',count:'?? ?? ?',added:'??',removed:'??'},
+ ko:{total:'비용 항목 합계',count:'비용 항목 수',added:'추가',removed:'삭제'},
  en:{total:'Expense item total',count:'Expense item count',added:'Added',removed:'Removed'},
- vi:{total:'T?ng c?c kho?n chi',count:'S? kho?n chi',added:'Th?m',removed:'X?a'},
+ vi:{total:'Tổng các khoản chi',count:'Số khoản chi',added:'Thêm',removed:'Xóa'},
 };
 const codeText=(code,language)=>[code?.code,accountingCodeDescription(code,language)].filter(Boolean).join(' · ')||'—';
 
@@ -67,18 +67,22 @@ export default function ApprovalChanges({detail,languageCode}){
   add('expense-total',summary.total,displayTotals(beforeTotals),displayTotals(afterTotals));
   add('expense-count',summary.count,String(oldItems.length),String(newItems.length));
   const used=new Set();
-  const itemRows=(old,next,index)=>{const label=`${x.item} ${index+1} · `;
-   if(!old||!next)add('item-status-'+index,label.slice(0,-3),old?summary.removed:null,next?summary.added:null);
+  const itemRows=(old,next,index)=>{const heading=`${x.item} ${index+1}`,label=heading+' · ';
+   if(!old||!next)add('item-status-'+index,heading,null,next?summary.added:summary.removed);
+   const firstField=rows.length;
    add('description-'+index,label+t.purpose,old?.description,next?.description);
    add('code-'+index,label+x.code,codeText(old?.transactionCode,languageCode),codeText(next?.transactionCode,languageCode),old?.transactionCodeId,next?.transactionCodeId);
    for(const [key,title] of [['quantity',x.quantity],['unitPrice',x.price],['vatRate',x.tax],['amount',t.amount]])add(key+index,label+title,old?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(old[key]||0),old.currency):key==='quantity'?quantityText(old[key]):old[key]:'—',next?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(next[key]||0),next.currency):key==='quantity'?quantityText(next[key]):next[key]:'—',old?old.currency+':'+canonical(old[key]):'',next?next.currency+':'+canonical(next[key]):'');
    add('details'+index,label+t.reference,[old?.details?.reference,evidenceReference(old?.details?.evidenceFile)].filter(Boolean).join('\n'),[next?.details?.reference,evidenceReference(next?.details?.evidenceFile)].filter(Boolean).join('\n'));
+   if(!next)for(let i=firstField;i<rows.length;i++)rows[i].originalOnly=true;
   };
   oldItems.forEach((old,index)=>{const next=old.id==null?undefined:newItems.find(row=>!used.has(row)&&(row.itemId||row.id)===old.id);if(next)used.add(next);itemRows(old,next,index);});newItems.filter(row=>!used.has(row)).forEach((next,index)=>itemRows(null,next,oldItems.length+index));
  }
+ const visible=(row,side)=>side==='before'?Boolean(row.before&&row.before!=='—'):row.changed&&!row.originalOnly;
  return <Box data-testid="approval-changes" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(2,minmax(0,1fr))'},gap:2}}>
   {['before','after'].map(side=><Paper key={side} variant="outlined" data-approval-comparison={side} sx={{p:2,minWidth:0}}><Typography variant="h6" sx={{mb:2}}>{t[side]}</Typography><Stack spacing={1}>
-   {rows.map(row=><Box key={row.key} data-changed={row.changed||undefined} sx={{p:1,borderRadius:1,...(row.changed?{bgcolor:'action.selected',borderLeft:3,borderColor:'primary.main'}:{})}}><Typography variant="caption" color="text.secondary">{row.help?<Tooltip title={row.help}><span>{row.label}</span></Tooltip>:row.label}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontWeight:row.changed?700:400,color:row.changed?'primary.main':'text.primary'}}>{row[side]||'\u2014'}</Typography></Box>)}
+   {side==='after'&&!rows.some(row=>visible(row,side))&&<Typography variant="body2">{x.none}</Typography>}
+   {rows.filter(row=>visible(row,side)).map(row=><Box key={row.key} data-changed={side==='after'||undefined} sx={{p:1,borderRadius:1}}><Typography variant="caption" color="text.secondary">{row.help?<Tooltip title={row.help}><span>{row.label}</span></Tooltip>:row.label}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{row[side]||'\u2014'}</Typography></Box>)}
   </Stack></Paper>)}
  </Box>;
 }
