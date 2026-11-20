@@ -66,6 +66,13 @@ try{
   }
   assert.equal(await page.evaluate(()=>window.calls),callsBefore,'hover and wheel must not fetch data');
   await charts.getByTestId('cashflow-tooltip').getByText(/Cutting/).waitFor();
+  if(lang==='en'&&width===1440){
+   const preview=charts.getByTestId('cashflow-tooltip').getByLabel(t.byItem,{exact:true});
+   await preview.evaluate(el=>{el.firstElementChild.style.minHeight='300px';});
+   await preview.hover();
+   await page.mouse.wheel(0,80);
+   await page.waitForFunction(()=>document.querySelector('[data-testid="cashflow-tooltip"] [tabindex="0"]')?.scrollTop>0);
+  }
   await category.click();
   const detail=page.getByRole('dialog');
   await detail.getByText('Cutting',{exact:true}).waitFor();
