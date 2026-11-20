@@ -9,6 +9,8 @@ import './styles/table.css';
 import './styles/form.css';
 import App from './App';
 
+import './utils/overflowTitles.mjs';
+
 window.addEventListener(
   'contextmenu',
   (event) => {
