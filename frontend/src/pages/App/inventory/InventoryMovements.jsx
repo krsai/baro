@@ -12,7 +12,7 @@ import InventoryApprovalPanel,{InventoryDeleteDialog} from './InventoryApprovalP
 import React,{useEffect,useRef,useState} from 'react';
 import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,LinearProgress,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField,Typography} from '@mui/material';
 import {Add} from '@mui/icons-material';
-import {useNavigate} from 'react-router-dom';
+import {useLocation,useNavigate} from 'react-router-dom';
 import {useAuth} from '../../../context/AuthContext';
 import {useLanguage} from '../../../context/LanguageContext';
 import {useAppActions} from '../../../context/AppContext';
@@ -143,15 +143,15 @@ export function InventoryRows({view,keyword='',start='',end=''}){
  const t=materialItemText[languageCode]||materialItemText.en;
  const [, ,itemLabel,, , ,qty,dateLabel,remarkLabel]=labels[languageCode]||labels.en;
  const [rows,setRows]=useState(null),[error,setError]=useState(false),[reload,setReload]=useState(0);
- const history=view==='history';
+ const history=view==='history',location=useLocation(),variantId=new URLSearchParams(location.search).get('variantId')||undefined;
  const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
  const [deleting,setDeleting]=useState(null);
  useEffect(()=>{
   let active=true;
   setError(false);
-  request(history?'/history':'/stock',orgId).then(data=>{if(active)setRows(data);}).catch(()=>{if(active)setError(true);});
+  requestJSON('/inventory-entry/'+(history?'history':'stock')+buildQueryString({orgId,...(history&&variantId?{variantId}:{})}),{skipCache:true}).then(data=>{if(active)setRows(data);}).catch(()=>{if(active)setError(true);});
   return()=>{active=false;};
- },[orgId,history,reload]);
+ },[orgId,history,reload,variantId]);
  useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],onRefresh:()=>setReload(n=>n+1)});
  const columns=[...(history?[dateLabel,(inventoryEntryText[languageCode]||inventoryEntryText.en).user]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[a.purchase,remarkLabel,a.status,a.actions]:[])];
  const displayed=rows?.filter(row=>(!history||(!start||row.date>=start)&&(!end||row.date<=end))&&[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode),row.remark,row.userSnapshot?.name,row.userSnapshot?.employeeNo].join(' ').toLowerCase().includes(keyword.trim().toLowerCase()));

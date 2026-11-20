@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {randomUUID} from 'node:crypto';
 import {changeApprovalFixture,seedChangeApproval} from './helpers/change-approval-fixture.mjs';
-import {canShowAccountingAlerts,canShowApprovals} from '../frontend/src/utils/dashboardAccess.mjs';
+import {canShowAccountingAlerts,canShowApprovals,canShowInventoryAlerts} from '../frontend/src/utils/dashboardAccess.mjs';
 const require=createRequire(import.meta.url);
 const {dashboardApprovalMenus}=require('../backend/dist/services/dashboardAccess');
 const {registerApprovalReviewRoutes}=require('../backend/dist/services/approvalReview');
 const {listApprovalReviews,approvalReviewDetail}=require('../backend/dist/services/approvalReview');
 const {registerExpenseRequest}=require('../backend/dist/services/expenseRequest');
-const auth=(role,features)=>({isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:role,...(features?{accessPolicy:{MANUFACTURER:{[role]:features}}}:{})}});
+const auth=(role,features)=>({isAuthenticated:true,accessProfile:{entryType:'ORG',orgType:'MANUFACTURER',orgRole:role,...(features?{accessPolicy:{__schemaVersion:19,MANUFACTURER:{[role]:features}}}:{})}});
 
 test('dashboard separates accounting review responsibility from operator participation',()=>{
  for(const role of ['ADMIN','ACCOUNTANT'])assert.equal(canShowAccountingAlerts(auth(role)),true);
@@ -19,6 +19,15 @@ test('dashboard separates accounting review responsibility from operator partici
  assert.equal(canShowApprovals(auth('OPERATOR',['DASHBOARD'])),false);
  for(const feature of ['BANK_LEDGER','INVOICE','OUTSOURCING_RECORD'])assert.equal(canShowApprovals(auth('ACCOUNTANT',['DASHBOARD',feature])),true);
  assert.equal(canShowAccountingAlerts({...auth('ADMIN'),isAuthenticated:false}),false);
+});
+
+test('negative inventory alerts require stock permission and an actual business role',()=>{
+ for(const role of ['ADMIN','ACCOUNTANT','OPERATOR']){
+  assert.equal(canShowInventoryAlerts(auth(role,['DASHBOARD','INVENTORY_STOCK'])),true);
+  assert.equal(canShowInventoryAlerts(auth(role,['DASHBOARD'])),false);
+ }
+ assert.equal(canShowInventoryAlerts(auth('WORKER',['DASHBOARD','INVENTORY_STOCK'])),false);
+ assert.equal(canShowInventoryAlerts({...auth('ADMIN'),activeOrgId:'SYSTEM'}),false);
 });
 
 test('approval menus use persisted company features and actual employee role',async()=>{

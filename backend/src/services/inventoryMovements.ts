@@ -1,3 +1,4 @@
+import {negativeInventoryBalances} from './inventoryBalanceAlerts';
 import {createHash,randomUUID} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
@@ -26,6 +27,13 @@ async function readMaster(db:any,orgId:number,id:string,actorId?:number){
 
 export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  registerInventoryApprovalRoutes(app,db,access);
+ app.get('/inventory-entry/negative-stock',async(req:any,res:any)=>{
+  const scope=await access(req,res,'INVENTORY_STOCK');if(!scope)return;
+  const dashboard=await access(req,res,'DASHBOARD');if(!dashboard)return;
+  const page=Number(req.query.page??0);
+  if(dashboard.orgId!==scope.orgId||!Number.isSafeInteger(page)||page<0||page>10000)throw invalid();
+  res.setHeader?.('Cache-Control','no-store');res.json(await negativeInventoryBalances(db,scope.orgId,page));
+ });
  app.get('/inventory-entry/employees',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
   res.json({currentEmployeeId:scope.actorId,employees:await db.employee.findMany({where:{orgId:scope.orgId,status:'ACTIVE'},select:{id:true,name:true,employeeNo:true},orderBy:[{name:'asc'},{id:'asc'}]})});
@@ -134,10 +142,11 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
  });
  app.get('/inventory-entry/history',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
+  const variantId=req.query.variantId??null;if(variantId!==null&&(typeof variantId!=='string'||!/^[\w-]{1,100}$/.test(variantId)))throw invalid();
   res.json(await db.$queryRaw`SELECT m.id,m.revision,m.status,m."movementDate"::text AS date,m.quantity::text,m.remark,m."userEmployeeId",m."userSnapshot",m."purchaseSnapshot",v.attributes,i.data AS master,
    EXISTS(SELECT 1 FROM "InventoryApprovalRequest" r WHERE r."movementId"=m.id AND r.operation='DELETE' AND r.status='PENDING') AS "deletePending"
    FROM "InventoryMovement" m JOIN "InventoryVariant" v ON v.id=m."variantId"
-   JOIN "MaterialItem" i ON i.id=v."masterId" WHERE m."orgId"=${scope.orgId} ORDER BY m."movementDate" DESC,m."createdAt" DESC`);
+   JOIN "MaterialItem" i ON i.id=v."masterId" WHERE m."orgId"=${scope.orgId} AND (${variantId}::text IS NULL OR m."variantId"=${variantId}::text) ORDER BY m."movementDate" DESC,m."createdAt" DESC`);
  });
  app.get('/inventory-entry/stock',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_STOCK');if(!scope)return;

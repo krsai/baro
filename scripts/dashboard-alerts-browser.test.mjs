@@ -1,3 +1,4 @@
+import {dialogTitle} from '../frontend/src/constants/dialogTitles.js';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
@@ -20,6 +21,7 @@ try{
   await page.route('**/src/pages/App/Order*',r=>r.fulfill({contentType:'application/javascript',body:'export default function Order(){return null;}'}));
   const json=(r,value)=>r.fulfill({headers:{'Access-Control-Allow-Origin':'*'},json:value});
   await page.route('**/dashboard/alert-recipients?*',r=>json(r,{revision:0,handledRoles:['ADMIN','ACCOUNTANT']}));
+  await page.route('**/inventory-entry/negative-stock?*',r=>json(r,{rows:[{variantId:'negative',balance:'-5.0000',received:'0',issued:'5.0000',attributes:{owner:{name:'OWNER'}},master:{nameEn:'Paper',baseSnapshot:{code:'MPP'},unit:{nameEn:'Each'}}}],total:1,page:0}));
   await page.route('**/dashboard/accounting-alerts?*',r=>json(r,{rows:[],total:0,page:0}));
   await page.route('**/orders?*',r=>json(r,[{orderId:'new-order',orderNumber:'NEW',hasAssignments:false,workflowStatus:'RECEIVED',productionAssignments:[]},{orderId:'assigned',orderNumber:'ASSIGNED',hasAssignments:true,workflowStatus:'PRODUCTION',productionAssignments:[{id:'plan-1',style:'STYLE',factory:'Factory',missingRecordProcesses:[{processCode:'P1',targetQuantity:10}]}]}]));
   await page.route('**/assignment-board-view?*',r=>json(r,{assignments:[]}));
@@ -31,6 +33,7 @@ try{
   await page.route('**/dashboard/work-requests?*',r=>json(r,{rows:[],actorId:1,canCreate:true,hasMore:false}));
   await page.goto(`http://127.0.0.1:${port}/${path.basename(file)}`);
   const notifications=page.locator('[data-dashboard-widget="notifications"]'),suspected=page.locator('[data-dashboard-widget="suspected-errors"]');
+  await suspected.locator('[data-dashboard-alert-kind="negative-stock"]').waitFor();assert.equal(await notifications.locator('[data-dashboard-alert-kind="negative-stock"]').count(),0);
   await notifications.getByText(t.unassigned,{exact:true}).waitFor();assert.equal(await notifications.getByText(/STYLE/).count(),0);await suspected.locator('[data-dashboard-alert-kind="missing-record"]').waitFor();assert.equal(await suspected.getByTestId('production-excess-card').count(),1);
   const settingsLabel={ko:'설정',en:'Settings',vi:'Cài đặt'}[lang];
   const assertSettingsAligned=async()=>{for(const widget of [notifications,suspected]){const gap=await widget.getByRole('button',{name:new RegExp(' '+settingsLabel+'$')}).evaluate(node=>node.parentElement.getBoundingClientRect().right-node.getBoundingClientRect().right);assert.ok(Math.abs(gap)<1,'settings button aligns to the right edge of its header');}};
@@ -44,7 +47,7 @@ try{
   const cardHeights=await page.locator('[data-dashboard-card]').evaluateAll(nodes=>nodes.map(node=>Math.round(node.getBoundingClientRect().height)));assert.ok(cardHeights.length>=3);assert.ok(cardHeights.every(height=>height>=44&&height<80));const centers=await page.locator('[data-dashboard-card-actions]').evaluateAll(nodes=>nodes.map(node=>{const a=node.getBoundingClientRect(),c=node.closest('[data-dashboard-card]').getBoundingClientRect();return Math.abs(a.y+a.height/2-c.y-c.height/2);}));assert.ok(centers.every(delta=>delta<1));
   assert.equal(await missingItem.getByRole('button',{name:({ko:'확인',en:'Review',vi:'Xem'})[lang],exact:true}).count(),1);
   const itemStyle=locator=>locator.evaluate(node=>{const s=getComputedStyle(node);return [s.padding,s.borderColor,s.borderRadius,s.fontSize];});assert.deepEqual(await itemStyle(missingItem),await itemStyle(excessItem));
-  await excessItem.click();await page.getByRole('dialog').getByText(productionExcessText[lang].details,{exact:true}).waitFor();await page.getByRole('dialog').getByRole('button',{name:productionExcessText[lang].close,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
+  await excessItem.click();await page.getByRole('dialog').getByText(dialogTitle('productionDetails',lang),{exact:true}).waitFor();await page.getByRole('dialog').getByRole('button',{name:productionExcessText[lang].close,exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});
   const widgetBounds=await page.locator('[data-dashboard-widget]').evaluateAll(nodes=>nodes.map(node=>node.getBoundingClientRect().toJSON()));assert.equal(widgetBounds.length,4);assert.equal(new Set(widgetBounds.map(box=>Math.round(box.y))).size,2);assert.ok(Math.max(...widgetBounds.map(box=>box.height))-Math.min(...widgetBounds.map(box=>box.height))<2);assert.ok(Math.max(...widgetBounds.map(box=>box.bottom))<=1000);assert.equal(await page.evaluate(()=>document.documentElement.scrollHeight>innerHeight+1),false,'four widgets fill two rows without page scrolling');assert.equal(await page.locator('[data-workspace-viewport]').evaluate(node=>node.scrollHeight>node.clientHeight+1),false,'dashboard also fits the bounded application viewport');
   if(lang==='ko'&&process.env.BARO_DASHBOARD_SCREENSHOT)await page.screenshot({path:process.env.BARO_DASHBOARD_SCREENSHOT,fullPage:true});
   await notifications.getByRole('button',{name:new RegExp(t.unassigned)}).click();await page.getByRole('dialog').waitFor();await page.getByRole('dialog').getByRole('button',{name:({ko:'원래 화면으로 이동',en:'Open full page',vi:'Mở trang đầy đủ'})[lang],exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>window.navigation),'/order');
