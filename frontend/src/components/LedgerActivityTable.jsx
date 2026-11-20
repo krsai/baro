@@ -9,13 +9,14 @@ import {accountingCodeDescription} from '../utils/accountingCode.mjs';
 import {formatLedgerAmount} from '../utils/bankLedgerMoney.mjs';
 import {ACCOUNTING_CODE_TEXT} from '../constants/accountingCode';
 import {changeApprovalText} from '../constants/changeApprovals';
+const NameCell=({children})=><TableCell sx={{maxWidth:0}}><Typography component="span" variant="inherit" title={children} data-ledger-name sx={{display:'block',minWidth:0,overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{children}</Typography></TableCell>;
 
 export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,currencyLabel,languageCode,onEdit,onEditKey,onDelete}){
  const warning=(code,direction)=>!matchesAccountingDirection(code,direction)&&<GlobalNotice severity="warning">{(accountingDirectionText[languageCode]||accountingDirectionText.en).mismatch}</GlobalNotice>;
  const flow=ledgerFlowText[languageCode]||ledgerFlowText.en;
  const change=changeApprovalText[languageCode]||changeApprovalText.en;
  const amountWidth=Math.max(112,...rows.map(row=>formatLedgerAmount(row.amount,row.currencyCode).length*7+16));
- const columns=[{title:t.transactionDate,width:96},{title:flow.from,width:'15%'},{title:flow.to,width:'15%'},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription,width:'18%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:'12%',numeric:true},{title:t.OUT,width:'12%',numeric:true},{title:t.createdBy,width:88},{title:'',width:44}];
+ const columns=[{title:t.transactionDate,width:96},{title:flow.from,width:'15%'},{title:flow.to,width:'15%'},{title:(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,width:88},{title:l.codeDescription,width:'18%'},{title:currencyLabel,width:56,numeric:true},{title:t.IN,width:'12%',numeric:true},{title:t.OUT,width:'12%',numeric:true},{title:t.createdBy,width:'8%'},{title:'',width:44}];
  const interaction=row=>({'data-cancelled':!!row.voidedAt,hover:!row.voidedAt,tabIndex:row.voidedAt?undefined:0,onDoubleClick:()=>onEdit(row),onKeyDown:event=>onEditKey(event,row),sx:{cursor:row.voidedAt?'default':'pointer'}});
  return <TableContainer><Table size="small" data-testid="ledger-activity-table" data-table-layout="columns" sx={{minWidth:0,width:'100%',tableLayout:'auto','& [data-ledger-amount]':{minWidth:amountWidth}}}>
   <colgroup>{columns.map((column,index)=><col key={index} style={column.width?{width:column.width}:undefined}/>)}</colgroup>
@@ -28,12 +29,12 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
      <TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='OUT'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell sx={{overflowWrap:'anywhere'}}>{row.direction==='IN'?row.accountName:row.evidenceType==='ADJUSTMENT'?'—':row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell title={summary.codeTitle}>{summary.code}{warning(row.accountingCode,row.direction)}</TableCell><TableCell title={summary.descriptionTitle} sx={{overflowWrap:'anywhere'}}>{summary.description}{row.voidedAt&&<Typography variant="caption" display="block">{row.voidReason}</Typography>}</TableCell><TableCell align="right">{row.currencyCode}</TableCell>
      {['IN','OUT'].map(direction=><TableCell key={direction} data-ledger-amount={direction} align="right" sx={{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'}}>{row.direction===direction?formatLedgerAmount(row.amount,row.currencyCode):'—'}</TableCell>)}
 
-     <TableCell sx={{overflowWrap:'anywhere'}}>{row.createdByName||'—'}</TableCell>
+     <NameCell>{row.createdByName||'—'}</NameCell>
      <TableCell data-table-actions onDoubleClick={event=>event.stopPropagation()}>{!row.voidedAt&&<DeleteActionButton stopPropagation disabled={row.changePending} aria-label={change.requestDelete} title={row.changePending?change.pendingDeletionBlocked:change.requestDelete} onDoubleClick={event=>event.stopPropagation()} onClick={()=>onDelete(row)}/>}</TableCell>
     </TableRow>
     {row.settlementLines?.map(detail=><TableRow key={detail.id} {...interaction(row)} sx={{...interaction(row).sx,bgcolor:'action.hover'}}>
      <TableCell>{'↳'}</TableCell><TableCell>{row.accountName}</TableCell><TableCell>{row.currentCounterpartyName||row.counterpartyName||'—'}</TableCell><TableCell>{detail.accountingCode?.code||'—'}{warning(detail.accountingCode,'OUT')}</TableCell>
-     <TableCell><Stack direction="row" spacing={1} justifyContent="space-between"><Typography variant="body2">{accountingCodeDescription(detail.accountingCode,languageCode)||l[detail.kind]}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{formatLedgerAmount(detail.amount,row.currencyCode)}</Typography></Stack><Typography variant="caption" color="text.secondary">{l.noncash}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell>{detail.createdByName||'—'}</TableCell><TableCell/>
+     <TableCell><Stack direction="row" spacing={1} justifyContent="space-between"><Typography variant="body2">{accountingCodeDescription(detail.accountingCode,languageCode)||l[detail.kind]}</Typography><Typography variant="body2" sx={{whiteSpace:'nowrap'}}>{formatLedgerAmount(detail.amount,row.currencyCode)}</Typography></Stack><Typography variant="caption" color="text.secondary">{l.noncash}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right">{'—'}</TableCell><TableCell align="right">{'—'}</TableCell><NameCell>{detail.createdByName||'—'}</NameCell><TableCell/>
     </TableRow>)}
    </React.Fragment>;})}
   </TableBody>
