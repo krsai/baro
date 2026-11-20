@@ -11,11 +11,11 @@ import {approvalDefaultsText} from '../frontend/src/constants/approvalDefaults.j
 const fixture='frontend/inventory-approval-acceptance.html',port=43294;
 assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><div id="root"></div><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';
-import Workspace from '/src/pages/App/inventory/InventoryWorkspace.jsx';import ApprovalSettings from '/src/pages/App/ApprovalSettings.jsx';
+import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter,Routes,Route} from 'react-router-dom';
+import {InventoryEntry} from '/src/pages/App/inventory/InventoryMovements.jsx';import Workspace from '/src/pages/App/inventory/InventoryWorkspace.jsx';import ApprovalSettings from '/src/pages/App/ApprovalSettings.jsx';
 import {ThemeProvider,CssBaseline} from '@mui/material';import theme from '/src/theme';
 const settings=new URLSearchParams(location.search).has('settings');
-createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,{initialEntries:[settings?'/approval-settings?menu=INVENTORY':'/inventory/movements']},settings?React.createElement(ApprovalSettings,{systemDefaults:new URLSearchParams(location.search).has('system')}):React.createElement(Workspace,{view:'history'}))));
+createRoot(document.getElementById('root')).render(React.createElement(ThemeProvider,{theme},React.createElement(CssBaseline),React.createElement(MemoryRouter,{initialEntries:[settings?'/approval-settings?menu=INVENTORY':'/inventory/movements']},settings?React.createElement(ApprovalSettings,{systemDefaults:new URLSearchParams(location.search).has('system')}):React.createElement(Routes,null,React.createElement(Route,{path:'/inventory/movements',element:React.createElement(Workspace,{view:'history'})}),React.createElement(Route,{path:'/inventory/movements/new',element:React.createElement(InventoryEntry)})))));
 </script>`);
 const server=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:'frontend',stdio:'ignore'});
 let browser;
@@ -47,9 +47,9 @@ try{
   await page.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}`);
   const t=inventoryApprovalText[language];
   await page.getByRole('button',{name:t.register,exact:true}).click();
-  await page.getByRole('dialog').waitFor();assert.equal(new URL(page.url()).pathname,'/'+fixture.split('/')[1]);
-  await page.getByRole('dialog').getByRole('button',{name:t.cancel,exact:true}).click();
-  await page.getByRole('dialog').waitFor({state:'hidden'});
+  await page.getByRole('heading',{name:t.register,exact:true}).waitFor();assert.equal(await page.getByRole('dialog').count(),0,'registration is an independent page');
+  await page.getByRole('button',{name:t.cancel,exact:true}).click();
+  await page.getByRole('heading',{name:t.title,exact:true}).waitFor();
   await page.getByRole('button',{name:t.delete,exact:true}).click();
   await page.getByRole('dialog').getByText(t.deleteConfirm).waitFor();
   if(language==='en'){assert.equal(await page.getByRole('dialog').getByRole('button',{name:t.submit,exact:true}).isDisabled(),true);await page.getByRole('dialog').getByRole('combobox',{name:/Name/}).click().catch(async e=>{throw Error(JSON.stringify({errors,body:await page.locator('body').innerText(),cause:e.message}));});await page.getByRole('option',{name:'Manager',exact:true}).click();}
@@ -116,5 +116,5 @@ try{
  await systemSaved;
  assert.equal(systemWrites.length,1);assert.equal(systemWrites[0].changes[0].menu,'INVENTORY');
  await system.close();
- console.log('PASS inventory registration modal, deletion approval and physical removal UI (ko/en/vi desktop/mobile); system/company settings; hover/focus and last-card removal');
+ console.log('PASS inventory registration page, deletion approval and physical removal UI (ko/en/vi desktop/mobile); system/company settings; hover/focus and last-card removal');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

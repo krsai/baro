@@ -40,6 +40,14 @@ try{
   });
   const masterLoad=page.waitForResponse(response=>response.url().includes('/inventory-entry/masters'));
   await page.goto(`http://127.0.0.1:${port}/inventory-movement-acceptance.html`);
+  await page.getByRole('heading',{name:'Register movement',exact:true}).waitFor();
+  assert.equal(await page.getByRole('dialog').count(),0,'registration opens as a full page');
+  await page.getByTestId('document-entry-header').waitFor();
+  await page.getByTestId('approval-line-summary').click();
+  await page.getByTestId('approval-dialog-flow').waitFor();
+  await page.getByRole('dialog').getByRole('button',{name:'Save',exact:true}).click();
+  await page.getByRole('dialog').waitFor({state:'hidden'});
+  assert.equal(writes.length,0,'header approval selection does not submit an incomplete movement');
   const pick=async(label,value)=>{const input=page.getByRole('textbox',{name:label});await input.fill(value);await input.press('Enter');};
   await masterLoad;
   await pick(/Material master/i,'CTN');

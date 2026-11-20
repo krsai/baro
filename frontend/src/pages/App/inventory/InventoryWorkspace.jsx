@@ -1,3 +1,4 @@
+import {useAppActions} from '../../../context/AppContext';
 import {inventoryApprovalText} from '../../../constants/inventoryApproval';
 import {InventoryEntry,InventoryRows} from './InventoryMovements';
 import MaterialMasterList from '../../../components/MaterialMasterList';
@@ -54,8 +55,8 @@ const SettingsView = () => {
 
 const InventoryWorkspace = ({ view = 'stock' }) => {
   const navigate = useNavigate(),location=useLocation();
-  const [entryOpen,setEntryOpen]=useState(()=>new URLSearchParams(location.search).get('register')==='1');
-  useEffect(()=>{if(new URLSearchParams(location.search).get('register')==='1')setEntryOpen(true);},[location.search]);
+  useEffect(()=>{if(new URLSearchParams(location.search).get('register')==='1')navigate('/inventory/movements/new',{replace:true});},[location.search]);
+  const {navigateToPath}=useAppActions();
   const auth=useAuth(),{languageCode}=useLanguage();
   const movementText=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
   const canViewMaterials=canAccessPath('/inventory/materials',auth),canViewReference=canAccessPath('/inventory/settings',auth);
@@ -65,8 +66,9 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const [keyword, setKeyword] = useState('');
   const [searchResetVersion, setSearchResetVersion] = useState(0);
   const resetSearch = () => { setKeyword(''); setSearchResetVersion(value => value + 1); };
+  if(view==='entry')return <InventoryEntry/>;
   const titleActions = view === 'history' ? (
-    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setEntryOpen(true)}>{movementText.register}</Button>
+    <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigateToPath?navigateToPath('/inventory/movements/new'):navigate('/inventory/movements/new')}>{movementText.register}</Button>
   ) : null;
   const toolbar = view==='stock'||view==='history'||view==='materials'&&canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={event=>setKeyword(event.target.value)}/>} />
@@ -81,7 +83,6 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
       >
         {content}
       </AppPageContainer>
-      {entryOpen&&<InventoryEntry onClose={()=>{setEntryOpen(false);if(location.search)navigate(location.pathname,{replace:true});}} onSaved={()=>{setEntryOpen(false);if(location.search)navigate(location.pathname,{replace:true});}}/>}
 
     </>
   );
