@@ -29,5 +29,6 @@ export function cashflowSegments(items,direction){
  const rows=items.filter(row=>row[direction]!=null&&scaled(row[direction])>0n),total=rows.reduce((sum,row)=>sum+scaled(row[direction]),0n);let angle=-Math.PI/2;
  return rows.map((row,index)=>{const start=angle,ratio=Number(scaled(row[direction])*1000000000n/total)/1000000000;angle=index===rows.length-1?Math.PI*1.5:angle+ratio*Math.PI*2;return {...row,start,end:angle,ratio};});
 }
-const colors=['#2878f0','#22a699','#e6a23c','#9165cf','#e37676','#4998ad','#9aaf39','#a77c58'];
+// Tableau 10 categorical palette: shared by chart segments and item markers.
+const colors=['#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f','#edc949','#af7aa1','#ff9da7','#9c755f','#bab0ab'];
 export function cashflowColor(key){let hash=0;for(const char of key)hash=(hash*31+char.charCodeAt(0))>>>0;return colors[hash%colors.length];}
