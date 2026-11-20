@@ -34,6 +34,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const requestHash=createHash('sha256').update(JSON.stringify(body)).digest('hex');
  const previous=await tx.materialItem.findUnique({where:{orgId_clientKey:{orgId,clientKey:body.clientKey}}});
  if(previous){if(previous.requestHash!==requestHash||previous.createdByEmployeeId!==actorId)fail('MATERIAL_RETRY_MISMATCH');return previous;}
+ if(body.colorId!=null)fail('INVALID_MATERIAL_COLOR');
  if(body.itemOwnerOrgId!=null||body.itemTypeId!=null)fail('INVALID_MATERIAL_ITEM');
  // Match catalogue writers; key-share the company before the FK/audited-policy work.
  await tx.$queryRawUnsafe('SELECT id FROM "Organization" WHERE id=$1 FOR KEY SHARE',orgId);
@@ -53,13 +54,10 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  if(dimensions){for(const key of ['length','width','height'])if(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key]||'')||Number(details[key])<=0)fail('INVALID_MATERIAL_DIMENSIONS');}
  else if(Object.keys(details).length)fail('INVALID_MATERIAL_DIMENSIONS');
  const unit=await tx.expenseUnit.findFirst({where:{id:body.unitId,isActive:true}});if(!unit)fail('INVALID_EXPENSE_UNIT');
- const color=body.colorId?await tx.attrColor.findUnique({where:{id:body.colorId}}):null;
- const colorMode=code.base.materialSettings?.colorInput??'HIDDEN';
- if(body.colorId&&!color||colorMode==='REQUIRED'&&!color||colorMode==='HIDDEN'&&color)fail('INVALID_MATERIAL_COLOR');
- const data={...normalizeLocalizedName(base),...attributes,details,unit,color,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
+ const data={...normalizeLocalizedName(base),...attributes,details,unit,color:null,baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
  const identityDetails=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,new Prisma.Decimal(value as string).toString()]));
- const identityKey=createHash('sha256').update(JSON.stringify({name:data.nameEn.toUpperCase(),owner:attributes.itemOwnerOrgId,customer:attributes.itemCustomerId,type:attributes.itemTypeId,unitId:unit.id,colorId:color?.id??null,details:identityDetails})).digest('hex');
- return tx.materialItem.create({data:{id:randomUUID(),orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,ownerOrgId:attributes.itemOwnerOrgId??null,customerId:attributes.itemCustomerId??null,typeId:attributes.itemTypeId??null,colorId:color?.id??null,policyAuditId:policy?.auditId??null,data,identityKey,clientKey:body.clientKey,requestHash,createdByEmployeeId:actorId}});
+ const identityKey=createHash('sha256').update(JSON.stringify({name:data.nameEn.toUpperCase(),owner:attributes.itemOwnerOrgId,customer:attributes.itemCustomerId,type:attributes.itemTypeId,unitId:unit.id,colorId:null,details:identityDetails})).digest('hex');
+ return tx.materialItem.create({data:{id:randomUUID(),orgId,baseId:base.id,industryId:industry.id,unitId:unit.id,ownerOrgId:attributes.itemOwnerOrgId??null,customerId:attributes.itemCustomerId??null,typeId:attributes.itemTypeId??null,colorId:null,policyAuditId:policy?.auditId??null,data,identityKey,clientKey:body.clientKey,requestHash,createdByEmployeeId:actorId}});
 }
 export function registerMaterialItemRoutes(app:any,db:any,gates:any){
  const access=async(req:any,res:any,feature:string)=>{
@@ -82,7 +80,7 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const codes=await db.transactionCode.findMany({where:{ownerOrgId:scope.orgId,isActive:true,base:{isActive:true}},include:{base:{include:{industryLinks:{include:{industry:{include:{retirement:true}}}}}}}});
   const policies=await db.expenseCodeLinkPolicy.findMany({where:{orgId:scope.orgId}});
- const seen=new Set();res.json({codes:codes.filter((code:any)=>code.base?.materialSettings?.enabled&&!seen.has(code.baseId)&&seen.add(code.baseId)).map((code:any)=>materialMasterCode(effectiveExpenseCode(code,policies.find((p:any)=>p.baseId===code.baseId)))),units:await db.expenseUnit.findMany({where:{isActive:true},orderBy:{sortOrder:'asc'}}),colors:await db.attrColor.findMany({orderBy:{code:'asc'}})});
+ const seen=new Set();res.json({codes:codes.filter((code:any)=>code.base?.materialSettings?.enabled&&!seen.has(code.baseId)&&seen.add(code.baseId)).map((code:any)=>materialMasterCode(effectiveExpenseCode(code,policies.find((p:any)=>p.baseId===code.baseId)))),units:await db.expenseUnit.findMany({where:{isActive:true},orderBy:{sortOrder:'asc'}})});
  });
  app.post('/material-items',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;

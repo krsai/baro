@@ -29,7 +29,10 @@ try{
     const body=req.postDataJSON();writes.push(body);if(writes.length===1)return r.fulfill({headers,status:503,json:{error:'UNAVAILABLE'}});
     const source=(await page.evaluate(()=>window.testCode)).base;assert.equal(body.nameEn,undefined);const item={id:'material-1',orgId:1,baseId:1,industryId:5,unitId:1,data:{nameEn:source.nameEn,nameKo:source.nameKo,nameVi:source.nameVi,unit,details:body.details,inputSettings:{requiredFields:['length','width']}}};items.push(item);return r.fulfill({headers,status:201,json:item});
    }
-   if(url.pathname.endsWith('/catalogue'))return r.fulfill({headers,json:{codes:[await page.evaluate(()=>window.testCode)],units:[unit],colors:[]}});
+   if(url.pathname.endsWith('/catalogue'))return r.fulfill({headers,json:{codes:[await page.evaluate(()=>{
+    const code=window.testCode;
+    return {...code,base:{...code.base,materialSettings:{...code.base.materialSettings,colorInput:'REQUIRED'}}};
+   })],units:[unit]}});
    return r.fulfill({headers,json:items});
   });
   await page.goto('http://127.0.0.1:'+port+'/material-items-acceptance.html?lang='+lang);await page.getByText(t.empty,{exact:true}).waitFor().catch(async e=>{throw Error(errors.join(' | ')||await page.locator('body').innerText()||e.message)});await page.getByRole('button',{name:'ADD',exact:true}).click();
@@ -37,6 +40,7 @@ try{
   const names={ko:['이름 (영어 · 대표)','이름 (한국어)','이름 (베트남어)'],en:['Name (English · primary)','Name (Korean)','Name (Vietnamese)'],vi:['Tên (tiếng Anh · chính)','Tên (tiếng Hàn)','Tên (tiếng Việt)']}[lang];
   for(const [i,value] of ['TEST BOX','테스트 박스','Hộp thử'].entries())await dialog.getByLabel(names[i],{exact:true}).evaluate((input,expected)=>{if(!input.readOnly||input.value!==expected)throw Error('Expected read-only SYSTEM name');},value);
   const unitField=dialog.getByRole('textbox',{name:t.unit,exact:false});await unitField.fill('EA');await unitField.press('Tab');
+  assert.equal(await dialog.getByRole('textbox',{name:t.color,exact:false}).count(),0);
   for(const key of ['length','width','height'])assert.equal(await dialog.getByRole('textbox',{name:d[key],exact:false}).getAttribute('required'),'');
   await dialog.getByRole('textbox',{name:d.length,exact:false}).fill('100');await dialog.getByRole('textbox',{name:d.width,exact:false}).fill('200');await dialog.getByRole('button',{name:t.save,exact:true}).click();assert.equal(writes.length,0,'height is required before posting');
   await dialog.getByRole('textbox',{name:d.height,exact:false}).fill('300');await dialog.getByRole('button',{name:t.save,exact:true}).click();await page.getByRole('alert').filter({hasText:t.failed}).waitFor();assert.equal(await dialog.getByRole('textbox',{name:d.height,exact:false}).inputValue(),'300');

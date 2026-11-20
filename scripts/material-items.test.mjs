@@ -83,6 +83,14 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const separationMigration=readFileSync('backend/prisma/migrations/20261119150000_material_master_inputs/migration.sql','utf8');await f.pg.exec(separationMigration);await f.pg.exec(separationMigration);
   const noCustomerMigration=readFileSync('backend/prisma/migrations/20261119190000_material_master_no_customer/migration.sql','utf8');await f.pg.exec(noCustomerMigration);await f.pg.exec(noCustomerMigration);
   const definitionMigration=readFileSync('backend/prisma/migrations/20261120010000_material_master_without_movement_attributes/migration.sql','utf8');await f.pg.exec(definitionMigration);await f.pg.exec(definitionMigration);
+  const colorMigration=readFileSync('backend/prisma/migrations/20261120020000_material_master_without_color/migration.sql','utf8');await f.pg.exec(colorMigration);await f.pg.exec(colorMigration);
+  const settings=await db.transactionCodeBase.update({where:{id:base.id},data:{
+   materialSettings:{...current.materialSettings,masterInputs:{...current.materialSettings.masterInputs,color:'REQUIRED'}},
+   materialRevision:{increment:1},
+  }});
+  const colorless={...body,clientKey:randomUUID(),materialRevision:settings.materialRevision,details:{...body.details,height:'301'}};
+  assert.equal((await create(colorless)).colorId,null);
+  await assert.rejects(create({...colorless,clientKey:randomUUID(),colorId:1}),/INVALID_MATERIAL_COLOR/);
   const migration=readFileSync('backend/prisma/migrations/20261119120000_material_item_master/migration.sql','utf8');await f.pg.exec(migration);await f.pg.exec(migration);
   assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:cost.id}}),original);
  }finally{await f.close();}
