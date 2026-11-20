@@ -28,9 +28,11 @@ try{
   await page.route('**/inventory-entry**',r=>{
    const req=r.request(),path=new URL(req.url()).pathname;
    if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(path.endsWith('/approval-preview'))return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager',key:'step1'}]}});
+   if(path.endsWith('/approvals'))return r.fulfill({headers,json:[]});
    if(path.endsWith('/masters'))return r.fulfill({headers,json:[master]});
-   if(path.endsWith('/options'))return r.fulfill({headers,json:{variants,owners,colors:[],types:[],fields:{dimensions:true,color:'HIDDEN',type:'HIDDEN'}}});
-   if(path.endsWith('/history'))return r.fulfill({headers,json:[{id:'one',date:'2026-11-20',quantity:'1250.0000',remark:'',master:master.data,attributes:variants[0].attributes}]});
+   if(path.endsWith('/options'))return r.fulfill({headers,json:{variants,owners,colors:[],types:[],fields:{dimensions:false,color:'HIDDEN',type:'HIDDEN'}}});
+   if(path.endsWith('/history'))return r.fulfill({headers,json:[{id:'one',status:'PENDING',revision:1,date:'2026-11-20',quantity:'1250.0000',remark:'',master:master.data,attributes:variants[0].attributes}]});
    writes.push(req.postDataJSON());return r.fulfill({headers,status:201,json:{id:'one'}});
   });
   const masterLoad=page.waitForResponse(response=>response.url().includes('/inventory-entry/masters'));
@@ -41,20 +43,20 @@ try{
   await page.getByRole('button',{name:'Register new item'}).waitFor();
   if(useExisting){
    await pick(/Stock item/i,'BARO');
-   const lookup=page.getByRole('dialog');
+   const lookup=page.getByRole('dialog').last();
    await lookup.getByRole('button',{name:'Select',exact:true}).click();
   }else{
    await page.getByRole('button',{name:'Register new item'}).click();
    await pick(/Owner/i,'THE SAN');
-   for(const axis of ['Length','Width','Height'])await page.getByRole('textbox',{name:new RegExp(axis,'i')}).fill('10');
+   assert.equal(await page.getByRole('textbox',{name:/Length|Width|Height/i}).count(),0);
   }
   await page.getByRole('textbox',{name:/Quantity/i}).fill('1250').catch(async error=>{throw new Error(JSON.stringify({cause:error.message,errors,body:await page.locator('body').innerText()}));});
-  await page.getByRole('button',{name:'Save',exact:true}).click({timeout:5000});
+  await page.getByRole('button',{name:'Submit for approval',exact:true}).click({timeout:5000});
   await page.getByRole('cell',{name:'1,250',exact:true}).waitFor();
   assert.equal(writes.length,1);
   assert.equal(writes[0].masterId,'box');
   assert.equal(writes[0].variantId,useExisting?'own':null);
-  if(!useExisting){assert.equal(writes[0].ownerId,2);assert.deepEqual(writes[0].dimensions,{length:'10',width:'10',height:'10'});}
+  if(!useExisting){assert.equal(writes[0].ownerId,2);assert.deepEqual(writes[0].dimensions,{});}
   assert.deepEqual(errors,[]);
   await page.close();
  }

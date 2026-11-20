@@ -432,7 +432,7 @@ const router = createBrowserRouter([
           },
           {
             path: 'inventory/movements/new',
-            element: <Inventory view="entry" />,
+            element: <Navigate to="/inventory/movements?register=1" replace />,
           },
           {
             path: 'inventory/movements',

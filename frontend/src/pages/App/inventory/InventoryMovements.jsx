@@ -1,5 +1,9 @@
+import {inventoryApprovalText,inventoryApprovalError} from '../../../constants/inventoryApproval';
+import ApprovalStageFlow from '../../../components/ApprovalStageFlow';
+import {usePageDialogs} from '../../../components/PageDialogProvider';
+import InventoryApprovalPanel,{InventoryDeleteDialog} from './InventoryApprovalPanel';
 import React,{useEffect,useRef,useState} from 'react';
-import {Box,Button,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
+import {Box,Button,Dialog,DialogActions,DialogContent,DialogTitle,MenuItem,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,TextField} from '@mui/material';
 import {useNavigate} from 'react-router-dom';
 import {useAuth} from '../../../context/AuthContext';
 import {useLanguage} from '../../../context/LanguageContext';
@@ -32,13 +36,15 @@ const variantName=(data,language)=>[ownerName(data.owner,language),materialItemN
 const request=(path,orgId,options)=>requestJSON('/inventory-entry'+path+buildQueryString({orgId}),{skipCache:true,...options});
 const lookup=(label,options,value,onChange,languageCode,getOptionLabel,props={})=><ExpenseLookupField label={label} options={options} value={value} onChange={onChange} languageCode={languageCode} getOptionLabel={getOptionLabel} columns={[{key:'name',label,value:getOptionLabel}]} {...props}/>;
 
-export function InventoryEntry(){
+export function InventoryEntry({onClose,onSaved}){
  const {activeOrgId}=useAuth();
- return <MovementForm key={activeOrgId} orgId={activeOrgId}/>;
+ return <MovementForm key={activeOrgId} orgId={activeOrgId} onClose={onClose} onSaved={onSaved}/>;
 }
 
-function MovementForm({orgId}){
- const {languageCode}=useLanguage(),{showNotification,navigateToPath}=useAppActions(),navigate=useNavigate();
+function MovementForm({orgId,onClose,onSaved}){
+ const {languageCode}=useLanguage(),{showNotification,navigateToPath}=useAppActions(),navigate=useNavigate(),dialogs=usePageDialogs();
+ const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
+ const [approval,setApproval]=useState(null);
  const t=materialItemText[languageCode]||materialItemText.en,d=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const [receipt,issue,itemLabel,add,ownerLabel,typeLabel,qty,dateLabel,remarkLabel,saved,directionLabel]=labels[languageCode]||labels.en;
  const [masters,setMasters]=useState([]),[master,setMaster]=useState(null),[options,setOptions]=useState(null),[variant,setVariant]=useState(null),[creating,setCreating]=useState(false);
@@ -48,6 +54,8 @@ function MovementForm({orgId}){
  const pending=useRef(null),locked=useRef(false),live=useRef(true);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useUnsavedChanges(Boolean(master||quantity||remark));
+ const close=async()=>{if(busy||pending.current)return;if((!master&&!quantity&&!remark)||await dialogs.confirm('',{purpose:'discard'}))onClose?.();};
+ useEffect(()=>{let active=true;setApproval(null);request('/approval-preview',orgId).then(value=>{if(active)setApproval(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,a,t.failed));});return()=>{active=false;};},[orgId,reload,a,t.failed]);
  useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements'],isBlocked:Boolean(master||quantity||remark||busy),onRefresh:()=>setReload(n=>n+1)});
  useEffect(()=>{let active=true;request('/masters',orgId).then(rows=>{if(active)setMasters(rows);}).catch(()=>{if(active)setError(t.failed);});return()=>{active=false;};},[orgId,reload,t.failed]);
  useEffect(()=>{
@@ -63,25 +71,28 @@ function MovementForm({orgId}){
  const validQuantity=positive.test(quantity)&&Number(quantity)>0;
  const validVariant=variant||creating&&owner&&(options?.fields.color!=='REQUIRED'||color)&&(options?.fields.type!=='REQUIRED'||type)&&(!options?.fields.dimensions||axes.every(axis=>positive.test(dimensions[axis]||'')&&Number(dimensions[axis])>0));
  const save=async()=>{
-  if(locked.current||!master||!validQuantity||!validVariant)return;
+  if(locked.current||!master||!validQuantity||!validVariant||!approval)return;
   locked.current=true;setBusy(true);setError('');
-  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,ownerId:owner?.id??null,colorId:color?.id??null,typeId:type?.id??null,dimensions,date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
+  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,ownerId:owner?.id??null,colorId:color?.id??null,typeId:type?.id??null,approvalRevision:approval.policy.revision,dimensions,date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
   pending.current=payload;
   try{
    await request('',orgId,{method:'POST',body:JSON.stringify(payload)});
    if(!live.current)return;
    pending.current=null;
    emitWorkspaceDataChanged({orgId,topics:['inventory-movements','inventory-stock']});
-   showNotification(saved,'success');
+   showNotification(a.submitted,'success');
+   if(onSaved){onSaved();return;}
    if(navigateToPath)navigateToPath('/inventory/movements',{closeTabId:'/inventory/movements/new',skipUnsavedChangesCheck:true});
    else navigate('/inventory/movements');
   }catch(error){
-   if(live.current){if(error.status>=400&&error.status<500)pending.current=null;setError(t.failed);}
+   if(live.current){if(error.status>=400&&error.status<500)pending.current=null;setError(inventoryApprovalError(error,a,t.failed));}
   }finally{locked.current=false;if(live.current)setBusy(false);}
  };
  const fieldGrid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(3,minmax(0,1fr))'},gap:2};
- return <Paper variant="outlined" sx={{p:{xs:2,sm:3},maxWidth:920}}><Stack spacing={2.5}>
+ return <Dialog open fullWidth maxWidth="md" onClose={close}><DialogTitle>{a.register}</DialogTitle><DialogContent><Stack spacing={2.5} sx={{pt:1.5,pb:1}}>
   {error&&<AppNotice severity="error" action={<Button onClick={()=>pending.current?save():(setError(''),setReload(n=>n+1))}>{t.retry}</Button>}>{error}</AppNotice>}
+  {!approval&&<Button onClick={()=>navigate('/approval-settings?menu=INVENTORY')}>{a.settings}</Button>}
+  {approval&&<ApprovalStageFlow drafter={approval.drafter} stages={approval.stages.map(stage=>({...stage,candidates:[{id:stage.employeeId,name:stage.name}]}))} languageCode={languageCode} readOnly/>}
   {lookup(masterLabels[languageCode]||masterLabels.en,masters,master,selectMaster,languageCode,row=>[row.data.baseSnapshot.code,materialItemName(row,languageCode),materialItemName(row.data.unit,languageCode)].join(' \u00b7 '),{required:true,disabled:unavailable,getCode:row=>row.data.baseSnapshot.code})}
   {options&&<Stack direction={{xs:'column',sm:'row'}} spacing={2} alignItems={{sm:'center'}}>
    <Box sx={{flex:1}}>{lookup(itemLabel,options.variants,variant,row=>{setVariant(row);setCreating(false);},languageCode,row=>variantName(row.attributes,languageCode),{disabled:unavailable})}</Box>
@@ -101,8 +112,7 @@ function MovementForm({orgId}){
    <TextField required size="small" label={qty} value={quantity} disabled={unavailable} onChange={e=>setQuantity(e.target.value)} helperText={master?materialItemName(master.data.unit,languageCode):undefined}/>
   </Box>
   <TextField size="small" label={remarkLabel} value={remark} disabled={unavailable} slotProps={{htmlInput:{maxLength:500}}} onChange={e=>setRemark(e.target.value)}/>
-  <Box sx={{display:'flex',justifyContent:'flex-end'}}><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date} onClick={save}>{t.save}</SaveButton></Box>
- </Stack></Paper>;
+ </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date||!approval} onClick={save}>{a.submit}</SaveButton></DialogActions></Dialog>;
 }
 
 export function InventoryRows({view,keyword='',start='',end=''}){
@@ -111,6 +121,8 @@ export function InventoryRows({view,keyword='',start='',end=''}){
  const [, ,itemLabel,, , ,qty,dateLabel,remarkLabel]=labels[languageCode]||labels.en;
  const [rows,setRows]=useState(null),[error,setError]=useState(false),[reload,setReload]=useState(0);
  const history=view==='history';
+ const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
+ const [deleting,setDeleting]=useState(null);
  useEffect(()=>{
   let active=true;
   setError(false);
@@ -118,15 +130,15 @@ export function InventoryRows({view,keyword='',start='',end=''}){
   return()=>{active=false;};
  },[orgId,history,reload]);
  useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],onRefresh:()=>setReload(n=>n+1)});
- const columns=[...(history?[dateLabel]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[remarkLabel]:[])];
+ const columns=[...(history?[dateLabel]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[remarkLabel,a.status,a.actions]:[])];
  const displayed=rows?.filter(row=>(!history||(!start||row.date>=start)&&(!end||row.date<=end))&&[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode),row.remark].join(' ').toLowerCase().includes(keyword.trim().toLowerCase()));
  if(error)return <AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>;
- return <TableContainer component={Paper} variant="outlined"><Table size="small">
-  <TableHead><TableRow>{columns.map(column=><TableCell key={column}>{column}</TableCell>)}</TableRow></TableHead>
+ return <Stack spacing={2}>{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}<TableContainer component={Paper} variant="outlined"><Table size="small">
+  <TableHead><TableRow>{columns.map((column,index)=><TableCell key={column} sx={history&&index===columns.length-1?{position:'sticky',right:0,bgcolor:'background.paper'}:undefined}>{column}</TableCell>)}</TableRow></TableHead>
   <TableBody>{displayed?.map(row=><TableRow key={row.id}>
    {history&&<TableCell>{row.date}</TableCell>}<TableCell>{materialItemName(row.master,languageCode)}</TableCell>
    <TableCell>{variantName(row.attributes,languageCode)}</TableCell><TableCell>{quantityText(row.quantity)}</TableCell>
-   <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{history&&<TableCell>{row.remark}</TableCell>}
+   <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{history&&<><TableCell>{row.remark}</TableCell><TableCell>{row.deletePending?a.DELETE+' \u00b7 '+a.PENDING:a[row.status]}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper'}}><Button disabled={row.deletePending} onClick={()=>setDeleting(row)}>{a.delete}</Button></TableCell></>}
   </TableRow>)}{rows&&!displayed.length&&<TableRow><TableCell colSpan={columns.length}>{t.empty}</TableCell></TableRow>}</TableBody>
- </Table></TableContainer>;
+ </Table></TableContainer>{deleting&&<InventoryDeleteDialog row={deleting} onClose={()=>setDeleting(null)} onSaved={()=>{setDeleting(null);setReload(n=>n+1);}}/>}</Stack>;
 }

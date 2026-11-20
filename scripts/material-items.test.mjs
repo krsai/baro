@@ -113,17 +113,20 @@ test('registered material identity and snapshots flow to expenses and direct ban
    materialRevision:{increment:1},
   }});
   const movementRoutes={};
-  registerInventoryMovementRoutes({get:(path,fn)=>{movementRoutes[path]=fn;},post:(path,fn)=>{movementRoutes[path]=fn;}},db,async req=>({orgId:req.orgId||org,actorId:actor}));
+  await db.systemSetting.create({data:{key:`APPROVAL_POLICY:INVENTORY:CREATE:${org}`,value:{revision:1,drafterRoles:['ADMIN'],approverIds:[reviewer.id]}}});
+  registerInventoryMovementRoutes({get:(path,fn)=>{movementRoutes[path]=fn;},post:(path,fn)=>{movementRoutes[path]=fn;}},db,async req=>({orgId:req.orgId||org,actorId:req.actorId||actor}));
   const call=async(path,req)=>{let data;await movementRoutes[path](req,{status(){return this;},json(body){data=body;}});return data;};
-  const receipt={clientKey:randomUUID(),masterId:generated.id,ownerId:org,dimensions:{length:'10',width:'10',height:'10'},date:'2026-11-20',quantity:'10',remark:''};
+  const approve=async id=>call('/inventory-entry/approvals/:id/decision',{actorId:reviewer.id,params:{id},body:{revision:1,decision:'APPROVED'}});
+  const receipt={clientKey:randomUUID(),masterId:generated.id,ownerId:org,dimensions:{},date:'2026-11-20',quantity:'10',remark:'',approvalRevision:1};
   const first=await call('/inventory-entry',{body:receipt});
   assert.deepEqual(await call('/inventory-entry',{body:receipt}),first);
   await assert.rejects(call('/inventory-entry',{body:{...receipt,quantity:'11'}}),/INVENTORY_RETRY_MISMATCH/);
-  await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),ownerId:s.vendor.id,quantity:'25'}});
+  await approve(first.id);
+  const second=await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),ownerId:s.vendor.id,quantity:'25'}});await approve(second.id);
   const options=await call('/inventory-entry/options',{query:{masterId:generated.id}});
   assert.equal(options.variants.length,2);
   const ownVariant=options.variants.find(row=>row.attributes.owner.id===org);
-  await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),variantId:ownVariant.id,quantity:'-3'}});
+  const issue=await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),variantId:ownVariant.id,quantity:'-3'}});await approve(issue.id);
   const stock=await call('/inventory-entry/stock',{});
   assert.deepEqual(stock.map(row=>Number(row.quantity)).sort((a,b)=>a-b),[7,25]);
   assert.equal((await call('/inventory-entry/history',{})).length,3);

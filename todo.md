@@ -1,5 +1,7 @@
 # 작업 상태
 
+- 입출고 등록 모달·등록/삭제 결재·완전 삭제: 구현·관련 검증 완료 / 운영 migration·배포·인수 미확인. 목록에서 등록 모달을 열고 기존 등록 URL은 목록의 등록 모달로 연결한다. 공통 결재선 설정의 입출고에 등록·삭제별 신청 역할과 실제 직원 순서를 저장한다. 등록은 최종 승인 후 재고에 반영하고 삭제는 최종 승인 후 입출고 원본 행과 참조 없는 개별 품목을 실제 삭제한다. 삭제 심사 중 등록 결재를 막고 등록 대기 건의 삭제 승인 시 원래 등록 신청을 취소한다. 삭제된 업무 행은 목록·재고에 반환하지 않으며 원본 내용을 복제하지 않는 최소 결재 증거와 재시도 영수증은 보존한다. 기존 입출고·비용·원장·snapshot은 일괄 삭제/재작성하지 않는다. migration 20261120050000_inventory_approvals는 공통 실행기·Railway preflight·읽기 전용 시작 검사에 등록했다. 실제 Prisma/SQL의 최종 승인 전 재고 미반영·회사/자기/순서/비활성 결재자 차단·revision·일괄 저장 롤백·반려 보존·물리 삭제·공유 품목 보존·대기 등록 취소·응답 유실 재시도·멱등 migration과 기존 자재/비용/원장 연계·preflight를 검증했다. 한영베 PC/모바일 등록 모달·삭제 신청/승인/목록 제거·공통 결재선 저장·기존 휴가 설정 회귀 및 양쪽 빌드·번역·인코딩 검사 통과. 전용 검수는 test:inventory-approvals다.
+
 - 자재 마스터: 자재 대상 세부 업종 FK에 속한 코드·품명·단위를 바로 조회하고 페이지를 유지한다. 개별 품목 설정은 소유자·단위(필수), 타입·색상(필수 선택 가능)만 표시한다. 신규 입출고 품목의 LWH 입력을 제거하고 기존 치수·FK·snapshot은 보존한다. 운영 배포·인수 미확인.
   - Validation: frontend/backend builds, encoding/i18n and material-input-simplification test passed. Existing material-code-settings/material-industry suites: 2 failures at fixture code creation (MATERIAL_CODE_UNIT_REQUIRED); 2 passed. Browser/production verification pending.
 

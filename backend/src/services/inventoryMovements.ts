@@ -2,6 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {Prisma} from '@prisma/client';
 import {createHttpError} from '../utils/http';
 import {materialOwnerScope,MATERIAL_OWNER_SELECT} from './materialOwner';
+import {createInventoryApproval,registerInventoryApprovalRoutes} from './inventoryApprovals';
 
 const invalid=()=>createHttpError(400,'INVALID_INVENTORY_MOVEMENT');
 const axes=['length','width','height'];
@@ -22,6 +23,7 @@ async function readMaster(db:any,orgId:number,id:string){
 }
 
 export function registerInventoryMovementRoutes(app:any,db:any,access:any){
+ registerInventoryApprovalRoutes(app,db,access);
  app.get('/inventory-entry/masters',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
   const masters=await masterOptions(db,scope.orgId);
@@ -57,11 +59,14 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
   const result=await db.$transaction(async(tx:any)=>{
    // Serialize company stock writes so retries and simultaneous variant creation reuse one identity.
    await tx.$queryRaw`SELECT id FROM "Organization" WHERE id=${orgId} FOR UPDATE`;
+   await tx.$queryRaw`SELECT set_config('baro.inventory_actor',${String(actorId)},true)`;
    const [prior]=await tx.$queryRaw`SELECT id,"actorId","requestHash" FROM "InventoryMovement" WHERE "orgId"=${orgId} AND "clientKey"=${body.clientKey}`;
    if(prior){
     if(prior.actorId!==actorId||prior.requestHash!==hash)throw createHttpError(409,'INVENTORY_RETRY_MISMATCH');
     return {id:prior.id};
    }
+   const [deletedPrior]=await tx.$queryRaw`SELECT id,operation,"requestHash","drafterId" FROM "InventoryApprovalRequest" WHERE "orgId"=${orgId} AND "clientKey"=${body.clientKey}`;
+   if(deletedPrior){if(deletedPrior.operation!=='CREATE'||deletedPrior.drafterId!==actorId||deletedPrior.requestHash!==hash)throw createHttpError(409,'INVENTORY_RETRY_MISMATCH');return {id:deletedPrior.id};}
    const {master,fields}=await readMaster(tx,orgId,body.masterId);
    let variantId=body.variantId;
    if(variantId){
@@ -89,15 +94,17 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
      VALUES (${variantId},${orgId},${master.id},${master.baseId},${owner.id},${colorId},${typeId},${JSON.stringify({owner,color,type,dimensions})}::jsonb,${identity})`;
    }
    const id=randomUUID();
-   await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","clientKey","requestHash","movementDate",quantity,remark)
-    VALUES (${id},${orgId},${variantId},${actorId},${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()})`;
+   await tx.$executeRaw`INSERT INTO "InventoryMovement" (id,"orgId","variantId","actorId","clientKey","requestHash","movementDate",quantity,remark,status)
+    VALUES (${id},${orgId},${variantId},${actorId},${body.clientKey},${hash},${body.date}::date,${body.quantity}::numeric,${body.remark.trim()},'PENDING')`;
+   await createInventoryApproval(tx,scope,{id,revision:1},'CREATE',body);
    return {id};
   });
   res.status(201).json(result);
  });
  app.get('/inventory-entry/history',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
-  res.json(await db.$queryRaw`SELECT m.id,m."movementDate"::text AS date,m.quantity::text,m.remark,v.attributes,i.data AS master
+  res.json(await db.$queryRaw`SELECT m.id,m.revision,m.status,m."movementDate"::text AS date,m.quantity::text,m.remark,v.attributes,i.data AS master,
+   EXISTS(SELECT 1 FROM "InventoryApprovalRequest" r WHERE r."movementId"=m.id AND r.operation='DELETE' AND r.status='PENDING') AS "deletePending"
    FROM "InventoryMovement" m JOIN "InventoryVariant" v ON v.id=m."variantId"
    JOIN "MaterialItem" i ON i.id=v."masterId" WHERE m."orgId"=${scope.orgId} ORDER BY m."movementDate" DESC,m."createdAt" DESC`);
  });
@@ -105,6 +112,6 @@ export function registerInventoryMovementRoutes(app:any,db:any,access:any){
   const scope=await access(req,res,'INVENTORY_STOCK');if(!scope)return;
   res.json(await db.$queryRaw`SELECT v.id,v.attributes,i.data AS master,SUM(m.quantity)::text AS quantity
    FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" JOIN "InventoryMovement" m ON m."variantId"=v.id
-   WHERE v."orgId"=${scope.orgId} GROUP BY v.id,i.id ORDER BY v.id`);
+   WHERE v."orgId"=${scope.orgId} AND m.status='APPROVED' GROUP BY v.id,i.id ORDER BY v.id`);
  });
 }

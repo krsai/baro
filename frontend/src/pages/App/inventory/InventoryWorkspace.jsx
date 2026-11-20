@@ -1,9 +1,10 @@
 import {materialItemText} from '../../../constants/materialItems';
+import {inventoryApprovalText} from '../../../constants/inventoryApproval';
 import {InventoryEntry,InventoryRows} from './InventoryMovements';
 import MaterialMasterList from '../../../components/MaterialMasterList';
 import SearchPanel from '../../../components/SearchPanel';
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect,useState } from 'react';
+import { useLocation,useNavigate } from 'react-router-dom';
 import {Button,Paper,Stack,Tab,Table,TableBody,TableCell,TableHead,TableRow,Tabs} from '@mui/material';
 import {useLanguage} from '../../../context/LanguageContext';
 import {useAuth} from '../../../context/AuthContext';
@@ -53,8 +54,11 @@ const SettingsView = () => {
 };
 
 const InventoryWorkspace = ({ view = 'stock' }) => {
-  const navigate = useNavigate();
+  const navigate = useNavigate(),location=useLocation();
+  const [entryOpen,setEntryOpen]=useState(()=>new URLSearchParams(location.search).get('register')==='1');
+  useEffect(()=>{if(new URLSearchParams(location.search).get('register')==='1')setEntryOpen(true);},[location.search]);
   const auth=useAuth(),{languageCode}=useLanguage();
+  const movementText=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
   const canViewMaterials=canAccessPath('/inventory/materials',auth),canViewReference=canAccessPath('/inventory/settings',auth);
   const mergedMaterials=['materials','settings'].includes(view);
   const sections=({ko:{materials:'자재 마스터',reference:'기준정보'},en:{materials:'Material master',reference:'Reference data'},vi:{materials:'Danh mục vật tư',reference:'Dữ liệu chuẩn'}})[languageCode]||{materials:'Material master',reference:'Reference data'};
@@ -64,23 +68,24 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const [materialDialogOpen, setMaterialDialogOpen] = useState(false);
   const resetSearch = () => { setKeyword(''); setSearchResetVersion(value => value + 1); };
   const titleActions = view === 'history' ? (
-    <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/inventory/movements/new')}>입출고 등록</Button>
+    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setEntryOpen(true)}>{movementText.register}</Button>
   ) : view==='materials' && canViewMaterials ? (
     <Button variant="contained" startIcon={<AddIcon />} onClick={() => setMaterialDialogOpen(true)}>{(materialItemText[languageCode]||materialItemText.en).add}</Button>
   ) : null;
   const toolbar = view==='stock'||view==='history'||view==='materials'&&canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={event=>setKeyword(event.target.value)}/>} />
   ) : null;
-  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows view={view} keyword={keyword}/>;
+  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
   return (
     <>
       <AppPageContainer
-        title={mergedMaterials?sections.materials:title}
+        title={mergedMaterials?sections.materials:view==='history'?movementText.title:title}
         titleActions={titleActions}
         toolbar={toolbar}
       >
         {content}
       </AppPageContainer>
+      {entryOpen&&<InventoryEntry onClose={()=>{setEntryOpen(false);if(location.search)navigate(location.pathname,{replace:true});}} onSaved={()=>{setEntryOpen(false);if(location.search)navigate(location.pathname,{replace:true});}}/>}
 
     </>
   );
