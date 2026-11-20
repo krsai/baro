@@ -7,8 +7,7 @@ import {subscriberAccessText} from '../../../constants/subscriberAccess';
 import {organizeCompanyMenu} from '../../../utils/companyMenuLayout.mjs';
 import useUnsavedChanges from '../../../hooks/useUnsavedChanges';
 import React from 'react';
-import {alpha} from '@mui/material/styles';
-import {Button,Chip,Paper,Stack,Switch,Tabs,Tab,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
+import {Button,Checkbox,Paper,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import Alert from "../../../components/AppNotice";
 import AppPageContainer from '../../../components/AppPageContainer';
 import { useAuth } from '../../../context/AuthContext';
@@ -114,36 +113,40 @@ function AccessPolicyBoard(){
  const menus=useIndustryMenuPolicy(allowed),blueprint=useMenuBlueprint();
  const t=subscriberAccessText[languageCode]||subscriberAccessText.en,layout=accessPolicyLayoutText[languageCode]||accessPolicyLayoutText.en;
 
- const [saving,setSaving]=React.useState(false),[type,setType]=React.useState('MANUFACTURER');
+ const [saving,setSaving]=React.useState(false);
  const [policy,setPolicy]=React.useState(null),[original,setOriginal]=React.useState(null),[roleError,setRoleError]=React.useState(false);
  const loadRoles=React.useCallback(async()=>{setRoleError(false);try{const value=toEditablePolicy((await fetchRoleAccessPolicy()).policy);setPolicy(value);setOriginal(value);}catch{setRoleError(true);}},[]);
  React.useEffect(()=>{if(allowed)loadRoles();},[allowed,loadRoles]);
- const rows=React.useMemo(()=>flattenMenuTree(buildMenuTree(organizeCompanyMenu(blueprint,key=>getUiMessage(key,key,languageCode),'MANUFACTURER'),'root','MANUFACTURER')),[blueprint,languageCode]);
+ const rows=React.useMemo(()=>flattenMenuTree(mergeMenus(...TYPES.map(type=>buildMenuTree(organizeCompanyMenu(subscriberMenuBlueprint(blueprint,type),key=>getUiMessage(key,key,languageCode),type),'root',type)))),[blueprint,languageCode]);
  const roles=['ADMIN','OPERATOR','ACCOUNTANT','WORKER'];
  const labels={ko:['관리자','운영자','회계','직원'],en:['Administrator','Operator','Accountant','Worker'],vi:['Quản trị','Điều hành','Kế toán','Nhân viên']}[languageCode]||['Administrator','Operator','Accountant','Worker'];
  const roleDirty=!!policy&&JSON.stringify(policy)!==JSON.stringify(original),dirty=menus.dirty||roleDirty;
  useUnsavedChanges(dirty);
  const locked=menus.loading||saving||!menus.loaded||!policy||roleError;
  const actionText=accessPolicyActionText[languageCode]||accessPolicyActionText.en;
- const toggleRole=(features,role,checked)=>setPolicy(previous=>({...previous,[type]:{...previous[type],[role]:checked?[...new Set([...previous[type][role],...features])]:previous[type][role].filter(key=>!features.includes(key))}}));
+ const toggleRole=(type,features,role,checked)=>setPolicy(previous=>({...previous,[type]:{...previous[type],[role]:checked?[...new Set([...previous[type][role],...features])]:previous[type][role].filter(key=>!features.includes(key))}}));
  const save=async()=>{if(locked||!dirty)return;setSaving(true);try{if(menus.dirty)await menus.save();if(roleDirty){const saved=toEditablePolicy(await saveRoleAccessPolicy(policy));setPolicy(saved);setOriginal(saved);}showNotification(layout.saved,'success');}catch{showNotification(layout.partial,'error');}finally{setSaving(false);}};
  return <AppPageContainer title={getUiMessage('menu.accessPolicy','Access policy',languageCode)} titleActions={allowed?<Button variant="contained" disabled={locked||!dirty} onClick={save}>{layout.save}</Button>:null}>
  {!allowed?<Alert severity="error">{t.denied}</Alert>:<>
  {menus.error&&<Alert severity="error" action={<Button onClick={menus.reload} disabled={saving}>{layout.reload}</Button>}>{t[menus.error]}</Alert>}
  {roleError&&<Alert severity="error" action={<Button onClick={loadRoles} disabled={saving}>{layout.reload}</Button>}>{t.failed}</Alert>}
- <Tabs value={type} onChange={(_,value)=>setType(value)} aria-label={t.title}><Tab value="MANUFACTURER" label={t.factory}/><Tab value="SERVICE" label={t.logistics}/></Tabs>
- <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small" stickyHeader sx={{minWidth:760}}>
- <TableHead><TableRow><TableCell>{getUiMessage('accessPolicy.menuTree','Menu structure',languageCode)}</TableCell><TableCell align="center">{layout.provided}</TableCell>{roles.map((role,index)=><TableCell key={role} align="center">{labels[index]}</TableCell>)}</TableRow></TableHead>
+ <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small" stickyHeader sx={{minWidth:1100}}>
+ <TableHead><TableRow><TableCell rowSpan={2}>{getUiMessage('accessPolicy.menuTree','Menu structure',languageCode)}</TableCell>{TYPES.map(type=><TableCell key={type} align="center" colSpan={5}>{type==='MANUFACTURER'?t.factory:t.logistics}</TableCell>)}</TableRow><TableRow>{TYPES.map(type=><React.Fragment key={type}><TableCell align="center">{layout.provided}</TableCell>{roles.map((role,index)=><TableCell key={role} align="center">{labels[index]}</TableCell>)}</React.Fragment>)}</TableRow></TableHead>
  <TableBody>{rows.map(row=>{
- if(row.type==='group')return <TableRow key={row.id} sx={{bgcolor:'action.hover'}}><TableCell colSpan={6}><Typography variant="subtitle2" fontWeight={700}>{row.label}</Typography></TableCell></TableRow>;
+ if(row.type==='group')return <TableRow key={row.id} sx={{bgcolor:'action.hover'}}><TableCell colSpan={11}><Typography variant="subtitle2" fontWeight={700}>{row.label}</Typography></TableCell></TableRow>;
+ return <TableRow key={row.path} data-menu-path={row.path}>
+ <TableCell><Typography sx={{pl:row.depth*2}}>{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography></TableCell>
+ {TYPES.map(type=>{
  const features=row.featureKeys;
  const supported=features.every(feature=>type==='SERVICE'?SERVICE_FEATURES.includes(feature):feature!=='FREIGHT');
  const enabled=supported&&(row.fixedAccess||features.every(feature=>menus.features(type).includes(feature)));
  const unavailable=!enabled||row.disabled;
- return <TableRow key={row.path} data-menu-path={row.path} data-enabled={!unavailable} sx={{bgcolor:unavailable?'action.selected':'background.paper','& > td':{color:unavailable?'text.secondary':'text.primary'},'& > td:nth-of-type(2)':{borderRight:1,borderRightColor:'divider'},'& .MuiTypography-root':{color:unavailable?'text.secondary':'text.primary'}}}>
- <TableCell><Stack direction="row" spacing={1} alignItems="center" sx={{pl:row.depth*2}}><Typography>{row.label.replace(/[\p{Extended_Pictographic}\uFE0F]/gu,'').trim()}</Typography>{!supported&&<Chip size="small" label={layout.unsupported}/>}</Stack></TableCell>
- <TableCell align="center"><Button size="small" variant="text" disableElevation aria-pressed={enabled} aria-label={row.label+' '+layout.provided} title={row.fixedAccess?actionText.always:undefined} disabled={locked||!supported||row.disabled||row.fixedAccess} onClick={()=>features.forEach(feature=>menus.toggle(type,feature,!enabled))} sx={theme=>({minWidth:76,height:28,minHeight:28,px:1.25,py:0,borderRadius:1,fontSize:12,fontWeight:600,lineHeight:1.5,border:'1px solid',borderColor:enabled?alpha(theme.palette.primary.main,.22):theme.palette.divider,bgcolor:enabled?alpha(theme.palette.primary.main,.08):theme.palette.action.hover,color:enabled?'primary.main':'text.secondary','&:hover':{bgcolor:enabled?alpha(theme.palette.primary.main,.14):theme.palette.action.selected},'&.Mui-disabled':{color:enabled?theme.palette.primary.main:theme.palette.text.secondary,borderColor:enabled?alpha(theme.palette.primary.main,.22):theme.palette.divider,bgcolor:enabled?alpha(theme.palette.primary.main,.08):theme.palette.action.hover}})}>{enabled?actionText.enabled:actionText.disabled}</Button></TableCell>
- {roles.map((role,index)=><TableCell key={role} align="center"><Switch size="small" checked={row.fixedAccess||features.every(feature=>policy?.[type]?.[role]?.includes(feature))} disabled={locked||unavailable||row.fixedAccess||(role==='WORKER'&&features.some(feature=>['FREIGHT','INVOICE','SHIPPING_REQUEST','ORDER_SHIPMENTS'].includes(feature)))} sx={row.fixedAccess?{'& .MuiSwitch-switchBase.Mui-disabled.Mui-checked':{color:'primary.main'},'& .MuiSwitch-switchBase.Mui-disabled.Mui-checked + .MuiSwitch-track':{bgcolor:'primary.main',opacity:.5}}:undefined} onChange={(_,checked)=>toggleRole(features,role,checked)} slotProps={{input:{role:'switch','aria-label':row.label+' '+labels[index]}}}/></TableCell>)}
+ const industryLabel=type==='MANUFACTURER'?t.factory:t.logistics;
+ return <React.Fragment key={type}>
+ <TableCell align="center" sx={{borderLeft:1,borderColor:'divider'}}><Checkbox size="small" checked={enabled} title={!supported?layout.unsupported:row.fixedAccess?actionText.always:undefined} disabled={locked||!supported||row.disabled||row.fixedAccess} onChange={(_,checked)=>features.forEach(feature=>menus.toggle(type,feature,checked))} slotProps={{input:{'aria-label':industryLabel+' '+row.label+' '+layout.provided}}}/></TableCell>
+ {roles.map((role,index)=><TableCell key={role} align="center"><Checkbox size="small" checked={supported&&(row.fixedAccess||features.every(feature=>policy?.[type]?.[role]?.includes(feature)))} disabled={locked||unavailable||row.fixedAccess||(role==='WORKER'&&features.some(feature=>['FREIGHT','INVOICE','SHIPPING_REQUEST','ORDER_SHIPMENTS'].includes(feature)))} onChange={(_,checked)=>toggleRole(type,features,role,checked)} slotProps={{input:{'aria-label':industryLabel+' '+row.label+' '+labels[index]}}}/></TableCell>)}
+ </React.Fragment>;
+ })}
  </TableRow>;
  })}</TableBody></Table></TableContainer></Paper></>}
  </AppPageContainer>;
