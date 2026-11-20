@@ -13,6 +13,12 @@ const TEXT={
  vi:{title:'Nội dung thay đổi',field:'Mục',code:'Mã kế toán',currency:'Tiền tệ',same:'Mục không thay đổi',hide:'Thu gọn',none:'Không có thay đổi.',item:'Khoản chi',quantity:'Số lượng',price:'Đơn giá',tax:'Thuế suất',fee:'Phí ngân hàng',feeHelp:'Chi phí chuyển tiền hoặc xử lý trả cho ngân hàng.',writeoff:'Xóa nợ',writeoffHelp:'Khoản phải thu không thể thu hồi được ghi nhận là tổn thất, không phải phí ngân hàng.'},
 };
 const canonical=value=>String(value??'').replace(/^(\d+)(?:\.(\d*?))?0*$/,(_all,whole,fraction)=>whole.replace(/^0+(?=\d)/,'')+(fraction?'.'+fraction:''));
+const quantityText=value=>String(value??'').replace(/^-?\d+/,whole=>whole.replace(/\B(?=(\d{3})+(?!\d))/g,','));
+const expenseSummary={
+ ko:{total:'?? ?? ??',count:'?? ?? ?',added:'??',removed:'??'},
+ en:{total:'Expense item total',count:'Expense item count',added:'Added',removed:'Removed'},
+ vi:{total:'T?ng c?c kho?n chi',count:'S? kho?n chi',added:'Th?m',removed:'X?a'},
+};
 const codeText=(code,language)=>[code?.code,accountingCodeDescription(code,language)].filter(Boolean).join(' · ')||'—';
 
 export default function ApprovalChanges({detail,languageCode}){
@@ -54,13 +60,21 @@ export default function ApprovalChanges({detail,languageCode}){
  }else if(detail.menu==='EXPENSE'){
   const before=detail.before?.document||{},after=detail.after?.document||{},oldItems=detail.before?.costs||before.items||[],newItems=detail.after?.costs||after.items||[];
   add('date',t.dateTransaction,before.requestDate,after.requestDate);add('party',t.party,before.partner?.name||before.payeeEmployee?.name,after.partner?.name||after.payeeEmployee?.name,before.payeeEmployeeId?'E:'+before.payeeEmployeeId:before.partnerOrgId,after.payeeEmployeeId?'E:'+after.payeeEmployeeId:after.partnerOrgId);add('remark',t.purpose,before.remark,after.remark);
+  const summary=expenseSummary[languageCode]||expenseSummary.en;
+  const totals=document=>[...(document.currencyTotals||[])].sort((a,b)=>a.currency.localeCompare(b.currency));
+  const [beforeTotals,afterTotals]=[totals(before),totals(after)];
+  const displayTotals=values=>values.map(row=>formatInvoiceMoney(String(row.amount),row.currency)).join(' / ');
+  add('expense-total',summary.total,displayTotals(beforeTotals),displayTotals(afterTotals));
+  add('expense-count',summary.count,String(oldItems.length),String(newItems.length));
   const used=new Set();
   const itemRows=(old,next,index)=>{const label=`${x.item} ${index+1} · `;
+   if(!old||!next)add('item-status-'+index,label.slice(0,-3),old?summary.removed:null,next?summary.added:null);
+   add('description-'+index,label+t.purpose,old?.description,next?.description);
    add('code-'+index,label+x.code,codeText(old?.transactionCode,languageCode),codeText(next?.transactionCode,languageCode),old?.transactionCodeId,next?.transactionCodeId);
-   for(const [key,title] of [['quantity',x.quantity],['unitPrice',x.price],['vatRate',x.tax],['amount',t.amount]])add(key+index,label+title,old?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(old[key]||0),old.currency):old[key]:'—',next?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(next[key]||0),next.currency):next[key]:'—',old?old.currency+':'+canonical(old[key]):'',next?next.currency+':'+canonical(next[key]):'');
+   for(const [key,title] of [['quantity',x.quantity],['unitPrice',x.price],['vatRate',x.tax],['amount',t.amount]])add(key+index,label+title,old?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(old[key]||0),old.currency):key==='quantity'?quantityText(old[key]):old[key]:'—',next?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(next[key]||0),next.currency):key==='quantity'?quantityText(next[key]):next[key]:'—',old?old.currency+':'+canonical(old[key]):'',next?next.currency+':'+canonical(next[key]):'');
    add('details'+index,label+t.reference,[old?.details?.reference,evidenceReference(old?.details?.evidenceFile)].filter(Boolean).join('\n'),[next?.details?.reference,evidenceReference(next?.details?.evidenceFile)].filter(Boolean).join('\n'));
   };
-  oldItems.forEach((old,index)=>{const next=newItems.find(row=>(row.itemId||row.id)===old.id);if(next)used.add(next);itemRows(old,next,index);});newItems.filter(row=>!used.has(row)).forEach((next,index)=>itemRows(null,next,oldItems.length+index));
+  oldItems.forEach((old,index)=>{const next=old.id==null?undefined:newItems.find(row=>!used.has(row)&&(row.itemId||row.id)===old.id);if(next)used.add(next);itemRows(old,next,index);});newItems.filter(row=>!used.has(row)).forEach((next,index)=>itemRows(null,next,oldItems.length+index));
  }
  return <Box data-testid="approval-changes" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(2,minmax(0,1fr))'},gap:2}}>
   {['before','after'].map(side=><Paper key={side} variant="outlined" data-approval-comparison={side} sx={{p:2,minWidth:0}}><Typography variant="h6" sx={{mb:2}}>{t[side]}</Typography><Stack spacing={1}>
