@@ -96,10 +96,12 @@ export default function ApprovalChanges({detail,languageCode}){
    {rows.filter(row=>!isAdded(row)).map(row=><Box key={row.key} data-approval-field={row.key} sx={{...columns,mb:0.5}}>
     {renderCell(row,'before')}{renderCell(row,'after')}
    </Box>)}
+   {addedRows.length>0&&<Box sx={columns}>
+    <Box data-testid="approval-added-fields" sx={{gridColumn:2,minWidth:0,mt:1}}>
+     <Typography variant="h6" sx={{px:1,mb:1}}>{(expenseSummary[languageCode]||expenseSummary.en).added}</Typography>
+     {addedRows.map(row=><Box key={row.key}>{renderCell(row,'after')}</Box>)}
+    </Box>
+   </Box>}
   </Paper>
-  {addedRows.length>0&&<Paper variant="outlined" data-testid="approval-added-fields" sx={{p:{xs:1,sm:2},mt:2}}>
-   <Typography variant="h6" sx={{px:1,mb:1}}>{(expenseSummary[languageCode]||expenseSummary.en).added}</Typography>
-   {addedRows.map(row=><Box key={row.key}>{renderCell(row,'after')}</Box>)}
-  </Paper>}
  </Box>;
 }
