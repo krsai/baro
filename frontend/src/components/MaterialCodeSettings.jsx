@@ -1,9 +1,9 @@
 import React from 'react';
 import {Box,Checkbox,FormControlLabel} from '@mui/material';
 export const MATERIAL_SETTINGS_TEXT={
- ko:{enabled:'자재 관리 대상',title:'자재 마스터',field:'항목',input:'입력 설정',customer:'고객',owner:'소유자',type:'구분',color:'색상',unit:'단위',dimensions:'치수 (L×W×H)'},
- en:{enabled:'Track as material',title:'Material master',field:'Field',input:'Input setting',customer:'Customer',owner:'Owner',type:'Variant',color:'Color',unit:'Unit',dimensions:'Dimensions (L×W×H)'},
- vi:{enabled:'Quản lý vật tư',title:'Danh mục vật tư',field:'Trường',input:'Thiết lập nhập',customer:'Khách hàng',owner:'Chủ sở hữu',type:'Phân loại',color:'Màu sắc',unit:'Đơn vị',dimensions:'Kích thước (L×W×H)'},
+ ko:{enabled:'자재 관리 대상',title:'자재 마스터',field:'항목',input:'입력 설정',customer:'고객',owner:'소유자',type:'타입',color:'색상',unit:'단위',dimensions:'치수 (L×W×H)'},
+ en:{enabled:'Track as material',title:'Material master',field:'Field',input:'Input setting',customer:'Customer',owner:'Owner',type:'Type',color:'Color',unit:'Unit',dimensions:'Dimensions (L×W×H)'},
+ vi:{enabled:'Quản lý vật tư',title:'Danh mục vật tư',field:'Trường',input:'Thiết lập nhập',customer:'Khách hàng',owner:'Chủ sở hữu',type:'Loại',color:'Màu sắc',unit:'Đơn vị',dimensions:'Kích thước (L×W×H)'},
 };
 export function masterInputModes(value){
  const m=value.materialSettings||{};
