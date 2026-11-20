@@ -1,5 +1,5 @@
 import React from 'react';
-import {Box,Paper,Stack,Typography,Tooltip} from '@mui/material';
+import {Box,Paper,Typography,Tooltip} from '@mui/material';
 import {accountingCodeDescription} from '../utils/accountingCode.mjs';
 import {evidenceReference} from '../utils/evidenceReference.mjs';
 import {formatInvoiceMoney} from '../utils/invoiceItemGrid.mjs';
@@ -68,21 +68,38 @@ export default function ApprovalChanges({detail,languageCode}){
   add('expense-count',summary.count,String(oldItems.length),String(newItems.length));
   const used=new Set();
   const itemRows=(old,next,index)=>{const heading=`${x.item} ${index+1}`,label=heading+' · ';
-   if(!old||!next)add('item-status-'+index,heading,null,next?summary.added:summary.removed);
    const firstField=rows.length;
+   if(!next)add('item-status-'+index,heading,null,summary.removed);
    add('description-'+index,label+t.purpose,old?.description,next?.description);
    add('code-'+index,label+x.code,codeText(old?.transactionCode,languageCode),codeText(next?.transactionCode,languageCode),old?.transactionCodeId,next?.transactionCodeId);
    for(const [key,title] of [['quantity',x.quantity],['unitPrice',x.price],['vatRate',x.tax],['amount',t.amount]])add(key+index,label+title,old?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(old[key]||0),old.currency):key==='quantity'?quantityText(old[key]):old[key]:'—',next?key==='amount'||key==='unitPrice'?formatInvoiceMoney(String(next[key]||0),next.currency):key==='quantity'?quantityText(next[key]):next[key]:'—',old?old.currency+':'+canonical(old[key]):'',next?next.currency+':'+canonical(next[key]):'');
    add('details'+index,label+t.reference,[old?.details?.reference,evidenceReference(old?.details?.evidenceFile)].filter(Boolean).join('\n'),[next?.details?.reference,evidenceReference(next?.details?.evidenceFile)].filter(Boolean).join('\n'));
-   if(!next)for(let i=firstField;i<rows.length;i++)rows[i].originalOnly=true;
+   if(!old)for(let i=firstField;i<rows.length;i++)rows[i].added=true;
   };
   oldItems.forEach((old,index)=>{const next=old.id==null?undefined:newItems.find(row=>!used.has(row)&&(row.itemId||row.id)===old.id);if(next)used.add(next);itemRows(old,next,index);});newItems.filter(row=>!used.has(row)).forEach((next,index)=>itemRows(null,next,oldItems.length+index));
  }
- const visible=(row,side)=>side==='before'?Boolean(row.before&&row.before!=='—'):row.changed&&!row.originalOnly;
- return <Box data-testid="approval-changes" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'repeat(2,minmax(0,1fr))'},gap:2}}>
-  {['before','after'].map(side=><Paper key={side} variant="outlined" data-approval-comparison={side} sx={{p:2,minWidth:0}}><Typography variant="h6" sx={{mb:2}}>{t[side]}</Typography><Stack spacing={1}>
-   {side==='after'&&!rows.some(row=>visible(row,side))&&<Typography variant="body2">{x.none}</Typography>}
-   {rows.filter(row=>visible(row,side)).map(row=><Box key={row.key} data-changed={side==='after'||undefined} sx={{p:1,borderRadius:1}}><Typography variant="caption" color="text.secondary">{row.help?<Tooltip title={row.help}><span>{row.label}</span></Tooltip>:row.label}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{row[side]||'\u2014'}</Typography></Box>)}
-  </Stack></Paper>)}
+ const isAdded=row=>row.added||row.key.startsWith('extra-');
+ const addedRows=rows.filter(isAdded);
+ const renderCell=(row,side)=>{
+  const highlighted=side==='after'&&row.changed;
+  return <Box key={side} data-changed={highlighted||undefined} sx={{minWidth:0,p:1,borderRadius:1,bgcolor:highlighted?'action.selected':undefined}}>
+   <Typography variant="caption" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{row.help?<Tooltip title={row.help}><span>{row.label}</span></Tooltip>:row.label}</Typography>
+   <Typography variant="body2" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',fontWeight:highlighted?600:undefined,color:highlighted?'primary.main':undefined}}>{row[side]||'\u2014'}</Typography>
+  </Box>;
+ };
+ const columns={display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',columnGap:{xs:1,sm:2}};
+ return <Box data-testid="approval-changes">
+  <Paper variant="outlined" sx={{p:{xs:1,sm:2}}}>
+   <Box sx={{...columns,mb:1}}>
+    {['before','after'].map(side=><Typography key={side} variant="h6" data-approval-comparison={side} sx={{px:1}}>{t[side]}</Typography>)}
+   </Box>
+   {rows.filter(row=>!isAdded(row)).map(row=><Box key={row.key} data-approval-field={row.key} sx={{...columns,mb:0.5}}>
+    {renderCell(row,'before')}{renderCell(row,'after')}
+   </Box>)}
+  </Paper>
+  {addedRows.length>0&&<Paper variant="outlined" data-testid="approval-added-fields" sx={{p:{xs:1,sm:2},mt:2}}>
+   <Typography variant="h6" sx={{px:1,mb:1}}>{(expenseSummary[languageCode]||expenseSummary.en).added}</Typography>
+   {addedRows.map(row=><Box key={row.key}>{renderCell(row,'after')}</Box>)}
+  </Paper>}
  </Box>;
 }
