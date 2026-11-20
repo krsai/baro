@@ -18,6 +18,12 @@ test('SYSTEM unit registration and editing accept PKG localized names through re
   await assert.rejects(handlers.get('post/system-setting-defaults/expense-units')({system:true,body},response()),error=>error.status===409&&error.message==='EXPENSE_UNIT_DUPLICATE');
   res=response();await handlers.get('put/system-setting-defaults/expense-units/:id')({system:true,params:{id:String(saved.id)},body:{...body,nameKo:'포장',sortOrder:42}},res);
   assert.equal(res.body.id,saved.id);assert.equal(res.body.nameKo,'포장');assert.equal(res.body.sortOrder,42);assert.equal(res.body.nameVi,'Kiện');
+  for(const code of ['R.TON','R/TON']){
+   res=response();await handlers.get('put/system-setting-defaults/expense-units/:id')({system:true,params:{id:String(saved.id)},body:{...body,code,nameEn:code}},res);
+   assert.equal(res.body.id,saved.id);assert.equal(res.body.code,code);
+  }
+  await assert.rejects(handlers.get('put/system-setting-defaults/expense-units/:id')({system:true,params:{id:String(saved.id)},body:{...body,code:'R TON'}},response()),/INVALID_EXPENSE_UNIT/);
+  assert.equal((await f.db.expenseUnit.findUnique({where:{id:saved.id}})).code,'R/TON');
  }finally{await f.close();}
 });
 test('multiple order/style references validate every tenant and membership, preserve inactive retained units',async()=>{

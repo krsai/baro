@@ -21,6 +21,7 @@ try{
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};let rows=[];
   await page.route('**/system-setting-defaults/expense-units**',r=>{
    if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
+   if(r.request().method()==='PUT'){const body=r.request().postDataJSON();writes.push(body);rows=[{...body,id:42}];return r.fulfill({headers,json:rows[0]});}
    if(r.request().method()==='POST'){
     const body=r.request().postDataJSON();writes.push(body);
     if(writes.length===1)return r.fulfill({headers,status:500,json:{error:'INTERNAL_ERROR'}});
@@ -42,6 +43,15 @@ try{
   await dialog.getByRole('button').last().click();await dialog.waitFor({state:'hidden'});
   await page.locator('tbody').getByText('PKG',{exact:true}).waitFor();
   assert.equal(writes.length,3);assert.deepEqual(writes[0],writes[2]);assert.equal(writes[2].nameVi,'Kiện');assert.equal(writes[2].name,undefined);
+  for(const code of ['R.TON','R/TON']){
+   await page.locator('tbody tr').first().getByRole('button').click();
+   await dialog.getByRole('textbox').first().fill(code);
+   const save=dialog.getByRole('button',{name:{ko:'저장',en:'Save',vi:'Luu'}[language],exact:true});
+   assert.equal(await save.isEnabled(),true,'punctuated unit codes can be edited');
+   await save.click();await dialog.waitFor({state:'hidden'});
+   await page.locator('tbody').getByText(code,{exact:true}).waitFor();
+   assert.equal(writes.at(-1).id,42);assert.equal(writes.at(-1).code,code);
+  }
   assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS SYSTEM PKG registration ko/en/vi desktop/mobile: saved list, failed-input retention, retry and localized duplicate errors');
