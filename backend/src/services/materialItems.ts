@@ -56,6 +56,7 @@ export async function registerMaterialItem(tx:any,orgId:number,actorId:number,bo
  const dimensions=!sharedMaster&&code.base.requiredFields?.includes('length');
  if(dimensions){for(const key of ['length','width','height'])if(!/^\d{1,12}(\.\d{1,4})?$/.test(details[key]||'')||Number(details[key])<=0)fail('INVALID_MATERIAL_DIMENSIONS');}
  else if(Object.keys(details).length)fail('INVALID_MATERIAL_DIMENSIONS');
+ if(sharedMaster&&base.materialUnitId!=null&&body.unitId!==base.materialUnitId)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
  const unit=await tx.expenseUnit.findFirst({where:{id:body.unitId,isActive:true}});if(!unit)fail('INVALID_EXPENSE_UNIT');
  const data={...normalizeLocalizedName(base),...attributes,details,unit,color:null,...(sharedMaster?{sharedMaster}:{}),baseSnapshot:{id:base.id,code:base.code,nameKo:base.nameKo,nameEn:base.nameEn,nameVi:base.nameVi},industrySnapshot:{id:industry.id,nameKo:industry.nameKo,nameEn:industry.nameEn,nameVi:industry.nameVi},policyAuditId:policy?.auditId??null,inputSettings:{attributeInputs:code.base.attributeInputs??{},requiredFields:sharedMaster?[]:code.base.requiredFields,materialSettings:code.base.materialSettings},materialRevision:base.materialRevision,industryRevision:industry.materialManagementRevision};
  const identityDetails=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,new Prisma.Decimal(value as string).toString()]));

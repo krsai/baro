@@ -31,7 +31,7 @@ try{
    }
    if(url.pathname.endsWith('/catalogue'))return r.fulfill({headers,json:{codes:[await page.evaluate(()=>{
     const code=window.testCode;
-    return {...code,base:{...code.base,materialSettings:{...code.base.materialSettings,colorInput:'REQUIRED'}}};
+    return {...code,base:{...code.base,materialUnitId:1,materialSettings:{...code.base.materialSettings,colorInput:'REQUIRED'}}};
    }),{id:8,baseId:2,base:{id:2,code:'NEW',nameEn:'New product'}}],units:[unit]}});
    return r.fulfill({headers,json:items});
   });
@@ -39,13 +39,14 @@ try{
   const dialog=page.getByRole('dialog'),code=dialog.getByRole('textbox',{name:t.productSearch,exact:false});await code.fill('TST');await code.press('Enter');
   const names={ko:['이름 (영어 · 대표)','이름 (한국어)','이름 (베트남어)'],en:['Name (English · primary)','Name (Korean)','Name (Vietnamese)'],vi:['Tên (tiếng Anh · chính)','Tên (tiếng Hàn)','Tên (tiếng Việt)']}[lang];
   for(const [i,value] of ['TEST BOX','테스트 박스','Hộp thử'].entries())await dialog.getByLabel(names[i],{exact:true}).evaluate((input,expected)=>{if(!input.readOnly||input.value!==expected)throw Error('Expected read-only SYSTEM name');},value);
-  const unitField=dialog.getByRole('textbox',{name:t.unit,exact:false});await unitField.fill('EA');await unitField.press('Tab');
+  const unitField=dialog.getByRole('textbox',{name:t.unit,exact:false});assert.ok(await unitField.evaluate(input=>input.readOnly));assert.ok(await unitField.inputValue());
   assert.equal(await dialog.getByRole('textbox',{name:t.color,exact:false}).count(),0);
   for(const key of ['length','width','height'])assert.equal(await dialog.getByRole('textbox',{name:d[key],exact:false}).count(),0);
   await dialog.getByRole('button',{name:t.save,exact:true}).click();
   await page.getByRole('alert').filter({hasText:t.failed}).waitFor();
   assert.ok(await unitField.inputValue());
   assert.equal(writes[0].sharedMaster,true);
+  assert.equal(writes[0].unitId,1);
   assert.deepEqual(writes[0].details,{});
   await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});assert.deepEqual(writes[0],writes[1],'retry retains the exact identity and draft');await page.getByRole('cell',{name:'TEST BOX',exact:true}).or(page.getByRole('cell',{name:'테스트 박스',exact:true})).or(page.getByRole('cell',{name:'Hộp thử',exact:true})).waitFor();
   await page.getByRole('button',{name:'ADD',exact:true}).click();

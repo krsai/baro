@@ -54,6 +54,15 @@ export async function saveCodeBase(tx: any, body: any, id?: number) {
   Object.assign(data,accountingInputs(data));
   data.attributeInputs=accountingInputs({...data,attributeInputs:body.attributeInputs??previous?.attributeInputs??{}}).attributeInputs??{};
   const materialSettings=selection.rows.some((row:any)=>row.materialManagement!==undefined)||body.materialSettings!==undefined||previous?.materialSettings!==undefined?industryMaterialSettings(body.materialSettings??previous?.materialSettings,selection.rows.some((row:any)=>row.isActive&&row.materialManagement),data):undefined;
+  const materialUnitId=body.materialUnitId??previous?.materialUnitId??null;
+  if(materialSettings?.enabled){
+    if(!Number.isSafeInteger(materialUnitId)||!await tx.expenseUnit.findFirst({where:{id:materialUnitId,isActive:true},select:{id:true}}))throw createHttpError(400,'MATERIAL_CODE_UNIT_REQUIRED');
+    data.materialUnitId=materialUnitId;
+    if(previous&&previous.materialUnitId!==materialUnitId){
+      if(body.materialRevision!==previous.materialRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');
+      data.materialRevision={increment:1};
+    }
+  }
   if(materialSettings!==undefined){
     data.materialSettings=accountingInputs({...data,materialSettings}).materialSettings;
     if(previous&&body.materialSettings!==undefined&&body.materialRevision!==previous.materialRevision)throw createHttpError(409,'ACCOUNTING_INDUSTRY_CHANGED');

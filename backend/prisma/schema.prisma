@@ -3490,6 +3490,8 @@ model SettingTransactionCodeDefault {
 }
 
 model TransactionCodeBase {
+  materialUnitId Int?
+  materialUnit ExpenseUnit? @relation(fields: [materialUnitId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "TransactionCodeBase_materialUnit_fkey")
   materialSettings Json @default("{\"enabled\":false,\"stockFields\":[],\"colorInput\":\"HIDDEN\",\"unitInput\":\"REQUIRED\"}")
   materialRevision Int @default(1)
   handledSelections PartnerHandledSelection[]
@@ -3553,6 +3555,7 @@ model TaxTreatment {
 }
 
 model ExpenseUnit {
+  materialCodeBases TransactionCodeBase[]
   id Int @id @default(autoincrement())
   code String @unique
   nameKo String

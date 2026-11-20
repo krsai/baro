@@ -20,17 +20,21 @@ try{
   await page.route('**/system-setting-defaults/**',r=>{
    const req=r.request(),url=new URL(req.url());if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(req.method()==='PUT'){const body=req.postDataJSON();writes.push(body);if(reject){reject=false;return r.fulfill({headers,status:400,json:{error:'UNAVAILABLE'}});}saved={...original,...body};return r.fulfill({headers,json:saved});}
-   return r.fulfill({headers,json:url.pathname.endsWith('/code-bases')?[saved]:url.pathname.endsWith('/partner-roles')?roles:industries});
+   return r.fulfill({headers,json:url.pathname.endsWith('/code-bases')?[saved]:url.pathname.endsWith('/partner-roles')?roles:url.pathname.endsWith('/expense-units')?[{id:42,code:'EA',nameEn:'Each',isActive:true}]:industries});
   });
   await page.goto(`http://127.0.0.1:${port}/material-master-settings-test.html?lang=${lang}`);
   const edit={ko:'수정',en:'Edit',vi:'Sửa'}[lang],save={ko:'저장',en:'Save',vi:'Lưu'}[lang];
   await page.getByRole('row').filter({hasText:'CTN'}).getByRole('button',{name:edit,exact:true}).click();const dialog=page.getByRole('dialog');
   const t=await page.evaluate(()=>window.labels),d=await page.evaluate(()=>window.inputs);
+  const compactHeight=(await dialog.boundingBox()).height;
+  assert.ok(compactHeight<(width===1440?650:850));
+  assert.ok(await dialog.getByRole('button',{name:save,exact:true}).isDisabled());
+  const unit=dialog.getByRole('textbox',{name:t.unit,exact:false});await unit.fill('EA');await unit.press('Enter');
   for(const kind of ['subtypes','inputs','master'])assert.ok((await dialog.locator(`[data-accounting-summary="${kind}"]`).boundingBox()).height<=(width===1440?56:140));
   await dialog.locator('#accounting-master-toggle').click();const panel=dialog.locator('#accounting-input-panel');
   assert.equal(await panel.getByRole('combobox').count(),0);assert.equal(await panel.getByRole('table').count(),0);
   assert.equal(await panel.getByRole('checkbox',{name:t.customer,exact:true}).count(),0);
-  for(const key of ['owner','type','color','dimensions'])await panel.getByRole('checkbox',{name:t[key],exact:true}).check();
+  for(const key of ['type','color','dimensions'])await panel.getByRole('checkbox',{name:t[key],exact:true}).check();
   assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isChecked(),true);assert.equal(await panel.getByRole('checkbox',{name:t.unit,exact:true}).isDisabled(),true);
   await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await dialog.locator('#accounting-input-toggle').click();
@@ -38,7 +42,7 @@ try{
   await panel.getByRole('checkbox',{name:d.transportDate,exact:true}).check();await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await Promise.all([page.waitForResponse(r=>r.status()===400),dialog.getByRole('button',{name:save,exact:true}).click()]);await dialog.locator('#accounting-master-toggle').click();assert.equal(await panel.getByRole('checkbox',{name:t.owner,exact:true}).isChecked(),true);await panel.press('Escape');await panel.waitFor({state:'hidden'});
   await dialog.getByRole('button',{name:save,exact:true}).click();await dialog.waitFor({state:'hidden'});
-  assert.deepEqual(writes[0],writes[1]);assert.deepEqual(saved.attributeInputs,{});assert.deepEqual(saved.requiredFields,['transportDate']);assert.equal(saved.materialSettings.masterInputs.owner,'REQUIRED');assert.equal(saved.materialSettings.masterInputs.dimensions,'REQUIRED');assert.deepEqual(saved.materialSettings.stockFields,['unit']);
+  assert.deepEqual(writes[0],writes[1]);assert.deepEqual(saved.attributeInputs,{});assert.deepEqual(saved.requiredFields,['transportDate']);assert.equal(saved.materialUnitId,42);assert.equal(saved.materialSettings.masterInputs.dimensions,'REQUIRED');assert.deepEqual(saved.materialSettings.stockFields,['unit']);
   await page.getByRole('row').filter({hasText:'CTN'}).getByRole('button',{name:edit,exact:true}).click();await dialog.locator('#accounting-master-toggle').click();assert.equal(await panel.getByRole('checkbox',{name:t.dimensions,exact:true}).isChecked(),true);
   assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.close();console.log('PASS separate material master requirements/save/retry/reload',lang,width);
  }

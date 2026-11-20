@@ -87,7 +87,10 @@ test('registered material identity and snapshots flow to expenses and direct ban
   await assert.rejects(db.settingServiceDefault.update({where:{id:industry.id},data:{materialManagement:false}}),/registered material/);
   await assert.rejects(db.transactionCodeBase.update({where:{id:base.id},data:{materialSettings:{enabled:false,stockFields:[],colorInput:'HIDDEN',unitInput:'REQUIRED'}}}),/registered material/);
   const original=await db.partnerTransactionCost.findUnique({where:{id:cost.id}});
-  await db.$transaction(tx=>saveCodeBase(tx,{...configured,nameEn:'Renamed material category',industryIds:[industry.id],industryRevision:configured.industryRevision},base.id));
+  const codeUpdate={...configured,nameEn:'Renamed material category',industryIds:[industry.id],industryRevision:configured.industryRevision};
+  await assert.rejects(db.$transaction(tx=>saveCodeBase(tx,codeUpdate,base.id)),/MATERIAL_CODE_UNIT_REQUIRED/);
+  const updatedCode=await db.$transaction(tx=>saveCodeBase(tx,{...codeUpdate,materialUnitId:unit.id},base.id));
+  assert.equal(updatedCode.materialUnitId,unit.id);
   assert.deepEqual((await db.materialItem.findUnique({where:{id:item.id}})).data,item.data,'renaming the code preserves the registered master and its original industry FK');
   const current=await db.transactionCodeBase.findUnique({where:{id:base.id}});
   const generated=await create({...body,clientKey:randomUUID(),nameEn:'',nameKo:'',nameVi:'',materialRevision:current.materialRevision});

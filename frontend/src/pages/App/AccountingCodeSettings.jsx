@@ -23,6 +23,8 @@ import AccountingInputPanel from '../../components/AccountingInputPanel';
 import {EXPENSE_TEXT} from '../../constants/expenseTypes';
 import LocalizedNameFields from '../../components/LocalizedNameFields';
 import SettingDeleteButton from '../../components/SettingDeleteButton';
+import ExpenseLookupField from '../../components/ExpenseLookupField';
+import {materialItemName} from '../../constants/materialItems';
 import SaveButton from '../../components/SaveButton';
 import {hasLocalizedName} from '../../utils/localizedName.mjs';
 import {classificationName} from '../../utils/partnerClassification.mjs';
@@ -43,6 +45,7 @@ export default function AccountingCodeSettings(){
  const usageText=accountingCodeUsageText[languageCode]||accountingCodeUsageText.en;
  const usageEntries=row=>['expense','ledger','settlement','invoice','history','types','handled','materials'].map(key=>({key,label:usageText[key==='history'?'past':key],count:row.transactionUsage?.[key]||0}));
  const usageTitle=row=>row.transactionUsage?usageEntries(row).filter(item=>item.count).map(item=>item.label+': '+item.count).join(' / '):'';
+ const [units,setUnits]=useState(null),[unitError,setUnitError]=useState(false),[unitRetry,setUnitRetry]=useState(0);
  const [usageRow,setUsageRow]=useState(null);
  const directionText=accountingDirectionText[languageCode]||accountingDirectionText.en;
  const inputsText=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
@@ -83,6 +86,16 @@ export default function AccountingCodeSettings(){
  const togglePanel=kind=>{if(pickerOpen&&panelKind===kind){closePicker();return;}setPanelKind(kind);setPickerExiting(false);setPickerOpen(true);};
  const activeInputs=form?['customer','order','style','process','transportDate','origin','destination'].filter(key=>['owner','customer','type'].includes(key)?form.attributeInputs?.[key]&&form.attributeInputs[key]!=='HIDDEN':['order','style','process'].includes(key)?form[key+'Input']&&form[key+'Input']!=='HIDDEN':form.requiredFields?.includes(key==='dimensions'?'length':key)):[];
  const materialEnabled=Boolean(form&&sourceRows.some(row=>row.materialManagement&&row.isActive&&form.industryIds.includes(row.id)));
+ useEffect(()=>{
+  if(!materialEnabled)return;
+  let active=true;
+  setUnits(null);setUnitError(false);
+  requestJSON('/system-setting-defaults/expense-units',{skipCache:true})
+   .then(rows=>{if(active)setUnits(rows.filter(row=>row.isActive));})
+   .catch(()=>{if(active)setUnitError(true);});
+  return()=>{active=false;};
+ },[materialEnabled,unitRetry]);
+ const materialUnit=units?.find(row=>row.id===form?.materialUnitId);
  const materialForm=form?{...form,materialSettings:{colorInput:'HIDDEN',unitInput:'REQUIRED',...form.materialSettings,enabled:materialEnabled,stockFields:materialEnabled?[...new Set([...(form.materialSettings?.stockFields||[]),'unit'])]:form.materialSettings?.stockFields||[]}}:null;
  const closePicker=()=>{setPickerExiting(true);setPickerOpen(false);};
  const save=async()=>{
@@ -109,10 +122,13 @@ export default function AccountingCodeSettings(){
    </HierarchyPanel>
   </PageContentStack>
   <Dialog open={Boolean(usageRow)} onClose={()=>setUsageRow(null)} fullWidth maxWidth="xs"><DialogTitle>{usageRow?.code} · {usageText.details}</DialogTitle><DialogContent>{usageRow?.transactionUsage?<Table size="small"><TableBody>{usageEntries(usageRow).map(item=><TableRow key={item.key}><TableCell>{item.label}</TableCell><TableCell align="right">{usageCountLabel(item.count,languageCode)}</TableCell></TableRow>)}</TableBody></Table>:<Typography>{usageText.unavailable}</Typography>}</DialogContent><DialogActions><Button onClick={()=>setUsageRow(null)}>{(accountingCompactText[languageCode]||accountingCompactText.en).close}</Button></DialogActions></Dialog>
-  <Dialog open={Boolean(form)} onClose={(event,reason)=>{if(reason==='escapeKeyDown'&&pickerOpen){closePicker();return;}if(!saving)setForm(null);}} fullWidth maxWidth={pickerOpen?'xl':'md'} slotProps={{paper:{sx:{height:'min(86dvh,960px)',maxHeight:'calc(100dvh - 48px)',transition:theme=>theme.transitions.create('max-width',{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}}}>
+  <Dialog open={Boolean(form)} onClose={(event,reason)=>{if(reason==='escapeKeyDown'&&pickerOpen){closePicker();return;}if(!saving)setForm(null);}} fullWidth maxWidth={pickerOpen?'xl':'md'} slotProps={{paper:{sx:{maxHeight:'calc(100dvh - 48px)',transition:theme=>theme.transitions.create('max-width',{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}}}>
    <DialogTitle>{form?.id?dialogTitle('baseCodeEdit',languageCode):text.add}</DialogTitle>
    <DialogContent dividers>{form&&<Box sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:pickerOpen?'minmax(0,1fr) 380px':'minmax(0,1fr) 0px'},columnGap:{xs:0,md:pickerOpen?2.5:0},rowGap:2.5,alignItems:'start',overflowX:'clip',transition:theme=>theme.transitions.create(['grid-template-columns','column-gap'],{duration:panelDuration,easing:theme.transitions.easing.easeInOut})}}>{error&&<Alert severity="error" sx={{gridColumn:'1 / -1'}}>{error}</Alert>}<Stack spacing={1.5} sx={{py:1,minWidth:0,display:{xs:showPicker?'none':'flex',md:'flex'}}}>
+    <Stack direction={{xs:'column',sm:'row'}} spacing={2}>
     <TextField required label={text.code} sx={{width:180}} value={form.code} disabled={saving} onChange={event=>setForm({...form,code:event.target.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,3)})}/>
+    {materialEnabled&&<Box sx={{width:{xs:'100%',sm:250}}}><ExpenseLookupField label={materialText.unit} required disabled={saving||!units} languageCode={languageCode} options={units||[]} value={materialUnit||null} getCode={row=>row.code} getOptionLabel={row=>materialItemName(row,languageCode)} columns={[{key:'code',label:text.code,value:row=>row.code},{key:'unit',label:materialText.unit,value:row=>materialItemName(row,languageCode)}]} onChange={row=>setForm(current=>({...current,materialUnitId:row?.id??null}))}/>{unitError&&<Button onClick={()=>setUnitRetry(n=>n+1)}>{({ko:'\uc7ac\uc2dc\ub3c4',vi:'Th\u1eed l\u1ea1i'})[languageCode]||'Retry'}</Button>}</Box>}
+    </Stack>
     {form.legacyUsageDisabled&&<Typography variant="caption" color="text.secondary">{languageCode==='ko'?'기존 사용 중지 설정 유지':languageCode==='vi'?'Giữ cài đặt ngừng sử dụng hiện có':'Existing disabled setting preserved'}</Typography>}
     <LocalizedNameFields value={form} languageCode={languageCode} disabled={saving} onChange={(key,value)=>setForm(current=>({...current,[key]:value}))}/>
     <TextField select id="accounting-cash-direction" fullWidth size="small" label={directionText.label} value={form.cashDirection||'BOTH'} disabled={saving} helperText={directionText.hint} onChange={event=>setForm(current=>({...current,cashDirection:event.target.value}))}>{['IN','OUT','BOTH'].map(value=><MenuItem key={value} value={value}>{directionText[value]}</MenuItem>)}</TextField>
@@ -120,7 +136,7 @@ export default function AccountingCodeSettings(){
     <SelectionSummaryRow compact data-accounting-summary="inputs" title={inputsText.inputs} action={<Button id="accounting-input-toggle" size="small" startIcon={<ViewSidebarOutlinedIcon/>} disabled={saving} aria-label={inputsText.inputs} aria-expanded={pickerOpen&&panelKind==='INPUT'} aria-controls={pickerOpen&&panelKind==='INPUT'?'accounting-input-panel':undefined} onClick={()=>togglePanel('INPUT')}>{subtypePicker.select}</Button>}>{activeInputs.map(key=><Chip key={key} size="small" variant="outlined" sx={{height:28,borderRadius:1}} label={((ITEM_ATTRIBUTE_TEXT[languageCode]||ITEM_ATTRIBUTE_TEXT.en)[key]||inputsText[key]).replace(/ \uC785\uB825$| input$|^Nh\u1EADp /g,'')+' \u00b7 '+inputsText.REQUIRED}/>)}{!activeInputs.length&&<Typography variant="body2" color="text.secondary">{inputsText.HIDDEN}</Typography>}</SelectionSummaryRow>
     {materialEnabled&&<SelectionSummaryRow compact data-accounting-summary="master" title={materialText.title} action={<Button id="accounting-master-toggle" size="small" startIcon={<ViewSidebarOutlinedIcon/>} disabled={saving} aria-label={materialText.title} aria-expanded={pickerOpen&&panelKind==='MASTER'} onClick={()=>togglePanel('MASTER')}>{subtypePicker.select}</Button>}>{Object.entries(masterInputModes(materialForm)).filter(([,mode])=>mode==='REQUIRED').map(([key])=><Chip key={key} size="small" variant="outlined" sx={{height:28,borderRadius:1}} label={materialText[key]}/>)}<Chip size="small" variant="outlined" sx={{height:28,borderRadius:1}} label={materialText.unit}/></SelectionSummaryRow>}
    </Stack><Slide direction="left" in={pickerOpen} timeout={panelDuration} mountOnEnter unmountOnExit onExited={()=>{setPickerExiting(false);document.getElementById(panelKind==='SUBTYPE'?'accounting-subtype-toggle':panelKind==='MASTER'?'accounting-master-toggle':'accounting-input-toggle')?.focus();}}><Box sx={{position:{md:'sticky'},top:0,minWidth:0,width:'100%',overflow:'hidden'}}>{panelKind!=='SUBTYPE'?<AccountingInputPanel masterOnly={panelKind==='MASTER'} materialEligibilityControlled value={materialForm} onChange={setForm} onClose={closePicker} disabled={saving} languageCode={languageCode}/>:<AccountingSubtypePanel options={options} roles={roles} value={form.industryIds} onChange={industryIds=>setForm(current=>({...current,industryIds}))} onClose={closePicker} disabled={saving} languageCode={languageCode}/>}</Box></Slide></Box>}</DialogContent>
-   <DialogActions sx={{px:3,py:2}}><SaveButton loading={saving} onClick={save} disabled={saving||!form||!/^[A-Z]{3}$/.test(form.code)||(!form.industryIds.length&&(!form.id||form.isActive))||!hasLocalizedName(form)}>{text.save}</SaveButton></DialogActions>
+   <DialogActions sx={{px:3,py:2}}><SaveButton loading={saving} onClick={save} disabled={saving||!form||!/^[A-Z]{3}$/.test(form.code)||(!form.industryIds.length&&(!form.id||form.isActive))||!hasLocalizedName(form)||(materialEnabled&&!materialUnit)}>{text.save}</SaveButton></DialogActions>
   </Dialog>
  </AppPageContainer>;
 }
