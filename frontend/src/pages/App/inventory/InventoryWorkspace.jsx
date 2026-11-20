@@ -75,7 +75,7 @@ const InventoryWorkspace = ({ view = 'stock' }) => {
   const toolbar = view==='stock'||view==='history'||view==='materials'&&canViewMaterials ? (
     <SearchPanel key={searchResetVersion} onReset={resetSearch} search={<SearchInput value={keyword} onChange={event=>setKeyword(event.target.value)}/>} />
   ) : null;
-  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
+  const content = mergedMaterials ? (view==='materials' ? canViewMaterials?<MaterialMasterList key={auth.activeOrgId} keyword={keyword} open={materialDialogOpen} onClose={()=>setMaterialDialogOpen(false)}/>:null : canViewReference?<SettingsView/>:null) : view==='entry' ? <InventoryEntry/> : <InventoryRows key={auth.activeOrgId} view={view} keyword={keyword}/>;
   return (
     <>
       <AppPageContainer

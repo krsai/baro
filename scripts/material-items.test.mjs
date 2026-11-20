@@ -133,6 +133,12 @@ test('registered material identity and snapshots flow to expenses and direct ban
   const issue=await call('/inventory-entry',{body:{...receipt,clientKey:randomUUID(),variantId:ownVariant.id,quantity:'-3',expenseItemId:null,expenseRequestVersion:null}});await approve(issue.id);
   const stock=await call('/inventory-entry/stock',{});
   assert.deepEqual(stock.map(row=>Number(row.quantity)).sort((a,b)=>a-b),[7,25]);
+  let variants;
+  await routes.get('GET /material-items/variants')({query:{orgId:s.other.id}},{json:value=>{variants=value;}});
+  assert.equal(variants.length,2);
+  assert.ok(variants.every(row=>row.baseId===base.id&&row.masterId===generated.id));
+  assert.deepEqual(variants.map(row=>row.ownerId).sort((a,b)=>a-b),[org,s.vendor.id].sort((a,b)=>a-b));
+  assert.ok(variants.every(row=>!('quantity' in row)&&!('purchaseSnapshot' in row)&&!('orgId' in row)), 'master browsing returns item definitions without movement or financial data');
   assert.equal((await call('/inventory-entry/history',{})).length,3);
   assert.deepEqual(await call('/inventory-entry/stock',{orgId:s.vendor.id}),[]);
   assert.deepEqual(await db.partnerTransactionCost.findUnique({where:{id:cost.id}}),original);

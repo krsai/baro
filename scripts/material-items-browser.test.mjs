@@ -20,7 +20,7 @@ try{
   const page=await browser.newPage({viewport:{width,height:1000}}),errors=[],writes=[],items=[],unit={id:1,code:'EA',nameEn:'Each',nameKo:'개',nameVi:'Cái',isActive:true,sortOrder:0},t=materialItemText[lang],d=EXPENSE_TEXT[lang];page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:1});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useLanguage=()=>({languageCode:'+JSON.stringify(lang)+'});'}));
-  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const showNotification=message=>{let node=document.querySelector('[role=alert]');if(!node){node=document.createElement('div');node.setAttribute('role','alert');document.body.appendChild(node);}node.textContent=message;};export const useAppActions=()=>({setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{},showNotification,removeNotification:()=>document.querySelector('[role=alert]')?.remove()});`}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`const showNotification=message=>{let node=document.querySelector('[role=alert]');if(!node){node=document.createElement('div');node.setAttribute('role','alert');document.body.appendChild(node);}node.textContent=message;};export const useAppActions=()=>({markTabChanged:()=>{},clearTabChanged:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{},showNotification,removeNotification:()=>document.querySelector('[role=alert]')?.remove()});`}));
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'*','Access-Control-Allow-Headers':'*'};
   await page.route('**/material-items**',async r=>{
    const req=r.request(),url=new URL(req.url());if(url.pathname.endsWith('material-items-acceptance.html'))return r.continue();assert.equal(url.searchParams.get('orgId'),'1');
@@ -29,13 +29,14 @@ try{
     const body=req.postDataJSON();writes.push(body);if(writes.length===1)return r.fulfill({headers,status:503,json:{error:'UNAVAILABLE'}});
     const source=(await page.evaluate(()=>window.testCode)).base;assert.equal(body.nameEn,undefined);const item={id:'material-1',orgId:1,baseId:1,industryId:5,unitId:1,data:{nameEn:source.nameEn,nameKo:source.nameKo,nameVi:source.nameVi,unit,details:body.details,inputSettings:{requiredFields:['length','width']}}};items.push(item);return r.fulfill({headers,status:201,json:item});
    }
+   if(url.pathname.endsWith('/variants'))return r.fulfill({headers,json:[]});
    if(url.pathname.endsWith('/catalogue'))return r.fulfill({headers,json:{codes:[await page.evaluate(()=>{
     const code=window.testCode;
     return {...code,base:{...code.base,materialUnitId:1,materialSettings:{...code.base.materialSettings,colorInput:'REQUIRED'}}};
    }),{id:8,baseId:2,base:{id:2,code:'NEW',nameEn:'New product'}}],units:[unit]}});
    return r.fulfill({headers,json:items});
   });
-  await page.goto('http://127.0.0.1:'+port+'/material-items-acceptance.html?lang='+lang);await page.getByText(t.empty,{exact:true}).waitFor().catch(async e=>{throw Error(errors.join(' | ')||await page.locator('body').innerText()||e.message)});await page.getByRole('button',{name:'ADD',exact:true}).click();
+  await page.goto('http://127.0.0.1:'+port+'/material-items-acceptance.html?lang='+lang);await page.getByRole('button',{name:new RegExp(t.viewItems+' .*TST')}).waitFor().catch(async e=>{throw Error(errors.join(' | ')||await page.locator('body').innerText()||e.message)});await page.getByRole('button',{name:'ADD',exact:true}).click();
   const dialog=page.getByRole('dialog'),code=dialog.getByRole('textbox',{name:t.productSearch,exact:false});await code.fill('TST');await code.press('Enter');
   const names={ko:['이름 (영어 · 대표)','이름 (한국어)','이름 (베트남어)'],en:['Name (English · primary)','Name (Korean)','Name (Vietnamese)'],vi:['Tên (tiếng Anh · chính)','Tên (tiếng Hàn)','Tên (tiếng Việt)']}[lang];
   for(const [i,value] of ['TEST BOX','테스트 박스','Hộp thử'].entries())await dialog.getByLabel(names[i],{exact:true}).evaluate((input,expected)=>{if(!input.readOnly||input.value!==expected)throw Error('Expected read-only SYSTEM name');},value);

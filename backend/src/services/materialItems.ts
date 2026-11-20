@@ -81,6 +81,12 @@ export function registerMaterialItemRoutes(app:any,db:any,gates:any){
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   res.json(await db.materialItem.findMany({where:{orgId:scope.orgId},orderBy:{createdAt:'desc'}}));
  });
+ app.get('/material-items/variants',async(req:any,res:any)=>{
+  const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
+  res.json(await db.$queryRaw`SELECT v.id,v."masterId",i."baseId",v."ownerId",jsonb_build_object('owner',v.attributes->'owner','type',v.attributes->'type','color',v.attributes->'color','dimensions',v.attributes->'dimensions') AS attributes,i.data->'unit' AS unit
+   FROM "InventoryVariant" v JOIN "MaterialItem" i ON i.id=v."masterId" AND i."orgId"=v."orgId" AND i."baseId"=v."baseId"
+   WHERE v."orgId"=${scope.orgId} ORDER BY i."baseId",v.id`);
+ });
  app.get('/material-items/catalogue',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MATERIALS');if(!scope)return;
   const codes=await db.transactionCode.findMany({where:{ownerOrgId:scope.orgId,isActive:true,base:{isActive:true}},include:{base:{include:{industryLinks:{include:{industry:{include:{retirement:true}}}}}}}});

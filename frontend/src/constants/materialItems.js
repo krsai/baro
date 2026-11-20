@@ -7,4 +7,7 @@ Object.assign(materialItemText.ko, {productSearch:"제품 검색",unit:'단위',
 Object.assign(materialItemText.en, {productSearch:"Product search",unit:'Unit',variant:'Material type',addVariant:'Add type',duplicate:'A material master with this product and specification already exists.'});
 Object.assign(materialItemText.vi, {productSearch:"Tìm sản phẩm",unit:'Đơn vị',variant:'Loại vật tư',addVariant:'Thêm loại',duplicate:'Danh mục vật tư cùng sản phẩm và quy cách đã được đăng ký.'});
 export const materialItemName=(item,lang)=>{const data=item?.data||item||{};return data[lang==='ko'?'nameKo':lang==='vi'?'nameVi':'nameEn']||data.nameEn||data.nameKo||data.nameVi||'';};
+Object.assign(materialItemText.ko,{type:'타입',items:'개별 품목',viewItems:'개별 품목 보기',noItems:'등록된 개별 품목이 없습니다.'});
+Object.assign(materialItemText.en,{type:'Type',items:'Stock items',viewItems:'View stock items',noItems:'No registered stock items.'});
+Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng',viewItems:'Xem mặt hàng',noItems:'Chưa có mặt hàng được đăng ký.'});
 export const materialItemSpec=item=>{const data=item?.data||item||{},d=data.details||{};return [data.itemAttributeSnapshot?.type?.nameEn,data.color?.code,[d.length,d.width,d.height].filter(Boolean).length?[d.length,d.width,d.height].filter(Boolean).join(' × ')+' mm':''].filter(Boolean).join(' / ');};
