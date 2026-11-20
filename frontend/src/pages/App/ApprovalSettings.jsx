@@ -27,10 +27,12 @@ const keyFor=(menu,operation)=>menu+':'+operation;
 const registrationFor=(menu,operation)=>menu==='BANK_LEDGER'&&operation==='CREATE';
 const formFrom=(settings,registration)=>{
  if(!settings)throw new Error('INVALID_APPROVAL_SETTINGS');
- if(Array.isArray(settings.approverIds))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,proxyRoles:settings.proxyRoles,approverIds:settings.approverIds};
+ if(Array.isArray(settings.stages))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,stages:settings.stages};
+ if(Array.isArray(settings.approverIds))return {revision:settings.revision||0,drafterRoles:settings.drafterRoles,proxyRoles:settings.proxyRoles,approverIds:settings.approverIds,...(settings.legacyStages?{legacyStages:settings.legacyStages}:{})};
  return {...(registration?{version:2}:{}),kind:registration?'BANK_LEDGER':'EXPENSE',drafterScope:settings.drafterScope||{role:'ALL',gradeId:null},limits:settings.limits,rules:registration?ledgerApprovalBands(settings):settings.rules||[],revision:settings.revision||0};
 };
-const invalidEntry=entry=>['WORK_TIME','INVENTORY'].includes(entry.menu)?!entry.form.drafterRoles?.length||!entry.form.approverIds?.length||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length:invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
+const invalidInventory=entry=>!entry.form.drafterRoles?.length||(entry.form.stages?!entry.form.stages.length||entry.form.stages.some(stage=>!['ADMIN','ACCOUNTANT','OPERATOR'].includes(stage.role)||stage.gradeMatch!=='ANY'&&!stage.gradeId):!entry.form.approverIds?.length||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length);
+const invalidEntry=entry=>entry.menu==='INVENTORY'?invalidInventory(entry):['WORK_TIME','INVENTORY'].includes(entry.menu)?!entry.form.drafterRoles?.length||!entry.form.approverIds?.length||entry.form.approverIds.some(id=>!id)||new Set(entry.form.approverIds).size!==entry.form.approverIds.length:invalidApprovalBands(entry.form.rules,{requireAccountant:!registrationFor(entry.menu,entry.operation)});
 const dirtyEntry=entry=>Boolean(entry?.form&&JSON.stringify(entry.form)!==entry.initial);
 
 export default function ApprovalSettings(){const {activeOrgId}=useAuth();return <CompanyApprovalSettings key={activeOrgId} activeOrgId={activeOrgId}/>;}
@@ -81,7 +83,7 @@ function CompanyApprovalSettings({activeOrgId}){
 function ApprovalOperationSettings({entry,menu,operation,disabled,onChange,onReload,languageCode}){
  const t=approvalSettingsText[languageCode]||approvalSettingsText.en,band=approvalBandText[languageCode]||approvalBandText.en,messages=approvalRuleText[languageCode]||approvalRuleText.en,actions=changeApprovalText[languageCode]||changeApprovalText.en;
  const editor=useRef(null),[editorError,setEditorError]=useState(''),form=entry?.form,data=entry?.data,locked=disabled||!data?.canEdit||!!entry?.error,registration=registrationFor(menu,operation);
- if(['WORK_TIME','INVENTORY'].includes(menu))return <Stack spacing={2}>{menu==='INVENTORY'&&<Typography component="h2" variant="h6">{actions[operation]}</Typography>}{entry?.error&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry.error}</Alert>}{form&&<WorkTimeApprovalSettings showProxy={menu!=='INVENTORY'} form={form} managers={data?.managers||[]} onChange={onChange} disabled={locked} languageCode={languageCode}/>}</Stack>;
+ if(['WORK_TIME','INVENTORY'].includes(menu))return <Stack spacing={2}>{menu==='INVENTORY'&&<Typography component="h2" variant="h6">{actions[operation]}</Typography>}{entry?.error&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry.error}</Alert>}{form&&<WorkTimeApprovalSettings roleGradeStages={menu==='INVENTORY'?(form.stages||form.legacyStages||[]):undefined} grades={data?.grades||[]} onStagesChange={stages=>onChange({stages,approverIds:undefined,legacyStages:undefined})} showProxy={menu!=='INVENTORY'} form={form} managers={data?.managers||[]} onChange={onChange} disabled={locked} languageCode={languageCode}/>}</Stack>;
  return <Stack component="section" aria-label={actions[operation]} data-approval-operation={operation} spacing={2} sx={{minWidth:0}}>
   <Typography component="h2" variant="h6">{actions[operation]}</Typography>
   {(entry?.error||editorError)&&<Alert severity="error" action={<Button onClick={onReload}>{t.title}</Button>}>{entry?.error||editorError}</Alert>}

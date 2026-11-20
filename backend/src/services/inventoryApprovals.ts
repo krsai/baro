@@ -6,11 +6,12 @@ const approvalHash=(operation:string,movementId:string,body:any)=>createHash('sh
 
 export async function createInventoryApproval(tx:any,scope:any,movement:any,operation:string,body:any){
  const {orgId,actorId}=scope;
- const resolved=await resolveInventoryApproval(tx,orgId,actorId,operation,body.approvalRevision);
+ const resolved=await resolveInventoryApproval(tx,orgId,actorId,operation,body.approvalRevision,body.approvalSelection??{});
  if(!Number.isSafeInteger(body.approvalRevision))throw createHttpError(409,'APPROVAL_SETTINGS_CHANGED');
  const id=operation==='CREATE'?movement.id:randomUUID(),hash=approvalHash(operation,movement.id,body);
+ const policy=resolved.policy.version===2?{...resolved.policy,config:resolved.policy,approverIds:resolved.stages.map((stage:any)=>stage.employeeId),resolvedStages:resolved.stages.map((stage:any)=>{const person=stage.candidates.find((p:any)=>p.id===stage.employeeId);return {employeeId:person.id,role:person.orgRole,gradeId:person.gradeId,grade:person.grade};})}:resolved.policy;
  await tx.$executeRaw`INSERT INTO "InventoryApprovalRequest" (id,"orgId","movementId",operation,"targetRevision","drafterId","clientKey","requestHash",policy)
- VALUES (${id},${orgId},${movement.id},${operation},${movement.revision},${actorId},${body.clientKey},${hash},${JSON.stringify(resolved.policy)}::jsonb)`;
+ VALUES (${id},${orgId},${movement.id},${operation},${movement.revision},${actorId},${body.clientKey},${hash},${JSON.stringify(policy)}::jsonb)`;
  for(const [position,stage] of resolved.stages.entries())await tx.$executeRaw`INSERT INTO "InventoryApprovalStep" ("requestId","orgId",position,"employeeId","employeeName") VALUES (${id},${orgId},${position},${stage.employeeId},${stage.name})`;
  return id;
 }
@@ -18,7 +19,8 @@ export async function createInventoryApproval(tx:any,scope:any,movement:any,oper
 export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
  app.get('/inventory-entry/approval-preview',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
-  res.json(await resolveInventoryApproval(db,scope.orgId,scope.actorId,String(req.query.operation||'CREATE')));
+  let selection:any={};try{selection=req.query.selection?JSON.parse(String(req.query.selection)):{};}catch{throw createHttpError(400,'INVALID_EXPENSE_APPROVERS');}
+  res.json(await resolveInventoryApproval(db,scope.orgId,scope.actorId,String(req.query.operation||'CREATE'),undefined,selection,true));
  });
  app.get('/inventory-entry/approvals',async(req:any,res:any)=>{
   const scope=await access(req,res,'INVENTORY_MOVEMENTS');if(!scope)return;
@@ -62,6 +64,7 @@ export function registerInventoryApprovalRoutes(app:any,db:any,access:any){
    if(request.operation==='CREATE'&&(await tx.$queryRaw`SELECT id FROM "InventoryApprovalRequest" WHERE "movementId"=${request.movementId} AND operation='DELETE' AND status='PENDING'`).length)throw createHttpError(409,'INVENTORY_DELETE_PENDING');
    const next=steps.find((s:any)=>!s.decision);
    if(!next||next.employeeId!==scope.actorId||request.drafterId===scope.actorId)throw createHttpError(403,'INVENTORY_APPROVAL_FORBIDDEN');
+   if(request.policy?.config?.version===2){const [eligible]=await tx.$queryRaw`SELECT baro_inventory_stage_eligible(${scope.orgId}::integer,${scope.actorId}::integer,${JSON.stringify(request.policy.config.stages[next.position])}::jsonb) AS valid`;if(!eligible?.valid)throw createHttpError(409,'INVENTORY_APPROVER_UNAVAILABLE');}
    const [movement]=await tx.$queryRaw`SELECT id,revision,"variantId" FROM "InventoryMovement" WHERE id=${request.movementId} AND "orgId"=${scope.orgId} FOR UPDATE`;
    if(!movement||movement.revision!==request.targetRevision)throw createHttpError(409,'INVENTORY_MOVEMENT_CHANGED');
    if(request.operation==='CREATE'&&body.decision==='APPROVED'&&next.position===steps.length-1)await validateInventoryPurchase(tx,scope.orgId,movement.id);

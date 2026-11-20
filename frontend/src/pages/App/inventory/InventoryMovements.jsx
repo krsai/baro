@@ -44,7 +44,7 @@ export function InventoryEntry({onClose,onSaved}){
 function MovementForm({orgId,onClose,onSaved}){
  const {languageCode}=useLanguage(),{showNotification,navigateToPath}=useAppActions(),navigate=useNavigate(),dialogs=usePageDialogs();
  const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
- const [approval,setApproval]=useState(null);
+ const [approval,setApproval]=useState(null),[approvalSelection,setApprovalSelection]=useState({});
  const t=materialItemText[languageCode]||materialItemText.en,d=EXPENSE_TEXT[languageCode]||EXPENSE_TEXT.en;
  const [receipt,issue,itemLabel,add,ownerLabel,typeLabel,qty,dateLabel,remarkLabel,saved,directionLabel]=labels[languageCode]||labels.en;
  const [masters,setMasters]=useState([]),[master,setMaster]=useState(null),[options,setOptions]=useState(null),[variant,setVariant]=useState(null),[creating,setCreating]=useState(false);
@@ -63,7 +63,7 @@ function MovementForm({orgId,onClose,onSaved}){
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
  useUnsavedChanges(Boolean(master||quantity||remark));
  const close=async()=>{if(busy||pending.current)return;if((!master&&!quantity&&!remark)||await dialogs.confirm('',{purpose:'discard'}))onClose?.();};
- useEffect(()=>{let active=true;setApproval(null);request('/approval-preview',orgId).then(value=>{if(active)setApproval(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,a,t.failed));});return()=>{active=false;};},[orgId,reload,a,t.failed]);
+ useEffect(()=>{let active=true;setApproval(null);requestJSON('/inventory-entry/approval-preview'+buildQueryString({orgId,selection:JSON.stringify(approvalSelection)}),{skipCache:true}).then(value=>{if(active)setApproval(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,a,t.failed));});return()=>{active=false;};},[orgId,reload,a,t.failed,approvalSelection]);
  useWorkspaceRefreshOnEvent({orgId,topics:['inventory-movements'],isBlocked:Boolean(master||quantity||remark||busy),onRefresh:()=>setReload(n=>n+1)});
  useEffect(()=>{let active=true;request('/masters',orgId).then(rows=>{if(active)setMasters(rows);}).catch(()=>{if(active)setError(t.failed);});return()=>{active=false;};},[orgId,reload,t.failed]);
  useEffect(()=>{
@@ -79,9 +79,9 @@ function MovementForm({orgId,onClose,onSaved}){
  const validQuantity=positive.test(quantity)&&Number(quantity)>0;
  const validVariant=variant||creating&&owner&&(options?.fields.color!=='REQUIRED'||color)&&(options?.fields.type!=='REQUIRED'||type)&&(!options?.fields.dimensions||axes.every(axis=>positive.test(dimensions[axis]||'')&&Number(dimensions[axis])>0));
  const save=async()=>{
-  if(locked.current||!master||!validQuantity||!validVariant||!approval||needsPurchase&&(!purchase||!purchaseRows||purchaseError))return;
+  if(locked.current||!master||!validQuantity||!validVariant||!approval||approval.stages.some(stage=>!stage.employeeId)||needsPurchase&&(!purchase||!purchaseRows||purchaseError))return;
   locked.current=true;setBusy(true);setError('');
-  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,ownerId:owner?.id??null,colorId:color?.id??null,typeId:type?.id??null,expenseItemId:needsPurchase?purchase.expenseItemId:null,expenseRequestVersion:needsPurchase?purchase.version:null,approvalRevision:approval.policy.revision,dimensions,date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
+  const payload=pending.current||{clientKey:crypto.randomUUID(),masterId:master.id,variantId:variant?.id??null,ownerId:owner?.id??null,colorId:color?.id??null,typeId:type?.id??null,expenseItemId:needsPurchase?purchase.expenseItemId:null,expenseRequestVersion:needsPurchase?purchase.version:null,approvalRevision:approval.policy.revision,approvalSelection:Object.fromEntries(approval.stages.map(stage=>[stage.key+'EmployeeId',stage.employeeId])),dimensions,date,quantity:(direction==='OUT'?'-':'')+quantity,remark};
   pending.current=payload;
   try{
    await request('',orgId,{method:'POST',body:JSON.stringify(payload)});
@@ -100,7 +100,7 @@ function MovementForm({orgId,onClose,onSaved}){
  return <Dialog open fullWidth maxWidth="md" onClose={close}><DialogTitle>{a.register}</DialogTitle><DialogContent><Stack spacing={2.5} sx={{pt:1.5,pb:1}}>
   {error&&<AppNotice severity="error" action={<Button onClick={()=>pending.current?save():(setError(''),setReload(n=>n+1))}>{t.retry}</Button>}>{error}</AppNotice>}
   {!approval&&<Button onClick={()=>navigate('/approval-settings?menu=INVENTORY')}>{a.settings}</Button>}
-  {approval&&<ApprovalStageFlow drafter={approval.drafter} stages={approval.stages.map(stage=>({...stage,candidates:[{id:stage.employeeId,name:stage.name}]}))} languageCode={languageCode} readOnly/>}
+  {approval&&<ApprovalStageFlow drafter={approval.drafter} stages={approval.stages.map(stage=>({...stage,candidates:stage.candidates||[{id:stage.employeeId,name:stage.name}]}))} languageCode={languageCode} value={approvalSelection} onChange={(key,id)=>setApprovalSelection(current=>({...current,[key+'EmployeeId']:id}))} disabled={unavailable}/>}
   {lookup(masterLabels[languageCode]||masterLabels.en,masters,master,selectMaster,languageCode,row=>[row.data.baseSnapshot.code,materialItemName(row,languageCode),materialItemName(row.data.unit,languageCode)].join(' \u00b7 '),{required:true,disabled:unavailable,getCode:row=>row.data.baseSnapshot.code})}
   {options&&<Stack direction={{xs:'column',sm:'row'}} spacing={2} alignItems={{sm:'center'}}>
    <Box sx={{flex:1}}>{lookup(itemLabel,options.variants,variant,row=>{setVariant(row);setCreating(false);},languageCode,row=>variantName(row.attributes,languageCode),{disabled:unavailable})}</Box>
@@ -125,7 +125,7 @@ function MovementForm({orgId,onClose,onSaved}){
    {purchaseRows?.length===0&&<AppNotice severity="warning">{a.purchaseEmpty}</AppNotice>}
   </Stack>}
   <TextField size="small" label={remarkLabel} value={remark} disabled={unavailable} slotProps={{htmlInput:{maxLength:500}}} onChange={e=>setRemark(e.target.value)}/>
- </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date||!approval||needsPurchase&&(!purchase||!purchaseRows||Boolean(purchaseError))} onClick={save}>{a.submit}</SaveButton></DialogActions></Dialog>;
+ </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={unavailable} onClick={close}>{a.cancel}</Button><SaveButton loading={busy} disabled={!master||!validQuantity||!validVariant||!date||!approval||approval.stages.some(stage=>!stage.employeeId)||needsPurchase&&(!purchase||!purchaseRows||Boolean(purchaseError))} onClick={save}>{a.submit}</SaveButton></DialogActions></Dialog>;
 }
 
 export function InventoryRows({view,keyword='',start='',end=''}){

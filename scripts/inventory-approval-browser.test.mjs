@@ -4,6 +4,7 @@ import {existsSync,writeFileSync,unlinkSync} from 'node:fs';
 import {chromium} from 'playwright-core';
 import {inventoryApprovalText} from '../frontend/src/constants/inventoryApproval.js';
 import {approvalSettingsText} from '../frontend/src/constants/approvalSettings.js';
+import {workTimeText} from '../frontend/src/constants/workTime.js';
 import {approvalBandText} from '../frontend/src/constants/approvalBands.js';
 
 const fixture='frontend/inventory-approval-acceptance.html',port=43294;
@@ -34,7 +35,7 @@ try{
    if(req.method()==='OPTIONS')return r.fulfill({headers,status:204});
    if(path.endsWith('/history'))return r.fulfill({headers,json:deleted?[]:[{...row,deletePending:pending}]});
    if(path.endsWith('/approvals'))return r.fulfill({headers,json:pending&&!deleted?[{...row,id:'approval',operation:'DELETE',revision:1,canDecide:true,drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager'}]}]:[]});
-   if(path.endsWith('/approval-preview')){assert.equal(url.searchParams.get('orgId'),'1');return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager',key:'step1'}]}});}
+   if(path.endsWith('/approval-preview')){assert.equal(url.searchParams.get('orgId'),'1');if(language==='en'&&url.searchParams.get('operation')==='DELETE'){const chosen=JSON.parse(url.searchParams.get('selection')||'{}').step1EmployeeId;return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{key:'step1',role:'ACCOUNTANT',employeeId:chosen||null,candidates:[{id:4,name:'Manager'},{id:5,name:'Backup'}]}]}});}return r.fulfill({headers,json:{policy:{revision:1},drafter:{id:3,name:'Drafter'},stages:[{employeeId:4,name:'Manager',key:'step1'}]}});}
    if(path.endsWith('/masters'))return r.fulfill({headers,json:[]});
    writes.push({path,body:req.postDataJSON()});
    if(path.endsWith('/delete-request'))pending=true;
@@ -49,11 +50,12 @@ try{
   await page.getByRole('dialog').waitFor({state:'hidden'});
   await page.getByRole('button',{name:t.delete,exact:true}).click();
   await page.getByRole('dialog').getByText(t.deleteConfirm).waitFor();
+  if(language==='en'){assert.equal(await page.getByRole('dialog').getByRole('button',{name:t.submit,exact:true}).isDisabled(),true);await page.getByRole('dialog').getByRole('combobox',{name:/Name/}).click().catch(async e=>{throw Error(JSON.stringify({errors,body:await page.locator('body').innerText(),cause:e.message}));});await page.getByRole('option',{name:'Manager',exact:true}).click();}
   await page.getByRole('dialog').getByRole('button',{name:t.submit,exact:true}).click();
   await page.getByRole('dialog').waitFor({state:'hidden'});
   await page.getByRole('button',{name:t.approve,exact:true}).click();
   await page.getByRole('cell',{name:'Fixture movement',exact:true}).waitFor({state:'hidden'});
-  assert.equal(writes.length,2);assert.equal(writes[0].body.approvalRevision,1);assert.equal(writes[1].body.decision,'APPROVED');
+  assert.equal(writes.length,2);assert.equal(writes[0].body.approvalRevision,1);assert.equal(writes[0].body.approvalSelection.step1EmployeeId,4);assert.equal(writes[1].body.decision,'APPROVED');
   assert.deepEqual(errors,[]);await page.close();
  }
  const page=await browser.newPage({viewport:{width:1440,height:1000}}),writes=[];
@@ -63,14 +65,20 @@ try{
  await page.route('**/approval-action-settings**',r=>{
   if(r.request().method()==='OPTIONS')return r.fulfill({headers,status:204});
   if(r.request().method()==='PUT'){const body=r.request().postDataJSON();writes.push(body);return r.fulfill({headers,json:{saved:body.changes.map(change=>({...change,settings:{...change.settings,revision:change.settings.revision+1}}))}});}
-  return r.fulfill({headers,json:{canEdit:true,managers:[{id:4,name:'Manager'}],settings:{revision:1,drafterRoles:['ADMIN','OPERATOR','ACCOUNTANT'],approverIds:[4]}}});
+  return r.fulfill({headers,json:{canEdit:true,grades:[{id:1,name:'Senior',nameEn:'Senior'}],settings:{version:2,revision:1,drafterRoles:['ADMIN','OPERATOR','ACCOUNTANT'],stages:[{role:'ACCOUNTANT',gradeId:1,gradeMatch:'MINIMUM'}]}}});
  });
  await page.goto(`http://127.0.0.1:${port}/${fixture.split('/')[1]}?settings`);
- await page.locator('[data-work-time-permissions]').first().click();
- await page.getByRole('dialog').getByRole('checkbox').first().uncheck();
- await page.getByRole('dialog').getByRole('button',{name:approvalBandText.en.apply,exact:true}).click();
+ const editor=page.getByTestId('work-time-approval-settings').first(),stages=editor.locator('[data-inventory-stage]');
+ await stages.first().waitFor();assert.equal(await stages.count(),1);
+ await editor.getByRole('button',{name:workTimeText.en.add,exact:true}).click();assert.equal(await stages.count(),2);
+ await stages.nth(1).getByRole('combobox',{name:approvalBandText.en.role+' 2',exact:true}).click();
+ await page.getByRole('option',{name:approvalBandText.en.ADMIN,exact:true}).click();
+ await editor.getByRole('button',{name:approvalBandText.en.addMiddle,exact:true}).first().click();assert.equal(await stages.count(),3);
+ await stages.first().getByRole('button',{name:approvalBandText.en.remove,exact:true}).click();assert.equal(await stages.count(),2);
+ await stages.first().getByRole('button',{name:approvalBandText.en.reorderStage+' 1',exact:true}).focus();
+ await page.keyboard.press('Space');await page.keyboard.press('ArrowRight');await page.keyboard.press('Space');await page.waitForTimeout(350);
  await page.getByRole('button',{name:approvalSettingsText.en.save,exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('[data-testid="approval-settings-page"]'));
- assert.equal(writes.length,1);assert.equal(writes[0].changes.length,1);assert.equal(writes[0].changes[0].menu,'INVENTORY');assert.equal(writes[0].changes[0].operation,'CREATE');assert.equal(writes[0].changes[0].settings.rules,undefined);
+ assert.equal(writes.length,1);assert.equal(writes[0].changes.length,1);assert.equal(writes[0].changes[0].menu,'INVENTORY');assert.equal(writes[0].changes[0].operation,'CREATE');assert.equal(writes[0].changes[0].settings.rules,undefined);assert.deepEqual(writes[0].changes[0].settings.drafterRoles,['ADMIN','OPERATOR','ACCOUNTANT']);assert.deepEqual(writes[0].changes[0].settings.stages.map(stage=>stage.role),['ADMIN','ACCOUNTANT']);assert.equal(writes[0].changes[0].settings.stages[1].gradeId,1);
  await page.close();console.log('PASS inventory registration modal, deletion approval and physical removal UI (ko/en/vi desktop/mobile); shared approval settings batch save');
 }finally{await browser?.close();server.kill();if(existsSync(fixture))unlinkSync(fixture);}

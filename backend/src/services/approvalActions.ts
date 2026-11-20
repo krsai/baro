@@ -53,7 +53,10 @@ export function registerApprovalActionRoutes(app:any,db:any,gates:any){
   const selected=await approvalActionSettings(db,orgId,menu,operation),config=selected.value||defaultApprovalSettings();
   if(menu==='INVENTORY'){
    const managers=await db.employee.findMany({where:{orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}},select:{id:true,name:true,employeeNo:true,orgRole:true},orderBy:{name:'asc'}});
-   return res.json({menu,operation,canEdit:actor.orgRole==='ADMIN',settings:config,managers});
+   const grades=await db.employeeGrade.findMany({where:{orgId,isActive:true,set:{isActive:true}},select:{id:true,code:true,name:true,nameKo:true,nameEn:true,nameVi:true},orderBy:{sortOrder:'asc'}});
+   const people=config.approverIds?.length?await db.employee.findMany({where:{orgId,id:{in:config.approverIds}},select:{id:true,orgRole:true,gradeId:true,status:true}}):[];
+   const legacyStages=(config.approverIds||[]).map((id:number)=>{const person=people.find((p:any)=>p.id===id);return {role:person?.status==='ACTIVE'?person.orgRole:'',gradeId:person?.gradeId??null,gradeMatch:person?.gradeId?'MINIMUM':'ANY'};});
+   return res.json({menu,operation,canEdit:actor.orgRole==='ADMIN',settings:{...config,...(config.stages?{}:{legacyStages})},managers,grades});
   }
   if(menu==='WORK_TIME'){
    await workTimeActor(db,orgId,actor.id);

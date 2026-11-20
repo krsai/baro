@@ -14,19 +14,20 @@ import {inventoryApprovalText,inventoryApprovalError} from '../../../constants/i
 import {materialItemName,materialItemText} from '../../../constants/materialItems';
 
 const request=(path,orgId,options)=>requestJSON('/inventory-entry'+path+buildQueryString({orgId}),{skipCache:true,...options});
-const stagesFor=stages=>stages.map((stage,index)=>({...stage,key:'step'+index,candidates:[{id:stage.employeeId,name:stage.name}]}));
+const stagesFor=stages=>stages.map((stage,index)=>({...stage,key:stage.key||'step'+(index+1),candidates:stage.candidates||[{id:stage.employeeId,name:stage.name}]}));
 const changed=orgId=>emitWorkspaceDataChanged({orgId,topics:['inventory-movements','inventory-stock','inventory-approvals']});
 
 export function InventoryDeleteDialog({row,onClose,onSaved}){
  const {activeOrgId:orgId}=useAuth(),{languageCode}=useLanguage(),{showNotification}=useAppActions(),navigate=useNavigate();
  const t=inventoryApprovalText[languageCode]||inventoryApprovalText.en,m=materialItemText[languageCode]||materialItemText.en;
+ const [selection,setSelection]=useState({});
  const [preview,setPreview]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reload,setReload]=useState(0);
  const pending=useRef(null),lock=useRef(false),live=useRef(true);
  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
- useEffect(()=>{let active=true;setPreview(null);requestJSON('/inventory-entry/approval-preview'+buildQueryString({orgId,operation:'DELETE'}),{skipCache:true}).then(value=>{if(active)setPreview(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,t,m.failed));});return()=>{active=false;};},[orgId,reload,t,m.failed]);
+ useEffect(()=>{let active=true;setPreview(null);requestJSON('/inventory-entry/approval-preview'+buildQueryString({orgId,operation:'DELETE',selection:JSON.stringify(selection)}),{skipCache:true}).then(value=>{if(active)setPreview(value);}).catch(e=>{if(active)setError(inventoryApprovalError(e,t,m.failed));});return()=>{active=false;};},[orgId,reload,t,m.failed,selection]);
  const save=async()=>{
-  if(lock.current||!preview)return;lock.current=true;setBusy(true);setError('');
-  pending.current??={clientKey:crypto.randomUUID(),revision:row.revision,approvalRevision:preview.policy.revision};
+  if(lock.current||!preview||preview.stages.some(stage=>!stage.employeeId))return;lock.current=true;setBusy(true);setError('');
+  pending.current??={clientKey:crypto.randomUUID(),revision:row.revision,approvalRevision:preview.policy.revision,approvalSelection:Object.fromEntries(preview.stages.map(stage=>[stage.key+'EmployeeId',stage.employeeId]))};
   try{await request('/'+row.id+'/delete-request',orgId,{method:'POST',body:JSON.stringify(pending.current)});if(!live.current)return;pending.current=null;changed(orgId);showNotification(t.submitted,'success');onSaved();}
   catch(e){if(live.current){if(e.status>=400&&e.status<500)pending.current=null;setError(inventoryApprovalError(e,t,m.failed));}}
   finally{lock.current=false;if(live.current)setBusy(false);}
@@ -34,8 +35,8 @@ export function InventoryDeleteDialog({row,onClose,onSaved}){
  return <Dialog open fullWidth maxWidth="md" onClose={()=>!busy&&!pending.current&&onClose()}><DialogTitle>{t.deleteTitle}</DialogTitle><DialogContent><Stack spacing={2} sx={{pt:1}}>
   <Typography>{[row.date,materialItemName(row.master,languageCode),row.quantity,materialItemName(row.master.unit,languageCode)].join(' · ')}</Typography><Typography>{t.deleteConfirm}</Typography>
   {error&&<AppNotice severity="error" action={<Button disabled={busy} onClick={()=>pending.current?save():setReload(n=>n+1)}>{m.retry}</Button>}>{error}</AppNotice>}
-  {preview?<ApprovalStageFlow drafter={preview.drafter} stages={stagesFor(preview.stages)} languageCode={languageCode} readOnly/>:<Button onClick={()=>navigate('/approval-settings?menu=INVENTORY')}>{t.settings}</Button>}
- </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={busy||Boolean(pending.current)} onClick={onClose}>{t.cancel}</Button><SaveButton loading={busy} disabled={!preview} onClick={save}>{t.submit}</SaveButton></DialogActions></Dialog>;
+  {preview?<ApprovalStageFlow drafter={preview.drafter} stages={stagesFor(preview.stages)} languageCode={languageCode} value={selection} onChange={(key,id)=>setSelection(current=>({...current,[key+'EmployeeId']:id}))} disabled={busy||Boolean(pending.current)}/>:<Button onClick={()=>navigate('/approval-settings?menu=INVENTORY')}>{t.settings}</Button>}
+ </Stack></DialogContent><DialogActions><Button variant="outlined" disabled={busy||Boolean(pending.current)} onClick={onClose}>{t.cancel}</Button><SaveButton loading={busy} disabled={!preview||preview.stages.some(stage=>!stage.employeeId)} onClick={save}>{t.submit}</SaveButton></DialogActions></Dialog>;
 }
 
 export default function InventoryApprovalPanel({onChanged}){
