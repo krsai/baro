@@ -10,7 +10,7 @@ export const materialItemName=(item,lang)=>{const data=item?.data||item||{};retu
 Object.assign(materialItemText.ko,{registerMaster:'마스터 등록'});
 Object.assign(materialItemText.en,{registerMaster:'Register master'});
 Object.assign(materialItemText.vi,{registerMaster:'Đăng ký danh mục'});
-Object.assign(materialItemText.ko,{type:'타입',items:'개별 품목',viewItems:'개별 품목 보기',actions:'작업',close:'닫기',noItems:'등록된 개별 품목이 없습니다.'});
-Object.assign(materialItemText.en,{type:'Type',items:'Stock items',viewItems:'View stock items',actions:'Actions',close:'Close',noItems:'No registered stock items.'});
-Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng',viewItems:'Xem mặt hàng',actions:'Thao tác',close:'Đóng',noItems:'Chưa có mặt hàng được đăng ký.'});
+Object.assign(materialItemText.ko,{type:'타입',items:'개별 품목',viewItems:'상세 보기',actions:'작업',close:'닫기',noItems:'등록된 개별 품목이 없습니다.'});
+Object.assign(materialItemText.en,{type:'Type',items:'Stock items',viewItems:'View details',actions:'Actions',close:'Close',noItems:'No registered stock items.'});
+Object.assign(materialItemText.vi,{type:'Loại',items:'Mặt hàng',viewItems:'Xem chi tiết',actions:'Thao tác',close:'Đóng',noItems:'Chưa có mặt hàng được đăng ký.'});
 export const materialItemSpec=item=>{const data=item?.data||item||{},d=data.details||{};return [data.itemAttributeSnapshot?.type?.nameEn,data.color?.code,[d.length,d.width,d.height].filter(Boolean).length?[d.length,d.width,d.height].filter(Boolean).join(' × ')+' mm':''].filter(Boolean).join(' / ');};
