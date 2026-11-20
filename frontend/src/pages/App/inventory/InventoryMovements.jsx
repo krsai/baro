@@ -31,7 +31,7 @@ const labels={
  en:['Receipt','Issue','Stock item','Register new item','Owner','Type','Quantity','Date','Remark','Movement saved.','Movement type'],
  vi:['Nh\u1eadp kho','Xu\u1ea5t kho','M\u1eb7t h\u00e0ng','\u0110\u0103ng k\u00fd m\u1eb7t h\u00e0ng m\u1edbi','Ch\u1ee7 s\u1edf h\u1eefu','Lo\u1ea1i','S\u1ed1 l\u01b0\u1ee3ng','Ng\u00e0y','Ghi ch\u00fa','\u0110\u00e3 l\u01b0u.','Lo\u1ea1i giao d\u1ecbch'],
 };
-const masterLabels={ko:'\uc790\uc7ac \ub9c8\uc2a4\ud130',en:'Material master',vi:'Danh m\u1ee5c v\u1eadt t\u01b0'};
+const masterLabels={ko:'자재',en:'Material',vi:'Vật tư'};
 const axes=['length','width','height'];
 const today=()=>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const ownerName=(row,language)=>materialItemName(row,language)||row?.name||'';

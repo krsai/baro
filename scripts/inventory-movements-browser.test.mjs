@@ -50,7 +50,7 @@ try{
   assert.equal(writes.length,0,'header approval selection does not submit an incomplete movement');
   const pick=async(label,value)=>{const input=page.getByRole('textbox',{name:label});await input.fill(value);await input.press('Enter');};
   await masterLoad;
-  await pick(/Material master/i,'CTN');
+  await pick(/Material/i,'CTN');
   await page.getByRole('button',{name:'Register new item'}).waitFor();
   if(useExisting){
    await pick(/Stock item/i,'BARO');
