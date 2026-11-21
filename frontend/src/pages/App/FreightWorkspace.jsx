@@ -20,7 +20,7 @@ const types=['jobs','masters','dispatches'],statuses=['DRAFT','BOOKED','IN_TRANS
 const grid={display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',sm:'repeat(2,minmax(0,1fr))'},gap:2};
 const blank=()=>({clientKey:crypto.randomUUID(),mode:'AIR',service:'GENERAL',houseStatus:'UNKNOWN',houseNumber:'',masterId:null,customerId:null,status:'DRAFT',data:{direction:'IMPORT',quantity:'0',unit:'PKG',weightKg:'0',cbm:'0'}});
 const dateText=v=>v?new Date(v).toLocaleString():'';
-export default function FreightWorkspace(){const {activeOrgId}=useAuth(),[params]=useSearchParams();return ['masters','dispatches'].includes(params.get('type'))||params.get('view')==='operations'?<Workspace key={activeOrgId} orgId={activeOrgId}/>:<Navigate to={'/shipping'+(params.toString()?'?'+params.toString():'')} replace/>;}
+export default function FreightWorkspace(){const {activeOrgId,activeOrgType}=useAuth(),[params]=useSearchParams();if(activeOrgType!=='SERVICE')return <Navigate to="/shipping" replace/>;return ['masters','dispatches'].includes(params.get('type'))||params.get('view')==='operations'?<Workspace key={activeOrgId} orgId={activeOrgId}/>:<Navigate to={'/shipping'+(params.toString()?'?'+params.toString():'')} replace/>;}
 export function Workspace({orgId}){
  const {showNotification}=useAppActions();
  const {languageCode}=useLanguage(),t=freightText[languageCode]||freightText.en,[params,setParams]=useSearchParams(),type=types.includes(params.get('type'))?params.get('type'):'jobs',id=params.get('id');

@@ -7,7 +7,7 @@ import {searchShippingAirports} from './shippingAirports';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {freightActor,freightOptions} from './freightOperations';
+import {freightActor,freightForwarder,freightOptions} from './freightOperations';
 import {transportSnapshot,transportPartners} from './transportExchange';
 import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
@@ -107,14 +107,14 @@ export async function actOnShippingRequest(db:any,orgId:number,actorId:number,id
  });
 }
 export async function shippingCharges(db:any,orgId:number,actorId:number,id:string){
- await actor(db,orgId,actorId);const row=await memberJob(db,orgId,id);
+ if((await actor(db,orgId,actorId)).type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);const row=await memberJob(db,orgId,id);
  if(row.orgId!==orgId)fail('SHIPPING_ACCESS_DENIED',403);
  return {rows:await db.$queryRawUnsafe('SELECT id,direction,description,"currencyCode",amount::text,version FROM "ShippingChargeDraft" WHERE "jobId"=$1 AND "orgId"=$2 ORDER BY "createdAt",id',id,orgId),currencies:await db.currency.findMany({select:{code:true,name:true},orderBy:{code:'asc'}})};
 }
 export async function saveShippingCharge(db:any,orgId:number,actorId:number,id:string,input:any){
  if(typeof input.id!=='string'||!/^[a-zA-Z0-9_-]{8,80}$/.test(input.id)||!['PURCHASE','SALES'].includes(input.direction)||typeof input.description!=='string'||!input.description.trim()||input.description.length>500||typeof input.amount!=='string'||!/^\d{1,20}(?:\.\d{1,4})?$/.test(input.amount)||typeof input.currencyCode!=='string'||Object.keys(input).some(key=>!['id','direction','description','currencyCode','amount','version'].includes(key)))fail('SHIPPING_INVALID');
  return retryEditTransaction(db,async(tx:any)=>{
-  await actor(tx,orgId,actorId);const job=await memberJob(tx,orgId,id,true);
+  if((await actor(tx,orgId,actorId)).type!=='SERVICE')fail('SHIPPING_ACCESS_DENIED',403);const job=await memberJob(tx,orgId,id,true);
   if(job.orgId!==orgId)fail('SHIPPING_ACCESS_DENIED',403);
   if(job.receiptStatus!=='ACCEPTED'||job.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);
   if(!await tx.currency.findUnique({where:{code:input.currencyCode},select:{id:true}}))fail('SHIPPING_INVALID');
@@ -151,8 +151,9 @@ export function registerShippingRequestRoutes(app:any,db:any,gates:any){
  route('post','/presets',(scope:any,req:any)=>saveShippingPreset(db,scope,req.body));
  route('delete','/presets/:presetId',(scope:any,req:any)=>saveShippingPreset(db,scope,{...req.body,id:req.params.presetId},true));
  route('get','/:id',({orgId,actorId}:any,req:any)=>readShippingRequest(db,orgId,actorId,req.params.id));
- route('get','/:id/charges',({orgId,actorId}:any,req:any)=>shippingCharges(db,orgId,actorId,req.params.id));
- route('post','/:id/charges',({orgId,actorId}:any,req:any)=>saveShippingCharge(db,orgId,actorId,req.params.id,req.body));
+ const chargeAccess=async({orgId,actorId,org}:any)=>{const employee=await freightForwarder(db,orgId,actorId);if(!(await gates.loadPolicy()).policy?.[org.type]?.[employee.orgRole]?.includes('FREIGHT')||!(await companyIndustryMenuFeatures(db,orgId,org.type)).includes('FREIGHT'))fail('SHIPPING_ACCESS_DENIED',403);};
+ route('get','/:id/charges',async(scope:any,req:any)=>{await chargeAccess(scope);return shippingCharges(db,scope.orgId,scope.actorId,req.params.id);});
+ route('post','/:id/charges',async(scope:any,req:any)=>{await chargeAccess(scope);return saveShippingCharge(db,scope.orgId,scope.actorId,req.params.id,req.body);});
  route('post','/:id/documents/share',({orgId,actorId}:any,req:any)=>shareShippingDocument(db,orgId,actorId,req.params.id,req.body));
  route('post','',({orgId,actorId}:any,req:any)=>submitShippingRequest(db,orgId,actorId,req.body));
  route('post','/:id',({orgId,actorId}:any,req:any)=>actOnShippingRequest(db,orgId,actorId,req.params.id,req.body));

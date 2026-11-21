@@ -4,6 +4,7 @@ import {generalCustomerFields,shippingGeneralCustomer,SHIPPING_GENERAL_CUSTOMER_
 import {shippingRouteFields} from './shippingRoute';
 import {shippingPortFields,validateShippingPorts} from './shippingPorts';
 import {registerJobRoutes} from './freightJobs';
+import {companyIndustryMenuFeatures} from './industryMenuPolicy';
 import {attachLinkedCompanies} from './companyConnections';
 import {createHash,randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
@@ -22,6 +23,12 @@ const canonical=(v:any)=>{const s=String(v).replace(/^0+(?=\d)/,'');return s.inc
 export async function freightActor(db:any,orgId:number,actorId:number){
  const actor=await db.employee.findFirst({where:{id:actorId,orgId,status:'ACTIVE',orgRole:{in:['ADMIN','OPERATOR','ACCOUNTANT']}},select:{id:true,name:true,orgRole:true}});
  if(!actor)fail('ACTIVE_EMPLOYEE_REQUIRED',403);return actor;
+}
+export async function freightForwarder(db:any,orgId:number,actorId:number){
+ const employee=await freightActor(db,orgId,actorId);
+ const company=await db.organization.findFirst({where:{id:orgId,type:'SERVICE',isActive:true,ownerOrgId:null,OR:[{dataOwnerOrgId:null},{dataOwnerOrgId:orgId}]},select:{id:true}});
+ if(!company)fail('FREIGHT_ACCESS_DENIED',403);
+ return employee;
 }
 // Keep party lookup independent of Prisma relation aliases used by other modules.
 export async function scopedParty(db:any,orgId:number,id:number){
@@ -131,6 +138,11 @@ export async function saveFreight(db:any,orgId:number,actorId:number,type:keyof 
    fail('FREIGHT_CHANGED',409);
   }
   const value=await normalize(tx,orgId,type,input,before?.data,actorId);
+  if(type==='jobs'&&before?.data?.documentSetup){
+   const allowed=value.service==='EXPRESS'?['WAYBILL']:value.mode==='SEA'?['BILL_OF_LADING','SEA_WAYBILL']:value.mode==='AIR'?['AIR_WAYBILL']:['WAYBILL'];
+   if(!allowed.includes(before.data.documentSetup.documentType))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+   value.data.documentSetup=before.data.documentSetup;
+  }
   // A status is an operational observation, not an automatically signed POD.
   if(type==='jobs'&&value.status==='DELIVERED'&&(!value.data.deliveryDate||!value.data.recipient))fail('FREIGHT_DELIVERY_REQUIRED');
   const sourceId=id||randomUUID(),columns=Object.keys(value),params=columns.map(k=>k==='data'?JSON.stringify((value as any)[k]):(value as any)[k]);
@@ -156,8 +168,10 @@ export async function listFreight(db:any,orgId:number,actorId:number,type:keyof 
  await freightActor(db,orgId,actorId);if(!tables[type])fail('FREIGHT_NOT_FOUND',404);
  const search=optional(input.search,160),offset=Number(input.offset||0);if(!Number.isSafeInteger(offset)||offset<0||offset>100000)fail('FREIGHT_INVALID_INPUT');
  const sort=input.sort||'createdAt',direction=input.sortDirection||'desc';if(!['createdAt','mode'].includes(sort)||!['asc','desc'].includes(direction)||sort==='mode'&&type!=='jobs')fail('FREIGHT_INVALID_INPUT');
+ const source=input.source||'',status=input.status||'';if(!['','CUSTOMER','FORWARDER'].includes(source)||!['','DRAFT','BOOKED','IN_TRANSIT','ARRIVED','DELIVERED','CANCELLED'].includes(status)||(source||status)&&type!=='jobs')fail('FREIGHT_INVALID_INPUT');
+ const filter=type==='jobs'?` AND ($4='' OR q.status=$4) AND ($5='' OR CASE WHEN q."requestCreatedByOrgId" IS NOT NULL AND q."requestCreatedByOrgId"<>q."orgId" THEN 'CUSTOMER' ELSE 'FORWARDER' END=$5)`:'';
  const order=sort==='mode'?"CASE WHEN q.service='EXPRESS' THEN 'EXPRESS' WHEN q.mode='SEA' THEN COALESCE(q.data->>'shipmentType','SEA') ELSE q.mode END":'q."createdAt"';
- const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name',data->>'actualRequesterName',data->>'actualRequesterPhone'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ORDER BY ${order} ${direction.toUpperCase()},q."createdAt" DESC,q.id LIMIT 50 OFFSET $3`,orgId,search,offset);
+ const result=await db.$queryRawUnsafe(`SELECT q.*,${type==='jobs'?'(SELECT m.number FROM "FreightMaster" m WHERE m.id=q."masterId" AND m."orgId"=q."orgId") AS "masterNumber",':''}count(*) OVER()::integer AS "totalCount" FROM "${tables[type]}" q WHERE "orgId"=$1 AND ($2='' OR concat_ws(' ',number,data->>'origin',data->>'destination',data->'customer'->>'name',data->>'actualRequesterName',data->>'actualRequesterPhone'${type==='jobs'?',"houseNumber"':''}) ILIKE '%'||replace(replace(replace($2,'\\','\\\\'),'%','\\%'),'_','\\_')||'%') ${filter} ORDER BY ${order} ${direction.toUpperCase()},q."createdAt" DESC,q.id LIMIT 50 OFFSET $3`,orgId,search,offset,...(type==='jobs'?[status,source]:[]));
  return {rows:result.map(({totalCount,...row}:any)=>row),total:result[0]?.totalCount||0,offset};
 }
 export async function freightDetail(db:any,orgId:number,actorId:number,type:keyof typeof tables,id:string){
@@ -201,7 +215,7 @@ export async function issueFreightDocument(db:any,orgId:number,actorId:number,ty
  });
 }
 export function registerFreightRoutes(app:any,db:any,gates:any){
- const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return null;const orgId=ctx.organization.id,actorId=gates.actorId();await freightActor(db,orgId,actorId);const setting=await gates.loadPolicy();if(!setting.policy?.[ctx.organization.type]?.[ctx.employee.orgRole]?.includes('FREIGHT'))fail('FREIGHT_ACCESS_DENIED',403);return {orgId,actorId};};
+ const access=async(req:any,res:any)=>{const ctx=await gates.requireOrgRole(req,res,{allowedRoles:['ADMIN','OPERATOR','ACCOUNTANT'],allowSystemAdmin:false});if(!ctx)return null;const orgId=ctx.organization.id,actorId=gates.actorId();await freightForwarder(db,orgId,actorId);const setting=await gates.loadPolicy();if(!setting.policy?.[ctx.organization.type]?.[ctx.employee.orgRole]?.includes('FREIGHT')||!(await companyIndustryMenuFeatures(db,orgId,'SERVICE')).includes('FREIGHT'))fail('FREIGHT_ACCESS_DENIED',403);return {orgId,actorId};};
  registerJobRoutes(app,db,access);
  const route=(method:string,path:string,work:any)=>app[method](path,async(req:any,res:any)=>{const scope=await access(req,res);if(scope)res.json(await work(scope,req));});
  route('get','/freight/options',({orgId,actorId}:any)=>freightOptions(db,orgId,actorId));

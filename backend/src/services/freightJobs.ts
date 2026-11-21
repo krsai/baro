@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {createHttpError} from '../utils/http';
 import {retryEditTransaction} from '../utils/editRevision';
-import {freightActor,listFreight,saveFreight} from './freightOperations';
+import {freightActor,freightForwarder,listFreight,saveFreight} from './freightOperations';
 const fail=(code:string,status=400):never=>{throw createHttpError(status,code);};
 const text=(v:any,max=120)=>typeof v==='string'&&v.trim().length<=max?v.trim():fail('FREIGHT_INVALID_INPUT');
 async function job(db:any,orgId:number,id:string,lock=false){
@@ -14,13 +14,16 @@ export async function jobDetail(db:any,orgId:number,actorId:number,id:string){
  return {...row,bills};
 }
 export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:string,input:any,id?:string,remove=false){
- await freightActor(db,orgId,actorId);
+ await freightForwarder(db,orgId,actorId);
  return retryEditTransaction(db,async(tx:any)=>{
-  await freightActor(tx,orgId,actorId);await job(tx,orgId,jobId,true);
+  await freightForwarder(tx,orgId,actorId);const current=await job(tx,orgId,jobId,true);
+  if(current.receiptStatus!=='ACCEPTED'||current.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);
   const before=id?(await tx.$queryRawUnsafe('SELECT * FROM "FreightBill" WHERE id=$1 AND "orgId"=$2 AND "jobId"=$3 AND "deletedAt" IS NULL',id,orgId,jobId))[0]:null;
   if(id&&!before)fail('FREIGHT_NOT_FOUND',404);
   if(before&&before.version!==input.version)fail('FREIGHT_CHANGED',409);
   const kind=before?.kind||input.kind;if(!['MASTER','HOUSE'].includes(kind)||before&&input.kind&&input.kind!==kind||input.masterIds!==undefined)fail('FREIGHT_INVALID_INPUT');
+  const composition=current.data.documentSetup?.composition;
+  if(!remove&&!before&&(composition==='MASTER_ONLY'&&kind==='HOUSE'||composition==='HOUSE_ONLY'&&kind==='MASTER'))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
   const number=remove?before.number:text(input.number),issuer=remove?before.issuer:text(input.issuer??'',200);
   if(!number)fail('FREIGHT_REQUIRED');
   const masterId=remove?before.masterId:input.masterId==null||input.masterId===''?null:text(input.masterId,100);
@@ -36,6 +39,26 @@ export async function saveJobBill(db:any,orgId:number,actorId:number,jobId:strin
    rows=await tx.$queryRawUnsafe('INSERT INTO "FreightBill"(id,"orgId","jobId",kind,number,issuer,"masterId","createdByEmployeeId","updatedByEmployeeId") VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *',billId,orgId,jobId,kind,number,issuer,masterId,actorId);
   }
   await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'bills\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,billId,rows[0].version,actorId,before?JSON.stringify(before):null,JSON.stringify(rows[0]));
+  return rows[0];
+ });
+}
+export async function saveDocumentSetup(db:any,orgId:number,actorId:number,jobId:string,input:any){
+ await freightForwarder(db,orgId,actorId);
+ if(!input||Object.keys(input).some(key=>!['version','composition','documentType'].includes(key))||!['MASTER_ONLY','MASTER_HOUSE','HOUSE_ONLY'].includes(input.composition))fail('FREIGHT_INVALID_INPUT');
+ return retryEditTransaction(db,async(tx:any)=>{
+  await freightForwarder(tx,orgId,actorId);const current=await job(tx,orgId,jobId,true);
+  if(current.receiptStatus!=='ACCEPTED'||current.status==='CANCELLED')fail('SHIPPING_NOT_ACCEPTED',409);
+  const allowed=current.service==='EXPRESS'?['WAYBILL']:current.mode==='SEA'?['BILL_OF_LADING','SEA_WAYBILL']:current.mode==='AIR'?['AIR_WAYBILL']:['WAYBILL'];
+  if(!allowed.includes(input.documentType))fail('FREIGHT_INVALID_INPUT');
+  const setup={composition:input.composition,documentType:input.documentType};
+  if(JSON.stringify(current.data.documentSetup)===JSON.stringify(setup))return current;
+  if(current.version!==input.version)fail('FREIGHT_CHANGED',409);
+  // Changing a display preference must never remove or reclassify saved bills.
+  const bills=await tx.$queryRawUnsafe('SELECT kind FROM "FreightBill" WHERE "orgId"=$1 AND "jobId"=$2 AND "deletedAt" IS NULL',orgId,jobId);
+  if(bills.some((bill:any)=>input.composition==='MASTER_ONLY'&&bill.kind==='HOUSE'||input.composition==='HOUSE_ONLY'&&bill.kind==='MASTER'))fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+  if(bills.length&&current.data.documentSetup?.documentType&&current.data.documentSetup.documentType!==input.documentType)fail('FREIGHT_COMPOSITION_HAS_BILLS',409);
+  const rows=await tx.$queryRawUnsafe('UPDATE "FreightJob" SET data=$1::jsonb,version=version+1,"updatedByEmployeeId"=$2,"updatedAt"=CURRENT_TIMESTAMP WHERE id=$3 AND "orgId"=$4 RETURNING *',JSON.stringify({...current.data,documentSetup:setup}),actorId,jobId,orgId);
+  await tx.$executeRawUnsafe('INSERT INTO "FreightAudit"(id,"orgId",entity,"sourceId",version,"actorId","before","after") VALUES($1,$2,\'document-setup\',$3,$4,$5,$6::jsonb,$7::jsonb)',randomUUID(),orgId,jobId,rows[0].version,actorId,JSON.stringify(current),JSON.stringify(rows[0]));
   return rows[0];
  });
 }
@@ -56,6 +79,7 @@ export function registerJobRoutes(app:any,db:any,access:any){
   return saveFreight(db,orgId,actorId,'jobs',{...req.body,status:previous?.status??'DRAFT',masterId:previous?.masterId??null,houseStatus:previous?.houseStatus??'NONE',houseNumber:previous?.houseNumber??null},req.params.id);
  };
  route('post','',save);route('put','/:id',save);
+ route('put','/:id/document-setup',({orgId,actorId}:any,req:any)=>saveDocumentSetup(db,orgId,actorId,req.params.id,req.body));
  route('post','/:id/bills',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body));
  route('put','/:id/bills/:billId',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body,req.params.billId));
  route('delete','/:id/bills/:billId',({orgId,actorId}:any,req:any)=>saveJobBill(db,orgId,actorId,req.params.id,req.body,req.params.billId,true));

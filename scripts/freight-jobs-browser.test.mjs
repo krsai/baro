@@ -1,3 +1,4 @@
+import {freightWorkflowText} from '../frontend/src/constants/freightWorkflow.js';
 import {enterRouteAddress,enterRoutePort,selectContainer} from './helpers/shipping-route-browser.mjs';
 import {shippingEditorText} from '../frontend/src/constants/shippingEditor.js';
 import {routeScopeText} from '../frontend/src/constants/freightRouteScope.js';
@@ -20,7 +21,7 @@ try{
  for(const lang of ['ko','en','vi']){
   console.log('Checking job and BL management',lang);
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],t={...jobText[lang],...shippingText[lang]},e=freightJobEditorText[lang];page.setDefaultTimeout(15000);page.setDefaultNavigationTimeout(60000);page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});page.on('dialog',d=>d.accept());
-  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7});'}));
+  await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:7,activeOrgType:"SERVICE"});'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
   await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const a={markTabChanged:()=>{},clearTabChanged:()=>{},showNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>a;'}));
   let job=null,bills=[],customerAddress='Hanoi',optionReads=0;
@@ -31,6 +32,7 @@ try{
    else if(p==='transport-jobs/options')json={forwarder:{id:7,code:'DEXL',name:'DEX LOGIS'},employees:[{id:9,employeeNo:'DEXL0004',name:'DEX operator'}]};
    else if(p==='transport-jobs'&&req.method()==='POST'){const v=req.postDataJSON();assert.equal(v.customerId,11);assert.equal(v.masterId,undefined);assert.equal(v.houseNumber,undefined);job={...v,id:'job1',number:'SHP-001',version:1,data:{...v.data,customer:{name:'BARO'}}};json=job;}
    else if(p==='transport-jobs')json={rows:job?[job]:[],total:job?1:0};
+   else if(p==='transport-jobs/job1/document-setup'){job={...job,version:job.version+1,data:{...job.data,documentSetup:req.postDataJSON()}};json=job;}
    else if(p==='transport-jobs/job1'&&req.method()==='GET')json={...job,bills};
    else if(p==='transport-jobs/job1'&&req.method()==='PUT'){job={...job,...req.postDataJSON(),version:job.version+1};json=job;}
    else if(p==='transport-jobs/job1/bills'&&req.method()==='POST'){json={...req.postDataJSON(),version:1};bills.push(json);}
@@ -107,6 +109,7 @@ try{
   assert.equal(await oogPanel.locator('textarea').count(),0);
   if(lang==='ko'&&process.env.BARO_SHIPPING_SCREENSHOT){await page.locator('.MuiPopover-root').waitFor({state:'hidden'});await page.getByRole('dialog').locator('.MuiDialogContent-root').first().evaluate(el=>el.scrollTop=0);await page.screenshot({path:process.env.BARO_SHIPPING_SCREENSHOT});}
   await page.getByRole('button',{name:t.save,exact:true}).click();await page.getByText('SHP-001',{exact:true}).waitFor();assert.equal(bills.length,0);assert.equal(job.data.notifyParty.address,'B/L address');assert.equal(job.data.originPortCode,'VNHPH');assert.equal(job.data.destinationPortCode,'KRPUS');assert.equal(job.data.hsCode,'610910');assert.deepEqual(job.data.oogPackages,[{quantity:'1',lengthM:'12.5',widthM:'3.2',heightM:'3.5'}]);assert.equal(job.data.dgClass,'3');assert.equal(job.data.unNumber,'1993');assert.equal(job.data.assigneeId,undefined);assert.equal(job.data.exportCustoms,undefined);assert.equal(job.data.containerCount,undefined);assert.deepEqual(job.data.containers,[{size:'40',type:'FR',count:'2'}]);
+  const w=freightWorkflowText[lang];await page.getByRole('tab',{name:w.setup,exact:true}).click();await page.getByRole('combobox',{name:w.composition,exact:true}).click();await page.getByRole('option',{name:w.MASTER_HOUSE,exact:true}).click();await page.getByRole('button',{name:w.save,exact:true}).click();await page.getByRole('button',{name:w.next,exact:true}).click();
   const add=async(kind,number)=>{await page.getByRole('button',{name:kind==='MASTER'?t.addMaster:t.addHouse,exact:true}).click();await dialog.getByRole('textbox',{name:t.billNumber,exact:true}).fill(number);await dialog.getByRole('button',{name:t.save,exact:true}).click();await dialog.waitFor({state:'hidden'});await page.getByText(number,{exact:true}).waitFor();};
   await add('HOUSE','H-001');await add('MASTER','M-001');await add('MASTER','M-002');await add('HOUSE','H-002');
   const house=bills.find(b=>b.number==='H-001');await page.locator(`[data-bill-id="${house.id}"]`).getByRole('button',{name:t.edit,exact:true}).click();

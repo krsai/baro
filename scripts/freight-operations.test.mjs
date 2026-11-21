@@ -50,7 +50,7 @@ test('forwarding: master with multiple houses, Direct, split dispatches, immutab
 });
 test('freight routes require explicit saved feature and actual membership; SYSTEM does not bypass access',async()=>{
  const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>routes.set(method+' '+path,fn)]));
- const employee={findFirst:async()=>({id:1,name:'Admin',orgRole:'ADMIN'})},db={employee};
+ const employee={findFirst:async()=>({id:1,name:'Admin',orgRole:'ADMIN'})},db={employee,organization:{findFirst:async()=>({id:1})},systemSetting:{findUnique:async()=>null},partnerClassification:{findUnique:async()=>null}};
  let enabled=false,ctx={organization:{id:1,type:'SERVICE'},employee:{orgRole:'ADMIN'}};
  registerFreightRoutes(app,db,{requireOrgRole:async(req,res,options)=>{assert.equal(options.allowSystemAdmin,false);return ctx;},actorId:()=>1,loadPolicy:async()=>({policy:{SERVICE:{ADMIN:enabled?['FREIGHT']:[]}}})});
  const route=routes.get('get /freight/options');await assert.rejects(route({},{}),/FREIGHT_ACCESS_DENIED/);
