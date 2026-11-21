@@ -1,4 +1,4 @@
-import PageContentStack from '../../../components/PageContentStack';
+import HierarchyPanel from '../../../components/HierarchyPanel';
 ﻿import React from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 import {
@@ -33,6 +33,8 @@ const StaticOptionBoard = () => {
   const { languageCode } = useLanguage();
   const groupCount = STATIC_OPTION_GROUPS.length;
   const itemCount = countStaticOptionItems();
+  const [selectedKey,setSelectedKey]=React.useState(STATIC_OPTION_GROUPS[0]?.key);
+  const selectedGroup=STATIC_OPTION_GROUPS.find(group=>group.key===selectedKey)||STATIC_OPTION_GROUPS[0];
 
   return (
     <AppPageContainer
@@ -71,8 +73,8 @@ const StaticOptionBoard = () => {
         />
       )}
     >
-      <PageContentStack>
-        {STATIC_OPTION_GROUPS.map((group) => (
+      <HierarchyPanel label={getUiMessage('staticOptionBoard.title', '정적 사전', languageCode)} items={STATIC_OPTION_GROUPS.map(group=>({id:group.key,label:group.title,count:group.items.length}))} selectedId={selectedGroup?.key} onSelect={setSelectedKey}>
+        {selectedGroup&&[selectedGroup].map((group) => (
           <Paper key={group.key} variant="outlined" sx={{ overflow: 'hidden', borderRadius: 2 }}>
             <Box
               sx={{
@@ -150,7 +152,7 @@ const StaticOptionBoard = () => {
             </TableContainer>
           </Paper>
         ))}
-      </PageContentStack>
+      </HierarchyPanel>
     </AppPageContainer>
   );
 };

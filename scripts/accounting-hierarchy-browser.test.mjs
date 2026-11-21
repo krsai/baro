@@ -16,8 +16,9 @@ try{
  for(const lang of ['ko','en','vi'])for(const industries of [true]){
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],writes=[],text=EXPENSE_TEXT[lang];page.on('pageerror',error=>errors.push(error.message));
   await page.route('**/src/context/AuthContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'export const useAuth=()=>({activeOrgId:null});'}));
+  await page.route('**/src/context/AppContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:'const actions={showNotification:()=>{},removeNotification:()=>{},setUnsavedChangesGuard:()=>{},clearUnsavedChangesGuard:()=>{}};export const useAppActions=()=>actions;'}));
   await page.route('**/src/context/LanguageContext.jsx*',r=>r.fulfill({contentType:'application/javascript',body:`export const useLanguage=()=>({languageCode:'${lang}'});`}));
-  let types=[names(1,'TYPE_A'),names(2,'TYPE_B'),names(3,'TYPE_C')],roles=[names(11,'CUSTOMER'),names(12,'SUPPLIER'),names(13,'LOGISTICS')],rejectOrder=false;
+  let types=[names(1,'TYPE_A'),names(2,'TYPE_B'),names(3,'TYPE_C')],roles=[names(11,'CUSTOMER'),names(12,'SUPPLIER'),names(13,'LOGISTICS')],rejectOrder=false,reads=0;
   const services=[{...names(21,'INDUSTRY_A'),partnerRoleId:11}],bases=[{...names(31,'AAA'),expenseTypeId:1,serviceType:services[0],serviceTypeId:21,variants:[]},{...names(32,'BBB'),expenseTypeId:2,serviceType:services[0],serviceTypeId:21,variants:[]}];
   const headers={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'*','Access-Control-Allow-Methods':'*'};
   await page.route(/\/(system-setting-defaults|expense-types)(\/|\?|$)/,async r=>{
@@ -30,7 +31,7 @@ try{
     }else types=types.map(row=>row.id===body.id?{...row,...body}:row);
     return r.fulfill({headers,json:{ok:true}});
    }
-   return r.fulfill({headers,json:url.pathname.endsWith('/expense-types')?types:url.pathname.endsWith('/partner-roles')?roles:url.pathname.endsWith('/code-bases')?bases:services});
+   reads++;return r.fulfill({headers,json:url.pathname.endsWith('/expense-types')?types:url.pathname.endsWith('/partner-roles')?roles:url.pathname.endsWith('/code-bases')?bases:services});
   });
   await page.goto(`http://127.0.0.1:${port}/accounting-hierarchy-acceptance.html${industries?'?industries':''}`);
   const nav=page.getByRole('navigation');await nav.waitFor();await nav.locator('[data-rfd-drag-handle-draggable-id]').first().waitFor();
@@ -47,8 +48,9 @@ try{
   assert.ok(writes.at(-1).path.endsWith(industries?'/partner-roles/order':'/expense-types/order'));
   assert.equal(await nav.locator('[aria-current="true"]').count(),1);
   // A rejected keyboard reorder reloads the authoritative order.
-  rejectOrder=true;const handle=nav.locator('[data-rfd-drag-handle-draggable-id]').first();await handle.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowDown');await page.keyboard.press('Space');
-  await page.getByRole('alert').first().waitFor();assert.equal(writes.length,2);assert.equal(await nav.locator('[data-rfd-drag-handle-draggable-id]').first().getAttribute('data-rfd-drag-handle-draggable-id'),industries?'12':'2');
+  rejectOrder=true;const readsBefore=reads,handle=nav.locator('[data-rfd-drag-handle-draggable-id]').first();await handle.focus();await page.keyboard.press('Space');await page.keyboard.press('ArrowDown');await page.keyboard.press('Space');
+  for(let i=0;i<100&&(writes.length<2||reads<=readsBefore);i++)await new Promise(resolve=>setTimeout(resolve,50));
+  assert.equal(writes.length,2);assert.ok(reads>readsBefore,'Conflict reloads authoritative data');assert.equal(await nav.locator('[data-rfd-drag-handle-draggable-id]').first().getAttribute('data-rfd-drag-handle-draggable-id'),industries?'12':'2');
 
   for(const width of [768,390]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);}
   await page.reload();await nav.locator('[data-rfd-drag-handle-draggable-id]').first().waitFor();assert.equal(await nav.locator('[data-rfd-drag-handle-draggable-id]').first().getAttribute('data-rfd-drag-handle-draggable-id'),industries?'12':'2');assert.deepEqual(errors,[]);await page.close();

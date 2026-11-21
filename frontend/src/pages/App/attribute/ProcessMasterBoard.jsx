@@ -1,3 +1,4 @@
+import ListDetailLayout from '../../../components/ListDetailLayout';
 import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
@@ -9,7 +10,6 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
   IconButton,
   Paper,
   Radio,
@@ -358,6 +358,7 @@ const ProcessMasterSection = ({
   );
   const isSelectable = typeof onSelectRow === 'function';
   const canRenderExpandedPanel = typeof renderExpandedPanel === 'function';
+  const detailRow=canRenderExpandedPanel?rows.find(row=>row.id===expandedRowId):null;
   const columnCount = isSelectable ? 8 : 7;
   const sectionRef = useRef(null);
   const blurTimeoutRef = useRef(null);
@@ -419,6 +420,7 @@ const ProcessMasterSection = ({
   return (
     <Paper
       ref={sectionRef}
+      data-process-master-section={sectionKey}
       variant="outlined"
       sx={{
         p: 2,
@@ -459,8 +461,8 @@ const ProcessMasterSection = ({
         </Button>
       </Box>
 
-      <TableContainer sx={buildProcessMasterTableContainerSx(maxHeight)}>
-        <Table size="small" stickyHeader>
+      <ListDetailLayout breakpoint="xl" listWidth="minmax(0,1.3fr)" sx={{flex:1,minHeight:0}} listSx={{display:'flex',flexDirection:'column'}} list={<TableContainer sx={buildProcessMasterTableContainerSx(maxHeight)}>
+        <Table data-table-layout="wide" size="small" stickyHeader sx={{minWidth:detailRow?1040:undefined}}>
           <TableHead>
             <TableRow>
               {isSelectable ? (
@@ -488,15 +490,15 @@ const ProcessMasterSection = ({
                   } / 스타일 공정 ${usageConflict.styleProcessCount}개 참조`
                 : '';
               const isSelected = selectedRowId === row.id;
-              const isExpanded = expandedRowId === row.id;
               return (
                 <React.Fragment key={row.id}>
                   <TableRow
                     hover
                     selected={isSelected}
                     tabIndex={isSelectable?0:undefined} onKeyDown={activateOnKeyboard}
-                    onClick={() => {
-                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: true });
+                    onClick={(event) => {
+                      if(event.target.closest('input,button,textarea,select,[role="combobox"]'))return;
+                      if (typeof onSelectRow === 'function') onSelectRow(sectionKey, row.id, { toggle: false });
                     }}
                     sx={
                       isSelectable
@@ -515,7 +517,7 @@ const ProcessMasterSection = ({
                           checked={isSelected}
                           onClick={(event) => {
                             event.stopPropagation();
-                            onSelectRow(sectionKey, row.id, { toggle: true });
+                            onSelectRow(sectionKey, row.id, { toggle: false });
                           }}
                         />
                       </TableCell>
@@ -616,24 +618,7 @@ const ProcessMasterSection = ({
                       )}
                     </TableCell>
                   </TableRow>
-                  {canRenderExpandedPanel && isExpanded ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={columnCount}
-                        sx={{
-                          p: 0,
-                          borderBottom: 0,
-                          backgroundColor: 'rgba(25, 118, 210, 0.04)',
-                        }}
-                      >
-                        <Collapse in timeout="auto" unmountOnExit>
-                          <Box sx={{ p: 1.5 }}>
-                            {renderExpandedPanel(row)}
-                          </Box>
-                        </Collapse>
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
+
                 </React.Fragment>
               );
             })}
@@ -646,7 +631,7 @@ const ProcessMasterSection = ({
             ) : null}
           </TableBody>
         </Table>
-      </TableContainer>
+      </TableContainer>} detail={detailRow?renderExpandedPanel(detailRow):null} detailSx={{overflow:'auto'}}/>
     </Paper>
   );
 };
@@ -1850,8 +1835,8 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
                 title="대상 등록"
                 description={
                   isSpecView
-                    ? '규격을 관리할 대상을 먼저 선택하세요. 선택한 대상에 연결된 규격만 바로 아래에서 등록하거나 해제할 수 있습니다.'
-                    : '선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 대상 규격을 함께 등록할 수 있습니다.'
+                    ? '규격을 관리할 대상을 먼저 선택하세요. 선택한 대상에 연결된 규격을 상세 영역에서 등록하거나 해제할 수 있습니다.'
+                    : '선택형 공정에서 조합할 대상 기본 항목의 다국어명을 관리합니다. 행을 선택하면 상세 영역에서 대상 규격을 함께 등록할 수 있습니다.'
                 }
                 rows={formData.targets || []}
                 languageCode={languageCode}
@@ -1916,8 +1901,8 @@ const ProcessMasterBoard = ({ viewKey = 'overview' }) => {
                 title="동작 등록"
                 description={
                   isSpecView
-                    ? '규격을 관리할 동작을 먼저 선택하세요. 선택한 동작에 연결된 규격만 바로 아래에서 등록하거나 해제할 수 있습니다.'
-                    : '선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 행을 선택하면 바로 아래에서 동작 규격을 함께 등록할 수 있습니다.'
+                    ? '규격을 관리할 동작을 먼저 선택하세요. 선택한 동작에 연결된 규격을 상세 영역에서 등록하거나 해제할 수 있습니다.'
+                    : '선택형 공정에서 조합할 동작 기본 항목의 다국어명을 관리합니다. 행을 선택하면 상세 영역에서 동작 규격을 함께 등록할 수 있습니다.'
                 }
                 rows={formData.actions || []}
                 languageCode={languageCode}

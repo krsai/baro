@@ -1,3 +1,4 @@
+import ListDetailLayout from './ListDetailLayout';
 import React from 'react';
 import {Box,List,ListItemButton,Paper,Typography} from '@mui/material';
 import ChevronRight from '@mui/icons-material/ChevronRight';
@@ -21,11 +22,10 @@ export default function HierarchyPanel({label,items,selectedId,onSelect,children
    return onReorder?<Draggable key={item.id} draggableId={String(item.id)} index={index} isDragDisabled={reorderDisabled}>{renderRow}</Draggable>:<React.Fragment key={item.id}>{renderRow()}</React.Fragment>;
   })}{provided?.placeholder}
  </List>;
- return <Paper variant="outlined" data-testid="hierarchy-panel" sx={{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'240px minmax(0,1fr)'},overflow:'hidden'}}>
-  <Box component="nav" aria-label={label} sx={{p:2,bgcolor:'#f8fafc',borderRight:{xs:0,md:'1px solid #e5eaf2'},borderBottom:{xs:'1px solid #e5eaf2',md:0}}}>
+ return <Paper variant="outlined" data-testid="hierarchy-panel" sx={{overflow:'hidden'}}>
+  <ListDetailLayout listWidth="240px" sx={{gap:0,alignItems:'stretch'}} listSx={{display:'flex',flexDirection:'column'}} list={<Box component="nav" aria-label={label} sx={{flex:1,p:2,bgcolor:'#f8fafc',borderRight:{xs:0,md:'1px solid #e5eaf2'},borderBottom:{xs:'1px solid #e5eaf2',md:0}}}>
    <Typography variant="subtitle2" color="text.secondary" sx={{mb:1.5}}>{label}</Typography>
    {onReorder?<DragDropContext onDragEnd={({source,destination})=>{if(!reorderDisabled&&destination&&source.index!==destination.index)onReorder(source.index,destination.index);}}><Droppable droppableId="hierarchy-categories">{renderItems}</Droppable></DragDropContext>:renderItems()}
-  </Box>
-  <Box key={contentKey} sx={{p:{xs:2,md:2.5},minWidth:0}}>{children}</Box>
+  </Box>} detail={<Box key={contentKey} sx={{p:{xs:2,md:2.5},minWidth:0}}>{children}</Box>}/>
  </Paper>;
 }
