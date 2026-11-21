@@ -1,3 +1,4 @@
+import TableStatusRow from './TableStatusRow';
 import {activateOnKeyboard} from '../utils/keyboardPolicy.mjs';
 import React, { useCallback, useEffect, useState } from 'react';
 import {Box,Button,CircularProgress,Drawer,IconButton,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
@@ -108,7 +109,7 @@ const QuantityReviewProcessTable = ({ processTotals, workRecords, planned, label
                                 </TableCell>
                               </TableRow>
                             )) : (
-                              <TableRow><TableCell colSpan={4} align="center">{label('연결된 작업기록이 없습니다.', 'No linked work records.', 'Không có nhật ký công việc liên kết.')}</TableCell></TableRow>
+                              <TableStatusRow colSpan={4} message={label('연결된 작업기록이 없습니다.', 'No linked work records.', 'Không có nhật ký công việc liên kết.')}/>
                             )}
                           </TableBody>
                         </Table>

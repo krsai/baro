@@ -1,3 +1,5 @@
+import ListPagination from '../../../components/ListPagination';
+import TableStatusRow from '../../../components/TableStatusRow';
 import {keyboardAction} from '../../../utils/keyboardPolicy.mjs';
 import {accountingOpeningText} from '../../../constants/accountingOpening';
 import ChangeApprovalDialog from '../../../components/ChangeApprovalDialog';
@@ -84,7 +86,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
     <Box sx={{overflowX:'auto'}}><Table size="small" sx={{minWidth:1100}}><TableHead><TableRow>
       {[common.issuedDate,flow.to,(ACCOUNTING_CODE_TEXT[languageCode]||ACCOUNTING_CODE_TEXT.en).code,entry.codeDescription,workspace.currency,labels.statement,labels.received,labels.balance,bank.createdBy,common.invoiceStatus,'PDF',change.DELETE].map((label,index)=><TableCell key={index} align={index>=5&&index<=7?'right':'left'}>{label}</TableCell>)}
     </TableRow></TableHead><TableBody>
-      {loading?<TableRow><TableCell colSpan={12} align="center"><CircularProgress size={22}/></TableCell></TableRow>:!issued.rows.length?<TableRow><TableCell colSpan={12} align="center" sx={{py:5}}>{ui.empty}</TableCell></TableRow>:issued.rows.map(row=><TableRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&keyboardAction(event,'lookup')==='confirm'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
+      {loading?<TableStatusRow colSpan={12} languageCode={languageCode} state="loading"/>:!issued.rows.length?<TableStatusRow colSpan={12} languageCode={languageCode} error={Boolean(error)} onRetry={()=>setReload(v=>v+1)}/>:issued.rows.map(row=><TableRow key={row.id} data-cancelled={row.status==='CANCELLED'} hover tabIndex={0} onDoubleClick={event=>{if(!event.target.closest('button,a,input,select'))navigateToPath('/invoices/'+encodeURIComponent(row.id));}} onKeyDown={event=>{if(event.target===event.currentTarget&&keyboardAction(event,'lookup')==='confirm'){event.preventDefault();navigateToPath('/invoices/'+encodeURIComponent(row.id));}}} sx={{cursor:'pointer'}}>
         <TableCell sx={{whiteSpace:'nowrap'}}>{new Date(row.issuedAt).toLocaleDateString({ko:'ko-KR',vi:'vi-VN',en:'en-GB'}[languageCode]||'en-GB')}</TableCell>
         <TableCell>{row.buyerName}</TableCell><TableCell>{(row.accountingCodes||[]).join(', ')||'\u2014'}</TableCell><TableCell><Typography noWrap sx={{maxWidth:240}} title={[row.invoiceNumber,...(row.descriptions||[]),...(row.orders||[]).map(order=>order.sourceOrderNumber)].filter(Boolean).join(' / ')}>{[row.invoiceNumber,...(row.descriptions||[])].filter(Boolean).join(' / ')}</Typography></TableCell><TableCell>{row.currencyCode}</TableCell>
         <TableCell align="right"><Typography variant="subtitle2">{amount(row.total,row.currencyCode)}</Typography></TableCell>
@@ -95,7 +97,7 @@ export default function InvoiceList({ orgId, languageCode, invoiceId }) {
         <TableCell data-table-actions><DeleteActionButton aria-label={change.requestDelete} disabled={loading||requesting||!['ISSUED','CANCELLED'].includes(row.status)} onClick={event=>{event.stopPropagation();deleteInvoice(row);}}/></TableCell>
       </TableRow>)}
     </TableBody></Table></Box>
-    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><Stack direction="row" alignItems="center" spacing={1}><Button disabled={!page||loading} onClick={()=>setPage(v=>v-1)}>{common.previous}</Button><Typography variant="caption">{page+1}</Typography><Button disabled={!issued.hasMore||loading} onClick={()=>setPage(v=>v+1)}>{common.next}</Button></Stack></Stack>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{p:1.5}}><Typography variant="caption" color="text.secondary">{ui.count}: {issued.rows.length}</Typography><ListPagination languageCode={languageCode} onPrevious={()=>setPage(v=>v-1)} onNext={()=>setPage(v=>v+1)} previousDisabled={!page||loading} nextDisabled={!issued.hasMore||loading} previousLabel={common.previous} nextLabel={common.next}><Typography variant="caption">{page+1}</Typography></ListPagination></Stack>
     </Paper>
     </>}
     {invoiceId&&<>

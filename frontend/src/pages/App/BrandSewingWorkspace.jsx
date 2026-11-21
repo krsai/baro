@@ -1,3 +1,4 @@
+import TableStatusRow from '../../components/TableStatusRow';
 import StyleBoard from './style/StyleBoard';
 import {keyboardAction} from '../../utils/keyboardPolicy.mjs';
 import React,{useCallback,useEffect,useState} from 'react';
@@ -43,7 +44,7 @@ function Page({orgId,mode}){
   <SearchPanel search={<SearchInput placeholder={t.search} value={search} onChange={event=>setSearch(event.target.value)}/>} onReset={()=>setSearch('')}/>
   {error&&<Alert severity="error" action={<Button onClick={refresh}>{t.retry}</Button>}>{t.failed}</Alert>}{loading&&<LinearProgress/>}
   <Paper variant="outlined" sx={{overflow:'hidden',borderRadius:2}}><TableContainer><Table size="small"><TableHead><TableRow>{(mode==='styles'?['code','name','registrationDate','designer','season']:['order','manufacturer','due',mode==='progress'?'produced':'quantity',...(mode==='progress'?['progressRate','status']:['name'])]).map(key=><TableCell key={key} align={['quantity','produced'].includes(key)?'right':'left'}>{t[key]}</TableCell>)}</TableRow></TableHead><TableBody>
-   {!loading&&!error&&!rows.length&&<TableRow><TableCell colSpan={6}>{t.empty}</TableCell></TableRow>}
+   {!loading&&!error&&!rows.length&&<TableStatusRow colSpan={6} languageCode={languageCode} state="empty"/>}
    {rows.map(row=><TableRow key={row.id} hover tabIndex={0} sx={{cursor:'pointer'}} onDoubleClick={()=>mode==='styles'?edit(row):setSelected(row)} onKeyDown={event=>{if(event.target===event.currentTarget&&keyboardAction(event,'lookup')==='confirm'){event.preventDefault();mode==='styles'?edit(row):setSelected(row);}}}>
     {mode==='styles'?['code','name','registrationDate','designer','season'].map(key=><TableCell key={key} sx={{overflowWrap:'anywhere'}}>{row.fields[key]||'—'}</TableCell>):<><TableCell>{row.orderNumber}</TableCell><TableCell>{manufacturer(row)}</TableCell><TableCell>{row.dueDate||'—'}</TableCell><TableCell align="right" sx={{whiteSpace:'nowrap'}}>{mode==='progress'?qty(row.producedQuantity)+' / ':''}{qty(row.totalQuantity)}</TableCell>{mode==='progress'?<><TableCell sx={{minWidth:150}}>{row.progressPercent==null?'—':<><LinearProgress variant="determinate" value={Math.max(0,Math.min(100,row.progressPercent))}/><Typography variant="caption">{row.progressPercent}%</Typography></>}</TableCell><TableCell>{status(row)}</TableCell></>:<TableCell sx={{overflowWrap:'anywhere'}}>{[...new Set(row.items.map(item=>item.linkVerified?item.code||item.name:t.link))].join(', ')}</TableCell>}</>}
    </TableRow>)}

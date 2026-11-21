@@ -1,3 +1,4 @@
+import TableStatusRow from './TableStatusRow';
 import {requiredAccountingInputs} from '../utils/requiredAccountingInputs.mjs';
 import {dialogTitle} from '../constants/dialogTitles';
 import ActionNotice from './ActionNotice';
@@ -51,7 +52,7 @@ export default function ExpenseCodeLinkSettings(){
    {rows.map(row=><TableRow key={row.id}><TableCell>{row.code}</TableCell><TableCell>{serviceName(row,languageCode)}</TableCell><TableCell>
     {text[row.target==='NONE'?'none':row.target.toLowerCase()]}
     </TableCell><TableCell><Button disabled={saving} onClick={()=>setEditingId(row.id)}>{text.target}</Button></TableCell></TableRow>)}
-   {!rows.length&&<TableRow><TableCell colSpan={4}>{loading?text.loading:text.empty}</TableCell></TableRow>}
+   {!rows.length&&<TableStatusRow colSpan={4} languageCode={languageCode} loading={loading} error={error} onRetry={()=>setReload(v=>v+1)}/>}
   </TableBody></Table></TableContainer>
  <Dialog open={Boolean(editing)} onClose={()=>!saving&&setEditingId(null)} fullWidth maxWidth="sm"><DialogTitle>{dialogTitle('inputSettings',languageCode)}: {editing?.code} · {serviceName(editing,languageCode)}</DialogTitle><DialogContent>{editing&&<AccountingInputSettings productionEnabled={activeProfile?.orgType!=='SERVICE'} value={editing.inputSettings} onChange={update} languageCode={languageCode} disabled={!canEdit||saving}/>}</DialogContent><DialogActions><Button onClick={()=>setEditingId(null)}>{languageCode==='ko'?'닫기':languageCode==='vi'?'Đóng':'Close'}</Button>{canEdit&&<Button disabled={saving||!editing||editing.original===fingerprint(editing)} onClick={()=>save(editing)}>{text.save}</Button>}</DialogActions></Dialog>
  </Stack></Paper>;

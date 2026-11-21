@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../../components/TableStatusRow';
 import GlobalNotice from "../../../../components/AppNotice";
 import {keyboardAction} from '../../../../utils/keyboardPolicy.mjs';
 import {advanceFormFocus} from '../../../../utils/formFocus.mjs';
@@ -3641,11 +3642,7 @@ const StyleProcess = ({
                 {(provided) => (
                   <TableBody {...provided.droppableProps} ref={provided.innerRef}>
                     {safeProcesses.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={9} align="center" sx={{ py: 5, color: 'text.secondary' }}>
-                          {getStyleProcessMessage(languageCode, 'empty')}
-                        </TableCell>
-                      </TableRow>
+                      <TableStatusRow colSpan={9} languageCode={languageCode} state="empty"/>
                     ) : (
                       processRows
                     )}

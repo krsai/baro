@@ -1,3 +1,4 @@
+import ListPagination from './ListPagination';
 import React,{useEffect,useState} from 'react';
 import {Box,Button,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,Stack,Typography} from '@mui/material';
 import AppNotice from './AppNotice';
@@ -27,7 +28,7 @@ function Alerts({orgId,languageCode='ko',onNavigate,canOpenHistory=false}){
   {error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(value=>value+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}
   {loading&&!data&&<CircularProgress size={20}/>}
   {data?.rows.map(row=><DashboardAlertItem key={row.variantId} languageCode={languageCode} kind="negative-stock" title={[t.title,row.master.baseSnapshot?.code,name(row)].filter(Boolean).join(' · ')} detail={<>{details(row)} · {t.balance} <Box component="span" sx={{color:'error.main',fontWeight:600}}>{number(row.balance)} {unit(row)}</Box></>} onClick={()=>setSelected(row)}/>)}
-  {data?.total>10&&<Stack direction="row" justifyContent="flex-end"><Button disabled={loading||page===0} onClick={()=>setPage(value=>value-1)}>{t.previous}</Button><Button disabled={loading||(page+1)*10>=data.total} onClick={()=>setPage(value=>value+1)}>{t.next}</Button></Stack>}
+  {data?.total>10&&<ListPagination languageCode={languageCode} onPrevious={()=>setPage(value=>value-1)} onNext={()=>setPage(value=>value+1)} previousDisabled={loading||page===0} nextDisabled={loading||(page+1)*10>=data.total} previousLabel={t.previous} nextLabel={t.next}></ListPagination>}
   <Dialog open={Boolean(selected)} onClose={close} fullWidth maxWidth="sm"><DialogTitle>{t.title}</DialogTitle><DialogContent>{selected&&<Stack spacing={2} sx={{pt:1}}><Typography fontWeight={600}>{[selected.master.baseSnapshot?.code,name(selected)].filter(Boolean).join(' / ')}</Typography><Typography>{details(selected)}</Typography><Box component="dl" sx={{display:'grid',gridTemplateColumns:'auto 1fr',gap:1,m:0}}>{[[t.received,number(selected.received)],[t.issued,number(selected.issued)],[t.balance,number(selected.balance)]].map(([label,value])=><React.Fragment key={label}><Typography component="dt">{label}</Typography><Typography component="dd" sx={{m:0,color:label===t.balance?'error.main':undefined,fontVariantNumeric:'tabular-nums'}}>{value} {unit(selected)}</Typography></React.Fragment>)}</Box><Typography variant="caption" color="text.secondary">{t.approvedOnly}</Typography></Stack>}</DialogContent><DialogActions><Button onClick={close}>{t.close}</Button>{canOpenHistory&&<Button variant="contained" onClick={()=>{const id=selected.variantId;close();onNavigate('/inventory/movements'+buildQueryString({variantId:id}));}}>{t.history}</Button>}</DialogActions></Dialog>
  </Stack>;
 }

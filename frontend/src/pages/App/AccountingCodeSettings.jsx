@@ -1,3 +1,4 @@
+import TableStatusRow from '../../components/TableStatusRow';
 import {materialIndustryText} from '../../constants/materialIndustry';
 import {dialogTitle} from '../../constants/dialogTitles';
 import {accountingCompactText} from '../../constants/accountingCompact';
@@ -117,7 +118,7 @@ export default function AccountingCodeSettings(){
       <TableCell>{row.materialSettings?.enabled?<Chip size="small" color="primary" label={materialText.enabled}/>:'—'}</TableCell><TableCell>{directionText[row.cashDirection||'BOTH']}</TableCell><TableCell>{row.transactionUsage&&<Chip component="button" type="button" onClick={()=>setUsageRow(row)} aria-label={row.code+' · '+usageText.column+' · '+usageCountLabel(row.transactionUsage.current,languageCode)} size="small" variant="outlined" color={row.transactionUsage.current?'primary':'default'} label={usageCountLabel(row.transactionUsage.current,languageCode)}/>} </TableCell><TableCell><Stack direction="row">
        <IconButton aria-label={text.edit} color="primary" size="small" disabled={loading||saving} onClick={()=>setForm({...row,isActive:row.isAvailable??row.isActive,industryIds:linkedIds(row)})}><EditIcon fontSize="small"/></IconButton>
        <SettingDeleteButton path={path} id={row.id} name={row.code} used={row.hasUsageHistory!==false} usedReason={usageTitle(row)||(!row.transactionUsage?usageText.unavailable:undefined)} disabled={loading||saving} languageCode={languageCode} onDeleted={load} onError={async message=>{await load();setError(message);}}/>
-      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableRow><TableCell colSpan={7}>{text.empty}</TableCell></TableRow>}</TableBody>
+      </Stack></TableCell></TableRow>)}{!loading&&!visible.length&&<TableStatusRow colSpan={7} languageCode={languageCode} state="empty"/>}</TableBody>
     </Table></TableContainer>
    </HierarchyPanel>
   </PageContentStack>

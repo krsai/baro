@@ -49,7 +49,7 @@ try{
   if(width===1440){const tableBox=await mainTable.boundingBox(),actionBox=await action.boundingBox();assert.ok(Math.abs(actionBox.x+actionBox.width-tableBox.x-tableBox.width)<2);}
   await page.getByRole('textbox',{name:'Search',exact:true}).fill('THE SAN');assert.equal(await mainTable.locator('tbody tr').count(),2);assert.equal(await page.getByRole('cell',{name:'BARO',exact:true}).count(),0);
   await page.getByRole('textbox',{name:'Search',exact:true}).fill('10x10x10');assert.equal(await mainTable.locator('tbody tr').count(),1);
-  await page.getByRole('textbox',{name:'Search',exact:true}).fill('LBL');await page.getByRole('cell',{name:t.noItems,exact:true}).waitFor();
+  await page.getByRole('textbox',{name:'Search',exact:true}).fill('LBL');await mainTable.locator('[data-table-status="empty"]').waitFor();
   assert.equal(await page.getByRole('dialog').count(),0,'registered material items are managed directly on the master page');
   assert.deepEqual(writes,[]);assert.deepEqual(errors,[]);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);
   await page.close();

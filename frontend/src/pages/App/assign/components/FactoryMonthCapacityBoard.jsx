@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../../components/TableStatusRow';
 import React, { memo, useEffect, useMemo, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import {Box,Button,Chip,Collapse,IconButton,LinearProgress,Paper,Stack,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
@@ -895,26 +896,10 @@ const FactoryMonthCapacityBoard = ({
               );
             })}
             {loading && normalizedRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={normalizedMonthKeys.length + 1}>
-                  <Typography variant="body2" color="text.secondary">
-                    {getUiMessage('common.loading', 'Loading...', languageCode)}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+              <TableStatusRow colSpan={normalizedMonthKeys.length + 1} languageCode={languageCode} state="loading"/>
             ) : null}
             {!loading && normalizedRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={normalizedMonthKeys.length + 1}>
-                  <Typography variant="body2" color="text.secondary">
-                    {getUiMessage(
-                      'assign.noFactoryScopeCapacityRows',
-                      'No line capacity data is available.',
-                      languageCode
-                    )}
-                  </Typography>
-                </TableCell>
-              </TableRow>
+              <TableStatusRow colSpan={normalizedMonthKeys.length + 1} languageCode={languageCode} state="empty"/>
             ) : null}
           </TableBody>
         </Table>

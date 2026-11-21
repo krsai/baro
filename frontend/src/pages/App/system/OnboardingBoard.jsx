@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../components/TableStatusRow';
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -351,11 +352,7 @@ const OnboardingBoard = () => {
                     </TableRow>
                   ))}
                   {pendingCompanyRequests.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={7} sx={{ textAlign: 'center', color: 'text.secondary' }}>
-                        {text.empty}
-                      </TableCell>
-                    </TableRow>
+                    <TableStatusRow colSpan={7} languageCode={languageCode} state="empty"/>
                   )}
                 </TableBody>
                 </Table>

@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../components/TableStatusRow';
 import ListDetailLayout from '../../../components/ListDetailLayout';
 import GlobalNotice from "../../../components/AppNotice";
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
@@ -623,11 +624,7 @@ const ProcessMasterSection = ({
               );
             })}
             {displayRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columnCount} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
-                  항목이 없습니다.
-                </TableCell>
-              </TableRow>
+              <TableStatusRow colSpan={columnCount} languageCode={languageCode} state="empty"/>
             ) : null}
           </TableBody>
         </Table>
@@ -1143,13 +1140,9 @@ const ProcessMasterLinkedSpecSection = ({
               );
             })}
             {displayRows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} sx={{ textAlign: 'center', color: 'text.secondary', py: 2 }}>
-                  {selectedParentCode
+              <TableStatusRow colSpan={8} languageCode={languageCode} state={selectedParentCode?"empty":"idle"} message={selectedParentCode
                     ? `선택한 ${parentLabel}에 연결된 항목이 없습니다.`
-                    : `${parentLabel}을 먼저 선택하세요.`}
-                </TableCell>
-              </TableRow>
+                    : `${parentLabel}을 먼저 선택하세요.`}/>
             ) : null}
           </TableBody>
         </Table>

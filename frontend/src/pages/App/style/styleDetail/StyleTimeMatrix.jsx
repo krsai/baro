@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../../components/TableStatusRow';
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   Box,
@@ -812,11 +813,7 @@ const StyleTimeMatrix = ({
 
           <TableBody>
             {safeProcesses.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={colCount} align="center" sx={{ py: 5, color: 'text.secondary' }}>
-                  {msg.empty}
-                </TableCell>
-              </TableRow>
+              <TableStatusRow colSpan={colCount} languageCode={languageCode} state="empty"/>
             ) : (
               safeProcesses.map((process, pIdx) => {
                 const groupTone = PROCESS_GROUP_TONES[pIdx % PROCESS_GROUP_TONES.length];

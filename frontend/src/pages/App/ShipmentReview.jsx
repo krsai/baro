@@ -1,3 +1,4 @@
+import TableStatusRow from '../../components/TableStatusRow';
 import SearchPanel from '../../components/SearchPanel';
 import SearchInput from '../../components/SearchInput';
 import PageContentStack from '../../components/PageContentStack';
@@ -600,13 +601,9 @@ const ShipmentReviewMonth = ({month,searchText,filterMode}) => {
               </TableHead>
               <TableBody>
                 {!loading && visibleRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
-                      <Typography variant="body2" color="text.secondary">
+                  <TableStatusRow colSpan={12} languageCode={languageCode} message={<Typography variant="body2" color="text.secondary">
                         {emptyStateMessage}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
+                      </Typography>}/>
                 ) : (
                   visibleRows.map((row) => {
                     const statusCode = computeLocalStatus(row);

@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../components/TableStatusRow';
 import useChangeDrivenEffect from '../../../hooks/useChangeDrivenEffect';
 import AppNotice from '../../../components/AppNotice';
 import {activateOnKeyboard} from '../../../utils/keyboardPolicy.mjs';
@@ -713,24 +714,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
             </TableHead>
             <TableBody>
               {!loadError && rows.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    sx={{ textAlign: 'center', color: 'text.secondary' }}
-                  >
-                    {loading
-                      ? getUiMessage(
-                          'styleBoard.loadingMessage',
-                          '스타일 목록을 불러오는 중입니다.',
-                          languageCode
-                        )
-                      : getUiMessage(
-                          'styleBoard.emptyMessage',
-                          '등록된 스타일이 없습니다.',
-                          languageCode
-                        )}
-                  </TableCell>
-                </TableRow>
+                <TableStatusRow colSpan={8} languageCode={languageCode} state={loading?"loading":"empty"}/>
               )}
               {rows.map((style) => {
                 const deleteBlocked = loading || style.canDelete !== true || Boolean(style.hasWorkRecords);
@@ -854,7 +838,7 @@ const StyleBoard = ({ onOpenStyle, refreshKey = 0 } = {}) => {
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>{order.dueDate || '-'}</TableCell>
                     <TableCell align="right">{formatNumberWithCommas(order.quantity)}</TableCell>
                   </TableRow>)}
-                  {orderHistory.length === 0 && <TableRow><TableCell colSpan={4} sx={{ textAlign: 'center', color: 'text.secondary' }}>{getUiMessage('styleBoard.orderHistoryEmpty', '', languageCode)}</TableCell></TableRow>}
+                  {orderHistory.length === 0 && <TableStatusRow colSpan={4} languageCode={languageCode} state="empty"/>}
                 </TableBody>
               </Table>
             </TableContainer>

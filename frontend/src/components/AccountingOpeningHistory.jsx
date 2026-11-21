@@ -1,3 +1,5 @@
+import ListPagination from './ListPagination';
+import TableStatusRow from './TableStatusRow';
 import {dialogTitle} from '../constants/dialogTitles';
 import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
 import React,{useEffect,useRef,useState} from 'react';
@@ -42,8 +44,8 @@ export default function AccountingOpeningHistory({orgId,languageCode,active,relo
    {data.rows.map(row=><TableRow key={row.source+':'+row.id} data-cancelled={!!row.voidedAt}>
     <TableCell sx={{whiteSpace:'nowrap'}}>{row.date}</TableCell><TableCell>{t[row.side]}</TableCell><TableCell>{row.party||'—'}</TableCell><TableCell>{row.code||'—'}</TableCell><TableCell sx={{whiteSpace:'nowrap'}}>{row.reference||'—'}</TableCell><TableCell>{t[row.treatment]}</TableCell><TableCell>{row.currencyCode}</TableCell><TableCell align="right" sx={{whiteSpace:'nowrap'}}>{formatLedgerMoney(row.amount,row.currencyCode)}</TableCell><TableCell align="right" sx={{whiteSpace:'nowrap'}}>{row.voidedAt||row.remaining==null?'—':formatLedgerMoney(row.remaining,row.currencyCode)}</TableCell><TableCell sx={{minWidth:160,overflowWrap:'anywhere'}}>{row.reason||'—'}</TableCell><TableCell>{row.voidedAt?t.deleted:row.changePending?t.pending:t.active}</TableCell><TableCell data-table-actions><DeleteActionButton aria-label={t.remove} title={row.matched?o.matched:t.remove} disabled={busy||uncertain||!!row.voidedAt||row.matched||row.changePending} onClick={()=>remove(row)}/></TableCell>
    </TableRow>)}
-   {!data.rows.length&&<TableRow><TableCell colSpan={12}>{t.empty}</TableCell></TableRow>}
-  </TableBody></Table></TableContainer><Stack direction="row" spacing={1} justifyContent="flex-end"><Button disabled={!page||busy||uncertain} onClick={()=>setPage(p=>p-1)}>{t.previous}</Button><Button disabled={!data.hasMore||busy||uncertain} onClick={()=>setPage(p=>p+1)}>{t.next}</Button></Stack></>}
+   {!data.rows.length&&<TableStatusRow colSpan={12} languageCode={languageCode} state="empty"/>}
+  </TableBody></Table></TableContainer><ListPagination languageCode={languageCode} onPrevious={()=>setPage(p=>p-1)} onNext={()=>setPage(p=>p+1)} previousDisabled={!page||busy||uncertain} nextDisabled={!data.hasMore||busy||uncertain} previousLabel={t.previous} nextLabel={t.next}></ListPagination></>}
   <Dialog open={!!selected} onClose={()=>{if(!busy&&!uncertain){setSelected(null);setError('');}}} fullWidth maxWidth="sm"><DialogTitle>{dialogTitle('openingDelete',languageCode)}</DialogTitle><DialogContent><Stack spacing={2}>{error&&<Alert severity="error">{error}</Alert>}<TextField autoFocus required fullWidth label={t.removeReason} value={reason} disabled={busy||uncertain} inputProps={{maxLength:1000}} onChange={e=>setReason(e.target.value)}/></Stack></DialogContent><DialogActions><Button variant="contained" disabled={busy||!reason.trim()} onClick={confirm}>{uncertain?b.retry:t.confirm}</Button></DialogActions></Dialog>
   <ChangeApprovalDialog ref={changeRef} orgId={orgId} languageCode={languageCode}/>
  </Stack>;

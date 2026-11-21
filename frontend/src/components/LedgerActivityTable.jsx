@@ -1,3 +1,4 @@
+import TableStatusRow from './TableStatusRow';
 import GlobalNotice from "./AppNotice";
 import {ledgerAccountingSummary} from '../utils/ledgerAccountingSummary.mjs';
 import {ledgerFlowText} from '../constants/ledgerFlow';
@@ -22,7 +23,7 @@ export default function LedgerActivityTable({rows=[],loading,text:t,labels:l,cur
   <colgroup>{columns.map((column,index)=><col key={index} style={column.width?{width:column.width}:undefined}/>)}</colgroup>
   <TableHead><TableRow>{columns.map((column,index)=><TableCell key={index} align={column.numeric?'right':'left'}>{column.title}</TableCell>)}</TableRow></TableHead>
   <TableBody>
-   {!rows.length&&<TableRow><TableCell colSpan={columns.length}>{loading?'…':t.empty}</TableCell></TableRow>}
+   {!rows.length&&<TableStatusRow colSpan={columns.length} languageCode={languageCode} state={loading?"loading":"empty"}/>}
    {rows.map(row=>{const summary=ledgerAccountingSummary(row,languageCode);return <React.Fragment key={row.id}>
     <TableRow {...interaction(row)}>
      <TableCell sx={{whiteSpace:'nowrap'}}>{row.transactionDate}{row.voidedAt&&<Typography variant="caption" display="block">{l.deleted}</Typography>}</TableCell>

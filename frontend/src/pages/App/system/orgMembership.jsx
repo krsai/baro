@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../components/TableStatusRow';
 import EntityPhoneField from '../../../components/EntityPhoneField';
 import { phoneForCountry } from '../../../utils/entityPhone.mjs';
 import { ENTITY_TEXT } from '../../../constants/entityProfile';
@@ -499,14 +500,7 @@ const OrganizationSubscriptionBoard = () => {
                   ))}
 
                   {organizations.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={8}
-                        sx={{ py: 6, textAlign: 'center', color: 'text.secondary' }}
-                      >
-                        {getPageMessage('noOrganizations', languageCode)}
-                      </TableCell>
-                    </TableRow>
+                    <TableStatusRow colSpan={8} languageCode={languageCode} state="empty"/>
                   ) : null}
                 </TableBody>
               </Table>

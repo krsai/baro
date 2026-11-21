@@ -1,3 +1,4 @@
+import TableStatusRow from './TableStatusRow';
 import React from 'react';
 import {Button,Table,TableBody,TableCell,TableContainer,TableHead,TableRow,Typography} from '@mui/material';
 import ApprovalStatusLabel from './ApprovalStatusLabel';
@@ -8,5 +9,5 @@ export default function ApprovalInboxTable({rows,languageCode,onOpen,completed=f
  const t=approvalWorkflowText[languageCode]||approvalWorkflowText.en,a=expenseApprovalActionsText[languageCode]||expenseApprovalActionsText.en;
  return <TableContainer><Table size="small" sx={{minWidth:650}}><TableHead><TableRow>{[t.type,a.number,a.date,a.drafter,t.status,...(renderActions?[languageCode==='ko'?'작업':languageCode==='vi'?'Thao tác':'Actions']:[])].map(label=><TableCell key={label} sx={{whiteSpace:'nowrap'}}>{label}</TableCell>)}</TableRow></TableHead><TableBody>{rows.map(row=><TableRow key={`${row.kind}:${row.id}:${row.handledVersion||row.version}`} hover>
   <TableCell>{row.kind==='EXPENSE_REQUEST'?t.expense:row.kindLabel||row.kind}</TableCell><TableCell>{approvalRequestDestination(row)?<Button size="small" onClick={()=>onOpen(row)}>{row.managementNumber}</Button>:row.managementNumber}</TableCell><TableCell sx={{whiteSpace:'nowrap'}}>{row.requestDate||'—'}</TableCell><TableCell>{row.drafter}</TableCell><TableCell><ApprovalStatusLabel status={completed?row.decision:row.status} languageCode={languageCode}/>{completed&&<Typography variant="caption" color="text.secondary" sx={{display:'block'}}>{t.handledVersion}: {row.handledVersion}{row.handledAt&&` · ${new Date(row.handledAt).toLocaleString(languageCode)}`}</Typography>}{row.reason&&<Typography variant="caption" sx={{display:'block',whiteSpace:'pre-wrap',maxWidth:300}}>{row.reason}</Typography>}</TableCell>
- {renderActions&&<TableCell sx={{minWidth:180}}>{renderActions(row)}</TableCell>}</TableRow>)}{!rows.length&&<TableRow><TableCell colSpan={renderActions?6:5}>{t.empty}</TableCell></TableRow>}</TableBody></Table></TableContainer>;
+ {renderActions&&<TableCell sx={{minWidth:180}}>{renderActions(row)}</TableCell>}</TableRow>)}{!rows.length&&<TableStatusRow colSpan={renderActions?6:5} languageCode={languageCode} state="empty"/>}</TableBody></Table></TableContainer>;
 }

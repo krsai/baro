@@ -1,3 +1,4 @@
+import TableStatusRow from '../../components/TableStatusRow';
 import GlobalNotice from "../../components/AppNotice";
 import {activateOnKeyboard} from '../../utils/keyboardPolicy.mjs';
 import SearchPanel from '../../components/SearchPanel';
@@ -966,13 +967,9 @@ const QcReview = () => {
               </TableHead>
               <TableBody>
                 {!loading && !loadError && !queryError && visibleRows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center" sx={{ py: 5 }}>
-                      <Typography variant="body2" color="text.secondary">
+                  <TableStatusRow colSpan={7} languageCode={languageCode} message={<Typography variant="body2" color="text.secondary">
                         {languageCode === 'ko' ? emptyStateMessage : copy.noHistory}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
+                      </Typography>}/>
                 ) : (
                   visibleRows.map((row) => {
                     const detail = qcDetailByPlanId[row.id] || null;

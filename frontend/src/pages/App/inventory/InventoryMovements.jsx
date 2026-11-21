@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../components/TableStatusRow';
 import AppPageContainer from '../../../components/AppPageContainer';
 import PageContentStack from '../../../components/PageContentStack';
 import DocumentEntryHeader from '../../../components/DocumentEntryHeader';
@@ -142,26 +143,25 @@ export function InventoryRows({view,keyword='',start='',end=''}){
  const {activeOrgId:orgId}=useAuth(),{languageCode}=useLanguage();
  const t=materialItemText[languageCode]||materialItemText.en;
  const [, ,itemLabel,, , ,qty,dateLabel,remarkLabel]=labels[languageCode]||labels.en;
- const [rows,setRows]=useState(null),[error,setError]=useState(false),[reload,setReload]=useState(0);
+ const [rows,setRows]=useState(null),[loading,setLoading]=useState(true),[error,setError]=useState(false),[reload,setReload]=useState(0);
  const history=view==='history',location=useLocation(),variantId=new URLSearchParams(location.search).get('variantId')||undefined;
  const a=inventoryApprovalText[languageCode]||inventoryApprovalText.en;
  const [deleting,setDeleting]=useState(null);
  useEffect(()=>{
   let active=true;
-  setError(false);
-  requestJSON('/inventory-entry/'+(history?'history':'stock')+buildQueryString({orgId,...(history&&variantId?{variantId}:{})}),{skipCache:true}).then(data=>{if(active)setRows(data);}).catch(()=>{if(active)setError(true);});
+  setError(false);setLoading(true);
+  requestJSON('/inventory-entry/'+(history?'history':'stock')+buildQueryString({orgId,...(history&&variantId?{variantId}:{})}),{skipCache:true}).then(data=>{if(active)setRows(data);}).catch(()=>{if(active)setError(true);}).finally(()=>{if(active)setLoading(false);});
   return()=>{active=false;};
  },[orgId,history,reload,variantId]);
  useWorkspaceRefreshOnEvent({orgId,topics:[history?'inventory-movements':'inventory-stock'],onRefresh:()=>setReload(n=>n+1)});
  const columns=[...(history?[dateLabel,(inventoryEntryText[languageCode]||inventoryEntryText.en).user]:[]),masterLabels[languageCode]||masterLabels.en,itemLabel,qty,t.unit,...(history?[a.purchase,remarkLabel,a.status,a.actions]:[])];
  const displayed=rows?.filter(row=>(!history||(!start||row.date>=start)&&(!end||row.date<=end))&&[row.master.baseSnapshot.code,materialItemName(row.master,languageCode),variantName(row.attributes,languageCode),row.remark,row.userSnapshot?.name,row.userSnapshot?.employeeNo].join(' ').toLowerCase().includes(keyword.trim().toLowerCase()));
- if(error)return <AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>;
- return <Stack spacing={2}>{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}<TableContainer component={Paper} variant="outlined"><Table size="small">
+ return <Stack spacing={2}>{error&&<AppNotice severity="error" action={<Button onClick={()=>setReload(n=>n+1)}>{t.retry}</Button>}>{t.failed}</AppNotice>}{history&&<InventoryApprovalPanel onChanged={()=>setReload(n=>n+1)}/>}<TableContainer component={Paper} variant="outlined" aria-busy={loading}><Table size="small">
   <TableHead><TableRow>{columns.map((column,index)=><TableCell key={column} sx={history&&index===columns.length-1?{position:'sticky',right:0,bgcolor:'background.paper'}:undefined}>{column}</TableCell>)}</TableRow></TableHead>
   <TableBody>{displayed?.map(row=><TableRow key={row.id}>
    {history&&<><TableCell>{row.date}</TableCell><TableCell>{row.userSnapshot?[row.userSnapshot.employeeNo,row.userSnapshot.name].filter(Boolean).join(' / '):'\u2014'}</TableCell></>}<TableCell>{materialItemName(row.master,languageCode)}</TableCell>
    <TableCell>{variantName(row.attributes,languageCode)}</TableCell><TableCell>{quantityText(row.quantity)}</TableCell>
    <TableCell>{materialItemName(row.master.unit,languageCode)}</TableCell>{history&&<><TableCell>{row.purchaseSnapshot?[row.purchaseSnapshot.managementNumber||row.purchaseSnapshot.requestId,row.purchaseSnapshot.line].join(' / '):'\u2014'}</TableCell><TableCell>{row.remark}</TableCell><TableCell>{row.deletePending?a.DELETE+' \u00b7 '+a.PENDING:a[row.status]}</TableCell><TableCell sx={{position:'sticky',right:0,bgcolor:'background.paper'}}><Button disabled={row.deletePending} onClick={()=>setDeleting(row)}>{a.delete}</Button></TableCell></>}
-  </TableRow>)}{rows&&!displayed.length&&<TableRow><TableCell colSpan={columns.length}>{t.empty}</TableCell></TableRow>}</TableBody>
+  </TableRow>)}{(loading||error||!displayed?.length)&&<TableStatusRow colSpan={columns.length} languageCode={languageCode} loading={loading} error={error} onRetry={()=>setReload(n=>n+1)}/>}</TableBody>
  </Table></TableContainer>{deleting&&<InventoryDeleteDialog row={deleting} onClose={()=>setDeleting(null)} onSaved={()=>{setDeleting(null);setReload(n=>n+1);}}/>}</Stack>;
 }

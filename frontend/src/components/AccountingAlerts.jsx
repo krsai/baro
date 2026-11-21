@@ -1,3 +1,4 @@
+import ListPagination from './ListPagination';
 import {formatLedgerMoney} from '../utils/bankLedgerMoney.mjs';
 import useChangeDrivenEffect from '../hooks/useChangeDrivenEffect';
 import {accountingPendingText} from '../utils/approvalCard';
@@ -58,7 +59,7 @@ export default function AccountingAlerts({orgId,languageCode='ko',onNavigate,set
   {data?.rows.filter(row=>kinds.split(',').includes(row.kind)).map(row=><Box key={row.signature} data-accounting-alert={row.kind} sx={{position:'relative'}}>
    <DashboardAlertItem languageCode={languageCode} showConfirm={false} title={accountingAlertTitle(row,languageCode)} detail={[row.date,row.reference,row.partyName,row.code,row.description,...(row.kind==='UNCODED_LEDGER'?[text[row.actualDirection],formatLedgerMoney(row.amount,row.currencyCode)]:[]),row.kind==='EXPENSE_PAYMENT_DIFFERENCE'?[text.expenseExpected+': '+formatLedgerMoney(row.comparison.expected,row.comparison.currency),text.paymentActual+': '+formatLedgerMoney(row.comparison.actual,row.comparison.currency),row.comparison.reason].join(' ? '):row.kind==='DIRECTION'?text.expected+': '+text[row.expectedDirection]+' · '+text.actual+': '+text[row.actualDirection]:null].filter(Boolean).join(' · ')} onClick={row.pendingOperation?undefined:()=>setSelected(row)} actions={<Button size="small" disabled={busy||Boolean(row.pendingOperation)} onClick={()=>openReview(row)}>{row.pendingOperation?pendingText:text.confirm}</Button>}/>
   </Box>)}
-  {!!data?.total&&data.total>10&&<Stack direction="row" justifyContent="flex-end" spacing={1}><Button disabled={!page||loading||busy} onClick={()=>setPage(value=>value-1)}>{text.previous}</Button><Button disabled={(page+1)*10>=data.total||loading||busy} onClick={()=>setPage(value=>value+1)}>{text.next}</Button></Stack>}
+  {!!data?.total&&data.total>10&&<ListPagination languageCode={languageCode} onPrevious={()=>setPage(value=>value-1)} onNext={()=>setPage(value=>value+1)} previousDisabled={!page||loading||busy} nextDisabled={(page+1)*10>=data.total||loading||busy} previousLabel={text.previous} nextLabel={text.next}></ListPagination>}
   <Dialog open={Boolean(review)} onClose={closeReview} fullWidth maxWidth="sm" aria-labelledby="accounting-alert-review-title">
    <DialogTitle id="accounting-alert-review-title">{text.review}</DialogTitle>
    <DialogContent><Stack spacing={2}>

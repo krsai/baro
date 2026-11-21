@@ -1,3 +1,4 @@
+import ListPagination from './ListPagination';
 import React, {useEffect,useRef,useState} from 'react';
 import {Box,Button,Chip,CircularProgress,Dialog,DialogActions,DialogContent,DialogTitle,ListItemButton,Paper,Stack,Typography} from '@mui/material';
 import Alert from "./AppNotice";
@@ -87,7 +88,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
          <Box sx={{flex:1,minWidth:0}}><Stack direction="row" alignItems="center" gap={1}><Typography fontWeight={700} variant="body2">{row.title}</Typography>{changes[row.id]&&<Chip size="small" label={excluded?t.excluded:t.included}/>}</Stack><Typography variant="body2" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{(languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.subtitle)||row.subtitle}{row.reference?' · '+row.reference:''}</Typography></Box>{excluded?<ArrowBackIcon fontSize="small"/>:<ArrowForwardIcon fontSize="small"/>}
         </TargetCard>)}
        {provided.placeholder}</Box>}</Droppable>
-       <Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{p:1}}><Button disabled={locked||loading||pages[index]===0} onClick={()=>setPages(p=>p.map((n,i)=>i===index?n-1:n))}>{t.previous}</Button><Typography variant="caption">{pages[index]+1}</Typography><Button disabled={locked||loading||!lists[index].hasMore} onClick={()=>setPages(p=>p.map((n,i)=>i===index?n+1:n))}>{t.next}</Button></Stack>
+       <ListPagination languageCode={languageCode} onPrevious={()=>setPages(p=>p.map((n,i)=>i===index?n-1:n))} onNext={()=>setPages(p=>p.map((n,i)=>i===index?n+1:n))} previousDisabled={locked||loading||pages[index]===0} nextDisabled={locked||loading||!lists[index].hasMore} previousLabel={t.previous} nextLabel={t.next}><Typography variant="caption">{pages[index]+1}</Typography></ListPagination>
       </TargetPanel>;
      })}
     </Box></DragDropContext>
@@ -96,7 +97,7 @@ export default function ManagementTargetSettings({orgId,languageCode='en',kind,o
      <Box sx={{p:1,maxHeight:240,overflowY:'auto'}} aria-busy={loading}>
       {loading?<CircularProgress size={20}/>:!(lists[2]?.rows||[]).length?<Typography variant="body2" color="text.secondary" sx={{p:1}}>{t.empty}</Typography>:(lists[2]?.rows||[]).map(row=><Box key={row.id} sx={{p:1.5,border:1,borderColor:'divider',borderRadius:1,mb:1}}><Stack direction="row" alignItems="center" gap={1}><Typography variant="body2" fontWeight={700}>{row.title}</Typography><Chip size="small" label={t.alreadyIssued}/></Stack><Typography variant="body2" color="text.secondary">{(languageCode==='ko'?row.nameKo:languageCode==='vi'?row.nameVi:row.subtitle)||row.subtitle}</Typography></Box>)}
      </Box>
-     <Stack direction="row" justifyContent="flex-end" alignItems="center" sx={{p:1}}><Button disabled={locked||loading||!(pages[2]||0)} onClick={()=>setPages(p=>[p[0],p[1],(p[2]||0)-1])}>{t.previous}</Button><Typography variant="caption">{(pages[2]||0)+1}</Typography><Button disabled={locked||loading||!lists[2]?.hasMore} onClick={()=>setPages(p=>[p[0],p[1],(p[2]||0)+1])}>{t.next}</Button></Stack>
+     <ListPagination languageCode={languageCode} onPrevious={()=>setPages(p=>[p[0],p[1],(p[2]||0)-1])} onNext={()=>setPages(p=>[p[0],p[1],(p[2]||0)+1])} previousDisabled={locked||loading||!(pages[2]||0)} nextDisabled={locked||loading||!lists[2]?.hasMore} previousLabel={t.previous} nextLabel={t.next}><Typography variant="caption">{(pages[2]||0)+1}</Typography></ListPagination>
     </Paper>}
 
    </Stack></DialogContent>

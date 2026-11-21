@@ -1,3 +1,4 @@
+import TableStatusRow from '../../../components/TableStatusRow';
 import Autocomplete from '../../../components/SearchableSelect';
 import PageContentStack from '../../../components/PageContentStack';
 import DeleteActionButton from '../../../components/DeleteActionButton';
@@ -484,14 +485,7 @@ const AttributeSection = memo(function AttributeSection({
             ))}
 
             {!isLoading && rows.length === 0 && (
-              <TableRow>
-                <TableCell
-                  colSpan={config.columns.length + 1}
-                  sx={{ textAlign: 'center', py: 2, color: 'text.secondary' }}
-                >
-                  데이터가 없습니다.
-                </TableCell>
-              </TableRow>
+              <TableStatusRow colSpan={config.columns.length + 1} state="empty"/>
             )}
           </TableBody>
         </Table>
