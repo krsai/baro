@@ -17,28 +17,15 @@ const AppPageContainer = ({
   sx = {},
   contentSx = {},
   keyboardEntry = false,
+  // Document workspace/editor exceptions; toolbars always scroll with content.
+  stickyHeader = true,
 }) => {
   useKeyboardNavigation();
   const pageNaming = usePageNaming();
   if (title) title = pageNaming?.title || title;
-  const resolvedHeader = header ? (
-    <Stack spacing={ui.layout.headerGap} sx={{ minWidth: 0 }}>
-      {header}
-      {toolbar}
-    </Stack>
-  ) : title || titleActions || toolbar ? (
-    <Stack spacing={ui.layout.headerGap} sx={{ minWidth: 0 }}>
-      {(title || titleActions) ? (
-        <PageSectionHeader
-          title={title}
-          titleComponent="h1"
-          context={context}
-          actions={titleActions}
-        />
-      ) : null}
-      {toolbar}
-    </Stack>
-  ) : null;
+  const resolvedHeader = header || ((title || titleActions) ? (
+    <PageSectionHeader title={title} titleComponent="h1" context={context} actions={titleActions} />
+  ) : null);
   const hasHeader = Boolean(resolvedHeader);
 
   return (
@@ -79,9 +66,9 @@ const AppPageContainer = ({
           <Box
             className="app-page-header"
             sx={{
-              position: 'sticky',
+              position: stickyHeader ? 'sticky' : 'relative',
               top: 0,
-              zIndex: 10,
+              zIndex: ui.layout.pageHeaderZIndex,
               pt: ui.layout.pagePadding,
               pb: 0,
               minWidth: 0,
@@ -91,6 +78,8 @@ const AppPageContainer = ({
             {resolvedHeader}
           </Box>
         )}
+
+        {toolbar && <Box className="app-page-toolbar" sx={{ minWidth: 0 }}>{toolbar}</Box>}
 
         {/* Page Content */}
         <Box className="app-page-content" sx={{ flexGrow: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: ui.layout.sectionGap, ...contentSx, width: '100%', maxWidth: 'none', boxSizing: 'border-box' }}>

@@ -6,7 +6,7 @@ export const ui = {
   typography: { bodyFontSize: BODY_FONT_SIZE, captionFontSize: '0.75rem', titleFontSize: '1.25rem', titleFontWeight: 600, titleLetterSpacing: '-0.02em', totalFontSize: '1.25rem' },
   control: { height: 36, iconSmallHeight: 28, iconLargeHeight: 40, fontSize: BODY_FONT_SIZE, lineHeight: '20px', inputPadding: '8px 12px', shiftHeight: 17, shiftGap: 2, dateNavigationWidth: 20, dateNavigationIconSize: 16 },
   radius: { control: 8, panel: 12 },
-  layout: { pagePadding: { xs: '16px', sm: '24px' }, pageGap: '20px', sectionGap: '20px', headerGap: '16px', actionGap: '8px', panelPadding: '16px' },
+  layout: { pageHeaderZIndex: 10, pagePadding: { xs: '16px', sm: '24px' }, pageGap: '20px', sectionGap: '20px', headerGap: '16px', actionGap: '8px', panelPadding: '16px' },
   search: { inputWidth: 400, filterWidth: 144, gap: '8px', padding: '16px', headerHeight: 44 },
   table: { cellPadding: '11px 16px', compactPadding: '8px 12px', fitHorizontalPadding: '8px', fontSize: BODY_FONT_SIZE },
   dialog: { titlePadding: '20px 24px 12px', contentPadding: '16px 24px 24px', actionsPadding: '16px 24px 20px', actionsGap: 8, lookupWidth: 800, lookupDetailsWidth: 1120, lookupHeight: 640 },

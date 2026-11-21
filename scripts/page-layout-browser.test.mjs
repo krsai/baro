@@ -7,8 +7,9 @@ const executablePath=['C:/Program Files/Google/Chrome/Application/chrome.exe','C
 assert.ok(executablePath,'Chrome required');
 const fixture=path.resolve('frontend/page-layout-acceptance.html');assert.ok(!existsSync(fixture));
 writeFileSync(fixture,`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
-import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Paper,Button,TextField,Table,TableBody,TableRow,TableCell} from '@mui/material';import theme from '/src/theme';import Container from '/src/components/AppPageContainer';import Sections from '/src/components/PageContentStack';import Toolbar from '/src/components/PageToolbar';
+import React from 'react';import {createRoot} from 'react-dom/client';import {ThemeProvider,CssBaseline,Paper,Button,TextField,Table,TableBody,TableRow,TableCell,Dialog,DialogTitle,DialogContent,DialogActions} from '@mui/material';import theme from '/src/theme';import Container from '/src/components/AppPageContainer';import Sections from '/src/components/PageContentStack';import Toolbar from '/src/components/PageToolbar';
 const e=React.createElement;createRoot(document.getElementById('root')).render(e(ThemeProvider,{theme},e(CssBaseline),e(Container,{sx:{maxWidth:700},contentSx:{maxWidth:800},title:'Payment Request',description:'Shared page layout',titleActions:e(Button,{variant:'contained'},'Save'),toolbar:e(Toolbar,{showLastUpdater:false,left:e(TextField,{label:'Search',size:'small'}),right:e(Button,null,'Reset')}),footer:e(Button,null,'Close')},e(Sections,null,e(Paper,{'data-testid':'panel-one',variant:'outlined'},e(Table,null,e(TableBody,null,e(TableRow,null,e(TableCell,null,'Existing record'))))),e(Paper,{'data-testid':'panel-two',variant:'outlined'},'Second section')))));
+window.openTestDialog=()=>{const host=document.createElement('div');document.body.append(host);createRoot(host).render(e(ThemeProvider,{theme},e(Dialog,{open:true},e(DialogTitle,null,'Edit record'),e(DialogContent,null,e('div',{style:{height:1800}},'Long form')),e(DialogActions,null,e(Button,null,'Cancel'),e(Button,{variant:'contained'},'Save record')))))};
 </script></body></html>`);
 const port=43219,vite=spawn(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1','--port',String(port),'--strictPort'],{cwd:path.resolve('frontend'),stdio:'ignore'});let browser;
 try{
@@ -20,7 +21,15 @@ try{
     const padding=width<600?16:24;
     const header=await page.locator('.app-page-header').boundingBox(),content=await page.locator('.app-page-content').boundingBox();
     assert.equal(header.x,padding);assert.equal(content.x,padding);assert.equal(content.width,width-2*padding);
-    assert.equal(Math.round(content.y-header.y-header.height),20,'One shared title-to-content gap');
+    const toolbar=await page.locator('.app-page-toolbar').boundingBox();
+    assert.equal(Math.round(toolbar.y-header.y-header.height),20,'Title-to-toolbar gap');
+    assert.equal(Math.round(content.y-toolbar.y-toolbar.height),20,'Toolbar-to-content gap');
+    await page.locator('.app-page-content').evaluate(el=>el.style.minHeight='2000px');
+    await page.evaluate(()=>window.scrollTo(0,400));
+    const stickyHeader=await page.locator('.app-page-header').boundingBox();
+    assert.equal(Math.round(stickyHeader.y),0,'Page actions stay at the viewport top');
+    assert.ok((await page.locator('.app-page-toolbar').boundingBox()).y<0,'Search scrolls away');
+    await page.evaluate(()=>window.scrollTo(0,0));
     assert.equal(await page.locator('.app-page-header').evaluate(el=>getComputedStyle(el).borderBottomWidth),'0px');
     assert.equal(await page.locator('.app-page-footer').evaluate(el=>getComputedStyle(el).borderTopWidth),'0px');
     assert.equal(await page.locator('h1').evaluate(el=>getComputedStyle(el).fontWeight),'600');
@@ -29,6 +38,15 @@ try{
     assert.equal(Math.round(second.y-first.y-first.height),20,'Sections use the shared spacing token');
     assert.equal(await page.locator('td').evaluate(el=>getComputedStyle(el).borderBottomWidth),'1px','Meaningful table row boundaries remain');
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.evaluate(()=>window.openTestDialog());
+    await page.getByRole('dialog').waitFor();
+    const actions=page.locator('.MuiDialogActions-root'),before=await actions.boundingBox();
+    await page.locator('.MuiDialogContent-root').evaluate(el=>el.scrollTop=1200);
+    const after=await actions.boundingBox();
+    assert.equal(Math.round(before.y),Math.round(after.y),'Modal actions stay visible while content scrolls');
+    assert.ok(after.y>=0&&after.y+after.height<=1000,'Modal actions fit viewport');
+    const cancel=await page.getByRole('button',{name:'Cancel',exact:true}).boundingBox(),save=await page.getByRole('button',{name:'Save record'}).boundingBox();
+    assert.ok(save.x>cancel.x,'Cancel precedes primary action');
     assert.deepEqual(errors,[]);await page.close();
   }
   console.log('Shared page layout passed: 1440/768/390px, page insets, header/content/section gaps, heading hierarchy, border cleanup and table boundaries.');

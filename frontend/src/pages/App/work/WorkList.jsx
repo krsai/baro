@@ -38,7 +38,6 @@ import 'dayjs/locale/vi';
 import AppPageContainer from '../../../components/AppPageContainer';
 import DateRangeSelector from '../../../components/DateRangeSelector';
 import PageSectionHeader from '../../../components/PageSectionHeader';
-import { ui } from '../../../theme/ui';
 import SearchInput from '../../../components/SearchInput';
 import TableStatusRow from '../../../components/TableStatusRow';
 import { getUiMessage } from '../../../constants/uiMessages';
@@ -623,7 +622,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
   return (
     <AppPageContainer
       header={
-        <Stack spacing={ui.layout.headerGap}>
           <PageSectionHeader
             titleComponent="h1"
             title={getUiMessage(
@@ -647,6 +645,8 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               </Stack>
             )}
           />
+      }
+      toolbar={
           <SearchPanel onReset={()=>{setSearchTerm('');setDateFilterStart(dayjs().startOf('month').toDate());setDateFilterEnd(dayjs().endOf('month').toDate());setSelectedFactoryId(String(factories.find(row=>String(row.id)===String(activeFactoryId))?.id||factories[0]?.id||''));}}
             search={<SearchInput
               value={searchTerm}
@@ -678,7 +678,6 @@ const WorkList = ({ recordKind = 'EMPLOYEE' } = {}) => {
               </Select>
             </FormControl></>}
           />
-        </Stack>
       }
     >
       <input

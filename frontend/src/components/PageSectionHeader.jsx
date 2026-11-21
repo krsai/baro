@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box, Button, Stack, Typography } from '@mui/material';
 import { ui } from '../theme/ui';
+import PageActions from './PageActions';
 import { usePageNaming } from '../context/PageNamingContext';
 
 const PageSectionHeader = ({
@@ -48,17 +49,20 @@ const PageSectionHeader = ({
       </Typography>
       {context&&<Typography component="span" variant="body2" color="text.secondary" sx={{overflowWrap:'anywhere'}}>{context}</Typography>}
       </Stack>
-      <Box
+      <PageActions
         sx={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
           flexWrap: 'wrap',
+          alignSelf: { xs: 'flex-end', sm: 'auto' },
+          maxWidth: '100%',
+          '& > .MuiStack-root': { flexWrap: 'wrap', rowGap: ui.layout.actionGap },
           gap: ui.layout.actionGap,
         }}
       >
         {resolvedActions}
-      </Box>
+      </PageActions>
     </Box>
   );
 };
