@@ -38,7 +38,7 @@ export function normalizeGeneralInvoiceLines(lines:any){
 }
 export async function validateGeneralInvoiceCodes(db:any,orgId:number,lines:any[]){
  const codes=new Map<number,any>();
- for(const id of new Set<number>(lines.map(row=>row.transactionCodeId)))codes.set(id,await companyBillableCode(db,orgId,id));
+ for(const id of new Set<number>(lines.map(row=>row.transactionCodeId)))codes.set(id,await companyBillableCode(db,orgId,id,{allowAnyDirection:true}));
  return codes;
 }
 export function calculateGeneralInvoice(content:any,codes:Map<number,any>){
@@ -46,7 +46,7 @@ export function calculateGeneralInvoice(content:any,codes:Map<number,any>){
  const inputs=normalizeGeneralInvoiceLines(content.lines);
  const lines=inputs.map((input:any)=>{
   const code=codes.get(input.transactionCodeId);
-  if(!code||!['IN','BOTH'].includes(code.cashDirection)||!input.description)return invalid();
+  if(!code||!input.description)return invalid();
   const amounts=calculateRequestAmounts(input.unitPrice,input.quantity,content.currency,input.vatRate);
   if(!code.vatEnabled&&!amounts.vatRate.isZero())return invalid('VAT_NOT_ENABLED');
   return {lineKey:input.key,transactionCodeId:code.id,code:code.code,codeDescription:code.nameEn||code.nameKo||'',description:input.description,unit:input.unit,remark:input.remark,

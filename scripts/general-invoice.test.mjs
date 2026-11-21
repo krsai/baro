@@ -11,6 +11,7 @@ import {ROLE_ACCESS_POLICY_SCHEMA_VERSION} from '../frontend/src/utils/roleAcces
 const require=createRequire(import.meta.url);
 const {calculateGeneralInvoice,generalInvoiceBuyerScope}=require('../backend/dist/services/generalInvoice');
 const {saveInvoiceDraft}=require('../backend/dist/services/invoiceDraftStore');
+const {registerInvoiceDraftRoutes}=require('../backend/dist/routes/invoiceDraft.routes');
 const {issueInvoiceDraft,createInvoiceRevisionDraft,recordInvoicePayment,cancelIssuedInvoice}=require('../backend/dist/services/invoiceIssueStore');
 const {invoiceFamilyBalance}=require('../backend/dist/services/invoiceSettlement');
 const {resolveEvidence}=require('../backend/dist/services/bankEvidence');
@@ -41,7 +42,7 @@ test('general invoices compute precise line tax and totals without order or prod
  }
  assert.throws(()=>calculateGeneralInvoice({currency:'VND',fields:fields(),lines:[line({quantity:'0'})]},codes));
  assert.throws(()=>calculateGeneralInvoice({currency:'VND',fields:fields(),lines:[line({description:''})]},codes));
- assert.throws(()=>calculateGeneralInvoice({currency:'VND',fields:fields(),lines:[line()]},new Map([[1,{id:1,cashDirection:'OUT',vatEnabled:true}]])));
+ assert.equal(calculateGeneralInvoice({currency:'VND',fields:fields(),lines:[line()]},new Map([[1,{id:1,code:'PBGV',cashDirection:'OUT',vatEnabled:true}]])).documentKind,'GENERAL');
  assert.deepEqual(generalInvoiceBuyerScope(7).OR,[{ownerOrgId:7},{buyerWorkOrders:{some:{sellerOrgId:7}}}]);
 });
 
@@ -49,12 +50,20 @@ test('Prisma/PostgreSQL: own-customer drafts, exact retries, issue, immutable sn
  const f=await changeApprovalFixture(),db=f.db;
  try{
   const s=await seedChangeApproval(db),org=s.company.id,buyer=s.vendor.id,code=s.code.id;
+  await db.transactionCodeBase.update({where:{id:s.code.baseId},data:{cashDirection:'OUT'}});
   const body={clientKey:randomUUID(),documentKind:'GENERAL',buyerOrgId:buyer,orders:[],basis:null,currency:'USD',total:'1',fields:fields(),percentages:{},settlements:{},lines:[line({transactionCodeId:code,quantity:'1000',unitPrice:'1.25',vatRate:'0',amount:'1'})]};
   let draft,invoice;
   await t.test('general source scope and code are checked before any draft is saved',async()=>{
    await assert.rejects(saveInvoiceDraft(db,org,'actor',{...body,buyerOrgId:s.other.id}),/BUYER_INVALID/);
    await assert.rejects(saveInvoiceDraft(db,org,'actor',{...body,lines:[{...body.lines[0],transactionCodeId:999999}]}),/BILLING_CODE_INVALID/);
    assert.equal(await db.invoiceDraft.count(),0);
+   const routes=new Map(),app=Object.fromEntries(['get','post','put','delete'].map(method=>[method,(path,fn)=>routes.set(method+path,fn)]));
+   registerInvoiceDraftRoutes(app,{db,requireAccess:async()=>({organization:{id:org}}),actor:()=> 'actor'});
+   let result;await routes.get('get/invoices/general-source')({query:{buyerOrgId:buyer}},{setHeader(){},json(value){result=value;}});
+   assert.ok(result.codes.some(row=>row.id===code&&row.cashDirection==='OUT'),'Active OUT codes are offered without altering their direction');
+   await db.transactionCode.update({where:{id:code},data:{isActive:false}});
+   await assert.rejects(saveInvoiceDraft(db,org,'actor',body),/BILLING_CODE_INVALID/);
+   await db.transactionCode.update({where:{id:code},data:{isActive:true}});
   });
   await t.test('save/reload and lost-response retries keep one draft and never create a source order',async()=>{
    draft=await saveInvoiceDraft(db,org,'actor',body);

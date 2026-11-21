@@ -79,9 +79,11 @@ test('draft normalization whitelists editable inputs and keeps incomplete quanti
 test('create, idempotent retry, update and delete retain scoped canonical order/item FKs', async () => {
   const db = database(); const input = body();
   input.fields.seller.contactName='John Smith';
+  input.fields.seller.address='12 Main Street, Hanoi';
   const created = await saveInvoiceDraft(db, 7, 'actor@example.com', input);
   assert.equal(created.createdBy, 'actor@example.com'); assert.equal(created.sellerOrgId, 7);
   assert.equal(created.content.fields.seller.contactName,'John Smith');
+  assert.equal(created.content.fields.seller.address,'12 MAIN STREET, HANOI');assert.equal(input.fields.seller.address,'12 Main Street, Hanoi');
   assert.equal(db.state().orders[0].workOrderId, 1); assert.equal(db.state().lines[0].workOrderItemId, 11);
   assert.match(created.content.lines[0].label, /PO-ONE.*Shirt/);
   const again = await saveInvoiceDraft(db, 7, 'actor@example.com', { ...input, fields: { ...input.fields } });

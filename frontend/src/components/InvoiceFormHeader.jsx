@@ -4,12 +4,13 @@ import {Box,Typography} from '@mui/material';
 import InvoiceDocumentField from './InvoiceDocumentField';
 import {invoiceUi} from '../constants/invoiceUi';
 import {invoiceDocumentText} from '../constants/invoiceDocument';
+import {invoicePartyLabels,invoicePartyRows} from '../utils/invoicePartyLayout.mjs';
 
 export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly=false,currencyControl=null}){
   const ui=invoiceUi[languageCode]||invoiceUi.en,text=invoiceDocumentText[languageCode]||invoiceDocumentText.en;
   const labels={ko:{code:'회사 코드',automatic:'발행 시 자동 채번'},en:{code:'Company code',automatic:'Assigned on issue'},vi:{code:'Mã công ty',automatic:'Cấp khi phát hành'}}[languageCode]||{code:'Company code',automatic:'Assigned on issue'};
-  const appearance=readOnly?'document':'form';
-  const field=(party,key)=><InvoiceDocumentField key={key} className={key==='address'?'invoice-party-address':''} appearance={appearance} label={ui[key]} value={fields[party]?.[key]} readOnly={readOnly} multiline={readOnly&&key==='address'} onChange={e=>onChange(party,{...fields[party],[key]:e.target.value})} maxLength={1000}/>;
+  const appearance=readOnly?'document':'form',partyLabels=invoicePartyLabels(languageCode);
+  const field=(party,key)=><InvoiceDocumentField key={key} className={key==='address'?'invoice-party-address':''} appearance={appearance} label={partyLabels[key]} value={fields[party]?.[key]} readOnly={readOnly} multiline={readOnly&&key==='address'} onChange={e=>onChange(party,{...fields[party],[key]:e.target.value})} maxLength={1000}/>;
   return <Box data-invoice-form-header={readOnly?'readonly':'editing'} sx={{p:2,borderBottom:1,borderColor:'divider',...(!readOnly?{
     '&& .invoice-document-top':{display:'grid',gridTemplateColumns:{xs:'minmax(0,1fr)',md:'minmax(140px,1fr) minmax(420px,680px)'},alignItems:'end',gap:2,pb:2},
     '&& .invoice-document-identifiers':{width:'100%',maxWidth:'none',mt:0,gridTemplateColumns:{xs:'minmax(0,1fr)',sm:currencyControl?'minmax(0,1.2fr) minmax(0,1fr) 120px':'repeat(2,minmax(0,1fr))'},gap:2},
@@ -36,11 +37,7 @@ export default function InvoiceFormHeader({fields,languageCode,onChange,readOnly
     </Box>
     <Box className="invoice-parties">{['buyer','seller'].map(party=><Box className="invoice-party" key={party}>
       <Typography component="h3" className="invoice-party-title">{text[party]}</Typography>
-      <Box className="invoice-party-identity">
-        {fields[party]?.code&&<InvoiceDocumentField appearance={appearance} label={labels.code} value={fields[party].code} readOnly/>}
-        {field(party,'name')}
-      </Box>
-      {readOnly?<>{field(party,'taxId')}{field(party,'address')}{fields[party]?.contactName&&field(party,'contactName')}{field(party,'phone')}{field(party,'email')}</>:<>{field(party,'taxId')}{field(party,'contactName')}{field(party,'address')}{field(party,'phone')}{field(party,'email')}</>}
+      {invoicePartyRows.map(row=><Box key={row.className} className={`invoice-party-row ${row.className}`}>{row.keys.map(key=>field(party,key))}</Box>)}
     </Box>)}</Box>
 
   </Box>;

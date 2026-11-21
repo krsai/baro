@@ -1,3 +1,4 @@
+import {invoicePartyHtml} from './invoicePartyLayout.mjs';
 import {escapeInvoiceHtml as e} from './invoiceDraft.mjs';
 import {buildGeneralInvoicePrintHtml} from './generalInvoicePrint.mjs';
 import {invoiceStyleRows,invoiceNumber} from './invoiceStyleRows.mjs';
@@ -19,7 +20,7 @@ export function buildIssuedInvoicePrintHtml(invoice,languageCode='en') {
   const text=invoiceDocumentText[languageCode]||invoiceDocumentText.en;
   const f=s.fields||{},money=value=>e(formatInvoiceMoney(value,s.currencyCode)),num=value=>e(invoiceNumber(value));
   const cell=(label,value)=>`<div class="invoice-cell"><span class="invoice-cell-label">${e(label)}</span><span class="invoice-cell-value">${e(value)}</span></div>`;
-  const party=(label,p={})=>`<section class="invoice-party"><h2 class="invoice-party-title">${e(label)}</h2>${['name','address','taxId',...(p?.contactName?['contactName']:[]),'phone','email'].map(key=>cell(ui[key],p[key])).join('')}</section>`;
+  const party=(label,value={})=>invoicePartyHtml(label,value,languageCode);
   const orders=new Map(s.orders.map(order=>[order.sourceOrderId,order.sourceOrderNumber]));
   const rows=invoiceStyleRows(s.lines.filter(line=>line.quantity>0));
   const kind=s.pricingBasis==='FINISHED_GOODS_PRICE'?'COMMERCIAL INVOICE':'MANUFACTURING SERVICE INVOICE';

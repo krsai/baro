@@ -29,7 +29,7 @@ export function registerInvoiceDraftRoutes(app: any, { db, requireAccess, actor 
     const buyerOrgId=Number(req.query.buyerOrgId);
     if(!Number.isSafeInteger(buyerOrgId)||buyerOrgId<=0)return res.status(400).json({error:'GENERAL_INVOICE_BUYER_INVALID'});
     const [source,rawCodes]=await Promise.all([generalInvoiceSource(db,orgId,buyerOrgId),db.transactionCode.findMany({where:{ownerOrgId:orgId,isActive:true},include:ACCOUNTING_CODE_INCLUDE,orderBy:{id:'asc'}})]);
-    const codes=rawCodes.map(resolveAccountingCode).filter((row:any)=>row&&['IN','BOTH'].includes(row.cashDirection)).map((row:any)=>({id:row.id,code:row.code,nameKo:row.nameKo,nameEn:row.nameEn,nameVi:row.nameVi,vatEnabled:row.vatEnabled,cashDirection:row.cashDirection}));
+    const codes=rawCodes.map(resolveAccountingCode).filter(Boolean).map((row:any)=>({id:row.id,code:row.code,nameKo:row.nameKo,nameEn:row.nameEn,nameVi:row.nameVi,vatEnabled:row.vatEnabled,cashDirection:row.cashDirection}));
     res.setHeader('Cache-Control','no-store');res.json({...source,codes,currencies:['VND','USD','KRW']});
   });
   app.post('/invoices/issued/:id/credits', async (req: any, res: any) => {

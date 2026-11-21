@@ -1,4 +1,5 @@
 import {editRevision} from '../utils/editRevision';
+import {normalizeStoredAddress} from './companyDocumentContact';
 import {createHttpError} from '../utils/http';
 import {classificationTarget,requireClassificationActor} from './partnerClassification';
 import {attachLinkedCompanies} from './companyConnections';
@@ -56,7 +57,7 @@ export async function savePartnerContacts(tx:any,orgId:number,entityId:number,ac
   const text=(value as string).trim();
   if(key==='address'&&text!==current?.data?.address&&(/[\r\n]/.test(text)||[...text].some(char=>/\p{L}/u.test(char)&&!/\p{Script=Latin}/u.test(char))))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED');
   if(key==='name'&&!text)throw createHttpError(400,'PARTNER_CONTACT_INVALID');
-  data[key]=partnerNameKeys.includes(key)?text.toUpperCase():text;
+  data[key]=partnerNameKeys.includes(key)?text.toUpperCase():key==='address'&&text!==current?.data?.address?normalizeStoredAddress(text):text;
  }
  let profile=loadedProfile;
  if(!profile){[profile]=await attachLinkedCompanies(tx,orgId,[{...entityProfile(target.entity),entityId,id:entityId,contactConnectedAt:target.entity.createdAt}]);}

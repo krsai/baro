@@ -12,6 +12,9 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-party-identity .invoice-cell:last-child{flex:1}
 .invoice-sheet .invoice-parties{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px}
 .invoice-sheet .invoice-party{min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+.invoice-sheet .invoice-party-row{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr);gap:12px;min-width:0}
+.invoice-sheet .invoice-party-main{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+.invoice-sheet .invoice-party-contacts{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr)}
 .invoice-sheet .invoice-party-title{grid-column:1/-1;margin:0;padding:4px 0;font-size:12px;color:#667085;font-weight:600}
 .invoice-sheet .invoice-cell{display:flex;flex-direction:column;min-width:0;gap:2px}
 .invoice-sheet .invoice-cell-label{font-size:11px;line-height:1.4;color:#667085;overflow-wrap:anywhere}
@@ -41,5 +44,5 @@ export const invoiceDocumentCss = `
 .invoice-sheet .invoice-stamp{width:160px;min-height:78px;border:1px solid #cbd5e1;border-radius:6px;padding:10px;text-align:center;color:#667085;font-size:11px}
 .invoice-sheet .invoice-status{text-align:right;font-weight:700;color:#a33939;padding-bottom:12px}
 @media print{.invoice-sheet .invoice-bank-lines{overflow:visible}.invoice-sheet .invoice-bank-line{white-space:pre-wrap;overflow-wrap:anywhere}}
-@media(max-width:600px){.invoice-sheet .invoice-document-top{display:block}.invoice-sheet .invoice-document-identifiers{width:100%;margin-top:12px;grid-template-columns:1fr}.invoice-sheet .invoice-metadata,.invoice-sheet .invoice-parties,.invoice-sheet .invoice-summary{grid-template-columns:1fr}.invoice-sheet .invoice-summary{padding:16px;gap:16px}.invoice-sheet th,.invoice-sheet td{padding:6px 8px}}
+@media(max-width:600px){.invoice-sheet .invoice-document-top{display:block}.invoice-sheet .invoice-document-identifiers{width:100%;margin-top:12px;grid-template-columns:1fr}.invoice-sheet .invoice-metadata,.invoice-sheet .invoice-parties,.invoice-sheet .invoice-summary,.invoice-sheet .invoice-party-main,.invoice-sheet .invoice-party-contacts{grid-template-columns:1fr}.invoice-sheet .invoice-summary{padding:16px;gap:16px}.invoice-sheet th,.invoice-sheet td{padding:6px 8px}}
 `;

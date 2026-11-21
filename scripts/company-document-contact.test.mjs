@@ -16,7 +16,8 @@ test('document contacts use the business master, validate explicit English edits
  assert.deepEqual(companyDocumentContactUpdate({representative:'기존 이름',address:'기존 주소'},current),{representative:'기존 이름',address:'기존 주소'});
  assert.throws(()=>companyDocumentContactUpdate({representative:'다른 이름'},current),/COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED/);
  assert.throws(()=>companyDocumentContactUpdate({address:'새 주소'},current),/COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED/);
- assert.deepEqual(companyDocumentContactUpdate({representative:'John Smith',address:'12 Nguyen Van Linh, Hanoi',phone:'+84 123'},current),{representative:'John Smith',address:'12 Nguyen Van Linh, Hanoi',phone:'+84 123'});
+ assert.deepEqual(companyDocumentContactUpdate({representative:'John Smith',address:'12 Nguyen Van Linh, Hanoi',phone:'+84 123'},current),{representative:'John Smith',address:'12 NGUYEN VAN LINH, HANOI',phone:'+84 123'});
+ const legacy={address:'12 Legacy Street'};assert.equal(companyDocumentContactUpdate({address:legacy.address},legacy).address,legacy.address);assert.equal(companyDocumentContactUpdate({address:'14 New Street'},legacy).address,'14 NEW STREET');
  assert.equal(companyInvoiceParty({name:'DEX LOGIS',representative:'John Smith'}).contactName,'John Smith');
 });
 test('shipping, order invoices and general invoices read the same independent company document contact',async()=>{

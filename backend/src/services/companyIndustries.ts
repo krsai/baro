@@ -44,9 +44,10 @@ export async function saveCompanyProfileAndClassification(db:any,orgId:number,ac
 }
 // Billing accepts any active company code with a compatible cash direction.
 // Industry classification and the legacy canBill flag do not restrict it.
-export async function companyBillableCode(db:any,orgId:number,id:number){
+export async function companyBillableCode(db:any,orgId:number,id:number,{allowAnyDirection=false}={}){
  const raw=await db.transactionCode.findFirst({where:{id,ownerOrgId:orgId},include}),code=raw&&resolveAccountingCode(raw);
- if(!code||!['IN','BOTH'].includes(code.cashDirection))fail('COMPANY_BILLING_CODE_INVALID');
+ // General invoices may rebill costs; legacy billing settings keep their default.
+ if(!code||(!allowAnyDirection&&!['IN','BOTH'].includes(code.cashDirection)))fail('COMPANY_BILLING_CODE_INVALID');
  return code;
 }
 export function registerCompanyIndustryRoutes(app:any,db:any,gates:any){

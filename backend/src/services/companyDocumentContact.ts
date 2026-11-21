@@ -1,4 +1,5 @@
 import {createHttpError} from '../utils/http';
+export const normalizeStoredAddress=(value:string)=>value.trim().toUpperCase();
 
 // Organization fields are the document master. Employee data is never a fallback.
 export const companyDocumentContact=(row:any)=>({representative:row?.representative??null,phone:row?.phone??null,email:row?.email??null,address:row?.address??null});
@@ -14,7 +15,7 @@ export function companyDocumentContactUpdate(input:any,current:any){
   // Existing text is preserved until the user explicitly changes that field.
   if(['representative','address'].includes(key)&&text&&text!==(current[key]??'')&&[...text].some(char=>/\p{L}/u.test(char)&&!/\p{Script=Latin}/u.test(char)))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_ENGLISH_REQUIRED');
   if(key==='address'&&text&&text!==(current[key]??'')&&/[\r\n]/.test(text))throw createHttpError(400,'COMPANY_DOCUMENT_CONTACT_INVALID');
-  result[key]=text||null;
+  result[key]=key==='address'&&text&&text!==(current[key]??'')?normalizeStoredAddress(text):text||null;
  }
  return result;
 }

@@ -19275,7 +19275,7 @@ app.post("/onboarding/company-requests", async (req, res) => {
   const companyAddress = resolveOptionalString(
     req.body?.companyAddress ?? req.body?.address,
     null
-  );
+  )?.toUpperCase();
   if (!companyAddress || companyAddress.length > ONBOARDING_COMPANY_ADDRESS_MAX_LENGTH) {
     return res.status(400).json({
       ok: false,
@@ -19520,7 +19520,7 @@ app.patch("/system/company-requests/:id/approve", async (req, res) => {
       name: companyRequest.organizationNameEn,
       businessNumber: companyRequest.businessNumber,
       representative: companyRequest.contactName || null,
-      address: companyRequest.companyAddress || null,
+      address: companyRequest.companyAddress?.toUpperCase() || null,
       country: organizationCountry ?? null,
       email: companyRequest.contactEmail,
       phone: companyRequest.contactPhone,

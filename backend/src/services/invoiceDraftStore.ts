@@ -1,4 +1,5 @@
 import {cashScheduleDate} from './cashSchedule';
+import {normalizeStoredAddress} from './companyDocumentContact';
 import {generalInvoiceSource,normalizeGeneralInvoiceLines,validateGeneralInvoiceCodes} from './generalInvoice';
 import { createHttpError } from "../utils/http";
 import { editTransaction, STALE_EDIT } from "../utils/editRevision";
@@ -45,9 +46,11 @@ export const normalizeInvoiceDraftContent = (body: any) => {
   const expectedCollectionDate=cashScheduleDate(body.fields?.expectedCollectionDate);
   const fields = { ...(body.fields?.vatTreatment!==undefined?{vatTreatment:text(body.fields.vatTreatment,1),vatRate:text(body.fields.vatRate??'0',8)}:{}), ...(expectedCollectionDate?{expectedCollectionDate}:{}), ...pickText(body.fields, ["number", "date", "shipTo", "shipmentDate", "dueDate", "incoterm", "paymentTerms", "bank", "notes"], 5000),
     seller: { ...pickText(body.fields.seller, ["name", "address", "country", "taxId", "email", "phone"]),
+      address:normalizeStoredAddress(text(body.fields.seller.address??'')),
       ...(body.fields.seller.contactName!==undefined?{contactName:text(body.fields.seller.contactName,200)}:{}),
       ...(body.fields.seller.code !== undefined ? { code: text(body.fields.seller.code, 200) } : {}) },
     buyer: { ...pickText(body.fields.buyer, ["name", "address", "country", "taxId", "email", "phone"]),
+      address:normalizeStoredAddress(text(body.fields.buyer.address??'')),
       ...(body.fields.buyer.contactName!==undefined?{contactName:text(body.fields.buyer.contactName,200)}:{}),
       ...(body.fields.buyer.code !== undefined ? { code: text(body.fields.buyer.code, 200) } : {}) },
   };

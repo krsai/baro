@@ -11,6 +11,16 @@ const fixture = () => ({ status: 'ISSUED', buyer: { name: 'CURRENT MASTER' }, sn
   lines: [{ orderId: 'internal-order-id', quantity: 1, styleCode:'STYLE123',description: 'Jacket', color: 'Blue', gender: 'U', size: 'XL', hsCode:'HS123',origin:'Vietnam',unitPrice: '100', amount: '100', remark:'Customer remark',adjustmentReason: 'INTERNAL REASON' }],
 } });
 
+test('all invoice kinds share three company rows, hide internal codes, and preserve stored address case',()=>{
+ for(const documentKind of ['ORDER','GENERAL'])for(const language of ['ko','en','vi']){
+  const invoice=fixture();invoice.snapshot.documentKind=documentKind;
+  invoice.snapshot.fields.seller.code='INTERNAL-SaaS-CODE';invoice.snapshot.fields.seller.contactName='Saved Contact';
+  const before=structuredClone(invoice),html=buildIssuedInvoicePrintHtml(invoice,language);
+  assert.ok(html.includes('invoice-party-main'));assert.ok(html.includes('invoice-party-address-row'));assert.ok(html.includes('invoice-party-contacts'));
+  assert.ok(html.includes('Saved Contact'));assert.ok(html.includes('Frozen address'));assert.equal(html.includes('INTERNAL-SaaS-CODE'),false);assert.deepEqual(invoice,before);
+ }
+});
+
 test('print explains the final billing percentage and deduction using frozen amounts and separate bank lines',()=>{
  const invoice=fixture();
  invoice.snapshot.orders[0]={...invoice.snapshot.orders[0],basisAmount:'200',billingPercentage:'50',billedAmount:'100',appliedDeductionAmount:'20',netAmount:'80'};
